@@ -98,6 +98,7 @@ export const zh = {
   'card.batchProgress': '批次进度（已运行次数 / 总次数）',
   'prompt.commandList': '命令列表',
   'prompt.noCommands': '无匹配命令',
+  'prompt.skillUserOnly': '仅用户可用',
   // 插件设置卡片（settings.plugin.item 席位）。
   'settings.title': '任务看板',
   'settings.description': '控制看板在 agent 系统提示中的播报行为。',
@@ -215,6 +216,7 @@ export const en: Record<keyof typeof zh, string> = {
   'card.batchProgress': 'Batch progress (runs so far / total runs)',
   'prompt.commandList': 'Command list',
   'prompt.noCommands': 'No matching commands',
+  'prompt.skillUserOnly': 'User only',
   // Plugin settings card (the `settings.plugin.item` seat).
   'settings.title': 'Task Board',
   'settings.description': 'How the board announces itself in each agent system prompt.',

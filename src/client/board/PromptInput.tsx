@@ -1,15 +1,16 @@
 /**
  * Prompt input with slash-command autocomplete: typing '/' pops a menu of
- * live host commands (the same catalog the native composer's '/' menu
- * reads), navigable with ArrowUp/Down, accepted with Enter/Tab, dismissed
- * with Escape or by clicking elsewhere; picking inserts the command text.
- * Shared by the new-task modal and the detail edit mode through TaskForm.
+ * live slash candidates — host commands plus skills, the same merged
+ * catalog the native composer's '/' menu reads — navigable with ArrowUp/
+ * Down, accepted with Enter/Tab, dismissed with Escape or by clicking
+ * elsewhere; picking inserts the candidate text. Shared by the new-task
+ * modal and the detail edit mode through TaskForm.
  */
 import { useEffect, useRef, useState } from 'react'
-import type { BoardController, CommandRow } from '../../core/controller.ts'
+import type { BoardController, SlashCandidate } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { commandTokenAt, filterCommands, insertCommand, type CommandToken } from './slash-token.ts'
+import { commandTokenAt, filterSlashCandidates, insertCommand, type CommandToken } from './slash-token.ts'
 
 /** Menu row cap: keeps the list scannable and scrollbar-free. */
 const MAX_ROWS = 8
@@ -17,7 +18,7 @@ const MAX_ROWS = 8
 /** The open menu: the triggering token span plus its filtered candidates. */
 interface SlashMenuState {
   token: CommandToken
-  rows: readonly CommandRow[]
+  rows: readonly SlashCandidate[]
   highlight: number
 }
 
@@ -34,15 +35,15 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
   const valueRef = useRef(value)
   const caretRef = useRef(0)
   // undefined = still loading; null = unavailable (no menu); array = ready.
-  const [catalog, setCatalog] = useState<readonly CommandRow[] | undefined | null>(undefined)
+  const [catalog, setCatalog] = useState<readonly SlashCandidate[] | undefined | null>(undefined)
   const [menu, setMenu] = useState<SlashMenuState | undefined>(undefined)
 
-  // Load the live command catalog once per mount; unavailable surfaces
+  // Load the live slash catalog once per mount; unavailable surfaces
   // degrade to no menu.
   useEffect(() => {
     let alive = true
     void (async () => {
-      const rows = await controller.runCatalog()?.listCommands()
+      const rows = await controller.runCatalog()?.listSlashCandidates()
       if (!alive) return
       setCatalog(rows ?? null)
     })()
@@ -56,7 +57,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
       setMenu(undefined)
       return
     }
-    const rows = filterCommands(catalog, token.query, token.leading).slice(0, MAX_ROWS)
+    const rows = filterSlashCandidates(catalog, token.query, token.leading).slice(0, MAX_ROWS)
     setMenu(previous =>
       previous !== undefined
         && previous.token.start === token.start
@@ -74,13 +75,13 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog])
 
-  /** Insert the picked command over the token span and restore focus/caret. */
-  const accept = (row: CommandRow | undefined): void => {
+  /** Insert the picked candidate over the token span and restore focus/caret. */
+  const accept = (row: SlashCandidate | undefined): void => {
     if (menu === undefined || row === undefined) {
       setMenu(undefined)
       return
     }
-    const result = insertCommand(valueRef.current, menu.token, row.name, row.hint)
+    const result = insertCommand(valueRef.current, menu.token, row)
     setMenu(undefined)
     valueRef.current = result.text
     caretRef.current = result.caret

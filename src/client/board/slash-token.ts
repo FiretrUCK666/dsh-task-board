@@ -2,17 +2,12 @@
  * Slash-command autocomplete: pure text/token logic for the prompt input.
  * Framework-free so the token scan, candidate filtering and insertion rules
  * are unit-testable without React or the runtime.
+ *
+ * The candidate model mirrors the native composer's '/' menu, which merges
+ * two sources: host commands (the command registry) and skills (the skill
+ * catalog — every skill name is itself a slash entry like `/skill-xxx`).
  */
-
-/** One command candidate row (the structural face of the host descriptor). */
-export interface CommandRow {
-  /** Command name without the leading slash. */
-  name: string
-  /** Human-readable summary. */
-  description: string
-  /** Free-form input hint; commands with one take an argument (trailing space). */
-  hint?: string
-}
+import type { SlashCandidate } from '../../core/controller.ts'
 
 /** The slash token at the caret, when the caret sits in one. */
 export interface CommandToken {
@@ -49,43 +44,54 @@ export function commandTokenAt(text: string, caret: number): CommandToken | unde
   return { start, end, query: text.slice(start + 1, caret), leading }
 }
 
+const byName = (a: { name: string }, b: { name: string }): number => a.name.localeCompare(b.name)
+
 /**
- * Filter command rows against the query: case-insensitive includes match,
- * prefix matches ranked first, then alphabetical. Commands with an input
- * hint only appear when the token starts a line (mirrors the native menu's
- * leading-position rule).
+ * Filter slash candidates against the query, mirroring the native composer:
+ * commands match case-insensitively (prefix first, then includes) and only
+ * appear at any position when they take no hint; skills match by
+ * `startsWith` and appear at any position. Commands rank before skills;
+ * each group stays sorted.
  */
-export function filterCommands(rows: readonly CommandRow[], query: string, leading: boolean): CommandRow[] {
+export function filterSlashCandidates(
+  candidates: readonly SlashCandidate[],
+  query: string,
+  leading: boolean,
+): SlashCandidate[] {
   const needle = query.trim().toLowerCase()
-  const byName = (a: CommandRow, b: CommandRow): number => a.name.localeCompare(b.name)
-  const matches = rows.filter(row => leading || row.hint === undefined)
-    .filter(row => needle === '' || row.name.toLowerCase().includes(needle))
-  // Prefix matches rank first; each group stays alphabetical.
-  const prefix = matches
-    .filter(row => needle !== '' && row.name.toLowerCase().startsWith(needle))
+  const commands = candidates
+    .filter(candidate => candidate.kind === 'command')
+    .filter(candidate => leading || candidate.hint === undefined)
+    .filter(candidate => needle === '' || candidate.name.toLowerCase().includes(needle))
+  const commandPrefix = commands
+    .filter(candidate => needle !== '' && candidate.name.toLowerCase().startsWith(needle))
     .sort(byName)
-  const rest = matches
-    .filter(row => needle === '' || !row.name.toLowerCase().startsWith(needle))
+  const commandRest = commands
+    .filter(candidate => needle === '' || !candidate.name.toLowerCase().startsWith(needle))
     .sort(byName)
-  return [...prefix, ...rest]
+  const skills = candidates
+    .filter(candidate => candidate.kind === 'skill')
+    .filter(candidate => needle === '' || candidate.name.toLowerCase().startsWith(needle))
+    .sort(byName)
+  return [...commandPrefix, ...commandRest, ...skills]
 }
 
-/** The replacement text for a picked command, mirroring the native menu. */
-export function commandCompletion(name: string, hint: string | undefined): string {
-  return `/${name}${hint !== undefined ? ' ' : ''}`
+/** The replacement text for a picked candidate, mirroring the native menu. */
+export function commandCompletion(candidate: SlashCandidate): string {
+  const needsSpace = candidate.kind === 'skill' || candidate.hint !== undefined
+  return `/${candidate.name}${needsSpace ? ' ' : ''}`
 }
 
 /**
- * Replace the whole token word with the picked command's completion.
+ * Replace the whole token word with the picked candidate's completion.
  * @returns the new text and the caret position after insertion.
  */
 export function insertCommand(
   text: string,
   token: CommandToken,
-  name: string,
-  hint: string | undefined,
+  candidate: SlashCandidate,
 ): { text: string; caret: number } {
-  const completion = commandCompletion(name, hint)
+  const completion = commandCompletion(candidate)
   const next = `${text.slice(0, token.start)}${completion}${text.slice(token.end)}`
   return { text: next, caret: token.start + completion.length }
 }

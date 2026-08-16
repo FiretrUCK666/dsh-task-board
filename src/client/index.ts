@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController } from '../core/controller.ts'
+import { BoardController, type SlashCandidate } from '../core/controller.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
@@ -22,7 +22,7 @@ import { mountBoard } from './board-mount.tsx'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { RouteSettingsScope } from './route-scope.ts'
 import { TaskBoardSettingsCard, TaskBoardSettingsCardController, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
-import { en, zh, type TaskBoardKey } from './locales.ts'
+import { en, t, zh, type TaskBoardKey } from './locales.ts'
 
 /** Locale namespace this plugin owns. */
 const NS = 'dsh-task-board'
@@ -161,6 +161,65 @@ export function apply(ctx: ClientContext): void {
           : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
       },
     })
+
+    // Slash-menu sources (see listSlashCandidates): each fetches one native
+    // catalog and degrades to [] on any failure, with the reason logged.
+    const fetchSlashCommands = async (sessionId: string): Promise<readonly SlashCandidate[]> => {
+      // Lazy read of the client remote bridge (registered by the web shell's
+      // api-gateway): the host command registry — the same catalog the native
+      // composer's '/' menu reads. Resolution mirrors the composer: the
+      // namespace service by registered name (`remote.commands`, the inject
+      // path), with a fallback through the parent remote service's child
+      // property. Nothing is hard-coded, so commands registered by DSH or any
+      // plugin show up without a plugin update.
+      const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
+        ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
+      if (commands === undefined) {
+        console.warn('[dsh-task-board] slash commands unavailable: no remote.commands bridge')
+        return []
+      }
+      try {
+        const result = await commands.list(sessionId as SessionId)
+        if (!result.ok) {
+          console.warn('[dsh-task-board] slash commands unavailable:', result.error.code, result.error.message)
+          return []
+        }
+        return result.value.map(descriptor => ({
+          name: descriptor.name,
+          description: descriptor.description,
+          ...descriptor.input !== undefined && descriptor.input.hint !== undefined
+            ? { hint: descriptor.input.hint }
+            : {},
+          kind: 'command' as const,
+        }))
+      } catch (error) {
+        console.warn('[dsh-task-board] slash commands unavailable:', error)
+        return []
+      }
+    }
+
+    const fetchSlashSkills = async (sessionId: string): Promise<readonly SlashCandidate[]> => {
+      // The skill catalog (native `skill.list`), one candidate per skill
+      // name; user-only skills are marked like the native composer does.
+      try {
+        const response = await connection.api.skills.list({ sessionId: sessionId as SessionId })
+        if (!response.result.ok) {
+          console.warn('[dsh-task-board] slash skills unavailable:', response.result.error.code, response.result.error.message)
+          return []
+        }
+        return response.result.value.skills.map(skill => ({
+          name: skill.name,
+          description: skill.modelInvocable
+            ? skill.description
+            : `${t('prompt.skillUserOnly')} · ${skill.description}`,
+          kind: 'skill' as const,
+        }))
+      } catch (error) {
+        console.warn('[dsh-task-board] slash skills unavailable:', error)
+        return []
+      }
+    }
+
     const controller = new BoardController({
       store,
       exec,
@@ -223,52 +282,23 @@ export function apply(ctx: ClientContext): void {
             return undefined
           }
         },
-        listCommands: async () => {
-          // Lazy read of the client remote bridge (registered by the web
-          // shell's api-gateway): the prompt's slash menu reads the live
-          // host command registry — the same catalog the native composer's
-          // '/' menu uses. Nothing is hard-coded, so commands registered by
-          // DSH or any plugin show up without a plugin update.
-          //
-          // Resolution mirrors the native composer: the namespace service is
-          // registered by name (`remote.commands`, the inject path), with a
-          // fallback through the parent remote service's child property.
-          // Every unavailability branch logs the exact reason (console.warn)
-          // so a deployment that cannot serve the menu is diagnosable; the
-          // menu itself degrades silently.
-          const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
-            ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
-          if (commands === undefined) {
-            console.warn('[dsh-task-board] command catalog unavailable: no remote.commands bridge')
-            return undefined
-          }
-          // The catalog is session-scoped (its agent's command layer). Prefer
-          // the current session; fall back to any session in the list so the
-          // menu works even when the board opened without a selection.
+        listSlashCandidates: async () => {
+          // The slash menu merges the two native sources the composer's '/'
+          // menu reads: host commands (live command registry via the remote
+          // bridge) and skills (the skill catalog — every skill name is a
+          // slash entry). One session scopes both; a missing session hides
+          // the menu; a failing source degrades to the other one.
           const list = sessions.list.getSnapshot()
-          const sessionId = list.current
-            ?? Object.keys(list.byId)[0]
+          const sessionId = list.current ?? Object.keys(list.byId)[0]
           if (sessionId === undefined) {
-            console.warn('[dsh-task-board] command catalog unavailable: no session to scope commands to')
+            console.warn('[dsh-task-board] slash catalog unavailable: no session to scope it to')
             return undefined
           }
-          try {
-            const result = await commands.list(sessionId as SessionId)
-            if (!result.ok) {
-              console.warn('[dsh-task-board] command catalog unavailable:', result.error.code, result.error.message)
-              return undefined
-            }
-            return result.value.map(descriptor => ({
-              name: descriptor.name,
-              description: descriptor.description,
-              ...descriptor.input !== undefined && descriptor.input.hint !== undefined
-                ? { hint: descriptor.input.hint }
-                : {},
-            }))
-          } catch (error) {
-            console.warn('[dsh-task-board] command catalog unavailable:', error)
-            return undefined
-          }
+          const [commands, skills] = await Promise.all([
+            fetchSlashCommands(sessionId),
+            fetchSlashSkills(sessionId),
+          ])
+          return [...commands, ...skills]
         },
       },
     })

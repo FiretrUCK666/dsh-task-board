@@ -79,14 +79,16 @@ export interface PermissionRow {
   description?: string
 }
 
-/** One slash command the prompt input's autocomplete can offer. */
-export interface CommandRow {
-  /** Command name without the leading slash. */
+/** One slash-menu candidate for the prompt autocomplete (command or skill). */
+export interface SlashCandidate {
+  /** Name without the leading slash (the user types `/name`). */
   name: string
   /** Human-readable summary. */
   description: string
   /** Free-form input hint; commands with one take an argument (trailing space). */
   hint?: string
+  /** Skill entries rank after commands and always insert with a trailing space. */
+  kind: 'command' | 'skill'
 }
 
 /** Optional run-catalog face feeding the new-task form's run-configuration selects. */
@@ -103,12 +105,14 @@ export interface RunCatalogFace {
    */
   listPermissions(): Promise<readonly PermissionRow[] | undefined>
   /**
-   * Slash commands for the prompt autocomplete, straight from the host
-   * command registry (the same live catalog the native composer's '/' menu
-   * reads). undefined = unavailable (no remote surface / no current session
-   * / fetch failed) and the autocomplete hides.
+   * Slash-menu candidates for the prompt autocomplete, straight from the
+   * native sources the composer's '/' menu merges: host commands (the live
+   * command registry) plus skills (the skill catalog, one entry per skill
+   * name). undefined = no session to scope the catalog to; individual
+   * sources degrade to empty when their fetch fails. Nothing is hard-coded,
+   * so registry/catalog changes show up without a plugin update.
    */
-  listCommands(): Promise<readonly CommandRow[] | undefined>
+  listSlashCandidates(): Promise<readonly SlashCandidate[] | undefined>
 }
 
 /** The editable slice of a task (content + run configuration). */

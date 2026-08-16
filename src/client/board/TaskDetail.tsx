@@ -188,34 +188,35 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
         />
         <span>{t('detail.schedule.enable')}</span>
       </label>
-      <div className={css.scheduleRow}>
-        <input
-          className={`${css.input} ${css.scheduleInput}${error !== undefined ? ` ${css.scheduleInputInvalid}` : ''}`}
-          value={cron}
-          placeholder="0 9 * * *"
-          spellCheck={false}
-          aria-label={t('detail.schedule.cron')}
-          onChange={event => { setCron(event.target.value); setError(undefined) }}
-          onBlur={() => { saveCron(cron) }}
-          onKeyDown={event => { if (event.key === 'Enter') saveCron(cron) }}
-        />
-        <select
-          className={css.schedulePreset}
-          value=""
-          aria-label={t('detail.schedule.presets')}
-          onChange={event => { applyPreset(event.target.value) }}
-        >
-          <option value="">{t('detail.schedule.presets')}…</option>
-          {SCHEDULE_PRESETS.map(preset => (
-            <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
-          ))}
-        </select>
-      </div>
-      <div className={css.scheduleRow}>
-        <label className={css.scheduleRunBudget}>
-          <span>{t('detail.schedule.maxRuns')}</span>
+      <div className={css.scheduleGrid}>
+        <span className={css.scheduleLabel}>{t('detail.schedule.cron')}</span>
+        <span className={css.scheduleCronRow}>
           <input
-            className={css.scheduleInput}
+            className={`${css.input} ${css.scheduleInput}${error !== undefined ? ` ${css.scheduleInputInvalid}` : ''}`}
+            value={cron}
+            placeholder="0 9 * * *"
+            spellCheck={false}
+            aria-label={t('detail.schedule.cron')}
+            onChange={event => { setCron(event.target.value); setError(undefined) }}
+            onBlur={() => { saveCron(cron) }}
+            onKeyDown={event => { if (event.key === 'Enter') saveCron(cron) }}
+          />
+          <select
+            className={css.schedulePreset}
+            value=""
+            aria-label={t('detail.schedule.presets')}
+            onChange={event => { applyPreset(event.target.value) }}
+          >
+            <option value="">{t('detail.schedule.presets')}…</option>
+            {SCHEDULE_PRESETS.map(preset => (
+              <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
+            ))}
+          </select>
+        </span>
+        <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
+        <span className={css.scheduleMaxRow}>
+          <input
+            className={`${css.input} ${css.scheduleMaxInput}`}
             value={maxRuns}
             type="number"
             min={1}
@@ -226,10 +227,10 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
             onBlur={() => { saveMaxRuns(maxRuns) }}
             onKeyDown={event => { if (event.key === 'Enter') saveMaxRuns(maxRuns) }}
           />
-        </label>
-        <span className={css.scheduleMeta}>
-          {t('detail.schedule.runsSoFar')} {schedule?.runCount ?? 0}
-          {schedule?.maxRuns !== undefined && ` / ${schedule.maxRuns}`}
+          <span className={css.scheduleMeta}>
+            {t('detail.schedule.runsSoFar')} {schedule?.runCount ?? 0}
+            {schedule?.maxRuns !== undefined && ` / ${schedule.maxRuns}`}
+          </span>
         </span>
       </div>
       {error !== undefined && <p className={css.formError}>{error}</p>}
