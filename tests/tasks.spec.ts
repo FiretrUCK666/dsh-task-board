@@ -3,7 +3,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  canMoveManually, createTask, executionLabel, settleExecution, startExecution, withSchedule, withStatus,
+  canMoveManually, createTask, executionLabel, resolveCardDrop, settleExecution,
+  startExecution, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -217,5 +218,43 @@ describe('withSchedule', () => {
     expect(cleared.schedule?.enabled).toBe(true)
     expect(cleared.schedule?.cron).toBe('0 9 * * *')
     expect(cleared.schedule?.nextRunAt).toBeUndefined()
+  })
+})
+
+describe('resolveCardDrop', () => {
+  it('drops on running rerun a free task from any column', () => {
+    expect(resolveCardDrop(sampleTask(), 'running')).toEqual({ kind: 'run' })
+    const settled = settleExecution(
+      startExecution(sampleTask(), NOW, 'e1').task, 'e1', 'succeeded', NOW + 1, undefined,
+    )
+    expect(resolveCardDrop(settled, 'running')).toEqual({ kind: 'run' })
+  })
+
+  it('a busy task already sits in the running column: dropping there is a no-op', () => {
+    const { task } = startExecution(sampleTask(), NOW, 'e1')
+    // A task with an open execution is always in the running column, so
+    // dropping it back there changes nothing.
+    expect(resolveCardDrop(task, 'running')).toEqual({ kind: 'none' })
+  })
+
+  it('refuses done/failed while an execution is open, but allows backlog/todo', () => {
+    const { task } = startExecution(sampleTask(), NOW, 'e1')
+    expect(resolveCardDrop(task, 'done')).toEqual({ kind: 'reject', reason: 'busy' })
+    expect(resolveCardDrop(task, 'failed')).toEqual({ kind: 'reject', reason: 'busy' })
+    expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'move', status: 'backlog' })
+  })
+
+  it('moves a free task to any non-running column', () => {
+    const task = withStatus(sampleTask(), 'backlog', NOW)
+    for (const status of ['todo', 'done', 'failed'] as const) {
+      expect(resolveCardDrop(task, status)).toEqual({ kind: 'move', status })
+    }
+    expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'none' })
+  })
+
+  it('is a no-op on the current column', () => {
+    const task = withStatus(sampleTask(), 'done', NOW)
+    expect(resolveCardDrop(task, 'done')).toEqual({ kind: 'none' })
+    expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'move', status: 'backlog' })
   })
 })

@@ -1,7 +1,10 @@
 /**
  * Task card: the board's column item. Clicking opens the task detail — it
- * never executes anything directly (detail holds the Run button).
+ * never executes anything directly (detail holds the Run button). Cards are
+ * draggable onto other columns; the drop semantics are decided by the board
+ * through resolveCardDrop.
  */
+import { useState } from 'react'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { executionLabel } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
@@ -48,6 +51,7 @@ export function TaskCard({ task, workspaceTitleOf, onClick }: {
   workspaceTitleOf: (workspaceId: string) => string
   onClick: () => void
 }) {
+  const [dragging, setDragging] = useState(false)
   const latest = task.executions[task.executions.length - 1]
   const runs = task.executions.length
   // The card is genuinely executing while its latest run is still open; a
@@ -60,10 +64,17 @@ export function TaskCard({ task, workspaceTitleOf, onClick }: {
   return (
     <button
       type="button"
-      className={css.card}
+      className={`${css.card}${dragging ? ` ${css.dragging}` : ''}`}
       data-status={task.status}
+      draggable
       onClick={onClick}
       title={task.description !== '' ? task.description : task.title}
+      onDragStart={event => {
+        setDragging(true)
+        event.dataTransfer.setData('text/plain', task.id)
+        event.dataTransfer.effectAllowed = 'move'
+      }}
+      onDragEnd={() => { setDragging(false) }}
     >
       <span className={css.cardTitle}>{task.title}</span>
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}

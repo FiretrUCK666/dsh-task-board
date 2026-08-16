@@ -245,3 +245,32 @@ export function executionLabel(execution: ExecutionRecord): string {
   if (execution.result === 'cancelled') return 'cancelled'
   return 'running'
 }
+
+/** What a card drop onto a column means (drag-and-drop decision). */
+export type CardDropDecision =
+  | { kind: 'none' }
+  | { kind: 'move'; status: TaskStatus }
+  | { kind: 'run' }
+  | { kind: 'reject'; reason: 'busy' }
+
+/**
+ * Decide what dropping a card onto a column does, reconciling the manual
+ * move with the execution owner:
+ * - Dropping on 'running' reruns the task (the same "run again" semantics
+ *   as the detail button), unless its latest execution is still open — the
+ *   run guard is shared with manual runs and the scheduler, so a live run
+ *   can never be started twice from any surface.
+ * - While an execution is open, 'done'/'failed' are refused: the runner
+ *   owns those transitions and would overwrite a manual move when the run
+ *   settles.
+ * - Anything else is a plain manual move; dropping on the current column is
+ *   a no-op (except 'running', which still means "run" when free).
+ */
+export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropDecision {
+  const latest = task.executions[task.executions.length - 1]
+  const busy = latest !== undefined && latest.endedAt === undefined
+  if (target === 'running' && !busy) return { kind: 'run' }
+  if (task.status === target) return { kind: 'none' }
+  if (busy && (target === 'done' || target === 'failed')) return { kind: 'reject', reason: 'busy' }
+  return { kind: 'move', status: target }
+}

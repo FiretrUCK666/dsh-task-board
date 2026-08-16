@@ -3,7 +3,7 @@
  * next-run computation across minute/day/month/weekday boundaries.
  */
 import { describe, expect, it } from 'vitest'
-import { isValidCron, nextRunAtMs, parseCron } from '../src/core/schedule.ts'
+import { describeCron, isValidCron, nextRunAtMs, parseCron } from '../src/core/schedule.ts'
 
 /** Local-time ms epoch helper. */
 function at(year: number, month: number, day: number, hour: number, minute: number, second = 0): number {
@@ -127,5 +127,42 @@ describe('nextRunAtMs', () => {
 
   it('returns undefined for invalid expressions', () => {
     expect(nextRunAtMs('not a cron', at(2026, 1, 1, 0, 0))).toBeUndefined()
+  })
+})
+
+describe('describeCron', () => {
+  it('returns undefined for invalid expressions', () => {
+    expect(describeCron('not a cron')).toBeUndefined()
+    expect(describeCron('0 9 * *')).toBeUndefined()
+  })
+
+  it('describes frequency patterns', () => {
+    expect(describeCron('* * * * *')).toEqual({ kind: 'everyMinute' })
+    expect(describeCron('*/10 * * * *')).toEqual({ kind: 'everyMinutes', minutes: 10 })
+    expect(describeCron('*/30 * * * *')).toEqual({ kind: 'everyMinutes', minutes: 30 })
+    expect(describeCron('0 * * * *')).toEqual({ kind: 'everyHours', hours: 1 })
+    expect(describeCron('0 */2 * * *')).toEqual({ kind: 'everyHours', hours: 2 })
+  })
+
+  it('describes daily times', () => {
+    expect(describeCron('0 9 * * *')).toEqual({ kind: 'dailyAt', time: '09:00' })
+    expect(describeCron('30 22 * * *')).toEqual({ kind: 'dailyAt', time: '22:30' })
+    expect(describeCron('0 0 * * *')).toEqual({ kind: 'dailyAt', time: '00:00' })
+  })
+
+  it('describes weekly and workday patterns', () => {
+    expect(describeCron('0 9 * * 1')).toEqual({ kind: 'weeklyAt', weekdays: [1], time: '09:00' })
+    expect(describeCron('0 9 * * 1-5')).toEqual({ kind: 'weekdaysAt', time: '09:00' })
+    expect(describeCron('0 9 * * 0,6')).toEqual({ kind: 'weeklyAt', weekdays: [0, 6], time: '09:00' })
+  })
+
+  it('describes monthly patterns', () => {
+    expect(describeCron('0 9 1 * *')).toEqual({ kind: 'monthlyAt', days: [1], time: '09:00' })
+    expect(describeCron('0 9 1,15 * *')).toEqual({ kind: 'monthlyAt', days: [1, 15], time: '09:00' })
+  })
+
+  it('falls back to custom for unusual but valid expressions', () => {
+    expect(describeCron('5,17 9 * * *')).toEqual({ kind: 'custom' })
+    expect(describeCron('0 9 1 * 1')).toEqual({ kind: 'custom' })
   })
 })

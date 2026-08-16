@@ -70,6 +70,87 @@ export function isValidCron(expr: string): boolean {
   return parseCron(expr) !== null
 }
 
+/** A human-readable description of a cron expression (see describeCron). */
+export type CronDescription =
+  | { kind: 'everyMinute' }
+  | { kind: 'everyMinutes'; minutes: number }
+  | { kind: 'everyHours'; hours: number }
+  | { kind: 'dailyAt'; time: string }
+  | { kind: 'weekdaysAt'; time: string }
+  | { kind: 'weeklyAt'; weekdays: readonly number[]; time: string }
+  | { kind: 'monthlyAt'; days: readonly number[]; time: string }
+  | { kind: 'custom' }
+
+/** Whether a set is an evenly spaced arithmetic sequence. */
+function arithmeticStep(values: ReadonlySet<number>): number | undefined {
+  const sorted = [...values].sort((a, b) => a - b)
+  if (sorted.length < 2) return undefined
+  const step = sorted[1] - sorted[0]
+  if (step < 1) return undefined
+  for (let index = 1; index < sorted.length; index++) {
+    if (sorted[index] - sorted[index - 1] !== step) return undefined
+  }
+  return step
+}
+
+const MINUTES_PER_HOUR = 60
+const HOURS_PER_DAY = 24
+
+/**
+ * Describe a cron expression in human terms: every N minutes/hours, daily
+ * at a time, on weekdays, weekly on fixed weekdays, or monthly on fixed
+ * days. Returns `{ kind: 'custom' }` for valid-but-unusual expressions and
+ * undefined for invalid ones. The UI renders the description through its
+ * own locale templates.
+ */
+export function describeCron(expr: string): CronDescription | undefined {
+  const schedule = parseCron(expr)
+  if (schedule === null) return undefined
+  const { minutes, hours, days, months, weekdays, dayWildcard, weekdayWildcard } = schedule
+  const time = (hour: number, minute: number): string =>
+    `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+  const allMonths = months.size === 12
+  const allDays = days.size === 31 && dayWildcard
+  const allWeekdays = weekdays.size === 7 && weekdayWildcard
+
+  // Unrestricted day/weekday/month axis: pure frequency or daily patterns.
+  if (allDays && allWeekdays && allMonths) {
+    if (minutes.size === MINUTES_PER_HOUR) return { kind: 'everyMinute' }
+    const minuteStep = arithmeticStep(minutes)
+    if (minuteStep !== undefined && minuteStep * minutes.size === MINUTES_PER_HOUR) {
+      return { kind: 'everyMinutes', minutes: minuteStep }
+    }
+    if (minutes.size === 1) {
+      const minute = [...minutes][0]
+      if (hours.size === HOURS_PER_DAY) return { kind: 'everyHours', hours: 1 }
+      const hourStep = arithmeticStep(hours)
+      if (hourStep !== undefined && hourStep * hours.size === HOURS_PER_DAY) {
+        return { kind: 'everyHours', hours: hourStep }
+      }
+      if (hours.size === 1) return { kind: 'dailyAt', time: time([...hours][0], minute) }
+    }
+    return { kind: 'custom' }
+  }
+
+  // Fixed time on restricted day/weekday axes (daily/weekly/monthly shapes).
+  if (minutes.size === 1 && hours.size === 1 && allMonths) {
+    const minute = [...minutes][0]
+    const hour = [...hours][0]
+    if (allDays && !weekdayWildcard) {
+      const weekdaysSorted = [...weekdays].sort((a, b) => a - b)
+      const isWorkdays = weekdaysSorted.length === 5
+        && weekdaysSorted.every((day, index) => day === index + 1)
+      if (isWorkdays) return { kind: 'weekdaysAt', time: time(hour, minute) }
+      return { kind: 'weeklyAt', weekdays: weekdaysSorted, time: time(hour, minute) }
+    }
+    if (allWeekdays && !dayWildcard) {
+      return { kind: 'monthlyAt', days: [...days].sort((a, b) => a - b), time: time(hour, minute) }
+    }
+  }
+
+  return { kind: 'custom' }
+}
+
 /**
  * Compute the next matching instant after `fromMs` (ms epoch), in local time,
  * at minute granularity, strictly greater than `fromMs`. Returns the ms epoch

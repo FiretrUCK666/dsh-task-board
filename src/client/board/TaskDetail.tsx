@@ -6,10 +6,10 @@
  */
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
-import { isValidCron } from '../../core/schedule.ts'
+import { describeCron, isValidCron } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
-import { t, type TaskBoardKey } from '../locales.ts'
+import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Chip, type ChipKind } from './Chip.tsx'
@@ -93,13 +93,77 @@ function ExecutionRow({ execution, index, onOpen }: {
   )
 }
 
-/** Common scheduled-run presets (cron → locale label). */
-const SCHEDULE_PRESETS: ReadonlyArray<{ cron: string; label: TaskBoardKey }> = [
-  { cron: '0 9 * * *', label: 'detail.schedule.preset.daily9' },
-  { cron: '0 * * * *', label: 'detail.schedule.preset.hourly' },
-  { cron: '*/10 * * * *', label: 'detail.schedule.preset.tenMin' },
-  { cron: '0 9 * * 1', label: 'detail.schedule.preset.weeklyMon9' },
+/** Common scheduled-run presets (cron → locale label), grouped by use case. */
+const SCHEDULE_PRESETS: ReadonlyArray<{ cron: string; label: TaskBoardKey; group: TaskBoardKey }> = [
+  { cron: '*/5 * * * *', label: 'detail.schedule.preset.every5min', group: 'detail.schedule.group.frequency' },
+  { cron: '*/10 * * * *', label: 'detail.schedule.preset.tenMin', group: 'detail.schedule.group.frequency' },
+  { cron: '*/15 * * * *', label: 'detail.schedule.preset.every15min', group: 'detail.schedule.group.frequency' },
+  { cron: '*/30 * * * *', label: 'detail.schedule.preset.every30min', group: 'detail.schedule.group.frequency' },
+  { cron: '0 * * * *', label: 'detail.schedule.preset.hourly', group: 'detail.schedule.group.frequency' },
+  { cron: '0 */2 * * *', label: 'detail.schedule.preset.every2hours', group: 'detail.schedule.group.frequency' },
+  { cron: '0 0 * * *', label: 'detail.schedule.preset.daily00', group: 'detail.schedule.group.daily' },
+  { cron: '0 8 * * *', label: 'detail.schedule.preset.daily08', group: 'detail.schedule.group.daily' },
+  { cron: '0 9 * * *', label: 'detail.schedule.preset.daily9', group: 'detail.schedule.group.daily' },
+  { cron: '0 12 * * *', label: 'detail.schedule.preset.daily12', group: 'detail.schedule.group.daily' },
+  { cron: '0 14 * * *', label: 'detail.schedule.preset.daily14', group: 'detail.schedule.group.daily' },
+  { cron: '0 18 * * *', label: 'detail.schedule.preset.daily18', group: 'detail.schedule.group.daily' },
+  { cron: '0 20 * * *', label: 'detail.schedule.preset.daily20', group: 'detail.schedule.group.daily' },
+  { cron: '0 22 * * *', label: 'detail.schedule.preset.daily22', group: 'detail.schedule.group.daily' },
+  { cron: '0 9 * * 1', label: 'detail.schedule.preset.weeklyMon9', group: 'detail.schedule.group.weekly' },
+  { cron: '0 9 * * 1-5', label: 'detail.schedule.preset.workdays9', group: 'detail.schedule.group.weekly' },
+  { cron: '0 0 * * 0', label: 'detail.schedule.preset.weeklySun0', group: 'detail.schedule.group.weekly' },
+  { cron: '0 9 1 * *', label: 'detail.schedule.preset.monthly1', group: 'detail.schedule.group.monthly' },
+  { cron: '0 9 15 * *', label: 'detail.schedule.preset.monthly15', group: 'detail.schedule.group.monthly' },
 ]
+
+/** Preset groups in display order (group key → first preset). */
+const PRESET_GROUPS: readonly TaskBoardKey[] = [
+  'detail.schedule.group.frequency',
+  'detail.schedule.group.daily',
+  'detail.schedule.group.weekly',
+  'detail.schedule.group.monthly',
+]
+
+/** Short weekday names (0 = Sunday), locale-aware. */
+const WEEKDAYS_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/** Human label for a list of weekday numbers. */
+function weekdayLabel(weekdays: readonly number[]): string {
+  const names = isEnglish() ? WEEKDAYS_EN : WEEKDAYS_ZH
+  const joiner = isEnglish() ? ', ' : '、'
+  return weekdays.map(day => names[day] ?? String(day)).join(joiner)
+}
+
+/** Human-readable description of the cron text currently in the editor. */
+function cronDescriptionLabel(expr: string): string {
+  const description = describeCron(expr)
+  if (description === undefined) return t('detail.schedule.invalid')
+  switch (description.kind) {
+    case 'everyMinute':
+      return t('schedule.desc.everyMinute')
+    case 'everyMinutes':
+      return t('schedule.desc.everyMinutes', { n: String(description.minutes) })
+    case 'everyHours':
+      return t('schedule.desc.everyHours', { n: String(description.hours) })
+    case 'dailyAt':
+      return t('schedule.desc.dailyAt', { time: description.time })
+    case 'weekdaysAt':
+      return t('schedule.desc.weekdaysAt', { time: description.time })
+    case 'weeklyAt':
+      return t('schedule.desc.weeklyAt', {
+        days: weekdayLabel(description.weekdays),
+        time: description.time,
+      })
+    case 'monthlyAt':
+      return t('schedule.desc.monthlyAt', {
+        days: description.days.map(String).join(isEnglish() ? ', ' : '、'),
+        time: description.time,
+      })
+    case 'custom':
+      return t('schedule.desc.custom')
+  }
+}
 
 /** The scheduled-runs editor: enable toggle, cron input + presets, run budget, next-run info. */
 function ScheduleSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
@@ -201,17 +265,23 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
             onBlur={() => { saveCron(cron) }}
             onKeyDown={event => { if (event.key === 'Enter') saveCron(cron) }}
           />
-          <select
-            className={css.schedulePreset}
-            value=""
-            aria-label={t('detail.schedule.presets')}
-            onChange={event => { applyPreset(event.target.value) }}
-          >
-            <option value="">{t('detail.schedule.presets')}…</option>
-            {SCHEDULE_PRESETS.map(preset => (
-              <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
-            ))}
-          </select>
+          <span className={css.selectWrap}>
+            <select
+              className={css.schedulePreset}
+              value=""
+              aria-label={t('detail.schedule.presets')}
+              onChange={event => { applyPreset(event.target.value) }}
+            >
+              <option value="">{t('detail.schedule.presets')}…</option>
+              {PRESET_GROUPS.map(group => (
+                <optgroup key={group} label={t(group)}>
+                  {SCHEDULE_PRESETS.filter(preset => preset.group === group).map(preset => (
+                    <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </span>
         </span>
         <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
         <span className={css.scheduleMaxRow}>
@@ -235,6 +305,8 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
       </div>
       {error !== undefined && <p className={css.formError}>{error}</p>}
       <p className={css.scheduleMeta}>
+        {cronDescriptionLabel(cron)}
+        {' · '}
         {t('detail.schedule.nextRun')} {nextLabel}
         {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
       </p>
@@ -325,7 +397,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
             <>
               <section className={css.detailSection}>
                 <h4>{t('detail.description')}</h4>
-                <p className={css.detailText}>{current.description !== '' ? current.description : '—'}</p>
+                <div className={css.contentBlock}>{current.description !== '' ? current.description : '—'}</div>
               </section>
 
               <section className={css.detailSection}>

@@ -546,6 +546,35 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-state-error-primary);
 }
 
+/* --- select wrapper ----------------------------------------------------------- */
+
+/* Hosts a custom chevron so every dropdown arrow sits a uniform 12px from
+   the right edge (the native arrow cannot be positioned with CSS). */
+.selectWrap {
+  position: relative;
+  display: block;
+}
+
+.selectWrap select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+.selectWrap::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 7px;
+  height: 7px;
+  transform: translateY(-70%) rotate(45deg);
+  border-right: 1.5px solid var(--dsw-alias-label-tertiary);
+  border-bottom: 1.5px solid var(--dsw-alias-label-tertiary);
+  pointer-events: none;
+}
+
 /* --- prompt slash autocomplete ------------------------------------------------ */
 
 /* Anchor for the dropdown; flex column keeps the textarea stretched to the
@@ -792,6 +821,23 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   overflow-wrap: anywhere;
 }
 
+/* Framed read-only content block (description); the prompt keeps the same
+   frame with monospace type. */
+.contentBlock {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-markdown-code-block);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
 .promptBlock {
   margin: 0;
   padding: 10px 12px;
@@ -942,6 +988,29 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .card:active {
   box-shadow: var(--dsw-shadow-lv1);
   transform: translateY(0);
+}
+
+/* --- drag & drop -------------------------------------------------------------- */
+
+.card[draggable='true'] {
+  cursor: grab;
+}
+
+.card[draggable='true']:active {
+  cursor: grabbing;
+}
+
+.card.dragging {
+  opacity: 0.45;
+}
+
+/* Drop targets: business accent while hovering, error flash on rejection. */
+.column[data-dragover] {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.column[data-dragreject] {
+  border-color: var(--dsw-alias-state-error-primary);
 }
 
 .entry:active,

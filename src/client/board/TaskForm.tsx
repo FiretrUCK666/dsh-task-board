@@ -117,7 +117,8 @@ export function TaskForm({ draft, onChange, controller }: {
 
         <label className={css.field}>
           <span className={css.fieldLabel}>{t('new.agentPreset')}</span>
-          <select
+          <span className={css.selectWrap}>
+            <select
             className={css.input}
             value={draft.agentPreset}
             onChange={event => { onChange({ ...draft, agentPreset: event.target.value }) }}
@@ -134,11 +135,13 @@ export function TaskForm({ draft, onChange, controller }: {
               </option>
             ))}
           </select>
+          </span>
         </label>
 
         <label className={css.field}>
           <span className={css.fieldLabel}>{t('new.workspace')}</span>
-          <select
+          <span className={css.selectWrap}>
+            <select
             className={css.input}
             value={draft.workspaceId}
             onChange={event => { onChange({ ...draft, workspaceId: event.target.value }) }}
@@ -148,11 +151,13 @@ export function TaskForm({ draft, onChange, controller }: {
               <option key={row.id} value={row.id}>{row.title}</option>
             ))}
           </select>
+          </span>
         </label>
 
         <label className={css.field}>
           <span className={css.fieldLabel}>{t('new.model')}</span>
-          <select
+          <span className={css.selectWrap}>
+            <select
             className={css.input}
             value={draft.provider !== '' && draft.model !== '' ? `${draft.provider}${MODEL_SEP}${draft.model}` : ''}
             onChange={event => { setModel(event.target.value) }}
@@ -162,13 +167,15 @@ export function TaskForm({ draft, onChange, controller }: {
               <option key={option.key} value={option.key}>{option.label}</option>
             ))}
           </select>
+          </span>
         </label>
 
         {effortOptions.length > 0 && (
           <label className={css.field}>
             <span className={css.fieldLabel}>{t('new.effort')}</span>
+            <span className={css.selectWrap}>
             <select
-              className={css.input}
+            className={css.input}
               value={draft.reasoningEffort}
               onChange={event => { onChange({ ...draft, reasoningEffort: event.target.value }) }}
             >
@@ -177,6 +184,7 @@ export function TaskForm({ draft, onChange, controller }: {
                 <option key={option.id} value={option.id}>{option.name ?? option.id}</option>
               ))}
             </select>
+          </span>
           </label>
         )}
 
@@ -186,8 +194,9 @@ export function TaskForm({ draft, onChange, controller }: {
         {permissionRows !== undefined && (
           <label className={css.field}>
             <span className={css.fieldLabel}>{t('new.permission')}</span>
+            <span className={css.selectWrap}>
             <select
-              className={css.input}
+            className={css.input}
               value={draft.permission}
               onChange={event => { onChange({ ...draft, permission: event.target.value }) }}
             >
@@ -202,6 +211,7 @@ export function TaskForm({ draft, onChange, controller }: {
                 </option>
               ))}
             </select>
+          </span>
           </label>
         )}
       </div>
