@@ -311,7 +311,9 @@ export function apply(ctx: ClientContext): void {
     const scheduler = new SchedulerService({
       tasks: () => controller.getSnapshot().tasks,
       now: () => Date.now(),
-      runTask: id => controller.runTask(id),
+      // Auto triggers never prime a rule: they only drive tasks a manual run
+      // has started.
+      runTask: id => controller.runTask(id, 'schedule'),
       applySchedule: (id, nextRunAt, lastTriggeredAt, runCount, disable) =>
         controller.applyScheduleNextRun(id, nextRunAt, lastTriggeredAt, runCount, disable),
       ready: () => sessions.list.getSnapshot().phase === 'ready',

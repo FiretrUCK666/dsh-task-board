@@ -15,6 +15,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     title: '',
     description: '',
     prompt: '',
+    status: 'todo',
     agentPreset: '',
     workspaceId: '',
     provider: '',
@@ -43,7 +44,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
       >
         <h2 className={css.modalTitle}>{t('board.new')}</h2>
 
-        <TaskForm draft={draft} onChange={setDraft} controller={controller} />
+        <TaskForm draft={draft} onChange={setDraft} controller={controller} withStatus />
 
         {error !== undefined && <p className={css.formError}>{error}</p>}
 

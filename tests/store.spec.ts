@@ -153,13 +153,40 @@ describe('schedule persistence', () => {
     store.save([task])
     expect(store.load()[0].schedule).toEqual({
       enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: 100, lastTriggeredAt: 50,
-      maxRuns: undefined, runCount: 0,
+      maxRuns: undefined, runCount: 0, primed: false,
     })
   })
 
   it('keeps legacy tasks without a schedule intact', () => {
     const raw = JSON.stringify([createTask({ title: 'A', description: '', prompt: '' }, 1, 't-1')])
     expect(parseLedger(raw)[0].schedule).toBeUndefined()
+  })
+
+  it('round-trips a primed chain rule and a column sort key', () => {
+    const storage = new FakeStorage()
+    const store = new LocalStorageTaskStore('k', storage)
+    const task = withSchedule(
+      createTask({ title: 'A', description: '', prompt: '' }, 1, 't-1'),
+      { enabled: true, mode: 'chain', cron: '', primed: true, runCount: 2, maxRuns: 5 },
+      2,
+    )
+    store.save([task])
+    const loaded = store.load()[0]
+    expect(loaded.schedule).toEqual({
+      enabled: true, mode: 'chain', cron: '', nextRunAt: undefined, lastTriggeredAt: undefined,
+      maxRuns: 5, runCount: 2, primed: true,
+    })
+    // A persisted order survives; a legacy row without one keeps its array
+    // position so the previous relative order is preserved.
+    expect(parseLedger(JSON.stringify([
+      { ...createTask({ title: 'B', description: '', prompt: '' }, 1, 't-2'), order: 7 },
+      { ...createTask({ title: 'C', description: '', prompt: '' }, 2, 't-3'), order: undefined },
+      { ...createTask({ title: 'D', description: '', prompt: '' }, 3, 't-4'), order: undefined },
+    ])).map(row => [row.id, row.order])).toEqual([
+      ['t-2', 7],
+      ['t-3', 1],
+      ['t-4', 2],
+    ])
   })
 
   it('repairs a malformed schedule instead of dropping the task row', () => {
@@ -174,7 +201,7 @@ describe('schedule persistence', () => {
     expect(parsed).toHaveLength(4) // no row dropped for a bad schedule
     expect(parsed[0].schedule).toEqual({
       enabled: false, mode: 'cron', cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: 5,
-      maxRuns: undefined, runCount: 0,
+      maxRuns: undefined, runCount: 0, primed: false,
     })
     expect(parsed[1].schedule).toBeUndefined() // blank cron → schedule dropped
     expect(parsed[2].schedule).toBeUndefined() // non-object schedule → dropped
@@ -191,7 +218,7 @@ describe('schedule persistence', () => {
     const parsed = parseLedger(JSON.stringify(raw))
     expect(parsed[0].schedule).toEqual({
       enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: undefined,
-      maxRuns: undefined, runCount: 0,
+      maxRuns: undefined, runCount: 0, primed: false,
     })
     expect(parsed[1].schedule).toBeUndefined() // not five fields
     expect(parsed[2].schedule).toBeUndefined() // values out of range

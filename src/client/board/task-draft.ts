@@ -13,6 +13,8 @@ export interface TaskDraft {
   title: string
   description: string
   prompt: string
+  /** Landing column for new tasks ('backlog' | 'todo'); edit mode keeps it unchanged. */
+  status: 'backlog' | 'todo'
   /** Agent preset id; '' = deployment default. */
   agentPreset: string
   /** Workspace id; '' = most recently used workspace. */
@@ -33,6 +35,7 @@ export function draftFromTask(task: TaskRecord): TaskDraft {
     title: task.title,
     description: task.description,
     prompt: task.prompt,
+    status: task.status === 'backlog' ? 'backlog' : 'todo',
     agentPreset: task.agentPreset ?? '',
     workspaceId: task.workspaceId ?? '',
     provider: task.provider ?? '',
@@ -48,6 +51,7 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     title: draft.title,
     description: draft.description,
     prompt: draft.prompt,
+    status: draft.status,
     ...draft.agentPreset !== '' ? { agentPreset: draft.agentPreset } : {},
     ...draft.workspaceId !== '' ? { workspaceId: draft.workspaceId } : {},
     ...draft.provider !== '' && draft.model !== '' ? { provider: draft.provider, model: draft.model } : {},

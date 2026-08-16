@@ -12,7 +12,7 @@ import { ExecutionService, type ExecutionEvent } from './execution.ts'
 import { isValidCron, nextRunAtMs } from './schedule.ts'
 import type { TaskStore } from './store.ts'
 import {
-  createTask, settleExecution, startExecution, withSchedule, withStatus,
+  applyCardOrder, createTask, settleExecution, startExecution, withSchedule, withStatus,
   type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -149,6 +149,13 @@ export function selectedTaskOf(snapshot: ControllerSnapshot): TaskRecord | undef
   return snapshot.tasks.find(task => task.id === snapshot.selectedTaskId)
 }
 
+/**
+ * What initiated a run: 'manual' (Run button / dragging to 'running' — also
+ * primes an enabled schedule rule), 'schedule' (cron trigger) or 'chain'
+ * (run-after-completion hand-off).
+ */
+export type RunTrigger = 'manual' | 'schedule' | 'chain'
+
 function randomUuid(): string {
   const bytes = globalThis.crypto?.getRandomValues(new Uint8Array(16))
   if (bytes === undefined) {
@@ -266,10 +273,19 @@ export class BoardController {
   createTask(input: NewTaskInput): TaskRecord | undefined {
     const title = input.title.trim()
     if (title === '') return undefined
-    const task = createTask(input, this.now(), this.uuid())
+    const task = createTask(input, this.now(), this.uuid(), this.nextOrder())
     this.tasks = [...this.tasks, task]
     this.persistAndNotify()
     return task
+  }
+
+  /** Next column sort key: one past the largest order in the ledger. */
+  private nextOrder(): number {
+    let max = -1
+    for (const task of this.tasks) {
+      if (task.order > max) max = task.order
+    }
+    return max + 1
   }
 
   /**
@@ -306,8 +322,13 @@ export class BoardController {
     return true
   }
 
-  moveTask(id: string, status: TaskStatus): void {
-    this.tasks = this.tasks.map(task => task.id === id ? withStatus(task, status, this.now()) : task)
+  /**
+   * Move a card into a column, optionally at a specific position (before the
+   * card with `beforeId`; undefined = column tail). The target column's sort
+   * keys are renumbered; a same-column move is reorder-only.
+   */
+  moveTask(id: string, status: TaskStatus, beforeId?: string): void {
+    this.tasks = applyCardOrder(this.tasks, id, status, beforeId, this.now())
     this.persistAndNotify()
   }
 
@@ -322,9 +343,10 @@ export class BoardController {
   /**
    * Update a task's schedule rule. A blank or invalid cron expression is
    * rejected (returns false, state untouched) in cron mode. When the rule
-   * ends up enabled the next run instant is computed immediately (cron) or
-   * the first chain run is kicked off right away; a disabled rule carries no
-   * next-run instant.
+   * ends up enabled the next run instant is computed immediately (cron); a
+   * disabled rule carries no next-run instant. Arming a rule never executes
+   * anything by itself: auto triggers only drive tasks a manual run has
+   * primed (see `primed` on ScheduleRule).
    * @param id - the task to schedule.
    * @param patch - fields to change (absent fields keep their current value).
    *   `maxRuns` sets the total scheduled-run budget (undefined = unlimited);
@@ -341,8 +363,6 @@ export class BoardController {
     const maxRunsChanged = patch.maxRuns !== undefined && patch.maxRuns !== current?.maxRuns
     const maxRuns = patch.maxRuns !== undefined ? patch.maxRuns : current?.maxRuns
     const enabled = patch.enabled ?? current?.enabled ?? false
-    // Cron arming computes the next due instant; chain arming carries no
-    // clock and instead starts its first run below.
     const nextRunAt = enabled && mode === 'cron' ? nextRunAtMs(cron, this.now()) : undefined
     this.tasks = this.tasks.map(candidate =>
       candidate.id === id
@@ -355,11 +375,6 @@ export class BoardController {
           }, this.now())
         : candidate)
     this.persistAndNotify()
-    // An armed chain starts running immediately: the first run fires now,
-    // and every settled run hands off to the next through maybeContinueChain.
-    if (enabled && mode === 'chain' && !this.isBusy(id)) {
-      void this.runTask(id)
-    }
     return true
   }
 
@@ -373,15 +388,15 @@ export class BoardController {
   /**
    * Continue an armed chain schedule after a settled run: persist the
    * incremented counter (disarming after the final budgeted run) and start
-   * the next run. No-op unless the chain is armed, its latest execution has
-   * settled, and a further run is within budget. Runs synchronously after a
-   * settle, so the scheduler's recovery tick can never interleave a
-   * duplicate launch.
+   * the next run. No-op unless the chain is armed AND primed by a manual
+   * run, its latest execution has settled, and a further run is within
+   * budget. Runs synchronously after a settle, so the scheduler's recovery
+   * tick can never interleave a duplicate launch.
    */
   private maybeContinueChain(id: string): void {
     const task = this.tasks.find(candidate => candidate.id === id)
     const schedule = task?.schedule
-    if (schedule === undefined || !schedule.enabled || schedule.mode !== 'chain') return
+    if (schedule === undefined || !schedule.enabled || !schedule.primed || schedule.mode !== 'chain') return
     const latest = task?.executions[task.executions.length - 1]
     // Only a succeeded run hands off; a failure stops the chain (the recovery
     // tick may still retry it like any scheduled run).
@@ -390,7 +405,7 @@ export class BoardController {
     const finalRun = schedule.maxRuns !== undefined && schedule.runCount + 1 >= schedule.maxRuns
     this.applyScheduleNextRun(id, undefined, this.now(), schedule.runCount + 1, finalRun)
     if (finalRun) return
-    void this.runTask(id)
+    void this.runTask(id, 'chain')
   }
 
   /**
@@ -445,10 +460,20 @@ export class BoardController {
    * even though the card may still read 'running' (a scheduled batch keeps
    * the card in progress between runs and lets the next tick fire the next
    * run).
+   *
+   * A manual run primes an enabled schedule rule: auto triggers (cron due
+   * instants, chain hand-offs) only drive tasks a manual run has started,
+   * so arming a rule never executes anything by itself.
    */
-  async runTask(id: string): Promise<boolean> {
-    const task = this.tasks.find(candidate => candidate.id === id)
+  async runTask(id: string, trigger: RunTrigger = 'manual'): Promise<boolean> {
+    let task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return false
+    if (trigger === 'manual' && task.schedule?.enabled === true && task.schedule.primed !== true) {
+      const primed = withSchedule(task, { primed: true }, this.now())
+      this.tasks = this.tasks.map(candidate => candidate.id === id ? primed : candidate)
+      this.persistAndNotify()
+      task = primed
+    }
     const latest = task.executions[task.executions.length - 1]
     if (latest !== undefined && latest.endedAt === undefined) return false
     const { task: next, execution } = startExecution(task, this.now(), this.uuid())
@@ -471,7 +496,7 @@ export class BoardController {
       this.tasks = this.tasks.map(candidate => candidate.id === id ? withStatus(candidate, 'todo', this.now()) : candidate)
       this.persistAndNotify()
     }
-    await this.runTask(id)
+    await this.runTask(id, 'manual')
   }
 
   private handleExecutionEvent(event: ExecutionEvent): void {

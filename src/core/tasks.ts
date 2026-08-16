@@ -63,6 +63,14 @@ export interface ScheduleRule {
   maxRuns: number | undefined
   /** How many scheduled runs have fired so far (monotone; automatic triggers only). */
   runCount: number
+  /**
+   * Whether the rule has been activated by a manual run. Auto rules never
+   * drive a task that has not been started by hand: arming the rule does
+   * not run anything; the first manual run (Run button or dragging to
+   * 'running') primes the rule, and only then do cron triggers and chain
+   * hand-offs fire. Legacy rules normalize to false.
+   */
+  primed: boolean
 }
 
 /** One task on the board. */
@@ -77,6 +85,8 @@ export interface TaskRecord {
   prompt: string
   /** Current column. */
   status: TaskStatus
+  /** Column sort key (ascending; legacy rows are normalized on load). */
+  order: number
   /** Creation instant (ms epoch). */
   createdAt: number
   /** Last mutation instant (ms epoch). */
@@ -101,6 +111,8 @@ export interface NewTaskInput {
   title: string
   description: string
   prompt: string
+  /** Landing column; defaults to 'todo'. */
+  status?: 'backlog' | 'todo'
   workspaceId?: string
   provider?: string
   model?: string
@@ -140,13 +152,14 @@ export function canMoveManually(_from: TaskStatus, to: TaskStatus): boolean {
 }
 
 /** Create a task from user input. */
-export function createTask(input: NewTaskInput, now: number, id: string): TaskRecord {
+export function createTask(input: NewTaskInput, now: number, id: string, order = 0): TaskRecord {
   return {
     id,
     title: input.title.trim(),
     description: input.description.trim(),
     prompt: input.prompt.trim(),
-    status: 'todo',
+    status: input.status ?? 'todo',
+    order,
     createdAt: now,
     updatedAt: now,
     executions: [],
@@ -184,6 +197,7 @@ export function withSchedule(
     lastTriggeredAt: current?.lastTriggeredAt,
     maxRuns: current?.maxRuns,
     runCount: current?.runCount ?? 0,
+    primed: current?.primed ?? false,
   }
   if ('enabled' in patch) schedule.enabled = patch.enabled ?? false
   if ('mode' in patch) schedule.mode = patch.mode ?? 'cron'
@@ -192,6 +206,7 @@ export function withSchedule(
   if ('lastTriggeredAt' in patch) schedule.lastTriggeredAt = patch.lastTriggeredAt
   if ('maxRuns' in patch) schedule.maxRuns = patch.maxRuns
   if ('runCount' in patch) schedule.runCount = patch.runCount ?? 0
+  if ('primed' in patch) schedule.primed = patch.primed ?? false
   return { ...task, updatedAt: now, schedule }
 }
 
@@ -307,4 +322,40 @@ export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropD
   if (task.status === target) return { kind: 'none' }
   if (busy && (target === 'done' || target === 'failed')) return { kind: 'reject', reason: 'busy' }
   return { kind: 'move', status: target }
+}
+
+/**
+ * Move a card into a column at a given position, renumbering the target
+ * column's sort keys. `beforeId` inserts before that card (undefined =
+ * column tail); a same-column move removes the card first, so the insertion
+ * index is naturally off-by-one safe. Only the target column's orders are
+ * rewritten — other columns keep their relative order (gaps are harmless,
+ * since sorting only compares within a column).
+ */
+export function applyCardOrder(
+  tasks: readonly TaskRecord[],
+  movedId: string,
+  targetStatus: TaskStatus,
+  beforeId: string | undefined,
+  now: number,
+): TaskRecord[] {
+  const moved = tasks.find(task => task.id === movedId)
+  if (moved === undefined) return [...tasks]
+  // Moving a card before itself is a no-op (the card was already removed
+  // from the target list, so it could never be found as an anchor).
+  if (beforeId === movedId) return [...tasks]
+  const others = tasks.filter(task => task.id !== movedId)
+  const target = others.filter(task => task.status === targetStatus)
+  const at = beforeId === undefined ? target.length : target.findIndex(task => task.id === beforeId)
+  const position = at < 0 ? target.length : at
+  const ordered = [...target.slice(0, position), moved, ...target.slice(position)]
+  return tasks.map(task => {
+    if (task.id === movedId) {
+      return { ...task, status: targetStatus, order: ordered.findIndex(row => row.id === task.id), updatedAt: now }
+    }
+    if (task.status === targetStatus) {
+      return { ...task, order: ordered.findIndex(row => row.id === task.id) }
+    }
+    return task
+  })
 }

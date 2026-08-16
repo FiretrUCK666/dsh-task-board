@@ -45,11 +45,13 @@ export function formatDuration(ms: number): string {
 }
 
 /** One card in a column. */
-export function TaskCard({ task, workspaceTitleOf, onClick }: {
+export function TaskCard({ task, workspaceTitleOf, onClick, dropBefore = false }: {
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
   onClick: () => void
+  /** Whether an active same-column drag targets this card as its "insert before" anchor. */
+  dropBefore?: boolean
 }) {
   const [dragging, setDragging] = useState(false)
   const latest = task.executions[task.executions.length - 1]
@@ -66,6 +68,8 @@ export function TaskCard({ task, workspaceTitleOf, onClick }: {
       type="button"
       className={`${css.card}${dragging ? ` ${css.dragging}` : ''}`}
       data-status={task.status}
+      data-task-id={task.id}
+      data-drop-before={dropBefore ? '' : undefined}
       draggable
       onClick={onClick}
       title={task.description !== '' ? task.description : task.title}

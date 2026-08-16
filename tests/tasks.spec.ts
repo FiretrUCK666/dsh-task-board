@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  canMoveManually, createTask, executionLabel, resolveCardDrop, settleExecution,
+  applyCardOrder, canMoveManually, createTask, executionLabel, resolveCardDrop, settleExecution,
   startExecution, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -53,6 +53,57 @@ describe('createTask', () => {
     expect(plain.agentPreset).toBeUndefined()
     expect(plain.workspaceId).toBeUndefined()
     expect(plain.permission).toBeUndefined()
+  })
+
+  it('lands in the requested column (backlog) and keeps the order key', () => {
+    const task = createTask({ title: 'x', description: '', prompt: '', status: 'backlog' }, NOW, 'task-5', 3)
+    expect(task.status).toBe('backlog')
+    expect(task.order).toBe(3)
+  })
+})
+
+describe('applyCardOrder', () => {
+  /** Three tasks in one column, orders 0..2, in the given array order. */
+  function column(ids: string[], orders = [0, 1, 2]) {
+    return ids.map((id, index) => createTask({ title: id, description: '', prompt: '' }, NOW, id, orders[index]))
+  }
+
+  /** Map task id → order key, the shape the board sorts by. */
+  const keyed = (tasks: readonly ReturnType<typeof createTask>[]): Record<string, number> =>
+    Object.fromEntries(tasks.map(task => [task.id, task.order]))
+
+  it('inserts before a target card and renumbers only the target column', () => {
+    const [a, b, c] = column(['a', 'b', 'c'])
+    const reordered = applyCardOrder([a, b, c], 'c', 'todo', 'a', NOW + 1)
+    expect(keyed(reordered)).toEqual({ c: 0, a: 1, b: 2 })
+    expect(reordered.find(task => task.id === 'c')?.updatedAt).toBe(NOW + 1)
+    // Original array untouched.
+    expect(keyed([a, b, c])).toEqual({ a: 0, b: 1, c: 2 })
+  })
+
+  it('appends at the tail without a target and is a no-op when moving onto itself', () => {
+    const [a, b, c] = column(['a', 'b', 'c'])
+    const appended = applyCardOrder([a, b, c], 'a', 'todo', undefined, NOW + 1)
+    expect(keyed(appended)).toEqual({ b: 0, c: 1, a: 2 })
+    const self = applyCardOrder([a, b, c], 'a', 'todo', 'a', NOW + 1)
+    expect(keyed(self)).toEqual({ a: 0, b: 1, c: 2 })
+  })
+
+  it('moves across columns preserving the target column order and other columns untouched', () => {
+    const [a, b, c] = column(['a', 'b', 'c'])
+    const d = createTask({ title: 'd', description: '', prompt: '' }, NOW, 'd', 0)
+    const moved = applyCardOrder([a, b, c, { ...d, status: 'backlog' }], 'b', 'backlog', undefined, NOW + 1)
+    expect(moved.find(task => task.id === 'b')?.status).toBe('backlog')
+    expect(moved.find(task => task.id === 'b')?.order).toBe(1)
+    // Other columns keep their own keys (gaps are harmless — sorting only
+    // compares within a column).
+    expect(keyed(moved)).toEqual({ a: 0, b: 1, c: 2, d: 0 })
+  })
+
+  it('no-ops for an unknown task', () => {
+    const [a, b, c] = column(['a', 'b', 'c'])
+    const out = applyCardOrder([a, b, c], 'ghost', 'todo', undefined, NOW + 1)
+    expect(keyed(out)).toEqual({ a: 0, b: 1, c: 2 })
   })
 })
 
@@ -211,7 +262,7 @@ describe('withSchedule', () => {
     const scheduled = withSchedule(task, { enabled: true, cron: '0 9 * * *', nextRunAt: NOW + 100 }, NOW + 1)
     expect(scheduled.schedule).toEqual({
       enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: NOW + 100, lastTriggeredAt: undefined,
-      maxRuns: undefined, runCount: 0,
+      maxRuns: undefined, runCount: 0, primed: false,
     })
     expect(scheduled.updatedAt).toBe(NOW + 1)
     expect(task.schedule).toBeUndefined() // original untouched
@@ -226,7 +277,7 @@ describe('withSchedule', () => {
     const rolled = withSchedule(task, { nextRunAt: NOW + 200 }, NOW + 2)
     expect(rolled.schedule).toEqual({
       enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: NOW + 200, lastTriggeredAt: NOW,
-      maxRuns: undefined, runCount: 0,
+      maxRuns: undefined, runCount: 0, primed: false,
     })
   })
 

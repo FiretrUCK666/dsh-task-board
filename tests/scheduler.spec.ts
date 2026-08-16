@@ -12,10 +12,10 @@ function at(year: number, month: number, day: number, hour: number, minute: numb
   return new Date(year, month - 1, day, hour, minute, second).getTime()
 }
 
-/** A task carrying an armed schedule rule. */
+/** A task carrying an armed, manually-primed schedule rule. */
 function scheduledTask(id: string, cron: string, nextRunAt: number | undefined, enabled = true): TaskRecord {
   const base = createTask({ title: id, description: '', prompt: '' }, at(2026, 1, 1, 0, 0), `t-${id}`)
-  return withSchedule(base, { enabled, cron, nextRunAt, lastTriggeredAt: undefined }, at(2026, 1, 1, 0, 0))
+  return withSchedule(base, { enabled, cron, nextRunAt, lastTriggeredAt: undefined, primed: true }, at(2026, 1, 1, 0, 0))
 }
 
 interface Harness {
@@ -100,6 +100,23 @@ describe('SchedulerService.tick', () => {
     await h.scheduler.tick()
     expect(h.runs).toEqual([])
     expect(h.applied).toEqual([])
+  })
+
+  it('never triggers a rule a manual run has not primed', async () => {
+    const h = makeHarness()
+    // Armed + due, but not primed: arming a rule must never execute anything.
+    const base = createTask({ title: 'a', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-a')
+    h.setTasks([withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0) }, at(2026, 1, 1, 0, 0))])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+    // The due slot is untouched: once a manual run primes the rule, the
+    // schedule takes over at its next due instant (never an instant catch-up).
+    expect(h.applied).toEqual([])
+    // A manual run primes it (as the controller's runTask does), and the
+    // still-due slot fires on the next tick.
+    h.setTasks([withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0), primed: true }, at(2026, 1, 1, 10, 0, 30))])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual(['t-a'])
   })
 
   it('ignores disabled rules and tasks without a schedule', async () => {
@@ -210,8 +227,10 @@ describe('SchedulerService lifecycle', () => {
 
   it('restarts a stalled chain schedule with no open execution', async () => {
     const h = makeHarness()
+    // A stalled chain = previously primed + running before a reload; the
+    // rule's primed flag is persisted, so the recovery tick relaunches it.
     const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
-    const chain = withSchedule(task, { enabled: true, mode: 'chain', cron: '' }, at(2026, 1, 1, 0, 0))
+    const chain = withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0))
     h.setTasks([chain])
     await h.scheduler.tick()
     expect(h.runs).toEqual(['t-c'])
@@ -225,7 +244,7 @@ describe('SchedulerService lifecycle', () => {
   it('does not restart a chain that reached its budget', async () => {
     const h = makeHarness()
     const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
-    const chain = withSchedule(task, { enabled: true, mode: 'chain', cron: '', maxRuns: 2, runCount: 2 }, at(2026, 1, 1, 0, 0))
+    const chain = withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true, maxRuns: 2, runCount: 2 }, at(2026, 1, 1, 0, 0))
     h.setTasks([chain])
     await h.scheduler.tick()
     expect(h.runs).toEqual([])

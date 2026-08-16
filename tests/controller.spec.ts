@@ -143,6 +143,36 @@ describe('task mutations', () => {
     expect(persisted.status).toBe('backlog')
   })
 
+  it('creates into the chosen landing column with a fresh sort key', () => {
+    const { controller, store } = makeController()
+    const todo = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const backlog = controller.createTask({ title: 'b', description: '', prompt: '', status: 'backlog' })!
+    expect(todo.status).toBe('todo')
+    expect(backlog.status).toBe('backlog')
+    expect(store.load().map(row => [row.id, row.status, row.order])).toEqual([
+      [todo.id, 'todo', 0],
+      [backlog.id, 'backlog', 1],
+    ])
+  })
+
+  it('reorders cards within a column (same-column move with beforeId)', () => {
+    const { controller, store } = makeController()
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
+    const c = controller.createTask({ title: 'c', description: '', prompt: '' })!
+    const keyed = (): Record<string, number> =>
+      Object.fromEntries(store.load().map(task => [task.id, task.order]))
+    // Move the last card before the first: c gets key 0, a and b shift.
+    controller.moveTask(c.id, 'todo', a.id)
+    expect(keyed()).toEqual({ [c.id]: 0, [a.id]: 1, [b.id]: 2 })
+    // Moving a card onto itself keeps its position.
+    controller.moveTask(c.id, 'todo', c.id)
+    expect(keyed()).toEqual({ [c.id]: 0, [a.id]: 1, [b.id]: 2 })
+    // Moving to another column does not disturb the source column's keys.
+    controller.moveTask(b.id, 'backlog')
+    expect(keyed()).toEqual({ [c.id]: 0, [a.id]: 1, [b.id]: 0 })
+  })
+
   it('updates content and run configuration, clearing fields with undefined', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({
@@ -568,13 +598,18 @@ describe('scheduling', () => {
     expect(exec.runCalls).toHaveLength(2)
   })
 
-  it('chain mode: runs immediately on enable, continues after each settle, disarms at the budget', async () => {
+  it('chain mode: arming never runs; a manual run primes it and the chain continues until the budget', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
-    // Arming the chain fired the first run right away.
+    // Arming a chain never executes anything by itself.
+    expect(exec.runCalls).toHaveLength(0)
+    expect(store.load()[0].schedule?.primed).toBe(false)
+    // The first manual run primes the rule...
+    await controller.runTask(task.id)
     expect(exec.runCalls).toHaveLength(1)
+    expect(store.load()[0].schedule?.primed).toBe(true)
     // Run 1 settles → the chain hands off to run 2 synchronously.
     const e1 = exec.runCalls[0].executionId
     exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
@@ -599,6 +634,7 @@ describe('scheduling', () => {
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
+    await controller.runTask(task.id) // manual run primes the chain
     const e1 = exec.runCalls[0].executionId
     exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'failed', error: 'boom' })

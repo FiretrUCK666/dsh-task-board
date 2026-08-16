@@ -93,6 +93,9 @@ export class SchedulerService {
     for (const task of this.deps.tasks()) {
       const schedule = task.schedule
       if (schedule === undefined || !schedule.enabled) continue
+      // Auto triggers only drive tasks a manual run has primed: arming a
+      // rule never executes anything by itself.
+      if (!schedule.primed) continue
       // Chain mode: recovery tick only — a stalled chain (e.g. after a page
       // reload, when the settle hand-off was lost) is restarted when no
       // execution is open and a further run is within budget. The live

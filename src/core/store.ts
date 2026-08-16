@@ -100,6 +100,7 @@ function normalizeSchedule(schedule: unknown): ScheduleRule | undefined {
     lastTriggeredAt: typeof rule.lastTriggeredAt === 'number' ? rule.lastTriggeredAt : undefined,
     maxRuns: typeof maxRuns === 'number' && Number.isInteger(maxRuns) && maxRuns > 0 ? maxRuns : undefined,
     runCount: typeof runCount === 'number' && Number.isInteger(runCount) && runCount >= 0 ? runCount : 0,
+    primed: rule.primed === true,
   }
 }
 
@@ -130,6 +131,10 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     // clear a malformed persisted rule rather than leave it in the row.
     const task: TaskRecord = { ...row, status: normalizeStatus(row.status) }
     task.schedule = normalizeSchedule(row.schedule)
+    // Legacy rows carry no sort key: assign the array position so the
+    // previous relative order is preserved.
+    const rawOrder = (row as Record<string, unknown>).order
+    task.order = typeof rawOrder === 'number' && Number.isFinite(rawOrder) ? rawOrder : tasks.length
     tasks.push(task)
   }
   return tasks

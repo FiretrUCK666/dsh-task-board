@@ -16,10 +16,12 @@ import type { TaskDraft } from './task-draft.ts'
 const MODEL_SEP = '\u0000'
 
 /** The shared new/edit task form. */
-export function TaskForm({ draft, onChange, controller }: {
+export function TaskForm({ draft, onChange, controller, withStatus = false }: {
   draft: TaskDraft
   onChange: (next: TaskDraft) => void
   controller: BoardController
+  /** Show the landing-column selector (new-task modal only). */
+  withStatus?: boolean
 }) {
   const [presets, setPresets] = useState<readonly AgentPresetRow[]>([])
   const [groups, setGroups] = useState<readonly ModelGroupRow[]>([])
@@ -111,6 +113,26 @@ export function TaskForm({ draft, onChange, controller }: {
           controller={controller}
         />
       </label>
+
+      {/* Landing-column selector: new-task modal only. Choosing a column is
+          about where the task rests until it is started; auto rules never
+          run a not-yet-started task, so this does not change execution. */}
+      {withStatus && (
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('new.status')}</span>
+          <span className={css.selectWrap}>
+            <select
+              className={css.input}
+              value={draft.status}
+              onChange={event => { onChange({ ...draft, status: event.target.value as 'backlog' | 'todo' }) }}
+            >
+              <option value="todo">{t('board.status.todo')}</option>
+              <option value="backlog">{t('board.status.backlog')}</option>
+            </select>
+          </span>
+          <span className={css.fieldHint}>{t('new.statusHint')}</span>
+        </label>
+      )}
 
       <div className={css.field}>
         <span className={css.fieldLabel}>{t('new.runConfig')}</span>
