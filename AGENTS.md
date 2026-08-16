@@ -102,3 +102,16 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   （vi.stubGlobal fetch）。
 - `tests/settings-route.spec.ts`：createSettingsHandler 纯函数（GET 有/无命名空间、
   POST set/unset、mutate 抛错 envelope、writable 透传、405、readJsonBody）。
+
+## 版本管理流程（必守）
+
+本项目使用本地 git 仓库做版本管理（无远程；用户不用掌握 git，由 agent 代为执行）。
+
+- **修改前**：`git status` 确认工作区状态；如有未提交改动先 `git add -A && git commit`
+  存一个「改前存档点」。
+- **修改后**：build/typecheck/test/verify 全绿后 `git add -A && git commit`，提交信息
+  简短说明本次改动（中文或英文均可，禁止 emoji）。
+- **回滚**：用户要求「回到上一个版本 / 撤销改动」时——未提交的改动用
+  `git checkout -- <file>` 丢弃；已提交的用 `git log --oneline` 定位存档点后
+  `git reset --hard <commit>`（执行前确认工作区无未提交的重要改动，并向用户说明影响）。
+- 不提交：`node_modules/`、`lib/`（已在 .gitignore 忽略）。
