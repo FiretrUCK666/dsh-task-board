@@ -145,6 +145,48 @@ export interface TranscriptEventShape {
   data?: unknown
 }
 
+/** The live model selection of one execution session (native `sessions.models`). */
+export interface SessionModelChoice {
+  provider: string
+  model: string
+  reasoningEffort?: string
+}
+
+/** One selectable reasoning effort of a model route. */
+export interface SessionEffortRow {
+  id: string
+  name?: string
+}
+
+/** One selectable model route (with its reasoning efforts). */
+export interface SessionModelRow {
+  id: string
+  name?: string
+  reasoning?: { efforts: readonly SessionEffortRow[]; defaultEffort?: string }
+}
+
+/** One provider group of the session's model directory. */
+export interface SessionModelGroup {
+  provider: string
+  models: readonly SessionModelRow[]
+}
+
+/** What the review page's session-config panel needs from the runtime. */
+export interface SessionConfigFace {
+  /** The session's current selection + selectable directory (native models API). */
+  readModels(sessionId: string): Promise<{
+    current: SessionModelChoice
+    groups: readonly SessionModelGroup[]
+  } | undefined>
+  /** Apply a new model selection to the session (native selectModel API). */
+  selectModel(
+    sessionId: string,
+    selection: SessionModelChoice,
+  ): Promise<{ ok: true } | { ok: false; error: string }>
+  /** Apply a permission preset through the native `/permission` command. */
+  setPermission(sessionId: string, permission: string): Promise<{ ok: true } | { ok: false; error: string }>
+}
+
 /** Controller dependencies (all swappable in tests). */
 export interface ControllerDeps {
   store: TaskStore
@@ -162,6 +204,8 @@ export interface ControllerDeps {
   cruiseStorage?: CruiseStorageFace
   /** Reads a session's recent history events (review-page transcript); absent = the page shows a hint. */
   transcript?: (sessionId: string) => Promise<readonly TranscriptEventShape[] | undefined>
+  /** Session-config surface (review-page model/permission panel); absent = the panel degrades gracefully. */
+  sessionConfig?: SessionConfigFace
 }
 
 /** Immutable controller snapshot for UI subscriptions. */
@@ -286,6 +330,11 @@ export class BoardController {
    */
   loadTranscript(sessionId: string): Promise<readonly TranscriptEventShape[] | undefined> {
     return this.deps.transcript?.(sessionId) ?? Promise.resolve(undefined)
+  }
+
+  /** The session-config face (review page's model/permission panel), or undefined. */
+  sessionConfig(): SessionConfigFace | undefined {
+    return this.deps.sessionConfig
   }
 
   subscribe(fn: () => void): () => void {

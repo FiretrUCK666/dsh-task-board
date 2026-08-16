@@ -687,6 +687,20 @@ describe('scheduling', () => {
   })
 })
 
+describe('session config face', () => {
+  it('exposes the injected face and degrades to undefined without one', () => {
+    const { controller } = makeController()
+    expect(controller.sessionConfig()).toBeUndefined()
+    const face = {
+      readModels: async () => ({ current: { provider: 'p', model: 'm' }, groups: [] }),
+      selectModel: async () => ({ ok: true as const }),
+      setPermission: async () => ({ ok: true as const }),
+    }
+    const { controller: wired } = makeController(new StubExec(), { sessionConfig: face })
+    expect(wired.sessionConfig()).toBe(face)
+  })
+})
+
 describe('comments', () => {
   /** A task with one settled execution in review (session s-1). */
   async function settledReviewTask(stub: StubExec, controller: BoardController): Promise<{ taskId: string; executionId: string }> {

@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController, type SlashCandidate, type TranscriptEventShape } from '../core/controller.ts'
+import { BoardController, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape } from '../core/controller.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
@@ -283,6 +283,68 @@ export function apply(ctx: ClientContext): void {
       },
       // Review-page transcripts: recent history of an execution session.
       transcript: transcriptLoader,
+      // Review-page session panel: the live model directory + selection of
+      // the execution session, straight from the native models/selectModel
+      // APIs (the same sources the native model selector reads), and the
+      // native `/permission` command path for permission switches.
+      sessionConfig: {
+        readModels: async sessionId => {
+          try {
+            const response = await connection.api.sessions.models({ sessionId: sessionId as SessionId })
+            if (!response.result.ok) return undefined
+            const value = response.result.value
+            return {
+              current: {
+                provider: value.current.provider,
+                model: value.current.model,
+                ...value.current.reasoningEffort !== undefined ? { reasoningEffort: value.current.reasoningEffort } : {},
+              },
+              groups: value.groups.map(group => ({
+                provider: group.id,
+                models: group.models.map(model => ({
+                  id: model.id,
+                  name: model.name,
+                  ...model.reasoning !== undefined
+                    ? {
+                      reasoning: {
+                        efforts: model.reasoning.efforts.map(effort => ({ id: effort.id, name: effort.name })),
+                        ...model.reasoning.defaultEffort !== undefined ? { defaultEffort: model.reasoning.defaultEffort } : {},
+                      },
+                    }
+                    : {},
+                })),
+              })),
+            }
+          } catch (error) {
+            console.error('[dsh-task-board] session models read failed', error)
+            return undefined
+          }
+        },
+        selectModel: async (sessionId, selection) => {
+          const response = await connection.api.sessions.selectModel({
+            sessionId: sessionId as SessionId,
+            provider: selection.provider,
+            model: selection.model,
+            ...selection.reasoningEffort !== undefined ? { reasoningEffort: selection.reasoningEffort } : {},
+          })
+          return response.result.ok
+            ? { ok: true as const }
+            : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+        },
+        setPermission: async (sessionId, permission) => {
+          // The native write path for per-session switches: a prompt whose
+          // content is exactly one slash line is a command, never a turn.
+          const response = await connection.api.sessions.prompt({
+            sessionId: sessionId as SessionId,
+            mode: 'queue',
+            content: [{ type: 'text', text: `/permission ${permission}` }],
+          })
+          if (!response.result.ok) {
+            return { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+          }
+          return { ok: true as const }
+        },
+      } satisfies SessionConfigFace,
       runCatalog: {
         listWorkspaces: () => workspaces.list.getSnapshot().items.map(item => ({
           id: item.workspaceId,

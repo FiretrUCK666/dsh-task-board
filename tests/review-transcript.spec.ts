@@ -5,7 +5,7 @@
  * weak rows.
  */
 import { describe, expect, it } from 'vitest'
-import { foldTranscript, type TranscriptEvent } from '../src/client/board/review-transcript.ts'
+import { foldTranscript, sumUsage, type TranscriptEvent } from '../src/client/board/review-transcript.ts'
 
 const base = { seq: 1, time: 1000 }
 
@@ -93,5 +93,43 @@ describe('foldTranscript', () => {
   it('returns an empty list for an empty or all-skipped event list', () => {
     expect(foldTranscript([])).toEqual([])
     expect(foldTranscript([{ ...base, type: 'turn/end', data: { turn: 1 } }])).toEqual([])
+  })
+})
+
+describe('transcript usage', () => {
+  it('carries the native usage payload on assistant messages', () => {
+    const events: TranscriptEvent[] = [
+      {
+        ...base,
+        type: 'assistant/message',
+        data: {
+          turn: 1,
+          step: 1,
+          message: { id: 'm1', role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+          usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, reasoningTokens: 3 },
+        },
+      },
+    ]
+    const folded = foldTranscript(events)
+    expect(folded[0].kind).toBe('message')
+    if (folded[0].kind === 'message') {
+      expect(folded[0].usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, reasoningTokens: 3 })
+    }
+  })
+
+  it('sums usage across assistant messages, skipping optional fields when absent', () => {
+    const lines = [
+      { kind: 'message' as const, id: 'a', role: 'user' as const, text: 'q', at: 0 },
+      { kind: 'message' as const, id: 'b', role: 'assistant' as const, text: '1', at: 1, usage: { inputTokens: 10, outputTokens: 5 } },
+      { kind: 'context' as const, id: 'c', plugin: 'x', summary: '', at: 2 },
+      { kind: 'message' as const, id: 'd', role: 'assistant' as const, text: '2', at: 3, usage: { inputTokens: 4, outputTokens: 1, cacheWriteTokens: 7, reasoningTokens: 2 } },
+    ]
+    expect(sumUsage(lines)).toEqual({
+      inputTokens: 14,
+      outputTokens: 6,
+      cacheWriteTokens: 7,
+      reasoningTokens: 2,
+    })
+    expect(sumUsage([lines[0]])).toBeUndefined()
   })
 })

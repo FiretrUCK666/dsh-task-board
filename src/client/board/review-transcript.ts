@@ -28,6 +28,8 @@ export type TranscriptLine =
     text: string
     /** Event timestamp (ms epoch); 0 when the event carried none. */
     at: number
+    /** Token accounting reported with the assistant message, when present. */
+    usage?: TranscriptUsage
   }
   | {
     kind: 'context'
@@ -40,6 +42,15 @@ export type TranscriptLine =
     /** Event timestamp (ms epoch); 0 when the event carried none. */
     at: number
   }
+
+/** Token accounting of one assistant message (native `usage` payload). */
+export interface TranscriptUsage {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
+}
 
 /** The raw history-event slice the fold reads (structural, narrowed). */
 export interface TranscriptEvent {
@@ -66,6 +77,7 @@ interface AssistantMessageShape {
     id?: unknown
     content?: unknown
   }
+  usage?: TranscriptUsage
 }
 
 /**
@@ -108,16 +120,45 @@ export function foldTranscript(events: readonly TranscriptEvent[]): TranscriptLi
       if (typeof message !== 'object' || message === null) continue
       const text = textOf(message.content)
       if (text === '') continue
+      const usage = data.usage
       lines.push({
         kind: 'message',
         id: String(message.id ?? fallbackId),
         role: 'assistant',
         text,
         at,
+        ...usage !== undefined && isUsage(usage) ? { usage } : {},
       })
     }
   }
   return lines
+}
+
+/** Structural guard for the native token-accounting payload. */
+function isUsage(value: unknown): value is TranscriptUsage {
+  if (typeof value !== 'object' || value === null) return false
+  const usage = value as Record<string, unknown>
+  return typeof usage.inputTokens === 'number' && typeof usage.outputTokens === 'number'
+}
+
+/** Sum the token accounting of every assistant message in a transcript. */
+export function sumUsage(lines: readonly TranscriptLine[]): TranscriptUsage | undefined {
+  let total: TranscriptUsage | undefined
+  for (const line of lines) {
+    if (line.kind !== 'message' || line.usage === undefined) continue
+    const usage = line.usage
+    total = {
+      inputTokens: (total?.inputTokens ?? 0) + usage.inputTokens,
+      outputTokens: (total?.outputTokens ?? 0) + usage.outputTokens,
+      ...usage.cacheReadTokens !== undefined
+        ? { cacheReadTokens: (total?.cacheReadTokens ?? 0) + usage.cacheReadTokens } : {},
+      ...usage.cacheWriteTokens !== undefined
+        ? { cacheWriteTokens: (total?.cacheWriteTokens ?? 0) + usage.cacheWriteTokens } : {},
+      ...usage.reasoningTokens !== undefined
+        ? { reasoningTokens: (total?.reasoningTokens ?? 0) + usage.reasoningTokens } : {},
+    }
+  }
+  return total
 }
 
 /** Join a message's text blocks (each trimmed); returns '' when there is no text. */

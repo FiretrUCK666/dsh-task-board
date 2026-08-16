@@ -1064,16 +1064,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-variant-numeric: tabular-nums;
 }
 
-.executionRowActions {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  flex: none;
-}
-
 .executionOpen {
   flex: none;
+  margin-left: auto;
   padding: 0;
   font-size: 12px;
   color: var(--dsw-alias-state-business-primary);
@@ -1364,8 +1357,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex-direction: column;
   gap: 12px;
   padding: 14px 20px 20px;
-  overflow-y: auto;
+  overflow: hidden;
   min-height: 0;
+  flex: 1;
+}
+
+/* The conversation region scrolls on its own — a long transcript never
+   pushes the comment thread out of view. */
+.reviewTranscriptScroll {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 120px;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 /* The run's outcome banner: what the agent came back with. */
@@ -1452,13 +1458,101 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   animation: dshTbFadeUp 160ms ease;
 }
 
+/* Token-usage summary under the conversation. */
+.reviewUsage {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The live session panel: model / effort / permission of this execution
+   session, straight from the native APIs. */
+.reviewConfig {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-separator-primary);
+}
+
+.reviewConfigTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.reviewConfigGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reviewConfigRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.reviewConfigLabel {
+  flex: none;
+  width: 72px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.reviewConfigRow > .selectWrap {
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+}
+
+.reviewConfigUnavailable,
+.reviewConfigMessage {
+  font-size: 12px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.reviewConfigHint {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  line-height: 1.5;
+}
+
 /* The comment thread zone: visually separated from the conversation above —
-   its own framed surface, so human interventions read as a distinct layer. */
+   its own framed surface, so human interventions read as a distinct layer.
+   It is fixed at the bottom: the composer stays visible no matter how long
+   the conversation gets. */
 .reviewThread {
+  flex: none;
   padding: 12px;
   background: var(--dsw-alias-bg-layer-2);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;
+}
+
+.reviewThreadTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.reviewThreadCount {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The comment list scrolls on its own when long, so the composer below it
+   stays fixed. */
+.reviewCommentList {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .reviewComments {
