@@ -1,0 +1,6 @@
+# pnpm config for the standalone dsh-task-board plugin. The native-binary
+# packages (esbuild for tsdown, lightningcss for the CSS-inline client preset)
+# run their install scripts; everything else follows pnpm's script-allow default.
+allowBuilds:
+  esbuild: true
+  lightningcss: true
