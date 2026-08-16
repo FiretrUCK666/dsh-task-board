@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
@@ -131,7 +131,10 @@ function cronDescriptionLabel(expr: string): string {
 /** The scheduled-runs editor: mode, cron input + presets, run budget, next-run info. */
 function ScheduleSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
   const schedule = task.schedule
-  const [cron, setCron] = useState(schedule?.cron ?? '0 9 * * *')
+  // `||` (not `??`) falls back to the default even for an empty stored
+  // expression, so switching modes can never leave the editor with a blank
+  // cron value.
+  const [cron, setCron] = useState(schedule?.cron || '0 9 * * *')
   const [enabled, setEnabled] = useState(schedule?.enabled ?? false)
   const [mode, setMode] = useState<ScheduleMode>(schedule?.mode ?? 'cron')
   const [maxRuns, setMaxRuns] = useState(schedule?.maxRuns?.toString() ?? '')
@@ -146,7 +149,7 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
   // Keep the editor in sync when the task record changes underneath (the
   // schedule rolls forward as runs trigger).
   useEffect(() => {
-    setCron(schedule?.cron ?? '0 9 * * *')
+    setCron(schedule?.cron || '0 9 * * *')
     setEnabled(schedule?.enabled ?? false)
     setMode(schedule?.mode ?? 'cron')
     setMaxRuns(schedule?.maxRuns?.toString() ?? '')
@@ -196,7 +199,9 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
     if (controller.setSchedule(task.id, { enabled: next, mode })) setEnabled(next)
   }
 
-  /** Switch the driving mode (cron ↔ chain); arming a chain starts it immediately. */
+  /** Switch the driving mode (cron ↔ chain). Switching back to cron first
+   *  persists the editor's current expression, so the stored rule is never
+   *  left with an empty cron (which cron mode would reject). */
   const switchMode = (next: ScheduleMode): void => {
     if (next === mode) return
     if (next === 'cron' && (cron.trim() === '' || !isValidCron(cron))) {
@@ -205,6 +210,9 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
     }
     setError(undefined)
     setMode(next)
+    if (next === 'cron' && cron.trim() !== schedule?.cron) {
+      controller.setSchedule(task.id, { cron: cron.trim() })
+    }
     if (controller.setSchedule(task.id, { mode: next })) {
       // Re-arm under the new mode so an enabled switch takes effect at once.
       controller.setSchedule(task.id, { enabled, mode: next })
@@ -223,6 +231,7 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
     setPresets(mergedPresets(presetStore))
   }
 
+  const readiness = ruleReadiness(task)
   const nextLabel = !enabled || mode !== 'cron' || nextRunAt === undefined
     ? t('detail.schedule.notScheduled')
     : nextRunAt <= Date.now()
@@ -306,7 +315,19 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
           </span>
         </div>
       ) : (
-        <p className={css.scheduleMeta}>{t('detail.schedule.chainNote')}</p>
+        <>
+          <p className={css.scheduleMeta}>{t('detail.schedule.chainNote')}</p>
+          {readiness.kind === 'standby' && (
+            <p className={css.scheduleMeta}>{t('detail.schedule.standby')}</p>
+          )}
+          {readiness.kind === 'paused' && (
+            <p className={css.scheduleMeta}>
+              {readiness.status === 'failed'
+                ? t('detail.schedule.paused.failed')
+                : t('detail.schedule.paused.backlog')}
+            </p>
+          )}
+        </>
       )}
 
       <div className={css.scheduleGrid}>
@@ -332,12 +353,25 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
       </div>
       {error !== undefined && <p className={css.formError}>{error}</p>}
       {mode === 'cron' && (
-        <p className={css.scheduleMeta}>
-          {cronDescriptionLabel(cron)}
-          {' · '}
-          {t('detail.schedule.nextRun')} {nextLabel}
-          {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
-        </p>
+        <>
+          <p className={css.scheduleMeta}>
+            {cronDescriptionLabel(cron)}
+            {' · '}
+            {readiness.kind === 'active'
+              ? `${t('detail.schedule.nextRun')} ${nextLabel}`
+              : readiness.kind === 'standby'
+                ? t('detail.schedule.standby')
+                : t('detail.schedule.paused')}
+            {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
+          </p>
+          {readiness.kind === 'paused' && (
+            <p className={css.scheduleMeta}>
+              {readiness.status === 'failed'
+                ? t('detail.schedule.paused.failed')
+                : t('detail.schedule.paused.backlog')}
+            </p>
+          )}
+        </>
       )}
 
       {showPresets && (

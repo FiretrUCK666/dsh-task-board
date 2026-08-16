@@ -13,7 +13,7 @@
  * (structural faces), so tests drive ticks directly without timers.
  */
 import { nextRunAtMs } from './schedule.ts'
-import type { TaskRecord } from './tasks.ts'
+import { ruleReadiness, type TaskRecord } from './tasks.ts'
 
 /** Everything the scheduler needs from its host (the board controller). */
 export interface SchedulerDeps {
@@ -93,20 +93,35 @@ export class SchedulerService {
     for (const task of this.deps.tasks()) {
       const schedule = task.schedule
       if (schedule === undefined || !schedule.enabled) continue
-      // Auto triggers only drive tasks a manual run has primed: arming a
-      // rule never executes anything by itself.
-      if (!schedule.primed) continue
+      const readiness = ruleReadiness(task)
+      // Standby: armed but never started by a manual run — the rule stays
+      // inert. Its due slot is kept untouched, so once a manual run primes
+      // it the schedule takes over at the original next instant (never an
+      // instant catch-up).
+      if (readiness.kind === 'standby') continue
       // Chain mode: recovery tick only — a stalled chain (e.g. after a page
       // reload, when the settle hand-off was lost) is restarted when no
-      // execution is open and a further run is within budget. The live
-      // hand-off runs synchronously after each settle in the controller, so
-      // this tick can never double-launch.
+      // execution is open and a further run is within budget. Only a
+      // 'running' card is a chain hand-off candidate: paused (failed /
+      // backlog) and cancelled (todo) chains are resumed by hand, never by
+      // the clock. The live hand-off runs synchronously after each settle in
+      // the controller, so this tick can never double-launch.
       if (schedule.mode === 'chain') {
+        if (task.status !== 'running') continue
         const latest = task.executions[task.executions.length - 1]
         const open = latest !== undefined && latest.endedAt === undefined
         if (open) continue
         if (schedule.maxRuns !== undefined && schedule.runCount >= schedule.maxRuns) continue
         await this.deps.runTask(task.id)
+        continue
+      }
+      // Paused: the rule must not drive a shelved or failed task. Due
+      // instants are skipped and rolled forward, never caught up, so a
+      // resumed rule continues from the next match instead of firing at once.
+      if (readiness.kind === 'paused') {
+        if (schedule.nextRunAt === undefined || schedule.nextRunAt > now) continue
+        const next = nextRunAtMs(schedule.cron, schedule.nextRunAt)
+        if (next !== undefined) this.deps.applySchedule(task.id, next, undefined)
         continue
       }
       if (schedule.nextRunAt === undefined) {

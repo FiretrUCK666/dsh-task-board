@@ -224,6 +224,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 /* --- cards -------------------------------------------------------------------- */
 
 .card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -244,10 +245,18 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   transform: translateY(-1px);
 }
 
-/* Same-column reorder: the hovered card is the "insert before" anchor and
-   shows an accent bar on its top edge (inset, so it layers with hover). */
-.card[data-drop-before] {
-  box-shadow: inset 0 2px 0 0 var(--dsw-alias-state-business-primary);
+/* Same-column reorder: the hovered card is the "insert before" anchor. A
+   short rounded accent bar floats in the gap above it — the whole feedback,
+   never a column-wide highlight or a full-width shadow. */
+.card[data-drop-before]::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 12px;
+  right: 12px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--dsw-alias-state-business-primary);
 }
 
 .card[data-status='running'] {

@@ -3,8 +3,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, executionLabel, resolveCardDrop, settleExecution,
-  startExecution, withSchedule, withStatus,
+  applyCardOrder, canMoveManually, createTask, executionLabel, resolveCardDrop, ruleReadiness,
+  settleExecution, startExecution, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -338,22 +338,65 @@ describe('resolveCardDrop', () => {
     expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'move', status: 'backlog' })
   })
 
-  it('an armed chain owns the card: only running (run now) is allowed', () => {
-    const chain = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '' }, NOW)
-    expect(resolveCardDrop(chain, 'running')).toEqual({ kind: 'run' })
-    expect(resolveCardDrop(chain, 'todo')).toEqual({ kind: 'reject', reason: 'scheduled' })
-    expect(resolveCardDrop(chain, 'done')).toEqual({ kind: 'reject', reason: 'scheduled' })
-    expect(resolveCardDrop(chain, 'backlog')).toEqual({ kind: 'reject', reason: 'scheduled' })
+  it('a running chain owns the card: only run now is allowed (busy rejects)', () => {
+    const base = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '', primed: true }, NOW)
+    const { task } = startExecution(base, NOW, 'e1') // running + open
+    expect(resolveCardDrop(task, 'running')).toEqual({ kind: 'reject', reason: 'busy' })
+    // Settled but still 'running' (the chain keeps the card in progress):
+    // the chain still owns it — only a run is allowed.
+    const settled = settleExecution(task, 'e1', 'succeeded', NOW + 1, undefined)
+    expect(settled.status).toBe('running')
+    expect(resolveCardDrop(settled, 'running')).toEqual({ kind: 'run' })
+    expect(resolveCardDrop(settled, 'todo')).toEqual({ kind: 'reject', reason: 'scheduled' })
+    expect(resolveCardDrop(settled, 'done')).toEqual({ kind: 'reject', reason: 'scheduled' })
+    expect(resolveCardDrop(settled, 'backlog')).toEqual({ kind: 'reject', reason: 'scheduled' })
   })
 
-  it('an armed chain refuses running while its latest run is open', () => {
-    const chain = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '' }, NOW)
-    const { task } = startExecution(chain, NOW, 'e1')
-    expect(resolveCardDrop(task, 'running')).toEqual({ kind: 'reject', reason: 'busy' })
+  it('a paused chain owns nothing: failed/backlog/cancelled cards move freely', () => {
+    // Paused (failed): the rule must not block recovery moves.
+    const failedChain = withSchedule(withStatus(sampleTask(), 'failed', NOW), { enabled: true, mode: 'chain', cron: '', primed: true }, NOW)
+    expect(resolveCardDrop(failedChain, 'todo')).toEqual({ kind: 'move', status: 'todo' })
+    expect(resolveCardDrop(failedChain, 'done')).toEqual({ kind: 'move', status: 'done' })
+    expect(resolveCardDrop(failedChain, 'running')).toEqual({ kind: 'run' }) // resume by running
+    // Paused (backlog shelved): same freedom.
+    const backlogChain = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { enabled: true, mode: 'chain', cron: '', primed: true }, NOW)
+    expect(resolveCardDrop(backlogChain, 'todo')).toEqual({ kind: 'move', status: 'todo' })
+    // Cancelled tasks fall back to todo: the chain no longer owns them.
+    const cancelledChain = withSchedule(withStatus(sampleTask(), 'todo', NOW), { enabled: true, mode: 'chain', cron: '', primed: true }, NOW)
+    expect(resolveCardDrop(cancelledChain, 'backlog')).toEqual({ kind: 'move', status: 'backlog' })
   })
 
   it('a disabled chain falls back to the plain rules', () => {
     const chain = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { enabled: false, mode: 'chain', cron: '' }, NOW)
     expect(resolveCardDrop(chain, 'todo')).toEqual({ kind: 'move', status: 'todo' })
+  })
+})
+
+describe('ruleReadiness', () => {
+  const armed = { mode: 'chain' as const, cron: '', maxRuns: undefined, runCount: 0 }
+
+  it('is disabled without a rule or when the rule is off', () => {
+    expect(ruleReadiness(sampleTask())).toEqual({ kind: 'disabled' })
+    const off = withSchedule(sampleTask(), { enabled: false, cron: '0 9 * * *' }, NOW)
+    expect(ruleReadiness(off)).toEqual({ kind: 'disabled' })
+  })
+
+  it('is standby when armed but never started by a manual run', () => {
+    const standby = withSchedule(sampleTask(), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
+    expect(ruleReadiness(standby)).toEqual({ kind: 'standby' })
+  })
+
+  it('is active for todo/running/done once primed', () => {
+    for (const status of ['todo', 'running', 'done'] as const) {
+      const task = withSchedule(withStatus(sampleTask(), status, NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
+      expect(ruleReadiness(task)).toEqual({ kind: 'active' })
+    }
+  })
+
+  it('is paused for backlog/failed once primed, naming the blocking status', () => {
+    const backlog = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
+    expect(ruleReadiness(backlog)).toEqual({ kind: 'paused', status: 'backlog' })
+    const failed = withSchedule(withStatus(sampleTask(), 'failed', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
+    expect(ruleReadiness(failed)).toEqual({ kind: 'paused', status: 'failed' })
   })
 })

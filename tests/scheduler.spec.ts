@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { SchedulerService, type SchedulerDeps } from '../src/core/scheduler.ts'
-import { createTask, startExecution, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, settleExecution, startExecution, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
 /** Local-time ms epoch helper. */
 function at(year: number, month: number, day: number, hour: number, minute: number, second = 0): number {
@@ -119,6 +119,25 @@ describe('SchedulerService.tick', () => {
     expect(h.runs).toEqual(['t-a'])
   })
 
+  it('skips due instants while paused (failed/backlog) and resumes from the next match', async () => {
+    const h = makeHarness()
+    h.setNow(at(2026, 1, 1, 10, 0, 30))
+    const base = createTask({ title: 'a', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-a')
+    // A primed rule on a paused (here: failed) card: no trigger, the missed
+    // due instant rolls forward (skip, never catch up). Backlog shares the
+    // same path — both come out of ruleReadiness as 'paused'.
+    h.setTasks([withStatus(withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0), primed: true }, at(2026, 1, 1, 0, 0)), 'failed', at(2026, 1, 1, 10, 0, 0))])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+    expect(h.applied).toEqual([{ id: 't-a', nextRunAt: at(2026, 1, 1, 10, 1, 0), lastTriggeredAt: undefined }])
+    // Resume by moving to todo: the rule is active again and fires at the
+    // next due instant (the rolled-forward one).
+    h.setNow(at(2026, 1, 1, 10, 1, 30))
+    h.setTasks([withStatus(withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 1, 0), primed: true }, at(2026, 1, 1, 10, 1, 0)), 'todo', at(2026, 1, 1, 10, 1, 0))])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual(['t-a'])
+  })
+
   it('ignores disabled rules and tasks without a schedule', async () => {
     const h = makeHarness()
     h.setTasks([
@@ -227,18 +246,38 @@ describe('SchedulerService lifecycle', () => {
 
   it('restarts a stalled chain schedule with no open execution', async () => {
     const h = makeHarness()
-    // A stalled chain = previously primed + running before a reload; the
-    // rule's primed flag is persisted, so the recovery tick relaunches it.
+    // A stalled chain = a 'running' card whose last run settled without a
+    // hand-off (e.g. the settle hand-off was lost to a reload); the rule is
+    // primed, so the recovery tick relaunches it.
     const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
     const chain = withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0))
-    h.setTasks([chain])
-    await h.scheduler.tick()
-    expect(h.runs).toEqual(['t-c'])
-    // A second tick while the run is open in the ledger must not relaunch.
-    const { task: running } = startExecution(chain, at(2026, 1, 1, 10, 0, 31), 'e1')
+    const { task: running } = startExecution(chain, at(2026, 1, 1, 10, 0, 0), 'e1')
+    // Open execution: the tick must not relaunch.
     h.setTasks([running])
     await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+    // The run settles (reconcile) and the card stays 'running' — but the
+    // hand-off is lost; the recovery tick restarts the chain.
+    const settled = settleExecution(running, 'e1', 'succeeded', at(2026, 1, 1, 10, 0, 31), undefined)
+    expect(settled.status).toBe('running')
+    h.setTasks([settled])
+    await h.scheduler.tick()
     expect(h.runs).toEqual(['t-c'])
+  })
+
+  it('never restarts a chain the user must resume by hand', async () => {
+    const h = makeHarness()
+    const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
+    // Failed: the rule is paused — no clock-driven restart.
+    const failed = withStatus(withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0)), 'failed', at(2026, 1, 1, 10, 0, 0))
+    h.setTasks([failed])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+    // Cancelled (todo): no open run, but the chain was not kept in progress.
+    const cancelled = withStatus(withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0)), 'todo', at(2026, 1, 1, 10, 0, 0))
+    h.setTasks([cancelled])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
   })
 
   it('does not restart a chain that reached its budget', async () => {

@@ -358,7 +358,10 @@ export class BoardController {
     if (task === undefined) return false
     const current = task.schedule
     const mode = patch.mode ?? current?.mode ?? 'cron'
-    const cron = (patch.cron ?? current?.cron ?? '').trim()
+    // The cron expression is only ever replaced by an explicit patch: chain
+    // mode merely stops consuming it, it never clears the stored expression
+    // (so switching back to cron keeps the last valid value).
+    const cron = patch.cron !== undefined ? patch.cron.trim() : (current?.cron ?? '')
     if (mode === 'cron' && (cron === '' || !isValidCron(cron))) return false
     const maxRunsChanged = patch.maxRuns !== undefined && patch.maxRuns !== current?.maxRuns
     const maxRuns = patch.maxRuns !== undefined ? patch.maxRuns : current?.maxRuns

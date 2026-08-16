@@ -658,4 +658,26 @@ describe('scheduling', () => {
     expect(exec.runCalls).toHaveLength(1)
     expect(store.load()[0].schedule?.runCount).toBe(before?.runCount)
   })
+
+  it('mode switches keep a known cron expression; cron mode still demands one', () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    // Arm in cron mode with a valid expression.
+    expect(controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })).toBe(true)
+    // Switch to chain: the expression survives the mode change (chain never
+    // clears the stored cron).
+    expect(controller.setSchedule(task.id, { mode: 'chain' })).toBe(true)
+    expect(store.load()[0].schedule?.cron).toBe('0 9 * * *')
+    // Switch back to cron: accepted with the preserved expression.
+    expect(controller.setSchedule(task.id, { mode: 'cron' })).toBe(true)
+    expect(store.load()[0].schedule?.mode).toBe('cron')
+    expect(store.load()[0].schedule?.cron).toBe('0 9 * * *')
+    // Arming a chain on a fresh task leaves no cron; cron mode still rejects
+    // an empty expression (the UI saves one before switching back).
+    const fresh = controller.createTask({ title: 'y', description: '', prompt: '' })!
+    expect(controller.setSchedule(fresh.id, { enabled: true, mode: 'chain' })).toBe(true)
+    expect(controller.setSchedule(fresh.id, { mode: 'cron' })).toBe(false)
+    expect(controller.setSchedule(fresh.id, { mode: 'cron', cron: '*/5 * * * *' })).toBe(true)
+  })
 })

@@ -136,6 +136,9 @@ export const MANUAL_STATUSES: readonly TaskStatus[] = ['backlog', 'todo']
 /** Statuses the runner may move a card to from 'running'. */
 export const RUNNER_SETTLE_STATUSES: readonly TaskStatus[] = ['done', 'failed']
 
+/** Statuses in which an armed + primed auto rule keeps driving the task. */
+export const RULE_ACTIVE_STATUSES: readonly TaskStatus[] = ['todo', 'running', 'done']
+
 /** All valid statuses (closed union guard). */
 export const ALL_STATUSES: readonly TaskStatus[] = [
   'backlog', 'todo', 'running', 'done', 'failed',
@@ -144,6 +147,36 @@ export const ALL_STATUSES: readonly TaskStatus[] = [
 /** Brand an unknown string as a status; undefined when it is not one. */
 export function isTaskStatus(value: unknown): value is TaskStatus {
   return typeof value === 'string' && (ALL_STATUSES as readonly string[]).includes(value)
+}
+
+/**
+ * How an armed schedule rule behaves for a task right now. One shared
+ * judgment used by the scheduler (what may trigger), the controller (what
+ * a chain may own) and the detail panel (what to display):
+ * - `disabled`: the rule is not armed — nothing to consider.
+ * - `standby`: armed but never started by a manual run (`primed` false).
+ *   The rule never triggers by itself and the user is told to start it by
+ *   hand; its next-run instant is kept for the day it becomes active.
+ * - `paused`: armed and started, but the task sits in a state the rule must
+ *   not drive (backlog = shelved, failed = needs a human decision). Any
+ *   manual action that leaves these states (run, or move to todo/done)
+ *   resumes the rule; missed due instants are skipped, never caught up.
+ * - `active`: armed, started, and the task is in a drivable state
+ *   (todo/running/done) — cron due instants and chain hand-offs fire.
+ */
+export type RuleReadiness =
+  | { kind: 'disabled' }
+  | { kind: 'standby' }
+  | { kind: 'paused'; status: 'backlog' | 'failed' }
+  | { kind: 'active' }
+
+/** The readiness of a task's schedule rule (see {@link RuleReadiness}). */
+export function ruleReadiness(task: TaskRecord): RuleReadiness {
+  const schedule = task.schedule
+  if (schedule === undefined || !schedule.enabled) return { kind: 'disabled' }
+  if (schedule.primed !== true) return { kind: 'standby' }
+  if (task.status === 'backlog' || task.status === 'failed') return { kind: 'paused', status: task.status }
+  return { kind: 'active' }
 }
 
 /** Whether a manual move target is allowed from the given status. */
@@ -297,10 +330,12 @@ export type CardDropDecision =
 /**
  * Decide what dropping a card onto a column does, reconciling the manual
  * move with the execution and schedule owners:
- * - An armed chain schedule owns the card's lifecycle: only 'running' (run
- *   now, the chain keeps going from the settled run) is allowed — moving it
- *   to any other column would be overwritten by the next chained run, so it
- *   is refused (`scheduled`). Stop the chain by disabling it in the detail.
+ * - A chain that actually owns the card — armed, primed by a manual run,
+ *   and still 'running' (every settled run hands off to the next, so any
+ *   other column would be overwritten) — is refused (`scheduled`). A chain
+ *   in standby or paused (failed/backlog/cancelled) owns nothing: the card
+ *   can be moved freely, which is also how a paused chain resumes (move to
+ *   todo/done or run again).
  * - Dropping on 'running' reruns the task (the same "run again" semantics
  *   as the detail button), unless its latest execution is still open — the
  *   run guard is shared with manual runs and the scheduler, so a live run
@@ -314,7 +349,11 @@ export type CardDropDecision =
 export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropDecision {
   const latest = task.executions[task.executions.length - 1]
   const busy = latest !== undefined && latest.endedAt === undefined
-  if (task.schedule?.enabled === true && task.schedule.mode === 'chain') {
+  const chainOwns = task.schedule?.enabled === true
+    && task.schedule.mode === 'chain'
+    && task.schedule.primed === true
+    && task.status === 'running'
+  if (chainOwns) {
     if (target !== 'running') return { kind: 'reject', reason: 'scheduled' }
     return busy ? { kind: 'reject', reason: 'busy' } : { kind: 'run' }
   }

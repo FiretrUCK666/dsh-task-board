@@ -6,9 +6,10 @@
  */
 import { useState } from 'react'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { executionLabel } from '../../core/tasks.ts'
+import { executionLabel, ruleReadiness } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
+import { STATUS_KEY } from './status.ts'
 import { Chip } from './Chip.tsx'
 
 /** Compact relative/absolute time label. */
@@ -27,6 +28,18 @@ export function formatDateTime(ms: number): string {
   const date = new Date(ms)
   const pad = (value: number): string => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+/** Tooltip for the schedule chip: honest about the rule's readiness. */
+function scheduleChipTitle(task: TaskRecord): string {
+  const readiness = ruleReadiness(task)
+  if (readiness.kind === 'active' && task.schedule?.nextRunAt !== undefined) {
+    return `${t('card.scheduled')} · ${t('detail.schedule.nextRun')} ${new Date(task.schedule.nextRunAt).toLocaleString()}`
+  }
+  if (readiness.kind === 'paused') {
+    return `${t('card.scheduled')} · ${t('detail.schedule.paused')} (${t(STATUS_KEY[task.status])})`
+  }
+  return `${t('card.scheduled')} · ${t('detail.schedule.standby')}`
 }
 
 /** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */
@@ -104,9 +117,7 @@ export function TaskCard({ task, workspaceTitleOf, onClick, dropBefore = false }
             {task.schedule?.enabled === true && (
               <Chip
                 fill={false}
-                title={task.schedule.nextRunAt !== undefined
-                  ? `${t('card.scheduled')} · ${new Date(task.schedule.nextRunAt).toLocaleString()}`
-                  : t('card.scheduled')}
+                title={scheduleChipTitle(task)}
               >
                 {t('card.scheduled')}
               </Chip>

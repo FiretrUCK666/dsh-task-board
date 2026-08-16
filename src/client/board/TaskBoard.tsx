@@ -132,7 +132,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
       <div className={css.columns}>
         {COLUMNS.map(column => {
-          const tasks = visible.filter(task => task.status === column.status)
+          // Cards render in their column sort order (reorder drags rewrite
+          // the order keys; the ledger array order is stable).
+          const tasks = visible
+            .filter(task => task.status === column.status)
+            .sort((a, b) => a.order - b.order)
           return (
             <section
               key={column.status}
@@ -184,9 +188,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   if (dragged === undefined || dragged.status !== column.status) return
                   const id = cardIdAt(event)
                   if (id === undefined || id === dragId) return
+                  // Same-column reorder: anchor the insertion point on the
+                  // hovered card only — no column-wide highlight, the card's
+                  // indicator bar is the whole feedback.
                   event.preventDefault()
                   event.stopPropagation()
-                  setDragOver(column.status)
                   setDropBeforeId(id)
                 }}
                 onDrop={event => {
