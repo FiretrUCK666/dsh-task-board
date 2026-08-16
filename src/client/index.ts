@@ -228,17 +228,36 @@ export function apply(ctx: ClientContext): void {
           // shell's api-gateway): the prompt's slash menu reads the live
           // host command registry — the same catalog the native composer's
           // '/' menu uses. Nothing is hard-coded, so commands registered by
-          // DSH or any plugin show up without a plugin update. Any
-          // unavailability (no remote, no current session, failed fetch)
-          // degrades to "no menu".
-          const remote = ctx.get('remote') as RemoteFace | undefined
-          const commands = remote?.commands
-          if (commands === undefined) return undefined
-          const current = sessions.list.getSnapshot().current
-          if (current === undefined) return undefined
+          // DSH or any plugin show up without a plugin update.
+          //
+          // Resolution mirrors the native composer: the namespace service is
+          // registered by name (`remote.commands`, the inject path), with a
+          // fallback through the parent remote service's child property.
+          // Every unavailability branch logs the exact reason (console.warn)
+          // so a deployment that cannot serve the menu is diagnosable; the
+          // menu itself degrades silently.
+          const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
+            ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
+          if (commands === undefined) {
+            console.warn('[dsh-task-board] command catalog unavailable: no remote.commands bridge')
+            return undefined
+          }
+          // The catalog is session-scoped (its agent's command layer). Prefer
+          // the current session; fall back to any session in the list so the
+          // menu works even when the board opened without a selection.
+          const list = sessions.list.getSnapshot()
+          const sessionId = list.current
+            ?? Object.keys(list.byId)[0]
+          if (sessionId === undefined) {
+            console.warn('[dsh-task-board] command catalog unavailable: no session to scope commands to')
+            return undefined
+          }
           try {
-            const result = await commands.list(current as SessionId)
-            if (!result.ok) return undefined
+            const result = await commands.list(sessionId as SessionId)
+            if (!result.ok) {
+              console.warn('[dsh-task-board] command catalog unavailable:', result.error.code, result.error.message)
+              return undefined
+            }
             return result.value.map(descriptor => ({
               name: descriptor.name,
               description: descriptor.description,
@@ -247,7 +266,7 @@ export function apply(ctx: ClientContext): void {
                 : {},
             }))
           } catch (error) {
-            console.error('[dsh-task-board] command catalog fetch failed', error)
+            console.warn('[dsh-task-board] command catalog unavailable:', error)
             return undefined
           }
         },

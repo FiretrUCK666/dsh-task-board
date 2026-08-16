@@ -549,9 +549,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* --- prompt slash autocomplete ------------------------------------------------ */
 
-/* Anchor for the dropdown: the textarea's wrapper. */
+/* Anchor for the dropdown; flex column keeps the textarea stretched to the
+   field width (a plain block wrapper would shrink it to its intrinsic
+   inline-block width). */
 .promptField {
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .slashMenu {
