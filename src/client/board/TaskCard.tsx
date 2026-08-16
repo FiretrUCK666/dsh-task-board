@@ -67,43 +67,49 @@ export function TaskCard({ task, workspaceTitleOf, onClick }: {
       <span className={css.cardTitle}>{task.title}</span>
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
       <span className={css.cardMeta}>
-        <span
-          className={css.cardWorkspace}
-          title={task.workspaceId ?? t('card.workspaceDefault')}
-        >
-          <span className={css.cardWorkspaceDot} aria-hidden="true" />
-          <span className={css.cardWorkspaceName}>{workspaceLabel}</span>
-        </span>
-        <span className={css.cardMetaRight}>
-          {task.schedule?.enabled === true && (
-            <span
-              className={css.cardSchedule}
-              title={task.schedule.nextRunAt !== undefined
-                ? `${t('card.scheduled')} · ${new Date(task.schedule.nextRunAt).toLocaleString()}`
-                : t('card.scheduled')}
-            >
-              {t('card.scheduled')}
-            </span>
-          )}
-          {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && (
-            <span className={css.cardRun} title={t('card.batchProgress')}>
-              {task.schedule.runCount}/{task.schedule.maxRuns}
-            </span>
-          )}
-          {running ? (
-            <span className={css.cardRunning}>
-              <span className={css.cardSpinner} aria-hidden="true" />
-              {t('detail.result.running')} · {t('detail.executionNo', { n: String(runs) })}
-            </span>
-          ) : latest !== undefined && (
-            <span className={css.cardRun} data-result={latest.result}>
-              {runs} {t('board.runs')}
-            </span>
-          )}
+        {/* Row 1 is identical on every card: workspace + last activity. */}
+        <span className={css.cardMetaRow}>
+          <span
+            className={css.cardWorkspace}
+            title={task.workspaceId ?? t('card.workspaceDefault')}
+          >
+            <span className={css.cardWorkspaceDot} aria-hidden="true" />
+            <span className={css.cardWorkspaceName}>{workspaceLabel}</span>
+          </span>
           <span className={css.cardTime} title={formatDateTime(task.updatedAt)}>
             {t('board.updated')} {formatTime(task.updatedAt)}
           </span>
         </span>
+        {/* Row 2 only when there are badges; chips wrap instead of overflowing. */}
+        {(task.schedule?.enabled === true || latest !== undefined) && (
+          <span className={css.cardBadges}>
+            {task.schedule?.enabled === true && (
+              <span
+                className={css.cardSchedule}
+                title={task.schedule.nextRunAt !== undefined
+                  ? `${t('card.scheduled')} · ${new Date(task.schedule.nextRunAt).toLocaleString()}`
+                  : t('card.scheduled')}
+              >
+                {t('card.scheduled')}
+              </span>
+            )}
+            {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && (
+              <span className={css.cardRun} title={t('card.batchProgress')}>
+                {task.schedule.runCount}/{task.schedule.maxRuns}
+              </span>
+            )}
+            {running ? (
+              <span className={css.cardRunning}>
+                <span className={css.spinner} aria-hidden="true" />
+                {t('detail.result.running')} · {t('detail.executionNo', { n: String(runs) })}
+              </span>
+            ) : latest !== undefined && (
+              <span className={css.cardRun} data-result={latest.result}>
+                {runs} {t('board.runs')}
+              </span>
+            )}
+          </span>
+        )}
       </span>
     </button>
   )

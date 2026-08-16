@@ -107,6 +107,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   gap: 10px;
   flex: none;
+  flex-wrap: wrap;
 }
 
 .boardTitle {
@@ -266,16 +267,25 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   -webkit-box-orient: vertical;
 }
 
+/* Two-row meta shared by every status: row 1 = workspace + last activity,
+   row 2 = badges. Chips wrap instead of overflowing the card. */
 .cardMeta {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
   padding-top: 7px;
   margin-top: 2px;
   border-top: 1px solid var(--dsw-alias-separator-primary);
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+.cardMetaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .cardWorkspace {
@@ -301,19 +311,19 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
-.cardMetaRight {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  min-width: 0;
-}
-
 .cardTime {
   flex: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cardBadges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .cardSchedule {
@@ -340,23 +350,29 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-state-success-primary);
 }
 
-/* In-progress chip: spinner + the sequence of the current run. */
+/* In-progress pill: spinner + the sequence of the current run (same shape
+   as the detail execution badge). */
 .cardRunning {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  flex: none;
+  padding: 2px 8px;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.4;
+  border-radius: 999px;
   color: var(--dsw-alias-state-warn-primary);
+  background: var(--dsw-alias-state-warn-secondary);
   white-space: nowrap;
+  min-width: 0;
 }
 
-.cardSpinner {
-  width: 10px;
-  height: 10px;
+/* Shared spinner (cards + detail execution rows), colored by currentColor. */
+.spinner {
+  width: 8px;
+  height: 8px;
   flex: none;
-  border: 2px solid var(--dsw-alias-state-warn-primary);
+  border: 1.5px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
   animation: dshTbSpin 800ms linear infinite;
@@ -787,16 +803,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: transparent;
 }
 
-.executionSpinner {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border: 1.5px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: dshTbSpin 800ms linear infinite;
-}
-
 .executionOpen {
   margin-left: auto;
   flex: none;
@@ -947,8 +953,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
     transition: none;
   }
 
-  .cardSpinner,
-  .executionSpinner {
+  .spinner {
     animation: none;
-  }
-}
+  }}

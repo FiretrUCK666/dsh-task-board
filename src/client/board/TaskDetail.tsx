@@ -44,7 +44,7 @@ function ExecutionRow({ execution, index, onOpen }: {
       <div className={css.executionRowTop}>
         <span className={css.executionIndex}>{t('detail.executionNo', { n: String(index) })}</span>
         <span className={css.executionBadge} data-result={result}>
-          {running && <span className={css.executionSpinner} aria-hidden="true" />}
+          {running && <span className={css.spinner} aria-hidden="true" />}
           {running ? t('detail.result.running') : t(RESULT_KEY[result as NonNullable<ExecutionRecord['result']>])}
         </span>
         {execution.sessionId !== undefined && (
