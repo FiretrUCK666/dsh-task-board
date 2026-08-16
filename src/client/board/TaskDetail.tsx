@@ -12,7 +12,7 @@ import { permissionLabel } from '../permission-label.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
-import { formatTime } from './TaskCard.tsx'
+import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
 
 /** Execution outcome → locale key. */
 const RESULT_KEY: Record<NonNullable<ExecutionRecord['result']>, TaskBoardKey> = {
@@ -30,28 +30,42 @@ const STATUS_KEY: Record<TaskStatus, TaskBoardKey> = {
   failed: 'board.status.failed',
 }
 
-/** One execution-history row. */
-function ExecutionRow({ execution, onOpen }: { execution: ExecutionRecord; onOpen: (sessionId: string) => void }) {
+/** One execution-history row: sequence, outcome, exact start/end times. */
+function ExecutionRow({ execution, index, onOpen }: {
+  execution: ExecutionRecord
+  /** 1-based execution sequence (stable: executions are only appended). */
+  index: number
+  onOpen: (sessionId: string) => void
+}) {
   const result = execution.result
+  const running = result === undefined
   return (
     <li className={css.executionRow} data-result={result}>
-      <span className={css.executionBadge} data-result={result}>
-        {result === undefined ? t('detail.result.running') : t(RESULT_KEY[result])}
-      </span>
+      <div className={css.executionRowTop}>
+        <span className={css.executionIndex}>{t('detail.executionNo', { n: String(index) })}</span>
+        <span className={css.executionBadge} data-result={result}>
+          {running && <span className={css.executionSpinner} aria-hidden="true" />}
+          {running ? t('detail.result.running') : t(RESULT_KEY[result as NonNullable<ExecutionRecord['result']>])}
+        </span>
+        {execution.sessionId !== undefined && (
+          <button
+            type="button"
+            className={css.executionOpen}
+            onClick={() => { onOpen(execution.sessionId as string) }}
+            title={execution.sessionId}
+          >
+            {t('detail.viewSession')} →
+          </button>
+        )}
+      </div>
       <span className={css.executionTimes}>
-        {t('detail.executionStarted')} {formatTime(execution.startedAt)}
-        {execution.endedAt !== undefined && ` · ${t('detail.executionEnded')} ${formatTime(execution.endedAt)}`}
+        {t('detail.executionStarted')} {formatDateTime(execution.startedAt)}
+        {' · '}
+        {t('detail.executionEnded')} {execution.endedAt !== undefined ? formatDateTime(execution.endedAt) : '—'}
+        {execution.endedAt !== undefined && (
+          <> · {t('detail.duration', { d: formatDuration(execution.endedAt - execution.startedAt) })}</>
+        )}
       </span>
-      {execution.sessionId !== undefined && (
-        <button
-          type="button"
-          className={css.linkButton}
-          onClick={() => { onOpen(execution.sessionId as string) }}
-          title={execution.sessionId}
-        >
-          {t('detail.viewSession')} ⌁
-        </button>
-      )}
       {execution.error !== undefined && execution.error !== '' && (
         <span className={css.executionError}>{execution.error}</span>
       )}
@@ -208,7 +222,12 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
 }
 
 /** Task detail overlay. */
-export function TaskDetail({ controller, task }: { controller: BoardController; task: TaskRecord }) {
+export function TaskDetail({ controller, task, workspaceTitleOf }: {
+  controller: BoardController
+  task: TaskRecord
+  /** Resolve a workspace id to its display title (raw id when unknown). */
+  workspaceTitleOf: (workspaceId: string) => string
+}) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const latestExecution = task.executions[task.executions.length - 1]
   // A card is busy while its latest run is still open. A scheduled batch
@@ -248,25 +267,43 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
             <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : current.title}</pre>
           </section>
 
-          {(current.agentPreset !== undefined || current.provider !== undefined || current.model !== undefined || current.permission !== undefined) && (
-            <section className={css.detailSection}>
-              <h4>{t('detail.runConfig')}</h4>
-              <p className={css.detailText}>
-                {current.agentPreset !== undefined && (
-                  <span className={css.configChip}>{t('new.agentPreset')}: {current.agentPreset}</span>
-                )}
-                {current.provider !== undefined && current.model !== undefined && (
-                  <span className={css.configChip}>
-                    {t('new.model')}: {current.provider} / {current.model}
-                    {current.reasoningEffort !== undefined && ` · ${t('new.effort')}: ${current.reasoningEffort}`}
-                  </span>
-                )}
-                {current.permission !== undefined && (
-                  <span className={css.configChip}>{t('new.permission')}: {permissionLabel(current.permission)}</span>
-                )}
-              </p>
-            </section>
-          )}
+          <section className={css.detailSection}>
+            <h4>{t('detail.runConfig')}</h4>
+            <dl className={css.configGrid}>
+              <div className={css.configRow}>
+                <dt className={css.configLabel}>{t('new.workspace')}</dt>
+                <dd className={css.configValue}>
+                  {current.workspaceId !== undefined
+                    ? workspaceTitleOf(current.workspaceId)
+                    : t('new.workspaceDefault')}
+                </dd>
+              </div>
+              {current.agentPreset !== undefined && (
+                <div className={css.configRow}>
+                  <dt className={css.configLabel}>{t('new.agentPreset')}</dt>
+                  <dd className={css.configValue}>{current.agentPreset}</dd>
+                </div>
+              )}
+              {current.provider !== undefined && current.model !== undefined && (
+                <div className={css.configRow}>
+                  <dt className={css.configLabel}>{t('new.model')}</dt>
+                  <dd className={css.configValue}>{current.provider} / {current.model}</dd>
+                </div>
+              )}
+              {current.reasoningEffort !== undefined && (
+                <div className={css.configRow}>
+                  <dt className={css.configLabel}>{t('new.effort')}</dt>
+                  <dd className={css.configValue}>{current.reasoningEffort}</dd>
+                </div>
+              )}
+              {current.permission !== undefined && (
+                <div className={css.configRow}>
+                  <dt className={css.configLabel}>{t('new.permission')}</dt>
+                  <dd className={css.configValue}>{permissionLabel(current.permission)}</dd>
+                </div>
+              )}
+            </dl>
+          </section>
 
           <ScheduleSection controller={controller} task={current} />
 
@@ -276,10 +313,11 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
               <p className={css.detailText}>{t('detail.noExecution')}</p>
             ) : (
               <ul className={css.executionList}>
-                {[...current.executions].reverse().map(execution => (
+                {[...current.executions].reverse().map((execution, reversedIndex) => (
                   <ExecutionRow
                     key={execution.id}
                     execution={execution}
+                    index={current.executions.length - reversedIndex}
                     onOpen={sessionId => { controller.openSession(sessionId) }}
                   />
                 ))}

@@ -40,6 +40,16 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const selected = selectedTaskOf(snapshot)
   const visible = snapshot.tasks.filter(task => matchesFilter(task, filter))
 
+  // Resolve a workspace id to its display title through the run catalog
+  // (live workspace list; falls back to the raw id when the workspace no
+  // longer exists or no catalog is wired).
+  const workspaceTitleOf = (workspaceId: string): string => {
+    const row = controller.runCatalog()
+      ?.listWorkspaces()
+      .find(candidate => candidate.id === workspaceId)
+    return row?.title ?? workspaceId
+  }
+
   return (
     <div className={css.board} data-dsh-taskboard-board="">
       <header className={css.boardHeader}>
@@ -83,6 +93,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   <TaskCard
                     key={task.id}
                     task={task}
+                    workspaceTitleOf={workspaceTitleOf}
                     onClick={() => { controller.openTask(task.id) }}
                   />
                 ))}
@@ -94,7 +105,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       </div>
 
       {selected !== undefined && (
-        <TaskDetail controller={controller} task={selected} />
+        <TaskDetail
+          controller={controller}
+          task={selected}
+          workspaceTitleOf={workspaceTitleOf}
+        />
       )}
       {showNew && (
         <NewTaskModal

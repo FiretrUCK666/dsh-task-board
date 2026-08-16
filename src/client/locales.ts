@@ -56,8 +56,10 @@ export const zh = {
   'detail.delete': '删除',
   'detail.viewSession': '查看会话',
   'detail.noSession': '暂无会话',
-  'detail.executionStarted': '已启动',
-  'detail.executionEnded': '已结束',
+  'detail.executionStarted': '开始',
+  'detail.executionEnded': '结束',
+  'detail.executionNo': '第 {n} 次执行',
+  'detail.duration': '耗时 {d}',
   'detail.result.succeeded': '成功',
   'detail.result.failed': '失败',
   'detail.result.cancelled': '已取消',
@@ -89,6 +91,7 @@ export const zh = {
   'detail.schedule.notScheduled': '尚未排程',
   'detail.schedule.dueSoon': '即将运行',
   'card.scheduled': '定时',
+  'card.workspaceDefault': '默认工作区',
   'card.batchProgress': '批次进度（已运行次数 / 总次数）',
   // 插件设置卡片（settings.plugin.item 席位）。
   'settings.title': '任务看板',
@@ -167,6 +170,8 @@ export const en: Record<keyof typeof zh, string> = {
   'detail.noSession': 'No session',
   'detail.executionStarted': 'Started',
   'detail.executionEnded': 'Ended',
+  'detail.executionNo': 'Run {n}',
+  'detail.duration': 'Duration {d}',
   'detail.result.succeeded': 'Succeeded',
   'detail.result.failed': 'Failed',
   'detail.result.cancelled': 'Cancelled',
@@ -198,6 +203,7 @@ export const en: Record<keyof typeof zh, string> = {
   'detail.schedule.notScheduled': 'Not scheduled yet',
   'detail.schedule.dueSoon': 'Due soon',
   'card.scheduled': 'scheduled',
+  'card.workspaceDefault': 'Default workspace',
   'card.batchProgress': 'Batch progress (runs so far / total runs)',
   // Plugin settings card (the `settings.plugin.item` seat).
   'settings.title': 'Task Board',
@@ -229,10 +235,15 @@ export type TaskBoardKey = keyof typeof zh
 /** The settings-card slice of the task-board dictionary. */
 export type SettingsCardKey = TaskBoardKey
 
+/** Whether the active UI language is English (drives unit-style formatting). */
+export function isEnglish(): boolean {
+  const lang = typeof document !== 'undefined' ? document.documentElement.lang : 'zh'
+  return lang.toLowerCase().startsWith('en')
+}
+
 /** Active dictionary, picked by the document language at call time. */
 export function dictionary(): Record<TaskBoardKey, string> {
-  const lang = typeof document !== 'undefined' ? document.documentElement.lang : 'zh'
-  return lang.toLowerCase().startsWith('en') ? en : zh
+  return isEnglish() ? en : zh
 }
 
 /** Translate a key with optional {name} template params. */

@@ -270,12 +270,47 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  padding-top: 7px;
+  margin-top: 2px;
+  border-top: 1px solid var(--dsw-alias-separator-primary);
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.cardTime {
+.cardWorkspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: 1;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.cardWorkspaceDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dsw-alias-label-tertiary);
+}
+
+.cardWorkspaceName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMetaRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-width: 0;
+}
+
+.cardTime {
+  flex: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -305,14 +340,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-state-success-primary);
 }
 
-.cardSession {
+/* In-progress chip: spinner + the sequence of the current run. */
+.cardRunning {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: none;
-  color: var(--dsw-alias-state-business-primary);
-}
-
-.cardRunningLabel {
   font-size: 11px;
+  font-weight: 600;
   color: var(--dsw-alias-state-warn-primary);
+  white-space: nowrap;
 }
 
 .cardSpinner {
@@ -415,20 +452,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .iconButton:hover {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
-}
-
-.linkButton {
-  padding: 0;
-  font-size: 12px;
-  color: var(--dsw-alias-state-business-primary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.linkButton:hover {
-  text-decoration: underline;
 }
 
 /* --- modals ------------------------------------------------------------------- */
@@ -606,17 +629,31 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   overflow-wrap: anywhere;
 }
 
-/* One read-only run-configuration chip (agent preset / model route). */
-.configChip {
-  display: inline-block;
-  margin: 2px 8px 2px 0;
-  padding: 2px 10px;
+/* Run-configuration definition grid: aligned label / value columns. */
+.configGrid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 18px;
+  margin: 0;
+}
+
+.configRow {
+  display: contents;
+}
+
+.configLabel {
   font-size: 12px;
   line-height: 1.6;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
+}
+
+.configValue {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
 }
 
 /* --- scheduled runs ---------------------------------------------------------- */
@@ -701,15 +738,31 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .executionRow {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
   padding: 8px 10px;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 8px;
-  flex-wrap: wrap;
+}
+
+.executionRowTop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.executionIndex {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
 }
 
 .executionBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: none;
   padding: 1px 8px;
   font-size: 11px;
@@ -734,13 +787,39 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: transparent;
 }
 
+.executionSpinner {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: dshTbSpin 800ms linear infinite;
+}
+
+.executionOpen {
+  margin-left: auto;
+  flex: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-state-business-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.executionOpen:hover {
+  text-decoration: underline;
+}
+
 .executionTimes {
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
 }
 
 .executionError {
-  width: 100%;
   font-size: 12px;
   color: var(--dsw-alias-state-error-primary);
   overflow-wrap: anywhere;
@@ -781,7 +860,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .ghostButton:focus-visible,
 .dangerButton:focus-visible,
 .iconButton:focus-visible,
-.linkButton:focus-visible,
+.executionOpen:focus-visible,
 .search:focus-visible,
 .input:focus-visible,
 .schedulePreset:focus-visible,
@@ -796,7 +875,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .ghostButton,
 .dangerButton,
 .iconButton,
-.linkButton,
+.executionOpen,
 .search,
 .input,
 .schedulePreset,
@@ -815,7 +894,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .ghostButton:active:not(:disabled),
 .dangerButton:active:not(:disabled),
 .iconButton:active:not(:disabled),
-.linkButton:active:not(:disabled) {
+.executionOpen:active:not(:disabled) {
   transform: translateY(1px);
 }
 
@@ -831,12 +910,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-primary);
 }
 
-.linkButton:hover:not(:disabled) {
+.executionOpen:hover:not(:disabled) {
   text-decoration: underline;
 }
 
-.iconButton:disabled,
-.linkButton:disabled {
+.iconButton:disabled {
   opacity: 0.45;
   cursor: default;
 }
@@ -853,7 +931,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   margin: 0;
 }
 
-/* --- reduced motion: strip transitions, stop the decorative spinner --- */
+/* --- reduced motion: strip transitions, stop the decorative spinners --- */
 @media (prefers-reduced-motion: reduce) {
   .entry,
   .card,
@@ -861,7 +939,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   .ghostButton,
   .dangerButton,
   .iconButton,
-  .linkButton,
+  .executionOpen,
   .search,
   .input,
   .schedulePreset,
@@ -869,7 +947,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
     transition: none;
   }
 
-  .cardSpinner {
+  .cardSpinner,
+  .executionSpinner {
     animation: none;
   }
 }
