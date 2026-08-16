@@ -96,6 +96,8 @@ export const zh = {
   'card.scheduled': '定时',
   'card.workspaceDefault': '默认工作区',
   'card.batchProgress': '批次进度（已运行次数 / 总次数）',
+  'prompt.commandList': '命令列表',
+  'prompt.noCommands': '无匹配命令',
   // 插件设置卡片（settings.plugin.item 席位）。
   'settings.title': '任务看板',
   'settings.description': '控制看板在 agent 系统提示中的播报行为。',
@@ -211,6 +213,8 @@ export const en: Record<keyof typeof zh, string> = {
   'card.scheduled': 'scheduled',
   'card.workspaceDefault': 'Default workspace',
   'card.batchProgress': 'Batch progress (runs so far / total runs)',
+  'prompt.commandList': 'Command list',
+  'prompt.noCommands': 'No matching commands',
   // Plugin settings card (the `settings.plugin.item` seat).
   'settings.title': 'Task Board',
   'settings.description': 'How the board announces itself in each agent system prompt.',

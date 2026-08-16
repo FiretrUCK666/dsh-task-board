@@ -79,6 +79,16 @@ export interface PermissionRow {
   description?: string
 }
 
+/** One slash command the prompt input's autocomplete can offer. */
+export interface CommandRow {
+  /** Command name without the leading slash. */
+  name: string
+  /** Human-readable summary. */
+  description: string
+  /** Free-form input hint; commands with one take an argument (trailing space). */
+  hint?: string
+}
+
 /** Optional run-catalog face feeding the new-task form's run-configuration selects. */
 export interface RunCatalogFace {
   listWorkspaces(): readonly WorkspaceRow[]
@@ -92,6 +102,13 @@ export interface RunCatalogFace {
    * hides the permission selector.
    */
   listPermissions(): Promise<readonly PermissionRow[] | undefined>
+  /**
+   * Slash commands for the prompt autocomplete, straight from the host
+   * command registry (the same live catalog the native composer's '/' menu
+   * reads). undefined = unavailable (no remote surface / no current session
+   * / fetch failed) and the autocomplete hides.
+   */
+  listCommands(): Promise<readonly CommandRow[] | undefined>
 }
 
 /** The editable slice of a task (content + run configuration). */

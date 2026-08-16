@@ -53,6 +53,24 @@ export interface SettingsPluginItemOwnerProps {
 }
 
 /**
+ * Structural face of the client remote bridge (the web shell's `remote`
+ * service from dsh-api-gateway): the prompt autocomplete reads the live host
+ * command registry through `remote.commands.list` — the same catalog the
+ * native composer's '/' menu consumes. Narrowed structurally so no SDK
+ * package is imported; unavailable surfaces degrade to "no menu".
+ */
+interface RemoteCommandsFace {
+  list(sessionId: string): Promise<
+    | { ok: true; value: readonly { name: string; description: string; input?: { hint?: string } }[] }
+    | { ok: false; error: { code: string; message: string } }
+  >
+}
+
+interface RemoteFace {
+  commands?: RemoteCommandsFace
+}
+
+/**
  * Required services (fiber inject waiting — the runtime must be up first).
  *
  * `slots` is listed here as a hard service dependency even though it is not
@@ -202,6 +220,34 @@ export function apply(ctx: ClientContext): void {
             }))
           } catch (error) {
             console.error('[dsh-task-board] permission catalog fetch failed', error)
+            return undefined
+          }
+        },
+        listCommands: async () => {
+          // Lazy read of the client remote bridge (registered by the web
+          // shell's api-gateway): the prompt's slash menu reads the live
+          // host command registry — the same catalog the native composer's
+          // '/' menu uses. Nothing is hard-coded, so commands registered by
+          // DSH or any plugin show up without a plugin update. Any
+          // unavailability (no remote, no current session, failed fetch)
+          // degrades to "no menu".
+          const remote = ctx.get('remote') as RemoteFace | undefined
+          const commands = remote?.commands
+          if (commands === undefined) return undefined
+          const current = sessions.list.getSnapshot().current
+          if (current === undefined) return undefined
+          try {
+            const result = await commands.list(current as SessionId)
+            if (!result.ok) return undefined
+            return result.value.map(descriptor => ({
+              name: descriptor.name,
+              description: descriptor.description,
+              ...descriptor.input !== undefined && descriptor.input.hint !== undefined
+                ? { hint: descriptor.input.hint }
+                : {},
+            }))
+          } catch (error) {
+            console.error('[dsh-task-board] command catalog fetch failed', error)
             return undefined
           }
         },

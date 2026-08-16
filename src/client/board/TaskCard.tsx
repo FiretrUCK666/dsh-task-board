@@ -81,11 +81,14 @@ export function TaskCard({ task, workspaceTitleOf, onClick }: {
             {t('board.updated')} {formatTime(task.updatedAt)}
           </span>
         </span>
-        {/* Row 2 only when there are badges; chips wrap instead of overflowing. */}
+        {/* Row 2 only when there are badges; plain text badges keep the
+            left edge flush with the title above, and wrap instead of
+            overflowing. */}
         {(task.schedule?.enabled === true || latest !== undefined) && (
           <span className={css.cardBadges}>
             {task.schedule?.enabled === true && (
               <Chip
+                fill={false}
                 title={task.schedule.nextRunAt !== undefined
                   ? `${t('card.scheduled')} · ${new Date(task.schedule.nextRunAt).toLocaleString()}`
                   : t('card.scheduled')}
@@ -94,17 +97,20 @@ export function TaskCard({ task, workspaceTitleOf, onClick }: {
               </Chip>
             )}
             {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && (
-              <Chip kind="muted" title={t('card.batchProgress')}>
+              <Chip kind="muted" fill={false} title={t('card.batchProgress')}>
                 {task.schedule.runCount}/{task.schedule.maxRuns}
               </Chip>
             )}
             {running ? (
-              <Chip kind="warn">
+              <Chip kind="warn" fill={false}>
                 <span className={css.spinner} aria-hidden="true" />
                 {t('detail.result.running')} · {t('detail.executionNo', { n: String(runs) })}
               </Chip>
             ) : latest !== undefined && (
-              <Chip kind={latest.result === 'failed' ? 'error' : latest.result === 'succeeded' ? 'success' : 'muted'}>
+              <Chip
+                kind={latest.result === 'failed' ? 'error' : latest.result === 'succeeded' ? 'success' : 'muted'}
+                fill={false}
+              >
                 {runs} {t('board.runs')}
               </Chip>
             )}

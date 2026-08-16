@@ -9,6 +9,7 @@ import type { AgentPresetRow, BoardController, ModelGroupRow, PermissionRow } fr
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { PromptInput } from './PromptInput.tsx'
 import type { TaskDraft } from './task-draft.ts'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
@@ -102,12 +103,12 @@ export function TaskForm({ draft, onChange, controller }: {
 
       <label className={css.field}>
         <span className={css.fieldLabel}>{t('new.prompt')}</span>
-        <textarea
-          className={css.input}
-          rows={4}
+        <PromptInput
           value={draft.prompt}
+          onChange={next => { onChange({ ...draft, prompt: next }) }}
           placeholder={t('new.promptPlaceholder')}
-          onChange={event => { onChange({ ...draft, prompt: event.target.value }) }}
+          rows={4}
+          controller={controller}
         />
       </label>
 
