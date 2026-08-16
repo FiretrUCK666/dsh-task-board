@@ -338,16 +338,22 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+/* Run indicators share one visual language: 12px semibold colored text.
+   The count takes the color of the latest result; the running indicator
+   adds the spinner. */
 .cardRun {
   flex: none;
-}
-
-.cardRun[data-result='failed'] {
-  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .cardRun[data-result='succeeded'] {
   color: var(--dsw-alias-state-success-primary);
+}
+
+.cardRun[data-result='failed'] {
+  color: var(--dsw-alias-state-error-primary);
 }
 
 /* In-progress indicator: warn-colored text + spinner, no fill (the
@@ -357,7 +363,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--dsw-alias-state-warn-primary);
   white-space: nowrap;
