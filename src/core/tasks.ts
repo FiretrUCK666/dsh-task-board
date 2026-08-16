@@ -28,23 +28,40 @@ export interface ExecutionRecord {
   error: string | undefined
 }
 
+/** How a scheduled task is driven: cron = fire at fixed times; chain = rerun right after each run settles. */
+export type ScheduleMode = 'cron' | 'chain'
+
+/** Brand an unknown string as a schedule mode. */
+export function isScheduleMode(value: unknown): value is ScheduleMode {
+  return value === 'cron' || value === 'chain'
+}
+
 /**
- * A scheduled-run rule attached to a task. The browser-side scheduler ticks
- * every minute and triggers the task when `nextRunAt` is due; the rule is
- * persisted with the task (localStorage), so scheduling survives refreshes.
+ * A scheduled-run rule attached to a task. Two modes share one rule:
+ * - `cron`: the browser-side scheduler ticks every minute and triggers the
+ *   task when `nextRunAt` is due (a 5-field cron expression).
+ * - `chain`: the task reruns as soon as its previous run settles — "run
+ *   after completion". `cron`/`nextRunAt` are unused; the rule fires the
+ *   first run on enable and every settled run starts the next, until
+ *   `maxRuns` is reached (undefined = unlimited, i.e. continuously running)
+ *   or a run fails.
+ * The rule is persisted with the task (localStorage), so scheduling
+ * survives refreshes.
  */
 export interface ScheduleRule {
   /** Whether the schedule is armed. */
   enabled: boolean
-  /** 5-field cron expression: `分 时 日 月 周`. */
+  /** Driving mode; defaults to 'cron' (legacy rules normalize to it). */
+  mode: ScheduleMode
+  /** 5-field cron expression: `分 时 日 月 周` (cron mode). */
   cron: string
-  /** Next due instant (ms epoch); maintained by the scheduler/controller. */
+  /** Next due instant (ms epoch); maintained by the scheduler/controller (cron mode). */
   nextRunAt: number | undefined
   /** Instant of the latest scheduled trigger (ms epoch). */
   lastTriggeredAt: number | undefined
   /** How many scheduled runs may fire in total; undefined = unlimited. */
   maxRuns: number | undefined
-  /** How many scheduled runs have fired so far (monotone). */
+  /** How many scheduled runs have fired so far (monotone; automatic triggers only). */
   runCount: number
 }
 
@@ -161,6 +178,7 @@ export function withSchedule(
   const current = task.schedule
   const schedule: ScheduleRule = {
     enabled: current?.enabled ?? false,
+    mode: current?.mode ?? 'cron',
     cron: current?.cron ?? '',
     nextRunAt: current?.nextRunAt,
     lastTriggeredAt: current?.lastTriggeredAt,
@@ -168,6 +186,7 @@ export function withSchedule(
     runCount: current?.runCount ?? 0,
   }
   if ('enabled' in patch) schedule.enabled = patch.enabled ?? false
+  if ('mode' in patch) schedule.mode = patch.mode ?? 'cron'
   if ('cron' in patch) schedule.cron = patch.cron ?? ''
   if ('nextRunAt' in patch) schedule.nextRunAt = patch.nextRunAt
   if ('lastTriggeredAt' in patch) schedule.lastTriggeredAt = patch.lastTriggeredAt
@@ -204,12 +223,13 @@ export function startExecution(
  * matching column. No-op (returns the input task) when the execution is not
  * the task's latest or is already settled.
  *
- * A scheduled batch keeps the card 'running' between runs: when a succeeded
- * run belongs to an armed budgeted schedule and the batch is not complete
- * yet (`runCount + 1 < maxRuns` — the counter is incremented by the
- * scheduler only after this settle), the status stays 'running' so the whole
- * batch shows as in progress and the next tick can fire the next run. The
- * final budgeted run settles to 'done' like a manual run.
+ * A scheduled batch keeps the card 'running' between runs: a succeeded run
+ * belonging to an armed schedule whose next automatic run is already
+ * committed keeps the status 'running' — for a budgeted cron batch
+ * (`runCount + 1 < maxRuns`, the counter is incremented by the scheduler
+ * only after this settle) and for chain mode (unlimited, or a further
+ * budgeted run remains). The final budgeted run settles to 'done' like a
+ * manual run; a failed run never keeps the card running.
  */
 export function settleExecution(
   task: TaskRecord,
@@ -226,13 +246,19 @@ export function settleExecution(
   const executions = [...task.executions]
   executions[index] = settled
   const schedule = task.schedule
+  const chainIncomplete = outcome === 'succeeded'
+    && schedule !== undefined
+    && schedule.enabled
+    && schedule.mode === 'chain'
+    && (schedule.maxRuns === undefined || schedule.runCount + 1 < schedule.maxRuns)
   const batchIncomplete = outcome === 'succeeded'
     && schedule !== undefined
     && schedule.enabled
+    && schedule.mode === 'cron'
     && schedule.maxRuns !== undefined
     && schedule.runCount + 1 < schedule.maxRuns
   const status: TaskStatus = outcome === 'succeeded'
-    ? batchIncomplete ? 'running' : 'done'
+    ? chainIncomplete || batchIncomplete ? 'running' : 'done'
     : outcome === 'failed' ? 'failed'
       : task.status === 'running' ? 'todo' : task.status
   return { ...task, status, updatedAt: now, executions }
@@ -251,11 +277,15 @@ export type CardDropDecision =
   | { kind: 'none' }
   | { kind: 'move'; status: TaskStatus }
   | { kind: 'run' }
-  | { kind: 'reject'; reason: 'busy' }
+  | { kind: 'reject'; reason: 'busy' | 'scheduled' }
 
 /**
  * Decide what dropping a card onto a column does, reconciling the manual
- * move with the execution owner:
+ * move with the execution and schedule owners:
+ * - An armed chain schedule owns the card's lifecycle: only 'running' (run
+ *   now, the chain keeps going from the settled run) is allowed — moving it
+ *   to any other column would be overwritten by the next chained run, so it
+ *   is refused (`scheduled`). Stop the chain by disabling it in the detail.
  * - Dropping on 'running' reruns the task (the same "run again" semantics
  *   as the detail button), unless its latest execution is still open — the
  *   run guard is shared with manual runs and the scheduler, so a live run
@@ -269,6 +299,10 @@ export type CardDropDecision =
 export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropDecision {
   const latest = task.executions[task.executions.length - 1]
   const busy = latest !== undefined && latest.endedAt === undefined
+  if (task.schedule?.enabled === true && task.schedule.mode === 'chain') {
+    if (target !== 'running') return { kind: 'reject', reason: 'scheduled' }
+    return busy ? { kind: 'reject', reason: 'busy' } : { kind: 'run' }
+  }
   if (target === 'running' && !busy) return { kind: 'run' }
   if (task.status === target) return { kind: 'none' }
   if (busy && (target === 'done' || target === 'failed')) return { kind: 'reject', reason: 'busy' }

@@ -164,6 +164,35 @@ describe('settleExecution', () => {
     const settled = settleExecution(running, 'e1', 'failed', NOW + 2, 'boom')
     expect(settled.status).toBe('failed')
   })
+
+  it('keeps an unlimited chain running after every succeeded run', () => {
+    const task = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '', maxRuns: undefined, runCount: 0 }, NOW)
+    const { task: running } = startExecution(task, NOW + 1, 'e1')
+    const settled = settleExecution(running, 'e1', 'succeeded', NOW + 2, undefined)
+    expect(settled.status).toBe('running')
+  })
+
+  it('keeps a budgeted chain running until the final budgeted run', () => {
+    let task = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '', maxRuns: 3, runCount: 0 }, NOW)
+    const first = startExecution(task, NOW, 'e1')
+    const settled1 = settleExecution(first.task, 'e1', 'succeeded', NOW + 1, undefined)
+    expect(settled1.status).toBe('running')
+    task = withSchedule(settled1, { runCount: 1 }, NOW + 2)
+    const second = startExecution(task, NOW + 3, 'e2')
+    const settled2 = settleExecution(second.task, 'e2', 'succeeded', NOW + 4, undefined)
+    expect(settled2.status).toBe('running')
+    task = withSchedule(settled2, { runCount: 2 }, NOW + 5)
+    const third = startExecution(task, NOW + 6, 'e3')
+    const settled3 = settleExecution(third.task, 'e3', 'succeeded', NOW + 7, undefined)
+    expect(settled3.status).toBe('done')
+  })
+
+  it('a failed chain run settles to failed and never continues', () => {
+    const task = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '', maxRuns: undefined, runCount: 0 }, NOW)
+    const { task: running } = startExecution(task, NOW + 1, 'e1')
+    const settled = settleExecution(running, 'e1', 'failed', NOW + 2, 'boom')
+    expect(settled.status).toBe('failed')
+  })
 })
 
 describe('executionLabel', () => {
@@ -181,7 +210,7 @@ describe('withSchedule', () => {
     const task = sampleTask()
     const scheduled = withSchedule(task, { enabled: true, cron: '0 9 * * *', nextRunAt: NOW + 100 }, NOW + 1)
     expect(scheduled.schedule).toEqual({
-      enabled: true, cron: '0 9 * * *', nextRunAt: NOW + 100, lastTriggeredAt: undefined,
+      enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: NOW + 100, lastTriggeredAt: undefined,
       maxRuns: undefined, runCount: 0,
     })
     expect(scheduled.updatedAt).toBe(NOW + 1)
@@ -196,7 +225,7 @@ describe('withSchedule', () => {
     )
     const rolled = withSchedule(task, { nextRunAt: NOW + 200 }, NOW + 2)
     expect(rolled.schedule).toEqual({
-      enabled: true, cron: '0 9 * * *', nextRunAt: NOW + 200, lastTriggeredAt: NOW,
+      enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: NOW + 200, lastTriggeredAt: NOW,
       maxRuns: undefined, runCount: 0,
     })
   })
@@ -256,5 +285,24 @@ describe('resolveCardDrop', () => {
     const task = withStatus(sampleTask(), 'done', NOW)
     expect(resolveCardDrop(task, 'done')).toEqual({ kind: 'none' })
     expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'move', status: 'backlog' })
+  })
+
+  it('an armed chain owns the card: only running (run now) is allowed', () => {
+    const chain = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '' }, NOW)
+    expect(resolveCardDrop(chain, 'running')).toEqual({ kind: 'run' })
+    expect(resolveCardDrop(chain, 'todo')).toEqual({ kind: 'reject', reason: 'scheduled' })
+    expect(resolveCardDrop(chain, 'done')).toEqual({ kind: 'reject', reason: 'scheduled' })
+    expect(resolveCardDrop(chain, 'backlog')).toEqual({ kind: 'reject', reason: 'scheduled' })
+  })
+
+  it('an armed chain refuses running while its latest run is open', () => {
+    const chain = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '' }, NOW)
+    const { task } = startExecution(chain, NOW, 'e1')
+    expect(resolveCardDrop(task, 'running')).toEqual({ kind: 'reject', reason: 'busy' })
+  })
+
+  it('a disabled chain falls back to the plain rules', () => {
+    const chain = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { enabled: false, mode: 'chain', cron: '' }, NOW)
+    expect(resolveCardDrop(chain, 'todo')).toEqual({ kind: 'move', status: 'todo' })
   })
 })

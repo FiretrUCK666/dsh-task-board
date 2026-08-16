@@ -12,15 +12,16 @@
 }
 
 /* The board container rides inside the conversation grid item as an extra
-   trailing child; hidden unless the board is active. The z-index is high
-   enough to sit above any body-level portal content the conversation subtree
-   renders (todo panels, popovers), so the board never gets visually pierced
-   by the underlying session UI. */
+   trailing child; hidden unless the board is active. The z-index sits above
+   every in-column floating layer (the conversation subtree's menus/panels
+   top out at 100) but below the frame-level overlays (settings panel, the
+   shell.overlay layer — both render at 1000), so opening e.g. DSH Settings
+   while the board is active always lands on top. */
 [data-dsh-taskboard-view] {
   position: absolute;
   inset: 0;
   display: none;
-  z-index: 1000;
+  z-index: 200;
 }
 
 html[data-dsh-taskboard-active] [data-dsh-taskboard-view] {
@@ -558,6 +559,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .selectWrap select {
   appearance: none;
   -webkit-appearance: none;
+  width: 100%;
   padding-right: 32px;
   cursor: pointer;
 }
@@ -819,6 +821,101 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
   overflow-wrap: anywhere;
+}
+
+/* --- schedule driving mode (cron / chain segmented control) ------------------- */
+
+.scheduleModeRow {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  align-self: flex-start;
+  background: var(--dsw-alias-interactive-bg-hover);
+  border-radius: 10px;
+}
+
+.scheduleMode {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scheduleMode:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.scheduleModeActive {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
+/* --- preset manager ----------------------------------------------------------- */
+
+.presetModal {
+  width: min(560px, calc(100vw - 48px));
+}
+
+.presetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.presetList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.presetRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.presetName {
+  min-width: 0;
+}
+
+.presetCronWrap {
+  min-width: 0;
+}
+
+.presetCron {
+  width: 100%;
+  font-family: var(--dsw-font-markdown-code-block-small);
+  font-size: 13px;
+}
+
+.presetHint {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.presetEmpty {
+  padding: 8px 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.presetNew {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
 }
 
 /* Framed read-only content block (description); the prompt keeps the same

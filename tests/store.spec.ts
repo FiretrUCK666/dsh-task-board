@@ -152,7 +152,7 @@ describe('schedule persistence', () => {
     )
     store.save([task])
     expect(store.load()[0].schedule).toEqual({
-      enabled: true, cron: '0 9 * * *', nextRunAt: 100, lastTriggeredAt: 50,
+      enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: 100, lastTriggeredAt: 50,
       maxRuns: undefined, runCount: 0,
     })
   })
@@ -173,7 +173,7 @@ describe('schedule persistence', () => {
     const parsed = parseLedger(JSON.stringify(raw))
     expect(parsed).toHaveLength(4) // no row dropped for a bad schedule
     expect(parsed[0].schedule).toEqual({
-      enabled: false, cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: 5,
+      enabled: false, mode: 'cron', cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: 5,
       maxRuns: undefined, runCount: 0,
     })
     expect(parsed[1].schedule).toBeUndefined() // blank cron → schedule dropped
@@ -190,7 +190,7 @@ describe('schedule persistence', () => {
     ]
     const parsed = parseLedger(JSON.stringify(raw))
     expect(parsed[0].schedule).toEqual({
-      enabled: true, cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: undefined,
+      enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: undefined,
       maxRuns: undefined, runCount: 0,
     })
     expect(parsed[1].schedule).toBeUndefined() // not five fields

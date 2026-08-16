@@ -76,6 +76,28 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
 }
 
 /**
+ * Mirror the shell's New Session button geometry: the button is a compact
+ * content-width control (right-aligned in the logo row, 2px side margins),
+ * while the entry is a full-width row by default — matching the measured
+ * width and the right edge keeps the two rows aligned. The collapsed rail
+ * keeps the full-width centered icon style.
+ */
+function syncEntryWidth(entry: HTMLButtonElement, root: HTMLElement): void {
+  const collapsed = root.closest('[data-sidebar-collapsed]') !== null
+  if (collapsed) {
+    entry.style.width = ''
+    entry.style.marginLeft = ''
+    entry.style.marginRight = ''
+    return
+  }
+  const button = newSessionButton(root)
+  if (button === undefined) return
+  entry.style.width = `${button.offsetWidth}px`
+  entry.style.marginLeft = 'auto'
+  entry.style.marginRight = '2px'
+}
+
+/**
  * Mount the sidebar entry, waiting for the shell to render and self-healing
  * on later React re-renders.
  * @param controller - the board controller the entry toggles.
@@ -91,7 +113,10 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     root ??= sidebarRoot()
     if (root === undefined) return
     placed = placeEntry(root, entry)
-    if (placed) rootObserver.observe(root, { childList: true, subtree: true })
+    if (placed) {
+      syncEntryWidth(entry, root)
+      rootObserver.observe(root, { childList: true, subtree: true, attributes: true })
+    }
   }
 
   // The shell renders after boot settlement; watch for its arrival.
@@ -99,7 +124,8 @@ export function mountSidebarEntry(controller: BoardController): () => void {
   waitObserver.observe(document.body, { childList: true, subtree: true })
 
   // Self-heal: if a React re-render displaces the row, re-insert it in the
-  // same frame (microtask before paint → no visible flicker).
+  // same frame (microtask before paint → no visible flicker); attribute
+  // changes (sidebar collapse) re-sync the entry's width.
   const rootObserver = new MutationObserver(() => {
     if (root === undefined || !root.isConnected) {
       placed = false
@@ -109,6 +135,7 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     if (!root.contains(entry)) {
       placed = placeEntry(root, entry)
     }
+    syncEntryWidth(entry, root)
   })
 
   // Reflect the board's open state on the row (active highlight).

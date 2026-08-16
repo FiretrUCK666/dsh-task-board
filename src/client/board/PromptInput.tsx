@@ -6,7 +6,7 @@
  * elsewhere; picking inserts the candidate text. Shared by the new-task
  * modal and the detail edit mode through TaskForm.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type SyntheticEvent } from 'react'
 import type { BoardController, SlashCandidate } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -94,7 +94,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
     })
   }
 
-  const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (menu === undefined) return
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
@@ -118,7 +118,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
     }
   }
 
-  const onInput = (event: React.ChangeEvent<HTMLTextAreaElement>): void => {
+  const onInput = (event: ChangeEvent<HTMLTextAreaElement>): void => {
     const element = event.currentTarget
     caretRef.current = element.selectionStart
     valueRef.current = element.value
@@ -126,7 +126,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
     syncMenu()
   }
 
-  const onSelect = (event: React.SyntheticEvent<HTMLTextAreaElement>): void => {
+  const onSelect = (event: SyntheticEvent<HTMLTextAreaElement>): void => {
     const element = event.currentTarget
     caretRef.current = element.selectionStart
     syncMenu()

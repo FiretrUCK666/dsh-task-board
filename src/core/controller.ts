@@ -13,7 +13,7 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import type { TaskStore } from './store.ts'
 import {
   createTask, settleExecution, startExecution, withSchedule, withStatus,
-  type NewTaskInput, type TaskRecord, type TaskStatus,
+  type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
 /** The sessions face the controller needs for navigation awareness. */
@@ -321,8 +321,9 @@ export class BoardController {
 
   /**
    * Update a task's schedule rule. A blank or invalid cron expression is
-   * rejected (returns false, state untouched). When the rule ends up enabled
-   * the next run instant is computed immediately; a disabled rule carries no
+   * rejected (returns false, state untouched) in cron mode. When the rule
+   * ends up enabled the next run instant is computed immediately (cron) or
+   * the first chain run is kicked off right away; a disabled rule carries no
    * next-run instant.
    * @param id - the task to schedule.
    * @param patch - fields to change (absent fields keep their current value).
@@ -330,27 +331,66 @@ export class BoardController {
    *   arming a schedule also resets its run counter when maxRuns changes.
    * @returns true when applied, false when rejected (invalid cron / unknown task).
    */
-  setSchedule(id: string, patch: { enabled?: boolean; cron?: string; maxRuns?: number }): boolean {
+  setSchedule(id: string, patch: { enabled?: boolean; cron?: string; maxRuns?: number; mode?: ScheduleMode }): boolean {
     const task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return false
     const current = task.schedule
+    const mode = patch.mode ?? current?.mode ?? 'cron'
     const cron = (patch.cron ?? current?.cron ?? '').trim()
-    if (cron === '' || !isValidCron(cron)) return false
+    if (mode === 'cron' && (cron === '' || !isValidCron(cron))) return false
     const maxRunsChanged = patch.maxRuns !== undefined && patch.maxRuns !== current?.maxRuns
     const maxRuns = patch.maxRuns !== undefined ? patch.maxRuns : current?.maxRuns
     const enabled = patch.enabled ?? current?.enabled ?? false
-    const nextRunAt = enabled ? nextRunAtMs(cron, this.now()) : undefined
+    // Cron arming computes the next due instant; chain arming carries no
+    // clock and instead starts its first run below.
+    const nextRunAt = enabled && mode === 'cron' ? nextRunAtMs(cron, this.now()) : undefined
     this.tasks = this.tasks.map(candidate =>
       candidate.id === id
         ? withSchedule(candidate, {
             enabled,
+            mode,
             cron,
             nextRunAt,
             ...maxRunsChanged ? { maxRuns, runCount: 0 } : {},
           }, this.now())
         : candidate)
     this.persistAndNotify()
+    // An armed chain starts running immediately: the first run fires now,
+    // and every settled run hands off to the next through maybeContinueChain.
+    if (enabled && mode === 'chain' && !this.isBusy(id)) {
+      void this.runTask(id)
+    }
     return true
+  }
+
+  /** Whether the task's latest execution is still open. */
+  private isBusy(id: string): boolean {
+    const task = this.tasks.find(candidate => candidate.id === id)
+    const latest = task?.executions[task.executions.length - 1]
+    return latest !== undefined && latest.endedAt === undefined
+  }
+
+  /**
+   * Continue an armed chain schedule after a settled run: persist the
+   * incremented counter (disarming after the final budgeted run) and start
+   * the next run. No-op unless the chain is armed, its latest execution has
+   * settled, and a further run is within budget. Runs synchronously after a
+   * settle, so the scheduler's recovery tick can never interleave a
+   * duplicate launch.
+   */
+  private maybeContinueChain(id: string): void {
+    const task = this.tasks.find(candidate => candidate.id === id)
+    const schedule = task?.schedule
+    if (schedule === undefined || !schedule.enabled || schedule.mode !== 'chain') return
+    const latest = task?.executions[task.executions.length - 1]
+    // Only a succeeded run hands off; a failure stops the chain (the recovery
+    // tick may still retry it like any scheduled run).
+    if (latest === undefined || latest.endedAt === undefined || latest.result !== 'succeeded') return
+    if (schedule.maxRuns !== undefined && schedule.runCount >= schedule.maxRuns) return
+    const finalRun = schedule.maxRuns !== undefined && schedule.runCount + 1 >= schedule.maxRuns
+    this.applyScheduleNextRun(id, undefined, this.now(), schedule.runCount + 1, finalRun)
+    if (finalRun) return
+    void this.runTask(id)
   }
 
   /**
@@ -447,6 +487,9 @@ export class BoardController {
       ? settleExecution(task, event.executionId, event.outcome, this.now(), event.error)
       : task)
     this.persistAndNotify()
+    // A settled run hands off to the next chained run synchronously, so the
+    // scheduler's recovery tick can never interleave a duplicate launch.
+    this.maybeContinueChain(event.taskId)
   }
 
   // --- internals ---------------------------------------------------------------
@@ -537,13 +580,17 @@ export class BoardController {
       }
       if (events.length === 0) return
       let changed = false
+      const continued: string[] = []
       for (const { task, event } of events) {
         const next = settleExecution(task, event.executionId, event.outcome, this.now(), event.error)
         if (next === task) continue
         this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
         changed = true
+        continued.push(task.id)
       }
       if (changed) this.persistAndNotify()
+      // A reconciled settle hands off to the next chained run like a live one.
+      for (const id of continued) this.maybeContinueChain(id)
     } finally {
       this.reconcileInFlight = false
       // A list change that arrived while this pass was queued or in flight

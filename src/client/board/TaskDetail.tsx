@@ -6,8 +6,9 @@
  */
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
+import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
@@ -16,21 +17,14 @@ import { Chip, type ChipKind } from './Chip.tsx'
 import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
+import { mergedPresets, PresetManager } from './PresetManager.tsx'
+import { STATUS_KEY } from './status.ts'
 
 /** Execution outcome → locale key. */
 const RESULT_KEY: Record<NonNullable<ExecutionRecord['result']>, TaskBoardKey> = {
   succeeded: 'detail.result.succeeded',
   failed: 'detail.result.failed',
   cancelled: 'detail.result.cancelled',
-}
-
-/** Status → locale key (detail badge). */
-const STATUS_KEY: Record<TaskStatus, TaskBoardKey> = {
-  backlog: 'board.status.backlog',
-  todo: 'board.status.todo',
-  running: 'board.status.running',
-  done: 'board.status.done',
-  failed: 'board.status.failed',
 }
 
 /** Status → shared-chip color (detail badge). */
@@ -93,37 +87,6 @@ function ExecutionRow({ execution, index, onOpen }: {
   )
 }
 
-/** Common scheduled-run presets (cron → locale label), grouped by use case. */
-const SCHEDULE_PRESETS: ReadonlyArray<{ cron: string; label: TaskBoardKey; group: TaskBoardKey }> = [
-  { cron: '*/5 * * * *', label: 'detail.schedule.preset.every5min', group: 'detail.schedule.group.frequency' },
-  { cron: '*/10 * * * *', label: 'detail.schedule.preset.tenMin', group: 'detail.schedule.group.frequency' },
-  { cron: '*/15 * * * *', label: 'detail.schedule.preset.every15min', group: 'detail.schedule.group.frequency' },
-  { cron: '*/30 * * * *', label: 'detail.schedule.preset.every30min', group: 'detail.schedule.group.frequency' },
-  { cron: '0 * * * *', label: 'detail.schedule.preset.hourly', group: 'detail.schedule.group.frequency' },
-  { cron: '0 */2 * * *', label: 'detail.schedule.preset.every2hours', group: 'detail.schedule.group.frequency' },
-  { cron: '0 0 * * *', label: 'detail.schedule.preset.daily00', group: 'detail.schedule.group.daily' },
-  { cron: '0 8 * * *', label: 'detail.schedule.preset.daily08', group: 'detail.schedule.group.daily' },
-  { cron: '0 9 * * *', label: 'detail.schedule.preset.daily9', group: 'detail.schedule.group.daily' },
-  { cron: '0 12 * * *', label: 'detail.schedule.preset.daily12', group: 'detail.schedule.group.daily' },
-  { cron: '0 14 * * *', label: 'detail.schedule.preset.daily14', group: 'detail.schedule.group.daily' },
-  { cron: '0 18 * * *', label: 'detail.schedule.preset.daily18', group: 'detail.schedule.group.daily' },
-  { cron: '0 20 * * *', label: 'detail.schedule.preset.daily20', group: 'detail.schedule.group.daily' },
-  { cron: '0 22 * * *', label: 'detail.schedule.preset.daily22', group: 'detail.schedule.group.daily' },
-  { cron: '0 9 * * 1', label: 'detail.schedule.preset.weeklyMon9', group: 'detail.schedule.group.weekly' },
-  { cron: '0 9 * * 1-5', label: 'detail.schedule.preset.workdays9', group: 'detail.schedule.group.weekly' },
-  { cron: '0 0 * * 0', label: 'detail.schedule.preset.weeklySun0', group: 'detail.schedule.group.weekly' },
-  { cron: '0 9 1 * *', label: 'detail.schedule.preset.monthly1', group: 'detail.schedule.group.monthly' },
-  { cron: '0 9 15 * *', label: 'detail.schedule.preset.monthly15', group: 'detail.schedule.group.monthly' },
-]
-
-/** Preset groups in display order (group key → first preset). */
-const PRESET_GROUPS: readonly TaskBoardKey[] = [
-  'detail.schedule.group.frequency',
-  'detail.schedule.group.daily',
-  'detail.schedule.group.weekly',
-  'detail.schedule.group.monthly',
-]
-
 /** Short weekday names (0 = Sunday), locale-aware. */
 const WEEKDAYS_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -165,26 +128,32 @@ function cronDescriptionLabel(expr: string): string {
   }
 }
 
-/** The scheduled-runs editor: enable toggle, cron input + presets, run budget, next-run info. */
+/** The scheduled-runs editor: mode, cron input + presets, run budget, next-run info. */
 function ScheduleSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
   const schedule = task.schedule
   const [cron, setCron] = useState(schedule?.cron ?? '0 9 * * *')
   const [enabled, setEnabled] = useState(schedule?.enabled ?? false)
+  const [mode, setMode] = useState<ScheduleMode>(schedule?.mode ?? 'cron')
   const [maxRuns, setMaxRuns] = useState(schedule?.maxRuns?.toString() ?? '')
   const [nextRunAt, setNextRunAt] = useState<number | undefined>(schedule?.nextRunAt)
   const [lastTriggeredAt, setLastTriggeredAt] = useState<number | undefined>(schedule?.lastTriggeredAt)
   const [error, setError] = useState<string | undefined>(undefined)
+  const [showPresets, setShowPresets] = useState(false)
+  const [presetStore] = useState(() => new LocalStoragePresetStore())
+  // The merged preset list (built-ins + custom); rebuilt when the manager closes.
+  const [presets, setPresets] = useState(() => mergedPresets(presetStore))
 
   // Keep the editor in sync when the task record changes underneath (the
   // schedule rolls forward as runs trigger).
   useEffect(() => {
     setCron(schedule?.cron ?? '0 9 * * *')
     setEnabled(schedule?.enabled ?? false)
+    setMode(schedule?.mode ?? 'cron')
     setMaxRuns(schedule?.maxRuns?.toString() ?? '')
     setNextRunAt(schedule?.nextRunAt)
     setLastTriggeredAt(schedule?.lastTriggeredAt)
     setError(undefined)
-  }, [task.id, schedule?.enabled, schedule?.cron, schedule?.nextRunAt, schedule?.lastTriggeredAt, schedule?.maxRuns, schedule?.runCount])
+  }, [task.id, schedule?.enabled, schedule?.mode, schedule?.cron, schedule?.nextRunAt, schedule?.lastTriggeredAt, schedule?.maxRuns, schedule?.runCount])
 
   /** Validate + persist the current cron text (Enter or blur). */
   const saveCron = (value: string): void => {
@@ -218,13 +187,28 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
   /** Arm/disarm the schedule (arming first persists the edited cron). */
   const toggleEnabled = (next: boolean): void => {
     const trimmed = cron.trim()
-    if (next && (trimmed === '' || !isValidCron(trimmed))) {
+    if (next && mode === 'cron' && (trimmed === '' || !isValidCron(trimmed))) {
       setError(t('detail.schedule.invalid'))
       return
     }
     setError(undefined)
-    if (next && trimmed !== schedule?.cron) controller.setSchedule(task.id, { cron: trimmed })
-    if (controller.setSchedule(task.id, { enabled: next })) setEnabled(next)
+    if (next && mode === 'cron' && trimmed !== schedule?.cron) controller.setSchedule(task.id, { cron: trimmed })
+    if (controller.setSchedule(task.id, { enabled: next, mode })) setEnabled(next)
+  }
+
+  /** Switch the driving mode (cron ↔ chain); arming a chain starts it immediately. */
+  const switchMode = (next: ScheduleMode): void => {
+    if (next === mode) return
+    if (next === 'cron' && (cron.trim() === '' || !isValidCron(cron))) {
+      setError(t('detail.schedule.invalid'))
+      return
+    }
+    setError(undefined)
+    setMode(next)
+    if (controller.setSchedule(task.id, { mode: next })) {
+      // Re-arm under the new mode so an enabled switch takes effect at once.
+      controller.setSchedule(task.id, { enabled, mode: next })
+    }
   }
 
   const applyPreset = (preset: string): void => {
@@ -234,7 +218,12 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
     controller.setSchedule(task.id, { cron: preset })
   }
 
-  const nextLabel = !enabled || nextRunAt === undefined
+  const closePresets = (): void => {
+    setShowPresets(false)
+    setPresets(mergedPresets(presetStore))
+  }
+
+  const nextLabel = !enabled || mode !== 'cron' || nextRunAt === undefined
     ? t('detail.schedule.notScheduled')
     : nextRunAt <= Date.now()
       ? t('detail.schedule.dueSoon')
@@ -252,37 +241,75 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
         />
         <span>{t('detail.schedule.enable')}</span>
       </label>
-      <div className={css.scheduleGrid}>
-        <span className={css.scheduleLabel}>{t('detail.schedule.cron')}</span>
-        <span className={css.scheduleCronRow}>
-          <input
-            className={`${css.input} ${css.scheduleInput}${error !== undefined ? ` ${css.scheduleInputInvalid}` : ''}`}
-            value={cron}
-            placeholder="0 9 * * *"
-            spellCheck={false}
-            aria-label={t('detail.schedule.cron')}
-            onChange={event => { setCron(event.target.value); setError(undefined) }}
-            onBlur={() => { saveCron(cron) }}
-            onKeyDown={event => { if (event.key === 'Enter') saveCron(cron) }}
-          />
-          <span className={css.selectWrap}>
-            <select
-              className={css.schedulePreset}
-              value=""
-              aria-label={t('detail.schedule.presets')}
-              onChange={event => { applyPreset(event.target.value) }}
+
+      {/* Driving mode: fixed times (cron) or run-after-completion (chain). */}
+      <div className={css.scheduleModeRow} role="radiogroup" aria-label={t('detail.schedule')}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={mode === 'cron'}
+          className={`${css.scheduleMode}${mode === 'cron' ? ` ${css.scheduleModeActive}` : ''}`}
+          title={t('detail.schedule.mode.cronHint')}
+          onClick={() => { switchMode('cron') }}
+        >
+          {t('detail.schedule.mode.cron')}
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={mode === 'chain'}
+          className={`${css.scheduleMode}${mode === 'chain' ? ` ${css.scheduleModeActive}` : ''}`}
+          title={t('detail.schedule.mode.chainHint')}
+          onClick={() => { switchMode('chain') }}
+        >
+          {t('detail.schedule.mode.chain')}
+        </button>
+      </div>
+
+      {mode === 'cron' ? (
+        <div className={css.scheduleGrid}>
+          <span className={css.scheduleLabel}>{t('detail.schedule.cron')}</span>
+          <span className={css.scheduleCronRow}>
+            <input
+              className={`${css.input} ${css.scheduleInput}${error !== undefined ? ` ${css.scheduleInputInvalid}` : ''}`}
+              value={cron}
+              placeholder="0 9 * * *"
+              spellCheck={false}
+              aria-label={t('detail.schedule.cron')}
+              onChange={event => { setCron(event.target.value); setError(undefined) }}
+              onBlur={() => { saveCron(cron) }}
+              onKeyDown={event => { if (event.key === 'Enter') saveCron(cron) }}
+            />
+            <span className={css.selectWrap}>
+              <select
+                className={css.schedulePreset}
+                value=""
+                aria-label={t('detail.schedule.presets')}
+                onChange={event => { applyPreset(event.target.value) }}
+              >
+                <option value="">{t('detail.schedule.presets')}…</option>
+                {presets.map(preset => (
+                  <option key={preset.id} value={preset.cron}>
+                    {preset.label}
+                    {!presetIsDefault(preset) ? ` (${t('detail.schedule.presets.custom')})` : ''}
+                  </option>
+                ))}
+              </select>
+            </span>
+            <button
+              type="button"
+              className={css.ghostButton}
+              onClick={() => { setShowPresets(true) }}
             >
-              <option value="">{t('detail.schedule.presets')}…</option>
-              {PRESET_GROUPS.map(group => (
-                <optgroup key={group} label={t(group)}>
-                  {SCHEDULE_PRESETS.filter(preset => preset.group === group).map(preset => (
-                    <option key={preset.cron} value={preset.cron}>{t(preset.label)}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+              {t('detail.schedule.managePresets')}
+            </button>
           </span>
-        </span>
+        </div>
+      ) : (
+        <p className={css.scheduleMeta}>{t('detail.schedule.chainNote')}</p>
+      )}
+
+      <div className={css.scheduleGrid}>
         <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
         <span className={css.scheduleMaxRow}>
           <input
@@ -304,14 +331,28 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
         </span>
       </div>
       {error !== undefined && <p className={css.formError}>{error}</p>}
-      <p className={css.scheduleMeta}>
-        {cronDescriptionLabel(cron)}
-        {' · '}
-        {t('detail.schedule.nextRun')} {nextLabel}
-        {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
-      </p>
+      {mode === 'cron' && (
+        <p className={css.scheduleMeta}>
+          {cronDescriptionLabel(cron)}
+          {' · '}
+          {t('detail.schedule.nextRun')} {nextLabel}
+          {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
+        </p>
+      )}
+
+      {showPresets && (
+        <PresetManager
+          store={presetStore}
+          onClose={closePresets}
+        />
+      )}
     </section>
   )
+}
+
+/** Whether a preset id belongs to the built-in defaults. */
+function presetIsDefault(preset: SchedulePreset): boolean {
+  return DEFAULT_PRESETS.some(candidate => candidate.id === preset.id)
 }
 
 /** Task detail overlay. */

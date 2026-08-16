@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { SchedulerService, type SchedulerDeps } from '../src/core/scheduler.ts'
-import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, startExecution, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 
 /** Local-time ms epoch helper. */
 function at(year: number, month: number, day: number, hour: number, minute: number, second = 0): number {
@@ -206,6 +206,29 @@ describe('SchedulerService lifecycle', () => {
     h.scheduler.start()
     h.scheduler.dispose()
     expect(h.runs).toEqual(['t-a'])
+  })
+
+  it('restarts a stalled chain schedule with no open execution', async () => {
+    const h = makeHarness()
+    const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
+    const chain = withSchedule(task, { enabled: true, mode: 'chain', cron: '' }, at(2026, 1, 1, 0, 0))
+    h.setTasks([chain])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual(['t-c'])
+    // A second tick while the run is open in the ledger must not relaunch.
+    const { task: running } = startExecution(chain, at(2026, 1, 1, 10, 0, 31), 'e1')
+    h.setTasks([running])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual(['t-c'])
+  })
+
+  it('does not restart a chain that reached its budget', async () => {
+    const h = makeHarness()
+    const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
+    const chain = withSchedule(task, { enabled: true, mode: 'chain', cron: '', maxRuns: 2, runCount: 2 }, at(2026, 1, 1, 0, 0))
+    h.setTasks([chain])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
   })
 
   it('ticks on tab-visibility recovery through the environment listener', () => {

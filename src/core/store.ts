@@ -14,7 +14,7 @@
  */
 import { isValidCron } from './schedule.ts'
 import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
-import { isTaskStatus } from './tasks.ts'
+import { isScheduleMode, isTaskStatus } from './tasks.ts'
 
 /** Persistence seam for the task ledger. */
 export interface TaskStore {
@@ -69,18 +69,24 @@ function normalizeStatus(status: unknown): TaskStatus {
 }
 
 /**
- * Repair a persisted schedule rule: drop rules without a usable cron string,
- * coerce booleans/numbers, and leave `nextRunAt`/`lastTriggeredAt` undefined
+ * Repair a persisted schedule rule: drop rules without a usable cron string
+ * (cron mode), coerce booleans/numbers, normalize the mode (legacy rules
+ * default to 'cron'), and leave `nextRunAt`/`lastTriggeredAt` undefined
  * when missing (a fresh recompute or the next tick fixes them).
  */
 function normalizeSchedule(schedule: unknown): ScheduleRule | undefined {
   if (typeof schedule !== 'object' || schedule === null) return undefined
   const rule = schedule as Record<string, unknown>
-  // Reject (drop) a schedule whose cron is not a well-formed 5-field
+  const mode = isScheduleMode(rule.mode) ? rule.mode : 'cron'
+  // Reject (drop) a cron-mode rule whose cron is not a well-formed 5-field
   // expression: a malformed rule would otherwise linger as a never-firing
-  // schedule instead of being dropped for later repair.
-  if (typeof rule.cron !== 'string') return undefined
-  if (rule.cron.trim() === '' || !isValidCron(rule.cron)) return undefined
+  // schedule instead of being dropped for later repair. Chain rules carry
+  // no cron and never fire on the clock.
+  if (typeof rule.cron !== 'string') {
+    if (mode !== 'chain') return undefined
+  } else if (mode === 'cron' && (rule.cron.trim() === '' || !isValidCron(rule.cron))) {
+    return undefined
+  }
   // `maxRuns`/`runCount` are newer fields: persisted rules from older
   // versions lack them, so they are defaulted here (unlimited / zero) rather
   // than treated as corrupt.
@@ -88,7 +94,8 @@ function normalizeSchedule(schedule: unknown): ScheduleRule | undefined {
   const runCount = rule.runCount
   return {
     enabled: rule.enabled === true,
-    cron: rule.cron,
+    mode,
+    cron: typeof rule.cron === 'string' ? rule.cron : '',
     nextRunAt: typeof rule.nextRunAt === 'number' ? rule.nextRunAt : undefined,
     lastTriggeredAt: typeof rule.lastTriggeredAt === 'number' ? rule.lastTriggeredAt : undefined,
     maxRuns: typeof maxRuns === 'number' && Number.isInteger(maxRuns) && maxRuns > 0 ? maxRuns : undefined,

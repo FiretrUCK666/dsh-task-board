@@ -12,7 +12,6 @@
 import { createRoot, type Root } from 'react-dom/client'
 import type { BoardController } from '../core/controller.ts'
 import { TaskBoard } from './board/TaskBoard.tsx'
-import css from './board.module.css'
 
 /** The injected board container (kept in the DOM, hidden when inactive). */
 export const BOARD_VIEW_SELECTOR = '[data-dsh-taskboard-view]'
@@ -44,7 +43,6 @@ export function mountBoard(controller: BoardController): () => void {
     if (column === undefined) return
     container = document.createElement('div')
     container.dataset.dshTaskboardView = ''
-    container.className = css.boardView
     column.appendChild(container)
     root = createRoot(container)
     root.render(<TaskBoard controller={controller} />)

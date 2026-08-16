@@ -93,6 +93,19 @@ export class SchedulerService {
     for (const task of this.deps.tasks()) {
       const schedule = task.schedule
       if (schedule === undefined || !schedule.enabled) continue
+      // Chain mode: recovery tick only — a stalled chain (e.g. after a page
+      // reload, when the settle hand-off was lost) is restarted when no
+      // execution is open and a further run is within budget. The live
+      // hand-off runs synchronously after each settle in the controller, so
+      // this tick can never double-launch.
+      if (schedule.mode === 'chain') {
+        const latest = task.executions[task.executions.length - 1]
+        const open = latest !== undefined && latest.endedAt === undefined
+        if (open) continue
+        if (schedule.maxRuns !== undefined && schedule.runCount >= schedule.maxRuns) continue
+        await this.deps.runTask(task.id)
+        continue
+      }
       if (schedule.nextRunAt === undefined) {
         // Missing next-run instant (repaired/legacy data): recompute from the
         // cron expression and wait; an unparseable expression is skipped.

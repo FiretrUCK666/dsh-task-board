@@ -567,4 +567,59 @@ describe('scheduling', () => {
     await controller.runTask(task.id)
     expect(exec.runCalls).toHaveLength(2)
   })
+
+  it('chain mode: runs immediately on enable, continues after each settle, disarms at the budget', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
+    // Arming the chain fired the first run right away.
+    expect(exec.runCalls).toHaveLength(1)
+    // Run 1 settles → the chain hands off to run 2 synchronously.
+    const e1 = exec.runCalls[0].executionId
+    exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(2)
+    expect(store.load()[0].schedule?.runCount).toBe(1)
+    expect(store.load()[0].schedule?.enabled).toBe(true)
+    expect(store.load()[0].status).toBe('running') // chain keeps the card in progress
+    // Run 2 is the final budgeted run → disarmed, settled to done, no run 3.
+    const e2 = exec.runCalls[1].executionId
+    exec.runCalls[1].fire({ kind: 'started', taskId: task.id, executionId: e2, sessionId: 's-2' })
+    exec.runCalls[1].fire({ kind: 'settled', taskId: task.id, executionId: e2, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(2)
+    const final = store.load()[0]
+    expect(final.schedule?.enabled).toBe(false)
+    expect(final.schedule?.runCount).toBe(2)
+    expect(final.status).toBe('done')
+  })
+
+  it('chain mode: a failed run stops the chain', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
+    const e1 = exec.runCalls[0].executionId
+    exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'failed', error: 'boom' })
+    expect(exec.runCalls).toHaveLength(1) // no hand-off after a failure
+    expect(store.load()[0].status).toBe('failed')
+    expect(store.load()[0].schedule?.enabled).toBe(true) // stays armed for the recovery tick
+  })
+
+  it('manual runs never touch the schedule counters or next-run instant', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.setSchedule(task.id, { enabled: true, cron: '* * * * *', maxRuns: 3 })
+    const before = store.load()[0].schedule
+    await controller.runTask(task.id) // e.g. dragging the card to 'running'
+    expect(store.load()[0].schedule?.runCount).toBe(before?.runCount)
+    expect(store.load()[0].schedule?.nextRunAt).toBe(before?.nextRunAt)
+    exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: exec.runCalls[0].executionId, sessionId: 's-1' })
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    // cron mode: no continuation; the counters stay untouched.
+    expect(exec.runCalls).toHaveLength(1)
+    expect(store.load()[0].schedule?.runCount).toBe(before?.runCount)
+  })
 })
