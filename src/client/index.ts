@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController, type SessionConfigFace, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
+import { BoardController, type PermissionOptionShape, type SessionConfigFace, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
@@ -104,6 +104,7 @@ function pickProjections(values: Record<string, unknown> | undefined): Pick<Tran
   if (values === undefined) return {}
   const pressure = values.contextPressure
   const breakdown = values.contextBreakdown
+  const permissions = values.permissions
   const projections: TranscriptProjectionsShape = {}
   if (typeof pressure === 'object' && pressure !== null) {
     const entry = pressure as Record<string, unknown>
@@ -122,7 +123,27 @@ function pickProjections(values: Record<string, unknown> | undefined): Pick<Tran
       projections.contextBreakdown = { systemTokens, toolsTokens, messageTokens }
     }
   }
-  return projections.contextPressure !== undefined || projections.contextBreakdown !== undefined
+  if (typeof permissions === 'object' && permissions !== null) {
+    const entry = permissions as Record<string, unknown>
+    const options = entry.options
+    const currentValue = entry.currentValue
+    if (Array.isArray(options) && typeof currentValue === 'string') {
+      const rows: PermissionOptionShape[] = []
+      for (const option of options) {
+        if (typeof option !== 'object' || option === null) continue
+        const row = option as Record<string, unknown>
+        if (typeof row.value === 'string' && typeof row.name === 'string') {
+          rows.push({
+            value: row.value,
+            name: row.name,
+            ...typeof row.description === 'string' ? { description: row.description } : {},
+          })
+        }
+      }
+      if (rows.length > 0) projections.permissions = { options: rows, currentValue }
+    }
+  }
+  return projections.contextPressure !== undefined || projections.contextBreakdown !== undefined || projections.permissions !== undefined
     ? { projections }
     : {}
 }

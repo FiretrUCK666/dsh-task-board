@@ -1815,6 +1815,14 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-variant-numeric: tabular-nums;
 }
 
+/* Which execution a comment round belongs to (comments are task-level; the
+   badge ties each one back to its run). */
+.reviewCommentRun {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
 /* The composer, pinned at the rail's bottom: sending a comment never
    requires scrolling the conversation or the rail — it stays visible no
    matter how long either gets. */

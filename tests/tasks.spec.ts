@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionLabel, hasOpenRun, pendingCommentCount, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionIndexFor, executionLabel, hasOpenRun, pendingCommentCount, resolveCardDrop, ruleReadiness,
   settleExecution, startExecution, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -416,6 +416,48 @@ describe('pendingCommentCount', () => {
     }
     expect(pendingCommentCount(base)).toBe(2)
     expect(pendingCommentCount(sampleTask())).toBe(0)
+  })
+})
+
+describe('executionIndexFor', () => {
+  /** Task with three plain runs: e1 on s-1, e2 on s-2, e3 on s-1 (s-1 reused). */
+  function withRuns() {
+    let { task } = startExecution(sampleTask(), NOW, 'e1')
+    task = settleExecution(task, 'e1', 'succeeded', NOW + 1, 's-1')
+    task = { ...task, executions: [...task.executions, { id: 'e2', sessionId: 's-2', startedAt: NOW + 2, endedAt: NOW + 3, result: 'succeeded' as const, error: undefined }] }
+    task = { ...task, executions: [...task.executions, { id: 'e3', sessionId: 's-1', startedAt: NOW + 4, endedAt: NOW + 5, result: 'succeeded' as const, error: undefined }] }
+    return task
+  }
+
+  const commentRound = (id: string, sessionId: string | undefined, startedAt: number) =>
+    ({ id, sessionId, startedAt, endedAt: undefined, result: undefined, error: undefined, comment: '你好' })
+
+  it('maps a comment to the latest plain run of its session', () => {
+    const task = withRuns()
+    // s-1 was reused by run 3, so a comment on s-1 continues run 3.
+    expect(executionIndexFor(task, commentRound('c1', 's-1', NOW + 6))).toBe(3)
+    expect(executionIndexFor(task, commentRound('c2', 's-2', NOW + 6))).toBe(2)
+  })
+
+  it('stays the latest run even for an older comment round', () => {
+    const task = withRuns()
+    // The round's own startedAt does not matter: it belongs to the newest
+    // plain run of its session (the array order is chronological).
+    expect(executionIndexFor(task, commentRound('c0', 's-1', NOW))).toBe(3)
+  })
+
+  it('returns 0 for a missing session or an unknown session', () => {
+    const task = withRuns()
+    expect(executionIndexFor(task, commentRound('c1', undefined, NOW + 6))).toBe(0)
+    expect(executionIndexFor(task, commentRound('c2', 's-gone', NOW + 6))).toBe(0)
+  })
+
+  it('does not count comment rounds in the sequence', () => {
+    const task = {
+      ...withRuns(),
+      executions: [...withRuns().executions, commentRound('c1', 's-1', NOW + 6)],
+    }
+    expect(executionIndexFor(task, commentRound('c2', 's-1', NOW + 7))).toBe(3)
   })
 })
 

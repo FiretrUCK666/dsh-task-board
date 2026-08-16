@@ -178,10 +178,27 @@ export interface ContextBreakdownShape {
   messageTokens: number
 }
 
+/** One permission-preset option the session's select can switch to (native PermissionSelect). */
+export interface PermissionOptionShape {
+  value: string
+  name: string
+  description?: string
+}
+
+/** The session's real permission select (native `permissions` projection): the
+ *  effective current value plus the switchable options — the authority the
+ *  review page's permission switcher must read (the task card's permission
+ *  field only configures the next fresh run). */
+export interface PermissionSelectShape {
+  options: readonly PermissionOptionShape[]
+  currentValue: string
+}
+
 /** The projection slice the review page reads (the history tail page's block). */
 export interface TranscriptProjectionsShape {
   contextPressure?: ContextPressureShape
   contextBreakdown?: ContextBreakdownShape
+  permissions?: PermissionSelectShape
 }
 
 /** The review-page transcript: raw events plus the session's projection baseline. */

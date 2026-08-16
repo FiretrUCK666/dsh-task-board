@@ -382,6 +382,25 @@ export function pendingCommentCount(task: TaskRecord): number {
   return count
 }
 
+/**
+ * The execution sequence number a comment round belongs to (1-based, among
+ * the task's plain runs): the latest plain execution sharing the round's
+ * session. Comment rounds themselves are not part of the sequence. Returns 0
+ * when the round has no session or no matching plain execution (the session
+ * was deleted, for example) — the UI renders that as an unknown marker.
+ */
+export function executionIndexFor(task: TaskRecord, round: ExecutionRecord): number {
+  if (round.sessionId === undefined) return 0
+  let index = 0
+  let found = 0
+  for (const execution of task.executions) {
+    if (execution.comment !== undefined) continue
+    index += 1
+    if (execution.sessionId === round.sessionId) found = index
+  }
+  return found
+}
+
 /** What a card drop onto a column means (drag-and-drop decision). */
 export type CardDropDecision =
   | { kind: 'none' }

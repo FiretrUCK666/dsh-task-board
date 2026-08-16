@@ -30,7 +30,7 @@
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController, SessionConfigFace, SessionModelChoice, SessionModelGroup, TranscriptEventShape, TranscriptProjectionsShape } from '../../core/controller.ts'
-import type { ExecutionRecord, TaskRecord } from '../../core/tasks.ts'
+import { executionIndexFor, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -79,18 +79,21 @@ interface CommentView {
 }
 
 /**
- * Build the comment thread of a task for one session, oldest first. The
- * state machine mirrors the unified dispatcher:
+ * Build the comment thread of a task — every comment round across every
+ * execution/session, oldest first. Comments are task-level interventions:
+ * a review page opened from any execution row shows the task's whole
+ * comment history (each row carries its execution badge via
+ * executionIndexFor), never just the comments of the one session being
+ * reviewed. The state machine mirrors the unified dispatcher:
  * - `saved`: cruise off — the comment stays saved (never injected).
  * - `queued`: cruise on but the round waits for a free slot / the task's
  *   busy round (it will inject in order).
  * - `running`: injected, the session is running it.
  * - settled states as recorded.
  */
-function commentsOf(task: TaskRecord, sessionId: string | undefined, cruiseOn: boolean): CommentView[] {
-  if (sessionId === undefined) return []
+function commentsOf(task: TaskRecord, cruiseOn: boolean): CommentView[] {
   return task.executions
-    .filter(round => round.comment !== undefined && round.sessionId === sessionId)
+    .filter(round => round.comment !== undefined)
     .map(round => {
       let state: CommentView['state']
       if (round.endedAt !== undefined) state = round.result ?? 'cancelled'
@@ -136,7 +139,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const current = snapshot.tasks.find(candidate => candidate.id === task.id) ?? task
   const sessionId = execution.sessionId
   const cruiseOn = snapshot.cruise.enabled
-  const comments = commentsOf(current, sessionId, cruiseOn)
+  const comments = commentsOf(current, cruiseOn)
   const sessionConfig = controller.sessionConfig()
 
   const [lines, setLines] = useState<readonly TranscriptLine[] | undefined>(undefined)
@@ -156,6 +159,11 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // poll only re-renders when new events actually arrived, so an idle
   // session costs nothing and a busy one re-renders only on real progress.
   const watermarkRef = useRef<number | undefined>(undefined)
+  // Sticky-bottom conversation: track whether the user is at the bottom of
+  // the transcript scroll; when new lines arrive and the user was at the
+  // bottom, follow them down (never yank the view away from a scroll-up).
+  const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
+  const atBottomRef = useRef(true)
 
   // The native permission-preset directory for the permission switcher
   // (same catalog as the new-task form; absent = no switcher).
@@ -226,6 +234,22 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     }
   }, [poll])
 
+  // Follow new conversation output: when the user is at (or near) the bottom
+  // and new lines arrive, scroll down with them — no manual dragging while a
+  // comment continuation streams its reply. A deliberate scroll-up leaves the
+  // view alone until the user returns to the bottom.
+  useEffect(() => {
+    const element = transcriptScrollRef.current
+    if (element === null || !atBottomRef.current) return
+    element.scrollTop = element.scrollHeight
+  }, [lines])
+
+  const onTranscriptScroll = (): void => {
+    const element = transcriptScrollRef.current
+    if (element === null) return
+    atBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24
+  }
+
   const submit = (): void => {
     const text = draft.trim()
     if (text === '') return
@@ -284,8 +308,26 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     void sessionConfig.setPermission(sessionId, permission).then(result => {
       setConfigBusy(false)
       setConfigMessage(result.ok ? t('review.configApplied') : result.error)
+      // The session's real permission changed through the native command;
+      // refresh so the projection-backed select shows the new value.
+      if (result.ok) reload()
     })
   }
+
+  // The permission switcher's truth: the session's live permission select
+  // from the native `permissions` projection (the same value the harness
+  // PermissionSelect reads) — never the task card's permission field, which
+  // only configures the next fresh run. Without a projection (deployment
+  // without the registry) it falls back to the route-backed preset catalog
+  // and the task field.
+  const livePermission = projections?.permissions
+  const permissionOptions: readonly { id: string; name?: string; description?: string }[] | undefined
+    = livePermission !== undefined
+      ? livePermission.options.map(option => ({ id: option.value, name: option.name, ...option.description !== undefined ? { description: option.description } : {} }))
+      : permissionRows
+  const permissionValue = livePermission !== undefined
+    ? livePermission.currentValue
+    : (current.permission ?? '')
 
   // The run's sequence among the task's plain runs (comment rounds excluded).
   const runIndex = current.executions
@@ -349,7 +391,11 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               The rail on the right holds everything else, so a long
               transcript never competes with config or comments. */}
           <div className={css.reviewMain}>
-            <div className={css.reviewTranscriptScroll}>
+            <div
+              className={css.reviewTranscriptScroll}
+              ref={transcriptScrollRef}
+              onScroll={onTranscriptScroll}
+            >
             <div className={css.reviewOutcome}>
               <Chip kind={execution.result === 'failed' ? 'error' : execution.result === 'succeeded' ? 'success' : 'muted'}>
                 {execution.result === undefined ? t('detail.result.running') : t(`detail.result.${execution.result}` as 'detail.result.succeeded')}
@@ -513,18 +559,18 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                       </span>
                     )
                   })()}
-                  {permissionRows !== undefined && (
+                  {permissionOptions !== undefined && (
                     <span className={css.reviewConfigRow}>
                       <span className={css.reviewConfigLabel}>{t('review.permission')}</span>
                       <span className={css.selectWrap}>
                         <select
                           className={css.input}
-                          value={current.permission ?? ''}
+                          value={permissionValue}
                           disabled={configBusy}
                           onChange={event => { applyPermission(event.target.value) }}
                         >
                           <option value="">{t('new.permissionDefault')}</option>
-                          {permissionRows.map(row => (
+                          {permissionOptions.map(row => (
                             <option key={row.id} value={row.id}>{permissionLabel(row.id, row.name)}</option>
                           ))}
                         </select>
@@ -584,6 +630,14 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                         </span>
                         <span className={css.reviewCommentMeta}>
                           <Chip kind={state.kind}>{state.label}</Chip>
+                          <span className={css.reviewCommentRun}>
+                            {(() => {
+                              const run = executionIndexFor(current, view.round)
+                              return run > 0
+                                ? t('review.commentExecution', { n: String(run) })
+                                : t('review.commentExecutionUnknown')
+                            })()}
+                          </span>
                           <span className={css.reviewCommentTime}>{formatDateTime(view.round.startedAt)}</span>
                           {cancellable && (
                             <button

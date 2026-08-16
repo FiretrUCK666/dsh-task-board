@@ -269,6 +269,17 @@ prompt）；结算靠会话列表对账，cold 窗口判定：列表缺失→取
 评论页 Agent 不可切换（原生 `agent-preset-locked`）：只读展示会话实际组合，任务卡片
 编辑的 Agent 作用于下次新执行，两处独立。
 
+**评论页的会话事实以投影为权威（结构校验读取，不依赖域包类型）**：`pickProjections`
+从 history 尾页投影提取 `contextPressure`/`contextBreakdown`/`permissions`
+（`TranscriptProjectionsShape`，controller.ts 定义）。权限下拉的事实源是
+`permissions` 投影的 `currentValue`/`options`（与原生 PermissionSelect 同源），
+不是任务卡片的 `permission` 字段（那只作用于下次新执行）；切换成功立即 `reload()`
+拉新投影，3 秒轮询兜底。**评论线程是任务级全量历史**：跨执行/跨会话一条不丢
+（`commentsOf` 不过滤 sessionId），每条评论经 `executionIndexFor`（tasks.ts，纯函数）
+标出所属执行序号（1-based，不含评论轮次自身；无 session/找不到 → 0 =「未知执行」）。
+**对话贴底自动跟随**：历史轮询拿到新行时，若用户在底部（距底 < 24px）自动滚下
+跟随输出；主动上翻则不再打扰，直到用户回到底部。
+
 ## 构建与验证（改完必跑，全绿才算完成）
 
 ```sh
