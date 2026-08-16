@@ -77,6 +77,23 @@ export interface CommentSendFace {
   (sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }>
 }
 
+/**
+ * Optional slash-command face: executes one command line against an existing
+ * execution session through the native command registry (the same
+ * `remote.commands.execute` RPC the composer's '/' submissions use — never
+ * the plain prompt path, which would deliver the line to the model as text).
+ * `matched` reports whether the registry recognized the name; when it did,
+ * `outcome` carries the command's settled result (a recognized command may
+ * still fail, e.g. an unknown preset name). When absent the service treats
+ * command rounds as plain text.
+ */
+export interface CommentCommandFace {
+  (sessionId: string, line: string): Promise<
+    | { ok: true; matched: boolean; outcome?: { kind: 'success' | 'error'; text?: string } }
+    | { ok: false; error: string }
+  >
+}
+
 /** Everything the service needs from the runtime. */
 export interface ExecutionEnvironment {
   sessions: SessionsExecutionFace
@@ -89,6 +106,8 @@ export interface ExecutionEnvironment {
   selectAgentPreset?: AgentPresetSelectFace
   /** Sends comment continuations to existing execution sessions (host API). */
   sendComment?: CommentSendFace
+  /** Executes slash-command comment rounds through the native command registry. */
+  sendCommand?: CommentCommandFace
 }
 
 /** The behavior verbs the service invokes on an execution session. */
@@ -231,6 +250,14 @@ export class ExecutionService {
    * for sessions that are not the currently staged one; when a binding
    * driver is available its snapshot watch is used as an additional fast
    * path. Never rejects: every failure path reports a settled event.
+   *
+   * A round flagged `command` is a slash command, not a turn: it is executed
+   * through the native command registry (never sent to the model as text).
+   * A matched command settles immediately as succeeded (its outcome text is
+   * carried in the error field for display); an unmatched line falls back to
+   * plain-text delivery — the native composer's default-sink semantics, so
+   * no user input is ever dropped. Without a command face the round degrades
+   * to plain text.
    */
   async commentRun(
     task: TaskRecord,
@@ -240,6 +267,10 @@ export class ExecutionService {
     onEvent: (event: ExecutionEvent) => void,
   ): Promise<void> {
     try {
+      if (execution.command === true) {
+        await this.runCommentCommand(task, execution, sessionId, text, onEvent)
+        return
+      }
       const driver = this.driverOf(sessionId)
       const send = this.env.sendComment
         ?? (async (id, content) => {
@@ -266,6 +297,53 @@ export class ExecutionService {
         error: messageOf(error),
       })
     }
+  }
+
+  /**
+   * Execute a slash-command comment round through the native command
+   * registry (see {@link CommentCommandFace}). A matched command settles
+   * immediately — the host durably logs its lifecycle and the outcome is a
+   * flow node, never a model turn, so there is nothing to watch. An
+   * unmatched line (or a missing command face) falls back to the plain-text
+   * path, preserving the native "unknown command → send as text" behavior.
+   */
+  private async runCommentCommand(
+    task: TaskRecord,
+    execution: ExecutionRecord,
+    sessionId: string,
+    line: string,
+    onEvent: (event: ExecutionEvent) => void,
+  ): Promise<void> {
+    const command = this.env.sendCommand
+    if (command === undefined) {
+      // No native command surface: degrade to a plain-text comment round.
+      await this.commentRun(task, { ...execution, command: false }, sessionId, line, onEvent)
+      return
+    }
+    const result = await command(sessionId, line)
+    if (!result.ok) {
+      onEvent({
+        kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
+        error: `command rejected: ${result.error}`,
+      })
+      return
+    }
+    if (!result.matched) {
+      // Unknown command: native default-sink — deliver the line as text.
+      await this.commentRun(task, { ...execution, command: false }, sessionId, line, onEvent)
+      return
+    }
+    // The registry recognized the line and logged its lifecycle; the command
+    // itself may still report failure (e.g. an unknown preset name) — that
+    // is a failed round, never a model turn.
+    const outcome = result.outcome
+    onEvent({
+      kind: 'settled', taskId: task.id, executionId: execution.id,
+      outcome: outcome?.kind === 'error' ? 'failed' : 'succeeded',
+      ...outcome !== undefined && outcome.text !== undefined && outcome.text !== ''
+        ? { error: outcome.text }
+        : {},
+    })
   }
 
   /**

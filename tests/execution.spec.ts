@@ -616,4 +616,78 @@ describe('ExecutionService.commentRun', () => {
       { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'failed', error: 'comment rejected: prompt rejected' },
     ])
   })
+
+  it('executes a matched command round through the registry and settles succeeded immediately', async () => {
+    const { env } = makeEnv()
+    env.sendComment = async () => { throw new Error('plain path must not run for a command round') }
+    env.sendCommand = async () => ({ ok: true, matched: true, outcome: { kind: 'success' as const, text: 'preset read-only' } })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '/permission read-only', command: true }
+    const events: ExecutionEvent[] = []
+    await service.commentRun(running, round, 's-1', '/permission read-only', event => { events.push(event) })
+    expect(events).toEqual([
+      { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'succeeded', error: 'preset read-only' },
+    ])
+  })
+
+  it('settles a matched-but-failing command round as failed with its native outcome', async () => {
+    const { env } = makeEnv()
+    env.sendCommand = async () => ({ ok: true, matched: true, outcome: { kind: 'error' as const, text: 'unknown preset "nope"' } })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '/permission nope', command: true }
+    const events: ExecutionEvent[] = []
+    await service.commentRun(running, round, 's-1', '/permission nope', event => { events.push(event) })
+    expect(events).toEqual([
+      { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'failed', error: 'unknown preset "nope"' },
+    ])
+  })
+
+  it('falls back to plain text for an unmatched command line (native default-sink)', async () => {
+    const { env } = makeEnv()
+    env.sendCommand = async () => ({ ok: true, matched: false })
+    env.sendComment = async () => ({ ok: true })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '/not-a-command 你好', command: true }
+    const events: ExecutionEvent[] = []
+    // The session is absent from the host list: the text fallback runs the
+    // normal watch, which settles as cancelled (deleted session).
+    await service.commentRun(running, round, 's-1', '/not-a-command 你好', event => { events.push(event) })
+    expect(events).toEqual([
+      { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'cancelled', error: 'comment session no longer exists' },
+    ])
+  })
+
+  it('falls back to plain text when no command face is wired', async () => {
+    const { env } = makeEnv()
+    env.sendComment = async () => ({ ok: true })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '/plan 继续', command: true }
+    const events: ExecutionEvent[] = []
+    await service.commentRun(running, round, 's-1', '/plan 继续', event => { events.push(event) })
+    expect(events).toEqual([
+      { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'cancelled', error: 'comment session no longer exists' },
+    ])
+  })
+
+  it('settles a rejected command transport as failed', async () => {
+    const { env } = makeEnv()
+    env.sendCommand = async () => ({ ok: false, error: 'rpc down' })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '/permission read-only', command: true }
+    const events: ExecutionEvent[] = []
+    await service.commentRun(running, round, 's-1', '/permission read-only', event => { events.push(event) })
+    expect(events).toEqual([
+      { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'failed', error: 'command rejected: rpc down' },
+    ])
+  })
 })

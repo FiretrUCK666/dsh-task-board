@@ -255,6 +255,20 @@ prompt）；结算靠会话列表对账，cold 窗口判定：列表缺失→取
 扫描式（无队列状态可失步），由 `persistAndNotify` 与巡航开关触发，重入合并。
 原 `cruise.ts` 已折叠入 controller（不再有独立巡航泵）。
 
+**斜杠命令与权限切换（原生命令注册表，绝不走 prompt 文本）**：host 的
+`session.prompt` 接口没有斜杠裁决——只有客户端作曲器把 `/` 草稿改走
+`remote.commands.execute`。因此评论页两类操作都**必须**经 `remote.commands.execute`
+执行（`client/index.ts` 的 `RemoteCommandsFace.execute` 接线）：
+- 权限切换（`SessionConfigFace.setPermission` → `/permission <preset>`）：命令命中
+  才改权限并返回原生结果文案，未命中/失败只在面板显示错误——**绝不**把命令文本当
+  消息发给 agent（否则 agent 会用自然语言回复「无法更改」，污染对话）。
+- 评论以 `/` 开头 = 命令轮次（`submitComment(..., command=true)` →
+  `ExecutionRecord.command`）：`execution.ts` 的 `runCommentCommand` 走
+  `sendCommand` 面——matched 立即结算（结果 kind:error 记为 failed），unmatched
+  退回普通文本（原生 default-sink，不丢输入），无命令面也退回文本。
+评论页 Agent 不可切换（原生 `agent-preset-locked`）：只读展示会话实际组合，任务卡片
+编辑的 Agent 作用于下次新执行，两处独立。
+
 ## 构建与验证（改完必跑，全绿才算完成）
 
 ```sh
@@ -291,6 +305,8 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
 ## 测试
 
 - `tests/controller|execution|schedule|scheduler|store|tasks.spec.ts`：核心层纯逻辑。
+- `tests/review-transcript.spec.ts` / `tests/context-meter.spec.ts` /
+  `tests/menu-direction.spec.ts`：评论页纯逻辑（折叠规则 / 上下文条算术 / 斜杠菜单方向）。
 - `tests/route-scope.spec.ts`：RouteSettingsScope 快照转换 / ops 映射 / 失败降级
   （vi.stubGlobal fetch）。
 - `tests/settings-route.spec.ts`：createSettingsHandler 纯函数（GET 有/无命名空间、

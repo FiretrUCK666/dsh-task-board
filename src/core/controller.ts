@@ -838,13 +838,19 @@ export class BoardController {
    * cruise drives the board. A completed task cannot be commented (its work
    * is done); every other state can — a running task's comment queues for
    * when its current round settles.
+   *
+   * A round with `command` set is a slash command, not a turn: the line is
+   * executed through the native command registry when injected (unknown
+   * commands fall back to plain text), matching the native composer's '/'
+   * behavior.
    * @param taskId - the task owning the execution.
    * @param executionId - the settled execution to continue (its session is reused).
    * @param text - the comment to send to the session's agent.
+   * @param command - whether the comment is a slash-command line.
    * @returns the queued comment round, or undefined when rejected (unknown
    *   task/execution, completed task, execution not settled).
    */
-  submitComment(taskId: string, executionId: string, text: string): ExecutionRecord | undefined {
+  submitComment(taskId: string, executionId: string, text: string, command = false): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -859,6 +865,7 @@ export class BoardController {
       result: undefined,
       error: undefined,
       comment: trimmed,
+      ...command ? { command: true } : {},
     }
     this.tasks = this.tasks.map(candidate => candidate.id === taskId
       ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }

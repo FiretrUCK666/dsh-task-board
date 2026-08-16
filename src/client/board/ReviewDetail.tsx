@@ -4,28 +4,32 @@
  * (the transcript tail, folded from raw history events following the
  * native harness rules) plus a live session panel — the execution
  * session's current model/reasoning effort (native models API), its
- * permission (native /permission path), the task's Agent for the next
- * fresh run (a session that has run cannot switch its composition — the
- * native `agent-preset-locked` constraint is surfaced honestly), its real
- * workspace/Agent facts (from the session-list summary, read-only), and
- * the native context meter (occupancy percent + colored
+ * permission (switched through the native `/permission` command registry —
+ * never a model turn), its real workspace/Agent facts (from the
+ * session-list summary, read-only — an Agent cannot be switched here, the
+ * native `agent-preset-locked` constraint is surfaced as read-only facts),
+ * and the native context meter (occupancy percent + colored
  * system/tools/messages bar, straight from the `contextPressure`/
  * `contextBreakdown` projections the history tail page carries). When the
  * execution session is blocked on the user (approval / plan review /
  * question — the native sidebar wait signal), a waiting banner explains it
  * and points at "查看会话". The layout is two columns: the conversation
- * owns the full left height; a right rail (independent scroll, composer
- * pinned at its bottom) holds the meter, config and the comment thread.
- * Comments are a per-task FIFO queue — saved rounds (cruise off) wait,
- * queued rounds (cruise on, budget full) show their position, and both can
- * be cancelled until injected. Transcript and session data refresh while
- * the panel is open (10s cadence + manual refresh), so continuing the
+ * owns the full left height; a right rail holds a fixed head (meter,
+ * config, session facts — always visible) above an independently scrolling
+ * comment thread, with the composer pinned at its bottom. Comments are a
+ * per-task FIFO queue — saved rounds (cruise off) wait, queued rounds
+ * (cruise on, budget full) show their position, and both can be cancelled
+ * until injected; a comment whose first character is '/' is a slash
+ * command executed through the native command registry (unknown commands
+ * fall back to plain text), exactly like the native composer. Transcript
+ * and session data refresh while the panel is open (a lightweight 3s poll
+ * gated on the projection watermark + manual refresh), so continuing the
  * conversation in the native session page shows up here. The native
  * session page remains the place for the full transcript ("查看会话");
  * this page never duplicates the full conversation view.
  */
-import { useCallback, useEffect, useState } from 'react'
-import type { BoardController, SessionConfigFace, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import type { BoardController, SessionConfigFace, SessionModelChoice, SessionModelGroup, TranscriptEventShape, TranscriptProjectionsShape } from '../../core/controller.ts'
 import type { ExecutionRecord, TaskRecord } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
@@ -44,6 +48,29 @@ function workspaceLabelOf(cwd: string): string {
   const segment = cwd.split(/[\\/]+/).filter(Boolean).pop()
   return segment !== undefined && segment !== '' ? segment : cwd
 }
+
+/**
+ * One memoized transcript row. Props are the primitive render facts (never
+ * the line object), so a light poll that re-folds the tail only re-renders
+ * the rows whose content actually changed — long transcripts stay smooth.
+ */
+const TranscriptRow = memo(function TranscriptRow(props:
+  | { kind: 'context'; plugin: string; summary: string }
+  | { kind: 'message'; role: 'user' | 'assistant'; text: string }
+) {
+  if (props.kind === 'context') {
+    return (
+      <li className={css.reviewContext} title={props.summary}>
+        {t('review.contextInjection')} · {props.plugin}
+      </li>
+    )
+  }
+  return (
+    <li className={css.reviewMessage} data-role={props.role}>
+      <span className={css.reviewMessageText}>{props.text}</span>
+    </li>
+  )
+})
 
 /** One comment round rendered in the thread, with its live state. */
 interface CommentView {
@@ -123,11 +150,12 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const [configBusy, setConfigBusy] = useState(false)
   const [configMessage, setConfigMessage] = useState<string | undefined>(undefined)
   const [permissionRows, setPermissionRows] = useState<readonly { id: string; name?: string; description?: string }[] | undefined>(undefined)
-  // The native agent-preset directory for the next-fresh-run Agent picker
-  // (same catalog as the new-task form; absent = no picker).
-  const [agentRows, setAgentRows] = useState<readonly { id: string; name?: string; description?: string; isDefault?: boolean }[] | undefined>(undefined)
   const [draft, setDraft] = useState('')
   const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
+  // The last observed transcript watermark (the tail event's seq): the light
+  // poll only re-renders when new events actually arrived, so an idle
+  // session costs nothing and a busy one re-renders only on real progress.
+  const watermarkRef = useRef<number | undefined>(undefined)
 
   // The native permission-preset directory for the permission switcher
   // (same catalog as the new-task form; absent = no switcher).
@@ -140,23 +168,20 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     return () => { alive = false }
   }, [controller])
 
-  // The native agent-preset roster for the Agent picker.
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      const rows = await controller.runCatalog()?.listAgentPresets()
-      if (alive) setAgentRows(rows)
-    })()
-    return () => { alive = false }
-  }, [controller])
+  /** The transcript watermark of a loaded result (tail seq; 0 when empty). */
+  const watermarkOf = (result: { events: readonly TranscriptEventShape[] }): number => {
+    const tail = result.events[result.events.length - 1]
+    return tail?.seq ?? result.events.length
+  }
 
-  /** Reload transcript + session panel from the live native sources. */
+  /** Full reload: transcript + session panel (open, task changes, manual). */
   const reload = useCallback((): void => {
     if (sessionId === undefined) return
     void controller.loadTranscript(sessionId).then(result => {
       if (result === undefined) setTranscriptError(true)
       else {
         setTranscriptError(false)
+        watermarkRef.current = watermarkOf(result)
         setLines(foldTranscript(result.events))
         setProjections(result.projections)
       }
@@ -172,19 +197,43 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     }
   }, [controller, sessionId, sessionConfig])
 
+  /** Light sync poll: refetch the transcript tail and re-render only when
+   *  the watermark moved (new events). Never touches the session panel. */
+  const poll = useCallback((): void => {
+    if (sessionId === undefined) return
+    void controller.loadTranscript(sessionId).then(result => {
+      if (result === undefined) return
+      if (watermarkRef.current === watermarkOf(result)) return
+      watermarkRef.current = watermarkOf(result)
+      setTranscriptError(false)
+      setLines(foldTranscript(result.events))
+      setProjections(result.projections)
+    })
+  }, [controller, sessionId])
+
   // Load on open + whenever the task's run history changes (a comment
-  // injected or settled), and refresh on a light cadence while the panel is
-  // open so edits made in the native session page show up here.
+  // injected or settled) — a full reload.
   useEffect(() => { reload() }, [reload, current.executions.length, current.status])
+  // Light poll at 3s while the panel is open; paused while the tab is
+  // hidden (the native rhythm), with an immediate catch-up on return.
   useEffect(() => {
-    const timer = setInterval(reload, 10_000)
-    return () => { clearInterval(timer) }
-  }, [reload])
+    const timer = setInterval(poll, 3_000)
+    const onVisibility = (): void => { if (!document.hidden) poll() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [poll])
 
   const submit = (): void => {
     const text = draft.trim()
     if (text === '') return
-    const round = controller.submitComment(current.id, execution.id, text)
+    // A draft whose first non-space character is '/' is a slash command,
+    // exactly like the native composer: it executes through the host command
+    // registry (unknown commands fall back to plain text). Plain prompts
+    // never start with '/', so nothing user-typed is misrouted.
+    const round = controller.submitComment(current.id, execution.id, text, text.startsWith('/'))
     if (round !== undefined) {
       setLastCommentId(round.id)
       setDraft('')
@@ -236,18 +285,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
       setConfigBusy(false)
       setConfigMessage(result.ok ? t('review.configApplied') : result.error)
     })
-  }
-
-  /**
-   * Apply an Agent to the task (not the session): a session that has already
-   * run cannot switch its composition (native `agent-preset-locked`), so the
-   * honest path is to store the preset on the task — the next fresh run
-   * composes from it.
-   */
-  const applyAgent = (agentPreset: string): void => {
-    if (agentPreset === '') return
-    controller.updateTask(current.id, { agentPreset })
-    setConfigMessage(t('review.agentApplied'))
   }
 
   // The run's sequence among the task's plain runs (comment rounds excluded).
@@ -342,13 +379,19 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             ) : (
               <ul className={css.reviewTranscript}>
                 {lines.map(line => line.kind === 'context' ? (
-                  <li key={line.id} className={css.reviewContext} title={line.summary}>
-                    {t('review.contextInjection')} · {line.plugin}
-                  </li>
+                  <TranscriptRow
+                    key={line.id}
+                    kind="context"
+                    plugin={line.plugin}
+                    summary={line.summary}
+                  />
                 ) : (
-                  <li key={line.id} className={css.reviewMessage} data-role={line.role}>
-                    <span className={css.reviewMessageText}>{line.text}</span>
-                  </li>
+                  <TranscriptRow
+                    key={line.id}
+                    kind="message"
+                    role={line.role}
+                    text={line.text}
+                  />
                 ))}
               </ul>
             )}
@@ -357,11 +400,12 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             </div>
           </div>
 
-          {/* Right rail: context meter, session config, comments and the
-              composer — one column that scrolls on its own; the composer
-              stays pinned at the rail's bottom. */}
+          {/* Right rail: context meter, session config and session facts in a
+              fixed head — always visible no matter how long the comment
+              thread grows — then the comment thread in its own scroll region,
+              and the composer pinned at the rail's bottom. */}
           <aside className={css.reviewRail}>
-            <div className={css.reviewRailScroll}>
+            <div className={css.reviewRailHead}>
           {sessionId !== undefined && meterSegments !== undefined && occupancy !== undefined && (
             <div className={css.reviewContextMeter} aria-label={t('review.meterOf', { percent: `${occupancy.percent}%` })}>
               <div className={css.reviewMeterHead}>
@@ -487,28 +531,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                       </span>
                     </span>
                   )}
-                  {agentRows !== undefined && (
-                    <span className={css.reviewConfigRow}>
-                      <span className={css.reviewConfigLabel}>{t('review.agent')}</span>
-                      <span className={css.selectWrap}>
-                        <select
-                          className={css.input}
-                          value={current.agentPreset ?? ''}
-                          disabled={configBusy}
-                          title={t('review.agentHint')}
-                          onChange={event => { applyAgent(event.target.value) }}
-                        >
-                          <option value="">{t('review.agentDefault')}</option>
-                          {agentRows.map(row => (
-                            <option key={row.id} value={row.id}>
-                              {row.name ?? row.id}
-                              {row.isDefault === true ? ` (${t('new.agentPresetDefaultTag')})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </span>
-                    </span>
-                  )}
                 </div>
               )}
               {configMessage !== undefined && <span className={css.reviewConfigMessage}>{configMessage}</span>}
@@ -534,12 +556,13 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               <span className={css.reviewConfigHint}>{t('review.sessionHint')}</span>
             </section>
           )}
+            </div>
 
-          {/* The comment thread: a clearly separated zone inside the rail —
-              human interventions, distinct from the conversation. Saved or
-              queued rounds (not yet injected) can be cancelled; injected
-              ones show their live state. */}
-          <section className={`${css.reviewSection} ${css.reviewThread}`}>
+            {/* The comment thread scrolls in its own region: however long it
+                grows, the rail head above stays visible. Saved or queued
+                rounds (not yet injected) can be cancelled; injected ones
+                show their live state. */}
+            <div className={css.reviewRailThread}>
             <h4 className={css.reviewThreadTitle}>
               {t('review.comments')}
               <span className={css.reviewThreadCount}>{comments.length}</span>
@@ -555,7 +578,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                     const cancellable = view.state === 'saved' || view.state === 'queued'
                     return (
                       <li key={view.round.id} className={css.reviewComment}>
-                        <span className={css.reviewCommentText}>{view.round.comment}</span>
+                        <span className={css.reviewCommentText}>
+                          {view.round.command === true && <span className={css.reviewCommentCommand} aria-hidden="true">/</span>}
+                          {view.round.comment}
+                        </span>
                         <span className={css.reviewCommentMeta}>
                           <Chip kind={state.kind}>{state.label}</Chip>
                           <span className={css.reviewCommentTime}>{formatDateTime(view.round.startedAt)}</span>
@@ -569,7 +595,13 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                             </button>
                           )}
                         </span>
-                        {view.state === 'failed' && view.round.error !== undefined && view.round.error !== '' && (
+                        {/* A settled command round carries its registry
+                            outcome (e.g. "/permission read-only" → "preset
+                            read-only", or an unknown-preset error). */}
+                        {view.round.command === true && view.round.error !== undefined && view.round.error !== '' && (
+                          <span className={`${css.executionError}${view.state === 'succeeded' ? ` ${css.reviewCommandOutcome}` : ''}`}>{view.round.error}</span>
+                        )}
+                        {view.state === 'failed' && view.round.command !== true && view.round.error !== undefined && view.round.error !== '' && (
                           <span className={css.executionError}>{view.round.error}</span>
                         )}
                       </li>
@@ -578,7 +610,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 </ul>
               )}
             </div>
-          </section>
             </div>
 
             {/* The composer, pinned at the rail's bottom: a comment continues

@@ -123,18 +123,20 @@ describe('parseLedger', () => {
     expect(legacy[0].permission).toBeUndefined()
   })
 
-  it('round-trips comment rounds with their queue state (comment + injectedAt)', () => {
+  it('round-trips comment rounds with their queue state (comment + injectedAt + command)', () => {
     const task = createTask({ title: 'x', description: '', prompt: '' }, 1, 't-1')
     task.executions = [
       { id: 'run-1', sessionId: 's-1', startedAt: 1, endedAt: 10, result: 'succeeded', error: undefined },
       { id: 'c-1', sessionId: 's-1', startedAt: 20, endedAt: 30, result: 'succeeded', error: undefined, comment: '已注入', injectedAt: 21 },
       { id: 'c-2', sessionId: 's-1', startedAt: 40, endedAt: undefined, result: undefined, error: undefined, comment: '排队中' },
+      { id: 'c-3', sessionId: 's-1', startedAt: 50, endedAt: 51, result: 'succeeded', error: 'preset read-only', comment: '/permission read-only', command: true },
     ]
     const parsed = parseLedger(JSON.stringify([task]))
     expect(parsed[0].executions).toEqual([
       { id: 'run-1', sessionId: 's-1', startedAt: 1, endedAt: 10, result: 'succeeded', error: undefined },
       { id: 'c-1', sessionId: 's-1', startedAt: 20, endedAt: 30, result: 'succeeded', error: undefined, comment: '已注入', injectedAt: 21 },
       { id: 'c-2', sessionId: 's-1', startedAt: 40, endedAt: undefined, result: undefined, error: undefined, comment: '排队中' },
+      { id: 'c-3', sessionId: 's-1', startedAt: 50, endedAt: 51, result: 'succeeded', error: 'preset read-only', comment: '/permission read-only', command: true },
     ])
   })
 })

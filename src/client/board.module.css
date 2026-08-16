@@ -654,6 +654,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   box-shadow: var(--dsw-shadow-lv3);
 }
 
+/* Not enough room below the field (the composer sits at the bottom of the
+   modal): open upward so the menu is never clipped by the shell. */
+.slashMenu[data-direction='up'] {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+/* The prompt textarea auto-grows with its content (height is driven from
+   scrollHeight in PromptInput) and scrolls internally past its cap — no
+   manual resize handle, matching the native composer. */
+.promptTextarea {
+  resize: none;
+  overflow-y: hidden;
+}
+
 .slashMenuRow {
   display: flex;
   align-items: center;
@@ -1388,10 +1403,23 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: var(--dsw-alias-bg-layer-2);
 }
 
-.reviewRailScroll {
+/* The rail head — context meter, session config, session facts: fixed and
+   always visible, so a long comment thread can never push them away. */
+.reviewRailHead {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: none;
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--dsw-alias-separator-primary);
+}
+
+/* The comment thread scrolls in its own region below the rail head; the
+   composer stays pinned at the rail's bottom. */
+.reviewRailThread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -1696,17 +1724,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
-/* The comment thread zone: visually separated from the conversation — its
-   own framed surface inside the rail, so human interventions read as a
-   distinct layer. */
-.reviewThread {
-  flex: none;
-  padding: 12px;
-  background: var(--dsw-alias-bg-base);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
-}
-
 .reviewThreadTitle {
   display: inline-flex;
   align-items: center;
@@ -1752,6 +1769,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* A slash-command comment round: the leading slash renders in the business
+   accent so a command reads as a command, not a plain sentence. */
+.reviewCommentCommand {
+  font-weight: 700;
+  color: var(--dsw-alias-state-business-primary);
+}
+
+/* The outcome text of a settled command round (successful commands carry
+   their registry text here, e.g. `/permission read-only` → "preset
+   read-only"). Succeeded outcomes render muted; failed ones keep the error
+   color via .executionError. */
+.reviewCommandOutcome {
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .reviewCommentMeta {
@@ -1828,7 +1860,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
     border-top: 1px solid var(--dsw-alias-separator-primary);
   }
 
-  .reviewRailScroll {
-    max-height: 30vh;
+  .reviewRailHead {
+    max-height: 34vh;
+    overflow-y: auto;
   }
 }

@@ -3,23 +3,49 @@
  * live slash candidates — host commands plus skills, the same merged
  * catalog the native composer's '/' menu reads — navigable with ArrowUp/
  * Down, accepted with Enter/Tab, dismissed with Escape or by clicking
- * elsewhere; picking inserts the candidate text. Shared by the new-task
- * modal and the detail edit mode through TaskForm.
+ * elsewhere; picking inserts the candidate text. The menu opens downward by
+ * default and flips upward when the space below the field within its
+ * clipping container is insufficient (the review page's composer sits at
+ * the bottom of the modal, so this is the normal case there). The textarea
+ * auto-grows with its content up to a cap and then scrolls internally —
+ * the native composer's pattern (resize: none), which eliminates the
+ * unreachable resize-handle trap of a bottom-pinned input. Shared by the
+ * new-task modal, the detail edit mode and the review page's composer.
  */
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type SyntheticEvent } from 'react'
 import type { BoardController, SlashCandidate } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { commandTokenAt, filterSlashCandidates, insertCommand, type CommandToken } from './slash-token.ts'
+import { shouldFlipMenuUp } from './menu-direction.ts'
 
 /** Menu row cap: keeps the list scannable and scrollbar-free. */
 const MAX_ROWS = 8
+
+/** Auto-grow cap: taller content scrolls inside the textarea instead of
+ *  stretching the modal. */
+const TEXTAREA_MAX_HEIGHT = 160
 
 /** The open menu: the triggering token span plus its filtered candidates. */
 interface SlashMenuState {
   token: CommandToken
   rows: readonly SlashCandidate[]
   highlight: number
+  /** Whether the menu opens upward (insufficient space below the field). */
+  flip: boolean
+}
+
+/** The nearest ancestor that clips overflow (the modal shell), if any. */
+function clippingAncestorOf(element: HTMLElement): HTMLElement | undefined {
+  let current = element.parentElement
+  while (current !== null) {
+    const style = getComputedStyle(current)
+    if (style.overflow !== 'visible' || style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+      return current
+    }
+    current = current.parentElement
+  }
+  return undefined
 }
 
 /** Prompt textarea with a slash-command dropdown. */
@@ -31,6 +57,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
   controller: BoardController
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const fieldRef = useRef<HTMLDivElement | null>(null)
   // Latest text/caret read by the sync pass (props/state settle a tick late).
   const valueRef = useRef(value)
   const caretRef = useRef(0)
@@ -50,6 +77,19 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
     return () => { alive = false }
   }, [controller])
 
+  // Auto-grow: the textarea matches its content up to a cap, then scrolls
+  // internally. No manual resize handle (native composer pattern) — a
+  // bottom-pinned input's handle would slide past the modal edge and become
+  // unreachable.
+  useEffect(() => {
+    const element = textareaRef.current
+    if (element === null) return
+    element.style.height = 'auto'
+    const next = Math.min(element.scrollHeight, TEXTAREA_MAX_HEIGHT)
+    element.style.height = `${next}px`
+    element.style.overflowY = element.scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden'
+  }, [value])
+
   /** Recompute the menu from the latest text/caret (no-op without a slash token). */
   const syncMenu = (): void => {
     const token = commandTokenAt(valueRef.current, caretRef.current)
@@ -58,13 +98,24 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
       return
     }
     const rows = filterSlashCandidates(catalog, token.query, token.leading).slice(0, MAX_ROWS)
+    let flip = false
+    const field = fieldRef.current
+    if (field !== null) {
+      const fieldRect = field.getBoundingClientRect()
+      const clip = clippingAncestorOf(field)
+      flip = shouldFlipMenuUp(
+        fieldRect,
+        clip !== undefined ? clip.getBoundingClientRect() : undefined,
+        window.innerHeight,
+      )
+    }
     setMenu(previous =>
       previous !== undefined
         && previous.token.start === token.start
         && previous.token.end === token.end
         && previous.token.query === token.query
         ? previous // same span: keep the keyboard highlight
-        : { token, rows, highlight: 0 })
+        : { token, rows, highlight: 0, flip })
   }
 
   // The catalog may land after the user already typed '/': reopen the menu
@@ -135,10 +186,10 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
   const onBlur = (): void => { setMenu(undefined) }
 
   return (
-    <div className={css.promptField}>
+    <div className={css.promptField} ref={fieldRef}>
       <textarea
         ref={textareaRef}
-        className={css.input}
+        className={`${css.input} ${css.promptTextarea}`}
         rows={rows}
         value={value}
         placeholder={placeholder}
@@ -150,7 +201,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
         onBlur={onBlur}
       />
       {menu !== undefined && (
-        <div className={css.slashMenu} role="listbox" aria-label={t('prompt.commandList')}>
+        <div className={css.slashMenu} data-direction={menu.flip ? 'up' : 'down'} role="listbox" aria-label={t('prompt.commandList')}>
           {menu.rows.length === 0 ? (
             <div className={css.slashMenuEmpty} role="option">{t('prompt.noCommands')}</div>
           ) : menu.rows.map((row, index) => (

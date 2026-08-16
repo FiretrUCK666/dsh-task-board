@@ -59,12 +59,18 @@ export interface SettingsPluginItemOwnerProps {
  * Structural face of the client remote bridge (the web shell's `remote`
  * service from dsh-api-gateway): the prompt autocomplete reads the live host
  * command registry through `remote.commands.list` — the same catalog the
- * native composer's '/' menu consumes. Narrowed structurally so no SDK
- * package is imported; unavailable surfaces degrade to "no menu".
+ * native composer's '/' menu consumes — and slash-command comment rounds
+ * execute through `remote.commands.execute`, the same RPC the native
+ * composer's '/' submissions use. Narrowed structurally so no SDK package is
+ * imported; unavailable surfaces degrade to "no menu" / plain-text comments.
  */
 interface RemoteCommandsFace {
   list(sessionId: string): Promise<
     | { ok: true; value: readonly { name: string; description: string; input?: { hint?: string } }[] }
+    | { ok: false; error: { code: string; message: string } }
+  >
+  execute(sessionId: string, line: string): Promise<
+    | { ok: true; value: { commandId: string; result: { kind: 'success' | 'error'; text?: string } } | undefined }
     | { ok: false; error: { code: string; message: string } }
   >
 }
@@ -210,6 +216,37 @@ export function apply(ctx: ClientContext): void {
         return response.result.ok
           ? { ok: true as const }
           : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+      },
+      // Slash-command comment rounds (e.g. "/plan ...") execute through the
+      // native command registry — the same RPC the composer's '/' submissions
+      // use. The plain prompt path would deliver the line to the model as
+      // text, which is exactly the "command doesn't work" symptom; the
+      // registry path never produces a model turn. Undefined value = the
+      // registry did not recognize the line (the round then falls back to
+      // plain text, matching the native composer's default-sink behavior).
+      sendCommand: async (sessionId, line) => {
+        const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
+          ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
+        if (commands === undefined) {
+          console.warn('[dsh-task-board] slash commands unavailable: no remote.commands bridge')
+          return { ok: true as const, matched: false }
+        }
+        try {
+          const result = await commands.execute(sessionId as SessionId, line)
+          if (!result.ok) {
+            return { ok: false as const, error: `${result.error.code}: ${result.error.message}` }
+          }
+          return {
+            ok: true as const,
+            matched: result.value !== undefined,
+            ...result.value !== undefined
+              ? { outcome: { kind: result.value.result.kind, ...result.value.result.text !== undefined ? { text: result.value.result.text } : {} } }
+              : {},
+          }
+        } catch (error) {
+          console.warn('[dsh-task-board] slash command execution failed:', error)
+          return { ok: false as const, error: String(error) }
+        }
       },
     })
     // Review-page transcripts: the recent history window of an execution
@@ -379,17 +416,34 @@ export function apply(ctx: ClientContext): void {
             : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
         },
         setPermission: async (sessionId, permission) => {
-          // The native write path for per-session switches: a prompt whose
-          // content is exactly one slash line is a command, never a turn.
-          const response = await connection.api.sessions.prompt({
-            sessionId: sessionId as SessionId,
-            mode: 'queue',
-            content: [{ type: 'text', text: `/permission ${permission}` }],
-          })
-          if (!response.result.ok) {
-            return { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+          // The native write path for per-session permission switches: the
+          // `/permission` command through the host command registry (the
+          // same RPC the GUI's permission picker uses). The plain prompt
+          // path would deliver the line to the model as text — the agent
+          // would answer in natural language instead of the permission
+          // actually changing. The registry path never produces a model
+          // turn; an unrecognized line reports unmatched.
+          const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
+            ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
+          if (commands === undefined) {
+            return { ok: false as const, error: 'permission commands unavailable: no remote.commands bridge' }
           }
-          return { ok: true as const }
+          try {
+            const result = await commands.execute(sessionId as SessionId, `/permission ${permission}`)
+            if (!result.ok) {
+              return { ok: false as const, error: `${result.error.code}: ${result.error.message}` }
+            }
+            if (result.value === undefined) {
+              return { ok: false as const, error: 'the host offers no /permission command for this session' }
+            }
+            const outcome = result.value.result
+            return outcome.kind === 'success'
+              ? { ok: true as const }
+              : { ok: false as const, error: outcome.text ?? 'permission switch failed' }
+          } catch (error) {
+            console.warn('[dsh-task-board] permission switch failed:', error)
+            return { ok: false as const, error: String(error) }
+          }
         },
       } satisfies SessionConfigFace,
       runCatalog: {

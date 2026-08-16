@@ -897,6 +897,21 @@ describe('comments', () => {
     expect(store.load()[0].executions).toHaveLength(1)
   })
 
+  it('flags slash-command comments and injects them through the command path', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    const round = controller.submitComment(taskId, executionId, '/plan 继续干', true)
+    expect(round).toBeDefined()
+    expect(round?.command).toBe(true)
+    expect(store.load()[0].executions[1].command).toBe(true)
+    // A plain comment stays unflagged.
+    expect(controller.submitComment(taskId, executionId, '普通评论')?.command).toBeUndefined()
+    expect(exec.commentCalls).toHaveLength(1) // only the command round injected
+    expect(exec.commentCalls[0].text).toBe('/plan 继续干')
+  })
+
   it('keeps a comment pending while the task is running', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)

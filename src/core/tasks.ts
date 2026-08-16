@@ -33,6 +33,12 @@ export interface ExecutionRecord {
   /** The comment text when this round is a comment continuation (absent = a plain run). */
   comment?: string
   /**
+   * Whether this comment round is a slash command rather than a turn: the
+   * line is executed through the native command registry (never delivered
+   * to the model as text). Unknown commands fall back to plain text.
+   */
+  command?: boolean
+  /**
    * When a comment continuation was actually injected into its session (ms
    * epoch). Absent = the comment is still saved/queued and can be cancelled;
    * present = the session is (or was) running it and the round can only be
