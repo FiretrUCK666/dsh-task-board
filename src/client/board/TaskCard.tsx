@@ -6,6 +6,7 @@ import type { TaskRecord } from '../../core/tasks.ts'
 import { executionLabel } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
+import { Chip } from './Chip.tsx'
 
 /** Compact relative/absolute time label. */
 export function formatTime(ms: number): string {
@@ -84,29 +85,28 @@ export function TaskCard({ task, workspaceTitleOf, onClick }: {
         {(task.schedule?.enabled === true || latest !== undefined) && (
           <span className={css.cardBadges}>
             {task.schedule?.enabled === true && (
-              <span
-                className={css.cardSchedule}
+              <Chip
                 title={task.schedule.nextRunAt !== undefined
                   ? `${t('card.scheduled')} · ${new Date(task.schedule.nextRunAt).toLocaleString()}`
                   : t('card.scheduled')}
               >
                 {t('card.scheduled')}
-              </span>
+              </Chip>
             )}
             {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && (
-              <span className={css.cardRun} title={t('card.batchProgress')}>
+              <Chip kind="muted" title={t('card.batchProgress')}>
                 {task.schedule.runCount}/{task.schedule.maxRuns}
-              </span>
+              </Chip>
             )}
             {running ? (
-              <span className={css.cardRunning}>
+              <Chip kind="warn">
                 <span className={css.spinner} aria-hidden="true" />
                 {t('detail.result.running')} · {t('detail.executionNo', { n: String(runs) })}
-              </span>
+              </Chip>
             ) : latest !== undefined && (
-              <span className={css.cardRun} data-result={latest.result}>
+              <Chip kind={latest.result === 'failed' ? 'error' : latest.result === 'succeeded' ? 'success' : 'muted'}>
                 {runs} {t('board.runs')}
-              </span>
+              </Chip>
             )}
           </span>
         )}

@@ -94,6 +94,12 @@ export interface RunCatalogFace {
   listPermissions(): Promise<readonly PermissionRow[] | undefined>
 }
 
+/** The editable slice of a task (content + run configuration). */
+export type TaskUpdatePatch = Partial<Pick<TaskRecord,
+  'title' | 'description' | 'prompt' | 'workspaceId' | 'provider' | 'model'
+  | 'reasoningEffort' | 'agentPreset' | 'permission'
+>>
+
 /** Controller dependencies (all swappable in tests). */
 export interface ControllerDeps {
   store: TaskStore
@@ -245,11 +251,38 @@ export class BoardController {
     return task
   }
 
-  updateTask(id: string, patch: Partial<Pick<TaskRecord, 'title' | 'description' | 'prompt'>>): void {
-    this.tasks = this.tasks.map(task => task.id === id
-      ? { ...task, ...patch, updatedAt: this.now() }
-      : task)
+  /**
+   * Update a task's editable fields: content (title/description/prompt) and
+   * run configuration. A run-config key present in the patch with an empty
+   * string or `undefined` clears the field (the run then falls back to
+   * defaults); a value sets it; absent keys keep their current value. Text
+   * fields are trimmed; a blank title is rejected (returns false, state
+   * untouched). The next execution — manual or scheduled — reads the updated
+   * record, so edits apply from the following run onward.
+   * @returns true when applied, false when rejected (blank title / unknown task).
+   */
+  updateTask(id: string, patch: TaskUpdatePatch): boolean {
+    const task = this.tasks.find(candidate => candidate.id === id)
+    if (task === undefined) return false
+    const title = patch.title?.trim()
+    if (title !== undefined && title === '') return false
+    const applied: Partial<TaskRecord> = {}
+    if (patch.title !== undefined) applied.title = title
+    if (patch.description !== undefined) applied.description = patch.description.trim()
+    if (patch.prompt !== undefined) applied.prompt = patch.prompt.trim()
+    // Run-config fields: a present key with '' or undefined clears the field
+    // (execution falls back to defaults); a value sets it.
+    for (const key of ['workspaceId', 'provider', 'model', 'reasoningEffort', 'agentPreset', 'permission'] as const) {
+      if (key in patch) {
+        const value = patch[key]
+        applied[key] = value === undefined || value === '' ? undefined : value
+      }
+    }
+    this.tasks = this.tasks.map(candidate => candidate.id === id
+      ? { ...candidate, ...applied, updatedAt: this.now() }
+      : candidate)
     this.persistAndNotify()
+    return true
   }
 
   moveTask(id: string, status: TaskStatus): void {

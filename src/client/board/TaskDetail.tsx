@@ -12,7 +12,10 @@ import { permissionLabel } from '../permission-label.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { Chip, type ChipKind } from './Chip.tsx'
 import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
+import { TaskForm } from './TaskForm.tsx'
+import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
 
 /** Execution outcome → locale key. */
 const RESULT_KEY: Record<NonNullable<ExecutionRecord['result']>, TaskBoardKey> = {
@@ -30,6 +33,23 @@ const STATUS_KEY: Record<TaskStatus, TaskBoardKey> = {
   failed: 'board.status.failed',
 }
 
+/** Status → shared-chip color (detail badge). */
+const STATUS_CHIP: Record<TaskStatus, ChipKind> = {
+  backlog: 'neutral',
+  todo: 'neutral',
+  running: 'warn',
+  done: 'success',
+  failed: 'error',
+}
+
+/** Execution outcome → shared-chip color. */
+function resultChipKind(result: ExecutionRecord['result']): ChipKind {
+  if (result === 'failed') return 'error'
+  if (result === 'succeeded') return 'success'
+  if (result === 'cancelled') return 'muted'
+  return 'warn'
+}
+
 /** One execution-history row: sequence, outcome, exact start/end times. */
 function ExecutionRow({ execution, index, onOpen }: {
   execution: ExecutionRecord
@@ -43,10 +63,10 @@ function ExecutionRow({ execution, index, onOpen }: {
     <li className={css.executionRow} data-result={result}>
       <div className={css.executionRowTop}>
         <span className={css.executionIndex}>{t('detail.executionNo', { n: String(index) })}</span>
-        <span className={css.executionBadge} data-result={result}>
+        <Chip kind={resultChipKind(result)}>
           {running && <span className={css.spinner} aria-hidden="true" />}
           {running ? t('detail.result.running') : t(RESULT_KEY[result as NonNullable<ExecutionRecord['result']>])}
-        </span>
+        </Chip>
         {execution.sessionId !== undefined && (
           <button
             type="button"
@@ -229,6 +249,10 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   workspaceTitleOf: (workspaceId: string) => string
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Edit-mode draft; undefined = not editing. Kept separate from `current`
+  // so live record updates (e.g. an execution settling) never clobber it.
+  const [draft, setDraft] = useState<TaskDraft | undefined>(undefined)
+  const [editError, setEditError] = useState<string | undefined>(undefined)
   const latestExecution = task.executions[task.executions.length - 1]
   // A card is busy while its latest run is still open. A scheduled batch
   // keeps the card 'running' between runs, so `running` alone must not
@@ -240,12 +264,46 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   useEffect(() => { setLatest(task) }, [task])
   const current = latest
 
+  const editing = draft !== undefined
+
+  /** Enter edit mode with a draft of the current record. */
+  const startEditing = (): void => {
+    setDraft(draftFromTask(current))
+    setEditError(undefined)
+  }
+
+  /** Persist the draft; a blank title is rejected with an inline error. */
+  const saveEdit = (): void => {
+    if (draft === undefined) return
+    if (!controller.updateTask(current.id, draftToUpdatePatch(draft))) {
+      setEditError(t('new.required'))
+      return
+    }
+    setDraft(undefined)
+    setEditError(undefined)
+  }
+
+  /** Discard the draft and leave edit mode. */
+  const cancelEdit = (): void => {
+    setDraft(undefined)
+    setEditError(undefined)
+  }
+
   return (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) controller.closeTask() }}>
       <div className={css.detail} role="dialog" aria-label={t('detail.title')}>
         <header className={css.detailHeader}>
           <h2 className={css.detailTitle}>{current.title}</h2>
-          <span className={css.statusBadge} data-status={current.status}>{t(STATUS_KEY[current.status])}</span>
+          <Chip kind={STATUS_CHIP[current.status]}>{t(STATUS_KEY[current.status])}</Chip>
+          {!editing && (
+            <button
+              type="button"
+              className={css.ghostButton}
+              onClick={startEditing}
+            >
+              {t('detail.edit')}
+            </button>
+          )}
           <button
             type="button"
             className={css.iconButton}
@@ -257,53 +315,62 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
         </header>
 
         <div className={css.detailBody}>
-          <section className={css.detailSection}>
-            <h4>{t('detail.description')}</h4>
-            <p className={css.detailText}>{current.description !== '' ? current.description : '—'}</p>
-          </section>
+          {editing && draft !== undefined ? (
+            <>
+              <TaskForm draft={draft} onChange={setDraft} controller={controller} />
+              {editError !== undefined && <p className={css.formError}>{editError}</p>}
+            </>
+          ) : (
+            <>
+              <section className={css.detailSection}>
+                <h4>{t('detail.description')}</h4>
+                <p className={css.detailText}>{current.description !== '' ? current.description : '—'}</p>
+              </section>
 
-          <section className={css.detailSection}>
-            <h4>{t('detail.prompt')}</h4>
-            <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : current.title}</pre>
-          </section>
+              <section className={css.detailSection}>
+                <h4>{t('detail.prompt')}</h4>
+                <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : current.title}</pre>
+              </section>
 
-          <section className={css.detailSection}>
-            <h4>{t('detail.runConfig')}</h4>
-            <dl className={css.configGrid}>
-              <div className={css.configRow}>
-                <dt className={css.configLabel}>{t('new.workspace')}</dt>
-                <dd className={css.configValue}>
-                  {current.workspaceId !== undefined
-                    ? workspaceTitleOf(current.workspaceId)
-                    : t('new.workspaceDefault')}
-                </dd>
-              </div>
-              {current.agentPreset !== undefined && (
-                <div className={css.configRow}>
-                  <dt className={css.configLabel}>{t('new.agentPreset')}</dt>
-                  <dd className={css.configValue}>{current.agentPreset}</dd>
-                </div>
-              )}
-              {current.provider !== undefined && current.model !== undefined && (
-                <div className={css.configRow}>
-                  <dt className={css.configLabel}>{t('new.model')}</dt>
-                  <dd className={css.configValue}>{current.provider} / {current.model}</dd>
-                </div>
-              )}
-              {current.reasoningEffort !== undefined && (
-                <div className={css.configRow}>
-                  <dt className={css.configLabel}>{t('new.effort')}</dt>
-                  <dd className={css.configValue}>{current.reasoningEffort}</dd>
-                </div>
-              )}
-              {current.permission !== undefined && (
-                <div className={css.configRow}>
-                  <dt className={css.configLabel}>{t('new.permission')}</dt>
-                  <dd className={css.configValue}>{permissionLabel(current.permission)}</dd>
-                </div>
-              )}
-            </dl>
-          </section>
+              <section className={css.detailSection}>
+                <h4>{t('detail.runConfig')}</h4>
+                <dl className={css.configGrid}>
+                  <div className={css.configRow}>
+                    <dt className={css.configLabel}>{t('new.workspace')}</dt>
+                    <dd className={css.configValue}>
+                      {current.workspaceId !== undefined
+                        ? workspaceTitleOf(current.workspaceId)
+                        : t('new.workspaceDefault')}
+                    </dd>
+                  </div>
+                  {current.agentPreset !== undefined && (
+                    <div className={css.configRow}>
+                      <dt className={css.configLabel}>{t('new.agentPreset')}</dt>
+                      <dd className={css.configValue}>{current.agentPreset}</dd>
+                    </div>
+                  )}
+                  {current.provider !== undefined && current.model !== undefined && (
+                    <div className={css.configRow}>
+                      <dt className={css.configLabel}>{t('new.model')}</dt>
+                      <dd className={css.configValue}>{current.provider} / {current.model}</dd>
+                    </div>
+                  )}
+                  {current.reasoningEffort !== undefined && (
+                    <div className={css.configRow}>
+                      <dt className={css.configLabel}>{t('new.effort')}</dt>
+                      <dd className={css.configValue}>{current.reasoningEffort}</dd>
+                    </div>
+                  )}
+                  {current.permission !== undefined && (
+                    <div className={css.configRow}>
+                      <dt className={css.configLabel}>{t('new.permission')}</dt>
+                      <dd className={css.configValue}>{permissionLabel(current.permission)}</dd>
+                    </div>
+                  )}
+                </dl>
+              </section>
+            </>
+          )}
 
           <ScheduleSection controller={controller} task={current} />
 
@@ -344,19 +411,40 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
         </div>
 
         <footer className={css.detailFooter}>
-          <button
-            type="button"
-            className={css.primaryButton}
-            disabled={busy}
-            onClick={() => {
-              // Running kicks off a real agent session; close the detail so
-              // the whole board stays visible while the task executes.
-              controller.closeTask()
-              void controller.rerunTask(current.id)
-            }}
-          >
-            {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
-          </button>
+          {editing ? (
+            <>
+              <button
+                type="button"
+                className={css.primaryButton}
+                onClick={saveEdit}
+              >
+                {t('detail.save')}
+              </button>
+              <button
+                type="button"
+                className={css.ghostButton}
+                onClick={cancelEdit}
+              >
+                {t('detail.cancel')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={css.primaryButton}
+                disabled={busy}
+                onClick={() => {
+                  // Running kicks off a real agent session; close the detail so
+                  // the whole board stays visible while the task executes.
+                  controller.closeTask()
+                  void controller.rerunTask(current.id)
+                }}
+              >
+                {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
+              </button>
+            </>
+          )}
           <button
             type="button"
             className={css.dangerButton}

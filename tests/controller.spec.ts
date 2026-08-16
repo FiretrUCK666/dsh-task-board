@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { BoardController, type ControllerDeps } from '../src/core/controller.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
-import { createTask } from '../src/core/tasks.ts'
+import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 let nextId = 0
@@ -56,10 +56,10 @@ class FakeSessions {
 
 /** Controllable ExecutionService stub: captures run calls, fires events on demand. */
 class StubExec {
-  runCalls: Array<{ taskId: string; executionId: string; fire: (event: ExecutionEvent) => void }> = []
+  runCalls: Array<{ task: TaskRecord; taskId: string; executionId: string; fire: (event: ExecutionEvent) => void }> = []
   reconcileResult: ExecutionEvent | undefined = undefined
-  async run(task: { id: string }, execution: { id: string }, onEvent: (event: ExecutionEvent) => void): Promise<void> {
-    this.runCalls.push({ taskId: task.id, executionId: execution.id, fire: onEvent })
+  async run(task: TaskRecord, execution: { id: string }, onEvent: (event: ExecutionEvent) => void): Promise<void> {
+    this.runCalls.push({ task, taskId: task.id, executionId: execution.id, fire: onEvent })
   }
   reconcile(): ExecutionEvent | undefined {
     return this.reconcileResult
@@ -141,6 +141,69 @@ describe('task mutations', () => {
     const persisted = store.load()[0]
     expect(persisted.title).toBe('y')
     expect(persisted.status).toBe('backlog')
+  })
+
+  it('updates content and run configuration, clearing fields with undefined', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({
+      title: 'x', description: '', prompt: '',
+      workspaceId: 'w-1', agentPreset: 'preset-a', permission: 'full',
+    })!
+    expect(controller.updateTask(task.id, {
+      title: ' 新标题 ',
+      description: ' 新描述 ',
+      prompt: ' 新 prompt ',
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      reasoningEffort: 'high',
+      workspaceId: undefined,
+      agentPreset: undefined,
+      permission: undefined,
+    })).toBe(true)
+    const persisted = store.load()[0]
+    expect(persisted.title).toBe('新标题')
+    expect(persisted.description).toBe('新描述')
+    expect(persisted.prompt).toBe('新 prompt')
+    expect(persisted.provider).toBe('deepseek')
+    expect(persisted.model).toBe('deepseek-chat')
+    expect(persisted.reasoningEffort).toBe('high')
+    expect(persisted.workspaceId).toBeUndefined()
+    expect(persisted.agentPreset).toBeUndefined()
+    expect(persisted.permission).toBeUndefined()
+  })
+
+  it('rejects blank titles and unknown tasks without touching state', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    expect(controller.updateTask(task.id, { title: '   ' })).toBe(false)
+    expect(controller.updateTask('missing', { title: 'y' })).toBe(false)
+    expect(store.load()[0].title).toBe('x')
+  })
+
+  it('bumps updatedAt on every applied update', () => {
+    let clock = NOW
+    const sessions = new FakeSessions()
+    const store = new InMemoryTaskStore()
+    const controller = new BoardController({
+      store, exec: new StubExec() as unknown as ExecutionService,
+      sessions, now: () => clock, uuid,
+    })
+    controller.start()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    clock = NOW + 1000
+    controller.updateTask(task.id, { description: 'd' })
+    expect(store.load()[0].updatedAt).toBe(NOW + 1000)
+  })
+
+  it('runs with the latest edited content on the next execution', async () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const task = controller.createTask({ title: '旧标题', description: '', prompt: '旧 prompt' })!
+    controller.updateTask(task.id, { title: '新标题', prompt: '新 prompt' })
+    await controller.runTask(task.id)
+    expect(stub.runCalls).toHaveLength(1)
+    expect(stub.runCalls[0].task.title).toBe('新标题')
+    expect(stub.runCalls[0].task.prompt).toBe('新 prompt')
   })
 })
 

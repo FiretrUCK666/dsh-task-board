@@ -326,49 +326,31 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-width: 0;
 }
 
-.cardSchedule {
-  flex: none;
-  min-width: 0;
-  font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
-  padding: 2px 6px;
-  border-radius: 999px;
-  color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-interactive-bg-hover);
-}
+/* --- shared badge system ----------------------------------------------------- */
 
-/* Run indicators share one visual language: 12px semibold colored text.
-   The count takes the color of the latest result; the running indicator
-   adds the spinner. */
-.cardRun {
-  flex: none;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.cardRun[data-result='succeeded'] {
-  color: var(--dsw-alias-state-success-primary);
-}
-
-.cardRun[data-result='failed'] {
-  color: var(--dsw-alias-state-error-primary);
-}
-
-/* In-progress indicator: warn-colored text + spinner, no fill (the
-   warn-secondary background renders too low contrast in some themes, and
-   plain colored text matches the settled run-count coloring). */
-.cardRunning {
+/* Every pill on the board (card chips, detail status and execution badges)
+   renders through the same .chip base: 12px semibold, neutral fill,
+   semantic color via data-kind. */
+.chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  flex: none;
+  min-width: 0;
+  padding: 2px 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--dsw-alias-state-warn-primary);
+  line-height: 1.4;
+  border-radius: 999px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover);
   white-space: nowrap;
-  min-width: 0;
 }
+
+.chip[data-kind='success'] { color: var(--dsw-alias-state-success-primary); }
+.chip[data-kind='error'] { color: var(--dsw-alias-state-error-primary); }
+.chip[data-kind='warn'] { color: var(--dsw-alias-state-warn-primary); }
+.chip[data-kind='muted'] { color: var(--dsw-alias-label-tertiary); }
 
 /* Shared spinner (cards + detail execution rows), colored by currentColor. */
 .spinner {
@@ -592,30 +574,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   overflow-wrap: anywhere;
 }
 
-.statusBadge {
-  flex: none;
-  padding: 2px 10px;
-  font-size: 12px;
-  border-radius: 999px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-secondary);
-}
-
-.statusBadge[data-status='running'] {
-  color: var(--dsw-alias-state-warn-primary);
-  border-color: var(--dsw-alias-state-warn-primary);
-}
-
-.statusBadge[data-status='done'] {
-  color: var(--dsw-alias-state-success-primary);
-  border-color: var(--dsw-alias-state-success-primary);
-}
-
-.statusBadge[data-status='failed'] {
-  color: var(--dsw-alias-state-error-primary);
-  border-color: var(--dsw-alias-state-error-primary);
-}
-
 .detailBody {
   padding: 14px 18px;
   overflow-y: auto;
@@ -776,31 +734,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-size: 12px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
-}
-
-.executionBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: none;
-  padding: 1px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 999px;
-  color: var(--dsw-alias-state-warn-primary);
-  background: transparent;
-}
-
-.executionBadge[data-result='succeeded'] {
-  color: var(--dsw-alias-state-success-primary);
-}
-
-.executionBadge[data-result='failed'] {
-  color: var(--dsw-alias-state-error-primary);
-}
-
-.executionBadge[data-result='cancelled'] {
-  color: var(--dsw-alias-label-tertiary);
 }
 
 .executionOpen {
