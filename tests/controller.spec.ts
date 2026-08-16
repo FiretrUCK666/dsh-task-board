@@ -23,12 +23,23 @@ class FakeSessions {
   knownIds: Set<string> | undefined = undefined
   /** Host list running flags per session id (absent id = unknown to the list). */
   runningById: Record<string, boolean> = {}
+  /** Host-list pending-interaction signals per session (native amber dot). */
+  waitingById: Record<string, 'approval' | 'plan-review' | 'question'> = {}
+  /** Host-list workspace facts per session. */
+  infoById: Record<string, { cwd?: string; agentPreset?: string }> = {}
   private listeners = new Set<() => void>()
   list = {
-    getSnapshot: (): { current: string | undefined; byId: Record<string, { running: boolean }> } => ({
+    getSnapshot: (): {
+      current: string | undefined
+      byId: Record<string, { running: boolean; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; agentPreset?: string }>
+    } => ({
       current: this.current,
       byId: Object.fromEntries(
-        Object.entries(this.runningById).map(([id, running]) => [id, { running }]),
+        Object.entries(this.runningById).map(([id, running]) => [id, {
+          running,
+          ...this.waitingById[id] !== undefined ? { pendingInteraction: this.waitingById[id] } : {},
+          ...this.infoById[id] !== undefined ? this.infoById[id] : {},
+        }]),
       ),
     }),
     subscribe: (fn: () => void): (() => void) => {
@@ -50,6 +61,19 @@ class FakeSessions {
   /** Set the host-list running flag of a session and notify (list change). */
   setRunning(id: string, running: boolean): void {
     this.runningById[id] = running
+    for (const fn of [...this.listeners]) fn()
+  }
+  /** Set a session's pending-interaction signal and notify (list change). */
+  setWaiting(id: string, waiting: 'approval' | 'plan-review' | 'question' | undefined): void {
+    this.runningById[id] ??= false
+    if (waiting === undefined) delete this.waitingById[id]
+    else this.waitingById[id] = waiting
+    for (const fn of [...this.listeners]) fn()
+  }
+  /** Set a session's workspace facts and notify (list change). */
+  setInfo(id: string, info: { cwd?: string; agentPreset?: string }): void {
+    this.runningById[id] ??= false
+    this.infoById[id] = info
     for (const fn of [...this.listeners]) fn()
   }
 }
@@ -146,6 +170,67 @@ describe('task mutations', () => {
     const persisted = store.load()[0]
     expect(persisted.title).toBe('y')
     expect(persisted.status).toBe('backlog')
+  })
+
+  it('disarms an armed schedule rule when the task is moved to done', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
+    expect(store.load()[0].schedule?.enabled).toBe(true)
+    controller.moveTask(task.id, 'done')
+    const completed = store.load()[0]
+    expect(completed.status).toBe('done')
+    expect(completed.schedule?.enabled).toBe(false)
+    expect(completed.schedule?.nextRunAt).toBeUndefined()
+    // The rule's configuration survives re-arming.
+    expect(completed.schedule?.cron).toBe('0 9 * * *')
+  })
+
+  it('a done-disarmed rule stays off when the task moves back to a live column', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
+    controller.moveTask(task.id, 'done')
+    expect(store.load()[0].schedule?.enabled).toBe(false)
+    // Moving out of done is a manual re-open, never an auto resume.
+    controller.moveTask(task.id, 'todo')
+    expect(store.load()[0].schedule?.enabled).toBe(false)
+    expect(store.load()[0].status).toBe('todo')
+  })
+
+  it('moving to backlog/review keeps an armed rule untouched (paused, not disarmed)', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
+    controller.moveTask(task.id, 'backlog')
+    expect(store.load()[0].schedule?.enabled).toBe(true)
+  })
+
+  it('reads a session pending-interaction signal live from the session list', () => {
+    const { controller, sessions } = makeController()
+    expect(controller.pendingInteractionOf(undefined)).toBeUndefined()
+    expect(controller.pendingInteractionOf('s-1')).toBeUndefined()
+    sessions.setWaiting('s-1', 'plan-review')
+    expect(controller.pendingInteractionOf('s-1')).toBe('plan-review')
+    sessions.setWaiting('s-1', undefined)
+    expect(controller.pendingInteractionOf('s-1')).toBeUndefined()
+  })
+
+  it('reports the session workspace facts (cwd / agent preset)', () => {
+    const { controller, sessions } = makeController()
+    expect(controller.sessionInfo(undefined)).toBeUndefined()
+    expect(controller.sessionInfo('s-1')).toBeUndefined()
+    sessions.setInfo('s-1', { cwd: 'C:\\work\\proj', agentPreset: 'butler' })
+    expect(controller.sessionInfo('s-1')).toEqual({ cwd: 'C:\\work\\proj', agentPreset: 'butler' })
+  })
+
+  it('notifies subscribers when the session list changes (wait states surface live)', () => {
+    const { controller, sessions } = makeController()
+    controller.openBoard()
+    let notified = 0
+    controller.subscribe(() => { notified += 1 })
+    sessions.setWaiting('s-1', 'approval')
+    expect(notified).toBeGreaterThan(0)
   })
 
   it('creates into the chosen landing column with a fresh sort key', () => {

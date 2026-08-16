@@ -45,6 +45,13 @@ function resultChipKind(result: ExecutionRecord['result']): ChipKind {
   return 'warn'
 }
 
+/** Paused-readiness explanation keyed by the pausing status. */
+function pausedLabelOf(status: 'backlog' | 'review' | 'done'): TaskBoardKey {
+  if (status === 'review') return 'detail.schedule.paused.review'
+  if (status === 'done') return 'detail.schedule.paused.done'
+  return 'detail.schedule.paused.backlog'
+}
+
 /** One execution-history row: sequence, outcome, exact start/end times.
  *  Clicking the row opens the review page (review the conversation and
  *  comment to continue it); the native "view session" jump stays on the
@@ -336,9 +343,7 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
           )}
           {readiness.kind === 'paused' && (
             <p className={css.scheduleMeta}>
-              {readiness.status === 'review'
-                ? t('detail.schedule.paused.review')
-                : t('detail.schedule.paused.backlog')}
+              {t(pausedLabelOf(readiness.status))}
             </p>
           )}
         </>
@@ -380,9 +385,7 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
           </p>
           {readiness.kind === 'paused' && (
             <p className={css.scheduleMeta}>
-              {readiness.status === 'review'
-                ? t('detail.schedule.paused.review')
-                : t('detail.schedule.paused.backlog')}
+              {t(pausedLabelOf(readiness.status))}
             </p>
           )}
         </>

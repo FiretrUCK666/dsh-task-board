@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, executionLabel, hasOpenRun, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionLabel, hasOpenRun, resolveCardDrop, ruleReadiness,
   settleExecution, startExecution, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -414,17 +414,47 @@ describe('ruleReadiness', () => {
     expect(ruleReadiness(standby)).toEqual({ kind: 'standby' })
   })
 
-  it('is active for todo/running/done once primed', () => {
-    for (const status of ['todo', 'running', 'done'] as const) {
+  it('is active for todo/running once primed', () => {
+    for (const status of ['todo', 'running'] as const) {
       const task = withSchedule(withStatus(sampleTask(), status, NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
       expect(ruleReadiness(task)).toEqual({ kind: 'active' })
     }
   })
 
-  it('is paused for backlog/review once primed, naming the blocking status', () => {
+  it('is paused for backlog/review/done once primed, naming the blocking status', () => {
     const backlog = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
     expect(ruleReadiness(backlog)).toEqual({ kind: 'paused', status: 'backlog' })
     const review = withSchedule(withStatus(sampleTask(), 'review', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
     expect(ruleReadiness(review)).toEqual({ kind: 'paused', status: 'review' })
+    // Done is also paused: a completed task's armed rule must never drive it
+    // (the completion path additionally disarms it outright — this is the
+    // safety net for legacy rows that still carry a stale enabled flag).
+    const done = withSchedule(withStatus(sampleTask(), 'done', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
+    expect(ruleReadiness(done)).toEqual({ kind: 'paused', status: 'done' })
+  })
+})
+
+describe('disarmSchedule', () => {
+  it('disarms an armed rule while keeping its configuration (cron/mode/budget/prime)', () => {
+    const armed = withSchedule(withStatus(sampleTask(), 'todo', NOW), {
+      enabled: true, mode: 'chain', cron: '0 9 * * *', primed: true, maxRuns: 7, runCount: 3, nextRunAt: NOW + 1000,
+    }, NOW)
+    const disarmed = disarmSchedule(armed, NOW + 1)
+    expect(disarmed.schedule?.enabled).toBe(false)
+    expect(disarmed.schedule?.nextRunAt).toBeUndefined()
+    // Identity preserved so re-arming resumes the same schedule.
+    expect(disarmed.schedule?.mode).toBe('chain')
+    expect(disarmed.schedule?.cron).toBe('0 9 * * *')
+    expect(disarmed.schedule?.primed).toBe(true)
+    expect(disarmed.schedule?.maxRuns).toBe(7)
+    expect(disarmed.schedule?.runCount).toBe(3)
+    expect(disarmed.updatedAt).toBe(NOW + 1)
+  })
+
+  it('is a no-op without a schedule or on an already-disarmed rule', () => {
+    const plain = sampleTask()
+    expect(disarmSchedule(plain, NOW)).toBe(plain)
+    const off = withSchedule(sampleTask(), { enabled: false, cron: '0 9 * * *' }, NOW)
+    expect(disarmSchedule(off, NOW)).toBe(off)
   })
 })

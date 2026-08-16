@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape } from '../core/controller.ts'
+import { BoardController, type SessionConfigFace, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
@@ -85,6 +85,41 @@ interface RemoteFace {
  * three SDK packages listed in `dsh.client.inject`.
  */
 export const inject = ['slots', 'sessions', 'workspaces', 'connection', 'locale']
+
+/**
+ * Structural pick of the two context projections the review page reads from
+ * the history tail page. `values` is typed as `Partial<SessionProjectionMap>`,
+ * a merge table whose keys exist only when the domain packages are imported —
+ * this plugin never imports them, so every field is read and shape-guarded
+ * structurally. Anything that is not a plain object with the expected numeric
+ * fields is dropped (the key's absence is handled gracefully downstream).
+ */
+function pickProjections(values: Record<string, unknown> | undefined): Pick<TranscriptLoadResult, 'projections'> {
+  if (values === undefined) return {}
+  const pressure = values.contextPressure
+  const breakdown = values.contextBreakdown
+  const projections: TranscriptProjectionsShape = {}
+  if (typeof pressure === 'object' && pressure !== null) {
+    const entry = pressure as Record<string, unknown>
+    projections.contextPressure = {
+      ...typeof entry.pressureTokens === 'number' ? { pressureTokens: entry.pressureTokens } : {},
+      ...typeof entry.projectedTokens === 'number' ? { projectedTokens: entry.projectedTokens } : {},
+      ...typeof entry.contextWindow === 'number' ? { contextWindow: entry.contextWindow } : {},
+    }
+  }
+  if (typeof breakdown === 'object' && breakdown !== null) {
+    const entry = breakdown as Record<string, unknown>
+    const systemTokens = entry.systemTokens
+    const toolsTokens = entry.toolsTokens
+    const messageTokens = entry.messageTokens
+    if (typeof systemTokens === 'number' && typeof toolsTokens === 'number' && typeof messageTokens === 'number') {
+      projections.contextBreakdown = { systemTokens, toolsTokens, messageTokens }
+    }
+  }
+  return projections.contextPressure !== undefined || projections.contextBreakdown !== undefined
+    ? { projections }
+    : {}
+}
 
 /**
  * Mount the task board.
@@ -178,16 +213,28 @@ export function apply(ctx: ClientContext): void {
       },
     })
     // Review-page transcripts: the recent history window of an execution
-    // session (raw events; the review page folds them into messages).
-    const transcriptLoader = async (sessionId: string): Promise<readonly TranscriptEventShape[] | undefined> => {
+    // session (raw events; the review page folds them into messages), plus
+    // the native projection baseline (context pressure / breakdown) that the
+    // history tail page carries — the same values the native context meter
+    // reads, so the board's usage strip is always the real occupancy figure.
+    const transcriptLoader = async (sessionId: string): Promise<TranscriptLoadResult | undefined> => {
       try {
         const response = await connection.api.sessions.history({
           sessionId: sessionId as SessionId,
           maxMessages: 30,
         })
-        return response.result.ok
-          ? response.result.value.events.map(entry => entry.event)
-          : undefined
+        if (!response.result.ok) return undefined
+        const value = response.result.value
+        // The projection values ride the history tail page as a
+        // `Partial<SessionProjectionMap>` — a merge table whose keys exist
+        // only when the domain packages are type-imported. Read the two
+        // fields we consume structurally (never a dependency on a domain
+        // package), dropping any value that fails the shape guard.
+        const projections = value.projections?.values as Record<string, unknown> | undefined
+        return {
+          events: value.events.map(entry => entry.event),
+          ...pickProjections(projections),
+        }
       } catch (error) {
         console.error('[dsh-task-board] transcript read failed', error)
         return undefined

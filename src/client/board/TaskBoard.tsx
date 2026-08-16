@@ -257,14 +257,25 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     aria-hidden="true"
                   />
                 )}
-                {tasks.map(task => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    workspaceTitleOf={workspaceTitleOf}
-                    onClick={() => { controller.openTask(task.id) }}
-                  />
-                ))}
+                {tasks.map(task => {
+                  // The open run's session wait state (approval / plan-review
+                  // / question) — read live so cards reflect the moment a
+                  // session starts waiting (the controller notifies on
+                  // session-list changes).
+                  const latest = task.executions[task.executions.length - 1]
+                  const waiting = latest?.sessionId !== undefined
+                    ? controller.pendingInteractionOf(latest.sessionId)
+                    : undefined
+                  return (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      workspaceTitleOf={workspaceTitleOf}
+                      waiting={waiting}
+                      onClick={() => { controller.openTask(task.id) }}
+                    />
+                  )
+                })}
                 {tasks.length === 0 && <div className={css.columnEmpty}>{t('board.empty')}</div>}
               </div>
             </section>

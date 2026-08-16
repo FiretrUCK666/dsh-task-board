@@ -140,7 +140,7 @@ export const COLUMNS: readonly { status: TaskStatus; label: string }[] = [
 export const MANUAL_STATUSES: readonly TaskStatus[] = ['backlog', 'todo', 'done']
 
 /** Statuses in which an armed + primed auto rule keeps driving the task. */
-export const RULE_ACTIVE_STATUSES: readonly TaskStatus[] = ['todo', 'running', 'done']
+export const RULE_ACTIVE_STATUSES: readonly TaskStatus[] = ['todo', 'running']
 
 /** All valid statuses (closed union guard). */
 export const ALL_STATUSES: readonly TaskStatus[] = [
@@ -161,16 +161,19 @@ export function isTaskStatus(value: unknown): value is TaskStatus {
  *   The rule never triggers by itself and the user is told to start it by
  *   hand; its next-run instant is kept for the day it becomes active.
  * - `paused`: armed and started, but the task sits in a state the rule must
- *   not drive (backlog = shelved, review = a human decision is pending).
- *   Any manual action that leaves these states (run, or move to todo/done)
- *   resumes the rule; missed due instants are skipped, never caught up.
+ *   not drive (backlog = shelved, review = a human decision is pending,
+ *   done = completed). Any manual action that leaves these states (run, or
+ *   move to todo/done) resumes the rule; missed due instants are skipped,
+ *   never caught up. Completion additionally disarms the rule outright (see
+ *   {@link disarmSchedule}) — `paused` here is the safety net for legacy/
+ *   repaired rows that would otherwise hold a stale enabled flag.
  * - `active`: armed, started, and the task is in a drivable state
- *   (todo/running/done) — cron due instants and chain hand-offs fire.
+ *   (todo/running) — cron due instants and chain hand-offs fire.
  */
 export type RuleReadiness =
   | { kind: 'disabled' }
   | { kind: 'standby' }
-  | { kind: 'paused'; status: 'backlog' | 'review' }
+  | { kind: 'paused'; status: 'backlog' | 'review' | 'done' }
   | { kind: 'active' }
 
 /** The readiness of a task's schedule rule (see {@link RuleReadiness}). */
@@ -178,8 +181,23 @@ export function ruleReadiness(task: TaskRecord): RuleReadiness {
   const schedule = task.schedule
   if (schedule === undefined || !schedule.enabled) return { kind: 'disabled' }
   if (schedule.primed !== true) return { kind: 'standby' }
-  if (task.status === 'backlog' || task.status === 'review') return { kind: 'paused', status: task.status }
+  if (task.status === 'backlog' || task.status === 'review' || task.status === 'done') {
+    return { kind: 'paused', status: task.status }
+  }
   return { kind: 'active' }
+}
+
+/**
+ * Disarm a task's schedule rule for good — the completed-task shut-off. The
+ * rule's identity (cron expression, mode, budget, prime, counters) is kept
+ * so re-arming it later resumes from the same configured behavior; only
+ * `enabled` and the pending `nextRunAt` are cleared. A no-op on tasks with
+ * no rule or an already-disarmed one.
+ */
+export function disarmSchedule(task: TaskRecord, now: number): TaskRecord {
+  const schedule = task.schedule
+  if (schedule === undefined || !schedule.enabled) return task
+  return withSchedule(task, { enabled: false, nextRunAt: undefined }, now)
 }
 
 /** Whether a manual move target is allowed from the given status. */

@@ -5,6 +5,7 @@
  * through resolveCardDrop.
  */
 import { useState } from 'react'
+import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { hasOpenRun, ruleReadiness } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
@@ -58,10 +59,12 @@ export function formatDuration(ms: number): string {
 }
 
 /** One card in a column. */
-export function TaskCard({ task, workspaceTitleOf, onClick }: {
+export function TaskCard({ task, workspaceTitleOf, waiting, onClick }: {
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
+  /** The open run's session is blocked on the user (approval / plan review / question). */
+  waiting?: PendingInteractionKind
   onClick: () => void
 }) {
   const [dragging, setDragging] = useState(false)
@@ -130,9 +133,11 @@ export function TaskCard({ task, workspaceTitleOf, onClick }: {
               </Chip>
             )}
             {running ? (
-              <Chip kind="warn" fill={false}>
+              <Chip kind="warn" fill={false} title={waiting !== undefined
+                ? t('card.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })
+                : undefined}>
                 <span className={css.spinner} aria-hidden="true" />
-                {t('detail.result.running')} · {t('detail.executionNo', { n: String(runs) })}
+                {waiting !== undefined ? `${t('card.waiting')} · ${t(`waiting.${waiting}` as 'waiting.approval')}` : t('detail.result.running')} · {t('detail.executionNo', { n: String(runs) })}
               </Chip>
             ) : latest !== undefined && (
               <Chip

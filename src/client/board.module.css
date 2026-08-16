@@ -41,6 +41,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .entry {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   width: 100%;
   height: 32px;
@@ -79,7 +80,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* Collapsed rail: icon-only, centered, matching the shell's 56px rail. */
 [data-dsh-frame][data-sidebar-collapsed] .entry {
-  justify-content: center;
   padding: 0;
   width: 100%;
 }
@@ -1305,8 +1305,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .review {
   display: flex;
   flex-direction: column;
-  width: min(748px, calc(100vw - 48px));
-  max-height: min(84vh, 800px);
+  width: min(880px, calc(100vw - 48px));
+  max-height: min(86vh, 860px);
   background: var(--dsw-alias-bg-base);
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 14px;
@@ -1458,7 +1458,116 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   animation: dshTbFadeUp 160ms ease;
 }
 
-/* Token-usage summary under the conversation. */
+/* The "waiting for you" banner: shown while the execution session is blocked
+   on the user (approval / plan review / question) — the native sidebar wait
+   signal, visible right where the run's outcome reads. */
+.reviewWaiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-state-warn-primary);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+/* Context meter strip: the native occupancy figure + colored composition bar,
+   always visible below the conversation (see context-meter.ts for the math). */
+.reviewContextMeter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-separator-primary);
+}
+
+.reviewMeterHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.reviewMeterReading {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.reviewMeterPercent {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.reviewMeterFigures {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The colored composition bar: 4px rounded track, hairline gaps, min-width
+   segments — the native ContextMeter look. Tints ride the shared
+   --meter-tint custom property set by each segment's class. */
+.reviewMeterBar {
+  display: flex;
+  gap: 1px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  overflow: hidden;
+}
+
+.reviewMeterSegment {
+  flex: none;
+  min-width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--meter-tint, var(--dsw-alias-label-tertiary));
+}
+
+.meterSystem { --meter-tint: var(--dsw-static-neutral-bluish-400); }
+.meterTools { --meter-tint: #a78bfa; }
+.meterMessages { --meter-tint: var(--dsw-static-blue-450); }
+
+/* Breakdown rows: swatch + label + compact figure per composition bucket
+   (swatches share the segment tints). */
+.reviewMeterRows {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.reviewMeterRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.reviewMeterSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--meter-tint, var(--dsw-alias-label-tertiary));
+}
+
+.reviewMeterValue {
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Token-usage summary under the conversation (fallback when no native
+   context projection is served — the meter above replaces it when present). */
 .reviewUsage {
   margin: 0;
   font-size: 12px;
@@ -1467,11 +1576,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 /* The live session panel: model / effort / permission of this execution
-   session, straight from the native APIs. */
+   session (native APIs) in one compact line, plus the session's real
+   workspace/Agent facts (read-only, from the session-list summary). */
 .reviewConfig {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   flex: none;
   padding-top: 10px;
   border-top: 1px solid var(--dsw-alias-separator-primary);
@@ -1483,30 +1593,32 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-secondary);
 }
 
+/* One line of three config cells (model / effort / permission); effort and
+   permission cells appear only when available, so the grid adapts. */
 .reviewConfigGrid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 12px;
 }
 
 .reviewConfigRow {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
 }
 
 .reviewConfigLabel {
-  flex: none;
-  width: 72px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .reviewConfigRow > .selectWrap {
-  flex: 1;
+  width: 100%;
   min-width: 0;
-  max-width: 420px;
 }
 
 .reviewConfigUnavailable,
@@ -1519,6 +1631,35 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
   line-height: 1.5;
+}
+
+/* The session's real workspace + composed Agent: read-only facts, distinct
+   from the task card's run configuration (which feeds the next fresh run). */
+.reviewSessionFacts {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.reviewSessionFact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.reviewSessionFactLabel {
+  flex: none;
+}
+
+.reviewSessionFactValue {
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The comment thread zone: visually separated from the conversation above —
@@ -1548,9 +1689,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 /* The comment list scrolls on its own when long, so the composer below it
-   stays fixed. */
+   stays fixed. The cap is deliberately modest: long threads scroll rather
+   than steal vertical space from the conversation above. */
 .reviewCommentList {
-  max-height: 40vh;
+  max-height: 32vh;
   overflow-y: auto;
   padding-right: 4px;
 }

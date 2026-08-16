@@ -4,17 +4,23 @@
  * (the transcript tail, folded from raw history events following the
  * native harness rules) plus a live session panel — the execution
  * session's current model/reasoning effort (native models API), its
- * permission (native /permission path) and the token usage summed from
- * the transcript. The conversation scrolls in its own region; the comment
- * thread and composer stay fixed at the bottom, so sending a comment never
- * requires scrolling through a long conversation. Transcript and session
- * data refresh while the panel is open (10s cadence + manual refresh), so
- * continuing the conversation in the native session page shows up here.
- * The native session page remains the place for the full transcript
- * ("查看会话"); this page never duplicates the full conversation view.
+ * permission (native /permission path), its real workspace/Agent facts
+ * (from the session-list summary, read-only), and the native context
+ * meter (occupancy percent + colored system/tools/messages bar, straight
+ * from the `contextPressure`/`contextBreakdown` projections the history
+ * tail page carries). When the execution session is blocked on the user
+ * (approval / plan review / question — the native sidebar wait signal),
+ * a waiting banner explains it and points at "查看会话". The conversation
+ * scrolls in its own region; the comment thread and composer stay fixed at
+ * the bottom, so sending a comment never requires scrolling through a long
+ * conversation. Transcript and session data refresh while the panel is
+ * open (10s cadence + manual refresh), so continuing the conversation in
+ * the native session page shows up here. The native session page remains
+ * the place for the full transcript ("查看会话"); this page never
+ * duplicates the full conversation view.
  */
 import { useCallback, useEffect, useState } from 'react'
-import type { BoardController, SessionConfigFace, SessionModelChoice, SessionModelGroup } from '../../core/controller.ts'
+import type { BoardController, SessionConfigFace, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
 import type { ExecutionRecord, TaskRecord } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
@@ -23,9 +29,16 @@ import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { foldTranscript, sumUsage, type TranscriptLine } from './review-transcript.ts'
+import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
+
+/** The session's real workspace root → short display label (last path segment). */
+function workspaceLabelOf(cwd: string): string {
+  const segment = cwd.split(/[\\/]+/).filter(Boolean).pop()
+  return segment !== undefined && segment !== '' ? segment : cwd
+}
 
 /** One comment round rendered in the thread, with its live state. */
 interface CommentView {
@@ -76,6 +89,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
 
   const [lines, setLines] = useState<readonly TranscriptLine[] | undefined>(undefined)
   const [transcriptError, setTranscriptError] = useState(false)
+  // Native projection baseline (context pressure / breakdown) from the
+  // history tail page — the source of the context meter below.
+  const [projections, setProjections] = useState<TranscriptProjectionsShape | undefined>(undefined)
   // Live session panel: current selection + selectable directory.
   const [sessionModels, setSessionModels] = useState<{ current: SessionModelChoice; groups: readonly SessionModelGroup[] } | undefined>(undefined)
   const [configUnavailable, setConfigUnavailable] = useState(false)
@@ -99,11 +115,12 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   /** Reload transcript + session panel from the live native sources. */
   const reload = useCallback((): void => {
     if (sessionId === undefined) return
-    void controller.loadTranscript(sessionId).then(events => {
-      if (events === undefined) setTranscriptError(true)
+    void controller.loadTranscript(sessionId).then(result => {
+      if (result === undefined) setTranscriptError(true)
       else {
         setTranscriptError(false)
-        setLines(foldTranscript(events))
+        setLines(foldTranscript(result.events))
+        setProjections(result.projections)
       }
     })
     if (sessionConfig !== undefined) {
@@ -188,6 +205,18 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     .filter(candidate => candidate.comment === undefined)
     .indexOf(execution) + 1
   const usage = sumUsage(lines ?? [])
+  // The execution session is blocked on the user (approval / plan review /
+  // question): surfaced live from the native session-list signal.
+  const waiting = controller.pendingInteractionOf(sessionId)
+  // The session's real workspace + composed Agent (distinct from the task
+  // card's run configuration, which feeds the next fresh run).
+  const sessionInfo = controller.sessionInfo(sessionId)
+  // Context meter: the native occupancy figure (~N / M) + colored composition
+  // bar. Falls back to the per-message usage sum when no projection is served.
+  const occupancy = contextOccupancy(projections?.contextPressure)
+  const meterSegments = occupancy !== undefined
+    ? contextSegments(occupancy, projections?.contextBreakdown)
+    : undefined
 
   return (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
@@ -241,6 +270,15 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               </span>
             </div>
 
+            {waiting !== undefined && (
+              <div className={css.reviewWaiting} role="status">
+                <Chip kind="warn" fill={false}>{t('review.waiting')}</Chip>
+                <span>
+                  {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
+                </span>
+              </div>
+            )}
+
             {sessionId === undefined ? (
               <p className={css.detailText}>{t('review.noSession')}</p>
             ) : transcriptError ? (
@@ -263,16 +301,70 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               </ul>
             )}
 
-            {usage !== undefined && (
-              <p className={css.reviewUsage}>
-                {t('review.usage')}：
-                {t('review.usageInput', { n: String(usage.inputTokens) })} · {t('review.usageOutput', { n: String(usage.outputTokens) })}
-                {usage.cacheReadTokens !== undefined && ` · ${t('review.usageCacheRead', { n: String(usage.cacheReadTokens) })}`}
-                {usage.cacheWriteTokens !== undefined && ` · ${t('review.usageCacheWrite', { n: String(usage.cacheWriteTokens) })}`}
-                {usage.reasoningTokens !== undefined && ` · ${t('review.usageReasoning', { n: String(usage.reasoningTokens) })}`}
-              </p>
-            )}
+            {/*
+              The context meter: native occupancy figure + colored composition
+              bar (system / tools / messages). Fixed below the conversation
+              (like the native meter beside the composer); when no projection
+              is served the per-message usage sum takes its place.
+            */}
           </div>
+
+          {sessionId !== undefined && meterSegments !== undefined && occupancy !== undefined && (
+            <div className={css.reviewContextMeter} aria-label={t('review.meterOf', { percent: `${occupancy.percent}%` })}>
+              <div className={css.reviewMeterHead}>
+                <span className={css.reviewMeterReading}>{t('review.meterUsed')}</span>
+                <span className={css.reviewMeterPercent}>{occupancy.percent}%</span>
+                <span className={css.reviewMeterFigures}>
+                  {t('review.meterFigures', {
+                    used: formatTokens(occupancy.usedTokens),
+                    window: formatTokens(occupancy.contextWindow),
+                  })}
+                </span>
+              </div>
+              <div className={css.reviewMeterBar} aria-hidden="true">
+                {meterSegments.map(segment => (
+                  <span
+                    key={segment.key}
+                    className={`${css.reviewMeterSegment}${segment.className !== undefined ? ` ${css[segment.className as keyof typeof css]}` : ''}`}
+                    style={{ width: `${segment.width}%` }}
+                  />
+                ))}
+              </div>
+              {(() => {
+                const breakdown = projections?.contextBreakdown
+                if (breakdown === undefined) return null
+                return (
+                  <div className={css.reviewMeterRows}>
+                    <span className={css.reviewMeterRow}>
+                      <span className={`${css.reviewMeterSwatch} ${css.meterSystem}`} aria-hidden="true" />
+                      <span>{t('review.meterSystem')}</span>
+                      <span className={css.reviewMeterValue}>~{formatTokens(breakdown.systemTokens)}</span>
+                    </span>
+                    <span className={css.reviewMeterRow}>
+                      <span className={`${css.reviewMeterSwatch} ${css.meterTools}`} aria-hidden="true" />
+                      <span>{t('review.meterTools')}</span>
+                      <span className={css.reviewMeterValue}>~{formatTokens(breakdown.toolsTokens)}</span>
+                    </span>
+                    <span className={css.reviewMeterRow}>
+                      <span className={`${css.reviewMeterSwatch} ${css.meterMessages}`} aria-hidden="true" />
+                      <span>{t('review.meterMessages')}</span>
+                      <span className={css.reviewMeterValue}>~{formatTokens(breakdown.messageTokens)}</span>
+                    </span>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+          {sessionId !== undefined && meterSegments === undefined && usage !== undefined && (
+            <p className={css.reviewUsage}>
+              {t('review.usage')}：
+              {t('review.usageInput', { n: String(usage.inputTokens) })} · {t('review.usageOutput', { n: String(usage.outputTokens) })}
+              {usage.cacheReadTokens !== undefined && ` · ${t('review.usageCacheRead', { n: String(usage.cacheReadTokens) })}`}
+              {usage.cacheWriteTokens !== undefined && ` · ${t('review.usageCacheWrite', { n: String(usage.cacheWriteTokens) })}`}
+              {usage.reasoningTokens !== undefined && ` · ${t('review.usageReasoning', { n: String(usage.reasoningTokens) })}`}
+            </p>
+          )}
 
           {/* The live session panel: model / effort / permission of this
               execution session — the same native APIs the harness uses. */}
@@ -345,7 +437,26 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 </div>
               )}
               {configMessage !== undefined && <span className={css.reviewConfigMessage}>{configMessage}</span>}
-              <span className={css.reviewConfigHint}>{t('review.configHint')}</span>
+              {sessionId !== undefined && sessionInfo !== undefined && (
+                <div className={css.reviewSessionFacts}>
+                  <span className={css.reviewSessionFact}>
+                    <span className={css.reviewSessionFactLabel}>{t('review.sessionWorkspace')}</span>
+                    <span
+                      className={css.reviewSessionFactValue}
+                      title={sessionInfo.cwd ?? undefined}
+                    >
+                      {sessionInfo.cwd !== undefined ? workspaceLabelOf(sessionInfo.cwd) : t('review.sessionUnknown')}
+                    </span>
+                  </span>
+                  <span className={css.reviewSessionFact}>
+                    <span className={css.reviewSessionFactLabel}>{t('review.sessionAgent')}</span>
+                    <span className={css.reviewSessionFactValue}>
+                      {sessionInfo.agentPreset !== undefined ? sessionInfo.agentPreset : t('review.sessionDefaultAgent')}
+                    </span>
+                  </span>
+                </div>
+              )}
+              <span className={css.reviewConfigHint}>{t('review.sessionHint')}</span>
             </section>
           )}
 

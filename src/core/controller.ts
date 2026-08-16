@@ -13,12 +13,15 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import type { TaskStore } from './store.ts'
 import { CruiseService } from './cruise.ts'
 import {
-  applyCardOrder, createTask, hasOpenRun, settleExecution, startExecution, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, settleExecution, startExecution, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
 /** Default auto-cruise concurrency when the user has not configured one. */
 export const DEFAULT_CRUISE_LIMIT = 5
+
+/** The native session-list "waiting for the user" signal (sidebar amber dot). */
+export type PendingInteractionKind = 'approval' | 'plan-review' | 'question'
 
 /** The sessions face the controller needs for navigation awareness. */
 export interface SessionsControllerFace {
@@ -26,7 +29,15 @@ export interface SessionsControllerFace {
     getSnapshot(): {
       current: string | undefined
       /** Host session list rows; used to judge whether an execution session finished. */
-      byId: Record<string, { running: boolean }>
+      byId: Record<string, {
+        running: boolean
+        /** User interaction the session is blocked on (approval / plan review / question). */
+        pendingInteraction?: PendingInteractionKind
+        /** The session's real workspace root, when the host recorded one. */
+        cwd?: string
+        /** The agent preset the session's agent was composed from, when known. */
+        agentPreset?: string
+      }>
     }
     subscribe(fn: () => void): () => void
   }
@@ -145,6 +156,38 @@ export interface TranscriptEventShape {
   data?: unknown
 }
 
+/**
+ * The native context-pressure projection (see dsh-token-meter): provider
+ * sample, its projection forward over surface movement, and the route
+ * capacity. Narrowed structurally; absent keys mean the value is not known
+ * yet (capability absence is key absence).
+ */
+export interface ContextPressureShape {
+  pressureTokens?: number
+  projectedTokens?: number
+  contextWindow?: number
+}
+
+/** The native context-composition projection: heuristic system/tools/messages split. */
+export interface ContextBreakdownShape {
+  systemTokens: number
+  toolsTokens: number
+  messageTokens: number
+}
+
+/** The projection slice the review page reads (the history tail page's block). */
+export interface TranscriptProjectionsShape {
+  contextPressure?: ContextPressureShape
+  contextBreakdown?: ContextBreakdownShape
+}
+
+/** The review-page transcript: raw events plus the session's projection baseline. */
+export interface TranscriptLoadResult {
+  events: readonly TranscriptEventShape[]
+  /** Native projection values riding the history tail page; absent when the deployment has no registry. */
+  projections?: TranscriptProjectionsShape
+}
+
 /** The live model selection of one execution session (native `sessions.models`). */
 export interface SessionModelChoice {
   provider: string
@@ -203,7 +246,7 @@ export interface ControllerDeps {
   /** Cruise-state persistence; absent = cruise defaults that are not persisted. */
   cruiseStorage?: CruiseStorageFace
   /** Reads a session's recent history events (review-page transcript); absent = the page shows a hint. */
-  transcript?: (sessionId: string) => Promise<readonly TranscriptEventShape[] | undefined>
+  transcript?: (sessionId: string) => Promise<TranscriptLoadResult | undefined>
   /** Session-config surface (review-page model/permission panel); absent = the panel degrades gracefully. */
   sessionConfig?: SessionConfigFace
 }
@@ -326,15 +369,39 @@ export class BoardController {
 
   /**
    * Read a session's recent history events for the review page's transcript
-   * (the fold happens in the UI). undefined when no reader is wired.
+   * (the fold happens in the UI), together with the native projection
+   * baseline (context pressure / breakdown) riding the history tail page.
+   * undefined when no reader is wired.
    */
-  loadTranscript(sessionId: string): Promise<readonly TranscriptEventShape[] | undefined> {
+  loadTranscript(sessionId: string): Promise<TranscriptLoadResult | undefined> {
     return this.deps.transcript?.(sessionId) ?? Promise.resolve(undefined)
   }
 
   /** The session-config face (review page's model/permission panel), or undefined. */
   sessionConfig(): SessionConfigFace | undefined {
     return this.deps.sessionConfig
+  }
+
+  /**
+   * The user interaction an execution session is currently blocked on
+   * (`approval` / `plan-review` / `question`), straight from the native
+   * session-list summary (the same signal as the sidebar's amber dot).
+   * undefined = the session is not waiting (or no longer listed).
+   */
+  pendingInteractionOf(sessionId: string | undefined): PendingInteractionKind | undefined {
+    if (sessionId === undefined) return undefined
+    return this.deps.sessions.list.getSnapshot().byId[sessionId]?.pendingInteraction
+  }
+
+  /** The session's real workspace root + composed agent preset (native list summary). */
+  sessionInfo(sessionId: string | undefined): { cwd?: string; agentPreset?: string } | undefined {
+    if (sessionId === undefined) return undefined
+    const summary = this.deps.sessions.list.getSnapshot().byId[sessionId]
+    if (summary === undefined) return undefined
+    return {
+      ...summary.cwd !== undefined ? { cwd: summary.cwd } : {},
+      ...summary.agentPreset !== undefined ? { agentPreset: summary.agentPreset } : {},
+    }
   }
 
   subscribe(fn: () => void): () => void {
@@ -436,9 +503,21 @@ export class BoardController {
    * Move a card into a column, optionally at a specific position (before the
    * card with `beforeId`; undefined = column tail). The target column's sort
    * keys are renumbered; a same-column move is reorder-only.
+   *
+   * Moving a card to 'done' is the completion hand-off: any armed schedule
+   * rule is disarmed outright ({@link disarmSchedule}) — a completed task's
+   * timer/chain must never fire again, and moving it back to a live column
+   * leaves the rule off until the user re-arms it.
    */
   moveTask(id: string, status: TaskStatus, beforeId?: string): void {
     this.tasks = applyCardOrder(this.tasks, id, status, beforeId, this.now())
+    if (status === 'done') {
+      // Disarm any armed rule: completion is a hard stop, not a pause. The
+      // rule's configuration survives, so re-arming from the detail editor
+      // resumes the same schedule.
+      this.tasks = this.tasks.map(task =>
+        task.id === id ? disarmSchedule(task, this.now()) : task)
+    }
     this.persistAndNotify()
   }
 
@@ -782,6 +861,11 @@ export class BoardController {
     const current = currentOf(this.deps.sessions)
     if (current !== this.lastCurrent) this.closeBoard()
     this.lastCurrent = current
+    // The session list also carries live wait states (approval / plan-review
+    // / question) and the review page's session facts (cwd / agent preset).
+    // Re-render consumers so a card's "等待回应" chip and the review page's
+    // banner appear the moment the session starts waiting — without a poll.
+    this.notify()
   }
 
   private lastCurrent: string | undefined = undefined
