@@ -14,7 +14,7 @@
 - **侧边栏入口**：侧边栏内、新会话按钮下方注入「任务看板」入口行（宽栏显示图标+文字，
   折叠 rail 显示纯图标，随 DSH 主题 token 自适应）。
 - **多列看板**：待规划 / 待办 / 进行中 / 已完成 / 已失败 五列；卡片显示标题、描述、
-  状态、更新时间、执行次数；顶部支持搜索过滤、新建任务、返回对话。
+  状态、更新时间、执行次数；顶部支持搜索过滤、新建任务，「返回对话」固定在右上角。
 - **任务详情**：点卡片打开详情（标题/描述/执行 Prompt/执行记录），**不会**一点就执行；
   详情内提供「执行 / 重新执行」「删除（带确认）」「查看会话（跳转到执行 transcript）」
   以及手动移到待规划/待办。
@@ -23,6 +23,11 @@
   以任务 Prompt 调用 `session.prompt([{ type: 'text', text }], 'queue')` 驱动真实 agent；
   随后订阅该会话快照，轮次真实结束后把卡片置为 已完成/已失败 并记录执行结果。
   执行会话会出现在会话列表，可点进对话查看真实 transcript。
+- **权限选择（原生预设）**：新建任务可选「权限」——选项来自 host 侧
+  `permissionPresets` 服务的动态预设表（经 `/api/dsh-task-board/permissions` 路由下发），
+  **不写死任何清单**；部署/DSH 更新预设（如本部署的 Read only / Workspace write /
+  Full access）后看板自动跟随。执行时在首条 prompt 前以原生 `/permission <key>`
+  命令应用到执行会话（与 GUI 权限选择器同一机制）；未选权限则跟随会话默认。
 - **状态回写**：卡片状态（进行中 → 完成/失败）由真实会话状态驱动；刷新页面/重启后，
   遗留的 running 任务会按会话现状自动对账（reconcile）。
 - **定时任务**：详情面板可为任务配置定时执行——启用开关 + 5 段 cron 表达式
@@ -44,11 +49,13 @@
 package.json / tsconfig.json / tsdown.config.ts / vitest.config.ts   # 独立构建与测试
 shared/tsdown.client.ts + shared/web-platform.ts                      # client bundle 构建预设
 cordis.patch.yml                                                     # profile 挂载补丁（行 id dsh-task-board）
-src/index.ts / src/invariant.ts                                       # host 半边：SystemPrompt section + 设置路由
+src/index.ts / src/invariant.ts                                       # host 半边：SystemPrompt section + 设置/权限路由
 src/host/settings-route.ts                                           # 设置路由层（自包含，纯处理函数可测）
+src/host/permission-route.ts                                         # 权限预设目录路由（读原生 permissionPresets 服务）
 src/client/index.ts                                                   # apply(ctx)：接线 runtime 服务 + 挂载 DOM + 设置卡
 src/client/route-scope.ts                                            # 路由后背的设置 scope
 src/client/settings-form.ts                                          # 暂存式设置表单模型（最小 SettingsScopeLike 接口）
+src/client/permission-label.ts                                       # 权限展示标签（镜像原生 picker 的展示规则）
 src/client/PluginSettingsCard.tsx / TaskBoardSettingsCard.tsx         # 设置卡（始终渲染 + 不可用提示）
 src/client/sidebar-entry.ts                                           # 侧边栏入口注入（自愈式 MutationObserver）
 src/client/board-mount.tsx                                            # 中间列看板挂载 + 显隐切换
@@ -85,6 +92,11 @@ scripts/verify-standalone.mjs                                         # 独立�
 - **设置走自建路由**：host 侧用 `registerSettingsRoute` 注册
   `/api/dsh-task-board/settings`，client 侧用 `RouteSettingsScope` 经该路由读写命名空间
   并维护快照，`CardForm` 通过最小 `SettingsScopeLike` 接口消费。
+- **权限预设走原生服务**：host 侧 `registerPermissionRoute` 注册
+  `/api/dsh-task-board/permissions`，每次请求实时读取 `permissionPresets` 服务的
+  `names`/`optionOf`（结构性窄化接口，不依赖 SDK 包）；选项集合、名称、描述全部来自
+  host 原生预设表，client 只镜像原生 picker 的展示规则（`danger-full-access` → Full
+  access 等）——DSH 更新预设表后看板自动适配，无需改插件。
 - **定时任务在浏览器端调度**：插件是纯客户端（无服务端通道），所以「到点执行」由
   标签页内的调度器完成——每分钟 tick 一次，页面从后台恢复可见时立即补 tick；到点
   触发前先把「下次运行」顺延到下一个 cron 匹配点再执行，同一 tick 不会重复触发；

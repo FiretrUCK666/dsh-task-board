@@ -37,7 +37,7 @@ describe('createTask', () => {
 
   it('maps run-configuration fields (agent preset / workspace / model) onto the task', () => {
     const task = createTask(
-      { title: 'x', description: '', prompt: '', agentPreset: 'butler', workspaceId: 'ws-9', provider: 'opencode-go', model: 'deepseek-v4-flash', reasoningEffort: 'high' },
+      { title: 'x', description: '', prompt: '', agentPreset: 'butler', workspaceId: 'ws-9', provider: 'opencode-go', model: 'deepseek-v4-flash', reasoningEffort: 'high', permission: 'read-only' },
       NOW,
       'task-3',
     )
@@ -46,10 +46,12 @@ describe('createTask', () => {
     expect(task.provider).toBe('opencode-go')
     expect(task.model).toBe('deepseek-v4-flash')
     expect(task.reasoningEffort).toBe('high')
+    expect(task.permission).toBe('read-only')
     // Absent fields stay absent.
     const plain = createTask({ title: 'y', description: '', prompt: '' }, NOW, 'task-4')
     expect(plain.agentPreset).toBeUndefined()
     expect(plain.workspaceId).toBeUndefined()
+    expect(plain.permission).toBeUndefined()
   })
 })
 

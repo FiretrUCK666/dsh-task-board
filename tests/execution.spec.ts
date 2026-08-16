@@ -13,6 +13,8 @@ class FakeDriver implements SessionDriver {
   renameCalls: string[] = []
   promptCalls: unknown[] = []
   promptResult: { ok: true } | { ok: false; error: unknown } = { ok: true }
+  commandCalls: string[] = []
+  commandResult: { ok: true; value: { matched: boolean } } | { ok: false; error: unknown } = { ok: true, value: { matched: true } }
   private snapshot: { running: boolean; lastAgentError: string | null; turnEnds: ReadonlyMap<number, number> } = {
     running: false,
     lastAgentError: null,
@@ -28,6 +30,11 @@ class FakeDriver implements SessionDriver {
   async prompt(content: unknown[], _mode: 'queue'): Promise<{ ok: true } | { ok: false; error: unknown }> {
     this.promptCalls.push(content)
     return this.promptResult
+  }
+
+  async command(line: string): Promise<{ ok: true; value: { matched: boolean } } | { ok: false; error: unknown }> {
+    this.commandCalls.push(line)
+    return this.commandResult
   }
 
   getSnapshot(): { running: boolean; lastAgentError: string | null; turnEnds: ReadonlyMap<number, number> } {
@@ -52,6 +59,7 @@ function makeEnv(overrides: {
   recentWorkspaceId?: string | undefined
   items?: Array<{ workspaceId: string }>
   promptResult?: { ok: true } | { ok: false; error: unknown }
+  commandResult?: { ok: true; value: { matched: boolean } } | { ok: false; error: unknown }
 } = {}) {
   const drivers = new Map<string, FakeDriver>()
   const summaries = new Map<string, { running: boolean }>()
@@ -78,6 +86,7 @@ function makeEnv(overrides: {
         connectCalls.push(id)
         const driver = new FakeDriver()
         if (overrides.promptResult !== undefined) driver.promptResult = overrides.promptResult
+        if (overrides.commandResult !== undefined) driver.commandResult = overrides.commandResult
         drivers.set('s-1', driver)
         summaries.set('s-1', { running: false })
         return 's-1'
@@ -196,6 +205,54 @@ describe('ExecutionService.run', () => {
     const { execution } = startExecution(task, NOW, 'exec-1')
     await service.run(task, execution, () => {})
     expect(selectCalls).toBe(0)
+    expect(drivers.get('s-1')?.promptCalls).toHaveLength(1)
+  })
+
+  it('applies a task permission preset via the /permission command before prompting', async () => {
+    const { env, drivers } = makeEnv()
+    const service = new ExecutionService(env)
+    const task = { ...sampleTask(), permission: 'danger-full-access' }
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    const events: string[] = []
+    await service.run(task, execution, event => { events.push(event.kind) })
+    expect(drivers.get('s-1')?.commandCalls).toEqual(['/permission danger-full-access'])
+    // The prompt still went out after the permission switch.
+    expect(drivers.get('s-1')?.promptCalls).toHaveLength(1)
+    expect(events).toEqual(['started'])
+  })
+
+  it('settles failed when the permission switch is rejected', async () => {
+    const { env, drivers } = makeEnv({ commandResult: { ok: false, error: 'no such preset' } })
+    const service = new ExecutionService(env)
+    const task = { ...sampleTask(), permission: 'read-only' }
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    const events: Array<{ kind: string; outcome?: string; error?: string }> = []
+    await service.run(task, execution, event => { events.push(event) })
+    expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'failed' })
+    expect(events.at(-1)?.error).toContain('permission')
+    // No prompt was sent to the session.
+    expect(drivers.get('s-1')?.promptCalls).toHaveLength(0)
+  })
+
+  it('settles failed when the host does not recognize the /permission command', async () => {
+    const { env, drivers } = makeEnv({ commandResult: { ok: true, value: { matched: false } } })
+    const service = new ExecutionService(env)
+    const task = { ...sampleTask(), permission: 'workspace-write' }
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    const events: Array<{ kind: string; outcome?: string; error?: string }> = []
+    await service.run(task, execution, event => { events.push(event) })
+    expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'failed' })
+    expect(events.at(-1)?.error).toContain('/permission')
+    expect(drivers.get('s-1')?.promptCalls).toHaveLength(0)
+  })
+
+  it('skips the permission switch when the task names no permission', async () => {
+    const { env, drivers } = makeEnv()
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    await service.run(task, execution, () => {})
+    expect(drivers.get('s-1')?.commandCalls).toHaveLength(0)
     expect(drivers.get('s-1')?.promptCalls).toHaveLength(1)
   })
 

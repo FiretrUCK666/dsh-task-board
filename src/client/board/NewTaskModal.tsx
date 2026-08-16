@@ -6,7 +6,8 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import type { AgentPresetRow, BoardController } from '../../core/controller.ts'
-import type { ModelGroupRow } from '../../core/controller.ts'
+import type { ModelGroupRow, PermissionRow } from '../../core/controller.ts'
+import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 
@@ -22,25 +23,32 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
   const [workspaceId, setWorkspaceId] = useState('')
   const [modelKey, setModelKey] = useState('')
   const [effort, setEffort] = useState('')
+  const [permission, setPermission] = useState('')
   const [presets, setPresets] = useState<readonly AgentPresetRow[]>([])
   const [groups, setGroups] = useState<readonly ModelGroupRow[]>([])
+  const [permissionRows, setPermissionRows] = useState<readonly PermissionRow[] | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
 
   const catalog = controller.runCatalog()
 
-  // Workspace rows are synchronous; presets and model groups load once.
+  // Workspace rows are synchronous; presets, model groups and the permission
+  // catalog load once. `permissionRows` stays undefined while loading or when
+  // the deployment exposes no permission service — the selector is hidden
+  // then, mirroring the native UI's capability gate.
   const workspaceRows = useMemo(() => catalog?.listWorkspaces() ?? [], [catalog])
   useEffect(() => {
     let alive = true
     void (async () => {
       if (catalog === undefined) return
-      const [loadedPresets, loadedGroups] = await Promise.all([
+      const [loadedPresets, loadedGroups, loadedPermissions] = await Promise.all([
         catalog.listAgentPresets(),
         catalog.listModelGroups(),
+        catalog.listPermissions(),
       ])
       if (alive) {
         setPresets(loadedPresets)
         setGroups(loadedGroups)
+        setPermissionRows(loadedPermissions)
       }
     })()
     return () => { alive = false }
@@ -78,6 +86,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
       ...workspaceId !== '' ? { workspaceId } : {},
       ...provider !== undefined && model !== undefined ? { provider, model } : {},
       ...effort !== '' ? { reasoningEffort: effort } : {},
+      ...permission !== '' ? { permission } : {},
     })
     if (task === undefined) {
       setError(t('new.required'))
@@ -194,6 +203,31 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
                 <option value="">{t('new.effortDefault')}</option>
                 {effortOptions.map(option => (
                   <option key={option.id} value={option.id}>{option.name ?? option.id}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {/* The permission selector renders only when the deployment's native
+              permission service advertises presets; the options are its
+              dynamic table, never a hard-coded list. */}
+          {permissionRows !== undefined && (
+            <label className={css.field}>
+              <span className={css.fieldLabel}>{t('new.permission')}</span>
+              <select
+                className={css.input}
+                value={permission}
+                onChange={event => { setPermission(event.target.value) }}
+              >
+                <option value="">{t('new.permissionDefault')}</option>
+                {permissionRows.map(row => (
+                  <option
+                    key={row.id}
+                    value={row.id}
+                    title={row.description ?? row.id}
+                  >
+                    {permissionLabel(row.id, row.name)}
+                  </option>
                 ))}
               </select>
             </label>

@@ -75,6 +75,8 @@ export interface TaskRecord {
   reasoningEffort?: string
   /** Agent preset to compose the execution session from (absent = deployment default). */
   agentPreset?: string
+  /** Permission preset key applied to the execution session before its first prompt (absent = session default). */
+  permission?: string
 }
 
 /** Input for creating a task. */
@@ -87,6 +89,7 @@ export interface NewTaskInput {
   model?: string
   reasoningEffort?: string
   agentPreset?: string
+  permission?: string
 }
 
 /** The five kanban columns, in display order. */
@@ -135,6 +138,7 @@ export function createTask(input: NewTaskInput, now: number, id: string): TaskRe
     ...input.model !== undefined ? { model: input.model } : {},
     ...input.reasoningEffort !== undefined ? { reasoningEffort: input.reasoningEffort } : {},
     ...input.agentPreset !== undefined ? { agentPreset: input.agentPreset } : {},
+    ...input.permission !== undefined ? { permission: input.permission } : {},
   }
 }
 

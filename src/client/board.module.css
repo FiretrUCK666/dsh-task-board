@@ -133,6 +133,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* The back-to-chat button sits at the far right of the header; the board's
+   own right padding keeps it near the panel edge without touching it. */
+.boardClose {
+  margin-left: auto;
+  flex: none;
+}
+
 /* --- columns ------------------------------------------------------------------ */
 
 .columns {

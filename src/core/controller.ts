@@ -69,12 +69,29 @@ export interface AgentPresetRow {
   isDefault?: boolean
 }
 
+/** One permission preset the new-task form can target (the host's native preset table). */
+export interface PermissionRow {
+  /** Preset machine value (the key the `/permission` command accepts). */
+  id: string
+  /** Display name the preset published, absent when it published none. */
+  name?: string
+  /** One sentence on what the preset means. */
+  description?: string
+}
+
 /** Optional run-catalog face feeding the new-task form's run-configuration selects. */
 export interface RunCatalogFace {
   listWorkspaces(): readonly WorkspaceRow[]
   listModelGroups(): Promise<readonly ModelGroupRow[]>
   /** Agent presets the deployment composes (absent = the host has no roster). */
   listAgentPresets(): Promise<readonly AgentPresetRow[]>
+  /**
+   * Permission presets the deployment advertises through its native
+   * permission service; undefined = the capability is unavailable (no
+   * permission service composed, or the catalog fetch failed) and the form
+   * hides the permission selector.
+   */
+  listPermissions(): Promise<readonly PermissionRow[] | undefined>
 }
 
 /** Controller dependencies (all swappable in tests). */

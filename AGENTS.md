@@ -189,6 +189,7 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 | 行 id（cordis.patch.yml） | `dsh-task-board` |
 | 设置命名空间 | `dsh-task-board` |
 | 设置路由 | `/api/dsh-task-board/settings` |
+| 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 公告 section | `plugin:dsh-task-board`（order 200） |
 | locale 命名空间 | `dsh-task-board` |
 | 设置卡 slot id | `dsh-task-board`（`settings.plugin.item`，order 110） |
@@ -203,14 +204,20 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 
 - `src/index.ts`：`inject = ['webServer', 'systemPrompt', 'settings']`；
   `installSettingsSection(ctx, settingsNamespace('dsh-task-board'), Config, ...)`
-  注册命名空间（settings.yaml 持久化）并联动公告；`registerSettingsRoute` 注册设置路由；
-  `sync()` 按 `enabled`/`announceToAgent` 注册/撤销 systemPrompt section。
+  注册命名空间（settings.yaml 持久化）并联动公告；`registerSettingsRoute` 注册设置路由、
+  `registerPermissionRoute` 注册权限预设路由；`sync()` 按 `enabled`/`announceToAgent`
+  注册/撤销 systemPrompt section。
 - `src/host/settings-route.ts`：`createSettingsHandler(deps, ns)` 为纯函数
   （deps: `{describe, mutate, writable}`，可注入测试）；GET 返回
   `{available, value, base, user, writable, revision}`；POST 接收
   `{ops: [{op:'set'|'unset', path, value?}], expectedRevision}` 调 `settings.mutate`
   并回 fresh view；要求 `content-type: application/json`（防表单 CSRF）；
   服务读取一律 `ctx.get('webServer')` / `ctx.get('settings')`（不裸属性访问）。
+- `src/host/permission-route.ts`：`createPermissionHandler(deps)` 为纯函数
+  （deps: `{read}`，可注入测试）；GET `/api/<ns>/permissions` 返回
+  `{available, options}`。权限选项**不写死**：每次请求实时读
+  `ctx.get('permissionPresets')`（结构性窄化接口，不依赖 SDK 包）的 `names`/`optionOf`，
+  服务未挂载则 available:false，DSH 更新预设表后自动适配。
 
 ### client 半区（浏览器）
 
@@ -232,10 +239,11 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 `tasks.ts`（任务模型 + 状态机纯函数）、`schedule.ts`（cron 解析 + 下次运行时刻）、
 `scheduler.ts`（浏览器每分钟 tick；页面隐藏错过即跳过；进行中跳过）、`store.ts`
 （TaskStore 接口 + localStorage 实现）、`execution.ts`（真实执行：
-`workspaces.connectWorkspace` 复用/新建空白会话 + `session.prompt(queue)`；结算靠
-会话列表对账，cold 窗口判定：列表缺失→取消 / 仍在跑→等待 / 快照可见→按
-lastAgentError / turn-error 节点 / 否则成功）、`controller.ts`（台账 + 视图状态 +
-导航感知）。
+`workspaces.connectWorkspace` 复用/新建空白会话 + `session.prompt(queue)`；执行前按
+任务配置应用 agent preset 与权限（原生 `/permission <preset>` 命令，先于首条
+prompt）；结算靠会话列表对账，cold 窗口判定：列表缺失→取消 / 仍在跑→等待 /
+快照可见→按 lastAgentError / turn-error 节点 / 否则成功）、`controller.ts`（台账 +
+视图状态 + 导航感知）。
 
 ## 构建与验证（改完必跑，全绿才算完成）
 
@@ -277,6 +285,8 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   （vi.stubGlobal fetch）。
 - `tests/settings-route.spec.ts`：createSettingsHandler 纯函数（GET 有/无命名空间、
   POST set/unset、mutate 抛错 envelope、writable 透传、405、readJsonBody）。
+- `tests/permission-route.spec.ts`：createPermissionHandler 纯函数（有/无权限服务、
+  选项组装、read 抛错 envelope、405）。
 
 ## 版本管理流程（必守）
 

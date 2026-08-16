@@ -86,6 +86,15 @@ export interface SessionDriver {
     content: readonly unknown[],
     mode: 'queue',
   ): Promise<{ ok: true } | { ok: false; error: unknown }>
+  /**
+   * Execute one slash-command line against the session's agent (the native
+   * write path for per-session switches such as `/permission <preset>`).
+   * `value.matched` reports whether the host command registry recognized the
+   * command name.
+   */
+  command(line: string): Promise<
+    { ok: true; value: { matched: boolean } } | { ok: false; error: unknown }
+  >
   getSnapshot(): { running: boolean; lastAgentError: string | null; turnEnds: ReadonlyMap<number, number> }
   subscribe(fn: () => void): () => void
 }
@@ -162,6 +171,21 @@ export class ExecutionService {
           onEvent({
             kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
             error: `agent preset switch failed: ${applied.error}`,
+          })
+          return
+        }
+      }
+      // Apply the task's configured permission preset through the native
+      // `/permission` command — the same write path the GUI's permission
+      // picker uses — before the first prompt, while the session is still
+      // blank. An unrecognized preset or a host without the command fails the
+      // run like a rejected agent-preset switch.
+      if (task.permission !== undefined) {
+        const applied = await this.applyPermission(driver, task.permission)
+        if (!applied.ok) {
+          onEvent({
+            kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
+            error: applied.error,
           })
           return
         }
@@ -294,6 +318,30 @@ export class ExecutionService {
       return result
     } catch (error) {
       return { ok: false, error }
+    }
+  }
+
+  /**
+   * Apply a task's permission preset to the execution session through the
+   * native `/permission` command (the GUI picker's write path). A rejected
+   * command or a name the host does not recognize reports failure so the
+   * caller can settle the run; the command itself never starts a turn.
+   */
+  private async applyPermission(
+    driver: SessionDriver,
+    permission: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    try {
+      const result = await driver.command(`/permission ${permission}`)
+      if (!result.ok) {
+        return { ok: false, error: `permission switch failed: ${messageOf(result.error)}` }
+      }
+      if (!result.value.matched) {
+        return { ok: false, error: `permission switch failed: the host offers no /permission command for "${permission}"` }
+      }
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: `permission switch failed: ${messageOf(error)}` }
     }
   }
 

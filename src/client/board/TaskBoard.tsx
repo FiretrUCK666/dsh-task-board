@@ -61,7 +61,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         </button>
         <button
           type="button"
-          className={css.ghostButton}
+          className={`${css.ghostButton} ${css.boardClose}`}
           onClick={() => { controller.closeBoard() }}
         >
           {t('board.close')}

@@ -17,6 +17,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from 'schemastery'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import { registerPermissionRoute } from './host/permission-route.ts'
 import { registerSettingsRoute } from './host/settings-route.ts'
 
 /** Order of the announcement section within the tool-guidance band. */
@@ -96,6 +97,13 @@ export function apply(ctx: Context, config?: Config): void {
   ctx.effect(
     () => registerSettingsRoute(ctx, 'dsh-task-board'),
     'dsh-task-board: settings route',
+  )
+
+  // Serve the deployment's native permission-preset catalog to the browser
+  // half (the new-task form's permission selector reads this).
+  ctx.effect(
+    () => registerPermissionRoute(ctx, 'dsh-task-board'),
+    'dsh-task-board: permissions route',
   )
 
   // Initial registration from the composition entry (covers deployments with

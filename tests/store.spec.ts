@@ -100,6 +100,21 @@ describe('parseLedger', () => {
     expect(parsed[1].id).toBe('t-3')
     expect(parsed[1].status).toBe('todo')
   })
+
+  it('round-trips a task with a run-configuration permission through storage', () => {
+    const task = createTask(
+      { title: 'x', description: '', prompt: '', permission: 'danger-full-access', agentPreset: 'butler' },
+      1,
+      't-1',
+    )
+    const parsed = parseLedger(JSON.stringify([task]))
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].permission).toBe('danger-full-access')
+    expect(parsed[0].agentPreset).toBe('butler')
+    // Legacy rows without the field keep the field absent.
+    const legacy = parseLedger(JSON.stringify([createTask({ title: 'y', description: '', prompt: '' }, 1, 't-2')]))
+    expect(legacy[0].permission).toBeUndefined()
+  })
 })
 
 describe('isTaskRecord', () => {

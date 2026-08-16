@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { isValidCron } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { permissionLabel } from '../permission-label.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
@@ -247,7 +248,7 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
             <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : current.title}</pre>
           </section>
 
-          {(current.agentPreset !== undefined || current.provider !== undefined || current.model !== undefined) && (
+          {(current.agentPreset !== undefined || current.provider !== undefined || current.model !== undefined || current.permission !== undefined) && (
             <section className={css.detailSection}>
               <h4>{t('detail.runConfig')}</h4>
               <p className={css.detailText}>
@@ -259,6 +260,9 @@ export function TaskDetail({ controller, task }: { controller: BoardController; 
                     {t('new.model')}: {current.provider} / {current.model}
                     {current.reasoningEffort !== undefined && ` · ${t('new.effort')}: ${current.reasoningEffort}`}
                   </span>
+                )}
+                {current.permission !== undefined && (
+                  <span className={css.configChip}>{t('new.permission')}: {permissionLabel(current.permission)}</span>
                 )}
               </p>
             </section>

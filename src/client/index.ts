@@ -181,6 +181,30 @@ export function apply(ctx: ClientContext): void {
             isDefault: preset.isDefault,
           }))
         },
+        listPermissions: async () => {
+          // The deployment's native permission-preset catalog, served by the
+          // host half from the `permissionPresets` service — never a
+          // hard-coded list, so preset-table changes in the harness show up
+          // without a plugin update. Any failure degrades to "no selector".
+          try {
+            const response = await fetch('/api/dsh-task-board/permissions', { headers: { accept: 'application/json' } })
+            const envelope = await response.json() as {
+              ok: boolean
+              value?: { available?: boolean; options?: Array<{ id: string; name?: string; description?: string }> }
+            }
+            if (envelope.ok !== true || envelope.value?.available !== true) return undefined
+            const options = envelope.value.options
+            if (!Array.isArray(options)) return undefined
+            return options.map(option => ({
+              id: option.id,
+              name: option.name,
+              description: option.description,
+            }))
+          } catch (error) {
+            console.error('[dsh-task-board] permission catalog fetch failed', error)
+            return undefined
+          }
+        },
       },
     })
     controller.start()
