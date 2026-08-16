@@ -571,18 +571,21 @@ export class BoardController {
    * place — the comment is injected when the auto-cruise is on (see
    * {@link continueComment}), so the user's instruction takes effect exactly
    * when the cruise drives the board. Only one open comment round per task
-   * is allowed at a time.
+   * is allowed at a time. A completed task cannot be commented (its work is
+   * done); every other state can — a running task's comment waits for the
+   * cruise.
    * @param taskId - the task owning the execution.
    * @param executionId - the settled execution to continue (its session is reused).
    * @param text - the comment to send to the session's agent.
    * @returns the pending comment round, or undefined when rejected (unknown
-   *   task/execution, execution not settled, another comment already in flight).
+   *   task/execution, completed task, execution not settled, another comment
+   *   already in flight).
    */
   submitComment(taskId: string, executionId: string, text: string): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
-    if (task === undefined) return undefined
+    if (task === undefined || task.status === 'done') return undefined
     const execution = task.executions.find(candidate => candidate.id === executionId)
     if (execution === undefined || execution.sessionId === undefined || execution.endedAt === undefined) return undefined
     if (task.executions.some(candidate => candidate.comment !== undefined && candidate.endedAt === undefined)) return undefined
@@ -607,7 +610,10 @@ export class BoardController {
    * Inject a pending comment round: the task moves to 'running' and the text
    * is sent to the execution session through the execution service; the
    * settled outcome flows through the normal event path (landing in
-   * 'review' like any settled run).
+   * 'review' like any settled run). Injecting is allowed from any state the
+   * cruise may drive (review / todo / backlog); running and completed tasks
+   * are skipped — a running task's session is already busy, a completed one
+   * must not be woken up.
    * @param executionId - the pending comment round's id.
    * @returns true when the injection was accepted.
    */
@@ -617,7 +623,8 @@ export class BoardController {
     if (task === undefined) return false
     const round = task.executions.find(candidate => candidate.id === executionId)
     if (round === undefined || round.comment === undefined || round.sessionId === undefined) return false
-    if (round.endedAt !== undefined || task.status !== 'review') return false
+    if (round.endedAt !== undefined) return false
+    if (task.status !== 'review' && task.status !== 'todo' && task.status !== 'backlog') return false
     const running = withStatus(task, 'running', this.now())
     this.tasks = this.tasks.map(candidate => candidate.id === task.id ? running : candidate)
     this.persistAndNotify()
@@ -631,7 +638,7 @@ export class BoardController {
   /** Inject every pending comment round (called when the cruise turns on). */
   private injectPendingComments(): void {
     for (const task of this.tasks) {
-      if (task.status !== 'review') continue
+      if (task.status !== 'review' && task.status !== 'todo' && task.status !== 'backlog') continue
       const pending = task.executions.find(candidate =>
         candidate.comment !== undefined && candidate.sessionId !== undefined && candidate.endedAt === undefined)
       if (pending !== undefined) void this.continueComment(pending.id)

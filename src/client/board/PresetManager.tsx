@@ -12,6 +12,8 @@ import css from '../board.module.css'
 import {
   DEFAULT_PRESETS, mergePresets, type LocalStoragePresetStore, type SchedulePreset,
 } from '../../core/presets.ts'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { Dialog } from './Dialog.tsx'
 
 /** The merged list shown in the preset dropdown (defaults + custom). */
 export function mergedPresets(store: LocalStoragePresetStore): SchedulePreset[] {
@@ -133,77 +135,74 @@ export function PresetManager({ store, onClose }: {
   const newHint = presetCronHint(newCron)
 
   return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <div className={`${css.modal} ${css.presetModal}`} role="dialog" aria-label={t('detail.schedule.presets.title')}>
-        <header className={css.presetHeader}>
-          <h2 className={css.modalTitle}>{t('detail.schedule.presets.title')}</h2>
-          <button
-            type="button"
-            className={css.ghostButton}
-            onClick={() => { setConfirmRestore(true) }}
-          >
-            {t('detail.schedule.presets.restore')}
-          </button>
-        </header>
-
-        <ul className={css.presetList}>
-          {custom.length === 0 && <li className={css.presetEmpty}>{t('detail.schedule.presets.empty')}</li>}
-          {custom.map(preset => (
-            <PresetRow
-              key={preset.id}
-              preset={preset}
-              onSave={next => { persist(custom.map(candidate => candidate.id === next.id ? next : candidate)) }}
-              onDelete={() => { persist(custom.filter(candidate => candidate.id !== preset.id)) }}
-            />
-          ))}
-        </ul>
-
-        <div className={css.presetNew}>
-          <input
-            className={`${css.input} ${css.presetName}`}
-            value={newLabel}
-            placeholder={t('detail.schedule.presets.newName')}
-            aria-label={t('detail.schedule.presets.name')}
-            onChange={event => { setNewLabel(event.target.value); setNewError(undefined) }}
-          />
-          <input
-            className={`${css.input} ${css.presetCron}${newCron.trim() !== '' && !isValidCron(newCron) ? ` ${css.scheduleInputInvalid}` : ''}`}
-            value={newCron}
-            placeholder={t('detail.schedule.presets.newCron')}
-            spellCheck={false}
-            aria-label={t('detail.schedule.cron')}
-            onChange={event => { setNewCron(event.target.value); setNewError(undefined) }}
-            onKeyDown={event => { if (event.key === 'Enter') add() }}
-          />
-          <button type="button" className={css.primaryButton} onClick={add}>
-            {t('detail.schedule.presets.add')}
-          </button>
-        </div>
-        {newError !== undefined && <p className={css.formError}>{newError}</p>}
-        {newHint !== '' && <p className={css.scheduleMeta}>{newHint}</p>}
-
-        <footer className={css.modalFooter}>
-          <button type="button" className={css.ghostButton} onClick={onClose}>
-            {t('detail.cancel')}
-          </button>
-        </footer>
-
-        {confirmRestore && (
-          <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) setConfirmRestore(false) }}>
-            <div className={css.modal} role="alertdialog" aria-label={t('detail.schedule.presets.restore')}>
-              <p className={css.confirmMessage}>{t('detail.schedule.presets.restoreConfirm')}</p>
-              <footer className={css.modalFooter}>
-                <button type="button" className={css.ghostButton} onClick={() => { setConfirmRestore(false) }}>
-                  {t('delete.cancel')}
-                </button>
-                <button type="button" className={css.dangerButton} onClick={restoreDefaults}>
-                  {t('detail.schedule.presets.restore')}
-                </button>
-              </footer>
-            </div>
-          </div>
-        )}
+    <Dialog
+      label={t('detail.schedule.presets.title')}
+      onClose={onClose}
+      title={t('detail.schedule.presets.title')}
+      className={css.presetModal}
+    >
+      <div className={css.presetToolbar}>
+        <button
+          type="button"
+          className={css.ghostButton}
+          onClick={() => { setConfirmRestore(true) }}
+        >
+          {t('detail.schedule.presets.restore')}
+        </button>
       </div>
-    </div>
+
+      <ul className={css.presetList}>
+        {custom.length === 0 && <li className={css.presetEmpty}>{t('detail.schedule.presets.empty')}</li>}
+        {custom.map(preset => (
+          <PresetRow
+            key={preset.id}
+            preset={preset}
+            onSave={next => { persist(custom.map(candidate => candidate.id === next.id ? next : candidate)) }}
+            onDelete={() => { persist(custom.filter(candidate => candidate.id !== preset.id)) }}
+          />
+        ))}
+      </ul>
+
+      <div className={css.presetNew}>
+        <input
+          className={`${css.input} ${css.presetName}`}
+          value={newLabel}
+          placeholder={t('detail.schedule.presets.newName')}
+          aria-label={t('detail.schedule.presets.name')}
+          onChange={event => { setNewLabel(event.target.value); setNewError(undefined) }}
+        />
+        <input
+          className={`${css.input} ${css.presetCron}${newCron.trim() !== '' && !isValidCron(newCron) ? ` ${css.scheduleInputInvalid}` : ''}`}
+          value={newCron}
+          placeholder={t('detail.schedule.presets.newCron')}
+          spellCheck={false}
+          aria-label={t('detail.schedule.cron')}
+          onChange={event => { setNewCron(event.target.value); setNewError(undefined) }}
+          onKeyDown={event => { if (event.key === 'Enter') add() }}
+        />
+        <button type="button" className={css.primaryButton} onClick={add}>
+          {t('detail.schedule.presets.add')}
+        </button>
+      </div>
+      {newError !== undefined && <p className={css.formError}>{newError}</p>}
+      {newHint !== '' && <p className={css.scheduleMeta}>{newHint}</p>}
+
+      <footer className={css.modalFooter}>
+        <button type="button" className={css.ghostButton} onClick={onClose}>
+          {t('detail.cancel')}
+        </button>
+      </footer>
+
+      {confirmRestore && (
+        <ConfirmDialog
+          title={t('detail.schedule.presets.restore')}
+          message={t('detail.schedule.presets.restoreConfirm')}
+          confirmLabel={t('detail.schedule.presets.restore')}
+          danger
+          onCancel={() => { setConfirmRestore(false) }}
+          onConfirm={restoreDefaults}
+        />
+      )}
+    </Dialog>
   )
 }

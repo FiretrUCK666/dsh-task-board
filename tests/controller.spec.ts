@@ -692,10 +692,10 @@ describe('comments', () => {
   async function settledReviewTask(stub: StubExec, controller: BoardController): Promise<{ taskId: string; executionId: string }> {
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     await controller.runTask(task.id)
-    const executionId = stub.runCalls[0].executionId
-    stub.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId, sessionId: 's-1' })
-    stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId, outcome: 'succeeded' })
-    return { taskId: task.id, executionId }
+    const run = stub.runCalls[stub.runCalls.length - 1]
+    run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-1' })
+    run.fire({ kind: 'settled', taskId: task.id, executionId: run.executionId, outcome: 'succeeded' })
+    return { taskId: task.id, executionId: run.executionId }
   }
 
   it('saves a pending comment round; nothing is injected while the cruise is off', async () => {
@@ -763,6 +763,50 @@ describe('comments', () => {
     expect(store.load()[0].status).toBe('review')
     expect(store.load()[0].executions[1].result).toBe('failed')
     expect(store.load()[0].executions[1].error).toBe('boom')
+  })
+
+  it('injects pending comments on todo/backlog tasks when the cruise turns on', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    // Re-plan to todo and comment: the round stays pending (cruise off).
+    controller.moveTask(taskId, 'todo')
+    controller.submitComment(taskId, executionId, '待办里继续')
+    expect(exec.commentCalls).toHaveLength(0)
+    // Cruise on → the comment injects from todo.
+    controller.setCruiseEnabled(true)
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(store.load()[0].status).toBe('running')
+    // With the cruise on, a comment on a backlog-shelved task injects at once.
+    const second = await settledReviewTask(stub, controller)
+    controller.moveTask(second.taskId, 'backlog')
+    controller.submitComment(second.taskId, second.executionId, '从待规划继续')
+    expect(exec.commentCalls).toHaveLength(2)
+  })
+
+  it('rejects comments on completed tasks', async () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    controller.moveTask(taskId, 'done')
+    expect(store.load()[0].status).toBe('done')
+    expect(controller.submitComment(taskId, executionId, '完成了还评？')).toBeUndefined()
+    expect(store.load()[0].executions).toHaveLength(1)
+  })
+
+  it('keeps a comment pending while the task is running', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    // A second run puts the task back to running; a comment then stays
+    // pending (the session is busy) instead of injecting.
+    await controller.runTask(taskId)
+    expect(store.load()[0].status).toBe('running')
+    const round = controller.submitComment(taskId, executionId, '先存着')
+    expect(round).toBeDefined()
+    expect(exec.commentCalls).toHaveLength(0)
+    expect(round?.endedAt).toBeUndefined()
   })
 })
 

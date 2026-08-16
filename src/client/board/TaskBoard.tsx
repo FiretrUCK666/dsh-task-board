@@ -17,7 +17,7 @@ import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { COLUMNS, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { insertionAnchorOf } from './drop-position.ts'
+import { insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
@@ -42,12 +42,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
   const [dragReject, setDragReject] = useState<TaskStatus | undefined>(undefined)
   // Same-column reorder: the id of the card being dragged and the insertion
-  // anchor (undefined = column tail). The anchor is mirrored in a ref —
-  // dragover fires at high frequency, and the drop must read the exact
-  // value the last dragover computed, never a stale render closure.
+  // gap (beforeId = undefined means the column tail; top = the indicator's
+  // Y inside the cards container). The gap is mirrored in a ref — dragover
+  // fires at high frequency, and the drop must read the exact value the
+  // last dragover computed, never a stale render closure.
   const [dragId, setDragId] = useState<string | undefined>(undefined)
-  const [dropBefore, setDropBefore] = useState<string | undefined>(undefined)
-  const dropBeforeRef = useRef<string | undefined>(undefined)
+  const [dropGap, setDropGap] = useState<InsertionGap | undefined>(undefined)
+  const dropGapRef = useRef<InsertionGap | undefined>(undefined)
   // The .cards container per column (for half-split rect measurements).
   const cardsRefs = useRef<Partial<Record<TaskStatus, HTMLDivElement | null>>>({})
   // Guards the reject-flash timer against unmount (drop feedback only).
@@ -64,8 +65,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   /** Reset the drag-and-drop tracking after a drop or drag end. */
   const clearDrag = (): void => {
     setDragId(undefined)
-    setDropBefore(undefined)
-    dropBeforeRef.current = undefined
+    setDropGap(undefined)
+    dropGapRef.current = undefined
     setDragOver(undefined)
   }
 
@@ -73,16 +74,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const cardIdAt = (event: React.DragEvent): string | undefined =>
     (event.target as HTMLElement).closest('[data-task-id]')?.getAttribute('data-task-id') ?? undefined
 
-  /** The half-split insertion anchor of a drag at `dropY` inside a column. */
-  const anchorAt = (status: TaskStatus, dropY: number): { beforeId: string | undefined } => {
+  /** The nearest insertion gap of a drag at `dropY`, relative to the cards container. */
+  const gapAt = (status: TaskStatus, dropY: number): InsertionGap => {
     const container = cardsRefs.current[status]
-    if (container == null || dragId === undefined) return { beforeId: undefined }
+    if (container == null || dragId === undefined) return { beforeId: undefined, top: 0 }
+    const containerTop = container.getBoundingClientRect().top
     const cards = Array.from(container.querySelectorAll<HTMLElement>('[data-task-id]'))
       .map(element => ({
         id: element.getAttribute('data-task-id') ?? '',
         rect: element.getBoundingClientRect(),
       }))
-    return insertionAnchorOf(cards, dropY, dragId)
+    const gap = insertionGapOf(cards, dropY, dragId, 8)
+    return { beforeId: gap.beforeId, top: gap.top - containerTop }
   }
 
   // Resolve a workspace id to its display title through the run catalog
@@ -109,7 +112,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       return
     }
     if (dragId !== undefined && task.status === status) {
-      controller.moveTask(task.id, status, dropBeforeRef.current)
+      controller.moveTask(task.id, status, dropGapRef.current?.beforeId)
       clearDrag()
       return
     }
@@ -195,25 +198,26 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               data-status={column.status}
               data-dragover={dragOver === column.status ? '' : undefined}
               data-dragreject={dragReject === column.status ? '' : undefined}
-              data-drop-tail={sameColumnDrag && dropBefore === undefined ? '' : undefined}
               onDragOver={event => {
                 event.preventDefault()
                 if (!sameColumnDrag) {
                   // Foreign or cross-column drag: plain column highlight.
-                  if (dropBeforeRef.current !== undefined) {
-                    dropBeforeRef.current = undefined
-                    setDropBefore(undefined)
+                  if (dropGapRef.current !== undefined) {
+                    dropGapRef.current = undefined
+                    setDropGap(undefined)
                   }
                   setDragOver(column.status)
                   return
                 }
-                // Same-column reorder: anchor on the half-split point only —
-                // the card indicator is the whole feedback, no column border.
+                // Same-column reorder: the nearest gap decides — the
+                // indicator bar is the whole feedback, no column border.
                 setDragOver(undefined)
-                const anchor = anchorAt(column.status, event.clientY)
-                if (anchor.beforeId !== dropBeforeRef.current) {
-                  dropBeforeRef.current = anchor.beforeId
-                  setDropBefore(anchor.beforeId)
+                const gap = gapAt(column.status, event.clientY)
+                const moved = gap.beforeId !== dropGapRef.current?.beforeId
+                  || gap.top !== dropGapRef.current?.top
+                if (moved) {
+                  dropGapRef.current = gap
+                  setDropGap(gap)
                 }
               }}
               onDragLeave={() => {
@@ -237,18 +241,24 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   const id = cardIdAt(event)
                   if (id !== undefined) {
                     setDragId(id)
-                    setDropBefore(undefined)
-                    dropBeforeRef.current = undefined
+                    setDropGap(undefined)
+                    dropGapRef.current = undefined
                   }
                 }}
                 onDragEnd={clearDrag}
               >
+                {dropGap !== undefined && sameColumnDrag && (
+                  <span
+                    className={css.dropIndicator}
+                    style={{ top: dropGap.top }}
+                    aria-hidden="true"
+                  />
+                )}
                 {tasks.map(task => (
                   <TaskCard
                     key={task.id}
                     task={task}
                     workspaceTitleOf={workspaceTitleOf}
-                    dropBefore={dropBefore === task.id}
                     onClick={() => { controller.openTask(task.id) }}
                   />
                 ))}

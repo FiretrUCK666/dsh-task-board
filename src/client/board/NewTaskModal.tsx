@@ -6,6 +6,7 @@ import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { Dialog } from './Dialog.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { draftToNewInput, type TaskDraft } from './task-draft.ts'
 
@@ -35,15 +36,11 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
   }
 
   return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <Dialog label={t('board.new')} onClose={onClose} title={t('board.new')}>
       <form
-        className={css.modal}
-        role="dialog"
-        aria-label={t('board.new')}
+        className={css.modalForm}
         onSubmit={event => { event.preventDefault(); submit() }}
       >
-        <h2 className={css.modalTitle}>{t('board.new')}</h2>
-
         <TaskForm draft={draft} onChange={setDraft} controller={controller} withStatus />
 
         {error !== undefined && <p className={css.formError}>{error}</p>}
@@ -57,6 +54,6 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
           </button>
         </footer>
       </form>
-    </div>
+    </Dialog>
   )
 }

@@ -1,13 +1,14 @@
 /**
  * Review page: one execution's review surface. Opened by clicking an
  * execution-history row, it shows the session's recent conversation
- * (the transcript tail, folded from raw history events) and a comment
- * composer that continues the conversation — each comment becomes a fresh
- * turn in the same session. Comments are injected when the auto-cruise is
- * on; while it is off they are saved as pending and injected once the
- * cruise starts. The native session page remains the place for the full
- * transcript ("查看会话"), so this page only ever shows the tail and never
- * duplicates the full conversation view.
+ * (the transcript tail, folded from raw history events following the
+ * native harness rules) and a comment composer that continues the
+ * conversation — each comment becomes a fresh turn in the same session.
+ * Comments are injected when the auto-cruise is on; while it is off they
+ * are saved as pending and injected once the cruise starts. The native
+ * session page remains the place for the full transcript ("查看会话"), so
+ * this page only ever shows the tail and never duplicates the full
+ * conversation view.
  */
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
@@ -16,7 +17,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { formatDateTime } from './TaskCard.tsx'
-import { foldTranscript, type TranscriptMessage } from './review-transcript.ts'
+import { foldTranscript, type TranscriptLine } from './review-transcript.ts'
 
 /** One comment round rendered in the thread, with its live state. */
 interface CommentView {
@@ -37,6 +38,17 @@ function commentsOf(task: TaskRecord, sessionId: string | undefined): CommentVie
     }))
 }
 
+/** Comment-round state → chip color + label key. */
+function commentStateOf(state: CommentView['state']): { kind: 'success' | 'error' | 'warn' | 'muted'; label: string } {
+  switch (state) {
+    case 'succeeded': return { kind: 'success', label: t('review.commentSucceeded') }
+    case 'failed': return { kind: 'error', label: t('review.commentFailed') }
+    case 'running': return { kind: 'warn', label: t('review.commentRunning') }
+    case 'cancelled': return { kind: 'muted', label: t('review.commentCancelled') }
+    case 'pending': return { kind: 'muted', label: t('review.commentPending') }
+  }
+}
+
 /** The review page (see module doc). */
 export function ReviewDetail({ controller, task, execution, onClose }: {
   controller: BoardController
@@ -53,7 +65,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const sessionId = execution.sessionId
   const comments = commentsOf(current, sessionId)
 
-  const [messages, setMessages] = useState<readonly TranscriptMessage[] | undefined>(undefined)
+  const [lines, setLines] = useState<readonly TranscriptLine[] | undefined>(undefined)
   const [transcriptError, setTranscriptError] = useState(false)
   const [draft, setDraft] = useState('')
   const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
@@ -70,7 +82,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
         setTranscriptError(true)
         return
       }
-      setMessages(foldTranscript(events))
+      setLines(foldTranscript(events))
     })
     return () => { alive = false }
   }, [controller, sessionId, current.executions.length, current.status])
@@ -85,6 +97,11 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     }
   }
 
+  // The run's sequence among the task's plain runs (comment rounds excluded).
+  const runIndex = current.executions
+    .filter(candidate => candidate.comment === undefined)
+    .indexOf(execution) + 1
+
   return (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div className={css.review} role="dialog" aria-label={t('review.title')}>
@@ -92,7 +109,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           <h2 className={css.reviewTitle}>
             {current.title}
             <span className={css.reviewBadge}>
-              {t('detail.executionNo', { n: String(current.executions.indexOf(execution) + 1) })}
+              {t('detail.executionNo', { n: String(runIndex) })}
             </span>
           </h2>
           <div className={css.reviewActions}>
@@ -117,29 +134,37 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
         </header>
 
         <div className={css.reviewBody}>
-          {/* The conversation tail: folded messages, native-like styling. */}
+          {/* The run's outcome banner: what the agent came back with. */}
+          <div className={css.reviewOutcome}>
+            <Chip kind={execution.result === 'failed' ? 'error' : execution.result === 'succeeded' ? 'success' : 'muted'}>
+              {execution.result === undefined ? t('detail.result.running') : t(`detail.result.${execution.result}` as 'detail.result.succeeded')}
+            </Chip>
+            <span className={css.reviewOutcomeMeta}>
+              {t('detail.executionEnded')} {execution.endedAt !== undefined ? formatDateTime(execution.endedAt) : '—'}
+            </span>
+          </div>
+
+          {/* The conversation tail: native-style user bubbles and assistant
+              columns; context injections render as weak rows. */}
           <section className={css.reviewSection}>
             <h4>{t('review.transcript')}</h4>
             {sessionId === undefined ? (
               <p className={css.detailText}>{t('review.noSession')}</p>
             ) : transcriptError ? (
               <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
-            ) : messages === undefined ? (
+            ) : lines === undefined ? (
               <p className={css.detailText}>{t('review.loading')}</p>
-            ) : messages.length === 0 ? (
+            ) : lines.length === 0 ? (
               <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
             ) : (
               <ul className={css.reviewTranscript}>
-                {messages.map(message => (
-                  <li
-                    key={message.id}
-                    className={css.reviewMessage}
-                    data-role={message.role}
-                  >
-                    <span className={css.reviewMessageRole}>
-                      {message.role === 'user' ? t('review.you') : t('review.agent')}
-                    </span>
-                    <span className={css.reviewMessageText}>{message.text}</span>
+                {lines.map(line => line.kind === 'context' ? (
+                  <li key={line.id} className={css.reviewContext} title={line.summary}>
+                    {t('review.contextInjection')} · {line.plugin}
+                  </li>
+                ) : (
+                  <li key={line.id} className={css.reviewMessage} data-role={line.role}>
+                    <span className={css.reviewMessageText}>{line.text}</span>
                   </li>
                 ))}
               </ul>
@@ -153,28 +178,21 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               <p className={css.detailText}>{t('review.noComments')}</p>
             ) : (
               <ul className={css.reviewComments}>
-                {comments.map(view => (
-                  <li key={view.round.id} className={css.reviewComment}>
-                    <span className={css.reviewCommentText}>{view.round.comment}</span>
-                    <span className={css.reviewCommentMeta}>
-                      <Chip
-                        kind={view.state === 'succeeded' ? 'success'
-                          : view.state === 'failed' ? 'error'
-                            : view.state === 'running' ? 'warn' : 'muted'}
-                      >
-                        {view.state === 'pending' ? t('review.commentPending')
-                          : view.state === 'running' ? t('review.commentRunning')
-                            : view.state === 'failed' ? t('review.commentFailed')
-                              : view.state === 'cancelled' ? t('review.commentCancelled')
-                                : t('review.commentSucceeded')}
-                      </Chip>
-                      <span className={css.reviewCommentTime}>{formatDateTime(view.round.startedAt)}</span>
-                    </span>
-                    {view.state === 'failed' && view.round.error !== undefined && view.round.error !== '' && (
-                      <span className={css.executionError}>{view.round.error}</span>
-                    )}
-                  </li>
-                ))}
+                {comments.map(view => {
+                  const state = commentStateOf(view.state)
+                  return (
+                    <li key={view.round.id} className={css.reviewComment}>
+                      <span className={css.reviewCommentText}>{view.round.comment}</span>
+                      <span className={css.reviewCommentMeta}>
+                        <Chip kind={state.kind}>{state.label}</Chip>
+                        <span className={css.reviewCommentTime}>{formatDateTime(view.round.startedAt)}</span>
+                      </span>
+                      {view.state === 'failed' && view.round.error !== undefined && view.round.error !== '' && (
+                        <span className={css.executionError}>{view.round.error}</span>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             )}
 

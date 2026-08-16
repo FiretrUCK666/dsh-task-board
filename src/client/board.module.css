@@ -205,6 +205,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .statusDot[data-status='done'] { background: var(--dsw-alias-state-success-primary); }
 
 .cards {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -245,31 +246,19 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   transform: translateY(-1px);
 }
 
-/* Same-column reorder: the anchored card is the "insert before" target. A
-   bold rounded accent bar floats in the gap above it — the whole feedback,
-   never a column-wide highlight or a full-width shadow. */
-.card[data-drop-before]::before {
-  content: '';
+/* Same-column reorder: a bold accent bar drawn exactly at the insertion
+   gap (see drop-position.ts) — the whole feedback, never a column-wide
+   highlight. Positioned inside the cards container (relative above). */
+.dropIndicator {
   position: absolute;
-  top: -6px;
   left: 8px;
   right: 8px;
   height: 4px;
   border-radius: 3px;
   background: var(--dsw-alias-state-business-primary);
   box-shadow: 0 0 0 1px var(--dsw-alias-bg-base);
-}
-
-/* Dropping at the column tail: a matching bar at the bottom of the cards
-   container (below the last card). */
-.column[data-drop-tail] .cards::after {
-  content: '';
-  display: block;
-  height: 4px;
-  margin: 6px 8px 0;
-  border-radius: 3px;
-  background: var(--dsw-alias-state-business-primary);
-  box-shadow: 0 0 0 1px var(--dsw-alias-bg-base);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .card[data-status='running'] {
@@ -498,6 +487,22 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   justify-content: center;
   background: var(--dsw-alias-bg-mask-1);
+  animation: dshTbFadeIn 140ms ease;
+}
+
+@keyframes dshTbFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dshTbDialogIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dshTbFadeUp {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .modal {
@@ -513,12 +518,20 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border-radius: 14px;
   box-shadow: var(--dsw-shadow-lv3);
   color: var(--dsw-alias-label-primary);
+  animation: dshTbDialogIn 140ms ease;
 }
 
 .modalTitle {
   margin: 0;
   font-size: 15px;
   font-weight: 700;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .confirmMessage {
@@ -879,6 +892,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border-radius: 7px;
   cursor: pointer;
   white-space: nowrap;
+  transition: color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
 }
 
 .scheduleMode:hover {
@@ -897,11 +911,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   width: min(560px, calc(100vw - 48px));
 }
 
-.presetHeader {
+/* The form inside the new-task dialog: layout comes from the panel (flex
+   column, 16px gaps), the form element itself adds no box. */
+.modalForm {
+  display: contents;
+}
+
+.presetToolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-end;
 }
 
 .presetList {
@@ -918,6 +936,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
+  padding: 6px 4px;
+  border-radius: 8px;
+}
+
+.presetRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .presetName {
@@ -930,6 +954,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .presetCron {
   width: 100%;
+  min-width: 0;
   font-family: var(--dsw-font-markdown-code-block-small);
   font-size: 13px;
 }
@@ -1005,6 +1030,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 10px 12px;
   cursor: pointer;
   border-radius: 8px;
+  transition: background-color 120ms ease;
 }
 
 .executionRow + .executionRow {
@@ -1202,7 +1228,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   margin: 0;
 }
 
-/* --- reduced motion: strip transitions, stop the decorative spinners --- */
+/* --- reduced motion: strip transitions, stop the decorative animations --- */
 @media (prefers-reduced-motion: reduce) {
   .entry,
   .card,
@@ -1211,12 +1237,23 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   .dangerButton,
   .iconButton,
   .executionOpen,
+  .executionRow,
+  .scheduleMode,
   .slashMenuRow,
   .search,
   .input,
   .schedulePreset,
-  .scheduleToggle input {
+  .scheduleToggle input,
+  .reviewMessage .reviewMessageText {
     transition: none;
+  }
+
+  .modalBackdrop,
+  .modal,
+  .review,
+  .reviewMessage,
+  .reviewContext {
+    animation: none;
   }
 
   .spinner {
@@ -1272,20 +1309,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .review {
   display: flex;
   flex-direction: column;
-  width: min(720px, calc(100vw - 48px));
-  max-height: min(80vh, 760px);
+  width: min(748px, calc(100vw - 48px));
+  max-height: min(84vh, 800px);
   background: var(--dsw-alias-bg-base);
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 14px;
   box-shadow: var(--dsw-shadow-lv3);
   overflow: hidden;
+  animation: dshTbDialogIn 140ms ease;
 }
 
 .reviewHeader {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--dsw-alias-separator-primary);
   flex: none;
 }
@@ -1321,58 +1359,94 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .reviewBody {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 14px 20px 20px;
   overflow-y: auto;
   min-height: 0;
+}
+
+/* The run's outcome banner: what the agent came back with. */
+.reviewOutcome {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  flex: none;
+}
+
+.reviewOutcomeMeta {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
 .reviewSection {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
+/* Conversation list: native cadence — 16px gaps between messages, the whole
+   body scrolls (no inner fixed-height scroller). */
 .reviewTranscript {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
-  max-height: 340px;
-  overflow-y: auto;
 }
 
+/* Assistant messages are full-width columns (no bubble), like the native
+   conversation. */
 .reviewMessage {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 8px 10px;
-  max-width: 92%;
-  background: var(--dsw-alias-bg-layer-2);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
+  max-width: 100%;
+  animation: dshTbFadeUp 160ms ease;
 }
 
 .reviewMessage[data-role='user'] {
-  align-self: flex-end;
-  background: var(--dsw-alias-state-business-primary);
-  border-color: transparent;
-  color: #fff;
-}
-
-.reviewMessageRole {
-  font-size: 11px;
-  font-weight: 600;
-  opacity: 0.75;
+  justify-content: flex-end;
 }
 
 .reviewMessageText {
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 16px;
+  line-height: 28px;
+  color: var(--dsw-alias-label-primary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* User messages are right-aligned bubbles, native look (deepseek-50 fill,
+   22px radius, 10/16 padding, capped width). */
+.reviewMessage[data-role='user'] .reviewMessageText {
+  font-size: 16px;
+  line-height: 24px;
+  max-width: min(525px, 82%);
+  padding: 10px 16px;
+  background: var(--dsw-specific-bubble, var(--dsw-static-deepseek-50));
+  border-radius: 22px;
+  color: var(--dsw-alias-label-primary);
+  transition: background-color 120ms ease;
+}
+
+.reviewMessage[data-role='user'] .reviewMessageText:hover {
+  background: var(--dsw-specific-bubble-highlight, var(--dsw-static-deepseek-200));
+}
+
+/* Context injections (system/plugin rows): a weak one-line row, never a
+   user bubble — collapsed here; the full text lives in the session page. */
+.reviewContext {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
+  padding: 4px 10px;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+  opacity: 0.85;
+  animation: dshTbFadeUp 160ms ease;
 }
 
 .reviewComments {
