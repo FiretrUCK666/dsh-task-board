@@ -108,12 +108,12 @@ describe('applyCardOrder', () => {
 })
 
 describe('status transitions', () => {
-  it('manual moves are allowed only to backlog/todo', () => {
+  it('manual moves are allowed to backlog/todo/done', () => {
     expect(canMoveManually('todo', 'backlog')).toBe(true)
-    expect(canMoveManually('failed', 'todo')).toBe(true)
+    expect(canMoveManually('review', 'todo')).toBe(true)
     expect(canMoveManually('done', 'backlog')).toBe(true)
     expect(canMoveManually('todo', 'running')).toBe(false)
-    expect(canMoveManually('backlog', 'done')).toBe(false)
+    expect(canMoveManually('backlog', 'review')).toBe(false)
   })
 
   it('withStatus bumps updatedAt and swaps the status', () => {
@@ -135,19 +135,19 @@ describe('status transitions', () => {
 })
 
 describe('settleExecution', () => {
-  it('settles a run as done on success', () => {
+  it('settles a successful run into review (the human gate before done)', () => {
     const { task, execution } = startExecution(sampleTask(), NOW, 'exec-1')
     const settled = settleExecution(task, 'exec-1', 'succeeded', NOW + 10, undefined)
-    expect(settled.status).toBe('done')
+    expect(settled.status).toBe('review')
     expect(settled.executions[0].endedAt).toBe(NOW + 10)
     expect(settled.executions[0].result).toBe('succeeded')
     expect(settled.executions[0].error).toBeUndefined()
   })
 
-  it('settles a run as failed on failure', () => {
+  it('settles a failed run into review too (outcome lives in the record)', () => {
     const { task, execution } = startExecution(sampleTask(), NOW, 'exec-1')
     const settled = settleExecution(task, 'exec-1', 'failed', NOW + 10, 'boom')
-    expect(settled.status).toBe('failed')
+    expect(settled.status).toBe('review')
     expect(settled.executions[0].result).toBe('failed')
     expect(settled.executions[0].error).toBe('boom')
   })
@@ -191,29 +191,29 @@ describe('settleExecution', () => {
     task = withSchedule(settled1, { runCount: 1 }, NOW + 2)
     const second = startExecution(task, NOW + 3, 'e2')
     const settled2 = settleExecution(second.task, 'e2', 'succeeded', NOW + 4, undefined)
-    // …the final budgeted run settles to done.
-    expect(settled2.status).toBe('done')
+    // …the final budgeted run settles into review.
+    expect(settled2.status).toBe('review')
   })
 
-  it('settles an unlimited schedule to done per run', () => {
+  it('settles an unlimited schedule into review per run', () => {
     const task = withSchedule(sampleTask(), { enabled: true, cron: '* * * * *', maxRuns: undefined, runCount: 3 }, NOW)
     const { task: running } = startExecution(task, NOW + 1, 'e1')
     const settled = settleExecution(running, 'e1', 'succeeded', NOW + 2, undefined)
-    expect(settled.status).toBe('done')
+    expect(settled.status).toBe('review')
   })
 
-  it('settles a disabled schedule to done like a manual run', () => {
+  it('settles a disabled schedule into review like a manual run', () => {
     const task = withSchedule(sampleTask(), { enabled: false, cron: '* * * * *', maxRuns: 5, runCount: 0 }, NOW)
     const { task: running } = startExecution(task, NOW + 1, 'e1')
     const settled = settleExecution(running, 'e1', 'succeeded', NOW + 2, undefined)
-    expect(settled.status).toBe('done')
+    expect(settled.status).toBe('review')
   })
 
-  it('a failed batch run settles to failed even while runs remain', () => {
+  it('a failed batch run settles into review even while runs remain', () => {
     const task = withSchedule(sampleTask(), { enabled: true, cron: '* * * * *', maxRuns: 5, runCount: 0 }, NOW)
     const { task: running } = startExecution(task, NOW + 1, 'e1')
     const settled = settleExecution(running, 'e1', 'failed', NOW + 2, 'boom')
-    expect(settled.status).toBe('failed')
+    expect(settled.status).toBe('review')
   })
 
   it('keeps an unlimited chain running after every succeeded run', () => {
@@ -235,14 +235,14 @@ describe('settleExecution', () => {
     task = withSchedule(settled2, { runCount: 2 }, NOW + 5)
     const third = startExecution(task, NOW + 6, 'e3')
     const settled3 = settleExecution(third.task, 'e3', 'succeeded', NOW + 7, undefined)
-    expect(settled3.status).toBe('done')
+    expect(settled3.status).toBe('review')
   })
 
-  it('a failed chain run settles to failed and never continues', () => {
+  it('a failed chain run settles into review and never continues', () => {
     const task = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '', maxRuns: undefined, runCount: 0 }, NOW)
     const { task: running } = startExecution(task, NOW + 1, 'e1')
     const settled = settleExecution(running, 'e1', 'failed', NOW + 2, 'boom')
-    expect(settled.status).toBe('failed')
+    expect(settled.status).toBe('review')
   })
 })
 
@@ -317,16 +317,16 @@ describe('resolveCardDrop', () => {
     expect(resolveCardDrop(task, 'running')).toEqual({ kind: 'none' })
   })
 
-  it('refuses done/failed while an execution is open, but allows backlog/todo', () => {
+  it('refuses done/review while an execution is open, but allows backlog/todo', () => {
     const { task } = startExecution(sampleTask(), NOW, 'e1')
     expect(resolveCardDrop(task, 'done')).toEqual({ kind: 'reject', reason: 'busy' })
-    expect(resolveCardDrop(task, 'failed')).toEqual({ kind: 'reject', reason: 'busy' })
+    expect(resolveCardDrop(task, 'review')).toEqual({ kind: 'reject', reason: 'busy' })
     expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'move', status: 'backlog' })
   })
 
   it('moves a free task to any non-running column', () => {
     const task = withStatus(sampleTask(), 'backlog', NOW)
-    for (const status of ['todo', 'done', 'failed'] as const) {
+    for (const status of ['todo', 'review', 'done'] as const) {
       expect(resolveCardDrop(task, status)).toEqual({ kind: 'move', status })
     }
     expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'none' })
@@ -352,12 +352,12 @@ describe('resolveCardDrop', () => {
     expect(resolveCardDrop(settled, 'backlog')).toEqual({ kind: 'reject', reason: 'scheduled' })
   })
 
-  it('a paused chain owns nothing: failed/backlog/cancelled cards move freely', () => {
-    // Paused (failed): the rule must not block recovery moves.
-    const failedChain = withSchedule(withStatus(sampleTask(), 'failed', NOW), { enabled: true, mode: 'chain', cron: '', primed: true }, NOW)
-    expect(resolveCardDrop(failedChain, 'todo')).toEqual({ kind: 'move', status: 'todo' })
-    expect(resolveCardDrop(failedChain, 'done')).toEqual({ kind: 'move', status: 'done' })
-    expect(resolveCardDrop(failedChain, 'running')).toEqual({ kind: 'run' }) // resume by running
+  it('a paused chain owns nothing: review/backlog/cancelled cards move freely', () => {
+    // Paused (review): the rule must not block recovery moves.
+    const reviewChain = withSchedule(withStatus(sampleTask(), 'review', NOW), { enabled: true, mode: 'chain', cron: '', primed: true }, NOW)
+    expect(resolveCardDrop(reviewChain, 'todo')).toEqual({ kind: 'move', status: 'todo' })
+    expect(resolveCardDrop(reviewChain, 'done')).toEqual({ kind: 'move', status: 'done' })
+    expect(resolveCardDrop(reviewChain, 'running')).toEqual({ kind: 'run' }) // resume by running
     // Paused (backlog shelved): same freedom.
     const backlogChain = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { enabled: true, mode: 'chain', cron: '', primed: true }, NOW)
     expect(resolveCardDrop(backlogChain, 'todo')).toEqual({ kind: 'move', status: 'todo' })
@@ -393,10 +393,10 @@ describe('ruleReadiness', () => {
     }
   })
 
-  it('is paused for backlog/failed once primed, naming the blocking status', () => {
+  it('is paused for backlog/review once primed, naming the blocking status', () => {
     const backlog = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
     expect(ruleReadiness(backlog)).toEqual({ kind: 'paused', status: 'backlog' })
-    const failed = withSchedule(withStatus(sampleTask(), 'failed', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
-    expect(ruleReadiness(failed)).toEqual({ kind: 'paused', status: 'failed' })
+    const review = withSchedule(withStatus(sampleTask(), 'review', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
+    expect(ruleReadiness(review)).toEqual({ kind: 'paused', status: 'review' })
   })
 })

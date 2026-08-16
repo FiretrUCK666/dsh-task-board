@@ -102,7 +102,7 @@ export class SchedulerService {
       // Chain mode: recovery tick only — a stalled chain (e.g. after a page
       // reload, when the settle hand-off was lost) is restarted when no
       // execution is open and a further run is within budget. Only a
-      // 'running' card is a chain hand-off candidate: paused (failed /
+      // 'running' card is a chain hand-off candidate: paused (review /
       // backlog) and cancelled (todo) chains are resumed by hand, never by
       // the clock. The live hand-off runs synchronously after each settle in
       // the controller, so this tick can never double-launch.

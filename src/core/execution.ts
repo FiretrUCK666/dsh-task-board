@@ -67,6 +67,16 @@ export interface AgentPresetSelectFace {
   (sessionId: string, agentPreset: string): Promise<{ ok: true } | { ok: false; error: string }>
 }
 
+/**
+ * Optional comment face: sends one comment continuation to an existing
+ * execution session through the host-level `session.prompt` API (works for
+ * any session id, not just the currently staged one). When absent the
+ * service falls back to the client binding driver.
+ */
+export interface CommentSendFace {
+  (sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }>
+}
+
 /** Everything the service needs from the runtime. */
 export interface ExecutionEnvironment {
   sessions: SessionsExecutionFace
@@ -77,6 +87,8 @@ export interface ExecutionEnvironment {
   selectModel?: ModelSelectFace
   /** Applies a task's configured agent preset; absent = sessions run on the deployment default. */
   selectAgentPreset?: AgentPresetSelectFace
+  /** Sends comment continuations to existing execution sessions (host API). */
+  sendComment?: CommentSendFace
 }
 
 /** The behavior verbs the service invokes on an execution session. */
@@ -202,6 +214,48 @@ export class ExecutionService {
         })
         return
       }
+      this.watchForSettlement(driver, task.id, execution.id, sessionId, onEvent, baseline)
+    } catch (error) {
+      onEvent({
+        kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
+        error: messageOf(error),
+      })
+    }
+  }
+
+  /**
+   * Continue an existing execution session with a comment: send the text to
+   * the session's agent (a fresh turn) and watch it settle like a plain run.
+   * The comment round carries the same session — no new session is created.
+   * Settlement uses the host session list + raw history signals, which work
+   * for sessions that are not the currently staged one; when a binding
+   * driver is available its snapshot watch is used as an additional fast
+   * path. Never rejects: every failure path reports a settled event.
+   */
+  async commentRun(
+    task: TaskRecord,
+    execution: ExecutionRecord,
+    sessionId: string,
+    text: string,
+    onEvent: (event: ExecutionEvent) => void,
+  ): Promise<void> {
+    try {
+      const driver = this.driverOf(sessionId)
+      const send = this.env.sendComment
+        ?? (async (id, content) => {
+          const bound = this.driverOf(id)
+          if (bound === undefined) return { ok: false as const, error: 'comment session is not ready' }
+          return bound.prompt([{ type: 'text', text: content }], 'queue')
+        })
+      const result = await send(sessionId, text)
+      if (!result.ok) {
+        onEvent({
+          kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
+          error: `comment rejected: ${result.error}`,
+        })
+        return
+      }
+      const baseline = driver !== undefined ? driver.getSnapshot().turnEnds.size : 0
       this.watchForSettlement(driver, task.id, execution.id, sessionId, onEvent, baseline)
     } catch (error) {
       onEvent({
@@ -354,14 +408,15 @@ export class ExecutionService {
    * The execution session is usually NOT the UI's current session, so its
    * conversation snapshot stays cold (the runtime only maintains the window
    * for the staged/current session) and the driver watch above would never
-   * observe the turn. The host session list is the completion signal there:
-   * subscribe to it as well, and settle once the list reports the session no
-   * longer running AND a turn actually finished (driver snapshot or raw
-   * history tail) — a session that was merely created but never started
-   * (queue window) must not settle.
+   * observe the turn — and for comment continuations the session may not
+   * even have a binding. The host session list is the completion signal
+   * there: subscribe to it as well, and settle once the list reports the
+   * session no longer running AND a turn actually finished (driver snapshot
+   * or raw history tail) — a session that was merely created but never
+   * started (queue window) must not settle.
    */
   private watchForSettlement(
-    driver: SessionDriver,
+    driver: SessionDriver | undefined,
     taskId: string,
     executionId: string,
     sessionId: string,
@@ -381,7 +436,7 @@ export class ExecutionService {
       })
     }
     const check = (): void => {
-      if (settled) return
+      if (settled || driver === undefined) return
       const snapshot = driver.getSnapshot()
       if (snapshot.running || snapshot.turnEnds.size <= baseline) return
       settle(snapshot.lastAgentError !== null ? 'failed' : 'succeeded', snapshot.lastAgentError ?? undefined)
@@ -394,8 +449,8 @@ export class ExecutionService {
       // Not in the list yet (session creation is in flight) or still running:
       // keep watching.
       if (summary === undefined || summary.running) return
-      const snapshot = driver.getSnapshot()
-      if (snapshot.turnEnds.size > baseline) {
+      const snapshot = driver?.getSnapshot()
+      if (snapshot !== undefined && snapshot.turnEnds.size > baseline) {
         settle(snapshot.lastAgentError !== null ? 'failed' : 'succeeded', snapshot.lastAgentError ?? undefined)
         return
       }
@@ -405,7 +460,8 @@ export class ExecutionService {
         }
       })
     }
-    unsubscribe = [driver.subscribe(check), this.env.sessions.list.subscribe(checkList)]
+    unsubscribe = [this.env.sessions.list.subscribe(checkList)]
+    if (driver !== undefined) unsubscribe.push(driver.subscribe(check))
     // A turn can complete during the prompt round-trip (before subscribe):
     // re-check immediately so a fast turn is never missed.
     check()

@@ -18,6 +18,7 @@ import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
 import { mergedPresets, PresetManager } from './PresetManager.tsx'
+import { ReviewDetail } from './ReviewDetail.tsx'
 import { STATUS_KEY } from './status.ts'
 
 /** Execution outcome → locale key. */
@@ -32,8 +33,8 @@ const STATUS_CHIP: Record<TaskStatus, ChipKind> = {
   backlog: 'neutral',
   todo: 'neutral',
   running: 'warn',
+  review: 'neutral',
   done: 'success',
-  failed: 'error',
 }
 
 /** Execution outcome → shared-chip color. */
@@ -44,33 +45,54 @@ function resultChipKind(result: ExecutionRecord['result']): ChipKind {
   return 'warn'
 }
 
-/** One execution-history row: sequence, outcome, exact start/end times. */
-function ExecutionRow({ execution, index, onOpen }: {
+/** One execution-history row: sequence, outcome, exact start/end times.
+ *  Clicking the row opens the review page; the row also offers a rerun of
+ *  that run and the native "view session" jump. */
+function ExecutionRow({ execution, index, onReview, onRerun, onOpen }: {
   execution: ExecutionRecord
-  /** 1-based execution sequence (stable: executions are only appended). */
+  /** 1-based execution sequence (comment rounds are not part of the list). */
   index: number
+  onReview: () => void
+  onRerun: () => void
   onOpen: (sessionId: string) => void
 }) {
   const result = execution.result
   const running = result === undefined
   return (
-    <li className={css.executionRow} data-result={result}>
+    <li
+      className={css.executionRow}
+      data-result={result}
+      onClick={onReview}
+      role="button"
+      tabIndex={0}
+      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onReview() } }}
+    >
       <div className={css.executionRowTop}>
         <span className={css.executionIndex}>{t('detail.executionNo', { n: String(index) })}</span>
         <Chip kind={resultChipKind(result)}>
           {running && <span className={css.spinner} aria-hidden="true" />}
           {running ? t('detail.result.running') : t(RESULT_KEY[result as NonNullable<ExecutionRecord['result']>])}
         </Chip>
-        {execution.sessionId !== undefined && (
+        <span className={css.executionRowActions}>
           <button
             type="button"
             className={css.executionOpen}
-            onClick={() => { onOpen(execution.sessionId as string) }}
-            title={execution.sessionId}
+            onClick={event => { event.stopPropagation(); onRerun() }}
+            title={t('detail.executionRerun')}
           >
-            {t('detail.viewSession')} →
+            {t('detail.executionRerun')}
           </button>
-        )}
+          {execution.sessionId !== undefined && (
+            <button
+              type="button"
+              className={css.executionOpen}
+              onClick={event => { event.stopPropagation(); onOpen(execution.sessionId as string) }}
+              title={execution.sessionId}
+            >
+              {t('detail.viewSession')} →
+            </button>
+          )}
+        </span>
       </div>
       <span className={css.executionTimes}>
         {t('detail.executionStarted')} {formatDateTime(execution.startedAt)}
@@ -322,8 +344,8 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
           )}
           {readiness.kind === 'paused' && (
             <p className={css.scheduleMeta}>
-              {readiness.status === 'failed'
-                ? t('detail.schedule.paused.failed')
+              {readiness.status === 'review'
+                ? t('detail.schedule.paused.review')
                 : t('detail.schedule.paused.backlog')}
             </p>
           )}
@@ -366,8 +388,8 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
           </p>
           {readiness.kind === 'paused' && (
             <p className={css.scheduleMeta}>
-              {readiness.status === 'failed'
-                ? t('detail.schedule.paused.failed')
+              {readiness.status === 'review'
+                ? t('detail.schedule.paused.review')
                 : t('detail.schedule.paused.backlog')}
             </p>
           )}
@@ -401,6 +423,8 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   // so live record updates (e.g. an execution settling) never clobber it.
   const [draft, setDraft] = useState<TaskDraft | undefined>(undefined)
   const [editError, setEditError] = useState<string | undefined>(undefined)
+  // The execution row whose review page is open (undefined = none).
+  const [reviewExecution, setReviewExecution] = useState<ExecutionRecord | undefined>(undefined)
   const latestExecution = task.executions[task.executions.length - 1]
   // A card is busy while its latest run is still open. A scheduled batch
   // keeps the card 'running' between runs, so `running` alone must not
@@ -524,20 +548,26 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
 
           <section className={css.detailSection}>
             <h4>{t('detail.execution')}</h4>
-            {current.executions.length === 0 ? (
-              <p className={css.detailText}>{t('detail.noExecution')}</p>
-            ) : (
-              <ul className={css.executionList}>
-                {[...current.executions].reverse().map((execution, reversedIndex) => (
-                  <ExecutionRow
-                    key={execution.id}
-                    execution={execution}
-                    index={current.executions.length - reversedIndex}
-                    onOpen={sessionId => { controller.openSession(sessionId) }}
-                  />
-                ))}
-              </ul>
-            )}
+            {(() => {
+              // Comment continuation rounds are not part of the execution
+              // history list — they live in the review page's comment thread.
+              const runs = current.executions.filter(execution => execution.comment === undefined)
+              if (runs.length === 0) return <p className={css.detailText}>{t('detail.noExecution')}</p>
+              return (
+                <ul className={css.executionList}>
+                  {[...runs].reverse().map((execution, reversedIndex) => (
+                    <ExecutionRow
+                      key={execution.id}
+                      execution={execution}
+                      index={runs.length - reversedIndex}
+                      onReview={() => { setReviewExecution(execution) }}
+                      onRerun={() => { void controller.rerunTask(current.id) }}
+                      onOpen={sessionId => { controller.openSession(sessionId) }}
+                    />
+                  ))}
+                </ul>
+              )
+            })()}
           </section>
 
           <section className={css.detailSection}>
@@ -618,6 +648,14 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
             controller.deleteTask(current.id)
             controller.closeTask()
           }}
+        />
+      )}
+      {reviewExecution !== undefined && (
+        <ReviewDetail
+          controller={controller}
+          task={current}
+          execution={reviewExecution}
+          onClose={() => { setReviewExecution(undefined) }}
         />
       )}
     </div>

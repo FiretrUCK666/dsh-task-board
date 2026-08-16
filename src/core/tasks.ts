@@ -6,12 +6,16 @@
  */
 
 /** Task lifecycle status, one per kanban column. */
-export type TaskStatus = 'backlog' | 'todo' | 'running' | 'done' | 'failed'
+export type TaskStatus = 'backlog' | 'todo' | 'running' | 'review' | 'done'
 
 /**
- * One real execution attempt: the run's own id, the dsh session that ran it
- * (filled once the session is created), and the settled outcome once the
- * session's turn ended.
+ * One execution round: a full run attempt (or a comment continuation that
+ * kept an existing session going). The run's own id, the dsh session that
+ * carried it (filled once known), and the settled outcome once the session's
+ * turn ended. A round with `comment` set is a comment continuation: it never
+ * appears in the execution-history list (comments live in the review page's
+ * comment thread), but it is a first-class round for settlement, persistence
+ * and the running-state machine.
  */
 export interface ExecutionRecord {
   /** Execution attempt id (uuid). */
@@ -26,6 +30,8 @@ export interface ExecutionRecord {
   result: 'succeeded' | 'failed' | 'cancelled' | undefined
   /** Human failure text when the run failed (prompt rejection or agent error). */
   error: string | undefined
+  /** The comment text when this round is a comment continuation (absent = a plain run). */
+  comment?: string
 }
 
 /** How a scheduled task is driven: cron = fire at fixed times; chain = rerun right after each run settles. */
@@ -126,22 +132,19 @@ export const COLUMNS: readonly { status: TaskStatus; label: string }[] = [
   { status: 'backlog', label: '待规划' },
   { status: 'todo', label: '待办' },
   { status: 'running', label: '进行中' },
+  { status: 'review', label: '待审核' },
   { status: 'done', label: '已完成' },
-  { status: 'failed', label: '已失败' },
 ]
 
 /** Statuses a user may move a card to manually (execution states are owned by the runner). */
-export const MANUAL_STATUSES: readonly TaskStatus[] = ['backlog', 'todo']
-
-/** Statuses the runner may move a card to from 'running'. */
-export const RUNNER_SETTLE_STATUSES: readonly TaskStatus[] = ['done', 'failed']
+export const MANUAL_STATUSES: readonly TaskStatus[] = ['backlog', 'todo', 'done']
 
 /** Statuses in which an armed + primed auto rule keeps driving the task. */
 export const RULE_ACTIVE_STATUSES: readonly TaskStatus[] = ['todo', 'running', 'done']
 
 /** All valid statuses (closed union guard). */
 export const ALL_STATUSES: readonly TaskStatus[] = [
-  'backlog', 'todo', 'running', 'done', 'failed',
+  'backlog', 'todo', 'running', 'review', 'done',
 ]
 
 /** Brand an unknown string as a status; undefined when it is not one. */
@@ -158,8 +161,8 @@ export function isTaskStatus(value: unknown): value is TaskStatus {
  *   The rule never triggers by itself and the user is told to start it by
  *   hand; its next-run instant is kept for the day it becomes active.
  * - `paused`: armed and started, but the task sits in a state the rule must
- *   not drive (backlog = shelved, failed = needs a human decision). Any
- *   manual action that leaves these states (run, or move to todo/done)
+ *   not drive (backlog = shelved, review = a human decision is pending).
+ *   Any manual action that leaves these states (run, or move to todo/done)
  *   resumes the rule; missed due instants are skipped, never caught up.
  * - `active`: armed, started, and the task is in a drivable state
  *   (todo/running/done) — cron due instants and chain hand-offs fire.
@@ -167,7 +170,7 @@ export function isTaskStatus(value: unknown): value is TaskStatus {
 export type RuleReadiness =
   | { kind: 'disabled' }
   | { kind: 'standby' }
-  | { kind: 'paused'; status: 'backlog' | 'failed' }
+  | { kind: 'paused'; status: 'backlog' | 'review' }
   | { kind: 'active' }
 
 /** The readiness of a task's schedule rule (see {@link RuleReadiness}). */
@@ -175,7 +178,7 @@ export function ruleReadiness(task: TaskRecord): RuleReadiness {
   const schedule = task.schedule
   if (schedule === undefined || !schedule.enabled) return { kind: 'disabled' }
   if (schedule.primed !== true) return { kind: 'standby' }
-  if (task.status === 'backlog' || task.status === 'failed') return { kind: 'paused', status: task.status }
+  if (task.status === 'backlog' || task.status === 'review') return { kind: 'paused', status: task.status }
   return { kind: 'active' }
 }
 
@@ -271,13 +274,15 @@ export function startExecution(
  * matching column. No-op (returns the input task) when the execution is not
  * the task's latest or is already settled.
  *
- * A scheduled batch keeps the card 'running' between runs: a succeeded run
- * belonging to an armed schedule whose next automatic run is already
- * committed keeps the status 'running' — for a budgeted cron batch
+ * A settled run always lands in 'review' — the human gate between execution
+ * and completion: succeeded runs await human confirmation, failed runs await
+ * a decision (comment to steer, rerun, or move on). The only exception is a
+ * scheduled batch that keeps the card 'running' between runs: a succeeded
+ * run belonging to an armed schedule whose next automatic run is already
+ * committed stays 'running' — for a budgeted cron batch
  * (`runCount + 1 < maxRuns`, the counter is incremented by the scheduler
  * only after this settle) and for chain mode (unlimited, or a further
- * budgeted run remains). The final budgeted run settles to 'done' like a
- * manual run; a failed run never keeps the card running.
+ * budgeted run remains). A cancelled run returns to 'todo'.
  */
 export function settleExecution(
   task: TaskRecord,
@@ -305,10 +310,10 @@ export function settleExecution(
     && schedule.mode === 'cron'
     && schedule.maxRuns !== undefined
     && schedule.runCount + 1 < schedule.maxRuns
-  const status: TaskStatus = outcome === 'succeeded'
-    ? chainIncomplete || batchIncomplete ? 'running' : 'done'
-    : outcome === 'failed' ? 'failed'
-      : task.status === 'running' ? 'todo' : task.status
+  const status: TaskStatus = outcome === 'cancelled'
+    ? task.status === 'running' ? 'todo' : task.status
+    : chainIncomplete || batchIncomplete ? 'running'
+      : 'review'
   return { ...task, status, updatedAt: now, executions }
 }
 
@@ -333,14 +338,14 @@ export type CardDropDecision =
  * - A chain that actually owns the card — armed, primed by a manual run,
  *   and still 'running' (every settled run hands off to the next, so any
  *   other column would be overwritten) — is refused (`scheduled`). A chain
- *   in standby or paused (failed/backlog/cancelled) owns nothing: the card
+ *   in standby or paused (review/backlog/cancelled) owns nothing: the card
  *   can be moved freely, which is also how a paused chain resumes (move to
  *   todo/done or run again).
  * - Dropping on 'running' reruns the task (the same "run again" semantics
  *   as the detail button), unless its latest execution is still open — the
  *   run guard is shared with manual runs and the scheduler, so a live run
  *   can never be started twice from any surface.
- * - While an execution is open, 'done'/'failed' are refused: the runner
+ * - While an execution is open, 'review'/'done' are refused: the runner
  *   owns those transitions and would overwrite a manual move when the run
  *   settles.
  * - Anything else is a plain manual move; dropping on the current column is
@@ -359,7 +364,7 @@ export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropD
   }
   if (target === 'running' && !busy) return { kind: 'run' }
   if (task.status === target) return { kind: 'none' }
-  if (busy && (target === 'done' || target === 'failed')) return { kind: 'reject', reason: 'busy' }
+  if (busy && (target === 'review' || target === 'done')) return { kind: 'reject', reason: 'busy' }
   return { kind: 'move', status: target }
 }
 

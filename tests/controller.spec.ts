@@ -57,16 +57,20 @@ class FakeSessions {
 /** Controllable ExecutionService stub: captures run calls, fires events on demand. */
 class StubExec {
   runCalls: Array<{ task: TaskRecord; taskId: string; executionId: string; fire: (event: ExecutionEvent) => void }> = []
+  commentCalls: Array<{ taskId: string; executionId: string; sessionId: string; text: string; fire: (event: ExecutionEvent) => void }> = []
   reconcileResult: ExecutionEvent | undefined = undefined
   async run(task: TaskRecord, execution: { id: string }, onEvent: (event: ExecutionEvent) => void): Promise<void> {
     this.runCalls.push({ task, taskId: task.id, executionId: execution.id, fire: onEvent })
+  }
+  async commentRun(task: TaskRecord, execution: { id: string }, sessionId: string, text: string, onEvent: (event: ExecutionEvent) => void): Promise<void> {
+    this.commentCalls.push({ taskId: task.id, executionId: execution.id, sessionId, text, fire: onEvent })
   }
   reconcile(): ExecutionEvent | undefined {
     return this.reconcileResult
   }
 }
 
-function makeController(stub = new StubExec()) {
+function makeController(stub = new StubExec(), extra: Partial<ControllerDeps> = {}) {
   const sessions = new FakeSessions()
   const store = new InMemoryTaskStore()
   const deps: ControllerDeps = {
@@ -75,6 +79,7 @@ function makeController(stub = new StubExec()) {
     sessions,
     now: () => NOW,
     uuid,
+    ...extra,
   }
   const controller = new BoardController(deps)
   controller.start()
@@ -323,19 +328,19 @@ describe('run loop', () => {
     await controller.runTask(taskId)
     expect(exec.runCalls).toHaveLength(1)
 
-    // …and settles it.
+    // …and settles it into review (the human gate before done).
     exec.runCalls[0].fire({ kind: 'settled', taskId, executionId, outcome: 'succeeded' })
-    expect(store.load()[0].status).toBe('done')
+    expect(store.load()[0].status).toBe('review')
     expect(store.load()[0].executions[0].result).toBe('succeeded')
   })
 
-  it('settles failed tasks into the failed column', async () => {
+  it('settles failed tasks into review (the outcome lives in the record)', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: '任务A', description: '', prompt: '干活' })!
     await controller.runTask(task.id)
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.runCalls[0].executionId, outcome: 'failed', error: 'boom' })
-    expect(store.load()[0].status).toBe('failed')
+    expect(store.load()[0].status).toBe('review')
     expect(store.load()[0].executions[0].error).toBe('boom')
   })
 
@@ -345,7 +350,7 @@ describe('run loop', () => {
     const task = controller.createTask({ title: '任务A', description: '', prompt: '干活' })!
     await controller.runTask(task.id)
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.runCalls[0].executionId, outcome: 'failed' })
-    expect(controller.getSnapshot().tasks[0].status).toBe('failed')
+    expect(controller.getSnapshot().tasks[0].status).toBe('review')
     await controller.rerunTask(task.id)
     expect(controller.getSnapshot().tasks[0].status).toBe('running')
     expect(exec.runCalls).toHaveLength(2)
@@ -433,7 +438,7 @@ describe('run loop', () => {
 
     // The live watch settles on the turn boundary.
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId, outcome: 'succeeded' })
-    expect(store.load()[0].status).toBe('done')
+    expect(store.load()[0].status).toBe('review')
     expect(store.load()[0].executions[0].result).toBe('succeeded')
   })
 
@@ -467,7 +472,7 @@ describe('run loop', () => {
     sessions.setRunning('s-1', false)
     await flush()
     await flush()
-    expect(store.load()[0].status).toBe('done')
+    expect(store.load()[0].status).toBe('review')
     expect(store.load()[0].executions[0].result).toBe('succeeded')
   })
 
@@ -577,22 +582,22 @@ describe('scheduling', () => {
     expect(store.load()[0].status).toBe('running')
     controller.applyScheduleNextRun(task.id, NOW + 120_000, NOW, 2)
 
-    // Run 3 is the final budgeted run → 'done'.
+    // Run 3 is the final budgeted run → review (the human gate).
     await controller.runTask(task.id)
     const e3 = exec.runCalls[2].executionId
     exec.runCalls[2].fire({ kind: 'settled', taskId: task.id, executionId: e3, outcome: 'succeeded' })
-    expect(store.load()[0].status).toBe('done')
+    expect(store.load()[0].status).toBe('review')
     expect(store.load()[0].executions).toHaveLength(3)
   })
 
-  it('a failed batch run settles to failed and frees the next run slot', async () => {
+  it('a failed batch run settles into review and frees the next run slot', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     controller.setSchedule(task.id, { enabled: true, cron: '* * * * *', maxRuns: 2 })
     await controller.runTask(task.id)
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.runCalls[0].executionId, outcome: 'failed', error: 'boom' })
-    expect(store.load()[0].status).toBe('failed')
+    expect(store.load()[0].status).toBe('review')
     // The next tick may retry: the latest execution is settled.
     await controller.runTask(task.id)
     expect(exec.runCalls).toHaveLength(2)
@@ -618,7 +623,7 @@ describe('scheduling', () => {
     expect(store.load()[0].schedule?.runCount).toBe(1)
     expect(store.load()[0].schedule?.enabled).toBe(true)
     expect(store.load()[0].status).toBe('running') // chain keeps the card in progress
-    // Run 2 is the final budgeted run → disarmed, settled to done, no run 3.
+    // Run 2 is the final budgeted run → disarmed, settled into review, no run 3.
     const e2 = exec.runCalls[1].executionId
     exec.runCalls[1].fire({ kind: 'started', taskId: task.id, executionId: e2, sessionId: 's-2' })
     exec.runCalls[1].fire({ kind: 'settled', taskId: task.id, executionId: e2, outcome: 'succeeded' })
@@ -626,7 +631,7 @@ describe('scheduling', () => {
     const final = store.load()[0]
     expect(final.schedule?.enabled).toBe(false)
     expect(final.schedule?.runCount).toBe(2)
-    expect(final.status).toBe('done')
+    expect(final.status).toBe('review')
   })
 
   it('chain mode: a failed run stops the chain', async () => {
@@ -639,7 +644,7 @@ describe('scheduling', () => {
     exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'failed', error: 'boom' })
     expect(exec.runCalls).toHaveLength(1) // no hand-off after a failure
-    expect(store.load()[0].status).toBe('failed')
+    expect(store.load()[0].status).toBe('review')
     expect(store.load()[0].schedule?.enabled).toBe(true) // stays armed for the recovery tick
   })
 
@@ -679,5 +684,155 @@ describe('scheduling', () => {
     expect(controller.setSchedule(fresh.id, { enabled: true, mode: 'chain' })).toBe(true)
     expect(controller.setSchedule(fresh.id, { mode: 'cron' })).toBe(false)
     expect(controller.setSchedule(fresh.id, { mode: 'cron', cron: '*/5 * * * *' })).toBe(true)
+  })
+})
+
+describe('comments', () => {
+  /** A task with one settled execution in review (session s-1). */
+  async function settledReviewTask(stub: StubExec, controller: BoardController): Promise<{ taskId: string; executionId: string }> {
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    await controller.runTask(task.id)
+    const executionId = stub.runCalls[0].executionId
+    stub.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId, sessionId: 's-1' })
+    stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId, outcome: 'succeeded' })
+    return { taskId: task.id, executionId }
+  }
+
+  it('saves a pending comment round; nothing is injected while the cruise is off', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    expect(store.load()[0].status).toBe('review')
+    const round = controller.submitComment(taskId, executionId, ' 继续下一步 ')
+    expect(round).toBeDefined()
+    expect(round?.comment).toBe('继续下一步')
+    expect(round?.sessionId).toBe('s-1')
+    expect(exec.commentCalls).toHaveLength(0)
+    expect(store.load()[0].status).toBe('review')
+    // Only one open comment round at a time.
+    expect(controller.submitComment(taskId, executionId, '再一句')).toBeUndefined()
+  })
+
+  it('rejects comments on unknown tasks, unsettled runs, or blank text', async () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    await controller.runTask(task.id)
+    const openExecutionId = stub.runCalls[0].executionId
+    expect(controller.submitComment(task.id, 'ghost', 'hi')).toBeUndefined()
+    expect(controller.submitComment('ghost', 'ghost', 'hi')).toBeUndefined()
+    expect(controller.submitComment(task.id, openExecutionId, 'hi')).toBeUndefined() // not settled
+    expect(controller.submitComment(task.id, openExecutionId, '   ')).toBeUndefined()
+  })
+
+  it('injects pending comments when the cruise turns on and settles back into review', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    controller.submitComment(taskId, executionId, '继续')
+    controller.setCruiseEnabled(true)
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(exec.commentCalls[0].sessionId).toBe('s-1')
+    expect(exec.commentCalls[0].text).toBe('继续')
+    expect(store.load()[0].status).toBe('running')
+    // The comment round settles through the normal event path → review again.
+    exec.commentCalls[0].fire({ kind: 'settled', taskId, executionId: exec.commentCalls[0].executionId, outcome: 'succeeded' })
+    expect(store.load()[0].status).toBe('review')
+    expect(store.load()[0].executions).toHaveLength(2)
+    expect(store.load()[0].executions[1].comment).toBe('继续')
+    expect(store.load()[0].executions[1].result).toBe('succeeded')
+  })
+
+  it('injects a comment immediately when the cruise is already on', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    controller.submitComment(taskId, executionId, '马上干')
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(store.load()[0].status).toBe('running')
+  })
+
+  it('a failed comment round reports the error and lands in review', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    controller.submitComment(taskId, executionId, '改一下')
+    exec.commentCalls[0].fire({ kind: 'settled', taskId, executionId: exec.commentCalls[0].executionId, outcome: 'failed', error: 'boom' })
+    expect(store.load()[0].status).toBe('review')
+    expect(store.load()[0].executions[1].result).toBe('failed')
+    expect(store.load()[0].executions[1].error).toBe('boom')
+  })
+})
+
+describe('auto-cruise', () => {
+  it('defaults to off with a limit of 5 when nothing is stored', () => {
+    const { controller } = makeController()
+    expect(controller.getSnapshot().cruise).toEqual({ enabled: false, limit: 5 })
+  })
+
+  it('persists toggle and limit through the storage face', () => {
+    const writes: Array<{ enabled: boolean; limit: number }> = []
+    const storage = {
+      read: (): { enabled: boolean; limit: number } | undefined => writes[writes.length - 1],
+      write: (state: { enabled: boolean; limit: number }): void => { writes.push(state) },
+    }
+    const { controller } = makeController(new StubExec(), { cruiseStorage: storage })
+    controller.setCruiseEnabled(true)
+    controller.setCruiseLimit(3)
+    expect(writes).toEqual([
+      { enabled: true, limit: 5 },
+      { enabled: true, limit: 3 },
+    ])
+    expect(controller.getSnapshot().cruise).toEqual({ enabled: true, limit: 3 })
+    // Clamped to ≥ 1.
+    controller.setCruiseLimit(0)
+    expect(controller.getSnapshot().cruise.limit).toBe(1)
+  })
+
+  it('restores a persisted enabled cruise on start and pumps the queue', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub, {
+      cruiseStorage: { read: () => ({ enabled: true, limit: 2 }), write: () => {} },
+    })
+    controller.createTask({ title: 'a', description: '', prompt: '' })!
+    controller.createTask({ title: 'b', description: '', prompt: '' })!
+    controller.createTask({ title: 'c', description: '', prompt: '' })!
+    expect(exec.runCalls).toHaveLength(2) // limit 2
+    expect(store.load().filter(task => task.status === 'running')).toHaveLength(2)
+  })
+
+  it('runs todo tasks up to the limit and refills when one settles', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
+    const c = controller.createTask({ title: 'c', description: '', prompt: '' })!
+    controller.setCruiseLimit(2)
+    controller.setCruiseEnabled(true)
+    expect(exec.runCalls).toHaveLength(2)
+    expect(store.load().filter(task => task.status === 'running')).toHaveLength(2)
+    // One run settles → the freed slot picks up the remaining todo.
+    exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(3)
+    expect(store.load().find(task => task.id === c.id)?.status).toBe('running')
+    expect(store.load().find(task => task.id === a.id)?.status).toBe('review')
+    // Review tasks are never re-picked by the cruise.
+    expect(store.load().find(task => task.id === b.id)?.status).toBe('running')
+  })
+
+  it('disabling stops picking new tasks; in-flight runs finish', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    controller.createTask({ title: 'b', description: '', prompt: '' })!
+    controller.setCruiseLimit(1)
+    controller.setCruiseEnabled(true)
+    expect(exec.runCalls).toHaveLength(1)
+    controller.setCruiseEnabled(false)
+    exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(1) // no refill while off
+    expect(store.load().find(task => task.id === a.id)?.status).toBe('review')
   })
 })

@@ -101,6 +101,13 @@ describe('parseLedger', () => {
     expect(parsed[1].status).toBe('todo')
   })
 
+  it('migrates legacy failed tasks into review (the human gate)', () => {
+    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
+    const parsed = parseLedger(JSON.stringify([{ ...valid, id: 't-9', status: 'failed' }]))
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].status).toBe('review')
+  })
+
   it('round-trips a task with a run-configuration permission through storage', () => {
     const task = createTask(
       { title: 'x', description: '', prompt: '', permission: 'danger-full-access', agentPreset: 'butler' },

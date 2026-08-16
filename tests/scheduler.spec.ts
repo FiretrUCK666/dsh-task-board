@@ -119,14 +119,14 @@ describe('SchedulerService.tick', () => {
     expect(h.runs).toEqual(['t-a'])
   })
 
-  it('skips due instants while paused (failed/backlog) and resumes from the next match', async () => {
+  it('skips due instants while paused (review/backlog) and resumes from the next match', async () => {
     const h = makeHarness()
     h.setNow(at(2026, 1, 1, 10, 0, 30))
     const base = createTask({ title: 'a', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-a')
-    // A primed rule on a paused (here: failed) card: no trigger, the missed
+    // A primed rule on a paused (here: review) card: no trigger, the missed
     // due instant rolls forward (skip, never catch up). Backlog shares the
     // same path — both come out of ruleReadiness as 'paused'.
-    h.setTasks([withStatus(withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0), primed: true }, at(2026, 1, 1, 0, 0)), 'failed', at(2026, 1, 1, 10, 0, 0))])
+    h.setTasks([withStatus(withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0), primed: true }, at(2026, 1, 1, 0, 0)), 'review', at(2026, 1, 1, 10, 0, 0))])
     await h.scheduler.tick()
     expect(h.runs).toEqual([])
     expect(h.applied).toEqual([{ id: 't-a', nextRunAt: at(2026, 1, 1, 10, 1, 0), lastTriggeredAt: undefined }])
@@ -268,9 +268,9 @@ describe('SchedulerService lifecycle', () => {
   it('never restarts a chain the user must resume by hand', async () => {
     const h = makeHarness()
     const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
-    // Failed: the rule is paused — no clock-driven restart.
-    const failed = withStatus(withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0)), 'failed', at(2026, 1, 1, 10, 0, 0))
-    h.setTasks([failed])
+    // Review: the rule is paused — no clock-driven restart.
+    const review = withStatus(withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0)), 'review', at(2026, 1, 1, 10, 0, 0))
+    h.setTasks([review])
     await h.scheduler.tick()
     expect(h.runs).toEqual([])
     // Cancelled (todo): no open run, but the chain was not kept in progress.

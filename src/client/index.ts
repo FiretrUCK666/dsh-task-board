@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController, type SlashCandidate } from '../core/controller.ts'
+import { BoardController, type SlashCandidate, type TranscriptEventShape } from '../core/controller.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
@@ -29,6 +29,9 @@ const NS = 'dsh-task-board'
 
 /** Settings namespace the settings card edits (the Host plugin registers it). */
 const TASK_BOARD_NS = 'dsh-task-board'
+
+/** localStorage key for the auto-cruise state (toggle + concurrency limit). */
+const CRUISE_STORAGE_KEY = 'dsh.taskBoard.cruise.v1'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -160,7 +163,36 @@ export function apply(ctx: ClientContext): void {
           ? { ok: true as const }
           : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
       },
+      // Comment continuations go through the host-level session.prompt API:
+      // it addresses any session id (the execution session is usually not
+      // the currently staged one, so a client binding is not guaranteed).
+      sendComment: async (sessionId, text) => {
+        const response = await connection.api.sessions.prompt({
+          sessionId: sessionId as SessionId,
+          mode: 'queue',
+          content: [{ type: 'text', text }],
+        })
+        return response.result.ok
+          ? { ok: true as const }
+          : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+      },
     })
+    // Review-page transcripts: the recent history window of an execution
+    // session (raw events; the review page folds them into messages).
+    const transcriptLoader = async (sessionId: string): Promise<readonly TranscriptEventShape[] | undefined> => {
+      try {
+        const response = await connection.api.sessions.history({
+          sessionId: sessionId as SessionId,
+          maxMessages: 30,
+        })
+        return response.result.ok
+          ? response.result.value.events.map(entry => entry.event)
+          : undefined
+      } catch (error) {
+        console.error('[dsh-task-board] transcript read failed', error)
+        return undefined
+      }
+    }
 
     // Slash-menu sources (see listSlashCandidates): each fetches one native
     // catalog and degrades to [] on any failure, with the reason logged.
@@ -228,6 +260,29 @@ export function apply(ctx: ClientContext): void {
         exists: id => sessions.list.getSnapshot().byId[id as SessionId] !== undefined,
         open: id => sessions.open(id as SessionId),
       },
+      // Auto-cruise state persists across reloads (toggle + concurrency).
+      cruiseStorage: {
+        read: () => {
+          try {
+            const raw = localStorage.getItem(CRUISE_STORAGE_KEY)
+            if (raw === null) return undefined
+            const parsed = JSON.parse(raw) as { enabled?: boolean; limit?: number }
+            return { enabled: parsed.enabled === true, limit: parsed.limit }
+          } catch (error) {
+            console.error('[dsh-task-board] cruise state read failed', error)
+            return undefined
+          }
+        },
+        write: state => {
+          try {
+            localStorage.setItem(CRUISE_STORAGE_KEY, JSON.stringify(state))
+          } catch (error) {
+            console.error('[dsh-task-board] cruise state write failed (persistence skipped)', error)
+          }
+        },
+      },
+      // Review-page transcripts: recent history of an execution session.
+      transcript: transcriptLoader,
       runCatalog: {
         listWorkspaces: () => workspaces.list.getSnapshot().items.map(item => ({
           id: item.workspaceId,

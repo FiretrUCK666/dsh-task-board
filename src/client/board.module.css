@@ -201,8 +201,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .statusDot[data-status='backlog'] { background: var(--dsw-alias-label-tertiary); }
 .statusDot[data-status='todo'] { background: var(--dsw-alias-state-business-primary); }
 .statusDot[data-status='running'] { background: var(--dsw-alias-state-warn-primary); }
+.statusDot[data-status='review'] { background: var(--dsw-alias-state-warn-secondary); }
 .statusDot[data-status='done'] { background: var(--dsw-alias-state-success-primary); }
-.statusDot[data-status='failed'] { background: var(--dsw-alias-state-error-primary); }
 
 .cards {
   display: flex;
@@ -245,18 +245,31 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   transform: translateY(-1px);
 }
 
-/* Same-column reorder: the hovered card is the "insert before" anchor. A
-   short rounded accent bar floats in the gap above it — the whole feedback,
+/* Same-column reorder: the anchored card is the "insert before" target. A
+   bold rounded accent bar floats in the gap above it — the whole feedback,
    never a column-wide highlight or a full-width shadow. */
 .card[data-drop-before]::before {
   content: '';
   position: absolute;
-  top: -5px;
-  left: 12px;
-  right: 12px;
-  height: 3px;
-  border-radius: 2px;
+  top: -6px;
+  left: 8px;
+  right: 8px;
+  height: 4px;
+  border-radius: 3px;
   background: var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 1px var(--dsw-alias-bg-base);
+}
+
+/* Dropping at the column tail: a matching bar at the bottom of the cards
+   container (below the last card). */
+.column[data-drop-tail] .cards::after {
+  content: '';
+  display: block;
+  height: 4px;
+  margin: 6px 8px 0;
+  border-radius: 3px;
+  background: var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 1px var(--dsw-alias-bg-base);
 }
 
 .card[data-status='running'] {
@@ -983,12 +996,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 /* Rows share one container with hairline dividers and a hover wash instead
-   of per-row boxes — quieter, aligned, premium. */
+   of per-row boxes — quieter, aligned, premium. A row opens the review
+   page, so it reads as a clickable surface. */
 .executionRow {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px;
+  cursor: pointer;
+  border-radius: 8px;
 }
 
 .executionRow + .executionRow {
@@ -997,6 +1013,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .executionRow:hover {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.executionRow:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
 }
 
 .executionRowTop {
@@ -1014,8 +1035,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-variant-numeric: tabular-nums;
 }
 
-.executionOpen {
+.executionRowActions {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.executionOpen {
   flex: none;
   padding: 0;
   font-size: 12px;
@@ -1194,4 +1222,211 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   .spinner {
     animation: none;
   }
+}
+
+/* --- auto-cruise (board header) ---------------------------------------------- */
+
+.cruise {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+}
+
+.cruiseToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cruiseToggle input {
+  margin: 0;
+}
+
+.cruiseLimit {
+  width: 52px;
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  outline: none;
+}
+
+.cruiseLimit:focus {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+/* --- review page (execution comments) ------------------------------------------ */
+
+.review {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, calc(100vw - 48px));
+  max-height: min(80vh, 760px);
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  box-shadow: var(--dsw-shadow-lv3);
+  overflow: hidden;
+}
+
+.reviewHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--dsw-alias-separator-primary);
+  flex: none;
+}
+
+.reviewTitle {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reviewBadge {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.reviewActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.reviewBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.reviewSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reviewTranscript {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.reviewMessage {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  max-width: 92%;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+}
+
+.reviewMessage[data-role='user'] {
+  align-self: flex-end;
+  background: var(--dsw-alias-state-business-primary);
+  border-color: transparent;
+  color: #fff;
+}
+
+.reviewMessageRole {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.reviewMessageText {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reviewComments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reviewComment {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+}
+
+.reviewCommentText {
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reviewCommentMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reviewCommentTime {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.reviewComposer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.reviewComposerRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reviewComposerHint {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
 }

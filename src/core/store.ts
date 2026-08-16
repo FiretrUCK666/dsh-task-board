@@ -65,7 +65,11 @@ export function isTaskRecord(value: unknown): value is TaskRecord {
 
 /** Normalize an unknown persisted status back into the closed status union. */
 function normalizeStatus(status: unknown): TaskStatus {
-  return isTaskStatus(status) ? status : 'todo'
+  if (isTaskStatus(status)) return status
+  // The 'failed' column was removed in favor of the human 'review' gate:
+  // legacy failed tasks land in review so their outcome is inspected.
+  if (status === 'failed') return 'review'
+  return 'todo'
 }
 
 /**
