@@ -5,15 +5,18 @@
  * {@link TaskStore}, drives real executions through the
  * {@link ExecutionService}, and closes the board view whenever the user
  * navigates to a session (the sessions-list `current` selection changes).
- * Framework-free (structural runtime faces) so the whole orchestration is
- * unit-testable with fakes.
+ * Every launch — manual runs, cron/schedule triggers, chain hand-offs, the
+ * auto-cruise and comment continuations — flows through one concurrency
+ * bounded dispatcher ({@link BoardController.dispatch}), so the user-set
+ * limit is a hard cap on simultaneously running sessions and no surface can
+ * ever bypass it. Framework-free (structural runtime faces) so the whole
+ * orchestration is unit-testable with fakes.
  */
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
 import { isValidCron, nextRunAtMs } from './schedule.ts'
 import type { TaskStore } from './store.ts'
-import { CruiseService } from './cruise.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, settleExecution, startExecution, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, ruleReadiness, settleExecution, startExecution, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -303,7 +306,6 @@ export class BoardController {
   private readonly now: () => number
   private readonly uuid: () => string
   private cruiseState: CruiseState
-  private readonly cruise: CruiseService
 
   /** @param deps - store, execution service, and the sessions navigation face. */
   constructor(private readonly deps: ControllerDeps) {
@@ -315,12 +317,6 @@ export class BoardController {
       ? stored.limit
       : DEFAULT_CRUISE_LIMIT
     this.cruiseState = { enabled: stored?.enabled === true, limit: storedLimit }
-    this.cruise = new CruiseService({
-      tasks: () => this.tasks,
-      runTask: id => this.runTask(id, 'manual'),
-      subscribe: fn => this.subscribe(fn),
-      limit: () => this.cruiseState.limit,
-    })
   }
 
   // --- lifecycle -------------------------------------------------------------
@@ -332,20 +328,18 @@ export class BoardController {
     this.disposers.push(this.deps.sessions.list.subscribe(() => {
       this.onSessionsChanged()
     }))
-    this.cruise.start()
-    if (this.cruiseState.enabled) {
-      // Restore the queue after a reload: pick up todo tasks again and
-      // inject comment continuations that were waiting for the cruise.
-      this.cruise.setEnabled(true)
-      this.injectPendingComments()
-    }
+    // Restore the dispatch queue after a reload: with the cruise on, pick up
+    // todo tasks again and inject comment continuations that were waiting
+    // (each launch re-validates eligibility, so nothing stale can fire).
+    if (this.cruiseState.enabled) this.dispatch()
     this.notify()
   }
 
   /** Stop all subscriptions and drop retained state (idempotent). */
   dispose(): void {
+    this.disposed = true
     for (const dispose of this.disposers.splice(0)) dispose()
-    this.cruise.dispose()
+    this.queuedLaunches.length = 0
     this.listeners.clear()
     if (this.reconcileTimer !== undefined) clearTimeout(this.reconcileTimer)
     this.reconcileTimer = undefined
@@ -570,20 +564,195 @@ export class BoardController {
     return true
   }
 
-  /** Whether the task's latest execution is still open. */
-  private isBusy(id: string): boolean {
+  // --- unified execution dispatcher ------------------------------------------
+
+  /**
+   * Auto launches waiting for a free slot. Only schedule/chain triggers ever
+   * queue here: a manual run is an explicit user action that always starts
+   * immediately (it still occupies a slot, so auto launches wait for the
+   * budget it consumes).
+   */
+  private queuedLaunches: Array<{ taskId: string; trigger: 'schedule' | 'chain' }> = []
+
+  /** How many rounds are genuinely open right now (the concurrency truth). */
+  private inFlightCount(): number {
+    let count = 0
+    for (const task of this.tasks) {
+      if (hasOpenRun(task)) count += 1
+    }
+    return count
+  }
+
+  /** Reentrancy guard for {@link dispatch} (launches notify → re-dispatch). */
+  private dispatching = false
+  private dispatchQueued = false
+  private disposed = false
+
+  /**
+   * The one concurrency-bounded launch decision point. Called after every
+   * ledger mutation (through {@link persistAndNotify}) and the cruise
+   * switches: while the in-flight budget has room, it starts work in
+   * priority order — queued schedule/chain launches first, then comment
+   * continuations (a human instruction beats a fresh run), then cruise
+   * pickups of todo tasks. Every candidate is re-validated at launch time,
+   * so stale work (a task moved to done, deleted, or busy in between) is
+   * dropped instead of launched; reentrant notifications are folded into
+   * the current pass, never nested.
+   */
+  private dispatch(): void {
+    if (this.disposed) return
+    if (this.dispatching) {
+      this.dispatchQueued = true
+      return
+    }
+    this.dispatching = true
+    this.dispatchQueued = false
+    try {
+      // 1. Queued schedule/chain launches (they were accepted while the
+      // budget was full; their eligibility is re-checked on drain).
+      while (this.inFlightCount() < this.cruiseState.limit) {
+        if (!this.drainQueuedLaunch()) break
+      }
+      // 2+3. Comment continuations then cruise pickups fill remaining slots.
+      while (this.inFlightCount() < this.cruiseState.limit) {
+        const next = this.nextEligible()
+        if (next === undefined) break
+        if (next.kind === 'comment') this.launchComment(next.task, next.round)
+        else this.launchTask(next.task, 'manual')
+      }
+    } finally {
+      this.dispatching = false
+      if (this.dispatchQueued) this.dispatch()
+    }
+  }
+
+  /**
+   * Start the oldest queued schedule/chain launch, or drop it when it went
+   * stale (task deleted, completed, paused, or busy). Returns whether a
+   * request was consumed (so the caller keeps draining).
+   */
+  private drainQueuedLaunch(): boolean {
+    const queued = this.queuedLaunches[0]
+    if (queued === undefined) return false
+    this.queuedLaunches.shift()
+    const task = this.tasks.find(candidate => candidate.id === queued.taskId)
+    // A rule may no longer drive the task (moved to review/backlog/done, or
+    // deleted): the request is stale — drop it. A busy task also drops its
+    // queued auto run (the same "skip when busy" semantics as a direct hit).
+    if (task === undefined || hasOpenRun(task) || ruleReadiness(task).kind !== 'active') return true
+    this.launchTask(task, queued.trigger)
+    return true
+  }
+
+  /**
+   * The next runnable unit under the budget, or undefined: the earliest
+   * eligible comment continuation across tasks (global FIFO by submission
+   * time; a task's own comments always run in order because its first
+   * uninjected round is the only one eligible while the task is drivable),
+   * else the first todo task the cruise may pick up (skipping tasks that
+   * still own queued comments — the comment has priority over a fresh run).
+   * Comments and pickups only flow while the cruise is on; without it,
+   * comments stay saved and todo tasks stay idle.
+   */
+  private nextEligible():
+    | { kind: 'comment'; task: TaskRecord; round: ExecutionRecord }
+    | { kind: 'task'; task: TaskRecord }
+    | undefined {
+    if (!this.cruiseState.enabled) return undefined
+    let best: { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined
+    for (const task of this.tasks) {
+      if (task.status === 'running' || task.status === 'done') continue
+      const round = task.executions.find(candidate =>
+        candidate.comment !== undefined && candidate.sessionId !== undefined
+        && candidate.injectedAt === undefined && candidate.endedAt === undefined)
+      if (round !== undefined && (best === undefined || round.startedAt < best.round.startedAt)) {
+        best = { kind: 'comment', task, round }
+      }
+    }
+    if (best !== undefined) return best
+    const todo = this.tasks.find(task => {
+      if (task.status !== 'todo' || hasOpenRun(task)) return false
+      return !task.executions.some(candidate =>
+        candidate.comment !== undefined && candidate.injectedAt === undefined && candidate.endedAt === undefined)
+    })
+    return todo !== undefined ? { kind: 'task', task: todo } : undefined
+  }
+
+  /**
+   * Launch a plain execution round: move the task to 'running', append the
+   * execution record, and hand off to the ExecutionService. A manual trigger
+   * primes an enabled schedule rule (auto triggers never prime).
+   */
+  private launchTask(task: TaskRecord, trigger: RunTrigger): void {
+    let target = task
+    if (trigger === 'manual' && task.schedule?.enabled === true && task.schedule.primed !== true) {
+      target = withSchedule(task, { primed: true }, this.now())
+    }
+    const { task: next, execution } = startExecution(target, this.now(), this.uuid())
+    this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
+    this.persistAndNotify()
+    this.activeExecutionIds.add(execution.id)
+    void this.deps.exec.run(next, execution, (event) => { this.handleExecutionEvent(event) })
+  }
+
+  /**
+   * Inject one comment continuation: mark the round injected, move the task
+   * to 'running', and send the text to the execution session (a fresh turn
+   * in the same session, watched like a plain run). Only ever called by
+   * {@link dispatch}, after eligibility was validated.
+   */
+  private launchComment(task: TaskRecord, round: ExecutionRecord): void {
+    if (round.sessionId === undefined || round.comment === undefined) return
+    const marked = { ...round, injectedAt: this.now() }
+    const running = withStatus({
+      ...task,
+      executions: task.executions.map(candidate => candidate.id === round.id ? marked : candidate),
+    }, 'running', this.now())
+    this.tasks = this.tasks.map(candidate => candidate.id === task.id ? running : candidate)
+    this.persistAndNotify()
+    this.activeExecutionIds.add(round.id)
+    void this.deps.exec.commentRun(running, marked, round.sessionId, round.comment, (event) => {
+      this.handleExecutionEvent(event)
+    })
+  }
+
+  /**
+   * Execute a task for real. A manual run starts immediately — an explicit
+   * user action is never queued — and occupies a slot like any other round.
+   * Auto triggers (cron due instants, chain hand-offs) start right away when
+   * the in-flight budget has room and otherwise queue for {@link dispatch};
+   * either way the call reports accepted so the scheduler rolls the schedule
+   * forward exactly once. A second call while the task's latest run is still
+   * open is ignored.
+   *
+   * A manual run primes an enabled schedule rule: auto triggers only drive
+   * tasks a manual run has started, so arming a rule never executes anything
+   * by itself.
+   */
+  async runTask(id: string, trigger: RunTrigger = 'manual'): Promise<boolean> {
     const task = this.tasks.find(candidate => candidate.id === id)
-    const latest = task?.executions[task.executions.length - 1]
-    return latest !== undefined && latest.endedAt === undefined
+    if (task === undefined) return false
+    // Only a genuinely open run blocks a new one: a pending comment round
+    // (task not running) must never block the Run button or a drag-rerun.
+    if (hasOpenRun(task)) return false
+    if (trigger === 'manual' || this.inFlightCount() < this.cruiseState.limit) {
+      this.launchTask(task, trigger)
+      return true
+    }
+    if (!this.queuedLaunches.some(candidate => candidate.taskId === id)) {
+      this.queuedLaunches.push({ taskId: id, trigger })
+    }
+    return true
   }
 
   /**
    * Continue an armed chain schedule after a settled run: persist the
    * incremented counter (disarming after the final budgeted run) and start
-   * the next run. No-op unless the chain is armed AND primed by a manual
-   * run, its latest execution has settled, and a further run is within
-   * budget. Runs synchronously after a settle, so the scheduler's recovery
-   * tick can never interleave a duplicate launch.
+   * the next run through the shared dispatcher (which queues it when the
+   * in-flight budget is full). No-op unless the chain is armed AND primed by
+   * a manual run, its latest execution has settled, and a further run is
+   * within budget. Runs synchronously after a settle, so the scheduler's
+   * recovery tick can never interleave a duplicate launch.
    */
   private maybeContinueChain(id: string): void {
     const task = this.tasks.find(candidate => candidate.id === id)
@@ -645,42 +814,6 @@ export class BoardController {
 
   // --- execution ---------------------------------------------------------------
 
-  /**
-   * Execute a task for real: move it to 'running', open an execution record,
-   * and hand off to the ExecutionService. A second call while the task's
-   * latest run is still open is ignored — a settled execution frees the slot
-   * even though the card may still read 'running' (a scheduled batch keeps
-   * the card in progress between runs and lets the next tick fire the next
-   * run).
-   *
-   * A manual run primes an enabled schedule rule: auto triggers (cron due
-   * instants, chain hand-offs) only drive tasks a manual run has started,
-   * so arming a rule never executes anything by itself.
-   */
-  async runTask(id: string, trigger: RunTrigger = 'manual'): Promise<boolean> {
-    let task = this.tasks.find(candidate => candidate.id === id)
-    if (task === undefined) return false
-    if (trigger === 'manual' && task.schedule?.enabled === true && task.schedule.primed !== true) {
-      const primed = withSchedule(task, { primed: true }, this.now())
-      this.tasks = this.tasks.map(candidate => candidate.id === id ? primed : candidate)
-      this.persistAndNotify()
-      task = primed
-    }
-    // Only a genuinely open run blocks a new one: a pending comment round
-    // (task not running) must never block the Run button or a drag-rerun.
-    if (hasOpenRun(task)) return false
-    const { task: next, execution } = startExecution(task, this.now(), this.uuid())
-    this.tasks = this.tasks.map(candidate => candidate.id === id ? next : candidate)
-    this.persistAndNotify()
-    // This page owns the settlement of its own launches: the live watch
-    // (ExecutionService.run) settles on the turn boundary, and list
-    // reconciliation must not pre-empt it with a session that has not
-    // started a turn yet (its list row is idle, not completed).
-    this.activeExecutionIds.add(execution.id)
-    await this.deps.exec.run(next, execution, (event) => { this.handleExecutionEvent(event) })
-    return true
-  }
-
   /** Re-run a settled task: move it back to 'todo' first, then execute. */
   async rerunTask(id: string): Promise<void> {
     const task = this.tasks.find(candidate => candidate.id === id)
@@ -697,18 +830,19 @@ export class BoardController {
   /**
    * Save a comment continuation against a settled execution: a new comment
    * round is appended (same session, not yet injected) and the task stays in
-   * place — the comment is injected when the auto-cruise is on (see
-   * {@link continueComment}), so the user's instruction takes effect exactly
-   * when the cruise drives the board. Only one open comment round per task
-   * is allowed at a time. A completed task cannot be commented (its work is
-   * done); every other state can — a running task's comment waits for the
-   * cruise.
+   * place. Comments are a per-task FIFO queue: any number may be saved, and
+   * the shared dispatcher injects them one at a time — a task can run only
+   * one round at a time, and the in-flight budget bounds how many sessions
+   * run across the board. Injection only happens while the auto-cruise is
+   * on; without it the comments stay saved (and cancellable) until the
+   * cruise drives the board. A completed task cannot be commented (its work
+   * is done); every other state can — a running task's comment queues for
+   * when its current round settles.
    * @param taskId - the task owning the execution.
    * @param executionId - the settled execution to continue (its session is reused).
    * @param text - the comment to send to the session's agent.
-   * @returns the pending comment round, or undefined when rejected (unknown
-   *   task/execution, completed task, execution not settled, another comment
-   *   already in flight).
+   * @returns the queued comment round, or undefined when rejected (unknown
+   *   task/execution, completed task, execution not settled).
    */
   submitComment(taskId: string, executionId: string, text: string): ExecutionRecord | undefined {
     const trimmed = text.trim()
@@ -717,7 +851,6 @@ export class BoardController {
     if (task === undefined || task.status === 'done') return undefined
     const execution = task.executions.find(candidate => candidate.id === executionId)
     if (execution === undefined || execution.sessionId === undefined || execution.endedAt === undefined) return undefined
-    if (task.executions.some(candidate => candidate.comment !== undefined && candidate.endedAt === undefined)) return undefined
     const round: ExecutionRecord = {
       id: this.uuid(),
       sessionId: execution.sessionId,
@@ -731,15 +864,14 @@ export class BoardController {
       ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
       : candidate)
     this.persistAndNotify()
-    if (this.cruiseState.enabled) void this.continueComment(round.id)
     return round
   }
 
   /**
    * Cancel a comment round that has not been injected yet: removes it from
-   * the task (a saved-but-pending comment is editable by deleting it and
-   * writing a new one). A round that was already injected (or settled)
-   * cannot be cancelled.
+   * the task (a saved or queued comment is editable by deleting it and
+   * writing a new one). A round that was already injected (the session is
+   * running it) or settled cannot be cancelled.
    * @param executionId - the pending comment round's id.
    * @returns true when the round was removed.
    */
@@ -749,7 +881,7 @@ export class BoardController {
     if (task === undefined) return false
     const round = task.executions.find(candidate => candidate.id === executionId)
     if (round === undefined || round.comment === undefined) return false
-    if (round.endedAt !== undefined || task.status === 'running') return false
+    if (round.injectedAt !== undefined || round.endedAt !== undefined) return false
     this.tasks = this.tasks.map(candidate => candidate.id === task.id
       ? { ...candidate, updatedAt: this.now(), executions: candidate.executions.filter(execution => execution.id !== executionId) }
       : candidate)
@@ -757,61 +889,27 @@ export class BoardController {
     return true
   }
 
-  /**
-   * Inject a pending comment round: the task moves to 'running' and the text
-   * is sent to the execution session through the execution service; the
-   * settled outcome flows through the normal event path (landing in
-   * 'review' like any settled run). Injecting is allowed from any state the
-   * cruise may drive (review / todo / backlog); running and completed tasks
-   * are skipped — a running task's session is already busy, a completed one
-   * must not be woken up.
-   * @param executionId - the pending comment round's id.
-   * @returns true when the injection was accepted.
-   */
-  async continueComment(executionId: string): Promise<boolean> {
-    const task = this.tasks.find(candidate =>
-      candidate.executions.some(execution => execution.id === executionId))
-    if (task === undefined) return false
-    const round = task.executions.find(candidate => candidate.id === executionId)
-    if (round === undefined || round.comment === undefined || round.sessionId === undefined) return false
-    if (round.endedAt !== undefined) return false
-    if (task.status !== 'review' && task.status !== 'todo' && task.status !== 'backlog') return false
-    const running = withStatus(task, 'running', this.now())
-    this.tasks = this.tasks.map(candidate => candidate.id === task.id ? running : candidate)
-    this.persistAndNotify()
-    this.activeExecutionIds.add(round.id)
-    await this.deps.exec.commentRun(running, round, round.sessionId, round.comment, (event) => {
-      this.handleExecutionEvent(event)
-    })
-    return true
-  }
-
-  /** Inject every pending comment round (called when the cruise turns on). */
-  private injectPendingComments(): void {
-    for (const task of this.tasks) this.injectPendingCommentsFor(task.id)
-  }
-
   // --- auto-cruise --------------------------------------------------------------
 
-  /** Turn the auto-cruise on or off (persisted). On also injects pending
-   *  comments — first, so a task's human instruction wins over the cruise
-   *  picking it up for a fresh run. */
+  /** Turn the auto-cruise on or off (persisted). On re-pumps the dispatch
+   *  queue immediately — pending comments and todo pickups start under the
+   *  concurrency budget, comments first (a human instruction wins over the
+   *  cruise picking up a fresh run). */
   setCruiseEnabled(on: boolean): void {
     if (this.cruiseState.enabled === on) return
     this.cruiseState = { ...this.cruiseState, enabled: on }
     this.deps.cruiseStorage?.write(this.cruiseState)
-    if (on) this.injectPendingComments()
-    this.cruise.setEnabled(on)
+    if (on) this.dispatch()
     this.notify()
   }
 
-  /** Change the cruise concurrency limit (persisted; the queue re-pumps). */
+  /** Change the concurrency budget (persisted; the dispatcher re-pumps). */
   setCruiseLimit(limit: number): void {
     const clamped = Math.max(1, Math.floor(limit))
     if (this.cruiseState.limit === clamped) return
     this.cruiseState = { ...this.cruiseState, limit: clamped }
     this.deps.cruiseStorage?.write(this.cruiseState)
-    this.cruise.kick()
+    this.dispatch()
     this.notify()
   }
 
@@ -827,25 +925,13 @@ export class BoardController {
     this.tasks = this.tasks.map(task => task.id === event.taskId
       ? settleExecution(task, event.executionId, event.outcome, this.now(), event.error)
       : task)
-    this.persistAndNotify()
     // A settled run hands off to the next chained run synchronously, so the
     // scheduler's recovery tick can never interleave a duplicate launch.
+    // The chain request precedes the final persist: a chain-armed task keeps
+    // 'running' between hand-offs and its next run is queued before any
+    // comment/cruise work competes for the freed slot.
     this.maybeContinueChain(event.taskId)
-    // A settled run may also free the task for its pending comments: with
-    // the cruise on, inject any pending comment round now (not only when
-    // the cruise is enabled) — a comment saved while the task was running
-    // or before the cruise turned on is picked up as soon as the task is
-    // drivable again.
-    if (this.cruiseState.enabled) this.injectPendingCommentsFor(event.taskId)
-  }
-
-  /** Inject the task's pending comment round when it is drivable. */
-  private injectPendingCommentsFor(taskId: string): void {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
-    if (task === undefined || task.status === 'running' || task.status === 'done') return
-    const pending = task.executions.find(candidate =>
-      candidate.comment !== undefined && candidate.sessionId !== undefined && candidate.endedAt === undefined)
-    if (pending !== undefined) void this.continueComment(pending.id)
+    this.persistAndNotify()
   }
 
   // --- internals ---------------------------------------------------------------
@@ -949,9 +1035,11 @@ export class BoardController {
         changed = true
         continued.push(task.id)
       }
-      if (changed) this.persistAndNotify()
-      // A reconciled settle hands off to the next chained run like a live one.
+      // A reconciled settle hands off to the next chained run like a live one
+      // (the chain request precedes the persist so the freed slot is
+      // booked before any comment/cruise work competes for it).
       for (const id of continued) this.maybeContinueChain(id)
+      if (changed) this.persistAndNotify()
     } finally {
       this.reconcileInFlight = false
       // A list change that arrived while this pass was queued or in flight
@@ -966,6 +1054,10 @@ export class BoardController {
   private persistAndNotify(): void {
     this.deps.store.save(this.tasks)
     this.notify()
+    // Every ledger mutation re-evaluates the execution queue: a freed slot,
+    // a new comment, a moved card or a cruise switch all funnel through the
+    // same bounded dispatch (idempotent — nothing launches twice).
+    this.dispatch()
   }
 
   private notify(): void {

@@ -1354,12 +1354,48 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .reviewBody {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 20px 20px;
+  flex-direction: row;
+  gap: 0;
+  padding: 0;
   overflow: hidden;
   min-height: 0;
   flex: 1;
+}
+
+/* Left column: the conversation, full height — a long transcript never
+   competes with config or comments (they live in the right rail). */
+.reviewMain {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 20px 20px;
+  overflow: hidden;
+}
+
+/* Right rail: context meter, session config, comments and the composer.
+   One column that scrolls on its own; the composer stays pinned at the
+   rail's bottom (see .reviewComposer). */
+.reviewRail {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 320px;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--dsw-alias-separator-primary);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.reviewRailScroll {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
 }
 
 /* The conversation region scrolls on its own — a long transcript never
@@ -1575,16 +1611,14 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-variant-numeric: tabular-nums;
 }
 
-/* The live session panel: model / effort / permission of this execution
-   session (native APIs) in one compact line, plus the session's real
-   workspace/Agent facts (read-only, from the session-list summary). */
+/* The live session panel: model / effort / permission / Agent of this
+   execution session (native APIs) in one compact grid, plus the session's
+   real workspace/Agent facts (read-only, from the session-list summary). */
 .reviewConfig {
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex: none;
-  padding-top: 10px;
-  border-top: 1px solid var(--dsw-alias-separator-primary);
 }
 
 .reviewConfigTitle {
@@ -1662,14 +1696,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
-/* The comment thread zone: visually separated from the conversation above —
-   its own framed surface, so human interventions read as a distinct layer.
-   It is fixed at the bottom: the composer stays visible no matter how long
-   the conversation gets. */
+/* The comment thread zone: visually separated from the conversation — its
+   own framed surface inside the rail, so human interventions read as a
+   distinct layer. */
 .reviewThread {
   flex: none;
   padding: 12px;
-  background: var(--dsw-alias-bg-layer-2);
+  background: var(--dsw-alias-bg-base);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;
 }
@@ -1688,13 +1721,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-variant-numeric: tabular-nums;
 }
 
-/* The comment list scrolls on its own when long, so the composer below it
-   stays fixed. The cap is deliberately modest: long threads scroll rather
-   than steal vertical space from the conversation above. */
+/* The comment list grows naturally inside the rail scroll (the composer is
+   pinned below it, so sending never requires scrolling). */
 .reviewCommentList {
-  max-height: 32vh;
-  overflow-y: auto;
-  padding-right: 4px;
+  min-width: 0;
 }
 
 .reviewComments {
@@ -1753,11 +1783,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-variant-numeric: tabular-nums;
 }
 
+/* The composer, pinned at the rail's bottom: sending a comment never
+   requires scrolling the conversation or the rail — it stays visible no
+   matter how long either gets. */
 .reviewComposer {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 4px;
+  flex: none;
+  padding: 12px;
+  border-top: 1px solid var(--dsw-alias-separator-primary);
 }
 
 .reviewComposerRow {
@@ -1769,4 +1804,31 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .reviewComposerHint {
   font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* Narrow viewports: the two-column review falls back to a stacked layout —
+   conversation on top (its own scroll), rail below (full width). Nothing is
+   dropped; only the geometry changes. */
+@media (max-width: 719px) {
+  .review {
+    width: calc(100vw - 24px);
+  }
+
+  .reviewBody {
+    flex-direction: column;
+  }
+
+  .reviewMain {
+    max-height: 42vh;
+  }
+
+  .reviewRail {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--dsw-alias-separator-primary);
+  }
+
+  .reviewRailScroll {
+    max-height: 30vh;
+  }
 }

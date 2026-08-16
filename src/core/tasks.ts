@@ -32,6 +32,13 @@ export interface ExecutionRecord {
   error: string | undefined
   /** The comment text when this round is a comment continuation (absent = a plain run). */
   comment?: string
+  /**
+   * When a comment continuation was actually injected into its session (ms
+   * epoch). Absent = the comment is still saved/queued and can be cancelled;
+   * present = the session is (or was) running it and the round can only be
+   * observed.
+   */
+  injectedAt?: number
 }
 
 /** How a scheduled task is driven: cron = fire at fixed times; chain = rerun right after each run settles. */
@@ -354,6 +361,19 @@ export function hasOpenRun(task: TaskRecord): boolean {
   if (task.status !== 'running') return false
   const latest = task.executions[task.executions.length - 1]
   return latest !== undefined && latest.endedAt === undefined
+}
+
+/**
+ * How many comment rounds of a task are saved but not yet injected (the
+ * task's comment queue). These wait for the dispatcher — the budget, the
+ * cruise toggle, or the task's own busy round — and can be cancelled.
+ */
+export function pendingCommentCount(task: TaskRecord): number {
+  let count = 0
+  for (const round of task.executions) {
+    if (round.comment !== undefined && round.injectedAt === undefined && round.endedAt === undefined) count += 1
+  }
+  return count
 }
 
 /** What a card drop onto a column means (drag-and-drop decision). */

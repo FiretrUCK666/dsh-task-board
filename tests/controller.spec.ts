@@ -808,8 +808,12 @@ describe('comments', () => {
     expect(round?.sessionId).toBe('s-1')
     expect(exec.commentCalls).toHaveLength(0)
     expect(store.load()[0].status).toBe('review')
-    // Only one open comment round at a time.
-    expect(controller.submitComment(taskId, executionId, '再一句')).toBeUndefined()
+    // Comments are a per-task FIFO queue: more can be saved while the cruise
+    // is off (all stay uninjected until it turns on).
+    expect(controller.submitComment(taskId, executionId, '再一句')?.comment).toBe('再一句')
+    expect(store.load()[0].executions).toHaveLength(3)
+    expect(store.load()[0].executions[1].injectedAt).toBeUndefined()
+    expect(store.load()[0].executions[2].injectedAt).toBeUndefined()
   })
 
   it('rejects comments on unknown tasks, unsettled runs, or blank text', async () => {
@@ -1026,5 +1030,210 @@ describe('auto-cruise', () => {
     exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
     expect(exec.runCalls).toHaveLength(1) // no refill while off
     expect(store.load().find(task => task.id === a.id)?.status).toBe('review')
+  })
+})
+
+describe('unified dispatch (one concurrency budget)', () => {
+  /** A task with one settled execution in review (session s-1). */
+  async function settledTask(stub: StubExec, controller: BoardController): Promise<{ taskId: string; executionId: string }> {
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    await controller.runTask(task.id)
+    const run = stub.runCalls[stub.runCalls.length - 1]
+    run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-1' })
+    run.fire({ kind: 'settled', taskId: task.id, executionId: run.executionId, outcome: 'succeeded' })
+    return { taskId: task.id, executionId: run.executionId }
+  }
+
+  it('caps the total in-flight rounds (comments + cruise) at the budget', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    controller.setCruiseLimit(1)
+    // One cruise slot is taken by a todo pickup.
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    controller.setCruiseEnabled(true)
+    expect(exec.runCalls).toHaveLength(1)
+    // A comment round queues: the budget is full, so it must not inject.
+    const { taskId, executionId } = await settledTask(stub, controller)
+    controller.submitComment(taskId, executionId, '排队等槽位')
+    expect(exec.commentCalls).toHaveLength(0)
+    // The cruise run settles → the freed slot goes to the comment first.
+    exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(exec.commentCalls[0].text).toBe('排队等槽位')
+    expect(controller.getSnapshot().tasks.find(task => task.id === taskId)?.status).toBe('running')
+  })
+
+  it('runs a task queued comments strictly in order, one round at a time', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const { taskId, executionId } = await settledTask(stub, controller)
+    // The first comment injects immediately (budget free)…
+    controller.submitComment(taskId, executionId, '第一句')
+    expect(exec.commentCalls).toHaveLength(1)
+    // …a second comment queues while the first is running…
+    controller.submitComment(taskId, executionId, '第二句')
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(store.load()[0].executions[2].injectedAt).toBeUndefined()
+    // …and injects only after the first settles.
+    exec.commentCalls[0].fire({ kind: 'settled', taskId, executionId: exec.commentCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.commentCalls).toHaveLength(2)
+    expect(exec.commentCalls[1].text).toBe('第二句')
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+  })
+
+  it('injects queued comments across tasks in submission order', async () => {
+    const stub = new StubExec()
+    let clock = NOW
+    const { controller, stub: exec } = makeController(stub, { now: () => clock })
+    controller.setCruiseLimit(1)
+    controller.setCruiseEnabled(true)
+    // Occupy the only slot with a todo pickup.
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    expect(exec.runCalls).toHaveLength(1)
+    // Two review tasks each get a queued comment (the budget is full).
+    const first = await settledTask(stub, controller)
+    const second = await settledTask(stub, controller)
+    controller.submitComment(first.taskId, first.executionId, '先提交')
+    clock += 1
+    controller.submitComment(second.taskId, second.executionId, '后提交')
+    expect(exec.commentCalls).toHaveLength(0)
+    // The slot frees → the earlier-submitted comment injects first.
+    exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(exec.commentCalls[0].text).toBe('先提交')
+    expect(exec.commentCalls[0].sessionId).toBe('s-1')
+  })
+
+  it('cancels an uninjected queued comment even while another round of the same task runs', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const { taskId, executionId } = await settledTask(stub, controller)
+    controller.submitComment(taskId, executionId, '第一条')
+    expect(exec.commentCalls).toHaveLength(1) // running
+    const queued = controller.submitComment(taskId, executionId, '第二条')
+    expect(queued).toBeDefined()
+    expect(controller.cancelComment(queued!.id)).toBe(true)
+    expect(store.load()[0].executions).toHaveLength(2) // run + first comment
+    // An injected round cannot be cancelled.
+    expect(controller.cancelComment(exec.commentCalls[0].executionId)).toBe(false)
+  })
+
+  it('never injects queued comments for completed tasks', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseLimit(1)
+    controller.setCruiseEnabled(true)
+    controller.createTask({ title: 'a', description: '', prompt: '' })! // occupies the slot
+    const { taskId, executionId } = await settledTask(stub, controller)
+    const round = controller.submitComment(taskId, executionId, '别跑')
+    expect(round).toBeDefined()
+    expect(exec.commentCalls).toHaveLength(0)
+    controller.moveTask(taskId, 'done')
+    // The slot frees, but the done task's comment stays uninjected.
+    exec.runCalls[0].fire({ kind: 'settled', taskId: 'a', executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.commentCalls).toHaveLength(0)
+    expect(store.load().find(task => task.id === taskId)?.executions.filter(e => e.comment !== undefined)).toHaveLength(1)
+    // Still cancellable (never injected).
+    expect(controller.cancelComment(round!.id)).toBe(true)
+  })
+
+  it('manual runs start immediately even when the budget is full (and occupy a slot)', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    controller.setCruiseLimit(1)
+    controller.setCruiseEnabled(true)
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
+    expect(exec.runCalls).toHaveLength(1) // a picked by cruise
+    // Manual run of b: accepted even though the budget is full.
+    await controller.runTask(b.id, 'manual')
+    expect(exec.runCalls).toHaveLength(2)
+    expect(controller.getSnapshot().tasks.find(task => task.id === b.id)?.status).toBe('running')
+    // A third todo waits for a slot.
+    controller.createTask({ title: 'c', description: '', prompt: '' })!
+    expect(exec.runCalls).toHaveLength(2)
+    // a settles → b still occupies the only slot → nothing new starts.
+    exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(2)
+    // b settles → the slot frees → c starts.
+    exec.runCalls[1].fire({ kind: 'settled', taskId: b.id, executionId: exec.runCalls[1].executionId, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(3)
+  })
+
+  it('drops a queued auto launch when the task goes stale (done / busy / deleted)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseLimit(1)
+    controller.setCruiseEnabled(true)
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
+    expect(exec.runCalls).toHaveLength(1) // a picked; the budget is full
+    // A schedule trigger for b is accepted but queued (budget full).
+    await expect(controller.runTask(b.id, 'schedule')).resolves.toBe(true)
+    expect(exec.runCalls).toHaveLength(1)
+    // b is moved to done before the slot frees → the queued launch is dropped.
+    controller.moveTask(b.id, 'done')
+    exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(1)
+    expect(store.load().find(task => task.id === b.id)?.status).toBe('done')
+  })
+
+  it('chain hand-offs respect the budget (queued until a slot frees)', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    controller.setCruiseLimit(1)
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    controller.setSchedule(a.id, { enabled: true, mode: 'chain' })
+    controller.setCruiseEnabled(true)
+    expect(exec.runCalls).toHaveLength(1) // a picked by the cruise (primed)
+    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
+    await controller.runTask(b.id, 'manual') // manual run occupies the slot beyond the budget
+    expect(exec.runCalls).toHaveLength(2)
+    // a settles → chain hand-off queues (b still occupies the only slot).
+    exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(2)
+    // b settles → the freed slot starts the chained run.
+    exec.runCalls[1].fire({ kind: 'settled', taskId: b.id, executionId: exec.runCalls[1].executionId, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(3)
+    expect(exec.runCalls[2].taskId).toBe(a.id)
+    expect(controller.getSnapshot().tasks.find(task => task.id === a.id)?.status).toBe('running')
+  })
+
+  it('raising the budget re-pumps; lowering it never aborts in-flight runs', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    controller.setCruiseLimit(1)
+    controller.setCruiseEnabled(true)
+    controller.createTask({ title: 'a', description: '', prompt: '' })!
+    controller.createTask({ title: 'b', description: '', prompt: '' })!
+    expect(exec.runCalls).toHaveLength(1)
+    controller.setCruiseLimit(2)
+    expect(exec.runCalls).toHaveLength(2)
+    controller.setCruiseLimit(1)
+    expect(exec.runCalls).toHaveLength(2) // nothing aborted
+  })
+
+  it('never starts a task already running (from any surface)', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    await controller.runTask(a.id, 'manual')
+    controller.createTask({ title: 'b', description: '', prompt: '' })!
+    controller.setCruiseEnabled(true)
+    expect(exec.runCalls).toHaveLength(2) // a manual + b cruise
+    expect(exec.runCalls.filter(call => call.taskId === a.id)).toHaveLength(1)
+  })
+
+  it('dispose stops the dispatcher (no launches after dispose)', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    expect(exec.runCalls).toHaveLength(1)
+    controller.dispose()
+    controller.moveTask(a.id, 'todo')
+    expect(exec.runCalls).toHaveLength(1) // no new launch after dispose
   })
 })

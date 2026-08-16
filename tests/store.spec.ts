@@ -122,6 +122,21 @@ describe('parseLedger', () => {
     const legacy = parseLedger(JSON.stringify([createTask({ title: 'y', description: '', prompt: '' }, 1, 't-2')]))
     expect(legacy[0].permission).toBeUndefined()
   })
+
+  it('round-trips comment rounds with their queue state (comment + injectedAt)', () => {
+    const task = createTask({ title: 'x', description: '', prompt: '' }, 1, 't-1')
+    task.executions = [
+      { id: 'run-1', sessionId: 's-1', startedAt: 1, endedAt: 10, result: 'succeeded', error: undefined },
+      { id: 'c-1', sessionId: 's-1', startedAt: 20, endedAt: 30, result: 'succeeded', error: undefined, comment: '已注入', injectedAt: 21 },
+      { id: 'c-2', sessionId: 's-1', startedAt: 40, endedAt: undefined, result: undefined, error: undefined, comment: '排队中' },
+    ]
+    const parsed = parseLedger(JSON.stringify([task]))
+    expect(parsed[0].executions).toEqual([
+      { id: 'run-1', sessionId: 's-1', startedAt: 1, endedAt: 10, result: 'succeeded', error: undefined },
+      { id: 'c-1', sessionId: 's-1', startedAt: 20, endedAt: 30, result: 'succeeded', error: undefined, comment: '已注入', injectedAt: 21 },
+      { id: 'c-2', sessionId: 's-1', startedAt: 40, endedAt: undefined, result: undefined, error: undefined, comment: '排队中' },
+    ])
+  })
 })
 
 describe('isTaskRecord', () => {

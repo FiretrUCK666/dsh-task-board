@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { hasOpenRun, ruleReadiness } from '../../core/tasks.ts'
+import { hasOpenRun, pendingCommentCount, ruleReadiness } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { STATUS_KEY } from './status.ts'
@@ -74,6 +74,9 @@ export function TaskCard({ task, workspaceTitleOf, waiting, onClick }: {
   // status must be 'running' AND its latest round unsettled. A pending
   // comment round (task sitting in review) must never spin.
   const running = hasOpenRun(task)
+  // Comments saved but not yet injected (the task's queue): a quiet warn
+  // badge so a card waiting for the dispatcher is never mistaken for idle.
+  const queuedComments = pendingCommentCount(task)
   const workspaceLabel = task.workspaceId !== undefined
     ? workspaceTitleOf(task.workspaceId)
     : t('card.workspaceDefault')
@@ -130,6 +133,11 @@ export function TaskCard({ task, workspaceTitleOf, waiting, onClick }: {
             {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && (
               <Chip kind="muted" fill={false} title={t('card.batchProgress')}>
                 {task.schedule.runCount}/{task.schedule.maxRuns}
+              </Chip>
+            )}
+            {queuedComments > 0 && (
+              <Chip kind="warn" fill={false} title={t('card.commentQueueTitle', { n: String(queuedComments) })}>
+                {t('card.commentQueue')} {queuedComments}
               </Chip>
             )}
             {running ? (

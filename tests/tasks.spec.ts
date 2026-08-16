@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionLabel, hasOpenRun, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionLabel, hasOpenRun, pendingCommentCount, resolveCardDrop, ruleReadiness,
   settleExecution, startExecution, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -397,6 +397,25 @@ describe('hasOpenRun', () => {
     // Injected: the task is running again → open run.
     const injected = { ...withPending, status: 'running' as const }
     expect(hasOpenRun(injected)).toBe(true)
+  })
+})
+
+describe('pendingCommentCount', () => {
+  it('counts only saved/queued comment rounds (not injected or settled)', () => {
+    const { task } = startExecution(sampleTask(), NOW, 'e1')
+    const settled = settleExecution(task, 'e1', 'succeeded', NOW + 1, undefined)
+    const base = {
+      ...settled,
+      executions: [
+        ...settled.executions,
+        { id: 'c1', sessionId: 's-1', startedAt: NOW + 2, endedAt: undefined, result: undefined, error: undefined, comment: '排队中' },
+        { id: 'c2', sessionId: 's-1', startedAt: NOW + 3, endedAt: undefined, result: undefined, error: undefined, comment: '排队中' },
+        { id: 'c3', sessionId: 's-1', startedAt: NOW + 4, endedAt: NOW + 5, result: 'succeeded' as const, error: undefined, comment: '已结算', injectedAt: NOW + 4 },
+        { id: 'c4', sessionId: 's-1', startedAt: NOW + 6, endedAt: undefined, result: undefined, error: undefined, comment: '已注入', injectedAt: NOW + 6 },
+      ],
+    }
+    expect(pendingCommentCount(base)).toBe(2)
+    expect(pendingCommentCount(sampleTask())).toBe(0)
   })
 })
 
