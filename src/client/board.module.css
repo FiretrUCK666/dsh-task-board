@@ -350,19 +350,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-state-success-primary);
 }
 
-/* In-progress pill: spinner + the sequence of the current run (same shape
-   as the detail execution badge). */
+/* In-progress indicator: warn-colored text + spinner, no fill (the
+   warn-secondary background renders too low contrast in some themes, and
+   plain colored text matches the settled run-count coloring). */
 .cardRunning {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.4;
-  border-radius: 999px;
   color: var(--dsw-alias-state-warn-primary);
-  background: var(--dsw-alias-state-warn-secondary);
   white-space: nowrap;
   min-width: 0;
 }
@@ -785,22 +782,19 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-weight: 600;
   border-radius: 999px;
   color: var(--dsw-alias-state-warn-primary);
-  background: var(--dsw-alias-state-warn-secondary);
+  background: transparent;
 }
 
 .executionBadge[data-result='succeeded'] {
   color: var(--dsw-alias-state-success-primary);
-  background: transparent;
 }
 
 .executionBadge[data-result='failed'] {
   color: var(--dsw-alias-state-error-primary);
-  background: transparent;
 }
 
 .executionBadge[data-result='cancelled'] {
   color: var(--dsw-alias-label-tertiary);
-  background: transparent;
 }
 
 .executionOpen {
