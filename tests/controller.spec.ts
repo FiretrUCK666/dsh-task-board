@@ -808,6 +808,55 @@ describe('comments', () => {
     expect(exec.commentCalls).toHaveLength(0)
     expect(round?.endedAt).toBeUndefined()
   })
+
+  it('injects a pending comment when the run settles back (cruise on)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    // The task runs again; a comment saved while running stays pending.
+    await controller.runTask(taskId)
+    const run = stub.runCalls[stub.runCalls.length - 1]
+    controller.submitComment(taskId, executionId, '等结算后注入')
+    expect(exec.commentCalls).toHaveLength(0)
+    // The run settles → the task is drivable again → the pending comment
+    // injects automatically.
+    run.fire({ kind: 'settled', taskId, executionId: run.executionId, outcome: 'succeeded' })
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(store.load()[0].status).toBe('running')
+  })
+
+  it('a pending comment never blocks a fresh run (run guard ignores it)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    // Save a pending comment (cruise off), then run the task again: the
+    // pending round must not count as an open run.
+    controller.submitComment(taskId, executionId, '挂着')
+    await controller.runTask(taskId)
+    expect(exec.runCalls.length).toBeGreaterThanOrEqual(2)
+    expect(store.load()[0].status).toBe('running')
+  })
+
+  it('cancelComment removes only pending rounds', async () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    const pending = controller.submitComment(taskId, executionId, '发错了')
+    expect(pending).toBeDefined()
+    expect(store.load()[0].executions).toHaveLength(2)
+    // Cancel the pending round.
+    expect(controller.cancelComment(pending!.id)).toBe(true)
+    expect(store.load()[0].executions).toHaveLength(1)
+    // A settled round cannot be cancelled.
+    expect(controller.cancelComment(executionId)).toBe(false)
+    // An injected (running) round cannot be cancelled either.
+    controller.setCruiseEnabled(true)
+    const second = controller.submitComment(taskId, executionId, '又一条')
+    expect(second).toBeDefined()
+    expect(store.load()[0].status).toBe('running')
+    expect(controller.cancelComment(second!.id)).toBe(false)
+  })
 })
 
 describe('auto-cruise', () => {

@@ -209,7 +209,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 2px 8px 10px;
+  /* Top padding leaves room for the drop indicator at the column-top gap
+     (gap/2 + indicator half-height): without it the bar's negative offset
+     would be clipped by the scroll container and render thinner. */
+  padding: 6px 8px 10px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
@@ -1449,6 +1452,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   animation: dshTbFadeUp 160ms ease;
 }
 
+/* The comment thread zone: visually separated from the conversation above —
+   its own framed surface, so human interventions read as a distinct layer. */
+.reviewThread {
+  padding: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+}
+
 .reviewComments {
   display: flex;
   flex-direction: column;
@@ -1463,9 +1475,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex-direction: column;
   gap: 4px;
   padding: 8px 10px;
-  background: var(--dsw-alias-bg-layer-2);
+  background: var(--dsw-alias-bg-base);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 10px;
+  animation: dshTbFadeUp 160ms ease;
 }
 
 .reviewCommentText {
@@ -1479,6 +1492,23 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.reviewCommentCancel {
+  margin-left: auto;
+  flex: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms ease;
+}
+
+.reviewCommentCancel:hover {
+  color: var(--dsw-alias-state-error-primary);
 }
 
 .reviewCommentTime {

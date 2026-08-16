@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, hasOpenRun, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
@@ -46,14 +46,16 @@ function resultChipKind(result: ExecutionRecord['result']): ChipKind {
 }
 
 /** One execution-history row: sequence, outcome, exact start/end times.
- *  Clicking the row opens the review page; the row also offers a rerun of
- *  that run and the native "view session" jump. */
-function ExecutionRow({ execution, index, onReview, onRerun, onOpen }: {
+ *  Clicking the row opens the review page (review the conversation and
+ *  comment to continue it); the native "view session" jump stays on the
+ *  row. Re-running is one action on the detail footer — it always starts a
+ *  fresh round with the task's current prompt, so rows carry no rerun
+ *  button (a row's "rerun" would be ambiguous next to comments). */
+function ExecutionRow({ execution, index, onReview, onOpen }: {
   execution: ExecutionRecord
   /** 1-based execution sequence (comment rounds are not part of the list). */
   index: number
   onReview: () => void
-  onRerun: () => void
   onOpen: (sessionId: string) => void
 }) {
   const result = execution.result
@@ -73,26 +75,16 @@ function ExecutionRow({ execution, index, onReview, onRerun, onOpen }: {
           {running && <span className={css.spinner} aria-hidden="true" />}
           {running ? t('detail.result.running') : t(RESULT_KEY[result as NonNullable<ExecutionRecord['result']>])}
         </Chip>
-        <span className={css.executionRowActions}>
+        {execution.sessionId !== undefined && (
           <button
             type="button"
             className={css.executionOpen}
-            onClick={event => { event.stopPropagation(); onRerun() }}
-            title={t('detail.executionRerun')}
+            onClick={event => { event.stopPropagation(); onOpen(execution.sessionId as string) }}
+            title={execution.sessionId}
           >
-            {t('detail.executionRerun')}
+            {t('detail.viewSession')} →
           </button>
-          {execution.sessionId !== undefined && (
-            <button
-              type="button"
-              className={css.executionOpen}
-              onClick={event => { event.stopPropagation(); onOpen(execution.sessionId as string) }}
-              title={execution.sessionId}
-            >
-              {t('detail.viewSession')} →
-            </button>
-          )}
-        </span>
+        )}
       </div>
       <span className={css.executionTimes}>
         {t('detail.executionStarted')} {formatDateTime(execution.startedAt)}
@@ -425,16 +417,17 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   const [editError, setEditError] = useState<string | undefined>(undefined)
   // The execution row whose review page is open (undefined = none).
   const [reviewExecution, setReviewExecution] = useState<ExecutionRecord | undefined>(undefined)
-  const latestExecution = task.executions[task.executions.length - 1]
-  // A card is busy while its latest run is still open. A scheduled batch
-  // keeps the card 'running' between runs, so `running` alone must not
-  // disable the button — the next batch run can be triggered manually.
-  const busy = latestExecution !== undefined && latestExecution.endedAt === undefined
 
   // Keep the overlay in sync if the task record changes underneath.
   const [latest, setLatest] = useState(task)
   useEffect(() => { setLatest(task) }, [task])
   const current = latest
+
+  // A card is busy while its latest run is still open AND the task is
+  // running (hasOpenRun): a scheduled batch keeps the card 'running'
+  // between runs, so `running` alone must not disable the button; a pending
+  // comment round (task not running) must never disable it either.
+  const busy = hasOpenRun(current)
 
   const editing = draft !== undefined
 
@@ -561,7 +554,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                       execution={execution}
                       index={runs.length - reversedIndex}
                       onReview={() => { setReviewExecution(execution) }}
-                      onRerun={() => { void controller.rerunTask(current.id) }}
                       onOpen={sessionId => { controller.openSession(sessionId) }}
                     />
                   ))}
@@ -612,6 +604,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                 type="button"
                 className={css.primaryButton}
                 disabled={busy}
+                title={t('detail.rerunHint')}
                 onClick={() => {
                   // Running kicks off a real agent session; close the detail so
                   // the whole board stays visible while the task executes.

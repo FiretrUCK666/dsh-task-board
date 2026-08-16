@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { executionLabel, ruleReadiness } from '../../core/tasks.ts'
+import { hasOpenRun, ruleReadiness } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { STATUS_KEY } from './status.ts'
@@ -67,10 +67,10 @@ export function TaskCard({ task, workspaceTitleOf, onClick }: {
   const [dragging, setDragging] = useState(false)
   const latest = task.executions[task.executions.length - 1]
   const runs = task.executions.length
-  // The card is genuinely executing while its latest run is still open; a
-  // scheduled batch keeps the card 'running' between runs (latest settled),
-  // so only an open execution shows the in-progress indicator.
-  const running = latest !== undefined && executionLabel(latest) === 'running'
+  // Only a genuinely open run shows the in-progress indicator: the card's
+  // status must be 'running' AND its latest round unsettled. A pending
+  // comment round (task sitting in review) must never spin.
+  const running = hasOpenRun(task)
   const workspaceLabel = task.workspaceId !== undefined
     ? workspaceTitleOf(task.workspaceId)
     : t('card.workspaceDefault')

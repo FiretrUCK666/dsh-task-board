@@ -256,7 +256,10 @@ export class ExecutionService {
         return
       }
       const baseline = driver !== undefined ? driver.getSnapshot().turnEnds.size : 0
-      this.watchForSettlement(driver, task.id, execution.id, sessionId, onEvent, baseline)
+      // The session already exists (it ran the reviewed execution), so its
+      // disappearance from the host list means it was deleted/archived —
+      // that is a cancellation, never a wait-forever.
+      this.watchForSettlement(driver, task.id, execution.id, sessionId, onEvent, baseline, true)
     } catch (error) {
       onEvent({
         kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
@@ -422,10 +425,14 @@ export class ExecutionService {
     sessionId: string,
     onEvent: (event: ExecutionEvent) => void,
     baseline: number,
+    /** Whether the session is known to have existed before this watch (a
+     *  comment continuation): a later disappearance from the host list is a
+     *  cancellation, never a creation-in-flight wait. */
+    sessionKnown = false,
   ): void {
     let settled = false
     let unsubscribe: Array<() => void> = []
-    const settle = (outcome: 'succeeded' | 'failed', error?: string): void => {
+    const settle = (outcome: 'succeeded' | 'failed' | 'cancelled', error?: string): void => {
       if (settled) return
       settled = true
       for (const dispose of unsubscribe) dispose()
@@ -446,9 +453,15 @@ export class ExecutionService {
       const list = this.env.sessions.list.getSnapshot()
       if (list.phase !== 'ready') return
       const summary = list.byId[sessionId]
-      // Not in the list yet (session creation is in flight) or still running:
-      // keep watching.
-      if (summary === undefined || summary.running) return
+      if (summary === undefined) {
+        // A known session that vanished was deleted/archived: settle as
+        // cancelled instead of waiting forever. Fresh runs keep waiting —
+        // their session may still be mid-creation.
+        if (sessionKnown) settle('cancelled', 'comment session no longer exists')
+        return
+      }
+      // Still running: keep watching.
+      if (summary.running) return
       const snapshot = driver?.getSnapshot()
       if (snapshot !== undefined && snapshot.turnEnds.size > baseline) {
         settle(snapshot.lastAgentError !== null ? 'failed' : 'succeeded', snapshot.lastAgentError ?? undefined)

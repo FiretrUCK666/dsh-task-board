@@ -3,7 +3,7 @@
  * prompt delivery, rename, and settlement from the watched snapshot.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { ExecutionService, type ExecutionEnvironment, type SessionDriver } from '../src/core/execution.ts'
+import { ExecutionService, type ExecutionEnvironment, type ExecutionEvent, type SessionDriver } from '../src/core/execution.ts'
 import { createTask, startExecution } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -579,5 +579,41 @@ describe('ExecutionService.reconcile', () => {
       executions: running.executions.map(e => ({ ...e, endedAt: NOW, result: 'succeeded' as const })),
     }
     expect(await service.reconcile(settled)).toBeUndefined()
+  })
+})
+
+describe('ExecutionService.commentRun', () => {
+  it('sends the comment and settles as cancelled when the session vanishes', async () => {
+    const { env } = makeEnv()
+    env.sendComment = async () => ({ ok: true })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = {
+      ...running.executions[0],
+      sessionId: 's-1',
+      comment: '继续干活',
+    }
+    const events: ExecutionEvent[] = []
+    // The session is absent from the host list (deleted/archived): the
+    // watch must settle the round as cancelled instead of waiting forever.
+    await service.commentRun(running, round, 's-1', '继续干活', event => { events.push(event) })
+    expect(events).toEqual([
+      { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'cancelled', error: 'comment session no longer exists' },
+    ])
+  })
+
+  it('settles a rejected comment send as failed', async () => {
+    const { env } = makeEnv()
+    env.sendComment = async () => ({ ok: false, error: 'prompt rejected' })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '继续' }
+    const events: ExecutionEvent[] = []
+    await service.commentRun(running, round, 's-1', '继续', event => { events.push(event) })
+    expect(events).toEqual([
+      { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'failed', error: 'comment rejected: prompt rejected' },
+    ])
   })
 })

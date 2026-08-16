@@ -16,6 +16,7 @@ import type { ExecutionRecord, TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
+import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { foldTranscript, type TranscriptLine } from './review-transcript.ts'
 
@@ -171,8 +172,11 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             )}
           </section>
 
-          {/* The comment thread: every comment on this session, with its live state. */}
-          <section className={css.reviewSection}>
+          {/* The comment thread: a clearly separated zone — comments are
+              human interventions, distinct from the conversation above.
+              Pending comments (cruise off) can be cancelled; injected ones
+              show their live state. */}
+          <section className={`${css.reviewSection} ${css.reviewThread}`}>
             <h4>{t('review.comments')}</h4>
             {comments.length === 0 ? (
               <p className={css.detailText}>{t('review.noComments')}</p>
@@ -186,6 +190,15 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                       <span className={css.reviewCommentMeta}>
                         <Chip kind={state.kind}>{state.label}</Chip>
                         <span className={css.reviewCommentTime}>{formatDateTime(view.round.startedAt)}</span>
+                        {view.state === 'pending' && (
+                          <button
+                            type="button"
+                            className={css.reviewCommentCancel}
+                            onClick={() => { controller.cancelComment(view.round.id) }}
+                          >
+                            {t('review.commentCancel')}
+                          </button>
+                        )}
                       </span>
                       {view.state === 'failed' && view.round.error !== undefined && view.round.error !== '' && (
                         <span className={css.executionError}>{view.round.error}</span>
@@ -196,20 +209,16 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               </ul>
             )}
 
-            {/* The composer: a comment continues the conversation in-session. */}
+            {/* The composer: a comment continues the conversation in-session.
+                It shares the prompt autocomplete with the task form — the
+                same live slash catalog, so commands and skills never drift. */}
             <div className={css.reviewComposer}>
-              <textarea
-                className={css.input}
-                rows={3}
+              <PromptInput
                 value={draft}
+                onChange={setDraft}
                 placeholder={t('review.commentPlaceholder')}
-                onChange={event => { setDraft(event.target.value) }}
-                onKeyDown={event => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault()
-                    submit()
-                  }
-                }}
+                rows={3}
+                controller={controller}
               />
               <div className={css.reviewComposerRow}>
                 <button type="button" className={css.primaryButton} disabled={draft.trim() === ''} onClick={submit}>

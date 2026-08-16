@@ -13,7 +13,7 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import type { TaskStore } from './store.ts'
 import { CruiseService } from './cruise.ts'
 import {
-  applyCardOrder, createTask, settleExecution, startExecution, withSchedule, withStatus,
+  applyCardOrder, createTask, hasOpenRun, settleExecution, startExecution, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -538,8 +538,9 @@ export class BoardController {
       this.persistAndNotify()
       task = primed
     }
-    const latest = task.executions[task.executions.length - 1]
-    if (latest !== undefined && latest.endedAt === undefined) return false
+    // Only a genuinely open run blocks a new one: a pending comment round
+    // (task not running) must never block the Run button or a drag-rerun.
+    if (hasOpenRun(task)) return false
     const { task: next, execution } = startExecution(task, this.now(), this.uuid())
     this.tasks = this.tasks.map(candidate => candidate.id === id ? next : candidate)
     this.persistAndNotify()
@@ -607,6 +608,28 @@ export class BoardController {
   }
 
   /**
+   * Cancel a comment round that has not been injected yet: removes it from
+   * the task (a saved-but-pending comment is editable by deleting it and
+   * writing a new one). A round that was already injected (or settled)
+   * cannot be cancelled.
+   * @param executionId - the pending comment round's id.
+   * @returns true when the round was removed.
+   */
+  cancelComment(executionId: string): boolean {
+    const task = this.tasks.find(candidate =>
+      candidate.executions.some(execution => execution.id === executionId))
+    if (task === undefined) return false
+    const round = task.executions.find(candidate => candidate.id === executionId)
+    if (round === undefined || round.comment === undefined) return false
+    if (round.endedAt !== undefined || task.status === 'running') return false
+    this.tasks = this.tasks.map(candidate => candidate.id === task.id
+      ? { ...candidate, updatedAt: this.now(), executions: candidate.executions.filter(execution => execution.id !== executionId) }
+      : candidate)
+    this.persistAndNotify()
+    return true
+  }
+
+  /**
    * Inject a pending comment round: the task moves to 'running' and the text
    * is sent to the execution session through the execution service; the
    * settled outcome flows through the normal event path (landing in
@@ -637,23 +660,20 @@ export class BoardController {
 
   /** Inject every pending comment round (called when the cruise turns on). */
   private injectPendingComments(): void {
-    for (const task of this.tasks) {
-      if (task.status !== 'review' && task.status !== 'todo' && task.status !== 'backlog') continue
-      const pending = task.executions.find(candidate =>
-        candidate.comment !== undefined && candidate.sessionId !== undefined && candidate.endedAt === undefined)
-      if (pending !== undefined) void this.continueComment(pending.id)
-    }
+    for (const task of this.tasks) this.injectPendingCommentsFor(task.id)
   }
 
   // --- auto-cruise --------------------------------------------------------------
 
-  /** Turn the auto-cruise on or off (persisted; on also injects pending comments). */
+  /** Turn the auto-cruise on or off (persisted). On also injects pending
+   *  comments — first, so a task's human instruction wins over the cruise
+   *  picking it up for a fresh run. */
   setCruiseEnabled(on: boolean): void {
     if (this.cruiseState.enabled === on) return
     this.cruiseState = { ...this.cruiseState, enabled: on }
     this.deps.cruiseStorage?.write(this.cruiseState)
-    this.cruise.setEnabled(on)
     if (on) this.injectPendingComments()
+    this.cruise.setEnabled(on)
     this.notify()
   }
 
@@ -683,6 +703,21 @@ export class BoardController {
     // A settled run hands off to the next chained run synchronously, so the
     // scheduler's recovery tick can never interleave a duplicate launch.
     this.maybeContinueChain(event.taskId)
+    // A settled run may also free the task for its pending comments: with
+    // the cruise on, inject any pending comment round now (not only when
+    // the cruise is enabled) — a comment saved while the task was running
+    // or before the cruise turned on is picked up as soon as the task is
+    // drivable again.
+    if (this.cruiseState.enabled) this.injectPendingCommentsFor(event.taskId)
+  }
+
+  /** Inject the task's pending comment round when it is drivable. */
+  private injectPendingCommentsFor(taskId: string): void {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined || task.status === 'running' || task.status === 'done') return
+    const pending = task.executions.find(candidate =>
+      candidate.comment !== undefined && candidate.sessionId !== undefined && candidate.endedAt === undefined)
+    if (pending !== undefined) void this.continueComment(pending.id)
   }
 
   // --- internals ---------------------------------------------------------------

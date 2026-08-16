@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, executionLabel, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, createTask, executionLabel, hasOpenRun, resolveCardDrop, ruleReadiness,
   settleExecution, startExecution, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -369,6 +369,34 @@ describe('resolveCardDrop', () => {
   it('a disabled chain falls back to the plain rules', () => {
     const chain = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { enabled: false, mode: 'chain', cron: '' }, NOW)
     expect(resolveCardDrop(chain, 'todo')).toEqual({ kind: 'move', status: 'todo' })
+  })
+})
+
+describe('hasOpenRun', () => {
+  it('is true only when the task is running and its latest round is open', () => {
+    const { task } = startExecution(sampleTask(), NOW, 'e1')
+    expect(hasOpenRun(task)).toBe(true)
+    const settled = settleExecution(task, 'e1', 'succeeded', NOW + 1, undefined)
+    expect(hasOpenRun(settled)).toBe(false)
+  })
+
+  it('is false for a pending comment round (task not running)', () => {
+    // A saved-but-not-injected comment round leaves the task in review; the
+    // card must never read as running.
+    const { task } = startExecution(sampleTask(), NOW, 'e1')
+    const settled = settleExecution(task, 'e1', 'succeeded', NOW + 1, undefined)
+    const withPending = {
+      ...settled,
+      executions: [
+        ...settled.executions,
+        { id: 'c1', sessionId: 's-1', startedAt: NOW + 2, endedAt: undefined, result: undefined, error: undefined, comment: '待注入' },
+      ],
+    }
+    expect(withPending.status).toBe('review')
+    expect(hasOpenRun(withPending)).toBe(false)
+    // Injected: the task is running again → open run.
+    const injected = { ...withPending, status: 'running' as const }
+    expect(hasOpenRun(injected)).toBe(true)
   })
 })
 

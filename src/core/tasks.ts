@@ -325,6 +325,19 @@ export function executionLabel(execution: ExecutionRecord): string {
   return 'running'
 }
 
+/**
+ * Whether the task is genuinely executing right now: its status is
+ * 'running' AND its latest round has not settled. A pending comment round
+ * (saved while the cruise is off, the task not running) is NOT an open run
+ * — it must never show a spinner on the card, block a rerun, or block a
+ * drag. One shared judgment for the card, the drop rules and the run guard.
+ */
+export function hasOpenRun(task: TaskRecord): boolean {
+  if (task.status !== 'running') return false
+  const latest = task.executions[task.executions.length - 1]
+  return latest !== undefined && latest.endedAt === undefined
+}
+
 /** What a card drop onto a column means (drag-and-drop decision). */
 export type CardDropDecision =
   | { kind: 'none' }
@@ -352,8 +365,7 @@ export type CardDropDecision =
  *   a no-op (except 'running', which still means "run" when free).
  */
 export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropDecision {
-  const latest = task.executions[task.executions.length - 1]
-  const busy = latest !== undefined && latest.endedAt === undefined
+  const busy = hasOpenRun(task)
   const chainOwns = task.schedule?.enabled === true
     && task.schedule.mode === 'chain'
     && task.schedule.primed === true

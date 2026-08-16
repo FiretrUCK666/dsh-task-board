@@ -85,7 +85,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         rect: element.getBoundingClientRect(),
       }))
     const gap = insertionGapOf(cards, dropY, dragId, 8)
-    return { beforeId: gap.beforeId, top: gap.top - containerTop }
+    // Clamp into the container: the column-top gap center may fall above the
+    // padding box; the indicator must never be clipped thinner by the
+    // scroll container.
+    return { beforeId: gap.beforeId, top: Math.max(0, gap.top - containerTop) }
   }
 
   // Resolve a workspace id to its display title through the run catalog
