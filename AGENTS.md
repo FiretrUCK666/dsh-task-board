@@ -30,18 +30,21 @@
 流程），两者描述同一项目。AI 修改项目或本文件后，应检查 README 是否仍准确，
 不匹配时同步更新并提交。
 
-## 环境与上下文
+## 环境与上下文（以实际环境为准，不依赖固定值）
 
-- 宿主：DeepSeek Harness (DSH) Web GUI，运行在用户本机（Windows，单用户，用户名
-  FiretrUCK）。DSH 的一切皆插件；本插件以 cordis 插件形态存在。
-- 项目位置：`C:/Users/FiretrUCK/.dsh/Plugins/dsh-task-board`（Windows 路径；跨平台
-  迁移时按相同相对布局推理）。
-- 运行环境：`~/.dsh/` 为 DSH 数据根；`profiles/web` 为激活 profile；本插件经 profile
-  的 `dsh.profile.bundles` 挂载（本目录被 `link:` 到 `profiles/web/node_modules`）；
-  `~/.dsh/cordis.patch.yml` 为 home 级 patch 层（合法状态：不存在，或顶层 YAML 数组；
+- 宿主：DeepSeek Harness (DSH) Web GUI，运行在用户本机。DSH 的一切皆插件；本插件以
+  cordis 插件形态存在。平台与用户名不写死：需要时用命令发现（如 `process.platform`、
+  `os.homedir()`），不要假设具体值。
+- 项目根目录：本文件（AGENTS.md）所在目录。任何需要项目路径的操作，用相对本文件
+  的方式推导，不写死绝对路径。
+- DSH 数据根：`$DSH_HOME` 环境变量优先；未设置时为用户主目录下的 `.dsh`
+  （跨平台由 `os.homedir()` 推导）。激活 profile 为 `profiles` 下的目录（当前部署为
+  `web`，以实际目录为准）；本插件经该 profile 的 `dsh.profile.bundles` 挂载（本目录被
+  `link:` 到 `profiles/<name>/node_modules`）。
+- `~/.dsh/cordis.patch.yml` 为 home 级 patch 层（合法状态：不存在，或顶层 YAML 数组；
   存在但为空会令 dsh 启动失败）；`~/.dsh/settings.yaml` 承载插件设置命名空间。
-- 兄弟项目：`C:/Users/FiretrUCK/.dsh/Plugins/dsh-sidebar-panel`（右侧面板插件，与本项目
-  完全独立、互不依赖、互不引用）。
+- 兄弟插件：本目录所在 `Plugins` 目录下、与本目录平级的其他独立插件（用目录扫描
+  发现，不要假设固定清单）；它们与本项目完全独立、互不依赖、互不引用。
 - 版本管理：本地 git 仓库（无远程），详见「版本管理流程」。
 - 生效规则：host 半区改动需重启 `dsh web`；client 半区改动刷新页面即可。
 

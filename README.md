@@ -107,10 +107,10 @@ node scripts/dsh-task-board.js status
 node scripts/dsh-task-board.js unmount
 ```
 
-也可直接用官方 profile 机制：
+也可直接用官方 profile 机制（在插件目录内执行，用 `$(pwd)` 代替绝对路径）：
 
 ```sh
-dsh plugin --profile web add link:C:\Users\FiretrUCK\.dsh\Plugins\dsh-task-board
+dsh plugin --profile web add link:$(pwd)
 ```
 
 安装后**重启 `dsh web`**，侧边栏「新会话」下方出现「任务看板」入口即生效；页面刷新不够，需重启进程。
@@ -121,7 +121,7 @@ dsh plugin --profile web add link:C:\Users\FiretrUCK\.dsh\Plugins\dsh-task-board
 devDependencies），**无需任何 DSH 源码 checkout**。
 
 ```sh
-cd C:\Users\FiretrUCK\.dsh\Plugins\dsh-task-board
+cd <插件目录>       # 例如：cd /path/to/dsh-task-board（本机位于 ~/.dsh/Plugins/dsh-task-board）
 pnpm install        # 首次安装依赖
 pnpm build          # 产出 lib/index.js + lib/client.js（tsdown + shared/tsdown.client.ts 预设）
 pnpm typecheck      # 类型检查（node_modules 的 SDK 包类型）
@@ -135,7 +135,7 @@ profile 清单中注册的行（`~/.dsh/profiles/web/package.json`）：
 
 ```json
 {
-  "dependencies": { "dsh-task-board": "link:C:\\Users\\FiretrUCK\\.dsh\\Plugins\\dsh-task-board" },
+  "dependencies": { "dsh-task-board": "link:<插件目录绝对路径>" },
   "dsh": { "profile": { "bundles": [ "...", "dsh-task-board" ] } }
 }
 ```
@@ -154,7 +154,7 @@ profile 清单中注册的行（`~/.dsh/profiles/web/package.json`）：
 ## 手动验证步骤
 
 1. `pnpm build` → `node scripts/dsh-task-board.js mount` → 重启 DSH → 刷新
-   `http://127.0.0.1:3080`。
+   Web GUI 地址（默认 `http://127.0.0.1:3080`，以实际端口为准）。
 2. 侧边栏「新会话」下方出现「任务看板」入口行；点击 → 中间列切换为五列看板。
 3. 「+ 新建任务」填标题/描述/Prompt → 卡片出现在「待办」。
 4. 点卡片 → 详情可见内容与 Prompt；点「执行」→ 卡片变「进行中」（会话列表出现
