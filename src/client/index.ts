@@ -45,7 +45,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * shape so this standalone package can register its card into it without
      * depending on a sibling settings UI package.
      */
-    'settings.plugin.item': { kind: 'list'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
+    'settings.plugin.item': { kind: 'keyed'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
   }
 }
 
@@ -164,8 +164,7 @@ export function apply(ctx: ClientContext): void {
     const settingsCard = new TaskBoardSettingsCardController(scope)
     ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
       name: 'settings.plugin.item',
-      id: 'dsh-task-board',
-      order: 110,
+      key: 'dsh-task-board',
       locale: NS,
       inject: () => settingsCard.inject(),
     }, TaskBoardSettingsCard))
