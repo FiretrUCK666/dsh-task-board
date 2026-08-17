@@ -679,11 +679,10 @@ export class BoardController {
     if (!this.cruiseState.enabled) return undefined
     let best: { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined
     for (const task of this.tasks) {
-      // Skip tasks that are not ready for execution:
-      // - running: already executing
-      // - done: completed, should not run
-      // - backlog: waiting for user to move to todo, should not auto-execute
-      if (task.status === 'running' || task.status === 'done' || task.status === 'backlog') continue
+      // Comment continuations may inject on any non-busy, non-completed task
+      // (backlog included — a user's comment keeps its session conversation
+      // alive; fresh cruise runs stay todo-only via the pickup below).
+      if (task.status === 'running' || task.status === 'done') continue
       const round = task.executions.find(candidate =>
         candidate.comment !== undefined && candidate.sessionId !== undefined
         && candidate.injectedAt === undefined && candidate.endedAt === undefined)

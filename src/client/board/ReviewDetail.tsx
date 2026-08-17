@@ -297,12 +297,12 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div className={css.review} role="dialog" aria-label={t('review.title')}>
         <header className={css.reviewHeader}>
-          <h2 className={css.reviewTitle}>
-            {current.title}
+          <div className={css.reviewTitleWrap}>
+            <h2 className={css.reviewTitle}>{current.title}</h2>
             <span className={css.reviewBadge}>
               {t('detail.executionNo', { n: String(runIndex) })}
             </span>
-          </h2>
+          </div>
           <div className={css.reviewActions}>
             <button
               type="button"

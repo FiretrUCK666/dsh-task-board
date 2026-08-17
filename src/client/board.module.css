@@ -606,6 +606,14 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* The native textarea corner grip (the two hatch lines) is hidden — the
+   resize behavior stays (drag the corner to change the height), only the
+   visual hint is removed. */
+.input::-webkit-resizer,
+.refineTextarea::-webkit-resizer {
+  display: none;
+}
+
 .formError {
   margin: 0;
   font-size: 12px;
@@ -1568,15 +1576,24 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
 }
 
+/* Title + run-sequence badge share one flex row that grows (the title
+   ellipsizes, the badge never clips); the header's `align-items: center`
+   then keeps this row, the badge and every action button on exactly the
+   same horizontal line. */
+.reviewTitleWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
 .reviewTitle {
   margin: 0;
-  flex: 1;
   min-width: 0;
   font-size: 15px;
   font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1586,6 +1603,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
   font-size: 11px;
   font-weight: 500;
+  line-height: 1.4;
   color: var(--dsw-alias-label-secondary);
 }
 

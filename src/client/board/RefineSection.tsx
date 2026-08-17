@@ -72,7 +72,7 @@ export function RefineSection({ controller, task }: {
   const idle = sessionId === undefined && !active
 
   return (
-    <section className={css.refineSection}>
+    <section className={`${css.detailSection} ${css.refineSection}`}>
       <h4>{t('detail.refine')}</h4>
 
       {idle ? (
