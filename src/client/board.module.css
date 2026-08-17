@@ -1226,31 +1226,121 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* --- requirement refinement (backlog tasks) ---------------------------------- */
 
-.refineStatusRow {
+.refineSection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.refineIdle {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 0;
+  align-items: flex-start;
+}
+
+.refineHeader {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.refineHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .refineRounds {
-  font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-/* The refine conversation tail: compact, its own scroll, reusing the review
-   transcript row styles. */
-.refineTail {
-  gap: 8px;
-  max-height: 220px;
-  overflow-y: auto;
-  padding-right: 4px;
+.refineWaitingText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+  padding: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: 8px;
+  border-left: 3px solid var(--dsw-alias-state-warn-primary);
 }
 
-.refineAnswerRow {
-  display: flex;
-  align-items: flex-end;
+/* The refine conversation tail: with border and background */
+.refineTranscriptArea {
+  min-height: 240px;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+  padding: 12px;
+  position: relative;
+}
+
+.refineTail {
+  min-height: 100%;
+}
+
+.refineTail ul {
   gap: 8px;
+}
+
+/* Answer input area: full width with resizable textarea */
+.refineInputArea {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.refineInputArea .promptField {
+  width: 100%;
+}
+
+.refineInputArea textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+  max-height: 400px;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.refineInputArea textarea:focus {
+  border-color: var(--dsw-alias-state-business-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha);
+}
+
+.refineSendButton {
+  align-self: flex-end;
+}
+
+/* Apply action area: separated with top border */
+.refineActionArea {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.refineApplyButton {
+  width: 100%;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .moveRow {

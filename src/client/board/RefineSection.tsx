@@ -72,27 +72,25 @@ export function RefineSection({ controller, task }: {
   const idle = sessionId === undefined && !active
 
   return (
-    <section className={css.detailSection}>
+    <section className={css.refineSection}>
       <h4>{t('detail.refine')}</h4>
 
       {idle ? (
-        <>
+        <div className={css.refineIdle}>
           <p className={css.detailText}>{t('detail.refine.idleHint')}</p>
-          <span className={css.moveRow}>
-            <button
-              type="button"
-              className={css.primaryButton}
-              onClick={() => { controller.startRefine(task.id, isEnglish()) }}
-            >
-              {t('detail.refine.start')}
-            </button>
-          </span>
-        </>
+          <button
+            type="button"
+            className={css.primaryButton}
+            onClick={() => { controller.startRefine(task.id, isEnglish()) }}
+          >
+            {t('detail.refine.start')}
+          </button>
+        </div>
       ) : (
         <>
-          {/* Header: status + rounds, with the native session escape. */}
+          {/* 头部信息：状态徽章 + 轮次数 + 查看会话按钮 */}
           <div className={css.refineHeader}>
-            <span className={css.refineStatusRow}>
+            <div className={css.refineHeaderLeft}>
               {active ? (
                 <Chip kind="warn">
                   {waiting !== undefined ? t('review.waiting') : t('detail.result.running')}
@@ -103,7 +101,7 @@ export function RefineSection({ controller, task }: {
                 </Chip>
               )}
               <span className={css.refineRounds}>{t('detail.refine.rounds', { n: String(rounds.length) })}</span>
-            </span>
+            </div>
             {sessionId !== undefined && (
               <button
                 type="button"
@@ -115,59 +113,68 @@ export function RefineSection({ controller, task }: {
             )}
           </div>
 
+          {/* 错误提示 */}
           {lastRound?.result === 'failed' && lastRound.error !== undefined && lastRound.error !== '' && (
             <span className={css.executionError}>{lastRound.error}</span>
           )}
 
-          {/* The live conversation tail: auto-follow + 滑到最新. */}
-          <div
-            ref={scrollRef}
-            onScroll={onScroll}
-            className={`${css.reviewTranscriptScroll} ${css.refineTail}`}
-          >
-            {error ? (
-              <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
-            ) : lines === undefined ? (
-              <p className={css.detailText}>{t('review.loading')}</p>
-            ) : lines.length === 0 ? (
-              <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
-            ) : (
-              <ul className={css.reviewTranscript}>
-                {lines.slice(-12).map(line => line.kind === 'context' ? (
-                  <TranscriptRow key={line.id} kind="context" plugin={line.plugin} summary={line.summary} />
-                ) : (
-                  <TranscriptRow key={line.id} kind="message" role={line.role} text={line.text} />
-                ))}
-              </ul>
-            )}
-            <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />
+          {/* 对话区域：带边框和背景 */}
+          <div className={css.refineTranscriptArea}>
+            <div
+              ref={scrollRef}
+              onScroll={onScroll}
+              className={css.refineTail}
+            >
+              {error ? (
+                <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
+              ) : lines === undefined ? (
+                <p className={css.detailText}>{t('review.loading')}</p>
+              ) : lines.length === 0 ? (
+                <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
+              ) : (
+                <ul className={css.reviewTranscript}>
+                  {lines.slice(-12).map(line => line.kind === 'context' ? (
+                    <TranscriptRow key={line.id} kind="context" plugin={line.plugin} summary={line.summary} />
+                  ) : (
+                    <TranscriptRow key={line.id} kind="message" role={line.role} text={line.text} />
+                  ))}
+                </ul>
+              )}
+              <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />
+            </div>
           </div>
 
+          {/* 等待通知 */}
           {active && waiting !== undefined && (
-            <p className={css.detailText}>
+            <p className={css.refineWaitingText}>
               {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
             </p>
           )}
 
-          {/* Answer bar: input takes the width, send on the right. */}
-          <div className={css.refineAnswerRow}>
+          {/* 输入区域：可调整高度的文本框 + 发送按钮 */}
+          <div className={css.refineInputArea}>
             <PromptInput
               value={draft}
               onChange={setDraft}
               placeholder={t('detail.refine.answerPlaceholder')}
-              rows={1}
+              rows={4}
               controller={controller}
             />
-            <button type="button" className={css.primaryButton} disabled={draft.trim() === ''} onClick={send}>
+            <button
+              type="button"
+              className={`${css.primaryButton} ${css.refineSendButton}`}
+              disabled={draft.trim() === ''}
+              onClick={send}
+            >
               {t('detail.refine.send')}
             </button>
           </div>
 
-          {/* Apply action on its own row. */}
-          <div className={css.refineApplyRow}>
+          {/* 操作区域：应用到任务按钮 */}
+          <div className={css.refineActionArea}>
             <button
               type="button"
-              className={css.primaryButton}
+              className={`${css.primaryButton} ${css.refineApplyButton}`}
               disabled={resultText === undefined}
               title={resultText === undefined ? t('detail.refine.noResult') : undefined}
               onClick={apply}
