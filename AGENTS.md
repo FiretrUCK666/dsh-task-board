@@ -231,7 +231,7 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   - 看板视图：`[data-pane="conversation"]` / `[class*="centerCol"]` 兜底定位，
     列内追加容器 + `html[data-dsh-taskboard-active]` 显隐，对话子树保持挂载。
 - 设置卡：`PluginSettingsCard`（始终渲染，不可用时显示提示）+ `CardForm`（staged
-  表单，`booleanField`/`textField`/`numberField`，save 统一写）+ `TaskBoardSettingsCard`
+  表单，`booleanField` save 统一写）+ `TaskBoardSettingsCard`
   （enabled / announceToAgent）。
 
 ### 核心层（`src/core/`，纯逻辑，与 UI 无关）
@@ -274,11 +274,18 @@ prompt）；结算靠会话列表对账，cold 窗口判定：列表缺失→取
 （`TranscriptProjectionsShape`，controller.ts 定义）。权限下拉的事实源是
 `permissions` 投影的 `currentValue`/`options`（与原生 PermissionSelect 同源），
 不是任务卡片的 `permission` 字段（那只作用于下次新执行）；切换成功立即 `reload()`
-拉新投影，3 秒轮询兜底。**评论线程是任务级全量历史**：跨执行/跨会话一条不丢
-（`commentsOf` 不过滤 sessionId），每条评论经 `executionIndexFor`（tasks.ts，纯函数）
-标出所属执行序号（1-based，不含评论轮次自身；无 session/找不到 → 0 =「未知执行」）。
-**对话贴底自动跟随**：历史轮询拿到新行时，若用户在底部（距底 < 24px）自动滚下
-跟随输出；主动上翻则不再打扰，直到用户回到底部。
+拉新投影，3 秒轮询兜底。**评论线程按执行独立显示**（comment-thread.ts，纯函数）：
+评论轮次提交时记录 `parentExecutionId`（controller.submitComment），评论页只显示
+该执行自己的评论（`commentsOf` 精确按 parent 归属；旧数据无该字段时按 session 兜底，
+session 缺失则不显示）——别执行的评论各归各页，绝不混入。**排队位次是任务级**：
+调度器按任务 FIFO 注入评论，`queuePositionOf` 在整个任务的未注入轮次里算位
+（本页筛子外的他执行排队评论也占位）；执行序号统一走 `plainRunsOf(task)`
+（tasks.ts，过滤 comment 轮的单一编号源，TaskDetail 列表与评论页头部共用）。
+**两侧自动跟随 + 滑到最新**：对话区与评论列表各自贴底跟随（距底 < 24px），
+上翻阅读时暂停并在滚动区内显示「滑到最新」粘性小按钮（`.reviewJumpLatest`），
+点击回底恢复跟随；评论列表跟随以逐条 id+state 指纹为依赖，只在评论真实变化时触发。
+**右栏分区**：固定头部（投影面板）→ 固定线程标题栏（「评论 N」数量永不滚走）→
+独立滚动的评论列表（滚动条只覆盖列表）→ 固定发送区。
 
 ## 构建与验证（改完必跑，全绿才算完成）
 
@@ -317,7 +324,8 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
 
 - `tests/controller|execution|schedule|scheduler|store|tasks.spec.ts`：核心层纯逻辑。
 - `tests/review-transcript.spec.ts` / `tests/context-meter.spec.ts` /
-  `tests/menu-direction.spec.ts`：评论页纯逻辑（折叠规则 / 上下文条算术 / 斜杠菜单方向）。
+  `tests/menu-direction.spec.ts` / `tests/comment-thread.spec.ts`：评论页纯逻辑
+  （折叠规则 / 上下文条算术 / 斜杠菜单方向 / 评论归属与排队位次）。
 - `tests/route-scope.spec.ts`：RouteSettingsScope 快照转换 / ops 映射 / 失败降级
   （vi.stubGlobal fetch）。
 - `tests/settings-route.spec.ts`：createSettingsHandler 纯函数（GET 有/无命名空间、

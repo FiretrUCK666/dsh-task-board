@@ -160,8 +160,7 @@ export const zh = {
   'review.commentFailed': '失败',
   'review.commentCancelled': '已取消',
   'review.commentCancel': '取消',
-  'review.commentExecution': '第 {n} 次执行',
-  'review.commentExecutionUnknown': '未知执行',
+  'review.jumpLatest': '滑到最新',
   'review.waiting': '等待回应',
   'review.waitingTitle': '会话正在等待你处理（{kind}）：点「查看会话」前往处理',
   'review.meterUsed': '上下文已用',
@@ -367,8 +366,7 @@ export const en: Record<keyof typeof zh, string> = {
   'review.commentFailed': 'Failed',
   'review.commentCancelled': 'Cancelled',
   'review.commentCancel': 'Cancel',
-  'review.commentExecution': 'Run {n}',
-  'review.commentExecutionUnknown': 'Unknown run',
+  'review.jumpLatest': 'Latest',
   'review.waiting': 'Waiting for you',
   'review.waitingTitle': 'The session is waiting for you ({kind}): use "View session" to handle it',
   'review.meterUsed': 'Context used',
@@ -432,7 +430,7 @@ export function isEnglish(): boolean {
 }
 
 /** Active dictionary, picked by the document language at call time. */
-export function dictionary(): Record<TaskBoardKey, string> {
+function dictionary(): Record<TaskBoardKey, string> {
   return isEnglish() ? en : zh
 }
 

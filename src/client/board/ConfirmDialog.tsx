@@ -7,7 +7,7 @@ import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
 
 /** Confirm overlay props. */
-export interface ConfirmDialogProps {
+interface ConfirmDialogProps {
   title: string
   message: string
   confirmLabel: string

@@ -50,7 +50,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Owner share of a plugin card (the section supplies nothing). */
-export interface SettingsPluginItemOwnerProps {
+interface SettingsPluginItemOwnerProps {
   /** Marker field: card owner props are intentionally empty. */
   children?: never
 }

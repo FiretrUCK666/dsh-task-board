@@ -19,7 +19,7 @@ export interface TaskBoardSettings {
 }
 
 /** What the task-board card renders. */
-export interface TaskBoardSettingsCardState extends CardShell {
+interface TaskBoardSettingsCardState extends CardShell {
   /** Master switch. */
   enabled: CardFieldState
   /** System-prompt announcement flag. */
@@ -27,7 +27,7 @@ export interface TaskBoardSettingsCardState extends CardShell {
 }
 
 /** The registration-side face the card's slot entry injects. */
-export interface TaskBoardSettingsCardFace extends CardActions {
+interface TaskBoardSettingsCardFace extends CardActions {
   hooks: {
     /** Card snapshot bound by the renderer as useTaskBoardSettingsCard. */
     taskBoardSettingsCard: SnapshotStore<TaskBoardSettingsCardState>
@@ -66,7 +66,7 @@ export class TaskBoardSettingsCardController {
 }
 
 /** Props the renderer binds for the task-board card. */
-export type TaskBoardSettingsCardProps =
+type TaskBoardSettingsCardProps =
   PropsRuntime<'settings.plugin.item'>
   & PropsLocale<'dsh-task-board'>
   & InjectFace<TaskBoardSettingsCardFace>

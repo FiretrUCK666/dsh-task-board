@@ -45,6 +45,14 @@ export interface ExecutionRecord {
    * observed.
    */
   injectedAt?: number
+  /**
+   * The plain execution this comment round continues (the record whose
+   * review page the comment was submitted from; its session is reused).
+   * Present on rounds created after this field existed; older persisted
+   * rounds omit it and are attributed by session instead. Comment rounds
+   * only ever carry it — plain runs never do.
+   */
+  parentExecutionId?: string
 }
 
 /** How a scheduled task is driven: cron = fire at fixed times; chain = rerun right after each run settles. */
@@ -152,9 +160,6 @@ export const COLUMNS: readonly { status: TaskStatus; label: string }[] = [
 /** Statuses a user may move a card to manually (execution states are owned by the runner). */
 export const MANUAL_STATUSES: readonly TaskStatus[] = ['backlog', 'todo', 'done']
 
-/** Statuses in which an armed + primed auto rule keeps driving the task. */
-export const RULE_ACTIVE_STATUSES: readonly TaskStatus[] = ['todo', 'running']
-
 /** All valid statuses (closed union guard). */
 export const ALL_STATUSES: readonly TaskStatus[] = [
   'backlog', 'todo', 'running', 'review', 'done',
@@ -194,6 +199,8 @@ export function ruleReadiness(task: TaskRecord): RuleReadiness {
   const schedule = task.schedule
   if (schedule === undefined || !schedule.enabled) return { kind: 'disabled' }
   if (schedule.primed !== true) return { kind: 'standby' }
+  // Every status outside the rule's active set (backlog/review/done) is a
+  // pause: the rule must never drive a task a human is holding.
   if (task.status === 'backlog' || task.status === 'review' || task.status === 'done') {
     return { kind: 'paused', status: task.status }
   }
@@ -383,22 +390,13 @@ export function pendingCommentCount(task: TaskRecord): number {
 }
 
 /**
- * The execution sequence number a comment round belongs to (1-based, among
- * the task's plain runs): the latest plain execution sharing the round's
- * session. Comment rounds themselves are not part of the sequence. Returns 0
- * when the round has no session or no matching plain execution (the session
- * was deleted, for example) — the UI renders that as an unknown marker.
+ * The task's plain runs in chronological order — every execution record
+ * except comment rounds. The single numbering source for the execution
+ * history list (TaskDetail) and the review page header ("第 N 次执行"):
+ * comment continuations are not part of the run sequence.
  */
-export function executionIndexFor(task: TaskRecord, round: ExecutionRecord): number {
-  if (round.sessionId === undefined) return 0
-  let index = 0
-  let found = 0
-  for (const execution of task.executions) {
-    if (execution.comment !== undefined) continue
-    index += 1
-    if (execution.sessionId === round.sessionId) found = index
-  }
-  return found
+export function plainRunsOf(task: TaskRecord): readonly ExecutionRecord[] {
+  return task.executions.filter(execution => execution.comment === undefined)
 }
 
 /** What a card drop onto a column means (drag-and-drop decision). */

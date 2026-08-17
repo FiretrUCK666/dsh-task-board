@@ -13,7 +13,7 @@ import type { SettingsCardKey } from './locales.ts'
 import css from './settings-card.module.css'
 
 /** Card chrome shared by every plugin settings card. */
-export interface PluginSettingsCardProps {
+interface PluginSettingsCardProps {
   /** Locale reader for this card's copy. */
   t: (key: SettingsCardKey) => string
   /** Locale key of the plugin's name. */
@@ -116,7 +116,7 @@ export function PluginSettingsCard(props: PluginSettingsCardProps) {
 }
 
 /** Props every field control needs regardless of its value type. */
-export interface FieldProps {
+interface FieldProps {
   /** Stable id associating the label with its control. */
   id: string
   /** Visible label. */
@@ -141,59 +141,6 @@ export interface FieldProps {
   onEdit: (text: string) => void
   /** Stage a clear so the field re-inherits the composition layer. */
   onReset: () => void
-}
-
-/**
- * A staged value field. `numeric` only hints the keypad: which drafts a field
- * accepts is decided by its spec.
- *
- * Reserved UI-slice API: exported so cards that add value fields can use the
- * same chrome. Not consumed by any card in this package yet (the task-board
- * card renders only boolean fields), kept as the text-input counterpart to
- * `BooleanField`.
- */
-export function ValueField(props: FieldProps & {
-  /** Hints a numeric keypad without narrowing what the control accepts. */
-  numeric?: boolean
-  /** Placeholder shown while the draft is empty. */
-  placeholder?: string
-}) {
-  return (
-    <div className={css.field}>
-      <div className={css.head}>
-        <label className={css.label} htmlFor={props.id}>{props.label}</label>
-        {props.overridden
-          ? (
-            <span className={css.badges}>
-              <span className={css.badge}>{props.overriddenLabel}</span>
-              <button
-                type="button"
-                className={css.reset}
-                disabled={props.disabled}
-                onClick={props.onReset}
-              >
-                {props.resetLabel}
-              </button>
-            </span>
-          )
-          : null}
-      </div>
-      <input
-        id={props.id}
-        className={props.invalid ? css.inputInvalid : css.input}
-        type="text"
-        {...props.numeric === true ? { inputMode: 'numeric' as const } : {}}
-        {...props.invalid ? { 'aria-invalid': true } : {}}
-        value={props.text}
-        placeholder={props.placeholder ?? ''}
-        disabled={props.disabled}
-        onChange={(event) => { props.onEdit(event.target.value) }}
-      />
-      <p className={props.invalid ? css.invalid : css.hint}>
-        {props.invalid ? props.invalidLabel : props.hint}
-      </p>
-    </div>
-  )
 }
 
 /** A staged boolean field: 继承 / 开 / 关. */

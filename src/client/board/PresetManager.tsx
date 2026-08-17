@@ -25,7 +25,7 @@ const WEEKDAYS_ZH = ['周日', '周一', '周二', '周三', '周四', '周五',
 const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /** Human cron description for the manager rows ('' when invalid). */
-export function presetCronHint(cron: string): string {
+function presetCronHint(cron: string): string {
   const description = describeCron(cron)
   if (description === undefined) return ''
   switch (description.kind) {

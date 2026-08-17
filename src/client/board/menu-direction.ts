@@ -10,7 +10,7 @@
  */
 
 /** The menu's maximum rendered height (the CSS max-height). */
-export const SLASH_MENU_MAX_HEIGHT = 280
+const SLASH_MENU_MAX_HEIGHT = 280
 
 /** The gap between the field and the menu (the CSS offset). */
 const MENU_GAP = 4

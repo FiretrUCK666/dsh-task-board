@@ -11,14 +11,14 @@
 import type { ContextBreakdownShape, ContextPressureShape } from '../../core/controller.ts'
 
 /** The three bar segments, in native order and with the native tint classes. */
-export const CONTEXT_SEGMENTS = [
+const CONTEXT_SEGMENTS = [
   { key: 'systemTokens', className: 'meterSystem', label: 'context.system' },
   { key: 'toolsTokens', className: 'meterTools', label: 'context.tools' },
   { key: 'messageTokens', className: 'meterMessages', label: 'context.messages' },
 ] as const
 
 /** Occupancy result: percentage (0-100, rounded, clamped) + the raw figures. */
-export interface ContextOccupancy {
+interface ContextOccupancy {
   percent: number
   usedTokens: number
   contextWindow: number
@@ -44,7 +44,7 @@ export function contextOccupancy(
 }
 
 /** One bar segment: which breakdown bucket it is and its share of the bar width (%). */
-export interface ContextSegment {
+interface ContextSegment {
   key: string
   /** The meter's tint class (native color), or undefined for the uncolored fallback bar. */
   className: string | undefined

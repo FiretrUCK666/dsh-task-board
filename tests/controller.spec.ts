@@ -806,6 +806,10 @@ describe('comments', () => {
     expect(round).toBeDefined()
     expect(round?.comment).toBe('继续下一步')
     expect(round?.sessionId).toBe('s-1')
+    // The round records the execution it continues, so the review page can
+    // show each execution's own comments.
+    expect(round?.parentExecutionId).toBe(executionId)
+    expect(store.load()[0].executions[1].parentExecutionId).toBe(executionId)
     expect(exec.commentCalls).toHaveLength(0)
     expect(store.load()[0].status).toBe('review')
     // Comments are a per-task FIFO queue: more can be saved while the cruise

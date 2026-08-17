@@ -859,7 +859,9 @@ export class BoardController {
    * A round with `command` set is a slash command, not a turn: the line is
    * executed through the native command registry when injected (unknown
    * commands fall back to plain text), matching the native composer's '/'
-   * behavior.
+   * behavior. Every round records the execution it continues
+   * (`parentExecutionId`), so the review page shows each execution's own
+   * comments — never the whole task's.
    * @param taskId - the task owning the execution.
    * @param executionId - the settled execution to continue (its session is reused).
    * @param text - the comment to send to the session's agent.
@@ -882,6 +884,7 @@ export class BoardController {
       result: undefined,
       error: undefined,
       comment: trimmed,
+      parentExecutionId: execution.id,
       ...command ? { command: true } : {},
     }
     this.tasks = this.tasks.map(candidate => candidate.id === taskId

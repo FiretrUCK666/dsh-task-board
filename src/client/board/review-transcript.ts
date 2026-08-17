@@ -44,7 +44,7 @@ export type TranscriptLine =
   }
 
 /** Token accounting of one assistant message (native `usage` payload). */
-export interface TranscriptUsage {
+interface TranscriptUsage {
   inputTokens: number
   outputTokens: number
   cacheReadTokens?: number

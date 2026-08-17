@@ -1414,12 +1414,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border-bottom: 1px solid var(--dsw-alias-separator-primary);
 }
 
-/* The comment thread scrolls in its own region below the rail head; the
-   composer stays pinned at the rail's bottom. */
+/* The comment list scrolls in its own region below the fixed thread header
+   (title + count) and above the composer — the scrollbar covers exactly the
+   list, never the header or the composer. */
 .reviewRailThread {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -1454,12 +1454,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
-}
-
-.reviewSection {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
 /* Conversation list: native cadence — 16px gaps between messages, the whole
@@ -1724,11 +1718,23 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
+/* The fixed thread header — title + count stay visible no matter how long
+   the comment list below grows; the list alone scrolls. */
+.reviewThreadHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 12px 12px 0;
+}
+
 .reviewThreadTitle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   margin: 0;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .reviewThreadCount {
@@ -1815,12 +1821,28 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-variant-numeric: tabular-nums;
 }
 
-/* Which execution a comment round belongs to (comments are task-level; the
-   badge ties each one back to its run). */
-.reviewCommentRun {
-  font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
-  font-variant-numeric: tabular-nums;
+/* The sticky "Latest" affordance inside a scroll region: shown only while
+   the user has scrolled away from the bottom; one click returns. */
+.reviewJumpLatest {
+  position: sticky;
+  bottom: 8px;
+  align-self: center;
+  margin-top: 8px;
+  flex: none;
+  padding: 5px 14px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: var(--dsw-shadow-lv1);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.reviewJumpLatest:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  border-color: var(--dsw-alias-border-l3);
 }
 
 /* The composer, pinned at the rail's bottom: sending a comment never

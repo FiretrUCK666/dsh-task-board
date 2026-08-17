@@ -77,7 +77,7 @@ export function filterSlashCandidates(
 }
 
 /** The replacement text for a picked candidate, mirroring the native menu. */
-export function commandCompletion(candidate: SlashCandidate): string {
+function commandCompletion(candidate: SlashCandidate): string {
   const needsSpace = candidate.kind === 'skill' || candidate.hint !== undefined
   return `/${candidate.name}${needsSpace ? ' ' : ''}`
 }

@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, hasOpenRun, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
@@ -547,7 +547,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
             {(() => {
               // Comment continuation rounds are not part of the execution
               // history list — they live in the review page's comment thread.
-              const runs = current.executions.filter(execution => execution.comment === undefined)
+              const runs = plainRunsOf(current)
               if (runs.length === 0) return <p className={css.detailText}>{t('detail.noExecution')}</p>
               return (
                 <ul className={css.executionList}>

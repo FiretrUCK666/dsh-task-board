@@ -13,12 +13,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { BoardController } from '../core/controller.ts'
 import { TaskBoard } from './board/TaskBoard.tsx'
 
-/** The injected board container (kept in the DOM, hidden when inactive). */
-export const BOARD_VIEW_SELECTOR = '[data-dsh-taskboard-view]'
-
-// The center column: the official `data-pane="conversation"` marker first,
-// then the css-module class (legacy shells without the marker). The plugin
-// never depends on an external compatibility shim.
+/** The center column: the official `data-pane="conversation"` marker first,
+ * then the css-module class (legacy shells without the marker). The plugin
+ * never depends on an external compatibility shim.
+ */
 const CONVERSATION_COLUMN_SELECTOR = '[data-pane="conversation"], [class*="centerCol"]'
 const ACTIVE_ATTR = 'data-dsh-taskboard-active'
 

@@ -27,12 +27,12 @@ export interface SettingsScopeLike<T> {
 }
 
 /** The write one field's staged text performs when the card is saved. */
-export type FieldWrite =
+type FieldWrite =
   | { kind: 'set'; value: unknown }
   | { kind: 'clear' }
 
 /** How one field converts between its stored value and its draft text. */
-export interface FieldSpec {
+interface FieldSpec {
   /** Field name inside the namespace section. */
   field: string
   /** Render a stored value as draft text; the empty string when the section carries none. */
@@ -96,47 +96,6 @@ interface PlannedWrite {
   field: string
   /** Perform the write and report whether the Host holds the staged value afterwards. */
   run: (() => Promise<boolean>) | undefined
-}
-
-/**
- * A whole-number field. An empty draft clears the field; any other draft that
- * is not a finite number blocks the save.
- *
- * Reserved UI-slice API: exported so cards that add numeric fields can use the
- * same staged-form semantics. Not consumed by any card in this package yet
- * (the task-board card is boolean-only), kept as the number counterpart to
- * `booleanField`.
- */
-export function numberField(field: string): FieldSpec {
-  return {
-    field,
-    format: value => typeof value === 'number' ? String(value) : '',
-    parse: (text) => {
-      const trimmed = text.trim()
-      if (trimmed === '') return { kind: 'clear' }
-      const parsed = Number(trimmed)
-      return Number.isFinite(parsed) ? { kind: 'set', value: parsed } : undefined
-    },
-  }
-}
-
-/**
- * A free-text field. An empty draft clears the field.
- *
- * Reserved UI-slice API: exported so cards that add text fields can use the
- * same staged-form semantics. Not consumed by any card in this package yet
- * (the task-board card is boolean-only), kept as the text counterpart to
- * `booleanField`.
- */
-export function textField(field: string): FieldSpec {
-  return {
-    field,
-    format: value => typeof value === 'string' ? value : '',
-    parse: (text) => {
-      const trimmed = text.trim()
-      return trimmed === '' ? { kind: 'clear' } : { kind: 'set', value: trimmed }
-    },
-  }
 }
 
 /** A boolean field, edited through true/false draft text. */

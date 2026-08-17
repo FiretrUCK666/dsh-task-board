@@ -15,11 +15,14 @@
  * question — the native sidebar wait signal), a waiting banner explains it
  * and points at "查看会话". The layout is two columns: the conversation
  * owns the full left height; a right rail holds a fixed head (meter,
- * config, session facts — always visible) above an independently scrolling
- * comment thread, with the composer pinned at its bottom. Comments are a
- * per-task FIFO queue — saved rounds (cruise off) wait, queued rounds
- * (cruise on, budget full) show their position, and both can be cancelled
- * until injected; a comment whose first character is '/' is a slash
+ * config, session facts — always visible) above a fixed thread header
+ * (title + count) and an independently scrolling comment list, with the
+ * composer pinned at its bottom. The thread shows only the comments of the
+ * execution being reviewed — each execution's page shows its own, the
+ * injection queue stays task-level (a round's position is computed over the
+ * whole task). Both the transcript and the comment list auto-follow the
+ * latest output while at the bottom, with a "滑到最新" button when scrolled
+ * up. A comment whose first character is '/' is a slash
  * command executed through the native command registry (unknown commands
  * fall back to plain text), exactly like the native composer. Transcript
  * and session data refresh while the panel is open (a lightweight 3s poll
@@ -29,8 +32,8 @@
  * this page never duplicates the full conversation view.
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import type { BoardController, SessionConfigFace, SessionModelChoice, SessionModelGroup, TranscriptEventShape, TranscriptProjectionsShape } from '../../core/controller.ts'
-import { executionIndexFor, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
+import type { BoardController, SessionModelChoice, SessionModelGroup, TranscriptEventShape, TranscriptProjectionsShape } from '../../core/controller.ts'
+import { plainRunsOf, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -39,6 +42,7 @@ import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { foldTranscript, sumUsage, type TranscriptLine } from './review-transcript.ts'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
+import { commentsOf, commentKindOf, queuePositionOf, type CommentViewState } from './comment-thread.ts'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
@@ -72,55 +76,33 @@ const TranscriptRow = memo(function TranscriptRow(props:
   )
 })
 
-/** One comment round rendered in the thread, with its live state. */
-interface CommentView {
-  round: ExecutionRecord
-  state: 'saved' | 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
-}
+/** How close to the bottom a scroll position counts as "at the latest". */
+const NEAR_BOTTOM_PX = 24
 
 /**
- * Build the comment thread of a task — every comment round across every
- * execution/session, oldest first. Comments are task-level interventions:
- * a review page opened from any execution row shows the task's whole
- * comment history (each row carries its execution badge via
- * executionIndexFor), never just the comments of the one session being
- * reviewed. The state machine mirrors the unified dispatcher:
- * - `saved`: cruise off — the comment stays saved (never injected).
- * - `queued`: cruise on but the round waits for a free slot / the task's
- *   busy round (it will inject in order).
- * - `running`: injected, the session is running it.
- * - settled states as recorded.
+ * The sticky "滑到最新" affordance shown in a scroll region (transcript or
+ * comment thread) when the user has scrolled away from the bottom: one click
+ * returns to the latest output. Hidden while the region is at the bottom,
+ * where new content already auto-follows.
  */
-function commentsOf(task: TaskRecord, cruiseOn: boolean): CommentView[] {
-  return task.executions
-    .filter(round => round.comment !== undefined)
-    .map(round => {
-      let state: CommentView['state']
-      if (round.endedAt !== undefined) state = round.result ?? 'cancelled'
-      else if (round.injectedAt !== undefined) state = 'running'
-      else state = cruiseOn ? 'queued' : 'saved'
-      return { round, state }
-    })
+function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: () => void }) {
+  if (atBottom) return null
+  return (
+    <button type="button" className={css.reviewJumpLatest} onClick={onJump}>
+      {t('review.jumpLatest')}
+    </button>
+  )
 }
 
-/** The 1-based queue position of an uninjected round (its order among the task's pending rounds). */
-function queuePositionOf(comments: readonly CommentView[], roundId: string): number {
-  const pending = comments
-    .filter(view => view.state === 'saved' || view.state === 'queued' || view.state === 'running')
-    .sort((a, b) => a.round.startedAt - b.round.startedAt)
-  const index = pending.findIndex(view => view.round.id === roundId)
-  return index < 0 ? 0 : index + 1
-}
-
-/** Comment-round state → chip color + label key. */
-function commentStateOf(state: CommentView['state'], position: number): { kind: 'success' | 'error' | 'warn' | 'muted'; label: string } {
+/** The chip label of a comment display state ("排队中 · 第 N 位" uses the task-level queue position). */
+function commentLabel(state: CommentViewState, position: number): string {
   switch (state) {
-    case 'succeeded': return { kind: 'success', label: t('review.commentSucceeded') }
-    case 'failed': return { kind: 'error', label: t('review.commentFailed') }
-    case 'cancelled': return { kind: 'muted', label: t('review.commentCancelled') }
-    case 'running': return { kind: 'warn', label: t('review.commentRunning') }
-    case 'queued': return { kind: 'warn', label: t('review.commentQueued', { n: String(position) }) }
-    case 'saved': return { kind: 'muted', label: t('review.commentPending') }
+    case 'succeeded': return t('review.commentSucceeded')
+    case 'failed': return t('review.commentFailed')
+    case 'cancelled': return t('review.commentCancelled')
+    case 'running': return t('review.commentRunning')
+    case 'queued': return t('review.commentQueued', { n: String(position) })
+    case 'saved': return t('review.commentPending')
   }
 }
 
@@ -139,7 +121,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const current = snapshot.tasks.find(candidate => candidate.id === task.id) ?? task
   const sessionId = execution.sessionId
   const cruiseOn = snapshot.cruise.enabled
-  const comments = commentsOf(current, cruiseOn)
+  // This execution's own comment thread (the review page shows only the
+  // comments submitted from the execution being reviewed).
+  const comments = commentsOf(current, execution, cruiseOn)
   const sessionConfig = controller.sessionConfig()
 
   const [lines, setLines] = useState<readonly TranscriptLine[] | undefined>(undefined)
@@ -159,11 +143,17 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // poll only re-renders when new events actually arrived, so an idle
   // session costs nothing and a busy one re-renders only on real progress.
   const watermarkRef = useRef<number | undefined>(undefined)
-  // Sticky-bottom conversation: track whether the user is at the bottom of
-  // the transcript scroll; when new lines arrive and the user was at the
-  // bottom, follow them down (never yank the view away from a scroll-up).
+  // Both scroll regions (conversation + comment list) auto-follow their
+  // latest output while the user is at the bottom; scrolling up pauses the
+  // follow and shows a "滑到最新" button (`JumpToLatest`) to return.
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
-  const atBottomRef = useRef(true)
+  const [transcriptAtBottom, setTranscriptAtBottom] = useState(true)
+  const threadScrollRef = useRef<HTMLDivElement | null>(null)
+  const [threadAtBottom, setThreadAtBottom] = useState(true)
+  // The comment-thread change fingerprint (id+state of every round): the
+  // thread follow fires only on real comment changes — new saves, state
+  // transitions — never on unrelated re-renders from the light poll.
+  const threadFingerprint = comments.map(view => `${view.round.id}:${view.state}`).join('|')
 
   // The native permission-preset directory for the permission switcher
   // (same catalog as the new-task form; absent = no switcher).
@@ -234,20 +224,48 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     }
   }, [poll])
 
-  // Follow new conversation output: when the user is at (or near) the bottom
-  // and new lines arrive, scroll down with them — no manual dragging while a
-  // comment continuation streams its reply. A deliberate scroll-up leaves the
-  // view alone until the user returns to the bottom.
+  // Follow new conversation output: at the bottom, new lines scroll the
+  // transcript down with the reply — no manual dragging while a comment
+  // continuation streams. A deliberate scroll-up pauses the follow until
+  // the user returns to the bottom (or clicks the jump button).
   useEffect(() => {
     const element = transcriptScrollRef.current
-    if (element === null || !atBottomRef.current) return
+    if (element === null || !transcriptAtBottom) return
     element.scrollTop = element.scrollHeight
-  }, [lines])
+  }, [lines, transcriptAtBottom])
 
   const onTranscriptScroll = (): void => {
     const element = transcriptScrollRef.current
     if (element === null) return
-    atBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24
+    setTranscriptAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM_PX)
+  }
+
+  const jumpTranscript = (): void => {
+    const element = transcriptScrollRef.current
+    if (element === null) return
+    element.scrollTop = element.scrollHeight
+    setTranscriptAtBottom(true)
+  }
+
+  // The same follow for the comment list: new rounds and state transitions
+  // scroll it to the newest comment while at the bottom.
+  useEffect(() => {
+    const element = threadScrollRef.current
+    if (element === null || !threadAtBottom) return
+    element.scrollTop = element.scrollHeight
+  }, [threadFingerprint, threadAtBottom])
+
+  const onThreadScroll = (): void => {
+    const element = threadScrollRef.current
+    if (element === null) return
+    setThreadAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM_PX)
+  }
+
+  const jumpThread = (): void => {
+    const element = threadScrollRef.current
+    if (element === null) return
+    element.scrollTop = element.scrollHeight
+    setThreadAtBottom(true)
   }
 
   const submit = (): void => {
@@ -330,9 +348,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     : (current.permission ?? '')
 
   // The run's sequence among the task's plain runs (comment rounds excluded).
-  const runIndex = current.executions
-    .filter(candidate => candidate.comment === undefined)
-    .indexOf(execution) + 1
+  const runIndex = plainRunsOf(current).findIndex(candidate => candidate.id === execution.id) + 1
   const usage = sumUsage(lines ?? [])
   // The execution session is blocked on the user (approval / plan review /
   // question): surfaced live from the native session-list signal.
@@ -441,6 +457,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 ))}
               </ul>
             )}
+
+            <JumpToLatest atBottom={transcriptAtBottom} onJump={jumpTranscript} />
 
             {/* The context meter note: rendered in the right rail below. */}
             </div>
@@ -604,23 +622,27 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           )}
             </div>
 
-            {/* The comment thread scrolls in its own region: however long it
-                grows, the rail head above stays visible. Saved or queued
-                rounds (not yet injected) can be cancelled; injected ones
-                show their live state. */}
-            <div className={css.reviewRailThread}>
-            <h4 className={css.reviewThreadTitle}>
-              {t('review.comments')}
-              <span className={css.reviewThreadCount}>{comments.length}</span>
-            </h4>
+            {/* The thread header: title + count, fixed — the count never
+                scrolls away no matter how long the comment list grows. */}
+            <div className={css.reviewThreadHeader}>
+              <h4 className={css.reviewThreadTitle}>
+                {t('review.comments')}
+                <span className={css.reviewThreadCount}>{comments.length}</span>
+              </h4>
+            </div>
+
+            {/* The comment list scrolls in its own region below the header;
+                the rail head and the count above stay visible. Saved or queued
+                rounds (not yet injected) can be cancelled; injected ones show
+                their live state. New rounds follow while at the bottom. */}
+            <div className={css.reviewRailThread} ref={threadScrollRef} onScroll={onThreadScroll}>
             <div className={css.reviewCommentList}>
               {comments.length === 0 ? (
                 <p className={css.detailText}>{t('review.noComments')}</p>
               ) : (
                 <ul className={css.reviewComments}>
                   {comments.map(view => {
-                    const position = queuePositionOf(comments, view.round.id)
-                    const state = commentStateOf(view.state, position)
+                    const position = queuePositionOf(current, view.round.id)
                     const cancellable = view.state === 'saved' || view.state === 'queued'
                     return (
                       <li key={view.round.id} className={css.reviewComment}>
@@ -629,15 +651,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                           {view.round.comment}
                         </span>
                         <span className={css.reviewCommentMeta}>
-                          <Chip kind={state.kind}>{state.label}</Chip>
-                          <span className={css.reviewCommentRun}>
-                            {(() => {
-                              const run = executionIndexFor(current, view.round)
-                              return run > 0
-                                ? t('review.commentExecution', { n: String(run) })
-                                : t('review.commentExecutionUnknown')
-                            })()}
-                          </span>
+                          <Chip kind={commentKindOf(view.state)}>{commentLabel(view.state, position)}</Chip>
                           <span className={css.reviewCommentTime}>{formatDateTime(view.round.startedAt)}</span>
                           {cancellable && (
                             <button
@@ -664,6 +678,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 </ul>
               )}
             </div>
+            <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
             </div>
 
             {/* The composer, pinned at the rail's bottom: a comment continues
