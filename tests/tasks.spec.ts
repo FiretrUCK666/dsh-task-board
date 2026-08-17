@@ -136,7 +136,7 @@ describe('status transitions', () => {
 
 describe('settleExecution', () => {
   it('settles a successful run into review (the human gate before done)', () => {
-    const { task, execution } = startExecution(sampleTask(), NOW, 'exec-1')
+    const { task } = startExecution(sampleTask(), NOW, 'exec-1')
     const settled = settleExecution(task, 'exec-1', 'succeeded', NOW + 10, undefined)
     expect(settled.status).toBe('review')
     expect(settled.executions[0].endedAt).toBe(NOW + 10)
@@ -145,7 +145,7 @@ describe('settleExecution', () => {
   })
 
   it('settles a failed run into review too (outcome lives in the record)', () => {
-    const { task, execution } = startExecution(sampleTask(), NOW, 'exec-1')
+    const { task } = startExecution(sampleTask(), NOW, 'exec-1')
     const settled = settleExecution(task, 'exec-1', 'failed', NOW + 10, 'boom')
     expect(settled.status).toBe('review')
     expect(settled.executions[0].result).toBe('failed')
@@ -153,14 +153,14 @@ describe('settleExecution', () => {
   })
 
   it('cancelled runs return a non-running task to todo', () => {
-    const { task, execution } = startExecution(sampleTask(), NOW, 'exec-1')
+    const { task } = startExecution(sampleTask(), NOW, 'exec-1')
     const settled = settleExecution(task, 'exec-1', 'cancelled', NOW + 10, 'interrupted')
     expect(settled.status).toBe('todo')
     expect(settled.executions[0].result).toBe('cancelled')
   })
 
   it('is a no-op for unknown or already-settled executions', () => {
-    const { task, execution } = startExecution(sampleTask(), NOW, 'exec-1')
+    const { task } = startExecution(sampleTask(), NOW, 'exec-1')
     expect(settleExecution(task, 'nope', 'succeeded', NOW + 1, undefined)).toBe(task)
     const settled = settleExecution(task, 'exec-1', 'succeeded', NOW + 1, undefined)
     // Second settle with the same id does not overwrite the outcome.

@@ -19,9 +19,9 @@ import { refining, refineRoundsOf, type TaskRecord } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
-import { PromptInput } from './PromptInput.tsx'
 import { TranscriptRow } from './ReviewDetail.tsx'
 import { JumpToLatest, useTranscriptTail } from './use-transcript.tsx'
+import { Button, Notice, Section } from './ui.tsx'
 
 export function RefineSection({ controller, task }: {
   controller: BoardController
@@ -72,19 +72,14 @@ export function RefineSection({ controller, task }: {
   const idle = sessionId === undefined && !active
 
   return (
-    <section className={`${css.detailSection} ${css.refineSection}`}>
-      <h4>{t('detail.refine')}</h4>
+    <Section title={t('detail.refine')} className={css.refineSection}>
 
       {idle ? (
         <div className={css.refineIdle}>
           <p className={css.detailText}>{t('detail.refine.idleHint')}</p>
-          <button
-            type="button"
-            className={css.primaryButton}
-            onClick={() => { controller.startRefine(task.id, isEnglish()) }}
-          >
+          <Button variant="primary" onClick={() => { controller.startRefine(task.id, isEnglish()) }}>
             {t('detail.refine.start')}
-          </button>
+          </Button>
         </div>
       ) : (
         <>
@@ -103,13 +98,9 @@ export function RefineSection({ controller, task }: {
               <span className={css.refineRounds}>{t('detail.refine.rounds', { n: String(rounds.length) })}</span>
             </div>
             {sessionId !== undefined && (
-              <button
-                type="button"
-                className={css.ghostButton}
-                onClick={() => { controller.openSession(sessionId) }}
-              >
+              <Button onClick={() => { controller.openSession(sessionId) }}>
                 {t('detail.viewSession')} →
-              </button>
+              </Button>
             )}
           </div>
 
@@ -146,12 +137,9 @@ export function RefineSection({ controller, task }: {
 
           {/* 等待通知 */}
           {active && waiting !== undefined && (
-            <div className={css.waitingNotice} role="status">
-              <Chip kind="warn" fill={false}>{t('review.waiting')}</Chip>
-              <span>
-                {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
-              </span>
-            </div>
+            <Notice chip={t('review.waiting')}>
+              {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
+            </Notice>
           )}
 
           {/* 输入区域：文本框 + 发送按钮（上下布局） */}
@@ -162,31 +150,26 @@ export function RefineSection({ controller, task }: {
               onChange={(e) => setDraft(e.target.value)}
               placeholder={t('detail.refine.answerPlaceholder')}
             />
-            <button
-              type="button"
-              className={css.primaryButton}
-              disabled={draft.trim() === ''}
-              onClick={send}
-            >
+            <Button variant="primary" disabled={draft.trim() === ''} onClick={send}>
               {t('detail.refine.send')}
-            </button>
+            </Button>
           </div>
 
           {/* 操作区域：应用到任务按钮 */}
           <div className={css.refineActionArea}>
-            <button
-              type="button"
-              className={`${css.primaryButton} ${css.refineApplyButton}`}
+            <Button
+              variant="primary"
+              className={css.refineApplyButton}
               disabled={resultText === undefined}
               title={resultText === undefined ? t('detail.refine.noResult') : undefined}
               onClick={apply}
             >
               {t('detail.refine.apply')}
-            </button>
+            </Button>
             {applied && <span className={css.detailHint}>{t('detail.refine.applied')}</span>}
           </div>
         </>
       )}
-    </section>
+    </Section>
   )
 }

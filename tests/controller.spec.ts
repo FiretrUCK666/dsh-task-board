@@ -2,7 +2,7 @@
  * Controller tests: orchestration — persistence, view state, navigation
  * awareness, and the full run loop (running → started(sessionId) → settled).
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { BoardController, type ControllerDeps } from '../src/core/controller.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
@@ -128,7 +128,7 @@ function seedTask(store: InMemoryTaskStore, overrides: Partial<Parameters<typeof
 
 describe('BoardController lifecycle', () => {
   it('loads the persisted ledger on start', () => {
-    const { controller, store } = makeController()
+    const { store } = makeController()
     seedTask(store)
     const reloaded = new BoardController({
       store, exec: new StubExec() as unknown as ExecutionService,
@@ -494,7 +494,7 @@ describe('run loop', () => {
   it('reconciles running tasks left over from a previous load', async () => {
     const stub = new StubExec()
     stub.reconcileResult = { kind: 'settled', taskId: 'task-a', executionId: 'e1', outcome: 'cancelled', error: 'gone' }
-    const { controller, store } = makeController(stub)
+    const { store } = makeController(stub)
     const task = seedTask(store, { id: 'task-a' })
     store.save([{ ...task, status: 'running', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }] }])
     const reloaded = new BoardController({

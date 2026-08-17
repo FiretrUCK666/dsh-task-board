@@ -1,8 +1,73 @@
 /**
  * Task-board styles. Scoped by the plugin's own data attributes so nothing
  * leaks into the rest of the GUI; colors ride the dsh --dsw-* tokens so the
- * board follows the active theme (light/dark).
+ * board follows the active theme (light/dark) AND any skin plugin — a skin
+ * re-maps the semantic --dsw-* tokens, and every rule here consumes them, so
+ * the board adapts with zero per-skin work.
  */
+
+/* --- design-system layer -----------------------------------------------------
+ * One alias layer: the board never writes raw values — every color, border,
+ * radius, shadow, text level and motion constant flows from the native dsh
+ * semantic tokens below (or is derived from them). A future skin re-maps the
+ * --dsw-* tokens and the whole board follows automatically.
+ */
+[data-dsh-taskboard-view] {
+  /* surfaces */
+  --dsh-tb-bg: var(--dsw-alias-bg-base);
+  --dsh-tb-bg-raised: var(--dsw-alias-bg-layer-2);
+  --dsh-tb-border: 1px solid var(--dsw-alias-border-l2);
+  --dsh-tb-border-soft: 1px solid var(--dsw-alias-border-l1);
+  --dsh-tb-separator: 1px solid var(--dsw-alias-separator-primary);
+
+  /* corners: proportional to component size (Apple rhythm) */
+  --dsh-tb-radius-sm: 8px;
+  --dsh-tb-radius-md: 12px;
+  --dsh-tb-radius-lg: 16px;
+  --dsh-tb-radius-xl: 24px;
+
+  /* depth */
+  --dsh-tb-shadow-1: var(--dsw-shadow-lv1);
+  --dsh-tb-shadow-2: var(--dsw-shadow-lv2);
+  --dsh-tb-shadow-3: var(--dsw-shadow-lv3);
+
+  /* text levels */
+  --dsh-tb-text-1: var(--dsw-alias-label-primary);
+  --dsh-tb-text-2: var(--dsw-alias-label-secondary);
+  --dsh-tb-text-3: var(--dsw-alias-label-tertiary);
+
+  /* semantic accents (single source for status color) */
+  --dsh-tb-accent: var(--dsw-alias-state-business-primary);
+  --dsh-tb-attention: var(--dsw-alias-state-warn-primary);
+  --dsh-tb-success: var(--dsw-alias-state-success-primary);
+  --dsh-tb-danger: var(--dsw-alias-state-error-primary);
+  --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) 22%, transparent);
+  --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
+
+  /* interaction + motion grammar (one source) */
+  --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
+  --dsh-tb-input-bg: var(--dsw-specific-input-major);
+  --dsh-tb-focus-ring: var(--dsw-alias-state-business-primary-alpha);
+  --dsh-tb-focus-color: var(--dsw-alias-state-business-primary);
+  --dsh-tb-motion: 160ms ease;
+  --dsh-tb-breath: 2.6s ease-in-out;
+}
+
+/* --- shared attention motion ------------------------------------------------
+ * The unread/"new content" signal speaks one language everywhere — the same
+ * color (--dsh-tb-attention), the same pulse timing (--dsh-tb-breath). The
+ * card flashes as an outer ring, the execution row as a soft inner halo — no
+ * per-row border, no flat tint — so every surface reads as the same light.
+ */
+@keyframes dshTbBreathRing {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px var(--dsh-tb-attention-alpha); }
+}
+
+@keyframes dshTbBreathHalo {
+  0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
+  50% { box-shadow: inset 0 0 14px var(--dsh-tb-attention-alpha-soft); }
+}
 
 /* --- center-column takeover (global rules, attribute-scoped) ----------------- */
 
@@ -110,8 +175,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-height: 0;
   padding: 14px 16px 16px;
   gap: 12px;
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsh-tb-bg);
+  color: var(--dsh-tb-text-1);
   font-family: var(--dsw-font-family);
 }
 
@@ -125,26 +190,27 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .boardTitle {
   margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--dsh-tb-text-1);
   white-space: nowrap;
 }
 
 .search {
   flex: 0 1 260px;
   min-width: 120px;
-  padding: 6px 10px;
+  padding: 7px 12px;
   font-size: 13px;
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-specific-input-major);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-input-bg);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
   outline: none;
 }
 
 .search::placeholder {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 /* The back-to-chat button sits at the far right of the header; the board's
@@ -170,9 +236,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-height: 0;
   /* The same surface token the native conversation pane uses — the board
      never layers a second tint on top of the app's base. */
-  background: var(--dsw-alias-bg-base);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  background: var(--dsh-tb-bg);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-lg);
   overflow: hidden;
 }
 
@@ -189,7 +255,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: 1;
   font-size: 13px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  letter-spacing: -0.005em;
+  color: var(--dsh-tb-text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -199,8 +266,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
   min-width: 0;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
-  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsh-tb-text-3);
+  background: var(--dsh-tb-hover);
   border-radius: 999px;
   padding: 1px 8px;
 }
@@ -236,7 +303,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 24px 8px;
   text-align: center;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 /* --- cards -------------------------------------------------------------------- */
@@ -248,17 +315,17 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 6px;
   padding: 10px 12px;
   text-align: left;
-  background: var(--dsw-alias-bg-base);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
+  background: var(--dsh-tb-bg);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-lg);
   cursor: pointer;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   font-family: inherit;
-  transition: box-shadow 120ms ease, border-color 120ms ease, transform 120ms ease;
+  transition: box-shadow var(--dsh-tb-motion), border-color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
 }
 
 .card:hover {
-  box-shadow: var(--dsw-shadow-lv2);
+  box-shadow: var(--dsh-tb-shadow-2);
   border-color: var(--dsw-alias-border-l3);
   transform: translateY(-1px);
 }
@@ -282,23 +349,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border-color: var(--dsw-alias-state-warn-primary);
 }
 
-/* The card's unread reminder: a slow breathing glow ring around cards with
-   content newer than the last time the detail was opened (CHI 2016: pulsing
-   glow shadows score best on noticeability combined with likability). The
-   "新 N" chip in the badges carries the count; reduced-motion users get a
-   quiet static ring instead (see the reduced-motion block below). */
+/* The card's unread reminder: a slow breathing glow ring (CHI 2016: pulsing
+   glow shadows score best on noticeability combined with likability) around
+   cards with content newer than the last time the detail was opened — the
+   same attention color + breath timing as the execution rows' inner halo, so
+   the whole board speaks one light language. The "新 N" chip carries the
+   count; reduced-motion users get a quiet static ring instead (see the
+   reduced-motion block below). */
 .card[data-unviewed] {
-  animation: dshTbCardGlow 2.6s ease-in-out infinite;
-}
-
-@keyframes dshTbCardGlow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-
-  50% {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-warn-primary) 22%, transparent);
-  }
+  animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
 .cardTitle {
@@ -549,18 +608,19 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   max-height: calc(100vh - 96px);
   overflow-y: auto;
   padding: 18px;
-  background: var(--dsw-alias-bg-base);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 14px;
-  box-shadow: var(--dsw-shadow-lv3);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsh-tb-bg);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-xl);
+  box-shadow: var(--dsh-tb-shadow-3);
+  color: var(--dsh-tb-text-1);
   animation: dshTbDialogIn 140ms ease;
 }
 
 .modalTitle {
   margin: 0;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .dialogHeader {
@@ -762,11 +822,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex-direction: column;
   width: min(640px, calc(100vw - 48px));
   max-height: calc(100vh - 80px);
-  background: var(--dsw-alias-bg-base);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 14px;
-  box-shadow: var(--dsw-shadow-lv3);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsh-tb-bg);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-xl);
+  box-shadow: var(--dsh-tb-shadow-3);
+  color: var(--dsh-tb-text-1);
   overflow: hidden;
 }
 
@@ -775,15 +835,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   gap: 12px;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--dsw-alias-separator-primary);
+  border-bottom: var(--dsh-tb-separator);
   flex: none;
 }
 
 .detailTitle {
   margin: 0;
   flex: 1;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 
@@ -848,7 +909,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   margin: 0;
   font-size: 12px;
   font-weight: 500;
-  color: var(--dsw-alias-label-tertiary);
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-3);
   text-transform: none;
 }
 
@@ -1086,10 +1148,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 10px 12px;
   font-size: 13px;
   line-height: 1.55;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   background: var(--dsw-alias-markdown-code-block);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 240px;
@@ -1102,10 +1164,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-size: 13px;
   line-height: 1.5;
   font-family: var(--dsw-font-markdown-code-block-small);
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   background: var(--dsw-alias-markdown-code-block);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 240px;
@@ -1116,8 +1178,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
   overflow: hidden;
 }
 
@@ -1138,14 +1200,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border-top: 1px solid var(--dsw-alias-separator-primary);
 }
 
-/* Row-level attention tints — defined before the hover rule so hover (later,
-   equal specificity) still wins while the pointer is over the row. */
-.executionRow[data-waiting='true'] {
-  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 8%, transparent);
-}
-
+/* Row-level attention: the waiting signal stays on its amber "处理" button;
+   an unviewed row gets the same attention light as the card — a soft
+   breathing inner halo (no per-row border, no flat tint; the halo is clipped
+   inside the row and reads as light). Defined before the hover rule so hover
+   (later, equal specificity) still wins while the pointer is over the row. */
 .executionRow[data-unviewed='true'] {
-  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 5%, transparent);
+  animation: dshTbBreathHalo var(--dsh-tb-breath) infinite;
 }
 
 .executionRow:hover {
@@ -1274,17 +1335,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 /* The unread reminder of one execution row: a small warn dot with a soft
-   static glow (no per-row animation — many rows would compete) plus a faint
-   row tint (see the data-unviewed rule above), so unviewed content (a
-   settled run, fresh comments) reads at a glance. Cleared by opening the
-   row's review page. */
-.executionUnviewedDot {
+   static glow (the row's attention breathes via the shared halo above) — no
+   per-row animation on the dot itself, so a long list never competes with
+   many moving dots. Cleared by opening the row's review page. */
+.attentionDot {
   flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--dsw-alias-state-warn-primary);
-  box-shadow: 0 0 4px var(--dsw-alias-state-warn-primary);
+  background: var(--dsh-tb-attention);
+  box-shadow: 0 0 4px var(--dsh-tb-attention);
+}
+
+/* Inline icon glyphs (Icon component): tiny, currentColor, non-shrinking. */
+.icon {
+  flex: none;
 }
 
 /* A quiet explanatory line under a section title. */
@@ -1335,7 +1400,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* One shared waiting notice for every surface (review page banner, refine
    panel): a neutral framed row with a warn chip carrying the semantics —
-   no per-surface amber bars, so the whole board speaks one visual language. */
+   no per-surface amber bars. The border uses the same token as the other
+   framed surfaces around it, so every surrounding border stays in sync. */
 .waitingNotice {
   display: flex;
   align-items: center;
@@ -1343,10 +1409,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-bg-layer-2);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-bg-raised);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
 }
 
 /* The refine conversation tail */
@@ -1575,7 +1641,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
   .card[data-unviewed] {
     animation: none;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dsw-alias-state-warn-primary) 35%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dsh-tb-attention) 35%, transparent);
+  }
+
+  .executionRow[data-unviewed='true'] {
+    animation: none;
+    box-shadow: inset 0 0 0 1px var(--dsh-tb-attention-alpha-soft);
   }
 
   .spinner {
@@ -1633,12 +1704,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex-direction: column;
   width: min(880px, calc(100vw - 48px));
   max-height: min(86vh, 860px);
-  background: var(--dsw-alias-bg-base);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 14px;
-  box-shadow: var(--dsw-shadow-lv3);
+  background: var(--dsh-tb-bg);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-xl);
+  box-shadow: var(--dsh-tb-shadow-3);
   overflow: hidden;
-  animation: dshTbDialogIn 140ms ease;
+  animation: dshTbDialogIn var(--dsh-tb-motion);
 }
 
 .reviewHeader {
@@ -1646,7 +1717,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   gap: 10px;
   padding: 14px 20px;
-  border-bottom: 1px solid var(--dsw-alias-separator-primary);
+  border-bottom: var(--dsh-tb-separator);
   flex: none;
 }
 
@@ -1720,9 +1791,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   width: 320px;
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid var(--dsw-alias-separator-primary);
+  border-left: var(--dsh-tb-separator);
   /* Same surface as the app base; the separator alone marks the rail. */
-  background: var(--dsw-alias-bg-base);
+  background: var(--dsh-tb-bg);
 }
 
 /* The rail head — context meter, session config, session facts: fixed and
@@ -1733,7 +1804,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 12px;
   flex: none;
   padding: 12px 12px 8px;
-  border-bottom: 1px solid var(--dsw-alias-separator-primary);
+  border-bottom: var(--dsh-tb-separator);
 }
 
 /* The comment list scrolls in its own region below the fixed thread header
@@ -1902,7 +1973,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .meterSystem { --meter-tint: var(--dsw-static-neutral-bluish-400); }
-.meterTools { --meter-tint: #a78bfa; }
+/* The native meter's "tools" segment reads violet; the palette has no violet,
+   so the closest native tone is the DeepSeek brand lavender-blue family. */
+.meterTools { --meter-tint: var(--dsw-static-deepseek-400); }
 .meterMessages { --meter-tint: var(--dsw-static-blue-450); }
 
 /* Breakdown rows: swatch + label + compact figure per composition bucket

@@ -234,6 +234,28 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   表单，`booleanField` save 统一写）+ `TaskBoardSettingsCard`
   （enabled / announceToAgent）。
 
+#### 设计系统层（板上 UI 的宪法，改 UI 先读这里）
+
+- **令牌只消费原生语义层，不写死任何值**：所有样式引用 `--dsw-*`（`--dsw-alias-*` /
+  `--dsw-specific-*` / `--dsw-static-*` / `--dsw-font-*` / `--dsw-shadow-*`）。这些令牌由
+  宿主按浅色/深色与皮肤插件重映射，因此看板**自动适配主题与未来皮肤，零独立皮肤**。
+  硬性：CSS 不得出现 hex/rgb 字面量（`scripts/verify` 前的 grep 审计为零）。
+- **看板别名层**：`board.module.css` 顶部 `[data-dsh-taskboard-view]` 定义 `--dsh-tb-*`
+  （边框/圆角/阴影/文字层级/状态色/动效时长），全部派生自原生令牌；组件样式统一引用
+  别名层，保证「板上统一值只改一处」。侧栏入口与设置卡在 scope 之外，只用原生令牌，
+  不得引用 `--dsh-tb-*`。
+- **共用部件（`src/client/board/ui.tsx`）**：`Button`（primary/ghost/danger）、
+  `Section`（详情区标题统一）、`Notice`（等待提示中性框 + warn chip）、`AttentionDot`
+  （未读圆点）、`Icon`（内联 SVG 集中）。`Chip` / `Dialog` / `PromptInput` /
+  `TranscriptTail`+`useTranscriptTail` 为既有共用部件。各界面一律复用，不手写重复标记。
+- **同一套注意力动效**：未读/待办信号只用一个语法——`--dsh-tb-attention`（warn）颜色 +
+  `--dsh-tb-breath`（2.6s ease-in-out）。卡片用外层呼吸环 `dshTbBreathRing`，执行记录行
+  用**内层柔晕 `dshTbBreathHalo`（无边框、无平染）**，两者同色同步。`prefers-reduced-motion`
+  下全部退化为静态细环/细晕。
+- **防回归守卫**：`tsconfig.json` 开启 `noUnusedLocals` / `noUnusedParameters`（
+  `_` 前缀参数豁免）——死 import/死变量直接编译报错；废弃 CSS 类须人工删除（
+  审计方法：提取 `board.module.css` 内 `.name` 定义，与 `src/` 中 `css.name` 引用对照）。
+
 ### 核心层（`src/core/`，纯逻辑，与 UI 无关）
 
 `tasks.ts`（任务模型 + 状态机纯函数）、`schedule.ts`（cron 解析 + 下次运行时刻）、

@@ -14,6 +14,7 @@ import {
 } from '../../core/presets.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Dialog } from './Dialog.tsx'
+import { Button } from './ui.tsx'
 
 /** The merged list shown in the preset dropdown (defaults + custom). */
 export function mergedPresets(store: LocalStoragePresetStore): SchedulePreset[] {
@@ -76,21 +77,15 @@ function PresetRow({ preset, onSave, onDelete }: {
           onChange={event => { setCron(event.target.value) }}
         />
       </span>
-      <button
-        type="button"
-        className={css.ghostButton}
+      <Button
         disabled={!dirty || !valid}
         onClick={() => { onSave({ ...preset, label: label.trim(), cron: cron.trim() }) }}
       >
         {t('detail.schedule.presets.save')}
-      </button>
-      <button
-        type="button"
-        className={css.ghostButton}
-        onClick={onDelete}
-      >
+      </Button>
+      <Button onClick={onDelete}>
         {t('detail.schedule.presets.delete')}
-      </button>
+      </Button>
       {hint !== '' && <span className={css.presetHint}>{hint}</span>}
     </li>
   )
@@ -142,13 +137,9 @@ export function PresetManager({ store, onClose }: {
       className={css.presetModal}
     >
       <div className={css.presetToolbar}>
-        <button
-          type="button"
-          className={css.ghostButton}
-          onClick={() => { setConfirmRestore(true) }}
-        >
+        <Button onClick={() => { setConfirmRestore(true) }}>
           {t('detail.schedule.presets.restore')}
-        </button>
+        </Button>
       </div>
 
       <ul className={css.presetList}>
@@ -180,17 +171,17 @@ export function PresetManager({ store, onClose }: {
           onChange={event => { setNewCron(event.target.value); setNewError(undefined) }}
           onKeyDown={event => { if (event.key === 'Enter') add() }}
         />
-        <button type="button" className={css.primaryButton} onClick={add}>
+        <Button variant="primary" onClick={add}>
           {t('detail.schedule.presets.add')}
-        </button>
+        </Button>
       </div>
       {newError !== undefined && <p className={css.formError}>{newError}</p>}
       {newHint !== '' && <p className={css.scheduleMeta}>{newHint}</p>}
 
       <footer className={css.modalFooter}>
-        <button type="button" className={css.ghostButton} onClick={onClose}>
+        <Button onClick={onClose}>
           {t('detail.cancel')}
-        </button>
+        </Button>
       </footer>
 
       {confirmRestore && (

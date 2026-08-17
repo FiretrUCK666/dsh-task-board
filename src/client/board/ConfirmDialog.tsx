@@ -5,6 +5,7 @@
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
+import { Button } from './ui.tsx'
 
 /** Confirm overlay props. */
 interface ConfirmDialogProps {
@@ -23,16 +24,12 @@ export function ConfirmDialog({ title, message, confirmLabel, danger, onCancel, 
     <Dialog title={title} label={title} onClose={onCancel}>
       <p className={css.confirmMessage}>{message}</p>
       <footer className={css.modalFooter}>
-        <button type="button" className={css.ghostButton} onClick={onCancel}>
+        <Button onClick={onCancel}>
           {t('delete.cancel')}
-        </button>
-        <button
-          type="button"
-          className={danger ? css.dangerButton : css.primaryButton}
-          onClick={onConfirm}
-        >
+        </Button>
+        <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>
           {confirmLabel}
-        </button>
+        </Button>
       </footer>
     </Dialog>
   )

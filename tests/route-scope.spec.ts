@@ -102,7 +102,7 @@ describe('RouteSettingsScope', () => {
   })
 
   it('unset sends an unset op without a value', async () => {
-    const fetch = mockFetch(({ url, method, body }) => {
+    const fetch = mockFetch(({ method, body }) => {
       if (method === 'GET') return { ok: true, envelope: READY_VIEW }
       const parsed = JSON.parse(body ?? '{}')
       expect(parsed.ops).toEqual([{ op: 'unset', path: ['announceToAgent'] }])
@@ -121,7 +121,7 @@ describe('RouteSettingsScope', () => {
   })
 
   it('notifies subscribers when the response updates the snapshot', async () => {
-    const fetch = mockFetch(({ method }) => {
+    mockFetch(({ method }) => {
       if (method === 'GET') return { ok: true, envelope: READY_VIEW }
       return {
         ok: true,

@@ -11,6 +11,7 @@ import type { BoardController, TranscriptEventShape, TranscriptProjectionsShape 
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { foldTranscript, type TranscriptLine } from './review-transcript.ts'
+import { Icon } from './ui.tsx'
 
 /** How close to the bottom a scroll position counts as "at the latest". */
 export const NEAR_BOTTOM_PX = 24
@@ -55,9 +56,7 @@ export function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: 
   if (atBottom) return null
   return (
     <button type="button" className={css.reviewJumpLatest} onClick={onJump}>
-      <svg className={css.reviewJumpLatestIcon} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3 6.5 8 11.5 13 6.5" />
-      </svg>
+      <Icon name="arrowDown" className={css.reviewJumpLatestIcon} />
       {t('review.jumpLatest')}
     </button>
   )

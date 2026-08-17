@@ -9,7 +9,6 @@ import {
   taskUnviewed,
   taskUnviewedCount,
 } from '../src/core/session-display.ts'
-import type { PendingInteractionKind } from '../src/core/controller.ts'
 
 /** Helper to create a minimal task with executions. */
 function taskWith(executions: ExecutionRecord[]): TaskRecord {

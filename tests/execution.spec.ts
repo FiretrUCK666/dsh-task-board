@@ -2,7 +2,7 @@
  * Execution-service tests: real dsh session driving — session creation,
  * prompt delivery, rename, and settlement from the watched snapshot.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { ExecutionService, type ExecutionEnvironment, type ExecutionEvent, type SessionDriver } from '../src/core/execution.ts'
 import { createTask, startExecution } from '../src/core/tasks.ts'
 

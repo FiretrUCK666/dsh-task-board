@@ -23,6 +23,7 @@ import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
+import { Button } from './ui.tsx'
 
 /** Case-insensitive title/description match. */
 function matchesFilter(task: TaskRecord, filter: string): boolean {
@@ -147,13 +148,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           onChange={event => { setFilter(event.target.value) }}
           aria-label={t('board.search')}
         />
-        <button
-          type="button"
-          className={css.primaryButton}
+        <Button
+          variant="primary"
           onClick={() => { setShowNew(true) }}
         >
           + {t('board.new')}
-        </button>
+        </Button>
         {/* Auto-cruise: batch-run every todo task, at most `limit` at once. */}
         <div className={css.cruise}>
           <label className={css.cruiseToggle}>
@@ -178,13 +178,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             }}
           />
         </div>
-        <button
-          type="button"
-          className={`${css.ghostButton} ${css.boardClose}`}
-          onClick={() => { controller.closeBoard() }}
-        >
+        <Button className={css.boardClose} onClick={() => { controller.closeBoard() }}>
           {t('board.close')}
-        </button>
+        </Button>
       </header>
 
       <div className={css.columns}>

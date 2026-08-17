@@ -22,14 +22,8 @@ import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { commentsOf } from './comment-thread.ts'
+import { AttentionDot, Button, Section } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
-
-/** Execution outcome → locale key. */
-const RESULT_KEY: Record<NonNullable<ExecutionRecord['result']>, TaskBoardKey> = {
-  succeeded: 'detail.result.succeeded',
-  failed: 'detail.result.failed',
-  cancelled: 'detail.result.cancelled',
-}
 
 /** Status → shared-chip color (detail badge). */
 const STATUS_CHIP: Record<TaskStatus, ChipKind> = {
@@ -38,14 +32,6 @@ const STATUS_CHIP: Record<TaskStatus, ChipKind> = {
   running: 'warn',
   review: 'neutral',
   done: 'success',
-}
-
-/** Execution outcome → shared-chip color. */
-function resultChipKind(result: ExecutionRecord['result']): ChipKind {
-  if (result === 'failed') return 'error'
-  if (result === 'succeeded') return 'success'
-  if (result === 'cancelled') return 'muted'
-  return 'warn'
 }
 
 /** Paused-readiness explanation keyed by the pausing status. */
@@ -133,13 +119,7 @@ function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview,
       onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onReview() } }}
     >
       <div className={css.executionRowTop}>
-        {unviewed && (
-          <span
-            className={css.executionUnviewedDot}
-            title={t('detail.unviewedTitle')}
-            aria-label={t('detail.unviewedTitle')}
-          />
-        )}
+        {unviewed && <AttentionDot title={t('detail.unviewedTitle')} />}
         <span className={css.executionIndex}>{t('detail.executionNo', { n: String(index) })}</span>
         <Chip kind={stateToChipKind(session.state)}>
           {(session.state === 'running' || session.state === 'waiting') && <span className={css.spinner} aria-hidden="true" />}
@@ -568,13 +548,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
           <h2 className={css.detailTitle}>{current.title}</h2>
           <Chip kind={STATUS_CHIP[current.status]}>{t(STATUS_KEY[current.status])}</Chip>
           {!editing && (
-            <button
-              type="button"
-              className={css.ghostButton}
-              onClick={startEditing}
-            >
+            <Button onClick={startEditing}>
               {t('detail.edit')}
-            </button>
+            </Button>
           )}
           <button
             type="button"
@@ -594,18 +570,15 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
             </>
           ) : (
             <>
-              <section className={css.detailSection}>
-                <h4>{t('detail.description')}</h4>
+              <Section title={t('detail.description')}>
                 <div className={css.contentBlock}>{current.description !== '' ? current.description : '—'}</div>
-              </section>
+              </Section>
 
-              <section className={css.detailSection}>
-                <h4>{t('detail.prompt')}</h4>
+              <Section title={t('detail.prompt')}>
                 <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : current.title}</pre>
-              </section>
+              </Section>
 
-              <section className={css.detailSection}>
-                <h4>{t('detail.runConfig')}</h4>
+              <Section title={t('detail.runConfig')}>
                 <dl className={css.configGrid}>
                   <div className={css.configRow}>
                     <dt className={css.configLabel}>{t('new.workspace')}</dt>
@@ -640,7 +613,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                     </div>
                   )}
                 </dl>
-              </section>
+              </Section>
             </>
           )}
 
@@ -650,8 +623,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
             <RefineSection controller={controller} task={current} />
           )}
 
-          <section className={css.detailSection}>
-            <h4>{t('detail.execution')}</h4>
+          <Section title={t('detail.execution')}>
             <p className={css.detailHint}>{t('detail.executionHint')}</p>
             {(() => {
               // Comment continuation rounds are not part of the execution
@@ -675,69 +647,51 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                 </ul>
               )
             })()}
-          </section>
+          </Section>
 
-          <section className={css.detailSection}>
-            <h4>{t('board.status')}</h4>
+          <Section title={t('board.status')}>
             <div className={css.moveRow}>
               {MANUAL_STATUSES.map(status => (
-                <button
+                <Button
                   key={status}
-                  type="button"
-                  className={css.ghostButton}
                   disabled={current.status === status || busy}
                   onClick={() => { controller.moveTask(current.id, status) }}
                 >
                   {t(`status.move.${status}` as TaskBoardKey)}
-                </button>
+                </Button>
               ))}
             </div>
-          </section>
+          </Section>
         </div>
 
         <footer className={css.detailFooter}>
           {editing ? (
             <>
-              <button
-                type="button"
-                className={css.primaryButton}
-                onClick={saveEdit}
-              >
+              <Button variant="primary" onClick={saveEdit}>
                 {t('detail.save')}
-              </button>
-              <button
-                type="button"
-                className={css.ghostButton}
-                onClick={cancelEdit}
-              >
+              </Button>
+              <Button onClick={cancelEdit}>
                 {t('detail.cancel')}
-              </button>
+              </Button>
             </>
           ) : (
-            <>
-              <button
-                type="button"
-                className={css.primaryButton}
-                disabled={busy}
-                title={t('detail.rerunHint')}
-                onClick={() => {
-                  // Running kicks off a real agent session; close the detail so
-                  // the whole board stays visible while the task executes.
-                  controller.closeTask()
-                  void controller.rerunTask(current.id)
-                }}
-              >
-                {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
-              </button>
-            </>
+            <Button
+              variant="primary"
+              disabled={busy}
+              title={t('detail.rerunHint')}
+              onClick={() => {
+                // Running kicks off a real agent session; close the detail so
+                // the whole board stays visible while the task executes.
+                controller.closeTask()
+                void controller.rerunTask(current.id)
+              }}
+            >
+              {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
+            </Button>
           )}
-          <button
-            type="button"
-            className={css.dangerButton}
-            onClick={() => { setConfirmDelete(true) }}
-          >
+          <Button variant="danger" onClick={() => { setConfirmDelete(true) }}>
             {t('detail.delete')}
-          </button>
+          </Button>
           <span className={css.detailMeta}>
             {t('board.created')} {formatTime(current.createdAt)}
           </span>

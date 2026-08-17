@@ -44,6 +44,7 @@ import { sumUsage } from './review-transcript.ts'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { commentsOf, commentKindOf, commentStateKey, queuePositionOf, type CommentViewState } from './comment-thread.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
+import { Button, Notice } from './ui.tsx'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
@@ -318,22 +319,13 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             </span>
           </div>
           <div className={css.reviewActions}>
-            <button
-              type="button"
-              className={css.ghostButton}
-              onClick={reload}
-              title={t('review.refresh')}
-            >
+            <Button onClick={reload} title={t('review.refresh')}>
               {t('review.refresh')}
-            </button>
+            </Button>
             {sessionId !== undefined && (
-              <button
-                type="button"
-                className={css.ghostButton}
-                onClick={() => { controller.openSession(sessionId) }}
-              >
+              <Button onClick={() => { controller.openSession(sessionId) }}>
                 {t('detail.viewSession')} →
-              </button>
+              </Button>
             )}
             <button
               type="button"
@@ -366,12 +358,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             </div>
 
             {waiting !== undefined && (
-              <div className={css.waitingNotice} role="status">
-                <Chip kind="warn" fill={false}>{t('review.waiting')}</Chip>
-                <span>
-                  {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
-                </span>
-              </div>
+              <Notice chip={t('review.waiting')}>
+                {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
+              </Notice>
             )}
 
             {sessionId === undefined ? (
@@ -638,9 +627,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 controller={controller}
               />
               <div className={css.reviewComposerRow}>
-                <button type="button" className={css.primaryButton} disabled={draft.trim() === ''} onClick={submit}>
+                <Button variant="primary" disabled={draft.trim() === ''} onClick={submit}>
                   {t('review.commentSend')}
-                </button>
+                </Button>
                 {lastCommentId !== undefined && !current.executions.some(round => round.id === lastCommentId && round.endedAt !== undefined) && (
                   <span className={css.reviewComposerHint}>
                     {current.status === 'running' ? t('review.commentInjected')

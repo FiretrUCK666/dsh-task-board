@@ -9,6 +9,7 @@ import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { draftToNewInput, type TaskDraft } from './task-draft.ts'
+import { Button } from './ui.tsx'
 
 /** New-task form overlay. */
 export function NewTaskModal({ controller, onClose }: { controller: BoardController; onClose: () => void }) {
@@ -46,12 +47,12 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
         {error !== undefined && <p className={css.formError}>{error}</p>}
 
         <footer className={css.modalFooter}>
-          <button type="button" className={css.ghostButton} onClick={onClose}>
+          <Button onClick={onClose}>
             {t('new.cancel')}
-          </button>
-          <button type="submit" className={css.primaryButton}>
+          </Button>
+          <Button type="submit" variant="primary">
             {t('new.submit')}
-          </button>
+          </Button>
         </footer>
       </form>
     </Dialog>
