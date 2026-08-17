@@ -679,7 +679,11 @@ export class BoardController {
     if (!this.cruiseState.enabled) return undefined
     let best: { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined
     for (const task of this.tasks) {
-      if (task.status === 'running' || task.status === 'done') continue
+      // Skip tasks that are not ready for execution:
+      // - running: already executing
+      // - done: completed, should not run
+      // - backlog: waiting for user to move to todo, should not auto-execute
+      if (task.status === 'running' || task.status === 'done' || task.status === 'backlog') continue
       const round = task.executions.find(candidate =>
         candidate.comment !== undefined && candidate.sessionId !== undefined
         && candidate.injectedAt === undefined && candidate.endedAt === undefined)

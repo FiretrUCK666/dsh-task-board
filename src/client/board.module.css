@@ -1229,15 +1229,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .refineSection {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px 0;
+  gap: 8px;
+  padding: 0;
 }
 
 .refineIdle {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 24px 0;
+  gap: 12px;
+  padding: 16px 0;
   align-items: flex-start;
 }
 
@@ -1245,15 +1245,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 12px;
+  gap: 8px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
 }
 
 .refineHeaderLeft {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .refineRounds {
@@ -1266,79 +1266,78 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   margin: 0;
   font-size: 13px;
   color: var(--dsw-alias-label-secondary);
-  padding: 12px;
+  padding: 8px 12px;
   background: var(--dsw-alias-bg-layer-2);
   border-radius: 8px;
   border-left: 3px solid var(--dsw-alias-state-warn-primary);
 }
 
-/* The refine conversation tail: with border and background */
+/* The refine conversation tail */
 .refineTranscriptArea {
-  min-height: 240px;
-  max-height: 420px;
+  min-height: 200px;
+  max-height: 400px;
   overflow-y: auto;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   background: var(--dsw-alias-bg-base);
   padding: 12px;
   position: relative;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .refineTail {
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .refineTail ul {
   gap: 8px;
+  flex: 1;
 }
 
-/* Answer input area: full width with resizable textarea */
+/* Answer input area: textarea + button stacked vertically */
 .refineInputArea {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.refineInputArea .promptField {
+  gap: 8px;
   width: 100%;
 }
 
-.refineInputArea textarea {
+.refineTextarea {
   width: 100%;
   resize: vertical;
-  min-height: 120px;
-  max-height: 400px;
-  padding: 12px;
+  min-height: 60px;
+  max-height: 200px;
+  padding: 10px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   background: var(--dsw-alias-bg-base);
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
+  box-sizing: border-box;
 }
 
-.refineInputArea textarea:focus {
+.refineTextarea:focus {
   border-color: var(--dsw-alias-state-business-primary);
   outline: none;
   box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha);
 }
 
-.refineSendButton {
-  align-self: flex-end;
-}
-
-/* Apply action area: separated with top border */
+/* Apply action area */
 .refineActionArea {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-top: 16px;
+  gap: 8px;
+  padding-top: 8px;
   border-top: 1px solid var(--dsw-alias-border-l2);
 }
 
 .refineApplyButton {
   width: 100%;
-  padding: 12px 24px;
+  padding: 10px 24px;
   font-size: 14px;
   font-weight: 500;
 }

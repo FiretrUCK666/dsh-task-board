@@ -118,13 +118,13 @@ export function RefineSection({ controller, task }: {
             <span className={css.executionError}>{lastRound.error}</span>
           )}
 
-          {/* 对话区域：带边框和背景 */}
-          <div className={css.refineTranscriptArea}>
-            <div
-              ref={scrollRef}
-              onScroll={onScroll}
-              className={css.refineTail}
-            >
+          {/* 对话区域 */}
+          <div
+            className={css.refineTranscriptArea}
+            ref={scrollRef}
+            onScroll={onScroll}
+          >
+            <div className={css.refineTail}>
               {error ? (
                 <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
               ) : lines === undefined ? (
@@ -151,18 +151,17 @@ export function RefineSection({ controller, task }: {
             </p>
           )}
 
-          {/* 输入区域：可调整高度的文本框 + 发送按钮 */}
+          {/* 输入区域：文本框 + 发送按钮（上下布局） */}
           <div className={css.refineInputArea}>
-            <PromptInput
+            <textarea
+              className={css.refineTextarea}
               value={draft}
-              onChange={setDraft}
+              onChange={(e) => setDraft(e.target.value)}
               placeholder={t('detail.refine.answerPlaceholder')}
-              rows={4}
-              controller={controller}
             />
             <button
               type="button"
-              className={`${css.primaryButton} ${css.refineSendButton}`}
+              className={css.primaryButton}
               disabled={draft.trim() === ''}
               onClick={send}
             >

@@ -24,13 +24,17 @@ function watermarkOf(result: { events: readonly TranscriptEventShape[] }): numbe
 /**
  * The sticky "滑到最新" affordance shown in a scroll region (transcript or
  * comment thread) when the user has scrolled away from the bottom: one click
- * returns to the latest output. Hidden while the region is at the bottom,
- * where new content already auto-follows.
+ * returns to the latest output. Always visible but styled differently based on position.
  */
 export function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: () => void }) {
-  if (atBottom) return null
   return (
-    <button type="button" className={css.reviewJumpLatest} onClick={onJump}>
+    <button 
+      type="button" 
+      className={css.reviewJumpLatest} 
+      onClick={onJump}
+      style={{ opacity: atBottom ? 0.6 : 1 }}
+      title={atBottom ? '已在最新位置' : '滑到最新'}
+    >
       <svg className={css.reviewJumpLatestIcon} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M3 6.5 8 11.5 13 6.5" />
       </svg>
@@ -95,6 +99,20 @@ export function useTranscriptTail(
 
   // Load on open + whenever the reload key changes.
   useEffect(() => { reload() }, [reload, reloadKey])
+
+  // Auto-scroll to bottom on initial load and when content changes significantly
+  useEffect(() => {
+    if (lines !== undefined && lines.length > 0) {
+      // Use requestAnimationFrame to ensure DOM is updated before scrolling
+      requestAnimationFrame(() => {
+        const element = scrollRef.current
+        if (element !== null) {
+          element.scrollTop = element.scrollHeight
+          setAtBottom(true)
+        }
+      })
+    }
+  }, [lines])
 
   // Light poll at 3s while mounted; paused while the tab is hidden (the
   // native rhythm), with an immediate catch-up on return.
