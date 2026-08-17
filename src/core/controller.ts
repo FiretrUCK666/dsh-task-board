@@ -14,9 +14,10 @@
  */
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
 import { isValidCron, nextRunAtMs } from './schedule.ts'
+import { buildRefinePrompt } from './refine.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, ruleReadiness, settleExecution, startExecution, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -776,9 +777,9 @@ export class BoardController {
     const schedule = task?.schedule
     if (schedule === undefined || !schedule.enabled || !schedule.primed || schedule.mode !== 'chain') return
     const latest = task?.executions[task.executions.length - 1]
-    // Only a succeeded run hands off; a failure stops the chain (the recovery
-    // tick may still retry it like any scheduled run).
-    if (latest === undefined || latest.endedAt === undefined || latest.result !== 'succeeded') return
+    // Only a succeeded plain run hands off; a refine round settling must
+    // never start a chain (refinement is preparation, not execution).
+    if (latest === undefined || latest.endedAt === undefined || latest.result !== 'succeeded' || latest.refine === true) return
     if (schedule.maxRuns !== undefined && schedule.runCount >= schedule.maxRuns) return
     const finalRun = schedule.maxRuns !== undefined && schedule.runCount + 1 >= schedule.maxRuns
     this.applyScheduleNextRun(id, undefined, this.now(), schedule.runCount + 1, finalRun)
@@ -916,6 +917,105 @@ export class BoardController {
     return true
   }
 
+  // --- requirement refinement ---------------------------------------------------
+
+  /**
+   * Start (or continue) a backlog task's requirement refinement: launch a
+   * refine round in the task's refine session, created lazily through the
+   * same session machinery as executions and inheriting the task's run
+   * configuration (workspace/model/effort/permission — nothing extra to
+   * configure). The first round sends the built-in refine instruction (the
+   * agent researches with its own tools, asks the user anything unclear, and
+   * delivers a ready-to-run prompt); later rounds are the user's answers.
+   * @param taskId - the backlog task to refine.
+   * @param english - whether to write the refine instruction in English.
+   * @returns true when a round was launched.
+   */
+  startRefine(taskId: string, english = false): boolean {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined || task.status !== 'backlog' || hasOpenRun(task)) return false
+    const round: ExecutionRecord = {
+      id: this.uuid(),
+      sessionId: task.refineSessionId,
+      startedAt: this.now(),
+      endedAt: undefined,
+      result: undefined,
+      error: undefined,
+      refine: true,
+    }
+    this.tasks = this.tasks.map(candidate => candidate.id === taskId
+      ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
+      : candidate)
+    this.persistAndNotify()
+    this.activeExecutionIds.add(round.id)
+    const launchTask = this.tasks.find(candidate => candidate.id === taskId)
+    if (launchTask === undefined) return true
+    void this.deps.exec.run(launchTask, round, (event) => { this.handleExecutionEvent(event) }, {
+      prompt: buildRefinePrompt(launchTask, english),
+      sessionId: task.refineSessionId,
+      fresh: task.refineSessionId === undefined,
+      renameTo: `${task.title} · 完善需求`,
+    })
+    return true
+  }
+
+  /**
+   * Send the user's answer into the task's refine session (the AI asked and
+   * is waiting): launch a refine round with the answer text, delivered
+   * immediately — the session is already counted in-flight, so answers never
+   * queue behind the cruise gate or the comment FIFO.
+   * @param taskId - the task whose refine session receives the answer.
+   * @param text - the answer text.
+   * @returns true when the answer was launched.
+   */
+  answerRefine(taskId: string, text: string): boolean {
+    const trimmed = text.trim()
+    if (trimmed === '') return false
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined || task.refineSessionId === undefined) return false
+    const round: ExecutionRecord = {
+      id: this.uuid(),
+      sessionId: task.refineSessionId,
+      startedAt: this.now(),
+      endedAt: undefined,
+      result: undefined,
+      error: undefined,
+      refine: true,
+    }
+    this.tasks = this.tasks.map(candidate => candidate.id === taskId
+      ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
+      : candidate)
+    this.persistAndNotify()
+    this.activeExecutionIds.add(round.id)
+    const launchTask = this.tasks.find(candidate => candidate.id === taskId)
+    if (launchTask === undefined) return true
+    void this.deps.exec.run(launchTask, round, (event) => { this.handleExecutionEvent(event) }, {
+      prompt: trimmed,
+      sessionId: task.refineSessionId,
+      fresh: false,
+      renameTo: `${task.title} · 完善需求`,
+    })
+    return true
+  }
+
+  /**
+   * Write a refined prompt onto the task (the user confirms the text shown
+   * in the refine panel; nothing is ever applied automatically).
+   * @param taskId - the task to update.
+   * @param prompt - the refined execution prompt text.
+   * @returns true when the task was updated.
+   */
+  applyRefineResult(taskId: string, prompt: string): boolean {
+    const trimmed = prompt.trim()
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined || trimmed === '') return false
+    this.tasks = this.tasks.map(candidate => candidate.id === taskId
+      ? { ...candidate, prompt: trimmed, updatedAt: this.now() }
+      : candidate)
+    this.persistAndNotify()
+    return true
+  }
+
   // --- auto-cruise --------------------------------------------------------------
 
   /** Turn the auto-cruise on or off (persisted). On re-pumps the dispatch
@@ -945,12 +1045,22 @@ export class BoardController {
       this.tasks = this.tasks.map(task => task.id === event.taskId
         ? attachSessionId(task, event.executionId, event.sessionId, this.now())
         : task)
+      // The first refine round binds the task's refine session — every later
+      // refine round reuses it, so the whole refinement conversation stays
+      // in one session across refreshes.
+      if (this.tasks.some(task =>
+        task.id === event.taskId && task.executions.some(round =>
+          round.id === event.executionId && round.refine === true))) {
+        this.tasks = this.tasks.map(task => task.id === event.taskId
+          ? withRefineSession(task, event.sessionId, this.now())
+          : task)
+      }
       this.persistAndNotify()
       return
     }
     this.activeExecutionIds.delete(event.executionId)
     this.tasks = this.tasks.map(task => task.id === event.taskId
-      ? settleExecution(task, event.executionId, event.outcome, this.now(), event.error)
+      ? this.settleRound(task, event.executionId, event.outcome, event.error)
       : task)
     // A settled run hands off to the next chained run synchronously, so the
     // scheduler's recovery tick can never interleave a duplicate launch.
@@ -959,6 +1069,19 @@ export class BoardController {
     // comment/cruise work competes for the freed slot.
     this.maybeContinueChain(event.taskId)
     this.persistAndNotify()
+  }
+
+  /** Settle a round with the rule its kind demands: refine rounds keep the
+   *  task in its column (settlement of a plain run may move the card). */
+  private settleRound(
+    task: TaskRecord,
+    executionId: string,
+    outcome: 'succeeded' | 'failed' | 'cancelled',
+    error: string | undefined,
+  ): TaskRecord {
+    const round = task.executions.find(candidate => candidate.id === executionId)
+    if (round?.refine === true) return settleRefine(task, executionId, outcome, this.now(), error)
+    return settleExecution(task, executionId, outcome, this.now(), error)
   }
 
   // --- internals ---------------------------------------------------------------
@@ -1056,7 +1179,7 @@ export class BoardController {
       let changed = false
       const continued: string[] = []
       for (const { task, event } of events) {
-        const next = settleExecution(task, event.executionId, event.outcome, this.now(), event.error)
+        const next = this.settleRound(task, event.executionId, event.outcome, event.error)
         if (next === task) continue
         this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
         changed = true

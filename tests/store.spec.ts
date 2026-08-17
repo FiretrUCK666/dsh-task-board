@@ -139,6 +139,19 @@ describe('parseLedger', () => {
       { id: 'c-3', sessionId: 's-1', startedAt: 50, endedAt: 51, result: 'succeeded', error: 'preset read-only', comment: '/permission read-only', command: true },
     ])
   })
+
+  it('round-trips refinement rounds and the bound refine session', () => {
+    const task = createTask({ title: 'x', description: '', prompt: '' }, 1, 't-1')
+    task.refineSessionId = 's-refine'
+    task.executions = [
+      { id: 'run-1', sessionId: 's-1', startedAt: 1, endedAt: 10, result: 'succeeded', error: undefined },
+      { id: 'r-1', sessionId: 's-refine', startedAt: 20, endedAt: 30, result: 'succeeded', error: undefined, refine: true },
+      { id: 'r-2', sessionId: 's-refine', startedAt: 40, endedAt: undefined, result: undefined, error: undefined, refine: true },
+    ]
+    const parsed = parseLedger(JSON.stringify([task]))
+    expect(parsed[0].refineSessionId).toBe('s-refine')
+    expect(parsed[0].executions).toEqual(task.executions)
+  })
 })
 
 describe('isTaskRecord', () => {

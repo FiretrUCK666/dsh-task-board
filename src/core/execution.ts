@@ -149,12 +149,30 @@ function isErrorTurnEnd(data: unknown): boolean {
     && (reason as { kind?: unknown }).kind === 'error'
 }
 
+/** Launch options for {@link ExecutionService.run}. */
+export interface RunOptions {
+  /** The prompt text to send instead of the task's own (refine instructions, …). */
+  prompt?: string
+  /** The session to run in instead of a freshly connected one (refine reuse). */
+  sessionId?: string
+  /** Display name for the session (cosmetic rename; default = task title). */
+  renameTo?: string
+  /**
+   * Whether the session is freshly created: blank-session-only setup (agent
+   * preset switch) applies only then. A reused session skips it. Defaults to
+   * true (plain runs always start a fresh session).
+   */
+  fresh?: boolean
+}
+
 /**
  * Run one task to completion (or to a settled failure).
  *
  * @param task - the task being executed.
  * @param execution - the freshly opened execution record (id + start time).
  * @param onEvent - callback for started/settled events.
+ * @param options - launch variant (refine rounds reuse the task's refine
+ *   session and send the refine instruction; see {@link RunOptions}).
  * @returns resolves when the run settles (or fails to start); never rejects —
  *   every failure path is reported as a settled event.
  */
@@ -166,9 +184,11 @@ export class ExecutionService {
     task: TaskRecord,
     execution: ExecutionRecord,
     onEvent: (event: ExecutionEvent) => void,
+    options?: RunOptions,
   ): Promise<void> {
     try {
-      const sessionId = await this.connectSession(task.workspaceId)
+      const sessionId = options?.sessionId ?? await this.connectSession(task.workspaceId)
+      const fresh = options?.fresh ?? true
       onEvent({ kind: 'started', taskId: task.id, executionId: execution.id, sessionId })
       const driver = this.driverOf(sessionId)
       if (driver === undefined) {
@@ -176,7 +196,7 @@ export class ExecutionService {
         return
       }
       // Best-effort rename so the execution is recognizable in the session list.
-      await driver.rename(task.title).catch(() => { /* rename is cosmetic */ })
+      await driver.rename(options?.renameTo ?? task.title).catch(() => { /* rename is cosmetic */ })
       // Apply the task's configured model route before the first prompt.
       if (task.provider !== undefined && task.model !== undefined && this.env.selectModel !== undefined) {
         const selection = await this.env.selectModel(sessionId, {
@@ -194,9 +214,11 @@ export class ExecutionService {
       }
       // Apply the task's configured agent preset before the first prompt: a
       // session may only adopt a preset while it is still blank (no turn has
-      // run), so this must happen before any prompt is sent. A rejected
-      // switch (session no longer blank, preset missing…) fails the run.
-      if (task.agentPreset !== undefined && this.env.selectAgentPreset !== undefined) {
+      // run), so this must happen before any prompt is sent — and only on a
+      // freshly created session (a reused refine session already has turns).
+      // A rejected switch (session no longer blank, preset missing…) fails
+      // the run.
+      if (fresh && task.agentPreset !== undefined && this.env.selectAgentPreset !== undefined) {
         const applied = await this.env.selectAgentPreset(sessionId, task.agentPreset)
         if (!applied.ok) {
           onEvent({
@@ -225,7 +247,7 @@ export class ExecutionService {
       // completes while prompt is in flight must still advance past this
       // baseline, or the watch below would never observe it settle.
       const baseline = driver.getSnapshot().turnEnds.size
-      const accepted = await this.sendPrompt(driver, task)
+      const accepted = await this.sendPrompt(driver, task, options?.prompt)
       if (!accepted.ok) {
         onEvent({
           kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
@@ -446,8 +468,11 @@ export class ExecutionService {
   private async sendPrompt(
     driver: SessionDriver,
     task: TaskRecord,
+    promptOverride: string | undefined,
   ): Promise<{ ok: true } | { ok: false; error: unknown }> {
-    const text = task.prompt.trim() !== '' ? task.prompt : task.title
+    const text = (promptOverride ?? task.prompt).trim() !== ''
+      ? (promptOverride ?? task.prompt)
+      : task.title
     try {
       const result = await driver.prompt([{ type: 'text', text }], 'queue')
       return result

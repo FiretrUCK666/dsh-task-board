@@ -3,8 +3,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionLabel, hasOpenRun, pendingCommentCount, plainRunsOf, resolveCardDrop, ruleReadiness,
-  settleExecution, startExecution, withSchedule, withStatus,
+  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionLabel, hasOpenRun, pendingCommentCount, plainRunsOf, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
+  settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -445,6 +445,72 @@ describe('plainRunsOf', () => {
     let task = withComments()
     task = { ...task, executions: [...task.executions, { id: 'e2', sessionId: 's-2', startedAt: NOW + 5, endedAt: undefined, result: undefined, error: undefined }] }
     expect(plainRunsOf(task).map(run => run.id)).toEqual(['e1', 'e2'])
+  })
+
+  it('excludes refinement rounds alongside comment rounds', () => {
+    const task = {
+      ...withComments(),
+      executions: [
+        ...withComments().executions,
+        { id: 'r1', sessionId: 's-refine', startedAt: NOW + 6, endedAt: NOW + 7, result: 'succeeded' as const, error: undefined, refine: true },
+      ],
+    }
+    expect(plainRunsOf(task).map(run => run.id)).toEqual(['e1'])
+  })
+})
+
+describe('requirement refinement', () => {
+  function withRefine() {
+    const base = createTask({ title: '想法', description: '', prompt: '', status: 'backlog' }, NOW, 'task-1')
+    return {
+      ...base,
+      refineSessionId: 's-refine',
+      executions: [
+        { id: 'r1', sessionId: 's-refine', startedAt: NOW, endedAt: NOW + 1, result: 'succeeded' as const, error: undefined, refine: true },
+        { id: 'r2', sessionId: 's-refine', startedAt: NOW + 2, endedAt: undefined, result: undefined, error: undefined, refine: true },
+      ],
+    }
+  }
+
+  it('refineRoundsOf returns only refinement rounds in order', () => {
+    const task = withRefine()
+    expect(refineRoundsOf(task).map(round => round.id)).toEqual(['r1', 'r2'])
+    expect(refineRoundsOf(sampleTask())).toEqual([])
+  })
+
+  it('refining is true while a refinement round is open', () => {
+    expect(refining(withRefine())).toBe(true)
+    const settled = { ...withRefine(), executions: withRefine().executions.map(round => ({ ...round, endedAt: NOW + 9 })) }
+    expect(refining(settled)).toBe(false)
+    expect(refining(sampleTask())).toBe(false)
+  })
+
+  it('hasOpenRun treats an open refinement round as an open run', () => {
+    const task = withRefine()
+    // Even though the task sits in backlog (not running), the refine round
+    // occupies the session — a plain run must not start on top.
+    expect(hasOpenRun(task)).toBe(true)
+    const settled = { ...task, executions: task.executions.map(round => ({ ...round, endedAt: NOW + 9 })) }
+    expect(hasOpenRun(settled)).toBe(false)
+  })
+
+  it('withRefineSession binds the session and stamps the update', () => {
+    const task = withRefineSession(sampleTask(), 's-new', NOW + 5)
+    expect(task.refineSessionId).toBe('s-new')
+    expect(task.updatedAt).toBe(NOW + 5)
+    // Re-binding the same session is a no-op.
+    expect(withRefineSession(task, 's-new', NOW + 6)).toBe(task)
+  })
+
+  it('settleRefine records the outcome without moving the task out of its column', () => {
+    const task = withRefine()
+    const settled = settleRefine(task, 'r2', 'failed', NOW + 8, '调研失败')
+    expect(settled.status).toBe('backlog')
+    expect(settled.executions[1]).toMatchObject({ endedAt: NOW + 8, result: 'failed', error: '调研失败' })
+    expect(settled.updatedAt).toBe(NOW + 8)
+    // Unknown or already-settled rounds are no-ops.
+    expect(settleRefine(task, 'ghost', 'succeeded', NOW + 9, undefined)).toBe(task)
+    expect(settleRefine(settled, 'r1', 'failed', NOW + 10, undefined)).toBe(settled)
   })
 })
 

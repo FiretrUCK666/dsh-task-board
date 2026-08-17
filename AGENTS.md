@@ -287,6 +287,21 @@ session 缺失则不显示）——别执行的评论各归各页，绝不混入
 **右栏分区**：固定头部（投影面板）→ 固定线程标题栏（「评论 N」数量永不滚走）→
 独立滚动的评论列表（滚动条只覆盖列表）→ 固定发送区。
 
+**需求完善（待规划任务的 AI 调研闭环，`refine.ts` + controller 内实现）**：
+backlog 任务可一键「AI 完善需求」——`startRefine` 启动 refine 轮次
+（`ExecutionRecord.refine`），在任务绑定的完善会话（`TaskRecord.refineSessionId`，
+首次经执行管线惰性创建、之后每轮复用）里发送内置完善指令（`buildRefinePrompt`，
+zh/en 双语，要求 AI 先调研→逐条提问→产出「最终执行 Prompt」）。**零配置**：完善
+会话完全继承任务的运行配置（工作区/模型/思考/权限），不新增任何设置面；**零搜索
+集成**：调研/联网/抓取/提问全部由 agent 会话的原生工具完成，board 不碰任何搜索
+API（DSH 更新工具自动跟随）。交互闭环在板内：AI 提问时 `pendingInteractionOf`
+感知等待，`answerRefine` 把用户回答直接注入完善会话（同会话已计并发、不经巡航
+门控/评论 FIFO）；「应用到任务」（`applyRefineResult`）把对话尾段的最新 assistant
+文本写入任务 prompt——用户确认，绝不自动覆盖。完善轮次结算不动任务列
+（`settleRefine`）、不触发 chain（`maybeContinueChain` 跳过 refine 轮）、计入
+`hasOpenRun`（完善中禁止再启动正式执行）；`plainRunsOf` 排除 refine 轮（执行记录
+列表与评论线程都不含完善轮次）。
+
 ## 构建与验证（改完必跑，全绿才算完成）
 
 ```sh
@@ -323,6 +338,7 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
 ## 测试
 
 - `tests/controller|execution|schedule|scheduler|store|tasks.spec.ts`：核心层纯逻辑。
+- `tests/refine.spec.ts`：需求完善指令模板（zh/en 字段嵌入、输出格式、提问约束）。
 - `tests/review-transcript.spec.ts` / `tests/context-meter.spec.ts` /
   `tests/menu-direction.spec.ts` / `tests/comment-thread.spec.ts`：评论页纯逻辑
   （折叠规则 / 上下文条算术 / 斜杠菜单方向 / 评论归属与排队位次）。

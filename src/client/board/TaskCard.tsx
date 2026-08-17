@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { hasOpenRun, pendingCommentCount, ruleReadiness } from '../../core/tasks.ts'
+import { hasOpenRun, pendingCommentCount, refining, ruleReadiness } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { STATUS_KEY } from './status.ts'
@@ -138,6 +138,11 @@ export function TaskCard({ task, workspaceTitleOf, waiting, onClick }: {
             {queuedComments > 0 && (
               <Chip kind="warn" fill={false} title={t('card.commentQueueTitle', { n: String(queuedComments) })}>
                 {t('card.commentQueue')} {queuedComments}
+              </Chip>
+            )}
+            {refining(task) && (
+              <Chip kind="warn" fill={false} title={t('card.refiningTitle')}>
+                {t('card.refining')}
               </Chip>
             )}
             {running ? (

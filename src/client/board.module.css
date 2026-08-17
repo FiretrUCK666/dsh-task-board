@@ -1207,6 +1207,35 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* --- requirement refinement (backlog tasks) ---------------------------------- */
+
+.refineStatusRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refineRounds {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The refine conversation tail: compact, its own scroll, reusing the review
+   transcript row styles. */
+.refineTail {
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.refineAnswerRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .moveRow {
   display: flex;
   gap: 8px;

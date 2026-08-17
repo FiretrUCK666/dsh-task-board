@@ -53,6 +53,14 @@ export interface ExecutionRecord {
    * only ever carry it — plain runs never do.
    */
   parentExecutionId?: string
+  /**
+   * A requirement-refinement round: one turn in the task's bound refine
+   * session (see `TaskRecord.refineSessionId`) that researches and fleshes
+   * out the task's prompt. Distinct from plain runs and comment rounds: it
+   * never appears in the execution history or the comment thread, and its
+   * settlement never moves the task out of its column.
+   */
+  refine?: boolean
 }
 
 /** How a scheduled task is driven: cron = fire at fixed times; chain = rerun right after each run settles. */
@@ -131,6 +139,13 @@ export interface TaskRecord {
   agentPreset?: string
   /** Permission preset key applied to the execution session before its first prompt (absent = session default). */
   permission?: string
+  /**
+   * The task's bound requirement-refinement session (created lazily on the
+   * first refine round and reused for every later round — the whole
+   * refinement conversation lives in one session). The task's run
+   * configuration applies to it, so nothing needs configuring.
+   */
+  refineSessionId?: string
 }
 
 /** Input for creating a task. */
@@ -368,9 +383,12 @@ export function executionLabel(execution: ExecutionRecord): string {
  * 'running' AND its latest round has not settled. A pending comment round
  * (saved while the cruise is off, the task not running) is NOT an open run
  * — it must never show a spinner on the card, block a rerun, or block a
- * drag. One shared judgment for the card, the drop rules and the run guard.
+ * drag. An open requirement-refinement round IS an open run: the task's
+ * session is working, so a plain run must not start on top of it. One
+ * shared judgment for the card, the drop rules and the run guard.
  */
 export function hasOpenRun(task: TaskRecord): boolean {
+  if (task.executions.some(round => round.refine === true && round.endedAt === undefined)) return true
   if (task.status !== 'running') return false
   const latest = task.executions[task.executions.length - 1]
   return latest !== undefined && latest.endedAt === undefined
@@ -391,12 +409,53 @@ export function pendingCommentCount(task: TaskRecord): number {
 
 /**
  * The task's plain runs in chronological order — every execution record
- * except comment rounds. The single numbering source for the execution
- * history list (TaskDetail) and the review page header ("第 N 次执行"):
- * comment continuations are not part of the run sequence.
+ * except comment and refine rounds. The single numbering source for the
+ * execution history list (TaskDetail) and the review page header ("第 N 次
+ * 执行"): continuations and refinements are not part of the run sequence.
  */
 export function plainRunsOf(task: TaskRecord): readonly ExecutionRecord[] {
-  return task.executions.filter(execution => execution.comment === undefined)
+  return task.executions.filter(execution => execution.comment === undefined && execution.refine !== true)
+}
+
+/**
+ * The task's requirement-refinement rounds in chronological order (the
+ * conversation turns of the task's bound refine session).
+ */
+export function refineRoundsOf(task: TaskRecord): readonly ExecutionRecord[] {
+  return task.executions.filter(round => round.refine === true)
+}
+
+/** Whether a requirement-refinement round is currently running for the task. */
+export function refining(task: TaskRecord): boolean {
+  return task.executions.some(round => round.refine === true && round.endedAt === undefined)
+}
+
+/** Bind (or re-bind) the task's requirement-refinement session. */
+export function withRefineSession(task: TaskRecord, sessionId: string, now: number): TaskRecord {
+  if (task.refineSessionId === sessionId) return task
+  return { ...task, refineSessionId: sessionId, updatedAt: now }
+}
+
+/**
+ * Settle a requirement-refinement round: record the outcome on the round
+ * without moving the task out of its column (refinement is preparation, not
+ * execution — the card stays exactly where it is). No-op when the round is
+ * unknown or already settled.
+ */
+export function settleRefine(
+  task: TaskRecord,
+  executionId: string,
+  outcome: 'succeeded' | 'failed' | 'cancelled',
+  now: number,
+  error: string | undefined,
+): TaskRecord {
+  const index = task.executions.findIndex(round => round.id === executionId)
+  if (index === -1) return task
+  const round = task.executions[index]
+  if (round.endedAt !== undefined) return task
+  const executions = [...task.executions]
+  executions[index] = { ...round, endedAt: now, result: outcome, error }
+  return { ...task, updatedAt: now, executions }
 }
 
 /** What a card drop onto a column means (drag-and-drop decision). */

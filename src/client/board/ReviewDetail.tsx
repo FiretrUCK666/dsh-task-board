@@ -57,8 +57,9 @@ function workspaceLabelOf(cwd: string): string {
  * One memoized transcript row. Props are the primitive render facts (never
  * the line object), so a light poll that re-folds the tail only re-renders
  * the rows whose content actually changed — long transcripts stay smooth.
+ * Shared with the requirement-refinement panel.
  */
-const TranscriptRow = memo(function TranscriptRow(props:
+export const TranscriptRow = memo(function TranscriptRow(props:
   | { kind: 'context'; plugin: string; summary: string }
   | { kind: 'message'; role: 'user' | 'assistant'; text: string }
 ) {

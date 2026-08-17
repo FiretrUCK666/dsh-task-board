@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { BoardController, type ControllerDeps } from '../src/core/controller.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
-import { createTask, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 let nextId = 0
@@ -80,11 +80,16 @@ class FakeSessions {
 
 /** Controllable ExecutionService stub: captures run calls, fires events on demand. */
 class StubExec {
-  runCalls: Array<{ task: TaskRecord; taskId: string; executionId: string; fire: (event: ExecutionEvent) => void }> = []
+  runCalls: Array<{ task: TaskRecord; taskId: string; executionId: string; options?: { prompt?: string; sessionId?: string; fresh?: boolean; renameTo?: string }; fire: (event: ExecutionEvent) => void }> = []
   commentCalls: Array<{ taskId: string; executionId: string; sessionId: string; text: string; fire: (event: ExecutionEvent) => void }> = []
   reconcileResult: ExecutionEvent | undefined = undefined
-  async run(task: TaskRecord, execution: { id: string }, onEvent: (event: ExecutionEvent) => void): Promise<void> {
-    this.runCalls.push({ task, taskId: task.id, executionId: execution.id, fire: onEvent })
+  async run(
+    task: TaskRecord,
+    execution: { id: string },
+    onEvent: (event: ExecutionEvent) => void,
+    options?: { prompt?: string; sessionId?: string; fresh?: boolean; renameTo?: string },
+  ): Promise<void> {
+    this.runCalls.push({ task, taskId: task.id, executionId: execution.id, options, fire: onEvent })
   }
   async commentRun(task: TaskRecord, execution: { id: string }, sessionId: string, text: string, onEvent: (event: ExecutionEvent) => void): Promise<void> {
     this.commentCalls.push({ taskId: task.id, executionId: execution.id, sessionId, text, fire: onEvent })
@@ -1254,5 +1259,101 @@ describe('unified dispatch (one concurrency budget)', () => {
     controller.dispose()
     controller.moveTask(a.id, 'todo')
     expect(exec.runCalls).toHaveLength(1) // no new launch after dispose
+  })
+})
+
+describe('requirement refinement', () => {
+  it('launches a refine round for a backlog task, binds the refine session, and settles in place', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    seedTask(store, { status: 'backlog' })
+    const { controller, stub: exec } = makeController(stub, { store })
+    const taskId = 'task-a'
+    expect(controller.startRefine(taskId)).toBe(true)
+    // A refine round is already open: no second launch.
+    expect(controller.startRefine(taskId)).toBe(false)
+
+    const call = exec.runCalls[0]
+    expect(call.taskId).toBe(taskId)
+    // First round: no session yet — the runner creates and binds one.
+    expect(call.options?.sessionId).toBeUndefined()
+    expect(call.options?.fresh).toBe(true)
+    expect(call.options?.prompt).toContain('最终执行 Prompt')
+
+    call.fire({ kind: 'started', taskId, executionId: call.executionId, sessionId: 's-refine' })
+    expect(store.load()[0].refineSessionId).toBe('s-refine')
+    call.fire({ kind: 'settled', taskId, executionId: call.executionId, outcome: 'succeeded' })
+    const settled = store.load()[0]
+    // Refinement is preparation: the card stays in backlog.
+    expect(settled.status).toBe('backlog')
+    expect(settled.executions[0]).toMatchObject({ refine: true, result: 'succeeded' })
+  })
+
+  it('rejects refine for non-backlog tasks and tasks with an open run', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    seedTask(store, { status: 'todo' })
+    seedTask(store, { id: 'task-b' })
+    const { controller } = makeController(stub, { store })
+    expect(controller.startRefine('task-a')).toBe(false)
+    await controller.runTask('task-b')
+    expect(controller.startRefine('task-b')).toBe(false)
+  })
+
+  it('reuses the bound refine session for answers and delivers them immediately', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    seedTask(store, { status: 'backlog' })
+    const { controller, stub: exec } = makeController(stub, { store })
+    const taskId = 'task-a'
+    controller.startRefine(taskId)
+    const first = exec.runCalls[0]
+    first.fire({ kind: 'started', taskId, executionId: first.executionId, sessionId: 's-refine' })
+    first.fire({ kind: 'settled', taskId, executionId: first.executionId, outcome: 'succeeded' })
+
+    expect(controller.answerRefine(taskId, '  我选 A 方案  ')).toBe(true)
+    const second = exec.runCalls[1]
+    expect(second.options?.sessionId).toBe('s-refine')
+    expect(second.options?.fresh).toBe(false)
+    expect(second.options?.prompt).toBe('我选 A 方案')
+    expect(controller.answerRefine(taskId, '   ')).toBe(false)
+    // Answers never go through the comment FIFO.
+    expect(exec.commentCalls).toHaveLength(0)
+  })
+
+  it('applyRefineResult writes the confirmed prompt onto the task', () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    seedTask(store, { status: 'backlog' })
+    const { controller } = makeController(stub, { store })
+    expect(controller.applyRefineResult('task-a', '  新的执行 Prompt  ')).toBe(true)
+    expect(store.load()[0].prompt).toBe('新的执行 Prompt')
+    expect(controller.applyRefineResult('task-a', '   ')).toBe(false)
+  })
+
+  it('a settled refine round never triggers a chain hand-off', async () => {
+    const stub = new StubExec()
+    const sessions = new FakeSessions()
+    const store = new InMemoryTaskStore()
+    const task = withSchedule(
+      createTask({ title: 'x', description: '', prompt: 'p', status: 'backlog' }, NOW, 'task-a'),
+      { enabled: true, mode: 'chain', primed: true, cron: '', maxRuns: undefined, runCount: 0 },
+      NOW,
+    )
+    store.save([task])
+    const controller = new BoardController({
+      store,
+      exec: stub as unknown as ExecutionService,
+      sessions,
+      now: () => NOW,
+      uuid,
+    })
+    controller.start()
+    expect(controller.startRefine(task.id)).toBe(true)
+    const call = stub.runCalls[0]
+    call.fire({ kind: 'started', taskId: task.id, executionId: call.executionId, sessionId: 's-refine' })
+    call.fire({ kind: 'settled', taskId: task.id, executionId: call.executionId, outcome: 'succeeded' })
+    // Only the refine round ran — no chain continuation from a refine settle.
+    expect(stub.runCalls).toHaveLength(1)
   })
 })

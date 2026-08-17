@@ -691,3 +691,58 @@ describe('ExecutionService.commentRun', () => {
     ])
   })
 })
+
+describe('ExecutionService.run options (requirement-refinement rounds)', () => {
+  it('reuses the provided session, renames it, and sends the prompt override', async () => {
+    const { env, drivers, connectCalls } = makeEnv({ recentWorkspaceId: 'ws-recent' })
+    const driver = new FakeDriver()
+    drivers.set('s-refine', driver)
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    const events: string[] = []
+    await service.run(task, execution, event => { events.push(event.kind) }, {
+      sessionId: 's-refine',
+      prompt: '完善指令文本',
+      fresh: false,
+      renameTo: '写个脚本 · 完善需求',
+    })
+    // The session is reused: no workspace connect happens.
+    expect(connectCalls).toEqual([])
+    expect(driver.renameCalls).toEqual(['写个脚本 · 完善需求'])
+    expect(driver.promptCalls).toEqual([[{ type: 'text', text: '完善指令文本' }]])
+    expect(events).toEqual(['started'])
+  })
+
+  it('skips the blank-session-only agent preset switch on a reused session', async () => {
+    const { env, drivers } = makeEnv()
+    drivers.set('s-1', new FakeDriver())
+    let selectCalls = 0
+    const service = new ExecutionService({
+      ...env,
+      selectAgentPreset: async () => { selectCalls += 1; return { ok: true } },
+    })
+    const task = { ...sampleTask(), agentPreset: 'butler' }
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    await service.run(task, execution, () => {}, {
+      sessionId: 's-1',
+      fresh: false,
+    })
+    expect(selectCalls).toBe(0)
+    expect(drivers.get('s-1')?.promptCalls).toHaveLength(1)
+  })
+
+  it('still applies the preset on a fresh session even with a provided sessionId', async () => {
+    const { env, drivers } = makeEnv()
+    drivers.set('s-1', new FakeDriver())
+    let selectCalls = 0
+    const service = new ExecutionService({
+      ...env,
+      selectAgentPreset: async () => { selectCalls += 1; return { ok: true } },
+    })
+    const task = { ...sampleTask(), agentPreset: 'butler' }
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    await service.run(task, execution, () => {}, { sessionId: 's-1' })
+    expect(selectCalls).toBe(1)
+  })
+})

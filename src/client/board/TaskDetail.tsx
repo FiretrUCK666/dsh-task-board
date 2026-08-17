@@ -18,6 +18,7 @@ import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
 import { mergedPresets, PresetManager } from './PresetManager.tsx'
+import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { STATUS_KEY } from './status.ts'
 import { commentsOf, commentKindOf, commentStateKey, type CommentView } from './comment-thread.ts'
@@ -589,6 +590,10 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
           )}
 
           <ScheduleSection controller={controller} task={current} />
+
+          {current.status === 'backlog' && (
+            <RefineSection controller={controller} task={current} />
+          )}
 
           <section className={css.detailSection}>
             <h4>{t('detail.execution')}</h4>
