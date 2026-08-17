@@ -139,6 +139,21 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     // previous relative order is preserved.
     const rawOrder = (row as Record<string, unknown>).order
     task.order = typeof rawOrder === 'number' && Number.isFinite(rawOrder) ? rawOrder : tasks.length
+    // Legacy rows carry no viewed baseline: default it to the task's newest
+    // round activity, so content that predates the unread reminder never
+    // lights up as unviewed; anything settling after that stays unread.
+    const rawViewed = (row as Record<string, unknown>).viewedAt
+    task.viewedAt = typeof rawViewed === 'number'
+      ? rawViewed
+      : task.executions.reduce((latest, round) => Math.max(latest, round.endedAt ?? round.startedAt), 0)
+    // Same for execution rows: a run without a viewed baseline defaults to
+    // its own latest activity at load (a running one to its start), so old
+    // content stays quiet and only newer settlement/comment activity lights
+    // the row's unread dot.
+    task.executions = task.executions.map(round => {
+      if (round.viewedAt !== undefined) return round
+      return { ...round, viewedAt: round.endedAt ?? round.startedAt }
+    })
     tasks.push(task)
   }
   return tasks

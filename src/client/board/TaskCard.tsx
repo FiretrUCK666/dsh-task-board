@@ -59,7 +59,7 @@ export function formatDuration(ms: number): string {
 }
 
 /** One card in a column. */
-export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendingTitle, onClick }: {
+export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick }: {
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
@@ -69,6 +69,10 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
   pendingCount: number
   /** Tooltip detail listing which execution/session waits on what. */
   pendingTitle: string
+  /** Whether the task has content (settled run / comment / refine) newer than its last open. */
+  unviewed: boolean
+  /** How many plain-run executions are unviewed (the "新 N" badge figure). */
+  unviewedCount: number
   onClick: () => void
 }) {
   const [dragging, setDragging] = useState(false)
@@ -90,6 +94,7 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
       className={`${css.card}${dragging ? ` ${css.dragging}` : ''}`}
       data-status={task.status}
       data-task-id={task.id}
+      data-unviewed={unviewed ? '' : undefined}
       draggable
       onClick={onClick}
       title={task.description !== '' ? task.description : task.title}
@@ -142,6 +147,11 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
             {queuedComments > 0 && (
               <Chip kind="warn" fill={false} title={t('card.commentQueueTitle', { n: String(queuedComments) })}>
                 {t('card.commentQueue')} {queuedComments}
+              </Chip>
+            )}
+            {unviewed && (
+              <Chip kind="warn" fill={false} title={t('card.newContentTitle')}>
+                {t('card.newContent')}{unviewedCount > 0 ? ` ${unviewedCount}` : ''}
               </Chip>
             )}
             {refining(task) && (

@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { COLUMNS, plainRunsOf, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
-import { taskPendingCount } from '../../core/session-display.ts'
+import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { insertionGapOf, type InsertionGap } from './drop-position.ts'
@@ -290,6 +290,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       waiting={waiting}
                       pendingCount={pending.count}
                       pendingTitle={pendingTitle}
+                      unviewed={taskUnviewed(task)}
+                      unviewedCount={taskUnviewedCount(task)}
                       onClick={() => { controller.openTask(task.id) }}
                     />
                   )

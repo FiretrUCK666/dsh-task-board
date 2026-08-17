@@ -30,7 +30,7 @@ export interface SessionDisplay {
  *   rather than session — legacy data compatibility).
  * The execution itself is always included.
  */
-function sessionRounds(task: TaskRecord, execution: ExecutionRecord): readonly ExecutionRecord[] {
+export function sessionRoundsOf(task: TaskRecord, execution: ExecutionRecord): readonly ExecutionRecord[] {
   const id = execution.id
   const sid = execution.sessionId
   return task.executions.filter(round =>
@@ -52,15 +52,21 @@ export function sessionDisplay(
   execution: ExecutionRecord,
   waitingKind: PendingInteractionKind | undefined,
 ): SessionDisplay {
-  const rounds = sessionRounds(task, execution)
+  const rounds = sessionRoundsOf(task, execution)
   if (rounds.length === 0) {
     // Shouldn't happen (execution itself is always in the list), but defensive.
     return { state: 'cancelled', lastActivity: undefined, waitingKind: undefined }
   }
 
-  // Any round currently open (injected but not settled)?
-  const openRound = rounds.find(r => r.injectedAt !== undefined && r.endedAt === undefined)
-  if (openRound !== undefined) {
+  // Any round currently open (running in its session)? A plain run or a
+  // refine round is open from its start (they carry no `injectedAt`); a
+  // comment round is open only once actually injected — a saved/queued
+  // comment has not started and must not make the session look live. The
+  // displayed activity is the most recently opened round's start.
+  const open = rounds.filter(r =>
+    r.endedAt === undefined && (r.injectedAt !== undefined || r.comment === undefined))
+  if (open.length > 0) {
+    const openRound = open.reduce((latest, r) => (r.startedAt > latest.startedAt ? r : latest))
     // Session is live.
     if (waitingKind !== undefined) {
       return { state: 'waiting', lastActivity: openRound.startedAt, waitingKind }
@@ -98,7 +104,7 @@ export function sessionTimes(task: TaskRecord, execution: ExecutionRecord): {
   endedAt: number | undefined
   duration: number | undefined
 } {
-  const rounds = sessionRounds(task, execution)
+  const rounds = sessionRoundsOf(task, execution)
   if (rounds.length === 0) {
     return { startedAt: execution.startedAt, endedAt: undefined, duration: undefined }
   }
@@ -142,4 +148,79 @@ export function taskPendingCount(
   }
 
   return { count: items.length, items }
+}
+
+// --- unviewed-content reminders ----------------------------------------------
+//
+// Every surface that can hold new content (a settled run, an injected or
+// settled comment, a refine turn) carries a `viewedAt`: the instant the user
+// last opened the surface that reveals it (the task detail for the card, the
+// review page for an execution row). Content whose activity is newer than the
+// baseline counts as unviewed and drives the reminder affordances — the
+// card's breathing glow + "新" badge and the row's unread dot — exactly like
+// an inbox's unread signal: opening the surface clears it, new activity
+// re-lights it. Legacy rows without `viewedAt` default to their own latest
+// activity, so nothing already-seen lights up after an upgrade.
+
+/** The activity instant of a round: when it settled, else its last start. */
+function roundActivity(round: ExecutionRecord): number {
+  return round.endedAt ?? round.startedAt
+}
+
+/**
+ * The viewed baseline of an execution row: when the user last opened its
+ * review page; absent, the run's own start (every created/normalized run
+ * carries a viewedAt, so this only guards test fixtures). A stable anchor —
+ * a run starts viewed at its start, its settlement (or a later comment)
+ * then lights the unread dot until the review page opens.
+ */
+export function executionViewedBaseline(execution: ExecutionRecord): number {
+  return execution.viewedAt ?? execution.startedAt
+}
+
+/**
+ * Whether an execution's session has content newer than the last time its
+ * review page was opened: any round of the session (the run itself plus its
+ * comments) with activity after the baseline. The single source for the
+ * execution row's unread dot and the card's "新" badge.
+ */
+export function executionUnviewed(task: TaskRecord, execution: ExecutionRecord): boolean {
+  const baseline = executionViewedBaseline(execution)
+  return sessionRoundsOf(task, execution).some(round => roundActivity(round) > baseline)
+}
+
+/**
+ * The viewed baseline of a task card: when the user last opened the task
+ * detail; absent (legacy) it equals the task's newest round activity, so
+ * already-seen content stays quiet after an upgrade.
+ */
+export function taskViewedBaseline(task: TaskRecord): number {
+  if (task.viewedAt !== undefined) return task.viewedAt
+  let latest = 0
+  for (const round of task.executions) latest = Math.max(latest, roundActivity(round))
+  return latest
+}
+
+/**
+ * Whether the task has any unviewed content: any round — a run settling, a
+ * comment being injected or settling, a refine turn — with activity newer
+ * than the card's viewed baseline. Drives the card's breathing glow.
+ */
+export function taskUnviewed(task: TaskRecord): boolean {
+  const baseline = taskViewedBaseline(task)
+  return task.executions.some(round => roundActivity(round) > baseline)
+}
+
+/**
+ * How many plain-run executions of the task are unviewed — the "新 N" count
+ * on the card. Comment/refine-only unread (no unviewed plain runs) shows a
+ * bare "新" instead.
+ */
+export function taskUnviewedCount(task: TaskRecord): number {
+  let count = 0
+  for (const execution of task.executions) {
+    if (execution.comment !== undefined || execution.refine === true) continue
+    if (executionUnviewed(task, execution)) count += 1
+  }
+  return count
 }

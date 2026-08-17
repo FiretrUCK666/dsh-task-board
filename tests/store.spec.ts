@@ -133,10 +133,10 @@ describe('parseLedger', () => {
     ]
     const parsed = parseLedger(JSON.stringify([task]))
     expect(parsed[0].executions).toEqual([
-      { id: 'run-1', sessionId: 's-1', startedAt: 1, endedAt: 10, result: 'succeeded', error: undefined },
-      { id: 'c-1', sessionId: 's-1', startedAt: 20, endedAt: 30, result: 'succeeded', error: undefined, comment: '已注入', injectedAt: 21 },
-      { id: 'c-2', sessionId: 's-1', startedAt: 40, endedAt: undefined, result: undefined, error: undefined, comment: '排队中' },
-      { id: 'c-3', sessionId: 's-1', startedAt: 50, endedAt: 51, result: 'succeeded', error: 'preset read-only', comment: '/permission read-only', command: true },
+      { id: 'run-1', sessionId: 's-1', startedAt: 1, endedAt: 10, result: 'succeeded', error: undefined, viewedAt: 10 },
+      { id: 'c-1', sessionId: 's-1', startedAt: 20, endedAt: 30, result: 'succeeded', error: undefined, comment: '已注入', injectedAt: 21, viewedAt: 30 },
+      { id: 'c-2', sessionId: 's-1', startedAt: 40, endedAt: undefined, result: undefined, error: undefined, comment: '排队中', viewedAt: 40 },
+      { id: 'c-3', sessionId: 's-1', startedAt: 50, endedAt: 51, result: 'succeeded', error: 'preset read-only', comment: '/permission read-only', command: true, viewedAt: 51 },
     ])
   })
 
@@ -150,7 +150,10 @@ describe('parseLedger', () => {
     ]
     const parsed = parseLedger(JSON.stringify([task]))
     expect(parsed[0].refineSessionId).toBe('s-refine')
-    expect(parsed[0].executions).toEqual(task.executions)
+    expect(parsed[0].executions).toEqual(task.executions.map(round => ({
+      ...round,
+      viewedAt: round.endedAt ?? round.startedAt,
+    })))
   })
 })
 

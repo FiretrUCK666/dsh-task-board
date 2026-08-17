@@ -33,6 +33,13 @@ export interface ExecutionRecord {
   /** The comment text when this round is a comment continuation (absent = a plain run). */
   comment?: string
   /**
+   * When the user last opened this execution's review page (ms epoch),
+   * clearing its unread reminder. Absent on legacy rows — the display layer
+   * falls back to the run's own latest activity, so old content never lights
+   * up as unread after an upgrade.
+   */
+  viewedAt?: number
+  /**
    * Whether this comment round is a slash command rather than a turn: the
    * line is executed through the native command registry (never delivered
    * to the model as text). Unknown commands fall back to plain text.
@@ -139,13 +146,19 @@ export interface TaskRecord {
   agentPreset?: string
   /** Permission preset key applied to the execution session before its first prompt (absent = session default). */
   permission?: string
-  /**
-   * The task's bound requirement-refinement session (created lazily on the
+  /** The task's bound requirement-refinement session (created lazily on the
    * first refine round and reused for every later round — the whole
    * refinement conversation lives in one session). The task's run
    * configuration applies to it, so nothing needs configuring.
    */
   refineSessionId?: string
+  /**
+   * When the user last opened this task's detail (ms epoch), clearing the
+   * card's unread reminder. Absent on legacy rows — the display layer falls
+   * back to the task's newest round activity, so already-seen content stays
+   * quiet after an upgrade. New tasks start viewed at their creation.
+   */
+  viewedAt?: number
 }
 
 /** Input for creating a task. */
@@ -251,6 +264,7 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
     order,
     createdAt: now,
     updatedAt: now,
+    viewedAt: now,
     executions: [],
     ...input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {},
     ...input.provider !== undefined ? { provider: input.provider } : {},
@@ -315,6 +329,10 @@ export function startExecution(
     endedAt: undefined,
     result: undefined,
     error: undefined,
+    // The row starts viewed at its own start: while it runs nothing is new
+    // (the user can see it running); its settlement (or a later comment)
+    // then lights the unread dot until the review page is opened.
+    viewedAt: now,
   }
   return {
     task: { ...task, status: 'running', updatedAt: now, executions: [...task.executions, execution] },

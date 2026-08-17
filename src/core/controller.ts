@@ -446,9 +446,42 @@ export class BoardController {
 
   openTask(id: string): void {
     if (this.tasks.some(task => task.id === id)) {
+      // Opening the detail clears the card's unread reminder: the latest
+      // content is now visible (per-row unread dots stay until each review
+      // page is opened). Persisted so a refresh keeps the cleared state.
+      const at = this.now()
+      let changed = false
+      this.tasks = this.tasks.map(task => {
+        if (task.id !== id || task.viewedAt === at) return task
+        changed = true
+        return { ...task, viewedAt: at }
+      })
+      if (changed) this.persistAndNotify()
       this.selectedTaskId = id
       this.notify()
     }
+  }
+
+  /**
+   * Mark one execution as viewed (the user opened its review page), clearing
+   * its row's unread dot: its session's content is now seen. Persisted so the
+   * cleared state survives refreshes. A no-op (no persist) for unknown tasks
+   * or executions.
+   */
+  markExecutionViewed(taskId: string, executionId: string): void {
+    const at = this.now()
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId) return task
+      if (!task.executions.some(round => round.id === executionId)) return task
+      const executions = task.executions.map(round => {
+        if (round.id !== executionId || round.viewedAt === at) return round
+        changed = true
+        return { ...round, viewedAt: at }
+      })
+      return executions === task.executions ? task : { ...task, executions }
+    })
+    if (changed) this.persistAndNotify()
   }
 
   closeTask(): void {

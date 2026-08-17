@@ -43,7 +43,7 @@ import { formatDateTime } from './TaskCard.tsx'
 import { sumUsage } from './review-transcript.ts'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { commentsOf, commentKindOf, commentStateKey, queuePositionOf, type CommentViewState } from './comment-thread.ts'
-import { JumpToLatest, NEAR_BOTTOM_PX, useTranscriptTail } from './use-transcript.tsx'
+import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
@@ -119,10 +119,24 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // The comment thread auto-follows its latest round (fingerprint-gated).
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const [threadAtBottom, setThreadAtBottom] = useState(true)
+  // The thread region's size depends on the async rail head (context meter /
+  // config load after mount): a resize follower re-pins it to the latest
+  // while at the bottom, and its initial callback lands the opened page on
+  // the newest comment even when the layout settles after first paint.
+  const threadAtBottomRef = useRef(true)
+  useEffect(() => { threadAtBottomRef.current = threadAtBottom })
+  useResizeFollow(threadScrollRef, threadAtBottomRef)
   // The comment-thread change fingerprint (id+state of every round): the
   // thread follow fires only on real comment changes — new saves, state
   // transitions — never on unrelated re-renders from the light poll.
   const threadFingerprint = comments.map(view => `${view.round.id}:${view.state}`).join('|')
+
+  // Opening the review page clears this execution's unread dot: its session's
+  // content is now seen (mount-only — the page's identity is its execution).
+  useEffect(() => {
+    controller.markExecutionViewed(task.id, execution.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // The conversation tail: shared transcript state (load / watermark-gated
   // poll / auto-follow / 滑到最新) — same mechanism as the refinement panel.
@@ -352,7 +366,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             </div>
 
             {waiting !== undefined && (
-              <div className={css.reviewWaiting} role="status">
+              <div className={css.waitingNotice} role="status">
                 <Chip kind="warn" fill={false}>{t('review.waiting')}</Chip>
                 <span>
                   {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}

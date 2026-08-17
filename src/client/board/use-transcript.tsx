@@ -22,6 +22,30 @@ function watermarkOf(result: { events: readonly TranscriptEventShape[] }): numbe
 }
 
 /**
+ * Keep a following scroll region pinned to its latest output whenever its
+ * size changes — a ResizeObserver (registered a disposer) re-scrolls to the
+ * bottom while the user is at the bottom. This also fires once on
+ * registration, so a surface opened before its layout settles (e.g. the
+ * review page's right rail grows as its async context meter / config load,
+ * shrinking the comment thread) still lands on the latest. Content-driven
+ * re-scrolls stay with the caller's follow effects; this only covers layout.
+ */
+export function useResizeFollow(
+  scrollRef: React.RefObject<HTMLDivElement>,
+  atBottomRef: React.MutableRefObject<boolean>,
+): void {
+  useEffect(() => {
+    const element = scrollRef.current
+    if (element === null) return
+    const observer = new ResizeObserver(() => {
+      if (atBottomRef.current) element.scrollTop = element.scrollHeight
+    })
+    observer.observe(element)
+    return () => { observer.disconnect() }
+  }, [scrollRef])
+}
+
+/**
  * The sticky "滑到最新" affordance shown in a scroll region (transcript or
  * comment thread) when the user has scrolled away from the bottom: one click
  * returns to the latest output. Hidden while the region is at the bottom,
@@ -77,12 +101,19 @@ export function useTranscriptTail(
   const [atBottom, setAtBottom] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null!)
   const watermarkRef = useRef<number | undefined>(undefined)
+  // The latest `atBottom`, mirrored for the resize follower (the observer
+  // callback reads it outside renders).
+  const atBottomRef = useRef(true)
+  useEffect(() => { atBottomRef.current = atBottom })
   // The latest onResult identity, kept in a ref so `reload`/the poll stay
   // stable even when a consumer passes an inline callback (an unstable
   // callback must never re-trigger the load effect every render — that
   // would loop reloads and fight the user's scroll position).
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
+  // Layout-driven following: size changes (or the initial settle) re-pin the
+  // region to the latest while the user is at the bottom.
+  useResizeFollow(scrollRef, atBottomRef)
 
   /** Full reload: re-read the tail and reset the watermark. */
   const reload = useCallback((): void => {

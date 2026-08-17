@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { BoardController, type ControllerDeps } from '../src/core/controller.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
+import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
 import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -379,6 +380,50 @@ describe('view state', () => {
     expect(controller.getSnapshot().selectedTaskId).toBe(task.id)
     controller.closeTask()
     expect(controller.getSnapshot().selectedTaskId).toBeUndefined()
+  })
+
+  it('openTask records the viewed baseline (clears the card unread)', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub, { now: () => clock })
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'p' })!
+    expect(task.viewedAt).toBe(NOW) // created viewed
+
+    // A run settles after creation → the card now has unread content.
+    clock = NOW + 1_000
+    await controller.runTask(task.id)
+    clock = NOW + 1_500
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(taskUnviewed(controller.getSnapshot().tasks[0])).toBe(true)
+
+    // Opening the detail marks it viewed again and persists.
+    clock = NOW + 2_000
+    controller.openTask(task.id)
+    expect(controller.getSnapshot().tasks[0].viewedAt).toBe(NOW + 2_000)
+    expect(store.load()[0].viewedAt).toBe(NOW + 2_000)
+    expect(taskUnviewed(controller.getSnapshot().tasks[0])).toBe(false)
+  })
+
+  it('markExecutionViewed clears a row unread and persists', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub, { now: () => clock })
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'p' })!
+    clock = NOW + 1_000
+    await controller.runTask(task.id)
+    clock = NOW + 1_500
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    const executionId = exec.runCalls[0].executionId
+    const record = controller.getSnapshot().tasks[0].executions.find(round => round.id === executionId)!
+    expect(executionUnviewed(controller.getSnapshot().tasks[0], record)).toBe(true)
+
+    // Opening the review page clears the row dot and persists.
+    clock = NOW + 2_000
+    controller.markExecutionViewed(task.id, executionId)
+    const viewed = controller.getSnapshot().tasks[0].executions.find(round => round.id === executionId)!
+    expect(viewed.viewedAt).toBe(NOW + 2_000)
+    expect(store.load()[0].executions.find(round => round.id === executionId)!.viewedAt).toBe(NOW + 2_000)
+    expect(executionUnviewed(controller.getSnapshot().tasks[0], viewed)).toBe(false)
   })
 
   it('openSession selects the session on the runtime', () => {

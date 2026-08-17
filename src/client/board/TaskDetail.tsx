@@ -9,7 +9,7 @@ import type { BoardController, PendingInteractionKind } from '../../core/control
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
-import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
+import { executionUnviewed, sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
@@ -21,6 +21,7 @@ import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.
 import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
+import { commentsOf } from './comment-thread.ts'
 import { STATUS_KEY } from './status.ts'
 
 /** Execution outcome → locale key. */
@@ -96,7 +97,7 @@ function sessionStateKey(state: 'running' | 'waiting' | 'succeeded' | 'failed' |
  *  the detail footer — it always starts a fresh round with the task's
  *  current prompt, so rows carry no rerun button (a row's "rerun" would be
  *  ambiguous next to comments). */
-function ExecutionRow({ execution, index, task, waitingKind, onReview, onOpen }: {
+function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview, onOpen }: {
   execution: ExecutionRecord
   /** 1-based execution sequence (comment rounds are not part of the list). */
   index: number
@@ -104,6 +105,8 @@ function ExecutionRow({ execution, index, task, waitingKind, onReview, onOpen }:
   task: TaskRecord
   /** The session's pending-interaction kind when it waits on the user. */
   waitingKind: PendingInteractionKind | undefined
+  /** Whether the auto-cruise is on (comment states derive from it). */
+  cruiseOn: boolean
   onReview: () => void
   onOpen: (sessionId: string) => void
 }) {
@@ -111,17 +114,32 @@ function ExecutionRow({ execution, index, task, waitingKind, onReview, onOpen }:
   const times = sessionTimes(task, execution)
   // Session is active if running or waiting.
   const isActive = session.state === 'running' || session.state === 'waiting'
+  // This execution's own comment thread (summary: count + latest text/time,
+  // without opening the review page).
+  const comments = commentsOf(task, execution, cruiseOn)
+  const latestComment = comments.length > 0 ? comments[comments.length - 1] : undefined
+  // The row's unread reminder: the session (run + comments) has content
+  // newer than the last time its review page was opened.
+  const unviewed = executionUnviewed(task, execution)
   return (
     <li
       className={css.executionRow}
       data-state={session.state}
       data-waiting={session.state === 'waiting' ? 'true' : undefined}
+      data-unviewed={unviewed ? 'true' : undefined}
       onClick={onReview}
       role="button"
       tabIndex={0}
       onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onReview() } }}
     >
       <div className={css.executionRowTop}>
+        {unviewed && (
+          <span
+            className={css.executionUnviewedDot}
+            title={t('detail.unviewedTitle')}
+            aria-label={t('detail.unviewedTitle')}
+          />
+        )}
         <span className={css.executionIndex}>{t('detail.executionNo', { n: String(index) })}</span>
         <Chip kind={stateToChipKind(session.state)}>
           {(session.state === 'running' || session.state === 'waiting') && <span className={css.spinner} aria-hidden="true" />}
@@ -146,6 +164,15 @@ function ExecutionRow({ execution, index, task, waitingKind, onReview, onOpen }:
           <> · {t('detail.duration', { d: formatDuration(times.duration) })}</>
         )}
       </span>
+      {/* The comment summary: how many comments, the latest one and when —
+          visible without opening the review page. */}
+      {latestComment !== undefined && (
+        <span className={css.executionComments} title={latestComment.round.comment}>
+          <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
+          <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latestComment.round.comment ?? '' })}</span>
+          <span className={css.executionCommentsTime}>{formatTime(latestComment.round.startedAt)}</span>
+        </span>
+      )}
       {/* Only show dynamics when session is active (reduce clutter for settled executions). */}
       {isActive && (
         <span className={css.executionDynamics}>
@@ -640,6 +667,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                       index={runs.length - reversedIndex}
                       task={current}
                       waitingKind={controller.pendingInteractionOf(execution.sessionId)}
+                      cruiseOn={controller.getSnapshot().cruise.enabled}
                       onReview={() => { setReviewExecution(execution) }}
                       onOpen={sessionId => { controller.openSession(sessionId) }}
                     />

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { TaskRecord, ExecutionRecord } from '../src/core/tasks.ts'
-import { sessionDisplay, sessionTimes, taskPendingCount } from '../src/core/session-display.ts'
+import {
+  executionUnviewed,
+  executionViewedBaseline,
+  sessionDisplay,
+  sessionTimes,
+  taskPendingCount,
+  taskUnviewed,
+  taskUnviewedCount,
+} from '../src/core/session-display.ts'
 import type { PendingInteractionKind } from '../src/core/controller.ts'
 
 /** Helper to create a minimal task with executions. */
@@ -47,6 +55,44 @@ describe('sessionDisplay', () => {
       const result = sessionDisplay(task, exec, undefined)
       expect(result.state).toBe('running')
       expect(result.lastActivity).toBe(200)
+    })
+
+    it('returns running for an open plain run without injectedAt', () => {
+      // Plain runs never carry `injectedAt` — an open one (started, unsettled)
+      // must read as running, not as a ghost "cancelled".
+      const exec = round('exec-1', { startedAt: 100, sessionId: 's1' })
+      const task = taskWith([exec])
+      const result = sessionDisplay(task, exec, undefined)
+      expect(result.state).toBe('running')
+      expect(result.lastActivity).toBe(100)
+    })
+
+    it('returns waiting for an open plain run with a pending interaction', () => {
+      const exec = round('exec-1', { startedAt: 100, sessionId: 's1' })
+      const task = taskWith([exec])
+      const result = sessionDisplay(task, exec, 'approval')
+      expect(result.state).toBe('waiting')
+      expect(result.waitingKind).toBe('approval')
+    })
+
+    it('a saved/queued comment alone does not open the session', () => {
+      // A comment round that has not been injected (cruise off / queued) has
+      // not started — the session stays idle and settles to its latest.
+      const exec = round('exec-1', {
+        startedAt: 100,
+        sessionId: 's1',
+        endedAt: 150,
+        result: 'succeeded',
+      })
+      const queued = round('c1', {
+        startedAt: 200,
+        sessionId: 's1',
+        parentExecutionId: 'exec-1',
+        comment: '等巡航注入',
+      })
+      const task = taskWith([exec, queued])
+      const result = sessionDisplay(task, exec, undefined)
+      expect(result.state).toBe('succeeded')
     })
 
     it('returns waiting when open round has pending interaction', () => {
@@ -172,8 +218,9 @@ describe('sessionDisplay', () => {
       })
       const task = taskWith([exec, otherExec])
       const result = sessionDisplay(task, exec, undefined)
-      // exec-1 has no endedAt, so it's not settled
-      expect(result.state).toBe('cancelled')
+      // exec-1 is open (plain run, started but unsettled) — its own session
+      // is live regardless of what other sessions did.
+      expect(result.state).toBe('running')
     })
   })
 
@@ -369,5 +416,122 @@ describe('taskPendingCount', () => {
     const pendingOf = (_sessionId: string | undefined) => 'approval' as const
     const result = taskPendingCount(task, pendingOf)
     expect(result.count).toBe(0)
+  })
+})
+
+describe('unviewed reminders', () => {
+  it('baseline defaults to the run start when viewedAt was never recorded', () => {
+    const exec = round('exec-1', {
+      startedAt: 100,
+      sessionId: 's1',
+      endedAt: 150,
+      result: 'succeeded',
+    })
+    expect(executionViewedBaseline(exec)).toBe(100)
+  })
+
+  it('a settled run is unviewed until its review page opens', () => {
+    const exec = round('exec-1', {
+      startedAt: 100,
+      sessionId: 's1',
+      endedAt: 150,
+      result: 'succeeded',
+    })
+    const task = taskWith([exec])
+    expect(executionUnviewed(task, exec)).toBe(true)
+    // Opening the review page marks it viewed.
+    const viewed: ExecutionRecord = { ...exec, viewedAt: 160 }
+    expect(executionUnviewed(taskWith([viewed]), viewed)).toBe(false)
+  })
+
+  it('an open plain run is not unviewed while it runs', () => {
+    const exec = round('exec-1', { startedAt: 100, sessionId: 's1' })
+    const task = taskWith([exec])
+    expect(executionUnviewed(task, exec)).toBe(false)
+  })
+
+  it('a comment after the viewed baseline re-lights the row', () => {
+    const exec = round('exec-1', {
+      startedAt: 100,
+      sessionId: 's1',
+      endedAt: 150,
+      result: 'succeeded',
+      viewedAt: 160,
+    })
+    const comment = round('c1', {
+      startedAt: 200,
+      sessionId: 's1',
+      injectedAt: 200,
+      endedAt: 250,
+      result: 'succeeded',
+      parentExecutionId: 'exec-1',
+    })
+    const task = taskWith([exec, comment])
+    expect(executionUnviewed(task, exec)).toBe(true)
+  })
+
+  it('task-level unviewed reflects rounds newer than the card baseline', () => {
+    // Every real execution carries viewedAt (= its start): a settled run with
+    // content older than the card's open baseline is quiet at both levels.
+    const task: TaskRecord = {
+      ...taskWith([]),
+      viewedAt: 100,
+      executions: [
+        round('exec-1', { startedAt: 50, sessionId: 's1', endedAt: 80, result: 'succeeded', viewedAt: 80 }),
+      ],
+    }
+    expect(taskUnviewed(task)).toBe(false)
+    expect(taskUnviewedCount(task)).toBe(0)
+    // A fresh settled run after the baseline lights the card up.
+    const newer: TaskRecord = {
+      ...task,
+      executions: [
+        round('exec-1', { startedAt: 50, sessionId: 's1', endedAt: 80, result: 'succeeded', viewedAt: 80 }),
+        round('exec-2', { startedAt: 120, sessionId: 's2', endedAt: 150, result: 'succeeded', viewedAt: 120 }),
+      ],
+    }
+    expect(taskUnviewed(newer)).toBe(true)
+    expect(taskUnviewedCount(newer)).toBe(1)
+  })
+
+  it('a new comment re-lights its execution row and the card badge', () => {
+    const task: TaskRecord = {
+      ...taskWith([]),
+      viewedAt: 100,
+      executions: [
+        round('exec-1', { startedAt: 50, sessionId: 's1', endedAt: 80, result: 'succeeded', viewedAt: 80 }),
+      ],
+    }
+    expect(taskUnviewedCount(task)).toBe(0)
+    const withComment: TaskRecord = {
+      ...task,
+      executions: [
+        ...task.executions,
+        round('c1', {
+          startedAt: 130,
+          sessionId: 's1',
+          injectedAt: 130,
+          endedAt: 160,
+          result: 'succeeded',
+          parentExecutionId: 'exec-1',
+          comment: '好的继续',
+        }),
+      ],
+    }
+    expect(taskUnviewed(withComment)).toBe(true)
+    expect(taskUnviewedCount(withComment)).toBe(1)
+  })
+
+  it('refine-only unread lights the card with a bare 新 (zero unviewed executions)', () => {
+    const task: TaskRecord = {
+      ...taskWith([]),
+      viewedAt: 100,
+      refineSessionId: 's-refine',
+      executions: [
+        round('r1', { startedAt: 130, sessionId: 's-refine', endedAt: 160, result: 'succeeded', refine: true }),
+      ],
+    }
+    expect(taskUnviewed(task)).toBe(true)
+    expect(taskUnviewedCount(task)).toBe(0)
   })
 })

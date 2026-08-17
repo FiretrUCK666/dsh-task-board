@@ -146,9 +146,12 @@ export function RefineSection({ controller, task }: {
 
           {/* 等待通知 */}
           {active && waiting !== undefined && (
-            <p className={css.refineWaitingText}>
-              {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
-            </p>
+            <div className={css.waitingNotice} role="status">
+              <Chip kind="warn" fill={false}>{t('review.waiting')}</Chip>
+              <span>
+                {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
+              </span>
+            </div>
           )}
 
           {/* 输入区域：文本框 + 发送按钮（上下布局） */}

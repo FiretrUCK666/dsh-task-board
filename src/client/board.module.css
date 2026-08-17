@@ -282,6 +282,25 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border-color: var(--dsw-alias-state-warn-primary);
 }
 
+/* The card's unread reminder: a slow breathing glow ring around cards with
+   content newer than the last time the detail was opened (CHI 2016: pulsing
+   glow shadows score best on noticeability combined with likability). The
+   "新 N" chip in the badges carries the count; reduced-motion users get a
+   quiet static ring instead (see the reduced-motion block below). */
+.card[data-unviewed] {
+  animation: dshTbCardGlow 2.6s ease-in-out infinite;
+}
+
+@keyframes dshTbCardGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-warn-primary) 22%, transparent);
+  }
+}
+
 .cardTitle {
   font-size: 13px;
   font-weight: 500;
@@ -1119,6 +1138,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border-top: 1px solid var(--dsw-alias-separator-primary);
 }
 
+/* Row-level attention tints — defined before the hover rule so hover (later,
+   equal specificity) still wins while the pointer is over the row. */
+.executionRow[data-waiting='true'] {
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 8%, transparent);
+}
+
+.executionRow[data-unviewed='true'] {
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 5%, transparent);
+}
+
 .executionRow:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
@@ -1193,8 +1222,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   overflow-wrap: anywhere;
 }
 
-/* The row's at-a-glance session dynamics: latest comment text + its state,
-   and the session-waiting hint. Quiet, one line, secondary to the row. */
+/* The live-session line: what the active session is doing right now
+   (waiting on you, or in progress). Quiet, one line, secondary to the row;
+   only rendered while the session is active. */
 .executionDynamics {
   display: flex;
   align-items: center;
@@ -1210,18 +1240,51 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
-.executionDynamicsText {
+/* The row's comment summary without opening the review page: how many
+   comments, the latest text (ellipsized) and when it was submitted. One
+   quiet line in the times typography — secondary to the row, never busy. */
+.executionComments {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.executionCommentsCount {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
+.executionCommentsLatest {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
 }
 
-.executionDynamicsCount {
+.executionCommentsTime {
   flex: none;
   color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
+}
+
+/* The unread reminder of one execution row: a small warn dot with a soft
+   static glow (no per-row animation — many rows would compete) plus a faint
+   row tint (see the data-unviewed rule above), so unviewed content (a
+   settled run, fresh comments) reads at a glance. Cleared by opening the
+   row's review page. */
+.executionUnviewedDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-warn-primary);
+  box-shadow: 0 0 4px var(--dsw-alias-state-warn-primary);
 }
 
 /* A quiet explanatory line under a section title. */
@@ -1270,14 +1333,20 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-variant-numeric: tabular-nums;
 }
 
-.refineWaitingText {
-  margin: 0;
-  font-size: 13px;
-  color: var(--dsw-alias-label-secondary);
+/* One shared waiting notice for every surface (review page banner, refine
+   panel): a neutral framed row with a warn chip carrying the semantics —
+   no per-surface amber bars, so the whole board speaks one visual language. */
+.waitingNotice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
   background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 8px;
-  border-left: 3px solid var(--dsw-alias-state-warn-primary);
 }
 
 /* The refine conversation tail */
@@ -1502,6 +1571,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   .reviewMessage,
   .reviewContext {
     animation: none;
+  }
+
+  .card[data-unviewed] {
+    animation: none;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dsw-alias-state-warn-primary) 35%, transparent);
   }
 
   .spinner {
@@ -1764,21 +1838,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   animation: dshTbFadeUp 160ms ease;
 }
 
-/* The "waiting for you" banner: shown while the execution session is blocked
-   on the user (approval / plan review / question) — the native sidebar wait
-   signal, visible right where the run's outcome reads. */
-.reviewWaiting {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  padding: 8px 12px;
-  background: var(--dsw-alias-bg-layer-2);
-  border: 1px solid var(--dsw-alias-state-warn-primary);
-  border-radius: 10px;
-  font-size: 12px;
-  color: var(--dsw-alias-state-warn-primary);
-}
+/* The "waiting for you" notice: shown while the execution session is blocked
+   on the user (approval / plan review / question) — shared `.waitingNotice`
+   styling (see above), rendered right where the run's outcome reads. */
 
 /* Context meter strip: the native occupancy figure + colored composition bar,
    always visible below the conversation (see context-meter.ts for the math). */
