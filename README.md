@@ -104,43 +104,18 @@ scripts/verify-standalone.mjs                                         # 独立�
 
 ## 关键设计
 
-- **侧边栏没有可用的外挂槽位**：侧边栏壳只声明 `sidebar.workspaces` /
-  `sidebar.settings` 两个 single 槽位，且已被占用；外部插件无法注册新槽位。因此入口行走
-  **DOM 注入**，并用 MutationObserver 自愈（React 重渲染波及该节点时同帧内重新插入，
-  无闪烁）。
-- **中间列无法通过槽位替换**：`conversation` 槽位是 single 且已被占用。看板视图以 DOM
-  方式挂在中列内（React 不管的尾部子节点），通过 `<html data-dsh-taskboard-active>`
-  属性切换显隐，底下的对话子树保持挂载有状态。
-- **持久化用浏览器 localStorage**：客户端插件跑在浏览器里，DSH 没有浏览器可写的
-  文件通道；localStorage 也是 DSH 客户端自身快照存储的持久化方式。
-- **执行走客户端 runtime**：`ctx.sessions.list` 订阅会话状态，`ctx.workspaces.connectWorkspace()`
-  创建/复用会话，`session.prompt()` 真实驱动 agent，`ctx.sessions.open()` 跳转 transcript。
-- **后台结算靠列表对账**：未打开的会话没有对话快照窗口（cold），所以执行结算以会话列表
-  为准——每次列表变化都对账 running 任务；结果判定依次取「列表缺失→已取消 / 仍在跑→等待 /
-  对话快照可见→按 lastAgentError / 原始历史尾部→turn-error 节点证明失败 / 否则按成功」，
-  对账幂等。
-- **共享会话显示模块**：`src/core/session-display.ts` 统一推导执行行与任务卡片的会话状态
-  （`sessionDisplay`）、时间范围（`sessionTimes`）、待处理计数（`taskPendingCount`）。
-  执行行状态不再读取原始执行记录，统一走这套推导；任务卡片徽章用 `taskPendingCount`
-  显示「待处理 N」徽章，与「运行中」chip 共存，tooltip 列出具体哪个执行等待什么。
-- **共享 transcript tail 组件**：`useTranscriptTail` hook 封装加载/轮询/跟随/跳转逻辑
-  （3 秒水位门控、贴底跟随、上翻暂停并显示「滑到最新」按钮）；`TranscriptTail` 组件封装
-  渲染逻辑（滚动容器 + transcript 行 + JumpToLatest 按钮）。评论页与完善面板共用同一套
-  机制，行为完全一致。
-- **设置走自建路由**：host 侧用 `registerSettingsRoute` 注册
-  `/api/dsh-task-board/settings`，client 侧用 `RouteSettingsScope` 经该路由读写命名空间
-  并维护快照，`CardForm` 通过最小 `SettingsScopeLike` 接口消费。
-- **权限预设走原生服务**：host 侧 `registerPermissionRoute` 注册
-  `/api/dsh-task-board/permissions`，每次请求实时读取 `permissionPresets` 服务的
-  `names`/`optionOf`（结构性窄化接口，不依赖 SDK 包）；选项集合、名称、描述全部来自
-  host 原生预设表，client 只镜像原生 picker 的展示规则（`danger-full-access` → Full
-  access 等）——DSH 更新预设表后看板自动适配，无需改插件。
-- **自动执行在浏览器端调度**：插件是纯客户端（无服务端通道），所以「到点执行」由
-  标签页内的调度器完成——每分钟 tick 一次，页面从后台恢复可见时立即补 tick；到点
-  触发前先把「下次运行」顺延到下一个 cron 匹配点再执行，同一 tick 不会重复触发；
-  页面加载早期（会话列表基线未就绪）不触发，避免误执行。**规则生命周期**：scheduler、controller 与 UI 共用同一个判定（见 tasks.ts 的 ruleReadiness）——待命（启用但未手动启动）绝不触发；生效（已启动且处于待办/进行中）到点触发与接续正常；暂停（已启动但处于待规划/待审核/已完成）到点跳过并顺延，只在手动恢复（执行、移到待办等）后继续；「已完成」还会直接取消已启用的规则（disarmSchedule），移出已完成不会自动复活，防止完成即循环。限制：需要标签页保持打开
-  （关闭期间错过的调度按「错过即跳过」处理，下次打开时只补跑已顺延的到期任务）；
-  任务处于「进行中」时到点跳过本次，等下一个 cron 匹配点。
+- **无官方槽位，DOM 注入**：侧边栏与中间列都没有可外挂的槽位，入口与看板视图以 DOM 方式
+  注入（MutationObserver 自愈、`html[data-dsh-taskboard-active]` 显隐、对话子树保持挂载）。
+- **持久化用浏览器 localStorage**：客户端插件没有可写的文件通道；localStorage 与 DSH 快照
+  同源。执行走客户端 runtime：`connectWorkspace()` 建会话 + `session.prompt()` 真实驱动。
+- **后台结算靠会话列表对账**：未打开会话没有对话快照窗口，结算以列表为准（列表缺失→取消 /
+  仍在跑→等待 / 快照可见→按错误节点 / 否则成功），幂等。
+- **自动执行在浏览器端调度**：每分钟 tick、隐藏错过即跳过、进行中跳过、到点前顺延下次；
+  规则生命周期（待命/生效/暂停/完成即取消）由 `ruleReadiness` 统一判定。需要标签页保持打开。
+- **皮肤与深浅色零适配**：全板样式只消费 DSH 原生 `--dsw-*` 语义令牌（浅色/深色与皮肤插件
+  重映射令牌即可整体换肤），板上经 `--dsh-tb-*` 别名引用，另见仓库 AGENTS.md「设计系统层」。
+- 设置走自建路由（`/api/dsh-task-board/settings`）；权限预设实时读原生 `permissionPresets`
+  （`/api/dsh-task-board/permissions`），DSH 更新预设表自动适配。
 
 ## 安装
 

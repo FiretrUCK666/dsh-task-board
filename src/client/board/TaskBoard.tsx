@@ -23,7 +23,7 @@ import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
-import { Button } from './ui.tsx'
+import { Button, Switch } from './ui.tsx'
 
 /** Case-insensitive title/description match. */
 function matchesFilter(task: TaskRecord, filter: string): boolean {
@@ -156,14 +156,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         </Button>
         {/* Auto-cruise: batch-run every todo task, at most `limit` at once. */}
         <div className={css.cruise}>
-          <label className={css.cruiseToggle}>
-            <input
-              type="checkbox"
-              checked={snapshot.cruise.enabled}
-              onChange={event => { controller.setCruiseEnabled(event.target.checked) }}
-            />
-            <span>{t('board.cruise')}</span>
-          </label>
+          <Switch
+            checked={snapshot.cruise.enabled}
+            onChange={next => { controller.setCruiseEnabled(next) }}
+            label={t('board.cruise')}
+          />
           <input
             className={css.cruiseLimit}
             type="number"

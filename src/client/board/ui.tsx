@@ -39,6 +39,35 @@ export function Button({ variant = 'ghost', type = 'button', className, disabled
   )
 }
 
+/**
+ * An iOS-style toggle switch (pure CSS): a hidden checkbox driving a track +
+ * knob. "On" fills the track with the success tone and slides the knob right;
+ * keyboard focus draws a soft ring around the track. Every on/off control on
+ * the board (cruise, schedule enable) renders through this component.
+ */
+export function Switch({ checked, onChange, label, title, disabled }: {
+  checked: boolean
+  onChange: (next: boolean) => void
+  label: string
+  title?: string
+  disabled?: boolean
+}) {
+  return (
+    <label className={css.switch} title={title}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={event => { onChange(event.target.checked) }}
+      />
+      <span className={css.switchTrack} aria-hidden="true">
+        <span className={css.switchKnob} />
+      </span>
+      <span className={css.switchLabel}>{label}</span>
+    </label>
+  )
+}
+
 /** A titled detail section: one shared title style for every detail module. */
 export function Section({ title, children, className }: {
   title: string
@@ -72,15 +101,35 @@ export function AttentionDot({ title }: { title?: string }) {
   return <span className={css.attentionDot} title={title} aria-label={title} />
 }
 
-/** Minimal inline-icon set (SVG glyphs live here once). */
-export function Icon({ name, className }: { name: 'arrowDown'; className?: string }) {
-  const classes = className !== undefined ? ` ${className}` : ''
-  if (name === 'arrowDown') {
-    return (
-      <svg className={`${css.icon}${classes}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M3 6.5 8 11.5 13 6.5" />
-      </svg>
-    )
-  }
-  return null
+/**
+ * Minimal inline-icon set (SVG glyphs live here once, sized explicitly so no
+ * glyph can ever balloon to the SVG default 300x150 box). Every board icon
+ * route goes through this component.
+ */
+export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight'
+
+const ICON_PATHS: Record<IconName, string> = {
+  arrowDown: 'M3 6.5 8 11.5 13 6.5',
+  chevronDown: 'M3 6 8 11 13 6',
+  close: 'M4 4 12 12M12 4 4 12',
+  arrowRight: 'M4 8h8M9 4l4 4-4 4',
+}
+
+export function Icon({ name, className }: { name: IconName; className?: string }) {
+  return (
+    <svg
+      className={css.icon + (className !== undefined ? ` ${className}` : '')}
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  )
 }

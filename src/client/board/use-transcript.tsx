@@ -55,9 +55,14 @@ export function useResizeFollow(
 export function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: () => void }) {
   if (atBottom) return null
   return (
-    <button type="button" className={css.reviewJumpLatest} onClick={onJump}>
-      <Icon name="arrowDown" className={css.reviewJumpLatestIcon} />
-      {t('review.jumpLatest')}
+    <button
+      type="button"
+      className={css.reviewJumpLatest}
+      onClick={onJump}
+      title={t('review.jumpLatest')}
+      aria-label={t('review.jumpLatest')}
+    >
+      <Icon name="arrowDown" />
     </button>
   )
 }

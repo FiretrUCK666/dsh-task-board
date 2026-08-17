@@ -44,7 +44,7 @@ import { sumUsage } from './review-transcript.ts'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { commentsOf, commentKindOf, commentStateKey, queuePositionOf, type CommentViewState } from './comment-thread.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
-import { Button, Notice } from './ui.tsx'
+import { Button, Icon, Notice } from './ui.tsx'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
@@ -333,7 +333,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               aria-label={t('detail.close')}
               onClick={onClose}
             >
-              ×
+              <Icon name="close" />
             </button>
           </div>
         </header>

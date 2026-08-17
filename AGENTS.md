@@ -255,6 +255,18 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 - **防回归守卫**：`tsconfig.json` 开启 `noUnusedLocals` / `noUnusedParameters`（
   `_` 前缀参数豁免）——死 import/死变量直接编译报错；废弃 CSS 类须人工删除（
   审计方法：提取 `board.module.css` 内 `.name` 定义，与 `src/` 中 `css.name` 引用对照）。
+- **UI 设计小规则（改任何 UI 都遵守，保持整体一致）**：
+  - 配色：一个语义强调色（`--dsh-tb-accent`=原生 business-primary）+ 四个状态色
+    （attention/success/danger/neutral），一律用令牌；半透明一律 `color-mix(in srgb,
+    <令牌> <alpha>%, transparent)`，alpha 用 22%/10% 两级，不做真毛玻璃。
+  - 布局/间距：4px 节奏（6/8/10/12/16/24），区块间 gap 用统一值；圆角成比例——控件
+    8–12、卡片 16、弹层 24。
+  - 字体：只用原生 `--dsw-font-*` 栈；大标题 16–17px/600 + `letter-spacing:-0.01em~-0.015em`
+    （负字距随字号增大收紧，Apple 节奏），正文 13px 行高 1.5，次级文本走 text-2/3。
+  - 动效：全部走后端一个语法——交互 `--dsh-tb-motion`(160ms) + 注意力 `--dsh-tb-breath`(2.6s)；
+    新动画必须进 `prefers-reduced-motion` 降级块。
+  - 交互态：hover 用 `--dsh-tb-hover`，pressed 微缩/下沉，focus 统一 2px outline 随圆角
+    （仅 `:focus-visible`）。
 
 ### 核心层（`src/core/`，纯逻辑，与 UI 无关）
 
@@ -267,99 +279,55 @@ prompt）；结算靠会话列表对账，cold 窗口判定：列表缺失→取
 快照可见→按 lastAgentError / turn-error 节点 / 否则成功）、`controller.ts`（台账 +
 视图状态 + 导航感知 + **统一并发调度器**）。
 
-**统一并发调度器（controller 内唯一启动决策点）**：所有执行来源——手动、定时
-（schedule）、接续（chain）、自动巡航、评论注入——共用同一个并发预算（用户设置的
-并发上限，按「同时在跑的轮次/会话」计数，不是按卡片数），经 `dispatch()` 按优先级
-启动：排队中的 schedule/chain 启动（预算满时入队、启动前重校验资格、陈旧丢弃）→
-评论续跑（全局按提交时间 FIFO，同任务评论严格按序一条条跑）→ 巡航待办。手动执行
-不受限但计入并发。评论是**每任务 FIFO 队列**（`ExecutionRecord.injectedAt` 区分
-已保存/已排队与已注入；未注入可取消）；非巡航时评论只保存不注入。`dispatch` 幂等、
-扫描式（无队列状态可失步），由 `persistAndNotify` 与巡航开关触发，重入合并。
-原 `cruise.ts` 已折叠入 controller（不再有独立巡航泵）。
+**统一并发调度器（controller 内唯一启动决策点）**：所有执行来源——手动、定时、接续、
+自动巡航、评论注入——共用同一并发预算（按「同时在跑的轮次/会话」计数，`dispatch()`
+按优先级启动：排队 schedule/chain（预算满入队、启动前重校验、陈旧丢弃）→ 评论续跑
+（全局提交时间 FIFO，同任务严格按序）→ 巡航待办）。手动不限额但计并发。评论是每任务
+FIFO 队列（`ExecutionRecord.injectedAt` 区分 已保存/已排队 与 已注入，未注入可取消）；
+巡航关只保存不注入。`dispatch` 幂等扫描式，由 `persistAndNotify`/巡航开关触发，重入合并。
 
-**斜杠命令与权限切换（原生命令注册表，绝不走 prompt 文本）**：host 的
-`session.prompt` 接口没有斜杠裁决——只有客户端作曲器把 `/` 草稿改走
-`remote.commands.execute`。因此评论页两类操作都**必须**经 `remote.commands.execute`
-执行（`client/index.ts` 的 `RemoteCommandsFace.execute` 接线）：
-- 权限切换（`SessionConfigFace.setPermission` → `/permission <preset>`）：命令命中
-  才改权限并返回原生结果文案，未命中/失败只在面板显示错误——**绝不**把命令文本当
-  消息发给 agent（否则 agent 会用自然语言回复「无法更改」，污染对话）。
-- 评论以 `/` 开头 = 命令轮次（`submitComment(..., command=true)` →
-  `ExecutionRecord.command`）：`execution.ts` 的 `runCommentCommand` 走
-  `sendCommand` 面——matched 立即结算（结果 kind:error 记为 failed），unmatched
-  退回普通文本（原生 default-sink，不丢输入），无命令面也退回文本。
-评论页 Agent 不可切换（原生 `agent-preset-locked`）：只读展示会话实际组合，任务卡片
-编辑的 Agent 作用于下次新执行，两处独立。
+**斜杠命令与权限切换（原生命令注册表，绝不走 prompt 文本）**：`session.prompt` 无斜杠
+裁决，评论页两类操作必须经 `remote.commands.execute`（`RemoteCommandsFace.execute`）：
+(a) 权限切换 `SessionConfigFace.setPermission` → 原生 `/permission <preset>`，命中才改
+权限并回原生文案，绝不把命令文本当消息发给 agent；(b) `submitComment(..., command=true)`
+→ `ExecutionRecord.command`，`runCommentCommand` 走 sendCommand——matched 立即结算
+（kind:error 记 failed），unmatched 退回普通文本。评论页 Agent 不可切换（原生
+`agent-preset-locked`）只读展示，与任务卡片编辑两处独立。
 
-**评论页的会话事实以投影为权威（结构校验读取，不依赖域包类型）**：`pickProjections`
-从 history 尾页投影提取 `contextPressure`/`contextBreakdown`/`permissions`
-（`TranscriptProjectionsShape`，controller.ts 定义）。权限下拉的事实源是
-`permissions` 投影的 `currentValue`/`options`（与原生 PermissionSelect 同源），
-不是任务卡片的 `permission` 字段（那只作用于下次新执行）；切换成功立即 `reload()`
-拉新投影，3 秒轮询兜底。**评论线程按执行独立显示**（comment-thread.ts，纯函数）：
-评论轮次提交时记录 `parentExecutionId`（controller.submitComment），评论页只显示
-该执行自己的评论（`commentsOf` 精确按 parent 归属；旧数据无该字段时按 session 兜底，
-session 缺失则不显示）——别执行的评论各归各页，绝不混入。**排队位次是任务级**：
-调度器按任务 FIFO 注入评论，`queuePositionOf` 在整个任务的未注入轮次里算位
-（本页筛子外的他执行排队评论也占位）；执行序号统一走 `plainRunsOf(task)`
-（tasks.ts，过滤 comment 轮的单一编号源，TaskDetail 列表与评论页头部共用）。
+**评论页会话事实以投影为权威（结构校验读取，不依赖域包类型）**：`pickProjections` 提取
+`contextPressure`/`contextBreakdown`/`permissions`（`TranscriptProjectionsShape`）。权限
+下拉事实源 = `permissions` 投影 `currentValue/options`（与原生 PermissionSelect 同源，
+非任务卡片 `permission` 字段）；切换成功立即 reload + 3s 轮询兜底。**评论线程按执行独立
+显示**（comment-thread.ts，纯函数）：`parentExecutionId` 归属（旧数据按 session 兜底，
+session 缺失不显示），各执行评论各归各页；`queuePositionOf` 是任务级排队位次；执行序号
+统一走 `plainRunsOf(task)`（过滤 comment 轮的单一编号源，详情列表与评论页头部共用）。
 
-**会话显示状态派生（session-display.ts，纯函数）**：执行记录行的状态/时间/待处理
-计数全部从任务的执行列表派生，不再依赖单条执行的 settled 状态。`sessionDisplay`
-归集所有属于该会话的轮次（`sessionId === execution.sessionId` 或
-`parentExecutionId === execution.id`），按优先级判定状态：waiting（有 open 轮次 +
-pendingInteractionOf）> running（有 open 轮次）> latest settled 状态。`sessionTimes`
-计算会话时间范围：开始 = 最早轮次的 startedAt，结束 = 最晚 settled 轮次的 endedAt
-（会话开放时 undefined），耗时 = 结束 - 开始。`taskPendingCount` 统计任务级待处理
-会话数（所有执行会话 + refine 会话的 waiting 汇总），用于任务卡片徽章显示。
+**会话显示状态派生（session-display.ts，纯函数）**：`sessionDisplay` 归集同会话轮次
+（`sessionId === execution.sessionId` 或 `parentExecutionId === execution.id`），状态
+优先级 waiting（open 轮 + `pendingInteractionOf`）> running（open 轮）> 最新 settled；
+普通执行/完善轮开放（即使无 `injectedAt`），未注入排队评论不算开放。`sessionTimes`
+（会话起止/耗时）、`taskPendingCount`（待处理徽章）。**未读提醒**：`taskUnviewed` /
+`taskUnviewedCount` / `executionUnviewed`，基线 = `viewedAt`（旧数据按最新活动归一化，
+升级零噪音）；打开详情清卡片提醒、打开评论页清该行提醒。
 
-**任务卡片待处理提醒（TaskCard 徽章扩展）**：任务卡片根据 `taskPendingCount` 显示
-「待处理 N」徽章，与「运行中」chip 共存。running + pendingCount > 0 时，运行中 chip
-显示「待处理 N · kind」；running + pendingCount === 0 时显示「运行中 · 第 N 次」；
-非 running + pendingCount > 0（如 refine 等待）时显示独立「待处理 N」徽章。徽章的
-tooltip 列出具体哪个执行等待什么（第 M 次执行：问题/审批/plan-review；需求完善：问题）。
+**共享 transcript tail（use-transcript.tsx + TranscriptTail.tsx）**：`useTranscriptTail`
+封装 加载/3s 水位门控轮询/贴底跟随（距底 <24px）/上翻暂停 + `useResizeFollow`
+（ResizeObserver 布局跟随，打开即滚底、rail 头部异步加载不跳位）；「滑到最新」为**纯
+图标小胶囊**（无文字，`title` 浮层）。评论页与完善面板共享同一机制。
 
-**共享 transcript tail 组件（use-transcript.tsx + TranscriptTail.tsx）**：`useTranscriptTail`
-hook 封装加载/轮询/跟随/跳转逻辑：加载 session 的最近历史、轻轮询（3s 水位门控，
-空闲会话零成本）、贴底跟随（距底 < 24px 时新内容自动滚下）、上翻暂停并显示「滑到最新」
-按钮。`TranscriptTail` 组件封装渲染逻辑（滚动容器 + transcript 行 + JumpToLatest 按钮），
-供评论页和需求完善面板共享。`JumpToLatest` 按钮使用向下箭头 SVG（指向最新内容方向），
-粘性定位在滚动区底部右侧。所有会话展示面（评论页、完善面板）共享同一套机制，行为一致。
+**执行记录行（ExecutionRow）**：状态/时间走 `sessionDisplay`/`sessionTimes` 实时派生；
+等待态显琥珀「处理 →」按钮跳原生会话；活跃行动态减负（已完成行简洁）；**未读行** =
+共用 `AttentionDot` + 内层呼吸柔晕（无边框、无平染，与卡片呼吸环同一注意力语法）。
 
-**执行记录行状态同步（ExecutionRow 重构）**：执行行使用 `sessionDisplay` 显示会话
-实时状态（running/waiting/succeeded/failed/cancelled），不再只显示原始执行的 settled
-状态。时间显示使用 `sessionTimes`，反映会话的最新活动（评论/refine 轮次会更新结束时间）。
-等待状态时显示显眼的「处理 →」按钮（`executionHandle` 样式，amber 色背景），动态行
-减负：只在会话活跃时显示信息（running/waiting），已完成的执行行简洁（不显示「成功」等
-芯片的重复信息）。等待提醒强化：整行高亮（`data-waiting='true'`），显眼的「处理」按钮
-直接跳转到原生会话处理等待项。
-
-**两侧自动跟随 + 滑到最新**：对话区与评论列表各自贴底跟随（距底 < 24px），
-上翻阅读时暂停并在滚动区内显示「滑到最新」粘性小按钮（`.reviewJumpLatest`），
-点击回底恢复跟随；评论列表跟随以逐条 id+state 指纹为依赖，只在评论真实变化时触发。
-**右栏分区**：固定头部（投影面板）→ 固定线程标题栏（「评论 N」数量永不滚走）→
-独立滚动的评论列表（滚动条只覆盖列表）→ 固定发送区。
-
-**需求完善（待规划任务的 AI 调研闭环，`refine.ts` + controller 内实现）**：
-backlog 任务可一键「AI 完善需求」——`startRefine` 启动 refine 轮次
-（`ExecutionRecord.refine`），在任务绑定的完善会话（`TaskRecord.refineSessionId`，
-首次经执行管线惰性创建、之后每轮复用）里发送内置完善指令（`buildRefinePrompt`，
-zh/en 双语，要求 AI 先调研→逐条提问→产出「最终执行 Prompt」）。**零配置**：完善
-会话完全继承任务的运行配置（工作区/模型/思考/权限），不新增任何设置面；**零搜索
-集成**：调研/联网/抓取/提问全部由 agent 会话的原生工具完成，board 不碰任何搜索
-API（DSH 更新工具自动跟随）。交互闭环在板内：AI 提问时 `pendingInteractionOf`
-感知等待，`answerRefine` 把用户回答直接注入完善会话（同会话已计并发、不经巡航
-门控/评论 FIFO）；「应用到任务」（`applyRefineResult`）把对话尾段的最新 assistant
-文本写入任务 prompt——用户确认，绝不自动覆盖。完善轮次结算不动任务列
-（`settleRefine`）、不触发 chain（`maybeContinueChain` 跳过 refine 轮）、计入
-`hasOpenRun`（完善中禁止再启动正式执行）；`plainRunsOf` 排除 refine 轮（执行记录
-列表与评论线程都不含完善轮次）。
-
-**需求完善面板 UX 重设计（RefineSection 重构布局）**：完善面板采用新布局：标题栏
-（状态 + 轮次数 + 查看会话按钮）→ 共享 transcript tail（自动跟随 + 滑到最新，最多显示
-12 行）→ 回答栏（输入框 flex:1 + 发送按钮 flex:none，右对齐）→ 应用操作栏（独占一行）。
-使用共享的 `useTranscriptTail` hook 管理对话状态，从 lines 中提取最新 assistant 消息
-作为「应用到任务」的候选文本。面板与评论页共享 transcript tail 机制，行为一致。
+**需求完善（backlog AI 调研闭环，refine.ts + controller）**：`startRefine` 启动 refine
+轮次（`ExecutionRecord.refine`），用任务绑定的完善会话（`TaskRecord.refineSessionId` 惰性
+创建、每轮复用），发内置完善指令（`buildRefinePrompt` zh/en）。**零配置零搜索集成**：
+调研/抓取/提问全走 agent 原生工具。等待用 `pendingInteractionOf` 感知，`answerRefine`
+直接把回答注入完善会话；`applyRefineResult` 把对话尾段最新 assistant 文本写入任务
+prompt（用户确认才应用）。结算 `settleRefine` 不动任务列、不触发 chain
+（`maybeContinueChain` 跳过 refine 轮）、计入 `hasOpenRun`（完善中禁止再启动正式执行）；
+`plainRunsOf` 排除 refine 轮。面板布局：标题栏（状态+轮次数+查看会话）→ 共享
+transcript tail（≤12 行）→ 回答栏 → 应用操作栏。
 
 ## 构建与验证（改完必跑，全绿才算完成）
 

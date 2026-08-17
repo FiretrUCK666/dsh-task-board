@@ -488,27 +488,48 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 /* --- buttons ------------------------------------------------------------------ */
 
 /* One button standard: primary / ghost / danger share size and rhythm so
-   every row (detail header, detail footer, modal footer) stays aligned. */
+   every row (detail header, detail footer, modal footer) stays aligned.
+   Apple-ish: a comfortable 32px hit target, rounded-12 corners, a soft
+   raised primary with a hairline inner highlight, hairline-bordered ghost,
+   and a subtle press-down on click — all through the shared motion token. */
 .primaryButton,
 .ghostButton,
 .dangerButton {
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 16px;
   font-size: 13px;
   font-weight: 500;
-  line-height: 1.4;
-  border-radius: 8px;
+  line-height: 1;
+  border-radius: var(--dsh-tb-radius-md);
   white-space: nowrap;
+  cursor: pointer;
+  -webkit-appearance: none;
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion), transform var(--dsh-tb-motion);
 }
 
 .primaryButton {
   color: var(--dsw-alias-label-primary-foreground);
   background: var(--dsw-alias-button-info-fill);
-  border: none;
-  cursor: pointer;
+  border: 1px solid transparent;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-00) 22%, transparent),
+    var(--dsh-tb-shadow-1);
 }
 
 .primaryButton:hover:not(:disabled) {
   background: var(--dsw-alias-button-info-hover);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-00) 25%, transparent),
+    var(--dsh-tb-shadow-2);
+}
+
+.primaryButton:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 14%, transparent);
 }
 
 .primaryButton:disabled {
@@ -517,14 +538,18 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .ghostButton {
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   background: transparent;
-  border: 1px solid var(--dsw-alias-border-l2);
-  cursor: pointer;
+  border: var(--dsh-tb-border-soft);
 }
 
 .ghostButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsh-tb-hover);
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.ghostButton:active:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-pressed, var(--dsh-tb-hover));
 }
 
 .ghostButton:disabled {
@@ -534,17 +559,20 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .dangerButton {
   color: var(--dsw-alias-label-primary-foreground);
-  background: var(--dsw-alias-state-error-primary);
-  border: none;
-  cursor: pointer;
+  background: var(--dsh-tb-danger);
+  border: 1px solid transparent;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-00) 18%, transparent),
+    var(--dsh-tb-shadow-1);
 }
 
 .dangerButton:hover:not(:disabled) {
-  filter: brightness(1.08);
+  filter: brightness(1.07);
 }
 
 .dangerButton:active:not(:disabled) {
   filter: brightness(0.94);
+  transform: translateY(1px);
 }
 
 .dangerButton:disabled {
@@ -561,15 +589,81 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 8px;
-  color: var(--dsw-alias-label-secondary);
+  border-radius: 999px;
+  color: var(--dsh-tb-text-2);
   cursor: pointer;
   font-size: 14px;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
 }
 
 .iconButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsh-tb-hover);
+  color: var(--dsh-tb-text-1);
+}
+
+/* --- iOS-style switch (Switch component) -------------------------------------- */
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.switch:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.switch input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switchTrack {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-pressed, var(--dsh-tb-hover));
+  border: var(--dsh-tb-border-soft);
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.switchKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--dsh-tb-bg);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--dsw-static-neutral-1000) 32%, transparent);
+  transition: transform var(--dsh-tb-motion);
+}
+
+.switch input:checked + .switchTrack {
+  background: var(--dsh-tb-success);
+  border-color: transparent;
+}
+
+.switch input:checked + .switchTrack .switchKnob {
+  transform: translateX(16px);
+}
+
+.switch input:focus-visible + .switchTrack {
+  outline: 2px solid var(--dsh-tb-focus-color);
+  outline-offset: 2px;
+}
+
+.switchLabel {
+  font-size: 13px;
+  color: var(--dsh-tb-text-1);
 }
 
 /* --- modals ------------------------------------------------------------------- */
@@ -666,23 +760,33 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .input {
-  padding: 7px 10px;
+  height: 34px;
+  padding: 0 12px;
   font-size: 13px;
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-specific-input-major);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-input-bg);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
   outline: none;
   resize: vertical;
   font-family: inherit;
+  -webkit-appearance: none;
+  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
+}
+
+textarea.input {
+  height: auto;
+  padding: 8px 12px;
+  line-height: 1.5;
 }
 
 .input:focus {
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--dsh-tb-focus-color);
+  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
 .input::placeholder {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 /* The native textarea corner grip (the two hatch lines) is hidden — the
@@ -884,7 +988,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   transition: transform 140ms ease;
 }
 
-.scheduleChevron[data-open='false'] {
+.scheduleDisclosure[aria-expanded='false'] .scheduleChevron {
   transform: rotate(-90deg);
 }
 
@@ -952,20 +1056,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* --- scheduled runs ---------------------------------------------------------- */
 
-.scheduleToggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--dsw-alias-label-primary);
-  cursor: pointer;
-  user-select: none;
-}
-
-.scheduleToggle input {
-  accent-color: var(--dsw-alias-state-business-primary);
-}
-
 /* Label/value grid mirrors the run-config grid so every detail row shares
    one aligned label column. */
 .scheduleGrid {
@@ -1018,13 +1108,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .schedulePreset {
   flex: none;
-  padding: 7px 10px;
+  height: 34px;
+  padding: 0 12px;
   font-size: 13px;
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-specific-input-major);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-input-bg);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
   outline: none;
+  -webkit-appearance: none;
+  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
 .scheduleMeta {
@@ -1046,26 +1139,27 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .scheduleMode {
-  padding: 4px 12px;
+  padding: 5px 14px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
+  height: 26px;
+  color: var(--dsh-tb-text-2);
   background: transparent;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--dsh-tb-radius-sm);
   cursor: pointer;
   white-space: nowrap;
-  transition: color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  transition: color var(--dsh-tb-motion), background-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
 .scheduleMode:hover {
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
 }
 
 .scheduleModeActive {
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-bg-base);
-  box-shadow: var(--dsw-shadow-lv1);
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-bg);
+  box-shadow: var(--dsh-tb-shadow-1);
 }
 
 /* --- preset manager ----------------------------------------------------------- */
@@ -1453,20 +1547,22 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   resize: vertical;
   min-height: 60px;
   max-height: 200px;
-  padding: 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-base);
+  padding: 10px 12px;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  background: var(--dsh-tb-input-bg);
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
   box-sizing: border-box;
+  outline: none;
+  -webkit-appearance: none;
+  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
 .refineTextarea:focus {
-  border-color: var(--dsw-alias-state-business-primary);
-  outline: none;
-  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha);
+  border-color: var(--dsh-tb-focus-color);
+  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
 /* Apply action area */
@@ -1480,9 +1576,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .refineApplyButton {
   width: 100%;
-  padding: 10px 24px;
-  font-size: 14px;
-  font-weight: 500;
 }
 
 .moveRow {
@@ -1524,8 +1617,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .slashMenuRow:focus-visible,
 .search:focus-visible,
 .input:focus-visible,
-.schedulePreset:focus-visible,
-.scheduleToggle input:focus-visible {
+.schedulePreset:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
 }
@@ -1540,8 +1632,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .slashMenuRow,
 .search,
 .input,
-.schedulePreset,
-.scheduleToggle input {
+.schedulePreset {
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, outline-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
@@ -1599,16 +1690,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   cursor: default;
 }
 
-/* --- search box focus (border tint + themed ring above) --- */
+/* --- search box focus (hairline accent + themed soft ring) --- */
 .search:focus,
 .schedulePreset:focus {
-  border-color: var(--dsw-alias-state-business-primary);
-}
-
-/* --- schedule toggle checkbox focus already covered by the shared ring;
-       keep the accent-color and size stable --- */
-.scheduleToggle input {
-  margin: 0;
+  border-color: var(--dsh-tb-focus-color);
+  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
 /* --- reduced motion: strip transitions, stop the decorative animations --- */
@@ -1626,7 +1712,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   .search,
   .input,
   .schedulePreset,
-  .scheduleToggle input,
+  .switchTrack,
+  .switchKnob,
   .reviewMessage .reviewMessageText {
     transition: none;
   }
@@ -1665,21 +1752,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: var(--dsw-alias-bg-layer-2);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 8px;
-}
-
-.cruiseToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.cruiseToggle input {
-  margin: 0;
 }
 
 .cruiseLimit {
@@ -1736,8 +1808,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .reviewTitle {
   margin: 0;
   min-width: 0;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2205,9 +2278,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 /* The sticky "Latest" affordance inside a scroll region: shown only while
-   the user has scrolled away from the bottom; one click returns. Right-
-   aligned with a compact squared capsule (matching the board's button
-   radius) so it never sits over the middle of the content. */
+   the user has scrolled away from the bottom; one click returns. A compact
+   floating icon pill (no label — the tooltip carries the meaning) that
+   hovers above the content's bottom-right; sized explicitly so it can never
+   balloon, and lifted with a soft shadow like a floating Apple control. */
 .reviewJumpLatest {
   position: sticky;
   bottom: 8px;
@@ -2216,28 +2290,24 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--dsw-alias-label-secondary);
-  background: var(--dsw-alias-bg-layer-2);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-bg-raised);
+  border: var(--dsh-tb-border-soft);
+  border-radius: 999px;
   cursor: pointer;
-  box-shadow: var(--dsw-shadow-lv1);
-  transition: background 120ms ease, border-color 120ms ease;
-}
-
-.reviewJumpLatestIcon {
-  flex: none;
+  box-shadow: var(--dsh-tb-shadow-2);
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
 }
 
 .reviewJumpLatest:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsh-tb-hover);
   border-color: var(--dsw-alias-border-l3);
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
+  transform: translateY(-1px);
 }
 
 /* The composer, pinned at the rail's bottom: sending a comment never

@@ -22,7 +22,7 @@ import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { commentsOf } from './comment-thread.ts'
-import { AttentionDot, Button, Section } from './ui.tsx'
+import { AttentionDot, Button, Icon, Section, Switch } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
 
 /** Status → shared-chip color (detail badge). */
@@ -339,20 +339,17 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
         aria-expanded={open}
         onClick={() => { setOpen(!open) }}
       >
-        <span className={css.scheduleChevron} data-open={open} aria-hidden="true">▾</span>
+        <Icon name="chevronDown" className={css.scheduleChevron} />
         <span className={css.scheduleDisclosureTitle}>{t('detail.schedule')}</span>
         <span className={css.scheduleSummary}>{summary}</span>
       </button>
       {open && (
         <>
-      <label className={css.scheduleToggle}>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={event => { toggleEnabled(event.target.checked) }}
-        />
-        <span>{t('detail.schedule.enable')}</span>
-      </label>
+      <Switch
+        checked={enabled}
+        onChange={toggleEnabled}
+        label={t('detail.schedule.enable')}
+      />
 
       {/* Driving mode: fixed times (cron) or run-after-completion (chain). */}
       <div className={css.scheduleModeRow} role="radiogroup" aria-label={t('detail.schedule')}>
@@ -408,13 +405,9 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
                 ))}
               </select>
             </span>
-            <button
-              type="button"
-              className={css.ghostButton}
-              onClick={() => { setShowPresets(true) }}
-            >
+            <Button onClick={() => { setShowPresets(true) }}>
               {t('detail.schedule.managePresets')}
-            </button>
+            </Button>
           </span>
         </div>
       ) : (
@@ -558,7 +551,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
             aria-label={t('detail.close')}
             onClick={() => { controller.closeTask() }}
           >
-            ×
+            <Icon name="close" />
           </button>
         </header>
 

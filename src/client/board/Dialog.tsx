@@ -9,6 +9,7 @@
 import type { ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { Icon } from './ui.tsx'
 
 /** One centered modal panel (see module doc). */
 export function Dialog({ title, label, onClose, className, children }: {
@@ -37,7 +38,7 @@ export function Dialog({ title, label, onClose, className, children }: {
               aria-label={t('detail.close')}
               onClick={onClose}
             >
-              ×
+              <Icon name="close" />
             </button>
           </header>
         )}
