@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createTask, settleExecution, startExecution, type ExecutionRecord, type TaskRecord } from '../src/core/tasks.ts'
-import { commentKindOf, commentRoundState, commentsOf, queuePositionOf } from '../src/client/board/comment-thread.ts'
+import { commentKindOf, commentRoundState, commentStateKey, commentsOf, queuePositionOf } from '../src/client/board/comment-thread.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -173,5 +173,16 @@ describe('commentKindOf', () => {
     expect(commentKindOf('running')).toBe('warn')
     expect(commentKindOf('queued')).toBe('warn')
     expect(commentKindOf('saved')).toBe('muted')
+  })
+})
+
+describe('commentStateKey', () => {
+  it('maps every state to its locale key', () => {
+    expect(commentStateKey('succeeded')).toBe('review.commentSucceeded')
+    expect(commentStateKey('failed')).toBe('review.commentFailed')
+    expect(commentStateKey('cancelled')).toBe('review.commentCancelled')
+    expect(commentStateKey('running')).toBe('review.commentRunning')
+    expect(commentStateKey('queued')).toBe('review.commentQueued')
+    expect(commentStateKey('saved')).toBe('review.commentPending')
   })
 })

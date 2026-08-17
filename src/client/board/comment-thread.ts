@@ -84,3 +84,21 @@ export function commentKindOf(state: CommentViewState): 'success' | 'error' | 'w
     default: return 'muted'
   }
 }
+
+/** The locale key of a comment state's chip label (callers pass `{ n }` for queued). */
+export function commentStateKey(state: CommentViewState):
+  | 'review.commentSucceeded'
+  | 'review.commentFailed'
+  | 'review.commentCancelled'
+  | 'review.commentRunning'
+  | 'review.commentQueued'
+  | 'review.commentPending' {
+  switch (state) {
+    case 'succeeded': return 'review.commentSucceeded'
+    case 'failed': return 'review.commentFailed'
+    case 'cancelled': return 'review.commentCancelled'
+    case 'running': return 'review.commentRunning'
+    case 'queued': return 'review.commentQueued'
+    case 'saved': return 'review.commentPending'
+  }
+}

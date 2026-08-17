@@ -42,7 +42,7 @@ import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { foldTranscript, sumUsage, type TranscriptLine } from './review-transcript.ts'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
-import { commentsOf, commentKindOf, queuePositionOf, type CommentViewState } from './comment-thread.ts'
+import { commentsOf, commentKindOf, commentStateKey, queuePositionOf, type CommentViewState } from './comment-thread.ts'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
@@ -89,6 +89,9 @@ function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: () => v
   if (atBottom) return null
   return (
     <button type="button" className={css.reviewJumpLatest} onClick={onJump}>
+      <svg className={css.reviewJumpLatestIcon} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 9.5 8 4.5 13 9.5" />
+      </svg>
       {t('review.jumpLatest')}
     </button>
   )
@@ -96,14 +99,9 @@ function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: () => v
 
 /** The chip label of a comment display state ("排队中 · 第 N 位" uses the task-level queue position). */
 function commentLabel(state: CommentViewState, position: number): string {
-  switch (state) {
-    case 'succeeded': return t('review.commentSucceeded')
-    case 'failed': return t('review.commentFailed')
-    case 'cancelled': return t('review.commentCancelled')
-    case 'running': return t('review.commentRunning')
-    case 'queued': return t('review.commentQueued', { n: String(position) })
-    case 'saved': return t('review.commentPending')
-  }
+  return state === 'queued'
+    ? t('review.commentQueued', { n: String(position) })
+    : t(commentStateKey(state))
 }
 
 /** The review page (see module doc). */

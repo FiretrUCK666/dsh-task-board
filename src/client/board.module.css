@@ -38,32 +38,34 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* --- sidebar entry row ------------------------------------------------------- */
 
+/* The entry mirrors the shell's 新会话 button exactly: same geometry, same
+   icon glyph, same typography — it reads as a sibling action in the logo
+   row area. Width is mirrored at runtime (syncEntryWidth). */
 .entry {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  width: 100%;
-  height: 32px;
-  padding: 0 12px;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  color: var(--dsw-alias-label-secondary);
+  gap: 6px;
+  height: 38px;
+  padding: 8px 16px;
+  background: var(--dsw-alias-button-elevated-fill);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  color: var(--dsw-alias-label-primary);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
   white-space: nowrap;
 }
 
 .entry:hover {
-  background: var(--dsw-specific-sidebar-nav-item-hover);
+  background: var(--dsw-alias-button-floating-hover);
   color: var(--dsw-alias-label-primary);
 }
 
 .entry[data-active] {
   background: var(--dsw-specific-sidebar-nav-item-active);
-  color: var(--dsw-alias-label-primary);
-  font-weight: 600;
 }
 
 .entryIcon {
@@ -76,16 +78,30 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .entryLabel {
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 200px;
 }
 
-/* Collapsed rail: icon-only, centered, matching the shell's 56px rail. */
+/* Collapsed rail: icon-only 36px box, transparent, matching the shell's
+   collapsed 新会话 button (18px icon). */
 [data-dsh-frame][data-sidebar-collapsed] .entry {
   padding: 0;
-  width: 100%;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border-color: transparent;
+}
+
+[data-dsh-frame][data-sidebar-collapsed] .entry:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 [data-dsh-frame][data-sidebar-collapsed] .entryLabel {
   display: none;
+}
+
+[data-dsh-frame][data-sidebar-collapsed] .entryIcon svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* --- board frame -------------------------------------------------------------- */
@@ -114,7 +130,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .boardTitle {
   margin: 0;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--dsw-alias-label-primary);
   white-space: nowrap;
 }
@@ -156,7 +172,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--dsw-alias-bg-layer-2);
+  /* The same surface token the native conversation pane uses — the board
+     never layers a second tint on top of the app's base. */
+  background: var(--dsw-alias-bg-base);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;
   overflow: hidden;
@@ -174,7 +192,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   margin: 0;
   flex: 1;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--dsw-alias-label-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -270,7 +288,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .cardTitle {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.35;
   overflow: hidden;
   display: -webkit-box;
@@ -361,7 +379,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
   min-width: 0;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.5;
   color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
@@ -402,7 +420,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .dangerButton {
   padding: 6px 14px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.4;
   border-radius: 8px;
   white-space: nowrap;
@@ -441,7 +459,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .dangerButton {
-  color: #fff;
+  color: var(--dsw-alias-label-primary-foreground);
   background: var(--dsw-alias-state-error-primary);
   border: none;
   cursor: pointer;
@@ -527,7 +545,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .modalTitle {
   margin: 0;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .dialogHeader {
@@ -561,7 +579,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .fieldLabel {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -691,7 +709,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .slashMenuName {
   flex: none;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .slashMenuDesc {
@@ -742,7 +760,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   margin: 0;
   flex: 1;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 
@@ -761,10 +779,52 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 6px;
 }
 
+/* The collapsible auto-run section header: title + one-line state summary;
+   collapsed by default so the detail stays quiet. */
+.scheduleDisclosure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.scheduleChevron {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 140ms ease;
+}
+
+.scheduleChevron[data-open='false'] {
+  transform: rotate(-90deg);
+}
+
+.scheduleDisclosureTitle {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.scheduleSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
 .detailSection h4 {
   margin: 0;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--dsw-alias-label-tertiary);
   text-transform: none;
 }
@@ -903,7 +963,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .scheduleMode {
   padding: 4px 12px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-secondary);
   background: transparent;
   border: none;
@@ -1074,7 +1134,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .executionIndex {
   flex: none;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -1106,6 +1166,45 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-size: 12px;
   color: var(--dsw-alias-state-error-primary);
   overflow-wrap: anywhere;
+}
+
+/* The row's at-a-glance session dynamics: latest comment text + its state,
+   and the session-waiting hint. Quiet, one line, secondary to the row. */
+.executionDynamics {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.executionDynamicsLabel {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
+.executionDynamicsText {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.executionDynamicsCount {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
+/* A quiet explanatory line under a section title. */
+.detailHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .moveRow {
@@ -1290,7 +1389,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   white-space: nowrap;
@@ -1344,7 +1443,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: 1;
   min-width: 0;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 500;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1356,7 +1455,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .reviewBadge {
   flex: none;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -1400,7 +1499,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-width: 0;
   min-height: 0;
   border-left: 1px solid var(--dsw-alias-separator-primary);
-  background: var(--dsw-alias-bg-layer-2);
+  /* Same surface as the app base; the separator alone marks the rail. */
+  background: var(--dsw-alias-bg-base);
 }
 
 /* The rail head — context meter, session config, session facts: fixed and
@@ -1558,7 +1658,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .reviewMeterPercent {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -1645,7 +1745,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .reviewConfigTitle {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -1734,12 +1834,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 8px;
   margin: 0;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .reviewThreadCount {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
 }
@@ -1780,7 +1880,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 /* A slash-command comment round: the leading slash renders in the business
    accent so a command reads as a command, not a plain sentence. */
 .reviewCommentCommand {
-  font-weight: 700;
+  font-weight: 500;
   color: var(--dsw-alias-state-business-primary);
 }
 
@@ -1822,27 +1922,39 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 /* The sticky "Latest" affordance inside a scroll region: shown only while
-   the user has scrolled away from the bottom; one click returns. */
+   the user has scrolled away from the bottom; one click returns. Right-
+   aligned with a compact squared capsule (matching the board's button
+   radius) so it never sits over the middle of the content. */
 .reviewJumpLatest {
   position: sticky;
   bottom: 8px;
-  align-self: center;
-  margin-top: 8px;
+  align-self: flex-end;
+  margin: 8px 6px 0 0;
   flex: none;
-  padding: 5px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
   font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
   color: var(--dsw-alias-label-secondary);
   background: var(--dsw-alias-bg-layer-2);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
+  border-radius: 8px;
   cursor: pointer;
   box-shadow: var(--dsw-shadow-lv1);
   transition: background 120ms ease, border-color 120ms ease;
 }
 
+.reviewJumpLatestIcon {
+  flex: none;
+}
+
 .reviewJumpLatest:hover {
   background: var(--dsw-alias-interactive-bg-hover);
   border-color: var(--dsw-alias-border-l3);
+  color: var(--dsw-alias-label-primary);
 }
 
 /* The composer, pinned at the rail's bottom: sending a comment never

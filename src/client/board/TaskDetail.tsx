@@ -20,6 +20,7 @@ import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.
 import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { STATUS_KEY } from './status.ts'
+import { commentsOf, commentKindOf, commentStateKey, type CommentView } from './comment-thread.ts'
 
 /** Execution outcome → locale key. */
 const RESULT_KEY: Record<NonNullable<ExecutionRecord['result']>, TaskBoardKey> = {
@@ -52,21 +53,30 @@ function pausedLabelOf(status: 'backlog' | 'review' | 'done'): TaskBoardKey {
   return 'detail.schedule.paused.backlog'
 }
 
-/** One execution-history row: sequence, outcome, exact start/end times.
- *  Clicking the row opens the review page (review the conversation and
- *  comment to continue it); the native "view session" jump stays on the
- *  row. Re-running is one action on the detail footer — it always starts a
- *  fresh round with the task's current prompt, so rows carry no rerun
- *  button (a row's "rerun" would be ambiguous next to comments). */
-function ExecutionRow({ execution, index, onReview, onOpen }: {
+/** One execution-history row: sequence, outcome, exact start/end times,
+ *  plus the session's at-a-glance dynamics (its own latest comment with its
+ *  state, and whether the session waits on the user). Clicking the row opens
+ *  the review page (review the conversation and comment to continue it); the
+ *  native "view session" jump stays on the row. Re-running is one action on
+ *  the detail footer — it always starts a fresh round with the task's
+ *  current prompt, so rows carry no rerun button (a row's "rerun" would be
+ *  ambiguous next to comments). */
+function ExecutionRow({ execution, index, dynamics, waitingKind, onReview, onOpen }: {
   execution: ExecutionRecord
   /** 1-based execution sequence (comment rounds are not part of the list). */
   index: number
+  /** The execution's own comment rounds (oldest first; empty = no comments). */
+  dynamics: readonly CommentView[]
+  /** The session's pending-interaction kind when it waits on the user. */
+  waitingKind: string | undefined
   onReview: () => void
   onOpen: (sessionId: string) => void
 }) {
   const result = execution.result
   const running = result === undefined
+  // The latest comment round: its text and live state, so the board reads
+  // what the session was last told without opening the review page.
+  const latest = dynamics.length > 0 ? dynamics[dynamics.length - 1] : undefined
   return (
     <li
       className={css.executionRow}
@@ -101,6 +111,22 @@ function ExecutionRow({ execution, index, onReview, onOpen }: {
           <> · {t('detail.duration', { d: formatDuration(execution.endedAt - execution.startedAt) })}</>
         )}
       </span>
+      {latest !== undefined && (
+        <span className={css.executionDynamics}>
+          <span className={css.executionDynamicsLabel}>{t('detail.rowComment')}</span>
+          <span className={css.executionDynamicsText} title={latest.round.comment}>{latest.round.comment}</span>
+          <Chip kind={commentKindOf(latest.state)}>{t(commentStateKey(latest.state))}</Chip>
+          {dynamics.length > 1 && (
+            <span className={css.executionDynamicsCount}>{t('detail.rowCommentCount', { n: String(dynamics.length) })}</span>
+          )}
+        </span>
+      )}
+      {waitingKind !== undefined && (
+        <span className={css.executionDynamics}>
+          <Chip kind="warn" fill={false}>{t('review.waiting')}</Chip>
+          <span className={css.executionDynamicsText}>{t(`waiting.${waitingKind}` as 'waiting.approval')}</span>
+        </span>
+      )}
       {execution.error !== undefined && execution.error !== '' && (
         <span className={css.executionError}>{execution.error}</span>
       )}
@@ -260,9 +286,29 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
       : new Date(nextRunAt).toLocaleString()
   const lastLabel = lastTriggeredAt === undefined ? '—' : new Date(lastTriggeredAt).toLocaleString()
 
+  // Collapsed by default: the detail stays quiet, one summary line shows the
+  // rule's state; expanding reveals the full editor.
+  const [open, setOpen] = useState(false)
+  const summary = !enabled
+    ? t('detail.schedule.off')
+    : mode === 'cron'
+      ? `${t('detail.schedule.mode.cron')} · ${nextLabel}`
+      : t('detail.schedule.mode.chain')
+
   return (
     <section className={css.detailSection}>
-      <h4>{t('detail.schedule')}</h4>
+      <button
+        type="button"
+        className={css.scheduleDisclosure}
+        aria-expanded={open}
+        onClick={() => { setOpen(!open) }}
+      >
+        <span className={css.scheduleChevron} data-open={open} aria-hidden="true">▾</span>
+        <span className={css.scheduleDisclosureTitle}>{t('detail.schedule')}</span>
+        <span className={css.scheduleSummary}>{summary}</span>
+      </button>
+      {open && (
+        <>
       <label className={css.scheduleToggle}>
         <input
           type="checkbox"
@@ -396,6 +442,8 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
           store={presetStore}
           onClose={closePresets}
         />
+      )}
+        </>
       )}
     </section>
   )
@@ -544,10 +592,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
 
           <section className={css.detailSection}>
             <h4>{t('detail.execution')}</h4>
+            <p className={css.detailHint}>{t('detail.executionHint')}</p>
             {(() => {
               // Comment continuation rounds are not part of the execution
               // history list — they live in the review page's comment thread.
               const runs = plainRunsOf(current)
+              const cruiseOn = controller.getSnapshot().cruise.enabled
               if (runs.length === 0) return <p className={css.detailText}>{t('detail.noExecution')}</p>
               return (
                 <ul className={css.executionList}>
@@ -556,6 +606,8 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                       key={execution.id}
                       execution={execution}
                       index={runs.length - reversedIndex}
+                      dynamics={commentsOf(current, execution, cruiseOn)}
+                      waitingKind={controller.pendingInteractionOf(execution.sessionId)}
                       onReview={() => { setReviewExecution(execution) }}
                       onOpen={sessionId => { controller.openSession(sessionId) }}
                     />
