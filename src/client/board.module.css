@@ -64,10 +64,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-primary);
 }
 
-.entry[data-active] {
-  background: var(--dsw-specific-sidebar-nav-item-active);
-}
-
 .entryIcon {
   display: inline-flex;
   align-items: center;
@@ -1155,6 +1151,27 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   text-decoration: underline;
 }
 
+/* Prominent "处理" button when session is waiting for user action */
+.executionHandle {
+  flex: none;
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-state-warn-primary);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease;
+}
+
+.executionHandle:hover {
+  background: var(--dsw-alias-state-warn-primary-hover, var(--dsw-alias-state-warn-primary));
+  filter: brightness(1.1);
+}
+
 .executionTimes {
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
@@ -1332,11 +1349,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .iconButton:active:not(:disabled),
 .executionOpen:active:not(:disabled) {
   transform: translateY(1px);
-}
-
-/* --- entry row (sidebar) states --- */
-.entry[data-active]:hover {
-  background: var(--dsw-specific-sidebar-nav-item-active);
 }
 
 /* --- guarded hover for the remaining icon/link buttons (defensive: never

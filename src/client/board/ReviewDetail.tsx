@@ -32,7 +32,7 @@
  * this page never duplicates the full conversation view.
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import type { BoardController, SessionModelChoice, SessionModelGroup, TranscriptEventShape, TranscriptProjectionsShape } from '../../core/controller.ts'
+import type { BoardController, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { plainRunsOf, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
@@ -40,9 +40,10 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
-import { foldTranscript, sumUsage, type TranscriptLine } from './review-transcript.ts'
+import { sumUsage } from './review-transcript.ts'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { commentsOf, commentKindOf, commentStateKey, queuePositionOf, type CommentViewState } from './comment-thread.ts'
+import { JumpToLatest, NEAR_BOTTOM_PX, useTranscriptTail } from './use-transcript.tsx'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
@@ -77,27 +78,6 @@ export const TranscriptRow = memo(function TranscriptRow(props:
   )
 })
 
-/** How close to the bottom a scroll position counts as "at the latest". */
-const NEAR_BOTTOM_PX = 24
-
-/**
- * The sticky "滑到最新" affordance shown in a scroll region (transcript or
- * comment thread) when the user has scrolled away from the bottom: one click
- * returns to the latest output. Hidden while the region is at the bottom,
- * where new content already auto-follows.
- */
-function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: () => void }) {
-  if (atBottom) return null
-  return (
-    <button type="button" className={css.reviewJumpLatest} onClick={onJump}>
-      <svg className={css.reviewJumpLatestIcon} viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3 9.5 8 4.5 13 9.5" />
-      </svg>
-      {t('review.jumpLatest')}
-    </button>
-  )
-}
-
 /** The chip label of a comment display state ("排队中 · 第 N 位" uses the task-level queue position). */
 function commentLabel(state: CommentViewState, position: number): string {
   return state === 'queued'
@@ -125,8 +105,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const comments = commentsOf(current, execution, cruiseOn)
   const sessionConfig = controller.sessionConfig()
 
-  const [lines, setLines] = useState<readonly TranscriptLine[] | undefined>(undefined)
-  const [transcriptError, setTranscriptError] = useState(false)
   // Native projection baseline (context pressure / breakdown) from the
   // history tail page — the source of the context meter below.
   const [projections, setProjections] = useState<TranscriptProjectionsShape | undefined>(undefined)
@@ -138,21 +116,32 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const [permissionRows, setPermissionRows] = useState<readonly { id: string; name?: string; description?: string }[] | undefined>(undefined)
   const [draft, setDraft] = useState('')
   const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
-  // The last observed transcript watermark (the tail event's seq): the light
-  // poll only re-renders when new events actually arrived, so an idle
-  // session costs nothing and a busy one re-renders only on real progress.
-  const watermarkRef = useRef<number | undefined>(undefined)
-  // Both scroll regions (conversation + comment list) auto-follow their
-  // latest output while the user is at the bottom; scrolling up pauses the
-  // follow and shows a "滑到最新" button (`JumpToLatest`) to return.
-  const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
-  const [transcriptAtBottom, setTranscriptAtBottom] = useState(true)
+  // The comment thread auto-follows its latest round (fingerprint-gated).
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const [threadAtBottom, setThreadAtBottom] = useState(true)
   // The comment-thread change fingerprint (id+state of every round): the
   // thread follow fires only on real comment changes — new saves, state
   // transitions — never on unrelated re-renders from the light poll.
   const threadFingerprint = comments.map(view => `${view.round.id}:${view.state}`).join('|')
+
+  // The conversation tail: shared transcript state (load / watermark-gated
+  // poll / auto-follow / 滑到最新) — same mechanism as the refinement panel.
+  // The review page additionally reads the native projections riding the
+  // tail page for its context meter.
+  const {
+    lines,
+    error: transcriptError,
+    atBottom: transcriptAtBottom,
+    scrollRef: transcriptScrollRef,
+    onScroll: onTranscriptScroll,
+    jumpToBottom: jumpTranscript,
+    reload: reloadTranscript,
+  } = useTranscriptTail(
+    controller,
+    sessionId,
+    current.executions.length,
+    (result) => { setProjections(result.projections) },
+  )
 
   // The native permission-preset directory for the permission switcher
   // (same catalog as the new-task form; absent = no switcher).
@@ -165,86 +154,28 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     return () => { alive = false }
   }, [controller])
 
-  /** The transcript watermark of a loaded result (tail seq; 0 when empty). */
-  const watermarkOf = (result: { events: readonly TranscriptEventShape[] }): number => {
-    const tail = result.events[result.events.length - 1]
-    return tail?.seq ?? result.events.length
-  }
-
-  /** Full reload: transcript + session panel (open, task changes, manual). */
-  const reload = useCallback((): void => {
-    if (sessionId === undefined) return
-    void controller.loadTranscript(sessionId).then(result => {
-      if (result === undefined) setTranscriptError(true)
+  /** Reload the live session panel (model selection + catalog). */
+  const reloadPanel = useCallback((): void => {
+    if (sessionId === undefined || sessionConfig === undefined) return
+    void sessionConfig.readModels(sessionId).then(result => {
+      if (result === undefined) setConfigUnavailable(true)
       else {
-        setTranscriptError(false)
-        watermarkRef.current = watermarkOf(result)
-        setLines(foldTranscript(result.events))
-        setProjections(result.projections)
+        setConfigUnavailable(false)
+        setSessionModels(result)
       }
     })
-    if (sessionConfig !== undefined) {
-      void sessionConfig.readModels(sessionId).then(result => {
-        if (result === undefined) setConfigUnavailable(true)
-        else {
-          setConfigUnavailable(false)
-          setSessionModels(result)
-        }
-      })
-    }
-  }, [controller, sessionId, sessionConfig])
+  }, [sessionId, sessionConfig])
 
-  /** Light sync poll: refetch the transcript tail and re-render only when
-   *  the watermark moved (new events). Never touches the session panel. */
-  const poll = useCallback((): void => {
-    if (sessionId === undefined) return
-    void controller.loadTranscript(sessionId).then(result => {
-      if (result === undefined) return
-      if (watermarkRef.current === watermarkOf(result)) return
-      watermarkRef.current = watermarkOf(result)
-      setTranscriptError(false)
-      setLines(foldTranscript(result.events))
-      setProjections(result.projections)
-    })
-  }, [controller, sessionId])
+  /** Full refresh (manual 刷新 / after a config change): transcript +
+   *  session panel. */
+  const reload = useCallback((): void => {
+    reloadTranscript()
+    reloadPanel()
+  }, [reloadTranscript, reloadPanel])
 
-  // Load on open + whenever the task's run history changes (a comment
-  // injected or settled) — a full reload.
-  useEffect(() => { reload() }, [reload, current.executions.length, current.status])
-  // Light poll at 3s while the panel is open; paused while the tab is
-  // hidden (the native rhythm), with an immediate catch-up on return.
-  useEffect(() => {
-    const timer = setInterval(poll, 3_000)
-    const onVisibility = (): void => { if (!document.hidden) poll() }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      clearInterval(timer)
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
-  }, [poll])
-
-  // Follow new conversation output: at the bottom, new lines scroll the
-  // transcript down with the reply — no manual dragging while a comment
-  // continuation streams. A deliberate scroll-up pauses the follow until
-  // the user returns to the bottom (or clicks the jump button).
-  useEffect(() => {
-    const element = transcriptScrollRef.current
-    if (element === null || !transcriptAtBottom) return
-    element.scrollTop = element.scrollHeight
-  }, [lines, transcriptAtBottom])
-
-  const onTranscriptScroll = (): void => {
-    const element = transcriptScrollRef.current
-    if (element === null) return
-    setTranscriptAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM_PX)
-  }
-
-  const jumpTranscript = (): void => {
-    const element = transcriptScrollRef.current
-    if (element === null) return
-    element.scrollTop = element.scrollHeight
-    setTranscriptAtBottom(true)
-  }
+  // Load the session panel on open + whenever the task's run history
+  // changes (a comment injected or settled) — a full panel refresh.
+  useEffect(() => { reloadPanel() }, [reloadPanel, current.executions.length, current.status])
 
   // The same follow for the comment list: new rounds and state transitions
   // scroll it to the newest comment while at the bottom.

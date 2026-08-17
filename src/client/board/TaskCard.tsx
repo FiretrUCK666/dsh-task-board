@@ -59,12 +59,16 @@ export function formatDuration(ms: number): string {
 }
 
 /** One card in a column. */
-export function TaskCard({ task, workspaceTitleOf, waiting, onClick }: {
+export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendingTitle, onClick }: {
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
   /** The open run's session is blocked on the user (approval / plan review / question). */
   waiting?: PendingInteractionKind
+  /** How many sessions of this task are waiting on the user (executions + refine). */
+  pendingCount: number
+  /** Tooltip detail listing which execution/session waits on what. */
+  pendingTitle: string
   onClick: () => void
 }) {
   const [dragging, setDragging] = useState(false)
@@ -143,6 +147,11 @@ export function TaskCard({ task, workspaceTitleOf, waiting, onClick }: {
             {refining(task) && (
               <Chip kind="warn" fill={false} title={t('card.refiningTitle')}>
                 {t('card.refining')}
+              </Chip>
+            )}
+            {pendingCount > 0 && (
+              <Chip kind="warn" fill={false} title={pendingTitle}>
+                {t('card.pending')} {pendingCount}
               </Chip>
             )}
             {running ? (

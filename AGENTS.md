@@ -281,6 +281,37 @@ session 缺失则不显示）——别执行的评论各归各页，绝不混入
 调度器按任务 FIFO 注入评论，`queuePositionOf` 在整个任务的未注入轮次里算位
 （本页筛子外的他执行排队评论也占位）；执行序号统一走 `plainRunsOf(task)`
 （tasks.ts，过滤 comment 轮的单一编号源，TaskDetail 列表与评论页头部共用）。
+
+**会话显示状态派生（session-display.ts，纯函数）**：执行记录行的状态/时间/待处理
+计数全部从任务的执行列表派生，不再依赖单条执行的 settled 状态。`sessionDisplay`
+归集所有属于该会话的轮次（`sessionId === execution.sessionId` 或
+`parentExecutionId === execution.id`），按优先级判定状态：waiting（有 open 轮次 +
+pendingInteractionOf）> running（有 open 轮次）> latest settled 状态。`sessionTimes`
+计算会话时间范围：开始 = 最早轮次的 startedAt，结束 = 最晚 settled 轮次的 endedAt
+（会话开放时 undefined），耗时 = 结束 - 开始。`taskPendingCount` 统计任务级待处理
+会话数（所有执行会话 + refine 会话的 waiting 汇总），用于任务卡片徽章显示。
+
+**任务卡片待处理提醒（TaskCard 徽章扩展）**：任务卡片根据 `taskPendingCount` 显示
+「待处理 N」徽章，与「运行中」chip 共存。running + pendingCount > 0 时，运行中 chip
+显示「待处理 N · kind」；running + pendingCount === 0 时显示「运行中 · 第 N 次」；
+非 running + pendingCount > 0（如 refine 等待）时显示独立「待处理 N」徽章。徽章的
+tooltip 列出具体哪个执行等待什么（第 M 次执行：问题/审批/plan-review；需求完善：问题）。
+
+**共享 transcript tail 组件（use-transcript.tsx + TranscriptTail.tsx）**：`useTranscriptTail`
+hook 封装加载/轮询/跟随/跳转逻辑：加载 session 的最近历史、轻轮询（3s 水位门控，
+空闲会话零成本）、贴底跟随（距底 < 24px 时新内容自动滚下）、上翻暂停并显示「滑到最新」
+按钮。`TranscriptTail` 组件封装渲染逻辑（滚动容器 + transcript 行 + JumpToLatest 按钮），
+供评论页和需求完善面板共享。`JumpToLatest` 按钮使用向下箭头 SVG（指向最新内容方向），
+粘性定位在滚动区底部右侧。所有会话展示面（评论页、完善面板）共享同一套机制，行为一致。
+
+**执行记录行状态同步（ExecutionRow 重构）**：执行行使用 `sessionDisplay` 显示会话
+实时状态（running/waiting/succeeded/failed/cancelled），不再只显示原始执行的 settled
+状态。时间显示使用 `sessionTimes`，反映会话的最新活动（评论/refine 轮次会更新结束时间）。
+等待状态时显示显眼的「处理 →」按钮（`executionHandle` 样式，amber 色背景），动态行
+减负：只在会话活跃时显示信息（running/waiting），已完成的执行行简洁（不显示「成功」等
+芯片的重复信息）。等待提醒强化：整行高亮（`data-waiting='true'`），显眼的「处理」按钮
+直接跳转到原生会话处理等待项。
+
 **两侧自动跟随 + 滑到最新**：对话区与评论列表各自贴底跟随（距底 < 24px），
 上翻阅读时暂停并在滚动区内显示「滑到最新」粘性小按钮（`.reviewJumpLatest`），
 点击回底恢复跟随；评论列表跟随以逐条 id+state 指纹为依赖，只在评论真实变化时触发。
@@ -301,6 +332,12 @@ API（DSH 更新工具自动跟随）。交互闭环在板内：AI 提问时 `pe
 （`settleRefine`）、不触发 chain（`maybeContinueChain` 跳过 refine 轮）、计入
 `hasOpenRun`（完善中禁止再启动正式执行）；`plainRunsOf` 排除 refine 轮（执行记录
 列表与评论线程都不含完善轮次）。
+
+**需求完善面板 UX 重设计（RefineSection 重构布局）**：完善面板采用新布局：标题栏
+（状态 + 轮次数 + 查看会话按钮）→ 共享 transcript tail（自动跟随 + 滑到最新，最多显示
+12 行）→ 回答栏（输入框 flex:1 + 发送按钮 flex:none，右对齐）→ 应用操作栏（独占一行）。
+使用共享的 `useTranscriptTail` hook 管理对话状态，从 lines 中提取最新 assistant 消息
+作为「应用到任务」的候选文本。面板与评论页共享 transcript tail 机制，行为一致。
 
 ## 构建与验证（改完必跑，全绿才算完成）
 

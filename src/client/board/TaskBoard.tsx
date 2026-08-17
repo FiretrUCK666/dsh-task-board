@@ -14,7 +14,8 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
-import { COLUMNS, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { COLUMNS, plainRunsOf, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { taskPendingCount } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { insertionGapOf, type InsertionGap } from './drop-position.ts'
@@ -258,20 +259,37 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   />
                 )}
                 {tasks.map(task => {
-                  // The open run's session wait state (approval / plan-review
-                  // / question) — read live so cards reflect the moment a
-                  // session starts waiting (the controller notifies on
-                  // session-list changes).
+                  // The task's pending sessions (approval / plan-review /
+                  // question) across every execution + the refine session —
+                  // read live so cards reflect the moment a session starts
+                  // waiting (the controller notifies on session-list changes).
                   const latest = task.executions[task.executions.length - 1]
+                  const pending = taskPendingCount(task, sessionId => controller.pendingInteractionOf(sessionId))
                   const waiting = latest?.sessionId !== undefined
                     ? controller.pendingInteractionOf(latest.sessionId)
                     : undefined
+                  const pendingTitle = pending.items.length === 0
+                    ? ''
+                    : pending.items.map(item => {
+                        if (item.executionId !== undefined) {
+                          const index = plainRunsOf(task).findIndex(run => run.id === item.executionId) + 1
+                          return t('card.pendingItem', {
+                            n: String(index),
+                            kind: t(`waiting.${item.waitingKind}` as 'waiting.approval'),
+                          })
+                        }
+                        return t('card.pendingRefine', {
+                          kind: t(`waiting.${item.waitingKind}` as 'waiting.approval'),
+                        })
+                      }).join('；')
                   return (
                     <TaskCard
                       key={task.id}
                       task={task}
                       workspaceTitleOf={workspaceTitleOf}
                       waiting={waiting}
+                      pendingCount={pending.count}
+                      pendingTitle={pendingTitle}
                       onClick={() => { controller.openTask(task.id) }}
                     />
                   )

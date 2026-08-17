@@ -5,10 +5,11 @@
  * execution's session transcript.
  */
 import { useEffect, useState } from 'react'
-import type { BoardController } from '../../core/controller.ts'
+import type { BoardController, PendingInteractionKind } from '../../core/controller.ts'
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
@@ -21,7 +22,6 @@ import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { STATUS_KEY } from './status.ts'
-import { commentsOf, commentKindOf, commentStateKey, type CommentView } from './comment-thread.ts'
 
 /** Execution outcome → locale key. */
 const RESULT_KEY: Record<NonNullable<ExecutionRecord['result']>, TaskBoardKey> = {
@@ -54,6 +54,40 @@ function pausedLabelOf(status: 'backlog' | 'review' | 'done'): TaskBoardKey {
   return 'detail.schedule.paused.backlog'
 }
 
+/** Map session display state to chip kind. */
+function stateToChipKind(state: 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'): ChipKind {
+  switch (state) {
+    case 'running':
+    case 'waiting':
+      return 'warn'
+    case 'succeeded':
+      return 'success'
+    case 'failed':
+      return 'error'
+    case 'cancelled':
+      return 'muted'
+  }
+}
+
+/** Session state → locale key. */
+function sessionStateKey(state: 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled', waitingKind: PendingInteractionKind | undefined): TaskBoardKey {
+  if (state === 'waiting' && waitingKind !== undefined) {
+    return `waiting.${waitingKind}` as TaskBoardKey
+  }
+  switch (state) {
+    case 'running':
+      return 'detail.result.running'
+    case 'succeeded':
+      return 'detail.result.succeeded'
+    case 'failed':
+      return 'detail.result.failed'
+    case 'cancelled':
+      return 'detail.result.cancelled'
+    default:
+      return 'detail.result.running'
+  }
+}
+
 /** One execution-history row: sequence, outcome, exact start/end times,
  *  plus the session's at-a-glance dynamics (its own latest comment with its
  *  state, and whether the session waits on the user). Clicking the row opens
@@ -62,26 +96,26 @@ function pausedLabelOf(status: 'backlog' | 'review' | 'done'): TaskBoardKey {
  *  the detail footer — it always starts a fresh round with the task's
  *  current prompt, so rows carry no rerun button (a row's "rerun" would be
  *  ambiguous next to comments). */
-function ExecutionRow({ execution, index, dynamics, waitingKind, onReview, onOpen }: {
+function ExecutionRow({ execution, index, task, waitingKind, onReview, onOpen }: {
   execution: ExecutionRecord
   /** 1-based execution sequence (comment rounds are not part of the list). */
   index: number
-  /** The execution's own comment rounds (oldest first; empty = no comments). */
-  dynamics: readonly CommentView[]
+  /** The task owning this execution. */
+  task: TaskRecord
   /** The session's pending-interaction kind when it waits on the user. */
-  waitingKind: string | undefined
+  waitingKind: PendingInteractionKind | undefined
   onReview: () => void
   onOpen: (sessionId: string) => void
 }) {
-  const result = execution.result
-  const running = result === undefined
-  // The latest comment round: its text and live state, so the board reads
-  // what the session was last told without opening the review page.
-  const latest = dynamics.length > 0 ? dynamics[dynamics.length - 1] : undefined
+  const session = sessionDisplay(task, execution, waitingKind)
+  const times = sessionTimes(task, execution)
+  // Session is active if running or waiting.
+  const isActive = session.state === 'running' || session.state === 'waiting'
   return (
     <li
       className={css.executionRow}
-      data-result={result}
+      data-state={session.state}
+      data-waiting={session.state === 'waiting' ? 'true' : undefined}
       onClick={onReview}
       role="button"
       tabIndex={0}
@@ -89,43 +123,37 @@ function ExecutionRow({ execution, index, dynamics, waitingKind, onReview, onOpe
     >
       <div className={css.executionRowTop}>
         <span className={css.executionIndex}>{t('detail.executionNo', { n: String(index) })}</span>
-        <Chip kind={resultChipKind(result)}>
-          {running && <span className={css.spinner} aria-hidden="true" />}
-          {running ? t('detail.result.running') : t(RESULT_KEY[result as NonNullable<ExecutionRecord['result']>])}
+        <Chip kind={stateToChipKind(session.state)}>
+          {(session.state === 'running' || session.state === 'waiting') && <span className={css.spinner} aria-hidden="true" />}
+          {t(sessionStateKey(session.state, session.waitingKind))}
         </Chip>
         {execution.sessionId !== undefined && (
           <button
             type="button"
-            className={css.executionOpen}
+            className={session.state === 'waiting' ? css.executionHandle : css.executionOpen}
             onClick={event => { event.stopPropagation(); onOpen(execution.sessionId as string) }}
             title={execution.sessionId}
           >
-            {t('detail.viewSession')} →
+            {session.state === 'waiting' ? t('detail.handle') : t('detail.viewSession')} →
           </button>
         )}
       </div>
       <span className={css.executionTimes}>
-        {t('detail.executionStarted')} {formatDateTime(execution.startedAt)}
+        {t('detail.executionStarted')} {formatDateTime(times.startedAt)}
         {' · '}
-        {t('detail.executionEnded')} {execution.endedAt !== undefined ? formatDateTime(execution.endedAt) : '—'}
-        {execution.endedAt !== undefined && (
-          <> · {t('detail.duration', { d: formatDuration(execution.endedAt - execution.startedAt) })}</>
+        {t('detail.executionEnded')} {times.endedAt !== undefined ? formatDateTime(times.endedAt) : '—'}
+        {times.duration !== undefined && (
+          <> · {t('detail.duration', { d: formatDuration(times.duration) })}</>
         )}
       </span>
-      {latest !== undefined && (
+      {/* Only show dynamics when session is active (reduce clutter for settled executions). */}
+      {isActive && (
         <span className={css.executionDynamics}>
-          <span className={css.executionDynamicsLabel}>{t('detail.rowComment')}</span>
-          <span className={css.executionDynamicsText} title={latest.round.comment}>{latest.round.comment}</span>
-          <Chip kind={commentKindOf(latest.state)}>{t(commentStateKey(latest.state))}</Chip>
-          {dynamics.length > 1 && (
-            <span className={css.executionDynamicsCount}>{t('detail.rowCommentCount', { n: String(dynamics.length) })}</span>
-          )}
-        </span>
-      )}
-      {waitingKind !== undefined && (
-        <span className={css.executionDynamics}>
-          <Chip kind="warn" fill={false}>{t('review.waiting')}</Chip>
-          <span className={css.executionDynamicsText}>{t(`waiting.${waitingKind}` as 'waiting.approval')}</span>
+          <span className={css.executionDynamicsLabel}>
+            {session.state === 'waiting'
+              ? t('detail.handleHint', { kind: t(`waiting.${session.waitingKind}` as 'waiting.approval') })
+              : t('detail.sessionActive')}
+          </span>
         </span>
       )}
       {execution.error !== undefined && execution.error !== '' && (
@@ -602,7 +630,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
               // Comment continuation rounds are not part of the execution
               // history list — they live in the review page's comment thread.
               const runs = plainRunsOf(current)
-              const cruiseOn = controller.getSnapshot().cruise.enabled
               if (runs.length === 0) return <p className={css.detailText}>{t('detail.noExecution')}</p>
               return (
                 <ul className={css.executionList}>
@@ -611,7 +638,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                       key={execution.id}
                       execution={execution}
                       index={runs.length - reversedIndex}
-                      dynamics={commentsOf(current, execution, cruiseOn)}
+                      task={current}
                       waitingKind={controller.pendingInteractionOf(execution.sessionId)}
                       onReview={() => { setReviewExecution(execution) }}
                       onOpen={sessionId => { controller.openSession(sessionId) }}

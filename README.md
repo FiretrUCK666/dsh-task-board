@@ -93,6 +93,9 @@ src/core/scheduler.ts                                                 # 浏览�
 src/core/store.ts                                                     # 持久化（TaskStore 接口 + localStorage 实现）
 src/core/execution.ts                                                 # 真实执行服务（会话连接/prompt/结算观察）
 src/core/controller.ts                                                # 控制器（台账状态、视图状态、导航感知）
+src/core/session-display.ts                                           # 共享会话状态派生（执行行/卡片共用）
+src/client/board/use-transcript.tsx                                   # 共享 transcript tail hook（加载/轮询/跟随/跳转）
+src/client/board/TranscriptTail.tsx                                   # 共享 transcript tail 组件（评论页/完善面板共用）
 tests/*.spec.ts                                                       # 存储/状态流转/执行触发/cron/调度 + 设置路由与 scope 测试
 scripts/dsh-task-board.js                                             # 一键挂载/卸载/状态 CLI
 scripts/verify-standalone.mjs                                         # 独立插件静态校验门禁
@@ -115,6 +118,14 @@ scripts/verify-standalone.mjs                                         # 独立�
   为准——每次列表变化都对账 running 任务；结果判定依次取「列表缺失→已取消 / 仍在跑→等待 /
   对话快照可见→按 lastAgentError / 原始历史尾部→turn-error 节点证明失败 / 否则按成功」，
   对账幂等。
+- **共享会话显示模块**：`src/core/session-display.ts` 统一推导执行行与任务卡片的会话状态
+  （`sessionDisplay`）、时间范围（`sessionTimes`）、待处理计数（`taskPendingCount`）。
+  执行行状态不再读取原始执行记录，统一走这套推导；任务卡片徽章用 `taskPendingCount`
+  显示「待处理 N」徽章，与「运行中」chip 共存，tooltip 列出具体哪个执行等待什么。
+- **共享 transcript tail 组件**：`useTranscriptTail` hook 封装加载/轮询/跟随/跳转逻辑
+  （3 秒水位门控、贴底跟随、上翻暂停并显示「滑到最新」按钮）；`TranscriptTail` 组件封装
+  渲染逻辑（滚动容器 + transcript 行 + JumpToLatest 按钮）。评论页与完善面板共用同一套
+  机制，行为完全一致。
 - **设置走自建路由**：host 侧用 `registerSettingsRoute` 注册
   `/api/dsh-task-board/settings`，client 侧用 `RouteSettingsScope` 经该路由读写命名空间
   并维护快照，`CardForm` 通过最小 `SettingsScopeLike` 接口消费。
