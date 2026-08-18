@@ -337,13 +337,14 @@ transcript tail（≤12 行）→ 回答栏 → 应用操作栏。
 running/pendingInteraction）与 `workspaces.list`（sessionIds/archivedSessionIds）。板子已订阅
 sessions.list，新增订阅 workspaces.list → 新开会话/归档/改名**自动实时同步**；「同步」按钮 =
 `unhideTaskRows(sessions)`（清隐藏=获取全部未归档）。每行：标题、工作区名、实时状态 chip、
-查看会话、隐藏（`hidden.sessions`，非破坏）。拖拽：`wireSidebarDrag` 挂在侧边栏 root（DOM 级，
-同 sidebar-entry 基建）——原生文件夹行已可拖并打 `text/plain`，板子重打标为板内 MIME
-（`application/x-dsh-task-board-workspace|session`，不碰原生 text/plain、不与板内卡片拖拽
-冲突），并让会话行可拖。看板列与板底空白是 drop target → `createBoundTask`（标题取
-`boundSourceTitleOf`；落列：仅 backlog/todo 列语义，其余落 todo）。执行记录行与链接行都支持
-**非破坏隐藏**（`hidden.executions` 隐藏不重排）、`unbindTask` 解绑转回普通任务。
-`bind`/`hidden` 均为可选字段、store 轻归一化（畸形丢弃），旧数据零影响。
+查看会话、隐藏（`hidden.sessions`，非破坏）。**拖拽数据**：原生工作区浏览器对文件夹行与
+会话行都自带 `draggable` 并打 `text/plain`（文件夹 key=workspaceId、会话 node.id=sessionId，
+已在原生产物核实）；板子 drop 端用 `externalDragOf`（sidebar-drag.ts 纯函数）分类——先自有
+MIME，再判 `text/plain` 是否为本板任务 id（是则走原卡片拖拽），否则按 `externalKindOf`
+分类为 workspace/session 建卡；无 DOM 打标、无冲突。看板列与板底空白是 drop target →
+`createBoundTask`（标题取 `boundSourceTitleOf`；落列：仅 backlog/todo 列语义，其余落 todo）。
+执行记录行与链接行都支持**非破坏隐藏**（`hidden.executions` 隐藏不重排）、`unbindTask` 解绑
+转回普通任务。`bind`/`hidden` 均为可选字段、store 轻归一化（畸形丢弃），旧数据零影响。
 
 ## 构建与验证（改完必跑，全绿才算完成）
 

@@ -16,7 +16,6 @@
 import type { BoardController } from '../core/controller.ts'
 import { t } from './locales.ts'
 import css from './board.module.css'
-import { wireSidebarDrag } from './sidebar-drag.ts'
 
 /** Inline icon: a small kanban board (rect + two columns) — the plugin's own
  *  identity mark, kept at 14px to match the shell's nav-icon look. */
@@ -106,7 +105,6 @@ export function mountSidebarEntry(controller: BoardController): () => void {
   const entry = createEntry(controller)
   let root: HTMLElement | undefined
   let placed = false
-  let dragDisposer: (() => void) | undefined
 
   const tryPlace = (): void => {
     if (placed) return
@@ -115,9 +113,6 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     placed = placeEntry(root, entry)
     if (placed) {
       syncEntryWidth(entry, root)
-      // Sidebar-sourced drags (workspace folders + sessions) into the board:
-      // stamped onto the same sidebar root the entry manages, one disposer set.
-      dragDisposer ??= wireSidebarDrag(root, id => controller.externalKindOf(id))
       rootObserver.observe(root, { childList: true, subtree: true, attributes: true })
     }
   }
@@ -153,7 +148,6 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     waitObserver.disconnect()
     rootObserver.disconnect()
     unsubscribe()
-    dragDisposer?.()
     entry.remove()
   }
 }

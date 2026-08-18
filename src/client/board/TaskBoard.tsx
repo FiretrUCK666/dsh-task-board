@@ -24,7 +24,7 @@ import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { Button, Switch } from './ui.tsx'
-import { readSidebarDrag, type SidebarDrag } from '../sidebar-drag.ts'
+import { externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 
 /** Case-insensitive title/description match. */
 function matchesFilter(task: TaskRecord, filter: string): boolean {
@@ -64,6 +64,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // card-reorder affordances.
   const [dropAccept, setDropAccept] = useState<TaskStatus | undefined>(undefined)
   const clearAccept = (): void => setDropAccept(undefined)
+  /** Classify a drag as a sidebar drag (own MIME, else native text/plain). */
+  const externalOf = (event: React.DragEvent): SidebarDrag | undefined => externalDragOf(
+    event.dataTransfer,
+    id => snapshot.tasks.some(task => task.id === id),
+    id => controller.externalKindOf(id),
+  )
   const selected = selectedTaskOf(snapshot)
   const visible = snapshot.tasks.filter(task => matchesFilter(task, filter))
   const draggedTask = dragId !== undefined
@@ -131,7 +137,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
    */
   const handleDrop = (status: TaskStatus) => (event: React.DragEvent): void => {
     event.preventDefault()
-    const external = readSidebarDrag(event.dataTransfer)
+    const external = externalOf(event)
     if (external !== undefined) {
       event.stopPropagation()
       clearAccept()
@@ -168,10 +174,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     <div
       className={css.board}
       data-dsh-taskboard-board=""
-      onDragOver={event => { if (readSidebarDrag(event.dataTransfer) !== undefined) event.preventDefault() }}
+      onDragOver={event => { if (externalOf(event) !== undefined) event.preventDefault() }}
       onDragLeave={() => { clearAccept() }}
       onDrop={event => {
-        const external = readSidebarDrag(event.dataTransfer)
+        const external = externalOf(event)
         if (external !== undefined) {
           event.preventDefault()
           clearAccept()
@@ -241,7 +247,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 // An external sidebar drag (session/workspace) marks this
                 // column as the drop target; the board's own card drags keep
                 // the classic reorder/move feedback below.
-                if (readSidebarDrag(event.dataTransfer) !== undefined) {
+                if (externalOf(event) !== undefined) {
                   event.preventDefault()
                   if (dropGapRef.current !== undefined) {
                     dropGapRef.current = undefined
