@@ -316,8 +316,9 @@ session 缺失不显示），各执行评论各归各页；`queuePositionOf` 是
 图标小胶囊**（无文字，`title` 浮层）。评论页与完善面板共享同一机制。
 
 **执行记录行（ExecutionRow）**：状态/时间走 `sessionDisplay`/`sessionTimes` 实时派生；
-等待态显琥珀「处理 →」按钮跳原生会话；活跃行动态减负（已完成行简洁）；**未读行** =
-共用 `AttentionDot` + 内层呼吸柔晕（无边框、无平染，与卡片呼吸环同一注意力语法）。
+非等待态「查看会话」为共享 ghost 按钮（与链接行/AI 完善/评论页一致），等待态显琥珀
+「处理 →」按钮跳原生会话；活跃行动态减负（已完成行简洁）；**未读行** = 共用
+`AttentionDot` + 内层呼吸柔晕（无边框、无平染，与卡片呼吸环同一注意力语法）。
 
 **需求完善（backlog AI 调研闭环，refine.ts + controller）**：`startRefine` 启动 refine
 轮次（`ExecutionRecord.refine`），用任务绑定的完善会话（`TaskRecord.refineSessionId` 惰性
@@ -329,22 +330,42 @@ prompt（用户确认才应用）。结算 `settleRefine` 不动任务列、不�
 `plainRunsOf` 排除 refine 轮。面板布局：标题栏（状态+轮次数+查看会话）→ 共享
 transcript tail（≤12 行）→ 回答栏 → 应用操作栏。
 
-**链接会话（拖入建卡，linked-sessions.ts + sidebar-drag.ts）**：从侧边栏把一个**会话**或
-**整个工作区文件夹**拖进看板 → 创建带 `TaskRecord.bind`（`{kind:'session'|'workspace', id}`）
-的卡片；「链接会话」区与「执行记录」**正交并列**，是按需派生、不是副本——`deriveLinkedSessions`
-纯函数镜像原生分组规则（工作区 `items[].sessionIds` 按序 + `archivedSessionIds` 归档过滤 +
-`blank` 空白位跳过 + 用户 `hidden.sessions` 隐藏），数据来自 `sessions.list.byId`（title/cwd/
-running/pendingInteraction）与 `workspaces.list`（sessionIds/archivedSessionIds）。板子已订阅
-sessions.list，新增订阅 workspaces.list → 新开会话/归档/改名**自动实时同步**；「同步」按钮 =
-`unhideTaskRows(sessions)`（清隐藏=获取全部未归档）。每行：标题、工作区名、实时状态 chip、
-查看会话、隐藏（`hidden.sessions`，非破坏）。**拖拽数据**：原生工作区浏览器对文件夹行与
-会话行都自带 `draggable` 并打 `text/plain`（文件夹 key=workspaceId、会话 node.id=sessionId，
-已在原生产物核实）；板子 drop 端用 `externalDragOf`（sidebar-drag.ts 纯函数）分类——先自有
-MIME，再判 `text/plain` 是否为本板任务 id（是则走原卡片拖拽），否则按 `externalKindOf`
-分类为 workspace/session 建卡；无 DOM 打标、无冲突。看板列与板底空白是 drop target →
-`createBoundTask`（标题取 `boundSourceTitleOf`；落列：仅 backlog/todo 列语义，其余落 todo）。
-执行记录行与链接行都支持**非破坏隐藏**（`hidden.executions` 隐藏不重排）、`unbindTask` 解绑
-转回普通任务。`bind`/`hidden` 均为可选字段、store 轻归一化（畸形丢弃），旧数据零影响。
+**链接会话（拖入建卡，linked-sessions.ts + sidebar-drag.ts + TaskBoard.tsx）**：从侧边栏
+把一个**会话**或**整个工作区文件夹**拖进看板 → 创建带 `TaskRecord.bind`
+（`{kind:'session'|'workspace', id}`）的卡片；「链接会话」区与「执行记录」同列详情页、
+**正交并列**，是按需派生、不是副本——`deriveLinkedSessions` 纯函数镜像原生分组规则
+（工作区 `items[].sessionIds` 按序 + `archivedSessionIds` 归档过滤 + `blank` 空白位跳过 +
+用户 `hidden.sessions` 隐藏），数据来自 `sessions.list.byId`（title/cwd/running/
+pendingInteraction）与 `workspaces.list`（sessionIds/archivedSessionIds）。板子已订阅
+sessions.list 与 workspaces.list → 新开会话/归档/改名**自动实时同步**，因此没有「同步」
+按钮；只有存在 `hidden.sessions` 时才显示「恢复全部已隐藏」（`hasHiddenRows` 判定 +
+`unhideTaskRows(sessions)`）——无隐藏即无按钮，杜绝死按钮。每行：标题、工作区名、实时
+状态 chip、查看会话、隐藏（非破坏）；**整行可点** → 打开 `SessionDetail` 会话详情面板。
+**拖拽数据**：原生工作区浏览器对文件夹行与会话行都自带 `draggable` 并打 `text/plain`
+（文件夹 key=workspaceId、会话 node.id=sessionId，已在原生产物核实）。dragover 阶段读
+不到 payload（drag data store 保护模式，getData 返回空），故板子用 **latch 机制**：
+board 根 `onDragEnter` 按 `dataTransfer.types`（`candidateExternalDrag` 纯函数：自有 MIME
+或 text/plain）且 `dragSourceRef` 未置位（板内卡片拖拽在 dragstart 同步置位，ref 先于
+任何 dragenter）时 latch 为外部拖拽；列高亮与 drop 都由 latch 驱动；payload 内容只在
+drop 时用 `externalDragOf`（自有 MIME 优先，其次 text/plain 判本板任务 id 排除卡片拖拽，
+再按 `externalKindOf` 分类）读取。全部拖拽瞬态（高亮/落点/latch）由 `clearDrag` 全量
+复位，并有 window 级 `drop`/`dragend` 监听兜底（窗口外松手、Escape、源元素被移除都不
+留残留）；列级 dragleave 不再清外部高亮（消除跨子元素抖动）。落列：**落哪列建哪列**
+（`landingStatusOf` 五列全尊重；板底空白落 todo）。执行记录行与链接行都支持**非破坏
+隐藏**（`hidden.executions` 隐藏不重排）、`unbindTask` 解绑转回普通任务。`bind`/`hidden`
+均为可选字段、store 轻归一化（畸形丢弃），旧数据零影响。
+
+**统一面板外壳（SessionFrame.tsx）**：执行评论页（`ReviewDetail`）与链接会话详情
+（`SessionDetail`）共用同一**纯布局外壳**——backdrop + 头部（标题 + 类型徽章 + 动作槽）+
+左对话右 rail 双栏；执行族业务（context meter、实时模型/权限配置、评论线程 + composer、
+注入排队态）留在 ReviewDetail 内部，绝不放进外壳，杜绝语义泄漏。`SessionDetail` **只读
+面板**：实时 transcript（同一 `useTranscriptTail`）+ 会话事实 + 实时状态 + 「查看会话/
+隐藏/解绑」；**没有留言框**——链接会话是原生实时视图，留言不能（也不会）驱动任务，
+面板用 `detail.sessionReadonly` 明说边界。两族行文法统一（状态 chip + ghost「查看会话」
++ rowHide 隐藏 + 时间格式；执行行非等待态「查看会话」同为 ghost），唯一强差在执行行：
+琥珀「处理」等待键 + 未读 AttentionDot + 评论摘要——「可操作 rich / 只读 sparse」的重
+量差本身就是防误驱动最强的区分。链接行不加行级未读（viewedAt 为任务级，加行级需扩数据
+模型，收益低；实时 chip 已表达「有更新」）。
 
 ## 构建与验证（改完必跑，全绿才算完成）
 

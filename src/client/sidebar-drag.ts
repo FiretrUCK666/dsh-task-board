@@ -22,6 +22,19 @@ export const WORKSPACE_MIME = 'application/x-dsh-task-board-workspace'
 /** A sidebar-sourced drag read off a drop event. */
 export type SidebarDrag = { kind: 'session'; id: string } | { kind: 'workspace'; id: string }
 
+/**
+ * Whether a drag's advertised types mark it as a sidebar-drag candidate.
+ * Types are the ONLY reliable signal during dragover/dragenter — the drag
+ * data store is in protected mode there and `getData` returns empty in
+ * Chrome — so the board latches the candidate from `dataTransfer.types`
+ * and reads the actual payload (`externalDragOf`) only at drop time. The
+ * board's own card drags also carry `text/plain`, so the caller must
+ * exclude them (its drag-source ref) before latching.
+ */
+export function candidateExternalDrag(types: readonly string[]): boolean {
+  return types.includes(SESSION_MIME) || types.includes(WORKSPACE_MIME) || types.includes('text/plain')
+}
+
 /** Read a board-stamped sidebar drag from a drop's dataTransfer (own MIME only). */
 export function readSidebarDrag(data: { getData: (type: string) => string }): SidebarDrag | undefined {
   const sessionId = data.getData(SESSION_MIME)

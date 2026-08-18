@@ -44,13 +44,15 @@ import { sumUsage } from './review-transcript.ts'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { commentsOf, commentKindOf, commentStateKey, queuePositionOf, type CommentViewState } from './comment-thread.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
-import { Button, Icon, Notice } from './ui.tsx'
+import { SessionFrame } from './SessionFrame.tsx'
+import { Button, Notice } from './ui.tsx'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
 
-/** The session's real workspace root → short display label (last path segment). */
-function workspaceLabelOf(cwd: string): string {
+/** The session's real workspace root → short display label (last path
+ *  segment). Shared with the linked-session panel. */
+export function workspaceLabelOf(cwd: string): string {
   const segment = cwd.split(/[\\/]+/).filter(Boolean).pop()
   return segment !== undefined && segment !== '' ? segment : cwd
 }
@@ -309,45 +311,28 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     : undefined
 
   return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <div className={css.review} role="dialog" aria-label={t('review.title')}>
-        <header className={css.reviewHeader}>
-          <div className={css.reviewTitleWrap}>
-            <h2 className={css.reviewTitle}>{current.title}</h2>
-            <span className={css.reviewBadge}>
-              {t('detail.executionNo', { n: String(runIndex) })}
-            </span>
-          </div>
-          <div className={css.reviewActions}>
-            <Button onClick={reload} title={t('review.refresh')}>
-              {t('review.refresh')}
+    <SessionFrame
+      title={current.title}
+      badge={t('detail.executionNo', { n: String(runIndex) })}
+      ariaLabel={t('review.title')}
+      actions={
+        <>
+          <Button onClick={reload} title={t('review.refresh')}>
+            {t('review.refresh')}
+          </Button>
+          {sessionId !== undefined && (
+            <Button onClick={() => { controller.openSession(sessionId) }}>
+              {t('detail.viewSession')} →
             </Button>
-            {sessionId !== undefined && (
-              <Button onClick={() => { controller.openSession(sessionId) }}>
-                {t('detail.viewSession')} →
-              </Button>
-            )}
-            <button
-              type="button"
-              className={css.iconButton}
-              aria-label={t('detail.close')}
-              onClick={onClose}
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-        </header>
-
-        <div className={css.reviewBody}>
-          {/* Left column: the conversation — full-height, its own scrollbar.
-              The rail on the right holds everything else, so a long
-              transcript never competes with config or comments. */}
-          <div className={css.reviewMain}>
-            <div
-              className={css.reviewTranscriptScroll}
-              ref={transcriptScrollRef}
-              onScroll={onTranscriptScroll}
-            >
+          )}
+        </>
+      }
+      main={
+        <div
+          className={css.reviewTranscriptScroll}
+          ref={transcriptScrollRef}
+          onScroll={onTranscriptScroll}
+        >
             <div className={css.reviewOutcome}>
               <Chip kind={execution.result === 'failed' ? 'error' : execution.result === 'succeeded' ? 'success' : 'muted'}>
                 {execution.result === undefined ? t('detail.result.running') : t(`detail.result.${execution.result}` as 'detail.result.succeeded')}
@@ -395,14 +380,14 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
 
             {/* The context meter note: rendered in the right rail below. */}
             </div>
-          </div>
-
+      }
+      rail={
+        <>
           {/* Right rail: context meter, session config and session facts in a
               fixed head — always visible no matter how long the comment
               thread grows — then the comment thread in its own scroll region,
               and the composer pinned at the rail's bottom. */}
-          <aside className={css.reviewRail}>
-            <div className={css.reviewRailHead}>
+          <div className={css.reviewRailHead}>
           {sessionId !== undefined && meterSegments !== undefined && occupancy !== undefined && (
             <div className={css.reviewContextMeter} aria-label={t('review.meterOf', { percent: `${occupancy.percent}%` })}>
               <div className={css.reviewMeterHead}>
@@ -639,9 +624,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 )}
               </div>
             </div>
-          </aside>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+      onClose={onClose}
+    />
   )
 }

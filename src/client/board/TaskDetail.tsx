@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import type { BoardController, PendingInteractionKind } from '../../core/controller.ts'
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, hasHiddenRows, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { executionUnviewed, sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
@@ -21,6 +21,7 @@ import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.
 import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
+import { SessionDetail } from './SessionDetail.tsx'
 import { commentsOf } from './comment-thread.ts'
 import { AttentionDot, Button, Icon, Section, Switch } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
@@ -127,24 +128,38 @@ function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview,
           {(session.state === 'running' || session.state === 'waiting') && <span className={css.spinner} aria-hidden="true" />}
           {t(sessionStateKey(session.state, session.waitingKind))}
         </Chip>
-        {execution.sessionId !== undefined && (
+        {/* The row's actions share the board's ghost grammar with every
+            other "查看会话" surface (linked rows, refinement, review page);
+            only the waiting state keeps its amber attention "处理" button. */}
+        <span className={css.executionRowActions}>
+          {execution.sessionId !== undefined && (
+            session.state === 'waiting' ? (
+              <button
+                type="button"
+                className={css.executionHandle}
+                onClick={event => { event.stopPropagation(); onOpen(execution.sessionId as string) }}
+                title={execution.sessionId}
+              >
+                {t('detail.handle')} →
+              </button>
+            ) : (
+              <Button
+                onClick={event => { event.stopPropagation(); onOpen(execution.sessionId as string) }}
+                title={execution.sessionId}
+              >
+                {t('detail.viewSession')} →
+              </Button>
+            )
+          )}
           <button
             type="button"
-            className={session.state === 'waiting' ? css.executionHandle : css.executionOpen}
-            onClick={event => { event.stopPropagation(); onOpen(execution.sessionId as string) }}
-            title={execution.sessionId}
+            className={css.rowHide}
+            onClick={event => { event.stopPropagation(); onHide() }}
+            title={t('detail.hideRow')}
           >
-            {session.state === 'waiting' ? t('detail.handle') : t('detail.viewSession')} →
+            {t('detail.hide')}
           </button>
-        )}
-        <button
-          type="button"
-          className={css.rowHide}
-          onClick={event => { event.stopPropagation(); onHide() }}
-          title={t('detail.hideRow')}
-        >
-          {t('detail.hide')}
-        </button>
+        </span>
       </div>
       <span className={css.executionTimes}>
         {t('detail.executionStarted')} {formatDateTime(times.startedAt)}
@@ -180,11 +195,15 @@ function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview,
   )
 }
 
-/** One linked-session row + its live status chip, rendered in the linked section. */
-function LinkedRow({ row, task, controller }: {
+/** One linked-session row + its live status chip, rendered in the linked
+ *  section. The whole row opens the session's detail panel (same shell as
+ *  the execution review page, read-only); the row's own actions stay on the
+ *  row and never bubble into the click. */
+function LinkedRow({ row, task, controller, onOpen }: {
   row: import('../../core/linked-sessions.ts').LinkedSessionRow
   task: TaskRecord
   controller: BoardController
+  onOpen: () => void
 }) {
   const waiting = row.pendingInteraction
   const stateChip = waiting !== undefined
@@ -195,7 +214,13 @@ function LinkedRow({ row, task, controller }: {
         ? { kind: 'success' as const, label: t('detail.linkedDone') }
         : undefined
   return (
-    <li className={css.linkedRow}>
+    <li
+      className={css.linkedRow}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen() } }}
+    >
       <span className={css.linkedRowTitle}>
         <Icon name="link" className={css.linkedRowIcon} />
         <span className={css.linkedRowName} title={row.title}>{row.title}</span>
@@ -211,13 +236,13 @@ function LinkedRow({ row, task, controller }: {
           </Chip>
         )}
         <span className={css.linkedRowTime}>{formatTime(row.updatedAt)}</span>
-        <Button onClick={() => { controller.openSession(row.sessionId) }}>
+        <Button onClick={event => { event.stopPropagation(); controller.openSession(row.sessionId) }}>
           {t('detail.viewSession')} →
         </Button>
         <button
           type="button"
           className={css.rowHide}
-          onClick={() => { controller.hideTaskRow(task.id, 'sessions', row.sessionId) }}
+          onClick={event => { event.stopPropagation(); controller.hideTaskRow(task.id, 'sessions', row.sessionId) }}
           title={t('detail.hideRow')}
         >
           {t('detail.hide')}
@@ -232,9 +257,15 @@ function LinkedRow({ row, task, controller }: {
  * native session (its title, workspace, running/waiting state, last update) —
  * never copies, always a pure derivation of the native snapshots (new
  * sessions, renames, archiving and hides all surface automatically). The
- * "同步" action clears the display-only hide set ("get all non-archived").
+ * derivation is live, so there is no manual sync: a restore affordance shows
+ * only while rows are display-hidden ("恢复全部已隐藏" clears the hide set).
  */
-function LinkedSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
+function LinkedSection({ controller, task, onOpenSession }: {
+  controller: BoardController
+  task: TaskRecord
+  /** Open the session's detail panel (the shared review shell, read-only). */
+  onOpenSession: (sessionId: string) => void
+}) {
   const rows = controller.linkedOf(task)
   return (
     <Section title={`${t('detail.linked')}${rows.length > 0 ? ` ${rows.length}` : ''}`}>
@@ -243,14 +274,27 @@ function LinkedSection({ controller, task }: { controller: BoardController; task
       ) : (
         <ul className={css.linkedList}>
           {rows.map(row => (
-            <LinkedRow key={row.sessionId} row={row} task={task} controller={controller} />
+            <LinkedRow
+              key={row.sessionId}
+              row={row}
+              task={task}
+              controller={controller}
+              onOpen={() => { onOpenSession(row.sessionId) }}
+            />
           ))}
         </ul>
       )}
       <div className={css.linkedActions}>
-        <Button onClick={() => { controller.unhideTaskRows(task.id, 'sessions') }}>
-          {t('detail.linkedSync')}
-        </Button>
+        {/* The linked view is a live derivation (new sessions, archiving and
+            renames sync automatically), so the only user-mutable state is
+            the display-only hide set: the restore affordance shows only when
+            there is something to restore — a dead "同步" button never renders,
+            for both workspace-bound and single-session-bound tasks. */}
+        {hasHiddenRows(task, 'sessions') && (
+          <Button onClick={() => { controller.unhideTaskRows(task.id, 'sessions') }}>
+            {t('detail.restoreHidden')}
+          </Button>
+        )}
         <Button variant="ghost" onClick={() => { controller.unbindTask(task.id) }}>
           {t('detail.linkedUnbind')}
         </Button>
@@ -587,6 +631,8 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   const [editError, setEditError] = useState<string | undefined>(undefined)
   // The execution row whose review page is open (undefined = none).
   const [reviewExecution, setReviewExecution] = useState<ExecutionRecord | undefined>(undefined)
+  // The linked session whose detail panel is open (undefined = none).
+  const [linkedSession, setLinkedSession] = useState<string | undefined>(undefined)
 
   // Keep the overlay in sync if the task record changes underneath.
   const [latest, setLatest] = useState(task)
@@ -658,10 +704,16 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
               </Section>
 
               <Section title={t('detail.prompt')}>
-                <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : current.title}</pre>
+                {/* An empty run prompt is nothing — the same em dash as the
+                    description. It never shows the title as if it were a
+                    prompt (the title only serves as the execution fallback). */}
+                <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : '—'}</pre>
               </Section>
 
               <Section title={t('detail.runConfig')}>
+                {/* The five rows always render: an unset field means "use the
+                    deployment default", shown as 默认 — a dragged-in or fresh
+                    card reads complete instead of silently missing rows. */}
                 <dl className={css.configGrid}>
                   <div className={css.configRow}>
                     <dt className={css.configLabel}>{t('new.workspace')}</dt>
@@ -671,35 +723,41 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                         : t('new.workspaceDefault')}
                     </dd>
                   </div>
-                  {current.agentPreset !== undefined && (
-                    <div className={css.configRow}>
-                      <dt className={css.configLabel}>{t('new.agentPreset')}</dt>
-                      <dd className={css.configValue}>{current.agentPreset}</dd>
-                    </div>
-                  )}
-                  {current.provider !== undefined && current.model !== undefined && (
-                    <div className={css.configRow}>
-                      <dt className={css.configLabel}>{t('new.model')}</dt>
-                      <dd className={css.configValue}>{current.provider} / {current.model}</dd>
-                    </div>
-                  )}
-                  {current.reasoningEffort !== undefined && (
-                    <div className={css.configRow}>
-                      <dt className={css.configLabel}>{t('new.effort')}</dt>
-                      <dd className={css.configValue}>{current.reasoningEffort}</dd>
-                    </div>
-                  )}
-                  {current.permission !== undefined && (
-                    <div className={css.configRow}>
-                      <dt className={css.configLabel}>{t('new.permission')}</dt>
-                      <dd className={css.configValue}>{permissionLabel(current.permission)}</dd>
-                    </div>
-                  )}
+                  <div className={css.configRow}>
+                    <dt className={css.configLabel}>{t('new.agentPreset')}</dt>
+                    <dd className={css.configValue}>
+                      {current.agentPreset !== undefined ? current.agentPreset : t('new.agentPresetDefault')}
+                    </dd>
+                  </div>
+                  <div className={css.configRow}>
+                    <dt className={css.configLabel}>{t('new.model')}</dt>
+                    <dd className={css.configValue}>
+                      {current.provider !== undefined && current.model !== undefined
+                        ? `${current.provider} / ${current.model}`
+                        : t('new.modelDefault')}
+                    </dd>
+                  </div>
+                  <div className={css.configRow}>
+                    <dt className={css.configLabel}>{t('new.effort')}</dt>
+                    <dd className={css.configValue}>
+                      {current.reasoningEffort !== undefined ? current.reasoningEffort : t('new.effortDefault')}
+                    </dd>
+                  </div>
+                  <div className={css.configRow}>
+                    <dt className={css.configLabel}>{t('new.permission')}</dt>
+                    <dd className={css.configValue}>
+                      {current.permission !== undefined ? permissionLabel(current.permission) : t('new.permissionDefault')}
+                    </dd>
+                  </div>
                 </dl>
               </Section>
 
               {current.bind !== undefined && (
-                <LinkedSection controller={controller} task={current} />
+                <LinkedSection
+                  controller={controller}
+                  task={current}
+                  onOpenSession={sessionId => { setLinkedSession(sessionId) }}
+                />
               )}
             </>
           )}
@@ -737,7 +795,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                 </ul>
               )
             })()}
-            {current.hidden?.executions !== undefined && current.hidden.executions.length > 0 && (
+            {hasHiddenRows(current, 'executions') && (
               <Button onClick={() => { controller.unhideTaskRows(current.id, 'executions') }}>
                 {t('detail.restoreHidden')}
               </Button>
@@ -813,6 +871,14 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
           task={current}
           execution={reviewExecution}
           onClose={() => { setReviewExecution(undefined) }}
+        />
+      )}
+      {linkedSession !== undefined && (
+        <SessionDetail
+          controller={controller}
+          task={current}
+          sessionId={linkedSession}
+          onClose={() => { setLinkedSession(undefined) }}
         />
       )}
     </div>

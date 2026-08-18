@@ -183,8 +183,9 @@ export interface NewTaskInput {
   title: string
   description: string
   prompt: string
-  /** Landing column; defaults to 'todo'. */
-  status?: 'backlog' | 'todo'
+  /** Landing column; defaults to 'todo'. Any column is legal — an external
+   *  sidebar drop lands in exactly the column it was dropped into. */
+  status?: TaskStatus
   workspaceId?: string
   provider?: string
   model?: string
@@ -213,6 +214,25 @@ export const ALL_STATUSES: readonly TaskStatus[] = [
 /** Brand an unknown string as a status; undefined when it is not one. */
 export function isTaskStatus(value: unknown): value is TaskStatus {
   return typeof value === 'string' && (ALL_STATUSES as readonly string[]).includes(value)
+}
+
+/**
+ * The landing column of a task created by an external sidebar drop: the
+ * column the item was dropped into — all five columns are respected, so a
+ * drop on 进行中 / 待审核 / 已完成 stays exactly where it landed.
+ */
+export function landingStatusOf(dropStatus: TaskStatus): TaskStatus {
+  return dropStatus
+}
+
+/**
+ * Whether a task has display-hidden rows in one family (executions or
+ * linked sessions). The restore affordance shows only then — a "同步" that
+ * has nothing to restore is a dead button and must not render.
+ */
+export function hasHiddenRows(task: TaskRecord, family: 'executions' | 'sessions'): boolean {
+  const rows = task.hidden?.[family]
+  return rows !== undefined && rows.length > 0
 }
 
 /**

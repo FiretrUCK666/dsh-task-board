@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
-import { COLUMNS, plainRunsOf, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { COLUMNS, landingStatusOf, plainRunsOf, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -24,7 +24,7 @@ import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { Button, Switch } from './ui.tsx'
-import { externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
+import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 
 /** Case-insensitive title/description match. */
 function matchesFilter(task: TaskRecord, filter: string): boolean {
@@ -61,9 +61,52 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   }, [])
   // The column currently accepting an external sidebar drag (session/workspace
   // dragged in from the sidebar): a distinct highlight from the board's own
-  // card-reorder affordances.
+  // card-reorder affordances. The latch refs below make the highlight stable:
+  // dragover cannot read the drag payload (protected data store), so the
+  // external identity is latched once from the advertised types on entry and
+  // cleared only by a drop / drag end — never per-column, so crossing child
+  // elements can never flicker or leave a stale ring.
   const [dropAccept, setDropAccept] = useState<TaskStatus | undefined>(undefined)
-  const clearAccept = (): void => setDropAccept(undefined)
+  // Latched: a sidebar drag (session/workspace) is over the board right now.
+  const externalRef = useRef(false)
+  // Latched synchronously at dragstart on a board card, so the board's own
+  // card drags (also stamped `text/plain`) never latch as external — the ref
+  // write happens before any dragenter, unlike the state `dragId`.
+  const dragSourceRef = useRef(false)
+
+  /**
+   * Full reset of every transient drag state — after a drop, a drag end,
+   * a window-level drop/dragend, or any cancel. The one reset to rule them
+   * all: no path may clear only part of the drag UI and leave a stale
+   * highlight behind.
+   */
+  const clearDrag = (): void => {
+    externalRef.current = false
+    dragSourceRef.current = false
+    setDropAccept(undefined)
+    setDragId(undefined)
+    setDropGap(undefined)
+    dropGapRef.current = undefined
+    setDragOver(undefined)
+  }
+
+  // Window-level safety net: a drag that ends outside the board — released
+  // over the sidebar, outside the window, or cancelled with Escape — never
+  // reaches the board's drop handlers, and its `dragend` fires on the native
+  // source element instead. Both window events reset the whole drag UI so no
+  // highlight can ever survive the gesture. (The component's own handlers
+  // also reset; the resets are idempotent.)
+  useEffect(() => {
+    window.addEventListener('drop', clearDrag)
+    window.addEventListener('dragend', clearDrag)
+    return () => {
+      window.removeEventListener('drop', clearDrag)
+      window.removeEventListener('dragend', clearDrag)
+    }
+    // clearDrag reads only stable setters/refs; a mount-time instance is
+    // fully functional, so registering it once is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   /** Classify a drag as a sidebar drag (own MIME, else native text/plain). */
   const externalOf = (event: React.DragEvent): SidebarDrag | undefined => externalDragOf(
     event.dataTransfer,
@@ -75,14 +118,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const draggedTask = dragId !== undefined
     ? snapshot.tasks.find(candidate => candidate.id === dragId)
     : undefined
-
-  /** Reset the drag-and-drop tracking after a drop or drag end. */
-  const clearDrag = (): void => {
-    setDragId(undefined)
-    setDropGap(undefined)
-    dropGapRef.current = undefined
-    setDragOver(undefined)
-  }
 
   /** Id of the card element under the pointer, when the pointer is on one. */
   const cardIdAt = (event: React.DragEvent): string | undefined =>
@@ -120,12 +155,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     const bind = drag.kind === 'session'
       ? { kind: 'session' as const, sessionId: drag.id }
       : { kind: 'workspace' as const, workspaceId: drag.id }
-    const landing: TaskStatus = dropStatus === 'backlog' ? 'backlog' : 'todo'
+    // The landing column is the column the item was dropped into — all five
+    // columns are respected (a drop on 进行中 / 待审核 / 已完成 stays there).
     controller.createBoundTask(bind, {
       title: controller.boundSourceTitleOf(bind),
       description: '',
       prompt: '',
-      status: landing,
+      status: landingStatusOf(dropStatus),
     })
   }
 
@@ -133,26 +169,23 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
    * Column-level drop: same-column drops reorder (the half-split anchor the
    * last dragover computed); cross-column drops keep the classic
    * move/rerun/reject semantics; an external sidebar drag (session/workspace)
-   * creates a bound task in this column.
+   * creates a bound task in this column. Every drop ends with a full drag
+   * reset, so no transient highlight can survive the gesture.
    */
   const handleDrop = (status: TaskStatus) => (event: React.DragEvent): void => {
     event.preventDefault()
     const external = externalOf(event)
+    const id = dragId ?? event.dataTransfer.getData('text/plain')
+    clearDrag()
     if (external !== undefined) {
       event.stopPropagation()
-      clearAccept()
       createFromSidebar(external, status)
       return
     }
-    const id = dragId ?? event.dataTransfer.getData('text/plain')
     const task = snapshot.tasks.find(candidate => candidate.id === id)
-    if (task === undefined) {
-      clearDrag()
-      return
-    }
+    if (task === undefined) return
     if (dragId !== undefined && task.status === status) {
       controller.moveTask(task.id, status, dropGapRef.current?.beforeId)
-      clearDrag()
       return
     }
     const decision = resolveCardDrop(task, status)
@@ -167,20 +200,29 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
       rejectTimer.current = setTimeout(() => { setDragReject(undefined) }, 600)
     }
-    clearDrag()
   }
 
   return (
     <div
       className={css.board}
       data-dsh-taskboard-board=""
-      onDragOver={event => { if (externalOf(event) !== undefined) event.preventDefault() }}
-      onDragLeave={() => { clearAccept() }}
+      onDragEnter={event => {
+        // Latch an external sidebar drag once, on entry: dragover cannot
+        // read the payload (protected data store), but the advertised types
+        // plus the absence of a board card drag are enough to know this is a
+        // session/workspace drag. Card drags set `dragSourceRef` at dragstart
+        // (synchronously, before any dragenter) and never latch.
+        if (!dragSourceRef.current && candidateExternalDrag(Array.from(event.dataTransfer.types))) {
+          externalRef.current = true
+        }
+      }}
+      onDragOver={event => { if (externalRef.current) event.preventDefault() }}
       onDrop={event => {
         const external = externalOf(event)
+        clearDrag()
         if (external !== undefined) {
           event.preventDefault()
-          clearAccept()
+          // A drop on the board's empty area (no column) lands in 待办.
           createFromSidebar(external, 'todo')
         }
       }}
@@ -244,10 +286,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               data-dragreject={dragReject === column.status ? '' : undefined}
               data-dropaccept={dropAccept === column.status ? 'link' : undefined}
               onDragOver={event => {
-                // An external sidebar drag (session/workspace) marks this
-                // column as the drop target; the board's own card drags keep
-                // the classic reorder/move feedback below.
-                if (externalOf(event) !== undefined) {
+                // A latched external sidebar drag (session/workspace) marks
+                // this column as the drop target; the board's own card drags
+                // keep the classic reorder/move feedback below. The latch is
+                // cleared only by a drop / drag end — never here — so
+                // crossing the column's children cannot flicker the ring.
+                if (externalRef.current) {
                   event.preventDefault()
                   if (dropGapRef.current !== undefined) {
                     dropGapRef.current = undefined
@@ -280,7 +324,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               }}
               onDragLeave={() => {
                 setDragOver(current => current === column.status ? undefined : current)
-                setDropAccept(current => current === column.status ? undefined : current)
               }}
               onDrop={handleDrop(column.status)}
             >
@@ -299,6 +342,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 onDragStart={event => {
                   const id = cardIdAt(event)
                   if (id !== undefined) {
+                    // Synchronous source latch: any dragenter that follows
+                    // belongs to this card drag and must never latch as
+                    // external (the state `dragId` updates asynchronously,
+                    // so the ref is the reliable signal).
+                    dragSourceRef.current = true
                     setDragId(id)
                     setDropGap(undefined)
                     dropGapRef.current = undefined

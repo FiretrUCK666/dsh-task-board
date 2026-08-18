@@ -1441,6 +1441,22 @@ describe('linked sessions & bind', () => {
     })).toBeUndefined()
   })
 
+  it('createBoundTask honors any landing column (external drops stay where dropped)', () => {
+    const { controller } = makeController()
+    const running = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
+      title: 'r', description: '', prompt: '', status: 'running',
+    })!
+    const review = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+      title: 'v', description: '', prompt: '', status: 'review',
+    })!
+    const done = controller.createBoundTask({ kind: 'session', sessionId: 's-2' }, {
+      title: 'd', description: '', prompt: '', status: 'done',
+    })!
+    expect(running.status).toBe('running')
+    expect(review.status).toBe('review')
+    expect(done.status).toBe('done')
+  })
+
   it('hideTaskRow / unhideTaskRows manage a display-only hide set (persisted)', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!

@@ -1327,26 +1327,20 @@ textarea.input {
   font-variant-numeric: tabular-nums;
 }
 
-.executionOpen {
+/* Right-aligned action group of an execution row (查看会话 / 隐藏): the one
+   place the row's actions sit; the shared ghost button inside matches every
+   other session surface. */
+.executionRowActions {
   flex: none;
   margin-left: auto;
-  padding: 0;
-  font-size: 12px;
-  color: var(--dsw-alias-state-business-primary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.executionOpen:hover {
-  text-decoration: underline;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Prominent "处理" button when session is waiting for user action */
 .executionHandle {
   flex: none;
-  margin-left: auto;
   padding: 4px 12px;
   font-size: 12px;
   font-weight: 500;
@@ -1488,11 +1482,19 @@ textarea.input {
   gap: 6px;
   padding: 10px 12px;
   border-radius: 8px;
+  cursor: pointer;
   transition: background var(--dsh-tb-motion);
 }
 
 .linkedRow:hover {
   background: var(--dsh-tb-hover);
+}
+
+/* The row is a clickable surface (opens the session's detail panel); the
+   keyboard ring matches the execution rows. */
+.linkedRow:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: -2px;
 }
 
 .linkedRowTitle {
@@ -1548,6 +1550,36 @@ textarea.input {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 2px;
+}
+
+/* --- linked-session detail panel (SessionDetail) --------------------------- */
+
+/* Live status row of the panel rail: chip + updated time on one line. */
+.sessionFacts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sessionFactTime {
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The read-only boundary note: a quiet framed line stating that this is a
+   live view and cannot drive the task — the explicit half of the
+   structural absence of a composer. */
+.sessionReadonly {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-hover);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
 }
 
 /* Board columns accept external session/workspace drops (drag-in from the
@@ -1725,7 +1757,6 @@ textarea.input {
 .ghostButton:focus-visible,
 .dangerButton:focus-visible,
 .iconButton:focus-visible,
-.executionOpen:focus-visible,
 .slashMenuRow:focus-visible,
 .search:focus-visible,
 .input:focus-visible,
@@ -1740,7 +1771,6 @@ textarea.input {
 .ghostButton,
 .dangerButton,
 .iconButton,
-.executionOpen,
 .slashMenuRow,
 .search,
 .input,
@@ -1781,8 +1811,7 @@ textarea.input {
 .primaryButton:active:not(:disabled),
 .ghostButton:active:not(:disabled),
 .dangerButton:active:not(:disabled),
-.iconButton:active:not(:disabled),
-.executionOpen:active:not(:disabled) {
+.iconButton:active:not(:disabled) {
   transform: translateY(1px);
 }
 
@@ -1791,10 +1820,6 @@ textarea.input {
 .iconButton:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
-}
-
-.executionOpen:hover:not(:disabled) {
-  text-decoration: underline;
 }
 
 .iconButton:disabled {
@@ -1817,7 +1842,6 @@ textarea.input {
   .ghostButton,
   .dangerButton,
   .iconButton,
-  .executionOpen,
   .executionRow,
   .scheduleMode,
   .slashMenuRow,

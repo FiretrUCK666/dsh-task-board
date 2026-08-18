@@ -13,13 +13,15 @@ import { Chip } from './Chip.tsx'
 /** One button variant; shared "primary / ghost / danger" rhythm everywhere. */
 export type ButtonVariant = 'primary' | 'ghost' | 'danger'
 
-/** The board's one button (see module doc). */
+/** The board's one button (see module doc). The click handler receives the
+ *  native event so callers inside clickable rows can stopPropagation; plain
+ *  zero-arg handlers stay assignable (fewer parameters are always valid). */
 export function Button({ variant = 'ghost', type = 'button', className, disabled, onClick, title, children }: {
   variant?: ButtonVariant
   type?: 'button' | 'submit'
   className?: string
   disabled?: boolean
-  onClick?: () => void
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void
   title?: string
   children: ReactNode
 }) {

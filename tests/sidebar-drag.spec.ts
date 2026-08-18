@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { externalDragOf, idOfKey, readSidebarDrag, SESSION_MIME, WORKSPACE_MIME } from '../src/client/sidebar-drag.ts'
+import { candidateExternalDrag, externalDragOf, idOfKey, readSidebarDrag, SESSION_MIME, WORKSPACE_MIME } from '../src/client/sidebar-drag.ts'
 
 /** Minimal dataTransfer stand-in (getData only — what the pure helpers read). */
 function data(entries: Record<string, string>): { getData: (type: string) => string } {
@@ -25,6 +25,21 @@ describe('idOfKey', () => {
     expect(idOfKey('w-a')).toBe('w-a')
     expect(idOfKey('workspace:w-a')).toBe('w-a')
     expect(idOfKey('C:\\work\\s-1')).toBe('s-1')
+  })
+})
+
+describe('candidateExternalDrag', () => {
+  it('accepts the board MIMEs and plain text (the only dragover signal)', () => {
+    expect(candidateExternalDrag([SESSION_MIME])).toBe(true)
+    expect(candidateExternalDrag([WORKSPACE_MIME])).toBe(true)
+    expect(candidateExternalDrag(['text/plain'])).toBe(true)
+    expect(candidateExternalDrag(['text/plain', 'text/uri-list'])).toBe(true)
+  })
+
+  it('rejects drags without a usable type', () => {
+    expect(candidateExternalDrag([])).toBe(false)
+    expect(candidateExternalDrag(['text/html'])).toBe(false)
+    expect(candidateExternalDrag(['application/x-something'])).toBe(false)
   })
 })
 
