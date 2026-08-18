@@ -753,9 +753,10 @@ export class BoardController {
    * Update a task's schedule rule. A blank or invalid cron expression is
    * rejected (returns false, state untouched) in cron mode. When the rule
    * ends up enabled the next run instant is computed immediately (cron); a
-   * disabled rule carries no next-run instant. Arming a rule never executes
-   * anything by itself: auto triggers only drive tasks a manual run has
-   * primed (see `primed` on ScheduleRule).
+   * disabled rule carries no next-run instant. Arming makes a rule active at
+   * once (no manual-first gate): cron fires on its next due instant through
+   * the scheduler tick, and an armed chain in a drivable column starts its
+   * first run right here.
    * @param id - the task to schedule.
    * @param patch - fields to change (absent fields keep their current value).
    *   `maxRuns` sets the total scheduled-run budget (undefined = unlimited);

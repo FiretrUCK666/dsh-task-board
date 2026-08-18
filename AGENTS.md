@@ -236,15 +236,16 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   `--dsh-tb-mask`（mask-1/3 混色，偏强）盖住列线。粗体按钮 `primaryButton` 用原生
   `--dsw-alias-button-primary-fill`，半径 18px、高 36px、14px 字，与 shell 原生按钮同节奏；
   正文 14px/1.5。
-- **面板几何（随板居中）**：`.modal/.detail/.review` 以**板的左缘**为基准居中——视图静态
-  居中会把对话框边缘恰好压在列线上（玻璃下可见）；board 根用 ResizeObserver 发布
-  `--dsh-tb-board-offset`，对话框 `left: calc(offset/2)` 补齐侧栏偏移；任何视口都贴不到列线。
-- **共用部件**：`ui.tsx`（Button primary/ghost/danger、Section、Notice、AttentionDot、
-  Icon、Switch）+ `Chip`/`Dialog`/`PromptInput`/`TranscriptRow`/`useTranscriptTail`/
-  `JumpToLatest`/`SessionFrame`/`session-panel.tsx`（SessionRailHead/SessionTranscript/
-  SessionConfigEditor/SessionFacts/SessionWaitingNotice）+ `SessionRow`（执行行与链接
-  行共用一个行骨架）/`CommentsThread`（评论页与链接会话面板共用一个评论项文法）。
-  各界面一律复用，不手写重复标记。
+- **面板几何（随板居中）**：`.modalBackdrop` 为**看板盒内绝对定位**（父级即
+  `[data-dsh-taskboard-view]`，position:absolute inset:0），浮层 `.modal/.detail/.review`
+  由 flex 在其中居中——以看板盒为参照系，与侧栏宽度、祖先 transform/filter、皮肤效果
+  完全解耦，任何视口都贴不到列线、不偏右（不再需要 `--dsh-tb-board-offset` 偏移变量）。
+- **共用部件**：`ui.tsx`（Button primary/ghost/danger + `size="sm"` 紧凑变体、Section、
+  Notice、AttentionDot、Icon、Switch）+ `Chip`/`Dialog`/`PromptInput`/`TranscriptRow`/
+  `useTranscriptTail`/`JumpToLatest`/`SessionFrame`/`session-panel.tsx`（SessionRailHead/
+  SessionTranscript/SessionConfigEditor/SessionFacts/SessionWaitingNotice）+ `SessionRow`
+  （执行行与链接行共用一个行骨架）/`CommentsThread`（评论页与链接会话面板共用一个评论
+  项文法）。各界面一律复用，不手写重复标记。
 - **注意力动效（唯一语法）**：`--dsh-tb-attention`（warn）+ `--dsh-tb-breath`（2.6s
   ease-in-out）。卡片外层呼吸环 `dshTbBreathRing`，执行行内层柔晕 `dshTbBreathHalo`
   （无边框、无平染）；`prefers-reduced-motion` 全部静态降级。
@@ -282,13 +283,21 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
   `SessionConfigFace.setPermission` → 原生 `/permission <preset>`；评论
   `submitComment(..., command=true)` 走 `sendCommand`——matched 立即结算，unmatched 回退
   普通文本；评论页 Agent 不可切换（`agent-preset-locked`）只读展示。
-- **投影为权威 + 评论线程**：`pickProjections` 提取 `contextPressure`/`contextBreakdown`/
-  `permissions`（结构校验读取，不依赖域包类型）；权限下拉事实源 = `permissions` 投影
-  （非任务卡片 `permission` 字段）。**线程归属二锚**：执行页评论按 `parentExecutionId`
-  （旧数据按 session 兜底，且排除 `sessionAnchor` 轮）；链接会话面板线程
-  `sessionThreadOf` 按 `sessionAnchor` —— 一个轮次只属一个表面，绝不串页；`sessionRoundsOf`
-  也排除会话锚定轮，链接驱动的排队留言绝不把执行行点亮成「忙」。执行序号统一
-  `plainRunsOf(task)`（过滤 comment/refine 轮的单一编号源）。
+- **投影为权威 + 评论线程（按会话统一）**：`pickProjections` 提取
+  `contextPressure`/`contextBreakdown`/`permissions`（结构校验读取，不依赖域包类型）；
+  权限下拉事实源 = `permissions` 投影（非任务卡片 `permission` 字段）。**线程按原生会话
+  归集**：`sessionCommentsOf(task, sessionId)` 是唯一线程入口——同一 `sessionId` 下
+  执行锚定（`parentExecutionId`）与会话锚定（`sessionAnchor`）的评论互见同一线程
+  （执行评论页与链接会话面板都读它，同一会话的评论再也不各看各的）；`queuePositionOf`
+  仍任务级 FIFO 显示位次。`sessionRoundsOf` 排除会话锚定轮用于判会话「忙」——线程视图
+  与忙状态职责分离。执行序号统一 `plainRunsOf(task)`（过滤 comment/refine 轮的单一
+  编号源）。
+- **自动化独立（开启即生效，不绑卡）**：`ScheduleRule` 无手动激活门——
+  `ruleReadiness` 三态（disabled / paused / active：backlog·review·done = 暂停、done 完成
+  即 `disarmSchedule` 硬停）；`setSchedule` 启用 chain 且卡片可驱动（todo/running）时立即
+  首跑，cron 到点经 scheduler tick 触发；`resolveCardDrop` 不再因 chain 拒绝移动，
+  `moveTask` 以「拖到已完成=停链 / 待规划·待审核=暂停 / 待办=停止接续手动接管」表达
+  「离开即暂停/停止」；`TaskCard` 悬停快速执行（`rerunTask` 同 run guard）。
 - **会话状态派生（session-display.ts）**：`sessionDisplay` 归集同会话轮次，状态优先级
   waiting > running > 最新 settled；`sessionTimes`/`taskPendingCount`；未读
   `taskUnviewed`/`executionUnviewed`，基线 `viewedAt`（旧数据归一化零噪音）。
@@ -296,11 +305,12 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
   轮询/贴底跟随/上翻暂停 + `useResizeFollow`；`SessionTranscript` 共享渲染（等待条/状态/
   列表/滑到最新）；「滑到最新」纯图标胶囊；评论页/链接会话/完善面板共用同一机制。
 - **统一会话行（SessionRow，执行行 + 链接行一个骨架）**：两种 session 行共用同一组件
-  （kind='execution'|'linked'）与同一个表面（`.sessionRow` 同封面/同分隔/同 hover/同键盘）。
-  顶行 = 身份槽（执行：未读点 + 第 N 次；链接：link 图标 + 标题 + 工作区胶囊）+ 状态 chip
-  + 右侧动作（执行等待态琥珀「处理」，其余 ghost「查看会话」+「隐藏」）；次行 = 元信息
-  （执行：起止/时长；链接：更新于）。执行专属 footer 槽：评论摘要/动向/错误。域名类
-  （chip 文案、`sessionDisplay`/`commentsOf`/`sessionThreadOf`）由调用方算好传入，文法单写
+  （kind='execution'|'linked'）与同一个表面（`.sessionRow` 同封面/同分隔/同 hover/同键盘）
+  与同一个 identity 排版（`.sessionRowLeading` 14px/500，执行 = 会话标题 + 安静「第 N 次」
+  注记、链接 = link 图标 + 标题 + 工作区胶囊）+ 状态 chip + 右侧紧凑动作（执行等待态琥珀
+  「处理」，其余 `Button size="sm"`「查看会话」+「隐藏」）；次行 = 元信息（执行：起止/耗时；
+  链接：更新于）。执行专属 footer 槽：评论摘要/动向/错误。域名类（chip 文案、
+  `sessionDisplay`/`sessionCommentsOf`）由调用方算好传入，文法单写
   一处——两种行从今往后不可能长歪。
 
 - **需求完善（refine）**：backlog 专属；完善会话惰性创建、每轮复用；`answerRefine`
@@ -326,7 +336,7 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
   默认「驱动任务」）**：执行评论页只有「驱动」——`submitComment` → FIFO → 调度器注入
   （巡航门控）；链接会话面板在「驱动任务」与「直发会话」间切换。驱动模式 =
   `submitSessionComment`（`sessionAnchor` 轮，进同一队列，见调度器节），面板显示本会话
-  的评论线程（`sessionThreadOf` + 共享 `CommentsThread`，排队可取消）；直发模式 =
+  的评论线程（`sessionCommentsOf` + 共享 `CommentsThread`，排队可取消）；直发模式 =
   `sendSessionMessage` → host `sessions.prompt`/`remote.commands.execute`，`/` 走注册表未
   匹配回退文本。**直发 ≠ 驱动契约**：不建执行记录、不进调度器、不占并发预算、不触发
   巡航/接续/状态变化；面板在直发模式以「不会驱动本任务」+ `detail.sessionDirect` 提示防
