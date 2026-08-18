@@ -18,7 +18,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Chip, type ChipKind } from './Chip.tsx'
 import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
 import { TaskForm } from './TaskForm.tsx'
-import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
+import { draftFromTask, draftToNewInput, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
 import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
@@ -678,12 +678,32 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   // execution page or a linked panel is one row here, one comment thread.
   const sessions = controller.sessionsOf(current)
 
+  // Copy-prompt inline feedback (近处反馈，位于滚动区内).
+  const [promptCopied, setPromptCopied] = useState(false)
+
   const editing = draft !== undefined
 
   /** Enter edit mode with a draft of the current record. */
   const startEditing = (): void => {
     setDraft(draftFromTask(current))
     setEditError(undefined)
+  }
+
+  /** New-task copy of this task ("复制为模板"): fresh card, same content and
+   *  run config, landing in 待规划; runs/automation/links are not copied. */
+  const duplicateTask = (): void => {
+    const input = draftToNewInput(draftFromTask(current))
+    const copy = controller.createTask({ ...input, status: 'backlog' })
+    if (copy !== undefined) controller.closeTask()
+  }
+
+  /** Copy the execution prompt to the clipboard (best-effort; no throw). */
+  const copyPrompt = (): void => {
+    if (current.prompt === '') return
+    void navigator.clipboard?.writeText(current.prompt).then(() => {
+      setPromptCopied(true)
+      window.setTimeout(() => { setPromptCopied(false) }, 1500)
+    }).catch(() => { /* clipboard unavailable — select manually */ })
   }
 
   /** Persist the draft; a blank title is rejected with an inline error. */
@@ -740,7 +760,15 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                 {/* An empty run prompt is nothing — the same em dash as the
                     description. It never shows the title as if it were a
                     prompt (the title only serves as the execution fallback). */}
-                <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : '—'}</pre>
+                <div className={css.promptRow}>
+                  <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : '—'}</pre>
+                  {current.prompt !== '' && (
+                    <Button size="sm" variant="ghost" className={css.promptCopy} onClick={copyPrompt}>
+                      {t('detail.copyPrompt')}
+                    </Button>
+                  )}
+                </div>
+                {promptCopied && <p className={css.detailHint}>{t('detail.copied')}</p>}
               </Section>
 
               <Disclosure
@@ -897,6 +925,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
               {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
             </Button>
           )}
+          <Button title={t('detail.duplicateTitle')} onClick={duplicateTask}>
+            {t('detail.duplicate')}
+          </Button>
           <Button variant="danger" onClick={() => { setConfirmDelete(true) }}>
             {t('detail.delete')}
           </Button>

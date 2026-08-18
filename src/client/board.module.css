@@ -1457,6 +1457,18 @@ textarea.input {
   overflow-y: auto;
 }
 
+/* The prompt block with its inline copy action: a column so the block keeps
+   full width and the small copy button sits quiet at its end. */
+.promptRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.promptCopy {
+  align-self: flex-end;
+}
+
 .promptBlock {
   margin: 0;
   padding: 10px 12px;

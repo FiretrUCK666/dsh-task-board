@@ -578,14 +578,20 @@ export class BoardController {
    */
   linkedOf(task: TaskRecord): LinkedSessionRow[] {
     const workspaces = this.deps.workspaces
-    if (task.bind === undefined || workspaces === undefined) return []
+    const bind = task.bind
+    if (bind === undefined || workspaces === undefined) return []
     const snap = workspaces.list.getSnapshot()
     const byId = this.deps.sessions.list.getSnapshot().byId
-    return [...deriveLinkedSessions(task.bind, {
+    return [...deriveLinkedSessions(bind, {
       byId: byId as unknown as Readonly<Record<string, LinkedSessionSource>>,
       archived: snap.archivedSessionIds,
       workspaceSessionIds: workspaceId => snap.items.find(item => item.id === workspaceId)?.sessionIds,
       hidden: task.hidden?.sessions ?? [],
+      // The bound workspace's title is the stable workspace label fallback
+      // for rows whose cwd is unknown (workspace binds only).
+      ...bind.kind === 'workspace'
+        ? { boundWorkspaceTitle: snap.items.find(item => item.id === bind.workspaceId)?.title }
+        : {},
     })]
   }
 

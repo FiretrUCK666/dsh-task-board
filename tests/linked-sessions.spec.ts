@@ -83,10 +83,33 @@ describe('deriveLinkedSessions', () => {
     expect(rowsB[0].workspaceLabel).toBe('alpha')
   })
 
-  it('a missing / archived single session yields no row', () => {
+  it('a missing single session yields no row; an explicitly bound archived/blank one still shows', () => {
     const src = sources()
+    // Missing: nothing to show.
     expect(deriveLinkedSessions({ kind: 'session', sessionId: 'nope' }, src)).toEqual([])
-    expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-2' }, src)).toEqual([])
+    // A session the user dragged in on purpose is NEVER filtered as archived
+    // or blank — explicit inclusion beats the implicit filters.
+    expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-2' }, src).map(row => row.sessionId)).toEqual(['s-2'])
+    expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-3' }, src).map(row => row.sessionId)).toEqual(['s-3'])
+    // …but an explicitly hidden one still obeys the hide set.
+    expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-1' }, sources({ hidden: ['s-1'] }))).toEqual([])
+  })
+
+  it('workspace bound title is the stable workspace label for rows without a cwd', () => {
+    const byId: Record<string, LinkedSessionSource> = {
+      's-a': session({ title: 'A', cwd: '/work/alpha' }),
+      's-b': session({ title: 'B', cwd: undefined }),
+    }
+    const rows = deriveLinkedSessions({ kind: 'workspace', workspaceId: 'w-a' }, {
+      byId,
+      archived: [],
+      workspaceSessionIds: () => ['s-a', 's-b'],
+      hidden: [],
+      boundWorkspaceTitle: '项目A',
+    })
+    // s-a's own cwd basename wins; s-b (no cwd) falls back to the bound title.
+    expect(rows[0].workspaceLabel).toBe('alpha')
+    expect(rows[1].workspaceLabel).toBe('项目A')
   })
 
   it('an unknown or deleted workspace yields no rows', () => {

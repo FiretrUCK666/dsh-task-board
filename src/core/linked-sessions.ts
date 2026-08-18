@@ -51,6 +51,10 @@ export interface LinkedSources {
   workspaceSessionIds: (workspaceId: string) => readonly string[] | undefined
   /** The task's display-hidden linked-session ids (task.hidden.sessions). */
   hidden: readonly string[]
+  /** The bound workspace's display title, when the bind is a workspace — the
+   *  stable workspace label for every row whose cwd is unknown (so the label
+   *  never blinks off for some sessions). */
+  boundWorkspaceTitle?: string
 }
 
 /** Short display label of a directory path (last non-empty segment). */
@@ -89,9 +93,11 @@ export function resolveExternalKind(
   return undefined
 }
 
-/** One derived row from a native session source (title fallbacks + cwd label). */
-function rowOf(sessionId: string, source: LinkedSessionSource): LinkedSessionRow {
-  const workspaceLabel = source.cwd !== undefined ? baseOf(source.cwd) : undefined
+/** One derived row from a native session source (title fallbacks + cwd label).
+ *  The workspace label is the cwd's last segment, falling back to the bound
+ *  workspace's title so it never blinks off for sessions without a cwd. */
+function rowOf(sessionId: string, source: LinkedSessionSource, boundWorkspaceTitle?: string): LinkedSessionRow {
+  const workspaceLabel = (source.cwd !== undefined ? baseOf(source.cwd) : undefined) ?? boundWorkspaceTitle
   return {
     sessionId,
     title: source.title !== undefined && source.title !== '' ? source.title : (workspaceLabel ?? sessionId),
@@ -105,12 +111,13 @@ function rowOf(sessionId: string, source: LinkedSessionSource): LinkedSessionRow
 
 /**
  * Derive the linked-session rows of a task from the native snapshots. Rows are
- * the workspace's accounted sessions in order (or the single bound session),
- * minus archived, minus blank placeholders, minus the user's hidden set. A
- * missing or archived/bound-stale single session yields no row.
+ * the workspace's accounted sessions in order (minus archived, minus blank
+ * placeholders, minus the user's hidden set) — or, for a single-session bind,
+ * exactly that session (which is deliberately NEVER filtered by archived/blank:
+ * the user dragged it in on purpose, so it always shows).
  *
  * @param bind - the task's live binding (undefined = no linked section).
- * @param sources - native read faces + hidden set.
+ * @param sources - native read faces + hidden set + bound workspace title.
  */
 export function deriveLinkedSessions(
   bind: TaskRecord['bind'],
@@ -125,12 +132,13 @@ export function deriveLinkedSessions(
     if (source === undefined) return undefined
     if (source.blank) return undefined
     if (sources.archived.includes(sessionId)) return undefined
-    return rowOf(sessionId, source)
+    return rowOf(sessionId, source, sources.boundWorkspaceTitle)
   }
 
   if (bind.kind === 'session') {
-    const row = eligible(bind.sessionId)
-    return row !== undefined ? [row] : []
+    const source = sources.byId[bind.sessionId]
+    if (source === undefined || hidden.has(bind.sessionId)) return []
+    return [rowOf(bind.sessionId, source)]
   }
 
   const ids = sources.workspaceSessionIds(bind.workspaceId)
