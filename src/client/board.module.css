@@ -213,24 +213,49 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-family: var(--dsw-font-family);
 }
 
+/* 板头：两行命令栏。第一行 = 返回对话 + 板名 …… 状态 + 自动巡航 + 新建任务
+   （唯一强调是 primary 新建，其余安静）；第二行 = 筛选搜索（弹性胶囊）。
+   层级靠留白与分组表达，不堆边框。 */
 .boardHeader {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
   flex: none;
-  flex-wrap: wrap;
 }
 
-/* The right-side action cluster: one 28px pill rhythm (search capsule,
-   primary new-task, cruise, back-to-chat) so the toolbar reads as one piece
-   instead of loose controls of different sizes. */
-.toolbar {
+.boardRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex: none;
-  flex-wrap: wrap;
-  margin-left: auto;
+  min-width: 0;
+}
+
+/* 返回对话：最左的安静图标钮（导航类，权重最低）。 */
+.boardBack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--dsh-tb-text-2);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
+}
+
+.boardBack:hover {
+  background: var(--dsh-tb-hover);
+  color: var(--dsh-tb-text-1);
+}
+
+.boardBack:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
 }
 
 .boardTitle {
@@ -242,32 +267,43 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
-/* Title block: title + one quiet count line, the toolbar's left anchor. A
-   little vertical air keeps the 11px subtitle from feeling clipped to the
-   16px title above. */
-.boardTitleBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: none;
-  min-width: 0;
+/* 命令栏中的弹性留白：把右侧动作推到末尾，不用分隔线分组。 */
+.boardSpacer {
+  flex: 1;
+  min-width: 12px;
 }
 
-.boardSubtitle {
-  font-size: 11px;
+/* 安静的行内巡航状态：一个状态色圆点 + 12px 次级文字；仅在有内容时渲染，
+   且永远不做成 0/0 的空状态。 */
+.boardStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: 12px;
   color: var(--dsh-tb-text-3);
   white-space: nowrap;
 }
 
+.boardStatusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dsh-tb-accent);
+  box-shadow: 0 0 4px var(--dsh-tb-accent);
+}
+
 .search {
-  flex: 0 1 260px;
-  min-width: 120px;
+  flex: 1 1 260px;
+  max-width: 520px;
+  min-width: 140px;
   padding: 7px 12px;
   font-size: 13px;
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-input-bg);
   border: var(--dsh-tb-border-soft);
-  /* Capsule — same radius language as the toolbar's other actions. */
+  /* 胶囊 — 与板头其它动作同一圆角语言。 */
   border-radius: 999px;
   outline: none;
 }
@@ -276,33 +312,87 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-3);
 }
 
-/* Back-to-chat: a quiet 28px pill icon at the far right of the toolbar —
-   the same geometry as the rest of the action cluster, no boxed fill. */
-.boardClose {
+/* 自动巡航胶囊：透明行内控件（开关 + ▾），玻璃下不露白块。 */
+.cruiseWrap {
+  position: relative;
+  flex: none;
+}
+
+.cruisePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 6px;
+  border-radius: 999px;
+  transition: background var(--dsh-tb-motion);
+}
+
+.cruisePill:hover {
+  background: var(--dsh-tb-hover);
+}
+
+.cruiseMore {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
   padding: 0;
-  color: var(--dsh-tb-text-2);
+  color: var(--dsh-tb-text-3);
   background: transparent;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: none;
   border-radius: 999px;
   cursor: pointer;
-  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion);
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
 }
 
-.boardClose:hover {
+.cruiseMore:hover {
   background: var(--dsh-tb-hover);
-  border-color: var(--dsw-alias-border-l3);
   color: var(--dsh-tb-text-1);
 }
 
-.boardClose:focus-visible {
+.cruiseMore:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
-  outline-offset: 2px;
+  outline-offset: 1px;
+}
+
+/* 巡航设置弹层：不透明浮起表面，锚定在胶囊下方。 */
+.cruisePopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 280px;
+  padding: 12px;
+  background: var(--dsh-tb-surface-float);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-lg);
+  box-shadow: var(--dsh-tb-shadow-3);
+  color: var(--dsh-tb-text-1);
+  animation: dshTbFadeUp 140ms ease;
+}
+
+.cruisePopoverHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cruisePopoverLimit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cruisePopoverLabel {
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  white-space: nowrap;
 }
 
 /* --- columns ------------------------------------------------------------------ */
@@ -2088,23 +2178,6 @@ textarea.input {
 }
 
 /* --- auto-cruise (board header) ---------------------------------------------- */
-
-.cruise {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  /* Transparent: the cruise toggle is a quiet inline control, not a boxed
-     pill — under a glass skin a solid background here reads as a white
-     block. Hover feedback rides the shared hover wash instead. */
-  padding: 2px 6px;
-  border-radius: 999px;
-  transition: background var(--dsh-tb-motion);
-}
-
-.cruise:hover {
-  background: var(--dsh-tb-hover);
-}
 
 .cruiseLimit {
   width: 52px;

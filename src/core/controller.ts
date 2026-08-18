@@ -316,6 +316,10 @@ export interface ControllerSnapshot {
   selectedTaskId: string | undefined
   /** Auto-cruise toggle + concurrency limit. */
   cruise: CruiseState
+  /** Live execution stats for the board's quiet status line: how many
+   *  sessions are running right now, and how many auto launches are queued
+   *  for a freed slot. Both zero → the status line hides itself. */
+  stats: { running: number; queued: number }
 }
 
 /** The selected task (resolved from the ledger), or undefined. */
@@ -415,6 +419,7 @@ export class BoardController {
       boardOpen: this.boardOpen,
       selectedTaskId: this.selectedTaskId,
       cruise: { ...this.cruiseState },
+      stats: { running: this.inFlightCount(), queued: this.queuedLaunches.length },
     }
   }
 

@@ -42,6 +42,19 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   )
   const [filter, setFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
+  // 自动巡航设置弹层：点击胶囊的 ▾ 展开；点击弹层外任意处关闭。
+  const [cruiseOpen, setCruiseOpen] = useState(false)
+  const cruiseWrapRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!cruiseOpen) return
+    const onDown = (event: MouseEvent): void => {
+      if (cruiseWrapRef.current !== null && !cruiseWrapRef.current.contains(event.target as Node)) {
+        setCruiseOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => { document.removeEventListener('mousedown', onDown) }
+  }, [cruiseOpen])
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
   const [dragReject, setDragReject] = useState<TaskStatus | undefined>(undefined)
   // The column that accepted a drop, for the one-shot accent flash. Own
@@ -264,13 +277,90 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       }}
     >
       <header className={css.boardHeader}>
-        {/* Left: title block with a quiet total-count subtitle — the toolbar's
-            anchor; the right cluster is one uniform 28px pill rhythm. */}
-        <div className={css.boardTitleBlock}>
+        {/* 命令栏（第一行）：返回对话 + 板名 …… 状态 + 自动巡航 + 新建任务。
+            唯一强调是「+ 新建任务」，其余安静 —— 用留白与层级分组，不堆边框。 */}
+        <div className={css.boardRow}>
+          <button
+            type="button"
+            className={css.boardBack}
+            aria-label={t('board.close')}
+            title={t('board.close')}
+            onClick={() => { controller.closeBoard() }}
+          >
+            <Icon name="arrowLeft" />
+          </button>
           <h2 className={css.boardTitle}>{t('board.title')}</h2>
-          <span className={css.boardSubtitle}>{t('board.total', { n: String(snapshot.tasks.length) })}</span>
+          <span className={css.boardSpacer} />
+          {/* 安静的行内巡航状态：仅在确实有东西在跑/排队时出现，否则整条隐藏。 */}
+          {snapshot.stats.running + snapshot.stats.queued > 0 && (
+            <span className={css.boardStatus}>
+              <span className={css.boardStatusDot} aria-hidden="true" />
+              {t('board.statusRunning', { n: String(snapshot.stats.running) })}
+              {' · '}
+              {t('board.statusQueued', { n: String(snapshot.stats.queued) })}
+            </span>
+          )}
+          {/* 自动巡航：一颗安静的胶囊（开关 + 设置 ▾），点击展开定时设置弹层。 */}
+          <div className={css.cruiseWrap} ref={cruiseWrapRef}>
+            <div className={css.cruisePill}>
+              <Switch
+                checked={snapshot.cruise.enabled}
+                onChange={next => { controller.setCruiseEnabled(next) }}
+                label={t('board.cruise')}
+                title={t('board.cruiseTitle')}
+              />
+              <button
+                type="button"
+                className={css.cruiseMore}
+                aria-label={t('board.cruiseSettings')}
+                title={t('board.cruiseSettings')}
+                aria-expanded={cruiseOpen}
+                onClick={() => { setCruiseOpen(!cruiseOpen) }}
+              >
+                <Icon name="chevronDown" />
+              </button>
+            </div>
+            {cruiseOpen && (
+              <div className={css.cruisePopover} role="menu" aria-label={t('board.cruiseSettings')}>
+                <div className={css.cruisePopoverHead}>
+                  <Switch
+                    checked={snapshot.cruise.enabled}
+                    onChange={next => { controller.setCruiseEnabled(next) }}
+                    label={t('board.cruise')}
+                    title={t('board.cruiseTitle')}
+                  />
+                  <span className={css.cruisePopoverLimit}>
+                    <span className={css.cruisePopoverLabel}>{t('board.cruiseLimitShort')}</span>
+                    <input
+                      className={css.cruiseLimit}
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={snapshot.cruise.limit}
+                      title={t('board.cruiseLimit')}
+                      aria-label={t('board.cruiseLimit')}
+                      onChange={event => {
+                        const value = Number(event.target.value)
+                        if (Number.isInteger(value) && value >= 1) controller.setCruiseLimit(value)
+                      }}
+                    />
+                  </span>
+                </div>
+                {/* Phase 4 在此追加「定时窗口」编辑器。 */}
+                <p className={css.detailHint}>{t('board.cruisePopoverHint')}</p>
+              </div>
+            )}
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => { setShowNew(true) }}
+          >
+            + {t('board.new')}
+          </Button>
         </div>
-        <div className={css.toolbar}>
+
+        {/* 工具行（第二行）：筛选搜索，弹性宽度，安静胶囊。 */}
+        <div className={css.boardRow}>
           <input
             className={css.search}
             type="search"
@@ -279,48 +369,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             onChange={event => { setFilter(event.target.value) }}
             aria-label={t('board.search')}
           />
-          <Button
-            variant="primary"
-            onClick={() => { setShowNew(true) }}
-          >
-            + {t('board.new')}
-          </Button>
-          {/* Auto-cruise: batch-run every todo task, at most `limit` at once.
-              Board-level scope, stated in the switch's tooltip so it never
-              blurs with the per-task automation rules. A transparent inline
-              control — no boxed background (see .cruise). */}
-          <div className={css.cruise}>
-            <Switch
-              checked={snapshot.cruise.enabled}
-              onChange={next => { controller.setCruiseEnabled(next) }}
-              label={t('board.cruise')}
-              title={t('board.cruiseTitle')}
-            />
-            <input
-              className={css.cruiseLimit}
-              type="number"
-              min={1}
-              max={20}
-              value={snapshot.cruise.limit}
-              title={t('board.cruiseLimit')}
-              aria-label={t('board.cruiseLimit')}
-              onChange={event => {
-                const value = Number(event.target.value)
-                if (Number.isInteger(value) && value >= 1) controller.setCruiseLimit(value)
-              }}
-            />
-          </div>
-          {/* Back to chat: a quiet pill icon; the board itself is the working
-              surface so the exit stays compact and out of the way. */}
-          <button
-            type="button"
-            className={css.boardClose}
-            aria-label={t('board.close')}
-            title={t('board.close')}
-            onClick={() => { controller.closeBoard() }}
-          >
-            <Icon name="arrowLeft" />
-          </button>
         </div>
       </header>
 
