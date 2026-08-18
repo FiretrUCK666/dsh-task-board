@@ -1199,7 +1199,7 @@ textarea.input {
 
 /* --- schedule driving mode (cron / chain segmented control) ------------------- */
 
-.scheduleModeRow {
+.segmentedRow {
   display: inline-flex;
   gap: 4px;
   padding: 3px;
@@ -1208,7 +1208,10 @@ textarea.input {
   border-radius: 10px;
 }
 
-.scheduleMode {
+/* One segmented-radio grammar for every mode switch on the board (schedule
+   drive mode, session composer mode): a quiet track, an elevated active
+   segment, no per-mode styling — both controls read as siblings. */
+.segmentedButton {
   padding: 5px 14px;
   font-size: 12px;
   font-weight: 500;
@@ -1222,11 +1225,11 @@ textarea.input {
   transition: color var(--dsh-tb-motion), background-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
-.scheduleMode:hover {
+.segmentedButton:hover {
   color: var(--dsh-tb-text-1);
 }
 
-.scheduleModeActive {
+.segmentedActive {
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-surface-float);
   box-shadow: var(--dsh-tb-shadow-1);
@@ -1612,6 +1615,18 @@ textarea.input {
   border-radius: var(--dsh-tb-radius-sm);
 }
 
+/* Drive-mode comment thread inside the linked-session rail: the shared
+   comment grammar (CommentsThread) framed as its own section, separated
+   from the rail head above — the live record of everything that drives the
+   task from this panel. */
+.sessionThread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: var(--dsh-tb-separator);
+}
+
 /* Board columns accept external session/workspace drops (drag-in from the
    sidebar): the target column breathes with the same attention light as the
    rest of the board (accent border + focus ring + the shared 2.6s breath),
@@ -1874,7 +1889,7 @@ textarea.input {
   .dangerButton,
   .iconButton,
   .sessionRow,
-  .scheduleMode,
+  .segmentedButton,
   .slashMenuRow,
   .search,
   .input,
@@ -2397,12 +2412,6 @@ textarea.input {
   font-weight: 500;
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
-}
-
-/* The comment list grows naturally inside the rail scroll (the composer is
-   pinned below it, so sending never requires scrolling). */
-.reviewCommentList {
-  min-width: 0;
 }
 
 .reviewComments {

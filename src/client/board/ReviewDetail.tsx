@@ -39,18 +39,12 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
-import { commentsOf, commentKindOf, commentStateKey, queuePositionOf, type CommentViewState } from './comment-thread.ts'
+import { CommentsThread } from './CommentsThread.tsx'
+import { commentsOf } from './comment-thread.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { Button } from './ui.tsx'
-
-/** The chip label of a comment display state ("排队中 · 第 N 位" uses the task-level queue position). */
-function commentLabel(state: CommentViewState, position: number): string {
-  return state === 'queued'
-    ? t('review.commentQueued', { n: String(position) })
-    : t(commentStateKey(state))
-}
 
 /** The review page (see module doc). */
 export function ReviewDetail({ controller, task, execution, onClose }: {
@@ -252,48 +246,11 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 rounds (not yet injected) can be cancelled; injected ones show
                 their live state. New rounds follow while at the bottom. */}
             <div className={css.sessionRailScroll} ref={threadScrollRef} onScroll={onThreadScroll}>
-            <div className={css.reviewCommentList}>
-              {comments.length === 0 ? (
-                <p className={css.detailText}>{t('review.noComments')}</p>
-              ) : (
-                <ul className={css.reviewComments}>
-                  {comments.map(view => {
-                    const position = queuePositionOf(current, view.round.id)
-                    const cancellable = view.state === 'saved' || view.state === 'queued'
-                    return (
-                      <li key={view.round.id} className={css.reviewComment}>
-                        <span className={css.reviewCommentText}>
-                          {view.round.command === true && <span className={css.reviewCommentCommand} aria-hidden="true">/</span>}
-                          {view.round.comment}
-                        </span>
-                        <span className={css.reviewCommentMeta}>
-                          <Chip kind={commentKindOf(view.state)}>{commentLabel(view.state, position)}</Chip>
-                          <span className={css.reviewCommentTime}>{formatDateTime(view.round.startedAt)}</span>
-                          {cancellable && (
-                            <button
-                              type="button"
-                              className={css.reviewCommentCancel}
-                              onClick={() => { controller.cancelComment(view.round.id) }}
-                            >
-                              {t('review.commentCancel')}
-                            </button>
-                          )}
-                        </span>
-                        {/* A settled command round carries its registry
-                            outcome (e.g. "/permission read-only" → "preset
-                            read-only", or an unknown-preset error). */}
-                        {view.round.command === true && view.round.error !== undefined && view.round.error !== '' && (
-                          <span className={`${css.executionError}${view.state === 'succeeded' ? ` ${css.reviewCommandOutcome}` : ''}`}>{view.round.error}</span>
-                        )}
-                        {view.state === 'failed' && view.round.command !== true && view.round.error !== undefined && view.round.error !== '' && (
-                          <span className={css.executionError}>{view.round.error}</span>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
+            <CommentsThread
+              task={current}
+              views={comments}
+              onCancel={id => controller.cancelComment(id)}
+            />
             <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
             </div>
 

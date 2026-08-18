@@ -4,14 +4,22 @@
  * experience (SessionRailHead: context meter + live config + session facts)
  * with the execution review page — one panel grammar for every session.
  *
- * The one deliberate difference is the composer semantics: this panel's
- * composer sends a message DIRECTLY to the native session (exactly as if
- * typed in its own conversation) — it never creates execution records,
- * never enters the task dispatcher and never changes task state, cruise,
- * chain or schedules. The distinction is stated plainly in the panel, and
- * driving the task stays with the execution records' comments.
+ * The one deliberate difference is the composer semantics, split into two
+ * explicit modes (one switch, default drive):
+ * - 「驱动任务」(drive, default): a comment here is a session-anchored comment
+ *   round — it enters the task's per-task FIFO queue and, under the cruise/
+ *   budget rule, is injected into this very session, exactly like a comment
+ *   from an execution's review page. It moves the card (任务 → 运行中 → 待审核)
+ *   and is fully cancellable while pending. The panel shows this session's
+ *   own comment thread with live states.
+ * - 「直发会话」(direct): sends a message DIRECTLY to the native session (as
+ *   if typed in its own conversation) — it never creates execution records,
+ *   never enters the dispatcher, never changes task state, cruise, chain or
+ *   schedules, and needs the native direct-message faces.
+ * The mode's boundary is stated plainly under the composer, so a user never
+ * guesses which send drives the task.
  */
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
@@ -19,6 +27,8 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
+import { CommentsThread } from './CommentsThread.tsx'
+import { sessionThreadOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
@@ -62,22 +72,46 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     (result) => { setProjections(result.projections) },
   )
 
+  // Composer mode: drive (default) vs direct. One explicit switch — the
+  // mode's boundary is stated in the panel, never guessed.
+  const [drive, setDrive] = useState(true)
+  const cruiseOn = controller.getSnapshot().cruise.enabled
+  // The session's own comment thread (drive-mode rounds), live states.
+  const thread = sessionThreadOf(task, sessionId, cruiseOn)
+  const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
+
   // Direct-composer state: sending is immediate (no queue), a failure keeps
   // the draft so the user can retry.
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [sendError, setSendError] = useState<string | undefined>(undefined)
-  const unavailable = row === undefined || !controller.directMessageAvailable()
+  const liveGone = row === undefined
+  const directUnavailable = liveGone || !controller.directMessageAvailable()
+  const taskDone = task.status === 'done'
 
   const submit = (): void => {
     const text = draft.trim()
-    if (text === '' || busy || unavailable) return
+    if (text === '' || busy) return
+    if (drive) {
+      // Drive: a session-anchored comment round — same queue, same
+      // dispatcher, same injection as an execution comment. A leading '/'
+      // is a slash command through the native registry, matching the native
+      // composer and the review page. Synchronous: the round is saved at
+      // once and the card's queue chip + this thread reflect it.
+      if (liveGone || taskDone) return
+      const round = controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/'))
+      if (round !== undefined) {
+        setLastCommentId(round.id)
+        setDraft('')
+        setSendError(undefined)
+      }
+      return
+    }
+    // Direct: the message goes to the native session immediately (exactly as
+    // if typed in its own conversation) — no execution record, no dispatcher.
+    if (directUnavailable) return
     setBusy(true)
     setSendError(undefined)
-    // The controller routes a leading '/' through the native command
-    // registry (unknown commands fall back to plain text). Success is
-    // "delivered to the native session" — the transcript refreshes at once,
-    // so the user's own message appears without waiting for the next poll.
     void controller.sendSessionMessage(sessionId, text).then(result => {
       setBusy(false)
       if (result.ok) {
@@ -98,6 +132,28 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       : row?.completed === true
         ? { kind: 'success' as const, label: t('detail.linkedDone') }
         : undefined
+
+  // The hint under the send button, one branch per situation — never a
+  // guessed bulk of nested ternaries inline in the JSX.
+  let composerHint: ReactNode = null
+  if (drive && taskDone) {
+    // A done task rejects comments — the hint explains how to release them.
+    composerHint = <span className={css.reviewComposerHint}>{t('detail.commentQueuedDone')}</span>
+  } else if (liveGone) {
+    composerHint = <span className={css.reviewComposerHint}>{t('detail.sessionUnavailable')}</span>
+  } else if (!drive && sendError !== undefined) {
+    composerHint = <span className={css.reviewConfigMessage}>{sendError}</span>
+  } else if (drive && lastCommentId !== undefined
+    && !task.executions.some(round => round.id === lastCommentId && round.endedAt !== undefined)) {
+    // A saved drive comment states where it stands (injected / queued / saved).
+    composerHint = (
+      <span className={css.reviewComposerHint}>
+        {task.status === 'running' ? t('review.commentInjected')
+          : cruiseOn ? t('review.commentQueuedHint')
+            : t('review.commentPendingHint')}
+      </span>
+    )
+  }
 
   return (
     <SessionFrame
@@ -131,9 +187,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       }
       rail={
         <>
-          {/* The head scrolls inside its own region; the composer below is
-              flex:none and stays pinned — a taller head (status, config,
-              hints) can never squeeze the send button out of the rail. */}
+          {/* The head + thread scroll inside their own region; the composer
+              below is flex:none and stays pinned — a taller head (status,
+              config, thread) can never squeeze the send button out of the
+              rail. */}
           <div className={css.sessionRailScroll}>
             {stateChip !== undefined && row !== undefined && (
               <div className={css.sessionFacts}>
@@ -153,9 +210,28 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               lines={lines}
               onChanged={reload}
             />
-            {/* The direct-message boundary, stated plainly: this composer
-                talks to the native session; it does not drive the task. */}
-            <p className={css.sessionReadonly}>{t('detail.sessionDirect')}</p>
+            {drive ? (
+              /* Drive mode: this session's own comment thread — the live
+                  record of everything said from this panel that drives the
+                  task, with the same state/cancel grammar as the review
+                  page's thread. */
+              <section className={css.sessionThread}>
+                <h4 className={css.reviewThreadTitle}>
+                  {t('review.comments')}
+                  <span className={css.reviewThreadCount}>{thread.length}</span>
+                </h4>
+                <CommentsThread
+                  task={task}
+                  views={thread}
+                  onCancel={id => controller.cancelComment(id)}
+                />
+                <p className={css.detailHint}>{t('detail.sessionDriveHint')}</p>
+              </section>
+            ) : (
+              /* The direct-message boundary, stated plainly: this composer
+                  talks to the native session; it never drives the task. */
+              <p className={css.sessionReadonly}>{t('detail.sessionDirect')}</p>
+            )}
             <div className={css.linkedActions}>
               <Button onClick={() => { controller.openSession(sessionId) }}>
                 {t('detail.viewSession')} →
@@ -175,31 +251,51 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
             </div>
           </div>
 
-          {/* The direct composer: the same visual rhythm and primary send
-              button as the review page's composer — same semantic action
-              (submit a message to the session), different accounting, which
-              the placeholder and the hint above explain. */}
+          {/* The composer, pinned: drive (default) or direct, chosen by one
+              explicit switch. Same visual rhythm and primary send button on
+              both paths — different accounting, which the mode label above
+              and the placeholder below explain. */}
           <div className={css.reviewComposer}>
+            <div className={css.segmentedRow} role="radiogroup" aria-label={t('detail.sessionComposerMode')}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={drive}
+                className={`${css.segmentedButton}${drive ? ` ${css.segmentedActive}` : ''}`}
+                title={t('detail.sessionComposerModeDriveTitle')}
+                onClick={() => { setDrive(true); setSendError(undefined) }}
+              >
+                {t('detail.sessionComposerModeDrive')}
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!drive}
+                className={`${css.segmentedButton}${!drive ? ` ${css.segmentedActive}` : ''}`}
+                title={t('detail.sessionComposerModePureTitle')}
+                onClick={() => { setDrive(false); setSendError(undefined) }}
+              >
+                {t('detail.sessionComposerModePure')}
+              </button>
+            </div>
             <PromptInput
               value={draft}
               onChange={setDraft}
-              placeholder={t('detail.sessionComposerPlaceholder')}
+              placeholder={drive
+                ? t('detail.sessionDrivePlaceholder')
+                : t('detail.sessionComposerPlaceholder')}
               rows={3}
               controller={controller}
             />
             <div className={css.reviewComposerRow}>
               <Button
                 variant="primary"
-                disabled={draft.trim() === '' || busy || unavailable}
+                disabled={draft.trim() === '' || (drive ? (liveGone || taskDone) : directUnavailable)}
                 onClick={submit}
               >
-                {t('detail.sessionSend')}
+                {drive ? t('review.commentSend') : t('detail.sessionSend')}
               </Button>
-              {unavailable ? (
-                <span className={css.reviewComposerHint}>{t('detail.sessionUnavailable')}</span>
-              ) : sendError !== undefined && (
-                <span className={css.reviewConfigMessage}>{sendError}</span>
-              )}
+              {composerHint}
             </div>
           </div>
         </>

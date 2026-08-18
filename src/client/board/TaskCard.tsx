@@ -150,7 +150,13 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
               </Chip>
             )}
             {queuedComments > 0 && (
-              <Chip kind="warn" fill={false} title={t('card.commentQueueTitle', { n: String(queuedComments) })}>
+              <Chip
+                kind="warn"
+                fill={false}
+                title={task.status === 'done'
+                  ? t('card.commentQueueDone', { n: String(queuedComments) })
+                  : t('card.commentQueueTitle', { n: String(queuedComments) })}
+              >
                 {t('card.commentQueue')} {queuedComments}
               </Chip>
             )}

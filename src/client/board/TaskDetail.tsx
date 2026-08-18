@@ -458,12 +458,12 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
       <p className={css.scheduleMeta}>{t('detail.schedule.scope')}</p>
 
       {/* Driving mode: fixed times (cron) or run-after-completion (chain). */}
-      <div className={css.scheduleModeRow} role="radiogroup" aria-label={t('detail.schedule')}>
+      <div className={css.segmentedRow} role="radiogroup" aria-label={t('detail.schedule')}>
         <button
           type="button"
           role="radio"
           aria-checked={mode === 'cron'}
-          className={`${css.scheduleMode}${mode === 'cron' ? ` ${css.scheduleModeActive}` : ''}`}
+          className={`${css.segmentedButton}${mode === 'cron' ? ` ${css.segmentedActive}` : ''}`}
           title={t('detail.schedule.mode.cronHint')}
           onClick={() => { switchMode('cron') }}
         >
@@ -473,7 +473,7 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
           type="button"
           role="radio"
           aria-checked={mode === 'chain'}
-          className={`${css.scheduleMode}${mode === 'chain' ? ` ${css.scheduleModeActive}` : ''}`}
+          className={`${css.segmentedButton}${mode === 'chain' ? ` ${css.segmentedActive}` : ''}`}
           title={t('detail.schedule.mode.chainHint')}
           onClick={() => { switchMode('chain') }}
         >
@@ -739,7 +739,11 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
             <p className={css.detailHint}>{t('detail.executionHint')}</p>
             {visibleRuns.length === 0 ? (
               <p className={css.detailText}>
-                {plainRunsOf(current).length > 0 ? t('detail.executionHiddenAll') : t('detail.noExecution')}
+                {plainRunsOf(current).length > 0
+                  ? t('detail.executionHiddenAll')
+                  : current.bind !== undefined
+                    ? t('detail.noExecutionLinked')
+                    : t('detail.noExecution')}
               </p>
             ) : (
               <ul className={css.sessionList}>
