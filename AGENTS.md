@@ -234,15 +234,17 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   （卡片/对话/面板/评论/菜单，`--dsh-tb-surface-float/-sunken/-menu`，= bg-layer-1/2/菜单色）
   一律**不透明**——与玻璃皮肤「内表面不透明保可读」的原生约定一致；画布之上的遮罩
   `--dsh-tb-mask`（mask-1/3 混色，偏强）盖住列线。粗体按钮 `primaryButton` 用原生
-  `--dsw-alias-button-primary-fill`，半径 18px、高 36px、14px 字，与 shell 原生按钮同节奏；
-  正文 14px/1.5。
+  `--dsw-alias-button-primary-fill`，半径 18px、**与 ghost/danger 同级高 28px**（强调靠
+  填充色，不靠更高——同一行的 执行/保存/取消/删除 不混高），14px 字，与 shell 原生按钮
+  同节奏；正文 14px/1.5。
 - **面板几何（随板居中）**：`.modalBackdrop` 为**看板盒内绝对定位**（父级即
   `[data-dsh-taskboard-view]`，position:absolute inset:0），浮层 `.modal/.detail/.review`
   由 flex 在其中居中——以看板盒为参照系，与侧栏宽度、祖先 transform/filter、皮肤效果
   完全解耦，任何视口都贴不到列线、不偏右（不再需要 `--dsh-tb-board-offset` 偏移变量）。
 - **共用部件**：`ui.tsx`（Button primary/ghost/danger + `size="sm"` 紧凑变体、Section、
-  Notice、AttentionDot、Icon、Switch）+ `Chip`/`Dialog`/`PromptInput`/`TranscriptRow`/
-  `useTranscriptTail`/`JumpToLatest`/`SessionFrame`/`session-panel.tsx`（SessionRailHead/
+  **Disclosure**（chevron+标题+一行状态摘要的通用折叠块）、Notice、AttentionDot、Icon、
+  Switch）+ `Chip`/`Dialog`/`PromptInput`/`TranscriptRow`/`useTranscriptTail`/
+  `JumpToLatest`/`SessionFrame`/`session-panel.tsx`（SessionRailHead/
   SessionTranscript/SessionConfigEditor/SessionFacts/SessionWaitingNotice）+ `SessionRow`
   （执行行与链接行共用一个行骨架）/`CommentsThread`（评论页与链接会话面板共用一个评论
   项文法）。各界面一律复用，不手写重复标记。
@@ -292,12 +294,24 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
   仍任务级 FIFO 显示位次。`sessionRoundsOf` 排除会话锚定轮用于判会话「忙」——线程视图
   与忙状态职责分离。执行序号统一 `plainRunsOf(task)`（过滤 comment/refine 轮的单一
   编号源）。
+- **会话统一模型（session-list.ts，任务级单一「会话」视图）**：`taskSessionsOf(task, ctx)`
+  把板内执行会话（每次 Run 的 session）与链接外部会话（`controller.linkedOf`）按
+  **sessionId 去重**成一个列表——同一会话绝不出现两次（run 优先于 linked），从执行页
+  或链接面板进入同一会话看到的是同一条评论线程（结构性解决"评论区不同步"）。每行 =
+  `TaskSessionRow`（sessionId/kind/title/workspaceLabel/executionId/runIndex/display/
+  updatedAt/unviewed），run 行以该会话最新 plain-run 为代表（评论共享 session 不加行），
+  refine 会话不并入（保留独立 RefineSection）。**隐藏按会话统一**：`hiddenSessionIdsOf`
+  由 `hidden.sessions ∪ hidden.executions 映射` 得出，`hideTaskSession`/`unhideTaskSessions`
+  （旧 `hideTaskRow`/`hasHiddenRows` 已移除）统一操作 sessionId。
 - **自动化独立（开启即生效，不绑卡）**：`ScheduleRule` 无手动激活门——
   `ruleReadiness` 三态（disabled / paused / active：backlog·review·done = 暂停、done 完成
   即 `disarmSchedule` 硬停）；`setSchedule` 启用 chain 且卡片可驱动（todo/running）时立即
   首跑，cron 到点经 scheduler tick 触发；`resolveCardDrop` 不再因 chain 拒绝移动，
   `moveTask` 以「拖到已完成=停链 / 待规划·待审核=暂停 / 待办=停止接续手动接管」表达
-  「离开即暂停/停止」；`TaskCard` 悬停快速执行（`rerunTask` 同 run guard）。
+  「离开即暂停/停止」；`TaskCard` 悬停快速执行（`rerunTask` 同 run guard）。UI 上是
+  详情页独立分区 `AutomationSection`：共用 `Disclosure` 一行状态摘要（折叠态零按钮），
+  展开态 = 触发方式分段 + 当前模式配置 + 按状态显隐的跳过/停止，无保存/取消（即改即
+  生效），与板级「自动巡航」的关系用一行 `detail.schedule.boundary` 讲清。
 - **会话状态派生（session-display.ts）**：`sessionDisplay` 归集同会话轮次，状态优先级
   waiting > running > 最新 settled；`sessionTimes`/`taskPendingCount`；未读
   `taskUnviewed`/`executionUnviewed`，基线 `viewedAt`（旧数据归一化零噪音）。
@@ -320,14 +334,15 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
 - **链接会话（拖入建卡，linked-sessions.ts + sidebar-drag.ts）**：拖侧栏**会话**或
   **工作区文件夹**进看板 → `bind` 卡片；`deriveLinkedSessions` 纯派生（工作区 sessionIds
   按序 - archived - blank - hidden），订阅 sessions/workspaces → 新开会话/归档/改名自动
-  实时同步，无「同步」按钮；有隐藏才显示「恢复全部已隐藏」（`hasHiddenRows`/
-  `unhideTaskRows`）。每行：标题/工作区/实时状态 chip/查看会话/隐藏（非破坏），整行可点
-  打开 `SessionDetail`；`unbindTask` 解绑。**拖拽**：原生行自带 draggable 并打
-  `text/plain`；dragover 读不到 payload（保护模式）→ board 根按 types
-  （`candidateExternalDrag`）且 `dragSourceRef` 未置位（排除卡片拖拽）latch，drop 时
-  `externalDragOf` 读 payload 分类；`clearDrag` 全量复位 + window `drop`/`dragend` 兜底；
-  **落哪列建哪列**（`landingStatusOf`）。`bind`/`hidden` 可选、store 轻归一化，旧数据
-  零影响。
+  实时同步，无「同步」按钮。**显式绑定的单会话跳过 archived/blank 过滤**（用户拖进来
+  就一定要显示；工作区绑定仍过滤），工作区绑定时以 `boundWorkspaceTitle` 作所有行的
+  稳定工作区标签回落（cwd 缺失也显示）。每行：标题/工作区/实时状态 chip/查看会话/隐藏
+  （非破坏，`hideTaskSession` 统一按会话隐藏），整行可点打开 `SessionDetail`；
+  `unbindTask` 解绑。**拖拽**：原生行自带 draggable 并打 `text/plain`；dragover 读不到
+  payload（保护模式）→ board 根按 types（`candidateExternalDrag`）且 `dragSourceRef` 未
+  置位（排除卡片拖拽）latch，drop 时 `externalDragOf` 读 payload 分类；`clearDrag` 全量
+  复位 + window `drop`/`dragend` 兜底；**落哪列建哪列**（`landingStatusOf`）。`bind`/
+  `hidden` 可选、store 轻归一化，旧数据零影响。
 
 - **统一会话面板（SessionFrame.tsx + session-panel.tsx）**：执行评论页与链接会话面板共用
   纯布局外壳（backdrop + 头部徽章 + 左对话右 rail）与右栏 `SessionRailHead`（上下文条 /
@@ -387,7 +402,7 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
 
 ## 测试
 
-- `tests/controller|execution|schedule|scheduler|store|tasks.spec.ts`：核心层纯逻辑。
+- `tests/controller|execution|schedule|scheduler|store|tasks|session-list|linked-sessions|drop-position.spec.ts`：核心层纯逻辑
 - `tests/refine.spec.ts`：需求完善指令模板（zh/en 字段嵌入、输出格式、提问约束）。
 - `tests/review-transcript.spec.ts` / `tests/context-meter.spec.ts` /
   `tests/menu-direction.spec.ts` / `tests/comment-thread.spec.ts`：评论页纯逻辑
