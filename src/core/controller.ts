@@ -15,6 +15,8 @@
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
 import { isValidCron, nextRunAtMs } from './schedule.ts'
 import { buildRefinePrompt } from './refine.ts'
+import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
+import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
 import type { TaskStore } from './store.ts'
 import {
   applyCardOrder, createTask, disarmSchedule, hasOpenRun, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
@@ -49,6 +51,21 @@ export interface SessionsControllerFace {
   exists(id: string): boolean
   /** Select a session as current (navigates the conversation view). */
   open(id: string): void
+}
+
+/**
+ * The workspaces face the controller needs for live "链接会话" derivation:
+ * one workspace's accounted sessions (in order) plus the registry-global
+ * archive set — exactly the facts the native workspace browser groups by.
+ */
+export interface WorkspacesControllerFace {
+  list: {
+    getSnapshot(): {
+      items: readonly { id: string; title: string; sessionIds: readonly string[] }[]
+      archivedSessionIds: readonly string[]
+    }
+    subscribe(fn: () => void): () => void
+  }
 }
 
 /** One workspace row the new-task form can target. */
@@ -256,6 +273,8 @@ export interface ControllerDeps {
   store: TaskStore
   exec: ExecutionService
   sessions: SessionsControllerFace
+  /** Optional workspaces face (workspace-bound "链接会话" derivation + live refresh). */
+  workspaces?: WorkspacesControllerFace
   /** Optional run-catalog surface (workspace/model pickers in the new-task form). */
   runCatalog?: RunCatalogFace
   /** Clock; defaults to Date.now. */
@@ -346,6 +365,13 @@ export class BoardController {
     this.disposers.push(this.deps.sessions.list.subscribe(() => {
       this.onSessionsChanged()
     }))
+    // Live "链接会话" refresh: workspace membership and the archive set change
+    // as sessions are created/archived in the native sidebar — mirror those
+    // changes into the board (linked rows are pure derivations, so any
+    // snapshot change is enough to re-render).
+    if (this.deps.workspaces !== undefined) {
+      this.disposers.push(this.deps.workspaces.list.subscribe(() => { this.notify() }))
+    }
     // Restore the dispatch queue after a reload: with the cruise on, pick up
     // todo tasks again and inject comment continuations that were waiting
     // (each launch re-validates eligibility, so nothing stale can fire).
@@ -499,6 +525,106 @@ export class BoardController {
     this.tasks = [...this.tasks, task]
     this.persistAndNotify()
     return task
+  }
+
+  /**
+   * Create a task bound to a live native source (a session or a whole
+   * workspace folder dragged in from the sidebar). The bind wires the card's
+   * "链接会话" section; everything else behaves like a plain task.
+   * @param bind - the live binding.
+   * @param input - title/description/prompt/landing column (title resolved
+   *   from the source by the caller / drag layer).
+   * @returns the created task, or undefined for a blank title.
+   */
+  createBoundTask(bind: TaskRecord['bind'], input: NewTaskInput): TaskRecord | undefined {
+    const title = input.title.trim()
+    if (title === '' || bind === undefined) return undefined
+    const task = createTask(input, this.now(), this.uuid(), this.nextOrder())
+    const boundTask: TaskRecord = { ...task, bind }
+    this.tasks = [...this.tasks, boundTask]
+    this.persistAndNotify()
+    return boundTask
+  }
+
+  /**
+   * The live linked-session rows of a task (pure derivation over the native
+   * snapshots; see linked-sessions.ts). Returns [] for unbound tasks or when
+   * the workspaces face is absent.
+   */
+  linkedOf(task: TaskRecord): LinkedSessionRow[] {
+    const workspaces = this.deps.workspaces
+    if (task.bind === undefined || workspaces === undefined) return []
+    const snap = workspaces.list.getSnapshot()
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    return [...deriveLinkedSessions(task.bind, {
+      byId: byId as unknown as Readonly<Record<string, LinkedSessionSource>>,
+      archived: snap.archivedSessionIds,
+      workspaceSessionIds: workspaceId => snap.items.find(item => item.id === workspaceId)?.sessionIds,
+      hidden: task.hidden?.sessions ?? [],
+    })]
+  }
+
+  /** Hide one row from the task's display (non-destructive; numbering stays). */
+  hideTaskRow(taskId: string, family: 'executions' | 'sessions', rowId: string): void {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId) return task
+      const current = task.hidden?.[family] ?? []
+      if (current.includes(rowId)) return task
+      changed = true
+      return { ...task, hidden: { ...task.hidden, [family]: [...current, rowId] } }
+    })
+    if (changed) this.persistAndNotify()
+  }
+
+  /** Restore every row of one family (the "同步 / 恢复全部已隐藏" action). */
+  unhideTaskRows(taskId: string, family: 'executions' | 'sessions'): void {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId || task.hidden?.[family] === undefined) return task
+      changed = true
+      const hidden = { ...task.hidden }
+      delete hidden[family]
+      // Dropping the last family leaves no hidden state at all.
+      if (Object.keys(hidden).length === 0) {
+        const rest = { ...task }
+        delete rest.hidden
+        return rest
+      }
+      return { ...task, hidden }
+    })
+    if (changed) this.persistAndNotify()
+  }
+
+  /** Drop the live binding, turning the task back into a plain prompt-driven one. */
+  unbindTask(taskId: string): void {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId || task.bind === undefined) return task
+      changed = true
+      const rest = { ...task }
+      delete rest.bind
+      return rest
+    })
+    if (changed) this.persistAndNotify()
+  }
+
+  /** Default title for a freshly dragged-in binding (from its native source). */
+  boundSourceTitleOf(bind: NonNullable<TaskRecord['bind']>): string {
+    const workspaces = this.deps.workspaces?.list.getSnapshot()
+    return boundSourceTitle(bind, {
+      sessions: this.deps.sessions.list.getSnapshot().byId,
+      workspaces: workspaces?.items ?? [],
+    })
+  }
+
+  /** Classify a sidebar-drag id (known session / known workspace / unknown). */
+  externalKindOf(id: string): 'session' | 'workspace' | undefined {
+    const workspaces = this.deps.workspaces
+    return resolveExternalKind(id, {
+      sessions: this.deps.sessions.list.getSnapshot().byId,
+      workspaces: workspaces?.list.getSnapshot().items ?? [],
+    })
   }
 
   /** Next column sort key: one past the largest order in the ledger. */

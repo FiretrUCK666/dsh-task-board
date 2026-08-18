@@ -1402,3 +1402,116 @@ describe('requirement refinement', () => {
     expect(stub.runCalls).toHaveLength(1)
   })
 })
+
+/** Controllable workspaces face for the live "链接会话" derivation tests. */
+class FakeWorkspaces {
+  private listeners = new Set<() => void>()
+  items: Array<{ id: string; title: string; sessionIds: string[] }> = []
+  archivedSessionIds: string[] = []
+  list = {
+    getSnapshot: (): { items: Array<{ id: string; title: string; sessionIds: string[] }>; archivedSessionIds: string[] } => ({
+      items: this.items,
+      archivedSessionIds: this.archivedSessionIds,
+    }),
+    subscribe: (fn: () => void): (() => void) => {
+      this.listeners.add(fn)
+      return () => { this.listeners.delete(fn) }
+    },
+  }
+  notify(): void {
+    for (const fn of [...this.listeners]) fn()
+  }
+}
+
+describe('linked sessions & bind', () => {
+  const workspaces = (): FakeWorkspaces => new FakeWorkspaces()
+
+  it('createBoundTask creates a bound task, persists it, and lands in the chosen column', () => {
+    const { controller, store } = makeController()
+    const created = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
+      title: '会话一', description: '', prompt: '', status: 'todo',
+    })
+    expect(created).toBeDefined()
+    expect(created?.bind).toEqual({ kind: 'session', sessionId: 's-1' })
+    expect(controller.getSnapshot().tasks[0].status).toBe('todo')
+    expect(store.load()[0].bind).toEqual({ kind: 'session', sessionId: 's-1' })
+    // Rejects a blank title like a plain create.
+    expect(controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+      title: '  ', description: '', prompt: '', status: 'todo',
+    })).toBeUndefined()
+  })
+
+  it('hideTaskRow / unhideTaskRows manage a display-only hide set (persisted)', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const run = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
+      title: 'x', description: '', prompt: '', status: 'todo',
+    })!
+    controller.hideTaskRow(task.id, 'executions', 'exec-1')
+    controller.hideTaskRow(run.id, 'sessions', 's-1')
+    const stored = store.load()[0]
+    expect(stored.hidden).toEqual({ executions: ['exec-1'] })
+    const boundStored = store.load()[1]
+    expect(boundStored.hidden).toEqual({ sessions: ['s-1'] })
+    controller.unhideTaskRows(task.id, 'executions')
+    expect(store.load()[0].hidden).toBeUndefined()
+  })
+
+  it('unbindTask drops the live binding and persists', () => {
+    const { controller, store } = makeController()
+    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+      title: '项目A', description: '', prompt: '', status: 'backlog',
+    })!
+    controller.unbindTask(task.id)
+    expect(store.load()[0].bind).toBeUndefined()
+  })
+
+  it('boundSourceTitleOf resolves from the native snapshots', () => {
+    const wss = workspaces()
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1'] }, { id: 'w-b', title: '其他', sessionIds: [] }]
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    const controller = new BoardController({
+      store: new InMemoryTaskStore(),
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions,
+      workspaces: wss,
+      now: () => NOW,
+      uuid,
+    })
+    expect(controller.boundSourceTitleOf({ kind: 'workspace', workspaceId: 'w-a' })).toBe('项目A')
+    expect(controller.boundSourceTitleOf({ kind: 'workspace', workspaceId: 'gone' })).toBe('gone')
+    expect(controller.boundSourceTitleOf({ kind: 'session', sessionId: 's-1' })).toBe('s-1')
+  })
+
+  it('externalKindOf classifies sidebar ids and linkedOf derives workspace rows live', () => {
+    const wss = workspaces()
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
+    wss.archivedSessionIds = ['s-2']
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = true
+    const controller = new BoardController({
+      store: new InMemoryTaskStore(),
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions,
+      workspaces: wss,
+      now: () => NOW,
+      uuid,
+    })
+    expect(controller.externalKindOf('w-a')).toBe('workspace')
+    expect(controller.externalKindOf('s-1')).toBe('session')
+    const task: TaskRecord = taskWithBind({ kind: 'workspace', workspaceId: 'w-a' })
+    const rows = controller.linkedOf(task)
+    expect(rows.map(row => row.sessionId)).toEqual(['s-1'])
+    // A snapshot change surfaces live (new session added, not archived).
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2', 's-3'] }]
+    sessions.runningById['s-3'] = false
+    wss.notify()
+    expect(controller.linkedOf(task).map(row => row.sessionId)).toEqual(['s-1', 's-3'])
+  })
+})
+
+/** Build a task with a bind (test helper). */
+function taskWithBind(bind: NonNullable<TaskRecord['bind']>): TaskRecord {
+  return { id: 'task-b', title: 'T', description: '', prompt: '', status: 'todo', order: 0, createdAt: 0, updatedAt: 0, executions: [], bind }
+}

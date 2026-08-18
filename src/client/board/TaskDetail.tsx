@@ -83,7 +83,7 @@ function sessionStateKey(state: 'running' | 'waiting' | 'succeeded' | 'failed' |
  *  the detail footer — it always starts a fresh round with the task's
  *  current prompt, so rows carry no rerun button (a row's "rerun" would be
  *  ambiguous next to comments). */
-function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview, onOpen }: {
+function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview, onOpen, onHide }: {
   execution: ExecutionRecord
   /** 1-based execution sequence (comment rounds are not part of the list). */
   index: number
@@ -95,6 +95,8 @@ function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview,
   cruiseOn: boolean
   onReview: () => void
   onOpen: (sessionId: string) => void
+  /** Hide this row from the list (non-destructive; numbering stays stable). */
+  onHide: () => void
 }) {
   const session = sessionDisplay(task, execution, waitingKind)
   const times = sessionTimes(task, execution)
@@ -135,6 +137,14 @@ function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview,
             {session.state === 'waiting' ? t('detail.handle') : t('detail.viewSession')} →
           </button>
         )}
+        <button
+          type="button"
+          className={css.rowHide}
+          onClick={event => { event.stopPropagation(); onHide() }}
+          title={t('detail.hideRow')}
+        >
+          {t('detail.hide')}
+        </button>
       </div>
       <span className={css.executionTimes}>
         {t('detail.executionStarted')} {formatDateTime(times.startedAt)}
@@ -167,6 +177,86 @@ function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview,
         <span className={css.executionError}>{execution.error}</span>
       )}
     </li>
+  )
+}
+
+/** One linked-session row + its live status chip, rendered in the linked section. */
+function LinkedRow({ row, task, controller }: {
+  row: import('../../core/linked-sessions.ts').LinkedSessionRow
+  task: TaskRecord
+  controller: BoardController
+}) {
+  const waiting = row.pendingInteraction
+  const stateChip = waiting !== undefined
+    ? { kind: 'warn' as const, label: t(`waiting.${waiting}` as 'waiting.approval') }
+    : row.running
+      ? { kind: 'warn' as const, label: t('detail.result.running') }
+      : row.completed
+        ? { kind: 'success' as const, label: t('detail.linkedDone') }
+        : undefined
+  return (
+    <li className={css.linkedRow}>
+      <span className={css.linkedRowTitle}>
+        <Icon name="link" className={css.linkedRowIcon} />
+        <span className={css.linkedRowName} title={row.title}>{row.title}</span>
+        {row.workspaceLabel !== undefined && row.workspaceLabel !== row.title && (
+          <span className={css.linkedRowWorkspace}>{row.workspaceLabel}</span>
+        )}
+      </span>
+      <span className={css.linkedRowMeta}>
+        {stateChip !== undefined && (
+          <Chip kind={stateChip.kind}>
+            {(row.running || waiting !== undefined) && <span className={css.spinner} aria-hidden="true" />}
+            {stateChip.label}
+          </Chip>
+        )}
+        <span className={css.linkedRowTime}>{formatTime(row.updatedAt)}</span>
+        <Button onClick={() => { controller.openSession(row.sessionId) }}>
+          {t('detail.viewSession')} →
+        </Button>
+        <button
+          type="button"
+          className={css.rowHide}
+          onClick={() => { controller.hideTaskRow(task.id, 'sessions', row.sessionId) }}
+          title={t('detail.hideRow')}
+        >
+          {t('detail.hide')}
+        </button>
+      </span>
+    </li>
+  )
+}
+
+/**
+ * The "链接会话" section of a bound task: each row is a live view of one
+ * native session (its title, workspace, running/waiting state, last update) —
+ * never copies, always a pure derivation of the native snapshots (new
+ * sessions, renames, archiving and hides all surface automatically). The
+ * "同步" action clears the display-only hide set ("get all non-archived").
+ */
+function LinkedSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
+  const rows = controller.linkedOf(task)
+  return (
+    <Section title={`${t('detail.linked')}${rows.length > 0 ? ` ${rows.length}` : ''}`}>
+      {rows.length === 0 ? (
+        <p className={css.detailText}>{t('detail.linkedEmpty')}</p>
+      ) : (
+        <ul className={css.linkedList}>
+          {rows.map(row => (
+            <LinkedRow key={row.sessionId} row={row} task={task} controller={controller} />
+          ))}
+        </ul>
+      )}
+      <div className={css.linkedActions}>
+        <Button onClick={() => { controller.unhideTaskRows(task.id, 'sessions') }}>
+          {t('detail.linkedSync')}
+        </Button>
+        <Button variant="ghost" onClick={() => { controller.unbindTask(task.id) }}>
+          {t('detail.linkedUnbind')}
+        </Button>
+      </div>
+      <p className={css.detailHint}>{t('detail.linkedHint')}</p>
+    </Section>
   )
 }
 
@@ -607,6 +697,10 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                   )}
                 </dl>
               </Section>
+
+              {current.bind !== undefined && (
+                <LinkedSection controller={controller} task={current} />
+              )}
             </>
           )}
 
@@ -621,7 +715,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
             {(() => {
               // Comment continuation rounds are not part of the execution
               // history list — they live in the review page's comment thread.
-              const runs = plainRunsOf(current)
+              // Display-hidden rows (user hide) are filtered, numbering stays.
+              const hidden = current.hidden?.executions !== undefined ? new Set(current.hidden.executions) : undefined
+              const runs = plainRunsOf(current).filter(run => hidden === undefined || !hidden.has(run.id))
               if (runs.length === 0) return <p className={css.detailText}>{t('detail.noExecution')}</p>
               return (
                 <ul className={css.executionList}>
@@ -635,11 +731,17 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                       cruiseOn={controller.getSnapshot().cruise.enabled}
                       onReview={() => { setReviewExecution(execution) }}
                       onOpen={sessionId => { controller.openSession(sessionId) }}
+                      onHide={() => { controller.hideTaskRow(current.id, 'executions', execution.id) }}
                     />
                   ))}
                 </ul>
               )
             })()}
+            {current.hidden?.executions !== undefined && current.hidden.executions.length > 0 && (
+              <Button onClick={() => { controller.unhideTaskRows(current.id, 'executions') }}>
+                {t('detail.restoreHidden')}
+              </Button>
+            )}
           </Section>
 
           <Section title={t('board.status')}>

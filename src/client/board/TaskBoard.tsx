@@ -24,6 +24,7 @@ import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { Button, Switch } from './ui.tsx'
+import { readSidebarDrag, type SidebarDrag } from '../sidebar-drag.ts'
 
 /** Case-insensitive title/description match. */
 function matchesFilter(task: TaskRecord, filter: string): boolean {
@@ -58,6 +59,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   useEffect(() => () => {
     if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
   }, [])
+  // The column currently accepting an external sidebar drag (session/workspace
+  // dragged in from the sidebar): a distinct highlight from the board's own
+  // card-reorder affordances.
+  const [dropAccept, setDropAccept] = useState<TaskStatus | undefined>(undefined)
+  const clearAccept = (): void => setDropAccept(undefined)
   const selected = selectedTaskOf(snapshot)
   const visible = snapshot.tasks.filter(task => matchesFilter(task, filter))
   const draggedTask = dragId !== undefined
@@ -103,13 +109,35 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     return row?.title ?? workspaceId
   }
 
+  /** Create a bound task from an external sidebar drag (session or workspace). */
+  const createFromSidebar = (drag: SidebarDrag, dropStatus: TaskStatus): void => {
+    const bind = drag.kind === 'session'
+      ? { kind: 'session' as const, sessionId: drag.id }
+      : { kind: 'workspace' as const, workspaceId: drag.id }
+    const landing: TaskStatus = dropStatus === 'backlog' ? 'backlog' : 'todo'
+    controller.createBoundTask(bind, {
+      title: controller.boundSourceTitleOf(bind),
+      description: '',
+      prompt: '',
+      status: landing,
+    })
+  }
+
   /**
    * Column-level drop: same-column drops reorder (the half-split anchor the
    * last dragover computed); cross-column drops keep the classic
-   * move/rerun/reject semantics.
+   * move/rerun/reject semantics; an external sidebar drag (session/workspace)
+   * creates a bound task in this column.
    */
   const handleDrop = (status: TaskStatus) => (event: React.DragEvent): void => {
     event.preventDefault()
+    const external = readSidebarDrag(event.dataTransfer)
+    if (external !== undefined) {
+      event.stopPropagation()
+      clearAccept()
+      createFromSidebar(external, status)
+      return
+    }
     const id = dragId ?? event.dataTransfer.getData('text/plain')
     const task = snapshot.tasks.find(candidate => candidate.id === id)
     if (task === undefined) {
@@ -137,7 +165,20 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   }
 
   return (
-    <div className={css.board} data-dsh-taskboard-board="">
+    <div
+      className={css.board}
+      data-dsh-taskboard-board=""
+      onDragOver={event => { if (readSidebarDrag(event.dataTransfer) !== undefined) event.preventDefault() }}
+      onDragLeave={() => { clearAccept() }}
+      onDrop={event => {
+        const external = readSidebarDrag(event.dataTransfer)
+        if (external !== undefined) {
+          event.preventDefault()
+          clearAccept()
+          createFromSidebar(external, 'todo')
+        }
+      }}
+    >
       <header className={css.boardHeader}>
         <h2 className={css.boardTitle}>{t('board.title')}</h2>
         <input
@@ -195,7 +236,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               data-status={column.status}
               data-dragover={dragOver === column.status ? '' : undefined}
               data-dragreject={dragReject === column.status ? '' : undefined}
+              data-dropaccept={dropAccept === column.status ? 'link' : undefined}
               onDragOver={event => {
+                // An external sidebar drag (session/workspace) marks this
+                // column as the drop target; the board's own card drags keep
+                // the classic reorder/move feedback below.
+                if (readSidebarDrag(event.dataTransfer) !== undefined) {
+                  event.preventDefault()
+                  if (dropGapRef.current !== undefined) {
+                    dropGapRef.current = undefined
+                    setDropGap(undefined)
+                  }
+                  setDragOver(undefined)
+                  setDropAccept(column.status)
+                  return
+                }
                 event.preventDefault()
                 if (!sameColumnDrag) {
                   // Foreign or cross-column drag: plain column highlight.
@@ -219,6 +274,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               }}
               onDragLeave={() => {
                 setDragOver(current => current === column.status ? undefined : current)
+                setDropAccept(current => current === column.status ? undefined : current)
               }}
               onDrop={handleDrop(column.status)}
             >

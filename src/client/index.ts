@@ -364,6 +364,20 @@ export function apply(ctx: ClientContext): void {
         exists: id => sessions.list.getSnapshot().byId[id as SessionId] !== undefined,
         open: id => sessions.open(id as SessionId),
       },
+      workspaces: {
+        // Live "链接会话" derivation: one workspace's accounted sessions +
+        // the registry-global archive set (the native grouping facts).
+        list: {
+          getSnapshot: () => {
+            const snap = workspaces.list.getSnapshot()
+            return {
+              items: snap.items.map(item => ({ id: item.workspaceId, title: item.title, sessionIds: item.sessionIds })),
+              archivedSessionIds: snap.archivedSessionIds,
+            }
+          },
+          subscribe: fn => workspaces.list.subscribe(fn),
+        },
+      },
       // Auto-cruise state persists across reloads (toggle + concurrency).
       cruiseStorage: {
         read: () => {

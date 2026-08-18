@@ -1446,6 +1446,118 @@ textarea.input {
   flex: none;
 }
 
+/* Non-destructive "hide this row" affordance (execution rows + linked rows):
+   a quiet ghost-text action that only removes the row from display — never
+   deletes or archives — and keeps numbering stable. */
+.rowHide {
+  flex: none;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion);
+}
+
+.rowHide:hover {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-hover);
+}
+
+/* --- linked sessions (bound task's live view of its native source) --------- */
+
+.linkedList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  overflow: hidden;
+}
+
+.linkedRow + .linkedRow {
+  border-top: var(--dsh-tb-separator);
+}
+
+.linkedRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  transition: background var(--dsh-tb-motion);
+}
+
+.linkedRow:hover {
+  background: var(--dsh-tb-hover);
+}
+
+.linkedRowTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsh-tb-text-1);
+}
+
+.linkedRowIcon {
+  flex: none;
+  color: var(--dsh-tb-text-3);
+}
+
+.linkedRowName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linkedRowWorkspace {
+  flex: none;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--dsh-tb-text-3);
+  padding: 1px 7px;
+  background: var(--dsh-tb-hover);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.linkedRowMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+}
+
+.linkedRowTime {
+  flex: none;
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.linkedActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+/* Board columns accept external session/workspace drops (drag-in from the
+   sidebar): a soft accent ring marks the drop target, distinct from the
+   board's own card-reorder indicator. */
+.column[data-dropaccept='link'] {
+  border-color: var(--dsh-tb-accent);
+  box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
+}
+
 /* A quiet explanatory line under a section title. */
 .detailHint {
   margin: 0;

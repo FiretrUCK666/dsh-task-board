@@ -153,6 +153,23 @@ export interface TaskRecord {
    */
   refineSessionId?: string
   /**
+   * A live binding to a native source — either a single session or a whole
+   * workspace folder (dragged in from the sidebar). The bind decides the
+   * source of the card's "链接会话" (linked sessions) section — a pure,
+   * live-synced view of the bound workspace's sessions / the bound session —
+   * and nothing else: the card keeps its own title, description, prompt,
+   * run config, scheduling, executions and refinement exactly as a plain
+   * task. Absent = a plain prompt-driven task (the pre-bind behavior).
+   */
+  bind?: { kind: 'session'; sessionId: string } | { kind: 'workspace'; workspaceId: string }
+  /**
+   * Display-only row hiding sets — rows the user chose not to see, neither
+   * deleted nor archived (hiding keeps task numbering stable). `executions`
+   * holds execution-record ids, `sessions` holds linked-session ids. The
+   * "同步 / 恢复全部已隐藏" actions clear the relevant set.
+   */
+  hidden?: { executions?: string[]; sessions?: string[] }
+  /**
    * When the user last opened this task's detail (ms epoch), clearing the
    * card's unread reminder. Absent on legacy rows — the display layer falls
    * back to the task's newest round activity, so already-seen content stays

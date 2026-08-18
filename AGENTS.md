@@ -329,6 +329,22 @@ prompt（用户确认才应用）。结算 `settleRefine` 不动任务列、不�
 `plainRunsOf` 排除 refine 轮。面板布局：标题栏（状态+轮次数+查看会话）→ 共享
 transcript tail（≤12 行）→ 回答栏 → 应用操作栏。
 
+**链接会话（拖入建卡，linked-sessions.ts + sidebar-drag.ts）**：从侧边栏把一个**会话**或
+**整个工作区文件夹**拖进看板 → 创建带 `TaskRecord.bind`（`{kind:'session'|'workspace', id}`）
+的卡片；「链接会话」区与「执行记录」**正交并列**，是按需派生、不是副本——`deriveLinkedSessions`
+纯函数镜像原生分组规则（工作区 `items[].sessionIds` 按序 + `archivedSessionIds` 归档过滤 +
+`blank` 空白位跳过 + 用户 `hidden.sessions` 隐藏），数据来自 `sessions.list.byId`（title/cwd/
+running/pendingInteraction）与 `workspaces.list`（sessionIds/archivedSessionIds）。板子已订阅
+sessions.list，新增订阅 workspaces.list → 新开会话/归档/改名**自动实时同步**；「同步」按钮 =
+`unhideTaskRows(sessions)`（清隐藏=获取全部未归档）。每行：标题、工作区名、实时状态 chip、
+查看会话、隐藏（`hidden.sessions`，非破坏）。拖拽：`wireSidebarDrag` 挂在侧边栏 root（DOM 级，
+同 sidebar-entry 基建）——原生文件夹行已可拖并打 `text/plain`，板子重打标为板内 MIME
+（`application/x-dsh-task-board-workspace|session`，不碰原生 text/plain、不与板内卡片拖拽
+冲突），并让会话行可拖。看板列与板底空白是 drop target → `createBoundTask`（标题取
+`boundSourceTitleOf`；落列：仅 backlog/todo 列语义，其余落 todo）。执行记录行与链接行都支持
+**非破坏隐藏**（`hidden.executions` 隐藏不重排）、`unbindTask` 解绑转回普通任务。
+`bind`/`hidden` 均为可选字段、store 轻归一化（畸形丢弃），旧数据零影响。
+
 ## 构建与验证（改完必跑，全绿才算完成）
 
 ```sh

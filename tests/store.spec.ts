@@ -155,6 +155,28 @@ describe('parseLedger', () => {
       viewedAt: round.endedAt ?? round.startedAt,
     })))
   })
+
+  it('round-trips the live bind and the display-hidden row sets', () => {
+    const task = createTask({ title: 'x', description: '', prompt: '' }, 1, 't-1')
+    task.bind = { kind: 'workspace', workspaceId: 'w-a' }
+    task.hidden = { executions: ['exec-1', 'exec-2'], sessions: ['s-1'] }
+    const parsed = parseLedger(JSON.stringify([task]))
+    expect(parsed[0].bind).toEqual({ kind: 'workspace', workspaceId: 'w-a' })
+    expect(parsed[0].hidden).toEqual({ executions: ['exec-1', 'exec-2'], sessions: ['s-1'] })
+  })
+
+  it('drops a malformed bind and cleans a malformed hidden set instead of failing the row', () => {
+    const good = createTask({ title: 'good', description: '', prompt: '' }, 1, 't-1')
+    const malformed = {
+      ...good,
+      bind: { kind: 'nonsense' },
+      hidden: { executions: [1, 'ok', null], sessions: 'nope' },
+    }
+    const parsed = parseLedger(JSON.stringify([malformed]))
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].bind).toBeUndefined()
+    expect(parsed[0].hidden).toEqual({ executions: ['ok'] })
+  })
 })
 
 describe('isTaskRecord', () => {

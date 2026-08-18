@@ -154,6 +154,37 @@ export function parseLedger(raw: string | null): TaskRecord[] {
       if (round.viewedAt !== undefined) return round
       return { ...round, viewedAt: round.endedAt ?? round.startedAt }
     })
+    // The live binding (session/workspace dragged in from the sidebar) and the
+    // display-hidden row sets are optional and forward-compatible: normalize
+    // them strictly and drop a malformed value rather than failing the row.
+    const rawBind = (row as Record<string, unknown>).bind
+    if (
+      (rawBind as { kind?: unknown } | undefined)?.kind === 'session'
+      && typeof (rawBind as { sessionId?: unknown }).sessionId === 'string'
+    ) {
+      task.bind = { kind: 'session', sessionId: (rawBind as { sessionId: string }).sessionId }
+    } else if (
+      (rawBind as { kind?: unknown } | undefined)?.kind === 'workspace'
+      && typeof (rawBind as { workspaceId?: unknown }).workspaceId === 'string'
+    ) {
+      task.bind = { kind: 'workspace', workspaceId: (rawBind as { workspaceId: string }).workspaceId }
+    } else {
+      delete task.bind
+    }
+    const rawHidden = (row as Record<string, unknown>).hidden
+    const cleanIdArray = (value: unknown): string[] | undefined => {
+      if (!Array.isArray(value)) return undefined
+      const ids = value.filter((item): item is string => typeof item === 'string')
+      return ids.length > 0 ? ids : undefined
+    }
+    if (rawHidden !== null && typeof rawHidden === 'object') {
+      const executions = cleanIdArray((rawHidden as { executions?: unknown }).executions)
+      const sessions = cleanIdArray((rawHidden as { sessions?: unknown }).sessions)
+      if (executions !== undefined || sessions !== undefined) {
+        task.hidden = { ...executions !== undefined ? { executions } : {}, ...sessions !== undefined ? { sessions } : {} }
+      }
+    }
+    if (task.hidden === undefined) delete task.hidden
     tasks.push(task)
   }
   return tasks
