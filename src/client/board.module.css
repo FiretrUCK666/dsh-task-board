@@ -13,9 +13,20 @@
  * --dsw-* tokens and the whole board follows automatically.
  */
 [data-dsh-taskboard-view] {
-  /* surfaces */
+  /* surfaces: the glass/opaque split lives here once — the wallpaper wash
+     (--dsh-tb-glass, follows a skin's translucency on bg-base) belongs to
+     the canvas layer only; every inner floating/sunken surface consumes the
+     opaque layer tokens, exactly like the native "inner surfaces stay
+     opaque" convention of glass skins. */
+  --dsh-tb-glass: var(--dsw-alias-bg-base);
   --dsh-tb-bg: var(--dsw-alias-bg-base);
   --dsh-tb-bg-raised: var(--dsw-alias-bg-layer-2);
+  --dsh-tb-surface-float: var(--dsw-alias-bg-layer-1);
+  --dsh-tb-surface-sunken: var(--dsw-alias-bg-layer-2);
+  --dsh-tb-surface-menu: var(--dsw-specific-menu);
+  /* Modal mask: a touch stronger than the native mask-1 so column lines
+     behind the glassy board no longer glimmer through the dialog. */
+  --dsh-tb-mask: color-mix(in srgb, var(--dsw-alias-bg-mask-1) 60%, var(--dsw-alias-bg-mask-3));
   --dsh-tb-border: 1px solid var(--dsw-alias-border-l2);
   --dsh-tb-border-soft: 1px solid var(--dsw-alias-border-l1);
   --dsh-tb-separator: 1px solid var(--dsw-alias-separator-primary);
@@ -25,6 +36,11 @@
   --dsh-tb-radius-md: 12px;
   --dsh-tb-radius-lg: 16px;
   --dsh-tb-radius-xl: 24px;
+
+  /* native button geometry (same rhythm as the shell's buttons) */
+  --dsh-tb-button-radius: 18px;
+  --dsh-tb-button-h: 28px;
+  --dsh-tb-button-h-lg: 36px;
 
   /* depth */
   --dsh-tb-shadow-1: var(--dsw-shadow-lv1);
@@ -129,6 +145,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-primary);
 }
 
+/* The board-open active state: the entry reads as "this view is on", with
+   the same hover wash the shell uses for selected nav items. */
+.entry[data-active] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  border-color: var(--dsw-alias-border-l3);
+}
+
 .entryIcon {
   display: inline-flex;
   align-items: center;
@@ -190,9 +213,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .boardTitle {
   margin: 0;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: var(--dsh-tb-text-1);
   white-space: nowrap;
 }
@@ -255,7 +278,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: 1;
   font-size: 13px;
   font-weight: 500;
-  letter-spacing: -0.005em;
   color: var(--dsh-tb-text-1);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -267,7 +289,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-width: 0;
   font-size: 12px;
   color: var(--dsh-tb-text-3);
-  background: var(--dsh-tb-hover);
+  /* Single-layer solid pill: an rgba pill on a translucent column would
+     wash out to a double fade. */
+  background: var(--dsh-tb-surface-sunken);
   border-radius: 999px;
   padding: 1px 8px;
 }
@@ -315,7 +339,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 6px;
   padding: 10px 12px;
   text-align: left;
-  background: var(--dsh-tb-bg);
+  /* Cards are inner floating surfaces: opaque under a glass skin (the
+     translucent canvas stays behind them). */
+  background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-lg);
   cursor: pointer;
@@ -332,7 +358,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* Same-column reorder: a bold accent bar drawn exactly at the insertion
    gap (see drop-position.ts) — the whole feedback, never a column-wide
-   highlight. Positioned inside the cards container (relative above). */
+   highlight. Positioned inside the cards container (relative above). The
+   drop-in animation is a one-shot land (short), separate from the 2.6s
+   attention breath of persistent states. */
 .dropIndicator {
   position: absolute;
   left: 8px;
@@ -343,6 +371,33 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   box-shadow: 0 0 0 1px var(--dsw-alias-bg-base);
   pointer-events: none;
   z-index: 1;
+  animation: dshTbDropLand 140ms var(--dsh-tb-motion);
+}
+
+@keyframes dshTbDropLand {
+  from { transform: scaleY(0.4); opacity: 0.3; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
+/* A successful drop confirmation: the landing column's border flashes the
+   accent once (180ms), so the eye registers "this column received it". */
+.column[data-flash] {
+  animation: dshTbDropConfirm 180ms ease;
+}
+
+@keyframes dshTbDropConfirm {
+  0%, 100% { border-color: var(--dsh-tb-border-soft); }
+  50% { border-color: var(--dsh-tb-accent); }
+}
+
+/* A rejected drop: a one-shot danger flash (not a persistent state). */
+.column[data-dragreject] {
+  animation: dshTbRejectFlash 180ms ease;
+}
+
+@keyframes dshTbRejectFlash {
+  0%, 100% { border-color: var(--dsh-tb-border-soft); }
+  50% { border-color: var(--dsh-tb-danger); }
 }
 
 .card[data-status='running'] {
@@ -361,7 +416,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .cardTitle {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1.35;
   overflow: hidden;
@@ -462,7 +517,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .chipFill {
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--dsw-alias-interactive-bg-hover);
+  /* Single-layer solid fill (an rgba fill on translucent surfaces would
+     double-fade under a glass skin). */
+  background: var(--dsh-tb-surface-sunken);
 }
 
 .chip[data-kind='success'] { color: var(--dsw-alias-state-success-primary); }
@@ -487,11 +544,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* --- buttons ------------------------------------------------------------------ */
 
-/* One button standard: primary / ghost / danger share size and rhythm so
-   every row (detail header, detail footer, modal footer) stays aligned.
-   Apple-ish: a comfortable 32px hit target, rounded-12 corners, a soft
-   raised primary with a hairline inner highlight, hairline-bordered ghost,
-   and a subtle press-down on click — all through the shared motion token. */
+/* One button standard: primary / ghost / danger share the native button
+   rhythm (same radius and type scale as the shell's buttons) so every row
+   stays aligned with the host UI — including under a glass skin, where the
+   fills come straight from the native button tokens. */
 .primaryButton,
 .ghostButton,
 .dangerButton {
@@ -499,12 +555,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 32px;
+  height: var(--dsh-tb-button-h);
   padding: 0 16px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1;
-  border-radius: var(--dsh-tb-radius-md);
+  border-radius: var(--dsh-tb-button-radius);
   white-space: nowrap;
   cursor: pointer;
   -webkit-appearance: none;
@@ -512,19 +568,18 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .primaryButton {
+  height: var(--dsh-tb-button-h-lg);
   color: var(--dsw-alias-label-primary-foreground);
-  background: var(--dsw-alias-button-info-fill);
+  /* The native primary fill (brand) — same token the shell's primary
+     buttons use, so a skin's remap lands on both. */
+  background: var(--dsw-alias-button-primary-fill);
   border: 1px solid transparent;
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-00) 22%, transparent),
-    var(--dsh-tb-shadow-1);
+  box-shadow: var(--dsh-tb-shadow-1);
 }
 
 .primaryButton:hover:not(:disabled) {
-  background: var(--dsw-alias-button-info-hover);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-00) 25%, transparent),
-    var(--dsh-tb-shadow-2);
+  background: var(--dsw-alias-button-primary-hover);
+  box-shadow: var(--dsh-tb-shadow-2);
 }
 
 .primaryButton:active:not(:disabled) {
@@ -540,12 +595,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .ghostButton {
   color: var(--dsh-tb-text-1);
   background: transparent;
-  border: var(--dsh-tb-border-soft);
+  /* The native outline border (l2), not the softer l1. */
+  border: 1px solid var(--dsw-alias-border-l2);
 }
 
 .ghostButton:hover:not(:disabled) {
   background: var(--dsh-tb-hover);
-  border-color: var(--dsw-alias-border-l2);
+  border-color: var(--dsw-alias-border-l3);
 }
 
 .ghostButton:active:not(:disabled) {
@@ -561,9 +617,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-primary-foreground);
   background: var(--dsh-tb-danger);
   border: 1px solid transparent;
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-00) 18%, transparent),
-    var(--dsh-tb-shadow-1);
+  box-shadow: var(--dsh-tb-shadow-1);
 }
 
 .dangerButton:hover:not(:disabled) {
@@ -642,7 +696,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--dsh-tb-bg);
+  /* A solid knob — a translucent one would read as a hole on the track. */
+  background: var(--dsw-alias-button-elevated-fill);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--dsw-static-neutral-1000) 32%, transparent);
   transition: transform var(--dsh-tb-motion);
 }
@@ -675,7 +730,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--dsw-alias-bg-mask-1);
+  /* A touch stronger than the native mask-1 so the column lines behind the
+     glassy board no longer glimmer through the dialog edges. */
+  background: var(--dsh-tb-mask);
   animation: dshTbFadeIn 140ms ease;
 }
 
@@ -698,11 +755,17 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* Centered within the board's span, not the viewport: the shell sidebar
+     shifts the visual center, and a viewport-centered dialog can land its
+     edge exactly on a column line behind the glass. The board root writes
+     --dsh-tb-board-offset (its own left edge) at runtime. */
+  position: relative;
+  left: calc(var(--dsh-tb-board-offset, 0px) / 2);
   width: min(520px, calc(100vw - 48px));
   max-height: calc(100vh - 96px);
   overflow-y: auto;
   padding: 18px;
-  background: var(--dsh-tb-bg);
+  background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-xl);
   box-shadow: var(--dsh-tb-shadow-3);
@@ -853,7 +916,9 @@ textarea.input {
   max-height: 280px;
   overflow-y: auto;
   padding: 4px;
-  background: var(--dsw-alias-bg-base);
+  /* The native menu surface (layer-3) — an opaque popup, like the shell's
+     own dropdowns under a glass skin. */
+  background: var(--dsh-tb-surface-menu);
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 10px;
   box-shadow: var(--dsw-shadow-lv3);
@@ -924,9 +989,14 @@ textarea.input {
 .detail {
   display: flex;
   flex-direction: column;
+  /* Board-centered (see .modal for the --dsh-tb-board-offset contract). */
+  position: relative;
+  left: calc(var(--dsh-tb-board-offset, 0px) / 2);
   width: min(640px, calc(100vw - 48px));
   max-height: calc(100vh - 80px);
-  background: var(--dsh-tb-bg);
+  /* An inner floating surface: opaque for readability, exactly like the
+     shell's own dialogs under a glass skin. */
+  background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-xl);
   box-shadow: var(--dsh-tb-shadow-3);
@@ -1020,7 +1090,7 @@ textarea.input {
 
 .detailText {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.55;
   color: var(--dsw-alias-label-primary);
   white-space: pre-wrap;
@@ -1158,7 +1228,7 @@ textarea.input {
 
 .scheduleModeActive {
   color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-bg);
+  background: var(--dsh-tb-surface-float);
   box-shadow: var(--dsh-tb-shadow-1);
 }
 
@@ -1502,7 +1572,7 @@ textarea.input {
   align-items: center;
   gap: 7px;
   min-width: 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--dsh-tb-text-1);
 }
@@ -1525,7 +1595,9 @@ textarea.input {
   font-weight: 400;
   color: var(--dsh-tb-text-3);
   padding: 1px 7px;
-  background: var(--dsh-tb-hover);
+  /* Single-layer solid capsule (an rgba fill would double-fade on the
+     translucent row under a glass skin). */
+  background: var(--dsh-tb-surface-sunken);
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -1583,11 +1655,13 @@ textarea.input {
 }
 
 /* Board columns accept external session/workspace drops (drag-in from the
-   sidebar): a soft accent ring marks the drop target, distinct from the
-   board's own card-reorder indicator. */
+   sidebar): the target column breathes with the same attention light as the
+   rest of the board (accent border + focus ring + the shared 2.6s breath),
+   so the drop affordance speaks the same motion language as unread signals. */
 .column[data-dropaccept='link'] {
   border-color: var(--dsh-tb-accent);
   box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
+  animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
 /* A quiet explanatory line under a section title. */
@@ -1658,9 +1732,9 @@ textarea.input {
   min-height: 200px;
   max-height: 400px;
   overflow-y: auto;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-base);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-md);
+  background: var(--dsh-tb-surface-sunken);
   padding: 12px;
   position: relative;
   width: 100%;
@@ -1796,15 +1870,14 @@ textarea.input {
 
 .card.dragging {
   opacity: 0.45;
+  box-shadow: var(--dsh-tb-shadow-3);
 }
 
-/* Drop targets: business accent while hovering, error flash on rejection. */
+/* Drop targets: business accent while hovering. Rejection and successful
+   drops are one-shot flashes (animated rules + keyframes in the drag & drop
+   section above). */
 .column[data-dragover] {
   border-color: var(--dsw-alias-state-business-primary);
-}
-
-.column[data-dragreject] {
-  border-color: var(--dsw-alias-state-error-primary);
 }
 
 .entry:active,
@@ -1872,6 +1945,21 @@ textarea.input {
     box-shadow: inset 0 0 0 1px var(--dsh-tb-attention-alpha-soft);
   }
 
+  .dropIndicator {
+    animation: none;
+    box-shadow: inset 0 0 0 1px var(--dsh-tb-border);
+  }
+
+  .column[data-flash] {
+    animation: none;
+    box-shadow: inset 0 0 0 1px var(--dsh-tb-attention);
+  }
+
+  .column[data-dragreject] {
+    animation: none;
+    box-shadow: inset 0 0 0 1px var(--dsh-tb-danger);
+  }
+
   .spinner {
     animation: none;
   }
@@ -1910,9 +1998,12 @@ textarea.input {
 .review {
   display: flex;
   flex-direction: column;
+  /* Board-centered (see .modal for the --dsh-tb-board-offset contract). */
+  position: relative;
+  left: calc(var(--dsh-tb-board-offset, 0px) / 2);
   width: min(880px, calc(100vw - 48px));
   max-height: min(86vh, 860px);
-  background: var(--dsh-tb-bg);
+  background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-xl);
   box-shadow: var(--dsh-tb-shadow-3);
@@ -2001,8 +2092,8 @@ textarea.input {
   min-width: 0;
   min-height: 0;
   border-left: var(--dsh-tb-separator);
-  /* Same surface as the app base; the separator alone marks the rail. */
-  background: var(--dsh-tb-bg);
+  /* An inner floating surface; the separator alone marks the rail. */
+  background: var(--dsh-tb-surface-float);
 }
 
 /* The rail head — context meter, session config, session facts: fixed and
@@ -2381,7 +2472,7 @@ textarea.input {
   flex-direction: column;
   gap: 4px;
   padding: 8px 10px;
-  background: var(--dsw-alias-bg-base);
+  background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 10px;
   animation: dshTbFadeUp 160ms ease;

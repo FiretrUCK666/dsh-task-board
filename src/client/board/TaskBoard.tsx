@@ -44,6 +44,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [showNew, setShowNew] = useState(false)
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
   const [dragReject, setDragReject] = useState<TaskStatus | undefined>(undefined)
+  // The column that accepted a drop, for the one-shot accent flash. Own
+  // timer lifecycle: the window-level `drop` listener fires right after the
+  // column handler and must not erase the flash before its animation plays.
+  const [dropFlash, setDropFlash] = useState<TaskStatus | undefined>(undefined)
   // Same-column reorder: the id of the card being dragged and the insertion
   // gap (beforeId = undefined means the column tail; top = the indicator's
   // Y inside the cards container). The gap is mirrored in a ref — dragover
@@ -58,6 +62,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const rejectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => {
     if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
+  }, [])
+  // Guards the drop-confirm flash timer against unmount (drop feedback only).
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => {
+    if (flashTimer.current !== undefined) clearTimeout(flashTimer.current)
   }, [])
   // The column currently accepting an external sidebar drag (session/workspace
   // dragged in from the sidebar): a distinct highlight from the board's own
@@ -106,6 +115,28 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     // clearDrag reads only stable setters/refs; a mount-time instance is
     // fully functional, so registering it once is safe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Board-relative dialog centering: the shell sidebar shifts the visual
+  // center, so a viewport-centered dialog can land its edge exactly on a
+  // column line behind the glass. The board root publishes its own left
+  // edge as --dsh-tb-board-offset (read by .modal/.detail/.review), kept
+  // fresh on resize and layout changes.
+  const boardRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const element = boardRef.current
+    if (element === null) return
+    const update = (): void => {
+      element.style.setProperty('--dsh-tb-board-offset', `${element.getBoundingClientRect().left}px`)
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    window.addEventListener('resize', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', update)
+    }
   }, [])
   /** Classify a drag as a sidebar drag (own MIME, else native text/plain). */
   const externalOf = (event: React.DragEvent): SidebarDrag | undefined => externalDragOf(
@@ -165,6 +196,16 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     })
   }
 
+  /** One-shot accent confirmation on the column that accepted a drop. The
+      flash is transient feedback: its own timer (not clearDrag) removes the
+      attribute, because the window-level drop listener runs right after the
+      column handler and would erase the flash before the animation plays. */
+  const flashColumn = (status: TaskStatus): void => {
+    setDropFlash(status)
+    if (flashTimer.current !== undefined) clearTimeout(flashTimer.current)
+    flashTimer.current = setTimeout(() => { setDropFlash(undefined) }, 600)
+  }
+
   /**
    * Column-level drop: same-column drops reorder (the half-split anchor the
    * last dragover computed); cross-column drops keep the classic
@@ -180,21 +221,25 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     if (external !== undefined) {
       event.stopPropagation()
       createFromSidebar(external, status)
+      flashColumn(status)
       return
     }
     const task = snapshot.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return
     if (dragId !== undefined && task.status === status) {
       controller.moveTask(task.id, status, dropGapRef.current?.beforeId)
+      flashColumn(status)
       return
     }
     const decision = resolveCardDrop(task, status)
     if (decision.kind === 'move') {
       controller.moveTask(task.id, decision.status)
+      flashColumn(decision.status)
     } else if (decision.kind === 'run') {
       // Dropping on 'running' means "run again" (same semantics as the
       // detail button; the shared run guard rejects a live run).
       void controller.rerunTask(task.id)
+      flashColumn(status)
     } else if (decision.kind === 'reject') {
       setDragReject(status)
       if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
@@ -204,6 +249,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
   return (
     <div
+      ref={boardRef}
       className={css.board}
       data-dsh-taskboard-board=""
       onDragEnter={event => {
@@ -287,6 +333,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               data-status={column.status}
               data-dragover={dragOver === column.status ? '' : undefined}
               data-dragreject={dragReject === column.status ? '' : undefined}
+              data-flash={dropFlash === column.status ? '' : undefined}
               data-dropaccept={dropAccept === column.status ? 'link' : undefined}
               onDragOver={event => {
                 // A latched external sidebar drag (session/workspace) marks
