@@ -473,14 +473,6 @@ export function settleExecution(
   return { ...task, status, updatedAt: now, executions }
 }
 
-/** A settled-execution summary string for the detail view. */
-export function executionLabel(execution: ExecutionRecord): string {
-  if (execution.result === 'succeeded') return 'succeeded'
-  if (execution.result === 'failed') return 'failed'
-  if (execution.result === 'cancelled') return 'cancelled'
-  return 'running'
-}
-
 /**
  * Whether the task is genuinely executing right now: its status is
  * 'running' AND its latest round has not settled. A pending comment round

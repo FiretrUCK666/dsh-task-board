@@ -1391,6 +1391,8 @@ export class BoardController {
     if (this.reconcileTimer !== undefined || this.reconcileInFlight) return
     this.reconcileTimer = setTimeout(() => {
       this.reconcileTimer = undefined
+      // After dispose nothing may reconcile (or schedule again).
+      if (this.disposed) return
       void this.reconcileRunningTasks()
     }, this.deps.reconcileDebounceMs ?? 350)
   }
@@ -1400,7 +1402,7 @@ export class BoardController {
 
   /** Settle tasks left 'running' whose sessions already finished. */
   private async reconcileRunningTasks(): Promise<void> {
-    if (this.reconcileInFlight) return
+    if (this.disposed || this.reconcileInFlight) return
     this.reconcileInFlight = true
     this.reconcilePending = false
     try {
@@ -1426,6 +1428,9 @@ export class BoardController {
           if (!(finished && pastGrace)) continue
         }
         const event = await this.deps.exec.reconcile(task)
+        // A dispose may land while the history read is in flight — a dead
+        // controller must never keep settling into a dropped ledger.
+        if (this.disposed) return
         if (event !== undefined && event.kind === 'settled') {
           events.push({ task, event })
           this.activeExecutionIds.delete(event.executionId)

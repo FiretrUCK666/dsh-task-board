@@ -229,13 +229,30 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 - **看板别名层**：`board.module.css` 顶部 `[data-dsh-taskboard-view]` 定义 `--dsh-tb-*`
   （边框/圆角/阴影/文字层级/状态色/动效时长，派生自原生令牌），组件统一引用别名层，
   板上统一值只改一处；侧栏入口与设置卡在 scope 外，只用原生令牌。
+- **表面三层（canvas/opaque 分裂，玻璃皮肤也照此）**：`--dsh-tb-glass`/`--dsh-tb-bg`（画布
+  层，= `--dsw-alias-bg-base`，随皮肤的透明度走）只用于板/列背景；所有内层浮起/下沉表面
+  （卡片/对话/面板/评论/菜单，`--dsh-tb-surface-float/-sunken/-menu`，= bg-layer-1/2/菜单色）
+  一律**不透明**——与玻璃皮肤「内表面不透明保可读」的原生约定一致；画布之上的遮罩
+  `--dsh-tb-mask`（mask-1/3 混色，偏强）盖住列线。粗体按钮 `primaryButton` 用原生
+  `--dsw-alias-button-primary-fill`，半径 18px、高 36px、14px 字，与 shell 原生按钮同节奏；
+  正文 14px/1.5。
+- **面板几何（随板居中）**：`.modal/.detail/.review` 以**板的左缘**为基准居中——视图静态
+  居中会把对话框边缘恰好压在列线上（玻璃下可见）；board 根用 ResizeObserver 发布
+  `--dsh-tb-board-offset`，对话框 `left: calc(offset/2)` 补齐侧栏偏移；任何视口都贴不到列线。
 - **共用部件**：`ui.tsx`（Button primary/ghost/danger、Section、Notice、AttentionDot、
   Icon、Switch）+ `Chip`/`Dialog`/`PromptInput`/`TranscriptRow`/`useTranscriptTail`/
   `JumpToLatest`/`SessionFrame`/`session-panel.tsx`（SessionRailHead/SessionTranscript/
-  SessionConfigEditor/SessionFacts/SessionWaitingNotice）。各界面一律复用，不手写重复标记。
+  SessionConfigEditor/SessionFacts/SessionWaitingNotice）+ `SessionRow`（执行行与链接
+  行共用一个行骨架）/`CommentsThread`（评论页与链接会话面板共用一个评论项文法）。
+  各界面一律复用，不手写重复标记。
 - **注意力动效（唯一语法）**：`--dsh-tb-attention`（warn）+ `--dsh-tb-breath`（2.6s
   ease-in-out）。卡片外层呼吸环 `dshTbBreathRing`，执行行内层柔晕 `dshTbBreathHalo`
   （无边框、无平染）；`prefers-reduced-motion` 全部静态降级。
+- **拖拽落点动效（板内卡片 + 侧栏拖入）**：目标列 hover = 业务色描边；侧栏会话/工作区
+  拖入列 = 呼吸环（同一 `--dsh-tb-breath` 语法）；成功落点 = 加速 180ms 落位闪烁
+  `dshTbDropConfirm`；拒绝落点 = 180ms 危险色闪烁 `dshTbRejectFlash`。闪烁是即逝反馈
+  （自带定时器清除，不经 `clearDrag`——window 兜底的 drop 监听在列 handler 之后触发，
+  会先擦掉还没播完的闪烁），全在 reduced-motion 下静态降级。
 - **防回归守卫**：`noUnusedLocals`/`noUnusedParameters` 开启（死 import/死变量=编译错
   误）；废弃 CSS 类人工删除（`.name` 定义与 `css.name` 引用对照）。
 - **UI 小规则**：一个语义强调色（`--dsh-tb-accent`）+ 四个状态色
@@ -257,25 +274,35 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
   并发预算（同时在跑的会话数）；优先级 排队 schedule/chain → 评论续跑（提交 FIFO，同
   任务严格按序）→ 巡航待办；手动不限额但计并发。评论为每任务 FIFO（`injectedAt` 区分
   已保存/已排队/已注入，未注入可取消）；巡航关只保存不注入；`dispatch` 幂等扫描式、
-  重入合并。
+  重入合并。**会话锚定评论进同一队列**：`submitSessionComment`（链接会话面板驱动）
+  建的轮次带 `sessionAnchor`，与执行评论（`submitComment`，带 `parentExecutionId`）共用
+  `newCommentRound` 工厂、同一条 FIFO、同一注入路径（`commentRun` 本就是 sessionId 参数化
+  ——任意会话可注入），提交先后决定顺序，绝无两套队列。
 - **斜杠命令与权限（原生命令注册表，绝不走 prompt 文本）**：权限切换
   `SessionConfigFace.setPermission` → 原生 `/permission <preset>`；评论
   `submitComment(..., command=true)` 走 `sendCommand`——matched 立即结算，unmatched 回退
   普通文本；评论页 Agent 不可切换（`agent-preset-locked`）只读展示。
 - **投影为权威 + 评论线程**：`pickProjections` 提取 `contextPressure`/`contextBreakdown`/
   `permissions`（结构校验读取，不依赖域包类型）；权限下拉事实源 = `permissions` 投影
-  （非任务卡片 `permission` 字段）；评论按执行独立显示（`parentExecutionId` 归属，旧
-  数据按 session 兜底）；执行序号统一 `plainRunsOf(task)`（过滤 comment/refine 轮的
-  单一编号源）。
+  （非任务卡片 `permission` 字段）。**线程归属二锚**：执行页评论按 `parentExecutionId`
+  （旧数据按 session 兜底，且排除 `sessionAnchor` 轮）；链接会话面板线程
+  `sessionThreadOf` 按 `sessionAnchor` —— 一个轮次只属一个表面，绝不串页；`sessionRoundsOf`
+  也排除会话锚定轮，链接驱动的排队留言绝不把执行行点亮成「忙」。执行序号统一
+  `plainRunsOf(task)`（过滤 comment/refine 轮的单一编号源）。
 - **会话状态派生（session-display.ts）**：`sessionDisplay` 归集同会话轮次，状态优先级
   waiting > running > 最新 settled；`sessionTimes`/`taskPendingCount`；未读
   `taskUnviewed`/`executionUnviewed`，基线 `viewedAt`（旧数据归一化零噪音）。
 - **共享 transcript tail（use-transcript.tsx + session-panel.tsx）**：加载/3s 水位门控
   轮询/贴底跟随/上翻暂停 + `useResizeFollow`；`SessionTranscript` 共享渲染（等待条/状态/
   列表/滑到最新）；「滑到最新」纯图标胶囊；评论页/链接会话/完善面板共用同一机制。
-- **执行记录行（ExecutionRow）**：状态/时间实时派生；非等待态「查看会话」共享 ghost
-  按钮（与链接行/完善/评论页一致），等待态琥珀「处理」；未读行 = `AttentionDot` + 内层
-  呼吸柔晕（与卡片呼吸环同一注意力语法）。
+- **统一会话行（SessionRow，执行行 + 链接行一个骨架）**：两种 session 行共用同一组件
+  （kind='execution'|'linked'）与同一个表面（`.sessionRow` 同封面/同分隔/同 hover/同键盘）。
+  顶行 = 身份槽（执行：未读点 + 第 N 次；链接：link 图标 + 标题 + 工作区胶囊）+ 状态 chip
+  + 右侧动作（执行等待态琥珀「处理」，其余 ghost「查看会话」+「隐藏」）；次行 = 元信息
+  （执行：起止/时长；链接：更新于）。执行专属 footer 槽：评论摘要/动向/错误。域名类
+  （chip 文案、`sessionDisplay`/`commentsOf`/`sessionThreadOf`）由调用方算好传入，文法单写
+  一处——两种行从今往后不可能长歪。
+
 - **需求完善（refine）**：backlog 专属；完善会话惰性创建、每轮复用；`answerRefine`
   即时注入（不经调度器）；`applyRefineResult` 用户确认后写任务 prompt；结算不动列、
   不触发 chain、计入 `hasOpenRun`；`plainRunsOf` 排除 refine 轮。
@@ -295,15 +322,19 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
 - **统一会话面板（SessionFrame.tsx + session-panel.tsx）**：执行评论页与链接会话面板共用
   纯布局外壳（backdrop + 头部徽章 + 左对话右 rail）与右栏 `SessionRailHead`（上下文条 /
   实时配置（模型/思考程度/权限，任意会话通用，权限投影映射在此统一派生）/ 会话事实 /
-  等待条）+ `SessionTranscript` 共享渲染。**composer 按语义隔离，绝不合并**：执行评论 =
-  驱动任务（`submitComment` → FIFO → 调度器注入，巡航门控），链接会话 = **直发**
-  （`sendSessionMessage` → host `sessions.prompt`/`remote.commands.execute`，`/` 走注册表
-  未匹配回退文本；`sessionMessage?/sessionCommand?` 可选 face，缺省禁用）。**直发 ≠ 驱动
-  契约**：不建执行记录、不进调度器、不占并发预算、不触发巡航/接续/状态变化；面板以占位
-  「不会驱动本任务」+ `detail.sessionDirect` 提示防误驱动，失败保留草稿、会话消失禁用。
-  行文法统一（chip/ghost「查看会话」/隐藏/时间格式），唯一强差在执行行（琥珀「处理」+
-  未读点+评论摘要）。**计数即所见**：标题计数 = 可见行数（隐藏不计数、恢复回补；面板
-  徽章同源）；执行序号 = 绝对 plain-run 序列；卡片计数同源。
+  等待条）+ `SessionTranscript` 共享渲染。**composer 双模式（链接面板一个显式开关，
+  默认「驱动任务」）**：执行评论页只有「驱动」——`submitComment` → FIFO → 调度器注入
+  （巡航门控）；链接会话面板在「驱动任务」与「直发会话」间切换。驱动模式 =
+  `submitSessionComment`（`sessionAnchor` 轮，进同一队列，见调度器节），面板显示本会话
+  的评论线程（`sessionThreadOf` + 共享 `CommentsThread`，排队可取消）；直发模式 =
+  `sendSessionMessage` → host `sessions.prompt`/`remote.commands.execute`，`/` 走注册表未
+  匹配回退文本。**直发 ≠ 驱动契约**：不建执行记录、不进调度器、不占并发预算、不触发
+  巡航/接续/状态变化；面板在直发模式以「不会驱动本任务」+ `detail.sessionDirect` 提示防
+  误驱动，失败保留草稿、会话消失禁用。完成态任务两模式都拒发（`detail.commentQueuedDone`
+  提示先移回待办）。rail 统一「可滚动中区 + 底部固定 composer」一个滚动模式（
+  `.sessionRailHead` 固定头 / `.sessionRailScroll` 中区滚动）。**计数即所见**：标题计数 =
+  可见行数（隐藏不计数、恢复回补；面板徽章同源）；执行序号 = 绝对 plain-run 序列；卡片
+  计数同源。
 
 - **稳定性守则（改交互/UI 必守）**：受控组件绑异步数据必有本地回退（显示 = 本地选择 ??
   服务端非空 ?? 默认，失败回退）；固定操作区（composer）之上必有可滚动中区（flex:1 +

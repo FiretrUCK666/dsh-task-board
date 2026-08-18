@@ -10,7 +10,7 @@
  * sessionConfig, transcript projections), so any block works for any native
  * session id.
  */
-import { memo, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController, PendingInteractionKind, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
@@ -264,6 +264,12 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
   // projection (or a still-stale one) the local choice is the only truth
   // we have, so it must hold until the projection confirms it.
   const [chosen, setChosen] = useState<string | undefined>(undefined)
+  // Alive guard: every async handler (panel reload, model/effort/permission
+  // applies) must not touch state after the panel unmounted — the panel can
+  // close while a read/apply is still in flight, and a late `.then` must
+  // not repaint a dead surface.
+  const aliveRef = useRef(true)
+  useEffect(() => () => { aliveRef.current = false }, [])
 
   // The projection is the session's live truth: when it reports a value that
   // differs from our local choice, the choice is stale (the permission was
@@ -292,6 +298,7 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
   const reloadPanel = useCallback((): void => {
     if (sessionConfig === undefined) return
     void sessionConfig.readModels(sessionId).then(result => {
+      if (!aliveRef.current) return
       if (result === undefined) setConfigUnavailable(true)
       else {
         setConfigUnavailable(false)
@@ -316,6 +323,7 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
     setConfigBusy(true)
     setConfigMessage(undefined)
     void sessionConfig.selectModel(sessionId, { provider, model, ...effort !== undefined ? { reasoningEffort: effort } : {} }).then(result => {
+      if (!aliveRef.current) return
       setConfigBusy(false)
       setConfigMessage(result.ok ? t('review.configApplied') : result.error)
       if (result.ok) {
@@ -336,6 +344,7 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
       model: selection.model,
       ...effort !== '' ? { reasoningEffort: effort } : {},
     }).then(result => {
+      if (!aliveRef.current) return
       setConfigBusy(false)
       setConfigMessage(result.ok ? t('review.configApplied') : result.error)
       if (result.ok) {
@@ -351,6 +360,7 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
     setConfigBusy(true)
     setConfigMessage(undefined)
     void sessionConfig.setPermission(sessionId, permission).then(result => {
+      if (!aliveRef.current) return
       setConfigBusy(false)
       setConfigMessage(result.ok ? t('review.configApplied') : result.error)
       if (result.ok) {

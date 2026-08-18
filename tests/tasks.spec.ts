@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionLabel, hasHiddenRows, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, createTask, disarmSchedule, hasHiddenRows, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -276,16 +276,6 @@ describe('settleExecution', () => {
     const { task: running } = startExecution(task, NOW + 1, 'e1')
     const settled = settleExecution(running, 'e1', 'failed', NOW + 2, 'boom')
     expect(settled.status).toBe('review')
-  })
-})
-
-describe('executionLabel', () => {
-  it('describes open and settled runs', () => {
-    const { execution } = startExecution(sampleTask(), NOW, 'e1')
-    expect(executionLabel(execution)).toBe('running')
-    expect(executionLabel({ ...execution, endedAt: NOW, result: 'succeeded' })).toBe('succeeded')
-    expect(executionLabel({ ...execution, endedAt: NOW, result: 'failed' })).toBe('failed')
-    expect(executionLabel({ ...execution, endedAt: NOW, result: 'cancelled' })).toBe('cancelled')
   })
 })
 
