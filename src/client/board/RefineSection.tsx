@@ -98,7 +98,7 @@ export function RefineSection({ controller, task }: {
               <span className={css.refineRounds}>{t('detail.refine.rounds', { n: String(rounds.length) })}</span>
             </div>
             {sessionId !== undefined && (
-              <Button onClick={() => { controller.openSession(sessionId) }}>
+              <Button size="sm" onClick={() => { controller.openSession(sessionId) }}>
                 {t('detail.viewSession')} →
               </Button>
             )}

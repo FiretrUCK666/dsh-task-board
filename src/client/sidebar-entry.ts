@@ -74,18 +74,23 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
 }
 
 /**
- * Mirror the shell's New Session button geometry: the button is a compact
- * content-width control (right-aligned in the logo row, 2px side margins),
- * while the entry is a full-width row by default — matching the measured
- * width and the right edge keeps the two rows aligned. The collapsed rail
- * keeps the full-width centered icon style.
+ * Mirror the shell's New Session button onto the entry row — geometry
+ * (width, right-aligned) plus the visual surface (fill + text color, exposed
+ * as CSS custom properties consumed by .entry). The fill is mirrored as a
+ * CSS variable so the stylesheet keeps control of hover/active states while
+ * the actual fill always matches the native button: under a glass skin the
+ * native button stays solid, and copying its computed fill is exactly what
+ * keeps the entry from turning translucent. Every mirrored value resets on
+ * the collapsed rail (icon-only, transparent like the shell).
  */
-function syncEntryWidth(entry: HTMLButtonElement, root: HTMLElement): void {
+function syncEntrySurface(entry: HTMLButtonElement, root: HTMLElement): void {
   const collapsed = root.closest('[data-sidebar-collapsed]') !== null
   if (collapsed) {
     entry.style.width = ''
     entry.style.marginLeft = ''
     entry.style.marginRight = ''
+    entry.style.removeProperty('--dsh-tb-entry-fill')
+    entry.style.removeProperty('--dsh-tb-entry-color')
     return
   }
   const button = newSessionButton(root)
@@ -93,6 +98,9 @@ function syncEntryWidth(entry: HTMLButtonElement, root: HTMLElement): void {
   entry.style.width = `${button.offsetWidth}px`
   entry.style.marginLeft = 'auto'
   entry.style.marginRight = '2px'
+  const native = getComputedStyle(button)
+  entry.style.setProperty('--dsh-tb-entry-fill', native.backgroundColor)
+  entry.style.setProperty('--dsh-tb-entry-color', native.color)
 }
 
 /**
@@ -112,7 +120,7 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     if (root === undefined) return
     placed = placeEntry(root, entry)
     if (placed) {
-      syncEntryWidth(entry, root)
+      syncEntrySurface(entry, root)
       rootObserver.observe(root, { childList: true, subtree: true, attributes: true })
     }
   }
@@ -133,7 +141,7 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     if (!root.contains(entry)) {
       placed = placeEntry(root, entry)
     }
-    syncEntryWidth(entry, root)
+    syncEntrySurface(entry, root)
   })
 
   // Reflect the board's open state on the row (active highlight).

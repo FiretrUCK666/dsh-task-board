@@ -43,6 +43,8 @@ export interface SessionsControllerFace {
         cwd?: string
         /** The agent preset the session's agent was composed from, when known. */
         agentPreset?: string
+        /** The session's display title, when the host recorded one (execution-row identity). */
+        title?: string
       }>
     }
     subscribe(fn: () => void): () => void
@@ -455,6 +457,13 @@ export class BoardController {
       ...summary.cwd !== undefined ? { cwd: summary.cwd } : {},
       ...summary.agentPreset !== undefined ? { agentPreset: summary.agentPreset } : {},
     }
+  }
+
+  /** The session's display title (native list summary), or undefined when the
+   *  session is gone/unknown. Drives the execution row's identity slot. */
+  sessionTitle(sessionId: string | undefined): string | undefined {
+    if (sessionId === undefined) return undefined
+    return this.deps.sessions.list.getSnapshot().byId[sessionId]?.title
   }
 
   subscribe(fn: () => void): () => void {

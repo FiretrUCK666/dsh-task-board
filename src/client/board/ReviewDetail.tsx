@@ -174,11 +174,11 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
       ariaLabel={t('review.title')}
       actions={
         <>
-          <Button onClick={reload} title={t('review.refresh')}>
+          <Button size="sm" onClick={reload} title={t('review.refresh')}>
             {t('review.refresh')}
           </Button>
           {sessionId !== undefined && (
-            <Button onClick={() => { controller.openSession(sessionId) }}>
+            <Button size="sm" onClick={() => { controller.openSession(sessionId) }}>
               {t('detail.viewSession')} →
             </Button>
           )}

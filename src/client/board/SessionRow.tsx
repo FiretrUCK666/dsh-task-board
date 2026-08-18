@@ -90,6 +90,7 @@ export function SessionRow({ kind, state, chip, leading, meta, footer, unviewed,
             </button>
           ) : sessionId !== undefined && (
             <Button
+              size="sm"
               onClick={event => { event.stopPropagation(); onOpenSession() }}
               title={sessionId}
             >

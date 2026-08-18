@@ -162,10 +162,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       ariaLabel={t('detail.sessionPanel')}
       actions={
         <>
-          <Button onClick={reload} title={t('review.refresh')}>
+          <Button size="sm" onClick={reload} title={t('review.refresh')}>
             {t('review.refresh')}
           </Button>
-          <Button onClick={() => { controller.openSession(sessionId) }}>
+          <Button size="sm" onClick={() => { controller.openSession(sessionId) }}>
             {t('detail.viewSession')} →
           </Button>
         </>
@@ -233,16 +233,16 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               <p className={css.sessionReadonly}>{t('detail.sessionDirect')}</p>
             )}
             <div className={css.linkedActions}>
-              <Button onClick={() => { controller.openSession(sessionId) }}>
+              <Button size="sm" onClick={() => { controller.openSession(sessionId) }}>
                 {t('detail.viewSession')} →
               </Button>
-              <Button onClick={() => {
+              <Button size="sm" onClick={() => {
                 controller.hideTaskRow(task.id, 'sessions', sessionId)
                 onClose()
               }}>
                 {t('detail.hide')}
               </Button>
-              <Button variant="ghost" onClick={() => {
+              <Button size="sm" variant="ghost" onClick={() => {
                 controller.unbindTask(task.id)
                 onClose()
               }}>

@@ -23,7 +23,7 @@ import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
-import { Button, Switch } from './ui.tsx'
+import { Button, Icon, Switch } from './ui.tsx'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 
 /** Case-insensitive title/description match. */
@@ -117,27 +117,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Board-relative dialog centering: the shell sidebar shifts the visual
-  // center, so a viewport-centered dialog can land its edge exactly on a
-  // column line behind the glass. The board root publishes its own left
-  // edge as --dsh-tb-board-offset (read by .modal/.detail/.review), kept
-  // fresh on resize and layout changes.
-  const boardRef = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    const element = boardRef.current
-    if (element === null) return
-    const update = (): void => {
-      element.style.setProperty('--dsh-tb-board-offset', `${element.getBoundingClientRect().left}px`)
-    }
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(element)
-    window.addEventListener('resize', update)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', update)
-    }
-  }, [])
+  // Board-relative dialog centering was previously a viewport-offset hack
+  // (--dsh-tb-board-offset shifted dialogs by half the sidebar width, which
+  // broke under any ancestor transform/filter and drifted on resize). Dialogs
+  // are now absolutely positioned inside the board's own box and centered by
+  // flex — no measurement, no offset variable, no layout drift (see
+  // .modalBackdrop/.modal/.detail/.review).
   /** Classify a drag as a sidebar drag (own MIME, else native text/plain). */
   const externalOf = (event: React.DragEvent): SidebarDrag | undefined => externalDragOf(
     event.dataTransfer,
@@ -249,7 +234,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
   return (
     <div
-      ref={boardRef}
       className={css.board}
       data-dsh-taskboard-board=""
       onDragEnter={event => {
@@ -274,48 +258,64 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       }}
     >
       <header className={css.boardHeader}>
-        <h2 className={css.boardTitle}>{t('board.title')}</h2>
-        <input
-          className={css.search}
-          type="search"
-          placeholder={t('board.search')}
-          value={filter}
-          onChange={event => { setFilter(event.target.value) }}
-          aria-label={t('board.search')}
-        />
-        <Button
-          variant="primary"
-          onClick={() => { setShowNew(true) }}
-        >
-          + {t('board.new')}
-        </Button>
-        {/* Auto-cruise: batch-run every todo task, at most `limit` at once.
-            Board-level scope, stated in the switch's tooltip so it never
-            blurs with the per-task automation rules. */}
-        <div className={css.cruise}>
-          <Switch
-            checked={snapshot.cruise.enabled}
-            onChange={next => { controller.setCruiseEnabled(next) }}
-            label={t('board.cruise')}
-            title={t('board.cruiseTitle')}
-          />
-          <input
-            className={css.cruiseLimit}
-            type="number"
-            min={1}
-            max={20}
-            value={snapshot.cruise.limit}
-            title={t('board.cruiseLimit')}
-            aria-label={t('board.cruiseLimit')}
-            onChange={event => {
-              const value = Number(event.target.value)
-              if (Number.isInteger(value) && value >= 1) controller.setCruiseLimit(value)
-            }}
-          />
+        {/* Left: title block with a quiet total-count subtitle — the toolbar's
+            anchor; the right cluster is one uniform 28px pill rhythm. */}
+        <div className={css.boardTitleBlock}>
+          <h2 className={css.boardTitle}>{t('board.title')}</h2>
+          <span className={css.boardSubtitle}>{t('board.total', { n: String(snapshot.tasks.length) })}</span>
         </div>
-        <Button className={css.boardClose} onClick={() => { controller.closeBoard() }}>
-          {t('board.close')}
-        </Button>
+        <div className={css.toolbar}>
+          <input
+            className={css.search}
+            type="search"
+            placeholder={t('board.search')}
+            value={filter}
+            onChange={event => { setFilter(event.target.value) }}
+            aria-label={t('board.search')}
+          />
+          <Button
+            variant="primary"
+            onClick={() => { setShowNew(true) }}
+          >
+            + {t('board.new')}
+          </Button>
+          {/* Auto-cruise: batch-run every todo task, at most `limit` at once.
+              Board-level scope, stated in the switch's tooltip so it never
+              blurs with the per-task automation rules. A transparent inline
+              control — no boxed background (see .cruise). */}
+          <div className={css.cruise}>
+            <Switch
+              checked={snapshot.cruise.enabled}
+              onChange={next => { controller.setCruiseEnabled(next) }}
+              label={t('board.cruise')}
+              title={t('board.cruiseTitle')}
+            />
+            <input
+              className={css.cruiseLimit}
+              type="number"
+              min={1}
+              max={20}
+              value={snapshot.cruise.limit}
+              title={t('board.cruiseLimit')}
+              aria-label={t('board.cruiseLimit')}
+              onChange={event => {
+                const value = Number(event.target.value)
+                if (Number.isInteger(value) && value >= 1) controller.setCruiseLimit(value)
+              }}
+            />
+          </div>
+          {/* Back to chat: a quiet pill icon; the board itself is the working
+              surface so the exit stays compact and out of the way. */}
+          <button
+            type="button"
+            className={css.boardClose}
+            aria-label={t('board.close')}
+            title={t('board.close')}
+            onClick={() => { controller.closeBoard() }}
+          >
+            <Icon name="arrowLeft" />
+          </button>
+        </div>
       </header>
 
       <div className={css.columns}>

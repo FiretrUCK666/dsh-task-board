@@ -121,7 +121,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* The entry mirrors the shell's 新会话 button exactly: same geometry, same
    icon glyph, same typography — it reads as a sibling action in the logo
-   row area. Width is mirrored at runtime (syncEntryWidth). */
+   row area. Width is mirrored at runtime (syncEntrySurface). */
 .entry {
   display: flex;
   align-items: center;
@@ -129,10 +129,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 6px;
   height: 38px;
   padding: 8px 16px;
-  background: var(--dsw-alias-button-elevated-fill);
+  /* The fill mirrors the native New Session button at runtime
+     (--dsh-tb-entry-fill, set by sidebar-entry.ts); the token is the stable
+     fallback before the shell mounts. Mirroring guarantees the entry matches
+     the native button under every theme/skin — in particular it never turns
+     translucent under a glass skin while the native button stays solid. */
+  background: var(--dsh-tb-entry-fill, var(--dsw-alias-button-elevated-fill));
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-entry-color, var(--dsw-alias-label-primary));
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -141,15 +146,19 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .entry:hover {
-  background: var(--dsw-alias-button-floating-hover);
-  color: var(--dsw-alias-label-primary);
+  /* Slight brighten + border lift instead of re-tinting the fill: the fill is
+     a runtime mirror (possibly a gradient/skin value), so a token re-color
+     cannot know it — brightness keeps the hover feedback in any theme. */
+  border-color: var(--dsw-alias-border-l3);
+  filter: brightness(1.06);
+  color: var(--dsh-tb-entry-color, var(--dsw-alias-label-primary));
 }
 
-/* The board-open active state: the entry reads as "this view is on", with
-   the same hover wash the shell uses for selected nav items. */
+/* The board-open active state: the entry reads as "this view is on" —
+   an accent ring plus border lift, keeping the mirrored fill. */
 .entry[data-active] {
-  background: var(--dsw-alias-interactive-bg-hover);
   border-color: var(--dsw-alias-border-l3);
+  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha);
 }
 
 .entryIcon {
@@ -206,9 +215,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .boardHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex: none;
   flex-wrap: wrap;
+}
+
+/* The right-side action cluster: one 28px pill rhythm (search capsule,
+   primary new-task, cruise, back-to-chat) so the toolbar reads as one piece
+   instead of loose controls of different sizes. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .boardTitle {
@@ -220,6 +241,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
+/* Title block: title + one quiet count line, the toolbar's left anchor. */
+.boardTitleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: none;
+  min-width: 0;
+}
+
+.boardSubtitle {
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+  white-space: nowrap;
+}
+
 .search {
   flex: 0 1 260px;
   min-width: 120px;
@@ -228,7 +264,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-input-bg);
   border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-md);
+  /* Capsule — same radius language as the toolbar's other actions. */
+  border-radius: 999px;
   outline: none;
 }
 
@@ -236,11 +273,33 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-3);
 }
 
-/* The back-to-chat button sits at the far right of the header; the board's
-   own right padding keeps it near the panel edge without touching it. */
+/* Back-to-chat: a quiet 28px pill icon at the far right of the toolbar —
+   the same geometry as the rest of the action cluster, no boxed fill. */
 .boardClose {
-  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--dsh-tb-text-2);
+  background: transparent;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion);
+}
+
+.boardClose:hover {
+  background: var(--dsh-tb-hover);
+  border-color: var(--dsw-alias-border-l3);
+  color: var(--dsh-tb-text-1);
+}
+
+.boardClose:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
 }
 
 /* --- columns ------------------------------------------------------------------ */
@@ -634,6 +693,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   cursor: default;
 }
 
+/* The compact button size (Button size="sm"): one quiet in-list geometry for
+   every secondary affordance on a row/header — view-session, refresh, row
+   actions — so a full-size button never sits inside a row. */
+.buttonSm {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
 .iconButton {
   display: inline-flex;
   align-items: center;
@@ -724,7 +793,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 /* --- modals ------------------------------------------------------------------- */
 
 .modalBackdrop {
-  position: fixed;
+  /* Board-relative: absolutely positioned inside the board's own box ([data-
+     dsh-taskboard-view], position:absolute inset:0). Centered by flex within
+     that box, so the dialog is always centered in the visible board area —
+     never shifted by the shell sidebar, and immune to any transform/filter
+     a skin applies to an ancestor (viewport-fixed would be absorbed by it). */
+  position: absolute;
   inset: 0;
   z-index: 40;
   display: flex;
@@ -755,12 +829,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   flex-direction: column;
   gap: 16px;
-  /* Centered within the board's span, not the viewport: the shell sidebar
-     shifts the visual center, and a viewport-centered dialog can land its
-     edge exactly on a column line behind the glass. The board root writes
-     --dsh-tb-board-offset (its own left edge) at runtime. */
   position: relative;
-  left: calc(var(--dsh-tb-board-offset, 0px) / 2);
   width: min(520px, calc(100vw - 48px));
   max-height: calc(100vh - 96px);
   overflow-y: auto;
@@ -989,9 +1058,8 @@ textarea.input {
 .detail {
   display: flex;
   flex-direction: column;
-  /* Board-centered (see .modal for the --dsh-tb-board-offset contract). */
+  /* Board-relative: the .modalBackdrop above centers it inside the board box. */
   position: relative;
-  left: calc(var(--dsh-tb-board-offset, 0px) / 2);
   width: min(640px, calc(100vw - 48px));
   max-height: calc(100vh - 80px);
   /* An inner floating surface: opaque for readability, exactly like the
@@ -1395,12 +1463,27 @@ textarea.input {
   min-width: 0;
 }
 
-.sessionRowIndex {
+/* The row's identity slot — ONE typography for every session family
+   (execution rows and linked rows share this exact leading grammar: 14px/500
+   main identity, quiet meta note, ellipsis on the inner name). */
+.sessionRowLeading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--dsh-tb-text-1);
+}
+
+/* The quiet trailing note inside a row identity (e.g. "· 第 3 次" on an
+   execution row): small, tertiary — never competes with the identity. */
+.sessionRowMetaNote {
   flex: none;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-primary);
-  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  color: var(--dsh-tb-text-3);
+  white-space: nowrap;
 }
 
 /* Right-aligned action group of a session row (查看会话 / 处理 / 隐藏): the
@@ -1543,16 +1626,6 @@ textarea.input {
    link icon + session title + workspace capsule (see .sessionRow above for
    the shared surface). */
 
-.sessionRowTitle {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--dsh-tb-text-1);
-}
-
 .sessionRowIcon {
   flex: none;
   color: var(--dsh-tb-text-3);
@@ -1583,6 +1656,17 @@ textarea.input {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 2px;
+}
+
+/* The quiet group label inside the unified "会话" section (e.g. the Linked
+   Sessions group beneath the execution rows): same weight/tracking as the
+   section-title grammar, tertiary — a divider label, never a header. */
+.sessionGroupLabel {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-3);
 }
 
 /* --- linked-session detail panel (SessionDetail) --------------------------- */
@@ -1945,10 +2029,16 @@ textarea.input {
   align-items: center;
   gap: 6px;
   flex: none;
-  padding: 4px 8px;
-  background: var(--dsw-alias-bg-layer-2);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
+  /* Transparent: the cruise toggle is a quiet inline control, not a boxed
+     pill — under a glass skin a solid background here reads as a white
+     block. Hover feedback rides the shared hover wash instead. */
+  padding: 2px 6px;
+  border-radius: 999px;
+  transition: background var(--dsh-tb-motion);
+}
+
+.cruise:hover {
+  background: var(--dsh-tb-hover);
 }
 
 .cruiseLimit {
@@ -1971,9 +2061,8 @@ textarea.input {
 .review {
   display: flex;
   flex-direction: column;
-  /* Board-centered (see .modal for the --dsh-tb-board-offset contract). */
+  /* Board-relative: the .modalBackdrop above centers it inside the board box. */
   position: relative;
-  left: calc(var(--dsh-tb-board-offset, 0px) / 2);
   width: min(880px, calc(100vw - 48px));
   max-height: min(86vh, 860px);
   background: var(--dsh-tb-surface-float);

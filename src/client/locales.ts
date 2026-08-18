@@ -9,6 +9,7 @@
 export const zh = {
   'entry.label': '任务看板',
   'board.title': '任务看板',
+  'board.total': '共 {n} 个任务',
   'board.close': '返回对话',
   'board.new': '新建任务',
   'board.search': '筛选任务…',
@@ -58,6 +59,7 @@ export const zh = {
   'detail.description': '描述',
   'detail.runConfig': '运行配置（下次执行）',
   'detail.execution': '执行记录',
+  'detail.sessions': '会话',
   'detail.executionHint': '状态为该次执行自身的结果；评论与后续交互见各行动态与评论页',
   'detail.executionHiddenAll': '已全部隐藏（可恢复）',
   'detail.noExecution': '尚未执行',
@@ -270,6 +272,7 @@ export const zh = {
 export const en: Record<keyof typeof zh, string> = {
   'entry.label': 'Task Board',
   'board.title': 'Task Board',
+  'board.total': '{n} tasks',
   'board.close': 'Back to chat',
   'board.new': 'New Task',
   'board.search': 'Filter tasks…',
@@ -319,6 +322,7 @@ export const en: Record<keyof typeof zh, string> = {
   'detail.description': 'Description',
   'detail.runConfig': 'Run Config (next run)',
   'detail.execution': 'Execution History',
+  'detail.sessions': 'Sessions',
   'detail.executionHint': 'The status is this run\'s own outcome; comments and follow-ups appear in the row dynamics and the review page',
   'detail.executionHiddenAll': 'All hidden (restore available)',
   'detail.noExecution': 'Not executed yet',

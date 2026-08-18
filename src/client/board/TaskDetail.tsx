@@ -87,12 +87,15 @@ function sessionStateKey(state: 'running' | 'waiting' | 'succeeded' | 'failed' |
  *  ambiguous next to comments). The row is an execution-kind SessionRow:
  *  the kind's data is computed here, the row skeleton is shared with the
  *  linked-session rows. */
-function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview, onOpen, onHide }: {
+function ExecutionRow({ execution, index, task, sessionTitle, waitingKind, cruiseOn, onReview, onOpen, onHide }: {
   execution: ExecutionRecord
   /** 1-based execution sequence (comment rounds are not part of the list). */
   index: number
   /** The task owning this execution. */
   task: TaskRecord
+  /** The execution session's display title (native; falls back to the task
+   *  title) — the identity slot shares one leading grammar with linked rows. */
+  sessionTitle: string
   /** The session's pending-interaction kind when it waits on the user. */
   waitingKind: PendingInteractionKind | undefined
   /** Whether the auto-cruise is on (comment states derive from it). */
@@ -124,7 +127,10 @@ function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview,
         spinner: isActive,
       }}
       leading={
-        <span className={css.sessionRowIndex}>{t('detail.executionNo', { n: String(index) })}</span>
+        <span className={css.sessionRowLeading} title={sessionTitle}>
+          <span className={css.sessionRowName}>{sessionTitle}</span>
+          <span className={css.sessionRowMetaNote}>{t('detail.executionNo', { n: String(index) })}</span>
+        </span>
       }
       meta={
         <>
@@ -198,7 +204,7 @@ function LinkedRow({ row, task, controller, onOpen }: {
       kind="linked"
       chip={chip}
       leading={
-        <span className={css.sessionRowTitle}>
+        <span className={css.sessionRowLeading}>
           <Icon name="link" className={css.sessionRowIcon} />
           <span className={css.sessionRowName} title={row.title}>{row.title}</span>
           {row.workspaceLabel !== undefined && row.workspaceLabel !== row.title && (
@@ -221,14 +227,13 @@ function LinkedRow({ row, task, controller, onOpen }: {
 }
 
 /**
- * The "链接会话" section of a bound task: each row is a live view of one
- * native session (its title, workspace, running/waiting state, last update) —
- * never copies, always a pure derivation of the native snapshots (new
- * sessions, renames, archiving and hides all surface automatically). The
- * derivation is live, so there is no manual sync: a restore affordance shows
- * only while rows are display-hidden ("恢复全部已隐藏" clears the hide set).
+ * The linked-session rows of a bound task (live derivation, non-destructive
+ * hide/restore, unbind): rendered inside the task's unified "会话" section,
+ * below the execution rows. Each row is a live view of one native session
+ * (its title, workspace, running/waiting state, last update) — never copies,
+ * always a pure derivation of the native snapshots.
  */
-function LinkedSection({ controller, task, onOpenSession }: {
+function LinkedRows({ controller, task, onOpenSession }: {
   controller: BoardController
   task: TaskRecord
   /** Open the session's detail panel (the shared review shell, read-only). */
@@ -236,7 +241,7 @@ function LinkedSection({ controller, task, onOpenSession }: {
 }) {
   const rows = controller.linkedOf(task)
   return (
-    <Section title={`${t('detail.linked')}${rows.length > 0 ? ` ${rows.length}` : ''}`}>
+    <>
       {rows.length === 0 ? (
         <p className={css.detailText}>{t('detail.linkedEmpty')}</p>
       ) : (
@@ -268,7 +273,7 @@ function LinkedSection({ controller, task, onOpenSession }: {
         </Button>
       </div>
       <p className={css.detailHint}>{t('detail.linkedHint')}</p>
-    </Section>
+    </>
   )
 }
 
@@ -735,7 +740,11 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
 
           <ScheduleSection controller={controller} task={current} />
 
-          <Section title={`${t('detail.execution')}${visibleRuns.length > 0 ? ` ${visibleRuns.length}` : ''}`}>
+          {/* 会话视角：执行记录与链接会话统一进同一个「会话」section ——
+              同一行文法（SessionRow）、同一容器（sessionList）、同一标题节奏；
+              执行行在上、链接行在下，中间用安静分组标签隔开，两块从此读作
+              同一个"会话"区块而不是两个互不相干的部件。 */}
+          <Section title={`${t('detail.sessions')} ${visibleRuns.length + (current.bind !== undefined ? controller.linkedOf(current).length : 0)}`}>
             <p className={css.detailHint}>{t('detail.executionHint')}</p>
             {visibleRuns.length === 0 ? (
               <p className={css.detailText}>
@@ -753,6 +762,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                     execution={execution}
                     index={plainRunsOf(current).findIndex(candidate => candidate.id === execution.id) + 1}
                     task={current}
+                    sessionTitle={controller.sessionTitle(execution.sessionId) ?? current.title}
                     waitingKind={controller.pendingInteractionOf(execution.sessionId)}
                     cruiseOn={controller.getSnapshot().cruise.enabled}
                     onReview={() => { setReviewExecution(execution) }}
@@ -767,15 +777,21 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                 {t('detail.restoreHidden')}
               </Button>
             )}
-          </Section>
 
-          {current.bind !== undefined && (
-            <LinkedSection
-              controller={controller}
-              task={current}
-              onOpenSession={sessionId => { setLinkedSession(sessionId) }}
-            />
-          )}
+            {current.bind !== undefined && (
+              <>
+                <h5 className={css.sessionGroupLabel}>
+                  {t('detail.linked')}
+                  {controller.linkedOf(current).length > 0 ? ` ${controller.linkedOf(current).length}` : ''}
+                </h5>
+                <LinkedRows
+                  controller={controller}
+                  task={current}
+                  onOpenSession={sessionId => { setLinkedSession(sessionId) }}
+                />
+              </>
+            )}
+          </Section>
 
           {current.status === 'backlog' && (
             <RefineSection controller={controller} task={current} />
