@@ -577,6 +577,49 @@ export class BoardController {
   }
 
   /**
+   * Copy a task as a fresh template ("复制为模板"): the same content, run
+   * configuration AND automation rule (enable state, mode, cron, budget —
+   * runCount reset to 0, the cron next-run instant recomputed), landing in
+   * 待规划. Executions, hide state and live bindings are never copied — a
+   * template, not a clone of the work history.
+   * @param id - the source task.
+   * @returns the new task, or undefined when the source is unknown.
+   */
+  copyTask(id: string): TaskRecord | undefined {
+    const source = this.tasks.find(task => task.id === id)
+    if (source === undefined) return undefined
+    const now = this.now()
+    let task = createTask({
+      title: source.title,
+      description: source.description,
+      prompt: source.prompt,
+      status: 'backlog',
+      workspaceId: source.workspaceId,
+      provider: source.provider,
+      model: source.model,
+      reasoningEffort: source.reasoningEffort,
+      agentPreset: source.agentPreset,
+      permission: source.permission,
+    }, now, this.uuid(), this.nextOrder())
+    const schedule = source.schedule
+    if (schedule !== undefined) {
+      task = withSchedule(task, {
+        enabled: schedule.enabled,
+        mode: schedule.mode,
+        cron: schedule.cron,
+        maxRuns: schedule.maxRuns,
+        runCount: 0,
+        nextRunAt: schedule.enabled && schedule.mode === 'cron'
+          ? nextRunAtMs(schedule.cron, now)
+          : undefined,
+      }, now)
+    }
+    this.tasks = [...this.tasks, task]
+    this.persistAndNotify()
+    return task
+  }
+
+  /**
    * The live linked-session rows of a task (pure derivation over the native
    * snapshots; see linked-sessions.ts). Returns [] for unbound tasks or when
    * the workspaces face is absent.

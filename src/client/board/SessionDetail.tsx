@@ -234,23 +234,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
                   talks to the native session; it never drives the task. */
               <p className={css.sessionReadonly}>{t('detail.sessionDirect')}</p>
             )}
-            <div className={css.linkedActions}>
-              <Button size="sm" onClick={() => { controller.openSession(sessionId) }}>
-                {t('detail.viewSession')} →
-              </Button>
-              <Button size="sm" onClick={() => {
-                controller.hideTaskSession(task.id, sessionId)
-                onClose()
-              }}>
-                {t('detail.hide')}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => {
-                controller.unbindTask(task.id)
-                onClose()
-              }}>
-                {t('detail.linkedUnbind')}
-              </Button>
-            </div>
           </div>
 
           {/* The composer, pinned: drive (default) or direct, chosen by one

@@ -18,7 +18,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Chip, type ChipKind } from './Chip.tsx'
 import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
 import { TaskForm } from './TaskForm.tsx'
-import { draftFromTask, draftToNewInput, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
+import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
 import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
@@ -304,6 +304,12 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
     setError(undefined)
   }, [task.id, schedule?.enabled, schedule?.mode, schedule?.cron, schedule?.nextRunAt, schedule?.lastTriggeredAt, schedule?.maxRuns, schedule?.runCount])
 
+  // Arming the rule expands the editor at once (the initial state already
+  // keeps an armed rule expanded on open — "按过启用后下次打开自动展开").
+  useEffect(() => {
+    if (schedule?.enabled === true) setOpen(true)
+  }, [task.id, schedule?.enabled])
+
   /** Validate + persist the current cron text (Enter or blur). */
   const saveCron = (value: string): void => {
     const trimmed = value.trim()
@@ -435,7 +441,10 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
 
   // Collapsed by default: the detail stays quiet, one summary line reads the
   // rule's true state — closed / paused (with the blocking reason) / running.
-  const [open, setOpen] = useState(false)
+  // Collapsed by default UNLESS the rule is already enabled: an armed
+  // automation opens expanded, so its live state is immediately visible —
+  // "按过启用后，下次打开必自动展开" (the user asked for exactly this).
+  const [open, setOpen] = useState(() => schedule?.enabled === true)
   const [confirm, setConfirm] = useState<'unlimited-enable' | 'stop-chain' | undefined>(undefined)
   const summary = !enabled
     ? t('detail.schedule.off')
@@ -689,11 +698,11 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
     setEditError(undefined)
   }
 
-  /** New-task copy of this task ("复制为模板"): fresh card, same content and
-   *  run config, landing in 待规划; runs/automation/links are not copied. */
+  /** New-task copy of this task ("复制为模板"): fresh card, same content, run
+   *  config AND automation rule, landing in 待规划; runs/links are not
+   *  copied (controller.copyTask). */
   const duplicateTask = (): void => {
-    const input = draftToNewInput(draftFromTask(current))
-    const copy = controller.createTask({ ...input, status: 'backlog' })
+    const copy = controller.copyTask(current.id)
     if (copy !== undefined) controller.closeTask()
   }
 
@@ -928,6 +937,13 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
           <Button title={t('detail.duplicateTitle')} onClick={duplicateTask}>
             {t('detail.duplicate')}
           </Button>
+          {/* 解绑属于"任务卡片"层面：只在绑定了工作区/会话时出现，与其它
+              footer 按钮同尺寸同节奏。 */}
+          {current.bind !== undefined && (
+            <Button title={t('detail.linkedUnbindTitle')} onClick={() => { controller.unbindTask(current.id) }}>
+              {t('detail.linkedUnbind')}
+            </Button>
+          )}
           <Button variant="danger" onClick={() => { setConfirmDelete(true) }}>
             {t('detail.delete')}
           </Button>

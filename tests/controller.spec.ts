@@ -1631,6 +1631,24 @@ describe('linked sessions & bind', () => {
     expect(store.load()[0].hidden).toEqual({ sessions: ['s-ghost'] })
   })
 
+  it('copyTask clones content, run config and the automation rule (runCount reset)', () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: 'd', prompt: 'p', status: 'todo' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 3 })
+    const copy = controller.copyTask(task.id)
+    expect(copy).toBeDefined()
+    expect(copy!.id).not.toBe(task.id)
+    expect(copy!.title).toBe('x')
+    expect(copy!.prompt).toBe('p')
+    expect(copy!.status).toBe('backlog')
+    expect(copy!.executions).toHaveLength(0)
+    expect(copy!.bind).toBeUndefined()
+    expect(copy!.schedule).toMatchObject({ enabled: true, mode: 'chain', maxRuns: 3, runCount: 0 })
+    // The source task is untouched; the board now holds both.
+    expect(controller.getSnapshot().tasks).toHaveLength(2)
+  })
+
   it('unbindTask drops the live binding and persists', () => {
     const { controller, store } = makeController()
     const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
