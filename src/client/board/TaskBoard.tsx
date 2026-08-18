@@ -22,6 +22,7 @@ import { insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
+import { formatDateTime } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { Button, Icon, Switch } from './ui.tsx'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
@@ -55,6 +56,40 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     document.addEventListener('mousedown', onDown)
     return () => { document.removeEventListener('mousedown', onDown) }
   }, [cruiseOpen])
+  // 定时窗口表单（datetime-local 字符串，添加时解析为 epoch 毫秒）。
+  const [windowStart, setWindowStart] = useState('')
+  const [windowEnd, setWindowEnd] = useState('')
+
+  /** 添加一条巡航定时窗口：开始必填；结束可选（留空=一直保持）且必须晚于开始。 */
+  const addCruiseWindow = (): void => {
+    const start = windowStart === '' ? Number.NaN : new Date(windowStart).getTime()
+    if (!Number.isFinite(start)) return
+    let end: number | undefined
+    if (windowEnd !== '') {
+      const parsed = new Date(windowEnd).getTime()
+      if (!Number.isFinite(parsed) || parsed <= start) return
+      end = parsed
+    }
+    controller.setCruiseSchedule([...snapshot.cruise.schedule, { startAt: start, ...end !== undefined ? { endAt: end } : {} }])
+    setWindowStart('')
+    setWindowEnd('')
+  }
+
+  // 弹层里的巡航状态行：当前开启中（至何时）或 关闭（下一窗口何时）。
+  const cruiseSchedule = snapshot.cruise.schedule
+  const cruiseNow = Date.now()
+  const coveringWindow = cruiseSchedule.find(window =>
+    window.startAt <= cruiseNow && (window.endAt === undefined || window.endAt > cruiseNow))
+  const nextWindow = cruiseSchedule
+    .filter(window => window.startAt > cruiseNow)
+    .sort((a, b) => a.startAt - b.startAt)[0]
+  const cruiseStateLine = snapshot.cruise.enabled
+    ? coveringWindow !== undefined && coveringWindow.endAt !== undefined
+      ? t('board.cruiseStateOnUntil', { time: formatDateTime(coveringWindow.endAt) })
+      : t('board.cruiseStateOn')
+    : nextWindow !== undefined
+      ? t('board.cruiseStateNext', { time: formatDateTime(nextWindow.startAt) })
+      : t('board.cruiseStateOff')
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
   const [dragReject, setDragReject] = useState<TaskStatus | undefined>(undefined)
   // The column that accepted a drop, for the one-shot accent flash. Own
@@ -346,8 +381,59 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     />
                   </span>
                 </div>
-                {/* Phase 4 在此追加「定时窗口」编辑器。 */}
-                <p className={css.detailHint}>{t('board.cruisePopoverHint')}</p>
+                {/* 定时窗口：设定靠后的开启时刻与可选结束时刻（不设=一直保持）；
+                    多个窗口独立——当前窗口结束时关闭，更靠后的窗口到点再次自动开启。 */}
+                <div className={css.cruiseSchedule}>
+                  <div className={css.cruiseScheduleHead}>
+                    <span className={css.cruiseScheduleTitle}>{t('board.cruiseSchedule')}</span>
+                    <span className={css.cruiseStateLine}>{cruiseStateLine}</span>
+                  </div>
+                  {cruiseSchedule.length === 0 ? (
+                    <p className={css.detailHint}>{t('board.cruiseScheduleEmpty')}</p>
+                  ) : (
+                    <ul className={css.cruiseWindowList}>
+                      {cruiseSchedule.map((window, index) => (
+                        <li key={`${window.startAt}-${index}`} className={css.cruiseWindowRow}>
+                          <span className={css.cruiseWindowTime}>
+                            {formatDateTime(window.startAt)}
+                            {' → '}
+                            {window.endAt !== undefined ? formatDateTime(window.endAt) : t('board.cruiseWindowNoEnd')}
+                          </span>
+                          <button
+                            type="button"
+                            className={css.rowHide}
+                            title={t('board.cruiseWindowRemove')}
+                            onClick={() => {
+                              controller.setCruiseSchedule(cruiseSchedule.filter((_, i) => i !== index))
+                            }}
+                          >
+                            {t('board.cruiseWindowRemove')}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className={css.cruiseWindowAdd}>
+                    <input
+                      className={css.input}
+                      type="datetime-local"
+                      value={windowStart}
+                      aria-label={t('board.cruiseWindowStart')}
+                      onChange={event => { setWindowStart(event.target.value) }}
+                    />
+                    <span className={css.cruiseWindowArrow} aria-hidden="true">→</span>
+                    <input
+                      className={css.input}
+                      type="datetime-local"
+                      value={windowEnd}
+                      aria-label={t('board.cruiseWindowEnd')}
+                      onChange={event => { setWindowEnd(event.target.value) }}
+                    />
+                    <Button size="sm" onClick={addCruiseWindow}>
+                      {t('board.cruiseWindowAdd')}
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

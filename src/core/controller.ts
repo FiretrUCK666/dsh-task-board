@@ -17,6 +17,7 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
+import { applyManualToggle, effectiveEnabled, isCruiseWindow, sortWindows } from './cruise.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { TaskStore } from './store.ts'
 import {
@@ -160,10 +161,14 @@ export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   | 'reasoningEffort' | 'agentPreset' | 'permission'
 >>
 
-/** The auto-cruise state: whether it picks up 'todo' tasks, and at what concurrency. */
+/** The auto-cruise state: effective on/off, concurrency, and the scheduled
+ *  windows that drive the effective state (see cruise.ts — `enabled` is the
+ *  derived current truth, kept persisted so every consumer reads one value). */
 export interface CruiseState {
   enabled: boolean
   limit: number
+  /** Scheduled windows `[startAt, endAt?)`; empty = no auto schedule. */
+  schedule: import('./cruise.ts').CruiseWindow[]
 }
 
 /** Persistence seam for the cruise state (localStorage in the browser). */
@@ -375,7 +380,14 @@ export class BoardController {
       && Number.isInteger(stored.limit) && stored.limit >= 1
       ? stored.limit
       : DEFAULT_CRUISE_LIMIT
-    this.cruiseState = { enabled: stored?.enabled === true, limit: storedLimit }
+    this.cruiseState = {
+      enabled: stored?.enabled === true,
+      limit: storedLimit,
+      // Old documents carry no schedule; only well-formed windows load.
+      schedule: Array.isArray(stored?.schedule)
+        ? sortWindows(stored!.schedule.filter(isCruiseWindow))
+        : [],
+    }
   }
 
   // --- lifecycle -------------------------------------------------------------
@@ -1419,13 +1431,15 @@ export class BoardController {
 
   // --- auto-cruise --------------------------------------------------------------
 
-  /** Turn the auto-cruise on or off (persisted). On re-pumps the dispatch
-   *  queue immediately — pending comments and todo pickups start under the
-   *  concurrency budget, comments first (a human instruction wins over the
-   *  cruise picking up a fresh run). */
+  /** Turn the auto-cruise on or off (persisted) — a MANUAL toggle: ON adds
+   *  an open-ended window from now (保持开启直到手动关), OFF closes the window
+   *  covering now (本轮结束 — scheduled windows stay and may re-enable later).
+   *  On re-pumps the dispatch queue immediately — pending comments and todo
+   *  pickups start under the concurrency budget, comments first. */
   setCruiseEnabled(on: boolean): void {
-    if (this.cruiseState.enabled === on) return
-    this.cruiseState = { ...this.cruiseState, enabled: on }
+    const next = applyManualToggle(this.cruiseState, on, this.now())
+    if (next.enabled === this.cruiseState.enabled && next.schedule === this.cruiseState.schedule) return
+    this.cruiseState = next
     this.deps.cruiseStorage?.write(this.cruiseState)
     if (on) this.dispatch()
     this.notify()
@@ -1438,6 +1452,32 @@ export class BoardController {
     this.cruiseState = { ...this.cruiseState, limit: clamped }
     this.deps.cruiseStorage?.write(this.cruiseState)
     this.dispatch()
+    this.notify()
+  }
+
+  /** Replace the cruise's scheduled windows (the editor's add/remove path).
+   *  The effective state is recomputed at once against the NEW list: a window
+   *  may now cover the present, or the covering window may have just been
+   *  removed. */
+  setCruiseSchedule(windows: readonly import('./cruise.ts').CruiseWindow[]): void {
+    const schedule = sortWindows(windows)
+    const next: CruiseState = { ...this.cruiseState, schedule }
+    next.enabled = effectiveEnabled(next, this.now())
+    this.cruiseState = next
+    this.deps.cruiseStorage?.write(this.cruiseState)
+    if (this.cruiseState.enabled) this.dispatch()
+    this.notify()
+  }
+
+  /** The scheduler heartbeat for cruise windows: recompute the effective
+   *  state; on a boundary flip (window start/end reached) persist and pump
+   *  dispatch (enabling) — "到点自动开启 / 到点自动关闭". */
+  tickCruise(now: number): void {
+    const effective = effectiveEnabled(this.cruiseState, now)
+    if (effective === this.cruiseState.enabled) return
+    this.cruiseState = { ...this.cruiseState, enabled: effective }
+    this.deps.cruiseStorage?.write(this.cruiseState)
+    if (effective) this.dispatch()
     this.notify()
   }
 

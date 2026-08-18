@@ -8,6 +8,7 @@ import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
 import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
 import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
+import type { CruiseWindow } from '../src/core/cruise.ts'
 import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -1184,23 +1185,25 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
 describe('auto-cruise', () => {
   it('defaults to off with a limit of 5 when nothing is stored', () => {
     const { controller } = makeController()
-    expect(controller.getSnapshot().cruise).toEqual({ enabled: false, limit: 5 })
+    expect(controller.getSnapshot().cruise).toEqual({ enabled: false, limit: 5, schedule: [] })
   })
 
   it('persists toggle and limit through the storage face', () => {
-    const writes: Array<{ enabled: boolean; limit: number }> = []
+    const writes: Array<{ enabled: boolean; limit: number; schedule: CruiseWindow[] }> = []
     const storage = {
-      read: (): { enabled: boolean; limit: number } | undefined => writes[writes.length - 1],
-      write: (state: { enabled: boolean; limit: number }): void => { writes.push(state) },
+      read: (): { enabled: boolean; limit: number; schedule: CruiseWindow[] } | undefined => writes[writes.length - 1],
+      write: (state: { enabled: boolean; limit: number; schedule: CruiseWindow[] }): void => { writes.push(state) },
     }
     const { controller } = makeController(new StubExec(), { cruiseStorage: storage })
     controller.setCruiseEnabled(true)
     controller.setCruiseLimit(3)
+    // Manual ON records an open-ended window from now (保持开启直到手动关).
+    const manualWindow: CruiseWindow[] = [{ startAt: NOW }]
     expect(writes).toEqual([
-      { enabled: true, limit: 5 },
-      { enabled: true, limit: 3 },
+      { enabled: true, limit: 5, schedule: manualWindow },
+      { enabled: true, limit: 3, schedule: manualWindow },
     ])
-    expect(controller.getSnapshot().cruise).toEqual({ enabled: true, limit: 3 })
+    expect(controller.getSnapshot().cruise).toEqual({ enabled: true, limit: 3, schedule: manualWindow })
     // Clamped to ≥ 1.
     controller.setCruiseLimit(0)
     expect(controller.getSnapshot().cruise.limit).toBe(1)
@@ -1648,6 +1651,21 @@ describe('linked sessions & bind', () => {
     expect(copy!.schedule).toMatchObject({ enabled: true, mode: 'chain', maxRuns: 3, runCount: 0 })
     // The source task is untouched; the board now holds both.
     expect(controller.getSnapshot().tasks).toHaveLength(2)
+  })
+
+  it('cruise windows: setCruiseSchedule recomputes effective state; tickCruise flips at boundaries', () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub, { now: () => NOW })
+    // A future window: still off now, the heartbeat flips it on at its start.
+    controller.setCruiseSchedule([{ startAt: NOW + 1000 }])
+    expect(controller.getSnapshot().cruise.enabled).toBe(false)
+    controller.tickCruise(NOW + 2000)
+    expect(controller.getSnapshot().cruise.enabled).toBe(true)
+    // A window covering now enables immediately; removing it flips off.
+    controller.setCruiseSchedule([{ startAt: NOW - 1000 }])
+    expect(controller.getSnapshot().cruise.enabled).toBe(true)
+    controller.setCruiseSchedule([])
+    expect(controller.getSnapshot().cruise.enabled).toBe(false)
   })
 
   it('sendSessionMessage records a direct round into the session thread (read-only, never drives)', async () => {

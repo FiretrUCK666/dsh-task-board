@@ -582,6 +582,9 @@ export function apply(ctx: ClientContext): void {
       applySchedule: (id, nextRunAt, lastTriggeredAt, runCount, disable) =>
         controller.applyScheduleNextRun(id, nextRunAt, lastTriggeredAt, runCount, disable),
       ready: () => sessions.list.getSnapshot().phase === 'ready',
+      // Cruise scheduled windows flip on/off at their boundaries on the same
+      // heartbeat as task schedules.
+      cruiseTick: now => controller.tickCruise(now),
       environment: {
         addEventListener: (type, listener) => document.addEventListener(type, listener),
         removeEventListener: (type, listener) => document.removeEventListener(type, listener),

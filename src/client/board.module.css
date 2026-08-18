@@ -395,6 +395,92 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
+/* 定时窗口编辑器（巡航弹层内）：状态行 + 窗口列表 + 添加行，一条安静列。 */
+.cruiseSchedule {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: var(--dsh-tb-separator);
+}
+
+.cruiseScheduleHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cruiseScheduleTitle {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsh-tb-text-3);
+  white-space: nowrap;
+}
+
+.cruiseStateLine {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+}
+
+.cruiseWindowList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cruiseWindowRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 8px;
+}
+
+.cruiseWindowRow:hover {
+  background: var(--dsh-tb-hover);
+}
+
+.cruiseWindowTime {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.cruiseWindowAdd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cruiseWindowArrow {
+  flex: none;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+}
+
+.cruiseWindowAdd .input {
+  flex: 1 1 130px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 /* --- columns ------------------------------------------------------------------ */
 
 .columns {

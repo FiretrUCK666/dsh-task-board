@@ -44,6 +44,12 @@ export interface SchedulerDeps {
    * arrived on page load, so executions would fail). Defaults to always ready.
    */
   ready?: () => boolean
+  /**
+   * Optional cruise-window heartbeat (the controller's tickCruise): evaluated
+   * on every tick so a scheduled window's start/end flips the cruise on/off
+   * at its boundary. Minute granularity is enough for scheduled times.
+   */
+  cruiseTick?: (now: number) => void
   /** Environment listeners for tab-visibility recovery (browser only). */
   environment?: {
     addEventListener(type: 'visibilitychange', listener: () => void): void
@@ -90,6 +96,8 @@ export class SchedulerService {
     if (this.disposed) return
     if (this.deps.ready !== undefined && !this.deps.ready()) return
     const now = this.deps.now()
+    // Cruise windows flip on/off at their boundaries on this same heartbeat.
+    this.deps.cruiseTick?.(now)
     for (const task of this.deps.tasks()) {
       const schedule = task.schedule
       if (schedule === undefined || !schedule.enabled) continue
