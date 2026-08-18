@@ -31,7 +31,7 @@
  * session page remains the place for the full transcript ("查看会话");
  * this page never duplicates the full conversation view.
  */
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { plainRunsOf, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
@@ -42,32 +42,8 @@ import { formatDateTime } from './TaskCard.tsx'
 import { commentsOf, commentKindOf, commentStateKey, queuePositionOf, type CommentViewState } from './comment-thread.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
-import { SessionRailHead, SessionWaitingNotice } from './session-panel.tsx'
+import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { Button } from './ui.tsx'
-
-/**
- * One memoized transcript row. Props are the primitive render facts (never
- * the line object), so a light poll that re-folds the tail only re-renders
- * the rows whose content actually changed — long transcripts stay smooth.
- * Shared with the requirement-refinement panel.
- */
-export const TranscriptRow = memo(function TranscriptRow(props:
-  | { kind: 'context'; plugin: string; summary: string }
-  | { kind: 'message'; role: 'user' | 'assistant'; text: string }
-) {
-  if (props.kind === 'context') {
-    return (
-      <li className={css.reviewContext} title={props.summary}>
-        {t('review.contextInjection')} · {props.plugin}
-      </li>
-    )
-  }
-  return (
-    <li className={css.reviewMessage} data-role={props.role}>
-      <span className={css.reviewMessageText}>{props.text}</span>
-    </li>
-  )
-})
 
 /** The chip label of a comment display state ("排队中 · 第 N 位" uses the task-level queue position). */
 function commentLabel(state: CommentViewState, position: number): string {
@@ -191,21 +167,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     }
   }
 
-  // The permission switcher's truth: the session's live permission select
-  // from the native `permissions` projection (the same value the harness
-  // PermissionSelect reads) — never the task card's permission field, which
-  // only configures the next fresh run. Without a projection (deployment
-  // without the registry) the shared editor falls back to the route-backed
-  // preset catalog and its default option.
-  const livePermission = projections?.permissions
-  const permissionOptions: readonly { id: string; name?: string; description?: string }[] | undefined
-    = livePermission !== undefined
-      ? livePermission.options.map(option => ({ id: option.value, name: option.name, ...option.description !== undefined ? { description: option.description } : {} }))
-      : undefined
-  const permissionValue = livePermission !== undefined
-    ? livePermission.currentValue
-    : undefined
-
   // The run's sequence among the task's plain runs (comment rounds excluded).
   const runIndex = plainRunsOf(current).findIndex(candidate => candidate.id === execution.id) + 1
   // The execution session is blocked on the user (approval / plan review /
@@ -235,48 +196,29 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           ref={transcriptScrollRef}
           onScroll={onTranscriptScroll}
         >
-            <div className={css.reviewOutcome}>
-              <Chip kind={execution.result === 'failed' ? 'error' : execution.result === 'succeeded' ? 'success' : 'muted'}>
-                {execution.result === undefined ? t('detail.result.running') : t(`detail.result.${execution.result}` as 'detail.result.succeeded')}
-              </Chip>
-              <span className={css.reviewOutcomeMeta}>
-                {t('detail.executionEnded')} {execution.endedAt !== undefined ? formatDateTime(execution.endedAt) : '—'}
-              </span>
-            </div>
+          {sessionId === undefined ? (
+            <p className={css.detailText}>{t('review.noSession')}</p>
+          ) : (
+            <SessionTranscript
+              lines={lines}
+              error={transcriptError}
+              atBottom={transcriptAtBottom}
+              jumpToBottom={jumpTranscript}
+              waiting={waiting}
+              before={
+                <div className={css.reviewOutcome}>
+                  <Chip kind={execution.result === 'failed' ? 'error' : execution.result === 'succeeded' ? 'success' : 'muted'}>
+                    {execution.result === undefined ? t('detail.result.running') : t(`detail.result.${execution.result}` as 'detail.result.succeeded')}
+                  </Chip>
+                  <span className={css.reviewOutcomeMeta}>
+                    {t('detail.executionEnded')} {execution.endedAt !== undefined ? formatDateTime(execution.endedAt) : '—'}
+                  </span>
+                </div>
+              }
+            />
+          )}
 
-            <SessionWaitingNotice waiting={waiting} />
-
-            {sessionId === undefined ? (
-              <p className={css.detailText}>{t('review.noSession')}</p>
-            ) : transcriptError ? (
-              <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
-            ) : lines === undefined ? (
-              <p className={css.detailText}>{t('review.loading')}</p>
-            ) : lines.length === 0 ? (
-              <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
-            ) : (
-              <ul className={css.reviewTranscript}>
-                {lines.map(line => line.kind === 'context' ? (
-                  <TranscriptRow
-                    key={line.id}
-                    kind="context"
-                    plugin={line.plugin}
-                    summary={line.summary}
-                  />
-                ) : (
-                  <TranscriptRow
-                    key={line.id}
-                    kind="message"
-                    role={line.role}
-                    text={line.text}
-                  />
-                ))}
-              </ul>
-            )}
-
-            <JumpToLatest atBottom={transcriptAtBottom} onJump={jumpTranscript} />
-
-            {/* The context meter note: rendered in the right rail below. */}
+          {/* The context meter note: rendered in the right rail below. */}
             </div>
       }
       rail={
@@ -293,8 +235,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             lines={lines}
             onChanged={reload}
             reloadKey={configReloadKey}
-            permissionValue={permissionValue}
-            permissionOptions={permissionOptions}
           />
             </div>
 

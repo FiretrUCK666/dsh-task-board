@@ -2016,6 +2016,20 @@ textarea.input {
   border-bottom: var(--dsh-tb-separator);
 }
 
+/* The linked-session rail's scrollable middle: the head content scrolls
+   inside its own region while the composer stays pinned at the bottom
+   (flex: none) — a taller head can never squeeze the send button out. */
+.sessionRailScroll {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 12px 8px;
+  border-bottom: var(--dsh-tb-separator);
+}
+
 /* The comment list scrolls in its own region below the fixed thread header
    (title + count) and above the composer — the scrollbar covers exactly the
    list, never the header or the composer. */
@@ -2505,5 +2519,16 @@ textarea.input {
   .reviewRailHead {
     max-height: 34vh;
     overflow-y: auto;
+  }
+
+  /* The linked-session panel wraps its head in a scroll region: the cap
+     moves to the wrapper so there is exactly one scrollbar, never two. */
+  .sessionRailScroll {
+    max-height: 34vh;
+  }
+
+  .sessionRailScroll .reviewRailHead {
+    max-height: none;
+    overflow: visible;
   }
 }

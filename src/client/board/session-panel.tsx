@@ -10,13 +10,14 @@
  * sessionConfig, transcript projections), so any block works for any native
  * session id.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useState, type ReactNode } from 'react'
 import type { BoardController, PendingInteractionKind, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { sumUsage, type TranscriptLine } from './review-transcript.ts'
+import { JumpToLatest } from './use-transcript.tsx'
 import { Notice } from './ui.tsx'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
@@ -24,9 +25,86 @@ const MODEL_SEP = '\u0000'
 
 /** The session's real workspace root → short display label (last path
  *  segment). Shared by every session panel. */
-export function workspaceLabelOf(cwd: string): string {
+function workspaceLabelOf(cwd: string): string {
   const segment = cwd.split(/[\\/]+/).filter(Boolean).pop()
   return segment !== undefined && segment !== '' ? segment : cwd
+}
+
+/**
+ * One memoized transcript row. Props are the primitive render facts (never
+ * the line object), so a light poll that re-folds the tail only re-renders
+ * the rows whose content actually changed — long transcripts stay smooth.
+ */
+const TranscriptRow = memo(function TranscriptRow(props:
+  | { kind: 'context'; plugin: string; summary: string }
+  | { kind: 'message'; role: 'user' | 'assistant'; text: string }
+) {
+  if (props.kind === 'context') {
+    return (
+      <li className={css.reviewContext} title={props.summary}>
+        {t('review.contextInjection')} · {props.plugin}
+      </li>
+    )
+  }
+  return (
+    <li className={css.reviewMessage} data-role={props.role}>
+      <span className={css.reviewMessageText}>{props.text}</span>
+    </li>
+  )
+})
+
+/**
+ * The shared transcript-region content: optional header (the review page's
+ * outcome banner), the waiting banner, error/loading/empty states, the
+ * folded message list (optionally capped to the trailing N) and the
+ * "滑到最新" pill. Callers own their scroll region and the tail hook; this
+ * is pure rendering, so every live session surface looks and behaves
+ * identically.
+ */
+export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, before }: {
+  lines: readonly TranscriptLine[] | undefined
+  error: boolean
+  atBottom: boolean
+  jumpToBottom: () => void
+  waiting?: PendingInteractionKind
+  /** Render only the trailing N lines (the refinement panel's cap). */
+  maxLines?: number
+  /** Optional header content inside the region (the review page's outcome banner). */
+  before?: ReactNode
+}) {
+  const shown = lines === undefined ? undefined : maxLines === undefined ? lines : lines.slice(-maxLines)
+  return (
+    <>
+      {before}
+      <SessionWaitingNotice waiting={waiting} />
+      {error ? (
+        <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
+      ) : shown === undefined ? (
+        <p className={css.detailText}>{t('review.loading')}</p>
+      ) : shown.length === 0 ? (
+        <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
+      ) : (
+        <ul className={css.reviewTranscript}>
+          {shown.map(line => line.kind === 'context' ? (
+            <TranscriptRow
+              key={line.id}
+              kind="context"
+              plugin={line.plugin}
+              summary={line.summary}
+            />
+          ) : (
+            <TranscriptRow
+              key={line.id}
+              kind="message"
+              role={line.role}
+              text={line.text}
+            />
+          ))}
+        </ul>
+      )}
+      <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />
+    </>
+  )
 }
 
 /** One waiting banner, shared by every session surface. */
@@ -180,6 +258,24 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
   const [configBusy, setConfigBusy] = useState(false)
   const [configMessage, setConfigMessage] = useState<string | undefined>(undefined)
   const [permissionRows, setPermissionRows] = useState<readonly { id: string; name?: string; description?: string }[] | undefined>(undefined)
+  // The permission select's local fallback: the last permission the user
+  // chose (and applied). A controlled select bound only to the projection
+  // snaps back to the old value the moment a choice is made — with no
+  // projection (or a still-stale one) the local choice is the only truth
+  // we have, so it must hold until the projection confirms it.
+  const [chosen, setChosen] = useState<string | undefined>(undefined)
+
+  // The projection is the session's live truth: when it reports a value that
+  // differs from our local choice, the choice is stale (the permission was
+  // changed elsewhere) and the projection takes over. The session's default
+  // ('') never clears the choice — that is exactly the no-projection case.
+  // While an apply is in flight (configBusy) the arbitration is paused so a
+  // stale projection can never interrupt the user's in-flight selection.
+  useEffect(() => {
+    if (!configBusy && permissionValue !== undefined && permissionValue !== '' && permissionValue !== chosen) {
+      setChosen(undefined)
+    }
+  }, [permissionValue, chosen, configBusy])
 
   // The native permission-preset directory for the permission switcher
   // (same catalog as the new-task form; absent = no switcher).
@@ -257,11 +353,15 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
     void sessionConfig.setPermission(sessionId, permission).then(result => {
       setConfigBusy(false)
       setConfigMessage(result.ok ? t('review.configApplied') : result.error)
-      // The session's real permission changed through the native command;
-      // refresh so the projection-backed select shows the new value.
       if (result.ok) {
+        // The session's real permission changed through the native command;
+        // refresh so the projection-backed select shows the new value.
         reloadPanel()
         onChanged?.()
+      } else {
+        // The switch failed — the session's permission is unchanged; drop
+        // the optimistic choice so the select shows the previous truth.
+        setChosen(undefined)
       }
     })
   }
@@ -269,7 +369,9 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
   if (sessionConfig === undefined) return null
 
   const options = permissionOptions ?? permissionRows
-  const value = permissionValue ?? ''
+  // Display truth: the user's local choice first (it is newest), then the
+  // projection's value when it has confirmed one, then the default option.
+  const value = chosen ?? permissionValue ?? ''
 
   return (
     <section className={css.reviewConfig}>
@@ -327,7 +429,14 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
                   className={css.input}
                   value={value}
                   disabled={configBusy}
-                  onChange={event => { applyPermission(event.target.value) }}
+                  onChange={event => {
+                    // Optimistic local choice: the select must hold the
+                    // user's selection even before the projection confirms
+                    // it — otherwise a controlled select with no local
+                    // fallback snaps back to the old value immediately.
+                    setChosen(event.target.value)
+                    applyPermission(event.target.value)
+                  }}
                 >
                   <option value="">{t('new.permissionDefault')}</option>
                   {options.map(row => (
@@ -351,8 +460,10 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
  * composed in the order every session panel shows them. Callers wrap it in
  * their rail layout (the fixed `.reviewRailHead` block) and pass what they
  * read from their transcript hook (projections via onResult, folded lines).
+ * The permission switcher's projection mapping is derived HERE — one source
+ * for every panel (a caller-level mapping is how the linked panel lost it).
  */
-export function SessionRailHead({ sessionId, controller, projections, lines, onChanged, reloadKey, permissionValue, permissionOptions }: {
+export function SessionRailHead({ sessionId, controller, projections, lines, onChanged, reloadKey }: {
   sessionId: string | undefined
   controller: BoardController
   projections: TranscriptProjectionsShape | undefined
@@ -360,12 +471,20 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
   lines: readonly TranscriptLine[] | undefined
   onChanged?: () => void
   reloadKey?: unknown
-  permissionValue?: string
-  permissionOptions?: readonly { id: string; name?: string; description?: string }[]
 }) {
   // Without a session there is nothing to show (the caller keeps its rail
   // empty, exactly like the pre-refactor gating on sessionId).
   if (sessionId === undefined) return null
+  // The permission switcher's truth: the session's live permission select
+  // from the native `permissions` projection (the same value the harness
+  // PermissionSelect reads) — never the task card's permission field, which
+  // only configures the next fresh run. Without a projection the editor
+  // falls back to the route-backed preset catalog + its local choice.
+  const livePermission = projections?.permissions
+  const permissionOptions = livePermission !== undefined
+    ? livePermission.options.map(option => ({ id: option.value, name: option.name, ...option.description !== undefined ? { description: option.description } : {} }))
+    : undefined
+  const permissionValue = livePermission !== undefined ? livePermission.currentValue : undefined
   return (
     <>
       <ContextMeterPanel projections={projections} usage={sumUsage(lines ?? [])} />

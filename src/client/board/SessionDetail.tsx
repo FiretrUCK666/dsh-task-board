@@ -19,10 +19,9 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
-import { TranscriptRow } from './ReviewDetail.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
-import { SessionRailHead, SessionWaitingNotice } from './session-panel.tsx'
-import { JumpToLatest, useTranscriptTail } from './use-transcript.tsx'
+import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
+import { useTranscriptTail } from './use-transcript.tsx'
 import { Button } from './ui.tsx'
 
 /** The linked-session panel (see module doc). */
@@ -42,6 +41,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   // Native projections (context pressure / breakdown / permissions) ride the
   // history tail page — the same source as the execution review page.
   const [projections, setProjections] = useState<TranscriptProjectionsShape | undefined>(undefined)
+  // The live row is the poll gate: once the session is gone the tail stops
+  // polling — there is nothing left to follow, and the main area shows the
+  // unavailable note instead of an endless "loading".
+  const liveSessionId = row === undefined ? undefined : sessionId
   // The same live transcript tail as every other session surface (load /
   // watermark-gated poll / auto-follow / 滑到最新) — one mechanism everywhere.
   const {
@@ -54,7 +57,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     reload,
   } = useTranscriptTail(
     controller,
-    sessionId,
+    liveSessionId,
     undefined,
     (result) => { setProjections(result.projections) },
   )
@@ -73,12 +76,13 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     setSendError(undefined)
     // The controller routes a leading '/' through the native command
     // registry (unknown commands fall back to plain text). Success is
-    // "delivered to the native session" — the transcript poll then shows
-    // the new turn.
+    // "delivered to the native session" — the transcript refreshes at once,
+    // so the user's own message appears without waiting for the next poll.
     void controller.sendSessionMessage(sessionId, text).then(result => {
       setBusy(false)
       if (result.ok) {
         setDraft('')
+        reload()
       } else {
         setSendError(result.error === 'direct message unavailable'
           ? t('detail.sessionUnavailable')
@@ -111,39 +115,26 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
         </>
       }
       main={
-        <div className={css.reviewTranscriptScroll} ref={scrollRef} onScroll={onScroll}>
-          <SessionWaitingNotice waiting={waiting} />
-          {transcriptError ? (
-            <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
-          ) : lines === undefined ? (
-            <p className={css.detailText}>{t('review.loading')}</p>
-          ) : lines.length === 0 ? (
-            <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
-          ) : (
-            <ul className={css.reviewTranscript}>
-              {lines.map(line => line.kind === 'context' ? (
-                <TranscriptRow
-                  key={line.id}
-                  kind="context"
-                  plugin={line.plugin}
-                  summary={line.summary}
-                />
-              ) : (
-                <TranscriptRow
-                  key={line.id}
-                  kind="message"
-                  role={line.role}
-                  text={line.text}
-                />
-              ))}
-            </ul>
-          )}
-          <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />
-        </div>
+        row === undefined ? (
+          <p className={css.detailText}>{t('detail.sessionUnavailable')}</p>
+        ) : (
+          <div className={css.reviewTranscriptScroll} ref={scrollRef} onScroll={onScroll}>
+            <SessionTranscript
+              lines={lines}
+              error={transcriptError}
+              atBottom={atBottom}
+              jumpToBottom={jumpToBottom}
+              waiting={waiting}
+            />
+          </div>
+        )
       }
       rail={
         <>
-          <div className={css.reviewRailHead}>
+          {/* The head scrolls inside its own region; the composer below is
+              flex:none and stays pinned — a taller head (status, config,
+              hints) can never squeeze the send button out of the rail. */}
+          <div className={css.sessionRailScroll}>
             {stateChip !== undefined && row !== undefined && (
               <div className={css.sessionFacts}>
                 <Chip kind={stateChip.kind}>
@@ -184,9 +175,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
             </div>
           </div>
 
-          {/* The direct composer: same visual rhythm as the review page's
-              composer, different semantics — a ghost send button, an
-              explicit placeholder, no queue states. */}
+          {/* The direct composer: the same visual rhythm and primary send
+              button as the review page's composer — same semantic action
+              (submit a message to the session), different accounting, which
+              the placeholder and the hint above explain. */}
           <div className={css.reviewComposer}>
             <PromptInput
               value={draft}
@@ -197,14 +189,14 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
             />
             <div className={css.reviewComposerRow}>
               <Button
-                variant="ghost"
+                variant="primary"
                 disabled={draft.trim() === '' || busy || unavailable}
                 onClick={submit}
               >
                 {t('detail.sessionSend')}
               </Button>
               {unavailable ? (
-                <span className={css.reviewConfigMessage}>{t('detail.sessionUnavailable')}</span>
+                <span className={css.reviewComposerHint}>{t('detail.sessionUnavailable')}</span>
               ) : sendError !== undefined && (
                 <span className={css.reviewConfigMessage}>{sendError}</span>
               )}

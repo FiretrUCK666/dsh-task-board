@@ -19,9 +19,9 @@ import { refining, refineRoundsOf, type TaskRecord } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
-import { TranscriptRow } from './ReviewDetail.tsx'
-import { JumpToLatest, useTranscriptTail } from './use-transcript.tsx'
-import { Button, Notice, Section } from './ui.tsx'
+import { useTranscriptTail } from './use-transcript.tsx'
+import { SessionTranscript, SessionWaitingNotice } from './session-panel.tsx'
+import { Button, Section } from './ui.tsx'
 
 export function RefineSection({ controller, task }: {
   controller: BoardController
@@ -116,31 +116,18 @@ export function RefineSection({ controller, task }: {
             onScroll={onScroll}
           >
             <div className={css.refineTail}>
-              {error ? (
-                <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
-              ) : lines === undefined ? (
-                <p className={css.detailText}>{t('review.loading')}</p>
-              ) : lines.length === 0 ? (
-                <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
-              ) : (
-                <ul className={css.reviewTranscript}>
-                  {lines.slice(-12).map(line => line.kind === 'context' ? (
-                    <TranscriptRow key={line.id} kind="context" plugin={line.plugin} summary={line.summary} />
-                  ) : (
-                    <TranscriptRow key={line.id} kind="message" role={line.role} text={line.text} />
-                  ))}
-                </ul>
-              )}
-              <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />
+              <SessionTranscript
+                lines={lines}
+                error={error}
+                atBottom={atBottom}
+                jumpToBottom={jumpToBottom}
+                maxLines={12}
+              />
             </div>
           </div>
 
           {/* 等待通知 */}
-          {active && waiting !== undefined && (
-            <Notice chip={t('review.waiting')}>
-              {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
-            </Notice>
-          )}
+          {active && <SessionWaitingNotice waiting={waiting} />}
 
           {/* 输入区域：文本框 + 发送按钮（上下布局） */}
           <div className={css.refineInputArea}>
