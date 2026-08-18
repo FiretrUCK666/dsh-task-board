@@ -32,30 +32,18 @@
  * this page never duplicates the full conversation view.
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import type { BoardController, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
+import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { plainRunsOf, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
-import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
-import { sumUsage } from './review-transcript.ts'
-import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { commentsOf, commentKindOf, commentStateKey, queuePositionOf, type CommentViewState } from './comment-thread.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
-import { Button, Notice } from './ui.tsx'
-
-/** Model-select value encoding: provider + model, joined by a NUL separator. */
-const MODEL_SEP = '\u0000'
-
-/** The session's real workspace root → short display label (last path
- *  segment). Shared with the linked-session panel. */
-export function workspaceLabelOf(cwd: string): string {
-  const segment = cwd.split(/[\\/]+/).filter(Boolean).pop()
-  return segment !== undefined && segment !== '' ? segment : cwd
-}
+import { SessionRailHead, SessionWaitingNotice } from './session-panel.tsx'
+import { Button } from './ui.tsx'
 
 /**
  * One memoized transcript row. Props are the primitive render facts (never
@@ -106,17 +94,14 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // This execution's own comment thread (the review page shows only the
   // comments submitted from the execution being reviewed).
   const comments = commentsOf(current, execution, cruiseOn)
-  const sessionConfig = controller.sessionConfig()
 
-  // Native projection baseline (context pressure / breakdown) from the
-  // history tail page — the source of the context meter below.
+  // Native projection baseline (context pressure / breakdown / permissions)
+  // from the history tail page — the source of the context meter below and
+  // the projection-backed permission switcher.
   const [projections, setProjections] = useState<TranscriptProjectionsShape | undefined>(undefined)
-  // Live session panel: current selection + selectable directory.
-  const [sessionModels, setSessionModels] = useState<{ current: SessionModelChoice; groups: readonly SessionModelGroup[] } | undefined>(undefined)
-  const [configUnavailable, setConfigUnavailable] = useState(false)
-  const [configBusy, setConfigBusy] = useState(false)
-  const [configMessage, setConfigMessage] = useState<string | undefined>(undefined)
-  const [permissionRows, setPermissionRows] = useState<readonly { id: string; name?: string; description?: string }[] | undefined>(undefined)
+  // Bumped to force the shared config editor to re-read the model directory
+  // (manual refresh / run-history changes).
+  const [configReloadKey, setConfigReloadKey] = useState(0)
   const [draft, setDraft] = useState('')
   const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
   // The comment thread auto-follows its latest round (fingerprint-gated).
@@ -160,39 +145,16 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     (result) => { setProjections(result.projections) },
   )
 
-  // The native permission-preset directory for the permission switcher
-  // (same catalog as the new-task form; absent = no switcher).
-  useEffect(() => {
-    let alive = true
-    void (async () => {
-      const rows = await controller.runCatalog()?.listPermissions()
-      if (alive) setPermissionRows(rows)
-    })()
-    return () => { alive = false }
-  }, [controller])
-
-  /** Reload the live session panel (model selection + catalog). */
-  const reloadPanel = useCallback((): void => {
-    if (sessionId === undefined || sessionConfig === undefined) return
-    void sessionConfig.readModels(sessionId).then(result => {
-      if (result === undefined) setConfigUnavailable(true)
-      else {
-        setConfigUnavailable(false)
-        setSessionModels(result)
-      }
-    })
-  }, [sessionId, sessionConfig])
-
-  /** Full refresh (manual 刷新 / after a config change): transcript +
-   *  session panel. */
+  /** Full refresh (manual 刷新 / after a config change): transcript + the
+   *  shared config editor (via its reload key). */
   const reload = useCallback((): void => {
     reloadTranscript()
-    reloadPanel()
-  }, [reloadTranscript, reloadPanel])
+    setConfigReloadKey(key => key + 1)
+  }, [reloadTranscript])
 
-  // Load the session panel on open + whenever the task's run history
-  // changes (a comment injected or settled) — a full panel refresh.
-  useEffect(() => { reloadPanel() }, [reloadPanel, current.executions.length, current.status])
+  // Re-read the session panel on open + whenever the task's run history
+  // changes (a comment injected or settled) — the shared editor re-loads.
+  useEffect(() => { setConfigReloadKey(key => key + 1) }, [current.executions.length, current.status])
 
   // The same follow for the comment list: new rounds and state transitions
   // scroll it to the newest comment while at the bottom.
@@ -229,86 +191,26 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     }
   }
 
-  /** Apply a new model selection to the execution session. */
-  const applyModel = (key: string): void => {
-    if (sessionConfig === undefined || sessionId === undefined || sessionModels === undefined) return
-    const sepIndex = key.indexOf(MODEL_SEP)
-    if (sepIndex < 0) return
-    const provider = key.slice(0, sepIndex)
-    const model = key.slice(sepIndex + 1)
-    const group = sessionModels.groups.find(candidate => candidate.provider === provider)
-    const row = group?.models.find(candidate => candidate.id === model)
-    const effort = row?.reasoning?.defaultEffort
-    setConfigBusy(true)
-    setConfigMessage(undefined)
-    void sessionConfig.selectModel(sessionId, { provider, model, ...effort !== undefined ? { reasoningEffort: effort } : {} }).then(result => {
-      setConfigBusy(false)
-      setConfigMessage(result.ok ? t('review.configApplied') : result.error)
-      if (result.ok) reload()
-    })
-  }
-
-  /** Apply a reasoning effort to the current model selection. */
-  const applyEffort = (effort: string): void => {
-    if (sessionConfig === undefined || sessionId === undefined || sessionModels === undefined) return
-    const selection = sessionModels.current
-    setConfigBusy(true)
-    setConfigMessage(undefined)
-    void sessionConfig.selectModel(sessionId, {
-      provider: selection.provider,
-      model: selection.model,
-      ...effort !== '' ? { reasoningEffort: effort } : {},
-    }).then(result => {
-      setConfigBusy(false)
-      setConfigMessage(result.ok ? t('review.configApplied') : result.error)
-      if (result.ok) reload()
-    })
-  }
-
-  /** Apply a permission preset to the execution session. */
-  const applyPermission = (permission: string): void => {
-    if (sessionConfig === undefined || sessionId === undefined || permission === '') return
-    setConfigBusy(true)
-    setConfigMessage(undefined)
-    void sessionConfig.setPermission(sessionId, permission).then(result => {
-      setConfigBusy(false)
-      setConfigMessage(result.ok ? t('review.configApplied') : result.error)
-      // The session's real permission changed through the native command;
-      // refresh so the projection-backed select shows the new value.
-      if (result.ok) reload()
-    })
-  }
-
   // The permission switcher's truth: the session's live permission select
   // from the native `permissions` projection (the same value the harness
   // PermissionSelect reads) — never the task card's permission field, which
   // only configures the next fresh run. Without a projection (deployment
-  // without the registry) it falls back to the route-backed preset catalog
-  // and the task field.
+  // without the registry) the shared editor falls back to the route-backed
+  // preset catalog and its default option.
   const livePermission = projections?.permissions
   const permissionOptions: readonly { id: string; name?: string; description?: string }[] | undefined
     = livePermission !== undefined
       ? livePermission.options.map(option => ({ id: option.value, name: option.name, ...option.description !== undefined ? { description: option.description } : {} }))
-      : permissionRows
+      : undefined
   const permissionValue = livePermission !== undefined
     ? livePermission.currentValue
-    : (current.permission ?? '')
+    : undefined
 
   // The run's sequence among the task's plain runs (comment rounds excluded).
   const runIndex = plainRunsOf(current).findIndex(candidate => candidate.id === execution.id) + 1
-  const usage = sumUsage(lines ?? [])
   // The execution session is blocked on the user (approval / plan review /
   // question): surfaced live from the native session-list signal.
   const waiting = controller.pendingInteractionOf(sessionId)
-  // The session's real workspace + composed Agent (distinct from the task
-  // card's run configuration, which feeds the next fresh run).
-  const sessionInfo = controller.sessionInfo(sessionId)
-  // Context meter: the native occupancy figure (~N / M) + colored composition
-  // bar. Falls back to the per-message usage sum when no projection is served.
-  const occupancy = contextOccupancy(projections?.contextPressure)
-  const meterSegments = occupancy !== undefined
-    ? contextSegments(occupancy, projections?.contextBreakdown)
-    : undefined
 
   return (
     <SessionFrame
@@ -342,11 +244,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               </span>
             </div>
 
-            {waiting !== undefined && (
-              <Notice chip={t('review.waiting')}>
-                {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
-              </Notice>
-            )}
+            <SessionWaitingNotice waiting={waiting} />
 
             {sessionId === undefined ? (
               <p className={css.detailText}>{t('review.noSession')}</p>
@@ -383,161 +281,21 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
       }
       rail={
         <>
-          {/* Right rail: context meter, session config and session facts in a
-              fixed head — always visible no matter how long the comment
-              thread grows — then the comment thread in its own scroll region,
+          {/* Right rail: the shared session head (context meter + live config
+              + session facts — always visible no matter how long the comment
+              thread grows), then the comment thread in its own scroll region,
               and the composer pinned at the rail's bottom. */}
           <div className={css.reviewRailHead}>
-          {sessionId !== undefined && meterSegments !== undefined && occupancy !== undefined && (
-            <div className={css.reviewContextMeter} aria-label={t('review.meterOf', { percent: `${occupancy.percent}%` })}>
-              <div className={css.reviewMeterHead}>
-                <span className={css.reviewMeterReading}>{t('review.meterUsed')}</span>
-                <span className={css.reviewMeterPercent}>{occupancy.percent}%</span>
-                <span className={css.reviewMeterFigures}>
-                  {t('review.meterFigures', {
-                    used: formatTokens(occupancy.usedTokens),
-                    window: formatTokens(occupancy.contextWindow),
-                  })}
-                </span>
-              </div>
-              <div className={css.reviewMeterBar} aria-hidden="true">
-                {meterSegments.map(segment => (
-                  <span
-                    key={segment.key}
-                    className={`${css.reviewMeterSegment}${segment.className !== undefined ? ` ${css[segment.className as keyof typeof css]}` : ''}`}
-                    style={{ width: `${segment.width}%` }}
-                  />
-                ))}
-              </div>
-              {(() => {
-                const breakdown = projections?.contextBreakdown
-                if (breakdown === undefined) return null
-                return (
-                  <div className={css.reviewMeterRows}>
-                    <span className={css.reviewMeterRow}>
-                      <span className={`${css.reviewMeterSwatch} ${css.meterSystem}`} aria-hidden="true" />
-                      <span>{t('review.meterSystem')}</span>
-                      <span className={css.reviewMeterValue}>~{formatTokens(breakdown.systemTokens)}</span>
-                    </span>
-                    <span className={css.reviewMeterRow}>
-                      <span className={`${css.reviewMeterSwatch} ${css.meterTools}`} aria-hidden="true" />
-                      <span>{t('review.meterTools')}</span>
-                      <span className={css.reviewMeterValue}>~{formatTokens(breakdown.toolsTokens)}</span>
-                    </span>
-                    <span className={css.reviewMeterRow}>
-                      <span className={`${css.reviewMeterSwatch} ${css.meterMessages}`} aria-hidden="true" />
-                      <span>{t('review.meterMessages')}</span>
-                      <span className={css.reviewMeterValue}>~{formatTokens(breakdown.messageTokens)}</span>
-                    </span>
-                  </div>
-                )
-              })()}
-            </div>
-          )}
-
-          {sessionId !== undefined && meterSegments === undefined && usage !== undefined && (
-            <p className={css.reviewUsage}>
-              {t('review.usage')}：
-              {t('review.usageInput', { n: String(usage.inputTokens) })} · {t('review.usageOutput', { n: String(usage.outputTokens) })}
-              {usage.cacheReadTokens !== undefined && ` · ${t('review.usageCacheRead', { n: String(usage.cacheReadTokens) })}`}
-              {usage.cacheWriteTokens !== undefined && ` · ${t('review.usageCacheWrite', { n: String(usage.cacheWriteTokens) })}`}
-              {usage.reasoningTokens !== undefined && ` · ${t('review.usageReasoning', { n: String(usage.reasoningTokens) })}`}
-            </p>
-          )}
-
-          {/* The live session panel: model / effort / permission of this
-              execution session — the same native APIs the harness uses. */}
-          {sessionId !== undefined && sessionConfig !== undefined && (
-            <section className={css.reviewConfig}>
-              <span className={css.reviewConfigTitle}>{t('review.config')}</span>
-              {configUnavailable || sessionModels === undefined ? (
-                <span className={css.reviewConfigUnavailable}>{t('review.configUnavailable')}</span>
-              ) : (
-                <div className={css.reviewConfigGrid}>
-                  <span className={css.reviewConfigRow}>
-                    <span className={css.reviewConfigLabel}>{t('review.model')}</span>
-                    <span className={css.selectWrap}>
-                      <select
-                        className={css.input}
-                        value={`${sessionModels.current.provider}${MODEL_SEP}${sessionModels.current.model}`}
-                        disabled={configBusy}
-                        onChange={event => { applyModel(event.target.value) }}
-                      >
-                        {sessionModels.groups.flatMap(group => group.models.map(model => (
-                          <option key={`${group.provider}${MODEL_SEP}${model.id}`} value={`${group.provider}${MODEL_SEP}${model.id}`}>
-                            {group.provider} / {model.name ?? model.id}
-                          </option>
-                        )))}
-                      </select>
-                    </span>
-                  </span>
-                  {(() => {
-                    const group = sessionModels.groups.find(candidate => candidate.provider === sessionModels.current.provider)
-                    const row = group?.models.find(candidate => candidate.id === sessionModels.current.model)
-                    const efforts = row?.reasoning?.efforts ?? []
-                    if (efforts.length === 0) return null
-                    return (
-                      <span className={css.reviewConfigRow}>
-                        <span className={css.reviewConfigLabel}>{t('review.effort')}</span>
-                        <span className={css.selectWrap}>
-                          <select
-                            className={css.input}
-                            value={sessionModels.current.reasoningEffort ?? ''}
-                            disabled={configBusy}
-                            onChange={event => { applyEffort(event.target.value) }}
-                          >
-                            <option value="">{t('review.effortDefault')}</option>
-                            {efforts.map(effort => (
-                              <option key={effort.id} value={effort.id}>{effort.name ?? effort.id}</option>
-                            ))}
-                          </select>
-                        </span>
-                      </span>
-                    )
-                  })()}
-                  {permissionOptions !== undefined && (
-                    <span className={css.reviewConfigRow}>
-                      <span className={css.reviewConfigLabel}>{t('review.permission')}</span>
-                      <span className={css.selectWrap}>
-                        <select
-                          className={css.input}
-                          value={permissionValue}
-                          disabled={configBusy}
-                          onChange={event => { applyPermission(event.target.value) }}
-                        >
-                          <option value="">{t('new.permissionDefault')}</option>
-                          {permissionOptions.map(row => (
-                            <option key={row.id} value={row.id}>{permissionLabel(row.id, row.name)}</option>
-                          ))}
-                        </select>
-                      </span>
-                    </span>
-                  )}
-                </div>
-              )}
-              {configMessage !== undefined && <span className={css.reviewConfigMessage}>{configMessage}</span>}
-              {sessionId !== undefined && sessionInfo !== undefined && (
-                <div className={css.reviewSessionFacts}>
-                  <span className={css.reviewSessionFact}>
-                    <span className={css.reviewSessionFactLabel}>{t('review.sessionWorkspace')}</span>
-                    <span
-                      className={css.reviewSessionFactValue}
-                      title={sessionInfo.cwd ?? undefined}
-                    >
-                      {sessionInfo.cwd !== undefined ? workspaceLabelOf(sessionInfo.cwd) : t('review.sessionUnknown')}
-                    </span>
-                  </span>
-                  <span className={css.reviewSessionFact}>
-                    <span className={css.reviewSessionFactLabel}>{t('review.sessionAgent')}</span>
-                    <span className={css.reviewSessionFactValue}>
-                      {sessionInfo.agentPreset !== undefined ? sessionInfo.agentPreset : t('review.sessionDefaultAgent')}
-                    </span>
-                  </span>
-                </div>
-              )}
-              <span className={css.reviewConfigHint}>{t('review.sessionHint')}</span>
-            </section>
-          )}
+          <SessionRailHead
+            sessionId={sessionId}
+            controller={controller}
+            projections={projections}
+            lines={lines}
+            onChanged={reload}
+            reloadKey={configReloadKey}
+            permissionValue={permissionValue}
+            permissionOptions={permissionOptions}
+          />
             </div>
 
             {/* The thread header: title + count, fixed — the count never

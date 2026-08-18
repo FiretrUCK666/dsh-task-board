@@ -485,6 +485,10 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
         label={t('detail.schedule.enable')}
       />
 
+      {/* One line that names the scopes: this rule is task-level; cruise is
+          board-level — the two "auto" concepts never blur. */}
+      <p className={css.scheduleMeta}>{t('detail.schedule.scope')}</p>
+
       {/* Driving mode: fixed times (cron) or run-after-completion (chain). */}
       <div className={css.scheduleModeRow} role="radiogroup" aria-label={t('detail.schedule')}>
         <button
@@ -645,6 +649,13 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   // comment round (task not running) must never disable it either.
   const busy = hasOpenRun(current)
 
+  // The visible execution-history list: plain runs minus the user's
+  // display-hidden rows. The section title counts exactly what the list
+  // shows (计数即所见), and row numbering stays absolute — hiding a middle
+  // row never renumbers the others.
+  const hiddenExecutions = current.hidden?.executions !== undefined ? new Set(current.hidden.executions) : undefined
+  const visibleRuns = plainRunsOf(current).filter(run => hiddenExecutions === undefined || !hiddenExecutions.has(run.id))
+
   const editing = draft !== undefined
 
   /** Enter edit mode with a draft of the current record. */
@@ -751,56 +762,52 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                   </div>
                 </dl>
               </Section>
-
-              {current.bind !== undefined && (
-                <LinkedSection
-                  controller={controller}
-                  task={current}
-                  onOpenSession={sessionId => { setLinkedSession(sessionId) }}
-                />
-              )}
             </>
           )}
 
           <ScheduleSection controller={controller} task={current} />
 
-          {current.status === 'backlog' && (
-            <RefineSection controller={controller} task={current} />
-          )}
-
-          <Section title={t('detail.execution')}>
+          <Section title={`${t('detail.execution')}${visibleRuns.length > 0 ? ` ${visibleRuns.length}` : ''}`}>
             <p className={css.detailHint}>{t('detail.executionHint')}</p>
-            {(() => {
-              // Comment continuation rounds are not part of the execution
-              // history list — they live in the review page's comment thread.
-              // Display-hidden rows (user hide) are filtered, numbering stays.
-              const hidden = current.hidden?.executions !== undefined ? new Set(current.hidden.executions) : undefined
-              const runs = plainRunsOf(current).filter(run => hidden === undefined || !hidden.has(run.id))
-              if (runs.length === 0) return <p className={css.detailText}>{t('detail.noExecution')}</p>
-              return (
-                <ul className={css.executionList}>
-                  {[...runs].reverse().map((execution, reversedIndex) => (
-                    <ExecutionRow
-                      key={execution.id}
-                      execution={execution}
-                      index={runs.length - reversedIndex}
-                      task={current}
-                      waitingKind={controller.pendingInteractionOf(execution.sessionId)}
-                      cruiseOn={controller.getSnapshot().cruise.enabled}
-                      onReview={() => { setReviewExecution(execution) }}
-                      onOpen={sessionId => { controller.openSession(sessionId) }}
-                      onHide={() => { controller.hideTaskRow(current.id, 'executions', execution.id) }}
-                    />
-                  ))}
-                </ul>
-              )
-            })()}
+            {visibleRuns.length === 0 ? (
+              <p className={css.detailText}>
+                {plainRunsOf(current).length > 0 ? t('detail.executionHiddenAll') : t('detail.noExecution')}
+              </p>
+            ) : (
+              <ul className={css.executionList}>
+                {[...visibleRuns].reverse().map(execution => (
+                  <ExecutionRow
+                    key={execution.id}
+                    execution={execution}
+                    index={plainRunsOf(current).findIndex(candidate => candidate.id === execution.id) + 1}
+                    task={current}
+                    waitingKind={controller.pendingInteractionOf(execution.sessionId)}
+                    cruiseOn={controller.getSnapshot().cruise.enabled}
+                    onReview={() => { setReviewExecution(execution) }}
+                    onOpen={sessionId => { controller.openSession(sessionId) }}
+                    onHide={() => { controller.hideTaskRow(current.id, 'executions', execution.id) }}
+                  />
+                ))}
+              </ul>
+            )}
             {hasHiddenRows(current, 'executions') && (
               <Button onClick={() => { controller.unhideTaskRows(current.id, 'executions') }}>
                 {t('detail.restoreHidden')}
               </Button>
             )}
           </Section>
+
+          {current.bind !== undefined && (
+            <LinkedSection
+              controller={controller}
+              task={current}
+              onOpenSession={sessionId => { setLinkedSession(sessionId) }}
+            />
+          )}
+
+          {current.status === 'backlog' && (
+            <RefineSection controller={controller} task={current} />
+          )}
 
           <Section title={t('board.status')}>
             <div className={css.moveRow}>

@@ -243,12 +243,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         >
           + {t('board.new')}
         </Button>
-        {/* Auto-cruise: batch-run every todo task, at most `limit` at once. */}
+        {/* Auto-cruise: batch-run every todo task, at most `limit` at once.
+            Board-level scope, stated in the switch's tooltip so it never
+            blurs with the per-task automation rules. */}
         <div className={css.cruise}>
           <Switch
             checked={snapshot.cruise.enabled}
             onChange={next => { controller.setCruiseEnabled(next) }}
             label={t('board.cruise')}
+            title={t('board.cruiseTitle')}
           />
           <input
             className={css.cruiseLimit}

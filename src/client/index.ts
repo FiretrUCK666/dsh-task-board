@@ -184,6 +184,56 @@ export function apply(ctx: ClientContext): void {
 
     // Core wiring: real runtime faces into the framework-free services.
     const store = new LocalStorageTaskStore()
+    // Comment continuations go through the host-level session.prompt API:
+    // it addresses any session id (the execution session is usually not
+    // the currently staged one, so a client binding is not guaranteed). The
+    // same channel serves the linked-session panel's direct composer
+    // (sessionMessage) — "typing in the native conversation" is exactly
+    // this call, shared by both callers.
+    const sendComment = async (sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+      const response = await connection.api.sessions.prompt({
+        sessionId: sessionId as SessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text }],
+      })
+      return response.result.ok
+        ? { ok: true as const }
+        : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+    }
+    // Slash-command lines execute through the native command registry — the
+    // same RPC the composer's '/' submissions use. The plain prompt path
+    // would deliver the line to the model as text, which is exactly the
+    // "command doesn't work" symptom; the registry path never produces a
+    // model turn. matched=false = the registry did not recognize the line
+    // (the caller then falls back to plain text, matching the native
+    // composer's default-sink behavior).
+    const sendCommand = async (sessionId: string, line: string): Promise<
+      | { ok: true; matched: boolean; outcome?: { kind: 'success' | 'error'; text?: string } }
+      | { ok: false; error: string }
+    > => {
+      const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
+        ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
+      if (commands === undefined) {
+        console.warn('[dsh-task-board] slash commands unavailable: no remote.commands bridge')
+        return { ok: true as const, matched: false }
+      }
+      try {
+        const result = await commands.execute(sessionId as SessionId, line)
+        if (!result.ok) {
+          return { ok: false as const, error: `${result.error.code}: ${result.error.message}` }
+        }
+        return {
+          ok: true as const,
+          matched: result.value !== undefined,
+          ...result.value !== undefined
+            ? { outcome: { kind: result.value.result.kind, ...result.value.result.text !== undefined ? { text: result.value.result.text } : {} } }
+            : {},
+        }
+      } catch (error) {
+        console.warn('[dsh-task-board] slash command execution failed:', error)
+        return { ok: false as const, error: String(error) }
+      }
+    }
     const exec = new ExecutionService({
       sessions: {
         list: sessions.list,
@@ -224,50 +274,8 @@ export function apply(ctx: ClientContext): void {
           ? { ok: true as const }
           : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
       },
-      // Comment continuations go through the host-level session.prompt API:
-      // it addresses any session id (the execution session is usually not
-      // the currently staged one, so a client binding is not guaranteed).
-      sendComment: async (sessionId, text) => {
-        const response = await connection.api.sessions.prompt({
-          sessionId: sessionId as SessionId,
-          mode: 'queue',
-          content: [{ type: 'text', text }],
-        })
-        return response.result.ok
-          ? { ok: true as const }
-          : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
-      },
-      // Slash-command comment rounds (e.g. "/plan ...") execute through the
-      // native command registry — the same RPC the composer's '/' submissions
-      // use. The plain prompt path would deliver the line to the model as
-      // text, which is exactly the "command doesn't work" symptom; the
-      // registry path never produces a model turn. Undefined value = the
-      // registry did not recognize the line (the round then falls back to
-      // plain text, matching the native composer's default-sink behavior).
-      sendCommand: async (sessionId, line) => {
-        const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
-          ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
-        if (commands === undefined) {
-          console.warn('[dsh-task-board] slash commands unavailable: no remote.commands bridge')
-          return { ok: true as const, matched: false }
-        }
-        try {
-          const result = await commands.execute(sessionId as SessionId, line)
-          if (!result.ok) {
-            return { ok: false as const, error: `${result.error.code}: ${result.error.message}` }
-          }
-          return {
-            ok: true as const,
-            matched: result.value !== undefined,
-            ...result.value !== undefined
-              ? { outcome: { kind: result.value.result.kind, ...result.value.result.text !== undefined ? { text: result.value.result.text } : {} } }
-              : {},
-          }
-        } catch (error) {
-          console.warn('[dsh-task-board] slash command execution failed:', error)
-          return { ok: false as const, error: String(error) }
-        }
-      },
+      sendComment,
+      sendCommand,
     })
     // Review-page transcripts: the recent history window of an execution
     // session (raw events; the review page folds them into messages), plus
@@ -480,6 +488,11 @@ export function apply(ctx: ClientContext): void {
           }
         },
       } satisfies SessionConfigFace,
+      // Linked-session panel's direct composer: the exact same host
+      // channels as comment continuations — the message goes to the native
+      // session itself (typing there), never through the task's dispatcher.
+      sessionMessage: sendComment,
+      sessionCommand: sendCommand,
       runCatalog: {
         listWorkspaces: () => workspaces.list.getSnapshot().items.map(item => ({
           id: item.workspaceId,

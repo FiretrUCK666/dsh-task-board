@@ -2153,6 +2153,17 @@ textarea.input {
   font-variant-numeric: tabular-nums;
 }
 
+/* High occupancy (>= 85%): the reading shifts to the attention tone — the
+   same warn grammar as every board signal, so a nearly-full context window
+   is noticed at a glance. */
+.reviewContextMeter[data-warn] .reviewMeterPercent {
+  color: var(--dsh-tb-attention);
+}
+
+.reviewContextMeter[data-warn] .reviewMeterBar {
+  box-shadow: 0 0 0 1px var(--dsh-tb-attention);
+}
+
 .reviewMeterFigures {
   margin-left: auto;
   font-size: 12px;

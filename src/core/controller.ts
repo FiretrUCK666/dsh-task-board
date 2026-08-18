@@ -289,6 +289,21 @@ export interface ControllerDeps {
   transcript?: (sessionId: string) => Promise<TranscriptLoadResult | undefined>
   /** Session-config surface (review-page model/permission panel); absent = the panel degrades gracefully. */
   sessionConfig?: SessionConfigFace
+  /** Sends one plain message directly to any native session (linked-session
+   *  panel's composer — the host `sessions.prompt` endpoint; absent = the
+   *  direct composer is disabled with a hint). This is deliberately NOT the
+   *  task-execution path: it never creates execution records, never enters
+   *  the dispatcher and never affects task state — it is exactly "typing in
+   *  the native conversation". */
+  sessionMessage?: (sessionId: string, text: string) => Promise<{ ok: true } | { ok: false; error: string }>
+  /** Executes one slash-command line against any native session through the
+   *  host command registry (matched = recognized; unmatched = the caller
+   *  falls back to sending the line as plain text). Absent = slash lines
+   *  degrade to plain text. */
+  sessionCommand?: (sessionId: string, line: string) => Promise<
+    | { ok: true; matched: boolean; outcome?: { kind: 'success' | 'error'; text?: string } }
+    | { ok: false; error: string }
+  >
 }
 
 /** Immutable controller snapshot for UI subscriptions. */
@@ -1003,6 +1018,49 @@ export class BoardController {
       this.persistAndNotify()
     }
     await this.runTask(id, 'manual')
+  }
+
+  // --- direct session messages (linked-session panel) -------------------------
+
+  /** Whether the runtime offers the direct-message channel (the linked
+   *  panel's composer is disabled without it). */
+  directMessageAvailable(): boolean {
+    return this.deps.sessionMessage !== undefined
+  }
+
+  /**
+   * Send one message directly to any native session — the linked-session
+   * panel's composer. This is deliberately NOT the task-execution path: the
+   * message is delivered to the native session exactly as if typed in its
+   * own conversation (host `sessions.prompt` / command registry), never
+   * creating execution records, never entering the dispatcher, never
+   * touching task state, cruise, chain or schedules.
+   * @param sessionId - the native session to address.
+   * @param text - the message; a leading '/' routes through the command
+   *   registry (unmatched lines fall back to plain text, matching the
+   *   native composer's default sink).
+   * @returns ok, or ok:false with an error string (faces absent, session
+   *   gone, prompt rejected).
+   */
+  sendSessionMessage(sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const trimmed = text.trim()
+    if (trimmed === '') return Promise.resolve({ ok: false, error: 'empty message' })
+    const direct = this.deps.sessionMessage
+    if (trimmed.startsWith('/')) {
+      const command = this.deps.sessionCommand
+      if (command !== undefined) {
+        return command(sessionId, trimmed).then(result => {
+          if (!result.ok) return { ok: false as const, error: result.error }
+          if (result.matched) return { ok: true as const }
+          // Unknown command: the native default-sink — deliver the line as
+          // plain text (never drop a user's input).
+          if (direct === undefined) return { ok: false as const, error: 'direct message unavailable' }
+          return direct(sessionId, trimmed)
+        })
+      }
+    }
+    if (direct === undefined) return Promise.resolve({ ok: false, error: 'direct message unavailable' })
+    return direct(sessionId, trimmed)
   }
 
   // --- comments ---------------------------------------------------------------

@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { hasOpenRun, pendingCommentCount, refining, ruleReadiness } from '../../core/tasks.ts'
+import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { STATUS_KEY } from './status.ts'
@@ -31,16 +31,19 @@ export function formatDateTime(ms: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-/** Tooltip for the schedule chip: honest about the rule's readiness. */
+/** Tooltip for the schedule chip: honest about the rule's readiness —
+ *  including the prime gate: an armed rule never runs by itself until one
+ *  manual run has activated it. */
 function scheduleChipTitle(task: TaskRecord): string {
   const readiness = ruleReadiness(task)
+  const primeHint = task.schedule?.primed === false ? ` · ${t('card.schedulePrimed')}` : ''
   if (readiness.kind === 'active' && task.schedule?.nextRunAt !== undefined) {
-    return `${t('card.scheduled')} · ${t('detail.schedule.nextRun')} ${new Date(task.schedule.nextRunAt).toLocaleString()}`
+    return `${t('card.scheduled')} · ${t('detail.schedule.nextRun')} ${new Date(task.schedule.nextRunAt).toLocaleString()}${primeHint}`
   }
   if (readiness.kind === 'paused') {
     return `${t('card.scheduled')} · ${t('detail.schedule.paused')} (${t(STATUS_KEY[task.status])})`
   }
-  return `${t('card.scheduled')} · ${t('detail.schedule.standby')}`
+  return `${t('card.scheduled')} · ${t('detail.schedule.standby')}${primeHint}`
 }
 
 /** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */
@@ -77,7 +80,9 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
 }) {
   const [dragging, setDragging] = useState(false)
   const latest = task.executions[task.executions.length - 1]
-  const runs = task.executions.length
+  // Plain-run count (comment continuation rounds are not executions): the
+  // single numbering source shared with the detail list and review badge.
+  const runs = plainRunsOf(task).length
   // Only a genuinely open run shows the in-progress indicator: the card's
   // status must be 'running' AND its latest round unsettled. A pending
   // comment round (task sitting in review) must never spin.

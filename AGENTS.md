@@ -340,7 +340,8 @@ pendingInteraction）与 `workspaces.list`（sessionIds/archivedSessionIds）。
 sessions.list 与 workspaces.list → 新开会话/归档/改名**自动实时同步**，因此没有「同步」
 按钮；只有存在 `hidden.sessions` 时才显示「恢复全部已隐藏」（`hasHiddenRows` 判定 +
 `unhideTaskRows(sessions)`）——无隐藏即无按钮，杜绝死按钮。每行：标题、工作区名、实时
-状态 chip、查看会话、隐藏（非破坏）；**整行可点** → 打开 `SessionDetail` 会话详情面板。
+状态 chip、查看会话、隐藏（非破坏）；**整行可点** → 打开 `SessionDetail` 会话详情面板
+（可直发消息，见「统一面板外壳」）。
 **拖拽数据**：原生工作区浏览器对文件夹行与会话行都自带 `draggable` 并打 `text/plain`
 （文件夹 key=workspaceId、会话 node.id=sessionId，已在原生产物核实）。dragover 阶段读
 不到 payload（drag data store 保护模式，getData 返回空），故板子用 **latch 机制**：
@@ -355,17 +356,25 @@ drop 时用 `externalDragOf`（自有 MIME 优先，其次 text/plain 判本板�
 隐藏**（`hidden.executions` 隐藏不重排）、`unbindTask` 解绑转回普通任务。`bind`/`hidden`
 均为可选字段、store 轻归一化（畸形丢弃），旧数据零影响。
 
-**统一面板外壳（SessionFrame.tsx）**：执行评论页（`ReviewDetail`）与链接会话详情
-（`SessionDetail`）共用同一**纯布局外壳**——backdrop + 头部（标题 + 类型徽章 + 动作槽）+
-左对话右 rail 双栏；执行族业务（context meter、实时模型/权限配置、评论线程 + composer、
-注入排队态）留在 ReviewDetail 内部，绝不放进外壳，杜绝语义泄漏。`SessionDetail` **只读
-面板**：实时 transcript（同一 `useTranscriptTail`）+ 会话事实 + 实时状态 + 「查看会话/
-隐藏/解绑」；**没有留言框**——链接会话是原生实时视图，留言不能（也不会）驱动任务，
-面板用 `detail.sessionReadonly` 明说边界。两族行文法统一（状态 chip + ghost「查看会话」
-+ rowHide 隐藏 + 时间格式；执行行非等待态「查看会话」同为 ghost），唯一强差在执行行：
-琥珀「处理」等待键 + 未读 AttentionDot + 评论摘要——「可操作 rich / 只读 sparse」的重
-量差本身就是防误驱动最强的区分。链接行不加行级未读（viewedAt 为任务级，加行级需扩数据
-模型，收益低；实时 chip 已表达「有更新」）。
+**统一面板外壳（SessionFrame.tsx + session-panel.tsx）**：执行评论页（`ReviewDetail`）与
+链接会话详情（`SessionDetail`）共用同一**纯布局外壳**——backdrop + 头部（标题 + 类型徽章
++ 动作槽）+ 左对话右 rail 双栏；右栏共享 `SessionRailHead`（session-panel.tsx：
+`ContextMeterPanel` 上下文条 + `SessionConfigEditor` 实时模型/思考程度/权限 + `SessionFacts`
+会话事实 + `SessionWaitingNotice` 等待条，全部以 sessionId 为参、任意会话通用）。
+**composer 按语义隔离，绝不合并**：执行评论 composer = 驱动任务（`submitComment` → FIFO
+队列 → 调度器注入，巡航门控，排队态），链接会话 composer = **直发**（`sendSessionMessage`
+→ host `sessions.prompt` / `remote.commands.execute`，`/` 开头走命令注册表、未匹配回退
+文本；`ControllerDeps.sessionMessage?/sessionCommand?` 可选 face，缺省禁用直发）。
+**直发 ≠ 驱动契约**：直发不建执行记录、不进调度器、不占并发预算、不触发巡航/接续/状态
+变化——它等于在原生会话里打字；面板用 ghost 发送按钮 + 占位「不会驱动本任务」+
+`detail.sessionDirect` 常驻提示三重防误驱动；发送失败保留草稿、会话消失禁用 composer。
+两族行文法统一（状态 chip + ghost「查看会话」+ rowHide 隐藏 + 时间格式；执行行非等待态
+「查看会话」同为 ghost），唯一强差在执行行：琥珀「处理」等待键 + 未读 AttentionDot +
+评论摘要——「可操作 rich / 直发 sparse」的重量差本身就是防误驱动最强的区分。链接行不加
+行级未读（viewedAt 为任务级，加行级需扩数据模型，收益低；实时 chip 已表达「有更新」）。
+**计数即所见**：标题计数 = 当前可见行数（「执行记录 N」「链接会话 N」隐藏不计数、恢复
+回补；面板徽章「会话 · 共 N 个」与 Section 同源）；执行序号 = 绝对 plain-run 序列
+（`plainRunsOf` findIndex+1），隐藏行不重排；卡片「N 次执行/进行中 N」同源。
 
 ## 构建与验证（改完必跑，全绿才算完成）
 
