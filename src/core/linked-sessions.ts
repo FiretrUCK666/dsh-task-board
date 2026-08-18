@@ -103,11 +103,6 @@ function rowOf(sessionId: string, source: LinkedSessionSource): LinkedSessionRow
   }
 }
 
-/** Whether a task owns any visible linked rows (used to show the section's hint when empty-but-bound). */
-export function isBound(task: TaskRecord): task is TaskRecord & { bind: NonNullable<TaskRecord['bind']> } {
-  return task.bind !== undefined
-}
-
 /**
  * Derive the linked-session rows of a task from the native snapshots. Rows are
  * the workspace's accounted sessions in order (or the single bound session),

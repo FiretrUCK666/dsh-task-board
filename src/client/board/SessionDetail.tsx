@@ -239,7 +239,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
                 {t('detail.viewSession')} →
               </Button>
               <Button size="sm" onClick={() => {
-                controller.hideTaskRow(task.id, 'sessions', sessionId)
+                controller.hideTaskSession(task.id, sessionId)
                 onClose()
               }}>
                 {t('detail.hide')}

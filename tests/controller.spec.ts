@@ -1606,20 +1606,29 @@ describe('linked sessions & bind', () => {
     expect(done.status).toBe('done')
   })
 
-  it('hideTaskRow / unhideTaskRows manage a display-only hide set (persisted)', () => {
+  it('hideTaskSession / unhideTaskSessions manage a per-session hide set (persisted)', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     const run = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
       title: 'x', description: '', prompt: '', status: 'todo',
     })!
-    controller.hideTaskRow(task.id, 'executions', 'exec-1')
-    controller.hideTaskRow(run.id, 'sessions', 's-1')
-    const stored = store.load()[0]
-    expect(stored.hidden).toEqual({ executions: ['exec-1'] })
-    const boundStored = store.load()[1]
-    expect(boundStored.hidden).toEqual({ sessions: ['s-1'] })
-    controller.unhideTaskRows(task.id, 'executions')
+    // Hiding a session records it universally: a session that is also a run
+    // session maps into the execution family by its run ids as well.
+    controller.hideTaskSession(task.id, 's-1')
+    controller.hideTaskSession(run.id, 's-1')
+    expect(store.load()[0].hidden?.sessions).toEqual(['s-1'])
+    expect(store.load()[1].hidden?.sessions).toEqual(['s-1'])
+    // Restore clears the whole hidden state for a task.
+    controller.unhideTaskSessions(task.id)
     expect(store.load()[0].hidden).toBeUndefined()
+  })
+
+  it('hideTaskSession also records the run ids when the session was executed', () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.hideTaskSession(task.id, 's-ghost') // no runs in this session
+    expect(store.load()[0].hidden).toEqual({ sessions: ['s-ghost'] })
   })
 
   it('unbindTask drops the live binding and persists', () => {

@@ -17,6 +17,7 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
+import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { TaskStore } from './store.ts'
 import {
   applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
@@ -588,36 +589,58 @@ export class BoardController {
     })]
   }
 
-  /** Hide one row from the task's display (non-destructive; numbering stays). */
-  hideTaskRow(taskId: string, family: 'executions' | 'sessions', rowId: string): void {
+  /** Hide one session of the task (run or linked) — the unified per-session
+   *  hide: recorded in both families (the derived hidden-session set in
+   *  session-list.ts reads either, so a run session and a linked view of the
+   *  same session stay hidden together). Non-destructive; numbering stays. */
+  hideTaskSession(taskId: string, sessionId: string): void {
     let changed = false
     this.tasks = this.tasks.map(task => {
       if (task.id !== taskId) return task
-      const current = task.hidden?.[family] ?? []
-      if (current.includes(rowId)) return task
+      const sessions = task.hidden?.sessions ?? []
+      if (sessions.includes(sessionId)) return task
       changed = true
-      return { ...task, hidden: { ...task.hidden, [family]: [...current, rowId] } }
+      // A run session also records the runs that used it, so legacy
+      // execution-family consumers and the derived set both see it.
+      const runIds = task.executions
+        .filter(round => round.sessionId === sessionId)
+        .map(round => round.id)
+      const executions = [...new Set([...(task.hidden?.executions ?? []), ...runIds])]
+      return {
+        ...task,
+        hidden: {
+          ...runIds.length > 0 ? { executions } : {},
+          sessions: [...sessions, sessionId],
+        },
+      }
     })
     if (changed) this.persistAndNotify()
   }
 
-  /** Restore every row of one family (the "同步 / 恢复全部已隐藏" action). */
-  unhideTaskRows(taskId: string, family: 'executions' | 'sessions'): void {
+  /** Restore every hidden session (the "恢复全部已隐藏" action). */
+  unhideTaskSessions(taskId: string): void {
     let changed = false
     this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId || task.hidden?.[family] === undefined) return task
+      if (task.id !== taskId || task.hidden === undefined) return task
       changed = true
-      const hidden = { ...task.hidden }
-      delete hidden[family]
-      // Dropping the last family leaves no hidden state at all.
-      if (Object.keys(hidden).length === 0) {
-        const rest = { ...task }
-        delete rest.hidden
-        return rest
-      }
-      return { ...task, hidden }
+      const rest = { ...task }
+      delete rest.hidden
+      return rest
     })
     if (changed) this.persistAndNotify()
+  }
+
+  /**
+   * The task's unified session list — see {@link taskSessionsOf}: one
+   * de-duplicated view of its run sessions and linked sessions, the single
+   * source for the detail's 会话 section.
+   */
+  sessionsOf(task: TaskRecord): TaskSessionRow[] {
+    return taskSessionsOf(task, {
+      linked: this.linkedOf(task),
+      titleOf: sessionId => this.sessionTitle(sessionId),
+      pendingInteractionOf: sessionId => this.pendingInteractionOf(sessionId),
+    })
   }
 
   /** Drop the live binding, turning the task back into a plain prompt-driven one. */

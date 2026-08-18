@@ -236,16 +236,6 @@ export function landingStatusOf(dropStatus: TaskStatus): TaskStatus {
 }
 
 /**
- * Whether a task has display-hidden rows in one family (executions or
- * linked sessions). The restore affordance shows only then — a "同步" that
- * has nothing to restore is a dead button and must not render.
- */
-export function hasHiddenRows(task: TaskRecord, family: 'executions' | 'sessions'): boolean {
-  const rows = task.hidden?.[family]
-  return rows !== undefined && rows.length > 0
-}
-
-/**
  * How an armed schedule rule behaves for a task right now. One shared
  * judgment used by the scheduler (what may trigger), the controller (what
  * a chain may own) and the detail panel (what to display):

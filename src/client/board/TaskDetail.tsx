@@ -8,7 +8,8 @@ import { useEffect, useState } from 'react'
 import type { BoardController, PendingInteractionKind } from '../../core/controller.ts'
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron, nextRunAtMs } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, hasHiddenRows, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { hasHiddenSessions } from '../../core/session-list.ts'
 import { executionUnviewed, sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
@@ -223,60 +224,9 @@ function LinkedRow({ row, task, controller, onOpen }: {
       sessionId={row.sessionId}
       onActivate={onOpen}
       onOpenSession={() => { controller.openSession(row.sessionId) }}
-      onHide={() => { controller.hideTaskRow(task.id, 'sessions', row.sessionId) }}
+      onHide={() => { controller.hideTaskSession(task.id, row.sessionId) }}
       hideTitle={t('detail.hideRow')}
     />
-  )
-}
-
-/**
- * The linked-session rows of a bound task (live derivation, non-destructive
- * hide/restore, unbind): rendered inside the task's unified "会话" section,
- * below the execution rows. Each row is a live view of one native session
- * (its title, workspace, running/waiting state, last update) — never copies,
- * always a pure derivation of the native snapshots.
- */
-function LinkedRows({ controller, task, onOpenSession }: {
-  controller: BoardController
-  task: TaskRecord
-  /** Open the session's detail panel (the shared review shell, read-only). */
-  onOpenSession: (sessionId: string) => void
-}) {
-  const rows = controller.linkedOf(task)
-  return (
-    <>
-      {rows.length === 0 ? (
-        <p className={css.detailText}>{t('detail.linkedEmpty')}</p>
-      ) : (
-        <ul className={css.sessionList}>
-          {rows.map(row => (
-            <LinkedRow
-              key={row.sessionId}
-              row={row}
-              task={task}
-              controller={controller}
-              onOpen={() => { onOpenSession(row.sessionId) }}
-            />
-          ))}
-        </ul>
-      )}
-      <div className={css.linkedActions}>
-        {/* The linked view is a live derivation (new sessions, archiving and
-            renames sync automatically), so the only user-mutable state is
-            the display-only hide set: the restore affordance shows only when
-            there is something to restore — a dead "同步" button never renders,
-            for both workspace-bound and single-session-bound tasks. */}
-        {hasHiddenRows(task, 'sessions') && (
-          <Button onClick={() => { controller.unhideTaskRows(task.id, 'sessions') }}>
-            {t('detail.restoreHidden')}
-          </Button>
-        )}
-        <Button variant="ghost" onClick={() => { controller.unbindTask(task.id) }}>
-          {t('detail.linkedUnbind')}
-        </Button>
-      </div>
-      <p className={css.detailHint}>{t('detail.linkedHint')}</p>
-    </>
   )
 }
 
@@ -729,12 +679,10 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
     ? t('detail.runConfigDefault')
     : t('detail.runConfigCustom', { n: String(customizedCount) })
 
-  // The visible execution-history list: plain runs minus the user's
-  // display-hidden rows. The section title counts exactly what the list
-  // shows (计数即所见), and row numbering stays absolute — hiding a middle
-  // row never renumbers the others.
-  const hiddenExecutions = current.hidden?.executions !== undefined ? new Set(current.hidden.executions) : undefined
-  const visibleRuns = plainRunsOf(current).filter(run => hiddenExecutions === undefined || !hiddenExecutions.has(run.id))
+  // The unified session list (run + linked, de-duplicated by session id):
+  // the single source for the 会话 section — a session reached from an
+  // execution page or a linked panel is one row here, one comment thread.
+  const sessions = controller.sessionsOf(current)
 
   const editing = draft !== undefined
 
@@ -852,13 +800,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
 
           <ScheduleSection controller={controller} task={current} />
 
-          {/* 会话视角：执行记录与链接会话统一进同一个「会话」section ——
-              同一行文法（SessionRow）、同一容器（sessionList）、同一标题节奏；
-              执行行在上、链接行在下，中间用安静分组标签隔开，两块从此读作
-              同一个"会话"区块而不是两个互不相干的部件。 */}
-          <Section title={`${t('detail.sessions')} ${visibleRuns.length + (current.bind !== undefined ? controller.linkedOf(current).length : 0)}`}>
+          {/* 会话：任务的全部真实会话（板内执行 + 链接外部）按 sessionId 去重后
+              显示在一个列表里——同一会话绝不出现两次，从执行页或链接面板进入
+              同一会话看到的是同一条评论线程。行文法统一（SessionRow）。 */}
+          <Section title={`${t('detail.sessions')} ${sessions.length}`}>
             <p className={css.detailHint}>{t('detail.executionHint')}</p>
-            {visibleRuns.length === 0 ? (
+            {sessions.length === 0 ? (
               <p className={css.detailText}>
                 {plainRunsOf(current).length > 0
                   ? t('detail.executionHiddenAll')
@@ -868,40 +815,47 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
               </p>
             ) : (
               <ul className={css.sessionList}>
-                {[...visibleRuns].reverse().map(execution => (
-                  <ExecutionRow
-                    key={execution.id}
-                    execution={execution}
-                    index={plainRunsOf(current).findIndex(candidate => candidate.id === execution.id) + 1}
-                    task={current}
-                    sessionTitle={controller.sessionTitle(execution.sessionId) ?? current.title}
-                    waitingKind={controller.pendingInteractionOf(execution.sessionId)}
-                    cruiseOn={controller.getSnapshot().cruise.enabled}
-                    onReview={() => { setReviewExecution(execution) }}
-                    onOpen={sessionId => { controller.openSession(sessionId) }}
-                    onHide={() => { controller.hideTaskRow(current.id, 'executions', execution.id) }}
-                  />
-                ))}
+                {sessions.map(row => row.kind === 'run'
+                  ? (() => {
+                    const execution = row.executionId !== undefined
+                      ? current.executions.find(candidate => candidate.id === row.executionId)
+                      : undefined
+                    if (execution === undefined) return null
+                    return (
+                      <ExecutionRow
+                        key={row.sessionId}
+                        execution={execution}
+                        index={row.runIndex ?? 1}
+                        task={current}
+                        sessionTitle={row.title}
+                        waitingKind={row.display.waitingKind}
+                        cruiseOn={controller.getSnapshot().cruise.enabled}
+                        onReview={() => { setReviewExecution(execution) }}
+                        onOpen={sessionId => { controller.openSession(sessionId) }}
+                        onHide={() => { controller.hideTaskSession(current.id, row.sessionId) }}
+                      />
+                    )
+                  })()
+                  : (() => {
+                    const linkedRow = controller.linkedOf(current)
+                      .find(candidate => candidate.sessionId === row.sessionId)
+                    if (linkedRow === undefined) return null
+                    return (
+                      <LinkedRow
+                        key={row.sessionId}
+                        row={linkedRow}
+                        task={current}
+                        controller={controller}
+                        onOpen={() => { setLinkedSession(row.sessionId) }}
+                      />
+                    )
+                  })())}
               </ul>
             )}
-            {hasHiddenRows(current, 'executions') && (
-              <Button onClick={() => { controller.unhideTaskRows(current.id, 'executions') }}>
+            {hasHiddenSessions(current) && (
+              <Button onClick={() => { controller.unhideTaskSessions(current.id) }}>
                 {t('detail.restoreHidden')}
               </Button>
-            )}
-
-            {current.bind !== undefined && (
-              <>
-                <h5 className={css.sessionGroupLabel}>
-                  {t('detail.linked')}
-                  {controller.linkedOf(current).length > 0 ? ` ${controller.linkedOf(current).length}` : ''}
-                </h5>
-                <LinkedRows
-                  controller={controller}
-                  task={current}
-                  onOpenSession={sessionId => { setLinkedSession(sessionId) }}
-                />
-              </>
             )}
           </Section>
 

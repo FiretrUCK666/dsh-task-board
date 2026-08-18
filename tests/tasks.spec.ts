@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, disarmSchedule, hasHiddenRows, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -141,29 +141,6 @@ describe('landingStatusOf', () => {
     expect(landingStatusOf('running')).toBe('running')
     expect(landingStatusOf('review')).toBe('review')
     expect(landingStatusOf('done')).toBe('done')
-  })
-})
-
-describe('hasHiddenRows', () => {
-  it('is true only when a family has hidden rows', () => {
-    const plain = sampleTask()
-    expect(hasHiddenRows(plain, 'executions')).toBe(false)
-    expect(hasHiddenRows(plain, 'sessions')).toBe(false)
-    const hidden = {
-      ...plain,
-      hidden: { executions: ['e-1'], sessions: ['s-1'] },
-    }
-    expect(hasHiddenRows(hidden, 'executions')).toBe(true)
-    expect(hasHiddenRows(hidden, 'sessions')).toBe(true)
-  })
-
-  it('ignores the other family and empty sets', () => {
-    const executionsOnly = { ...sampleTask(), hidden: { executions: ['e-1'] } }
-    expect(hasHiddenRows(executionsOnly, 'executions')).toBe(true)
-    expect(hasHiddenRows(executionsOnly, 'sessions')).toBe(false)
-    const empty = { ...sampleTask(), hidden: { executions: [], sessions: [] } }
-    expect(hasHiddenRows(empty, 'executions')).toBe(false)
-    expect(hasHiddenRows(empty, 'sessions')).toBe(false)
   })
 })
 

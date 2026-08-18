@@ -1764,17 +1764,6 @@ textarea.input {
   margin-top: 2px;
 }
 
-/* The quiet group label inside the unified "会话" section (e.g. the Linked
-   Sessions group beneath the execution rows): same weight/tracking as the
-   section-title grammar, tertiary — a divider label, never a header. */
-.sessionGroupLabel {
-  margin: 2px 0 0;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--dsh-tb-text-3);
-}
-
 /* --- linked-session detail panel (SessionDetail) --------------------------- */
 
 /* Live status row of the panel rail: chip + updated time on one line. */
