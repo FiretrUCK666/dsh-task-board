@@ -463,6 +463,47 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border-color: var(--dsw-alias-state-warn-primary);
 }
 
+/* Hover quick-run on a card: a small play pill that floats top-right,
+   revealed on hover/focus (a desktop nicety — the detail keeps the Run
+   button). It is a span acting as a button, because nesting a <button>
+   inside the card's own <button> would be invalid HTML. */
+.cardQuickRun {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-float);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: var(--dsh-tb-shadow-1);
+  opacity: 0;
+  transition: opacity var(--dsh-tb-motion), background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.card:hover .cardQuickRun,
+.cardQuickRun:focus-visible {
+  opacity: 1;
+}
+
+.cardQuickRun:hover {
+  color: var(--dsh-tb-accent);
+  background: var(--dsh-tb-hover);
+  border-color: var(--dsw-alias-border-l3);
+}
+
+.cardQuickRun[aria-disabled='true'] {
+  opacity: 0;
+  cursor: default;
+}
+
 /* The card's unread reminder: a slow breathing glow ring (CHI 2016: pulsing
    glow shadows score best on noticeability combined with likability) around
    cards with content newer than the last time the detail was opened — the
@@ -1263,6 +1304,16 @@ textarea.input {
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
   overflow-wrap: anywhere;
+}
+
+/* A meta line that carries an inline action (cron "skip next", chain "stop")
+   on the same row — one quiet row grammar for every schedule action. */
+.scheduleActionRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 /* --- schedule driving mode (cron / chain segmented control) ------------------- */

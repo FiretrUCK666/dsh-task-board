@@ -12,6 +12,7 @@ import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { STATUS_KEY } from './status.ts'
 import { Chip } from './Chip.tsx'
+import { Icon } from './ui.tsx'
 
 /** Compact relative/absolute time label. */
 export function formatTime(ms: number): string {
@@ -63,7 +64,7 @@ export function formatDuration(ms: number): string {
 }
 
 /** One card in a column. */
-export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick }: {
+export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun }: {
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
@@ -78,12 +79,16 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
   /** How many plain-run executions are unviewed (the "新 N" badge figure). */
   unviewedCount: number
   onClick: () => void
+  /** Optional hover quick-action: run the task right from the card (rerun
+   *  semantics, same run guard; disabled while a run is open). */
+  onQuickRun?: () => void
 }) {
   const [dragging, setDragging] = useState(false)
   const latest = task.executions[task.executions.length - 1]
   // Plain-run count (comment continuation rounds are not executions): the
   // single numbering source shared with the detail list and review badge.
   const runs = plainRunsOf(task).length
+  const lastPlain = plainRunsOf(task)[plainRunsOf(task).length - 1]
   // Only a genuinely open run shows the in-progress indicator: the card's
   // status must be 'running' AND its latest round unsettled. A pending
   // comment round (task sitting in review) must never spin.
@@ -94,6 +99,11 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
   const workspaceLabel = task.workspaceId !== undefined
     ? workspaceTitleOf(task.workspaceId)
     : t('card.workspaceDefault')
+  // Automation paused because the latest plain run failed (the "failure
+  // pauses the rule" signal), vs. a review pause for a successful run.
+  const readiness = ruleReadiness(task)
+  const pausedFailed = readiness.kind === 'paused' && readiness.status === 'review'
+    && lastPlain !== undefined && lastPlain.result === 'failed'
   return (
     <button
       type="button"
@@ -116,6 +126,30 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
       }}
       onDragEnd={() => { setDragging(false) }}
     >
+      {onQuickRun !== undefined && (
+        <span
+          className={css.cardQuickRun}
+          role="button"
+          tabIndex={running ? -1 : 0}
+          title={t('card.quickRun')}
+          aria-disabled={running ? true : undefined}
+          onClick={event => {
+            if (running) return
+            event.stopPropagation()
+            onQuickRun()
+          }}
+          onKeyDown={event => {
+            if (running) return
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              event.stopPropagation()
+              onQuickRun()
+            }
+          }}
+        >
+          <Icon name="play" />
+        </span>
+      )}
       <span className={css.cardTitle}>{task.title}</span>
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
       <span className={css.cardMeta}>
@@ -148,6 +182,21 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
             {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && (
               <Chip kind="muted" fill={false} title={t('card.batchProgress')}>
                 {task.schedule.runCount}/{task.schedule.maxRuns}
+              </Chip>
+            )}
+            {/* A live chain keeps the card in progress: the "接续中" chip
+                names the automation mode behind the running state. */}
+            {task.schedule?.enabled === true && task.schedule.mode === 'chain' && task.status === 'running' && (
+              <Chip kind="warn" fill={false} title={t('card.chainingTitle')}>
+                {t('card.chaining')}
+              </Chip>
+            )}
+            {/* Automation paused by a failed run: the review column reads
+                "failure stopped the rule" at a glance, distinct from "success
+                awaiting confirmation". */}
+            {pausedFailed && (
+              <Chip kind="error" fill={false} title={t('card.autoPausedFailedTitle')}>
+                {t('card.autoPausedFailed')}
               </Chip>
             )}
             {queuedComments > 0 && (

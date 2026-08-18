@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import type { BoardController, PendingInteractionKind } from '../../core/controller.ts'
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
-import { describeCron, isValidCron } from '../../core/schedule.ts'
+import { describeCron, isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, hasHiddenRows, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { executionUnviewed, sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
@@ -377,6 +377,13 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
     controller.setSchedule(task.id, { maxRuns: parsed })
   }
 
+  /** Arm/disarm the schedule. Arming a chain without a run budget (unlimited)
+   *  risks an endless loop of real agent sessions — confirm once first. */
+  const applyEnabled = (next: boolean): void => {
+    if (next && mode === 'cron' && cron.trim() !== schedule?.cron) controller.setSchedule(task.id, { cron: cron.trim() })
+    if (controller.setSchedule(task.id, { enabled: next, mode })) setEnabled(next)
+  }
+
   /** Arm/disarm the schedule (arming first persists the edited cron). */
   const toggleEnabled = (next: boolean): void => {
     const trimmed = cron.trim()
@@ -385,8 +392,11 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
       return
     }
     setError(undefined)
-    if (next && mode === 'cron' && trimmed !== schedule?.cron) controller.setSchedule(task.id, { cron: trimmed })
-    if (controller.setSchedule(task.id, { enabled: next, mode })) setEnabled(next)
+    if (next && mode === 'chain' && (maxRuns.trim() === '' || Number(maxRuns) < 1)) {
+      setConfirm('unlimited-enable')
+      return
+    }
+    applyEnabled(next)
   }
 
   /** Switch the driving mode (cron ↔ chain). Switching back to cron first
@@ -409,6 +419,30 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
     }
   }
 
+  /** Stop an active chain: only the automation stops (enabled:false — the
+   *  card's column is untouched). Unlimited chains confirm once (endless
+   *  loop of real agent sessions is a big side effect). */
+  const stopChain = (): void => {
+    if (maxRuns.trim() === '' || Number(maxRuns) < 1) {
+      setConfirm('stop-chain')
+      return
+    }
+    if (controller.setSchedule(task.id, { enabled: false, mode })) setEnabled(false)
+  }
+  const applyStopChain = (): void => {
+    if (controller.setSchedule(task.id, { enabled: false, mode })) setEnabled(false)
+  }
+
+  /** Skip the next cron firing: roll nextRunAt forward to the following
+   *  match while keeping the rule armed — a "defer once", never a catch-up. */
+  const skipNext = (): void => {
+    if (mode !== 'cron' || nextRunAt === undefined) return
+    const next = nextRunAtMs(cron, nextRunAt)
+    if (next === undefined) return
+    setNextRunAt(next)
+    controller.applyScheduleNextRun(task.id, next, lastTriggeredAt)
+  }
+
   const applyPreset = (preset: string): void => {
     if (preset === '') return
     setCron(preset)
@@ -422,21 +456,40 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
   }
 
   const readiness = ruleReadiness(task)
+  const chainRuns = schedule?.runCount ?? 0
+  const chainBudget = schedule?.maxRuns
   const nextLabel = !enabled || mode !== 'cron' || nextRunAt === undefined
     ? t('detail.schedule.notScheduled')
     : nextRunAt <= Date.now()
       ? t('detail.schedule.dueSoon')
       : new Date(nextRunAt).toLocaleString()
   const lastLabel = lastTriggeredAt === undefined ? '—' : new Date(lastTriggeredAt).toLocaleString()
+  // Cron skip is offered only when a future due instant actually exists.
+  const canSkip = enabled && mode === 'cron' && readiness.kind === 'active'
+    && nextRunAt !== undefined && nextRunAt > Date.now()
+  // A paused rule names its blocking status; a review pause caused by a
+  // failed run adds the "because it failed" reason word.
+  const stoppedReason = readiness.kind === 'paused'
+    ? {
+        extraFailed: readiness.status === 'review'
+          && task.executions[task.executions.length - 1]?.result === 'failed',
+        key: pausedLabelOf(readiness.status),
+      }
+    : undefined
 
-  // Collapsed by default: the detail stays quiet, one summary line shows the
-  // rule's state; expanding reveals the full editor.
+  // Collapsed by default: the detail stays quiet, one summary line reads the
+  // rule's true state — closed / paused (with the blocking reason) / running.
   const [open, setOpen] = useState(false)
+  const [confirm, setConfirm] = useState<'unlimited-enable' | 'stop-chain' | undefined>(undefined)
   const summary = !enabled
     ? t('detail.schedule.off')
-    : mode === 'cron'
-      ? `${t('detail.schedule.mode.cron')} · ${nextLabel}`
-      : t('detail.schedule.mode.chain')
+    : readiness.kind === 'paused'
+      ? `${t('detail.schedule.paused')}${stoppedReason?.extraFailed === true
+          ? ` · ${t('detail.schedule.pausedFailedShort')}`
+          : ` (${t(STATUS_KEY[readiness.status])})`}`
+      : mode === 'cron'
+        ? `${t('detail.schedule.mode.cron')} · ${nextLabel}`
+        : `${t('detail.schedule.mode.chain')} · ${t('detail.schedule.runsSoFar')} ${chainRuns}${chainBudget !== undefined ? `/${chainBudget}` : ''}`
 
   return (
     <section className={css.detailSection}>
@@ -524,9 +577,21 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
       ) : (
         <>
           <p className={css.scheduleMeta}>{t('detail.schedule.chainNote')}</p>
-          {readiness.kind === 'paused' && (
+          <div className={css.scheduleActionRow}>
+            <span className={css.scheduleMeta}>
+              {t('detail.schedule.runsSoFar')} {chainRuns}
+              {chainBudget !== undefined ? ` / ${chainBudget}` : ` · ${t('detail.schedule.unlimited')}`}
+            </span>
+            {enabled && (
+              <Button size="sm" variant="ghost" onClick={stopChain}>
+                {t('detail.schedule.stopChain')}
+              </Button>
+            )}
+          </div>
+          {stoppedReason !== undefined && (
             <p className={css.scheduleMeta}>
-              {t(pausedLabelOf(readiness.status))}
+              {stoppedReason.extraFailed && <>{t('detail.schedule.pausedFailed')} </>}
+              {t(stoppedReason.key)}
             </p>
           )}
         </>
@@ -556,17 +621,25 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
       {error !== undefined && <p className={css.formError}>{error}</p>}
       {mode === 'cron' && (
         <>
-          <p className={css.scheduleMeta}>
-            {cronDescriptionLabel(cron)}
-            {' · '}
-            {readiness.kind === 'active'
-              ? `${t('detail.schedule.nextRun')} ${nextLabel}`
-              : t('detail.schedule.paused')}
-            {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
-          </p>
-          {readiness.kind === 'paused' && (
+          <div className={css.scheduleActionRow}>
+            <span className={css.scheduleMeta}>
+              {cronDescriptionLabel(cron)}
+              {' · '}
+              {readiness.kind === 'active'
+                ? `${t('detail.schedule.nextRun')} ${nextLabel}`
+                : t('detail.schedule.paused')}
+              {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
+            </span>
+            {canSkip && (
+              <Button size="sm" variant="ghost" onClick={skipNext}>
+                {t('detail.schedule.skip')}
+              </Button>
+            )}
+          </div>
+          {stoppedReason !== undefined && (
             <p className={css.scheduleMeta}>
-              {t(pausedLabelOf(readiness.status))}
+              {stoppedReason.extraFailed && <>{t('detail.schedule.pausedFailed')} </>}
+              {t(stoppedReason.key)}
             </p>
           )}
         </>
@@ -579,6 +652,30 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
         />
       )}
         </>
+      )}
+
+      {/* Side-effect confirms for automation: enabling an unlimited chain and
+          stopping one both confirm once — an endless loop of real agent
+          sessions is a big side effect. */}
+      {confirm === 'unlimited-enable' && (
+        <ConfirmDialog
+          title={t('detail.schedule.unlimitedTitle')}
+          message={t('detail.schedule.unlimitedConfirm')}
+          confirmLabel={t('detail.schedule.unlimitedOk')}
+          danger
+          onCancel={() => { setConfirm(undefined) }}
+          onConfirm={() => { setConfirm(undefined); applyEnabled(true) }}
+        />
+      )}
+      {confirm === 'stop-chain' && (
+        <ConfirmDialog
+          title={t('detail.schedule.stopChainTitle')}
+          message={t('detail.schedule.stopChainConfirm')}
+          confirmLabel={t('detail.schedule.stopChain')}
+          danger
+          onCancel={() => { setConfirm(undefined) }}
+          onConfirm={() => { setConfirm(undefined); applyStopChain() }}
+        />
       )}
     </section>
   )

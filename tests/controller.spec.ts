@@ -812,6 +812,30 @@ describe('scheduling', () => {
     expect(store.load()[0].schedule?.enabled).toBe(true)
   })
 
+  it('stopping a chain only disarms the rule without moving the card', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: undefined })
+    expect(exec.runCalls).toHaveLength(1)
+    const e1 = exec.runCalls[0].executionId
+    exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(2) // second chained run is open
+    // "Stop chaining": only the rule disarms — the card stays exactly where
+    // it is (running, in-flight run untouched).
+    controller.setSchedule(task.id, { enabled: false, mode: 'chain' })
+    const after = store.load()[0]
+    expect(after.schedule?.enabled).toBe(false)
+    expect(after.status).toBe('running')
+    // The in-flight run still settles to review — no third chain run.
+    const e2 = exec.runCalls[1].executionId
+    exec.runCalls[1].fire({ kind: 'started', taskId: task.id, executionId: e2, sessionId: 's-2' })
+    exec.runCalls[1].fire({ kind: 'settled', taskId: task.id, executionId: e2, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(2)
+    expect(store.load()[0].status).toBe('review')
+  })
+
   it('manual runs never touch the schedule counters or next-run instant', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)

@@ -446,6 +446,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       unviewed={taskUnviewed(task)}
                       unviewedCount={taskUnviewedCount(task)}
                       onClick={() => { controller.openTask(task.id) }}
+                      onQuickRun={() => { void controller.rerunTask(task.id) }}
                     />
                   )
                 })}
