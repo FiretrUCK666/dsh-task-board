@@ -200,6 +200,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
    */
   const handleDrop = (status: TaskStatus) => (event: React.DragEvent): void => {
     event.preventDefault()
+    // Capture the insertion decision BEFORE any reset: clearDrag wipes the
+    // dropGap ref, so reading it after would always be undefined and every
+    // same-column drop would silently fall to the column tail (reorder could
+    // only ever move cards to the bottom). Order contract: read drop state
+    // first, clear transient UI after.
+    const gap = dropGapRef.current
     const external = externalOf(event)
     const id = dragId ?? event.dataTransfer.getData('text/plain')
     clearDrag()
@@ -212,7 +218,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     const task = snapshot.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return
     if (dragId !== undefined && task.status === status) {
-      controller.moveTask(task.id, status, dropGapRef.current?.beforeId)
+      controller.moveTask(task.id, status, gap?.beforeId)
       flashColumn(status)
       return
     }

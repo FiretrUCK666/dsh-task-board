@@ -88,6 +88,36 @@ export function Section({ title, children, className }: {
   )
 }
 
+/** A compact collapsible block: a chevron + title + one-line live summary
+ *  on the header row; the body renders only when expanded, and the summary
+ *  always reflects the current state (single-source with the body). The one
+ *  disclosure grammar for every foldable detail module (run config, the
+ *  automation editor): collapsed it is quiet, one row, no buttons. */
+export function Disclosure({ title, summary, open, onToggle, children }: {
+  title: string
+  /** One-line live summary shown on the header row (collapsed or not). */
+  summary: string
+  open: boolean
+  onToggle: () => void
+  children?: ReactNode
+}) {
+  return (
+    <section className={css.detailSection}>
+      <button
+        type="button"
+        className={css.detailDisclosure}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <Icon name="chevronDown" className={css.detailChevron} />
+        <span className={css.detailDisclosureTitle}>{title}</span>
+        <span className={css.detailDisclosureSummary}>{summary}</span>
+      </button>
+      {open && children}
+    </section>
+  )
+}
+
 /** The waiting notice: one neutral framed row + warn chip for every surface. */
 export function Notice({ chip, children }: { chip: ReactNode; children: ReactNode }) {
   return (

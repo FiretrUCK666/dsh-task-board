@@ -17,7 +17,9 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     title: '',
     description: '',
     prompt: '',
-    status: 'todo',
+    // Default landing column is 待规划 (backlog): a fresh task starts as an
+    // idea being shaped, not scheduled work; the selector stays available.
+    status: 'backlog',
     agentPreset: '',
     workspaceId: '',
     provider: '',

@@ -37,10 +37,11 @@
   --dsh-tb-radius-lg: 16px;
   --dsh-tb-radius-xl: 24px;
 
-  /* native button geometry (same rhythm as the shell's buttons) */
+  /* native button geometry (same rhythm as the shell's buttons): every
+     variant shares ONE default height (primary is emphasized by its fill,
+     never by being taller), so 执行/保存/取消/删除 in one row are aligned */
   --dsh-tb-button-radius: 18px;
   --dsh-tb-button-h: 28px;
-  --dsh-tb-button-h-lg: 36px;
 
   /* depth */
   --dsh-tb-shadow-1: var(--dsw-shadow-lv1);
@@ -241,11 +242,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
-/* Title block: title + one quiet count line, the toolbar's left anchor. */
+/* Title block: title + one quiet count line, the toolbar's left anchor. A
+   little vertical air keeps the 11px subtitle from feeling clipped to the
+   16px title above. */
 .boardTitleBlock {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   flex: none;
   min-width: 0;
 }
@@ -383,10 +386,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .columnEmpty {
-  padding: 24px 8px;
+  /* A quiet, empty column reads as "empty" — short text, pointer-transparent
+     so it never blocks the drop-target highlight of the column itself. */
+  padding: 16px 8px;
   text-align: center;
   font-size: 12px;
   color: var(--dsh-tb-text-3);
+  pointer-events: none;
 }
 
 /* --- cards -------------------------------------------------------------------- */
@@ -396,13 +402,14 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
+  padding: 9px 12px;
   text-align: left;
   /* Cards are inner floating surfaces: opaque under a glass skin (the
-     translucent canvas stays behind them). */
+     translucent canvas stays behind them). Radius md (sharper than the
+     column container's lg) so a card reads as an item inside a panel. */
   background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-lg);
+  border-radius: var(--dsh-tb-radius-md);
   cursor: pointer;
   color: var(--dsh-tb-text-1);
   font-family: inherit;
@@ -542,9 +549,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-  padding-top: 7px;
-  margin-top: 2px;
-  border-top: 1px solid var(--dsw-alias-separator-primary);
+  /* Separated from the title by air, not a rule: a hairline between title
+     and meta on a 60px-wide card reads as noise on a dense board. */
+  padding-top: 6px;
+  margin-top: 0;
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -668,10 +676,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .primaryButton {
-  height: var(--dsh-tb-button-h-lg);
   color: var(--dsw-alias-label-primary-foreground);
   /* The native primary fill (brand) — same token the shell's primary
-     buttons use, so a skin's remap lands on both. */
+     buttons use, so a skin's remap lands on both. Height comes from the
+     shared button rule (28px), so a primary never towers over its ghost/
+     danger siblings in the same row. */
   background: var(--dsw-alias-button-primary-fill);
   border: 1px solid transparent;
   box-shadow: var(--dsh-tb-shadow-1);
@@ -1136,7 +1145,9 @@ textarea.input {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  /* Breathing air between the detail blocks — a little more than before so
+     内容/运行配置/自动化/会话/状态 each read as a distinct block. */
+  gap: 18px;
   flex: 1;
 }
 
@@ -1144,6 +1155,50 @@ textarea.input {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* The shared collapsible-block grammar (Disclosure): chevron + title +
+   one-line live summary; collapsed it is a single quiet row with no buttons.
+   Used by the run-config disclosure and the automation editor, so every
+   foldable detail module reads the same. */
+.detailDisclosure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.detailChevron {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 140ms ease;
+}
+
+.detailDisclosure[aria-expanded='false'] .detailChevron {
+  transform: rotate(-90deg);
+}
+
+.detailDisclosureTitle {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsh-tb-text-3);
+}
+
+.detailDisclosureSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
 }
 
 /* The collapsible auto-run section header: title + one-line state summary;

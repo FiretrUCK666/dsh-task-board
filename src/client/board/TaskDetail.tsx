@@ -24,7 +24,7 @@ import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
 import { SessionRow } from './SessionRow.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
-import { Button, Icon, Section, Switch } from './ui.tsx'
+import { Button, Disclosure, Icon, Section, Switch } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
 
 /** Status → shared-chip color (detail badge). */
@@ -701,6 +701,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   // so live record updates (e.g. an execution settling) never clobber it.
   const [draft, setDraft] = useState<TaskDraft | undefined>(undefined)
   const [editError, setEditError] = useState<string | undefined>(undefined)
+  // Whether the run-config disclosure is expanded (collapsed by default: the
+  // detail stays quiet, one summary line "默认设置 / 已自定义 N 项" is enough).
+  const [configOpen, setConfigOpen] = useState(false)
   // The execution row whose review page is open (undefined = none).
   const [reviewExecution, setReviewExecution] = useState<ExecutionRecord | undefined>(undefined)
   // The linked session whose detail panel is open (undefined = none).
@@ -716,6 +719,15 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   // between runs, so `running` alone must not disable the button; a pending
   // comment round (task not running) must never disable it either.
   const busy = hasOpenRun(current)
+
+  // Run-config summary for the collapsed disclosure (单来源:重算于每次渲染).
+  const customizedCount = [
+    current.workspaceId, current.agentPreset, current.provider, current.model,
+    current.reasoningEffort, current.permission,
+  ].filter(value => value !== undefined && value !== '').length
+  const configSummary = customizedCount === 0
+    ? t('detail.runConfigDefault')
+    : t('detail.runConfigCustom', { n: String(customizedCount) })
 
   // The visible execution-history list: plain runs minus the user's
   // display-hidden rows. The section title counts exactly what the list
@@ -789,7 +801,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                 <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : '—'}</pre>
               </Section>
 
-              <Section title={t('detail.runConfig')}>
+              <Disclosure
+                title={t('detail.runConfig')}
+                summary={configSummary}
+                open={configOpen}
+                onToggle={() => { setConfigOpen(!configOpen) }}
+              >
                 {/* The five rows always render: an unset field means "use the
                     deployment default", shown as 默认 — a dragged-in or fresh
                     card reads complete instead of silently missing rows. */}
@@ -829,7 +846,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                     </dd>
                   </div>
                 </dl>
-              </Section>
+              </Disclosure>
             </>
           )}
 
