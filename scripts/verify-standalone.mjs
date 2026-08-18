@@ -97,7 +97,6 @@ const VERIFY_SELF = join(root, 'scripts', 'verify-standalone.mjs')
 for (const file of textFiles) {
   if (file === VERIFY_SELF) continue // the tool's own forbidden-token list is its data
   const rel = relative(root, file)
-  if (rel.startsWith('docs' + sep)) continue
   const text = readFileSync(file, 'utf8')
   for (const token of FORBIDDEN) {
     if (text.includes(token)) failures.push(`${rel}: forbidden token "${token}"`)

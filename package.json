@@ -80,7 +80,6 @@
     "lib/**/*.d.ts",
     "lib/**/*.d.ts.map",
     "src",
-    "docs",
     "cordis.patch.yml",
     "README.md"
   ],
