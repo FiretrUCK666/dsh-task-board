@@ -28,7 +28,7 @@ import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
-import { sessionThreadOf } from './comment-thread.ts'
+import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
@@ -76,8 +76,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   // mode's boundary is stated in the panel, never guessed.
   const [drive, setDrive] = useState(true)
   const cruiseOn = controller.getSnapshot().cruise.enabled
-  // The session's own comment thread (drive-mode rounds), live states.
-  const thread = sessionThreadOf(task, sessionId, cruiseOn)
+  // The session's own comment thread (the session-scoped model — drive-mode
+  // rounds from this panel AND comments submitted from an execution's review
+  // page land in the same thread when they share this session), live states.
+  const thread = sessionCommentsOf(task, sessionId, cruiseOn)
   const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
 
   // Direct-composer state: sending is immediate (no queue), a failure keeps

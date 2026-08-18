@@ -40,7 +40,7 @@ import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
-import { commentsOf } from './comment-thread.ts'
+import { sessionCommentsOf } from './comment-thread.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
@@ -61,9 +61,12 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const current = snapshot.tasks.find(candidate => candidate.id === task.id) ?? task
   const sessionId = execution.sessionId
   const cruiseOn = snapshot.cruise.enabled
-  // This execution's own comment thread (the review page shows only the
-  // comments submitted from the execution being reviewed).
-  const comments = commentsOf(current, execution, cruiseOn)
+  // This execution's session thread (the session-scoped model — comments
+  // submitted from any surface for this session, execution page or linked
+  // panel, are visible together here).
+  const comments = sessionId !== undefined
+    ? sessionCommentsOf(current, sessionId, cruiseOn)
+    : []
 
   // Native projection baseline (context pressure / breakdown / permissions)
   // from the history tail page — the source of the context meter below and

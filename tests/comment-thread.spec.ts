@@ -1,10 +1,8 @@
-/**
- * Comment-thread pure logic: per-execution attribution, display state, and
- * the task-level queue position behind the review page's chips.
- */
+/** The comment-thread pure logic: one session-scoped thread model, display
+ *  state, and the task-level queue position behind the session chips. */
 import { describe, expect, it } from 'vitest'
 import { createTask, settleExecution, startExecution, type ExecutionRecord, type TaskRecord } from '../src/core/tasks.ts'
-import { commentKindOf, commentRoundState, commentStateKey, commentsOf, queuePositionOf, sessionThreadOf } from '../src/client/board/comment-thread.ts'
+import { commentKindOf, commentRoundState, commentStateKey, queuePositionOf, sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -44,98 +42,75 @@ function e1(task: TaskRecord): ExecutionRecord {
   return run
 }
 
-/** The e2 run record (session s-2). */
-function e2(task: TaskRecord): ExecutionRecord {
-  const run = task.executions.find(candidate => candidate.id === 'e2')
-  if (run === undefined) throw new Error('e2 missing')
-  return run
-}
-
-describe('commentsOf attribution', () => {
-  it('shows only rounds whose parentExecutionId is the target execution', () => {
+describe('sessionCommentsOf (session-scoped thread)', () => {
+  it('merges execution-anchored and session-anchored rounds of the same session', () => {
     const task = {
       ...withTwoRuns(),
       executions: [
         ...withTwoRuns().executions,
-        commentRound({ id: 'c1', parentExecutionId: 'e1', startedAt: NOW + 10 }),
-        commentRound({ id: 'c2', parentExecutionId: 'e2', startedAt: NOW + 11 }),
+        commentRound({ id: 'fromReview', parentExecutionId: 'e1', sessionId: 's-1', startedAt: NOW + 10 }),
+        commentRound({ id: 'fromPanel', parentExecutionId: undefined, sessionId: 's-1', sessionAnchor: 's-1', startedAt: NOW + 11 }),
       ],
     }
-    const onE1 = commentsOf(task, e1(task), true)
-    expect(onE1.map(view => view.round.id)).toEqual(['c1'])
-    const onE2 = commentsOf(task, e2(task), true)
-    expect(onE2.map(view => view.round.id)).toEqual(['c2'])
+    expect(sessionCommentsOf(task, 's-1', true).map(view => view.round.id)).toEqual(['fromReview', 'fromPanel'])
   })
 
-  it('attributes legacy rounds (no parentExecutionId) by shared session', () => {
+  it('never mixes sessions into one thread', () => {
     const task = {
       ...withTwoRuns(),
       executions: [
         ...withTwoRuns().executions,
-        commentRound({ id: 'legacy1', parentExecutionId: undefined, sessionId: 's-1', startedAt: NOW + 10 }),
-        commentRound({ id: 'legacy2', parentExecutionId: undefined, sessionId: 's-2', startedAt: NOW + 11 }),
+        commentRound({ id: 'a', parentExecutionId: 'e1', sessionId: 's-1', startedAt: NOW + 10 }),
+        commentRound({ id: 'b', parentExecutionId: 'e2', sessionId: 's-2', startedAt: NOW + 11 }),
       ],
     }
-    expect(commentsOf(task, e1(task), true).map(view => view.round.id)).toEqual(['legacy1'])
-    expect(commentsOf(task, e2(task), true).map(view => view.round.id)).toEqual(['legacy2'])
+    expect(sessionCommentsOf(task, 's-1', true).map(view => view.round.id)).toEqual(['a'])
+    expect(sessionCommentsOf(task, 's-2', true).map(view => view.round.id)).toEqual(['b'])
   })
 
-  it('never mixes plain runs into the thread', () => {
-    const task = withTwoRuns()
-    expect(commentsOf(task, e1(task), true)).toEqual([])
-    expect(commentsOf(task, e2(task), true)).toEqual([])
-  })
-
-  it('drops rounds with no session when the target has none either', () => {
-    const task = {
-      ...withTwoRuns(),
-      executions: [...withTwoRuns().executions, commentRound({ id: 'c1', sessionId: undefined, parentExecutionId: undefined })],
-    }
-    expect(commentsOf(task, e1(task), true).map(view => view.round.id)).toEqual([])
-  })
-
-  it('keeps rounds with a parent id even when sessions differ (re-used session)', () => {
-    const task = {
-      ...withTwoRuns(),
-      executions: [...withTwoRuns().executions, commentRound({ id: 'c1', parentExecutionId: 'e1', sessionId: 's-9', startedAt: NOW + 10 })],
-    }
-    // The explicit parent wins over the session; a legacy round on s-9 would
-    // not match e1.
-    expect(commentsOf(task, e1(task), true).map(view => view.round.id)).toEqual(['c1'])
-  })
-
-  it('never shows session-anchored rounds on an execution page', () => {
+  it('attributes legacy rounds (no anchor) by their recorded session', () => {
     const task = {
       ...withTwoRuns(),
       executions: [
         ...withTwoRuns().executions,
-        // A session-anchored round whose session coincides with e1's.
-        commentRound({ id: 'driven', parentExecutionId: undefined, sessionId: 's-1', sessionAnchor: 's-1', startedAt: NOW + 10 }),
-        commentRound({ id: 'real', parentExecutionId: 'e1', startedAt: NOW + 11 }),
+        commentRound({ id: 'legacy', parentExecutionId: undefined, sessionId: 's-1', startedAt: NOW + 10 }),
       ],
     }
-    // Only the execution-anchored round appears; the anchored one belongs to
-    // the linked session's own thread.
-    expect(commentsOf(task, e1(task), true).map(view => view.round.id)).toEqual(['real'])
+    expect(sessionCommentsOf(task, 's-1', true).map(view => view.round.id)).toEqual(['legacy'])
   })
-})
 
-describe('sessionThreadOf', () => {
-  it('shows only the rounds anchored to the given linked session', () => {
+  it('keeps a legacy round with no sessionId attributed by sessionAnchor', () => {
     const task = {
       ...withTwoRuns(),
       executions: [
         ...withTwoRuns().executions,
-        commentRound({ id: 'c1', parentExecutionId: 'e1', startedAt: NOW + 10 }),
-        commentRound({ id: 'driven', parentExecutionId: undefined, sessionId: 'linked-7', sessionAnchor: 'linked-7', startedAt: NOW + 11 }),
-        commentRound({ id: 'driven2', parentExecutionId: undefined, sessionId: 'linked-7', sessionAnchor: 'linked-7', startedAt: NOW + 12 }),
-        commentRound({ id: 'other', parentExecutionId: undefined, sessionId: 'linked-9', sessionAnchor: 'linked-9', startedAt: NOW + 13 }),
+        commentRound({ id: 'anchorOnly', parentExecutionId: undefined, sessionId: undefined, sessionAnchor: 's-1', startedAt: NOW + 10 }),
       ],
     }
-    expect(sessionThreadOf(task, 'linked-7', true).map(view => view.round.id)).toEqual(['driven', 'driven2'])
-    expect(sessionThreadOf(task, 'linked-9', true).map(view => view.round.id)).toEqual(['other'])
-    // A session with no anchored rounds shows an empty thread.
-    expect(sessionThreadOf(task, 's-1', true)).toEqual([])
+    expect(sessionCommentsOf(task, 's-1', true).map(view => view.round.id)).toEqual(['anchorOnly'])
+  })
+
+  it('both surfaces read the SAME thread for a shared session (review page + linked panel)', () => {
+    const task = {
+      ...withTwoRuns(),
+      executions: [
+        ...withTwoRuns().executions,
+        commentRound({ id: 'fromReview', parentExecutionId: 'e1', sessionId: 's-1', startedAt: NOW + 10 }),
+        commentRound({ id: 'fromPanel', parentExecutionId: undefined, sessionId: 's-1', sessionAnchor: 's-1', startedAt: NOW + 11 }),
+      ],
+    }
+    // The review page and the linked panel both call sessionCommentsOf(s-1):
+    // identical member set — the "comments don't sync" split is gone.
+    const sessionId = e1(task).sessionId
+    if (sessionId === undefined) throw new Error('e1 has no session')
+    const reviewView = sessionCommentsOf(task, sessionId, true)
+    const panelView = sessionCommentsOf(task, 's-1', true)
+    expect(reviewView.map(view => view.round.id)).toEqual(panelView.map(view => view.round.id))
+  })
+
+  it('never includes plain runs', () => {
+    expect(sessionCommentsOf(withTwoRuns(), 's-1', true)).toEqual([])
+    expect(sessionCommentsOf(withTwoRuns(), 's-2', true)).toEqual([])
   })
 
   it('derives display state through the shared comment state rule', () => {
@@ -143,14 +118,14 @@ describe('sessionThreadOf', () => {
       ...withTwoRuns(),
       executions: [
         ...withTwoRuns().executions,
-        commentRound({ id: 'saved', parentExecutionId: undefined, sessionId: 'linked-7', sessionAnchor: 'linked-7', startedAt: NOW + 11 }),
-        commentRound({ id: 'queued', parentExecutionId: undefined, sessionId: 'linked-7', sessionAnchor: 'linked-7', startedAt: NOW + 12, injectedAt: NOW + 13 }),
+        commentRound({ id: 'saved', sessionId: 's-1', startedAt: NOW + 11 }),
+        commentRound({ id: 'queued', sessionId: 's-1', injectedAt: NOW + 12, startedAt: NOW + 11 }),
       ],
     }
     // Cruise off → saved; cruise on → queued; an injected round is running
     // regardless of the cruise.
-    expect(sessionThreadOf(task, 'linked-7', false).map(view => view.state)).toEqual(['saved', 'running'])
-    expect(sessionThreadOf(task, 'linked-7', true).map(view => view.state)).toEqual(['queued', 'running'])
+    expect(sessionCommentsOf(task, 's-1', false).map(view => view.state)).toEqual(['saved', 'running'])
+    expect(sessionCommentsOf(task, 's-1', true).map(view => view.state)).toEqual(['queued', 'running'])
   })
 })
 

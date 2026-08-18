@@ -23,7 +23,7 @@ import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
 import { SessionRow } from './SessionRow.tsx'
-import { commentsOf } from './comment-thread.ts'
+import { sessionCommentsOf } from './comment-thread.ts'
 import { Button, Icon, Section, Switch } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
 
@@ -109,9 +109,12 @@ function ExecutionRow({ execution, index, task, sessionTitle, waitingKind, cruis
   const times = sessionTimes(task, execution)
   // Session is active if running or waiting.
   const isActive = session.state === 'running' || session.state === 'waiting'
-  // This execution's own comment thread (summary: count + latest text/time,
-  // without opening the review page).
-  const comments = commentsOf(task, execution, cruiseOn)
+  // This execution's own session thread (summary: count + latest text/time,
+  // without opening the review page) — the same session-scoped thread the
+  // review page and any linked panel for this session read.
+  const comments = execution.sessionId !== undefined
+    ? sessionCommentsOf(task, execution.sessionId, cruiseOn)
+    : []
   const latestComment = comments.length > 0 ? comments[comments.length - 1] : undefined
   // The row's unread reminder: the session (run + comments) has content
   // newer than the last time its review page was opened.

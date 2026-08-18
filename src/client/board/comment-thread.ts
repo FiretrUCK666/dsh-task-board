@@ -1,18 +1,20 @@
 /**
- * Comment-thread pure logic for the review page: which comment rounds belong
- * to one execution, their display state, and their position in the task's
- * pending comment queue. Framework-free and locale-free so the rules are
- * unit-testable in isolation (same pattern as review-transcript /
- * context-meter / menu-direction).
+ * Comment-thread pure logic for the session surfaces: which comment rounds
+ * belong to one native session's thread, their display state, and their
+ * position in the task's pending comment queue. Framework-free and
+ * locale-free so the rules are unit-testable in isolation (same pattern as
+ * review-transcript / context-meter / menu-direction).
  *
- * Comments are per-execution in the UI: a round belongs to the plain run it
- * was submitted from (`parentExecutionId`, recorded by the controller since
- * the field exists; persisted rows without it fall back to the session they
- * share with the run — executions carry one session each in practice). The
- * comment *queue* that drives injection stays task-level (the unified
- * dispatcher injects a task's comments in submission order, one at a time),
- * so a round's queue position is computed over the whole task, not the
- * filtered page subset.
+ * One thread model per SESSION: a round belongs to the thread of the native
+ * session it is injected into (`sessionId`), regardless of which anchor
+ * created it (an execution-anchored comment from a review page or a
+ * session-anchored comment from a linked panel). Both surfaces — the
+ * execution review page and the linked-session panel — read the SAME
+ * sessionCommentsOf, so a comment typed on one surface is instantly visible
+ * on the other for the same session. The comment *queue* that drives
+ * injection stays task-level (the unified dispatcher injects a task's
+ * comments in submission order, one at a time), so a round's queue position
+ * is computed over the whole task, not the filtered view subset.
  */
 import type { ExecutionRecord, TaskRecord } from '../../core/tasks.ts'
 
@@ -25,7 +27,7 @@ export type CommentViewState =
   | 'failed'     // settled with an error (or a command outcome kind:error).
   | 'cancelled'  // settled without an outcome.
 
-/** One comment round as the review page renders it. */
+/** One comment round as a session surface renders it. */
 export interface CommentView {
   round: ExecutionRecord
   state: CommentViewState
@@ -39,39 +41,25 @@ export function commentRoundState(round: ExecutionRecord, cruiseOn: boolean): Co
 }
 
 /**
- * The comment thread of one execution: every comment round submitted from
- * that run's page (its session is the one the review page continues), oldest
- * first. Rounds of other executions never appear here — each execution's
- * comments live on its own page. Legacy rounds without `parentExecutionId`
- * are attributed by the session they share with the run; session-anchored
- * rounds (submitted from a linked-session panel) never appear here — they
- * live in {@link sessionThreadOf}.
+ * The comment thread of one native session — every comment round injected
+ * into (or queued for) that `sessionId`, oldest first. THE single source for
+ * both surfaces:
+ * - the execution review page shows the thread of its execution's session;
+ * - the linked-session panel shows the thread of its own session.
+ * Both anchors (execution `parentExecutionId` and linked `sessionAnchor`)
+ * are ignored for membership — they only ever point at this same session, so
+ * comments typed on either surface are visible on both. Rounds that carry no
+ * sessionId yet (none today: newCommentRound always sets it) fall back to
+ * session-anchored attribution for legacy safety.
  */
-export function commentsOf(task: TaskRecord, target: ExecutionRecord, cruiseOn: boolean): CommentView[] {
-  return task.executions
-    .filter((round): round is ExecutionRecord & { comment: string } => {
-      if (round.comment === undefined) return false
-      if (round.parentExecutionId !== undefined) return round.parentExecutionId === target.id
-      return round.sessionAnchor === undefined
-        && round.sessionId !== undefined
-        && target.sessionId !== undefined
-        && round.sessionId === target.sessionId
-    })
-    .map(round => ({ round, state: commentRoundState(round, cruiseOn) }))
-}
-
-/**
- * The comment thread of one linked session: every comment round submitted
- * from that session's panel (session-anchored, drive mode), oldest first —
- * the session-anchored counterpart of {@link commentsOf}. A session-anchored
- * round is a comment round like any other for the dispatcher (same queue,
- * same injection); only its thread membership differs — it appears in the
- * linked session's panel, never on an execution's review page.
- */
-export function sessionThreadOf(task: TaskRecord, sessionId: string, cruiseOn: boolean): CommentView[] {
+export function sessionCommentsOf(task: TaskRecord, sessionId: string, cruiseOn: boolean): CommentView[] {
   return task.executions
     .filter((round): round is ExecutionRecord & { comment: string } =>
-      round.comment !== undefined && round.sessionAnchor === sessionId)
+      round.comment !== undefined
+      && (round.sessionId === sessionId
+        // Legacy safety: a round that never recorded its session but is
+        // anchored to this session still belongs to its thread.
+        || (round.sessionId === undefined && round.sessionAnchor === sessionId)))
     .map(round => ({ round, state: commentRoundState(round, cruiseOn) }))
 }
 
@@ -79,10 +67,10 @@ export function sessionThreadOf(task: TaskRecord, sessionId: string, cruiseOn: b
  * The 1-based queue position of a pending round among the task's pending
  * comment rounds (saved/queued/running, submission order) — the position a
  * "排队中 · 第 N 位" chip shows. The queue is task-level: the dispatcher
- * injects a task's comments in submission order regardless of which
- * execution they continue, so the position is computed over the whole task.
- * Returns 0 when the round is not in the pending set (it is settled, or not
- * a comment round at all).
+ * injects a task's comments in submission order regardless of which session
+ * they target, so the position is computed over the whole task. Returns 0
+ * when the round is not in the pending set (it is settled, or not a comment
+ * round at all).
  */
 export function queuePositionOf(task: TaskRecord, roundId: string): number {
   const pending = task.executions
