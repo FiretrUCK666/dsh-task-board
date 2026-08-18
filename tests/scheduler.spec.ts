@@ -102,19 +102,12 @@ describe('SchedulerService.tick', () => {
     expect(h.applied).toEqual([])
   })
 
-  it('never triggers a rule a manual run has not primed', async () => {
+  it('fires an armed+due rule on the tick (arming alone is enough)', async () => {
     const h = makeHarness()
-    // Armed + due, but not primed: arming a rule must never execute anything.
+    // Armed + due: automation is active as soon as the rule is on — arming
+    // alone triggers, there is no manual-first step to gate it.
     const base = createTask({ title: 'a', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-a')
-    h.setTasks([withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0) }, at(2026, 1, 1, 0, 0))])
-    await h.scheduler.tick()
-    expect(h.runs).toEqual([])
-    // The due slot is untouched: once a manual run primes the rule, the
-    // schedule takes over at its next due instant (never an instant catch-up).
-    expect(h.applied).toEqual([])
-    // A manual run primes it (as the controller's runTask does), and the
-    // still-due slot fires on the next tick.
-    h.setTasks([withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0), primed: true }, at(2026, 1, 1, 10, 0, 30))])
+    h.setTasks([withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0) }, at(2026, 1, 1, 10, 0, 30))])
     await h.scheduler.tick()
     expect(h.runs).toEqual(['t-a'])
   })

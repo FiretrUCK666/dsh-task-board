@@ -316,7 +316,7 @@ describe('withSchedule', () => {
     const scheduled = withSchedule(task, { enabled: true, cron: '0 9 * * *', nextRunAt: NOW + 100 }, NOW + 1)
     expect(scheduled.schedule).toEqual({
       enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: NOW + 100, lastTriggeredAt: undefined,
-      maxRuns: undefined, runCount: 0, primed: false,
+      maxRuns: undefined, runCount: 0, primed: true,
     })
     expect(scheduled.updatedAt).toBe(NOW + 1)
     expect(task.schedule).toBeUndefined() // original untouched
@@ -331,7 +331,7 @@ describe('withSchedule', () => {
     const rolled = withSchedule(task, { nextRunAt: NOW + 200 }, NOW + 2)
     expect(rolled.schedule).toEqual({
       enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: NOW + 200, lastTriggeredAt: NOW,
-      maxRuns: undefined, runCount: 0, primed: false,
+      maxRuns: undefined, runCount: 0, primed: true,
     })
   })
 
@@ -392,18 +392,20 @@ describe('resolveCardDrop', () => {
     expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'move', status: 'backlog' })
   })
 
-  it('a running chain owns the card: only run now is allowed (busy rejects)', () => {
-    const base = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '', primed: true }, NOW)
+  it('a chain card moves freely (automation never blocks a drop)', () => {
+    const base = withSchedule(sampleTask(), { enabled: true, mode: 'chain', cron: '' }, NOW)
     const { task } = startExecution(base, NOW, 'e1') // running + open
-    expect(resolveCardDrop(task, 'running')).toEqual({ kind: 'reject', reason: 'busy' })
-    // Settled but still 'running' (the chain keeps the card in progress):
-    // the chain still owns it — only a run is allowed.
+    // An open run on the running column is a no-op (already there).
+    expect(resolveCardDrop(task, 'running')).toEqual({ kind: 'none' })
+    // Settled but still 'running' (the chain keeps the card in progress).
     const settled = settleExecution(task, 'e1', 'succeeded', NOW + 1, undefined)
     expect(settled.status).toBe('running')
     expect(resolveCardDrop(settled, 'running')).toEqual({ kind: 'run' })
-    expect(resolveCardDrop(settled, 'todo')).toEqual({ kind: 'reject', reason: 'scheduled' })
-    expect(resolveCardDrop(settled, 'done')).toEqual({ kind: 'reject', reason: 'scheduled' })
-    expect(resolveCardDrop(settled, 'backlog')).toEqual({ kind: 'reject', reason: 'scheduled' })
+    // The chain never rejects a move: leaving the lane is a manual decision
+    // (moveTask pauses/stops it on the controller side, never a rejection).
+    expect(resolveCardDrop(settled, 'todo')).toEqual({ kind: 'move', status: 'todo' })
+    expect(resolveCardDrop(settled, 'done')).toEqual({ kind: 'move', status: 'done' })
+    expect(resolveCardDrop(settled, 'backlog')).toEqual({ kind: 'move', status: 'backlog' })
   })
 
   it('a paused chain owns nothing: review/backlog/cancelled cards move freely', () => {
@@ -577,27 +579,22 @@ describe('ruleReadiness', () => {
     expect(ruleReadiness(off)).toEqual({ kind: 'disabled' })
   })
 
-  it('is standby when armed but never started by a manual run', () => {
-    const standby = withSchedule(sampleTask(), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
-    expect(ruleReadiness(standby)).toEqual({ kind: 'standby' })
-  })
-
-  it('is active for todo/running once primed', () => {
+  it('is active for todo/running as soon as the rule is armed (no manual-first gate)', () => {
     for (const status of ['todo', 'running'] as const) {
-      const task = withSchedule(withStatus(sampleTask(), status, NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
+      const task = withSchedule(withStatus(sampleTask(), status, NOW), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
       expect(ruleReadiness(task)).toEqual({ kind: 'active' })
     }
   })
 
-  it('is paused for backlog/review/done once primed, naming the blocking status', () => {
-    const backlog = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
+  it('is paused for backlog/review/done, naming the blocking status', () => {
+    const backlog = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
     expect(ruleReadiness(backlog)).toEqual({ kind: 'paused', status: 'backlog' })
-    const review = withSchedule(withStatus(sampleTask(), 'review', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
+    const review = withSchedule(withStatus(sampleTask(), 'review', NOW), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
     expect(ruleReadiness(review)).toEqual({ kind: 'paused', status: 'review' })
     // Done is also paused: a completed task's armed rule must never drive it
     // (the completion path additionally disarms it outright — this is the
     // safety net for legacy rows that still carry a stale enabled flag).
-    const done = withSchedule(withStatus(sampleTask(), 'done', NOW), { ...armed, enabled: true, primed: true, cron: '0 9 * * *' }, NOW)
+    const done = withSchedule(withStatus(sampleTask(), 'done', NOW), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
     expect(ruleReadiness(done)).toEqual({ kind: 'paused', status: 'done' })
   })
 })

@@ -117,11 +117,10 @@ export interface ScheduleRule {
   /** How many scheduled runs have fired so far (monotone; automatic triggers only). */
   runCount: number
   /**
-   * Whether the rule has been activated by a manual run. Auto rules never
-   * drive a task that has not been started by hand: arming the rule does
-   * not run anything; the first manual run (Run button or dragging to
-   * 'running') primes the rule, and only then do cron triggers and chain
-   * hand-offs fire. Legacy rules normalize to false.
+   * Legacy activation gate: automation now fires as soon as it is armed —
+   * there is no "manual run first" step (see {@link ruleReadiness}). Kept on
+   * the persisted shape so old data parses; every load/merge normalizes it
+   * to true, so no live code ever sees it as false.
    */
   primed: boolean
 }
@@ -251,22 +250,20 @@ export function hasHiddenRows(task: TaskRecord, family: 'executions' | 'sessions
  * judgment used by the scheduler (what may trigger), the controller (what
  * a chain may own) and the detail panel (what to display):
  * - `disabled`: the rule is not armed — nothing to consider.
- * - `standby`: armed but never started by a manual run (`primed` false).
- *   The rule never triggers by itself and the user is told to start it by
- *   hand; its next-run instant is kept for the day it becomes active.
- * - `paused`: armed and started, but the task sits in a state the rule must
- *   not drive (backlog = shelved, review = a human decision is pending,
- *   done = completed). Any manual action that leaves these states (run, or
- *   move to todo/done) resumes the rule; missed due instants are skipped,
- *   never caught up. Completion additionally disarms the rule outright (see
+ * - `paused`: armed, but the task sits in a state the rule must not drive
+ *   (backlog = shelved, review = a human decision is pending, done =
+ *   completed). Any manual action that leaves these states (run, or move to
+ *   todo/done) resumes the rule; missed due instants are skipped, never
+ *   caught up. Completion additionally disarms the rule outright (see
  *   {@link disarmSchedule}) — `paused` here is the safety net for legacy/
  *   repaired rows that would otherwise hold a stale enabled flag.
- * - `active`: armed, started, and the task is in a drivable state
- *   (todo/running) — cron due instants and chain hand-offs fire.
+ * - `active`: armed and the task is in a drivable state (todo/running) —
+ *   cron due instants and chain hand-offs fire. Arming alone is enough:
+ *   automation is active as soon as it is enabled (no manual-first-run
+ *   gate).
  */
 export type RuleReadiness =
   | { kind: 'disabled' }
-  | { kind: 'standby' }
   | { kind: 'paused'; status: 'backlog' | 'review' | 'done' }
   | { kind: 'active' }
 
@@ -274,7 +271,6 @@ export type RuleReadiness =
 export function ruleReadiness(task: TaskRecord): RuleReadiness {
   const schedule = task.schedule
   if (schedule === undefined || !schedule.enabled) return { kind: 'disabled' }
-  if (schedule.primed !== true) return { kind: 'standby' }
   // Every status outside the rule's active set (backlog/review/done) is a
   // pause: the rule must never drive a task a human is holding.
   if (task.status === 'backlog' || task.status === 'review' || task.status === 'done') {
@@ -348,7 +344,10 @@ export function withSchedule(
     lastTriggeredAt: current?.lastTriggeredAt,
     maxRuns: current?.maxRuns,
     runCount: current?.runCount ?? 0,
-    primed: current?.primed ?? false,
+    // Legacy activation gate: automation is active as soon as it is armed
+    // (nothing awaits a manual first run), so any merged rule reads primed —
+    // old data normalizes the same way in the store.
+    primed: true,
   }
   if ('enabled' in patch) schedule.enabled = patch.enabled ?? false
   if ('mode' in patch) schedule.mode = patch.mode ?? 'cron'
@@ -357,7 +356,6 @@ export function withSchedule(
   if ('lastTriggeredAt' in patch) schedule.lastTriggeredAt = patch.lastTriggeredAt
   if ('maxRuns' in patch) schedule.maxRuns = patch.maxRuns
   if ('runCount' in patch) schedule.runCount = patch.runCount ?? 0
-  if ('primed' in patch) schedule.primed = patch.primed ?? false
   return { ...task, updatedAt: now, schedule }
 }
 
@@ -558,38 +556,29 @@ export type CardDropDecision =
   | { kind: 'none' }
   | { kind: 'move'; status: TaskStatus }
   | { kind: 'run' }
-  | { kind: 'reject'; reason: 'busy' | 'scheduled' }
+  | { kind: 'reject'; reason: 'busy' }
 
 /**
  * Decide what dropping a card onto a column does, reconciling the manual
- * move with the execution and schedule owners:
- * - A chain that actually owns the card — armed, primed by a manual run,
- *   and still 'running' (every settled run hands off to the next, so any
- *   other column would be overwritten) — is refused (`scheduled`). A chain
- *   in standby or paused (review/backlog/cancelled) owns nothing: the card
- *   can be moved freely, which is also how a paused chain resumes (move to
- *   todo/done or run again).
+ * move with the execution owner. Automation is never a drop obstacle: a
+ * chain card is freely movable — "leaving the lane" is expressed as a
+ * pause/stop in the controller's moveTask, never as a rejection here.
  * - Dropping on 'running' reruns the task (the same "run again" semantics
- *   as the detail button), unless its latest execution is still open — the
- *   run guard is shared with manual runs and the scheduler, so a live run
- *   can never be started twice from any surface.
+ *   as the detail button); a live run is a no-op/reject, shared with every
+ *   other surface.
  * - While an execution is open, 'review'/'done' are refused: the runner
  *   owns those transitions and would overwrite a manual move when the run
  *   settles.
  * - Anything else is a plain manual move; dropping on the current column is
- *   a no-op (except 'running', which still means "run" when free).
+ *   a no-op (except 'running' via the rerun rule above).
  */
 export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropDecision {
   const busy = hasOpenRun(task)
-  const chainOwns = task.schedule?.enabled === true
-    && task.schedule.mode === 'chain'
-    && task.schedule.primed === true
-    && task.status === 'running'
-  if (chainOwns) {
-    if (target !== 'running') return { kind: 'reject', reason: 'scheduled' }
-    return busy ? { kind: 'reject', reason: 'busy' } : { kind: 'run' }
+  if (target === 'running') {
+    if (!busy) return { kind: 'run' }
+    if (task.status === target) return { kind: 'none' }
+    return { kind: 'reject', reason: 'busy' }
   }
-  if (target === 'running' && !busy) return { kind: 'run' }
   if (task.status === target) return { kind: 'none' }
   if (busy && (target === 'review' || target === 'done')) return { kind: 'reject', reason: 'busy' }
   return { kind: 'move', status: target }

@@ -94,11 +94,6 @@ export class SchedulerService {
       const schedule = task.schedule
       if (schedule === undefined || !schedule.enabled) continue
       const readiness = ruleReadiness(task)
-      // Standby: armed but never started by a manual run — the rule stays
-      // inert. Its due slot is kept untouched, so once a manual run primes
-      // it the schedule takes over at the original next instant (never an
-      // instant catch-up).
-      if (readiness.kind === 'standby') continue
       // Chain mode: recovery tick only — a stalled chain (e.g. after a page
       // reload, when the settle hand-off was lost) is restarted when no
       // execution is open and a further run is within budget. Only a

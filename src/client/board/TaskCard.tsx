@@ -32,18 +32,19 @@ export function formatDateTime(ms: number): string {
 }
 
 /** Tooltip for the schedule chip: honest about the rule's readiness —
- *  including the prime gate: an armed rule never runs by itself until one
- *  manual run has activated it. */
+ *  automation is active as soon as it is armed (no manual-first gate):
+ *  chain reports its run budget, cron its next due instant, paused its
+ *  blocking status. */
 function scheduleChipTitle(task: TaskRecord): string {
-  const readiness = ruleReadiness(task)
-  const primeHint = task.schedule?.primed === false ? ` · ${t('card.schedulePrimed')}` : ''
-  if (readiness.kind === 'active' && task.schedule?.nextRunAt !== undefined) {
-    return `${t('card.scheduled')} · ${t('detail.schedule.nextRun')} ${new Date(task.schedule.nextRunAt).toLocaleString()}${primeHint}`
+  const schedule = task.schedule
+  if (schedule === undefined || !schedule.enabled) return t('card.scheduled')
+  if (schedule.mode === 'chain') {
+    return `${t('detail.schedule.mode.chain')} · ${t('detail.schedule.runsSoFar')} ${schedule.runCount}`
   }
-  if (readiness.kind === 'paused') {
-    return `${t('card.scheduled')} · ${t('detail.schedule.paused')} (${t(STATUS_KEY[task.status])})`
+  if (ruleReadiness(task).kind === 'active' && schedule.nextRunAt !== undefined) {
+    return `${t('card.scheduled')} · ${t('detail.schedule.nextRun')} ${new Date(schedule.nextRunAt).toLocaleString()}`
   }
-  return `${t('card.scheduled')} · ${t('detail.schedule.standby')}${primeHint}`
+  return `${t('card.scheduled')} · ${t('detail.schedule.paused')} (${t(STATUS_KEY[task.status])})`
 }
 
 /** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */
@@ -141,7 +142,7 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
                 fill={false}
                 title={scheduleChipTitle(task)}
               >
-                {t('card.scheduled')}
+                {task.schedule.mode === 'chain' ? t('card.chain') : t('card.scheduled')}
               </Chip>
             )}
             {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && (

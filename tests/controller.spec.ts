@@ -738,18 +738,13 @@ describe('scheduling', () => {
     expect(exec.runCalls).toHaveLength(2)
   })
 
-  it('chain mode: arming never runs; a manual run primes it and the chain continues until the budget', async () => {
+  it('chain mode: arming starts the first run and the chain continues until the budget', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
-    // Arming a chain never executes anything by itself.
-    expect(exec.runCalls).toHaveLength(0)
-    expect(store.load()[0].schedule?.primed).toBe(false)
-    // The first manual run primes the rule...
-    await controller.runTask(task.id)
+    // Arming a chain launches its first run right away (no manual prime).
     expect(exec.runCalls).toHaveLength(1)
-    expect(store.load()[0].schedule?.primed).toBe(true)
     // Run 1 settles → the chain hands off to run 2 synchronously.
     const e1 = exec.runCalls[0].executionId
     exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
@@ -774,13 +769,47 @@ describe('scheduling', () => {
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
-    await controller.runTask(task.id) // manual run primes the chain
+    // The chain's first run starts on arming.
+    expect(exec.runCalls).toHaveLength(1)
     const e1 = exec.runCalls[0].executionId
     exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'failed', error: 'boom' })
     expect(exec.runCalls).toHaveLength(1) // no hand-off after a failure
     expect(store.load()[0].status).toBe('review')
-    expect(store.load()[0].schedule?.enabled).toBe(true) // stays armed for the recovery tick
+    expect(store.load()[0].schedule?.enabled).toBe(true) // stays armed (paused on review)
+  })
+
+  it('manually moving a running chain card to todo stops the chain (manual takeover)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: undefined })
+    expect(exec.runCalls).toHaveLength(1) // armed chain starts immediately
+    const e1 = exec.runCalls[0].executionId
+    exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(2) // the chain hands off to the next run
+    // Manual takeover: dragging the chain card to todo stops the chain (a
+    // todo card would otherwise chain right back) — it never blocks the move.
+    controller.moveTask(task.id, 'todo')
+    const after = store.load()[0]
+    expect(after.schedule?.enabled).toBe(false)
+    expect(after.status).toBe('todo')
+  })
+
+  it('an armed-but-never-run chain in backlog starts its first run when moved to todo', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '', status: 'backlog' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
+    // Armed while shelved (backlog): paused, nothing runs yet.
+    expect(exec.runCalls).toHaveLength(0)
+    expect(store.load()[0].schedule?.enabled).toBe(true)
+    // Moving it to todo resumes the chain — the first run starts.
+    controller.moveTask(task.id, 'todo')
+    expect(exec.runCalls).toHaveLength(1)
+    expect(store.load()[0].status).toBe('running')
+    expect(store.load()[0].schedule?.enabled).toBe(true)
   })
 
   it('manual runs never touch the schedule counters or next-run instant', async () => {
@@ -1352,7 +1381,7 @@ describe('unified dispatch (one concurrency budget)', () => {
     const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
     controller.setSchedule(a.id, { enabled: true, mode: 'chain' })
     controller.setCruiseEnabled(true)
-    expect(exec.runCalls).toHaveLength(1) // a picked by the cruise (primed)
+    expect(exec.runCalls).toHaveLength(1) // a auto-started by arming the chain
     const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
     await controller.runTask(b.id, 'manual') // manual run occupies the slot beyond the budget
     expect(exec.runCalls).toHaveLength(2)

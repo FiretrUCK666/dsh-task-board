@@ -524,9 +524,6 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
       ) : (
         <>
           <p className={css.scheduleMeta}>{t('detail.schedule.chainNote')}</p>
-          {readiness.kind === 'standby' && (
-            <p className={css.scheduleMeta}>{t('detail.schedule.standby')}</p>
-          )}
           {readiness.kind === 'paused' && (
             <p className={css.scheduleMeta}>
               {t(pausedLabelOf(readiness.status))}
@@ -564,9 +561,7 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
             {' · '}
             {readiness.kind === 'active'
               ? `${t('detail.schedule.nextRun')} ${nextLabel}`
-              : readiness.kind === 'standby'
-                ? t('detail.schedule.standby')
-                : t('detail.schedule.paused')}
+              : t('detail.schedule.paused')}
             {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
           </p>
           {readiness.kind === 'paused' && (

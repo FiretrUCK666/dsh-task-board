@@ -703,15 +703,40 @@ export class BoardController {
    * rule is disarmed outright ({@link disarmSchedule}) — a completed task's
    * timer/chain must never fire again, and moving it back to a live column
    * leaves the rule off until the user re-arms it.
+   *
+   * Automation never locks a card in place (see resolveCardDrop); leaving
+   * the lane speaks its own language:
+   * - to 'backlog'/'review' — the rule pauses via its status (ruleReadiness
+   *   calls it paused); the card is free.
+   * - to 'todo' — manual takeover defeats an active chain loop (a todo card
+   *   with an armed chain would otherwise chain right back), so a chain that
+   *   has already run is stopped; an armed-but-never-run chain (armed while
+   *   shelved in backlog) instead starts its first run — the "resume on
+   *   move to todo" path.
    */
   moveTask(id: string, status: TaskStatus, beforeId?: string): void {
+    const previous = this.tasks.find(task => task.id === id)
     this.tasks = applyCardOrder(this.tasks, id, status, beforeId, this.now())
-    if (status === 'done') {
-      // Disarm any armed rule: completion is a hard stop, not a pause. The
-      // rule's configuration survives, so re-arming from the detail editor
-      // resumes the same schedule.
-      this.tasks = this.tasks.map(task =>
-        task.id === id ? disarmSchedule(task, this.now()) : task)
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== id) return task
+      // Completion is a hard stop, not a pause. The rule's configuration
+      // survives, so re-arming from the detail editor resumes the schedule.
+      if (status === 'done') return disarmSchedule(task, this.now())
+      // A chain that has already run, moved to todo = manual takeover: stop
+      // it (todo would otherwise immediately chain again).
+      if (status === 'todo' && previous !== undefined
+        && task.schedule?.enabled === true && task.schedule.mode === 'chain'
+        && previous.executions.length > 0) {
+        return withSchedule(task, { enabled: false }, this.now())
+      }
+      return task
+    })
+    // An armed-but-never-run chain leaving backlog for a drivable column
+    // starts its first run — the "paused, then move to todo resumes" path.
+    const after = this.tasks.find(task => task.id === id)
+    if (after !== undefined && previous !== undefined && previous.status === 'backlog'
+      && status === 'todo' && after.schedule?.enabled === true && after.schedule.mode === 'chain') {
+      void this.runTask(id, 'chain')
     }
     this.persistAndNotify()
   }
@@ -762,6 +787,13 @@ export class BoardController {
           }, this.now())
         : candidate)
     this.persistAndNotify()
+    // "Opened, so it runs": a chain rule fires its first run as soon as it
+    // is armed (there is no manual-prime step), unless the card sits in a
+    // paused status (backlog/review/done) — moving it to a drivable column
+    // starts it. Cron waits for its due instant via the scheduler tick.
+    if (enabled && mode === 'chain' && (task.status === 'todo' || task.status === 'running')) {
+      void this.runTask(id, 'chain')
+    }
     return true
   }
 
@@ -819,7 +851,7 @@ export class BoardController {
         const next = this.nextEligible()
         if (next === undefined) break
         if (next.kind === 'comment') this.launchComment(next.task, next.round)
-        else this.launchTask(next.task, 'manual')
+        else this.launchTask(next.task)
       }
     } finally {
       this.dispatching = false
@@ -841,7 +873,7 @@ export class BoardController {
     // deleted): the request is stale — drop it. A busy task also drops its
     // queued auto run (the same "skip when busy" semantics as a direct hit).
     if (task === undefined || hasOpenRun(task) || ruleReadiness(task).kind !== 'active') return true
-    this.launchTask(task, queued.trigger)
+    this.launchTask(task)
     return true
   }
 
@@ -884,15 +916,12 @@ export class BoardController {
 
   /**
    * Launch a plain execution round: move the task to 'running', append the
-   * execution record, and hand off to the ExecutionService. A manual trigger
-   * primes an enabled schedule rule (auto triggers never prime).
+   * execution record, and hand off to the ExecutionService. Automation no
+   * longer awaits a manual first run — arming a schedule activates it at
+   * once (see setSchedule / ruleReadiness) — so any trigger just starts.
    */
-  private launchTask(task: TaskRecord, trigger: RunTrigger): void {
-    let target = task
-    if (trigger === 'manual' && task.schedule?.enabled === true && task.schedule.primed !== true) {
-      target = withSchedule(task, { primed: true }, this.now())
-    }
-    const { task: next, execution } = startExecution(target, this.now(), this.uuid())
+  private launchTask(task: TaskRecord): void {
+    const { task: next, execution } = startExecution(task, this.now(), this.uuid())
     this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
     this.persistAndNotify()
     this.activeExecutionIds.add(execution.id)
@@ -940,7 +969,7 @@ export class BoardController {
     // (task not running) must never block the Run button or a drag-rerun.
     if (hasOpenRun(task)) return false
     if (trigger === 'manual' || this.inFlightCount() < this.cruiseState.limit) {
-      this.launchTask(task, trigger)
+      this.launchTask(task)
       return true
     }
     if (!this.queuedLaunches.some(candidate => candidate.taskId === id)) {
@@ -953,15 +982,15 @@ export class BoardController {
    * Continue an armed chain schedule after a settled run: persist the
    * incremented counter (disarming after the final budgeted run) and start
    * the next run through the shared dispatcher (which queues it when the
-   * in-flight budget is full). No-op unless the chain is armed AND primed by
-   * a manual run, its latest execution has settled, and a further run is
-   * within budget. Runs synchronously after a settle, so the scheduler's
-   * recovery tick can never interleave a duplicate launch.
+   * in-flight budget is full). No-op unless the chain is armed, its latest
+   * execution has settled, and a further run is within budget. Runs
+   * synchronously after a settle, so the scheduler's recovery tick can never
+   * interleave a duplicate launch.
    */
   private maybeContinueChain(id: string): void {
     const task = this.tasks.find(candidate => candidate.id === id)
     const schedule = task?.schedule
-    if (schedule === undefined || !schedule.enabled || !schedule.primed || schedule.mode !== 'chain') return
+    if (schedule === undefined || !schedule.enabled || schedule.mode !== 'chain') return
     const latest = task?.executions[task.executions.length - 1]
     // Only a succeeded plain run hands off; a refine round settling must
     // never start a chain (refinement is preparation, not execution).

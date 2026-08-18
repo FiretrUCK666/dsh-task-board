@@ -104,7 +104,10 @@ function normalizeSchedule(schedule: unknown): ScheduleRule | undefined {
     lastTriggeredAt: typeof rule.lastTriggeredAt === 'number' ? rule.lastTriggeredAt : undefined,
     maxRuns: typeof maxRuns === 'number' && Number.isInteger(maxRuns) && maxRuns > 0 ? maxRuns : undefined,
     runCount: typeof runCount === 'number' && Number.isInteger(runCount) && runCount >= 0 ? runCount : 0,
-    primed: rule.primed === true,
+    // Legacy activation gate (see ScheduleRule.primed): automation is active
+    // as soon as it is armed, so persisted rules always read primed — the
+    // field is kept only so old documents parse losslessly.
+    primed: true,
   }
 }
 

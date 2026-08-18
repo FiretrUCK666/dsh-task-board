@@ -215,8 +215,20 @@ describe('schedule persistence', () => {
     store.save([task])
     expect(store.load()[0].schedule).toEqual({
       enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: 100, lastTriggeredAt: 50,
-      maxRuns: undefined, runCount: 0, primed: false,
+      maxRuns: undefined, runCount: 0, primed: true,
     })
+  })
+
+  it('normalizes a legacy primed:false rule to active (primed true) on load', () => {
+    // Old documents carried `primed:false` until the manual-first gate was
+    // removed — load must read them as active so arming alone drives them.
+    const raw = JSON.stringify([
+      { ...createTask({ title: 'A', description: '', prompt: '' }, 1, 't-1'),
+        schedule: { enabled: true, mode: 'chain', cron: '', primed: false } },
+    ])
+    const loaded = parseLedger(raw)[0]
+    expect(loaded.schedule?.primed).toBe(true)
+    expect(loaded.schedule?.enabled).toBe(true)
   })
 
   it('keeps legacy tasks without a schedule intact', () => {
@@ -263,7 +275,7 @@ describe('schedule persistence', () => {
     expect(parsed).toHaveLength(4) // no row dropped for a bad schedule
     expect(parsed[0].schedule).toEqual({
       enabled: false, mode: 'cron', cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: 5,
-      maxRuns: undefined, runCount: 0, primed: false,
+      maxRuns: undefined, runCount: 0, primed: true,
     })
     expect(parsed[1].schedule).toBeUndefined() // blank cron → schedule dropped
     expect(parsed[2].schedule).toBeUndefined() // non-object schedule → dropped
@@ -280,7 +292,7 @@ describe('schedule persistence', () => {
     const parsed = parseLedger(JSON.stringify(raw))
     expect(parsed[0].schedule).toEqual({
       enabled: true, mode: 'cron', cron: '0 9 * * *', nextRunAt: undefined, lastTriggeredAt: undefined,
-      maxRuns: undefined, runCount: 0, primed: false,
+      maxRuns: undefined, runCount: 0, primed: true,
     })
     expect(parsed[1].schedule).toBeUndefined() // not five fields
     expect(parsed[2].schedule).toBeUndefined() // values out of range
