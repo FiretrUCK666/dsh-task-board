@@ -1338,7 +1338,7 @@ textarea.input {
   overflow-y: auto;
 }
 
-.executionList {
+.sessionList {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1348,20 +1348,23 @@ textarea.input {
 }
 
 /* Rows share one container with hairline dividers and a hover wash instead
-   of per-row boxes — quieter, aligned, premium. A row opens the review
-   page, so it reads as a clickable surface. */
-.executionRow {
+   of per-row boxes — quieter, aligned, premium. The same surface serves both
+   session families (execution history and linked sessions): one row grammar
+   (SessionRow), so both kinds always read as the same widget. A row opens
+   its activation surface (review page / session panel), so it reads as a
+   clickable surface. */
+.sessionRow {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   padding: 10px 12px;
   cursor: pointer;
   border-radius: 8px;
-  transition: background-color 120ms ease;
+  transition: background-color var(--dsh-tb-motion);
 }
 
-.executionRow + .executionRow {
-  border-top: 1px solid var(--dsw-alias-separator-primary);
+.sessionRow + .sessionRow {
+  border-top: var(--dsh-tb-separator);
 }
 
 /* Row-level attention: the waiting signal stays on its amber "处理" button;
@@ -1369,27 +1372,27 @@ textarea.input {
    breathing inner halo (no per-row border, no flat tint; the halo is clipped
    inside the row and reads as light). Defined before the hover rule so hover
    (later, equal specificity) still wins while the pointer is over the row. */
-.executionRow[data-unviewed='true'] {
+.sessionRow[data-unviewed='true'] {
   animation: dshTbBreathHalo var(--dsh-tb-breath) infinite;
 }
 
-.executionRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+.sessionRow:hover {
+  background: var(--dsh-tb-hover);
 }
 
-.executionRow:focus-visible {
+.sessionRow:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: -2px;
 }
 
-.executionRowTop {
+.sessionRowTop {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-.executionIndex {
+.sessionRowIndex {
   flex: none;
   font-size: 12px;
   font-weight: 500;
@@ -1397,10 +1400,10 @@ textarea.input {
   font-variant-numeric: tabular-nums;
 }
 
-/* Right-aligned action group of an execution row (查看会话 / 隐藏): the one
-   place the row's actions sit; the shared ghost button inside matches every
-   other session surface. */
-.executionRowActions {
+/* Right-aligned action group of a session row (查看会话 / 处理 / 隐藏): the
+   one place the row's actions sit; the shared ghost button inside matches
+   every other session surface. */
+.sessionRowActions {
   flex: none;
   margin-left: auto;
   display: inline-flex;
@@ -1409,7 +1412,7 @@ textarea.input {
 }
 
 /* Prominent "处理" button when session is waiting for user action */
-.executionHandle {
+.sessionRowHandle {
   flex: none;
   padding: 4px 12px;
   font-size: 12px;
@@ -1423,12 +1426,12 @@ textarea.input {
   transition: background 120ms ease;
 }
 
-.executionHandle:hover {
+.sessionRowHandle:hover {
   background: var(--dsw-alias-state-warn-primary-hover, var(--dsw-alias-state-warn-primary));
   filter: brightness(1.1);
 }
 
-.executionTimes {
+.sessionRowMeta {
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
   overflow-wrap: anywhere;
@@ -1533,41 +1536,11 @@ textarea.input {
 
 /* --- linked sessions (bound task's live view of its native source) --------- */
 
-.linkedList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-md);
-  overflow: hidden;
-}
+/* The linked row's identity slot inside the shared SessionRow top line:
+   link icon + session title + workspace capsule (see .sessionRow above for
+   the shared surface). */
 
-.linkedRow + .linkedRow {
-  border-top: var(--dsh-tb-separator);
-}
-
-.linkedRow {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background var(--dsh-tb-motion);
-}
-
-.linkedRow:hover {
-  background: var(--dsh-tb-hover);
-}
-
-/* The row is a clickable surface (opens the session's detail panel); the
-   keyboard ring matches the execution rows. */
-.linkedRow:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
-  outline-offset: -2px;
-}
-
-.linkedRowTitle {
+.sessionRowTitle {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1577,19 +1550,19 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 
-.linkedRowIcon {
+.sessionRowIcon {
   flex: none;
   color: var(--dsh-tb-text-3);
 }
 
-.linkedRowName {
+.sessionRowName {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.linkedRowWorkspace {
+.sessionRowWorkspace {
   flex: none;
   font-size: 11px;
   font-weight: 400;
@@ -1600,21 +1573,6 @@ textarea.input {
   background: var(--dsh-tb-surface-sunken);
   border-radius: 999px;
   white-space: nowrap;
-}
-
-.linkedRowMeta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-}
-
-.linkedRowTime {
-  flex: none;
-  color: var(--dsh-tb-text-3);
-  font-variant-numeric: tabular-nums;
 }
 
 .linkedActions {
@@ -1915,7 +1873,7 @@ textarea.input {
   .ghostButton,
   .dangerButton,
   .iconButton,
-  .executionRow,
+  .sessionRow,
   .scheduleMode,
   .slashMenuRow,
   .search,
@@ -1940,7 +1898,7 @@ textarea.input {
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--dsh-tb-attention) 35%, transparent);
   }
 
-  .executionRow[data-unviewed='true'] {
+  .sessionRow[data-unviewed='true'] {
     animation: none;
     box-shadow: inset 0 0 0 1px var(--dsh-tb-attention-alpha-soft);
   }
@@ -2098,7 +2056,7 @@ textarea.input {
 
 /* The rail head — context meter, session config, session facts: fixed and
    always visible, so a long comment thread can never push them away. */
-.reviewRailHead {
+.sessionRailHead {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2107,9 +2065,11 @@ textarea.input {
   border-bottom: var(--dsh-tb-separator);
 }
 
-/* The linked-session rail's scrollable middle: the head content scrolls
-   inside its own region while the composer stays pinned at the bottom
-   (flex: none) — a taller head can never squeeze the send button out. */
+/* The rail's scrollable middle — one scroll pattern for every session panel:
+   the linked-session rail's head content, or the review page's comment
+   list, scrolls inside its own region while the composer stays pinned at
+   the bottom (flex: none) — a taller head can never squeeze the send button
+   out. The composer's own top border separates the regions. */
 .sessionRailScroll {
   display: flex;
   flex-direction: column;
@@ -2118,19 +2078,6 @@ textarea.input {
   min-height: 0;
   overflow-y: auto;
   padding: 12px 12px 8px;
-  border-bottom: var(--dsh-tb-separator);
-}
-
-/* The comment list scrolls in its own region below the fixed thread header
-   (title + count) and above the composer — the scrollbar covers exactly the
-   list, never the header or the composer. */
-.reviewRailThread {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 12px;
 }
 
 /* The conversation region scrolls on its own — a long transcript never
@@ -2607,7 +2554,7 @@ textarea.input {
     border-top: 1px solid var(--dsw-alias-separator-primary);
   }
 
-  .reviewRailHead {
+  .sessionRailHead {
     max-height: 34vh;
     overflow-y: auto;
   }
@@ -2616,10 +2563,5 @@ textarea.input {
      moves to the wrapper so there is exactly one scrollbar, never two. */
   .sessionRailScroll {
     max-height: 34vh;
-  }
-
-  .sessionRailScroll .reviewRailHead {
-    max-height: none;
-    overflow: visible;
   }
 }

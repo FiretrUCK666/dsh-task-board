@@ -227,7 +227,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               + session facts — always visible no matter how long the comment
               thread grows), then the comment thread in its own scroll region,
               and the composer pinned at the rail's bottom. */}
-          <div className={css.reviewRailHead}>
+          <div className={css.sessionRailHead}>
           <SessionRailHead
             sessionId={sessionId}
             controller={controller}
@@ -251,7 +251,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 the rail head and the count above stay visible. Saved or queued
                 rounds (not yet injected) can be cancelled; injected ones show
                 their live state. New rounds follow while at the bottom. */}
-            <div className={css.reviewRailThread} ref={threadScrollRef} onScroll={onThreadScroll}>
+            <div className={css.sessionRailScroll} ref={threadScrollRef} onScroll={onThreadScroll}>
             <div className={css.reviewCommentList}>
               {comments.length === 0 ? (
                 <p className={css.detailText}>{t('review.noComments')}</p>

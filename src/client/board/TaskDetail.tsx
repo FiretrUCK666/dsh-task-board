@@ -22,8 +22,9 @@ import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
+import { SessionRow } from './SessionRow.tsx'
 import { commentsOf } from './comment-thread.ts'
-import { AttentionDot, Button, Icon, Section, Switch } from './ui.tsx'
+import { Button, Icon, Section, Switch } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
 
 /** Status → shared-chip color (detail badge). */
@@ -83,7 +84,9 @@ function sessionStateKey(state: 'running' | 'waiting' | 'succeeded' | 'failed' |
  *  native "view session" jump stays on the row. Re-running is one action on
  *  the detail footer — it always starts a fresh round with the task's
  *  current prompt, so rows carry no rerun button (a row's "rerun" would be
- *  ambiguous next to comments). */
+ *  ambiguous next to comments). The row is an execution-kind SessionRow:
+ *  the kind's data is computed here, the row skeleton is shared with the
+ *  linked-session rows. */
 function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview, onOpen, onHide }: {
   execution: ExecutionRecord
   /** 1-based execution sequence (comment rounds are not part of the list). */
@@ -110,95 +113,72 @@ function ExecutionRow({ execution, index, task, waitingKind, cruiseOn, onReview,
   // The row's unread reminder: the session (run + comments) has content
   // newer than the last time its review page was opened.
   const unviewed = executionUnviewed(task, execution)
+  const sessionId = execution.sessionId
   return (
-    <li
-      className={css.executionRow}
-      data-state={session.state}
-      data-waiting={session.state === 'waiting' ? 'true' : undefined}
-      data-unviewed={unviewed ? 'true' : undefined}
-      onClick={onReview}
-      role="button"
-      tabIndex={0}
-      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onReview() } }}
-    >
-      <div className={css.executionRowTop}>
-        {unviewed && <AttentionDot title={t('detail.unviewedTitle')} />}
-        <span className={css.executionIndex}>{t('detail.executionNo', { n: String(index) })}</span>
-        <Chip kind={stateToChipKind(session.state)}>
-          {(session.state === 'running' || session.state === 'waiting') && <span className={css.spinner} aria-hidden="true" />}
-          {t(sessionStateKey(session.state, session.waitingKind))}
-        </Chip>
-        {/* The row's actions share the board's ghost grammar with every
-            other "查看会话" surface (linked rows, refinement, review page);
-            only the waiting state keeps its amber attention "处理" button. */}
-        <span className={css.executionRowActions}>
-          {execution.sessionId !== undefined && (
-            session.state === 'waiting' ? (
-              <button
-                type="button"
-                className={css.executionHandle}
-                onClick={event => { event.stopPropagation(); onOpen(execution.sessionId as string) }}
-                title={execution.sessionId}
-              >
-                {t('detail.handle')} →
-              </button>
-            ) : (
-              <Button
-                onClick={event => { event.stopPropagation(); onOpen(execution.sessionId as string) }}
-                title={execution.sessionId}
-              >
-                {t('detail.viewSession')} →
-              </Button>
-            )
+    <SessionRow
+      kind="execution"
+      state={session.state}
+      chip={{
+        kind: stateToChipKind(session.state),
+        label: t(sessionStateKey(session.state, session.waitingKind)),
+        spinner: isActive,
+      }}
+      leading={
+        <span className={css.sessionRowIndex}>{t('detail.executionNo', { n: String(index) })}</span>
+      }
+      meta={
+        <>
+          {t('detail.executionStarted')} {formatDateTime(times.startedAt)}
+          {' · '}
+          {t('detail.executionEnded')} {times.endedAt !== undefined ? formatDateTime(times.endedAt) : '—'}
+          {times.duration !== undefined && (
+            <> · {t('detail.duration', { d: formatDuration(times.duration) })}</>
           )}
-          <button
-            type="button"
-            className={css.rowHide}
-            onClick={event => { event.stopPropagation(); onHide() }}
-            title={t('detail.hideRow')}
-          >
-            {t('detail.hide')}
-          </button>
-        </span>
-      </div>
-      <span className={css.executionTimes}>
-        {t('detail.executionStarted')} {formatDateTime(times.startedAt)}
-        {' · '}
-        {t('detail.executionEnded')} {times.endedAt !== undefined ? formatDateTime(times.endedAt) : '—'}
-        {times.duration !== undefined && (
-          <> · {t('detail.duration', { d: formatDuration(times.duration) })}</>
-        )}
-      </span>
-      {/* The comment summary: how many comments, the latest one and when —
-          visible without opening the review page. */}
-      {latestComment !== undefined && (
-        <span className={css.executionComments} title={latestComment.round.comment}>
-          <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
-          <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latestComment.round.comment ?? '' })}</span>
-          <span className={css.executionCommentsTime}>{formatTime(latestComment.round.startedAt)}</span>
-        </span>
-      )}
-      {/* Only show dynamics when session is active (reduce clutter for settled executions). */}
-      {isActive && (
-        <span className={css.executionDynamics}>
-          <span className={css.executionDynamicsLabel}>
-            {session.state === 'waiting'
-              ? t('detail.handleHint', { kind: t(`waiting.${session.waitingKind}` as 'waiting.approval') })
-              : t('detail.sessionActive')}
-          </span>
-        </span>
-      )}
-      {execution.error !== undefined && execution.error !== '' && (
-        <span className={css.executionError}>{execution.error}</span>
-      )}
-    </li>
+        </>
+      }
+      footer={
+        <>
+          {/* The comment summary: how many comments, the latest one and when —
+              visible without opening the review page. */}
+          {latestComment !== undefined && (
+            <span className={css.executionComments} title={latestComment.round.comment}>
+              <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
+              <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latestComment.round.comment ?? '' })}</span>
+              <span className={css.executionCommentsTime}>{formatTime(latestComment.round.startedAt)}</span>
+            </span>
+          )}
+          {/* Only show dynamics when session is active (reduce clutter for settled executions). */}
+          {isActive && (
+            <span className={css.executionDynamics}>
+              <span className={css.executionDynamicsLabel}>
+                {session.state === 'waiting'
+                  ? t('detail.handleHint', { kind: t(`waiting.${session.waitingKind}` as 'waiting.approval') })
+                  : t('detail.sessionActive')}
+              </span>
+            </span>
+          )}
+          {execution.error !== undefined && execution.error !== '' && (
+            <span className={css.executionError}>{execution.error}</span>
+          )}
+        </>
+      }
+      unviewed={unviewed}
+      unviewedTitle={t('detail.unviewedTitle')}
+      handle={session.state === 'waiting' && sessionId !== undefined ? t('detail.handle') : undefined}
+      sessionId={sessionId}
+      onActivate={onReview}
+      onOpenSession={() => { if (sessionId !== undefined) onOpen(sessionId) }}
+      onHide={onHide}
+      hideTitle={t('detail.hideRow')}
+    />
   )
 }
 
 /** One linked-session row + its live status chip, rendered in the linked
  *  section. The whole row opens the session's detail panel (same shell as
  *  the execution review page, read-only); the row's own actions stay on the
- *  row and never bubble into the click. */
+ *  row and never bubble into the click. The row is a linked-kind SessionRow:
+ *  same skeleton as the execution rows, with the kind's data computed here. */
 function LinkedRow({ row, task, controller, onOpen }: {
   row: import('../../core/linked-sessions.ts').LinkedSessionRow
   task: TaskRecord
@@ -206,49 +186,37 @@ function LinkedRow({ row, task, controller, onOpen }: {
   onOpen: () => void
 }) {
   const waiting = row.pendingInteraction
-  const stateChip = waiting !== undefined
-    ? { kind: 'warn' as const, label: t(`waiting.${waiting}` as 'waiting.approval') }
+  const chip = waiting !== undefined
+    ? { kind: 'warn' as const, label: t(`waiting.${waiting}` as 'waiting.approval'), spinner: true }
     : row.running
-      ? { kind: 'warn' as const, label: t('detail.result.running') }
+      ? { kind: 'warn' as const, label: t('detail.result.running'), spinner: true }
       : row.completed
         ? { kind: 'success' as const, label: t('detail.linkedDone') }
         : undefined
   return (
-    <li
-      className={css.linkedRow}
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen() } }}
-    >
-      <span className={css.linkedRowTitle}>
-        <Icon name="link" className={css.linkedRowIcon} />
-        <span className={css.linkedRowName} title={row.title}>{row.title}</span>
-        {row.workspaceLabel !== undefined && row.workspaceLabel !== row.title && (
-          <span className={css.linkedRowWorkspace}>{row.workspaceLabel}</span>
-        )}
-      </span>
-      <span className={css.linkedRowMeta}>
-        {stateChip !== undefined && (
-          <Chip kind={stateChip.kind}>
-            {(row.running || waiting !== undefined) && <span className={css.spinner} aria-hidden="true" />}
-            {stateChip.label}
-          </Chip>
-        )}
-        <span className={css.linkedRowTime}>{formatTime(row.updatedAt)}</span>
-        <Button onClick={event => { event.stopPropagation(); controller.openSession(row.sessionId) }}>
-          {t('detail.viewSession')} →
-        </Button>
-        <button
-          type="button"
-          className={css.rowHide}
-          onClick={event => { event.stopPropagation(); controller.hideTaskRow(task.id, 'sessions', row.sessionId) }}
-          title={t('detail.hideRow')}
-        >
-          {t('detail.hide')}
-        </button>
-      </span>
-    </li>
+    <SessionRow
+      kind="linked"
+      chip={chip}
+      leading={
+        <span className={css.sessionRowTitle}>
+          <Icon name="link" className={css.sessionRowIcon} />
+          <span className={css.sessionRowName} title={row.title}>{row.title}</span>
+          {row.workspaceLabel !== undefined && row.workspaceLabel !== row.title && (
+            <span className={css.sessionRowWorkspace}>{row.workspaceLabel}</span>
+          )}
+        </span>
+      }
+      meta={
+        <>
+          {t('detail.sessionUpdated')} {formatDateTime(row.updatedAt)}
+        </>
+      }
+      sessionId={row.sessionId}
+      onActivate={onOpen}
+      onOpenSession={() => { controller.openSession(row.sessionId) }}
+      onHide={() => { controller.hideTaskRow(task.id, 'sessions', row.sessionId) }}
+      hideTitle={t('detail.hideRow')}
+    />
   )
 }
 
@@ -272,7 +240,7 @@ function LinkedSection({ controller, task, onOpenSession }: {
       {rows.length === 0 ? (
         <p className={css.detailText}>{t('detail.linkedEmpty')}</p>
       ) : (
-        <ul className={css.linkedList}>
+        <ul className={css.sessionList}>
           {rows.map(row => (
             <LinkedRow
               key={row.sessionId}
@@ -774,7 +742,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
                 {plainRunsOf(current).length > 0 ? t('detail.executionHiddenAll') : t('detail.noExecution')}
               </p>
             ) : (
-              <ul className={css.executionList}>
+              <ul className={css.sessionList}>
                 {[...visibleRuns].reverse().map(execution => (
                   <ExecutionRow
                     key={execution.id}

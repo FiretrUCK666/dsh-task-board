@@ -458,7 +458,7 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
 /**
  * The shared rail head: context meter + live config editor + session facts,
  * composed in the order every session panel shows them. Callers wrap it in
- * their rail layout (the fixed `.reviewRailHead` block) and pass what they
+ * their rail layout (the fixed `.sessionRailHead` block) and pass what they
  * read from their transcript hook (projections via onResult, folded lines).
  * The permission switcher's projection mapping is derived HERE — one source
  * for every panel (a caller-level mapping is how the linked panel lost it).
