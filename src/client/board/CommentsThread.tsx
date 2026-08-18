@@ -33,6 +33,9 @@ export function CommentsThread({ task, views, onCancel }: {
               {view.round.comment}
             </span>
             <span className={css.reviewCommentMeta}>
+              {/* 直发轮 = 用户直接发给原生会话的消息记录：只读、已送达、不驱动。
+                  与驱动轮同一条线程，用安静副标签区分身份（研究：永不只靠颜色）。 */}
+              {view.round.direct === true && <span className={css.reviewCommentDirect}>{t('review.commentDirect')}</span>}
               <Chip kind={commentKindOf(view.state)}>
                 {view.state === 'queued'
                   ? t('review.commentQueued', { n: String(position) })

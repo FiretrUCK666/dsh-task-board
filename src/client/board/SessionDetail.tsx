@@ -111,10 +111,12 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     }
     // Direct: the message goes to the native session immediately (exactly as
     // if typed in its own conversation) — no execution record, no dispatcher.
+    // The sent line is recorded as a direct round in this session's thread,
+    // so it stays visible next to drive comments and execution comments.
     if (directUnavailable) return
     setBusy(true)
     setSendError(undefined)
-    void controller.sendSessionMessage(sessionId, text).then(result => {
+    void controller.sendSessionMessage(task.id, sessionId, text).then(result => {
       setBusy(false)
       if (result.ok) {
         setDraft('')

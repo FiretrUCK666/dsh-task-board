@@ -7,6 +7,7 @@ import { BoardController, type ControllerDeps } from '../src/core/controller.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
 import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
+import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -1649,6 +1650,30 @@ describe('linked sessions & bind', () => {
     expect(controller.getSnapshot().tasks).toHaveLength(2)
   })
 
+  it('sendSessionMessage records a direct round into the session thread (read-only, never drives)', async () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub, {
+      sessionMessage: async () => ({ ok: true as const }),
+    })
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    await controller.sendSessionMessage(task.id, 's-1', ' 直发一句 ')
+    const round = store.load()[0].executions[0]
+    expect(round).toMatchObject({ sessionId: 's-1', comment: '直发一句', direct: true, result: 'succeeded' })
+    expect(round.injectedAt).toBeUndefined()
+    expect(round.endedAt).toBeDefined()
+    // Not driven: nothing launched, task state untouched, appears in the thread.
+    expect(stub.runCalls).toHaveLength(0)
+    expect(store.load()[0].status).toBe('todo')
+    expect(sessionCommentsOf(store.load()[0], 's-1', true).map(view => view.round.id)).toEqual([round.id])
+    // A failed send records nothing.
+    const { controller: c2, store: s2 } = makeController(stub, {
+      sessionMessage: async () => ({ ok: false as const, error: 'boom' }),
+    })
+    const t2 = c2.createTask({ title: 'y', description: '', prompt: '' })!
+    await c2.sendSessionMessage(t2.id, 's-2', '失败句')
+    expect(s2.load()[0].executions).toHaveLength(0)
+  })
+
   it('unbindTask drops the live binding and persists', () => {
     const { controller, store } = makeController()
     const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
@@ -1712,8 +1737,9 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
         return { ok: true as const }
       },
     })
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     expect(controller.directMessageAvailable()).toBe(true)
-    await expect(controller.sendSessionMessage('s-1', '  继续   ')).resolves.toEqual({ ok: true })
+    await expect(controller.sendSessionMessage(task.id, 's-1', '  继续   ')).resolves.toEqual({ ok: true })
     expect(sent).toEqual(['s-1:继续'])
   })
 
@@ -1732,9 +1758,10 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
       },
     })
     // Matched command: executed, never sent as text.
-    await expect(controller.sendSessionMessage('s-1', '/plan ok')).resolves.toEqual({ ok: true })
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    await expect(controller.sendSessionMessage(task.id, 's-1', '/plan ok')).resolves.toEqual({ ok: true })
     // Unknown command: the native default-sink delivers the line as text.
-    await expect(controller.sendSessionMessage('s-1', '/nope x')).resolves.toEqual({ ok: true })
+    await expect(controller.sendSessionMessage(task.id, 's-1', '/nope x')).resolves.toEqual({ ok: true })
     expect(sent).toEqual(['command:/plan ok', 'command:/nope x', 'text:s-1:/nope x'])
   })
 
@@ -1743,17 +1770,19 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
       sessionMessage: async () => ({ ok: false as const, error: 'session gone' }),
       sessionCommand: async () => ({ ok: false as const, error: 'command rejected' }),
     })
-    await expect(controller.sendSessionMessage('s-1', 'hi')).resolves.toEqual({ ok: false, error: 'session gone' })
-    await expect(controller.sendSessionMessage('s-1', '/perm read-only')).resolves.toEqual({ ok: false, error: 'command rejected' })
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    await expect(controller.sendSessionMessage(task.id, 's-1', 'hi')).resolves.toEqual({ ok: false, error: 'session gone' })
+    await expect(controller.sendSessionMessage(task.id, 's-1', '/perm read-only')).resolves.toEqual({ ok: false, error: 'command rejected' })
   })
 
   it('degrades gracefully when the direct faces are absent', async () => {
     const { controller } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     expect(controller.directMessageAvailable()).toBe(false)
-    await expect(controller.sendSessionMessage('s-1', 'hi')).resolves.toEqual({ ok: false, error: 'direct message unavailable' })
+    await expect(controller.sendSessionMessage(task.id, 's-1', 'hi')).resolves.toEqual({ ok: false, error: 'direct message unavailable' })
     // Without a command face, a slash line degrades to the text path — which
     // is also absent here, so it reports unavailable (never throws).
-    await expect(controller.sendSessionMessage('s-1', '/x')).resolves.toEqual({ ok: false, error: 'direct message unavailable' })
+    await expect(controller.sendSessionMessage(task.id, 's-1', '/x')).resolves.toEqual({ ok: false, error: 'direct message unavailable' })
   })
 
   it('rejects blank messages without calling any face', async () => {
@@ -1761,7 +1790,8 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
     const { controller } = makeController(new StubExec(), {
       sessionMessage: async () => { called = true; return { ok: true as const } },
     })
-    await expect(controller.sendSessionMessage('s-1', '   ')).resolves.toEqual({ ok: false, error: 'empty message' })
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    await expect(controller.sendSessionMessage(task.id, 's-1', '   ')).resolves.toEqual({ ok: false, error: 'empty message' })
     expect(called).toBe(false)
   })
 })

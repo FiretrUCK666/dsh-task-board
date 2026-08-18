@@ -72,6 +72,15 @@ export interface ExecutionRecord {
    */
   sessionAnchor?: string
   /**
+   * A direct-send round: a message the user sent straight to the native
+   * session (直发模式) — recorded so it appears in the session's comment
+   * thread next to drive comments and execution comments, but never queued,
+   * injected or driven (it is already delivered: `endedAt` and `result` are
+   * set at creation, there is no `injectedAt`). Purely a thread record —
+   * task state, dispatcher and queues ignore it.
+   */
+  direct?: boolean
+  /**
    * A requirement-refinement round: one turn in the task's bound refine
    * session (see `TaskRecord.refineSessionId`) that researches and fleshes
    * out the task's prompt. Distinct from plain runs and comment rounds: it
@@ -410,6 +419,33 @@ export function newCommentRound(options: {
     ...(options.command === true ? { command: true } : {}),
     ...(options.parentExecutionId !== undefined ? { parentExecutionId: options.parentExecutionId } : {}),
     ...(options.sessionAnchor !== undefined ? { sessionAnchor: options.sessionAnchor } : {}),
+  }
+}
+
+/**
+ * Create a direct-send round (直发模式): the message was already delivered to
+ * the native session, so the round is settled-succeeded at birth — it exists
+ * to make the line visible in the session's comment thread (next to drive
+ * comments and execution comments), never to queue or drive anything.
+ */
+export function newDirectRound(options: {
+  id: string
+  now: number
+  /** The trimmed message text that was sent. */
+  text: string
+  /** The native session the message was sent to. */
+  sessionId: string
+}): ExecutionRecord {
+  return {
+    id: options.id,
+    sessionId: options.sessionId,
+    startedAt: options.now,
+    endedAt: options.now,
+    result: 'succeeded',
+    error: undefined,
+    comment: options.text,
+    sessionAnchor: options.sessionId,
+    direct: true,
   }
 }
 

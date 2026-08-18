@@ -20,7 +20,7 @@ import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -1151,6 +1151,13 @@ export class BoardController {
    * own conversation (host `sessions.prompt` / command registry), never
    * creating execution records, never entering the dispatcher, never
    * touching task state, cruise, chain or schedules.
+   *
+   * The one recording: on success a DIRECT round is appended to the task —
+   * the sent line becomes visible in the session's comment thread next to
+   * drive comments and execution comments (one shared thread per session),
+   * while remaining purely a record: never queued, never injected, never
+   * driving the task.
+   * @param taskId - the task owning the session (its thread records the line).
    * @param sessionId - the native session to address.
    * @param text - the message; a leading '/' routes through the command
    *   registry (unmatched lines fall back to plain text, matching the
@@ -1158,25 +1165,47 @@ export class BoardController {
    * @returns ok, or ok:false with an error string (faces absent, session
    *   gone, prompt rejected).
    */
-  sendSessionMessage(sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  sendSessionMessage(taskId: string, sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
     const trimmed = text.trim()
     if (trimmed === '') return Promise.resolve({ ok: false, error: 'empty message' })
+    const send = this.sendRawMessage(sessionId, trimmed)
+    return send.then(result => {
+      if (!result.ok) return result
+      this.tasks = this.tasks.map(task => task.id === taskId
+        ? {
+            ...task,
+            updatedAt: this.now(),
+            executions: [...task.executions, newDirectRound({
+              id: this.uuid(),
+              now: this.now(),
+              text: trimmed,
+              sessionId,
+            })],
+          }
+        : task)
+      this.persistAndNotify()
+      return result
+    })
+  }
+
+  /** The raw host send for a direct line (slash-aware, no recording). */
+  private sendRawMessage(sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
     const direct = this.deps.sessionMessage
-    if (trimmed.startsWith('/')) {
+    if (text.startsWith('/')) {
       const command = this.deps.sessionCommand
       if (command !== undefined) {
-        return command(sessionId, trimmed).then(result => {
+        return command(sessionId, text).then(result => {
           if (!result.ok) return { ok: false as const, error: result.error }
           if (result.matched) return { ok: true as const }
           // Unknown command: the native default-sink — deliver the line as
           // plain text (never drop a user's input).
           if (direct === undefined) return { ok: false as const, error: 'direct message unavailable' }
-          return direct(sessionId, trimmed)
+          return direct(sessionId, text)
         })
       }
     }
     if (direct === undefined) return Promise.resolve({ ok: false, error: 'direct message unavailable' })
-    return direct(sessionId, trimmed)
+    return direct(sessionId, text)
   }
 
   // --- comments ---------------------------------------------------------------

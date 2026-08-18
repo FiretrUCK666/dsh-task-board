@@ -1,7 +1,7 @@
 /** The comment-thread pure logic: one session-scoped thread model, display
  *  state, and the task-level queue position behind the session chips. */
 import { describe, expect, it } from 'vitest'
-import { createTask, settleExecution, startExecution, type ExecutionRecord, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, newDirectRound, settleExecution, startExecution, type ExecutionRecord, type TaskRecord } from '../src/core/tasks.ts'
 import { commentKindOf, commentRoundState, commentStateKey, queuePositionOf, sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 
 const NOW = 1_700_000_000_000
@@ -126,6 +126,22 @@ describe('sessionCommentsOf (session-scoped thread)', () => {
     // regardless of the cruise.
     expect(sessionCommentsOf(task, 's-1', false).map(view => view.state)).toEqual(['saved', 'running'])
     expect(sessionCommentsOf(task, 's-1', true).map(view => view.state)).toEqual(['queued', 'running'])
+  })
+
+  it('includes direct-send rounds (already delivered, settled-succeeded)', () => {
+    const task = {
+      ...withTwoRuns(),
+      executions: [
+        ...withTwoRuns().executions,
+        newDirectRound({ id: 'd1', now: NOW + 10, text: '直发一句', sessionId: 's-1' }),
+      ],
+    }
+    const views = sessionCommentsOf(task, 's-1', true)
+    expect(views.map(view => view.round.id)).toEqual(['d1'])
+    expect(views[0].round.direct).toBe(true)
+    // Settled at birth: no queue position, no pending count impact.
+    expect(views[0].state).toBe('succeeded')
+    expect(queuePositionOf(task, 'd1')).toBe(0)
   })
 })
 

@@ -2668,6 +2668,21 @@ textarea.input {
   color: var(--dsw-alias-state-business-primary);
 }
 
+/* The quiet "直发" identity tag of a direct-send round: it shares the thread
+   with drive comments but is a read-only record — never queued, never
+   driving. A tertiary label with a hairline frame; never a colored badge
+   (identity via label, not color alone). */
+.reviewCommentDirect {
+  flex: none;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-3);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 /* The outcome text of a settled command round (successful commands carry
    their registry text here, e.g. `/permission read-only` → "preset
    read-only"). Succeeded outcomes render muted; failed ones keep the error
