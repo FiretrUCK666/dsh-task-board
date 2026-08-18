@@ -19,7 +19,7 @@ import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource }
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -1097,17 +1097,53 @@ export class BoardController {
     if (task === undefined || task.status === 'done') return undefined
     const execution = task.executions.find(candidate => candidate.id === executionId)
     if (execution === undefined || execution.sessionId === undefined || execution.endedAt === undefined) return undefined
-    const round: ExecutionRecord = {
+    const round = newCommentRound({
       id: this.uuid(),
+      now: this.now(),
+      text: trimmed,
+      command,
       sessionId: execution.sessionId,
-      startedAt: this.now(),
-      endedAt: undefined,
-      result: undefined,
-      error: undefined,
-      comment: trimmed,
       parentExecutionId: execution.id,
-      ...command ? { command: true } : {},
-    }
+    })
+    this.tasks = this.tasks.map(candidate => candidate.id === taskId
+      ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
+      : candidate)
+    this.persistAndNotify()
+    return round
+  }
+
+  /**
+   * Save a comment continuation against a linked session — the drive-mode
+   * composer of the linked-session panel. Semantics are identical to
+   * {@link submitComment}: the session-anchored round enters the task's
+   * per-task FIFO comment queue and the shared dispatcher injects it into
+   * the linked session through the same concurrency budget, exactly like a
+   * comment submitted from an execution's review page. The only difference
+   * is the anchor (`sessionAnchor` instead of `parentExecutionId`), which
+   * puts the round in the linked session's own comment thread and reuses
+   * that session instead of a settled execution's. A completed task cannot
+   * be commented (its work is done); every other state can — a running
+   * task's comment queues for when its current round settles.
+   * @param taskId - the task owning the linked session.
+   * @param sessionId - the linked session to continue (never created).
+   * @param text - the comment to send to the session's agent.
+   * @param command - whether the comment is a slash-command line.
+   * @returns the queued comment round, or undefined when rejected (unknown
+   *   task, completed task).
+   */
+  submitSessionComment(taskId: string, sessionId: string, text: string, command = false): ExecutionRecord | undefined {
+    const trimmed = text.trim()
+    if (trimmed === '') return undefined
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined || task.status === 'done') return undefined
+    const round = newCommentRound({
+      id: this.uuid(),
+      now: this.now(),
+      text: trimmed,
+      command,
+      sessionId,
+      sessionAnchor: sessionId,
+    })
     this.tasks = this.tasks.map(candidate => candidate.id === taskId
       ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
       : candidate)

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createTask, settleExecution, startExecution, type ExecutionRecord, type TaskRecord } from '../src/core/tasks.ts'
-import { commentKindOf, commentRoundState, commentStateKey, commentsOf, queuePositionOf } from '../src/client/board/comment-thread.ts'
+import { commentKindOf, commentRoundState, commentStateKey, commentsOf, queuePositionOf, sessionThreadOf } from '../src/client/board/comment-thread.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -102,6 +102,55 @@ describe('commentsOf attribution', () => {
     // The explicit parent wins over the session; a legacy round on s-9 would
     // not match e1.
     expect(commentsOf(task, e1(task), true).map(view => view.round.id)).toEqual(['c1'])
+  })
+
+  it('never shows session-anchored rounds on an execution page', () => {
+    const task = {
+      ...withTwoRuns(),
+      executions: [
+        ...withTwoRuns().executions,
+        // A session-anchored round whose session coincides with e1's.
+        commentRound({ id: 'driven', parentExecutionId: undefined, sessionId: 's-1', sessionAnchor: 's-1', startedAt: NOW + 10 }),
+        commentRound({ id: 'real', parentExecutionId: 'e1', startedAt: NOW + 11 }),
+      ],
+    }
+    // Only the execution-anchored round appears; the anchored one belongs to
+    // the linked session's own thread.
+    expect(commentsOf(task, e1(task), true).map(view => view.round.id)).toEqual(['real'])
+  })
+})
+
+describe('sessionThreadOf', () => {
+  it('shows only the rounds anchored to the given linked session', () => {
+    const task = {
+      ...withTwoRuns(),
+      executions: [
+        ...withTwoRuns().executions,
+        commentRound({ id: 'c1', parentExecutionId: 'e1', startedAt: NOW + 10 }),
+        commentRound({ id: 'driven', parentExecutionId: undefined, sessionId: 'linked-7', sessionAnchor: 'linked-7', startedAt: NOW + 11 }),
+        commentRound({ id: 'driven2', parentExecutionId: undefined, sessionId: 'linked-7', sessionAnchor: 'linked-7', startedAt: NOW + 12 }),
+        commentRound({ id: 'other', parentExecutionId: undefined, sessionId: 'linked-9', sessionAnchor: 'linked-9', startedAt: NOW + 13 }),
+      ],
+    }
+    expect(sessionThreadOf(task, 'linked-7', true).map(view => view.round.id)).toEqual(['driven', 'driven2'])
+    expect(sessionThreadOf(task, 'linked-9', true).map(view => view.round.id)).toEqual(['other'])
+    // A session with no anchored rounds shows an empty thread.
+    expect(sessionThreadOf(task, 's-1', true)).toEqual([])
+  })
+
+  it('derives display state through the shared comment state rule', () => {
+    const task = {
+      ...withTwoRuns(),
+      executions: [
+        ...withTwoRuns().executions,
+        commentRound({ id: 'saved', parentExecutionId: undefined, sessionId: 'linked-7', sessionAnchor: 'linked-7', startedAt: NOW + 11 }),
+        commentRound({ id: 'queued', parentExecutionId: undefined, sessionId: 'linked-7', sessionAnchor: 'linked-7', startedAt: NOW + 12, injectedAt: NOW + 13 }),
+      ],
+    }
+    // Cruise off → saved; cruise on → queued; an injected round is running
+    // regardless of the cruise.
+    expect(sessionThreadOf(task, 'linked-7', false).map(view => view.state)).toEqual(['saved', 'running'])
+    expect(sessionThreadOf(task, 'linked-7', true).map(view => view.state)).toEqual(['queued', 'running'])
   })
 })
 

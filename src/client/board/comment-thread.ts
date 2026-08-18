@@ -43,17 +43,35 @@ export function commentRoundState(round: ExecutionRecord, cruiseOn: boolean): Co
  * that run's page (its session is the one the review page continues), oldest
  * first. Rounds of other executions never appear here — each execution's
  * comments live on its own page. Legacy rounds without `parentExecutionId`
- * are attributed by the session they share with the run.
+ * are attributed by the session they share with the run; session-anchored
+ * rounds (submitted from a linked-session panel) never appear here — they
+ * live in {@link sessionThreadOf}.
  */
 export function commentsOf(task: TaskRecord, target: ExecutionRecord, cruiseOn: boolean): CommentView[] {
   return task.executions
     .filter((round): round is ExecutionRecord & { comment: string } => {
       if (round.comment === undefined) return false
       if (round.parentExecutionId !== undefined) return round.parentExecutionId === target.id
-      return round.sessionId !== undefined
+      return round.sessionAnchor === undefined
+        && round.sessionId !== undefined
         && target.sessionId !== undefined
         && round.sessionId === target.sessionId
     })
+    .map(round => ({ round, state: commentRoundState(round, cruiseOn) }))
+}
+
+/**
+ * The comment thread of one linked session: every comment round submitted
+ * from that session's panel (session-anchored, drive mode), oldest first —
+ * the session-anchored counterpart of {@link commentsOf}. A session-anchored
+ * round is a comment round like any other for the dispatcher (same queue,
+ * same injection); only its thread membership differs — it appears in the
+ * linked session's panel, never on an execution's review page.
+ */
+export function sessionThreadOf(task: TaskRecord, sessionId: string, cruiseOn: boolean): CommentView[] {
+  return task.executions
+    .filter((round): round is ExecutionRecord & { comment: string } =>
+      round.comment !== undefined && round.sessionAnchor === sessionId)
     .map(round => ({ round, state: commentRoundState(round, cruiseOn) }))
 }
 

@@ -61,6 +61,17 @@ export interface ExecutionRecord {
    */
   parentExecutionId?: string
   /**
+   * The linked session this comment round continues (submitted from a
+   * linked-session panel's drive-mode composer; `sessionId` points at the
+   * same session). The session-anchored counterpart of
+   * `parentExecutionId`: a round anchored this way has no parent execution
+   * — it keeps the linked session's conversation alive and drives the task
+   * exactly like any other comment round (same per-task FIFO queue, same
+   * dispatcher injection). Only comment rounds carry it, and a round never
+   * carries both anchors.
+   */
+  sessionAnchor?: string
+  /**
    * A requirement-refinement round: one turn in the task's bound refine
    * session (see `TaskRecord.refineSessionId`) that researches and fleshes
    * out the task's prompt. Distinct from plain runs and comment rounds: it
@@ -374,6 +385,43 @@ export function startExecution(
   return {
     task: { ...task, status: 'running', updatedAt: now, executions: [...task.executions, execution] },
     execution,
+  }
+}
+
+/**
+ * Create a new comment-continuation round (pure): the single factory for
+ * both comment anchors. An execution-anchored comment (`parentExecutionId`)
+ * continues a settled run and reuses its session; a session-anchored
+ * comment (`sessionAnchor`) continues a linked session and reuses that
+ * session. Either way the round carries the session id it will be injected
+ * into, so the dispatcher's eligibility scan and the injection hand-off work
+ * unchanged — one queue, one model, two surfaces.
+ */
+export function newCommentRound(options: {
+  id: string
+  now: number
+  /** The trimmed comment text. */
+  text: string
+  /** Whether the line is a slash command rather than a turn. */
+  command?: boolean
+  /** The session the comment will be injected into (reused, never created). */
+  sessionId: string
+  /** The settled execution this comment continues (execution-anchored). */
+  parentExecutionId?: string
+  /** The linked session this comment continues (session-anchored). */
+  sessionAnchor?: string
+}): ExecutionRecord {
+  return {
+    id: options.id,
+    sessionId: options.sessionId,
+    startedAt: options.now,
+    endedAt: undefined,
+    result: undefined,
+    error: undefined,
+    comment: options.text,
+    ...(options.command === true ? { command: true } : {}),
+    ...(options.parentExecutionId !== undefined ? { parentExecutionId: options.parentExecutionId } : {}),
+    ...(options.sessionAnchor !== undefined ? { sessionAnchor: options.sessionAnchor } : {}),
   }
 }
 

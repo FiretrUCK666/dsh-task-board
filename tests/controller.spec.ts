@@ -1031,6 +1031,102 @@ describe('comments', () => {
   })
 })
 
+describe('submitSessionComment (drive-mode linked-session comments)', () => {
+  /** A task with one settled execution in review (session s-1). */
+  async function settledReviewTask(stub: StubExec, controller: BoardController): Promise<{ taskId: string; executionId: string }> {
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    await controller.runTask(task.id)
+    const run = stub.runCalls[stub.runCalls.length - 1]
+    run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-1' })
+    run.fire({ kind: 'settled', taskId: task.id, executionId: run.executionId, outcome: 'succeeded' })
+    return { taskId: task.id, executionId: run.executionId }
+  }
+
+  it('saves a session-anchored comment round; nothing injects while the cruise is off', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const round = controller.submitSessionComment(task.id, 'linked-7', ' 驱动一下 ')
+    expect(round).toBeDefined()
+    expect(round?.comment).toBe('驱动一下')
+    expect(round?.sessionId).toBe('linked-7')
+    expect(round?.sessionAnchor).toBe('linked-7')
+    expect(round?.parentExecutionId).toBeUndefined()
+    expect(store.load()[0].executions[0].sessionAnchor).toBe('linked-7')
+    expect(exec.commentCalls).toHaveLength(0)
+    expect(store.load()[0].status).toBe('todo')
+  })
+
+  it('rejects blank text, unknown tasks, and completed tasks', async () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    expect(controller.submitSessionComment(task.id, 'linked-7', '   ')).toBeUndefined()
+    expect(controller.submitSessionComment('ghost', 'linked-7', 'hi')).toBeUndefined()
+    controller.moveTask(task.id, 'done')
+    expect(controller.submitSessionComment(task.id, 'linked-7', '完成了还评？')).toBeUndefined()
+    expect(store.load()[0].executions).toEqual([])
+  })
+
+  it('injects the session-anchored comment into the linked session and settles into review', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    // A saved comment outranks a fresh cruise pickup: with the cruise off the
+    // round stays saved, and turning the cruise on injects it first (instead
+    // of starting a fresh run of the todo task).
+    controller.submitSessionComment(task.id, 'linked-7', '继续干')
+    expect(exec.commentCalls).toHaveLength(0)
+    controller.setCruiseEnabled(true)
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(exec.commentCalls[0].sessionId).toBe('linked-7')
+    expect(exec.commentCalls[0].text).toBe('继续干')
+    expect(store.load()[0].status).toBe('running')
+    exec.commentCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.commentCalls[0].executionId, outcome: 'succeeded' })
+    expect(store.load()[0].status).toBe('review')
+    expect(store.load()[0].executions[0].sessionAnchor).toBe('linked-7')
+    expect(store.load()[0].executions[0].injectedAt).toBeDefined()
+    expect(store.load()[0].executions[0].result).toBe('succeeded')
+  })
+
+  it('queues a session-anchored comment behind an execution-anchored one (per-task FIFO)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    // First an execution-anchored comment (cruise off, stays saved)…
+    controller.submitComment(taskId, executionId, '先从执行')
+    // …then a session-anchored one into a linked session.
+    controller.submitSessionComment(taskId, 'linked-7', '再驱动')
+    expect(store.load()[0].executions.filter(round => round.comment !== undefined)).toHaveLength(2)
+    // Cruise on → the earliest round injects first (FIFO).
+    controller.setCruiseEnabled(true)
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(exec.commentCalls[0].sessionId).toBe('s-1')
+    // It settles → the next pending round injects into the linked session.
+    exec.commentCalls[0].fire({ kind: 'settled', taskId, executionId: exec.commentCalls[0].executionId, outcome: 'succeeded' })
+    expect(exec.commentCalls).toHaveLength(2)
+    expect(exec.commentCalls[1].sessionId).toBe('linked-7')
+    expect(store.load()[0].status).toBe('running')
+  })
+
+  it('cancels a pending session-anchored comment but never an injected one', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const pending = controller.submitSessionComment(task.id, 'linked-7', '发错了')
+    expect(controller.cancelComment(pending!.id)).toBe(true)
+    expect(store.load()[0].executions).toEqual([])
+    // A saved comment outranks a fresh pickup: turn the cruise on only after
+    // saving, so it injects immediately and can no longer be cancelled.
+    const second = controller.submitSessionComment(task.id, 'linked-7', '又一条')
+    expect(second).toBeDefined()
+    expect(exec.commentCalls).toHaveLength(0)
+    controller.setCruiseEnabled(true)
+    expect(exec.commentCalls).toHaveLength(1)
+    expect(controller.cancelComment(second!.id)).toBe(false)
+  })
+})
+
 describe('auto-cruise', () => {
   it('defaults to off with a limit of 5 when nothing is stored', () => {
     const { controller } = makeController()

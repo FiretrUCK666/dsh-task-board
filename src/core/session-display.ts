@@ -35,7 +35,10 @@ export function sessionRoundsOf(task: TaskRecord, execution: ExecutionRecord): r
   const sid = execution.sessionId
   return task.executions.filter(round =>
     round.id === id ||
-    (sid !== undefined && round.sessionId === sid) ||
+    // Session-anchored rounds (submitted from a linked-session panel) belong
+    // to that session's own thread, never to an execution's review page —
+    // even when the anchored session id coincides with an execution's.
+    (sid !== undefined && round.sessionId === sid && round.sessionAnchor === undefined) ||
     round.parentExecutionId === id
   )
 }

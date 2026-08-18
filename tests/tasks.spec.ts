@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionLabel, hasHiddenRows, hasOpenRun, landingStatusOf, pendingCommentCount, plainRunsOf, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, createTask, disarmSchedule, executionLabel, hasHiddenRows, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -286,6 +286,37 @@ describe('executionLabel', () => {
     expect(executionLabel({ ...execution, endedAt: NOW, result: 'succeeded' })).toBe('succeeded')
     expect(executionLabel({ ...execution, endedAt: NOW, result: 'failed' })).toBe('failed')
     expect(executionLabel({ ...execution, endedAt: NOW, result: 'cancelled' })).toBe('cancelled')
+  })
+})
+
+describe('newCommentRound', () => {
+  it('builds an execution-anchored pending comment round', () => {
+    const round = newCommentRound({ id: 'c-1', now: NOW, text: '继续', sessionId: 's-1', parentExecutionId: 'e-1' })
+    expect(round.comment).toBe('继续')
+    expect(round.sessionId).toBe('s-1')
+    expect(round.parentExecutionId).toBe('e-1')
+    expect(round.sessionAnchor).toBeUndefined()
+    expect(round.endedAt).toBeUndefined()
+    expect(round.injectedAt).toBeUndefined()
+    expect(round.result).toBeUndefined()
+    expect(round.command).toBeUndefined()
+    expect(round.startedAt).toBe(NOW)
+  })
+
+  it('builds a session-anchored pending comment round for a linked session', () => {
+    const round = newCommentRound({ id: 'c-2', now: NOW, text: '驱动一下', sessionId: 'linked-7', sessionAnchor: 'linked-7' })
+    expect(round.comment).toBe('驱动一下')
+    expect(round.sessionId).toBe('linked-7')
+    expect(round.sessionAnchor).toBe('linked-7')
+    expect(round.parentExecutionId).toBeUndefined()
+    expect(round.endedAt).toBeUndefined()
+  })
+
+  it('flags slash-command rounds while plain text stays unflagged', () => {
+    const command = newCommentRound({ id: 'c-3', now: NOW, text: '/plan 干', command: true, sessionId: 's-1', parentExecutionId: 'e-1' })
+    expect(command.command).toBe(true)
+    const plain = newCommentRound({ id: 'c-4', now: NOW, text: '普通', sessionId: 's-1', parentExecutionId: 'e-1' })
+    expect(plain.command).toBeUndefined()
   })
 })
 

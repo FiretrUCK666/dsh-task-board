@@ -221,6 +221,25 @@ describe('sessionDisplay', () => {
       // is live regardless of what other sessions did.
       expect(result.state).toBe('running')
     })
+
+    it('ignores session-anchored rounds even when the session id coincides', () => {
+      // A drive-mode comment anchored to a linked session whose id happens to
+      // equal the execution's session must stay on the linked thread, never
+      // light up the execution's session group as live.
+      const exec = round('exec-1', { startedAt: 100, sessionId: 's1', endedAt: 150, result: 'succeeded', viewedAt: 150 })
+      const driven = round('c1', {
+        startedAt: 200,
+        sessionId: 's1',
+        sessionAnchor: 's1',
+        comment: '驱动',
+      })
+      const task = taskWith([exec, driven])
+      const result = sessionDisplay(task, exec, undefined)
+      // The anchored round is excluded: the execution settled, so its session
+      // is not live — a queued drive-mode comment never makes it look busy.
+      expect(result.state).toBe('succeeded')
+      expect(executionUnviewed(task, exec)).toBe(false)
+    })
   })
 
   describe('edge cases', () => {
