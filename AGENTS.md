@@ -267,12 +267,23 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 ### 核心层（`src/core/`，纯逻辑，与 UI 无关）
 
 `tasks.ts`（任务模型 + 状态机纯函数）、`schedule.ts`（cron 解析 + 下次运行时刻）、
-`scheduler.ts`（每分钟 tick，隐藏错过即跳过、进行中跳过）、`store.ts`（TaskStore +
-localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 +
-`session.prompt(queue)`；执行前按任务配置应用 agent preset 与权限（原生 `/permission`
-命令）；结算靠会话列表对账）、`controller.ts`（台账 + 视图状态 + 导航感知 +
-**统一并发调度器**）。
+`scheduler.ts`（每分钟 tick，隐藏错过即跳过、进行中跳过；开头调 `cruiseTick` 翻转巡航窗口）、
+`cruise.ts`（巡航窗口状态机：`effectiveEnabled`/`coveringWindow`/`applyManualToggle`/
+`sortWindows`）、`store.ts`（TaskStore + localStorage）、`execution.ts`
+（`connectWorkspace` 复用/新建空白会话 + `session.prompt(queue)`；执行前按任务配置应用
+agent preset 与权限（原生 `/permission` 命令）；结算靠会话列表对账）、`controller.ts`
+（台账 + 视图状态 + 导航感知 + **统一并发调度器**）。
 
+- **自动巡航（窗口模型，cruise.ts + controller）**：`CruiseState { enabled, limit, schedule:
+  CruiseWindow[] }`，`CruiseWindow = { startAt; endAt? }`；有效态 = `effectiveEnabled(state,
+  now)`（任一窗口覆盖当前时刻），**手动开 = 加一个无结束窗口**（从现在一直保持），**手动关 =
+  只关当前覆盖窗口**（未来窗口保留）——`applyManualToggle`；`setCruiseSchedule` 整体替换
+  窗口列表并按新表重算 enabled（注意用新 schedule 计算，别用旧 state）；`tickCruise(now)`
+  在窗口边界翻转（经 scheduler 的 `cruiseTick` 每分钟调用，持久化 + dispatch + notify）。
+  巡航只控制「取新任务」：已开始的任务不受关闭影响。UI：板头**两行命令栏**——行 1 =
+  返回对话 + 板名 + 状态条（正在跑 N · 排队 M）+ 巡航胶囊（Switch + 展开箭头，弹层 =
+  立即开关 + 并发 + 定时窗口编辑器，datetime-local 加窗/移除/状态行），行 2 = 通栏筛选
+  搜索胶囊；「+ 新建任务」是唯一强调按钮。
 - **统一并发调度器（controller 内唯一启动决策点）**：手动/定时/接续/巡航/评论共用同一
   并发预算（同时在跑的会话数）；优先级 排队 schedule/chain → 评论续跑（提交 FIFO，同
   任务严格按序）→ 巡航待办；手动不限额但计并发。评论为每任务 FIFO（`injectedAt` 区分
@@ -300,18 +311,23 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
   或链接面板进入同一会话看到的是同一条评论线程（结构性解决"评论区不同步"）。每行 =
   `TaskSessionRow`（sessionId/kind/title/workspaceLabel/executionId/runIndex/display/
   updatedAt/unviewed），run 行以该会话最新 plain-run 为代表（评论共享 session 不加行），
-  refine 会话不并入（保留独立 RefineSection）。**隐藏按会话统一**：`hiddenSessionIdsOf`
+  refine 会话不并入（保留独立 RefineSection）。**隐藏按会话统一 + 逐条恢复**：`hiddenSessionIdsOf`
   由 `hidden.sessions ∪ hidden.executions 映射` 得出，`hideTaskSession`/`unhideTaskSessions`
-  （旧 `hideTaskRow`/`hasHiddenRows` 已移除）统一操作 sessionId。
+  （旧 `hideTaskRow`/`hasHiddenRows` 已移除）统一操作 sessionId；`unhideTaskSession(taskId,
+  sessionId)` 单条恢复（同步修剪 executions 族），详情页「已隐藏 N 个会话」托盘 = 每条可恢复
+  + 头部恢复全部。
 - **自动化独立（开启即生效，不绑卡）**：`ScheduleRule` 无手动激活门——
   `ruleReadiness` 三态（disabled / paused / active：backlog·review·done = 暂停、done 完成
   即 `disarmSchedule` 硬停）；`setSchedule` 启用 chain 且卡片可驱动（todo/running）时立即
   首跑，cron 到点经 scheduler tick 触发；`resolveCardDrop` 不再因 chain 拒绝移动，
   `moveTask` 以「拖到已完成=停链 / 待规划·待审核=暂停 / 待办=停止接续手动接管」表达
-  「离开即暂停/停止」；`TaskCard` 悬停快速执行（`rerunTask` 同 run guard）。UI 上是
+  「离开即暂停/停止」；`TaskCard` 悬停快速执行（`rerunTask` 同 run guard）。**复制为模板
+  （`copyTask`）带上自动化**：schedule 原样克隆（enabled/mode/maxRuns 保留、runCount 归零、
+  cron 重算 nextRunAt），executions/hidden/bind 不复制，落待规划。UI 上是
   详情页独立分区 `AutomationSection`：共用 `Disclosure` 一行状态摘要（折叠态零按钮），
   展开态 = 触发方式分段 + 当前模式配置 + 按状态显隐的跳过/停止，无保存/取消（即改即
-  生效），与板级「自动巡航」的关系用一行 `detail.schedule.boundary` 讲清。
+  生效），**启用即展开**（`schedule.enabled === true` 时初始展开，且启用动作后自动展开），
+  与板级「自动巡航」的关系用一行 `detail.schedule.boundary` 讲清。
 - **会话状态派生（session-display.ts）**：`sessionDisplay` 归集同会话轮次，状态优先级
   waiting > running > 最新 settled；`sessionTimes`/`taskPendingCount`；未读
   `taskUnviewed`/`executionUnviewed`，基线 `viewedAt`（旧数据归一化零噪音）。
@@ -331,14 +347,17 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
   即时注入（不经调度器）；`applyRefineResult` 用户确认后写任务 prompt；结算不动列、
   不触发 chain、计入 `hasOpenRun`；`plainRunsOf` 排除 refine 轮。
 
-- **链接会话（拖入建卡，linked-sessions.ts + sidebar-drag.ts）**：拖侧栏**会话**或
+- **链接会话（拖入建卡/换绑，linked-sessions.ts + sidebar-drag.ts）**：拖侧栏**会话**或
   **工作区文件夹**进看板 → `bind` 卡片；`deriveLinkedSessions` 纯派生（工作区 sessionIds
   按序 - archived - blank - hidden），订阅 sessions/workspaces → 新开会话/归档/改名自动
   实时同步，无「同步」按钮。**显式绑定的单会话跳过 archived/blank 过滤**（用户拖进来
   就一定要显示；工作区绑定仍过滤），工作区绑定时以 `boundWorkspaceTitle` 作所有行的
   稳定工作区标签回落（cwd 缺失也显示）。每行：标题/工作区/实时状态 chip/查看会话/隐藏
   （非破坏，`hideTaskSession` 统一按会话隐藏），整行可点打开 `SessionDetail`；
-  `unbindTask` 解绑。**拖拽**：原生行自带 draggable 并打 `text/plain`；dragover 读不到
+  `unbindTask` 解绑（按钮在详情 footer）。**拖进已打开的详情 = 绑定到现有任务**：
+  `bindTaskSource(taskId, bind)` 在已有任务上落/换绑（覆盖旧 bind，持久化）；详情「会话」
+  区是落点（latch 排除卡片拖拽 + 呼吸环 + 落位闪烁），新绑工作区里的新会话实时同步。
+  **拖拽**：原生行自带 draggable 并打 `text/plain`；dragover 读不到
   payload（保护模式）→ board 根按 types（`candidateExternalDrag`）且 `dragSourceRef` 未
   置位（排除卡片拖拽）latch，drop 时 `externalDragOf` 读 payload 分类；`clearDrag` 全量
   复位 + window `drop`/`dragend` 兜底；**落哪列建哪列**（`landingStatusOf`）。`bind`/
@@ -353,7 +372,9 @@ localStorage）、`execution.ts`（`connectWorkspace` 复用/新建空白会话 
   `submitSessionComment`（`sessionAnchor` 轮，进同一队列，见调度器节），面板显示本会话
   的评论线程（`sessionCommentsOf` + 共享 `CommentsThread`，排队可取消）；直发模式 =
   `sendSessionMessage` → host `sessions.prompt`/`remote.commands.execute`，`/` 走注册表未
-  匹配回退文本。**直发 ≠ 驱动契约**：不建执行记录、不进调度器、不占并发预算、不触发
+  匹配回退文本，**成功时追加一条 direct 轮**（`newDirectRound`：settled、无 injectedAt、
+  `sessionAnchor=sessionId`）——直发也进同一会话线程（带「直发」标签），但绝不驱动。
+  **直发 ≠ 驱动契约**：不进调度器、不占并发预算、不触发
   巡航/接续/状态变化；面板在直发模式以「不会驱动本任务」+ `detail.sessionDirect` 提示防
   误驱动，失败保留草稿、会话消失禁用。完成态任务两模式都拒发（`detail.commentQueuedDone`
   提示先移回待办）。rail 统一「可滚动中区 + 底部固定 composer」一个滚动模式（
@@ -402,7 +423,8 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
 
 ## 测试
 
-- `tests/controller|execution|schedule|scheduler|store|tasks|session-list|linked-sessions|drop-position.spec.ts`：核心层纯逻辑
+- `tests/controller|execution|schedule|scheduler|store|tasks|session-list|linked-sessions|drop-position|cruise.spec.ts`：核心层纯逻辑（含巡航窗口状态机与调度器 cruiseTick）
+- `tests/sidebar-drag.spec.ts`：侧栏拖拽契约（分类/排除卡片拖拽/清拖）。
 - `tests/refine.spec.ts`：需求完善指令模板（zh/en 字段嵌入、输出格式、提问约束）。
 - `tests/review-transcript.spec.ts` / `tests/context-meter.spec.ts` /
   `tests/menu-direction.spec.ts` / `tests/comment-thread.spec.ts`：评论页纯逻辑
