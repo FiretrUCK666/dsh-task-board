@@ -1670,6 +1670,85 @@ textarea.input {
   overflow: hidden;
 }
 
+/* The 会话 section doubles as a bind drop target: dragging a sidebar
+   session/workspace onto the open task's session area binds (or rebinds)
+   the task's live source — complement of the board-level "drop onto a
+   column = new bound card". The zone breathes with the same accent ring as
+   a board column accepting an external drop, and flashes once on a
+   successful bind (same 180ms confirm language). */
+.sessionDropZone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px;
+  margin: -6px;
+  border-radius: var(--dsh-tb-radius-md);
+}
+
+.sessionDropZone[data-bindactive] {
+  box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
+  animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
+}
+
+.sessionDropZone[data-flash] {
+  animation: dshTbDropConfirm 180ms ease;
+}
+
+/* Hidden-session tray: the per-session restore list inside the 会话 section.
+   A quiet sunken surface with the same hairline rhythm as the session rows —
+   each hidden session one row with its own 恢复, the head carrying the bulk
+   restore (recovering ONE session must not force restoring everything). */
+.hiddenTray {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--dsh-tb-surface-sunken);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+}
+
+.hiddenTrayHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hiddenTrayTitle {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.hiddenTrayList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hiddenTrayRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.hiddenTrayRow + .hiddenTrayRow {
+  border-top: var(--dsh-tb-separator);
+}
+
+.hiddenTrayName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--dsh-tb-text-1);
+}
+
 /* Rows share one container with hairline dividers and a hover wash instead
    of per-row boxes — quieter, aligned, premium. The same surface serves both
    session families (execution history and linked sessions): one row grammar
@@ -2244,6 +2323,16 @@ textarea.input {
   .column[data-flash] {
     animation: none;
     box-shadow: inset 0 0 0 1px var(--dsh-tb-attention);
+  }
+
+  .sessionDropZone[data-bindactive] {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--dsh-tb-accent);
+  }
+
+  .sessionDropZone[data-flash] {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--dsh-tb-accent);
   }
 
   .column[data-dragreject] {

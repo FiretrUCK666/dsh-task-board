@@ -722,6 +722,49 @@ export class BoardController {
     if (changed) this.persistAndNotify()
   }
 
+  /**
+   * Bind a live source (a sidebar session or workspace folder) to an EXISTING
+   * task — the "drag a folder/session into the open task's 会话 area" path.
+   * Replaces any previous binding; persisted. The linked rows then derive
+   * live from the new source (new sessions in a bound folder sync in
+   * automatically via deriveLinkedSessions).
+   * @returns true when applied, false for an unknown task.
+   */
+  bindTaskSource(taskId: string, bind: NonNullable<TaskRecord['bind']>): boolean {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId) return task
+      changed = true
+      return { ...task, bind, updatedAt: this.now() }
+    })
+    if (changed) this.persistAndNotify()
+    return changed
+  }
+
+  /** Restore ONE hidden session (single-item restore; the bulk "恢复全部"
+   *  stays available too — a folder's many hidden rows can be brought back
+   *  one by one without restoring everything). */
+  unhideTaskSession(taskId: string, sessionId: string): void {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId || task.hidden === undefined) return task
+      const sessions = (task.hidden.sessions ?? []).filter(id => id !== sessionId)
+      const executions = (task.hidden.executions ?? []).filter(executionId =>
+        task.executions.find(round => round.id === executionId)?.sessionId !== sessionId)
+      const hidden: NonNullable<TaskRecord['hidden']> = {}
+      if (sessions.length > 0) hidden.sessions = sessions
+      if (executions.length > 0) hidden.executions = executions
+      changed = true
+      if (Object.keys(hidden).length === 0) {
+        const rest = { ...task }
+        delete rest.hidden
+        return rest
+      }
+      return { ...task, hidden }
+    })
+    if (changed) this.persistAndNotify()
+  }
+
   /** Default title for a freshly dragged-in binding (from its native source). */
   boundSourceTitleOf(bind: NonNullable<TaskRecord['bind']>): string {
     const workspaces = this.deps.workspaces?.list.getSnapshot()

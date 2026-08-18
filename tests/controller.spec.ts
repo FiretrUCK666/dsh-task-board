@@ -1635,6 +1635,87 @@ describe('linked sessions & bind', () => {
     expect(store.load()[0].hidden).toEqual({ sessions: ['s-ghost'] })
   })
 
+  it('unhideTaskSession restores exactly one hidden session (single-item restore)', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.hideTaskSession(task.id, 's-1')
+    controller.hideTaskSession(task.id, 's-2')
+    controller.hideTaskSession(task.id, 's-3')
+    expect(store.load()[0].hidden?.sessions).toEqual(['s-1', 's-2', 's-3'])
+    // Restore just one: the other hidden sessions stay hidden.
+    controller.unhideTaskSession(task.id, 's-2')
+    expect(store.load()[0].hidden?.sessions).toEqual(['s-1', 's-3'])
+    // Restoring an already-visible session is a no-op (hidden stays intact).
+    controller.unhideTaskSession(task.id, 's-9')
+    expect(store.load()[0].hidden?.sessions).toEqual(['s-1', 's-3'])
+    // Restoring the last one drops the hidden field entirely.
+    controller.unhideTaskSession(task.id, 's-1')
+    controller.unhideTaskSession(task.id, 's-3')
+    expect(store.load()[0].hidden).toBeUndefined()
+    // Unknown task: no-op.
+    controller.unhideTaskSession('nope', 's-1')
+  })
+
+  it('unhideTaskSession also prunes the run ids of the restored session', async () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    // Two runs settle in different sessions; hide one of them.
+    await controller.runTask(task.id)
+    const runA = store.load()[0].executions[0]
+    stub.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: runA.id, sessionId: 's-a' })
+    stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: runA.id, outcome: 'succeeded' })
+    await controller.runTask(task.id)
+    const runB = store.load()[0].executions[1]
+    stub.runCalls[1].fire({ kind: 'started', taskId: task.id, executionId: runB.id, sessionId: 's-b' })
+    stub.runCalls[1].fire({ kind: 'settled', taskId: task.id, executionId: runB.id, outcome: 'succeeded' })
+    controller.hideTaskSession(task.id, 's-a')
+    expect(store.load()[0].hidden).toEqual({ executions: [runA.id], sessions: ['s-a'] })
+    // Restoring s-a prunes its run id from the hidden set; s-b is untouched.
+    controller.unhideTaskSession(task.id, 's-a')
+    expect(store.load()[0].hidden).toBeUndefined()
+    expect(store.load()[0].executions.map(run => run.id)).toEqual([runA.id, runB.id])
+  })
+
+  it('bindTaskSource binds a source onto an existing task, replaces an old bind, persists', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    // A plain task gains a live binding.
+    expect(controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(true)
+    expect(store.load()[0].bind).toEqual({ kind: 'session', sessionId: 's-1' })
+    // Rebinding replaces the old source (drag a folder over the open task).
+    expect(controller.bindTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(true)
+    expect(store.load()[0].bind).toEqual({ kind: 'workspace', workspaceId: 'w-a' })
+    // Unknown task: rejected.
+    expect(controller.bindTaskSource('nope', { kind: 'session', sessionId: 's-1' })).toBe(false)
+  })
+
+  it('a folder bound onto an existing task syncs newly opened sessions live (regression)', () => {
+    const wss = workspaces()
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1'] }]
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    const controller = new BoardController({
+      store: new InMemoryTaskStore(),
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions,
+      workspaces: wss,
+      now: () => NOW,
+      uuid,
+    })
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.bindTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })
+    // Re-fetch: bindTaskSource replaces the task record in the ledger.
+    const bound = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(bound).map(row => row.sessionId)).toEqual(['s-1'])
+    // A session opens inside the folder later: the board picks it up with no
+    // manual "sync" step (the earlier sessionsOf snapshot is already stale).
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
+    sessions.runningById['s-2'] = false
+    wss.notify()
+    expect(controller.sessionsOf(bound).map(row => row.sessionId)).toEqual(['s-1', 's-2'])
+  })
+
   it('copyTask clones content, run config and the automation rule (runCount reset)', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub)

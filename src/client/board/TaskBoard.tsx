@@ -602,6 +602,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           controller={controller}
           task={selected}
           workspaceTitleOf={workspaceTitleOf}
+          dragSourceRef={dragSourceRef}
         />
       )}
       {showNew && (

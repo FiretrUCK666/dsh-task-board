@@ -4,12 +4,12 @@
  * delete (with confirmation), manual status moves, and a jump to the
  * execution's session transcript.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BoardController, PendingInteractionKind } from '../../core/controller.ts'
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
-import { hasHiddenSessions } from '../../core/session-list.ts'
+import { hiddenSessionIdsOf } from '../../core/session-list.ts'
 import { executionUnviewed, sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
@@ -27,6 +27,7 @@ import { SessionRow } from './SessionRow.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { Button, Disclosure, Icon, Section, Switch } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
+import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
 
 /** Status → shared-chip color (detail badge). */
 const STATUS_CHIP: Record<TaskStatus, ChipKind> = {
@@ -643,11 +644,15 @@ function presetIsDefault(preset: SchedulePreset): boolean {
 }
 
 /** Task detail overlay. */
-export function TaskDetail({ controller, task, workspaceTitleOf }: {
+export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }: {
   controller: BoardController
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
+  /** The board's card-drag latch (set synchronously at card dragstart), so the
+   *  session-area drop zone can tell a sidebar drag from the board's own card
+   *  drags (both advertise `text/plain`). */
+  dragSourceRef: { readonly current: boolean }
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   // Edit-mode draft; undefined = not editing. Kept separate from `current`
@@ -686,6 +691,75 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
   // the single source for the 会话 section — a session reached from an
   // execution page or a linked panel is one row here, one comment thread.
   const sessions = controller.sessionsOf(current)
+  // The hidden sessions (unified set), for the per-session restore tray.
+  const hiddenIds = hiddenSessionIdsOf(current)
+
+  // Session-area bind drop zone: dragging a sidebar session/workspace onto
+  // the open task's 会话 area binds (or rebinds) the task's live source —
+  // complement of the board-level "drop onto a column = new bound card".
+  // Latched on dragenter like the board root: dragover cannot read the
+  // payload (protected store), and the board's own card drags (also
+  // `text/plain`) are excluded via the shared dragSourceRef.
+  const [bindDropActive, setBindDropActive] = useState(false)
+  const bindDropLatch = useRef(false)
+  // One-shot confirm flash after a successful bind drop.
+  const [bindDropFlash, setBindDropFlash] = useState(false)
+  const bindDropTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  // Window-level safety net (same contract as the board root): a drag ending
+  // outside the zone — on the sidebar, outside the window, or cancelled —
+  // must clear the latch so no ring can survive the gesture.
+  useEffect(() => {
+    const clear = (): void => {
+      bindDropLatch.current = false
+      setBindDropActive(false)
+    }
+    window.addEventListener('drop', clear)
+    window.addEventListener('dragend', clear)
+    return () => {
+      window.removeEventListener('drop', clear)
+      window.removeEventListener('dragend', clear)
+      if (bindDropTimer.current !== undefined) clearTimeout(bindDropTimer.current)
+    }
+    // The handlers read only stable refs/setters; a mount-time instance works.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** Latch an external sidebar drag once, on entry into the zone. */
+  const onZoneDragEnter = (event: React.DragEvent): void => {
+    if (!dragSourceRef.current && candidateExternalDrag(Array.from(event.dataTransfer.types))) {
+      bindDropLatch.current = true
+      setBindDropActive(true)
+    }
+  }
+
+  /** Allow the drop only for a latched external drag. */
+  const onZoneDragOver = (event: React.DragEvent): void => {
+    if (bindDropLatch.current) event.preventDefault()
+  }
+
+  /** A sidebar session/workspace dropped on the zone binds (or rebinds) this
+   *  task's live source; board card drags resolve to undefined and are left
+   *  untouched. Every drop ends by clearing the latch. */
+  const onZoneDrop = (event: React.DragEvent): void => {
+    bindDropLatch.current = false
+    setBindDropActive(false)
+    const external = externalDragOf(
+      event.dataTransfer,
+      id => controller.getSnapshot().tasks.some(task => task.id === id),
+      id => controller.externalKindOf(id),
+    )
+    if (external === undefined) return
+    event.preventDefault()
+    event.stopPropagation()
+    const bind = external.kind === 'session'
+      ? { kind: 'session' as const, sessionId: external.id }
+      : { kind: 'workspace' as const, workspaceId: external.id }
+    controller.bindTaskSource(current.id, bind)
+    setBindDropFlash(true)
+    if (bindDropTimer.current !== undefined) clearTimeout(bindDropTimer.current)
+    bindDropTimer.current = setTimeout(() => { setBindDropFlash(false) }, 600)
+  }
 
   // Copy-prompt inline feedback (近处反馈，位于滚动区内).
   const [promptCopied, setPromptCopied] = useState(false)
@@ -833,61 +907,93 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
 
           {/* 会话：任务的全部真实会话（板内执行 + 链接外部）按 sessionId 去重后
               显示在一个列表里——同一会话绝不出现两次，从执行页或链接面板进入
-              同一会话看到的是同一条评论线程。行文法统一（SessionRow）。 */}
+              同一会话看到的是同一条评论线程。行文法统一（SessionRow）。
+              本区同时是绑定落点：把侧栏的会话/工作区拖进来 = 绑定（或换绑）到
+              当前任务（与「拖到列上 = 新建绑定卡」互补）。 */}
           <Section title={`${t('detail.sessions')} ${sessions.length}`}>
-            <p className={css.detailHint}>{t('detail.executionHint')}</p>
-            {sessions.length === 0 ? (
-              <p className={css.detailText}>
-                {plainRunsOf(current).length > 0
-                  ? t('detail.executionHiddenAll')
-                  : current.bind !== undefined
-                    ? t('detail.noExecutionLinked')
-                    : t('detail.noExecution')}
-              </p>
-            ) : (
-              <ul className={css.sessionList}>
-                {sessions.map(row => row.kind === 'run'
-                  ? (() => {
-                    const execution = row.executionId !== undefined
-                      ? current.executions.find(candidate => candidate.id === row.executionId)
-                      : undefined
-                    if (execution === undefined) return null
-                    return (
-                      <ExecutionRow
-                        key={row.sessionId}
-                        execution={execution}
-                        index={row.runIndex ?? 1}
-                        task={current}
-                        sessionTitle={row.title}
-                        waitingKind={row.display.waitingKind}
-                        cruiseOn={controller.getSnapshot().cruise.enabled}
-                        onReview={() => { setReviewExecution(execution) }}
-                        onOpen={sessionId => { controller.openSession(sessionId) }}
-                        onHide={() => { controller.hideTaskSession(current.id, row.sessionId) }}
-                      />
-                    )
-                  })()
-                  : (() => {
-                    const linkedRow = controller.linkedOf(current)
-                      .find(candidate => candidate.sessionId === row.sessionId)
-                    if (linkedRow === undefined) return null
-                    return (
-                      <LinkedRow
-                        key={row.sessionId}
-                        row={linkedRow}
-                        task={current}
-                        controller={controller}
-                        onOpen={() => { setLinkedSession(row.sessionId) }}
-                      />
-                    )
-                  })())}
-              </ul>
-            )}
-            {hasHiddenSessions(current) && (
-              <Button onClick={() => { controller.unhideTaskSessions(current.id) }}>
-                {t('detail.restoreHidden')}
-              </Button>
-            )}
+            <div
+              className={css.sessionDropZone}
+              data-bindactive={bindDropActive ? '' : undefined}
+              data-flash={bindDropFlash ? '' : undefined}
+              onDragEnter={onZoneDragEnter}
+              onDragOver={onZoneDragOver}
+              onDrop={onZoneDrop}
+            >
+              <p className={css.detailHint}>{t('detail.executionHint')}</p>
+              {sessions.length === 0 ? (
+                <p className={css.detailText}>
+                  {plainRunsOf(current).length > 0
+                    ? t('detail.executionHiddenAll')
+                    : current.bind !== undefined
+                      ? t('detail.noExecutionLinked')
+                      : t('detail.noExecution')}
+                </p>
+              ) : (
+                <ul className={css.sessionList}>
+                  {sessions.map(row => row.kind === 'run'
+                    ? (() => {
+                      const execution = row.executionId !== undefined
+                        ? current.executions.find(candidate => candidate.id === row.executionId)
+                        : undefined
+                      if (execution === undefined) return null
+                      return (
+                        <ExecutionRow
+                          key={row.sessionId}
+                          execution={execution}
+                          index={row.runIndex ?? 1}
+                          task={current}
+                          sessionTitle={row.title}
+                          waitingKind={row.display.waitingKind}
+                          cruiseOn={controller.getSnapshot().cruise.enabled}
+                          onReview={() => { setReviewExecution(execution) }}
+                          onOpen={sessionId => { controller.openSession(sessionId) }}
+                          onHide={() => { controller.hideTaskSession(current.id, row.sessionId) }}
+                        />
+                      )
+                    })()
+                    : (() => {
+                      const linkedRow = controller.linkedOf(current)
+                        .find(candidate => candidate.sessionId === row.sessionId)
+                      if (linkedRow === undefined) return null
+                      return (
+                        <LinkedRow
+                          key={row.sessionId}
+                          row={linkedRow}
+                          task={current}
+                          controller={controller}
+                          onOpen={() => { setLinkedSession(row.sessionId) }}
+                        />
+                      )
+                    })())}
+                </ul>
+              )}
+              {/* 隐藏托盘：逐条恢复（不逼用户一次全恢复），头部一条「恢复全部」。
+                  行名取原生会话标题，会话已消失时回退到 sessionId。 */}
+              {hiddenIds.size > 0 && (
+                <div className={css.hiddenTray}>
+                  <div className={css.hiddenTrayHead}>
+                    <span className={css.hiddenTrayTitle}>
+                      {t('detail.hiddenTrayTitle', { n: String(hiddenIds.size) })}
+                    </span>
+                    <Button size="sm" variant="ghost" onClick={() => { controller.unhideTaskSessions(current.id) }}>
+                      {t('detail.restoreHidden')}
+                    </Button>
+                  </div>
+                  <ul className={css.hiddenTrayList}>
+                    {Array.from(hiddenIds).map(sessionId => (
+                      <li key={sessionId} className={css.hiddenTrayRow}>
+                        <span className={css.hiddenTrayName} title={sessionId}>
+                          {controller.sessionTitle(sessionId) ?? sessionId}
+                        </span>
+                        <Button size="sm" variant="ghost" onClick={() => { controller.unhideTaskSession(current.id, sessionId) }}>
+                          {t('detail.restoreOne')}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </Section>
 
           {current.status === 'backlog' && (
