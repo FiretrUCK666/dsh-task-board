@@ -271,8 +271,11 @@ function cronDescriptionLabel(expr: string): string {
   }
 }
 
-/** The scheduled-runs editor: mode, cron input + presets, run budget, next-run info. */
-function ScheduleSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
+/** The automation module (task-level orchestration): one collapsed line = the
+ *  live state; the expanded editor = 触发方式 (分段) + 当前模式的配置 + 按状态
+ *  显隐的最小操作 (跳过本次 / 停止接续) — no save/cancel (即改即生效), and its
+ *  boundary with the board-level 自动巡航 is one quiet line, not prose. */
+function AutomationSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
   const schedule = task.schedule
   // `||` (not `??`) falls back to the default even for an empty stored
   // expression, so switching modes can never leave the editor with a blank
@@ -445,28 +448,17 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
         : `${t('detail.schedule.mode.chain')} · ${t('detail.schedule.runsSoFar')} ${chainRuns}${chainBudget !== undefined ? `/${chainBudget}` : ''}`
 
   return (
-    <section className={css.detailSection}>
-      <button
-        type="button"
-        className={css.scheduleDisclosure}
-        aria-expanded={open}
-        onClick={() => { setOpen(!open) }}
-      >
-        <Icon name="chevronDown" className={css.scheduleChevron} />
-        <span className={css.scheduleDisclosureTitle}>{t('detail.schedule')}</span>
-        <span className={css.scheduleSummary}>{summary}</span>
-      </button>
-      {open && (
-        <>
+    <Disclosure
+      title={t('detail.schedule')}
+      summary={summary}
+      open={open}
+      onToggle={() => { setOpen(!open) }}
+    >
       <Switch
         checked={enabled}
         onChange={toggleEnabled}
         label={t('detail.schedule.enable')}
       />
-
-      {/* One line that names the scopes: this rule is task-level; cruise is
-          board-level — the two "auto" concepts never blur. */}
-      <p className={css.scheduleMeta}>{t('detail.schedule.scope')}</p>
 
       {/* Driving mode: fixed times (cron) or run-after-completion (chain). */}
       <div className={css.segmentedRow} role="radiogroup" aria-label={t('detail.schedule')}>
@@ -604,8 +596,10 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
           onClose={closePresets}
         />
       )}
-        </>
-      )}
+
+      {/* 作用域边界：本模块只管本任务；自动巡航是板级批量开关 — 一个短提示，
+          不铺陈。*/}
+      <p className={css.detailHint}>{t('detail.schedule.boundary')}</p>
 
       {/* Side-effect confirms for automation: enabling an unlimited chain and
           stopping one both confirm once — an endless loop of real agent
@@ -630,7 +624,7 @@ function ScheduleSection({ controller, task }: { controller: BoardController; ta
           onConfirm={() => { setConfirm(undefined); applyStopChain() }}
         />
       )}
-    </section>
+    </Disclosure>
   )
 }
 
@@ -798,7 +792,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf }: {
             </>
           )}
 
-          <ScheduleSection controller={controller} task={current} />
+          <AutomationSection controller={controller} task={current} />
 
           {/* 会话：任务的全部真实会话（板内执行 + 链接外部）按 sessionId 去重后
               显示在一个列表里——同一会话绝不出现两次，从执行页或链接面板进入

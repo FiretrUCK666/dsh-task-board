@@ -1201,48 +1201,6 @@ textarea.input {
   color: var(--dsw-alias-label-secondary);
 }
 
-/* The collapsible auto-run section header: title + one-line state summary;
-   collapsed by default so the detail stays quiet. */
-.scheduleDisclosure {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-}
-
-.scheduleChevron {
-  flex: none;
-  font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
-  transition: transform 140ms ease;
-}
-
-.scheduleDisclosure[aria-expanded='false'] .scheduleChevron {
-  transform: rotate(-90deg);
-}
-
-.scheduleDisclosureTitle {
-  flex: none;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.scheduleSummary {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
-}
-
 .detailSection h4 {
   margin: 0;
   font-size: 12px;
