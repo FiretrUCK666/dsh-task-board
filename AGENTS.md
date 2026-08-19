@@ -258,6 +258,14 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   会先擦掉还没播完的闪烁），全在 reduced-motion 下静态降级。
 - **防回归守卫**：`noUnusedLocals`/`noUnusedParameters` 开启（死 import/死变量=编译错
   误）；废弃 CSS 类人工删除（`.name` 定义与 `css.name` 引用对照）。
+- **卡片永不穿模（板上任何内容的硬契约）**：紧凑卡片的任意内容（现在或未来加入的
+  任何文案/字体/标签）都物理上不能画出圆角卡片盒。三层保证，缺一不可，并有
+  `tests/card-layout.spec.ts`（CSS 契约）与 `tests/card-label.spec.ts`（中英文案）钉死：
+  ① 卡片盒 `overflow: hidden` 是硬剪辑地板；② 卡片内每条文字路径只截断不撑宽——所有
+  flex 子项 `min-width: 0`、`cardTime` 可收缩（ellipsis 才生效）、标题/描述
+  `overflow-wrap: anywhere`；③ 徽章组件级统一——`Chip` 一律把 children 包进
+  `.chipBody`（内部 ellipsis 截断），`.chip` 可收缩但 `max-width: 100%` 封顶；任何新徽章
+  文案自动继承，不得新增逐条防溢出补丁。
 - **UI 小规则**：一个语义强调色（`--dsh-tb-accent`）+ 四个状态色
   （attention/success/danger/neutral），全令牌；半透明 `color-mix(in srgb, 令牌 alpha%,
   transparent)`，alpha 22%/10% 两级；4px 节奏、圆角 8/12/16/24；只用 `--dsw-font-*` 栈
@@ -443,6 +451,10 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   POST set/unset、mutate 抛错 envelope、writable 透传、405、readJsonBody）。
 - `tests/permission-route.spec.ts`：createPermissionHandler 纯函数（有/无权限服务、
   选项组装、read 抛错 envelope、405）。
+- `tests/card-layout.spec.ts`：卡片防穿模 CSS 契约（card 硬裁剪 / 全链路 min-width:0 /
+  徽章 chipBody 省略号，见上「卡片永不穿模」节）。
+- `tests/card-label.spec.ts`：卡片徽章文案组合纯函数（runningStateLabel /
+  executionNoLabel / settledChipLabel，中英双语）。
 
 ## 版本管理流程（必守）
 

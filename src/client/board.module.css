@@ -579,6 +579,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex-direction: column;
   gap: 6px;
   padding: 9px 12px;
+  min-width: 0;
   text-align: left;
   /* Cards are inner floating surfaces: opaque under a glass skin (the
      translucent canvas stays behind them). Radius md (sharper than the
@@ -589,6 +590,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   cursor: pointer;
   color: var(--dsh-tb-text-1);
   font-family: inherit;
+  /* The universal no-breakout guarantee: the card box is a hard clip
+     boundary. Whatever content lands in a card in the future — a long
+     unbreakable token, an image, a block element, any font rendering —
+     can never visually escape the rounded box; text truncation below (the
+     ellipsis chain on chips and meta) is the graceful layer, this clip is
+     the floor. The card's own decorations (hover shadow, unread breath
+     ring, focus outline) are element box decorations, not child content,
+     so they are NOT clipped. */
+  overflow: hidden;
   transition: box-shadow var(--dsh-tb-motion), border-color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
 }
 
@@ -703,6 +713,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-weight: 500;
   line-height: 1.35;
   overflow: hidden;
+  /* A single unbreakable token (URL, a run-on word in any font) also
+     breaks instead of pushing past the clamped box. */
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -713,13 +726,18 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   line-height: 1.4;
   color: var(--dsw-alias-label-secondary);
   overflow: hidden;
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
 /* Two-row meta shared by every status: row 1 = workspace + last activity,
-   row 2 = badges. Chips wrap instead of overflowing the card. */
+   row 2 = badges. The no-breakout contract applies here too: every flex
+   child can shrink to its content width (min-width: 0) and its text
+   truncates with an ellipsis instead of stretching the card — a long
+   "更新于 …" / workspace label can only ever shrink, never push the card
+   wider. The card box's overflow: hidden is the final floor. */
 .cardMeta {
   display: flex;
   flex-direction: column;
@@ -758,13 +776,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .cardWorkspaceName {
+  /* A flex item must be allowed to shrink below its text width for the
+     ellipsis below to engage. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cardTime {
-  flex: none;
+  /* Shrinkable (flex-shrink enabled), never pinned to its full text width:
+     with min-width: 0 the ellipsis trio actually engages — a long
+     relative-time label truncates into the card instead of forcing the
+     meta row past its right edge. */
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -784,17 +810,38 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    semibold text, semantic color via data-kind. fill={false} badges (cards)
    stay plain text so their left edge is flush with the card's text column;
    the .chipFill pill look (neutral fill + padding) serves roomy surfaces
-   like the detail. */
+   like the detail.
+
+   No-breakout contract (component-level, applies to every badge): a chip
+   may shrink (flex: 0 1 auto) but never exceed its container
+   (max-width: 100%), and its text rides on .chipBody below, which
+   truncates with an ellipsis instead of stretching. Whatever text a chip
+   carries now or in the future — however long — can only ever shrink into
+   an ellipsis inside its box, never push past the card edge. The card's
+   overflow: hidden is the final floor. */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  flex: none;
   min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
   color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+/* The chip's text slot: a flex item that absorbs the chip's shrink and
+   ellipsizes (flex containers themselves cannot ellipsize their text
+   items, so every Chip wraps its children here). The chip's own title
+   attribute keeps the full text available on hover. */
+.chipBody {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

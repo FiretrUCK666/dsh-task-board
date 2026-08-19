@@ -5,6 +5,12 @@
  * padding) for roomy surfaces like the detail; `fill={false}` renders plain
  * semibold text for dense surfaces like cards, where the text must align
  * flush with the card's left edge.
+ *
+ * No-breakout contract: children are always wrapped in a `.chipBody` span
+ * that truncates with an ellipsis when the badge has less room than its
+ * text (a flex container cannot ellipsize its own text items). Combined with
+ * the chip's shrinkable flex sizing, whatever text a badge carries can never
+ * escape its surface. The full text stays reachable through `title`.
  */
 import type { ReactNode } from 'react'
 import css from '../board.module.css'
@@ -27,7 +33,7 @@ export function Chip({ kind = 'neutral', fill = true, title, className, children
       data-kind={kind}
       title={title}
     >
-      {children}
+      <span className={css.chipBody}>{children}</span>
     </span>
   )
 }
