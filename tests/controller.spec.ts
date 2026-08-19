@@ -1190,21 +1190,21 @@ describe('auto-cruise', () => {
   })
 
   it('persists toggle and limit through the storage face', () => {
-    const writes: Array<{ enabled: boolean; limit: number; schedule: CruiseWindow[] }> = []
+    const writes: Array<{ enabled: boolean; manual?: boolean; limit: number; schedule: CruiseWindow[] }> = []
     const storage = {
-      read: (): { enabled: boolean; limit: number; schedule: CruiseWindow[] } | undefined => writes[writes.length - 1],
-      write: (state: { enabled: boolean; limit: number; schedule: CruiseWindow[] }): void => { writes.push(state) },
+      read: (): { enabled: boolean; manual?: boolean; limit: number; schedule: CruiseWindow[] } | undefined => writes[writes.length - 1],
+      write: (state: { enabled: boolean; manual?: boolean; limit: number; schedule: CruiseWindow[] }): void => { writes.push(state) },
     }
     const { controller } = makeController(new StubExec(), { cruiseStorage: storage })
     controller.setCruiseEnabled(true)
     controller.setCruiseLimit(3)
-    // Manual ON flips enabled only — the schedule is NEVER written, so
-    // toggling cannot accumulate window records.
+    // Manual ON flips enabled and records the manual intent — the schedule is
+    // NEVER written, so toggling cannot accumulate window records.
     expect(writes).toEqual([
-      { enabled: true, limit: 5, schedule: [] },
-      { enabled: true, limit: 3, schedule: [] },
+      { enabled: true, manual: true, limit: 5, schedule: [] },
+      { enabled: true, manual: true, limit: 3, schedule: [] },
     ])
-    expect(controller.getSnapshot().cruise).toEqual({ enabled: true, limit: 3, schedule: [] })
+    expect(controller.getSnapshot().cruise).toEqual({ enabled: true, manual: true, limit: 3, schedule: [] })
     // Clamped to ≥ 1.
     controller.setCruiseLimit(0)
     expect(controller.getSnapshot().cruise.limit).toBe(1)

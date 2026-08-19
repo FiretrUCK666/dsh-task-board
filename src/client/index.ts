@@ -395,8 +395,12 @@ export function apply(ctx: ClientContext): void {
           try {
             const raw = localStorage.getItem(CRUISE_STORAGE_KEY)
             if (raw === null) return undefined
-            const parsed = JSON.parse(raw) as { enabled?: boolean; limit?: number }
-            return { enabled: parsed.enabled === true, limit: parsed.limit }
+            const parsed = JSON.parse(raw) as { enabled?: boolean; manual?: boolean; limit?: number }
+            return {
+              enabled: parsed.enabled === true,
+              ...(parsed.manual === true || parsed.manual === false ? { manual: parsed.manual } : {}),
+              limit: parsed.limit,
+            }
           } catch (error) {
             console.error('[dsh-task-board] cruise state read failed', error)
             return undefined

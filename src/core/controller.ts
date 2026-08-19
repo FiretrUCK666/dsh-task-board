@@ -17,7 +17,7 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
-import { applyManualToggle, isCruiseWindow, setCruiseSchedule as applySchedule, sortWindows, tickCruise as tickSchedule } from './cruise.ts'
+import { applyManualToggle, isCruiseWindow, normalizeWindow, setCruiseSchedule as applySchedule, sortWindows, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, withinGrace, type ActivityBook } from './session-activity.ts'
 import { createTag, normalizeCatalog, recolorTag, removeTag, renameTag, withTaskColor, withTaskTags, type Tag, type TagCatalog } from './tags.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
@@ -163,14 +163,17 @@ export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   | 'reasoningEffort' | 'agentPreset' | 'permission'
 >>
 
-/** The auto-cruise state: the current on/off truth, concurrency, and the
- *  scheduled windows that flip it at their boundaries (see cruise.ts —
- *  `enabled` IS the truth: manual toggles set it directly and never touch
- *  the schedule; window start/end instants flip it; expired windows prune). */
+/** The auto-cruise state: the current on/off truth, the last manual intent,
+ *  concurrency, and the scheduled windows that flip it at their boundaries
+ *  (see cruise.ts — `enabled` IS the truth: manual toggles set it directly
+ *  and never touch the schedule; window start/end instants flip it and take
+ *  over from the manual intent; expired windows prune). */
 export interface CruiseState {
   enabled: boolean
+  /** Last explicit manual intent (true=手动开, false=手动关); undefined = none yet. */
+  manual?: boolean
   limit: number
-  /** Scheduled windows `[startAt, endAt?)`; empty = no auto schedule. */
+  /** Scheduled windows `[startAt?, endAt?]`; empty = no auto schedule. */
   schedule: import('./cruise.ts').CruiseWindow[]
 }
 
@@ -390,10 +393,12 @@ export class BoardController {
       : DEFAULT_CRUISE_LIMIT
     this.cruiseState = {
       enabled: stored?.enabled === true,
+      ...(stored?.manual === true || stored?.manual === false ? { manual: stored.manual } : {}),
       limit: storedLimit,
-      // Old documents carry no schedule; only well-formed windows load.
+      // Old documents carry no schedule; only well-formed windows load
+      // (cross-midnight normalization applied on read too).
       schedule: Array.isArray(stored?.schedule)
-        ? sortWindows(stored!.schedule.filter(isCruiseWindow))
+        ? sortWindows(stored!.schedule.filter(isCruiseWindow).map(normalizeWindow))
         : [],
     }
     this.tagCatalog = normalizeCatalog(deps.tagStorage?.read())

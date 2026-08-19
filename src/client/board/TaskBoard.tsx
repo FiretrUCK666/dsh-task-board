@@ -42,6 +42,17 @@ function matchesFilter(task: TaskRecord, filter: string, tagNames: Record<string
   return true
 }
 
+/** Whether `b` lies on the calendar day AFTER `a` (a normalized cross-midnight
+ *  window end: e.g. 22:00 开始、次日 02:00 结束 → display "次日 02:00"). */
+function isNextDay(a: number, b: number): boolean {
+  const from = new Date(a)
+  const to = new Date(b)
+  if (to.getTime() <= from.getTime()) return false
+  return to.getFullYear() !== from.getFullYear()
+    || to.getMonth() !== from.getMonth()
+    || to.getDate() !== from.getDate()
+}
+
 /** Board component; subscribes to the controller snapshot. */
 export function TaskBoard({ controller }: { controller: BoardController }) {
   const [snapshot, setSnapshot] = useState(controller.getSnapshot())
@@ -83,40 +94,40 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     setCruiseError(undefined)
   }, [cruiseOpen])
 
-  /** 添加一条巡航定时窗口：开始必填；结束可选（留空=一直保持）且必须晚于开始。 */
+  /**
+   * 添加一条巡航定时窗口：开始与结束均可选（至少一个；留空结束=到点开、之后
+   * 保持开；留空开始=立即视为开、到点关）。结束早于开始 = 跨午夜（如 22:00 →
+   * 02:00）合法：归一化在 setCruiseSchedule 里自动 +1 天处理，绝不拒绝。
+   */
   const addCruiseWindow = (): void => {
-    const start = windowStart
-    if (start === undefined) {
+    if (windowStart === undefined && windowEnd === undefined) {
       setCruiseError(t('board.cruiseWindowErrorStart'))
       return
     }
-    let end: number | undefined
-    if (windowEnd !== undefined) {
-      if (windowEnd <= start) {
-        setCruiseError(t('board.cruiseWindowErrorEnd'))
-        return
-      }
-      end = windowEnd
-    }
-    controller.setCruiseSchedule([...snapshot.cruise.schedule, { startAt: start, ...end !== undefined ? { endAt: end } : {} }])
+    controller.setCruiseSchedule([...snapshot.cruise.schedule, {
+      ...windowStart !== undefined ? { startAt: windowStart } : {},
+      ...windowEnd !== undefined ? { endAt: windowEnd } : {},
+    }])
     setWindowStart(undefined)
     setWindowEnd(undefined)
     setCruiseError(undefined)
   }
 
-  // 弹层里的巡航状态行：当前开启中（至何时）或 关闭（下一窗口何时）。
+  // 弹层里的巡航状态行：当前开启中（至何时）或 关闭（下一窗口何时）；开始/结束
+  // 均可选（无开始=从当前起视为开；无结束=保持开）。
   const cruiseSchedule = snapshot.cruise.schedule
   const cruiseNow = Date.now()
   const coveringWindow = cruiseSchedule.find(window =>
-    window.startAt <= cruiseNow && (window.endAt === undefined || window.endAt > cruiseNow))
+    (window.startAt === undefined || window.startAt <= cruiseNow)
+    && (window.endAt === undefined || window.endAt > cruiseNow))
   const nextWindow = cruiseSchedule
-    .filter(window => window.startAt > cruiseNow)
-    .sort((a, b) => a.startAt - b.startAt)[0]
+    .filter(window => (window.startAt ?? cruiseNow) > cruiseNow)
+    .sort((a, b) => (a.startAt ?? a.endAt ?? 0) - (b.startAt ?? b.endAt ?? 0))[0]
   const cruiseStateLine = snapshot.cruise.enabled
     ? coveringWindow !== undefined && coveringWindow.endAt !== undefined
       ? t('board.cruiseStateOnUntil', { time: formatCruiseTime(coveringWindow.endAt) })
       : t('board.cruiseStateOn')
-    : nextWindow !== undefined
+    : nextWindow !== undefined && nextWindow.startAt !== undefined
       ? t('board.cruiseStateNext', { time: formatCruiseTime(nextWindow.startAt) })
       : t('board.cruiseStateOff')
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
@@ -437,18 +448,31 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                               不再用长格式白单行拼 → 结束被省略号截掉。完整时间在
                               每行的 title（tooltip）里始终可取。 */}
                           <span className={css.cruiseWindowTime}>
-                            <span className={css.cruiseWindowTimeRow}>
-                              <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinStart')}</span>
-                              <span className={css.cruiseWindowTimeValue} title={formatDateTime(window.startAt)}>
-                                {formatCruiseTime(window.startAt)}
+                            {window.startAt !== undefined && (
+                              <span className={css.cruiseWindowTimeRow}>
+                                <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinStart')}</span>
+                                <span className={css.cruiseWindowTimeValue} title={formatDateTime(window.startAt)}>
+                                  {formatCruiseTime(window.startAt)}
+                                </span>
                               </span>
-                            </span>
-                            <span className={css.cruiseWindowTimeRow}>
-                              <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinEnd')}</span>
-                              <span className={css.cruiseWindowTimeValue} title={window.endAt !== undefined ? formatDateTime(window.endAt) : undefined}>
-                                {window.endAt !== undefined ? formatCruiseTime(window.endAt) : t('board.cruiseWindowNoEnd')}
+                            )}
+                            {window.endAt !== undefined ? (
+                              <span className={css.cruiseWindowTimeRow}>
+                                <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinEnd')}</span>
+                                {/* A normalized cross-midnight window shows the
+                                    end on the start's NEXT day (22:00 → 次日 02:00). */}
+                                <span className={css.cruiseWindowTimeValue} title={formatDateTime(window.endAt)}>
+                                  {window.startAt !== undefined && isNextDay(window.startAt, window.endAt)
+                                    ? `${t('board.cruiseNextDay')} ${formatCruiseTime(window.endAt)}`
+                                    : formatCruiseTime(window.endAt)}
+                                </span>
                               </span>
-                            </span>
+                            ) : (
+                              <span className={css.cruiseWindowTimeRow}>
+                                <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinEnd')}</span>
+                                <span className={css.cruiseWindowTimeValue}>{t('board.cruiseWindowNoEnd')}</span>
+                              </span>
+                            )}
                           </span>
                           <button
                             type="button"
@@ -478,6 +502,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       onChange={next => { setWindowEnd(next); setCruiseError(undefined) }}
                     />
                     {cruiseError !== undefined && <p className={css.formError}>{cruiseError}</p>}
+                    <p className={css.detailHint}>{t('board.cruiseSemanticsHint')}</p>
                     <Button size="sm" onClick={addCruiseWindow}>
                       {t('board.cruiseWindowAdd')}
                     </Button>

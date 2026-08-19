@@ -90,23 +90,24 @@ export function TimeField({ label, hint, value, onChange, allowEmpty = true }: {
         >
           <Icon name="calendar" />
         </button>
-        {/* The invisible native date input exists only to drive showPicker:
-            a real picker without a visible datetime-local control. */}
+        {/* The invisible native datetime-local input exists only to drive
+            showPicker — the native picker carries YEAR/MONTH/DAY/HOUR/MINUTE,
+            so the popup calendar can pick a time too. */}
         <input
           ref={dateRef}
-          type="date"
+          type="datetime-local"
           tabIndex={-1}
           aria-hidden="true"
           className={css.timeFieldHiddenDate}
           onChange={event => {
-            const dateText = event.target.value
-            if (dateText === '') return
-            const [year, month, day] = dateText.split('-').map(Number)
-            const base = parseTimeText(text) ?? value
-            const time = base !== undefined ? new Date(base) : new Date(2025, 0, 1, 9, 0)
-            const merged = new Date(year, month - 1, day, time.getHours(), time.getMinutes())
-            onChange(merged.getTime())
-            setText(formatTimeInput(merged.getTime()))
+            const value = event.target.value
+            if (value === '') return
+            const [datePart, clock] = value.split('T')
+            const [year, month, day] = datePart.split('-').map(Number)
+            const [hour, minute] = clock.split(':').map(Number)
+            const picked = new Date(year, month - 1, day, hour, minute)
+            onChange(picked.getTime())
+            setText(formatTimeInput(picked.getTime()))
             setError(false)
           }}
         />
