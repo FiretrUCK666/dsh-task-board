@@ -3563,3 +3563,86 @@ textarea.input {
   align-items: center;
   gap: 6px;
 }
+
+/* --- workbench row: live stats (one glance) + focus (single column) + export
+       (filtered Markdown/JSON). Each pill applies to the CURRENT view and the
+       three compose freely. --- */
+.statChips {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--dsh-tb-text-3);
+  font-size: 12px;
+}
+
+.statChip {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--dsh-tb-text-2);
+  cursor: pointer;
+  border-bottom: 1px dotted var(--dsw-alias-border-l3);
+  font-variant-numeric: tabular-nums;
+}
+
+.statChip:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.statItem {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.statActions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.exportWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.exportMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 132px;
+  padding: 4px;
+  background: var(--dsh-tb-surface-menu);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  box-shadow: var(--dsh-tb-shadow-2);
+}
+
+.exportMenu button {
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.exportMenu button:hover {
+  background: var(--dsh-tb-hover);
+  color: var(--dsh-tb-text-1);
+}
+
+/* Focus mode: the single column stretches across the board (open whitespace). */
+.columnsFocus .column {
+  flex: 1 1 auto;
+  max-width: none;
+}

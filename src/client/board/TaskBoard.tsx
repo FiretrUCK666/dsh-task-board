@@ -27,6 +27,7 @@ import { formatDateTime } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { TagManager } from './TagManager.tsx'
 import { TimeField } from './TimeField.tsx'
+import { renderJsonExport, renderMarkdownExport } from './board-export.ts'
 import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { TAG_PALETTE, taskMatchesTags, type Tag } from '../../core/tags.ts'
@@ -100,6 +101,38 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     const targets = snapshot.tasks.filter(task => selectedCards.includes(task.id))
     for (const task of targets) controller.setTaskColor(task.id, color)
   }
+  // 工作台（板头叠加能力）：统计摘要（当前筛选）、专注（只看一列）、导出（当前筛选）。
+  const [focused, setFocused] = useState<TaskStatus | undefined>(undefined)
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportWrapRef = useRef<HTMLDivElement | null>(null)
+  const statusLabelOf = (status: TaskStatus): string =>
+    COLUMNS.find(column => column.status === status)?.label ?? status
+  const downloadExport = (kind: 'md' | 'json'): void => {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    const filename = `tasks-${stamp}.${kind}`
+    const body = kind === 'md'
+      ? renderMarkdownExport(visible, tags, { now: Date.now(), statusLabel: statusLabelOf })
+      : renderJsonExport(visible, tags)
+    const blob = new Blob([body], { type: kind === 'md' ? 'text/markdown' : 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+  // 导出菜单：点击菜单外任意处关闭。
+  useEffect(() => {
+    if (!exportOpen) return
+    const onDown = (event: MouseEvent): void => {
+      if (exportWrapRef.current !== null && !exportWrapRef.current.contains(event.target as Node)) {
+        setExportOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => { document.removeEventListener('mousedown', onDown) }
+  }, [exportOpen])
+
   // 自动巡航设置弹层：点击胶囊的 ▾ 展开；点击弹层外任意处关闭。
   const [cruiseOpen, setCruiseOpen] = useState(false)
   const cruiseWrapRef = useRef<HTMLDivElement | null>(null)
@@ -683,10 +716,68 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             </span>
           </div>
         )}
+
+        {/* 工作台行：统计（当前筛选一眼可读，点总数清筛选）· 专注（只看一列）· 导出
+            （当前筛选为 Markdown / JSON）——三项全部叠加作用于当前视图。 */}
+        <div className={css.boardRow}>
+          <span className={css.statChips}>
+            <button
+              type="button"
+              className={css.statChip}
+              title={t('board.statClearTitle')}
+              onClick={() => { setFilter(''); setSelectedTags([]) }}
+            >
+              {t('board.statAll', { n: String(visible.length) })}
+            </button>
+            <span className={css.statItem}>{t('board.statusRunning', { n: String(visible.filter(task => task.status === 'running').length) })}</span>
+            <span className={css.statItem}>{t('board.statReview', { n: String(visible.filter(task => task.status === 'review').length) })}</span>
+            <span className={css.statItem}>{t('board.statTodo', { n: String(visible.filter(task => task.status === 'todo').length) })}</span>
+          </span>
+          <span className={css.statActions}>
+            <Button
+              size="sm"
+              variant={focused !== undefined ? 'primary' : 'ghost'}
+              onClick={() => { setFocused(focused === undefined ? 'todo' : undefined) }}
+            >
+              {t('board.focus')}
+            </Button>
+            <span className={css.exportWrap} ref={exportWrapRef}>
+              <Button size="sm" onClick={() => { setExportOpen(open => !open) }}>
+                {t('board.export')}
+              </Button>
+              {exportOpen && (
+                <span className={css.exportMenu}>
+                  <button type="button" onClick={() => { downloadExport('md'); setExportOpen(false) }}>
+                    {t('board.exportMarkdown')}
+                  </button>
+                  <button type="button" onClick={() => { downloadExport('json'); setExportOpen(false) }}>
+                    {t('board.exportJson')}
+                  </button>
+                </span>
+              )}
+            </span>
+          </span>
+        </div>
+
+        {/* 专注模式下列切换（只看录入的这一列；退出专注回到全列）。 */}
+        {focused !== undefined && (
+          <div className={css.boardRow}>
+            {COLUMNS.map(column => (
+              <button
+                key={column.status}
+                type="button"
+                className={`${css.tagFilter}${focused === column.status ? ` ${css.tagFilterOn}` : ''}`}
+                onClick={() => { setFocused(column.status) }}
+              >
+                {column.label}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
-      <div className={css.columns}>
-        {COLUMNS.map(column => {
+      <div className={css.columns + (focused !== undefined ? ` ${css.columnsFocus}` : '')}>
+        {COLUMNS.filter(column => focused === undefined || column.status === focused).map(column => {
           // Cards render in their column sort order (reorder drags rewrite
           // the order keys; the ledger array order is stable).
           const tasks = visible
