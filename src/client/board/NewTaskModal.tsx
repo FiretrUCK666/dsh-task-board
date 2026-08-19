@@ -8,17 +8,16 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
 import { TaskForm } from './TaskForm.tsx'
+import { NEW_TASK_DRAFT_KEY, draftStore } from './drafts.ts'
 import { draftToNewInput, type TaskDraft } from './task-draft.ts'
 import { Button } from './ui.tsx'
 
-/** New-task form overlay. */
-export function NewTaskModal({ controller, onClose }: { controller: BoardController; onClose: () => void }) {
-  const [draft, setDraft] = useState<TaskDraft>({
+/** The fresh draft shape ('' = default / not set; landing column 待规划). */
+function freshDraft(): TaskDraft {
+  return {
     title: '',
     description: '',
     prompt: '',
-    // Default landing column is 待规划 (backlog): a fresh task starts as an
-    // idea being shaped, not scheduled work; the selector stays available.
     status: 'backlog',
     agentPreset: '',
     workspaceId: '',
@@ -26,8 +25,32 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     model: '',
     reasoningEffort: '',
     permission: '',
+  }
+}
+
+/** New-task form overlay. */
+export function NewTaskModal({ controller, onClose }: { controller: BoardController; onClose: () => void }) {
+  // Draft memory: opening the modal restores the last unsaved new-task draft
+  // (typing, closing, reopening keeps the text); it is cleared by a create
+  // only — closing the modal without creating deliberately keeps it.
+  const [draft, setDraft] = useState<TaskDraft>(() => {
+    const stored = draftStore.get(NEW_TASK_DRAFT_KEY)
+    if (stored !== undefined) {
+      try {
+        const parsed = JSON.parse(stored) as TaskDraft
+        if (typeof parsed.title === 'string' && typeof parsed.prompt === 'string') return parsed
+      } catch {
+        // A corrupt draft falls through to a fresh form.
+      }
+    }
+    return freshDraft()
   })
   const [error, setError] = useState<string | undefined>(undefined)
+
+  const changeDraft = (next: TaskDraft): void => {
+    setDraft(next)
+    draftStore.set(NEW_TASK_DRAFT_KEY, JSON.stringify(next))
+  }
 
   const submit = (): void => {
     const task = controller.createTask(draftToNewInput(draft))
@@ -35,6 +58,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
       setError(t('new.required'))
       return
     }
+    draftStore.clear(NEW_TASK_DRAFT_KEY)
     onClose()
   }
 
@@ -44,7 +68,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
         className={css.modalForm}
         onSubmit={event => { event.preventDefault(); submit() }}
       >
-        <TaskForm draft={draft} onChange={setDraft} controller={controller} withStatus />
+        <TaskForm draft={draft} onChange={changeDraft} controller={controller} withStatus />
 
         {error !== undefined && <p className={css.formError}>{error}</p>}
 

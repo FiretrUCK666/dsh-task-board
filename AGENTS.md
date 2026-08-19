@@ -293,7 +293,9 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   在窗口边界翻转（经 scheduler 的 `cruiseTick` 每分钟调用，持久化 + dispatch + notify）。
   巡航只控制「取新任务」：已开始的任务不受关闭影响。UI：板头**两行命令栏**——行 1 =
   返回对话 + 板名 + 状态条（正在跑 N · 排队 M）+ 巡航胶囊（Switch + 展开箭头，弹层 =
-  立即开关 + 并发 + 定时窗口编辑器，datetime-local 加窗/移除/状态行），行 2 = 通栏筛选
+  立即开关 + 并发 + 定时窗口编辑器：窗口行**双行紧凑时间**（`formatCruiseTime`，开始/结束各
+  一行、永不省略号截断、完整值在 title），添加表单带标签、**打开弹层预填「开始=下一整点」**、
+  结束晚于开始的内联校验（不静默失败），行 2 = 通栏筛选
   搜索胶囊；「+ 新建任务」是唯一强调按钮。
 - **统一并发调度器（controller 内唯一启动决策点）**：手动/定时/接续/巡航/评论共用同一
   并发预算（同时在跑的会话数）；优先级 排队 schedule/chain → 评论续跑（提交 FIFO，同
@@ -387,11 +389,12 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   等待条）+ `SessionTranscript` 共享渲染。**composer 双模式（链接面板一个显式开关，
   默认「驱动任务」）**：执行评论页只有「驱动」——`submitComment` → FIFO → 调度器注入
   （巡航门控）；链接会话面板在「驱动任务」与「直发会话」间切换。驱动模式 =
-  `submitSessionComment`（`sessionAnchor` 轮，进同一队列，见调度器节），面板显示本会话
-  的评论线程（`sessionCommentsOf` + 共享 `CommentsThread`，排队可取消）；直发模式 =
+  `submitSessionComment`（`sessionAnchor` 轮，进同一队列，见调度器节）；直发模式 =
   `sendSessionMessage` → host `sessions.prompt`/`remote.commands.execute`，`/` 走注册表未
   匹配回退文本，**成功时追加一条 direct 轮**（`newDirectRound`：settled、无 injectedAt、
-  `sessionAnchor=sessionId`）——直发也进同一会话线程（带「直发」标签），但绝不驱动。
+  `sessionAnchor=sessionId`）。**两种模式都常驻显示同一评论线程**（`sessionCommentsOf` +
+  共享 `CommentsThread`，排队可取消；直发轮带「直发」标签）——直发、驱动、执行评论页三处
+  同一份数据、同一组件、同一观感；模式边界说明只是线程下的提示行，从不替换线程。
   **直发 ≠ 驱动契约**：不进调度器、不占并发预算、不触发
   巡航/接续/状态变化；面板在直发模式以「不会驱动本任务」+ `detail.sessionDirect` 提示防
   误驱动，失败保留草稿、会话消失禁用。完成态任务两模式都拒发（`detail.commentQueuedDone`
@@ -399,6 +402,14 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   `.sessionRailHead` 固定头 / `.sessionRailScroll` 中区滚动）。**计数即所见**：标题计数 =
   可见行数（隐藏不计数、恢复回补；面板徽章同源）；执行序号 = 绝对 plain-run 序列；卡片
   计数同源。
+
+- **草稿记忆（drafts.ts，组件无关）**：所有未发送/未保存的输入面——按会话的评论 composer
+  （`comment:<taskId>:<sessionId>`，评论页与会话面板同会话共享）、任务编辑
+  （`edit:<taskId>`，整份 TaskDraft JSON，重开详情自动恢复进编辑态并带「未保存草稿」提示）、
+  新建任务（`new`）、需求完善回答（`refine:<taskId>`）——在每次击键/变更时写穿
+  `draftStore`（localStorage `dsh.taskBoard.drafts.v1`；quota/私密模式写失败静默降级为
+  会话内内存态，不抛错），于是「切出去再点回来」文字仍在；发送/保存/创建成功或显式
+  取消后清除对应槽。任务台账键 `dsh.taskBoard.v1` 不动。
 
 - **稳定性守则（改交互/UI 必守）**：受控组件绑异步数据必有本地回退（显示 = 本地选择 ??
   服务端非空 ?? 默认，失败回退）；固定操作区（composer）之上必有可滚动中区（flex:1 +
@@ -457,6 +468,10 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   徽章 chipBody 省略号，见上「卡片永不穿模」节）。
 - `tests/card-label.spec.ts`：卡片徽章文案组合纯函数（runningStateLabel /
   executionNoLabel / settledChipLabel，中英双语）。
+- `tests/format-time.spec.ts`：巡航紧凑时间（formatCruiseTime 同日/同年/跨年 + 中英双语）
+  与 nextWholeHour / toDatetimeLocal。
+- `tests/drafts.spec.ts`：草稿存储接缝（localStorage 读写/空串即清/损坏降级/quota 不抛、
+  内存后端、键构造）。
 
 ## 版本管理流程（必守）
 

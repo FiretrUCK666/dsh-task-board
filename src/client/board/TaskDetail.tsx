@@ -25,6 +25,7 @@ import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
 import { SessionRow } from './SessionRow.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
+import { editDraftKey, draftStore } from './drafts.ts'
 import { Button, Disclosure, Icon, Section, Switch } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
 import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
@@ -659,6 +660,10 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   // so live record updates (e.g. an execution settling) never clobber it.
   const [draft, setDraft] = useState<TaskDraft | undefined>(undefined)
   const [editError, setEditError] = useState<string | undefined>(undefined)
+  // True while the current edit was restored from the persisted draft store:
+  // the user switched away mid-edit and came back to their own text — a quiet
+  // inline note says so instead of silently surprising them.
+  const [draftRestored, setDraftRestored] = useState(false)
   // Whether the run-config disclosure is expanded (collapsed by default: the
   // detail stays quiet, one summary line "默认设置 / 已自定义 N 项" is enough).
   const [configOpen, setConfigOpen] = useState(false)
@@ -671,6 +676,25 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   const [latest, setLatest] = useState(task)
   useEffect(() => { setLatest(task) }, [task])
   const current = latest
+
+  // Unsaved-edit draft memory: switching to a task restores its stored draft
+  // (auto-entering edit mode), so half-typed edits survive switching away and
+  // coming back. Saved or explicitly discarded drafts are cleared, so only
+  // truly unfinished text returns.
+  useEffect(() => {
+    setDraft(undefined)
+    setEditError(undefined)
+    setDraftRestored(false)
+    const stored = draftStore.get(editDraftKey(task.id))
+    if (stored !== undefined) {
+      try {
+        setDraft(JSON.parse(stored) as TaskDraft)
+        setDraftRestored(true)
+      } catch {
+        draftStore.clear(editDraftKey(task.id))
+      }
+    }
+  }, [task.id])
 
   // A card is busy while its latest run is still open AND the task is
   // running (hasOpenRun): a scheduled batch keeps the card 'running'
@@ -770,6 +794,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   const startEditing = (): void => {
     setDraft(draftFromTask(current))
     setEditError(undefined)
+    setDraftRestored(false)
   }
 
   /** New-task copy of this task ("复制为模板"): fresh card, same content, run
@@ -798,12 +823,16 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     }
     setDraft(undefined)
     setEditError(undefined)
+    setDraftRestored(false)
+    draftStore.clear(editDraftKey(current.id))
   }
 
-  /** Discard the draft and leave edit mode. */
+  /** Discard the draft and leave edit mode (explicit discard clears too). */
   const cancelEdit = (): void => {
     setDraft(undefined)
     setEditError(undefined)
+    setDraftRestored(false)
+    draftStore.clear(editDraftKey(current.id))
   }
 
   return (
@@ -830,8 +859,18 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
         <div className={css.detailBody}>
           {editing && draft !== undefined ? (
             <>
-              <TaskForm draft={draft} onChange={setDraft} controller={controller} />
+              <TaskForm
+                draft={draft}
+                onChange={next => {
+                  setDraft(next)
+                  // Draft memory: every keystroke is written through so
+                  // switching away keeps the half-typed edit.
+                  draftStore.set(editDraftKey(current.id), JSON.stringify(next))
+                }}
+                controller={controller}
+              />
               {editError !== undefined && <p className={css.formError}>{editError}</p>}
+              {draftRestored && <p className={css.detailHint}>{t('detail.editDraftRestored')}</p>}
             </>
           ) : (
             <>

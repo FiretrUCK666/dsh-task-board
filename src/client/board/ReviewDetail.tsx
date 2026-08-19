@@ -41,6 +41,7 @@ import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
+import { commentDraftKey, draftStore } from './drafts.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
@@ -75,7 +76,13 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // Bumped to force the shared config editor to re-read the model directory
   // (manual refresh / run-history changes).
   const [configReloadKey, setConfigReloadKey] = useState(0)
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useState<string>(() => {
+    // Draft memory: a comment typed here survives switching away and back —
+    // the shared per-session slot (the linked panel for the same session
+    // reads the same draft), cleared once the comment is actually sent.
+    if (sessionId === undefined) return ''
+    return draftStore.get(commentDraftKey(task.id, sessionId)) ?? ''
+  })
   const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
   // The comment thread auto-follows its latest round (fingerprint-gated).
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
@@ -161,6 +168,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     if (round !== undefined) {
       setLastCommentId(round.id)
       setDraft('')
+      if (sessionId !== undefined) draftStore.clear(commentDraftKey(current.id, sessionId))
     }
   }
 
@@ -264,7 +272,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             <div className={css.reviewComposer}>
               <PromptInput
                 value={draft}
-                onChange={setDraft}
+                onChange={next => {
+                  setDraft(next)
+                  if (sessionId !== undefined) draftStore.set(commentDraftKey(current.id, sessionId), next)
+                }}
                 placeholder={t('review.commentPlaceholder')}
                 rows={3}
                 controller={controller}

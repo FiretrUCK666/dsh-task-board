@@ -365,9 +365,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: 280px;
-  padding: 12px;
+  gap: 12px;
+  width: 300px;
+  padding: 14px;
   background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-lg);
@@ -443,38 +443,71 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 8px;
   padding: 3px 6px;
   border-radius: 8px;
+  /* Entrance: a soft fade-up, staggered by the row's inline animation-delay.
+     `backwards` holds the hidden start during the delay. Reduced-motion
+     downgrades it to static below. */
+  animation: dshTbFadeUp 140ms ease backwards;
 }
 
 .cruiseWindowRow:hover {
   background: var(--dsh-tb-hover);
 }
 
+/* The window row's time block: two short labeled lines (开始 / 结束), each
+   its own row — compact enough that BOTH endpoints always fit, so the end
+   time is never clipped away by an ellipsis (the compact format plus the
+   tooltip carry the full value). */
 .cruiseWindowTime {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cruiseWindowTimeRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cruiseWindowTimeLabel {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+  white-space: nowrap;
+}
+
+.cruiseWindowTimeValue {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
   color: var(--dsh-tb-text-2);
-  font-variant-numeric: tabular-nums;
 }
 
+/* The window editor: two labeled datetime fields stacked (start / optional
+   end) with an inline validation line, then the add action — one calm column
+   instead of four cramped controls on one row. */
 .cruiseWindowAdd {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.cruiseWindowArrow {
-  flex: none;
-  font-size: 12px;
-  color: var(--dsh-tb-text-3);
+.cruiseWindowField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .cruiseWindowAdd .input {
-  flex: 1 1 130px;
+  width: 100%;
   min-width: 0;
   height: 28px;
   padding: 0 8px;
@@ -2368,7 +2401,9 @@ textarea.input {
   .modal,
   .review,
   .reviewMessage,
-  .reviewContext {
+  .reviewContext,
+  .cruisePopover,
+  .cruiseWindowRow {
     animation: none;
   }
 

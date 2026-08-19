@@ -13,12 +13,13 @@
  * shared transcript tail (auto-follow + 滑到最新), then the answer bar
  * (input + send), then the apply action.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { refining, refineRoundsOf, type TaskRecord } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
+import { refineDraftKey, draftStore } from './drafts.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { SessionTranscript, SessionWaitingNotice } from './session-panel.tsx'
 import { Button, Section } from './ui.tsx'
@@ -33,8 +34,13 @@ export function RefineSection({ controller, task }: {
   const lastRound = rounds[rounds.length - 1]
   const waiting = controller.pendingInteractionOf(sessionId)
 
-  const [draft, setDraft] = useState('')
+  // 草稿记忆：回答框里打了一半的文字，切走再回来仍保留（按任务各自保存）；
+  // 发送成功即清除。切换任务时读对应任务的草稿。
+  const [draft, setDraft] = useState<string>(() => draftStore.get(refineDraftKey(task.id)) ?? '')
   const [applied, setApplied] = useState(false)
+  useEffect(() => {
+    setDraft(draftStore.get(refineDraftKey(task.id)) ?? '')
+  }, [task.id])
 
   // The live conversation: shared transcript-tail state (auto-follow +
   // 滑到最新), same mechanism as the review page.
@@ -60,6 +66,7 @@ export function RefineSection({ controller, task }: {
     if (text === '') return
     if (controller.answerRefine(task.id, text)) {
       setDraft('')
+      draftStore.clear(refineDraftKey(task.id))
       setApplied(false)
     }
   }
@@ -134,7 +141,11 @@ export function RefineSection({ controller, task }: {
             <textarea
               className={css.refineTextarea}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value
+                setDraft(next)
+                draftStore.set(refineDraftKey(task.id), next)
+              }}
               placeholder={t('detail.refine.answerPlaceholder')}
             />
             <Button variant="primary" disabled={draft.trim() === ''} onClick={send}>

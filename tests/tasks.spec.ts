@@ -100,6 +100,23 @@ describe('applyCardOrder', () => {
     expect(keyed(moved)).toEqual({ a: 0, b: 1, c: 2, d: 0 })
   })
 
+  it('inserts at a specific position when moving across columns', () => {
+    // b (todo) is dropped into backlog BEFORE e — the cross-column drop lands
+    // at e's position, not the column tail, renumbering only backlog.
+    const [a, b, c] = column(['a', 'b', 'c'])
+    const d = createTask({ title: 'd', description: '', prompt: '' }, NOW, 'd', 0)
+    const e = createTask({ title: 'e', description: '', prompt: '' }, NOW, 'e', 1)
+    const moved = applyCardOrder(
+      [a, b, c, { ...d, status: 'backlog' }, { ...e, status: 'backlog' }],
+      'b', 'backlog', 'e', NOW + 1,
+    )
+    // b lands at e's position in backlog; the source column keeps its
+    // relative order (c stays 2 with a harmless gap — sorting only compares
+    // within a column).
+    expect(moved.find(task => task.id === 'b')?.status).toBe('backlog')
+    expect(keyed(moved)).toEqual({ d: 0, b: 1, e: 2, a: 0, c: 2 })
+  })
+
   it('no-ops for an unknown task', () => {
     const [a, b, c] = column(['a', 'b', 'c'])
     const out = applyCardOrder([a, b, c], 'ghost', 'todo', undefined, NOW + 1)

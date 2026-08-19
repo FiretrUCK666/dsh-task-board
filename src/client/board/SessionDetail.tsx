@@ -29,6 +29,7 @@ import { PromptInput } from './PromptInput.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
+import { commentDraftKey, draftStore } from './drafts.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
@@ -83,8 +84,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
 
   // Direct-composer state: sending is immediate (no queue), a failure keeps
-  // the draft so the user can retry.
-  const [draft, setDraft] = useState('')
+  // the draft so the user can retry. Draft memory: the text survives switching
+  // away (and is shared with the execution review page for this session) via
+  // the per-session comment draft slot; it is cleared once a send lands.
+  const [draft, setDraft] = useState<string>(() => draftStore.get(commentDraftKey(task.id, sessionId)) ?? '')
   const [busy, setBusy] = useState(false)
   const [sendError, setSendError] = useState<string | undefined>(undefined)
   const liveGone = row === undefined
@@ -106,6 +109,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
         setLastCommentId(round.id)
         setDraft('')
         setSendError(undefined)
+        draftStore.clear(commentDraftKey(task.id, sessionId))
       }
       return
     }
@@ -120,6 +124,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       setBusy(false)
       if (result.ok) {
         setDraft('')
+        draftStore.clear(commentDraftKey(task.id, sessionId))
         reload()
       } else {
         setSendError(result.error === 'direct message unavailable'
@@ -218,28 +223,27 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               lines={lines}
               onChanged={reload}
             />
-            {drive ? (
-              /* Drive mode: this session's own comment thread — the live
-                  record of everything said from this panel that drives the
-                  task, with the same state/cancel grammar as the review
-                  page's thread. */
-              <section className={css.sessionThread}>
-                <h4 className={css.reviewThreadTitle}>
-                  {t('review.comments')}
-                  <span className={css.reviewThreadCount}>{thread.length}</span>
-                </h4>
-                <CommentsThread
-                  task={task}
-                  views={thread}
-                  onCancel={id => controller.cancelComment(id)}
-                />
-                <p className={css.detailHint}>{t('detail.sessionDriveHint')}</p>
-              </section>
-            ) : (
-              /* The direct-message boundary, stated plainly: this composer
-                  talks to the native session; it never drives the task. */
-              <p className={css.sessionReadonly}>{t('detail.sessionDirect')}</p>
-            )}
+            {/* The session's own comment thread — ONE shared record for every
+                way this session is driven: drive rounds from this panel,
+                direct-send rounds, and comments submitted from an execution's
+                review page all land in the same list (session-scoped model),
+                so the drive and direct surfaces read and look IDENTICAL. The
+                mode note below states the composer's boundary; it never
+                replaces the thread. Direct rounds carry the quiet "直发" tag. */}
+            <section className={css.sessionThread}>
+              <h4 className={css.reviewThreadTitle}>
+                {t('review.comments')}
+                <span className={css.reviewThreadCount}>{thread.length}</span>
+              </h4>
+              <CommentsThread
+                task={task}
+                views={thread}
+                onCancel={id => controller.cancelComment(id)}
+              />
+              {drive
+                ? <p className={css.detailHint}>{t('detail.sessionDriveHint')}</p>
+                : <p className={css.sessionReadonly}>{t('detail.sessionDirect')}</p>}
+            </section>
           </div>
 
           {/* The composer, pinned: drive (default) or direct, chosen by one
@@ -271,7 +275,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
             </div>
             <PromptInput
               value={draft}
-              onChange={setDraft}
+              onChange={next => {
+                setDraft(next)
+                draftStore.set(commentDraftKey(task.id, sessionId), next)
+              }}
               placeholder={drive
                 ? t('detail.sessionDrivePlaceholder')
                 : t('detail.sessionComposerPlaceholder')}

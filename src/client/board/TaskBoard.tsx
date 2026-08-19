@@ -19,6 +19,7 @@ import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/se
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { insertionGapOf, type InsertionGap } from './drop-position.ts'
+import { formatCruiseTime, nextWholeHour, toDatetimeLocal } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
@@ -56,23 +57,38 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     document.addEventListener('mousedown', onDown)
     return () => { document.removeEventListener('mousedown', onDown) }
   }, [cruiseOpen])
-  // 定时窗口表单（datetime-local 字符串，添加时解析为 epoch 毫秒）。
+  // 定时窗口表单（datetime-local 字符串，添加时解析为 epoch 毫秒）。打开弹层
+  // 时把「开始」预填为下一个整点，减少选择负担；校验失败就地提示，不做静默
+  // no-op；「结束」留空 = 一直保持，且必须晚于「开始」。
   const [windowStart, setWindowStart] = useState('')
   const [windowEnd, setWindowEnd] = useState('')
+  const [cruiseError, setCruiseError] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (!cruiseOpen) return
+    setWindowStart(current => current === '' ? toDatetimeLocal(nextWholeHour()) : current)
+    setCruiseError(undefined)
+  }, [cruiseOpen])
 
   /** 添加一条巡航定时窗口：开始必填；结束可选（留空=一直保持）且必须晚于开始。 */
   const addCruiseWindow = (): void => {
     const start = windowStart === '' ? Number.NaN : new Date(windowStart).getTime()
-    if (!Number.isFinite(start)) return
+    if (!Number.isFinite(start)) {
+      setCruiseError(t('board.cruiseWindowErrorStart'))
+      return
+    }
     let end: number | undefined
     if (windowEnd !== '') {
       const parsed = new Date(windowEnd).getTime()
-      if (!Number.isFinite(parsed) || parsed <= start) return
+      if (!Number.isFinite(parsed) || parsed <= start) {
+        setCruiseError(t('board.cruiseWindowErrorEnd'))
+        return
+      }
       end = parsed
     }
     controller.setCruiseSchedule([...snapshot.cruise.schedule, { startAt: start, ...end !== undefined ? { endAt: end } : {} }])
     setWindowStart('')
     setWindowEnd('')
+    setCruiseError(undefined)
   }
 
   // 弹层里的巡航状态行：当前开启中（至何时）或 关闭（下一窗口何时）。
@@ -85,10 +101,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     .sort((a, b) => a.startAt - b.startAt)[0]
   const cruiseStateLine = snapshot.cruise.enabled
     ? coveringWindow !== undefined && coveringWindow.endAt !== undefined
-      ? t('board.cruiseStateOnUntil', { time: formatDateTime(coveringWindow.endAt) })
+      ? t('board.cruiseStateOnUntil', { time: formatCruiseTime(coveringWindow.endAt) })
       : t('board.cruiseStateOn')
     : nextWindow !== undefined
-      ? t('board.cruiseStateNext', { time: formatDateTime(nextWindow.startAt) })
+      ? t('board.cruiseStateNext', { time: formatCruiseTime(nextWindow.startAt) })
       : t('board.cruiseStateOff')
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
   const [dragReject, setDragReject] = useState<TaskStatus | undefined>(undefined)
@@ -96,14 +112,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // timer lifecycle: the window-level `drop` listener fires right after the
   // column handler and must not erase the flash before its animation plays.
   const [dropFlash, setDropFlash] = useState<TaskStatus | undefined>(undefined)
-  // Same-column reorder: the id of the card being dragged and the insertion
-  // gap (beforeId = undefined means the column tail; top = the indicator's
-  // Y inside the cards container). The gap is mirrored in a ref — dragover
-  // fires at high frequency, and the drop must read the exact value the
-  // last dragover computed, never a stale render closure.
+  // The id of the card being dragged and the insertion gap it would land at —
+  // a gap now also recalls WHICH column it was computed for, so a cross-column
+  // move previews (and drops at) an exact position, not just the tail. The
+  // gap is mirrored in a ref (written synchronously on every dragover, read at
+  // drop) so the drop always matches the preview, never a stale render closure.
   const [dragId, setDragId] = useState<string | undefined>(undefined)
-  const [dropGap, setDropGap] = useState<InsertionGap | undefined>(undefined)
-  const dropGapRef = useRef<InsertionGap | undefined>(undefined)
+  const [dropGap, setDropGap] = useState<{ status: TaskStatus; gap: InsertionGap } | undefined>(undefined)
+  const dropGapRef = useRef<{ status: TaskStatus; gap: InsertionGap } | undefined>(undefined)
   // The .cards container per column (for half-split rect measurements).
   const cardsRefs = useRef<Partial<Record<TaskStatus, HTMLDivElement | null>>>({})
   // Guards the reject-flash timer against unmount (drop feedback only).
@@ -250,10 +266,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     event.preventDefault()
     // Capture the insertion decision BEFORE any reset: clearDrag wipes the
     // dropGap ref, so reading it after would always be undefined and every
-    // same-column drop would silently fall to the column tail (reorder could
-    // only ever move cards to the bottom). Order contract: read drop state
-    // first, clear transient UI after.
-    const gap = dropGapRef.current
+    // drop would silently fall to the column tail. Order contract: read drop
+    // state first, clear transient UI after. The gap recalls its column, so
+    // a cross-column move previewed at a position drops exactly there.
+    const gapRef = dropGapRef.current
+    const gapOf = (target: TaskStatus): string | undefined =>
+      gapRef !== undefined && gapRef.status === target ? gapRef.gap.beforeId : undefined
     const external = externalOf(event)
     const id = dragId ?? event.dataTransfer.getData('text/plain')
     clearDrag()
@@ -266,13 +284,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     const task = snapshot.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return
     if (dragId !== undefined && task.status === status) {
-      controller.moveTask(task.id, status, gap?.beforeId)
+      controller.moveTask(task.id, status, gapOf(status))
       flashColumn(status)
       return
     }
     const decision = resolveCardDrop(task, status)
     if (decision.kind === 'move') {
-      controller.moveTask(task.id, decision.status)
+      controller.moveTask(task.id, decision.status, gapOf(decision.status))
       flashColumn(decision.status)
     } else if (decision.kind === 'run') {
       // Dropping on 'running' means "run again" (same semantics as the
@@ -393,11 +411,27 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   ) : (
                     <ul className={css.cruiseWindowList}>
                       {cruiseSchedule.map((window, index) => (
-                        <li key={`${window.startAt}-${index}`} className={css.cruiseWindowRow}>
+                        <li
+                          key={`${window.startAt}-${index}`}
+                          className={css.cruiseWindowRow}
+                          style={{ animationDelay: `${index * 20}ms` }}
+                        >
+                          {/* 双行紧凑时间：开始/结束各占一行、各自完整可读，
+                              不再用长格式白单行拼 → 结束被省略号截掉。完整时间在
+                              每行的 title（tooltip）里始终可取。 */}
                           <span className={css.cruiseWindowTime}>
-                            {formatDateTime(window.startAt)}
-                            {' → '}
-                            {window.endAt !== undefined ? formatDateTime(window.endAt) : t('board.cruiseWindowNoEnd')}
+                            <span className={css.cruiseWindowTimeRow}>
+                              <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinStart')}</span>
+                              <span className={css.cruiseWindowTimeValue} title={formatDateTime(window.startAt)}>
+                                {formatCruiseTime(window.startAt)}
+                              </span>
+                            </span>
+                            <span className={css.cruiseWindowTimeRow}>
+                              <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinEnd')}</span>
+                              <span className={css.cruiseWindowTimeValue} title={window.endAt !== undefined ? formatDateTime(window.endAt) : undefined}>
+                                {window.endAt !== undefined ? formatCruiseTime(window.endAt) : t('board.cruiseWindowNoEnd')}
+                              </span>
+                            </span>
                           </span>
                           <button
                             type="button"
@@ -414,21 +448,27 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     </ul>
                   )}
                   <div className={css.cruiseWindowAdd}>
-                    <input
-                      className={css.input}
-                      type="datetime-local"
-                      value={windowStart}
-                      aria-label={t('board.cruiseWindowStart')}
-                      onChange={event => { setWindowStart(event.target.value) }}
-                    />
-                    <span className={css.cruiseWindowArrow} aria-hidden="true">→</span>
-                    <input
-                      className={css.input}
-                      type="datetime-local"
-                      value={windowEnd}
-                      aria-label={t('board.cruiseWindowEnd')}
-                      onChange={event => { setWindowEnd(event.target.value) }}
-                    />
+                    <label className={css.cruiseWindowField}>
+                      <span className={css.fieldLabel}>{t('board.cruiseWindowStart')}</span>
+                      <input
+                        className={css.input}
+                        type="datetime-local"
+                        value={windowStart}
+                        aria-label={t('board.cruiseWindowStart')}
+                        onChange={event => { setWindowStart(event.target.value); setCruiseError(undefined) }}
+                      />
+                    </label>
+                    <label className={css.cruiseWindowField}>
+                      <span className={css.fieldLabel}>{t('board.cruiseWindowEnd')}</span>
+                      <input
+                        className={css.input}
+                        type="datetime-local"
+                        value={windowEnd}
+                        aria-label={t('board.cruiseWindowEnd')}
+                        onChange={event => { setWindowEnd(event.target.value); setCruiseError(undefined) }}
+                      />
+                    </label>
+                    {cruiseError !== undefined && <p className={css.formError}>{cruiseError}</p>}
                     <Button size="sm" onClick={addCruiseWindow}>
                       {t('board.cruiseWindowAdd')}
                     </Button>
@@ -478,9 +518,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               onDragOver={event => {
                 // A latched external sidebar drag (session/workspace) marks
                 // this column as the drop target; the board's own card drags
-                // keep the classic reorder/move feedback below. The latch is
-                // cleared only by a drop / drag end — never here — so
-                // crossing the column's children cannot flicker the ring.
+                // keep the reorder/move feedback below. The latch is cleared
+                // only by a drop / drag end — never here — so crossing the
+                // column's children cannot flicker the ring.
                 if (externalRef.current) {
                   event.preventDefault()
                   if (dropGapRef.current !== undefined) {
@@ -492,8 +532,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   return
                 }
                 event.preventDefault()
-                if (!sameColumnDrag) {
-                  // Foreign or cross-column drag: plain column highlight.
+                // A board-card drag: a column accepts a POSITIONED drop
+                // whenever the drop resolves to a move — same-column always
+                // reorders, and a cross-column move (待规划/待办/待审核/已完成)
+                // may insert at an exact gap as well. Rerun zones (a drop on
+                // 进行中 = run again) and reject zones keep the plain column
+                // highlight; only a move target shows the insertion bar.
+                const decision = dragId !== undefined && draggedTask !== undefined
+                  ? resolveCardDrop(draggedTask, column.status)
+                  : undefined
+                const insertable = sameColumnDrag || decision?.kind === 'move'
+                if (!insertable) {
                   if (dropGapRef.current !== undefined) {
                     dropGapRef.current = undefined
                     setDropGap(undefined)
@@ -501,15 +550,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   setDragOver(column.status)
                   return
                 }
-                // Same-column reorder: the nearest gap decides — the
-                // indicator bar is the whole feedback, no column border.
+                // The nearest gap decides — the indicator bar is the whole
+                // feedback, no column border, for moves into any column.
                 setDragOver(undefined)
                 const gap = gapAt(column.status, event.clientY)
-                const moved = gap.beforeId !== dropGapRef.current?.beforeId
-                  || gap.top !== dropGapRef.current?.top
+                const moved = dropGapRef.current === undefined
+                  || dropGapRef.current.status !== column.status
+                  || gap.beforeId !== dropGapRef.current.gap.beforeId
+                  || gap.top !== dropGapRef.current.gap.top
                 if (moved) {
-                  dropGapRef.current = gap
-                  setDropGap(gap)
+                  dropGapRef.current = { status: column.status, gap }
+                  setDropGap({ status: column.status, gap })
                 }
               }}
               onDragLeave={() => {
@@ -544,10 +595,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 }}
                 onDragEnd={clearDrag}
               >
-                {dropGap !== undefined && sameColumnDrag && (
+                {dropGap !== undefined && dropGap.status === column.status && (
                   <span
                     className={css.dropIndicator}
-                    style={{ top: dropGap.top }}
+                    style={{ top: dropGap.gap.top }}
                     aria-hidden="true"
                   />
                 )}
