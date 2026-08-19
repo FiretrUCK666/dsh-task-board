@@ -203,11 +203,16 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 ### host 半区（DSH 主进程）
 
 - `src/index.ts`：`inject = ['webServer', 'systemPrompt', 'settings']`；注册设置命名空间
-  （settings.yaml 持久化）并联动公告；注册设置路由与权限预设路由；`sync()` 按
-  `enabled`/`announceToAgent` 注册/撤销 systemPrompt section。
+  （settings.yaml 持久化）并联动公告；注册设置路由、权限预设路由与 **session-activity 只读桥**；
+  `sync()` 按 `enabled`/`announceToAgent` 注册/撤销 systemPrompt section。
 - `src/host/settings-route.ts` / `permission-route.ts`：纯函数可注入测试；服务读取一律
   `ctx.get`（不裸属性访问）；权限选项**不写死**——每次实时读 `permissionPresets` 服务，
   未挂载则 available:false，DSH 更新预设表自动适配。
+- `src/host/session-activity-route.ts`：**原生活动只读桥** `GET /api/dsh-task-board/session-activity?sessionId=…`
+  → `{ ok, plan?, goal?, commands? }`。纯函数 `readSessionActivity(faces, sessionId)` 结构校验读取
+  **原生 `planMode` / `goals` / `commands`（目录）** 服务（`ctx.get` 每次实时取，任一缺失/抛错即
+  省略对应块、绝不报错）——命令名与计划状态**全部来自官方注册中心**，官方更新零维护自动同步；
+  手工注入可单测（tests/session-activity-route.spec.ts）。
 
 ### client 半区（浏览器）
 
@@ -289,22 +294,27 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 应用 agent preset 与权限（原生 `/permission` 命令）；结算靠会话列表对账）、`controller.ts`
 （台账 + 视图状态 + 导航感知 + **统一并发调度器**）。
 
-- **自动巡航（窗口模型，cruise.ts + controller）**：`CruiseState { enabled, limit, schedule:
-  CruiseWindow[] }`，`CruiseWindow = { startAt; endAt? }`。**`enabled` 是唯一真相**：
-  `applyManualToggle(state, on)` 只翻转 enabled、**绝不写 schedule**（手动狂点开关不会累积
-  窗口记录）；`tickCruise(now)`（经 scheduler 的 `cruiseTick` 每分钟调用）是分钟级**边界
-  事件**——startAt 落在上一分钟 → 预约开、endAt 落下 → 预约关（错过即跳过，无边界则保持
-  现状，手动意图优先），并**自动清理过期窗口**（`endAt <= now`，或无 endAt 且已开始的窗口
-  移除）；手动关后未来窗口到点仍会自动开；`setCruiseSchedule`（弹层编辑器）排序 + 按新表
-  重算 enabled（覆盖当前即开、清空即关）。过期记录自动消失，列表永远只显示进行中或未来的
-  预约。巡航只控制「取新任务」：已开始的任务不受关闭影响。UI：板头**两行命令栏**——行 1 =
-  返回对话 + 板名 + 状态条（正在跑 N · 排队 M）+ 巡航胶囊（Switch + 展开箭头，弹层 =
-  立即开关 + 并发 + 定时窗口编辑器：窗口行**双行紧凑时间**（`formatCruiseTime`，开始/结束各
-  一行、永不省略号截断、完整值在 title），添加表单 = **`TimeField` 打字式时间输入**
+- **自动巡航（窗口模型 v3，cruise.ts + controller）**：`CruiseState { enabled, limit, schedule,
+  manual? }`；**`CruiseWindow { startAt?; endAt? }` 两者均可选**（至少一个）：三态语义——
+  都填 = 区间 [startAt, endAt) 内开、外关；只填开始 = 到点开、之后保持开（无自动关）；
+  只填结束 = 立即视为开、到点关（区间从"现在"起）。`enabled` 是唯一真相：
+  `applyManualToggle(state, on)` 只翻转 enabled + 记录 `manual` 意图、**绝不写 schedule**
+  （手动狂点不会累积窗口记录）；`tickCruise(now)`（经 scheduler 的 `cruiseTick` 每分钟调用）
+  是分钟级**边界事件**——startAt 落在上一分钟 → 预约开、endAt 落下 → 预约关，**任一边界
+  发生后清空 manual（预约接管）**，错过即跳过、无边界则保持现状（手动意图在两次预约之间
+  有效）；任一输入组合（只设开始/只设结束/都设 × 手动开/关）都收敛到确定结果。**跨午夜
+  归一化**：添加/读取时 endAt <= startAt 视为次日同一时刻（自动 +24h，行内显示「次日」），
+  tick/清理基于归一化后 endAt——"开启比结束早还是晚都对得上"。**过期自动清理**（endAt<=now /
+  只有开始且开始时间已过 / 只有结束且结束时间已过 → 移除）。`setCruiseSchedule`（弹层编辑器）
+  排序 + 归一化 + 按新表重算 enabled（覆盖当前即开、清空即关）。过期记录自动消失，列表永远
+  只显示进行中或未来的预约。巡航只控制「取新任务」：已开始的任务不受关闭影响。UI：板头
+  **两行命令栏**——行 1 = 返回对话 + 板名 + 状态条（正在跑 N · 排队 M）+ 巡航胶囊（Switch +
+  展开箭头，弹层 = 立即开关 + 并发 + 定时窗口编辑器：窗口行**双行紧凑时间**（`formatCruiseTime`，
+  开始/结束各一行、永不省略号截断、完整值在 title），添加表单 = **`TimeField` 打字式时间输入**
   （`time-parse.ts` 宽松解析 `YYYY-MM-DD HH:mm`/`MM-DD HH:mm`/`HH:mm`，非法就地红框不吞字）
-  + 自绘日历按钮（`showPicker()` 触发原生日历，hover/active 阴影微缩动效）、**打开弹层预填
-  「开始=下一整点」**、结束晚于开始的内联校验（不静默失败），行 2 = 通栏筛选
-  搜索胶囊；「+ 新建任务」是唯一强调按钮。
+  + **原生 `datetime-local` 日历按钮**（`showPicker()` 原生日历含「年/月/日/时/分」，hover/active
+  阴影微缩动效）、**打开弹层预填「开始=下一整点」**、三态语义一行提示、结束可早于开始（跨次日），
+  行 2 = 通栏筛选搜索胶囊；「+ 新建任务」是唯一强调按钮。
 - **统一并发调度器（controller 内唯一启动决策点）**：手动/定时/接续/巡航/评论共用同一
   并发预算（同时在跑的会话数）；优先级 排队 schedule/chain → 评论续跑（提交 FIFO，同
   任务严格按序）→ 巡航待办；手动不限额但计并发。评论为每任务 FIFO（`injectedAt` 区分
@@ -428,8 +438,13 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   回合结束经 reconcile 回合证据落「待审核」；refine → 任务留原列、`refining` 同步。外源轮
   **绝不进队列/注入/编序号**（调度器、`pendingCommentCount`、`queuePositionOf` 均排除；
   `commentRoundState` 对 open 外源轮 = `running`）。误报兜底：会话已结束且超 `EXTERNAL_SETTLE_GRACE_MS`
-  (90s) 仍无回合证据 → settle cancelled（防卡死）；基线只在首次观察建立、历史活动永不补记
-  （错过即跳过）。配套：`reconcileRunningTasks` 结算范围扩展至「有 open refine 轮的任务」。
+  (90s) 仍无回合证据 → settle cancelled（防卡死）；**被动观察**基线只在首次观察建立、历史
+  活动永不补记（页面加载不补历史）。**主动绑定即评估（`reconcileBoundTask`，拖入瞬间全同步）**：
+  `createBoundTask`/`bindTaskSource` 成功即同步调用——绑定相关会话当前 `running=true` → 立即补记
+  open 外源轮 + 卡片→「进行中」+ **补记即视为新内容（viewedAt = now-1 → 呼吸环/「新」亮）**，
+  完成后经 reconcile 落「待审核」；空闲会话平凡落列（不虚构回合）；同会话重复绑定幂等
+  （有 open round 即跳过）；同时为该任务设置全部相关会话的 running 基线（之后被动对账继续捕获
+  翻转）。配套：`reconcileRunningTasks` 结算范围扩展至「有 open refine 轮的任务」。
 
 - **Markdown 预览（评论与对话，原生质感）**：`markdown-parser.ts`（纯解析，安全子集——段落 /
   `#`~`###` / 粗斜体 / 行内与围栏代码 / 列表 / 引用 / 链接 / 分隔线；链接协议白名单
@@ -442,14 +457,34 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 - **标签与配色（tags.ts + controller + UI，调研后落地）**：标签 = 自由多选分类（区别于状态/
   自动化），**中央目录** `TagCatalog { id, name, color }` 持久化 `dsh.taskBoard.tags.v1`——
   卡片只存 tag id，改名/改色在目录里一处同步全部卡片（零散落的 hex 维护）；`TaskRecord` 增
-  可选 `tags?: string[]` 与 `color?: string`（卡片强调色，预设色板 `TAG_PALETTE` 10 色 +
-  原生 `input[type=color]` 自定义色；颜色是**数据**经 inline style 应用，绝不作 CSS 字面量）。
-  纯函数：catalog CRUD / `taskMatchesTags`（多选 AND，空选择=全匹配）/ `normalizeCatalog`；
-  controller：`listTags/createTag/renameTag/recolorTag/deleteTag`（删除自动从全部卡片摘除）/
-  `setTaskTags/setTaskColor`；快照含 `tags`。UI：卡片标题下标签 chip（彩色圆点，截断 +N，
-  点击=按该标签筛选）+ 左侧 3px 配色条；板头第三行标签筛选（多选 AND、激活显示「清除」、
-  「管理标签」弹层 = TagManager 创建/改名/改色/用量/删除保护）；详情「标签与配色」Section
-  （点选添加/移除标签、卡片颜色色板 + 自定义 + 清除）。旧数据零影响（store 可选字段归一化）。
+  可选 `tags?: string[]` 与 `color?: string`（**卡片整卡配色**：`color-mix(9%)` 染色 + 左缘 3px
+  强调条，预设色板 `TAG_PALETTE` 10 色 + 原生 `input[type=color]` 自定义色；颜色是**数据**
+  经 inline style 的 `--card-tint` 应用，绝不作 CSS 字面量）。纯函数：catalog CRUD /
+  `taskMatchesTags`（多选 AND，空选择=全匹配）/ `normalizeCatalog`；controller：
+  `listTags/createTag/renameTag/recolorTag/deleteTag`（删除自动从全部卡片摘除）/
+  `setTaskTags/setTaskColor`；快照含 `tags`。**UI 主入口全在看板主界面上方**：板头「整理」
+  模式（开关按钮）→ 点卡片切换选中（高亮描边），整理横栏对选中集**批量加/去标签与换色**
+  （ColorSwatches 共享组件 + 标签 chips + 全选/清选/完成），与标签筛选/搜索/专注/导出正交
+  叠加、退出清空选中；板头标签筛选行（多选 AND、激活显示「清除」、「管理标签」弹层 =
+  TagManager 建/改名/改色/用量/删除保护）；详情「标签与配色」Section 保留单卡编辑。旧数据
+  零影响（store 可选字段归一化）。
+
+- **工作台横栏（板头叠加能力，纯派生/原生下载）**：统计摘要（当前筛选全部/进行中/待审核/待办
+  一行胶囊，点总数清筛选）；**专注模式**（只看一列、列头分段切换、单列 `.columnsFocus` 加宽留白）；
+  导出（当前筛选为 **Markdown / JSON**，`board-export.ts` 纯函数生成、Blob 下载）。三者全部叠加
+  作用于当前筛选视图。
+
+- **评论原生增强（host 只读桥 + NativeActivity，官方零维护同步）**：评论/链接面板/完善需求三处
+  composer 上方共用 `NativeActivity`（受控 Disclosure）——显示该会话的 **plan 状态 chip**、
+  **活动目标摘要**与 **原生 `/` 命令目录**（点击**插入**输入框，不发送）。数据来自 host 只读桥
+  `/api/dsh-task-board/session-activity`（读原生 `planMode`/`goals`/`commands`，结构校验，
+  缺失即省略该块、绝不报错），3s 轮询、卸载清定时器；命令名/计划状态**全部来自官方注册中心**，
+  官方新增/改名自动出现。切换会话即重读，与原生界面实时一致。
+
+- **光标（自绘 SVG 数据-URI，原生观感 + 永不纯白）**：卡片 = **抓握手形**（五指+掌，深描边+
+  白填+轻投影，grabbing 变体收指）；文本输入 = **细号原生风格 I 形**（1px 深竖线+细端帽+薄白底，
+  不加粗）。OS 光标偶发纯白渲染是浏览器/GPU 缺陷、CSS 无法修，自绘是确定性合成；不支持则回落
+  系统 grab/text（不更糟）。颜色是固定对比度的资产数据（`%23` 编码），非主题值。
 
 - **稳定性守则（改交互/UI 必守）**：受控组件绑异步数据必有本地回退（显示 = 本地选择 ??
   服务端非空 ?? 默认，失败回退）；固定操作区（composer）之上必有可滚动中区（flex:1 +
@@ -516,8 +551,14 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   分隔线/见原文转义/无 HTML 与危险协议注入）。
 - `tests/session-activity.spec.ts`：原生侧活动对账纯逻辑（基线不补记、翻转检测、open round
   与直发抑制、refine 标记、grace 常量）。
+- `tests/session-activity-route.spec.ts`：原生活动只读桥纯函数（结构读 plan/goal/commands、
+  缺失/畸形/抛错降级、agents 优先于 sessions、queryParamOf、HTTP 400/200 信封）。
+- `tests/board-export.spec.ts`：导出纯函数（状态分组、标签解析为名、Prompt 围栏、最近执行、
+  JSON 行形状）。
 - `tests/tags.spec.ts`：标签目录 CRUD/归一化/AND 筛选/卡片配色/store 可选字段归一化；
-  controller.spec 含标签目录端到端（快照含 tags、删除自动摘除全部卡片）。
+  controller.spec 含标签目录端到端（快照含 tags、删除自动摘除全部卡片）与
+  **绑定瞬间同步**（拖入 running→立即进行中/补外源轮/未读/进线程、空闲不虚构、重复换绑幂等、
+  完成后落待审核）。
 
 ## 版本管理流程（必守）
 
