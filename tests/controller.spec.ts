@@ -1197,13 +1197,13 @@ describe('auto-cruise', () => {
     const { controller } = makeController(new StubExec(), { cruiseStorage: storage })
     controller.setCruiseEnabled(true)
     controller.setCruiseLimit(3)
-    // Manual ON records an open-ended window from now (保持开启直到手动关).
-    const manualWindow: CruiseWindow[] = [{ startAt: NOW }]
+    // Manual ON flips enabled only — the schedule is NEVER written, so
+    // toggling cannot accumulate window records.
     expect(writes).toEqual([
-      { enabled: true, limit: 5, schedule: manualWindow },
-      { enabled: true, limit: 3, schedule: manualWindow },
+      { enabled: true, limit: 5, schedule: [] },
+      { enabled: true, limit: 3, schedule: [] },
     ])
-    expect(controller.getSnapshot().cruise).toEqual({ enabled: true, limit: 3, schedule: manualWindow })
+    expect(controller.getSnapshot().cruise).toEqual({ enabled: true, limit: 3, schedule: [] })
     // Clamped to ≥ 1.
     controller.setCruiseLimit(0)
     expect(controller.getSnapshot().cruise.limit).toBe(1)
@@ -1892,6 +1892,150 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
     const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
     await expect(controller.sendSessionMessage(task.id, 's-1', '   ')).resolves.toEqual({ ok: false, error: 'empty message' })
     expect(called).toBe(false)
+  })
+})
+
+describe('native-activity sync (两端同步)', () => {
+  /** A controller over a persisted task that has run on session s-1. */
+  function harness(extra: Partial<ControllerDeps> = {}) {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: '' }, NOW, 'task-a')
+    store.save([{ ...seeded, status: 'review', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed', error: undefined }] }])
+    const sessions = new FakeSessions()
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0, ...extra,
+    })
+    controller.start()
+    return { controller, sessions, store, stub }
+  }
+
+  it('an out-of-band native turn drives review → running → review and threads the round', async () => {
+    const { controller, sessions, stub } = harness()
+    await flush()
+    sessions.setRunning('s-1', false) // baseline
+    await flush()
+    sessions.setRunning('s-1', true) // the user chats in the native UI
+    await flush()
+    await flush()
+    const running = controller.getSnapshot().tasks[0]
+    expect(running.status).toBe('running')
+    const external = running.executions[running.executions.length - 1]
+    expect(external.external).toBe(true)
+    expect(external.sessionId).toBe('s-1')
+    expect(external.endedAt).toBeUndefined()
+
+    // The native turn finishes with real evidence → the card settles to review.
+    const extId = external.id
+    stub.reconcileResult = { kind: 'settled', taskId: 'task-a', executionId: extId, outcome: 'succeeded' }
+    sessions.setRunning('s-1', false)
+    await flush()
+    await flush()
+    const settled = controller.getSnapshot().tasks[0]
+    expect(settled.status).toBe('review')
+    const round = settled.executions.find(run => run.id === extId)
+    expect(round?.endedAt).not.toBeUndefined()
+    expect(round?.result).toBe('succeeded')
+  })
+
+  it('past activity never re-fires on the initial baseline', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: '' }, NOW, 'task-a')
+    store.save([{ ...seeded, status: 'review', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed', error: undefined }] }])
+    const sessions = new FakeSessions()
+    // The native session is ALREADY running before the board's first scan —
+    // the controller must baseline it, never record past activity.
+    sessions.setRunning('s-1', true)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.getSnapshot().tasks[0]
+    expect(task.executions.some(run => run.external === true)).toBe(false)
+    expect(task.status).toBe('review')
+  })
+
+  it('a board direct-send does not double-record its turn as an external round', async () => {
+    const { controller, sessions } = harness({
+      sessionMessage: async (): Promise<{ ok: true }> => ({ ok: true as const }),
+    })
+    await flush()
+    sessions.setRunning('s-1', false) // baseline
+    await flush()
+    await controller.sendSessionMessage('task-a', 's-1', 'hello')
+    await flush()
+    const withDirect = controller.getSnapshot().tasks[0]
+    expect(withDirect.executions.some(run => run.direct === true)).toBe(true)
+    // The native turn it started must not ALSO become an external round.
+    sessions.setRunning('s-1', true)
+    await flush()
+    await flush()
+    const after = controller.getSnapshot().tasks[0]
+    expect(after.executions.some(run => run.external === true)).toBe(false)
+    expect(after.executions.filter(run => run.direct === true).length).toBe(1)
+  })
+
+  it('a spurious running flip with no evidence is cancelled after the grace', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: '' }, NOW, 'task-a')
+    store.save([{ ...seeded, status: 'review', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed', error: undefined }] }])
+    const sessions = new FakeSessions()
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => clock, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    sessions.setRunning('s-1', false)
+    await flush()
+    sessions.setRunning('s-1', true)
+    await flush()
+    await flush()
+    const running = controller.getSnapshot().tasks[0]
+    expect(running.status).toBe('running')
+    const extId = running.executions[running.executions.length - 1].id
+    // Session ends with NO turn evidence; still inside the grace → stays running.
+    stub.reconcileResult = undefined
+    sessions.setRunning('s-1', false)
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+    // Past the grace → the spurious round is cancelled (card back to todo).
+    clock = NOW + 100_000
+    sessions.setRunning('s-1', false)
+    await flush()
+    await flush()
+    const cancelled = controller.getSnapshot().tasks[0]
+    expect(cancelled.status).toBe('todo')
+    expect(cancelled.executions.find(run => run.id === extId)?.result).toBe('cancelled')
+  })
+
+  it('an out-of-band refine turn keeps the column and marks refining', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'r', description: '', prompt: '' }, NOW, 'task-r')
+    store.save([{ ...seeded, status: 'backlog', refineSessionId: 's-r' }])
+    const sessions = new FakeSessions()
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    sessions.setRunning('s-r', false)
+    await flush()
+    sessions.setRunning('s-r', true)
+    await flush()
+    await flush()
+    const task = controller.getSnapshot().tasks[0]
+    expect(task.status).toBe('backlog')
+    expect(task.executions.some(run => run.refine === true && run.external === true && run.endedAt === undefined)).toBe(true)
   })
 })
 

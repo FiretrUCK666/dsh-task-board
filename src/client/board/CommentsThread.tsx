@@ -11,6 +11,7 @@ import css from '../board.module.css'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { Chip } from './Chip.tsx'
 import { commentKindOf, commentStateKey, queuePositionOf, type CommentView } from './comment-thread.ts'
+import { Markdown } from './Markdown.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 
 /** Renders the task's comment views (oldest first) with cancel affordances. */
@@ -30,12 +31,15 @@ export function CommentsThread({ task, views, onCancel }: {
           <li key={view.round.id} className={css.reviewComment}>
             <span className={css.reviewCommentText}>
               {view.round.command === true && <span className={css.reviewCommentCommand} aria-hidden="true">/</span>}
-              {view.round.comment}
+              {view.round.comment !== undefined && <Markdown text={view.round.comment} />}
             </span>
             <span className={css.reviewCommentMeta}>
               {/* 直发轮 = 用户直接发给原生会话的消息记录：只读、已送达、不驱动。
                   与驱动轮同一条线程，用安静副标签区分身份（研究：永不只靠颜色）。 */}
               {view.round.direct === true && <span className={css.reviewCommentDirect}>{t('review.commentDirect')}</span>}
+              {/* 外源轮 = 用户在原生会话界面（非看板）发起的回合：看板观察同步而来，
+                  同线程同状态，用同一安静副标签标明来源。 */}
+              {view.round.external === true && <span className={css.reviewCommentDirect}>{t('review.commentExternal')}</span>}
               <Chip kind={commentKindOf(view.state)}>
                 {view.state === 'queued'
                   ? t('review.commentQueued', { n: String(position) })

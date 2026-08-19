@@ -1,21 +1,32 @@
 /**
  * Auto-cruise scheduled windows: the pure state machine behind "定时自动
- * 开/关". A cruise run is a list of time windows `[startAt, endAt?)` —
- * endAt absent means "保持开启直到手动关闭". The effective state at any
- * moment is: ON if any window covers that moment. Manual toggles edit the
- * windows (manual ON = add an open-ended window from now; manual OFF =
- * close the window covering now — future windows stay scheduled and will
- * auto-enable again later). Framework-free and fully unit-testable.
+ * 开/关".
+ *
+ * `enabled` is the single source of truth. A manual toggle flips it DIRECTLY
+ * and NEVER touches the window list — clicking 开启/关闭 back and forth can
+ * no longer accumulate window records (the old model wrote windows on every
+ * toggle). Scheduled windows are appointments: their start instant flips the
+ * cruise ON, their end instant flips it OFF (minute-granularity boundary
+ * events; missed boundaries are skipped, never caught up), and windows that
+ * are fully past are pruned automatically so the list only ever shows live
+ * or future appointments. An open-ended window (no endAt) is a one-shot
+ * "turn on at startAt" — it fires once and then prunes, so it can never
+ * linger as a dead record.
+ *
+ * Framework-free and fully unit-testable.
  */
 import type { CruiseState } from './controller.ts'
 
-/** One scheduled cruise window (epoch ms; endAt absent = stay on). */
+/** One scheduled cruise window (epoch ms; endAt absent = one-shot "turn on at startAt"). */
 export interface CruiseWindow {
   /** When the window starts (epoch ms). */
   startAt: number
-  /** When the window ends (epoch ms); absent = keep running until manually off. */
+  /** When the window ends (epoch ms); absent = the window only turns the cruise on. */
   endAt?: number
 }
+
+/** The tick granularity for boundary detection (the scheduler heartbeat). */
+export const CRUISE_TICK_MS = 60_000
 
 /** Brand an unknown value as a valid window (persisted-state guard). */
 export function isCruiseWindow(value: unknown): value is CruiseWindow {
@@ -23,12 +34,6 @@ export function isCruiseWindow(value: unknown): value is CruiseWindow {
   const window = value as Record<string, unknown>
   return typeof window.startAt === 'number' && Number.isFinite(window.startAt)
     && (window.endAt === undefined || (typeof window.endAt === 'number' && Number.isFinite(window.endAt)))
-}
-
-/** Whether the cruise is effectively on at `now` (any window covers it). */
-export function effectiveEnabled(state: CruiseState, now: number): boolean {
-  return state.schedule.some(window => window.startAt <= now
-    && (window.endAt === undefined || window.endAt > now))
 }
 
 /** The window covering `now`, preferring the one ending latest (undefined = off). */
@@ -43,30 +48,58 @@ export function coveringWindow(state: CruiseState, now: number): CruiseWindow | 
 }
 
 /**
- * Apply a manual toggle to the window schedule:
- * - ON: if nothing covers now, add an open-ended window from now (一直保持
- *   until manually off). Already on → no change.
- * - OFF: close the window covering now at `now` (本轮结束 — future windows
- *   remain scheduled and will auto-enable again). Not on → no change.
+ * Apply a manual toggle: flips `enabled` ONLY — the window list is never
+ * written, so repeated 开启/关闭 clicks cannot grow the schedule. No-op when
+ * the state already matches.
  */
-export function applyManualToggle(state: CruiseState, on: boolean, now: number): CruiseState {
-  if (on) {
-    if (coveringWindow(state, now) !== undefined) return state
-    return { ...state, enabled: true, schedule: sortWindows([...state.schedule, { startAt: now }]) }
-  }
-  const covering = coveringWindow(state, now)
-  if (covering === undefined) {
-    return state.enabled ? { ...state, enabled: false } : state
-  }
-  return {
-    ...state,
-    enabled: false,
-    schedule: sortWindows(state.schedule.map(window =>
-      window === covering ? { ...window, endAt: now } : window)),
-  }
+export function applyManualToggle(state: CruiseState, on: boolean): CruiseState {
+  return state.enabled === on ? state : { ...state, enabled: on }
 }
 
-/** Replace the window list (sorted by start; effective state recomputed by the caller). */
+/**
+ * One heartbeat tick (the scheduler calls this every minute):
+ * - a window whose start instant falls within the last tick flips the cruise
+ *   ON (scheduled ON); its end instant flips it OFF (scheduled OFF). Ends
+ *   are applied after starts within the same tick, so a window that starts
+ *   and ends inside one minute nets OFF.
+ * - boundaries older than one tick are missed and skipped ("错过即跳过"),
+ *   which also covers stale windows persisted before a restart.
+ * - fully-past windows are pruned: an explicit endAt <= now, or an
+ *   open-ended window whose startAt has passed (its one-shot ON fired).
+ * With no boundary event the state stays exactly as it is (manual intent
+ * wins between appointments).
+ */
+export function tickCruise(state: CruiseState, now: number): CruiseState {
+  let enabled = state.enabled
+  const schedule: CruiseWindow[] = []
+  for (const window of state.schedule) {
+    if (window.startAt > now - CRUISE_TICK_MS && window.startAt <= now) enabled = true
+    if (window.endAt !== undefined && window.endAt > now - CRUISE_TICK_MS && window.endAt <= now) enabled = false
+    const expired = window.endAt !== undefined
+      ? window.endAt <= now
+      : window.startAt <= now
+    if (!expired) schedule.push(window)
+  }
+  if (schedule.length === state.schedule.length && enabled === state.enabled) return state
+  return { ...state, enabled, schedule }
+}
+
+/**
+ * Replace the window list (the editor's add/remove path): sorted, then the
+ * effective state is recomputed at once against the NEW list — a window
+ * already covering now turns the cruise on immediately, and removing every
+ * covering window turns it off (the old "按新表重算" contract). Pruning is
+ * left to tickCruise so a just-added window is never yanked before its first
+ * heartbeat.
+ */
+export function setCruiseSchedule(state: CruiseState, windows: readonly CruiseWindow[], now: number): CruiseState {
+  const schedule = sortWindows(windows)
+  const enabled = coveringWindow({ ...state, schedule }, now) !== undefined
+  if (schedule === state.schedule && enabled === state.enabled) return state
+  return { ...state, schedule, enabled }
+}
+
+/** Replace the window list (sorted by start). */
 export function sortWindows(windows: readonly CruiseWindow[]): CruiseWindow[] {
   return [...windows].sort((a, b) => a.startAt - b.startAt)
 }

@@ -247,7 +247,9 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   `JumpToLatest`/`SessionFrame`/`session-panel.tsx`（SessionRailHead/
   SessionTranscript/SessionConfigEditor/SessionFacts/SessionWaitingNotice）+ `SessionRow`
   （执行行与链接行共用一个行骨架）/`CommentsThread`（评论页与链接会话面板共用一个评论
-  项文法）。各界面一律复用，不手写重复标记。
+  项文法）+ `TimeField`（**打字式时间输入**：自由文本 + `time-parse.ts` 宽松解析 + 自绘
+  日历按钮走 `showPicker()` 原生日历）/`Markdown`（评论与 transcript 文本的 Markdown 预览，
+  解析器 `markdown-parser.ts`，安全子集、无 HTML 注入）。各界面一律复用，不手写重复标记。
 - **注意力动效（唯一语法）**：`--dsh-tb-attention`（warn）+ `--dsh-tb-breath`（2.6s
   ease-in-out）。卡片外层呼吸环 `dshTbBreathRing`，执行行内层柔晕 `dshTbBreathHalo`
   （无边框、无平染）；`prefers-reduced-motion` 全部静态降级。
@@ -278,24 +280,29 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 
 `tasks.ts`（任务模型 + 状态机纯函数）、`schedule.ts`（cron 解析 + 下次运行时刻）、
 `scheduler.ts`（每分钟 tick，隐藏错过即跳过、进行中跳过；开头调 `cruiseTick` 翻转巡航窗口）、
-`cruise.ts`（巡航窗口状态机：`effectiveEnabled`/`coveringWindow`/`applyManualToggle`/
-`sortWindows`）、`store.ts`（TaskStore + localStorage）、`execution.ts`
+`cruise.ts`（巡航窗口状态机：`applyManualToggle`/`tickCruise`/`setCruiseSchedule`/
+`coveringWindow`/`sortWindows`）、`session-activity.ts`（**原生侧活动对账**：running 翻转 →
+外源轮补记，见下）、`store.ts`（TaskStore + localStorage）、`execution.ts`
 （`connectWorkspace` 复用/新建空白会话；投递统一走斜杠感知路径——`/` 开头经原生命令
 注册表（`deliverCommandLine`，见下），否则 `session.prompt(queue)`；执行前按任务配置
 应用 agent preset 与权限（原生 `/permission` 命令）；结算靠会话列表对账）、`controller.ts`
 （台账 + 视图状态 + 导航感知 + **统一并发调度器**）。
 
 - **自动巡航（窗口模型，cruise.ts + controller）**：`CruiseState { enabled, limit, schedule:
-  CruiseWindow[] }`，`CruiseWindow = { startAt; endAt? }`；有效态 = `effectiveEnabled(state,
-  now)`（任一窗口覆盖当前时刻），**手动开 = 加一个无结束窗口**（从现在一直保持），**手动关 =
-  只关当前覆盖窗口**（未来窗口保留）——`applyManualToggle`；`setCruiseSchedule` 整体替换
-  窗口列表并按新表重算 enabled（注意用新 schedule 计算，别用旧 state）；`tickCruise(now)`
-  在窗口边界翻转（经 scheduler 的 `cruiseTick` 每分钟调用，持久化 + dispatch + notify）。
-  巡航只控制「取新任务」：已开始的任务不受关闭影响。UI：板头**两行命令栏**——行 1 =
+  CruiseWindow[] }`，`CruiseWindow = { startAt; endAt? }`。**`enabled` 是唯一真相**：
+  `applyManualToggle(state, on)` 只翻转 enabled、**绝不写 schedule**（手动狂点开关不会累积
+  窗口记录）；`tickCruise(now)`（经 scheduler 的 `cruiseTick` 每分钟调用）是分钟级**边界
+  事件**——startAt 落在上一分钟 → 预约开、endAt 落下 → 预约关（错过即跳过，无边界则保持
+  现状，手动意图优先），并**自动清理过期窗口**（`endAt <= now`，或无 endAt 且已开始的窗口
+  移除）；手动关后未来窗口到点仍会自动开；`setCruiseSchedule`（弹层编辑器）排序 + 按新表
+  重算 enabled（覆盖当前即开、清空即关）。过期记录自动消失，列表永远只显示进行中或未来的
+  预约。巡航只控制「取新任务」：已开始的任务不受关闭影响。UI：板头**两行命令栏**——行 1 =
   返回对话 + 板名 + 状态条（正在跑 N · 排队 M）+ 巡航胶囊（Switch + 展开箭头，弹层 =
   立即开关 + 并发 + 定时窗口编辑器：窗口行**双行紧凑时间**（`formatCruiseTime`，开始/结束各
-  一行、永不省略号截断、完整值在 title），添加表单带标签、**打开弹层预填「开始=下一整点」**、
-  结束晚于开始的内联校验（不静默失败），行 2 = 通栏筛选
+  一行、永不省略号截断、完整值在 title），添加表单 = **`TimeField` 打字式时间输入**
+  （`time-parse.ts` 宽松解析 `YYYY-MM-DD HH:mm`/`MM-DD HH:mm`/`HH:mm`，非法就地红框不吞字）
+  + 自绘日历按钮（`showPicker()` 触发原生日历，hover/active 阴影微缩动效）、**打开弹层预填
+  「开始=下一整点」**、结束晚于开始的内联校验（不静默失败），行 2 = 通栏筛选
   搜索胶囊；「+ 新建任务」是唯一强调按钮。
 - **统一并发调度器（controller 内唯一启动决策点）**：手动/定时/接续/巡航/评论共用同一
   并发预算（同时在跑的会话数）；优先级 排队 schedule/chain → 评论续跑（提交 FIFO，同
@@ -411,6 +418,26 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   会话内内存态，不抛错），于是「切出去再点回来」文字仍在；发送/保存/创建成功或显式
   取消后清除对应槽。任务台账键 `dsh.taskBoard.v1` 不动。
 
+- **原生侧活动对账（session-activity.ts + controller，两端状态全同步）**：用户在原生会话
+  界面（非看板）直接发言时，看板收不到提交、只能观察会话列表。机制：对每个任务的相关会话
+  （refine 会话 + 执行会话 + 链接会话，按 sessionId 去重）维护 `running` 基线；`running`
+  从 false→true 且该会话无看板 own 的 open round、且不在直发抑制期（`sendSessionMessage`
+  成功后的 60s）→ 补记一条**外源轮**（`newExternalRound`：`external` + `sessionAnchor` +
+  optional `refine`，进该会话评论线程、带「原生会话」标签）：非 refine → 卡片置「进行中」，
+  回合结束经 reconcile 回合证据落「待审核」；refine → 任务留原列、`refining` 同步。外源轮
+  **绝不进队列/注入/编序号**（调度器、`pendingCommentCount`、`queuePositionOf` 均排除；
+  `commentRoundState` 对 open 外源轮 = `running`）。误报兜底：会话已结束且超 `EXTERNAL_SETTLE_GRACE_MS`
+  (90s) 仍无回合证据 → settle cancelled（防卡死）；基线只在首次观察建立、历史活动永不补记
+  （错过即跳过）。配套：`reconcileRunningTasks` 结算范围扩展至「有 open refine 轮的任务」。
+
+- **Markdown 预览（评论与对话，原生质感）**：`markdown-parser.ts`（纯解析，安全子集——段落 /
+  `#`~`###` / 粗斜体 / 行内与围栏代码 / 列表 / 引用 / 链接 / 分隔线；链接协议白名单
+  http(s)/mailto/#/相对，绝无 HTML 注入）+ `Markdown.tsx`（React 元素渲染，不用
+  dangerouslySetInnerHTML）；接入共享 `TranscriptRow` 消息文本与 `CommentsThread` 评论文本，
+  于是评论页/会话面板/完善需求与评论区共享同一预览观感。解析器用**非全局正则 + 对剩余子串
+  逐段匹配**（递归内层调用不会破坏共享 lastIndex——这是此前"同一条 `**b**` 无限重匹配吃爆
+  内存"事故的根因，勿改回 `g` 标志全局共享）。
+
 - **稳定性守则（改交互/UI 必守）**：受控组件绑异步数据必有本地回退（显示 = 本地选择 ??
   服务端非空 ?? 默认，失败回退）；固定操作区（composer）之上必有可滚动中区（flex:1 +
   min-height:0 + overflow-y:auto），头部变高不挤压操作区；就近 inline 反馈（如「已应用」）
@@ -472,6 +499,10 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   与 nextWholeHour / toDatetimeLocal。
 - `tests/drafts.spec.ts`：草稿存储接缝（localStorage 读写/空串即清/损坏降级/quota 不抛、
   内存后端、键构造）。
+- `tests/markdown.spec.ts`：Markdown 解析器（标题/粗斜体/行内与围栏代码/列表/引用/链接/
+  分隔线/见原文转义/无 HTML 与危险协议注入）。
+- `tests/session-activity.spec.ts`：原生侧活动对账纯逻辑（基线不补记、翻转检测、open round
+  与直发抑制、refine 标记、grace 常量）。
 
 ## 版本管理流程（必守）
 

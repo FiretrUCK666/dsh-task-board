@@ -490,28 +490,100 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-2);
 }
 
-/* The window editor: two labeled datetime fields stacked (start / optional
-   end) with an inline validation line, then the add action — one calm column
-   instead of four cramped controls on one row. */
+/* The window editor: two TimeField rows (start / optional end) with an
+   inline validation line, then the add action — one calm column instead of
+   cramped native controls that overflow the popover. */
 .cruiseWindowAdd {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.cruiseWindowField {
+/* TimeField (cruise window editor): a labeled FREE-TYPED time input with a
+   calendar button. The input is a plain text field — fully controllable
+   width (no intrinsic datetime-local width, so it can never push past the
+   popover's right edge) — and the calendar button opens the native picker
+   with tactile press feedback (shadow + micro-scale). */
+.timeField {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
 }
 
-.cruiseWindowAdd .input {
-  width: 100%;
-  min-width: 0;
-  height: 28px;
-  padding: 0 8px;
+.timeFieldLabel {
   font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  white-space: nowrap;
+}
+
+.timeFieldRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.timeFieldRow .input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeFieldCalendar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--dsh-tb-text-2);
+  background: transparent;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion), transform var(--dsh-tb-motion);
+}
+
+.timeFieldCalendar:hover {
+  background: var(--dsh-tb-hover);
+  color: var(--dsh-tb-text-1);
+}
+
+.timeFieldCalendar:active {
+  background: var(--dsh-tb-hover);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 16%, transparent);
+  transform: translateY(1px);
+}
+
+.timeFieldCalendar:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+/* The invisible native date input exists only to drive showPicker. */
+.timeFieldHiddenDate {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.timeFieldError {
+  font-size: 11px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.timeFieldHint {
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
 }
 
 /* --- columns ------------------------------------------------------------------ */
@@ -643,9 +715,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* Same-column reorder: a bold accent bar drawn exactly at the insertion
    gap (see drop-position.ts) — the whole feedback, never a column-wide
-   highlight. Positioned inside the cards container (relative above). The
-   drop-in animation is a one-shot land (short), separate from the 2.6s
-   attention breath of persistent states. */
+   highlight. Positioned inside the cards container (relative above).
+   NO entrance animation: the bar re-mounts whenever it moves to another
+   column (or reappears after the pointer briefly left the column), and any
+   mount-time animation would replay as a flicker — a static bar follows the
+   pointer identically in every scenario, so it never blinks. */
 .dropIndicator {
   position: absolute;
   left: 8px;
@@ -656,12 +730,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   box-shadow: 0 0 0 1px var(--dsw-alias-bg-base);
   pointer-events: none;
   z-index: 1;
-  animation: dshTbDropLand 140ms var(--dsh-tb-motion);
-}
-
-@keyframes dshTbDropLand {
-  from { transform: scaleY(0.4); opacity: 0.3; }
-  to { transform: scaleY(1); opacity: 1; }
 }
 
 /* A successful drop confirmation: the landing column's border flashes the
@@ -1247,11 +1315,22 @@ textarea.input {
   color: var(--dsh-tb-text-3);
 }
 
+/* Self-drawn I-beam for every text-entry surface: the OS text cursor
+   occasionally loses its dark outline on light backgrounds (the same
+   rendering defect as the grab cursor). This deterministic glyph keeps the
+   dark I with a white backing line on any theme; unsupported browsers fall
+   back to the system text cursor. */
+.input,
+.search,
+.promptTextarea,
+.cruiseLimit {
+  cursor: url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2716%27%20height=%2724%27%20viewBox=%270%200%2016%2024%27%3E%3Cg%20stroke=%27%23ffffff%27%20stroke-width=%273.4%27%20stroke-linecap=%27round%27%3E%3Cline%20x1=%278%27%20y1=%273.5%27%20x2=%278%27%20y2=%2720.5%27/%3E%3Cline%20x1=%273%27%20y1=%275.5%27%20x2=%2713%27%20y2=%275.5%27/%3E%3Cline%20x1=%273%27%20y1=%2718.5%27%20x2=%2713%27%20y2=%2718.5%27/%3E%3C/g%3E%3Cg%20stroke=%27%23111c2e%27%20stroke-width=%271.7%27%20stroke-linecap=%27round%27%3E%3Cline%20x1=%278%27%20y1=%273.5%27%20x2=%278%27%20y2=%2720.5%27/%3E%3Cline%20x1=%273%27%20y1=%275.5%27%20x2=%2713%27%20y2=%275.5%27/%3E%3Cline%20x1=%273%27%20y1=%2718.5%27%20x2=%2713%27%20y2=%2718.5%27/%3E%3C/g%3E%3C/svg%3E') 8 12, text;
+}
+
 /* The native textarea corner grip (the two hatch lines) is hidden — the
    resize behavior stays (drag the corner to change the height), only the
    visual hint is removed. */
-.input::-webkit-resizer,
-.refineTextarea::-webkit-resizer {
+.input::-webkit-resizer {
   display: none;
 }
 
@@ -1733,21 +1812,18 @@ textarea.input {
   overflow-y: auto;
 }
 
-/* The prompt block with its inline copy action: a column so the block keeps
-   full width and the small copy button sits quiet at its end. */
-.promptRow {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.promptCopy {
-  align-self: flex-end;
-}
-
+/* The prompt block with its inline copy action: the copy button floats in
+   the block's top-right corner (hover/focus revealed, check feedback), so
+   the action reads as part of the block — no loose row below it. */
 .promptBlock {
+  position: relative;
+}
+
+.promptBlockText {
   margin: 0;
   padding: 10px 12px;
+  /* Right padding reserves room for the corner copy button. */
+  padding-right: 40px;
   font-size: 13px;
   line-height: 1.5;
   font-family: var(--dsw-font-markdown-code-block-small);
@@ -1759,6 +1835,41 @@ textarea.input {
   overflow-wrap: anywhere;
   max-height: 240px;
   overflow-y: auto;
+}
+
+.promptCopy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-float);
+  border: var(--dsh-tb-border-soft);
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: var(--dsh-tb-shadow-1);
+  opacity: 0;
+  transition: opacity var(--dsh-tb-motion), background var(--dsh-tb-motion), color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
+}
+
+.promptBlock:hover .promptCopy,
+.promptCopy:focus-visible {
+  opacity: 1;
+}
+
+.promptCopy:hover {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-hover);
+}
+
+.promptCopy:active {
+  transform: translateY(1px);
 }
 
 .sessionList {
@@ -2222,35 +2333,13 @@ textarea.input {
   flex: 1;
 }
 
-/* Answer input area: textarea + button stacked vertically */
+/* Answer input area: the shared PromptInput composer + send button stacked
+   vertically — the same composer grammar as every comment/session surface. */
 .refineInputArea {
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: 100%;
-}
-
-.refineTextarea {
-  width: 100%;
-  resize: vertical;
-  min-height: 60px;
-  max-height: 200px;
-  padding: 10px 12px;
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-md);
-  background: var(--dsh-tb-input-bg);
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1.5;
-  box-sizing: border-box;
-  outline: none;
-  -webkit-appearance: none;
-  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
-}
-
-.refineTextarea:focus {
-  border-color: var(--dsh-tb-focus-color);
-  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
 /* Apply action area */
@@ -2330,12 +2419,22 @@ textarea.input {
 
 /* --- drag & drop -------------------------------------------------------------- */
 
+/* The grab cursors are SELF-DRAWN SVG data-URI glyphs, not the OS cursors:
+   the OS grab/text cursors occasionally render without their outline (a
+   pure-white icon invisible on the white card) — a browser/GPU artifact no
+   CSS can fix. A data-URI cursor is composited deterministically by the
+   browser, so it always shows the dark-outlined, white-filled grip below.
+   The glyph's colors are intentional asset data (fixed contrast on any
+   theme), encoded as %23 — never theme values. Unsupported browsers fall
+   back to the system grab/grabbing, never worse than before. */
 .card[draggable='true'] {
-  cursor: grab;
+  cursor: url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2724%27%20height=%2724%27%20viewBox=%270%200%2024%2024%27%3E%3Cellipse%20cx=%2712.5%27%20cy=%2713%27%20rx=%277.5%27%20ry=%277.5%27%20fill=%27%23000%27%20fill-opacity=%270.22%27/%3E%3Cg%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.7%27%20stroke-linejoin=%27round%27%3E%3Ccircle%20cx=%277%27%20cy=%279.5%27%20r=%272.7%27/%3E%3Ccircle%20cx=%2712.5%27%20cy=%279.5%27%20r=%272.7%27/%3E%3Ccircle%20cx=%2718%27%20cy=%279.5%27%20r=%272.7%27/%3E%3Ccircle%20cx=%277%27%20cy=%2715.5%27%20r=%272.7%27/%3E%3Ccircle%20cx=%2712.5%27%20cy=%2715.5%27%20r=%272.7%27/%3E%3Ccircle%20cx=%2718%27%20cy=%2715.5%27%20r=%272.7%27/%3E%3C/g%3E%3C/svg%3E') 12 12, grab;
 }
 
 .card[draggable='true']:active {
-  cursor: grabbing;
+  /* The pressed variant: the same grip, slightly dimmed and centered on the
+     hotspot, reading as "held". */
+  cursor: url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2724%27%20height=%2724%27%20viewBox=%270%200%2024%2024%27%3E%3Cellipse%20cx=%2712%27%20cy=%2712.5%27%20rx=%277%27%20ry=%277%27%20fill=%27%23000%27%20fill-opacity=%270.3%27/%3E%3Cg%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.8%27%20stroke-linejoin=%27round%27%3E%3Ccircle%20cx=%277%27%20cy=%279%27%20r=%272.4%27/%3E%3Ccircle%20cx=%2712%27%20cy=%279%27%20r=%272.4%27/%3E%3Ccircle%20cx=%2717%27%20cy=%279%27%20r=%272.4%27/%3E%3Ccircle%20cx=%277%27%20cy=%2715%27%20r=%272.4%27/%3E%3Ccircle%20cx=%2712%27%20cy=%2715%27%20r=%272.4%27/%3E%3Ccircle%20cx=%2717%27%20cy=%2715%27%20r=%272.4%27/%3E%3C/g%3E%3C/svg%3E') 12 12, grabbing;
 }
 
 .card.dragging {
@@ -2418,7 +2517,8 @@ textarea.input {
   }
 
   .dropIndicator {
-    animation: none;
+    /* Static ring only: the indicator has no entrance animation to strip,
+       this keeps its reduced-motion look hairline-bordered. */
     box-shadow: inset 0 0 0 1px var(--dsh-tb-border);
   }
 
@@ -2646,10 +2746,12 @@ textarea.input {
 }
 
 .reviewMessageText {
+  display: block;
   font-size: 16px;
   line-height: 28px;
   color: var(--dsw-alias-label-primary);
-  white-space: pre-wrap;
+  /* Markdown block elements own their spacing; the container itself must not
+     force pre-wrap or every paragraph-internal newline would double-break. */
   overflow-wrap: anywhere;
 }
 
@@ -2932,10 +3034,96 @@ textarea.input {
 }
 
 .reviewCommentText {
+  display: block;
   font-size: 13px;
   line-height: 1.5;
-  white-space: pre-wrap;
+  /* Markdown block elements own their spacing; do not force pre-wrap at the
+     container level or every paragraph-internal newline would double-break. */
   overflow-wrap: anywhere;
+}
+
+/* --- markdown preview (shared by transcripts and comments) -----------------
+   Every conversation surface renders message/comment text through the same
+   Markdown component; these rules give the preview the native look with the
+   board's tokens — inline elements inherit the surrounding font size, blocks
+   keep their rhythm via margins. */
+.mdParagraph {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.mdParagraph + .mdParagraph,
+.mdCodeBlock + .mdParagraph,
+.mdParagraph + .mdCodeBlock {
+  margin-top: 8px;
+}
+
+.mdHeading {
+  margin: 12px 0 6px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--dsh-tb-text-1);
+}
+
+.mdHeading[data-level='1'] { font-size: 17px; }
+.mdHeading[data-level='2'] { font-size: 15px; }
+.mdHeading[data-level='3'] { font-size: 13px; }
+
+.mdStrong {
+  font-weight: 600;
+}
+
+.mdEm {
+  font-style: italic;
+}
+
+.mdCode {
+  font-family: var(--dsw-font-markdown-code-block-small);
+  font-size: 0.92em;
+  background: var(--dsw-alias-markdown-code-block);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.mdCodeBlock {
+  margin: 8px 0;
+  padding: 10px 12px;
+  font-family: var(--dsw-font-markdown-code-block-small);
+  font-size: 12.5px;
+  line-height: 1.5;
+  background: var(--dsw-alias-markdown-code-block);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.mdList {
+  margin: 6px 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mdQuote {
+  margin: 8px 0;
+  padding: 2px 12px;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.mdLink {
+  color: var(--dsw-alias-state-business-primary);
+  text-decoration: none;
+}
+
+.mdRule {
+  border: none;
+  border-top: 1px solid var(--dsw-alias-separator-primary);
+  margin: 10px 0;
 }
 
 /* A slash-command comment round: the leading slash renders in the business

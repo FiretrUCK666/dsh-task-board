@@ -17,11 +17,12 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
-import { applyManualToggle, effectiveEnabled, isCruiseWindow, sortWindows } from './cruise.ts'
+import { applyManualToggle, isCruiseWindow, setCruiseSchedule as applySchedule, sortWindows, tickCruise as tickSchedule } from './cruise.ts'
+import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, withinGrace, type ActivityBook } from './session-activity.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -161,9 +162,10 @@ export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   | 'reasoningEffort' | 'agentPreset' | 'permission'
 >>
 
-/** The auto-cruise state: effective on/off, concurrency, and the scheduled
- *  windows that drive the effective state (see cruise.ts — `enabled` is the
- *  derived current truth, kept persisted so every consumer reads one value). */
+/** The auto-cruise state: the current on/off truth, concurrency, and the
+ *  scheduled windows that flip it at their boundaries (see cruise.ts —
+ *  `enabled` IS the truth: manual toggles set it directly and never touch
+ *  the schedule; window start/end instants flip it; expired windows prune). */
 export interface CruiseState {
   enabled: boolean
   limit: number
@@ -1033,7 +1035,8 @@ export class BoardController {
       if (task.status === 'running' || task.status === 'done') continue
       const round = task.executions.find(candidate =>
         candidate.comment !== undefined && candidate.sessionId !== undefined
-        && candidate.injectedAt === undefined && candidate.endedAt === undefined)
+        && candidate.injectedAt === undefined && candidate.endedAt === undefined
+        && candidate.external !== true)
       if (round !== undefined && (best === undefined || round.startedAt < best.round.startedAt)) {
         best = { kind: 'comment', task, round }
       }
@@ -1042,7 +1045,7 @@ export class BoardController {
     const todo = this.tasks.find(task => {
       if (task.status !== 'todo' || hasOpenRun(task)) return false
       return !task.executions.some(candidate =>
-        candidate.comment !== undefined && candidate.injectedAt === undefined && candidate.endedAt === undefined)
+        candidate.comment !== undefined && candidate.injectedAt === undefined && candidate.endedAt === undefined && candidate.external !== true)
     })
     return todo !== undefined ? { kind: 'task', task: todo } : undefined
   }
@@ -1226,6 +1229,9 @@ export class BoardController {
     const send = this.sendRawMessage(sessionId, trimmed)
     return send.then(result => {
       if (!result.ok) return result
+      // The turn this direct-send starts is already recorded as a direct
+      // round — keep the running flip from ALSO becoming an external round.
+      this.directGraceUntil.set(sessionId, this.now() + DIRECT_GRACE_MS)
       this.tasks = this.tasks.map(task => task.id === taskId
         ? {
             ...task,
@@ -1474,14 +1480,15 @@ export class BoardController {
 
   // --- auto-cruise --------------------------------------------------------------
 
-  /** Turn the auto-cruise on or off (persisted) — a MANUAL toggle: ON adds
-   *  an open-ended window from now (保持开启直到手动关), OFF closes the window
-   *  covering now (本轮结束 — scheduled windows stay and may re-enable later).
-   *  On re-pumps the dispatch queue immediately — pending comments and todo
-   *  pickups start under the concurrency budget, comments first. */
+  /** Turn the auto-cruise on or off (persisted) — a MANUAL toggle: it flips
+   *  `enabled` directly and NEVER writes the scheduled windows, so clicking
+   *  开启/关闭 repeatedly cannot accumulate window records. Scheduled window
+   *  boundaries still flip the state (预约语义). On re-pumps the dispatch
+   *  queue immediately — pending comments and todo pickups start under the
+   *  concurrency budget, comments first. */
   setCruiseEnabled(on: boolean): void {
-    const next = applyManualToggle(this.cruiseState, on, this.now())
-    if (next.enabled === this.cruiseState.enabled && next.schedule === this.cruiseState.schedule) return
+    const next = applyManualToggle(this.cruiseState, on)
+    if (next === this.cruiseState) return
     this.cruiseState = next
     this.deps.cruiseStorage?.write(this.cruiseState)
     if (on) this.dispatch()
@@ -1500,27 +1507,30 @@ export class BoardController {
 
   /** Replace the cruise's scheduled windows (the editor's add/remove path).
    *  The effective state is recomputed at once against the NEW list: a window
-   *  may now cover the present, or the covering window may have just been
-   *  removed. */
+   *  may now cover the present (cruise turns on), or the covering window may
+   *  have just been removed (cruise turns off). Expired-window pruning is the
+   *  heartbeat's job (tickCruise), so a just-added window is never yanked
+   *  before its first tick. */
   setCruiseSchedule(windows: readonly import('./cruise.ts').CruiseWindow[]): void {
-    const schedule = sortWindows(windows)
-    const next: CruiseState = { ...this.cruiseState, schedule }
-    next.enabled = effectiveEnabled(next, this.now())
+    const next = applySchedule(this.cruiseState, windows, this.now())
+    if (next === this.cruiseState) return
     this.cruiseState = next
     this.deps.cruiseStorage?.write(this.cruiseState)
     if (this.cruiseState.enabled) this.dispatch()
     this.notify()
   }
 
-  /** The scheduler heartbeat for cruise windows: recompute the effective
-   *  state; on a boundary flip (window start/end reached) persist and pump
-   *  dispatch (enabling) — "到点自动开启 / 到点自动关闭". */
+  /** The scheduler heartbeat for cruise windows (每分钟): a window's start
+   *  instant flips the cruise ON, its end instant flips it OFF; fully-past
+   *  windows are pruned and persisted away — "到点自动开启 / 到点自动关闭",
+   *  过期记录自动消失. Persist and pump dispatch when anything changed. */
   tickCruise(now: number): void {
-    const effective = effectiveEnabled(this.cruiseState, now)
-    if (effective === this.cruiseState.enabled) return
-    this.cruiseState = { ...this.cruiseState, enabled: effective }
+    const next = tickSchedule(this.cruiseState, now)
+    if (next === this.cruiseState) return
+    const turnedOn = next.enabled && !this.cruiseState.enabled
+    this.cruiseState = next
     this.deps.cruiseStorage?.write(this.cruiseState)
-    if (effective) this.dispatch()
+    if (turnedOn) this.dispatch()
     this.notify()
   }
 
@@ -1606,6 +1616,13 @@ export class BoardController {
    */
   private reconcilePending = false
 
+  /** Native-activity detection state (see session-activity.ts): observed
+   *  running baselines per session + when external rounds were created. */
+  private readonly activityBook: ActivityBook = { running: new Map(), externalSince: new Map() }
+  /** Sessions whose current turn the board itself recorded (a direct-send):
+   *  they must not re-trigger external detection while in grace. */
+  private readonly directGraceUntil = new Map<string, number>()
+
   /**
    * Debounce + single-flight trigger for the running-task reconciliation.
    * Session-list notifications arrive in bursts (one per session status
@@ -1634,11 +1651,21 @@ export class BoardController {
     this.reconcileInFlight = true
     this.reconcilePending = false
     try {
+      // Stage 0 — native-activity detection: a related session flipping to
+      // `running` with no board-owned open round is an out-of-band turn (the
+      // user chatted in the native UI). It is recorded as an external round
+      // and drives the card state, so the board mirrors the native reality.
+      let changed = this.scanExternalActivity()
+
+      // Stage 1 — reconcile every task with an open round worth settling:
+      // running tasks (plain runs, comment rounds, external rounds) plus any
+      // task with an open refinement round (refinement keeps its column).
       type Settled = Extract<ExecutionEvent, { kind: 'settled' }>
       const events: Array<{ task: TaskRecord; event: Settled }> = []
       for (const task of this.tasks) {
-        if (task.status !== 'running') continue
         const execution = task.executions[task.executions.length - 1]
+        if (execution === undefined || execution.endedAt !== undefined) continue
+        if (task.status !== 'running' && execution.refine !== true) continue
         // Runs launched on this page settle through their live watch (turn
         // boundary / host-list flip); reconciliation exists for
         // background/leftover runs. The watch can still be defeated when the
@@ -1646,7 +1673,7 @@ export class BoardController {
         // a fallback an active run whose session the host reports finished
         // AND that has lived well past the queue window is handed to
         // reconcile (which requires real turn evidence) and released.
-        if (execution !== undefined && this.activeExecutionIds.has(execution.id)) {
+        if (task.status === 'running' && this.activeExecutionIds.has(execution.id)) {
           const sessionId = execution.sessionId
           if (sessionId === undefined) continue // still connecting; never judge
           const list = this.deps.sessions.list.getSnapshot()
@@ -1664,8 +1691,8 @@ export class BoardController {
           this.activeExecutionIds.delete(event.executionId)
         }
       }
-      if (events.length === 0) return
-      let changed = false
+
+      // Stage 2 — apply the settled rounds (refine rounds keep the column).
       const continued: string[] = []
       for (const { task, event } of events) {
         const next = this.settleRound(task, event.executionId, event.outcome, event.error)
@@ -1678,6 +1705,11 @@ export class BoardController {
       // (the chain request precedes the persist so the freed slot is
       // booked before any comment/cruise work competes for it).
       for (const id of continued) this.maybeContinueChain(id)
+
+      // Stage 3 — cancel external rounds whose session finished with no turn
+      // evidence past the grace (a spurious flip must not strand the card).
+      if (this.cancelSpuriousExternal()) changed = true
+
       if (changed) this.persistAndNotify()
     } finally {
       this.reconcileInFlight = false
@@ -1688,6 +1720,96 @@ export class BoardController {
         this.scheduleReconcile()
       }
     }
+  }
+
+  /** Every related session of a task (de-duplicated): the refine session
+   *  first (so it always reads `refine: true`), then execution sessions, then
+   *  linked sessions. */
+  private relatedSessionsOf(task: TaskRecord): Array<{ sessionId: string; refine: boolean }> {
+    const seen = new Set<string>()
+    const out: Array<{ sessionId: string; refine: boolean }> = []
+    const push = (sessionId: string | undefined, refine: boolean): void => {
+      if (sessionId === undefined || seen.has(sessionId)) return
+      seen.add(sessionId)
+      out.push({ sessionId, refine })
+    }
+    push(task.refineSessionId, true)
+    for (const execution of task.executions) push(execution.sessionId, false)
+    for (const linked of this.linkedOf(task)) push(linked.sessionId, false)
+    return out
+  }
+
+  /**
+   * Detect out-of-band activity on related sessions (see session-activity.ts)
+   * and record external rounds: the round enters the session's comment thread,
+   * a non-refine round moves the card to 「进行中」, a refine round keeps the
+   * column but turns `refining` on. Returns whether anything changed.
+   */
+  private scanExternalActivity(): boolean {
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    const now = this.now()
+    const candidates = this.tasks.map(task => ({
+      taskId: task.id,
+      candidate: {
+        sessions: this.relatedSessionsOf(task),
+        hasOpenRoundOn: (sessionId: string): boolean =>
+          task.executions.some(round => round.sessionId === sessionId && round.endedAt === undefined),
+        inGrace: (sessionId: string): boolean => withinGrace(this.directGraceUntil.get(sessionId), now),
+      },
+    }))
+    const turns = detectExternalTurns(candidates, this.activityBook, byId)
+    if (turns.length === 0) return false
+    const byTask = new Map<string, Array<{ sessionId: string; refine: boolean }>>()
+    for (const turn of turns) {
+      const list = byTask.get(turn.taskId) ?? []
+      list.push({ sessionId: turn.sessionId, refine: turn.refine })
+      byTask.set(turn.taskId, list)
+    }
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      const list = byTask.get(task.id)
+      if (list === undefined) return task
+      let next = task
+      for (const turn of list) {
+        next = {
+          ...next,
+          updatedAt: now,
+          executions: [...next.executions, newExternalRound({ id: this.uuid(), now, sessionId: turn.sessionId, refine: turn.refine })],
+        }
+        this.activityBook.externalSince.set(turn.sessionId, now)
+        if (!turn.refine && next.status !== 'running') next = { ...next, status: 'running' }
+      }
+      changed = true
+      return next
+    })
+    return changed
+  }
+
+  /**
+   * Cancel an open external round whose session has already finished WITHOUT
+   * any real turn evidence past the settle grace — the flip was spurious
+   * (a session created/unarchived, a transient signal) and the card must not
+   * stay stranded in 「进行中」. Real turns settle through the reconcile above
+   * (they have evidence), so this only ever cancels noise.
+   */
+  private cancelSpuriousExternal(): boolean {
+    const now = this.now()
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    let changed = false
+    for (const task of this.tasks) {
+      const latest = task.executions[task.executions.length - 1]
+      const sessionId = latest?.sessionId
+      if (latest === undefined || latest.external !== true || latest.endedAt !== undefined || sessionId === undefined) continue
+      const summary = byId[sessionId]
+      const since = this.activityBook.externalSince.get(sessionId) ?? latest.startedAt
+      if (summary?.running === true || now - since <= EXTERNAL_SETTLE_GRACE_MS) continue
+      const next = this.settleRound(task, latest.id, 'cancelled', undefined)
+      if (next !== task) {
+        this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
+        changed = true
+      }
+    }
+    return changed
   }
 
   private persistAndNotify(): void {

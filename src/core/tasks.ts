@@ -88,6 +88,18 @@ export interface ExecutionRecord {
    * settlement never moves the task out of its column.
    */
   refine?: boolean
+  /**
+   * An externally-observed round: the task's related session had real
+   * activity OUTSIDE the board (a user chatted directly in the native UI,
+   * or the agent did something the board did not record) — detected from the
+   * session list's running flip. Unlike comment/direct rounds it is
+   * populated by observation, not submission: it drives the card into 「进行中」
+   * and settles to 「待审核」 like a real round, appears in the session's
+   * comment thread (its text is filled at settle when history yields it),
+   * but is NEVER queued or injected (it is already running out-of-band), and
+   * a refine-external round keeps the task in its column while `refining`.
+   */
+  external?: boolean
 }
 
 /** How a scheduled task is driven: cron = fire at fixed times; chain = rerun right after each run settles. */
@@ -385,6 +397,31 @@ export function startExecution(
   }
 }
 
+/** Paused-readiness explanation keyed by the pausing status. */
+
+/**
+ * Create an externally-observed round (see `ExecutionRecord.external`): the
+ * board detected native-side activity on a related session (out-of-band
+ * chat). It enters the session's comment thread and drives the task state
+ * like a running round, but is never queued/injected — it is already
+ * happening. `refine: true` marks a refinement-session round, which keeps
+ * the task in its column.
+ */
+export function newExternalRound(options: { id: string; now: number; sessionId: string; refine?: boolean }): ExecutionRecord {
+  return {
+    id: options.id,
+    sessionId: options.sessionId,
+    startedAt: options.now,
+    endedAt: undefined,
+    result: undefined,
+    error: undefined,
+    comment: '',
+    sessionAnchor: options.sessionId,
+    external: true,
+    ...(options.refine === true ? { refine: true } : {}),
+  }
+}
+
 /**
  * Create a new comment-continuation round (pure): the single factory for
  * both comment anchors. An execution-anchored comment (`parentExecutionId`)
@@ -521,7 +558,9 @@ export function hasOpenRun(task: TaskRecord): boolean {
 export function pendingCommentCount(task: TaskRecord): number {
   let count = 0
   for (const round of task.executions) {
-    if (round.comment !== undefined && round.injectedAt === undefined && round.endedAt === undefined) count += 1
+    // External rounds run out-of-band and are never queued — they must not
+    // count toward the "saved comments waiting to inject" badge.
+    if (round.comment !== undefined && round.injectedAt === undefined && round.endedAt === undefined && round.external !== true) count += 1
   }
   return count
 }

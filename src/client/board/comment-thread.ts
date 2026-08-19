@@ -35,6 +35,9 @@ export interface CommentView {
 
 /** The display state of one round, absent any UI concerns. */
 export function commentRoundState(round: ExecutionRecord, cruiseOn: boolean): CommentViewState {
+  // An externally-observed round runs out-of-band until it settles — never
+  // "saved/queued" (it is not waiting for the dispatcher).
+  if (round.external === true && round.endedAt === undefined) return 'running'
   if (round.endedAt !== undefined) return round.result ?? 'cancelled'
   if (round.injectedAt !== undefined) return 'running'
   return cruiseOn ? 'queued' : 'saved'
@@ -74,7 +77,8 @@ export function sessionCommentsOf(task: TaskRecord, sessionId: string, cruiseOn:
  */
 export function queuePositionOf(task: TaskRecord, roundId: string): number {
   const pending = task.executions
-    .filter(round => round.comment !== undefined && round.endedAt === undefined)
+    // External rounds are never queued (they run out-of-band) — exclude them.
+    .filter(round => round.comment !== undefined && round.endedAt === undefined && round.external !== true)
     .sort((a, b) => a.startedAt - b.startedAt)
   const index = pending.findIndex(round => round.id === roundId)
   return index < 0 ? 0 : index + 1

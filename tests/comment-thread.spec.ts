@@ -1,7 +1,7 @@
 /** The comment-thread pure logic: one session-scoped thread model, display
  *  state, and the task-level queue position behind the session chips. */
 import { describe, expect, it } from 'vitest'
-import { createTask, newDirectRound, settleExecution, startExecution, type ExecutionRecord, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, newDirectRound, newExternalRound, pendingCommentCount, settleExecution, startExecution, type ExecutionRecord, type TaskRecord } from '../src/core/tasks.ts'
 import { commentKindOf, commentRoundState, commentStateKey, queuePositionOf, sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 
 const NOW = 1_700_000_000_000
@@ -224,5 +224,28 @@ describe('commentStateKey', () => {
     expect(commentStateKey('running')).toBe('review.commentRunning')
     expect(commentStateKey('queued')).toBe('review.commentQueued')
     expect(commentStateKey('saved')).toBe('review.commentPending')
+  })
+})
+
+describe('external rounds (原生会话活动)', () => {
+  it('an open external round reads as running — never saved/queued (it is not waiting for the dispatcher)', () => {
+    const round = newExternalRound({ id: 'x1', now: NOW + 5, sessionId: 's-1' })
+    expect(commentRoundState(round, false)).toBe('running')
+    expect(commentRoundState(round, true)).toBe('running')
+    const settled = { ...round, endedAt: NOW + 10, result: 'succeeded' as const }
+    expect(commentRoundState(settled, false)).toBe('succeeded')
+  })
+
+  it('belongs to the session thread but never occupies a queue position', () => {
+    const task = {
+      ...withTwoRuns(),
+      executions: [
+        ...withTwoRuns().executions,
+        newExternalRound({ id: 'x1', now: NOW + 10, sessionId: 's-1' }),
+      ],
+    }
+    expect(sessionCommentsOf(task, 's-1', true).map(view => view.round.id)).toContain('x1')
+    expect(queuePositionOf(task, 'x1')).toBe(0)
+    expect(pendingCommentCount(task)).toBe(0)
   })
 })

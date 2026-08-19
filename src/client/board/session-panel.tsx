@@ -16,6 +16,7 @@ import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
+import { Markdown } from './Markdown.tsx'
 import { sumUsage, type TranscriptLine } from './review-transcript.ts'
 import { JumpToLatest } from './use-transcript.tsx'
 import { Notice } from './ui.tsx'
@@ -48,7 +49,9 @@ const TranscriptRow = memo(function TranscriptRow(props:
   }
   return (
     <li className={css.reviewMessage} data-role={props.role}>
-      <span className={css.reviewMessageText}>{props.text}</span>
+      <div className={css.reviewMessageText}>
+        <Markdown text={props.text} />
+      </div>
     </li>
   )
 })

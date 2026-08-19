@@ -881,16 +881,24 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               <Section title={t('detail.prompt')}>
                 {/* An empty run prompt is nothing — the same em dash as the
                     description. It never shows the title as if it were a
-                    prompt (the title only serves as the execution fallback). */}
-                <div className={css.promptRow}>
-                  <pre className={css.promptBlock}>{current.prompt !== '' ? current.prompt : '—'}</pre>
+                    prompt (the title only serves as the execution fallback).
+                    The copy action floats INSIDE the block's top-right
+                    corner (hover/focus revealed, check-mark feedback), so it
+                    reads as part of the block instead of a loose row below. */}
+                <div className={css.promptBlock}>
+                  <pre className={css.promptBlockText}>{current.prompt !== '' ? current.prompt : '—'}</pre>
                   {current.prompt !== '' && (
-                    <Button size="sm" variant="ghost" className={css.promptCopy} onClick={copyPrompt}>
-                      {t('detail.copyPrompt')}
-                    </Button>
+                    <button
+                      type="button"
+                      className={css.promptCopy}
+                      title={promptCopied ? t('detail.copied') : t('detail.copyPrompt')}
+                      aria-label={t('detail.copyPrompt')}
+                      onClick={copyPrompt}
+                    >
+                      <Icon name={promptCopied ? 'check' : 'copy'} />
+                    </button>
                   )}
                 </div>
-                {promptCopied && <p className={css.detailHint}>{t('detail.copied')}</p>}
               </Section>
 
               <Disclosure

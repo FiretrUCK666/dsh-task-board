@@ -19,12 +19,13 @@ import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/se
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { insertionGapOf, type InsertionGap } from './drop-position.ts'
-import { formatCruiseTime, nextWholeHour, toDatetimeLocal } from './format-time.ts'
+import { formatCruiseTime, nextWholeHour } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
+import { TimeField } from './TimeField.tsx'
 import { Button, Icon, Switch } from './ui.tsx'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 
@@ -57,37 +58,36 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     document.addEventListener('mousedown', onDown)
     return () => { document.removeEventListener('mousedown', onDown) }
   }, [cruiseOpen])
-  // 定时窗口表单（datetime-local 字符串，添加时解析为 epoch 毫秒）。打开弹层
-  // 时把「开始」预填为下一个整点，减少选择负担；校验失败就地提示，不做静默
-  // no-op；「结束」留空 = 一直保持，且必须晚于「开始」。
-  const [windowStart, setWindowStart] = useState('')
-  const [windowEnd, setWindowEnd] = useState('')
+  // 定时窗口表单（epoch ms；TimeField 打字式输入 + 日历按钮）。打开弹层时把
+  // 「开始」预填为下一个整点；「结束」留空 = 一直保持，且必须晚于「开始」；
+  // 校验失败就地提示，不做静默 no-op。
+  const [windowStart, setWindowStart] = useState<number | undefined>(undefined)
+  const [windowEnd, setWindowEnd] = useState<number | undefined>(undefined)
   const [cruiseError, setCruiseError] = useState<string | undefined>(undefined)
   useEffect(() => {
     if (!cruiseOpen) return
-    setWindowStart(current => current === '' ? toDatetimeLocal(nextWholeHour()) : current)
+    setWindowStart(current => current ?? nextWholeHour())
     setCruiseError(undefined)
   }, [cruiseOpen])
 
   /** 添加一条巡航定时窗口：开始必填；结束可选（留空=一直保持）且必须晚于开始。 */
   const addCruiseWindow = (): void => {
-    const start = windowStart === '' ? Number.NaN : new Date(windowStart).getTime()
-    if (!Number.isFinite(start)) {
+    const start = windowStart
+    if (start === undefined) {
       setCruiseError(t('board.cruiseWindowErrorStart'))
       return
     }
     let end: number | undefined
-    if (windowEnd !== '') {
-      const parsed = new Date(windowEnd).getTime()
-      if (!Number.isFinite(parsed) || parsed <= start) {
+    if (windowEnd !== undefined) {
+      if (windowEnd <= start) {
         setCruiseError(t('board.cruiseWindowErrorEnd'))
         return
       }
-      end = parsed
+      end = windowEnd
     }
     controller.setCruiseSchedule([...snapshot.cruise.schedule, { startAt: start, ...end !== undefined ? { endAt: end } : {} }])
-    setWindowStart('')
-    setWindowEnd('')
+    setWindowStart(undefined)
+    setWindowEnd(undefined)
     setCruiseError(undefined)
   }
 
@@ -448,26 +448,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     </ul>
                   )}
                   <div className={css.cruiseWindowAdd}>
-                    <label className={css.cruiseWindowField}>
-                      <span className={css.fieldLabel}>{t('board.cruiseWindowStart')}</span>
-                      <input
-                        className={css.input}
-                        type="datetime-local"
-                        value={windowStart}
-                        aria-label={t('board.cruiseWindowStart')}
-                        onChange={event => { setWindowStart(event.target.value); setCruiseError(undefined) }}
-                      />
-                    </label>
-                    <label className={css.cruiseWindowField}>
-                      <span className={css.fieldLabel}>{t('board.cruiseWindowEnd')}</span>
-                      <input
-                        className={css.input}
-                        type="datetime-local"
-                        value={windowEnd}
-                        aria-label={t('board.cruiseWindowEnd')}
-                        onChange={event => { setWindowEnd(event.target.value); setCruiseError(undefined) }}
-                      />
-                    </label>
+                    <TimeField
+                      label={t('board.cruiseWindowStart')}
+                      value={windowStart}
+                      allowEmpty={false}
+                      onChange={next => { setWindowStart(next); setCruiseError(undefined) }}
+                    />
+                    <TimeField
+                      label={t('board.cruiseWindowEnd')}
+                      hint={t('board.cruiseWinEndHint')}
+                      value={windowEnd}
+                      onChange={next => { setWindowEnd(next); setCruiseError(undefined) }}
+                    />
                     {cruiseError !== undefined && <p className={css.formError}>{cruiseError}</p>}
                     <Button size="sm" onClick={addCruiseWindow}>
                       {t('board.cruiseWindowAdd')}

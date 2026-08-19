@@ -20,6 +20,7 @@ import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { refineDraftKey, draftStore } from './drafts.ts'
+import { PromptInput } from './PromptInput.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { SessionTranscript, SessionWaitingNotice } from './session-panel.tsx'
 import { Button, Section } from './ui.tsx'
@@ -136,17 +137,18 @@ export function RefineSection({ controller, task }: {
           {/* 等待通知 */}
           {active && <SessionWaitingNotice waiting={waiting} />}
 
-          {/* 输入区域：文本框 + 发送按钮（上下布局） */}
+          {/* 输入区域：与评论/会话面板完全同一套 composer（PromptInput：斜杠补全、
+              自动增高、草稿记忆），发送按钮保持。 */}
           <div className={css.refineInputArea}>
-            <textarea
-              className={css.refineTextarea}
+            <PromptInput
               value={draft}
-              onChange={(e) => {
-                const next = e.target.value
+              onChange={next => {
                 setDraft(next)
                 draftStore.set(refineDraftKey(task.id), next)
               }}
               placeholder={t('detail.refine.answerPlaceholder')}
+              rows={3}
+              controller={controller}
             />
             <Button variant="primary" disabled={draft.trim() === ''} onClick={send}>
               {t('detail.refine.send')}
