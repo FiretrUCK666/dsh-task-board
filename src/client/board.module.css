@@ -3646,3 +3646,85 @@ textarea.input {
   flex: 1 1 auto;
   max-width: none;
 }
+
+/* --- native activity: the comment/refine surfaces' bridge to the session's
+       live plan / goal / command catalog (host read-only bridge). Chips reuse
+       the plain chip grammar; unknown state degrades to nothing. --- */
+.nativeActivity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0 6px;
+}
+
+.nativeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nativeHint {
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+  min-width: 0;
+}
+
+.nativePlanPendingChip {
+  border-color: color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent);
+  color: var(--dsh-tb-attention);
+}
+
+.nativePlanActiveChip {
+  border-color: color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent);
+  color: var(--dsh-tb-accent);
+}
+
+.nativeGoalOn {
+  border-color: color-mix(in srgb, var(--dsh-tb-success) 45%, transparent);
+  color: var(--dsh-tb-success);
+}
+
+.nativeGoalTitle {
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nativeCommands {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.nativeCommand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 9px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-sunken);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.nativeCommand:hover {
+  color: var(--dsh-tb-text-1);
+  border-color: var(--dsw-alias-border-l3);
+}
+
+.nativeCommandDesc {
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
