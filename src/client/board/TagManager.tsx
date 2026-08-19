@@ -10,32 +10,7 @@ import { TAG_PALETTE } from '../../core/tags.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
-import { Button } from './ui.tsx'
-
-/** One palette swatch + custom color picker used by create and edit alike. */
-function Swatches({ value, onChange }: { value: string; onChange: (color: string) => void }) {
-  return (
-    <span className={css.tagSwatches}>
-      {TAG_PALETTE.map(color => (
-        <button
-          key={color}
-          type="button"
-          className={`${css.tagSwatch}${value === color ? ` ${css.tagSwatchOn}` : ''}`}
-          style={{ background: color }}
-          aria-label={color}
-          onClick={() => { onChange(color) }}
-        />
-      ))}
-      <input
-        type="color"
-        className={css.tagCustomColor}
-        value={value}
-        aria-label={t('tags.customColor')}
-        onChange={event => { onChange(event.target.value) }}
-      />
-    </span>
-  )
-}
+import { Button, ColorSwatches } from './ui.tsx'
 
 /** The label-catalog dialog. */
 export function TagManager({ controller, onClose }: { controller: BoardController; onClose: () => void }) {
@@ -68,7 +43,7 @@ export function TagManager({ controller, onClose }: { controller: BoardControlle
           onChange={event => { setNewName(event.target.value) }}
           onKeyDown={event => { if (event.key === 'Enter') create() }}
         />
-        <Swatches value={newColor} onChange={setNewColor} />
+        <ColorSwatches value={newColor} onChange={setNewColor} />
         <Button size="sm" variant="primary" disabled={newName.trim() === ''} onClick={create}>
           {t('tags.add')}
         </Button>
@@ -114,7 +89,7 @@ export function TagManager({ controller, onClose }: { controller: BoardControlle
                     </button>
                   )}
                 </span>
-                <Swatches
+                <ColorSwatches
                   value={editColor}
                   onChange={color => {
                     setEditing(current => ({ ...current, [tag.id]: color }))

@@ -7,7 +7,9 @@
  * any per-surface styling drift.
  */
 import type { ReactNode } from 'react'
+import { TAG_PALETTE } from '../../core/tags.ts'
 import css from '../board.module.css'
+import { t } from '../locales.ts'
 import { Chip } from './Chip.tsx'
 
 /** One button variant; shared "primary / ghost / danger" rhythm everywhere. */
@@ -173,5 +175,35 @@ export function Icon({ name, className }: { name: IconName; className?: string }
     >
       <path d={ICON_PATHS[name]} />
     </svg>
+  )
+}
+
+/**
+ * The one color-picker row of the whole board: the preset palette swatches
+ * plus a native custom color input. Effect colors are DATA (applied inline),
+ * so this is safe to reuse wherever a data color is chosen — the tag manager
+ * and the board's organize bar share exactly this grammar.
+ */
+export function ColorSwatches({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  return (
+    <span className={css.tagSwatches}>
+      {TAG_PALETTE.map(color => (
+        <button
+          key={color}
+          type="button"
+          className={`${css.tagSwatch}${value === color ? ` ${css.tagSwatchOn}` : ''}`}
+          style={{ background: color }}
+          aria-label={color}
+          onClick={() => { onChange(color) }}
+        />
+      ))}
+      <input
+        type="color"
+        className={css.tagCustomColor}
+        value={value}
+        aria-label={t('tags.customColor')}
+        onChange={event => { onChange(event.target.value) }}
+      />
+    </span>
   )
 }

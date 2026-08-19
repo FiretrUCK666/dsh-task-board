@@ -27,9 +27,9 @@ import { formatDateTime } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { TagManager } from './TagManager.tsx'
 import { TimeField } from './TimeField.tsx'
-import { Button, Icon, Switch } from './ui.tsx'
+import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
-import { taskMatchesTags, type Tag } from '../../core/tags.ts'
+import { TAG_PALETTE, taskMatchesTags, type Tag } from '../../core/tags.ts'
 
 /** Case-insensitive keyword match over title/description AND tag names. */
 function matchesFilter(task: TaskRecord, filter: string, tagNames: Record<string, string>): boolean {
@@ -68,6 +68,37 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [showTags, setShowTags] = useState(false)
   const toggleTag = (id: string): void => {
     setSelectedTags(current => current.includes(id) ? current.filter(tagId => tagId !== id) : [...current, id])
+  }
+  // 整理模式（批量）：点击卡片切换选中（高亮），板头横栏对选中集批量打标签/换色。
+  const [organizing, setOrganizing] = useState(false)
+  const [selectedCards, setSelectedCards] = useState<string[]>([])
+  const toggleCard = (id: string): void => {
+    setSelectedCards(current => current.includes(id) ? current.filter(cardId => cardId !== id) : [...current, id])
+  }
+  const clearSelection = (): void => { setSelectedCards([]) }
+  const exitOrganize = (): void => {
+    setOrganizing(false)
+    clearSelection()
+  }
+  /** 批量加/去标签：全部选中卡都有该标签则移除，否则加上（与单卡 toggle 一致）。 */
+  const applyTagToSelected = (tagId: string): void => {
+    const targets = snapshot.tasks.filter(task => selectedCards.includes(task.id))
+    if (targets.length === 0) return
+    const allHave = targets.every(task => (task.tags ?? []).includes(tagId))
+    for (const task of targets) {
+      const owned = new Set(task.tags ?? [])
+      if (allHave) {
+        owned.delete(tagId)
+      } else {
+        owned.add(tagId)
+      }
+      controller.setTaskTags(task.id, [...owned])
+    }
+  }
+  /** 批量换色（undefined = 清除）。 */
+  const applyColorToSelected = (color: string | undefined): void => {
+    const targets = snapshot.tasks.filter(task => selectedCards.includes(task.id))
+    for (const task of targets) controller.setTaskColor(task.id, color)
   }
   // 自动巡航设置弹层：点击胶囊的 ▾ 展开；点击弹层外任意处关闭。
   const [cruiseOpen, setCruiseOpen] = useState(false)
@@ -223,6 +254,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const tagNames = Object.fromEntries(tags.map(tag => [tag.id, tag.name]))
   const visible = snapshot.tasks.filter(task =>
     matchesFilter(task, filter, tagNames) && taskMatchesTags(task, selectedTags))
+  // In organize mode clicking a card toggles its selection; otherwise it opens
+  // the detail — one decision point for the whole board.
+  const cardClick = (id: string): void => {
+    if (organizing) toggleCard(id)
+    else controller.openTask(id)
+  }
+  // Organize-bar color slot: the first selected card's color, else the head of
+  // the preset palette (the swatch row applies instantly on click).
+  const orgColorValue = (() => {
+    for (const task of snapshot.tasks) {
+      if (selectedCards.includes(task.id) && task.color !== undefined) return task.color
+    }
+    return TAG_PALETTE[0]
+  })()
+  const hasSelectedColor = selectedCards.some(id => snapshot.tasks.find(task => task.id === id)?.color !== undefined)
   const draggedTask = dragId !== undefined
     ? snapshot.tasks.find(candidate => candidate.id === dragId)
     : undefined
@@ -529,7 +575,75 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             onChange={event => { setFilter(event.target.value) }}
             aria-label={t('board.search')}
           />
+          <Button
+            size="sm"
+            variant={organizing ? 'primary' : 'ghost'}
+            onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
+          >
+            {t('board.organize')}
+          </Button>
         </div>
+
+        {/* 整理模式横栏：标签与配色、卡片颜色的批量操作全部在板头完成——
+            先点卡片（选中高亮），再点标签/色板批量应用到选中集。 */}
+        {organizing && (
+          <div className={css.boardRow}>
+            <span className={css.organizeBar}>
+              <span className={css.organizeGroup}>
+                <span className={css.organizeLabel}>{t('board.organizeTags')}</span>
+                {tags.length === 0
+                  ? <span className={css.organizeLabel}>{t('board.organizeNoTags')}</span>
+                  : tags.map(tag => {
+                    const targets = snapshot.tasks.filter(task => selectedCards.includes(task.id))
+                    const on = targets.length > 0 && targets.every(task => (task.tags ?? []).includes(tag.id))
+                    return (
+                      <span
+                        key={tag.id}
+                        role="button"
+                        tabIndex={0}
+                        className={`${css.cardTag}${on ? ` ${css.cardTagOn}` : ''}`}
+                        title={t('board.organizeTagTitle')}
+                        onClick={() => { applyTagToSelected(tag.id) }}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            applyTagToSelected(tag.id)
+                          }
+                        }}
+                      >
+                        <span className={css.cardTagDot} style={{ background: tag.color }} aria-hidden="true" />
+                        {tag.name}
+                      </span>
+                    )
+                  })}
+              </span>
+              <span className={css.organizeGroup}>
+                <span className={css.organizeLabel}>{t('board.organizeColor')}</span>
+                <ColorSwatches
+                  value={orgColorValue}
+                  onChange={color => { applyColorToSelected(color) }}
+                />
+                {hasSelectedColor && (
+                  <button type="button" className={css.rowHide} onClick={() => { applyColorToSelected(undefined) }}>
+                    {t('tags.clearColor')}
+                  </button>
+                )}
+              </span>
+              <span className={css.organizeCount}>{t('board.organizeCount', { n: String(selectedCards.length) })}</span>
+              <span className={css.organizeActions}>
+                <Button size="sm" onClick={() => { setSelectedCards(visible.map(task => task.id)) }}>
+                  {t('board.organizeSelectAll')}
+                </Button>
+                <Button size="sm" disabled={selectedCards.length === 0} onClick={clearSelection}>
+                  {t('board.organizeClear')}
+                </Button>
+                <Button size="sm" variant="primary" onClick={exitOrganize}>
+                  {t('board.organizeDone')}
+                </Button>
+              </span>
+            </span>
+          </div>
+        )}
 
         {/* 标签筛选行（第三行，仅在已有标签或正在筛选时出现）：点击标签多选
             AND 筛选，再点取消；「管理」打开标签管理弹层；筛选激活时显示「清除」。 */}
@@ -710,7 +824,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       pendingTitle={pendingTitle}
                       unviewed={taskUnviewed(task)}
                       unviewedCount={taskUnviewedCount(task)}
-                      onClick={() => { controller.openTask(task.id) }}
+                      selected={organizing && selectedCards.includes(task.id)}
+                      onClick={() => { cardClick(task.id) }}
                       onQuickRun={() => { void controller.rerunTask(task.id) }}
                       onTagClick={id => { toggleTag(id) }}
                     />

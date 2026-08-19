@@ -4,7 +4,7 @@
  * draggable onto other columns; the drop semantics are decided by the board
  * through resolveCardDrop.
  */
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { Tag } from '../../core/tags.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -83,10 +83,12 @@ export function settledChipLabel(runs: number): string {
 }
 
 /** One card in a column. */
-export function TaskCard({ task, tags, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onTagClick }: {
+export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onTagClick }: {
   task: TaskRecord
   /** The resolved tag rows this card carries (catalog lookup done by the board). */
   tags: readonly Tag[]
+  /** Whether the card is picked in the board's organize (tidy) mode. */
+  selected?: boolean
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
   /** The open run's session is blocked on the user (approval / plan review / question). */
@@ -130,7 +132,8 @@ export function TaskCard({ task, tags, workspaceTitleOf, waiting, pendingCount, 
   return (
     <button
       type="button"
-      className={`${css.card}${dragging ? ` ${css.dragging}` : ''}`}
+      className={`${css.card}${dragging ? ` ${css.dragging}` : ''}${selected ? ` ${css.selectedCard}` : ''}`}
+      style={task.color !== undefined ? ({ '--card-tint': task.color } as CSSProperties) : undefined}
       data-status={task.status}
       data-task-id={task.id}
       data-unviewed={unviewed ? '' : undefined}

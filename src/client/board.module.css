@@ -688,8 +688,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   text-align: left;
   /* Cards are inner floating surfaces: opaque under a glass skin (the
      translucent canvas stays behind them). Radius md (sharper than the
-     column container's lg) so a card reads as an item inside a panel. */
-  background: var(--dsh-tb-surface-float);
+     column container's lg) so a card reads as an item inside a panel.
+     A per-card accent color tints the WHOLE card background (9% of the
+     user's color over the surface, applied as data through --card-tint —
+     never a CSS literal); unset cards stay the plain surface. */
+  background: color-mix(in srgb, var(--card-tint, transparent) 9%, var(--dsh-tb-surface-float));
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-md);
   cursor: pointer;
@@ -704,7 +707,14 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
      ring, focus outline) are element box decorations, not child content,
      so they are NOT clipped. */
   overflow: hidden;
-  transition: box-shadow var(--dsh-tb-motion), border-color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
+  transition: box-shadow var(--dsh-tb-motion), border-color var(--dsh-tb-motion), transform var(--dsh-tb-motion), background var(--dsh-tb-motion);
+}
+
+/* A card picked in the board's organize/tidy mode: accent outline + slight
+   rise, unmistakable but quiet. */
+.card.selectedCard {
+  border-color: var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha), var(--dsh-tb-shadow-2);
 }
 
 .card:hover {
@@ -3514,4 +3524,42 @@ textarea.input {
   font-size: 12px;
   color: var(--dsh-tb-text-3);
   white-space: nowrap;
+}
+
+/* --- organize (tidy) mode bar: the board header strip for bulk tagging and
+       recoloring — same chip/swatch grammar reused, nothing hand-rolled --- */
+.organizeBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.organizeGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.organizeLabel {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+  white-space: nowrap;
+}
+
+.organizeCount {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsh-tb-text-2);
+  white-space: nowrap;
+}
+
+.organizeActions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
