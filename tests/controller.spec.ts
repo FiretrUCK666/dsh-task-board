@@ -2079,6 +2079,97 @@ describe('tags (label catalog)', () => {
   })
 })
 
+describe('bound-session instant sync (拖入瞬间全同步)', () => {
+  it('dragging in a RUNNING session instantly marks the card running + external round + unviewed + threaded', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-live', true) // the user is mid-conversation right now
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createBoundTask(
+      { kind: 'session', sessionId: 's-live' },
+      { title: 'live', description: '', prompt: '' },
+    )!
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.status).toBe('running')
+    const ext = row.executions[row.executions.length - 1]
+    expect(ext.external).toBe(true)
+    expect(ext.sessionId).toBe('s-live')
+    expect(ext.endedAt).toBeUndefined()
+    // Brand-new content the user has not seen: the card breathes unviewed.
+    expect(taskUnviewed(row)).toBe(true)
+    // The running turn appears in the session comment thread immediately.
+    expect(sessionCommentsOf(row, 's-live', true).map(view => view.round.id)).toContain(ext.id)
+  })
+
+  it('a bound session that is idle stays at its landing column (no fabricated round)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-idle', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createBoundTask(
+      { kind: 'session', sessionId: 's-idle' },
+      { title: 'idle', description: '', prompt: '', status: 'todo' },
+    )!
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.status).toBe('todo')
+    expect(row.executions.length).toBe(0)
+  })
+
+  it('rebinding to a running session syncs instantly; repeated rebind is idempotent', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    sessions.setRunning('s-live', true)
+    controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.status).toBe('running')
+    expect(row.executions.filter(round => round.external === true).length).toBe(1)
+    // Rebinding the same live source must not double-record.
+    controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.executions.filter(round => round.external === true).length).toBe(1)
+  })
+
+  it('a bound RUNNING session settles to 待审核 when the native turn finishes', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-live', true)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createBoundTask({ kind: 'session', sessionId: 's-live' }, { title: 'live', description: '', prompt: '' })!
+    const extId = controller.getSnapshot().tasks[0].executions[0].id
+    stub.reconcileResult = { kind: 'settled', taskId: task.id, executionId: extId, outcome: 'succeeded' }
+    sessions.setRunning('s-live', false)
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status).toBe('review')
+  })
+})
+
 /** Build a task with a bind (test helper). */
 function taskWithBind(bind: NonNullable<TaskRecord['bind']>): TaskRecord {
   return { id: 'task-b', title: 'T', description: '', prompt: '', status: 'todo', order: 0, createdAt: 0, updatedAt: 0, executions: [], bind }

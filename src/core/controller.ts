@@ -658,6 +658,11 @@ export class BoardController {
     const boundTask: TaskRecord = { ...task, bind }
     this.tasks = [...this.tasks, boundTask]
     this.persistAndNotify()
+    // A freshly bound source may be RUNNING right now (the user dragged in a
+    // session/workspace mid-conversation): reflect that instantly — the card
+    // jumps to 「进行中」 and the running turn is recorded as an external
+    // round; it settles to 「待审核」 when the native turn ends.
+    this.reconcileBoundTask(boundTask.id)
     return boundTask
   }
 
@@ -810,7 +815,11 @@ export class BoardController {
       changed = true
       return { ...task, bind, updatedAt: this.now() }
     })
-    if (changed) this.persistAndNotify()
+    if (changed) {
+      this.persistAndNotify()
+      // A rebind replaces the live source: its state joins the card instantly.
+      this.reconcileBoundTask(taskId)
+    }
     return changed
   }
 
@@ -1805,6 +1814,9 @@ export class BoardController {
       out.push({ sessionId, refine })
     }
     push(task.refineSessionId, true)
+    // An explicitly bound single session is a related session even without a
+    // workspaces face (instant-sync works whenever the native list knows it).
+    if (task.bind !== undefined && task.bind.kind === 'session') push(task.bind.sessionId, false)
     for (const execution of task.executions) push(execution.sessionId, false)
     for (const linked of this.linkedOf(task)) push(linked.sessionId, false)
     return out
@@ -1854,6 +1866,52 @@ export class BoardController {
       return next
     })
     return changed
+  }
+
+  /**
+   * Instant state sync for an ACTIVE binding: right after a session/workspace
+   * is dragged in (createBoundTask / bindTaskSource), evaluate its live state
+   * — a related session that is running RIGHT NOW gets an open external round
+   * and the card jumps to 「进行中」 immediately (its completion later settles
+   * to 「待审核」 through the ordinary reconcile), and the new content turns
+   * the card unviewed (breathing glow / 「新」) just like native activity.
+   *
+   * This is deliberately the opposite of the passive scanner's "first
+   * observation only baselines": an explicit bind must show current reality
+   * at once, while page-load passive observations still never re-fire history.
+   * Baselines are set for every related session here too, so the passive
+   * running-flip detection keeps working from this point on. Idempotent: a
+   * session with an open round is never double-recorded.
+   */
+  private reconcileBoundTask(taskId: string): void {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    const now = this.now()
+    let next = task
+    let changed = false
+    for (const session of this.relatedSessionsOf(task)) {
+      const current = byId[session.sessionId]?.running ?? false
+      this.activityBook.running.set(session.sessionId, current)
+      if (!current) continue
+      if (task.executions.some(round => round.sessionId === session.sessionId && round.endedAt === undefined)) continue
+      if (withinGrace(this.directGraceUntil.get(session.sessionId), now)) continue
+      next = {
+        ...next,
+        updatedAt: now,
+        // Unviewed on purpose: this external round is brand-new content the
+        // user has not seen (it happened before/while they bound it).
+        viewedAt: now - 1,
+        executions: [...next.executions, newExternalRound({ id: this.uuid(), now, sessionId: session.sessionId })],
+      }
+      if (next.status !== 'running') next = { ...next, status: 'running' }
+      this.activityBook.externalSince.set(session.sessionId, now)
+      changed = true
+      break // one external round per bound task per reconcile
+    }
+    if (!changed) return
+    this.tasks = this.tasks.map(candidate => candidate.id === taskId ? next : candidate)
+    this.persistAndNotify()
   }
 
   /**
