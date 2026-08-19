@@ -86,14 +86,32 @@ describe('card no-breakout CSS contract', () => {
     expect(chip).toContain('min-width: 0')
     expect(chip).not.toContain('flex: none')
 
-    // The body span (every Chip wraps its children in it) is the ellipsis
-    // slot: overflow hidden + single line + ellipsis, shrinkable.
+    // The body span (every Chip wraps its text children in it) is the
+    // ellipsis slot: overflow hidden + single line + ellipsis, shrinkable.
     const body = expectRule('chipBody')
     expect(body).toContain('display: block')
     expect(body).toContain('min-width: 0')
     expect(body).toContain('overflow: hidden')
     expect(body).toContain('text-overflow: ellipsis')
     expect(body).toContain('white-space: nowrap')
+  })
+
+  it('two-slot grammar: a lead glyph keeps its box geometry outside the text body', () => {
+    // The chip's gap feeds the spacing between the lead glyph and the text,
+    // so it must survive.
+    expect(expectRule('chip')).toContain('gap: 5px')
+
+    // The lead-glyph slot is a real flex item of the chip (NOT inside the
+    // ellipsizing body): an activity spinner/icon keeps its width/height.
+    const lead = expectRule('chipLead')
+    expect(lead).toContain('display: inline-flex')
+    expect(lead).toContain('flex: none')
+    expect(lead).toContain('align-items: center')
+
+    // The spinner itself is context-independent: even outside a flex item
+    // an inline element would ignore width/height and collapse to a strip,
+    // so it carries its own inline-block geometry as a belt.
+    expect(expectRule('spinner')).toContain('display: inline-block')
   })
 
   it('badges row still wraps and can shrink', () => {

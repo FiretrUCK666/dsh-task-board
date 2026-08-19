@@ -253,8 +253,8 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
               <>
                 <Chip kind="warn" fill={false} title={waiting !== undefined
                   ? t('card.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })
-                  : undefined}>
-                  <span className={css.spinner} aria-hidden="true" />
+                  : undefined}
+                  icon={<span className={css.spinner} aria-hidden="true" />}>
                   {runningStateLabel(waiting)}
                 </Chip>
                 <Chip kind="warn" fill={false} title={executionNoLabel(runs)}>

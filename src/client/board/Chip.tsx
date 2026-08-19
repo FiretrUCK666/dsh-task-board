@@ -6,11 +6,18 @@
  * semibold text for dense surfaces like cards, where the text must align
  * flush with the card's left edge.
  *
- * No-breakout contract: children are always wrapped in a `.chipBody` span
- * that truncates with an ellipsis when the badge has less room than its
- * text (a flex container cannot ellipsize its own text items). Combined with
- * the chip's shrinkable flex sizing, whatever text a badge carries can never
- * escape its surface. The full text stays reachable through `title`.
+ * Two-slot no-breakout contract: a badge is a lead glyph + one text run, and
+ * each slot is handled structurally so neither can ever break the other.
+ *   - `children` is ALWAYS text: it rides on a `.chipBody` span that truncates
+ *     with an ellipsis when the badge has less room than its text (a flex
+ *     container cannot ellipsize its own text items). Combined with the
+ *     chip's shrinkable flex sizing, whatever text a badge carries can never
+ *     escape its surface.
+ *   - `icon` is a lead glyph (activity spinner, icon, dot): it renders in a
+ *     `.chipLead` span that stays a real flex item of the chip, so its box
+ *     geometry and the chip's gap apply and it is NEVER wrapped by — or
+ *     ellipsized away inside — the text body.
+ * The `title` attribute keeps the full text reachable on hover.
  */
 import type { ReactNode } from 'react'
 import css from '../board.module.css'
@@ -19,12 +26,15 @@ import css from '../board.module.css'
 export type ChipKind = 'neutral' | 'success' | 'error' | 'warn' | 'muted'
 
 /** One badge. */
-export function Chip({ kind = 'neutral', fill = true, title, className, children }: {
+export function Chip({ kind = 'neutral', fill = true, title, className, icon, children }: {
   kind?: ChipKind
   /** Pill look with neutral fill; false = plain semibold text. */
   fill?: boolean
   title?: string
   className?: string
+  /** Lead glyph (activity spinner, icon) with its own box geometry — kept a
+   *  real flex item, outside the ellipsizing text body. */
+  icon?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -33,6 +43,7 @@ export function Chip({ kind = 'neutral', fill = true, title, className, children
       data-kind={kind}
       title={title}
     >
+      {icon !== undefined && <span className={css.chipLead}>{icon}</span>}
       <span className={css.chipBody}>{children}</span>
     </span>
   )

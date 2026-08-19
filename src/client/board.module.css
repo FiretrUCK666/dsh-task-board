@@ -814,8 +814,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
    No-breakout contract (component-level, applies to every badge): a chip
    may shrink (flex: 0 1 auto) but never exceed its container
-   (max-width: 100%), and its text rides on .chipBody below, which
-   truncates with an ellipsis instead of stretching. Whatever text a chip
+   (max-width: 100%). Two internal slots — .chipBody carries the text and
+   ellipsizes instead of stretching; .chipLead carries a leading glyph and
+   keeps its flex geometry and the gap: 5px separation. Whatever text a chip
    carries now or in the future — however long — can only ever shrink into
    an ellipsis inside its box, never push past the card edge. The card's
    overflow: hidden is the final floor. */
@@ -833,16 +834,30 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
-/* The chip's text slot: a flex item that absorbs the chip's shrink and
-   ellipsizes (flex containers themselves cannot ellipsize their text
-   items, so every Chip wraps its children here). The chip's own title
-   attribute keeps the full text available on hover. */
+/* The chip's text slot: the ellipsizing half of the two-slot grammar — a
+   flex item that absorbs the chip's shrink and ellipsizes (flex containers
+   themselves cannot ellipsize their text items, so every Chip wraps its
+   text-only children here). The chip's own title attribute keeps the full
+   text available on hover. Any lead glyph with its own box geometry goes in
+   .chipLead below, never here. */
 .chipBody {
   display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The chip's lead-glyph slot: the geometry half of the two-slot grammar. A
+   real flex item of the chip (NOT inside .chipBody), so an activity spinner
+   or icon keeps its own box — width/height are honored only for flex items,
+   an inline span would collapse to a strip — and the chip's gap: 5px keeps
+   it separated from the text. Being outside the ellipsizing body, the glyph
+   is never truncated away while the label still shows. */
+.chipLead {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 .chipFill {
@@ -858,8 +873,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .chip[data-kind='warn'] { color: var(--dsw-alias-state-warn-primary); }
 .chip[data-kind='muted'] { color: var(--dsw-alias-label-tertiary); }
 
-/* Shared spinner (cards + detail execution rows), colored by currentColor. */
+/* Shared spinner (cards + detail execution rows), colored by currentColor.
+   display: inline-block keeps its 8x8 box even in a non-flex context (an
+   inline span would ignore width/height and collapse to a strip); inside a
+   flex item (its normal home, .chipLead) it is blockified anyway, so this
+   is a pure belt-and-suspenders for geometry. */
 .spinner {
+  display: inline-block;
   width: 8px;
   height: 8px;
   flex: none;

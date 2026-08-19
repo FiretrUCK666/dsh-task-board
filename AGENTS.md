@@ -263,9 +263,11 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   `tests/card-layout.spec.ts`（CSS 契约）与 `tests/card-label.spec.ts`（中英文案）钉死：
   ① 卡片盒 `overflow: hidden` 是硬剪辑地板；② 卡片内每条文字路径只截断不撑宽——所有
   flex 子项 `min-width: 0`、`cardTime` 可收缩（ellipsis 才生效）、标题/描述
-  `overflow-wrap: anywhere`；③ 徽章组件级统一——`Chip` 一律把 children 包进
-  `.chipBody`（内部 ellipsis 截断），`.chip` 可收缩但 `max-width: 100%` 封顶；任何新徽章
-  文案自动继承，不得新增逐条防溢出补丁。
+  `overflow-wrap: anywhere`；③ 徽章两槽位文法（组件级统一）——`Chip`：文字
+  `children` 一律进 `.chipBody`（内部 ellipsis 截断、`min-width: 0`）；带盒子几何的前导
+  图形（活动转圈/图标/圆点）一律走 `icon` 槽 → `.chipLead`（保持 flex item 几何与
+  `gap: 5px` 间距，绝不被省略号吞掉）；`.chip` 可收缩但 `max-width: 100%` 封顶。任何
+  新徽章文案自动继承，不得新增逐条防溢出补丁、不得把图形塞进 `.chipBody`。
 - **UI 小规则**：一个语义强调色（`--dsh-tb-accent`）+ 四个状态色
   （attention/success/danger/neutral），全令牌；半透明 `color-mix(in srgb, 令牌 alpha%,
   transparent)`，alpha 22%/10% 两级；4px 节奏、圆角 8/12/16/24；只用 `--dsw-font-*` 栈

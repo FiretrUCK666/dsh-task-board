@@ -198,8 +198,12 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
           <div className={css.sessionRailScroll}>
             {stateChip !== undefined && row !== undefined && (
               <div className={css.sessionFacts}>
-                <Chip kind={stateChip.kind}>
-                  {(row.running || waiting !== undefined) && <span className={css.spinner} aria-hidden="true" />}
+                <Chip
+                  kind={stateChip.kind}
+                  icon={(row.running || waiting !== undefined)
+                    ? <span className={css.spinner} aria-hidden="true" />
+                    : undefined}
+                >
                   {stateChip.label}
                 </Chip>
                 <span className={css.sessionFactTime}>
