@@ -6,6 +6,7 @@
  */
 import { useState } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
+import type { Tag } from '../../core/tags.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
@@ -82,8 +83,10 @@ export function settledChipLabel(runs: number): string {
 }
 
 /** One card in a column. */
-export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun }: {
+export function TaskCard({ task, tags, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onTagClick }: {
   task: TaskRecord
+  /** The resolved tag rows this card carries (catalog lookup done by the board). */
+  tags: readonly Tag[]
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
   /** The open run's session is blocked on the user (approval / plan review / question). */
@@ -100,6 +103,8 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
   /** Optional hover quick-action: run the task right from the card (rerun
    *  semantics, same run guard; disabled while a run is open). */
   onQuickRun?: () => void
+  /** Clicking a card's tag chip filters the board to that tag. */
+  onTagClick?: (tagId: string) => void
 }) {
   const [dragging, setDragging] = useState(false)
   const latest = task.executions[task.executions.length - 1]
@@ -168,7 +173,40 @@ export function TaskCard({ task, workspaceTitleOf, waiting, pendingCount, pendin
           <Icon name="play" />
         </span>
       )}
+      {/* A per-card accent color renders as a quiet 3px left bar (data, not
+          a theme value — applied inline from the user's choice). */}
+      {task.color !== undefined && <span className={css.cardAccentBar} style={{ background: task.color }} aria-hidden="true" />}
       <span className={css.cardTitle}>{task.title}</span>
+      {/* The card's labels: small colored-dot chips (capped with a +N tail so
+          a long set can never crowd the card), clicking one filters the board
+          to that tag. */}
+      {tags.length > 0 && (
+        <span className={css.cardTags}>
+          {tags.slice(0, 3).map(tag => (
+            <span
+              key={tag.id}
+              role="button"
+              tabIndex={0}
+              className={css.cardTag}
+              title={tag.name}
+              onClick={event => { event.stopPropagation(); onTagClick?.(tag.id) }}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onTagClick?.(tag.id)
+                }
+              }}
+            >
+              <span className={css.cardTagDot} style={{ background: tag.color }} aria-hidden="true" />
+              {tag.name}
+            </span>
+          ))}
+          {tags.length > 3 && (
+            <span className={css.cardTagMore} title={tags.slice(3).map(tag => tag.name).join('、')}>+{tags.length - 3}</span>
+          )}
+        </span>
+      )}
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
       <span className={css.cardMeta}>
         {/* Row 1 is identical on every card: workspace + last activity. */}

@@ -282,7 +282,8 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 `scheduler.ts`（每分钟 tick，隐藏错过即跳过、进行中跳过；开头调 `cruiseTick` 翻转巡航窗口）、
 `cruise.ts`（巡航窗口状态机：`applyManualToggle`/`tickCruise`/`setCruiseSchedule`/
 `coveringWindow`/`sortWindows`）、`session-activity.ts`（**原生侧活动对账**：running 翻转 →
-外源轮补记，见下）、`store.ts`（TaskStore + localStorage）、`execution.ts`
+外源轮补记，见下）、`tags.ts`（**标签目录 + 卡片配色**：CRUD/AND 筛选/预设色板，见下）、
+`store.ts`（TaskStore + localStorage）、`execution.ts`
 （`connectWorkspace` 复用/新建空白会话；投递统一走斜杠感知路径——`/` 开头经原生命令
 注册表（`deliverCommandLine`，见下），否则 `session.prompt(queue)`；执行前按任务配置
 应用 agent preset 与权限（原生 `/permission` 命令）；结算靠会话列表对账）、`controller.ts`
@@ -438,6 +439,18 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   逐段匹配**（递归内层调用不会破坏共享 lastIndex——这是此前"同一条 `**b**` 无限重匹配吃爆
   内存"事故的根因，勿改回 `g` 标志全局共享）。
 
+- **标签与配色（tags.ts + controller + UI，调研后落地）**：标签 = 自由多选分类（区别于状态/
+  自动化），**中央目录** `TagCatalog { id, name, color }` 持久化 `dsh.taskBoard.tags.v1`——
+  卡片只存 tag id，改名/改色在目录里一处同步全部卡片（零散落的 hex 维护）；`TaskRecord` 增
+  可选 `tags?: string[]` 与 `color?: string`（卡片强调色，预设色板 `TAG_PALETTE` 10 色 +
+  原生 `input[type=color]` 自定义色；颜色是**数据**经 inline style 应用，绝不作 CSS 字面量）。
+  纯函数：catalog CRUD / `taskMatchesTags`（多选 AND，空选择=全匹配）/ `normalizeCatalog`；
+  controller：`listTags/createTag/renameTag/recolorTag/deleteTag`（删除自动从全部卡片摘除）/
+  `setTaskTags/setTaskColor`；快照含 `tags`。UI：卡片标题下标签 chip（彩色圆点，截断 +N，
+  点击=按该标签筛选）+ 左侧 3px 配色条；板头第三行标签筛选（多选 AND、激活显示「清除」、
+  「管理标签」弹层 = TagManager 创建/改名/改色/用量/删除保护）；详情「标签与配色」Section
+  （点选添加/移除标签、卡片颜色色板 + 自定义 + 清除）。旧数据零影响（store 可选字段归一化）。
+
 - **稳定性守则（改交互/UI 必守）**：受控组件绑异步数据必有本地回退（显示 = 本地选择 ??
   服务端非空 ?? 默认，失败回退）；固定操作区（composer）之上必有可滚动中区（flex:1 +
   min-height:0 + overflow-y:auto），头部变高不挤压操作区；就近 inline 反馈（如「已应用」）
@@ -503,6 +516,8 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   分隔线/见原文转义/无 HTML 与危险协议注入）。
 - `tests/session-activity.spec.ts`：原生侧活动对账纯逻辑（基线不补记、翻转检测、open round
   与直发抑制、refine 标记、grace 常量）。
+- `tests/tags.spec.ts`：标签目录 CRUD/归一化/AND 筛选/卡片配色/store 可选字段归一化；
+  controller.spec 含标签目录端到端（快照含 tags、删除自动摘除全部卡片）。
 
 ## 版本管理流程（必守）
 

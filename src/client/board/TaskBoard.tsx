@@ -25,15 +25,21 @@ import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
+import { TagManager } from './TagManager.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, Icon, Switch } from './ui.tsx'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
+import { taskMatchesTags, type Tag } from '../../core/tags.ts'
 
-/** Case-insensitive title/description match. */
-function matchesFilter(task: TaskRecord, filter: string): boolean {
-  if (filter.trim() === '') return true
-  const needle = filter.trim().toLowerCase()
-  return task.title.toLowerCase().includes(needle) || task.description.toLowerCase().includes(needle)
+/** Case-insensitive keyword match over title/description AND tag names. */
+function matchesFilter(task: TaskRecord, filter: string, tagNames: Record<string, string>): boolean {
+  if (filter.trim() !== '') {
+    const needle = filter.trim().toLowerCase()
+    const byTitle = task.title.toLowerCase().includes(needle) || task.description.toLowerCase().includes(needle)
+    const byTag = (task.tags ?? []).some(id => tagNames[id]?.toLowerCase().includes(needle))
+    if (!byTitle && !byTag) return false
+  }
+  return true
 }
 
 /** Board component; subscribes to the controller snapshot. */
@@ -45,6 +51,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   )
   const [filter, setFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
+  // 标签筛选：多选 AND（同时含全部选中标签），再点取消；空 = 不过滤。
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  // 标签管理弹层。
+  const [showTags, setShowTags] = useState(false)
+  const toggleTag = (id: string): void => {
+    setSelectedTags(current => current.includes(id) ? current.filter(tagId => tagId !== id) : [...current, id])
+  }
   // 自动巡航设置弹层：点击胶囊的 ▾ 展开；点击弹层外任意处关闭。
   const [cruiseOpen, setCruiseOpen] = useState(false)
   const cruiseWrapRef = useRef<HTMLDivElement | null>(null)
@@ -194,7 +207,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     id => controller.externalKindOf(id),
   )
   const selected = selectedTaskOf(snapshot)
-  const visible = snapshot.tasks.filter(task => matchesFilter(task, filter))
+  const tags = snapshot.tags
+  // id → name map for keyword search over tag names.
+  const tagNames = Object.fromEntries(tags.map(tag => [tag.id, tag.name]))
+  const visible = snapshot.tasks.filter(task =>
+    matchesFilter(task, filter, tagNames) && taskMatchesTags(task, selectedTags))
   const draggedTask = dragId !== undefined
     ? snapshot.tasks.find(candidate => candidate.id === dragId)
     : undefined
@@ -488,6 +505,45 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             aria-label={t('board.search')}
           />
         </div>
+
+        {/* 标签筛选行（第三行，仅在已有标签或正在筛选时出现）：点击标签多选
+            AND 筛选，再点取消；「管理」打开标签管理弹层；筛选激活时显示「清除」。 */}
+        {(tags.length > 0 || selectedTags.length > 0) && (
+          <div className={css.boardRow}>
+            {tags.map(tag => {
+              const on = selectedTags.includes(tag.id)
+              return (
+                <span
+                  key={tag.id}
+                  role="button"
+                  tabIndex={0}
+                  className={`${css.tagFilter}${on ? ` ${css.tagFilterOn}` : ''}`}
+                  title={t('tags.filterTitle')}
+                  onClick={() => { toggleTag(tag.id) }}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      toggleTag(tag.id)
+                    }
+                  }}
+                >
+                  <span className={css.tagFilterDot} style={{ background: tag.color }} aria-hidden="true" />
+                  {tag.name}
+                </span>
+              )
+            })}
+            <span className={css.tagFilterActions}>
+              {selectedTags.length > 0 && (
+                <button type="button" className={css.rowHide} onClick={() => { setSelectedTags([]) }}>
+                  {t('tags.clear')}
+                </button>
+              )}
+              <Button size="sm" onClick={() => { setShowTags(true) }}>
+                {t('tags.manage')}
+              </Button>
+            </span>
+          </div>
+        )}
       </header>
 
       <div className={css.columns}>
@@ -622,6 +678,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      tags={(task.tags ?? []).map(id => tags.find(tag => tag.id === id)).filter((tag): tag is Tag => tag !== undefined)}
                       workspaceTitleOf={workspaceTitleOf}
                       waiting={waiting}
                       pendingCount={pending.count}
@@ -630,6 +687,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       unviewedCount={taskUnviewedCount(task)}
                       onClick={() => { controller.openTask(task.id) }}
                       onQuickRun={() => { void controller.rerunTask(task.id) }}
+                      onTagClick={id => { toggleTag(id) }}
                     />
                   )
                 })}
@@ -652,6 +710,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         <NewTaskModal
           controller={controller}
           onClose={() => { setShowNew(false) }}
+        />
+      )}
+      {showTags && (
+        <TagManager
+          controller={controller}
+          onClose={() => { setShowTags(false) }}
         />
       )}
     </div>

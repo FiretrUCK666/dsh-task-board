@@ -9,6 +9,7 @@ import { InMemoryTaskStore } from '../src/core/store.ts'
 import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
 import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import type { CruiseWindow } from '../src/core/cruise.ts'
+import type { TagCatalog } from '../src/core/tags.ts'
 import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -2036,6 +2037,45 @@ describe('native-activity sync (两端同步)', () => {
     const task = controller.getSnapshot().tasks[0]
     expect(task.status).toBe('backlog')
     expect(task.executions.some(run => run.refine === true && run.external === true && run.endedAt === undefined)).toBe(true)
+  })
+})
+
+describe('tags (label catalog)', () => {
+  it('create/rename/recolor feed the snapshot and persist through tagStorage', () => {
+    const writes: TagCatalog[] = []
+    const { controller } = makeController(new StubExec(), {
+      tagStorage: {
+        read: () => writes[writes.length - 1],
+        write: catalog => { writes.push(catalog) },
+      },
+    })
+    const created = controller.createTag('紧急', '#e5484d')
+    expect(controller.getSnapshot().tags).toEqual([{ id: created.id, name: '紧急', color: '#e5484d' }])
+    controller.renameTag(created.id, '重要')
+    expect(controller.getSnapshot().tags[0].name).toBe('重要')
+    controller.recolorTag(created.id, '#3e63dd')
+    expect(controller.getSnapshot().tags[0].color).toBe('#3e63dd')
+    expect(writes.length).toBe(3)
+  })
+
+  it('setTaskTags only keeps catalog ids; setTaskColor sets/clears; deleteTag strips every card', () => {
+    const { controller } = makeController()
+    const a = controller.createTag('A', '#e5484d')
+    const b = controller.createTag('B', '#3e63dd')
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    controller.setTaskTags(task.id, [a.id, b.id, 'ghost'])
+    controller.setTaskColor(task.id, '#12a594')
+    let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.tags).toEqual([a.id, b.id]) // ghost filtered out
+    expect(row.color).toBe('#12a594')
+    controller.setTaskColor(task.id, undefined)
+    row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.color).toBeUndefined()
+    // Deleting a tag removes it from every card automatically.
+    controller.deleteTag(a.id)
+    row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.tags).toEqual([b.id])
+    expect(controller.getSnapshot().tags.some(tag => tag.id === a.id)).toBe(false)
   })
 })
 

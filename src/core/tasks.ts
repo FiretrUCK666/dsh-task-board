@@ -207,6 +207,16 @@ export interface TaskRecord {
    * quiet after an upgrade. New tasks start viewed at their creation.
    */
   viewedAt?: number
+  /**
+   * The tag ids attached to this card (free classification; the names/colors
+   * live in the board-level catalog — see tags.ts). Absent = unlabeled.
+   */
+  tags?: string[]
+  /**
+   * A per-card accent color (hex string, applied as an inline left bar —
+   * data, never a CSS literal). Absent = no accent.
+   */
+  color?: string
 }
 
 /** Input for creating a task. */

@@ -33,6 +33,9 @@ const TASK_BOARD_NS = 'dsh-task-board'
 /** localStorage key for the auto-cruise state (toggle + concurrency limit). */
 const CRUISE_STORAGE_KEY = 'dsh.taskBoard.cruise.v1'
 
+/** localStorage key for the board's tag catalog. */
+const TAG_STORAGE_KEY = 'dsh.taskBoard.tags.v1'
+
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** Task-board surface copy. */
@@ -404,6 +407,26 @@ export function apply(ctx: ClientContext): void {
             localStorage.setItem(CRUISE_STORAGE_KEY, JSON.stringify(state))
           } catch (error) {
             console.error('[dsh-task-board] cruise state write failed (persistence skipped)', error)
+          }
+        },
+      },
+      // The tag catalog (labels) persists under its own key; failures degrade.
+      tagStorage: {
+        read: () => {
+          try {
+            const raw = localStorage.getItem(TAG_STORAGE_KEY)
+            if (raw === null) return undefined
+            return JSON.parse(raw) as unknown as import('../core/tags.ts').Tag[]
+          } catch (error) {
+            console.error('[dsh-task-board] tag catalog read failed', error)
+            return undefined
+          }
+        },
+        write: catalog => {
+          try {
+            localStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(catalog))
+          } catch (error) {
+            console.error('[dsh-task-board] tag catalog write failed (persistence skipped)', error)
           }
         },
       },

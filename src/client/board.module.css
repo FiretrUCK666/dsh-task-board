@@ -3274,3 +3274,243 @@ textarea.input {
     max-height: 34vh;
   }
 }
+
+/* --- tags & card labels ------------------------------------------------------
+   Label catalog chip grammar: colored-dot + name, capped with a +N tail on
+   dense cards. Effect colors are DATA (applied inline from user choices);
+   the swatches/feature bars below reuse the same quiet chip language. */
+
+/* A per-card accent = a 3px bar hugging the card's left edge, above content. */
+.cardAccentBar {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cardTags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.cardTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 1px 7px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-sunken);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.cardTag:hover {
+  color: var(--dsh-tb-text-1);
+  border-color: var(--dsw-alias-border-l3);
+}
+
+/* Filled state (a label present on the task, in the detail editor). */
+.cardTagOn {
+  color: var(--dsh-tb-text-1);
+  border-color: var(--dsw-alias-state-business-primary-alpha);
+  box-shadow: inset 0 0 0 1px var(--dsw-alias-state-business-primary-alpha);
+}
+
+.cardTagDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.cardTagMore {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+}
+
+/* Board-header tag filter row: quiet toggle pills with a colored dot; the
+   active one fills accent-dim to read as "filtering by this". */
+.tagFilter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.tagFilter:hover {
+  background: var(--dsh-tb-hover);
+  color: var(--dsh-tb-text-1);
+}
+
+.tagFilterOn {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-surface-float);
+  border-color: var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 1px var(--dsw-alias-state-business-primary-alpha);
+}
+
+.tagFilterDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.tagFilterActions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Tag manager dialog: create row, per-tag rows (name + usage + delete with
+   inline confirm), and the shared palette/custom swatch row. */
+.tagNew {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tagNew .input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.tagList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tagRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 4px;
+  border-radius: 8px;
+}
+
+.tagRow:hover {
+  background: var(--dsh-tb-hover);
+}
+
+.tagRowHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tagRowDot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.tagNameInput {
+  flex: 1 1 160px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.tagUsage {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tagConfirmDelete {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tagSwatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tagSwatch {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--dsw-static-neutral-1000) 22%, transparent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
+}
+
+.tagSwatch:hover {
+  transform: scale(1.12);
+}
+
+.tagSwatchOn {
+  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsw-alias-state-business-primary);
+}
+
+/* Native color input, dressed as a small swatch. */
+.tagCustomColor {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* Task-detail tags & color block. */
+.detailTags {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detailColorRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.detailColorLabel {
+  flex: none;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+  white-space: nowrap;
+}
