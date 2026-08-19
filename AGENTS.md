@@ -270,8 +270,9 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 `scheduler.ts`（每分钟 tick，隐藏错过即跳过、进行中跳过；开头调 `cruiseTick` 翻转巡航窗口）、
 `cruise.ts`（巡航窗口状态机：`effectiveEnabled`/`coveringWindow`/`applyManualToggle`/
 `sortWindows`）、`store.ts`（TaskStore + localStorage）、`execution.ts`
-（`connectWorkspace` 复用/新建空白会话 + `session.prompt(queue)`；执行前按任务配置应用
-agent preset 与权限（原生 `/permission` 命令）；结算靠会话列表对账）、`controller.ts`
+（`connectWorkspace` 复用/新建空白会话；投递统一走斜杠感知路径——`/` 开头经原生命令
+注册表（`deliverCommandLine`，见下），否则 `session.prompt(queue)`；执行前按任务配置
+应用 agent preset 与权限（原生 `/permission` 命令）；结算靠会话列表对账）、`controller.ts`
 （台账 + 视图状态 + 导航感知 + **统一并发调度器**）。
 
 - **自动巡航（窗口模型，cruise.ts + controller）**：`CruiseState { enabled, limit, schedule:
@@ -292,10 +293,17 @@ agent preset 与权限（原生 `/permission` 命令）；结算靠会话列表�
   建的轮次带 `sessionAnchor`，与执行评论（`submitComment`，带 `parentExecutionId`）共用
   `newCommentRound` 工厂、同一条 FIFO、同一注入路径（`commentRun` 本就是 sessionId 参数化
   ——任意会话可注入），提交先后决定顺序，绝无两套队列。
-- **斜杠命令与权限（原生命令注册表，绝不走 prompt 文本）**：权限切换
-  `SessionConfigFace.setPermission` → 原生 `/permission <preset>`；评论
-  `submitComment(..., command=true)` 走 `sendCommand`——matched 立即结算，unmatched 回退
-  普通文本；评论页 Agent 不可切换（`agent-preset-locked`）只读展示。
+- **斜杠命令与权限（原生命令注册表，绝不走 prompt 文本，执行与评论共用一条投递路径）**：
+  执行 Prompt 以 `/` 开头（`ExecutionService.run`）与评论/链接面板驱动（`submitComment`/
+  `submitSessionComment` 的 `command=true`）都经**同一个** `deliverCommandLine`：matched 命令
+  经 `remote.commands.execute` 执行（与原生 composer 同一 RPC）——若命令开启了真实回合
+  （如 `/plan <消息>` 会开 plan 模式并 `steer` 消息，全程 `running=true` 直至 plan-review
+  批准后回合真正结束），则观察会话至回合结束，任务保持「进行中」、绝不按 matched 结算；
+  纯配置命令（`/permission`、`/goal`、`/plan off`、bare `/plan`、`/compact`…）在
+  `waitForCommandWork` 观察窗口（`commandGraceMs`，默认 2s）内无回合证据即结算；unmatched
+  或无注册表桥回退普通文本（原生 default-sink，绝不丢输入）。权限切换
+  `SessionConfigFace.setPermission` → 原生 `/permission <preset>`（driver 直通）；评论页
+  Agent 不可切换（`agent-preset-locked`）只读展示。
 - **投影为权威 + 评论线程（按会话统一）**：`pickProjections` 提取
   `contextPressure`/`contextBreakdown`/`permissions`（结构校验读取，不依赖域包类型）；
   权限下拉事实源 = `permissions` 投影（非任务卡片 `permission` 字段）。**线程按原生会话

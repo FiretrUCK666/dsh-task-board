@@ -60,15 +60,22 @@ function makeEnv(overrides: {
   items?: Array<{ workspaceId: string }>
   promptResult?: { ok: true } | { ok: false; error: unknown }
   commandResult?: { ok: true; value: { matched: boolean } } | { ok: false; error: unknown }
+  sendCommand?: ExecutionEnvironment['sendCommand']
+  commandGraceMs?: number
 } = {}) {
   const drivers = new Map<string, FakeDriver>()
   const summaries = new Map<string, { running: boolean }>()
+  const listListeners = new Set<() => void>()
   const connectCalls: string[] = []
   const env: ExecutionEnvironment = {
+    ...overrides.commandGraceMs !== undefined ? { commandGraceMs: overrides.commandGraceMs } : {},
     sessions: {
       list: {
         getSnapshot: () => ({ phase: 'ready', byId: Object.fromEntries(summaries) }),
-        subscribe: () => () => {},
+        subscribe: (fn: () => void): (() => void) => {
+          listListeners.add(fn)
+          return () => { listListeners.delete(fn) }
+        },
       },
       binding: (id: string) => {
         const driver = drivers.get(id)
@@ -92,8 +99,14 @@ function makeEnv(overrides: {
         return 's-1'
       },
     },
+    ...overrides.sendCommand !== undefined ? { sendCommand: overrides.sendCommand } : {},
   }
-  return { env, drivers, summaries, connectCalls }
+  /** Flip the host-list summary of a session and notify every list subscriber. */
+  const setSummary = (id: string, running: boolean): void => {
+    summaries.set(id, { running })
+    for (const fn of [...listListeners]) fn()
+  }
+  return { env, drivers, summaries, connectCalls, setSummary }
 }
 
 function sampleTask() {
@@ -617,8 +630,8 @@ describe('ExecutionService.commentRun', () => {
     ])
   })
 
-  it('executes a matched command round through the registry and settles succeeded immediately', async () => {
-    const { env } = makeEnv()
+  it('settles a matched pure-configuration command right after the detection window', async () => {
+    const { env } = makeEnv({ commandGraceMs: 0 })
     env.sendComment = async () => { throw new Error('plain path must not run for a command round') }
     env.sendCommand = async () => ({ ok: true, matched: true, outcome: { kind: 'success' as const, text: 'preset read-only' } })
     const service = new ExecutionService(env)
@@ -630,6 +643,96 @@ describe('ExecutionService.commentRun', () => {
     expect(events).toEqual([
       { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'succeeded', error: 'preset read-only' },
     ])
+  })
+
+  it('watches a matched command that opened a real turn to its end (the /plan fake-completion regression)', async () => {
+    const { env, drivers, setSummary } = makeEnv({ commandGraceMs: 500 })
+    env.sendComment = async () => { throw new Error('plain path must not run for a command round') }
+    env.sendCommand = async () => ({ ok: true, matched: true, outcome: { kind: 'success' as const, text: 'Plan mode on.' } })
+    const driver = new FakeDriver()
+    drivers.set('s-1', driver)
+    setSummary('s-1', false)
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '/plan 继续干活', command: true }
+    const events: ExecutionEvent[] = []
+    const promise = service.commentRun(running, round, 's-1', '/plan 继续干活', event => { events.push(event) })
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    // The command matched but the session is idle: the round must NOT settle —
+    // the host has not started the plan turn yet.
+    expect(events).toEqual([])
+    // The plan turn starts (running flip) — the round settles only when the
+    // turn REALLY ends, not on the match.
+    setSummary('s-1', true)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events).toEqual([])
+    // The plan review keeps the session running — still no settle.
+    setSummary('s-1', true)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events).toEqual([])
+    // The turn truly ends only after the review is approved and the model
+    // finishes: session stops running, its turn counter advanced past the
+    // pre-command baseline.
+    driver.setSnapshot({ running: false, turns: 1 })
+    setSummary('s-1', false)
+    await promise
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events).toEqual([
+      { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'succeeded' },
+    ])
+  })
+
+  it('end-to-end: a /plan <message> comment stays open through plan review and settles only when the turn ends', async () => {
+    const { env, drivers, setSummary } = makeEnv({ commandGraceMs: 500 })
+    env.sendComment = async () => { throw new Error('plain path must not run for a command round') }
+    // The host mirrors DSH's real /plan handler: it logs the command AND
+    // steers the message — the plan turn is already starting by the time the
+    // RPC resolves.
+    env.sendCommand = async () => {
+      setSummary('s-1', true)
+      return { ok: true, matched: true, outcome: { kind: 'success' as const, text: 'Plan mode on.' } }
+    }
+    const driver = new FakeDriver()
+    drivers.set('s-1', driver)
+    setSummary('s-1', false)
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '/plan 帮我完善', command: true }
+    const events: ExecutionEvent[] = []
+    const promise = service.commentRun(running, round, 's-1', '/plan 帮我完善', event => { events.push(event) })
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events).toEqual([])
+    // Plan review wait: the session stays running — no "瞬间完成".
+    setSummary('s-1', true)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events).toEqual([])
+    // The user approves and the model finishes the turn.
+    driver.setSnapshot({ running: false, turns: 1 })
+    setSummary('s-1', false)
+    await promise
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events).toEqual([
+      { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'succeeded' },
+    ])
+  })
+
+  it('a settled configuration command is never re-settled by later list changes', async () => {
+    const { env, setSummary } = makeEnv({ commandGraceMs: 0 })
+    env.sendCommand = async () => ({ ok: true, matched: true, outcome: { kind: 'success' as const, text: 'done' } })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '/goal 目标', command: true }
+    const events: ExecutionEvent[] = []
+    await service.commentRun(running, round, 's-1', '/goal 目标', event => { events.push(event) })
+    expect(events).toHaveLength(1)
+    // List noise after the settle must not produce a second event (the
+    // detection watcher's subscriptions were disposed).
+    setSummary('s-1', false)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events).toHaveLength(1)
   })
 
   it('settles a matched-but-failing command round as failed with its native outcome', async () => {
@@ -689,6 +792,91 @@ describe('ExecutionService.commentRun', () => {
     expect(events).toEqual([
       { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'failed', error: 'command rejected: rpc down' },
     ])
+  })
+})
+
+describe('ExecutionService.run slash prompts (native command registry path)', () => {
+  it('routes a /plan prompt through the command registry and watches its real turn (the plan-mode regression)', async () => {
+    const { env, drivers, setSummary } = makeEnv({ commandGraceMs: 500 })
+    const sent: string[] = []
+    env.sendCommand = async (_sessionId, line) => {
+      sent.push(line)
+      return { ok: true, matched: true, outcome: { kind: 'success' as const, text: 'Plan mode on.' } }
+    }
+    const service = new ExecutionService(env)
+    const task = createTask({ title: '规划任务', description: '', prompt: '/plan 帮我实现一个登录页' }, NOW, 'task-1')
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    const events: ExecutionEvent[] = []
+    const promise = service.run(task, execution, event => { events.push(event) })
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    // The connected execution session is the driver the service watches.
+    const driver = drivers.get('s-1')!
+    // The whole line went through the registry — never as a model prompt.
+    expect(sent).toEqual(['/plan 帮我实现一个登录页'])
+    expect(driver.promptCalls).toHaveLength(0)
+    // The plan turn starts (running flip) — the run stays open.
+    setSummary('s-1', true)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events.map(e => e.kind)).toEqual(['started'])
+    await promise
+    // The turn truly ends → the run settles succeeded.
+    driver.setSnapshot({ running: false, turns: 1 })
+    setSummary('s-1', false)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'succeeded' })
+  })
+
+  it('settles a task whose whole prompt is a pure configuration command right after the detection window', async () => {
+    const { env, drivers } = makeEnv({ commandGraceMs: 0 })
+    env.sendCommand = async () => ({ ok: true, matched: true, outcome: { kind: 'success' as const, text: 'preset read-only' } })
+    const service = new ExecutionService(env)
+    const task = createTask({ title: '切权限', description: '', prompt: '/permission read-only' }, NOW, 'task-1')
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    const events: ExecutionEvent[] = []
+    await service.run(task, execution, event => { events.push(event) })
+    expect(drivers.get('s-1')?.promptCalls).toHaveLength(0)
+    expect(events.map(e => e.kind)).toEqual(['started', 'settled'])
+    expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'succeeded' })
+  })
+
+  it('falls back to plain text for an unmatched slash prompt (native default-sink)', async () => {
+    const { env, drivers } = makeEnv({ commandGraceMs: 0 })
+    env.sendCommand = async () => ({ ok: true, matched: false })
+    const service = new ExecutionService(env)
+    const task = createTask({ title: '未知命令', description: '', prompt: '/not-a-command 帮帮忙' }, NOW, 'task-1')
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    const events: ExecutionEvent[] = []
+    const promise = service.run(task, execution, event => { events.push(event) })
+    await promise
+    expect(drivers.get('s-1')?.promptCalls).toEqual([[{ type: 'text', text: '/not-a-command 帮帮忙' }]])
+    expect(events.map(e => e.kind)).toEqual(['started'])
+    drivers.get('s-1')?.setSnapshot({ running: false, turns: 1 })
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events.map(e => e.kind)).toEqual(['started', 'settled'])
+  })
+
+  it('sends a slash prompt as plain text when no command registry is wired', async () => {
+    const { env, drivers } = makeEnv()
+    const service = new ExecutionService(env)
+    const task = createTask({ title: '无注册表', description: '', prompt: '/plan 继续' }, NOW, 'task-1')
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    await service.run(task, execution, () => {})
+    expect(drivers.get('s-1')?.promptCalls).toEqual([[{ type: 'text', text: '/plan 继续' }]])
+  })
+
+  it('gives a task whose title fills in for a blank prompt the same slash routing', async () => {
+    const { env, drivers } = makeEnv({ commandGraceMs: 0 })
+    const sent: string[] = []
+    env.sendCommand = async (_sessionId, line) => {
+      sent.push(line)
+      return { ok: true, matched: true, outcome: { kind: 'success' as const } }
+    }
+    const service = new ExecutionService(env)
+    const task = createTask({ title: '/remind 午饭', description: '', prompt: '   ' }, NOW, 'task-1')
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    await service.run(task, execution, () => {})
+    expect(sent).toEqual(['/remind 午饭'])
+    expect(drivers.get('s-1')?.promptCalls).toHaveLength(0)
   })
 })
 

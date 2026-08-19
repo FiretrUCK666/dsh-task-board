@@ -4,10 +4,12 @@
  * The board's "run" button must make dsh actually work, not fake a status:
  * the service connects a real session (workspace blank-session reuse or
  * `session.create` on the host via the workspaces service), renames it to
- * the task title, sends the task prompt with `session.prompt`, and then
- * watches the session's conversation snapshot until its turn settles. The
- * task board controller consumes {@link ExecutionEvent}s to move the card
- * running → done/failed and to keep the execution record.
+ * the task title, sends the task prompt — slash lines through the native
+ * command registry (the composer's '/' path), everything else through
+ * `session.prompt` — and then watches the session's conversation snapshot
+ * until its turn settles. The task board controller consumes
+ * {@link ExecutionEvent}s to move the card running → done/failed and to keep
+ * the execution record.
  *
  * Deliberately framework-free: the runtime faces are declared structurally
  * (a narrow slice of the real `ctx.sessions` / `ctx.workspaces` contracts)
@@ -84,8 +86,12 @@ export interface CommentSendFace {
  * the plain prompt path, which would deliver the line to the model as text).
  * `matched` reports whether the registry recognized the name; when it did,
  * `outcome` carries the command's settled result (a recognized command may
- * still fail, e.g. an unknown preset name). When absent the service treats
- * command rounds as plain text.
+ * still fail, e.g. an unknown preset name). A matched command may have
+ * STARTED A REAL MODEL TURN (e.g. `/plan <message>` turns plan mode on and
+ * steers the message into the agent): the caller must observe the session
+ * and only settle when that turn really ends — commands are never settled
+ * on `matched` alone. When absent the service treats command lines as
+ * plain text.
  */
 export interface CommentCommandFace {
   (sessionId: string, line: string): Promise<
@@ -108,6 +114,16 @@ export interface ExecutionEnvironment {
   sendComment?: CommentSendFace
   /** Executes slash-command comment rounds through the native command registry. */
   sendCommand?: CommentCommandFace
+  /**
+   * How long a matched command's session is watched for a real turn before
+   * the command is judged a pure configuration command (one that logs its
+   * lifecycle but never opens a turn — `/permission`, `/goal`, `/plan off`,
+   * a bare `/plan`, …) and settled immediately. A command that DID start a
+   * turn flips the session `running` right after the RPC resolves (the turn
+   * begins before any model I/O), so this window only needs to cover the
+   * command round-trip plus the agent loop's scheduling. Defaults to 2000ms.
+   */
+  commandGraceMs?: number
 }
 
 /** The behavior verbs the service invokes on an execution session. */
@@ -121,7 +137,10 @@ export interface SessionDriver {
    * Execute one slash-command line against the session's agent (the native
    * write path for per-session switches such as `/permission <preset>`).
    * `value.matched` reports whether the host command registry recognized the
-   * command name.
+   * command name. NOTE: a recognized command may have started a real model
+   * turn (e.g. `/plan <message>`); the permission path only relies on
+   * `/permission` — which never opens a turn — and callers of the general
+   * command path must observe the session, never trust `matched` alone.
    */
   command(line: string): Promise<
     { ok: true; value: { matched: boolean } } | { ok: false; error: unknown }
@@ -140,6 +159,13 @@ function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
 }
+
+/**
+ * Default command-turn detection window: how long a matched command's session
+ * is watched for a real turn before the command is judged a pure
+ * configuration command (see `ExecutionEnvironment.commandGraceMs`).
+ */
+export const DEFAULT_COMMAND_GRACE_MS = 2_000
 
 /** Whether a `turn/end` payload closed the turn with an error reason. */
 function isErrorTurnEnd(data: unknown): boolean {
@@ -243,6 +269,17 @@ export class ExecutionService {
           return
         }
       }
+      // Resolve the delivery line first: a slash line routes through the
+      // native command registry — the composer's '/' path, never the plain
+      // prompt, which would deliver the line to the model as text (the
+      // "command doesn't work" symptom). The registry path owns its own
+      // baseline and settlement watch; a fallback means the line goes out as
+      // plain text with the normal watch below.
+      const line = this.promptLine(task, options?.prompt)
+      if (this.env.sendCommand !== undefined && line.trimStart().startsWith('/')) {
+        const routed = await this.deliverCommandLine(task, execution, sessionId, line.trim(), onEvent, false)
+        if (routed !== 'fallback') return
+      }
       // Baseline the turn counter BEFORE the prompt round-trip: a turn that
       // completes while prompt is in flight must still advance past this
       // baseline, or the watch below would never observe it settle.
@@ -273,13 +310,16 @@ export class ExecutionService {
    * driver is available its snapshot watch is used as an additional fast
    * path. Never rejects: every failure path reports a settled event.
    *
-   * A round flagged `command` is a slash command, not a turn: it is executed
-   * through the native command registry (never sent to the model as text).
-   * A matched command settles immediately as succeeded (its outcome text is
-   * carried in the error field for display); an unmatched line falls back to
-   * plain-text delivery — the native composer's default-sink semantics, so
-   * no user input is ever dropped. Without a command face the round degrades
-   * to plain text.
+   * A round flagged `command` is a slash command, not necessarily just a
+   * turn: the line is executed through the native command registry (never
+   * sent to the model as text). A matched command that opened a real turn
+   * (e.g. `/plan <message>`) is watched to that turn's end — the board never
+   * settles on `matched` alone, so a plan-mode turn stays 「进行中」 through
+   * its plan review and execution — while a matched pure-configuration
+   * command (e.g. `/permission`) settles right after the detection window. An
+   * unmatched line falls back to plain-text delivery — the native
+   * composer's default-sink semantics, so no user input is ever dropped.
+   * Without a command face the round degrades to plain text.
    */
   async commentRun(
     task: TaskRecord,
@@ -290,7 +330,12 @@ export class ExecutionService {
   ): Promise<void> {
     try {
       if (execution.command === true) {
-        await this.runCommentCommand(task, execution, sessionId, text, onEvent)
+        const routed = await this.deliverCommandLine(task, execution, sessionId, text, onEvent, true)
+        if (routed === 'fallback') {
+          // Unknown command (or no registry): the native default-sink —
+          // deliver the line as text, never drop the user's input.
+          await this.commentRun(task, { ...execution, command: false }, sessionId, text, onEvent)
+        }
         return
       }
       const driver = this.driverOf(sessionId)
@@ -322,50 +367,122 @@ export class ExecutionService {
   }
 
   /**
-   * Execute a slash-command comment round through the native command
-   * registry (see {@link CommentCommandFace}). A matched command settles
-   * immediately — the host durably logs its lifecycle and the outcome is a
-   * flow node, never a model turn, so there is nothing to watch. An
-   * unmatched line (or a missing command face) falls back to the plain-text
-   * path, preserving the native "unknown command → send as text" behavior.
+   * Deliver one slash-command line through the native command registry — the
+   * single shared path for BOTH the execution prompt (run) and every comment
+   * composer (review page / linked-session drive mode). Mirrors the native
+   * composer's '/' semantics exactly:
+   * - matched commands execute through the registry (never as prompt text);
+   * - a matched command may START A REAL MODEL TURN (e.g. `/plan <message>`
+   *   turns plan mode on and steers the message into the agent): the round is
+   *   then watched until that turn truly settles — never on `matched` alone;
+   * - a matched command that opens no turn (a pure configuration command:
+   *   `/permission`, `/goal`, `/plan off`, a bare `/plan`, `/compact`, …)
+   *   settles right after the bounded detection window;
+   * - an unmatched line (or a missing command face) returns 'fallback' so the
+   *   caller delivers the line as plain text (the native default-sink).
+   * Never rejects: every failure path reports a settled event or 'fallback'.
    */
-  private async runCommentCommand(
+  private async deliverCommandLine(
     task: TaskRecord,
     execution: ExecutionRecord,
     sessionId: string,
     line: string,
     onEvent: (event: ExecutionEvent) => void,
-  ): Promise<void> {
+    sessionKnown: boolean,
+  ): Promise<'watched' | 'settled' | 'fallback'> {
     const command = this.env.sendCommand
-    if (command === undefined) {
-      // No native command surface: degrade to a plain-text comment round.
-      await this.commentRun(task, { ...execution, command: false }, sessionId, line, onEvent)
-      return
-    }
+    if (command === undefined) return 'fallback'
     const result = await command(sessionId, line)
     if (!result.ok) {
       onEvent({
         kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
         error: `command rejected: ${result.error}`,
       })
-      return
+      return 'settled'
     }
-    if (!result.matched) {
-      // Unknown command: native default-sink — deliver the line as text.
-      await this.commentRun(task, { ...execution, command: false }, sessionId, line, onEvent)
-      return
-    }
-    // The registry recognized the line and logged its lifecycle; the command
-    // itself may still report failure (e.g. an unknown preset name) — that
-    // is a failed round, never a model turn.
+    if (!result.matched) return 'fallback'
+    // The registry recognized the line: it always logs its lifecycle and the
+    // command may additionally have started a real turn. Decide by observing
+    // the session — never by the match alone.
+    const driver = this.driverOf(sessionId)
+    const baseline = driver !== undefined ? driver.getSnapshot().turnEnds.size : 0
     const outcome = result.outcome
+    if (outcome?.kind === 'error') {
+      onEvent({
+        kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
+        error: outcome.text,
+      })
+      return 'settled'
+    }
+    const startedTurn = await this.waitForCommandWork(
+      sessionId, baseline, this.env.commandGraceMs ?? DEFAULT_COMMAND_GRACE_MS)
+    if (startedTurn) {
+      // Real work: watch the session until that turn truly settles. A plan
+      // review wait keeps the session `running`, so the round stays open
+      // through the wait exactly like a plain turn awaiting the user.
+      this.watchForSettlement(driver, task.id, execution.id, sessionId, onEvent, baseline, sessionKnown)
+      return 'watched'
+    }
+    // Pure configuration command: no turn opened. Settle immediately; the
+    // command's outcome text rides the error field for display (comment
+    // threads show it under the line).
     onEvent({
-      kind: 'settled', taskId: task.id, executionId: execution.id,
-      outcome: outcome?.kind === 'error' ? 'failed' : 'succeeded',
+      kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'succeeded',
       ...outcome !== undefined && outcome.text !== undefined && outcome.text !== ''
         ? { error: outcome.text }
         : {},
     })
+    return 'settled'
+  }
+
+  /**
+   * Watch a session after a matched command to decide whether it started real
+   * model work (a turn) or was a pure configuration command. A turn's start
+   * flips the session `running` (live list summary or driver snapshot) or, if
+   * it finished unusually fast, grows the driver's turn-end counter past the
+   * pre-command baseline; either proves the command opened a turn. When
+   * `graceMs` elapses with no such evidence the command is judged a
+   * configuration command. Subscriptions and the timer are always disposed.
+   * @returns true = a turn started (the caller watches to its end); false =
+   *   the command settled by itself (the caller settles the round at once).
+   */
+  private waitForCommandWork(sessionId: string, baseline: number, graceMs: number): Promise<boolean> {
+    return new Promise(resolve => {
+      let done = false
+      const disposers: Array<() => void> = []
+      const finish = (startedTurn: boolean): void => {
+        if (done) return
+        done = true
+        clearTimeout(timer)
+        for (const dispose of disposers) dispose()
+        resolve(startedTurn)
+      }
+      const timer = setTimeout(() => finish(false), graceMs)
+      const check = (): void => {
+        if (done) return
+        const summary = this.env.sessions.list.getSnapshot().byId[sessionId]
+        if (summary !== undefined && summary.running) { finish(true); return }
+        const driver = this.driverOf(sessionId)
+        if (driver !== undefined) {
+          const snapshot = driver.getSnapshot()
+          if (snapshot.running || snapshot.turnEnds.size > baseline) { finish(true); return }
+        }
+      }
+      disposers.push(this.env.sessions.list.subscribe(check))
+      const driver = this.driverOf(sessionId)
+      if (driver !== undefined) disposers.push(driver.subscribe(check))
+      check()
+    })
+  }
+
+  /**
+   * The resolved delivery line of a run: the prompt override / task prompt,
+   * falling back to the task title when blank (mirrors {@link sendPrompt}).
+   */
+  private promptLine(task: TaskRecord, promptOverride: string | undefined): string {
+    return (promptOverride ?? task.prompt).trim() !== ''
+      ? (promptOverride ?? task.prompt)
+      : task.title
   }
 
   /**
