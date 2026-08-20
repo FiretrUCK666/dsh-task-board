@@ -1737,6 +1737,26 @@ describe('linked sessions & bind', () => {
     expect(controller.getSnapshot().tasks).toHaveLength(2)
   })
 
+  it('copyTask carries tags, accent color and session rules as part of the template', () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    controller.createTag('设计', '#4f46e5')
+    const source = controller.createTask({ title: '源', description: '', prompt: '' })!
+    const tagId = controller.getSnapshot().tags[0].id
+    controller.setTaskTags(source.id, [tagId])
+    controller.setTaskColor(source.id, '#4f46e5')
+    controller.createSessionRule(source.id, { sessionId: 's-1', instruction: '继续', cron: '0 * * * *', send: 'steer' })
+    const current = controller.getSnapshot().tasks.find(task => task.id === source.id)
+    const copy = controller.copyTask(source.id)
+    expect(copy).toBeDefined()
+    expect(copy!.tags).toEqual([tagId])
+    expect(copy!.color).toBe('#4f46e5')
+    // Session rules are cloned with fresh ids (never shared state).
+    expect(copy!.rules).toHaveLength(1)
+    expect(copy!.rules![0].instruction).toBe('继续')
+    expect(copy!.rules![0].id).not.toBe(current!.rules![0].id)
+  })
+
   it('cruise windows: setCruiseSchedule recomputes effective state; tickCruise flips at boundaries', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub, { now: () => NOW })

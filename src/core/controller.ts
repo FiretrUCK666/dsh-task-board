@@ -723,6 +723,19 @@ export class BoardController {
           : undefined,
       }, now)
     }
+    // The template carries the card's full configuration: tags, accent color
+    // and session automation rules are PART of what "复制为模板" means — a
+    // template keeps the shape of the work, so future configuration fields
+    // land in createTask below and flow into templates automatically (the
+    // spread-based single source, never a per-field list to maintain).
+    task = {
+      ...task,
+      ...source.tags !== undefined ? { tags: [...source.tags] } : {},
+      ...source.color !== undefined ? { color: source.color } : {},
+      ...source.rules !== undefined && source.rules.length > 0
+        ? { rules: source.rules.map(rule => ({ ...rule, id: this.uuid() })) }
+        : {},
+    }
     this.tasks = [...this.tasks, task]
     this.persistAndNotify()
     return task
