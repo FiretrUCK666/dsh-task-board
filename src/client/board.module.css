@@ -826,7 +826,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   overflow: hidden;
   /* A single unbreakable token (URL, a run-on word in any font) also
      breaks instead of pushing past the clamped box. */
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -837,7 +837,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   line-height: 1.4;
   color: var(--dsw-alias-label-secondary);
   overflow: hidden;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
