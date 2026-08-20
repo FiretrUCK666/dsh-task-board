@@ -34,7 +34,7 @@ import { commentDraftKey, draftStore } from './drafts.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
-import { Button, SendModeToggle } from './ui.tsx'
+import { Button, MentionPicker, SendModeToggle } from './ui.tsx'
 
 /** The linked-session panel (see module doc). */
 export function SessionDetail({ controller, task, sessionId, onClose }: {
@@ -91,6 +91,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const taskDone = task.status === 'done'
   // Send mode: 排队 (dispatcher, default) vs 插话 (deliver now).
   const [steer, setSteer] = useState(false)
+  const mentions = controller.sessionLabelsOf(task.id)
 
   const submit = (): void => {
     const text = draft.trim()
@@ -242,6 +243,9 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
             />
             <div className={css.reviewComposerRow}>
               <SendModeToggle steer={steer} onChange={setSteer} />
+              <MentionPicker sessions={mentions} onPick={text => {
+                setDraft(current => current.trim() === '' ? text : current.trimEnd() + ' ' + text)
+              }} />
               <Button
                 variant="primary"
                 disabled={draft.trim() === '' || liveGone || taskDone}

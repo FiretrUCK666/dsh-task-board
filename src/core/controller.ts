@@ -1336,6 +1336,25 @@ export class BoardController {
   }
 
   /**
+  /** Related-session labels of a task (for the composer's @ mention): the
+   *  task's sessions, each with a native title (falling back to the raw id),
+   *  de-duplicated in related-session order. */
+  sessionLabelsOf(taskId: string): Array<{ sessionId: string; title: string }> {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return []
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    const seen = new Set<string>()
+    const out: Array<{ sessionId: string; title: string }> = []
+    for (const { sessionId } of this.relatedSessionsOf(task)) {
+      if (sessionId === undefined || seen.has(sessionId)) continue
+      seen.add(sessionId)
+      const title = (byId[sessionId] as { title?: unknown } | undefined)?.title
+      out.push({ sessionId, title: typeof title === 'string' && title !== '' ? title : sessionId })
+    }
+    return out
+  }
+
+  /**
    * Steering send (插话): deliver a comment line to the session IMMEDIATELY —
    * slash-aware, recorded as a settled message round so it stays visible next
    * to queued comments in the same thread. It does NOT enter the dispatcher,
@@ -1370,7 +1389,6 @@ export class BoardController {
   }
 
   // --- session automation rules (scheduled "send a preset instruction to a session") ---
-
   /** Create a session rule for one of the task's sessions (cron via the task
    *  schedule parser; an unparseable cron is rejected). */
   createSessionRule(taskId: string, input: {

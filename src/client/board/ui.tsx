@@ -6,7 +6,7 @@
  * follows the native --dsw-* tokens (light/dark + any skin plugin) without
  * any per-surface styling drift.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { TAG_PALETTE } from '../../core/tags.ts'
 import css from '../board.module.css'
 import { t } from '../locales.ts'
@@ -146,8 +146,7 @@ export function AttentionDot({ title }: { title?: string }) {
  */
 export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'calendar' | 'copy' | 'check'
 
-const ICON_PATHS: Record<IconName, string> = {
-  arrowDown: 'M3 6.5 8 11.5 13 6.5',
+const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5',
   chevronDown: 'M3 6 8 11 13 6',
   close: 'M4 4 12 12M12 4 4 12',
   arrowRight: 'M4 8h8M9 4l4 4-4 4',
@@ -237,6 +236,45 @@ export function SendModeToggle({ steer, onChange }: { steer: boolean; onChange: 
       >
         {t('review.sendSteer')}
       </button>
+    </span>
+  )
+}
+
+/**
+ * The composer's @ mention: lists a task's related sessions and inserts an
+ * "@{title}" reference into the draft (the native composer's @-mention idea,
+ * rendered with our own data — related sessions from the controller). Hidden
+ * when there is nothing to mention.
+ */
+export function MentionPicker({ sessions, onPick }: {
+  sessions?: Array<{ sessionId: string; title: string }>
+  onPick: (text: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  if (sessions === undefined || sessions.length === 0) return null
+  return (
+    <span className={css.mentionWrap}>
+      <button
+        type="button"
+        className={css.iconButton}
+        title={t('review.mention')}
+        onClick={() => { setOpen(current => !current) }}
+      >
+        @
+      </button>
+      {open && (
+        <span className={css.mentionMenu}>
+          {sessions.map(session => (
+            <button
+              key={session.sessionId}
+              type="button"
+              onClick={() => { onPick(`@${session.title}`); setOpen(false) }}
+            >
+              {session.title}
+            </button>
+          ))}
+        </span>
+      )}
     </span>
   )
 }

@@ -46,7 +46,7 @@ import { commentDraftKey, draftStore } from './drafts.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
-import { Button, SendModeToggle } from './ui.tsx'
+import { Button, MentionPicker, SendModeToggle } from './ui.tsx'
 
 /** The review page (see module doc). */
 export function ReviewDetail({ controller, task, execution, onClose }: {
@@ -87,6 +87,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
   // Send mode: 排队 (dispatcher, default) vs 插话 (deliver now).
   const [steer, setSteer] = useState(false)
+  const mentions = controller.sessionLabelsOf(current.id)
   // The comment thread auto-follows its latest round (fingerprint-gated).
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const [threadAtBottom, setThreadAtBottom] = useState(true)
@@ -297,6 +298,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               />
               <div className={css.reviewComposerRow}>
                 <SendModeToggle steer={steer} onChange={setSteer} />
+                <MentionPicker sessions={mentions} onPick={text => {
+                  setDraft(current => current.trim() === '' ? text : current.trimEnd() + ' ' + text)
+                }} />
                 <Button variant="primary" disabled={draft.trim() === ''} onClick={submit}>
                   {t('review.commentSend')}
                 </Button>
