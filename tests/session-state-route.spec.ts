@@ -9,11 +9,17 @@ import { createSessionStateHandler, queryParamOf, readSessionState } from '../sr
 const planMode = { get: (agent: unknown) => (agent === 'agent' ? { active: true, pending: true } : null) }
 const goals = { get: (agent: unknown) => (agent === 'agent' ? { activeGoal: { title: '发布 v2', status: 'active' } } : undefined) }
 
-describe('readSessionState (structural read of native plan/goal)', () => {
+const subagents = { listChildren: (agent: unknown) => (agent === 'agent' ? [{ title: '子任务 A', status: 'running' }, { name: 'name-only' }, { id: 'no-title' }] : []) }
+
+describe('readSessionState (structural read of native plan/goal/subagents)', () => {
   it('reads plan + goal from the native faces', () => {
     const view = readSessionState({ sessions: { get: id => id === 's1' ? 'agent' : undefined }, planMode, goals }, 's1')
     expect(view.plan).toEqual({ active: true, pending: true })
     expect(view.goal).toEqual({ title: '发布 v2', active: true })
+  })
+  it('reads subagent thumbnails (title/name tolerant) and drops untitled rows', () => {
+    const view = readSessionState({ sessions: { get: () => 'agent' }, subagents }, 's1')
+    expect(view.subagents).toEqual([{ title: '子任务 A', status: 'running' }, { title: 'name-only' }])
   })
   it('unknown session → no blocks; a throwing service degrades that block only', () => {
     expect(readSessionState({ sessions: { get: () => undefined }, planMode, goals }, 'ghost')).toEqual({})

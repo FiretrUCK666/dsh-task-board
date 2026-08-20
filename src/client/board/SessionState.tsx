@@ -14,6 +14,7 @@ import { Disclosure } from './ui.tsx'
 interface SessionStateView {
   plan?: { active: boolean; pending: boolean }
   goal?: { title: string; active: boolean }
+  subagents?: Array<{ title: string; status?: string }>
 }
 
 const STATE_URL = '/api/dsh-task-board/session-state'
@@ -46,9 +47,11 @@ export function SessionState({ sessionId, pollMs = 3000 }: { sessionId: string |
 
   const plan = view?.plan
   const goal = view?.goal
-  if (sessionId === undefined || (plan === undefined && goal === undefined)) return null
+  const subagents = view?.subagents ?? []
+  if (sessionId === undefined || (plan === undefined && goal === undefined && subagents.length === 0)) return null
   const summary = [
     plan !== undefined ? (plan.pending ? t('review.planPending') : t('review.planActive')) : undefined,
+    subagents.length > 0 ? t('review.subagents', { n: String(subagents.length) }) : undefined,
     goal !== undefined ? goal.title : undefined,
   ].filter(part => part !== undefined).join(' · ')
 
@@ -69,6 +72,20 @@ export function SessionState({ sessionId, pollMs = 3000 }: { sessionId: string |
               {goal.active ? t('review.goalActive') : t('review.goal')}
             </span>
             <span className={css.sessionStateTitle}>{goal.title}</span>
+          </span>
+        )}
+        {subagents.length > 0 && (
+          <span className={css.sessionStateRow}>
+            <span className={`${css.chip} ${css.sessionStateSubagent}`}>
+              {t('review.subagents', { n: String(subagents.length) })}
+            </span>
+            <span className={css.sessionStateSubList}>
+              {subagents.map(sub => (
+                <span key={sub.title} className={css.sessionStateSubItem} title={sub.status ?? undefined}>
+                  {sub.title}
+                </span>
+              ))}
+            </span>
           </span>
         )}
       </div>

@@ -3540,3 +3540,7 @@ textarea.input {
 .sessionStatePlanActive { border-color:color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent); color:var(--dsh-tb-accent); }
 .sessionStateGoalOn { border-color:color-mix(in srgb, var(--dsh-tb-success) 45%, transparent); color:var(--dsh-tb-success); }
 .sessionStateTitle { font-size:12px; color:var(--dsh-tb-text-2); min-width:0; overflow-wrap:break-word; }
+
+.sessionStateSubagent { border-color:color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent); color:var(--dsh-tb-accent); }
+.sessionStateSubList { display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+.sessionStateSubItem { font-size:11px; color:var(--dsh-tb-text-2); background:var(--dsh-tb-surface-sunken); border:1px solid var(--dsw-alias-border-l2); border-radius:8px; padding:1px 7px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

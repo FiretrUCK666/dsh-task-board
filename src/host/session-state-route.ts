@@ -14,6 +14,8 @@ import type { Context } from '@deepseek-ai/cordis'
 export interface SessionStateView {
   plan?: { active: boolean; pending: boolean }
   goal?: { title: string; active: boolean }
+  /** Child subagent thumbnails of the session (read-only directory view). */
+  subagents?: Array<{ title: string; status?: string }>
 }
 
 /** Service faces the host wiring supplies (each optional). */
@@ -22,10 +24,20 @@ export interface SessionStateFaces {
   agents?: { get(id: string): unknown | undefined }
   planMode?: { get(agent: unknown): unknown }
   goals?: { get(agent: unknown): unknown }
+  subagents?: { listChildren(agent: unknown): unknown }
 }
 
 function isStr(value: unknown): value is string {
   return typeof value === 'string' && value !== ''
+}
+
+/** Tolerant title/status pick from unknown shape (native reshapes degrade). */
+function thumbOf(raw: unknown): { title?: string; status?: string } {
+  if (typeof raw !== 'object' || raw === null) return {}
+  const row = raw as Record<string, unknown>
+  const title = isStr(row.title) ? row.title : isStr(row.name) ? row.name : ''
+  const status = isStr(row.status) ? row.status : isStr(row.state) ? row.state : undefined
+  return { ...(title !== '' ? { title } : {}), ...(status !== undefined ? { status } : {}) }
 }
 
 /**
@@ -58,6 +70,15 @@ export function readSessionState(
       const goal = goals?.activeGoal as { title?: unknown; status?: unknown } | null | undefined
       if (goal !== null && goal !== undefined && isStr(goal.title)) {
         view.goal = { title: goal.title, active: goal.status === 'active' || goal.status === 'running' }
+      }
+    } catch { /* degraded silently */ }
+  }
+  if (faces.subagents !== undefined) {
+    try {
+      const list = faces.subagents.listChildren(agent)
+      if (Array.isArray(list)) {
+        const subagents = list.map(thumbOf).filter(item => item.title !== undefined)
+        if (subagents.length > 0) view.subagents = subagents as Array<{ title: string; status?: string }>
       }
     } catch { /* degraded silently */ }
   }
@@ -105,6 +126,7 @@ export function registerSessionStateRoute(ctx: Context): () => void {
     agents: ctx.get('agents') as SessionStateFaces['agents'],
     planMode: ctx.get('planMode') as SessionStateFaces['planMode'],
     goals: ctx.get('goals') as SessionStateFaces['goals'],
+    subagents: ctx.get('subagents') as SessionStateFaces['subagents'],
   }
   return webServer.register({
     kind: 'exact',
