@@ -72,11 +72,6 @@ export function runningStateLabel(waiting: PendingInteractionKind | undefined): 
     : t('detail.result.running')
 }
 
-/** The run-sequence label: "第 N 次执行" / "Run N". */
-export function executionNoLabel(runs: number): string {
-  return t('detail.executionNo', { n: String(runs) })
-}
-
 /** The settled-run count label: "N 次执行" / "N runs". */
 export function settledChipLabel(runs: number): string {
   return `${runs} ${t('board.runs')}`
@@ -282,23 +277,12 @@ export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pend
               </Chip>
             )}
             {running ? (
-              /* The open run renders as two short chips instead of one long
-                 one: state (spinner + "进行中"/waiting) and the run
-                 sequence ("第 N 次执行") separately, so each stays short and
-                 both fall under the shared chip truncation — the sequence
-                 keeps the best chance of rendering whole, and the chip's own
-                 title always resurfaces the full label on hover. */
-              <>
-                <Chip kind="warn" fill={false} title={waiting !== undefined
-                  ? t('card.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })
-                  : undefined}
-                  icon={<span className={css.spinner} aria-hidden="true" />}>
-                  {runningStateLabel(waiting)}
-                </Chip>
-                <Chip kind="warn" fill={false} title={executionNoLabel(runs)}>
-                  {executionNoLabel(runs)}
-                </Chip>
-              </>
+              <Chip kind="warn" fill={false} title={waiting !== undefined
+                ? t('card.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })
+                : undefined}
+                icon={<span className={css.spinner} aria-hidden="true" />}>
+                {runningStateLabel(waiting)}
+              </Chip>
             ) : latest !== undefined && (
               <Chip
                 kind={latest.result === 'failed' ? 'error' : latest.result === 'succeeded' ? 'success' : 'muted'}

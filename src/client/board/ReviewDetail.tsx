@@ -33,12 +33,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
-import { plainRunsOf, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
+import { type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
-import { SessionState } from './SessionState.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
@@ -46,7 +45,7 @@ import { commentDraftKey, draftStore } from './drafts.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
-import { Button, MentionPicker, SendModeToggle } from './ui.tsx'
+import { Button, SendModeToggle } from './ui.tsx'
 
 /** The review page (see module doc). */
 export function ReviewDetail({ controller, task, execution, onClose }: {
@@ -84,10 +83,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     if (sessionId === undefined) return ''
     return draftStore.get(commentDraftKey(task.id, sessionId)) ?? ''
   })
-  const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
   // Send mode: 排队 (dispatcher, default) vs 插话 (deliver now).
   const [steer, setSteer] = useState(false)
-  const mentions = controller.sessionLabelsOf(current.id)
+  const mentions = controller.sessionLabelsOf(current.id).map(({ sessionId, title }) => ({ id: sessionId, title }))
   // The comment thread auto-follows its latest round (fingerprint-gated).
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const [threadAtBottom, setThreadAtBottom] = useState(true)
@@ -181,14 +179,11 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     // never start with '/', so nothing user-typed is misrouted.
     const round = controller.submitComment(current.id, execution.id, text, text.startsWith('/'))
     if (round !== undefined) {
-      setLastCommentId(round.id)
       setDraft('')
       if (sessionId !== undefined) draftStore.clear(commentDraftKey(current.id, sessionId))
     }
   }
 
-  // The run's sequence among the task's plain runs (comment rounds excluded).
-  const runIndex = plainRunsOf(current).findIndex(candidate => candidate.id === execution.id) + 1
   // The execution session is blocked on the user (approval / plan review /
   // question): surfaced live from the native session-list signal.
   const waiting = controller.pendingInteractionOf(sessionId)
@@ -196,7 +191,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   return (
     <SessionFrame
       title={current.title}
-      badge={t('detail.executionNo', { n: String(runIndex) })}
       ariaLabel={t('review.title')}
       actions={
         <>
@@ -284,7 +278,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 the conversation in-session. It shares the prompt autocomplete
                 with the task form — the same live slash catalog, so commands
                 and skills never drift. */}
-            <SessionState sessionId={sessionId} />
             <div className={css.reviewComposer}>
               <PromptInput
                 value={draft}
@@ -295,22 +288,13 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 placeholder={t('review.commentPlaceholder')}
                 rows={3}
                 controller={controller}
+                mentions={mentions}
               />
               <div className={css.reviewComposerRow}>
                 <SendModeToggle steer={steer} onChange={setSteer} />
-                <MentionPicker sessions={mentions} onPick={text => {
-                  setDraft(current => current.trim() === '' ? text : current.trimEnd() + ' ' + text)
-                }} />
                 <Button variant="primary" disabled={draft.trim() === ''} onClick={submit}>
                   {t('review.commentSend')}
                 </Button>
-                {lastCommentId !== undefined && !current.executions.some(round => round.id === lastCommentId && round.endedAt !== undefined) && (
-                  <span className={css.reviewComposerHint}>
-                    {current.status === 'running' ? t('review.commentInjected')
-                      : cruiseOn ? t('review.commentQueuedHint')
-                        : t('review.commentPendingHint')}
-                  </span>
-                )}
               </div>
             </div>
         </>

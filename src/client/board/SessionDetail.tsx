@@ -26,7 +26,6 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
-import { SessionState } from './SessionState.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
@@ -34,7 +33,7 @@ import { commentDraftKey, draftStore } from './drafts.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
-import { Button, MentionPicker, SendModeToggle } from './ui.tsx'
+import { Button, SendModeToggle } from './ui.tsx'
 
 /** The linked-session panel (see module doc). */
 export function SessionDetail({ controller, task, sessionId, onClose }: {
@@ -80,7 +79,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const cruiseOn = controller.getSnapshot().cruise.enabled
   // The session's own comment thread (the session-scoped model), live states.
   const thread = sessionCommentsOf(task, sessionId, cruiseOn)
-  const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
 
   // Composer state: a failure keeps the draft so the user can retry. Draft
   // memory: the text survives switching away (shared with the execution review
@@ -91,7 +89,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const taskDone = task.status === 'done'
   // Send mode: 排队 (dispatcher, default) vs 插话 (deliver now).
   const [steer, setSteer] = useState(false)
-  const mentions = controller.sessionLabelsOf(task.id)
+  const mentions = controller.sessionLabelsOf(task.id).map(({ sessionId, title }) => ({ id: sessionId, title }))
 
   const submit = (): void => {
     const text = draft.trim()
@@ -115,7 +113,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     // + this thread reflect it.
     const round = controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/'))
     if (round !== undefined) {
-      setLastCommentId(round.id)
       setDraft('')
       draftStore.clear(commentDraftKey(task.id, sessionId))
     }
@@ -137,16 +134,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     composerHint = <span className={css.reviewComposerHint}>{t('detail.commentQueuedDone')}</span>
   } else if (liveGone) {
     composerHint = <span className={css.reviewComposerHint}>{t('detail.sessionUnavailable')}</span>
-  } else if (lastCommentId !== undefined
-    && !task.executions.some(round => round.id === lastCommentId && round.endedAt !== undefined)) {
-    // A saved comment states where it stands (injected / queued / saved).
-    composerHint = (
-      <span className={css.reviewComposerHint}>
-        {task.status === 'running' ? t('review.commentInjected')
-          : cruiseOn ? t('review.commentQueuedHint')
-            : t('review.commentPendingHint')}
-      </span>
-    )
   }
 
   return (
@@ -229,7 +216,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
 
           {/* The composer, pinned: one comment is one session-scoped message.
               Same visual rhythm and primary send button as the review page. */}
-          <SessionState sessionId={sessionId} />
           <div className={css.reviewComposer}>
             <PromptInput
               value={draft}
@@ -240,12 +226,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               placeholder={t('detail.sessionDrivePlaceholder')}
               rows={3}
               controller={controller}
+              mentions={mentions}
             />
             <div className={css.reviewComposerRow}>
               <SendModeToggle steer={steer} onChange={setSteer} />
-              <MentionPicker sessions={mentions} onPick={text => {
-                setDraft(current => current.trim() === '' ? text : current.trimEnd() + ' ' + text)
-              }} />
               <Button
                 variant="primary"
                 disabled={draft.trim() === '' || liveGone || taskDone}

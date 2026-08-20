@@ -6,7 +6,7 @@
  * follows the native --dsw-* tokens (light/dark + any skin plugin) without
  * any per-surface styling drift.
  */
-import { useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { TAG_PALETTE } from '../../core/tags.ts'
 import css from '../board.module.css'
 import { t } from '../locales.ts'
@@ -236,45 +236,6 @@ export function SendModeToggle({ steer, onChange }: { steer: boolean; onChange: 
       >
         {t('review.sendSteer')}
       </button>
-    </span>
-  )
-}
-
-/**
- * The composer's @ mention: lists a task's related sessions and inserts an
- * "@{title}" reference into the draft (the native composer's @-mention idea,
- * rendered with our own data — related sessions from the controller). Hidden
- * when there is nothing to mention.
- */
-export function MentionPicker({ sessions, onPick }: {
-  sessions?: Array<{ sessionId: string; title: string }>
-  onPick: (text: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  if (sessions === undefined || sessions.length === 0) return null
-  return (
-    <span className={css.mentionWrap}>
-      <button
-        type="button"
-        className={css.iconButton}
-        title={t('review.mention')}
-        onClick={() => { setOpen(current => !current) }}
-      >
-        @
-      </button>
-      {open && (
-        <span className={css.mentionMenu}>
-          {sessions.map(session => (
-            <button
-              key={session.sessionId}
-              type="button"
-              onClick={() => { onPick(`@${session.title}`); setOpen(false) }}
-            >
-              {session.title}
-            </button>
-          ))}
-        </span>
-      )}
     </span>
   )
 }

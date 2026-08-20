@@ -1,28 +1,42 @@
 /**
- * Slash-command autocomplete: pure text/token logic for the prompt input.
+ * Trigger autocomplete: pure text/token logic for the prompt input.
  * Framework-free so the token scan, candidate filtering and insertion rules
- * are unit-testable without React or the runtime.
+ * are unit-testable without React or the runtime. One tokenizer serves both
+ * triggers — '/' (slash commands + skills) and '@' (session/task mentions) —
+ * so the two menus share the same token, filter and flip behaviour.
  *
- * The candidate model mirrors the native composer's '/' menu, which merges
- * two sources: host commands (the command registry) and skills (the skill
- * catalog — every skill name is itself a slash entry like `/skill-xxx`).
+ * The slash candidate model mirrors the native composer's '/' menu, which
+ * merges two sources: host commands (the command registry) and skills (the
+ * skill catalog — every skill name is itself a slash entry like `/skill-xxx`).
  */
 import type { SlashCandidate } from '../../core/controller.ts'
 
-/** The slash token at the caret, when the caret sits in one. */
+/** The trigger token at the caret, when the caret sits in one. */
 export interface CommandToken {
-  /** Index of the token's first character (the '/'). */
+  /** Index of the token's first character (the trigger). */
   start: number
   /** One past the token's last character (the whole word, for replacement). */
   end: number
-  /** Text after the '/', up to the caret (the filter query). */
+  /** Text after the trigger, up to the caret (the filter query). */
   query: string
-  /** Whether the token starts a line (commands with hints show only then). */
+  /** Whether the token starts a line (slash commands with hints show only then). */
   leading: boolean
 }
 
 function isSeparator(char: string): boolean {
   return char === ' ' || char === '\t' || char === '\n' || char === '\r'
+}
+
+function tokenAt(text: string, caret: number, trigger: string): CommandToken | undefined {
+  if (caret < 0 || caret > text.length) return undefined
+  let start = caret
+  while (start > 0 && !isSeparator(text[start - 1])) start -= 1
+  if (start >= caret) return undefined
+  if (text[start] !== trigger) return undefined
+  let end = caret
+  while (end < text.length && !isSeparator(text[end])) end += 1
+  const leading = start === 0 || text[start - 1] === '\n' || text[start - 1] === '\r'
+  return { start, end, query: text.slice(start + 1, caret), leading }
 }
 
 /**
@@ -33,15 +47,16 @@ function isSeparator(char: string): boolean {
  * undefined otherwise.
  */
 export function commandTokenAt(text: string, caret: number): CommandToken | undefined {
-  if (caret < 0 || caret > text.length) return undefined
-  let start = caret
-  while (start > 0 && !isSeparator(text[start - 1])) start -= 1
-  if (start >= caret) return undefined
-  if (text[start] !== '/') return undefined
-  let end = caret
-  while (end < text.length && !isSeparator(text[end])) end += 1
-  const leading = start === 0 || text[start - 1] === '\n' || text[start - 1] === '\r'
-  return { start, end, query: text.slice(start + 1, caret), leading }
+  return tokenAt(text, caret, '/')
+}
+
+/**
+ * Find the mention token at `caret`, the '@' twin of commandTokenAt —
+ * identical scan/separator rules, different trigger, so typing `@` in the
+ * composer opens the same upward/downward menu grammar as `/`.
+ */
+export function mentionTokenAt(text: string, caret: number): CommandToken | undefined {
+  return tokenAt(text, caret, '@')
 }
 
 const byName = (a: { name: string }, b: { name: string }): number => a.name.localeCompare(b.name)
@@ -76,10 +91,45 @@ export function filterSlashCandidates(
   return [...commandPrefix, ...commandRest, ...skills]
 }
 
-/** The replacement text for a picked candidate, mirroring the native menu. */
-function commandCompletion(candidate: SlashCandidate): string {
+/** A mention candidate: one session (or task) addressable by '@'. */
+export interface MentionCandidate {
+  /** Stable session id (or task id) carried into the draft for reply targeting. */
+  id: string
+  /** Display title inserted as `@<title>`. */
+  title: string
+}
+
+/**
+ * Filter mention candidates against the query with the same prefix-first,
+ * then-includes case-insensitive ordering the '/' menu uses, so both menus
+ * sort identically.
+ */
+export function filterMentionCandidates(
+  candidates: readonly MentionCandidate[],
+  query: string,
+): MentionCandidate[] {
+  const needle = query.trim().toLowerCase()
+  const matching = candidates
+    .filter(candidate => needle === '' || candidate.title.toLowerCase().includes(needle))
+  const prefix = matching
+    .filter(candidate => needle !== '' && candidate.title.toLowerCase().startsWith(needle))
+  const rest = matching
+    .filter(candidate => needle === '' || !candidate.title.toLowerCase().startsWith(needle))
+  return [...prefix, ...rest]
+}
+
+/**
+ * The replacement text for a picked candidate, mirroring the native menu.
+ * Slash completions mirror the native '/' menu; '@' completions insert the
+ * mentioned session's title with a trailing space so typing continues.
+ */
+export function commandCompletion(candidate: SlashCandidate): string {
   const needsSpace = candidate.kind === 'skill' || candidate.hint !== undefined
   return `/${candidate.name}${needsSpace ? ' ' : ''}`
+}
+
+export function mentionCompletion(title: string): string {
+  return `@${title} `
 }
 
 /**

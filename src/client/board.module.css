@@ -1325,19 +1325,6 @@ textarea.input {
   color: var(--dsh-tb-text-3);
 }
 
-/* Self-drawn I-beam for every text-entry surface, dressed to look like the
-   NATIVE text cursor (a thin 1.1px dark I with a hairline white backing):
-   the OS text cursor occasionally loses its dark outline on light
-   backgrounds (the same rendering defect as the grab cursor), so this
-   deterministic glyph keeps the thin native look on any theme without the
-   pure-white bug; unsupported browsers fall back to the system text cursor. */
-.input,
-.search,
-.promptTextarea,
-.cruiseLimit {
-  cursor: url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2716%27%20height=%2724%27%20viewBox=%270%200%2016%2024%27%3E%3Cg%20stroke=%27%23ffffff%27%20stroke-width=%272.2%27%20stroke-linecap=%27round%27%3E%3Cline%20x1=%278%27%20y1=%273.5%27%20x2=%278%27%20y2=%2720.5%27/%3E%3Cline%20x1=%273.5%27%20y1=%275.5%27%20x2=%2712.5%27%20y2=%275.5%27/%3E%3Cline%20x1=%273.5%27%20y1=%2718.5%27%20x2=%2712.5%27%20y2=%2718.5%27/%3E%3C/g%3E%3Cg%20stroke=%27%23111c2e%27%20stroke-width=%271.1%27%20stroke-linecap=%27round%27%3E%3Cline%20x1=%278%27%20y1=%273.5%27%20x2=%278%27%20y2=%2720.5%27/%3E%3Cline%20x1=%273.5%27%20y1=%275.5%27%20x2=%2712.5%27%20y2=%275.5%27/%3E%3Cline%20x1=%273.5%27%20y1=%2718.5%27%20x2=%2712.5%27%20y2=%2718.5%27/%3E%3C/g%3E%3C/svg%3E') 8 12, text;
-}
-
 /* The native textarea corner grip (the two hatch lines) is hidden — the
    resize behavior stays (drag the corner to change the height), only the
    visual hint is removed. */
@@ -2430,22 +2417,12 @@ textarea.input {
 
 /* --- drag & drop -------------------------------------------------------------- */
 
-/* The grab cursors are SELF-DRAWN SVG data-URI glyphs, not the OS cursors:
-   the OS grab/text cursors occasionally render without their outline (a
-   pure-white icon invisible on the white card) — a browser/GPU artifact no
-   CSS can fix. A data-URI cursor is composited deterministically by the
-   browser, so it always shows the dark-outlined, white-filled grip below.
-   The glyph's colors are intentional asset data (fixed contrast on any
-   theme), encoded as %23 — never theme values. Unsupported browsers fall
-   back to the system grab/grabbing, never worse than before. */
 .card[draggable='true'] {
-  cursor: url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2724%27%20height=%2724%27%20viewBox=%270%200%2024%2024%27%3E%3Cellipse%20cx=%2712.5%27%20cy=%2713.5%27%20rx=%278%27%20ry=%278%27%20fill=%27%23000%27%20fill-opacity=%270.2%27/%3E%3Crect%20x=%276.2%27%20y=%274.6%27%20width=%273%27%20height=%278.6%27%20rx=%271.5%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3Crect%20x=%279.46%27%20y=%273.8%27%20width=%273%27%20height=%279.4%27%20rx=%271.5%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3Crect%20x=%2712.72%27%20y=%274.8%27%20width=%273%27%20height=%278.4%27%20rx=%271.5%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3Crect%20x=%2715.98%27%20y=%276.6%27%20width=%273%27%20height=%276.8%27%20rx=%271.5%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3Crect%20x=%275%27%20y=%2712.2%27%20width=%2714.2%27%20height=%279.8%27%20rx=%273.4%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3C/svg%3E') 12 12, grab;
+  cursor: grab;
 }
 
 .card[draggable='true']:active {
-  /* The pressed variant: the same hand, fingers drawn slightly lower and the
-     palm raised — reading as "gripped" — on a stronger shadow. */
-  cursor: url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2724%27%20height=%2724%27%20viewBox=%270%200%2024%2024%27%3E%3Cellipse%20cx=%2712.5%27%20cy=%2713.5%27%20rx=%278%27%20ry=%278%27%20fill=%27%23000%27%20fill-opacity=%270.3%27/%3E%3Crect%20x=%276.2%27%20y=%276%27%20width=%273%27%20height=%277.2%27%20rx=%271.5%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3Crect%20x=%279.46%27%20y=%275.2%27%20width=%273%27%20height=%278%27%20rx=%271.5%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3Crect%20x=%2712.72%27%20y=%276.2%27%20width=%273%27%20height=%277%27%20rx=%271.5%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3Crect%20x=%2715.98%27%20y=%278%27%20width=%273%27%20height=%275.4%27%20rx=%271.5%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3Crect%20x=%275%27%20y=%2712.6%27%20width=%2714.2%27%20height=%279.4%27%20rx=%273.4%27%20fill=%27%23ffffff%27%20stroke=%27%23111c2e%27%20stroke-width=%271.4%27/%3E%3C/svg%3E') 12 12, grabbing;
+  cursor: grabbing;
 }
 
 .card.dragging {
@@ -3531,21 +3508,3 @@ textarea.input {
   align-items: center;
   gap: 6px;
 }
-
-/* --- session state: compact plan/goal readout above the composer --- */
-.sessionState { display:flex; flex-direction:column; gap:8px; padding:2px 0 6px; }
-.sessionStateRow { display:flex; align-items:center; gap:8px; min-width:0; }
-.sessionStateHint { font-size:11px; color:var(--dsh-tb-text-3); min-width:0; }
-.sessionStatePlanPending { border-color:color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent); color:var(--dsh-tb-attention); }
-.sessionStatePlanActive { border-color:color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent); color:var(--dsh-tb-accent); }
-.sessionStateGoalOn { border-color:color-mix(in srgb, var(--dsh-tb-success) 45%, transparent); color:var(--dsh-tb-success); }
-.sessionStateTitle { font-size:12px; color:var(--dsh-tb-text-2); min-width:0; overflow-wrap:break-word; }
-
-.sessionStateSubagent { border-color:color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent); color:var(--dsh-tb-accent); }
-.sessionStateSubList { display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
-.sessionStateSubItem { font-size:11px; color:var(--dsh-tb-text-2); background:var(--dsh-tb-surface-sunken); border:1px solid var(--dsw-alias-border-l2); border-radius:8px; padding:1px 7px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-
-.mentionWrap { position:relative; display:inline-flex; }
-.mentionMenu { position:absolute; top:calc(100% + 6px); left:0; z-index:30; display:flex; flex-direction:column; gap:2px; min-width:160px; padding:4px; background:var(--dsh-tb-surface-menu); border:1px solid var(--dsw-alias-border-l2); border-radius:12px; box-shadow:var(--dsh-tb-shadow-2); }
-.mentionMenu button { text-align:left; font:inherit; font-size:12px; color:var(--dsh-tb-text-2); background:none; border:none; border-radius:8px; padding:6px 8px; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.mentionMenu button:hover { background:var(--dsh-tb-hover); color:var(--dsh-tb-text-1); }

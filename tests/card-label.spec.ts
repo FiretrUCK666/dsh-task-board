@@ -7,7 +7,7 @@
  * overflowing (see card-layout.spec.ts for the CSS side of that contract).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { executionNoLabel, runningStateLabel, settledChipLabel } from '../src/client/board/TaskCard.tsx'
+import { runningStateLabel, settledChipLabel } from '../src/client/board/TaskCard.tsx'
 
 function useLanguage(lang: string): void {
   vi.stubGlobal('document', { documentElement: { lang } })
@@ -34,16 +34,6 @@ describe('card chip label composition', () => {
     expect(runningStateLabel('approval')).toBe('Waiting for you · Approval')
     expect(runningStateLabel('plan-review')).toBe('Waiting for you · Plan review')
     expect(runningStateLabel('question')).toBe('Waiting for you · Question')
-  })
-
-  it('execution sequence label renders the run number (zh / en)', () => {
-    useLanguage('zh')
-    expect(executionNoLabel(1)).toBe('第 1 次执行')
-    expect(executionNoLabel(12)).toBe('第 12 次执行')
-    expect(executionNoLabel(123)).toBe('第 123 次执行')
-    useLanguage('en')
-    expect(executionNoLabel(1)).toBe('Run 1')
-    expect(executionNoLabel(123)).toBe('Run 123')
   })
 
   it('settled count label (zh / en)', () => {

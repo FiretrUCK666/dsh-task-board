@@ -114,7 +114,6 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
         leading={
           <span className={css.sessionRowLeading} title={row.title}>
             <span className={css.sessionRowName}>{row.title}</span>
-            <span className={css.sessionRowMetaNote}>{t('detail.executionNo', { n: String(row.runIndex ?? 1) })}</span>
           </span>
         }
         meta={

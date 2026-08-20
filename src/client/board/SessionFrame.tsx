@@ -20,8 +20,8 @@ import { Icon } from './ui.tsx'
 export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onClose }: {
   /** Panel title (the task title on both surfaces). */
   title: string
-  /** Type badge text — "会话" or "第 n 次执行" — the family identity. */
-  badge: string
+  /** Optional type badge text — its family identity; absent hides the badge. */
+  badge?: string
   /** Dialog aria-label. */
   ariaLabel: string
   /** Header actions (refresh / view session; the close button is built in). */
@@ -38,7 +38,7 @@ export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onC
         <header className={css.reviewHeader}>
           <div className={css.reviewTitleWrap}>
             <h2 className={css.reviewTitle}>{title}</h2>
-            <span className={css.reviewBadge}>{badge}</span>
+            {badge !== undefined && <span className={css.reviewBadge}>{badge}</span>}
           </div>
           <div className={css.reviewActions}>
             {actions}

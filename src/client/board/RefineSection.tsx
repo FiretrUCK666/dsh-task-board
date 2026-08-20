@@ -21,7 +21,6 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { refineDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
-import { SessionState } from './SessionState.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { SessionTranscript, SessionWaitingNotice } from './session-panel.tsx'
 import { Button, Section } from './ui.tsx'
@@ -150,13 +149,12 @@ export function RefineSection({ controller, task }: {
               placeholder={t('detail.refine.answerPlaceholder')}
               rows={3}
               controller={controller}
+              mentions={controller.sessionLabelsOf(task.id).map(({ sessionId, title }) => ({ id: sessionId, title }))}
             />
             <Button variant="primary" disabled={draft.trim() === ''} onClick={send}>
               {t('detail.refine.send')}
             </Button>
           </div>
-
-          <SessionState sessionId={task.refineSessionId} />
 
           {/* 操作区域：应用到任务按钮 */}
           <div className={css.refineActionArea}>

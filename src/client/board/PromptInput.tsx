@@ -1,22 +1,26 @@
 /**
- * Prompt input with slash-command autocomplete: typing '/' pops a menu of
- * live slash candidates — host commands plus skills, the same merged
- * catalog the native composer's '/' menu reads — navigable with ArrowUp/
- * Down, accepted with Enter/Tab, dismissed with Escape or by clicking
- * elsewhere; picking inserts the candidate text. The menu opens downward by
- * default and flips upward when the space below the field within its
- * clipping container is insufficient (the review page's composer sits at
- * the bottom of the modal, so this is the normal case there). The textarea
- * auto-grows with its content up to a cap and then scrolls internally —
- * the native composer's pattern (resize: none), which eliminates the
- * unreachable resize-handle trap of a bottom-pinned input. Shared by the
- * new-task modal, the detail edit mode and the review page's composer.
+ * Prompt input with trigger autocomplete: typing '/' pops the live slash
+ * candidates (host commands plus skills — the same merged catalog the native
+ * composer's '/' menu reads), and typing '@' pops the mention candidates
+ * (related sessions of the current task). Both menus share one navigation
+ * (ArrowUp/Down, Enter/Tab, Escape, click-away), the same insertion grammar
+ * and the same direction logic: the menu opens downward by default and flips
+ * upward when the space below the field within its clipping container is
+ * insufficient (the review page's composer sits at the bottom of the modal,
+ * so this is the normal case there). The textarea auto-grows with its content
+ * up to a cap and then scrolls internally — the native composer's pattern
+ * (resize: none), which eliminates the unreachable resize-handle trap of a
+ * bottom-pinned input. Shared by the new-task modal, the detail edit mode,
+ * the review page's composer and the session panel.
  */
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type SyntheticEvent } from 'react'
 import type { BoardController, SlashCandidate } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { commandTokenAt, filterSlashCandidates, insertCommand, type CommandToken } from './slash-token.ts'
+import {
+  commandCompletion, commandTokenAt, mentionTokenAt, filterMentionCandidates, filterSlashCandidates,
+  mentionCompletion, type CommandToken, type MentionCandidate,
+} from './slash-token.ts'
 import { shouldFlipMenuUp } from './menu-direction.ts'
 
 /** Menu row cap: keeps the list scannable and scrollbar-free. */
@@ -27,9 +31,11 @@ const MAX_ROWS = 8
 const TEXTAREA_MAX_HEIGHT = 160
 
 /** The open menu: the triggering token span plus its filtered candidates. */
-interface SlashMenuState {
+interface TriggerMenuState {
   token: CommandToken
-  rows: readonly SlashCandidate[]
+  /** '/' rows when `mentions` is undefined, '@' rows otherwise. */
+  kind: 'slash' | 'mention'
+  rows: readonly (SlashCandidate | MentionCandidate)[]
   highlight: number
   /** Whether the menu opens upward (insufficient space below the field). */
   flip: boolean
@@ -48,13 +54,15 @@ function clippingAncestorOf(element: HTMLElement): HTMLElement | undefined {
   return undefined
 }
 
-/** Prompt textarea with a slash-command dropdown. */
-export function PromptInput({ value, onChange, placeholder, rows, controller }: {
+/** Prompt textarea with a slash-command and mention dropdown. */
+export function PromptInput({ value, onChange, placeholder, rows, controller, mentions }: {
   value: string
   onChange: (next: string) => void
   placeholder?: string
   rows?: number
   controller: BoardController
+  /** Optional '@' candidates (related sessions); when absent only '/' opens. */
+  mentions?: readonly MentionCandidate[]
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fieldRef = useRef<HTMLDivElement | null>(null)
@@ -63,7 +71,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
   const caretRef = useRef(0)
   // undefined = still loading; null = unavailable (no menu); array = ready.
   const [catalog, setCatalog] = useState<readonly SlashCandidate[] | undefined | null>(undefined)
-  const [menu, setMenu] = useState<SlashMenuState | undefined>(undefined)
+  const [menu, setMenu] = useState<TriggerMenuState | undefined>(undefined)
 
   // Load the live slash catalog once per mount; unavailable surfaces
   // degrade to no menu.
@@ -90,14 +98,27 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
     element.style.overflowY = element.scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden'
   }, [value])
 
-  /** Recompute the menu from the latest text/caret (no-op without a slash token). */
+  /** Recompute the menu from the latest text/caret (no-op without a trigger token). */
   const syncMenu = (): void => {
-    const token = commandTokenAt(valueRef.current, caretRef.current)
-    if (token === undefined || catalog === undefined || catalog === null) {
+    // '@' only when the caller supplied mention candidates; the '/' menu
+    // needs the catalog ready.
+    const mentionToken = mentions !== undefined && mentions.length > 0 ? mentionTokenAt(valueRef.current, caretRef.current) : undefined
+    const slashToken = commandTokenAt(valueRef.current, caretRef.current)
+    // A typed '@' wins over a '/' when both could match (the '/' scan would
+    // otherwise treat '@foo' as a non-slash word).
+    let kind: 'mention' | 'slash' | undefined
+    let token: CommandToken | undefined
+    if (mentionToken !== undefined) { kind = 'mention'; token = mentionToken }
+    else if (slashToken !== undefined) { kind = 'slash'; token = slashToken }
+    if (token === undefined || kind === undefined || catalog === undefined || catalog === null) {
       setMenu(undefined)
       return
     }
-    const rows = filterSlashCandidates(catalog, token.query, token.leading).slice(0, MAX_ROWS)
+    const rows = kind === 'slash' && catalog !== null
+      ? filterSlashCandidates(catalog, token.query, token.leading).slice(0, MAX_ROWS)
+      : kind === 'mention' && mentions !== undefined
+        ? filterMentionCandidates(mentions, token.query).slice(0, MAX_ROWS)
+        : []
     let flip = false
     const field = fieldRef.current
     if (field !== null) {
@@ -111,11 +132,12 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
     }
     setMenu(previous =>
       previous !== undefined
+        && previous.kind === kind
         && previous.token.start === token.start
         && previous.token.end === token.end
         && previous.token.query === token.query
         ? previous // same span: keep the keyboard highlight
-        : { token, rows, highlight: 0, flip })
+        : { token, kind, rows, highlight: 0, flip })
   }
 
   // The catalog may land after the user already typed '/': reopen the menu
@@ -127,12 +149,18 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
   }, [catalog])
 
   /** Insert the picked candidate over the token span and restore focus/caret. */
-  const accept = (row: SlashCandidate | undefined): void => {
+  const accept = (row: SlashCandidate | MentionCandidate | undefined): void => {
     if (menu === undefined || row === undefined) {
       setMenu(undefined)
       return
     }
-    const result = insertCommand(valueRef.current, menu.token, row)
+    const insertion = menu.kind === 'mention'
+      ? mentionCompletion((row as MentionCandidate).title)
+      : commandCompletion(row as SlashCandidate)
+    const result = {
+      text: `${valueRef.current.slice(0, menu.token.start)}${insertion}${valueRef.current.slice(menu.token.end)}`,
+      caret: menu.token.start + insertion.length,
+    }
     setMenu(undefined)
     valueRef.current = result.text
     caretRef.current = result.caret
@@ -204,21 +232,41 @@ export function PromptInput({ value, onChange, placeholder, rows, controller }: 
         <div className={css.slashMenu} data-direction={menu.flip ? 'up' : 'down'} role="listbox" aria-label={t('prompt.commandList')}>
           {menu.rows.length === 0 ? (
             <div className={css.slashMenuEmpty} role="option">{t('prompt.noCommands')}</div>
-          ) : menu.rows.map((row, index) => (
-            <button
-              key={row.name}
-              type="button"
-              role="option"
-              aria-selected={index === menu.highlight}
-              className={`${css.slashMenuRow}${index === menu.highlight ? ` ${css.slashMenuRowActive}` : ''}`}
-              onMouseDown={event => { event.preventDefault() }}
-              onClick={() => { accept(row) }}
-            >
-              <span className={css.slashMenuName}>/{row.name}</span>
-              <span className={css.slashMenuDesc}>{row.description}</span>
-              {row.hint !== undefined && <span className={css.slashMenuHint}>{row.hint}</span>}
-            </button>
-          ))}
+          ) : menu.kind === 'mention' ? (
+            menu.rows.map((row, index) => {
+              const mention = row as MentionCandidate
+              return (
+                <button
+                  key={mention.id}
+                  type="button"
+                  role="option"
+                  aria-selected={index === menu.highlight}
+                  className={`${css.slashMenuRow}${index === menu.highlight ? ` ${css.slashMenuRowActive}` : ''}`}
+                  onMouseDown={event => { event.preventDefault() }}
+                  onClick={() => { accept(mention) }}
+                >
+                  <span className={css.slashMenuName}>@{mention.title}</span>
+                </button>
+              )
+            })
+          ) : menu.rows.map((row, index) => {
+            const slash = row as SlashCandidate
+            return (
+              <button
+                key={slash.name}
+                type="button"
+                role="option"
+                aria-selected={index === menu.highlight}
+                className={`${css.slashMenuRow}${index === menu.highlight ? ` ${css.slashMenuRowActive}` : ''}`}
+                onMouseDown={event => { event.preventDefault() }}
+                onClick={() => { accept(slash) }}
+              >
+                <span className={css.slashMenuName}>/{slash.name}</span>
+                <span className={css.slashMenuDesc}>{slash.description}</span>
+                {slash.hint !== undefined && <span className={css.slashMenuHint}>{slash.hint}</span>}
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
