@@ -207,3 +207,36 @@ export function ColorSwatches({ value, onChange }: { value: string; onChange: (c
     </span>
   )
 }
+
+/**
+ * The composer's send-mode switch: 排队 (queue — the dispatcher injects the
+ * message, default) vs 插话 (steer — deliver straight to the session now,
+ * bypassing queue/budget/cruise). One switch at the send row, shared by the
+ * review page and the session panel so both speak one grammar.
+ */
+export function SendModeToggle({ steer, onChange }: { steer: boolean; onChange: (steer: boolean) => void }) {
+  return (
+    <span className={css.segmentedRow} role="radiogroup" aria-label={t('review.sendMode')}>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={!steer}
+        className={`${css.segmentedButton}${!steer ? ` ${css.segmentedActive}` : ''}`}
+        title={t('review.sendQueueTitle')}
+        onClick={() => { onChange(false) }}
+      >
+        {t('review.sendQueue')}
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={steer}
+        className={`${css.segmentedButton}${steer ? ` ${css.segmentedActive}` : ''}`}
+        title={t('review.sendSteerTitle')}
+        onClick={() => { onChange(true) }}
+      >
+        {t('review.sendSteer')}
+      </button>
+    </span>
+  )
+}

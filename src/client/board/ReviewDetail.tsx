@@ -45,7 +45,7 @@ import { commentDraftKey, draftStore } from './drafts.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
-import { Button } from './ui.tsx'
+import { Button, SendModeToggle } from './ui.tsx'
 
 /** The review page (see module doc). */
 export function ReviewDetail({ controller, task, execution, onClose }: {
@@ -84,6 +84,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     return draftStore.get(commentDraftKey(task.id, sessionId)) ?? ''
   })
   const [lastCommentId, setLastCommentId] = useState<string | undefined>(undefined)
+  // Send mode: 排队 (dispatcher, default) vs 插话 (deliver now).
+  const [steer, setSteer] = useState(false)
   // The comment thread auto-follows its latest round (fingerprint-gated).
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const [threadAtBottom, setThreadAtBottom] = useState(true)
@@ -160,6 +162,17 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const submit = (): void => {
     const text = draft.trim()
     if (text === '') return
+    // Send mode: 排队 = the dispatcher injects it (default); 插话 = deliver
+    // straight to the session now, bypassing queue/budget/cruise.
+    if (steer) {
+      if (sessionId === undefined) return
+      void controller.steerComment(current.id, sessionId, text).then(result => {
+        if (!result.ok) return
+        setDraft('')
+        draftStore.clear(commentDraftKey(current.id, sessionId))
+      })
+      return
+    }
     // A draft whose first non-space character is '/' is a slash command,
     // exactly like the native composer: it executes through the host command
     // registry (unknown commands fall back to plain text). Plain prompts
@@ -281,6 +294,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 controller={controller}
               />
               <div className={css.reviewComposerRow}>
+                <SendModeToggle steer={steer} onChange={setSteer} />
                 <Button variant="primary" disabled={draft.trim() === ''} onClick={submit}>
                   {t('review.commentSend')}
                 </Button>

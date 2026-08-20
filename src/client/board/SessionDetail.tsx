@@ -33,7 +33,7 @@ import { commentDraftKey, draftStore } from './drafts.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
-import { Button } from './ui.tsx'
+import { Button, SendModeToggle } from './ui.tsx'
 
 /** The linked-session panel (see module doc). */
 export function SessionDetail({ controller, task, sessionId, onClose }: {
@@ -88,10 +88,24 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const [draft, setDraft] = useState<string>(() => draftStore.get(commentDraftKey(task.id, sessionId)) ?? '')
   const liveGone = row === undefined
   const taskDone = task.status === 'done'
+  // Send mode: 排队 (dispatcher, default) vs 插话 (deliver now).
+  const [steer, setSteer] = useState(false)
 
   const submit = (): void => {
     const text = draft.trim()
     if (text === '' || liveGone || taskDone) return
+    // Send mode: 排队 = the dispatcher injects a session-anchored message round
+    // (same queue as execution comments); 插话 = deliver straight to the native
+    // session now (bypassing queue/budget/cruise), recorded as a settled
+    // message round in the same thread. One message, two send modes.
+    if (steer) {
+      void controller.steerComment(task.id, sessionId, text).then(result => {
+        if (!result.ok) return
+        setDraft('')
+        draftStore.clear(commentDraftKey(task.id, sessionId))
+      })
+      return
+    }
     // A session-anchored comment round — same queue, same dispatcher, same
     // injection as an execution comment. A leading '/' is a slash command
     // through the native registry, matching the native composer and the review
@@ -225,6 +239,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               controller={controller}
             />
             <div className={css.reviewComposerRow}>
+              <SendModeToggle steer={steer} onChange={setSteer} />
               <Button
                 variant="primary"
                 disabled={draft.trim() === '' || liveGone || taskDone}

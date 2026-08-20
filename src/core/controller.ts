@@ -1335,6 +1335,40 @@ export class BoardController {
     })
   }
 
+  /**
+   * Steering send (插话): deliver a comment line to the session IMMEDIATELY —
+   * slash-aware, recorded as a settled message round so it stays visible next
+   * to queued comments in the same thread. It does NOT enter the dispatcher,
+   * does NOT consume the concurrency budget and does NOT respect the cruise
+   * gate: it is exactly "interrupt the current turn now" — the counterpart of
+   * the default queued send (submitSessionComment). One message, two send
+   * modes: queue (调度器注入) vs steer (现在直达).
+   */
+  steerComment(taskId: string, sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const trimmed = text.trim()
+    if (trimmed === '') return Promise.resolve({ ok: false, error: 'empty message' })
+    return this.sendRawMessage(sessionId, trimmed).then(result => {
+      if (!result.ok) return result
+      // The direct-sent turn is already what the steer created — keep the
+      // running flip from ALSO becoming an external round.
+      this.directGraceUntil.set(sessionId, this.now() + DIRECT_GRACE_MS)
+      this.tasks = this.tasks.map(task => task.id === taskId
+        ? {
+            ...task,
+            updatedAt: this.now(),
+            executions: [...task.executions, newDirectRound({
+              id: this.uuid(),
+              now: this.now(),
+              text: trimmed,
+              sessionId,
+            })],
+          }
+        : task)
+      this.persistAndNotify()
+      return { ok: true as const }
+    })
+  }
+
   // --- session automation rules (scheduled "send a preset instruction to a session") ---
 
   /** Create a session rule for one of the task's sessions (cron via the task
