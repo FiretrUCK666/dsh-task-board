@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TranscriptEventShape } from '../src/core/controller.ts'
 import {
-  assembleAnswers, detectPendingInteraction, parseQuestionArgs, PLAN_DECLINE_TEMPLATE,
+  assembleAnswers, detectPendingInteraction, isOpenTodo, latestSessionTodos, parseQuestionArgs, PLAN_DECLINE_TEMPLATE,
   planConfirmText,
 } from '../src/client/board/interaction.ts'
 
@@ -106,5 +106,23 @@ describe('answer assembly', () => {
 describe('plan decline template', () => {
   it('carries the caller-editable reason placeholder', () => {
     expect(PLAN_DECLINE_TEMPLATE.includes('{reason}')).toBe(true)
+  })
+})
+
+describe('latestSessionTodos', () => {
+  it('reads the newest todo/write snapshot (last write wins)', () => {
+    const events = [
+      { type: 'todo/write', seq: 1, data: { todos: [{ content: '旧', status: 'pending' }] } },
+      { type: 'todo/write', seq: 2, data: { todos: [{ content: '新', status: 'in_progress' }, { content: '完成', status: 'completed' }] } },
+    ]
+    const todos = latestSessionTodos(events)
+    expect(todos?.map(row => row.content)).toEqual(['新', '完成'])
+    expect(isOpenTodo(todos![0])).toBe(true)
+    expect(isOpenTodo(todos![1])).toBe(false)
+  })
+
+  it('returns undefined when the session never wrote a todo', () => {
+    expect(latestSessionTodos([{ type: 'user/message', data: { id: 'm' } }])).toBeUndefined()
+    expect(latestSessionTodos([])).toBeUndefined()
   })
 })

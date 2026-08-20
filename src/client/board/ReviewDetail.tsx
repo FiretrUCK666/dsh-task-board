@@ -47,7 +47,8 @@ import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
 import { admitDraftImages, type DraftImage } from './attach.ts'
-import { usePendingInteraction } from './use-interaction.ts'
+import { useSessionContext } from './use-interaction.ts'
+import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { InteractionCard } from './InteractionCard.tsx'
 import { Button, SendModeToggle } from './ui.tsx'
 
@@ -74,8 +75,11 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     : []
 
   // The open native interaction (plan confirm / question), if any: the card
-  // over the composer answers it in place.
-  const pendingInteraction = usePendingInteraction(controller, sessionId)
+  // over the composer answers it in place. Plus the live session context
+  // (to-do / goal / subagents) for the readout above the composer.
+  const context = useSessionContext(controller, sessionId)
+  const { pendingInteraction } = context
+  const [contextOpen, setContextOpen] = useState(false)
 
   // Native projection baseline (context pressure / breakdown / permissions)
   // from the history tail page — the source of the context meter below and
@@ -309,6 +313,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 controller={controller}
               />
             )}
+            {/* Live to-do / goal / subagents of the session (deterministic). */}
+            <SessionContextBlock context={context} open={contextOpen} onToggle={() => { setContextOpen(value => !value) }} />
             {/* The composer, pinned at the rail's bottom: a comment continues
                 the conversation in-session. It shares the prompt autocomplete
                 with the task form — the same live slash catalog, so commands

@@ -143,7 +143,6 @@ describe('promoteToColumnTop', () => {
 
   it('promotes a cross-column card into a new column at the top', () => {
     const [a, b, c] = column(['a', 'b', 'c'])
-    const d = createTask({ title: 'd', description: '', prompt: '' }, NOW, 'd', 0)
     const backlog = createTask({ title: 'e', description: '', prompt: '' }, NOW, 'e', 0)
     const backlogTask = { ...backlog, status: 'backlog' as const }
     const promoted = promoteToColumnTop([a, b, c, backlogTask], 'c', 'backlog', NOW + 1)

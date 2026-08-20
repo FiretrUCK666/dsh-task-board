@@ -3363,6 +3363,78 @@ textarea.input {
   color: var(--dsh-tb-text-3);
 }
 
+/* The deterministic session-context readout above the composer: to-do /
+   goal / subagents when the session has them, nothing at all otherwise. */
+.sessionContext {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0 6px;
+}
+.sessionContextRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.sessionContextText {
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.sessionContextGoalOn {
+  border-color: color-mix(in srgb, var(--dsh-tb-success) 45%, transparent);
+  color: var(--dsh-tb-success);
+}
+.sessionContextTodos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sessionContextTodo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.sessionContextTodo[data-active='true'] .sessionContextTodoDot {
+  background: var(--dsh-tb-accent);
+}
+.sessionContextTodoDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsh-tb-text-3);
+}
+.sessionContextSubagent {
+  border-color: color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent);
+  color: var(--dsh-tb-accent);
+}
+.sessionContextSubList {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.sessionContextSubItem {
+  font-size: 11px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-sunken);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 1px 7px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .reviewComposerRow {
   display: flex;
   align-items: center;

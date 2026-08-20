@@ -36,7 +36,8 @@ import { useTranscriptTail } from './use-transcript.tsx'
 import { Button, SendModeToggle } from './ui.tsx'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
 import { admitDraftImages, type DraftImage } from './attach.ts'
-import { usePendingInteraction } from './use-interaction.ts'
+import { useSessionContext } from './use-interaction.ts'
+import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { InteractionCard } from './InteractionCard.tsx'
 
 /** The linked-session panel (see module doc). */
@@ -94,8 +95,11 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   // Send mode: 排队 (dispatcher, default) vs 插话 (deliver now).
   const [steer, setSteer] = useState(false)
   const mentions = controller.sessionLabelsOf(task.id).map(({ sessionId, title }) => ({ id: sessionId, title }))
-  // The open native interaction (plan confirm / question), if any.
-  const pendingInteraction = usePendingInteraction(controller, sessionId)
+  // The open native interaction (plan confirm / question) + live to-do/goal/
+  // subagents of the session.
+  const context = useSessionContext(controller, sessionId)
+  const { pendingInteraction } = context
+  const [contextOpen, setContextOpen] = useState(false)
   // Pending browser images to attach to the next comment.
   const [attachedImages, setAttachedImages] = useState<readonly DraftImage[]>([])
 
@@ -245,6 +249,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               controller={controller}
             />
           )}
+          {/* Live to-do / goal / subagents of the session (deterministic). */}
+          <SessionContextBlock context={context} open={contextOpen} onToggle={() => { setContextOpen(value => !value) }} />
           {/* The composer, pinned: one comment is one session-scoped message.
               Same visual rhythm and primary send button as the review page. */}
           <div className={css.reviewComposer}>
