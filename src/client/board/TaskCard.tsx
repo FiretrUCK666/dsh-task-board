@@ -6,7 +6,7 @@
  */
 import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
-import type { Tag } from '../../core/tags.ts'
+import { TAG_PALETTE, type Tag } from '../../core/tags.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
@@ -78,7 +78,7 @@ export function settledChipLabel(runs: number): string {
 }
 
 /** One card in a column. */
-export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onTagClick }: {
+export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onTagClick, onColorPick }: {
   task: TaskRecord
   /** The resolved tag rows this card carries (catalog lookup done by the board). */
   tags: readonly Tag[]
@@ -102,6 +102,8 @@ export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pend
   onQuickRun?: () => void
   /** Clicking a card's tag chip filters the board to that tag. */
   onTagClick?: (tagId: string) => void
+  /** Optional hover quick-action: pick a card color right from the card. */
+  onColorPick?: (color: string | undefined) => void
 }) {
   const [dragging, setDragging] = useState(false)
   const latest = task.executions[task.executions.length - 1]
@@ -294,6 +296,26 @@ export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pend
           </span>
         )}
       </span>
+      {onColorPick !== undefined && (
+        <span className={css.cardColorBar} onClick={event => { event.stopPropagation() }}>
+          <button
+            type="button"
+            className={css.cardColorNone + (task.color === undefined ? ` ${css.cardColorOn}` : '')}
+            title={t('card.colorNone')}
+            onClick={(event) => { event.stopPropagation(); onColorPick(undefined) }}
+          />
+          {TAG_PALETTE.map(color => (
+            <button
+              key={color}
+              type="button"
+              className={`${css.cardColorDot}${task.color === color ? ` ${css.cardColorOn}` : ''}`}
+              style={{ background: color }}
+              title={color}
+              onClick={event => { event.stopPropagation(); onColorPick(color) }}
+            />
+          ))}
+        </span>
+      )}
     </button>
   )
 }

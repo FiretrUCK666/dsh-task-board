@@ -3536,6 +3536,44 @@ textarea.input {
   color: var(--dsh-tb-text-3);
 }
 
+/* The hover color bar: a row of palette dots + a clear dot, revealed on card
+   hover so a card recolors in one click — no organize mode needed. */
+.cardColorBar {
+  display: none;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  padding-top: 2px;
+}
+.card:hover .cardColorBar,
+.card:focus-within .cardColorBar {
+  display: flex;
+}
+.cardColorDot,
+.cardColorNone {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--dsw-alias-border-l2);
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+}
+.cardColorNone {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2);
+}
+.cardColorNone:hover {
+  background: var(--dsh-tb-surface-sunken);
+}
+.cardColorDot:hover {
+  transform: scale(1.15);
+}
+.cardColorOn {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
 /* Board-header tag filter row: quiet toggle pills with a colored dot; the
    active one fills accent-dim to read as "filtering by this". */
 .tagFilter {

@@ -830,6 +830,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       onClick={() => { cardClick(task.id) }}
                       onQuickRun={() => { void controller.rerunTask(task.id) }}
                       onTagClick={id => { toggleTag(id) }}
+                      onColorPick={color => { controller.setTaskColor(task.id, color) }}
                     />
                   )
                 })}
