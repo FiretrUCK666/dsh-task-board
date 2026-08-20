@@ -154,16 +154,16 @@ describe('BoardController lifecycle', () => {
 describe('task mutations', () => {
   it('creates, persists, and rejects blank titles', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: ' 新任务 ', description: '', prompt: '' })
+    const task = controller.createTask({ title: ' 新任务 ', description: '', prompt: 'run' })
     expect(task).toBeDefined()
     expect(controller.getSnapshot().tasks).toHaveLength(1)
     expect(store.load()[0].title).toBe('新任务')
-    expect(controller.createTask({ title: '   ', description: '', prompt: '' })).toBeUndefined()
+    expect(controller.createTask({ title: '   ', description: '', prompt: 'run' })).toBeUndefined()
   })
 
   it('deletes and clears the selection when the selected task is removed', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.openTask(task.id)
     controller.deleteTask(task.id)
     expect(controller.getSnapshot().tasks).toHaveLength(0)
@@ -173,7 +173,7 @@ describe('task mutations', () => {
 
   it('updates and moves tasks with persistence', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.updateTask(task.id, { title: 'y' })
     controller.moveTask(task.id, 'backlog')
     const persisted = store.load()[0]
@@ -183,7 +183,7 @@ describe('task mutations', () => {
 
   it('disarms an armed schedule rule when the task is moved to done', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
     expect(store.load()[0].schedule?.enabled).toBe(true)
     controller.moveTask(task.id, 'done')
@@ -197,7 +197,7 @@ describe('task mutations', () => {
 
   it('a done-disarmed rule stays off when the task moves back to a live column', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
     controller.moveTask(task.id, 'done')
     expect(store.load()[0].schedule?.enabled).toBe(false)
@@ -209,7 +209,7 @@ describe('task mutations', () => {
 
   it('moving to backlog/review keeps an armed rule untouched (paused, not disarmed)', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
     controller.moveTask(task.id, 'backlog')
     expect(store.load()[0].schedule?.enabled).toBe(true)
@@ -244,8 +244,8 @@ describe('task mutations', () => {
 
   it('creates into the chosen landing column, ranking newest at its top', () => {
     const { controller, store } = makeController()
-    const todo = controller.createTask({ title: 'a', description: '', prompt: '' })!
-    const backlog = controller.createTask({ title: 'b', description: '', prompt: '', status: 'backlog' })!
+    const todo = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
+    const backlog = controller.createTask({ title: 'b', description: '', prompt: 'run', status: 'backlog' })!
     expect(todo.status).toBe('todo')
     expect(backlog.status).toBe('backlog')
     // Each fresh card is the newest of ITS column (order 0) — different
@@ -258,9 +258,9 @@ describe('task mutations', () => {
 
   it('reorders cards within a column (same-column move with beforeId)', () => {
     const { controller, store } = makeController()
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
-    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
-    const c = controller.createTask({ title: 'c', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: 'run' })!
+    const c = controller.createTask({ title: 'c', description: '', prompt: 'run' })!
     const keyed = (): Record<string, number> =>
       Object.fromEntries(store.load().map(task => [task.id, task.order]))
     // Move the last card before the first: c gets key 0, a and b shift.
@@ -277,7 +277,7 @@ describe('task mutations', () => {
   it('updates content and run configuration, clearing fields with undefined', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({
-      title: 'x', description: '', prompt: '',
+      title: 'x', description: '', prompt: 'run',
       workspaceId: 'w-1', agentPreset: 'preset-a', permission: 'full',
     })!
     expect(controller.updateTask(task.id, {
@@ -305,7 +305,7 @@ describe('task mutations', () => {
 
   it('rejects blank titles and unknown tasks without touching state', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     expect(controller.updateTask(task.id, { title: '   ' })).toBe(false)
     expect(controller.updateTask('missing', { title: 'y' })).toBe(false)
     expect(store.load()[0].title).toBe('x')
@@ -320,7 +320,7 @@ describe('task mutations', () => {
       sessions, now: () => clock, uuid,
     })
     controller.start()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     clock = NOW + 1000
     controller.updateTask(task.id, { description: 'd' })
     expect(store.load()[0].updatedAt).toBe(NOW + 1000)
@@ -380,7 +380,7 @@ describe('view state', () => {
 
   it('openTask/closeTask manage the selection', () => {
     const { controller } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.openTask(task.id)
     expect(controller.getSnapshot().selectedTaskId).toBe(task.id)
     controller.closeTask()
@@ -561,7 +561,7 @@ describe('run loop', () => {
   it('keeps a page-launched run running on list updates; only the watch settles it', async () => {
     const stub = new StubExec()
     const { controller, sessions, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // Start a run; attach its session id.
     await controller.runTask(task.id)
     const executionId = exec.runCalls[0].executionId
@@ -592,7 +592,7 @@ describe('run loop', () => {
       sessions, now: () => clock, uuid, reconcileDebounceMs: 0,
     })
     controller.start()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await controller.runTask(task.id)
     const executionId = stub.runCalls[0].executionId
     stub.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId, sessionId: 's-1' })
@@ -626,7 +626,7 @@ describe('run loop', () => {
       sessions, now: () => clock, uuid, reconcileDebounceMs: 0,
     })
     controller.start()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await controller.runTask(task.id)
     const executionId = stub.runCalls[0].executionId
     stub.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId, sessionId: 's-1' })
@@ -642,7 +642,7 @@ describe('run loop', () => {
 describe('scheduling', () => {
   it('setSchedule enables a rule and computes the next run instant', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     expect(controller.setSchedule(task.id, { enabled: true, cron: '* * * * *' })).toBe(true)
     const persisted = store.load()[0]
     expect(persisted.schedule?.enabled).toBe(true)
@@ -652,7 +652,7 @@ describe('scheduling', () => {
 
   it('rejects blank or invalid cron expressions without touching state', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     expect(controller.setSchedule(task.id, { enabled: true, cron: 'not a cron' })).toBe(false)
     expect(controller.setSchedule(task.id, { enabled: true, cron: '   ' })).toBe(false)
     expect(controller.setSchedule(task.id, { enabled: true })).toBe(false) // no existing cron → blank → rejected
@@ -661,7 +661,7 @@ describe('scheduling', () => {
 
   it('disabling a rule clears the next run instant but keeps the cron', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '* * * * *' })
     expect(controller.setSchedule(task.id, { enabled: false })).toBe(true)
     const persisted = store.load()[0]
@@ -672,7 +672,7 @@ describe('scheduling', () => {
 
   it('recomputes the next run when the cron changes while enabled', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '* * * * *' })
     const first = store.load()[0].schedule?.nextRunAt
     controller.setSchedule(task.id, { cron: '*/5 * * * *' })
@@ -683,7 +683,7 @@ describe('scheduling', () => {
 
   it('applyScheduleNextRun rolls the schedule forward for the scheduler', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '* * * * *' })
     controller.applyScheduleNextRun(task.id, 1_234_567_890, 1_234_500_000)
     const persisted = store.load()[0]
@@ -693,7 +693,7 @@ describe('scheduling', () => {
 
   it('applyScheduleNextRun is a no-op for tasks without a schedule rule', () => {
     const { controller } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     expect(() => controller.applyScheduleNextRun(task.id, 1, 2)).not.toThrow()
     expect(controller.getSnapshot().tasks[0].schedule).toBeUndefined()
   })
@@ -701,7 +701,7 @@ describe('scheduling', () => {
   it('keeps a budgeted scheduled batch running until the final run settles', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '* * * * *', maxRuns: 3 })
 
     // Run 1 settles succeeded → the batch is not complete, the card stays
@@ -733,7 +733,7 @@ describe('scheduling', () => {
   it('a failed batch run settles into review and frees the next run slot', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '* * * * *', maxRuns: 2 })
     await controller.runTask(task.id)
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.runCalls[0].executionId, outcome: 'failed', error: 'boom' })
@@ -746,7 +746,7 @@ describe('scheduling', () => {
   it('chain mode: arming starts the first run and the chain continues until the budget', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
     // Arming a chain launches its first run right away (no manual prime).
     expect(exec.runCalls).toHaveLength(1)
@@ -772,7 +772,7 @@ describe('scheduling', () => {
   it('chain mode: a failed run stops the chain', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
     // The chain's first run starts on arming.
     expect(exec.runCalls).toHaveLength(1)
@@ -787,7 +787,7 @@ describe('scheduling', () => {
   it('manually moving a running chain card to todo stops the chain (manual takeover)', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: undefined })
     expect(exec.runCalls).toHaveLength(1) // armed chain starts immediately
     const e1 = exec.runCalls[0].executionId
@@ -805,7 +805,7 @@ describe('scheduling', () => {
   it('an armed-but-never-run chain in backlog starts its first run when moved to todo', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '', status: 'backlog' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run', status: 'backlog' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
     // Armed while shelved (backlog): paused, nothing runs yet.
     expect(exec.runCalls).toHaveLength(0)
@@ -820,7 +820,7 @@ describe('scheduling', () => {
   it('stopping a chain only disarms the rule without moving the card', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: undefined })
     expect(exec.runCalls).toHaveLength(1)
     const e1 = exec.runCalls[0].executionId
@@ -844,7 +844,7 @@ describe('scheduling', () => {
   it('manual runs never touch the schedule counters or next-run instant', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '* * * * *', maxRuns: 3 })
     const before = store.load()[0].schedule
     await controller.runTask(task.id) // e.g. dragging the card to 'running'
@@ -860,7 +860,7 @@ describe('scheduling', () => {
   it('mode switches keep a known cron expression; cron mode still demands one', () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // Arm in cron mode with a valid expression.
     expect(controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })).toBe(true)
     // Switch to chain: the expression survives the mode change (chain never
@@ -873,7 +873,7 @@ describe('scheduling', () => {
     expect(store.load()[0].schedule?.cron).toBe('0 9 * * *')
     // Arming a chain on a fresh task leaves no cron; cron mode still rejects
     // an empty expression (the UI saves one before switching back).
-    const fresh = controller.createTask({ title: 'y', description: '', prompt: '' })!
+    const fresh = controller.createTask({ title: 'y', description: '', prompt: 'run' })!
     expect(controller.setSchedule(fresh.id, { enabled: true, mode: 'chain' })).toBe(true)
     expect(controller.setSchedule(fresh.id, { mode: 'cron' })).toBe(false)
     expect(controller.setSchedule(fresh.id, { mode: 'cron', cron: '*/5 * * * *' })).toBe(true)
@@ -897,7 +897,7 @@ describe('session config face', () => {
 describe('comments', () => {
   /** A task with one settled execution in review (session s-1). */
   async function settledReviewTask(stub: StubExec, controller: BoardController): Promise<{ taskId: string; executionId: string }> {
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await controller.runTask(task.id)
     const run = stub.runCalls[stub.runCalls.length - 1]
     run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-1' })
@@ -931,7 +931,7 @@ describe('comments', () => {
   it('rejects comments on unknown tasks, unsettled runs, or blank text', async () => {
     const stub = new StubExec()
     const { controller } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await controller.runTask(task.id)
     const openExecutionId = stub.runCalls[0].executionId
     expect(controller.submitComment(task.id, 'ghost', 'hi')).toBeUndefined()
@@ -1092,7 +1092,7 @@ describe('comments', () => {
 describe('submitSessionComment (drive-mode linked-session comments)', () => {
   /** A task with one settled execution in review (session s-1). */
   async function settledReviewTask(stub: StubExec, controller: BoardController): Promise<{ taskId: string; executionId: string }> {
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await controller.runTask(task.id)
     const run = stub.runCalls[stub.runCalls.length - 1]
     run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-1' })
@@ -1103,7 +1103,7 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
   it('saves a session-anchored comment round; nothing injects while the cruise is off', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     const round = controller.submitSessionComment(task.id, 'linked-7', ' 驱动一下 ')
     expect(round).toBeDefined()
     expect(round?.comment).toBe('驱动一下')
@@ -1118,7 +1118,7 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
   it('rejects blank text, unknown tasks, and completed tasks', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     expect(controller.submitSessionComment(task.id, 'linked-7', '   ')).toBeUndefined()
     expect(controller.submitSessionComment('ghost', 'linked-7', 'hi')).toBeUndefined()
     controller.moveTask(task.id, 'done')
@@ -1129,7 +1129,7 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
   it('injects the session-anchored comment into the linked session and settles into review', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // A saved comment outranks a fresh cruise pickup: with the cruise off the
     // round stays saved, and turning the cruise on injects it first (instead
     // of starting a fresh run of the todo task).
@@ -1170,7 +1170,7 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
   it('cancels a pending session-anchored comment but never an injected one', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     const pending = controller.submitSessionComment(task.id, 'linked-7', '发错了')
     expect(controller.cancelComment(pending!.id)).toBe(true)
     expect(store.load()[0].executions).toEqual([])
@@ -1217,9 +1217,9 @@ describe('auto-cruise', () => {
     const { controller, store, stub: exec } = makeController(stub, {
       cruiseStorage: { read: () => ({ enabled: true, limit: 2 }), write: () => {} },
     })
-    controller.createTask({ title: 'a', description: '', prompt: '' })!
-    controller.createTask({ title: 'b', description: '', prompt: '' })!
-    controller.createTask({ title: 'c', description: '', prompt: '' })!
+    controller.createTask({ title: 'a', description: '', prompt: 'run' })!
+    controller.createTask({ title: 'b', description: '', prompt: 'run' })!
+    controller.createTask({ title: 'c', description: '', prompt: 'run' })!
     expect(exec.runCalls).toHaveLength(2) // limit 2
     expect(store.load().filter(task => task.status === 'running')).toHaveLength(2)
   })
@@ -1227,9 +1227,9 @@ describe('auto-cruise', () => {
   it('runs todo tasks up to the limit and refills when one settles', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
-    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
-    const c = controller.createTask({ title: 'c', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: 'run' })!
+    const c = controller.createTask({ title: 'c', description: '', prompt: 'run' })!
     controller.setCruiseLimit(2)
     controller.setCruiseEnabled(true)
     expect(exec.runCalls).toHaveLength(2)
@@ -1246,8 +1246,8 @@ describe('auto-cruise', () => {
   it('disabling stops picking new tasks; in-flight runs finish', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
-    controller.createTask({ title: 'b', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
+    controller.createTask({ title: 'b', description: '', prompt: 'run' })!
     controller.setCruiseLimit(1)
     controller.setCruiseEnabled(true)
     expect(exec.runCalls).toHaveLength(1)
@@ -1261,7 +1261,7 @@ describe('auto-cruise', () => {
 describe('unified dispatch (one concurrency budget)', () => {
   /** A task with one settled execution in review (session s-1). */
   async function settledTask(stub: StubExec, controller: BoardController): Promise<{ taskId: string; executionId: string }> {
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await controller.runTask(task.id)
     const run = stub.runCalls[stub.runCalls.length - 1]
     run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-1' })
@@ -1274,7 +1274,7 @@ describe('unified dispatch (one concurrency budget)', () => {
     const { controller, stub: exec } = makeController(stub)
     controller.setCruiseLimit(1)
     // One cruise slot is taken by a todo pickup.
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
     controller.setCruiseEnabled(true)
     expect(exec.runCalls).toHaveLength(1)
     // A comment round queues: the budget is full, so it must not inject.
@@ -1314,7 +1314,7 @@ describe('unified dispatch (one concurrency budget)', () => {
     controller.setCruiseLimit(1)
     controller.setCruiseEnabled(true)
     // Occupy the only slot with a todo pickup.
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
     expect(exec.runCalls).toHaveLength(1)
     // Two review tasks each get a queued comment (the budget is full).
     const first = await settledTask(stub, controller)
@@ -1350,7 +1350,7 @@ describe('unified dispatch (one concurrency budget)', () => {
     const { controller, store, stub: exec } = makeController(stub)
     controller.setCruiseLimit(1)
     controller.setCruiseEnabled(true)
-    controller.createTask({ title: 'a', description: '', prompt: '' })! // occupies the slot
+    controller.createTask({ title: 'a', description: '', prompt: 'run' })! // occupies the slot
     const { taskId, executionId } = await settledTask(stub, controller)
     const round = controller.submitComment(taskId, executionId, '别跑')
     expect(round).toBeDefined()
@@ -1364,20 +1364,36 @@ describe('unified dispatch (one concurrency budget)', () => {
     expect(controller.cancelComment(round!.id)).toBe(true)
   })
 
+  it('automation never starts a blank-prompt task (the new-task default stays idle until content exists)', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    const blank = controller.createTask({ title: '空', description: '', prompt: '   ' })!
+    const real = controller.createTask({ title: '有内容', description: '', prompt: 'run' })!
+    controller.setCruiseEnabled(true)
+    expect(exec.runCalls).toHaveLength(1) // only the content-carrying task picked up
+    expect(exec.runCalls[0].taskId).toBe(real.id)
+    // Filling the prompt makes it eligible again on the next pump.
+    controller.updateTask(blank.id, { prompt: '做点什么' })
+    controller.setCruiseEnabled(false)
+    controller.setCruiseEnabled(true)
+    expect(exec.runCalls).toHaveLength(2)
+    expect(exec.runCalls[1].taskId).toBe(blank.id)
+  })
+
   it('manual runs start immediately even when the budget is full (and occupy a slot)', async () => {
     const stub = new StubExec()
     const { controller, stub: exec } = makeController(stub)
     controller.setCruiseLimit(1)
     controller.setCruiseEnabled(true)
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
-    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: 'run' })!
     expect(exec.runCalls).toHaveLength(1) // a picked by cruise
     // Manual run of b: accepted even though the budget is full.
     await controller.runTask(b.id, 'manual')
     expect(exec.runCalls).toHaveLength(2)
     expect(controller.getSnapshot().tasks.find(task => task.id === b.id)?.status).toBe('running')
     // A third todo waits for a slot.
-    controller.createTask({ title: 'c', description: '', prompt: '' })!
+    controller.createTask({ title: 'c', description: '', prompt: 'run' })!
     expect(exec.runCalls).toHaveLength(2)
     // a settles → b still occupies the only slot → nothing new starts.
     exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
@@ -1392,8 +1408,8 @@ describe('unified dispatch (one concurrency budget)', () => {
     const { controller, store, stub: exec } = makeController(stub)
     controller.setCruiseLimit(1)
     controller.setCruiseEnabled(true)
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
-    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: 'run' })!
     expect(exec.runCalls).toHaveLength(1) // a picked; the budget is full
     // A schedule trigger for b is accepted but queued (budget full).
     await expect(controller.runTask(b.id, 'schedule')).resolves.toBe(true)
@@ -1409,11 +1425,11 @@ describe('unified dispatch (one concurrency budget)', () => {
     const stub = new StubExec()
     const { controller, stub: exec } = makeController(stub)
     controller.setCruiseLimit(1)
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
     controller.setSchedule(a.id, { enabled: true, mode: 'chain' })
     controller.setCruiseEnabled(true)
     expect(exec.runCalls).toHaveLength(1) // a auto-started by arming the chain
-    const b = controller.createTask({ title: 'b', description: '', prompt: '' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: 'run' })!
     await controller.runTask(b.id, 'manual') // manual run occupies the slot beyond the budget
     expect(exec.runCalls).toHaveLength(2)
     // a settles → chain hand-off queues (b still occupies the only slot).
@@ -1431,8 +1447,8 @@ describe('unified dispatch (one concurrency budget)', () => {
     const { controller, stub: exec } = makeController(stub)
     controller.setCruiseLimit(1)
     controller.setCruiseEnabled(true)
-    controller.createTask({ title: 'a', description: '', prompt: '' })!
-    controller.createTask({ title: 'b', description: '', prompt: '' })!
+    controller.createTask({ title: 'a', description: '', prompt: 'run' })!
+    controller.createTask({ title: 'b', description: '', prompt: 'run' })!
     expect(exec.runCalls).toHaveLength(1)
     controller.setCruiseLimit(2)
     expect(exec.runCalls).toHaveLength(2)
@@ -1443,9 +1459,9 @@ describe('unified dispatch (one concurrency budget)', () => {
   it('never starts a task already running (from any surface)', async () => {
     const stub = new StubExec()
     const { controller, stub: exec } = makeController(stub)
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
     await controller.runTask(a.id, 'manual')
-    controller.createTask({ title: 'b', description: '', prompt: '' })!
+    controller.createTask({ title: 'b', description: '', prompt: 'run' })!
     controller.setCruiseEnabled(true)
     expect(exec.runCalls).toHaveLength(2) // a manual + b cruise
     expect(exec.runCalls.filter(call => call.taskId === a.id)).toHaveLength(1)
@@ -1455,7 +1471,7 @@ describe('unified dispatch (one concurrency budget)', () => {
     const stub = new StubExec()
     const { controller, stub: exec } = makeController(stub)
     controller.setCruiseEnabled(true)
-    const a = controller.createTask({ title: 'a', description: '', prompt: '' })!
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
     expect(exec.runCalls).toHaveLength(1)
     controller.dispose()
     controller.moveTask(a.id, 'todo')
@@ -1585,7 +1601,7 @@ describe('linked sessions & bind', () => {
   it('createBoundTask creates a bound task, persists it, and lands in the chosen column', () => {
     const { controller, store } = makeController()
     const created = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
-      title: '会话一', description: '', prompt: '', status: 'todo',
+      title: '会话一', description: '', prompt: 'run', status: 'todo',
     })
     expect(created).toBeDefined()
     expect(created?.bind).toEqual({ kind: 'session', sessionId: 's-1' })
@@ -1593,20 +1609,20 @@ describe('linked sessions & bind', () => {
     expect(store.load()[0].bind).toEqual({ kind: 'session', sessionId: 's-1' })
     // Rejects a blank title like a plain create.
     expect(controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
-      title: '  ', description: '', prompt: '', status: 'todo',
+      title: '  ', description: '', prompt: 'run', status: 'todo',
     })).toBeUndefined()
   })
 
   it('createBoundTask honors any landing column (external drops stay where dropped)', () => {
     const { controller } = makeController()
     const running = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
-      title: 'r', description: '', prompt: '', status: 'running',
+      title: 'r', description: '', prompt: 'run', status: 'running',
     })!
     const review = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
-      title: 'v', description: '', prompt: '', status: 'review',
+      title: 'v', description: '', prompt: 'run', status: 'review',
     })!
     const done = controller.createBoundTask({ kind: 'session', sessionId: 's-2' }, {
-      title: 'd', description: '', prompt: '', status: 'done',
+      title: 'd', description: '', prompt: 'run', status: 'done',
     })!
     expect(running.status).toBe('running')
     expect(review.status).toBe('review')
@@ -1615,9 +1631,9 @@ describe('linked sessions & bind', () => {
 
   it('hideTaskSession / unhideTaskSessions manage a per-session hide set (persisted)', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     const run = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
-      title: 'x', description: '', prompt: '', status: 'todo',
+      title: 'x', description: '', prompt: 'run', status: 'todo',
     })!
     // Hiding a session records it universally: a session that is also a run
     // session maps into the execution family by its run ids as well.
@@ -1633,14 +1649,14 @@ describe('linked sessions & bind', () => {
   it('hideTaskSession also records the run ids when the session was executed', () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.hideTaskSession(task.id, 's-ghost') // no runs in this session
     expect(store.load()[0].hidden).toEqual({ sessions: ['s-ghost'] })
   })
 
   it('unhideTaskSession restores exactly one hidden session (single-item restore)', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.hideTaskSession(task.id, 's-1')
     controller.hideTaskSession(task.id, 's-2')
     controller.hideTaskSession(task.id, 's-3')
@@ -1662,7 +1678,7 @@ describe('linked sessions & bind', () => {
   it('unhideTaskSession also prunes the run ids of the restored session', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // Two runs settle in different sessions; hide one of them.
     await controller.runTask(task.id)
     const runA = store.load()[0].executions[0]
@@ -1682,7 +1698,7 @@ describe('linked sessions & bind', () => {
 
   it('bindTaskSource binds a source onto an existing task, replaces an old bind, persists', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // A plain task gains a live binding.
     expect(controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(true)
     expect(store.load()[0].bind).toEqual({ kind: 'session', sessionId: 's-1' })
@@ -1706,7 +1722,7 @@ describe('linked sessions & bind', () => {
       now: () => NOW,
       uuid,
     })
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.bindTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })
     // Re-fetch: bindTaskSource replaces the task record in the ledger.
     const bound = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
@@ -1741,7 +1757,7 @@ describe('linked sessions & bind', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub)
     controller.createTag('设计', '#4f46e5')
-    const source = controller.createTask({ title: '源', description: '', prompt: '' })!
+    const source = controller.createTask({ title: '源', description: '', prompt: 'run' })!
     const tagId = controller.getSnapshot().tags[0].id
     controller.setTaskTags(source.id, [tagId])
     controller.setTaskColor(source.id, '#4f46e5')
@@ -1777,7 +1793,7 @@ describe('linked sessions & bind', () => {
     const { controller, store } = makeController(stub, {
       sessionMessage: async () => ({ ok: true as const }),
     })
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await controller.sendSessionMessage(task.id, 's-1', ' 直发一句 ')
     const round = store.load()[0].executions[0]
     expect(round).toMatchObject({ sessionId: 's-1', comment: '直发一句', direct: true, result: 'succeeded' })
@@ -1791,7 +1807,7 @@ describe('linked sessions & bind', () => {
     const { controller: c2, store: s2 } = makeController(stub, {
       sessionMessage: async () => ({ ok: false as const, error: 'boom' }),
     })
-    const t2 = c2.createTask({ title: 'y', description: '', prompt: '' })!
+    const t2 = c2.createTask({ title: 'y', description: '', prompt: 'run' })!
     await c2.sendSessionMessage(t2.id, 's-2', '失败句')
     expect(s2.load()[0].executions).toHaveLength(0)
   })
@@ -1799,7 +1815,7 @@ describe('linked sessions & bind', () => {
   it('unbindTask drops the live binding and persists', () => {
     const { controller, store } = makeController()
     const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
-      title: '项目A', description: '', prompt: '', status: 'backlog',
+      title: '项目A', description: '', prompt: 'run', status: 'backlog',
     })!
     controller.unbindTask(task.id)
     expect(store.load()[0].bind).toBeUndefined()
@@ -1859,7 +1875,7 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
         return { ok: true as const }
       },
     })
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     expect(controller.directMessageAvailable()).toBe(true)
     await expect(controller.sendSessionMessage(task.id, 's-1', '  继续   ')).resolves.toEqual({ ok: true })
     expect(sent).toEqual(['s-1:继续'])
@@ -1880,7 +1896,7 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
       },
     })
     // Matched command: executed, never sent as text.
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await expect(controller.sendSessionMessage(task.id, 's-1', '/plan ok')).resolves.toEqual({ ok: true })
     // Unknown command: the native default-sink delivers the line as text.
     await expect(controller.sendSessionMessage(task.id, 's-1', '/nope x')).resolves.toEqual({ ok: true })
@@ -1892,14 +1908,14 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
       sessionMessage: async () => ({ ok: false as const, error: 'session gone' }),
       sessionCommand: async () => ({ ok: false as const, error: 'command rejected' }),
     })
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await expect(controller.sendSessionMessage(task.id, 's-1', 'hi')).resolves.toEqual({ ok: false, error: 'session gone' })
     await expect(controller.sendSessionMessage(task.id, 's-1', '/perm read-only')).resolves.toEqual({ ok: false, error: 'command rejected' })
   })
 
   it('degrades gracefully when the direct faces are absent', async () => {
     const { controller } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     expect(controller.directMessageAvailable()).toBe(false)
     await expect(controller.sendSessionMessage(task.id, 's-1', 'hi')).resolves.toEqual({ ok: false, error: 'direct message unavailable' })
     // Without a command face, a slash line degrades to the text path — which
@@ -1912,7 +1928,7 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
     const { controller } = makeController(new StubExec(), {
       sessionMessage: async () => { called = true; return { ok: true as const } },
     })
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     await expect(controller.sendSessionMessage(task.id, 's-1', '   ')).resolves.toEqual({ ok: false, error: 'empty message' })
     expect(called).toBe(false)
   })
@@ -1923,7 +1939,7 @@ describe('native-activity sync (两端同步)', () => {
   function harness(extra: Partial<ControllerDeps> = {}) {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
-    const seeded = createTask({ title: 'x', description: '', prompt: '' }, NOW, 'task-a')
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
     store.save([{ ...seeded, status: 'review', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed', error: undefined }] }])
     const sessions = new FakeSessions()
     const controller = new BoardController({
@@ -1965,7 +1981,7 @@ describe('native-activity sync (两端同步)', () => {
   it('past activity never re-fires on the initial baseline', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
-    const seeded = createTask({ title: 'x', description: '', prompt: '' }, NOW, 'task-a')
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
     store.save([{ ...seeded, status: 'review', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed', error: undefined }] }])
     const sessions = new FakeSessions()
     // The native session is ALREADY running before the board's first scan —
@@ -2006,7 +2022,7 @@ describe('native-activity sync (两端同步)', () => {
     let clock = NOW
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
-    const seeded = createTask({ title: 'x', description: '', prompt: '' }, NOW, 'task-a')
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
     store.save([{ ...seeded, status: 'review', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed', error: undefined }] }])
     const sessions = new FakeSessions()
     const controller = new BoardController({
@@ -2042,7 +2058,7 @@ describe('native-activity sync (两端同步)', () => {
   it('an out-of-band refine turn keeps the column and marks refining', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
-    const seeded = createTask({ title: 'r', description: '', prompt: '' }, NOW, 'task-r')
+    const seeded = createTask({ title: 'r', description: '', prompt: 'run' }, NOW, 'task-r')
     store.save([{ ...seeded, status: 'backlog', refineSessionId: 's-r' }])
     const sessions = new FakeSessions()
     const controller = new BoardController({
@@ -2084,7 +2100,7 @@ describe('tags (label catalog)', () => {
     const { controller } = makeController()
     const a = controller.createTag('A', '#e5484d')
     const b = controller.createTag('B', '#3e63dd')
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setTaskTags(task.id, [a.id, b.id, 'ghost'])
     controller.setTaskColor(task.id, '#12a594')
     let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
@@ -2115,7 +2131,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     await flush()
     const task = controller.createBoundTask(
       { kind: 'session', sessionId: 's-live' },
-      { title: 'live', description: '', prompt: '' },
+      { title: 'live', description: '', prompt: 'run' },
     )!
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.status).toBe('running')
@@ -2142,7 +2158,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     await flush()
     const task = controller.createBoundTask(
       { kind: 'session', sessionId: 's-idle' },
-      { title: 'idle', description: '', prompt: '', status: 'todo' },
+      { title: 'idle', description: '', prompt: 'run', status: 'todo' },
     )!
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.status).toBe('todo')
@@ -2159,7 +2175,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     })
     controller.start()
     await flush()
-    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     sessions.setRunning('s-live', true)
     controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
     let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
@@ -2182,7 +2198,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     })
     controller.start()
     await flush()
-    const task = controller.createBoundTask({ kind: 'session', sessionId: 's-live' }, { title: 'live', description: '', prompt: '' })!
+    const task = controller.createBoundTask({ kind: 'session', sessionId: 's-live' }, { title: 'live', description: '', prompt: 'run' })!
     const extId = controller.getSnapshot().tasks[0].executions[0].id
     stub.reconcileResult = { kind: 'settled', taskId: task.id, executionId: extId, outcome: 'succeeded' }
     sessions.setRunning('s-live', false)
@@ -2215,7 +2231,7 @@ describe('session automation rules (给会话定时发指令)', () => {
 
   it('creates a rule with a due instant and rejects an unparseable cron', () => {
     const { controller } = ruleHarness(['s-a'], {})
-    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     const rule = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'nightly check', cron: '0 0 * * *', send: 'queue' })
     expect(rule).toBeDefined()
     expect(rule!.nextAt).toBeGreaterThan(NOW)
@@ -2225,7 +2241,7 @@ describe('session automation rules (给会话定时发指令)', () => {
   it('fires a due rule: sends the instruction, records a direct round, rolls forward', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
-    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'queue' })!
     await controller.tickSessionRules(NOW + 120_000)
     expect(sent).toHaveLength(1)
@@ -2246,7 +2262,7 @@ describe('session automation rules (给会话定时发指令)', () => {
   it('a disabled rule never fires; a rule whose session is gone keeps its slot', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a', 's-b'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
-    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     const off = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'a', cron: '* * * * *', send: 'queue' })!
     const gone = controller.createSessionRule(task.id, { sessionId: 's-gone', instruction: 'b', cron: '* * * * *', send: 'queue' })!
     controller.toggleSessionRule(task.id, off.id, false)
@@ -2261,7 +2277,7 @@ describe('session automation rules (给会话定时发指令)', () => {
     const { controller } = ruleHarness(['s-a'], {
       sessionCommand: async (_sessionId, line) => { lines.push(line); return { ok: true as const, matched: true } },
     })
-    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '/goal', cron: '* * * * *', send: 'queue' })
     await controller.tickSessionRules(NOW + 120_000)
     expect(lines).toEqual(['/goal'])
@@ -2270,5 +2286,5 @@ describe('session automation rules (给会话定时发指令)', () => {
 
 /** Build a task with a bind (test helper). */
 function taskWithBind(bind: NonNullable<TaskRecord['bind']>): TaskRecord {
-  return { id: 'task-b', title: 'T', description: '', prompt: '', status: 'todo', order: 0, createdAt: 0, updatedAt: 0, executions: [], bind }
+  return { id: 'task-b', title: 'T', description: '', prompt: 'run', status: 'todo', order: 0, createdAt: 0, updatedAt: 0, executions: [], bind }
 }

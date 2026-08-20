@@ -1111,6 +1111,15 @@ export class BoardController {
    * stale (task deleted, completed, paused, or busy). Returns whether a
    * request was consumed (so the caller keeps draining).
    */
+  /** Whether a task carries executable content: a real prompt, bound rules,
+   *  or active session-automation rules. A blank-prompt task (the new-task
+   *  form's default) must never be started by automation. */
+  private hasExecutableContent(task: TaskRecord): boolean {
+    if (task.prompt.trim() !== '') return true
+    if (task.rules !== undefined && task.rules.length > 0) return true
+    return false
+  }
+
   private drainQueuedLaunch(): boolean {
     const queued = this.queuedLaunches[0]
     if (queued === undefined) return false
@@ -1119,7 +1128,9 @@ export class BoardController {
     // A rule may no longer drive the task (moved to review/backlog/done, or
     // deleted): the request is stale — drop it. A busy task also drops its
     // queued auto run (the same "skip when busy" semantics as a direct hit).
-    if (task === undefined || hasOpenRun(task) || ruleReadiness(task).kind !== 'active') return true
+    // A task with no executable content is dropped too — automation never
+    // starts a blank-prompt card (the new-task default).
+    if (task === undefined || hasOpenRun(task) || ruleReadiness(task).kind !== 'active' || !this.hasExecutableContent(task)) return true
     this.launchTask(task)
     return true
   }
@@ -1156,6 +1167,8 @@ export class BoardController {
     if (best !== undefined) return best
     const todo = this.tasks.find(task => {
       if (task.status !== 'todo' || hasOpenRun(task)) return false
+      // Automation never starts a blank-prompt card (the new-task default).
+      if (!this.hasExecutableContent(task)) return false
       return !task.executions.some(candidate =>
         candidate.comment !== undefined && candidate.injectedAt === undefined && candidate.endedAt === undefined && candidate.external !== true)
     })
