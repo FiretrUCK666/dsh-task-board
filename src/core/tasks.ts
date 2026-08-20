@@ -699,3 +699,34 @@ export function applyCardOrder(
     return task
   })
 }
+
+/**
+ * Promote a card to the TOP of its column — the "newest state first" rule:
+ * a task that just entered a column (freshly created, newly bound from the
+ * workspace, or passing through a status change) reads as the newest item
+ * of that column. Existing cards shift down, preserving their relative
+ * order; a manual reorder later overrides the promotion. Only the target
+ * column's orders are rewritten.
+ */
+export function promoteToColumnTop(
+  tasks: readonly TaskRecord[],
+  movedId: string,
+  targetStatus: TaskStatus,
+  now: number,
+): TaskRecord[] {
+  const moved = tasks.find(task => task.id === movedId)
+  if (moved === undefined) return [...tasks]
+  if (moved.status === targetStatus && moved.order === 0) return [...tasks]
+  const others = tasks
+    .filter(task => task.id !== movedId && task.status === targetStatus)
+    .sort((a, b) => a.order - b.order)
+  return tasks.map(task => {
+    if (task.id === movedId) {
+      return { ...task, status: targetStatus, order: 0, updatedAt: now }
+    }
+    if (task.status === targetStatus) {
+      return { ...task, order: others.findIndex(row => row.id === task.id) + 1 }
+    }
+    return task
+  })
+}

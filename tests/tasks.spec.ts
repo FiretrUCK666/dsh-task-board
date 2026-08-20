@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -121,6 +121,42 @@ describe('applyCardOrder', () => {
     const [a, b, c] = column(['a', 'b', 'c'])
     const out = applyCardOrder([a, b, c], 'ghost', 'todo', undefined, NOW + 1)
     expect(keyed(out)).toEqual({ a: 0, b: 1, c: 2 })
+  })
+})
+
+describe('promoteToColumnTop', () => {
+  /** Three tasks in one column, orders 0..2, in the given array order. */
+  function column(ids: string[], orders = [0, 1, 2]) {
+    return ids.map((id, index) => createTask({ title: id, description: '', prompt: '' }, NOW, id, orders[index]))
+  }
+
+  /** Map task id → order key, the shape the board sorts by. */
+  const keyed = (tasks: readonly ReturnType<typeof createTask>[]): Record<string, number> =>
+    Object.fromEntries(tasks.map(task => [task.id, task.order]))
+
+  it('promotes a card to the top of its column, shifting others down in order', () => {
+    const [a, b, c] = column(['a', 'b', 'c'])
+    const promoted = promoteToColumnTop([a, b, c], 'c', 'todo', NOW + 1)
+    expect(keyed(promoted)).toEqual({ c: 0, a: 1, b: 2 })
+    expect(promoted.find(task => task.id === 'c')?.updatedAt).toBe(NOW + 1)
+  })
+
+  it('promotes a cross-column card into a new column at the top', () => {
+    const [a, b, c] = column(['a', 'b', 'c'])
+    const d = createTask({ title: 'd', description: '', prompt: '' }, NOW, 'd', 0)
+    const backlog = createTask({ title: 'e', description: '', prompt: '' }, NOW, 'e', 0)
+    const backlogTask = { ...backlog, status: 'backlog' as const }
+    const promoted = promoteToColumnTop([a, b, c, backlogTask], 'c', 'backlog', NOW + 1)
+    expect(promoted.find(task => task.id === 'c')?.status).toBe('backlog')
+    expect(promoted.find(task => task.id === 'c')?.order).toBe(0)
+    // The source column keeps its own keys (gaps are harmless).
+    expect(keyed(promoted)).toEqual({ a: 0, b: 1, e: 1, c: 0 })
+  })
+
+  it('is a no-op when the card is already at the top of its status', () => {
+    const [a, b] = column(['a', 'b'])
+    const out = promoteToColumnTop([a, b], 'a', 'todo', NOW + 1)
+    expect(keyed(out)).toEqual({ a: 0, b: 1 })
   })
 })
 

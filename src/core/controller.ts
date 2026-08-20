@@ -24,7 +24,7 @@ import { createTag, normalizeCatalog, recolorTag, removeTag, renameTag, withTask
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -655,9 +655,10 @@ export class BoardController {
     const title = input.title.trim()
     if (title === '') return undefined
     const task = createTask(input, this.now(), this.uuid(), this.nextOrder())
-    this.tasks = [...this.tasks, task]
+    // A fresh card reads as the newest of its layout column.
+    this.tasks = promoteToColumnTop([...this.tasks, task], task.id, task.status, this.now())
     this.persistAndNotify()
-    return task
+    return this.tasks.find(candidate => candidate.id === task.id) ?? task
   }
 
   /**
@@ -674,7 +675,7 @@ export class BoardController {
     if (title === '' || bind === undefined) return undefined
     const task = createTask(input, this.now(), this.uuid(), this.nextOrder())
     const boundTask: TaskRecord = { ...task, bind }
-    this.tasks = [...this.tasks, boundTask]
+    this.tasks = promoteToColumnTop([...this.tasks, boundTask], boundTask.id, boundTask.status, this.now())
     this.persistAndNotify()
     // A freshly bound source may be RUNNING right now (the user dragged in a
     // session/workspace mid-conversation): reflect that instantly — the card
@@ -1156,7 +1157,8 @@ export class BoardController {
    */
   private launchTask(task: TaskRecord): void {
     const { task: next, execution } = startExecution(task, this.now(), this.uuid())
-    this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
+    const withExecution = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
+    this.tasks = promoteToColumnTop(withExecution, task.id, 'running', this.now())
     this.persistAndNotify()
     this.activeExecutionIds.add(execution.id)
     void this.deps.exec.run(next, execution, (event) => { this.handleExecutionEvent(event) })
@@ -1175,12 +1177,21 @@ export class BoardController {
       ...task,
       executions: task.executions.map(candidate => candidate.id === round.id ? marked : candidate),
     }, 'running', this.now())
-    this.tasks = this.tasks.map(candidate => candidate.id === task.id ? running : candidate)
+    this.tasks = promoteToColumnTop(
+      this.tasks.map(candidate => candidate.id === task.id ? running : candidate),
+      task.id,
+      'running',
+      this.now(),
+    )
     this.persistAndNotify()
     this.activeExecutionIds.add(round.id)
-    void this.deps.exec.commentRun(running, marked, round.sessionId, round.comment, (event) => {
-      this.handleExecutionEvent(event)
-    })
+    void this.deps.exec.commentRun(
+      this.tasks.find(candidate => candidate.id === task.id) ?? running,
+      marked,
+      round.sessionId,
+      round.comment,
+      (event) => { this.handleExecutionEvent(event) },
+    )
   }
 
   /**
@@ -1823,9 +1834,16 @@ export class BoardController {
       return
     }
     this.activeExecutionIds.delete(event.executionId)
+    const before = this.tasks.find(task => task.id === event.taskId)
     this.tasks = this.tasks.map(task => task.id === event.taskId
       ? this.settleRound(task, event.executionId, event.outcome, event.error)
       : task)
+    // A just-settled card ranks newest at the top of its landed column
+    // (待审核 on success/failure — the settlement moved it there).
+    const after = this.tasks.find(task => task.id === event.taskId)
+    if (before !== undefined && after !== undefined && before.status !== after.status) {
+      this.tasks = promoteToColumnTop(this.tasks, event.taskId, after.status, this.now())
+    }
     // A settled run hands off to the next chained run synchronously, so the
     // scheduler's recovery tick can never interleave a duplicate launch.
     // The chain request precedes the final persist: a chain-armed task keeps
@@ -2039,7 +2057,7 @@ export class BoardController {
       byTask.set(turn.taskId, list)
     }
     let changed = false
-    this.tasks = this.tasks.map(task => {
+    let nextTasks = this.tasks.map(task => {
       const list = byTask.get(task.id)
       if (list === undefined) return task
       let next = task
@@ -2055,6 +2073,16 @@ export class BoardController {
       changed = true
       return next
     })
+    // Cards that flipped to running rank newest at the top of 「进行中」.
+    if (changed) {
+      nextTasks = [...nextTasks]
+      for (const task of nextTasks) {
+        if (byTask.has(task.id) && task.status === 'running') {
+          nextTasks = promoteToColumnTop(nextTasks, task.id, 'running', now)
+        }
+      }
+    }
+    this.tasks = nextTasks
     return changed
   }
 
@@ -2100,7 +2128,8 @@ export class BoardController {
       break // one external round per bound task per reconcile
     }
     if (!changed) return
-    this.tasks = this.tasks.map(candidate => candidate.id === taskId ? next : candidate)
+    const withRound = this.tasks.map(candidate => candidate.id === taskId ? next : candidate)
+    this.tasks = promoteToColumnTop(withRound, taskId, 'running', now)
     this.persistAndNotify()
   }
 

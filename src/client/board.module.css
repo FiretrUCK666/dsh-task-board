@@ -664,6 +664,20 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+  /* Scrollbar-less scrolling: the list scrolls on any trackpad/wheel gesture
+     but never paints a visible scrollbar (the board's quiet aesthetic). */
+  scrollbar-width: none;
+  /* Smooth wheel/trackpad movement — the list glides instead of snapping,
+     one more native-feel detail; reduced-motion degrades to instant. */
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cards {
+    scroll-behavior: auto;
+  }
+}
+.cards::-webkit-scrollbar {
+  display: none;
 }
 
 .columnEmpty {
@@ -685,6 +699,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 6px;
   padding: 9px 12px;
   min-width: 0;
+  /* Cards never flex-shrink inside the scrolling column: a full column
+     scrolls its overflow instead of compressing card heights (the shipping
+     bug where crowded cards got shorter and hid their content). */
+  flex: none;
   text-align: left;
   /* Cards are inner floating surfaces: opaque under a glass skin (the
      translucent canvas stays behind them). Radius md (sharper than the

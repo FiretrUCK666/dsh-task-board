@@ -242,15 +242,17 @@ describe('task mutations', () => {
     expect(notified).toBeGreaterThan(0)
   })
 
-  it('creates into the chosen landing column with a fresh sort key', () => {
+  it('creates into the chosen landing column, ranking newest at its top', () => {
     const { controller, store } = makeController()
     const todo = controller.createTask({ title: 'a', description: '', prompt: '' })!
     const backlog = controller.createTask({ title: 'b', description: '', prompt: '', status: 'backlog' })!
     expect(todo.status).toBe('todo')
     expect(backlog.status).toBe('backlog')
+    // Each fresh card is the newest of ITS column (order 0) — different
+    // columns sort independently, so their new cards do not collide.
     expect(store.load().map(row => [row.id, row.status, row.order])).toEqual([
       [todo.id, 'todo', 0],
-      [backlog.id, 'backlog', 1],
+      [backlog.id, 'backlog', 0],
     ])
   })
 
