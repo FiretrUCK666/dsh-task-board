@@ -45,6 +45,8 @@ import { commentDraftKey, draftStore } from './drafts.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
+import { usePendingInteraction } from './use-interaction.ts'
+import { InteractionCard } from './InteractionCard.tsx'
 import { Button, SendModeToggle } from './ui.tsx'
 
 /** The review page (see module doc). */
@@ -68,6 +70,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const comments = sessionId !== undefined
     ? sessionCommentsOf(current, sessionId, cruiseOn)
     : []
+
+  // The open native interaction (plan confirm / question), if any: the card
+  // over the composer answers it in place.
+  const pendingInteraction = usePendingInteraction(controller, sessionId)
 
   // Native projection baseline (context pressure / breakdown / permissions)
   // from the history tail page — the source of the context meter below and
@@ -274,6 +280,16 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
             </div>
 
+            {/* Pending native interaction (plan confirm / question): the
+                card rides the composer so the user answers in place. */}
+            {pendingInteraction !== undefined && sessionId !== undefined && (
+              <InteractionCard
+                interaction={pendingInteraction}
+                taskId={current.id}
+                sessionId={sessionId}
+                controller={controller}
+              />
+            )}
             {/* The composer, pinned at the rail's bottom: a comment continues
                 the conversation in-session. It shares the prompt autocomplete
                 with the task form — the same live slash catalog, so commands

@@ -3218,6 +3218,67 @@ textarea.input {
   border-top: 1px solid var(--dsw-alias-separator-primary);
 }
 
+/* The pending native-interaction card, pinned just above the composer: a
+   plan awaiting confirmation or an ask_user_question. Surfaces live with the
+   real tool lifecycle; one grammar for plan and question. */
+.interactionCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  padding: 10px 12px;
+  margin: 0 12px 2px;
+  background: var(--dsh-tb-surface-sunken);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+}
+.interactionCard[data-plan='true'] {
+  border-color: color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent);
+}
+.interactionQuestion {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-1);
+  overflow-wrap: break-word;
+}
+.interactionDetail {
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  overflow-wrap: break-word;
+}
+.interactionOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.interactionOption {
+  font: inherit;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-float);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.interactionOption:hover {
+  background: var(--dsh-tb-hover);
+}
+.interactionOptionOn {
+  color: var(--dsh-tb-accent);
+  border-color: color-mix(in srgb, var(--dsh-tb-accent) 55%, transparent);
+}
+.interactionActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.interactionAmend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .reviewComposerRow {
   display: flex;
   align-items: center;

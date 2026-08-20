@@ -21,6 +21,8 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { refineDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
+import { usePendingInteraction } from './use-interaction.ts'
+import { InteractionCard } from './InteractionCard.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { SessionTranscript, SessionWaitingNotice } from './session-panel.tsx'
 import { Button, Section } from './ui.tsx'
@@ -34,6 +36,8 @@ export function RefineSection({ controller, task }: {
   const rounds = refineRoundsOf(task)
   const lastRound = rounds[rounds.length - 1]
   const waiting = controller.pendingInteractionOf(sessionId)
+  // The open native interaction (plan confirm / question) in the refine session.
+  const pendingInteraction = usePendingInteraction(controller, sessionId)
 
   // 草稿记忆：回答框里打了一半的文字，切走再回来仍保留（按任务各自保存）；
   // 发送成功即清除。切换任务时读对应任务的草稿。
@@ -140,6 +144,14 @@ export function RefineSection({ controller, task }: {
           {/* 输入区域：与评论/会话面板完全同一套 composer（PromptInput：斜杠补全、
               自动增高、草稿记忆），发送按钮保持。 */}
           <div className={css.refineInputArea}>
+            {pendingInteraction !== undefined && sessionId !== undefined && (
+              <InteractionCard
+                interaction={pendingInteraction}
+                taskId={task.id}
+                sessionId={sessionId}
+                controller={controller}
+              />
+            )}
             <PromptInput
               value={draft}
               onChange={next => {

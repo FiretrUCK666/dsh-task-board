@@ -34,6 +34,8 @@ import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { Button, SendModeToggle } from './ui.tsx'
+import { usePendingInteraction } from './use-interaction.ts'
+import { InteractionCard } from './InteractionCard.tsx'
 
 /** The linked-session panel (see module doc). */
 export function SessionDetail({ controller, task, sessionId, onClose }: {
@@ -90,6 +92,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   // Send mode: 排队 (dispatcher, default) vs 插话 (deliver now).
   const [steer, setSteer] = useState(false)
   const mentions = controller.sessionLabelsOf(task.id).map(({ sessionId, title }) => ({ id: sessionId, title }))
+  // The open native interaction (plan confirm / question), if any.
+  const pendingInteraction = usePendingInteraction(controller, sessionId)
 
   const submit = (): void => {
     const text = draft.trim()
@@ -214,6 +218,15 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
             </section>
           </div>
 
+          {/* Pending native interaction (plan confirm / question). */}
+          {pendingInteraction !== undefined && (
+            <InteractionCard
+              interaction={pendingInteraction}
+              taskId={task.id}
+              sessionId={sessionId}
+              controller={controller}
+            />
+          )}
           {/* The composer, pinned: one comment is one session-scoped message.
               Same visual rhythm and primary send button as the review page. */}
           <div className={css.reviewComposer}>
