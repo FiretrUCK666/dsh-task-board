@@ -26,6 +26,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
+import { SessionState } from './SessionState.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
@@ -227,6 +228,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
 
           {/* The composer, pinned: one comment is one session-scoped message.
               Same visual rhythm and primary send button as the review page. */}
+          <SessionState sessionId={sessionId} />
           <div className={css.reviewComposer}>
             <PromptInput
               value={draft}

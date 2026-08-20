@@ -3531,3 +3531,12 @@ textarea.input {
   align-items: center;
   gap: 6px;
 }
+
+/* --- session state: compact plan/goal readout above the composer --- */
+.sessionState { display:flex; flex-direction:column; gap:8px; padding:2px 0 6px; }
+.sessionStateRow { display:flex; align-items:center; gap:8px; min-width:0; }
+.sessionStateHint { font-size:11px; color:var(--dsh-tb-text-3); min-width:0; }
+.sessionStatePlanPending { border-color:color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent); color:var(--dsh-tb-attention); }
+.sessionStatePlanActive { border-color:color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent); color:var(--dsh-tb-accent); }
+.sessionStateGoalOn { border-color:color-mix(in srgb, var(--dsh-tb-success) 45%, transparent); color:var(--dsh-tb-success); }
+.sessionStateTitle { font-size:12px; color:var(--dsh-tb-text-2); min-width:0; overflow-wrap:break-word; }

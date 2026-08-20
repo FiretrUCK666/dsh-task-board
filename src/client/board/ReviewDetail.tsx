@@ -38,6 +38,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
+import { SessionState } from './SessionState.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
@@ -282,6 +283,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 the conversation in-session. It shares the prompt autocomplete
                 with the task form — the same live slash catalog, so commands
                 and skills never drift. */}
+            <SessionState sessionId={sessionId} />
             <div className={css.reviewComposer}>
               <PromptInput
                 value={draft}
