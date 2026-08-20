@@ -34,6 +34,8 @@ import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { Button, SendModeToggle } from './ui.tsx'
+import { AttachmentStrip } from './AttachmentStrip.tsx'
+import { admitDraftImages, type DraftImage } from './attach.ts'
 import { usePendingInteraction } from './use-interaction.ts'
 import { InteractionCard } from './InteractionCard.tsx'
 
@@ -94,10 +96,26 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const mentions = controller.sessionLabelsOf(task.id).map(({ sessionId, title }) => ({ id: sessionId, title }))
   // The open native interaction (plan confirm / question), if any.
   const pendingInteraction = usePendingInteraction(controller, sessionId)
+  // Pending browser images to attach to the next comment.
+  const [attachedImages, setAttachedImages] = useState<readonly DraftImage[]>([])
 
   const submit = (): void => {
     const text = draft.trim()
-    if (text === '' || liveGone || taskDone) return
+    if ((text === '' && attachedImages.length === 0) || liveGone || taskDone) return
+    // Images go out immediately through the steer path — a picture belongs
+    // to the current exchange, not a queue.
+    if (attachedImages.length > 0) {
+      void admitDraftImages(attachedImages).then(refs => {
+        if (refs.length === 0) return
+        void controller.steerCommentWithImages(task.id, sessionId, text, refs).then(result => {
+          if (!result.ok) return
+          setDraft('')
+          setAttachedImages([])
+          draftStore.clear(commentDraftKey(task.id, sessionId))
+        })
+      })
+      return
+    }
     // Send mode: 排队 = the dispatcher injects a session-anchored message round
     // (same queue as execution comments); 插话 = deliver straight to the native
     // session now (bypassing queue/budget/cruise), recorded as a settled
@@ -242,10 +260,11 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               mentions={mentions}
             />
             <div className={css.reviewComposerRow}>
+              <AttachmentStrip images={attachedImages} onChange={setAttachedImages} />
               <SendModeToggle steer={steer} onChange={setSteer} />
               <Button
                 variant="primary"
-                disabled={draft.trim() === '' || liveGone || taskDone}
+                disabled={(draft.trim() === '' && attachedImages.length === 0) || liveGone || taskDone}
                 onClick={submit}
               >
                 {t('review.commentSend')}

@@ -311,8 +311,9 @@ export interface ControllerDeps {
    *  direct composer is disabled with a hint). This is deliberately NOT the
    *  task-execution path: it never creates execution records, never enters
    *  the dispatcher and never affects task state — it is exactly "typing in
-   *  the native conversation". */
-  sessionMessage?: (sessionId: string, text: string) => Promise<{ ok: true } | { ok: false; error: string }>
+   *  the native conversation". Images are durable attachment refs (admitted
+   *  through the host attachment bridge) appended to the prompt content. */
+  sessionMessage?: (sessionId: string, text: string, images?: readonly HostImageRef[] | undefined) => Promise<{ ok: true } | { ok: false; error: string }>
   /** Executes one slash-command line against any native session through the
    *  host command registry (matched = recognized; unmatched = the caller
    *  falls back to sending the line as plain text). Absent = slash lines
@@ -321,6 +322,17 @@ export interface ControllerDeps {
     | { ok: true; matched: boolean; outcome?: { kind: 'success' | 'error'; text?: string } }
     | { ok: false; error: string }
   >
+}
+
+/** A durable attachment ref returned by the host attachment bridge (the
+ *  mirror of the wire refs the review page attaches to a message). */
+export interface HostImageRef {
+  attachmentId: string
+  mediaType: string
+  bytes?: number
+  width?: number
+  height?: number
+  name?: string
 }
 
 /** Immutable controller snapshot for UI subscriptions. */
@@ -1364,9 +1376,22 @@ export class BoardController {
    * modes: queue (调度器注入) vs steer (现在直达).
    */
   steerComment(taskId: string, sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    return this.steerCommentWithImages(taskId, sessionId, text, undefined)
+  }
+
+  /** The image-carrying twin of steerComment: durable attachment refs ride
+   *  the same direct-send path as plain text. */
+  steerCommentWithImages(
+    taskId: string,
+    sessionId: string,
+    text: string,
+    images: readonly HostImageRef[] | undefined,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
     const trimmed = text.trim()
-    if (trimmed === '') return Promise.resolve({ ok: false, error: 'empty message' })
-    return this.sendRawMessage(sessionId, trimmed).then(result => {
+    if (trimmed === '' && (images === undefined || images.length === 0)) {
+      return Promise.resolve({ ok: false, error: 'empty message' })
+    }
+    return this.sendRawMessage(sessionId, trimmed, images).then(result => {
       if (!result.ok) return result
       // The direct-sent turn is already what the steer created — keep the
       // running flip from ALSO becoming an external round.
@@ -1493,8 +1518,9 @@ export class BoardController {
     }
   }
 
-  /** The raw host send for a direct line (slash-aware, no recording). */
-  private sendRawMessage(sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  /** The raw host send for a direct line (slash-aware, no recording).
+   *  `images` are durable attachment refs appended to the message content. */
+  private sendRawMessage(sessionId: string, text: string, images?: readonly HostImageRef[]): Promise<{ ok: true } | { ok: false; error: string }> {
     const direct = this.deps.sessionMessage
     if (text.startsWith('/')) {
       const command = this.deps.sessionCommand
@@ -1503,14 +1529,14 @@ export class BoardController {
           if (!result.ok) return { ok: false as const, error: result.error }
           if (result.matched) return { ok: true as const }
           // Unknown command: the native default-sink — deliver the line as
-          // plain text (never drop a user's input).
+          // plain text (never drop a user's input), images still attach.
           if (direct === undefined) return { ok: false as const, error: 'direct message unavailable' }
-          return direct(sessionId, text)
+          return direct(sessionId, text, images)
         })
       }
     }
     if (direct === undefined) return Promise.resolve({ ok: false, error: 'direct message unavailable' })
-    return direct(sessionId, text)
+    return direct(sessionId, text, images)
   }
 
   // --- comments ---------------------------------------------------------------

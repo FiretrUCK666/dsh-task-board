@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController, type PermissionOptionShape, type SessionConfigFace, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
+import { BoardController, type HostImageRef, type PermissionOptionShape, type SessionConfigFace, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
@@ -192,12 +192,27 @@ export function apply(ctx: ClientContext): void {
     // the currently staged one, so a client binding is not guaranteed). The
     // same channel serves the linked-session panel's direct composer
     // (sessionMessage) — "typing in the native conversation" is exactly
-    // this call, shared by both callers.
-    const sendComment = async (sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> => {
+    // this call, shared by both callers. Durable attachment refs (admitted
+    // through the host attachment bridge) ride the content as native image
+    // blocks — the same parts the native composer produces.
+    const sendComment = async (
+      sessionId: string,
+      text: string,
+      images?: readonly HostImageRef[] | undefined,
+    ): Promise<{ ok: true } | { ok: false; error: string }> => {
+      const content: Array<{ type: string; text?: string; attachment?: unknown }> = text.trim() !== ''
+        ? [{ type: 'text', text }]
+        : []
+      if (images !== undefined) {
+        for (const image of images) {
+          content.push({ type: 'image', attachment: { attachmentId: image.attachmentId, mediaType: image.mediaType } })
+        }
+      }
+      if (content.length === 0) return { ok: false as const, error: 'empty message' }
       const response = await connection.api.sessions.prompt({
         sessionId: sessionId as SessionId,
         mode: 'queue',
-        content: [{ type: 'text', text }],
+        content: content as never,
       })
       return response.result.ok
         ? { ok: true as const }

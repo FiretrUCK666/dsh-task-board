@@ -18,6 +18,7 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import z from 'schemastery'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { registerPermissionRoute } from './host/permission-route.ts'
+import { registerAttachRoute } from './host/attachment-route.ts'
 import { registerSessionStateRoute } from './host/session-state-route.ts'
 import { registerSettingsRoute } from './host/settings-route.ts'
 
@@ -114,6 +115,14 @@ export function apply(ctx: Context, config?: Config): void {
   ctx.effect(
     () => registerSessionStateRoute(ctx),
     'dsh-task-board: session-state route',
+  )
+
+  // Admit browser-attached images to the durable attachment service so the
+  // board's composer can send `{ type: 'image', attachment }` prompt parts —
+  // the exact shape the native composer produces.
+  ctx.effect(
+    () => registerAttachRoute(ctx),
+    'dsh-task-board: attachments route',
   )
 
   // Initial registration from the composition entry (covers deployments with

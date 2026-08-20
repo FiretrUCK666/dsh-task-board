@@ -45,6 +45,8 @@ import { commentDraftKey, draftStore } from './drafts.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
+import { AttachmentStrip } from './AttachmentStrip.tsx'
+import { admitDraftImages, type DraftImage } from './attach.ts'
 import { usePendingInteraction } from './use-interaction.ts'
 import { InteractionCard } from './InteractionCard.tsx'
 import { Button, SendModeToggle } from './ui.tsx'
@@ -91,6 +93,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   })
   // Send mode: 排队 (dispatcher, default) vs 插话 (deliver now).
   const [steer, setSteer] = useState(false)
+  // Pending browser images to attach to the next comment.
+  const [attachedImages, setAttachedImages] = useState<readonly DraftImage[]>([])
   const mentions = controller.sessionLabelsOf(current.id).map(({ sessionId, title }) => ({ id: sessionId, title }))
   // The comment thread auto-follows its latest round (fingerprint-gated).
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
@@ -167,7 +171,22 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
 
   const submit = (): void => {
     const text = draft.trim()
-    if (text === '') return
+    if (text === '' && attachedImages.length === 0) return
+    // Images (if any) go out immediately through the steer path — a picture
+    // must not sit in a queue, it belongs to the current exchange.
+    if (attachedImages.length > 0) {
+      if (sessionId === undefined) return
+      void admitDraftImages(attachedImages).then(refs => {
+        if (refs.length === 0) return
+        void controller.steerCommentWithImages(current.id, sessionId, text, refs).then(result => {
+          if (!result.ok) return
+          setDraft('')
+          setAttachedImages([])
+          draftStore.clear(commentDraftKey(current.id, sessionId))
+        })
+      })
+      return
+    }
     // Send mode: 排队 = the dispatcher injects it (default); 插话 = deliver
     // straight to the session now, bypassing queue/budget/cruise.
     if (steer) {
@@ -307,8 +326,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 mentions={mentions}
               />
               <div className={css.reviewComposerRow}>
+                <AttachmentStrip images={attachedImages} onChange={setAttachedImages} />
                 <SendModeToggle steer={steer} onChange={setSteer} />
-                <Button variant="primary" disabled={draft.trim() === ''} onClick={submit}>
+                <Button variant="primary" disabled={draft.trim() === '' && attachedImages.length === 0} onClick={submit}>
                   {t('review.commentSend')}
                 </Button>
               </div>
