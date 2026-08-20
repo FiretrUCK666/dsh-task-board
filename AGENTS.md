@@ -203,16 +203,11 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 ### host 半区（DSH 主进程）
 
 - `src/index.ts`：`inject = ['webServer', 'systemPrompt', 'settings']`；注册设置命名空间
-  （settings.yaml 持久化）并联动公告；注册设置路由、权限预设路由与 **session-activity 只读桥**；
+  （settings.yaml 持久化）并联动公告；注册设置路由与权限预设路由；
   `sync()` 按 `enabled`/`announceToAgent` 注册/撤销 systemPrompt section。
 - `src/host/settings-route.ts` / `permission-route.ts`：纯函数可注入测试；服务读取一律
   `ctx.get`（不裸属性访问）；权限选项**不写死**——每次实时读 `permissionPresets` 服务，
   未挂载则 available:false，DSH 更新预设表自动适配。
-- `src/host/session-activity-route.ts`：**原生活动只读桥** `GET /api/dsh-task-board/session-activity?sessionId=…`
-  → `{ ok, plan?, goal?, commands? }`。纯函数 `readSessionActivity(faces, sessionId)` 结构校验读取
-  **原生 `planMode` / `goals` / `commands`（目录）** 服务（`ctx.get` 每次实时取，任一缺失/抛错即
-  省略对应块、绝不报错）——命令名与计划状态**全部来自官方注册中心**，官方更新零维护自动同步；
-  手工注入可单测（tests/session-activity-route.spec.ts）。
 
 ### client 半区（浏览器）
 
@@ -281,217 +276,20 @@ MIT 许可，全新独立项目（零历史仓库引用）。
   （大标题 16-17px/600 + 负字距，正文 13px/1.5）；交互 `--dsh-tb-motion`(160ms)；hover
   `--dsh-tb-hover`、pressed 微缩、focus 2px outline（`:focus-visible`）。
 
-### 核心层（`src/core/`，纯逻辑，与 UI 无关）
+### 核心层（`src/core/` 纯逻辑 + 关键职责；细节以代码为准）
 
-`tasks.ts`（任务模型 + 状态机纯函数）、`schedule.ts`（cron 解析 + 下次运行时刻）、
-`scheduler.ts`（每分钟 tick，隐藏错过即跳过、进行中跳过；开头调 `cruiseTick` 翻转巡航窗口）、
-`cruise.ts`（巡航窗口状态机：`applyManualToggle`/`tickCruise`/`setCruiseSchedule`/
-`coveringWindow`/`sortWindows`）、`session-activity.ts`（**原生侧活动对账**：running 翻转 →
-外源轮补记，见下）、`tags.ts`（**标签目录 + 卡片配色**：CRUD/AND 筛选/预设色板，见下）、
-`store.ts`（TaskStore + localStorage）、`execution.ts`
-（`connectWorkspace` 复用/新建空白会话；投递统一走斜杠感知路径——`/` 开头经原生命令
-注册表（`deliverCommandLine`，见下），否则 `session.prompt(queue)`；执行前按任务配置
-应用 agent preset 与权限（原生 `/permission` 命令）；结算靠会话列表对账）、`controller.ts`
-（台账 + 视图状态 + 导航感知 + **统一并发调度器**）。
-
-- **自动巡航（窗口模型 v3，cruise.ts + controller）**：`CruiseState { enabled, limit, schedule,
-  manual? }`；**`CruiseWindow { startAt?; endAt? }` 两者均可选**（至少一个）：三态语义——
-  都填 = 区间 [startAt, endAt) 内开、外关；只填开始 = 到点开、之后保持开（无自动关）；
-  只填结束 = 立即视为开、到点关（区间从"现在"起）。`enabled` 是唯一真相：
-  `applyManualToggle(state, on)` 只翻转 enabled + 记录 `manual` 意图、**绝不写 schedule**
-  （手动狂点不会累积窗口记录）；`tickCruise(now)`（经 scheduler 的 `cruiseTick` 每分钟调用）
-  是分钟级**边界事件**——startAt 落在上一分钟 → 预约开、endAt 落下 → 预约关，**任一边界
-  发生后清空 manual（预约接管）**，错过即跳过、无边界则保持现状（手动意图在两次预约之间
-  有效）；任一输入组合（只设开始/只设结束/都设 × 手动开/关）都收敛到确定结果。**跨午夜
-  归一化**：添加/读取时 endAt <= startAt 视为次日同一时刻（自动 +24h，行内显示「次日」），
-  tick/清理基于归一化后 endAt——"开启比结束早还是晚都对得上"。**过期自动清理**（endAt<=now /
-  只有开始且开始时间已过 / 只有结束且结束时间已过 → 移除）。`setCruiseSchedule`（弹层编辑器）
-  排序 + 归一化 + 按新表重算 enabled（覆盖当前即开、清空即关）。过期记录自动消失，列表永远
-  只显示进行中或未来的预约。巡航只控制「取新任务」：已开始的任务不受关闭影响。UI：板头
-  **两行命令栏**——行 1 = 返回对话 + 板名 + 状态条（正在跑 N · 排队 M）+ 巡航胶囊（Switch +
-  展开箭头，弹层 = 立即开关 + 并发 + 定时窗口编辑器：窗口行**双行紧凑时间**（`formatCruiseTime`，
-  开始/结束各一行、永不省略号截断、完整值在 title），添加表单 = **`TimeField` 打字式时间输入**
-  （`time-parse.ts` 宽松解析 `YYYY-MM-DD HH:mm`/`MM-DD HH:mm`/`HH:mm`，非法就地红框不吞字）
-  + **原生 `datetime-local` 日历按钮**（`showPicker()` 原生日历含「年/月/日/时/分」，hover/active
-  阴影微缩动效）、**打开弹层预填「开始=下一整点」**、三态语义一行提示、结束可早于开始（跨次日），
-  行 2 = 通栏筛选搜索胶囊；「+ 新建任务」是唯一强调按钮。
-- **统一并发调度器（controller 内唯一启动决策点）**：手动/定时/接续/巡航/评论共用同一
-  并发预算（同时在跑的会话数）；优先级 排队 schedule/chain → 评论续跑（提交 FIFO，同
-  任务严格按序）→ 巡航待办；手动不限额但计并发。评论为每任务 FIFO（`injectedAt` 区分
-  已保存/已排队/已注入，未注入可取消）；巡航关只保存不注入；`dispatch` 幂等扫描式、
-  重入合并。**会话锚定评论进同一队列**：`submitSessionComment`（链接会话面板驱动）
-  建的轮次带 `sessionAnchor`，与执行评论（`submitComment`，带 `parentExecutionId`）共用
-  `newCommentRound` 工厂、同一条 FIFO、同一注入路径（`commentRun` 本就是 sessionId 参数化
-  ——任意会话可注入），提交先后决定顺序，绝无两套队列。
-- **斜杠命令与权限（原生命令注册表，绝不走 prompt 文本，执行与评论共用一条投递路径）**：
-  执行 Prompt 以 `/` 开头（`ExecutionService.run`）与评论/链接面板驱动（`submitComment`/
-  `submitSessionComment` 的 `command=true`）都经**同一个** `deliverCommandLine`：matched 命令
-  经 `remote.commands.execute` 执行（与原生 composer 同一 RPC）——若命令开启了真实回合
-  （如 `/plan <消息>` 会开 plan 模式并 `steer` 消息，全程 `running=true` 直至 plan-review
-  批准后回合真正结束），则观察会话至回合结束，任务保持「进行中」、绝不按 matched 结算；
-  纯配置命令（`/permission`、`/goal`、`/plan off`、bare `/plan`、`/compact`…）在
-  `waitForCommandWork` 观察窗口（`commandGraceMs`，默认 2s）内无回合证据即结算；unmatched
-  或无注册表桥回退普通文本（原生 default-sink，绝不丢输入）。权限切换
-  `SessionConfigFace.setPermission` → 原生 `/permission <preset>`（driver 直通）；评论页
-  Agent 不可切换（`agent-preset-locked`）只读展示。
-- **投影为权威 + 评论线程（按会话统一）**：`pickProjections` 提取
-  `contextPressure`/`contextBreakdown`/`permissions`（结构校验读取，不依赖域包类型）；
-  权限下拉事实源 = `permissions` 投影（非任务卡片 `permission` 字段）。**线程按原生会话
-  归集**：`sessionCommentsOf(task, sessionId)` 是唯一线程入口——同一 `sessionId` 下
-  执行锚定（`parentExecutionId`）与会话锚定（`sessionAnchor`）的评论互见同一线程
-  （执行评论页与链接会话面板都读它，同一会话的评论再也不各看各的）；`queuePositionOf`
-  仍任务级 FIFO 显示位次。`sessionRoundsOf` 排除会话锚定轮用于判会话「忙」——线程视图
-  与忙状态职责分离。执行序号统一 `plainRunsOf(task)`（过滤 comment/refine 轮的单一
-  编号源）。
-- **会话统一模型（session-list.ts，任务级单一「会话」视图）**：`taskSessionsOf(task, ctx)`
-  把板内执行会话（每次 Run 的 session）与链接外部会话（`controller.linkedOf`）按
-  **sessionId 去重**成一个列表——同一会话绝不出现两次（run 优先于 linked），从执行页
-  或链接面板进入同一会话看到的是同一条评论线程（结构性解决"评论区不同步"）。每行 =
-  `TaskSessionRow`（sessionId/kind/title/workspaceLabel/executionId/runIndex/display/
-  updatedAt/unviewed），run 行以该会话最新 plain-run 为代表（评论共享 session 不加行），
-  refine 会话不并入（保留独立 RefineSection）。**隐藏按会话统一 + 逐条恢复**：`hiddenSessionIdsOf`
-  由 `hidden.sessions ∪ hidden.executions 映射` 得出，`hideTaskSession`/`unhideTaskSessions`
-  （旧 `hideTaskRow`/`hasHiddenRows` 已移除）统一操作 sessionId；`unhideTaskSession(taskId,
-  sessionId)` 单条恢复（同步修剪 executions 族），详情页「已隐藏 N 个会话」托盘 = 每条可恢复
-  + 头部恢复全部。
-- **自动化独立（开启即生效，不绑卡）**：`ScheduleRule` 无手动激活门——
-  `ruleReadiness` 三态（disabled / paused / active：backlog·review·done = 暂停、done 完成
-  即 `disarmSchedule` 硬停）；`setSchedule` 启用 chain 且卡片可驱动（todo/running）时立即
-  首跑，cron 到点经 scheduler tick 触发；`resolveCardDrop` 不再因 chain 拒绝移动，
-  `moveTask` 以「拖到已完成=停链 / 待规划·待审核=暂停 / 待办=停止接续手动接管」表达
-  「离开即暂停/停止」；`TaskCard` 悬停快速执行（`rerunTask` 同 run guard）。**复制为模板
-  （`copyTask`）带上自动化**：schedule 原样克隆（enabled/mode/maxRuns 保留、runCount 归零、
-  cron 重算 nextRunAt），executions/hidden/bind 不复制，落待规划。UI 上是
-  详情页独立分区 `AutomationSection`：共用 `Disclosure` 一行状态摘要（折叠态零按钮），
-  展开态 = 触发方式分段 + 当前模式配置 + 按状态显隐的跳过/停止，无保存/取消（即改即
-  生效），**启用即展开**（`schedule.enabled === true` 时初始展开，且启用动作后自动展开），
-  与板级「自动巡航」的关系用一行 `detail.schedule.boundary` 讲清。
-- **会话状态派生（session-display.ts）**：`sessionDisplay` 归集同会话轮次，状态优先级
-  waiting > running > 最新 settled；`sessionTimes`/`taskPendingCount`；未读
-  `taskUnviewed`/`executionUnviewed`，基线 `viewedAt`（旧数据归一化零噪音）。
-- **共享 transcript tail（use-transcript.tsx + session-panel.tsx）**：加载/3s 水位门控
-  轮询/贴底跟随/上翻暂停 + `useResizeFollow`；`SessionTranscript` 共享渲染（等待条/状态/
-  列表/滑到最新）；「滑到最新」纯图标胶囊；评论页/链接会话/完善面板共用同一机制。
-- **统一会话行（SessionRow，执行行 + 链接行一个骨架）**：两种 session 行共用同一组件
-  （kind='execution'|'linked'）与同一个表面（`.sessionRow` 同封面/同分隔/同 hover/同键盘）
-  与同一个 identity 排版（`.sessionRowLeading` 14px/500，执行 = 会话标题 + 安静「第 N 次」
-  注记、链接 = link 图标 + 标题 + 工作区胶囊）+ 状态 chip + 右侧紧凑动作（执行等待态琥珀
-  「处理」，其余 `Button size="sm"`「查看会话」+「隐藏」）；次行 = 元信息（执行：起止/耗时；
-  链接：更新于）。执行专属 footer 槽：评论摘要/动向/错误。域名类（chip 文案、
-  `sessionDisplay`/`sessionCommentsOf`）由调用方算好传入，文法单写
-  一处——两种行从今往后不可能长歪。
-
-- **需求完善（refine）**：backlog 专属；完善会话惰性创建、每轮复用；`answerRefine`
-  即时注入（不经调度器）；`applyRefineResult` 用户确认后写任务 prompt；结算不动列、
-  不触发 chain、计入 `hasOpenRun`；`plainRunsOf` 排除 refine 轮。
-
-- **链接会话（拖入建卡/换绑，linked-sessions.ts + sidebar-drag.ts）**：拖侧栏**会话**或
-  **工作区文件夹**进看板 → `bind` 卡片；`deriveLinkedSessions` 纯派生（工作区 sessionIds
-  按序 - archived - blank - hidden），订阅 sessions/workspaces → 新开会话/归档/改名自动
-  实时同步，无「同步」按钮。**显式绑定的单会话跳过 archived/blank 过滤**（用户拖进来
-  就一定要显示；工作区绑定仍过滤），工作区绑定时以 `boundWorkspaceTitle` 作所有行的
-  稳定工作区标签回落（cwd 缺失也显示）。每行：标题/工作区/实时状态 chip/查看会话/隐藏
-  （非破坏，`hideTaskSession` 统一按会话隐藏），整行可点打开 `SessionDetail`；
-  `unbindTask` 解绑（按钮在详情 footer）。**拖进已打开的详情 = 绑定到现有任务**：
-  `bindTaskSource(taskId, bind)` 在已有任务上落/换绑（覆盖旧 bind，持久化）；详情「会话」
-  区是落点（latch 排除卡片拖拽 + 呼吸环 + 落位闪烁），新绑工作区里的新会话实时同步。
-  **拖拽**：原生行自带 draggable 并打 `text/plain`；dragover 读不到
-  payload（保护模式）→ board 根按 types（`candidateExternalDrag`）且 `dragSourceRef` 未
-  置位（排除卡片拖拽）latch，drop 时 `externalDragOf` 读 payload 分类；`clearDrag` 全量
-  复位 + window `drop`/`dragend` 兜底；**落哪列建哪列**（`landingStatusOf`）。`bind`/
-  `hidden` 可选、store 轻归一化，旧数据零影响。
-
-- **统一会话面板（SessionFrame.tsx + session-panel.tsx）**：执行评论页与链接会话面板共用
-  纯布局外壳（backdrop + 头部徽章 + 左对话右 rail）与右栏 `SessionRailHead`（上下文条 /
-  实时配置（模型/思考程度/权限，任意会话通用，权限投影映射在此统一派生）/ 会话事实 /
-  等待条）+ `SessionTranscript` 共享渲染。**composer 双模式（链接面板一个显式开关，
-  默认「驱动任务」）**：执行评论页只有「驱动」——`submitComment` → FIFO → 调度器注入
-  （巡航门控）；链接会话面板在「驱动任务」与「直发会话」间切换。驱动模式 =
-  `submitSessionComment`（`sessionAnchor` 轮，进同一队列，见调度器节）；直发模式 =
-  `sendSessionMessage` → host `sessions.prompt`/`remote.commands.execute`，`/` 走注册表未
-  匹配回退文本，**成功时追加一条 direct 轮**（`newDirectRound`：settled、无 injectedAt、
-  `sessionAnchor=sessionId`）。**两种模式都常驻显示同一评论线程**（`sessionCommentsOf` +
-  共享 `CommentsThread`，排队可取消；直发轮带「直发」标签）——直发、驱动、执行评论页三处
-  同一份数据、同一组件、同一观感；模式边界说明只是线程下的提示行，从不替换线程。
-  **直发 ≠ 驱动契约**：不进调度器、不占并发预算、不触发
-  巡航/接续/状态变化；面板在直发模式以「不会驱动本任务」+ `detail.sessionDirect` 提示防
-  误驱动，失败保留草稿、会话消失禁用。完成态任务两模式都拒发（`detail.commentQueuedDone`
-  提示先移回待办）。rail 统一「可滚动中区 + 底部固定 composer」一个滚动模式（
-  `.sessionRailHead` 固定头 / `.sessionRailScroll` 中区滚动）。**计数即所见**：标题计数 =
-  可见行数（隐藏不计数、恢复回补；面板徽章同源）；执行序号 = 绝对 plain-run 序列；卡片
-  计数同源。
-
-- **草稿记忆（drafts.ts，组件无关）**：所有未发送/未保存的输入面——按会话的评论 composer
-  （`comment:<taskId>:<sessionId>`，评论页与会话面板同会话共享）、任务编辑
-  （`edit:<taskId>`，整份 TaskDraft JSON，重开详情自动恢复进编辑态并带「未保存草稿」提示）、
-  新建任务（`new`）、需求完善回答（`refine:<taskId>`）——在每次击键/变更时写穿
-  `draftStore`（localStorage `dsh.taskBoard.drafts.v1`；quota/私密模式写失败静默降级为
-  会话内内存态，不抛错），于是「切出去再点回来」文字仍在；发送/保存/创建成功或显式
-  取消后清除对应槽。任务台账键 `dsh.taskBoard.v1` 不动。
-
-- **原生侧活动对账（session-activity.ts + controller，两端状态全同步）**：用户在原生会话
-  界面（非看板）直接发言时，看板收不到提交、只能观察会话列表。机制：对每个任务的相关会话
-  （refine 会话 + 执行会话 + 链接会话，按 sessionId 去重）维护 `running` 基线；`running`
-  从 false→true 且该会话无看板 own 的 open round、且不在直发抑制期（`sendSessionMessage`
-  成功后的 60s）→ 补记一条**外源轮**（`newExternalRound`：`external` + `sessionAnchor` +
-  optional `refine`，进该会话评论线程、带「原生会话」标签）：非 refine → 卡片置「进行中」，
-  回合结束经 reconcile 回合证据落「待审核」；refine → 任务留原列、`refining` 同步。外源轮
-  **绝不进队列/注入/编序号**（调度器、`pendingCommentCount`、`queuePositionOf` 均排除；
-  `commentRoundState` 对 open 外源轮 = `running`）。误报兜底：会话已结束且超 `EXTERNAL_SETTLE_GRACE_MS`
-  (90s) 仍无回合证据 → settle cancelled（防卡死）；**被动观察**基线只在首次观察建立、历史
-  活动永不补记（页面加载不补历史）。**主动绑定即评估（`reconcileBoundTask`，拖入瞬间全同步）**：
-  `createBoundTask`/`bindTaskSource` 成功即同步调用——绑定相关会话当前 `running=true` → 立即补记
-  open 外源轮 + 卡片→「进行中」+ **补记即视为新内容（viewedAt = now-1 → 呼吸环/「新」亮）**，
-  完成后经 reconcile 落「待审核」；空闲会话平凡落列（不虚构回合）；同会话重复绑定幂等
-  （有 open round 即跳过）；同时为该任务设置全部相关会话的 running 基线（之后被动对账继续捕获
-  翻转）。配套：`reconcileRunningTasks` 结算范围扩展至「有 open refine 轮的任务」。
-
-- **Markdown 预览（评论与对话，原生质感）**：`markdown-parser.ts`（纯解析，安全子集——段落 /
-  `#`~`###` / 粗斜体 / 行内与围栏代码 / 列表 / 引用 / 链接 / 分隔线；链接协议白名单
-  http(s)/mailto/#/相对，绝无 HTML 注入）+ `Markdown.tsx`（React 元素渲染，不用
-  dangerouslySetInnerHTML）；接入共享 `TranscriptRow` 消息文本与 `CommentsThread` 评论文本，
-  于是评论页/会话面板/完善需求与评论区共享同一预览观感。解析器用**非全局正则 + 对剩余子串
-  逐段匹配**（递归内层调用不会破坏共享 lastIndex——这是此前"同一条 `**b**` 无限重匹配吃爆
-  内存"事故的根因，勿改回 `g` 标志全局共享）。
-
-- **标签与配色（tags.ts + controller + UI，调研后落地）**：标签 = 自由多选分类（区别于状态/
-  自动化），**中央目录** `TagCatalog { id, name, color }` 持久化 `dsh.taskBoard.tags.v1`——
-  卡片只存 tag id，改名/改色在目录里一处同步全部卡片（零散落的 hex 维护）；`TaskRecord` 增
-  可选 `tags?: string[]` 与 `color?: string`（**卡片整卡配色**：`color-mix(9%)` 染色 + 左缘 3px
-  强调条，预设色板 `TAG_PALETTE` 10 色 + 原生 `input[type=color]` 自定义色；颜色是**数据**
-  经 inline style 的 `--card-tint` 应用，绝不作 CSS 字面量）。纯函数：catalog CRUD /
-  `taskMatchesTags`（多选 AND，空选择=全匹配）/ `normalizeCatalog`；controller：
-  `listTags/createTag/renameTag/recolorTag/deleteTag`（删除自动从全部卡片摘除）/
-  `setTaskTags/setTaskColor`；快照含 `tags`。**UI 主入口全在看板主界面上方**：板头「整理」
-  模式（开关按钮）→ 点卡片切换选中（高亮描边），整理横栏对选中集**批量加/去标签与换色**
-  （ColorSwatches 共享组件 + 标签 chips + 全选/清选/完成），与标签筛选/搜索/专注/导出正交
-  叠加、退出清空选中；板头标签筛选行（多选 AND、激活显示「清除」、「管理标签」弹层 =
-  TagManager 建/改名/改色/用量/删除保护）；详情「标签与配色」Section 保留单卡编辑。旧数据
-  零影响（store 可选字段归一化）。
-
-- **工作台横栏（板头叠加能力，纯派生/原生下载）**：统计摘要（当前筛选全部/进行中/待审核/待办
-  一行胶囊，点总数清筛选）；**专注模式**（只看一列、列头分段切换、单列 `.columnsFocus` 加宽留白）；
-  导出（当前筛选为 **Markdown / JSON**，`board-export.ts` 纯函数生成、Blob 下载）。三者全部叠加
-  作用于当前筛选视图。
-
-- **评论原生增强（host 只读桥 + NativeActivity，官方零维护同步）**：评论/链接面板/完善需求三处
-  composer 上方共用 `NativeActivity`（受控 Disclosure）——显示该会话的 **plan 状态 chip**、
-  **活动目标摘要**与 **原生 `/` 命令目录**（点击**插入**输入框，不发送）。数据来自 host 只读桥
-  `/api/dsh-task-board/session-activity`（读原生 `planMode`/`goals`/`commands`，结构校验，
-  缺失即省略该块、绝不报错），3s 轮询、卸载清定时器；命令名/计划状态**全部来自官方注册中心**，
-  官方新增/改名自动出现。切换会话即重读，与原生界面实时一致。
-
-- **光标（自绘 SVG 数据-URI，原生观感 + 永不纯白）**：卡片 = **抓握手形**（五指+掌，深描边+
-  白填+轻投影，grabbing 变体收指）；文本输入 = **细号原生风格 I 形**（1px 深竖线+细端帽+薄白底，
-  不加粗）。OS 光标偶发纯白渲染是浏览器/GPU 缺陷、CSS 无法修，自绘是确定性合成；不支持则回落
-  系统 grab/text（不更糟）。颜色是固定对比度的资产数据（`%23` 编码），非主题值。
-
-- **稳定性守则（改交互/UI 必守）**：受控组件绑异步数据必有本地回退（显示 = 本地选择 ??
-  服务端非空 ?? 默认，失败回退）；固定操作区（composer）之上必有可滚动中区（flex:1 +
-  min-height:0 + overflow-y:auto），头部变高不挤压操作区；就近 inline 反馈（如「已应用」）
-  放字段旁、位于滚动区内；同语义动作跨表面同文同色；含方向词的文案随布局重排校验；
-  轮询/订阅必有终止路径（会话消失停轮询、卸载清 disposer）。
-
+- `tasks.ts`（任务状态机/plainRunsOf/COLUMNS）、`schedule.ts`（cron）、`scheduler.ts`（每分钟 tick + cruiseTick）、`cruise.ts`（巡航窗口）、`session-activity.ts`（原生侧对账）、`tags.ts`（标签目录+卡片配色）、`store.ts`（ledger 持久化）、`execution.ts`（投递与结算）、`controller.ts`（台账+统一并发调度器）。
+- **巡航（v3）**：`CruiseState{ enabled, limit, schedule, manual? }`，`CruiseWindow{ startAt?; endAt? }` 至少一个——只填开始=到点开保持、只填结束=立即开到点关、都填=区间内外开关。`enabled` 是真相；手动开关只改 enabled+manual、绝不写 schedule；窗口边界（到点开/关）发生后 **manual 被清空（预约接管）**，故手动×窗口任意组合确定。`endAt<=startAt` 视为跨午夜 +24h（行内「次日」）；过期自动清理。弹层不预填、占位提示、可选中分（datetime-local）。
+- **统一并发调度器（唯一启动决策点）**：手动/定时/接续/巡航/评论共用同一并发预算；优先级 排队→评论 FIFO→巡航；`dispatch` 幂等扫描、重入合并。评论为任务 FIFO（`injectedAt` 三态，未注入可取消）；斜杠命令统一走注册表（`deliverCommandLine`，真实回合观察至结束、纯配置窗口即结算、未知回退文本）。
+- **会话统一/评论单轨**：相同会话 = 同一条评论线程（`sessionCommentsOf(task, sessionId)`）；直发/驱动/评论语义正在合并为同一留言轨（保留行为：完成态拒发、失败留草稿、隐身禁用）。
+- **原生侧同步（两端一致）**：原生会话界面直接发言 → 看板观察 running 翻转补记**外源轮**（进线程、不排队/不注入/不编序号，open 显示 running）；主动绑定（拖入 run，`createBoundTask`/`bindTaskSource` 即 `reconcileBoundTask`）——会话正在跑立即置「进行中」+ 未读呼吸环，跑完落「待审核」，空闲不虚构、重复绑定幂等；页面加载被动观察不补历史（错过即跳过）。
+- **自动化**：任务级（定时 cron/完成后接续、即改即生效、拖动即暂停/停链、复制为模板带上）；会话级自动化（给指定会话定时/完成后发设定指令，排队发送）与统一一处管理在设计中（见 README 路线）。`ruleReadiness` 三态 disabled/paused/active。
+- **标签与配色（操作只在板头顶部整理栏）**：中央 `TagCatalog{id,name,color}`（`dsh.taskBoard.tags.v1`），卡片只存 tag id（改名/改色一处同步）；卡片整卡染色（`--card-tint` 数据色 color-mix 9%），**无左竖杠**、无详情页编辑（顶部「整理」模式多选批量+筛选 AND+「管理标签」）。
+- **Markdown 预览**：`markdown-parser.ts` 非全局正则（**勿改回 `g`**，此前 OOM 根因）+ `Markdown.tsx`；评论/对话文本共用，正文 `overflow-wrap: break-word`（卡片标题/描述为不可断令牌用 `anywhere`）。
+- **会话状态派生/未读**：`session-display.ts`（waiting>running>settled；`viewedAt` 基线）；共享 transcript tail（3s 水位轮询/贴底/上翻暂停）；统一会话行 `SessionRow`（执行/链接单骨架，正在合并为一种执行轨）。
+- **需求完善（refine）**：backlog 专属、会话复用；即时注入；确认后写 prompt；结算不动列不触发 chain。
+- **统一会话面板/草稿**：`SessionFrame` 外壳 + rail（上下文/配置/事实/等待）+ composer（PromptInput 斜杠补全）；所有输入写穿 `draftStore`（`dsh.taskBoard.drafts.v1`，写失败降级内存）。
+- **稳定性**：受控组件本地回退；composer 之上可滚动中区；就近 inline 反馈；订阅/轮询必带终止路径；排版分居——正文永不省略（break-word wrap），元信息标签可 ellipsis+title；正文禁用固定高+overflow hidden 裁字。
 ## 构建与验证（改完必跑，全绿才算完成）
 
 ```sh
@@ -551,10 +349,6 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   分隔线/见原文转义/无 HTML 与危险协议注入）。
 - `tests/session-activity.spec.ts`：原生侧活动对账纯逻辑（基线不补记、翻转检测、open round
   与直发抑制、refine 标记、grace 常量）。
-- `tests/session-activity-route.spec.ts`：原生活动只读桥纯函数（结构读 plan/goal/commands、
-  缺失/畸形/抛错降级、agents 优先于 sessions、queryParamOf、HTTP 400/200 信封）。
-- `tests/board-export.spec.ts`：导出纯函数（状态分组、标签解析为名、Prompt 围栏、最近执行、
-  JSON 行形状）。
 - `tests/tags.spec.ts`：标签目录 CRUD/归一化/AND 筛选/卡片配色/store 可选字段归一化；
   controller.spec 含标签目录端到端（快照含 tags、删除自动摘除全部卡片）与
   **绑定瞬间同步**（拖入 running→立即进行中/补外源轮/未读/进线程、空闲不虚构、重复换绑幂等、
