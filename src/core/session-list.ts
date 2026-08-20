@@ -20,13 +20,12 @@ import { plainRunsOf, type TaskRecord } from './tasks.ts'
 export interface TaskSessionRow {
   /** The real native session this row shows. */
   sessionId: string
-  /** Where the session comes from: a board-executed run vs a linked external session. */
-  kind: 'run' | 'linked'
-  /** Display title (native title; run rows fall back to the task title). */
+  /** Display title (native title; rows without a session fall back to the task title). */
   title: string
-  /** Workspace label (linked rows only, when the native cwd is known). */
+  /** Workspace label (rows whose session is an external workspace member). */
   workspaceLabel?: string
-  /** The representative plain-run execution (run rows), for opening its review page. */
+  /** The representative plain-run execution, when this session carried a run
+   *  (opens its review page; external sessions carry none). */
   executionId?: string
   /** Quiet run sequence (run rows; comments/refine are never numbered). */
   runIndex?: number
@@ -34,7 +33,7 @@ export interface TaskSessionRow {
   display: SessionDisplay
   /** When the session last saw activity. */
   updatedAt: number
-  /** Unviewed content (run rows only for now; linked has no session-level read state). */
+  /** Unviewed content (run rows only for now; external has no session-level read state). */
   unviewed: boolean
 }
 
@@ -93,7 +92,6 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
     const sessionId = execution.sessionId
     runBySession.set(sessionId, {
       sessionId,
-      kind: 'run',
       title: ctx.titleOf(sessionId) ?? task.title,
       executionId: execution.id,
       runIndex: plainRunsOf(task).findIndex(run => run.id === execution.id) + 1,
@@ -109,12 +107,12 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
   // Run group: most recently active first.
   rows.sort((a, b) => b.updatedAt - a.updatedAt)
 
-  // Linked candidates — skip any session already shown as a run (run wins).
+  // External candidates (bound workspace/session members) — skip any session
+  // already shown as a run (the run carries the execution identity).
   for (const linked of ctx.linked) {
     if (hidden.has(linked.sessionId) || runBySession.has(linked.sessionId)) continue
     rows.push({
       sessionId: linked.sessionId,
-      kind: 'linked',
       title: linked.title,
       ...linked.workspaceLabel !== undefined ? { workspaceLabel: linked.workspaceLabel } : {},
       display: {

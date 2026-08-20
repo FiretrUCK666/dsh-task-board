@@ -1,15 +1,15 @@
 /**
- * One session row in a task's detail — the single row component for both
- * session families: execution-history rows (kind 'execution') and
- * linked-session rows (kind 'linked'). One skeleton, written once: an
- * identity slot + status chip + right-aligned actions on the top line, a
- * meta line below, and the execution-only extras (comment summary / live
- * dynamics / error) as the footer slot. Clicking the row activates it — the
- * review page for an execution, the session panel for a linked session —
- * while the row's own affordances stay on the row and never bubble into the
- * click. Kind-specific data (index vs title, times vs last-updated) is
- * computed by the caller and passed in; the grammar (chip + spinner, ghost
- * "查看会话", quiet "隐藏", keyboard activation) lives here once.
+ * One session row in a task's detail — THE single row component for every
+ * session of a task (run sessions and bound external sessions alike). One
+ * skeleton, written once: an identity slot + status chip + right-aligned
+ * actions on the top line, a meta line below, and the run-row-only extras
+ * (comment summary / live dynamics / error) as the footer slot. Clicking the
+ * row activates it — the review page for a run row, the session panel
+ * otherwise — while the row's own affordances stay on the row and never
+ * bubble into the click. Row-specific data (run index vs workspace label,
+ * times vs last-updated) is computed by the caller and passed in; the grammar
+ * (chip + spinner, ghost "查看会话", quiet "隐藏", keyboard activation)
+ * lives here once.
  */
 import type { ReactNode } from 'react'
 import { t } from '../locales.ts'
@@ -28,14 +28,13 @@ export type SessionRowChip = {
 /** The row's live session state (execution kind): the data-state hook. */
 export type SessionRowState = 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
 
-/** The unified session row (see module doc). */
-export function SessionRow({ kind, state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle }: {
-  kind: 'execution' | 'linked'
+/** The unified session row (one grammar for every session of a task). */
+export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle }: {
   /** Live session state (execution kind): rendered as data-state/data-waiting. */
   state?: SessionRowState
   /** Status chip on the top line (undefined = no chip). */
   chip: SessionRowChip | undefined
-  /** Top-line identity slot (execution index or linked title block). */
+  /** Top-line identity slot (session title + run note / workspace label). */
   leading: ReactNode
   /** Meta line below the top line (times / last-updated). */
   meta: ReactNode
@@ -48,7 +47,7 @@ export function SessionRow({ kind, state, chip, leading, meta, footer, unviewed,
   handle?: string
   /** The native session id; undefined suppresses the session affordances. */
   sessionId: string | undefined
-  /** Row activation (review page for an execution, panel for a linked row). */
+  /** Row activation (review page for a run row, session panel otherwise). */
   onActivate: () => void
   /** Open the native session page (the ghost button / amber handle). */
   onOpenSession: () => void
@@ -60,7 +59,6 @@ export function SessionRow({ kind, state, chip, leading, meta, footer, unviewed,
   return (
     <li
       className={css.sessionRow}
-      data-kind={kind}
       data-state={state}
       data-waiting={state === 'waiting' ? 'true' : undefined}
       data-unviewed={unviewed === true ? 'true' : undefined}

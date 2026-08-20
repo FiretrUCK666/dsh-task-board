@@ -52,7 +52,7 @@ describe('taskSessionsOf (统一会话列表)', () => {
     }] }
     const rows = taskSessionsOf(task, ctx())
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ sessionId: 's-1', kind: 'run', executionId: 'e-2', runIndex: 2 })
+    expect(rows[0]).toMatchObject({ sessionId: 's-1', executionId: 'e-2', runIndex: 2 })
   })
 
   it('appends linked rows that are not run sessions; run wins on a clash', () => {
@@ -62,8 +62,8 @@ describe('taskSessionsOf (统一会话列表)', () => {
       linkedRow({ sessionId: 's-9', title: '外部', updatedAt: NOW + 5 }),   // genuine linked-only session
     ]))
     expect(rows.map(row => row.sessionId)).toEqual(['s-1', 's-9'])
-    expect(rows[0]).toMatchObject({ kind: 'run', title: '原生标题' })
-    expect(rows[1]).toMatchObject({ kind: 'linked', title: '外部', workspaceLabel: 'wk' })
+    expect(rows[0]).toMatchObject({ executionId: 'e-1', title: '原生标题' })
+    expect(rows[1]).toMatchObject({ title: '外部', workspaceLabel: 'wk' })
   })
 
   it('hides sessions from both families via the derived set', () => {

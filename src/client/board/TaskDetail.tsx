@@ -10,7 +10,7 @@ import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '.
 import { describeCron, isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf } from '../../core/session-list.ts'
-import { executionUnviewed, sessionDisplay, sessionTimes } from '../../core/session-display.ts'
+import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
@@ -80,134 +80,97 @@ function sessionStateKey(state: 'running' | 'waiting' | 'succeeded' | 'failed' |
   }
 }
 
-/** One execution-history row: sequence, outcome, exact start/end times,
- *  plus the session's at-a-glance dynamics (its own latest comment with its
- *  state, and whether the session waits on the user). Clicking the row opens
- *  the review page (review the conversation and comment to continue it); the
- *  native "view session" jump stays on the row. Re-running is one action on
- *  the detail footer — it always starts a fresh round with the task's
- *  current prompt, so rows carry no rerun button (a row's "rerun" would be
- *  ambiguous next to comments). The row is an execution-kind SessionRow:
- *  the kind's data is computed here, the row skeleton is shared with the
- *  linked-session rows. */
-function ExecutionRow({ execution, index, task, sessionTitle, waitingKind, cruiseOn, onReview, onOpen, onHide }: {
-  execution: ExecutionRecord
-  /** 1-based execution sequence (comment rounds are not part of the list). */
-  index: number
-  /** The task owning this execution. */
-  task: TaskRecord
-  /** The execution session's display title (native; falls back to the task
-   *  title) — the identity slot shares one leading grammar with linked rows. */
-  sessionTitle: string
-  /** The session's pending-interaction kind when it waits on the user. */
-  waitingKind: PendingInteractionKind | undefined
-  /** Whether the auto-cruise is on (comment states derive from it). */
-  cruiseOn: boolean
-  onReview: () => void
-  onOpen: (sessionId: string) => void
-  /** Hide this row from the list (non-destructive; numbering stays stable). */
-  onHide: () => void
-}) {
-  const session = sessionDisplay(task, execution, waitingKind)
-  const times = sessionTimes(task, execution)
-  // Session is active if running or waiting.
-  const isActive = session.state === 'running' || session.state === 'waiting'
-  // This execution's own session thread (summary: count + latest text/time,
-  // without opening the review page) — the same session-scoped thread the
-  // review page and any linked panel for this session read.
-  const comments = execution.sessionId !== undefined
-    ? sessionCommentsOf(task, execution.sessionId, cruiseOn)
-    : []
-  const latestComment = comments.length > 0 ? comments[comments.length - 1] : undefined
-  // The row's unread reminder: the session (run + comments) has content
-  // newer than the last time its review page was opened.
-  const unviewed = executionUnviewed(task, execution)
-  const sessionId = execution.sessionId
-  return (
-    <SessionRow
-      kind="execution"
-      state={session.state}
-      chip={{
-        kind: stateToChipKind(session.state),
-        label: t(sessionStateKey(session.state, session.waitingKind)),
-        spinner: isActive,
-      }}
-      leading={
-        <span className={css.sessionRowLeading} title={sessionTitle}>
-          <span className={css.sessionRowName}>{sessionTitle}</span>
-          <span className={css.sessionRowMetaNote}>{t('detail.executionNo', { n: String(index) })}</span>
-        </span>
-      }
-      meta={
-        <>
-          {t('detail.executionStarted')} {formatDateTime(times.startedAt)}
-          {' · '}
-          {t('detail.executionEnded')} {times.endedAt !== undefined ? formatDateTime(times.endedAt) : '—'}
-          {times.duration !== undefined && (
-            <> · {t('detail.duration', { d: formatDuration(times.duration) })}</>
-          )}
-        </>
-      }
-      footer={
-        <>
-          {/* The comment summary: how many comments, the latest one and when —
-              visible without opening the review page. */}
-          {latestComment !== undefined && (
-            <span className={css.executionComments} title={latestComment.round.comment}>
-              <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
-              <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latestComment.round.comment ?? '' })}</span>
-              <span className={css.executionCommentsTime}>{formatTime(latestComment.round.startedAt)}</span>
-            </span>
-          )}
-          {/* Only show dynamics when session is active (reduce clutter for settled executions). */}
-          {isActive && (
-            <span className={css.executionDynamics}>
-              <span className={css.executionDynamicsLabel}>
-                {session.state === 'waiting'
-                  ? t('detail.handleHint', { kind: t(`waiting.${session.waitingKind}` as 'waiting.approval') })
-                  : t('detail.sessionActive')}
-              </span>
-            </span>
-          )}
-          {execution.error !== undefined && execution.error !== '' && (
-            <span className={css.executionError}>{execution.error}</span>
-          )}
-        </>
-      }
-      unviewed={unviewed}
-      unviewedTitle={t('detail.unviewedTitle')}
-      handle={session.state === 'waiting' && sessionId !== undefined ? t('detail.handle') : undefined}
-      sessionId={sessionId}
-      onActivate={onReview}
-      onOpenSession={() => { if (sessionId !== undefined) onOpen(sessionId) }}
-      onHide={onHide}
-      hideTitle={t('detail.hideRow')}
-    />
-  )
-}
-
-/** One linked-session row + its live status chip, rendered in the linked
- *  section. The whole row opens the session's detail panel (same shell as
- *  the execution review page, read-only); the row's own actions stay on the
- *  row and never bubble into the click. The row is a linked-kind SessionRow:
- *  same skeleton as the execution rows, with the kind's data computed here. */
-function LinkedRow({ row, task, controller, onOpen }: {
-  row: import('../../core/linked-sessions.ts').LinkedSessionRow
+/** One session row of a task — THE single row grammar for every session
+ *  (run rows open their review page + show run index/comments/dynamics/error;
+ *  external workspace sessions show workspace label + last-updated). */
+function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, onOpenSessionPanel }: {
+  row: import('../../core/session-list.ts').TaskSessionRow
   task: TaskRecord
   controller: BoardController
-  onOpen: () => void
+  cruiseOn: boolean
+  /** A run row opens its review page (review the conversation and comment). */
+  onReviewExecution: (execution: ExecutionRecord) => void
+  /** Every row opens the session panel/thread for its native session. */
+  onOpenSessionPanel: (sessionId: string) => void
 }) {
-  const waiting = row.pendingInteraction
+  const isRun = row.executionId !== undefined
+  const sessionId = row.sessionId
+  if (isRun) {
+    const execution = task.executions.find(candidate => candidate.id === row.executionId)
+    if (execution === undefined) return null
+    const session = sessionDisplay(task, execution, row.display.waitingKind)
+    const times = sessionTimes(task, execution)
+    const isActive = session.state === 'running' || session.state === 'waiting'
+    const comments = sessionId !== undefined ? sessionCommentsOf(task, sessionId, cruiseOn) : []
+    const latestComment = comments.length > 0 ? comments[comments.length - 1] : undefined
+    return (
+      <SessionRow
+        state={session.state}
+        chip={{
+          kind: stateToChipKind(session.state),
+          label: t(sessionStateKey(session.state, session.waitingKind)),
+          spinner: isActive,
+        }}
+        leading={
+          <span className={css.sessionRowLeading} title={row.title}>
+            <span className={css.sessionRowName}>{row.title}</span>
+            <span className={css.sessionRowMetaNote}>{t('detail.executionNo', { n: String(row.runIndex ?? 1) })}</span>
+          </span>
+        }
+        meta={
+          <>
+            {t('detail.executionStarted')} {formatDateTime(times.startedAt)}
+            {' · '}
+            {t('detail.executionEnded')} {times.endedAt !== undefined ? formatDateTime(times.endedAt) : '—'}
+            {times.duration !== undefined && (
+              <> · {t('detail.duration', { d: formatDuration(times.duration) })}</>
+            )}
+          </>
+        }
+        footer={
+          <>
+            {latestComment !== undefined && (
+              <span className={css.executionComments} title={latestComment.round.comment}>
+                <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
+                <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latestComment.round.comment ?? '' })}</span>
+                <span className={css.executionCommentsTime}>{formatTime(latestComment.round.startedAt)}</span>
+              </span>
+            )}
+            {isActive && (
+              <span className={css.executionDynamics}>
+                <span className={css.executionDynamicsLabel}>
+                  {session.state === 'waiting'
+                    ? t('detail.handleHint', { kind: t(`waiting.${session.waitingKind}` as 'waiting.approval') })
+                    : t('detail.sessionActive')}
+                </span>
+              </span>
+            )}
+            {execution.error !== undefined && execution.error !== '' && (
+              <span className={css.executionError}>{execution.error}</span>
+            )}
+          </>
+        }
+        unviewed={row.unviewed}
+        unviewedTitle={t('detail.unviewedTitle')}
+        handle={session.state === 'waiting' && sessionId !== undefined ? t('detail.handle') : undefined}
+        sessionId={sessionId}
+        onActivate={() => { onReviewExecution(execution) }}
+        onOpenSession={() => { if (sessionId !== undefined) controller.openSession(sessionId) }}
+        onHide={() => { controller.hideTaskSession(task.id, sessionId) }}
+        hideTitle={t('detail.hideRow')}
+      />
+    )
+  }
+  const waiting = row.display.waitingKind
   const chip = waiting !== undefined
     ? { kind: 'warn' as const, label: t(`waiting.${waiting}` as 'waiting.approval'), spinner: true }
-    : row.running
+    : row.display.state === 'running'
       ? { kind: 'warn' as const, label: t('detail.result.running'), spinner: true }
-      : row.completed
+      : row.display.state === 'succeeded'
         ? { kind: 'success' as const, label: t('detail.linkedDone') }
         : undefined
   return (
     <SessionRow
-      kind="linked"
       chip={chip}
       leading={
         <span className={css.sessionRowLeading}>
@@ -223,10 +186,10 @@ function LinkedRow({ row, task, controller, onOpen }: {
           {t('detail.sessionUpdated')} {formatDateTime(row.updatedAt)}
         </>
       }
-      sessionId={row.sessionId}
-      onActivate={onOpen}
-      onOpenSession={() => { controller.openSession(row.sessionId) }}
-      onHide={() => { controller.hideTaskSession(task.id, row.sessionId) }}
+      sessionId={sessionId}
+      onActivate={() => { onOpenSessionPanel(sessionId) }}
+      onOpenSession={() => { controller.openSession(sessionId) }}
+      onHide={() => { controller.hideTaskSession(task.id, sessionId) }}
       hideTitle={t('detail.hideRow')}
     />
   )
@@ -977,41 +940,17 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                 </p>
               ) : (
                 <ul className={css.sessionList}>
-                  {sessions.map(row => row.kind === 'run'
-                    ? (() => {
-                      const execution = row.executionId !== undefined
-                        ? current.executions.find(candidate => candidate.id === row.executionId)
-                        : undefined
-                      if (execution === undefined) return null
-                      return (
-                        <ExecutionRow
-                          key={row.sessionId}
-                          execution={execution}
-                          index={row.runIndex ?? 1}
-                          task={current}
-                          sessionTitle={row.title}
-                          waitingKind={row.display.waitingKind}
-                          cruiseOn={controller.getSnapshot().cruise.enabled}
-                          onReview={() => { setReviewExecution(execution) }}
-                          onOpen={sessionId => { controller.openSession(sessionId) }}
-                          onHide={() => { controller.hideTaskSession(current.id, row.sessionId) }}
-                        />
-                      )
-                    })()
-                    : (() => {
-                      const linkedRow = controller.linkedOf(current)
-                        .find(candidate => candidate.sessionId === row.sessionId)
-                      if (linkedRow === undefined) return null
-                      return (
-                        <LinkedRow
-                          key={row.sessionId}
-                          row={linkedRow}
-                          task={current}
-                          controller={controller}
-                          onOpen={() => { setLinkedSession(row.sessionId) }}
-                        />
-                      )
-                    })())}
+                  {sessions.map(row => (
+                    <SessionActionRow
+                      key={row.sessionId}
+                      row={row}
+                      task={current}
+                      controller={controller}
+                      cruiseOn={controller.getSnapshot().cruise.enabled}
+                      onReviewExecution={execution => { setReviewExecution(execution) }}
+                      onOpenSessionPanel={sessionId => { setLinkedSession(sessionId) }}
+                    />
+                  ))}
                 </ul>
               )}
               {/* 隐藏托盘：逐条恢复（不逼用户一次全恢复），头部一条「恢复全部」。
