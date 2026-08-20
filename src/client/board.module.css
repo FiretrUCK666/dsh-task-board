@@ -2269,6 +2269,215 @@ textarea.input {
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* --- automation overview panel (board header "自动化") ----------------------
+   A unified surface for both driving kinds: task-level schedule (cron /
+   chain) and session-level rules. Overview grammar only — task-level editing
+   stays in the task detail; the panel adds/switches/deletes session rules. */
+
+.autoModal {
+  width: min(600px, calc(100vw - 48px));
+}
+
+.autoEmpty {
+  margin: 0;
+  padding: 16px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+}
+
+.autoList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* One automated task: a floating inner surface holding the card identity,
+   its task-level schedule row and its session rules + add form. */
+.autoTask {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--dsh-tb-surface-sunken);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+}
+
+.autoTaskHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.autoTaskTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsh-tb-text-1);
+}
+
+.autoTaskStatus {
+  flex: none;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-float);
+  border-radius: 999px;
+}
+
+/* Task-level schedule: one quiet summary row + enable switch. */
+.autoScheduleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.autoMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+}
+
+.autoMetaIcon {
+  flex: none;
+  color: var(--dsh-tb-accent);
+}
+
+/* Session rules block. */
+.autoRules {
+  padding: 0;
+  gap: 6px;
+}
+
+.autoRuleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.autoRuleRow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  background: var(--dsh-tb-surface-float);
+  border-radius: var(--dsh-tb-radius-sm);
+}
+
+.autoRuleTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.autoRuleSession {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsh-tb-text-1);
+}
+
+.autoRuleSend {
+  flex: none;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-sunken);
+  border-radius: 999px;
+}
+
+.autoRuleInstruction {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-2);
+}
+
+.autoRuleMeta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+}
+
+.autoRuleActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+/* New-session-rule form (one at a time, per task). */
+.autoAddAction {
+  display: inline-flex;
+  align-self: flex-start;
+}
+
+.autoForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.autoField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.autoFieldLabel {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-3);
+}
+
+.autoSelect {
+  padding-right: 32px;
+}
+
+.autoInstruction {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.autoFormActions {
+  display: inline-flex;
+  gap: 8px;
+  align-self: flex-end;
+}
+
 /* --- requirement refinement (backlog tasks) ---------------------------------- */
 
 .refineSection {

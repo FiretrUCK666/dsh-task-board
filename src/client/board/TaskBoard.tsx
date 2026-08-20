@@ -25,6 +25,7 @@ import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
+import { AutomationPanel } from './AutomationPanel.tsx'
 import { TagManager } from './TagManager.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
@@ -66,6 +67,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   // 标签管理弹层。
   const [showTags, setShowTags] = useState(false)
+  // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
+  const [showAutomation, setShowAutomation] = useState(false)
   const toggleTag = (id: string): void => {
     setSelectedTags(current => current.includes(id) ? current.filter(tagId => tagId !== id) : [...current, id])
   }
@@ -583,6 +586,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           >
             {t('board.organize')}
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            title={t('board.automationTitle')}
+            onClick={() => { setShowAutomation(true) }}
+          >
+            {t('board.automation')}
+          </Button>
         </div>
 
         {/* 整理模式横栏：标签与配色、卡片颜色的批量操作全部在板头完成——
@@ -859,6 +870,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         <TagManager
           controller={controller}
           onClose={() => { setShowTags(false) }}
+        />
+      )}
+      {showAutomation && (
+        <AutomationPanel
+          controller={controller}
+          onClose={() => { setShowAutomation(false) }}
         />
       )}
     </div>
