@@ -281,9 +281,9 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 - `tasks.ts`（任务状态机/plainRunsOf/COLUMNS）、`schedule.ts`（cron）、`scheduler.ts`（每分钟 tick + cruiseTick）、`cruise.ts`（巡航窗口）、`session-activity.ts`（原生侧对账）、`tags.ts`（标签目录+卡片配色）、`store.ts`（ledger 持久化）、`execution.ts`（投递与结算）、`controller.ts`（台账+统一并发调度器）。
 - **巡航（v3）**：`CruiseState{ enabled, limit, schedule, manual? }`，`CruiseWindow{ startAt?; endAt? }` 至少一个——只填开始=到点开保持、只填结束=立即开到点关、都填=区间内外开关。`enabled` 是真相；手动开关只改 enabled+manual、绝不写 schedule；窗口边界（到点开/关）发生后 **manual 被清空（预约接管）**，故手动×窗口任意组合确定。`endAt<=startAt` 视为跨午夜 +24h（行内「次日」）；过期自动清理。弹层不预填、占位提示、可选中分（datetime-local）。
 - **统一并发调度器（唯一启动决策点）**：手动/定时/接续/巡航/评论共用同一并发预算；优先级 排队→评论 FIFO→巡航；`dispatch` 幂等扫描、重入合并。评论为任务 FIFO（`injectedAt` 三态，未注入可取消）；斜杠命令统一走注册表（`deliverCommandLine`，真实回合观察至结束、纯配置窗口即结算、未知回退文本）。
-- **会话统一/评论单轨**：相同会话 = 同一条评论线程（`sessionCommentsOf(task, sessionId)`）；直发/驱动/评论语义正在合并为同一留言轨（保留行为：完成态拒发、失败留草稿、隐身禁用）。
+- **会话统一/评论单轨**：相同会话 = 同一条评论线程（`sessionCommentsOf(task, sessionId)`）；直发/驱动/评论已并轨为**一种留言**（SessionDetail 无模式切换；完成态拒发、失败留草稿、隐身禁用保留）。**发送模式**：同一条留言两态——排队（默认，经调度器注入/巡航门控/FIFO 位次）与插话（`steerComment`：立即发往该会话、斜杠走注册表、落线 settled 消息轮、不经队列/预算/巡航）——执行评论页与会话面板共用 `SendModeToggle`。
 - **原生侧同步（两端一致）**：原生会话界面直接发言 → 看板观察 running 翻转补记**外源轮**（进线程、不排队/不注入/不编序号，open 显示 running）；主动绑定（拖入 run，`createBoundTask`/`bindTaskSource` 即 `reconcileBoundTask`）——会话正在跑立即置「进行中」+ 未读呼吸环，跑完落「待审核」，空闲不虚构、重复绑定幂等；页面加载被动观察不补历史（错过即跳过）。
-- **自动化**：任务级（定时 cron/完成后接续、即改即生效、拖动即暂停/停链、复制为模板带上）；会话级自动化（给指定会话定时/完成后发设定指令，排队发送）与统一一处管理在设计中（见 README 路线）。`ruleReadiness` 三态 disabled/paused/active。
+- **自动化**：任务级（定时 cron/完成后接续、即改即生效、拖动即暂停/停链、复制为模板带上）；**会话级自动化已落地**（`automation.ts` + `TaskRecord.rules` + controller `tickSessionRules`：SessionRule=目标会话+cron+指令+queue/steer，分钟心跳到点发指令（`/` 斜杠走注册表、文本走会话队列，落该会话线程 settled 消息轮），会话消失保位、无 cron 下一匹配自动停用；经 scheduler 的 `sessionRulesTick` hook）。`ruleReadiness` 三态 disabled/paused/active。
 - **标签与配色（操作只在板头顶部整理栏）**：中央 `TagCatalog{id,name,color}`（`dsh.taskBoard.tags.v1`），卡片只存 tag id（改名/改色一处同步）；卡片整卡染色（`--card-tint` 数据色 color-mix 9%），**无左竖杠**、无详情页编辑（顶部「整理」模式多选批量+筛选 AND+「管理标签」）。
 - **Markdown 预览**：`markdown-parser.ts` 非全局正则（**勿改回 `g`**，此前 OOM 根因）+ `Markdown.tsx`；评论/对话文本共用，正文 `overflow-wrap: break-word`（卡片标题/描述为不可断令牌用 `anywhere`）。
 - **会话状态派生/未读**：`session-display.ts`（waiting>running>settled；`viewedAt` 基线）；共享 transcript tail（3s 水位轮询/贴底/上翻暂停）；统一会话行 `SessionRow`（执行/链接单骨架，正在合并为一种执行轨）。
