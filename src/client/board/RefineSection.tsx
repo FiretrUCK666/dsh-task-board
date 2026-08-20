@@ -21,7 +21,6 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { refineDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
-import { NativeActivity } from './NativeActivity.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { SessionTranscript, SessionWaitingNotice } from './session-panel.tsx'
 import { Button, Section } from './ui.tsx'
@@ -155,17 +154,6 @@ export function RefineSection({ controller, task }: {
               {t('detail.refine.send')}
             </Button>
           </div>
-
-          {/* 原生活动：与评论/会话面板同一组件——完善会话的 plan 状态、目标与
-              可用命令目录也在这里即时显示、点击插入输入框。 */}
-          <NativeActivity
-            sessionId={task.refineSessionId}
-            onPickCommand={name => {
-              const next = draft.trim() === '' ? `${name} ` : `${draft.trimEnd()} ${name} `
-              setDraft(next)
-              draftStore.set(refineDraftKey(task.id), next)
-            }}
-          />
 
           {/* 操作区域：应用到任务按钮 */}
           <div className={css.refineActionArea}>

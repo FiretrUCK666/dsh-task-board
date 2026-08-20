@@ -176,9 +176,6 @@ export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pend
           <Icon name="play" />
         </span>
       )}
-      {/* A per-card accent color renders as a quiet 3px left bar (data, not
-          a theme value — applied inline from the user's choice). */}
-      {task.color !== undefined && <span className={css.cardAccentBar} style={{ background: task.color }} aria-hidden="true" />}
       <span className={css.cardTitle}>{task.title}</span>
       {/* The card's labels: small colored-dot chips (capped with a +N tail so
           a long set can never crowd the card), clicking one filters the board

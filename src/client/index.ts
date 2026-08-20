@@ -72,7 +72,7 @@ interface RemoteCommandsFace {
     | { ok: true; value: readonly { name: string; description: string; input?: { hint?: string } }[] }
     | { ok: false; error: { code: string; message: string } }
   >
-  execute(sessionId: string, line: string): Promise<
+  execute(sessionId: string, line: string, images?: readonly unknown[], signal?: AbortSignal): Promise<
     | { ok: true; value: { commandId: string; result: { kind: 'success' | 'error'; text?: string } } | undefined }
     | { ok: false; error: { code: string; message: string } }
   >
@@ -221,7 +221,10 @@ export function apply(ctx: ClientContext): void {
         return { ok: true as const, matched: false }
       }
       try {
-        const result = await commands.execute(sessionId as SessionId, line)
+        // Official signature: (agent, line, images, signal) — three business
+        // arguments plus an optional AbortSignal. Images are empty for a plain
+        // invocation (the composer's picture attachments pass through here).
+        const result = await commands.execute(sessionId as SessionId, line, [], new AbortController().signal)
         if (!result.ok) {
           return { ok: false as const, error: `${result.error.code}: ${result.error.message}` }
         }
@@ -498,7 +501,7 @@ export function apply(ctx: ClientContext): void {
             return { ok: false as const, error: 'permission commands unavailable: no remote.commands bridge' }
           }
           try {
-            const result = await commands.execute(sessionId as SessionId, `/permission ${permission}`)
+            const result = await commands.execute(sessionId as SessionId, `/permission ${permission}`, [], new AbortController().signal)
             if (!result.ok) {
               return { ok: false as const, error: `${result.error.code}: ${result.error.message}` }
             }

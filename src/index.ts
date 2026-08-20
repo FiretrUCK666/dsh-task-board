@@ -18,7 +18,6 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import z from 'schemastery'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { registerPermissionRoute } from './host/permission-route.ts'
-import { registerSessionActivityRoute } from './host/session-activity-route.ts'
 import { registerSettingsRoute } from './host/settings-route.ts'
 
 /** Order of the announcement section within the tool-guidance band. */
@@ -105,15 +104,6 @@ export function apply(ctx: Context, config?: Config): void {
   ctx.effect(
     () => registerPermissionRoute(ctx, 'dsh-task-board'),
     'dsh-task-board: permissions route',
-  )
-
-  // Serve native per-session activity (plan mode / active goal / the live
-  // slash-command catalog) to the comment and refine surfaces — read-only
-  // and structural, so official command & plan changes show up with zero
-  // maintenance on our side.
-  ctx.effect(
-    () => registerSessionActivityRoute(ctx),
-    'dsh-task-board: session-activity route',
   )
 
   // Initial registration from the composition entry (covers deployments with

@@ -26,7 +26,6 @@ import { SessionDetail } from './SessionDetail.tsx'
 import { SessionRow } from './SessionRow.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
-import { TAG_PALETTE } from '../../core/tags.ts'
 import { Button, Disclosure, Icon, Section, Switch } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
 import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
@@ -712,18 +711,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     ? t('detail.runConfigDefault')
     : t('detail.runConfigCustom', { n: String(customizedCount) })
 
-  // The live tag catalog + a toggle for attaching/removing one label.
-  const tags = controller.listTags()
-  const toggleTaskTag = (tagId: string): void => {
-    const owned = new Set(current.tags ?? [])
-    if (owned.has(tagId)) {
-      owned.delete(tagId)
-      controller.setTaskTags(current.id, [...owned])
-    } else {
-      controller.setTaskTags(current.id, [...owned, tagId])
-    }
-  }
-
   // The unified session list (run + linked, de-duplicated by session id):
   // the single source for the 会话 section — a session reached from an
   // execution page or a linked panel is one row here, one comment thread.
@@ -911,68 +898,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                       <Icon name={promptCopied ? 'check' : 'copy'} />
                     </button>
                   )}
-                </div>
-              </Section>
-
-              {/* 标签与配色：给卡片打标签（多选，改名/改色在标签管理里一处同步）
-                  或设一个卡片强调色（预设色板或自定义）。 */}
-              <Section title={t('tags.title')}>
-                <div className={css.detailTags}>
-                  {tags.length === 0 ? (
-                    <p className={css.detailHint}>{t('tags.detailEmpty')}</p>
-                  ) : (
-                    <span className={css.cardTags}>
-                      {tags.map(tag => {
-                        const on = (current.tags ?? []).includes(tag.id)
-                        return (
-                          <span
-                            key={tag.id}
-                            role="button"
-                            tabIndex={0}
-                            className={`${css.cardTag}${on ? ` ${css.cardTagOn}` : ''}`}
-                            title={on ? t('tags.remove') : t('tags.addTag')}
-                            onClick={() => { toggleTaskTag(tag.id) }}
-                            onKeyDown={event => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault()
-                                toggleTaskTag(tag.id)
-                              }
-                            }}
-                          >
-                            <span className={css.cardTagDot} style={{ background: tag.color }} aria-hidden="true" />
-                            {tag.name}
-                          </span>
-                        )
-                      })}
-                    </span>
-                  )}
-                  <span className={css.detailColorRow}>
-                    <span className={css.detailColorLabel}>{t('tags.cardColor')}</span>
-                    <span className={css.tagSwatches}>
-                      {TAG_PALETTE.map(color => (
-                        <button
-                          key={color}
-                          type="button"
-                          className={`${css.tagSwatch}${current.color === color ? ` ${css.tagSwatchOn}` : ''}`}
-                          style={{ background: color }}
-                          aria-label={color}
-                          onClick={() => { controller.setTaskColor(current.id, color) }}
-                        />
-                      ))}
-                      <input
-                        type="color"
-                        className={css.tagCustomColor}
-                        value={current.color ?? TAG_PALETTE[0]}
-                        aria-label={t('tags.customColor')}
-                        onChange={event => { controller.setTaskColor(current.id, event.target.value) }}
-                      />
-                      {current.color !== undefined && (
-                        <button type="button" className={css.rowHide} onClick={() => { controller.setTaskColor(current.id, undefined) }}>
-                          {t('tags.clearColor')}
-                        </button>
-                      )}
-                    </span>
-                  </span>
                 </div>
               </Section>
 

@@ -26,7 +26,6 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
-import { NativeActivity } from './NativeActivity.tsx'
 import { formatDateTime } from './TaskCard.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
@@ -285,14 +284,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
                 : t('detail.sessionComposerPlaceholder')}
               rows={3}
               controller={controller}
-            />
-            <NativeActivity
-              sessionId={sessionId}
-              onPickCommand={name => {
-                const next = draft.trim() === '' ? `${name} ` : `${draft.trimEnd()} ${name} `
-                setDraft(next)
-                draftStore.set(commentDraftKey(task.id, sessionId), next)
-              }}
             />
             <div className={css.reviewComposerRow}>
               <Button

@@ -826,7 +826,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   overflow: hidden;
   /* A single unbreakable token (URL, a run-on word in any font) also
      breaks instead of pushing past the clamped box. */
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -837,7 +837,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   line-height: 1.4;
   color: var(--dsw-alias-label-secondary);
   overflow: hidden;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -1266,7 +1266,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   line-height: 1.5;
   color: var(--dsw-alias-label-secondary);
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .modalFooter {
@@ -1503,7 +1503,7 @@ textarea.input {
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .detailBody {
@@ -1582,7 +1582,7 @@ textarea.input {
   line-height: 1.55;
   color: var(--dsw-alias-label-primary);
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /* Run-configuration definition grid: aligned label / value columns. */
@@ -1609,7 +1609,7 @@ textarea.input {
   font-size: 12px;
   line-height: 1.6;
   color: var(--dsw-alias-label-primary);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /* --- scheduled runs ---------------------------------------------------------- */
@@ -1682,7 +1682,7 @@ textarea.input {
   margin: 0;
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /* A meta line that carries an inline action (cron "skip next", chain "stop")
@@ -1818,7 +1818,7 @@ textarea.input {
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   max-height: 240px;
   overflow-y: auto;
 }
@@ -1843,7 +1843,7 @@ textarea.input {
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   max-height: 240px;
   overflow-y: auto;
 }
@@ -2763,7 +2763,7 @@ textarea.input {
   color: var(--dsw-alias-label-primary);
   /* Markdown block elements own their spacing; the container itself must not
      force pre-wrap or every paragraph-internal newline would double-break. */
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /* User messages are right-aligned bubbles, native look (deepseek-50 fill,
@@ -3050,7 +3050,7 @@ textarea.input {
   line-height: 1.5;
   /* Markdown block elements own their spacing; do not force pre-wrap at the
      container level or every paragraph-internal newline would double-break. */
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /* --- markdown preview (shared by transcripts and comments) -----------------
@@ -3291,18 +3291,6 @@ textarea.input {
    dense cards. Effect colors are DATA (applied inline from user choices);
    the swatches/feature bars below reuse the same quiet chip language. */
 
-/* A per-card accent = a 3px bar hugging the card's left edge, above content. */
-.cardAccentBar {
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-  border-radius: 2px;
-  pointer-events: none;
-  z-index: 0;
-}
-
 .cardTags {
   display: flex;
   align-items: center;
@@ -3506,26 +3494,6 @@ textarea.input {
 }
 
 /* Task-detail tags & color block. */
-.detailTags {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.detailColorRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.detailColorLabel {
-  flex: none;
-  font-size: 12px;
-  color: var(--dsh-tb-text-3);
-  white-space: nowrap;
-}
-
 /* --- organize (tidy) mode bar: the board header strip for bulk tagging and
        recoloring — same chip/swatch grammar reused, nothing hand-rolled --- */
 .organizeBar {
@@ -3562,169 +3530,4 @@ textarea.input {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-
-/* --- workbench row: live stats (one glance) + focus (single column) + export
-       (filtered Markdown/JSON). Each pill applies to the CURRENT view and the
-       three compose freely. --- */
-.statChips {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  color: var(--dsh-tb-text-3);
-  font-size: 12px;
-}
-
-.statChip {
-  border: none;
-  background: none;
-  padding: 0;
-  font: inherit;
-  color: var(--dsh-tb-text-2);
-  cursor: pointer;
-  border-bottom: 1px dotted var(--dsw-alias-border-l3);
-  font-variant-numeric: tabular-nums;
-}
-
-.statChip:hover {
-  color: var(--dsh-tb-text-1);
-}
-
-.statItem {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.statActions {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.exportWrap {
-  position: relative;
-  display: inline-flex;
-}
-
-.exportMenu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 132px;
-  padding: 4px;
-  background: var(--dsh-tb-surface-menu);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  box-shadow: var(--dsh-tb-shadow-2);
-}
-
-.exportMenu button {
-  text-align: left;
-  font: inherit;
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-  background: none;
-  border: none;
-  border-radius: 8px;
-  padding: 6px 8px;
-  cursor: pointer;
-}
-
-.exportMenu button:hover {
-  background: var(--dsh-tb-hover);
-  color: var(--dsh-tb-text-1);
-}
-
-/* Focus mode: the single column stretches across the board (open whitespace). */
-.columnsFocus .column {
-  flex: 1 1 auto;
-  max-width: none;
-}
-
-/* --- native activity: the comment/refine surfaces' bridge to the session's
-       live plan / goal / command catalog (host read-only bridge). Chips reuse
-       the plain chip grammar; unknown state degrades to nothing. --- */
-.nativeActivity {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 2px 0 6px;
-}
-
-.nativeRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.nativeHint {
-  font-size: 11px;
-  color: var(--dsh-tb-text-3);
-  min-width: 0;
-}
-
-.nativePlanPendingChip {
-  border-color: color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent);
-  color: var(--dsh-tb-attention);
-}
-
-.nativePlanActiveChip {
-  border-color: color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent);
-  color: var(--dsh-tb-accent);
-}
-
-.nativeGoalOn {
-  border-color: color-mix(in srgb, var(--dsh-tb-success) 45%, transparent);
-  color: var(--dsh-tb-success);
-}
-
-.nativeGoalTitle {
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.nativeCommands {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.nativeCommand {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  min-width: 0;
-  padding: 2px 9px;
-  font: inherit;
-  font-size: 11px;
-  color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-surface-sunken);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
-}
-
-.nativeCommand:hover {
-  color: var(--dsh-tb-text-1);
-  border-color: var(--dsw-alias-border-l3);
-}
-
-.nativeCommandDesc {
-  font-size: 11px;
-  color: var(--dsh-tb-text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
