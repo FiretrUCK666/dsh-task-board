@@ -19,7 +19,7 @@ import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/se
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { insertionGapOf, type InsertionGap } from './drop-position.ts'
-import { formatCruiseTime, nextWholeHour } from './format-time.ts'
+import { formatCruiseTime } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
@@ -116,13 +116,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   }, [cruiseOpen])
   // 定时窗口表单（epoch ms；TimeField 打字式输入 + 日历按钮）。打开弹层时把
   // 「开始」预填为下一个整点；「结束」留空 = 一直保持，且必须晚于「开始」；
-  // 校验失败就地提示，不做静默 no-op。
+  // 校验失败就地提示，不做静默 no-op。打开弹层不预填任何时间——只留占位提示，
+  // 用户输入多少就是多少（三态：只填开始/只填结束/都填）。
   const [windowStart, setWindowStart] = useState<number | undefined>(undefined)
   const [windowEnd, setWindowEnd] = useState<number | undefined>(undefined)
   const [cruiseError, setCruiseError] = useState<string | undefined>(undefined)
   useEffect(() => {
     if (!cruiseOpen) return
-    setWindowStart(current => current ?? nextWholeHour())
     setCruiseError(undefined)
   }, [cruiseOpen])
 
