@@ -615,6 +615,9 @@ export function apply(ctx: ClientContext): void {
       // Cruise scheduled windows flip on/off at their boundaries on the same
       // heartbeat as task schedules.
       cruiseTick: now => controller.tickCruise(now),
+      // Session automation rules fire their due instructions (cron) on the
+      // same heartbeat.
+      sessionRulesTick: now => controller.tickSessionRules(now),
       environment: {
         addEventListener: (type, listener) => document.addEventListener(type, listener),
         removeEventListener: (type, listener) => document.removeEventListener(type, listener),

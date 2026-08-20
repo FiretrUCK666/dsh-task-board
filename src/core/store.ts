@@ -13,6 +13,7 @@
  * localStorage backend.
  */
 import { isValidCron } from './schedule.ts'
+import { normalizeSessionRules } from './automation.ts'
 import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
 import { isScheduleMode, isTaskStatus } from './tasks.ts'
 
@@ -197,6 +198,11 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     const rawColor = (row as Record<string, unknown>).color
     if (typeof rawColor === 'string' && rawColor !== '') task.color = rawColor
     else delete task.color
+    // Session automation rules: valid rows kept, malformed dropped (old data
+    // keeps working untouched).
+    const rules = normalizeSessionRules((row as Record<string, unknown>).rules)
+    if (rules !== undefined) task.rules = rules
+    else delete task.rules
     tasks.push(task)
   }
   return tasks

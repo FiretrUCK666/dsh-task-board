@@ -2170,6 +2170,82 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
   })
 })
 
+describe('session automation rules (给会话定时发指令)', () => {
+  function ruleHarness(sessionIds: string[], faces: {
+    sessionMessage?: (sessionId: string, text: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    sessionCommand?: (sessionId: string, line: string) => Promise<{ ok: true; matched: boolean } | { ok: false; error: string }>
+  }) {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    for (const id of sessionIds) sessions.setRunning(id, false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions,
+      now: () => NOW,
+      uuid,
+      reconcileDebounceMs: 0,
+      ...faces,
+    })
+    controller.start()
+    return { controller, sessions }
+  }
+
+  it('creates a rule with a due instant and rejects an unparseable cron', () => {
+    const { controller } = ruleHarness(['s-a'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    const rule = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'nightly check', cron: '0 0 * * *', send: 'queue' })
+    expect(rule).toBeDefined()
+    expect(rule!.nextAt).toBeGreaterThan(NOW)
+    expect(controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'x', cron: 'not a cron', send: 'queue' })).toBeUndefined()
+  })
+
+  it('fires a due rule: sends the instruction, records a direct round, rolls forward', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'queue' })!
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toEqual(['s-a', 'hello'])
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.executions.some(round => round.direct === true && round.comment === 'hello')).toBe(true)
+    expect(row.rules?.[0].lastAt).toBe(NOW + 120_000)
+    expect(row.rules?.[0].nextAt).toBeGreaterThan(NOW + 120_000 - 60_000)
+    // Rolled forward to the next cron match: a tick before that instant does
+    // not re-fire; the minute rule fires again at the new boundary.
+    const rolled = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].nextAt
+    await controller.tickSessionRules(rolled - 1000)
+    expect(sent).toHaveLength(1)
+    await controller.tickSessionRules(rolled + 1000)
+    expect(sent).toHaveLength(2)
+  })
+
+  it('a disabled rule never fires; a rule whose session is gone keeps its slot', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a', 's-b'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    const off = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'a', cron: '* * * * *', send: 'queue' })!
+    const gone = controller.createSessionRule(task.id, { sessionId: 's-gone', instruction: 'b', cron: '* * * * *', send: 'queue' })!
+    controller.toggleSessionRule(task.id, off.id, false)
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toHaveLength(0) // disabled + missing-session both skipped
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.rules?.find(r => r.id === gone.id)?.nextAt).toBe(gone.nextAt)
+  })
+
+  it('slash instructions route through the command registry', async () => {
+    const lines: string[] = []
+    const { controller } = ruleHarness(['s-a'], {
+      sessionCommand: async (_sessionId, line) => { lines.push(line); return { ok: true as const, matched: true } },
+    })
+    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '/goal', cron: '* * * * *', send: 'queue' })
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(lines).toEqual(['/goal'])
+  })
+})
+
 /** Build a task with a bind (test helper). */
 function taskWithBind(bind: NonNullable<TaskRecord['bind']>): TaskRecord {
   return { id: 'task-b', title: 'T', description: '', prompt: '', status: 'todo', order: 0, createdAt: 0, updatedAt: 0, executions: [], bind }

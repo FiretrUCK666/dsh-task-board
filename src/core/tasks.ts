@@ -217,6 +217,11 @@ export interface TaskRecord {
    * data, never a CSS literal). Absent = no accent.
    */
   color?: string
+  /**
+   * Session automation rules — scheduled "send a preset instruction to one
+   * of this task's sessions" rules (see automation.ts). Absent = none.
+   */
+  rules?: import('./automation.ts').SessionRule[]
 }
 
 /** Input for creating a task. */

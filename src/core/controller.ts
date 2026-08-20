@@ -14,6 +14,7 @@
  */
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
 import { isValidCron, nextRunAtMs } from './schedule.ts'
+import { nextSessionRuleAt, withSessionRules } from './automation.ts'
 import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
@@ -1332,6 +1333,112 @@ export class BoardController {
       this.persistAndNotify()
       return result
     })
+  }
+
+  // --- session automation rules (scheduled "send a preset instruction to a session") ---
+
+  /** Create a session rule for one of the task's sessions (cron via the task
+   *  schedule parser; an unparseable cron is rejected). */
+  createSessionRule(taskId: string, input: {
+    sessionId: string
+    instruction: string
+    cron: string
+    send: 'queue' | 'steer'
+  }): import('./automation.ts').SessionRule | undefined {
+    const instruction = input.instruction.trim()
+    const cron = input.cron.trim()
+    if (instruction === '' || cron === '') return undefined
+    const nextAt = nextRunAtMs(cron, this.now())
+    if (nextAt === undefined) return undefined
+    const rule: import('./automation.ts').SessionRule = {
+      id: this.uuid(),
+      sessionId: input.sessionId,
+      instruction,
+      cron,
+      send: input.send,
+      enabled: true,
+      nextAt,
+    }
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId) return task
+      changed = true
+      return withSessionRules(task, [...(task.rules ?? []), rule])
+    })
+    if (changed) {
+      this.persistAndNotify()
+      return rule
+    }
+    return undefined
+  }
+
+  /** Toggle a session rule's enabled state (the row's live switch). */
+  toggleSessionRule(taskId: string, ruleId: string, enabled: boolean): void {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId || task.rules === undefined) return task
+      const rules = task.rules.map(rule => rule.id === ruleId ? { ...rule, enabled } : rule)
+      if (rules.some((rule, index) => rule !== task.rules![index])) changed = true
+      return withSessionRules(task, rules)
+    })
+    if (changed) this.persistAndNotify()
+  }
+
+  /** Remove a session rule. */
+  deleteSessionRule(taskId: string, ruleId: string): void {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId || task.rules === undefined) return task
+      const rules = task.rules.filter(rule => rule.id !== ruleId)
+      if (rules.length !== task.rules.length) changed = true
+      return withSessionRules(task, rules)
+    })
+    if (changed) this.persistAndNotify()
+  }
+
+  /**
+   * The minute heartbeat for session rules (the scheduler's sessionRulesTick):
+   * for every enabled rule whose due instant has passed, send its preset
+   * instruction to the target session (slash-aware; the sent line is recorded
+   * as a direct round so it shows in the session's thread), then roll forward
+   * to the next cron match. A session that is gone is skipped (its due slot is
+   * kept — it fires when the session returns); an unparseable expression
+   * auto-disables the rule (错过即跳过), never re-fires forever.
+   */
+  async tickSessionRules(now: number): Promise<void> {
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    const updates = new Map<string, TaskRecord>()
+    for (const task of this.tasks) {
+      if (task.rules === undefined || task.rules.length === 0) continue
+      const rules = task.rules.map(rule => ({ ...rule }))
+      let taskChanged = false
+      for (const rule of rules) {
+        if (!rule.enabled) continue
+        if (byId[rule.sessionId] === undefined) continue // session gone: keep due slot
+        if (rule.nextAt > now) continue
+        // Fire: slash-aware instruction → recorded as a direct round so it shows
+        // in the session's thread. Failure does not advance (retried next tick
+        // is safer than silently dropping the instruction).
+        const fired = await this.sendSessionMessage(task.id, rule.sessionId, rule.instruction)
+        if (!fired.ok) continue
+        taskChanged = true
+        const next = nextSessionRuleAt(rule)
+        rule.lastAt = now
+        rule.nextAt = next ?? rule.nextAt // keep a live slot; auto-disable prevents re-fires
+        rule.enabled = next === undefined ? false : rule.enabled
+      }
+      if (taskChanged) {
+        // The send already attached a direct round and persisted a NEW task
+        // object (this.tasks was replaced in place); layer the rule bookkeeping
+        // onto that latest object, never the stale iteration copy.
+        const latest = this.tasks.find(candidate => candidate.id === task.id) ?? task
+        updates.set(task.id, withSessionRules(latest, rules))
+      }
+    }
+    if (updates.size > 0) {
+      this.tasks = this.tasks.map(task => updates.get(task.id) ?? task)
+      this.persistAndNotify()
+    }
   }
 
   /** The raw host send for a direct line (slash-aware, no recording). */

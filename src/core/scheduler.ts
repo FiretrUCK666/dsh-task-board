@@ -50,6 +50,12 @@ export interface SchedulerDeps {
    * at its boundary. Minute granularity is enough for scheduled times.
    */
   cruiseTick?: (now: number) => void
+  /**
+   * Optional session-rule heartbeat (the controller's tickSessionRules):
+   * evaluated on every tick so a rule whose due instant passed sends its
+   * preset instruction to the target session.
+   */
+  sessionRulesTick?: (now: number) => Promise<void>
   /** Environment listeners for tab-visibility recovery (browser only). */
   environment?: {
     addEventListener(type: 'visibilitychange', listener: () => void): void
@@ -150,6 +156,10 @@ export class SchedulerService {
         this.deps.applySchedule(task.id, next, now, runCount)
       }
     }
+    // Session automation rules fire their due instructions on this heartbeat
+    // too — after the task-schedule loop so a synchronous tick() probes the
+    // schedule loop first (tests drive both synchronously).
+    await this.deps.sessionRulesTick?.(now)
   }
 
   private readonly onVisibility = (): void => { this.tick() }
