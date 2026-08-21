@@ -285,12 +285,12 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 - **多源绑定（拖入 = 添加，绝不刷新替代）**：`TaskRecord.binds: TaskBind[]`（`TaskBind = session | workspace`）是真相源；旧单源 `bind` 字段仅作一次性兼容投影——**每个读者一律走 `taskBindsOf(task)`**。`addTaskSource(taskId, bind)` 追加（`sameBind` 判同源幂等跳过），`linkedOf` 遍历 binds 按 sessionId 去重（session 显式优先），`relatedSessionsOf`/`boundSourceTitleOf`/`removeTaskSession`/TaskDetail/TaskBoard 全部改读投影；`copyTask` 不复制 binds（模板语义）。
 - **列滚动/排序/动效**：卡片 `.card { flex: none }` 永不收缩——列满后 `.cards` 区内部滚动（无滚动条：`scrollbar-width:none`+webkit 隐藏+smooth，底部留白 22px 防贴底，reduced-motion 降级自动），杜绝"卡片越挤越短"。**最新状态置顶**：`promoteToColumnTop`（新建/绑定/拖入同步/评论注入/结算落列都置顶目标列，手拖 `order` 仍可重排）；跨列/状态翻转动效 = 卡片自身 FLIP 落位（见设计系统层的拖拽动效），不再有列边闪烁。
 - **自动化**：任务级（定时 cron/完成后接续、即改即生效、拖动即暂停/停链、复制为模板带上）；**会话级自动化已落地**（`automation.ts` + `TaskRecord.rules` + controller `tickSessionRules`：SessionRule=目标会话+cron+指令+queue/steer，分钟心跳到点发指令——queue=入评论队列由调度器按序注入（`submitSessionComment`）、steer=即发落线程 settled 消息轮，`/` 斜杠走注册表；会话消失保位、无 cron 下一匹配自动停用；经 scheduler 的 `sessionRulesTick` hook）。`ruleReadiness` 三态 disabled/paused/active；`automationRowsOf(task)` 是把会话规则与任务级 schedule 投影成同一行形状的唯一读侧。**复制为模板**：`copyTask` 经由 createTask 快照自动带全配置——title/desc/runConfig/schedule（runCount 归零、cron 重算）**+ color + 会话规则（规则换新 id）**；未来任何任务配置字段只加进该快照即可自动进模板，不逐项抄。
-- **卡片颜色与多选批操作（标签已删，仅颜色）**：卡片配色 = `task.color` 数据色，**表色由标题行前 8px 实色圆点承担（100% 原始色 = 色板一致，杜绝偏色；`--card-tint` 机制不变，无 hex/rgb 字面量）**，整卡只留 6% 极浅染做氛围（`colors.ts` 的 `PALETTE`/`withTaskColor`），**无左竖杠**；卡片悬停快捷色条 + 板顶整理栏色板（`ColorSwatches`，含自定义色）。**多选**：Ctrl/Cmd+点击任意时刻切换选中（整理模式下直接点），板头横栏随选中出现——**三分组**（颜色组：色板+「移除颜色」｜选择组：全选/清选/完成｜危险组：删除选中（hairline 分隔，远离色板）+ 确认弹窗）。旧标签数据（`dsh.taskBoard.tags.v1` 与 `tags` 字段）加载时静默剥离，不再读取。
-- **卡片 = 纯状态摘要（两类任务同一卡片）**：卡片只承载「当前在哪、在干嘛、自动化的脸」——标题/描述（非空才显示）/来源行（工作区或绑定会话标题，`taskBindsOf` 首源）/更新时间/状态与自动化 chips（进行中/等待回应·计划确认/N 次执行/定时/接续/失败暂停/排队 N/完善中/新 N/已暂停）。**运行窗口（开始/结束/耗时）与评论时间线只归详情页**（SessionActionRow 的 `sessionWindowOf`+`latestCommentView`：“最新”无正文时只留 评论N+时间+行首状态 chip，状态词绝不冒充内容）。绑定任务与普通任务渲染完全一致，不可漂移。
+- **卡片颜色与多选批操作（标签已删，仅颜色）**：卡片配色 = `task.color` 数据色，**表色由标题行前 8px 实色圆点承担（100% 原始色 = 色板一致，杜绝偏色；`--card-tint` 机制不变，无 hex/rgb 字面量）**，整卡只留 6% 极浅染做氛围（`colors.ts` 的 `PALETTE`/`withTaskColor`），**无左竖杠**；**唯一选色文法** = `ColorSwatches`（调色板圆点 + 自定义色圆点（内圆角 swatch，绝不出方块）+ 末尾「移除颜色」圆点，全 16px 圆形同尺寸；选中环只在 `value` 真实等于该色时出现，无猜测默认环）——卡片悬停快捷色条与板顶整理栏共用同一组件，绝不两套实现；颜色组内无文字按钮（移除即点「移除颜色」圆点）。**多选**：Ctrl/Cmd+点击任意时刻切换选中（整理模式下直接点），板头横栏随选中出现——**三分组**（颜色组｜选择组：全选/清选/完成｜危险组：删除选中（hairline 分隔，远离色板）+ 确认弹窗）。旧标签数据（`dsh.taskBoard.tags.v1` 与 `tags` 字段）加载时静默剥离，不再读取。
+- **卡片 = 纯状态摘要（两类任务同一卡片）**：卡片只承载「当前在哪、在干嘛、自动化的脸」——标题/描述（非空才显示）/来源行（`cardSourceLabel` 单一推导：绑定会话标题与任务标题相同则不重复，取工作区标签，全相同则无来源行——绝不显示猜测默认值）/更新时间/状态与自动化 chips（进行中/等待回应·计划确认/N 次执行/定时/接续/失败暂停/排队 N/完善中/新 N/已暂停）。**运行窗口（开始/结束/耗时）与评论时间线只归详情页**（SessionActionRow 的 `sessionWindowOf`+`latestCommentView`：“最新”无正文时只留 评论N+时间+行首状态 chip，状态词绝不冒充内容）。绑定任务与普通任务渲染完全一致，不可漂移。
 - **Markdown 预览**：`markdown-parser.ts` 非全局正则（**勿改回 `g`**，此前 OOM 根因）+ `Markdown.tsx`；评论/对话文本共用，正文 `overflow-wrap: break-word`（卡片标题/描述为不可断令牌用 `anywhere`）。
 - **会话状态派生/未读**：`session-display.ts`（waiting>running>settled；`viewedAt` 基线）；共享 transcript tail（3s 水位轮询/贴底/上翻暂停）；统一会话行 = `SessionRow` 单骨架 + TaskDetail 的 `SessionActionRow` 单构建器（执行/链接已合一：同一行文法——身份+状态 chip+操作，meta 行 = sessionTimes 或 sessionWindowOf 的 开始/结束/耗时，footer = latestCommentView 评论摘要（无正文只留 评论N+时间+chip）、动态/错误留槽）。
 - **需求完善（refine）**：backlog 专属、会话复用；即时注入；确认后写 prompt；结算不动列不触发 chain。
-- **统一会话面板/草稿**：`SessionFrame` 外壳 + rail（上下文/配置/事实/等待）+ composer（PromptInput 斜杠补全）；所有输入写穿 `draftStore`（`dsh.taskBoard.drafts.v1`，写失败降级内存）。
+- **统一会话面板/草稿**：`SessionFrame` 外壳 + **`SessionRail` 唯一 rail 组合**（上下文块→状态行（chip+更新于，无则整行隐藏）→`.sessionRailHead` 固定的头部（计量表/配置/事实）→线程头→`detailHint` 一行提示→独立滚动评论线程（跟随/滑到最新全在其内）→交互卡→composer）——执行页与链接面板只传数据，rail 永不漂移；**`SessionComposer`**（`PromptInput`+`AttachmentStrip`+`SendModeToggle`+主发送钮，草稿/排队插话/图片本地状态在组件内，发送语义经 `onDrive`/`onSteer`/`onSteerImages` 回调注入）；所有输入写穿 `draftStore`（`dsh.taskBoard.drafts.v1`，写失败降级内存）。
 - **稳定性**：受控组件本地回退；composer 之上可滚动中区；就近 inline 反馈；订阅/轮询必带终止路径；排版分居——正文永不省略（break-word wrap），元信息标签可 ellipsis+title；正文禁用固定高+overflow hidden 裁字。
 ## 构建与验证（改完必跑，全绿才算完成）
 
@@ -360,7 +360,7 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   `latestCommentView`（外源轮带文本/空文本回退状态词）。
 - `tests/interaction.spec.ts`：会话 todo 读取（todo/write last-write-wins）。
 - `tests/controller.spec.ts`：端到端含**绑定瞬间同步**（拖入 running→立即进行中/补外源轮/
-  未读/进线程、空闲不虚构、重复换绑幂等、完成后落待审核）与**会话规则 queue/steer 分流**。
+  未读/进线程、空闲不虚构、重复添加同源幂等、完成后落待审核）与**会话规则 queue/steer 分流**。
 
 ## 版本管理流程（必守）
 

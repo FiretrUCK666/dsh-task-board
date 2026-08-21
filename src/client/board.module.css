@@ -2056,16 +2056,6 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 
-/* The quiet trailing note inside a row identity (e.g. "· 第 3 次" on an
-   execution row): small, tertiary — never competes with the identity. */
-.sessionRowMetaNote {
-  flex: none;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--dsh-tb-text-3);
-  white-space: nowrap;
-}
-
 /* Right-aligned action group of a session row (查看会话 / 处理 / 隐藏): the
    one place the row's actions sit; the shared ghost button inside matches
    every other session surface. */
@@ -2268,23 +2258,9 @@ textarea.input {
   font-variant-numeric: tabular-nums;
 }
 
-/* The read-only boundary note: a quiet framed line stating that this is a
-   live view and cannot drive the task — the explicit half of the
-   structural absence of a composer. */
-.sessionReadonly {
-  margin: 0;
-  padding: 8px 10px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-hover);
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-sm);
-}
-
 /* The comment thread's scroll region lives inside the shared rail grammar
-   (session context / head / header / thread / composer); the thread section
-   frame below is obsolete — the unified rail owns the composition. */
+   (session context / head / header / thread / composer) — the shared
+   SessionRail owns the composition; no panel hand-rolls it. */
 
 /* Board columns accept external session/workspace drops (drag-in from the
    sidebar): the target column breathes with the same attention light as the

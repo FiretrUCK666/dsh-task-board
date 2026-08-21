@@ -957,8 +957,8 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
           {/* 会话：任务的全部真实会话（板内执行 + 链接外部）按 sessionId 去重后
               显示在一个列表里——同一会话绝不出现两次，从执行页或链接面板进入
               同一会话看到的是同一条评论线程。行文法统一（SessionRow）。
-              本区同时是绑定落点：把侧栏的会话/工作区拖进来 = 绑定（或换绑）到
-              当前任务（与「拖到列上 = 新建绑定卡」互补）。 */}
+              本区同时是绑定落点：把侧栏的会话/工作区拖进来 = 绑定为新增来源
+              （多源可叠加、同源幂等，绝不刷新替代；与「拖到列上 = 新建绑定卡」互补）。 */}
           <Section title={`${t('detail.sessions')} ${sessions.length}`}>
             <div
               className={css.sessionDropZone}
