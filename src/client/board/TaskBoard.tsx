@@ -33,6 +33,7 @@ import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { PALETTE } from '../../core/colors.ts'
+import { taskBindsOf } from '../../core/tasks.ts'
 
 /** Case-insensitive keyword match over title/description. */
 function matchesFilter(task: TaskRecord, filter: string): boolean {
@@ -766,7 +767,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     <TaskCard
                       key={task.id}
                       task={task}
-                      boundTitleOf={candidate => candidate.bind !== undefined ? controller.boundSourceTitleOf(candidate.bind) : ''}
+                      boundTitleOf={candidate => {
+                        const binds = taskBindsOf(candidate)
+                        return binds.length > 0 ? controller.boundSourceTitleOf(binds[0]) : ''
+                      }}
                       workspaceTitleOf={workspaceTitleOf}
                       waiting={waiting}
                       pendingCount={pending.count}

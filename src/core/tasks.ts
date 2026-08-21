@@ -105,6 +105,28 @@ export interface ExecutionRecord {
 /** How a scheduled task is driven: cron = fire at fixed times; chain = rerun right after each run settles. */
 export type ScheduleMode = 'cron' | 'chain'
 
+/** A live binding to ONE native source — a session or a whole workspace
+ *  folder. A task may hold several (each drag-in ADDS one, never replaces). */
+export type TaskBind =
+  | { kind: 'session'; sessionId: string }
+  | { kind: 'workspace'; workspaceId: string }
+
+/** The task's live bindings: the multi-source list, with the legacy single
+ *  `bind` field projected as a one-element list (old data parses untouched).
+ *  EVERY reader goes through here — never the raw field. */
+export function taskBindsOf(task: TaskRecord): TaskBind[] {
+  const binds = task.binds
+  if (binds !== undefined && binds.length > 0) return binds
+  return task.bind !== undefined ? [task.bind] : []
+}
+
+/** Whether two bindings name the SAME source (same kind, same id). */
+export function sameBind(a: TaskBind, b: TaskBind): boolean {
+  if (a.kind === 'session' && b.kind === 'session') return a.sessionId === b.sessionId
+  if (a.kind === 'workspace' && b.kind === 'workspace') return a.workspaceId === b.workspaceId
+  return false
+}
+
 /** Brand an unknown string as a schedule mode. */
 export function isScheduleMode(value: unknown): value is ScheduleMode {
   return value === 'cron' || value === 'chain'
@@ -184,15 +206,18 @@ export interface TaskRecord {
    */
   refineSessionId?: string
   /**
-   * A live binding to a native source — either a single session or a whole
-   * workspace folder (dragged in from the sidebar). The bind decides the
+   * Live bindings to native sources — sessions and/or whole workspace folders
+   * (dragged in from the sidebar, one ADD at a time). The set decides the
    * source of the card's "链接会话" (linked sessions) section — a pure,
-   * live-synced view of the bound workspace's sessions / the bound session —
-   * and nothing else: the card keeps its own title, description, prompt,
-   * run config, scheduling, executions and refinement exactly as a plain
-   * task. Absent = a plain prompt-driven task (the pre-bind behavior).
+   * live-synced view of every bound source's sessions (same session yields
+   * one row) — and nothing else: the card keeps its own title, description,
+   * prompt, run config, scheduling, executions and refinement exactly as a
+   * plain task. Absent = a plain prompt-driven task (the pre-bind behavior).
    */
-  bind?: { kind: 'session'; sessionId: string } | { kind: 'workspace'; workspaceId: string }
+  binds?: TaskBind[]
+  /** Legacy single-source binding (pre multi-bind). Kept so old data parses;
+   *  every reader goes through {@link taskBindsOf} — never read directly. */
+  bind?: TaskBind
   /**
    * Display-only row hiding sets — rows the user chose not to see, neither
    * deleted nor archived (hiding keeps task numbering stable). `executions`

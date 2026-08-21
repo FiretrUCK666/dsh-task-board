@@ -1603,9 +1603,9 @@ describe('linked sessions & bind', () => {
       title: '会话一', description: '', prompt: 'run', status: 'todo',
     })
     expect(created).toBeDefined()
-    expect(created?.bind).toEqual({ kind: 'session', sessionId: 's-1' })
+    expect(created?.binds).toEqual([{ kind: 'session', sessionId: 's-1' }])
     expect(controller.getSnapshot().tasks[0].status).toBe('todo')
-    expect(store.load()[0].bind).toEqual({ kind: 'session', sessionId: 's-1' })
+    expect(store.load()[0].binds).toEqual([{ kind: 'session', sessionId: 's-1' }])
     // Rejects a blank title like a plain create.
     expect(controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
       title: '  ', description: '', prompt: 'run', status: 'todo',
@@ -1695,17 +1695,23 @@ describe('linked sessions & bind', () => {
     expect(store.load()[0].executions.map(run => run.id)).toEqual([runA.id, runB.id])
   })
 
-  it('bindTaskSource binds a source onto an existing task, replaces an old bind, persists', () => {
+  it('addTaskSource ADDS a source onto an existing task (same source idempotent), persists', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // A plain task gains a live binding.
-    expect(controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(true)
-    expect(store.load()[0].bind).toEqual({ kind: 'session', sessionId: 's-1' })
-    // Rebinding replaces the old source (drag a folder over the open task).
-    expect(controller.bindTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(true)
-    expect(store.load()[0].bind).toEqual({ kind: 'workspace', workspaceId: 'w-a' })
+    expect(controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(true)
+    expect(store.load()[0].binds).toEqual([{ kind: 'session', sessionId: 's-1' }])
+    // Dragging the SAME source again is an idempotent no-op — never a replace.
+    expect(controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(false)
+    expect(store.load()[0].binds).toHaveLength(1)
+    // A different source JOINS the multi-source set (drag-in = add).
+    expect(controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(true)
+    expect(store.load()[0].binds).toEqual([
+      { kind: 'session', sessionId: 's-1' },
+      { kind: 'workspace', workspaceId: 'w-a' },
+    ])
     // Unknown task: rejected.
-    expect(controller.bindTaskSource('nope', { kind: 'session', sessionId: 's-1' })).toBe(false)
+    expect(controller.addTaskSource('nope', { kind: 'session', sessionId: 's-1' })).toBe(false)
   })
 
   it('a folder bound onto an existing task syncs newly opened sessions live (regression)', () => {
@@ -1722,8 +1728,8 @@ describe('linked sessions & bind', () => {
       uuid,
     })
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.bindTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })
-    // Re-fetch: bindTaskSource replaces the task record in the ledger.
+    controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })
+    // The added source is persisted through the ledger.
     const bound = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(bound).map(row => row.sessionId)).toEqual(['s-1'])
     // A session opens inside the folder later: the board picks it up with no
@@ -1835,6 +1841,7 @@ describe('linked sessions & bind', () => {
     const after = store.load()[0]
     expect(after.hidden).toBeUndefined()
     expect(after.bind).toBeUndefined()
+    expect(after.binds).toBeUndefined()
   })
 
   it('removeTaskSession removes that session rounds while keeping every other session and the task', () => {
@@ -2152,7 +2159,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect(row.executions.length).toBe(0)
   })
 
-  it('rebinding to a running session syncs instantly; repeated rebind is idempotent', async () => {
+  it('binding to a running session syncs instantly; adding the same source is idempotent', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
     const sessions = new FakeSessions()
@@ -2164,13 +2171,13 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     await flush()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     sessions.setRunning('s-live', true)
-    controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
-    await flush() // the rebind sync is async (transcript read)
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    await flush() // the add-sync is async (transcript read)
     let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.status).toBe('running')
     expect(row.executions.filter(round => round.external === true).length).toBe(1)
-    // Rebinding the same live source must not double-record.
-    controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    // Adding the same live source again must not double-record.
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
     await flush()
     row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.executions.filter(round => round.external === true).length).toBe(1)

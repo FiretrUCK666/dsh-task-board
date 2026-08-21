@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { BoardController, PendingInteractionKind } from '../../core/controller.ts'
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron, nextRunAtMs } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, taskBindsOf, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
@@ -762,9 +762,10 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     if (bindDropLatch.current) event.preventDefault()
   }
 
-  /** A sidebar session/workspace dropped on the zone binds (or rebinds) this
-   *  task's live source; board card drags resolve to undefined and are left
-   *  untouched. Every drop ends by clearing the latch. */
+  /** A sidebar session/workspace dropped on the zone ADDS the live source to
+   *  this task (an already-bound source is an idempotent no-op — never a
+   *  replace); board card drags resolve to undefined and are left untouched.
+   *  Every drop ends by clearing the latch. */
   const onZoneDrop = (event: React.DragEvent): void => {
     bindDropLatch.current = false
     setBindDropActive(false)
@@ -779,7 +780,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     const bind = external.kind === 'session'
       ? { kind: 'session' as const, sessionId: external.id }
       : { kind: 'workspace' as const, workspaceId: external.id }
-    controller.bindTaskSource(current.id, bind)
+    controller.addTaskSource(current.id, bind)
     setBindDropFlash(true)
     if (bindDropTimer.current !== undefined) clearTimeout(bindDropTimer.current)
     bindDropTimer.current = setTimeout(() => { setBindDropFlash(false) }, 600)
@@ -972,7 +973,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                 <p className={css.detailText}>
                   {plainRunsOf(current).length > 0
                     ? t('detail.executionHiddenAll')
-                    : current.bind !== undefined
+                    : taskBindsOf(current).length > 0
                       ? t('detail.noExecutionLinked')
                       : t('detail.noExecution')}
                 </p>

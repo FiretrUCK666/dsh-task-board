@@ -15,7 +15,7 @@
 import { isValidCron } from './schedule.ts'
 import { normalizeSessionRules } from './automation.ts'
 import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
-import { isScheduleMode, isTaskStatus } from './tasks.ts'
+import { isScheduleMode, isTaskStatus, type TaskBind } from './tasks.ts'
 
 /** Persistence seam for the task ledger. */
 export interface TaskStore {
@@ -174,6 +174,28 @@ export function parseLedger(raw: string | null): TaskRecord[] {
       task.bind = { kind: 'workspace', workspaceId: (rawBind as { workspaceId: string }).workspaceId }
     } else {
       delete task.bind
+    }
+    // The multi-source bindings list (the current shape): validated entry by
+    // entry, malformed rows dropped, an absent/empty list cleared.
+    const rawBinds = (row as Record<string, unknown>).binds
+    if (Array.isArray(rawBinds)) {
+      const binds = rawBinds
+        .map((entry): TaskBind | undefined => {
+          if (typeof entry !== 'object' || entry === null) return undefined
+          const source = entry as Record<string, unknown>
+          if (source.kind === 'session' && typeof source.sessionId === 'string') {
+            return { kind: 'session' as const, sessionId: source.sessionId }
+          }
+          if (source.kind === 'workspace' && typeof source.workspaceId === 'string') {
+            return { kind: 'workspace' as const, workspaceId: source.workspaceId }
+          }
+          return undefined
+        })
+        .filter((entry): entry is TaskBind => entry !== undefined)
+      if (binds.length > 0) task.binds = binds
+      else delete (task as { binds?: unknown }).binds
+    } else {
+      delete (task as { binds?: unknown }).binds
     }
     const rawHidden = (row as Record<string, unknown>).hidden
     const cleanIdArray = (value: unknown): string[] | undefined => {

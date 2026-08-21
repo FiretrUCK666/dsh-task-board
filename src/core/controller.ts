@@ -25,8 +25,8 @@ import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
-  type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskRecord, type TaskStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, taskBindsOf, withRefineSession, withSchedule, withStatus,
+  type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
 /** Default auto-cruise concurrency when the user has not configured one. */
@@ -637,11 +637,11 @@ export class BoardController {
    *   from the source by the caller / drag layer).
    * @returns the created task, or undefined for a blank title.
    */
-  createBoundTask(bind: TaskRecord['bind'], input: NewTaskInput): TaskRecord | undefined {
+  createBoundTask(bind: TaskBind, input: NewTaskInput): TaskRecord | undefined {
     const title = input.title.trim()
     if (title === '' || bind === undefined) return undefined
     const task = createTask(input, this.now(), this.uuid(), this.nextOrder())
-    const boundTask: TaskRecord = { ...task, bind }
+    const boundTask: TaskRecord = { ...task, binds: [bind] }
     this.tasks = promoteToColumnTop([...this.tasks, boundTask], boundTask.id, boundTask.status, this.now())
     this.persistAndNotify()
     // A freshly bound source may be RUNNING right now (the user dragged in a
@@ -710,25 +710,35 @@ export class BoardController {
   /**
    * The live linked-session rows of a task (pure derivation over the native
    * snapshots; see linked-sessions.ts). Returns [] for unbound tasks or when
-   * the workspaces face is absent.
+   * the workspaces face is absent. EVERY bound source contributes — dragging
+   * more sources into a task ADDS to the set (same session, one row).
    */
   linkedOf(task: TaskRecord): LinkedSessionRow[] {
     const workspaces = this.deps.workspaces
-    const bind = task.bind
-    if (bind === undefined || workspaces === undefined) return []
+    const binds = taskBindsOf(task)
+    if (binds.length === 0 || workspaces === undefined) return []
     const snap = workspaces.list.getSnapshot()
     const byId = this.deps.sessions.list.getSnapshot().byId
-    return [...deriveLinkedSessions(bind, {
-      byId: byId as unknown as Readonly<Record<string, LinkedSessionSource>>,
-      archived: snap.archivedSessionIds,
-      workspaceSessionIds: workspaceId => snap.items.find(item => item.id === workspaceId)?.sessionIds,
-      hidden: task.hidden?.sessions ?? [],
-      // The bound workspace's title is the stable workspace label fallback
-      // for rows whose cwd is unknown (workspace binds only).
-      ...bind.kind === 'workspace'
-        ? { boundWorkspaceTitle: snap.items.find(item => item.id === bind.workspaceId)?.title }
-        : {},
-    })]
+    const rows: LinkedSessionRow[] = []
+    const seen = new Set<string>()
+    for (const bind of binds) {
+      for (const row of deriveLinkedSessions(bind, {
+        byId: byId as unknown as Readonly<Record<string, LinkedSessionSource>>,
+        archived: snap.archivedSessionIds,
+        workspaceSessionIds: workspaceId => snap.items.find(item => item.id === workspaceId)?.sessionIds,
+        hidden: task.hidden?.sessions ?? [],
+        // The bound workspace's title is the stable workspace label fallback
+        // for rows whose cwd is unknown (workspace binds only).
+        ...bind.kind === 'workspace'
+          ? { boundWorkspaceTitle: snap.items.find(item => item.id === bind.workspaceId)?.title }
+          : {},
+      })) {
+        if (seen.has(row.sessionId)) continue
+        seen.add(row.sessionId)
+        rows.push(row)
+      }
+    }
+    return rows
   }
 
   /** Hide one session of the task (run or linked) — the unified per-session
@@ -786,23 +796,26 @@ export class BoardController {
   }
 
   /**
-   * Bind a live source (a sidebar session or workspace folder) to an EXISTING
+   * ADD a live source (a sidebar session or workspace folder) to an EXISTING
    * task — the "drag a folder/session into the open task's 会话 area" path.
-   * Replaces any previous binding; persisted. The linked rows then derive
-   * live from the new source (new sessions in a bound folder sync in
-   * automatically via deriveLinkedSessions).
-   * @returns true when applied, false for an unknown task.
+   * NEVER replaces: an already-bound identical source is an idempotent no-op,
+   * anything else joins the multi-source set. Persisted; the linked rows then
+   * derive live from every bound source (new sessions in a bound folder sync
+   * in automatically via deriveLinkedSessions).
+   * @returns true when the binding was added, false for a no-op/unknown task.
    */
-  bindTaskSource(taskId: string, bind: NonNullable<TaskRecord['bind']>): boolean {
+  addTaskSource(taskId: string, bind: TaskBind): boolean {
     let changed = false
     this.tasks = this.tasks.map(task => {
       if (task.id !== taskId) return task
+      const current = taskBindsOf(task)
+      if (current.some(existing => sameBind(existing, bind))) return task
       changed = true
-      return { ...task, bind, updatedAt: this.now() }
+      return { ...task, binds: [...current, bind], updatedAt: this.now() }
     })
     if (changed) {
       this.persistAndNotify()
-      // A rebind replaces the live source: its state joins the card instantly.
+      // A newly added source's state joins the card instantly.
       void this.reconcileBoundTask(taskId)
     }
     return changed
@@ -836,11 +849,13 @@ export class BoardController {
           delete next.hidden
         }
       }
-      // A live session binding that points ONLY at this session cannot stay:
-      // its source no longer exists on the task.
-      if (next.bind?.kind === 'session' && next.bind.sessionId === sessionId) {
+      // A live binding that points ONLY at this session cannot stay: its
+      // source no longer exists on the task.
+      const binds = taskBindsOf(next)
+      if (binds.length === 1 && binds[0].kind === 'session' && binds[0].sessionId === sessionId) {
         const unbound: TaskRecord = { ...next }
         delete unbound.bind
+        delete unbound.binds
         return unbound
       }
       return next
@@ -874,7 +889,7 @@ export class BoardController {
   }
 
   /** Default title for a freshly dragged-in binding (from its native source). */
-  boundSourceTitleOf(bind: NonNullable<TaskRecord['bind']>): string {
+  boundSourceTitleOf(bind: TaskBind): string {
     const workspaces = this.deps.workspaces?.list.getSnapshot()
     return boundSourceTitle(bind, {
       sessions: this.deps.sessions.list.getSnapshot().byId,
@@ -2054,9 +2069,11 @@ export class BoardController {
       out.push({ sessionId, refine })
     }
     push(task.refineSessionId, true)
-    // An explicitly bound single session is a related session even without a
-    // workspaces face (instant-sync works whenever the native list knows it).
-    if (task.bind !== undefined && task.bind.kind === 'session') push(task.bind.sessionId, false)
+    // Every bound session source is a related session (instant-sync works
+    // whenever the native list knows them).
+    for (const bind of taskBindsOf(task)) {
+      if (bind.kind === 'session') push(bind.sessionId, false)
+    }
     for (const execution of task.executions) push(execution.sessionId, false)
     for (const linked of this.linkedOf(task)) push(linked.sessionId, false)
     return out
