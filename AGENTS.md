@@ -253,11 +253,7 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 - **注意力动效（唯一语法）**：`--dsh-tb-attention`（warn）+ `--dsh-tb-breath`（2.6s
   ease-in-out）。卡片外层呼吸环 `dshTbBreathRing`，执行行内层柔晕 `dshTbBreathHalo`
   （无边框、无平染）；`prefers-reduced-motion` 全部静态降级。
-- **拖拽落点动效（板内卡片 + 侧栏拖入）**：目标列 hover = 业务色描边；侧栏会话/工作区
-  拖入列 = 呼吸环（同一 `--dsh-tb-breath` 语法）；成功落点 = 加速 180ms 落位闪烁
-  `dshTbDropConfirm`；拒绝落点 = 180ms 危险色闪烁 `dshTbRejectFlash`。闪烁是即逝反馈
-  （自带定时器清除，不经 `clearDrag`——window 兜底的 drop 监听在列 handler 之后触发，
-  会先擦掉还没播完的闪烁），全在 reduced-motion 下静态降级。
+- **拖拽落点动效（板内卡片 + 侧栏拖入）**：目标列 hover = 业务色描边（仅非插入目标；可插入目标只显示插入条）；侧栏会话/工作区拖入列 = 呼吸环（同一 `--dsh-tb-breath` 语法）；**成功落点 = 卡片 FLIP 落位**（`use-flip.ts` 按 taskId 前后 rect 对比，跨列/重排从旧位置动画到新位置，240ms 缓出——落点确认是卡片自身运动，不再是列边闪烁）；拒绝落点 = 180ms 危险色闪烁 `dshTbRejectFlash`。**插入条精确落位**：`indicatorTopOf`（view→内容坐标系 + scrollTop + 边界钳制）保证滚动中指示条与真实落点重合。全部在 reduced-motion 下静态降级。
 - **防回归守卫**：`noUnusedLocals`/`noUnusedParameters` 开启（死 import/死变量=编译错
   误）；废弃 CSS 类人工删除（`.name` 定义与 `css.name` 引用对照）。
 - **卡片永不穿模（板上任何内容的硬契约）**：紧凑卡片的任意内容（现在或未来加入的
@@ -278,15 +274,16 @@ MIT 许可，全新独立项目（零历史仓库引用）。
 
 ### 核心层（`src/core/` 纯逻辑 + 关键职责；细节以代码为准）
 
-- `tasks.ts`（任务状态机/plainRunsOf/COLUMNS）、`schedule.ts`（cron）、`scheduler.ts`（每分钟 tick + cruiseTick）、`cruise.ts`（巡航窗口）、`session-activity.ts`（原生侧对账）、`tags.ts`（标签目录+卡片配色）、`store.ts`（ledger 持久化）、`execution.ts`（投递与结算）、`controller.ts`（台账+统一并发调度器）。
-- **巡航（v3）**：`CruiseState{ enabled, limit, schedule, manual? }`，`CruiseWindow{ startAt?; endAt? }` 至少一个——只填开始=到点开保持、只填结束=立即开到点关、都填=区间内外开关。`enabled` 是真相；手动开关只改 enabled+manual、绝不写 schedule；窗口边界（到点开/关）发生后 **manual 被清空（预约接管）**，故手动×窗口任意组合确定。`endAt<=startAt` 视为跨午夜 +24h（行内「次日」）；过期自动清理。弹层不预填、占位提示、可选中分（datetime-local）。
+- `tasks.ts`（任务状态机/plainRunsOf/COLUMNS）、`schedule.ts`（cron）、`scheduler.ts`（每分钟 tick + cruiseTick）、`cruise.ts`（巡航窗口）、`session-activity.ts`（原生侧对账）、`colors.ts`（卡片色板 PALETTE + withTaskColor，标签已删仅留颜色）、`store.ts`（ledger 持久化）、`execution.ts`（投递与结算）、`controller.ts`（台账+统一并发调度器）、`question-rpc.ts`（原生问答 wire 模型）、`automation.ts`（会话规则 + automationRowsOf 单一投影）。
+- **巡航（v3）**：`CruiseState{ enabled, limit, schedule, manual? }`，`CruiseWindow{ startAt?; endAt? }` 至少一个——只填开始=到点开保持、只填结束=立即开到点关、都填=区间内外开关。`enabled` 是真相；手动开关只改 enabled+manual、绝不写 schedule；窗口边界（到点开/关）发生后 **manual 被清空（预约接管）**，故手动×窗口任意组合确定。`endAt<=startAt` 视为跨午夜 +24h（行内「次日」）；过期自动清理。**唯一写入点校验**：`duplicateWindowOf` 拒绝同归一化开始+结束的重复窗口（含跨午夜重入），错误只内联显示。弹层不预填、占位提示、可选中分（datetime-local）。
 - **统一并发调度器（唯一启动决策点）**：手动/定时/接续/巡航/评论共用同一并发预算；优先级 排队→评论 FIFO→巡航；`dispatch` 幂等扫描、重入合并。评论为任务 FIFO（`injectedAt` 三态，未注入可取消）；斜杠命令统一走注册表（`deliverCommandLine`，真实回合观察至结束、纯配置窗口即结算、未知回退文本）。
 - **会话统一/评论单轨**：相同会话 = 同一条评论线程（`sessionCommentsOf(task, sessionId)`）；直发/驱动/评论已并轨为**一种留言**（SessionDetail 无模式切换；完成态拒发、失败留草稿、隐身禁用保留）。**发送模式**：同一条留言两态——排队（默认，经调度器注入/巡航门控/FIFO 位次）与插话（`steerComment`：立即发往该会话、斜杠走注册表、落线 settled 消息轮、不经队列/预算/巡航）——执行评论页与会话面板共用 `SendModeToggle`。**图片附件**：评论区/会话面板共用 `AttachmentStrip`（`attach.ts` 编码 png/jpeg/webp/gif 白名单+20MB 上限）→ host 附件桥（`POST /api/dsh-task-board/attachments` 经 `attachments.saveImages` 生成 ref）→ `steerCommentWithImages` 拼 `{type:'image',attachment}` prompt part（原生 composer 同形状）；图即发不排队。
-- **原生交互卡（评论区即答）**：agent 挂起等人（计划确认/提问）时，评论区 composer 上方实时弹出 `InteractionCard`——`interaction.ts` 从 transcript 探测未结算的 `ask_user_question` `tool/call`（配 `tool/result` 判活跃，解析 questions/plan-review intent/options），`useSessionContext` 3s 轮询同源更新；计划卡可确认/拒绝+写修改意见，问题卡可点选/自定义/上一题下一题/提交，答案一律经 `steerComment` 直发（与原身在聊天框打字等价的唯一通道，不接管原身 provider）。**to-do/goal/子代理**：同 hook 读 `todo/write` 事件（latest-write-wins）与 `/api/dsh-task-board/session-state` 桥，`SessionContextBlock` 确定性全有/全无展示（有则齐全、无则隐藏，绝不半显示）。
+- **原生交互卡（评论区即答，mux 通道）**：agent 挂起等人（计划确认/提问）时，评论区 composer 上方实时弹出 `InteractionCard`。**回答只走原生 mux 通道**：`question-tracker` 开一条 `events.mux` 流（宿主重放所有 pending 帧），`question/rpc` 纯模型按 rpcId 归并（frames 携带 rpcId + 规范 questions；`question/resolved` 让卡片随真实生命周期消失）；提交经 `connection.api.respond({rpcId, result:{ok:true, value:{sessionId, answer:{answers}}}})`——**普通留言永远不解决挂起的 ask_user_question**。问题卡：点选/自定义/上一题/下一题/**跳过本题**（空 selected）/**放弃整组**（cancelled）；计划卡：确认=选 approve 标签、拒绝=选非 approve 标签、带意见的拒绝=纯 custom 修订反馈（宿主禁单选选项与 custom 并存）、**去聊天里说**=cancel。**to-do/goal/子代理**：`interaction.ts`（仅 todo 读取，latest-write-wins）与 `/api/dsh-task-board/session-state` 桥，`SessionContextBlock` 确定性全有/全无展示（位于评论线程上方）。
 - **原生侧同步（两端一致）**：原生会话界面直接发言 → 看板观察 running 翻转补记**外源轮**（进线程、不排队/不注入/不编序号，open 显示 running）；主动绑定（拖入 run，`createBoundTask`/`bindTaskSource` 即 `reconcileBoundTask`）——会话正在跑立即置「进行中」+ 未读呼吸环，跑完落「待审核」，空闲不虚构、重复绑定幂等；页面加载被动观察不补历史（错过即跳过）。
-- **列滚动/排序/动效**：卡片 `.card { flex: none }` 永不收缩——列满后 `.cards` 区内部滚动（无滚动条：`scrollbar-width:none`+webkit 隐藏+smooth，reduced-motion 降级自动），杜绝"卡片越挤越短"。**最新状态置顶**：`promoteToColumnTop`（新建/绑定/拖入同步/评论注入/结算落列都置顶目标列，手拖 `order` 仍可重排）；跨列/状态翻转动效走既有 `dshTbDropConfirm` 与呼吸环。
-- **自动化**：任务级（定时 cron/完成后接续、即改即生效、拖动即暂停/停链、复制为模板带上）；**会话级自动化已落地**（`automation.ts` + `TaskRecord.rules` + controller `tickSessionRules`：SessionRule=目标会话+cron+指令+queue/steer，分钟心跳到点发指令（`/` 斜杠走注册表、文本走会话队列，落该会话线程 settled 消息轮），会话消失保位、无 cron 下一匹配自动停用；经 scheduler 的 `sessionRulesTick` hook）。`ruleReadiness` 三态 disabled/paused/active。**复制为模板**：`copyTask` 经由 createTask 快照自动带全配置——title/desc/runConfig/schedule（runCount 归零、cron 重算）**+ tags + color + 会话规则（规则换新 id）**；未来任何任务配置字段只加进该快照即可自动进模板，不逐项抄。
-- **标签与配色（操作只在板头顶部整理栏）**：中央 `TagCatalog{id,name,color}`（`dsh.taskBoard.tags.v1`），卡片只存 tag id（改名/改色一处同步）；卡片整卡染色（`--card-tint` 数据色 color-mix 9%），**无左竖杠**、无详情页编辑（顶部「整理」模式多选批量+筛选 AND+「管理标签」）。
+- **列滚动/排序/动效**：卡片 `.card { flex: none }` 永不收缩——列满后 `.cards` 区内部滚动（无滚动条：`scrollbar-width:none`+webkit 隐藏+smooth，底部留白 22px 防贴底，reduced-motion 降级自动），杜绝"卡片越挤越短"。**最新状态置顶**：`promoteToColumnTop`（新建/绑定/拖入同步/评论注入/结算落列都置顶目标列，手拖 `order` 仍可重排）；跨列/状态翻转动效 = 卡片自身 FLIP 落位（见设计系统层的拖拽动效），不再有列边闪烁。
+- **自动化**：任务级（定时 cron/完成后接续、即改即生效、拖动即暂停/停链、复制为模板带上）；**会话级自动化已落地**（`automation.ts` + `TaskRecord.rules` + controller `tickSessionRules`：SessionRule=目标会话+cron+指令+queue/steer，分钟心跳到点发指令——queue=入评论队列由调度器按序注入（`submitSessionComment`）、steer=即发落线程 settled 消息轮，`/` 斜杠走注册表；会话消失保位、无 cron 下一匹配自动停用；经 scheduler 的 `sessionRulesTick` hook）。`ruleReadiness` 三态 disabled/paused/active；`automationRowsOf(task)` 是把会话规则与任务级 schedule 投影成同一行形状的唯一读侧。**复制为模板**：`copyTask` 经由 createTask 快照自动带全配置——title/desc/runConfig/schedule（runCount 归零、cron 重算）**+ color + 会话规则（规则换新 id）**；未来任何任务配置字段只加进该快照即可自动进模板，不逐项抄。
+- **卡片颜色与多选批操作（标签已删，仅颜色）**：卡片配色 = `task.color` 数据色整卡染色（`--card-tint` color-mix 9%，`colors.ts` 的 `PALETTE`/`withTaskColor`），**无左竖杠**；卡片悬停快捷色条 + 板顶整理栏色板（`ColorSwatches`，含自定义色）。**多选**：Ctrl/Cmd+点击任意时刻切换选中（整理模式下直接点），板头横栏随选中出现——全选/清选/批量换色/**一键删除（确认弹窗）**/完成退出。旧标签数据（`dsh.taskBoard.tags.v1` 与 `tags` 字段）加载时静默剥离，不再读取。
+- **卡片统一投影（两类任务同一卡片）**：`card-face.ts` 的 `cardFaceOf(task, now)` 是唯一显示投影——开始/结束/耗时（最新 plain run）、评论数+最新（文本或状态词兜底）、下一到期/运行已用时长；绑定任务（拖入的工作区/会话）与新建执行的任务渲染完全一致（绑定会话卡显示会话标题而非「默认工作区」），不可漂移。
 - **Markdown 预览**：`markdown-parser.ts` 非全局正则（**勿改回 `g`**，此前 OOM 根因）+ `Markdown.tsx`；评论/对话文本共用，正文 `overflow-wrap: break-word`（卡片标题/描述为不可断令牌用 `anywhere`）。
 - **会话状态派生/未读**：`session-display.ts`（waiting>running>settled；`viewedAt` 基线）；共享 transcript tail（3s 水位轮询/贴底/上翻暂停）；统一会话行 `SessionRow`（执行/链接单骨架，正在合并为一种执行轨）。
 - **需求完善（refine）**：backlog 专属、会话复用；即时注入；确认后写 prompt；结算不动列不触发 chain。
@@ -350,11 +347,17 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
 - `tests/markdown.spec.ts`：Markdown 解析器（标题/粗斜体/行内与围栏代码/列表/引用/链接/
   分隔线/见原文转义/无 HTML 与危险协议注入）。
 - `tests/session-activity.spec.ts`：原生侧活动对账纯逻辑（基线不补记、翻转检测、open round
-  与直发抑制、refine 标记、grace 常量）。
-- `tests/tags.spec.ts`：标签目录 CRUD/归一化/AND 筛选/卡片配色/store 可选字段归一化；
-  controller.spec 含标签目录端到端（快照含 tags、删除自动摘除全部卡片）与
-  **绑定瞬间同步**（拖入 running→立即进行中/补外源轮/未读/进线程、空闲不虚构、重复换绑幂等、
-  完成后落待审核）。
+  与直发抑制、refine 标记、grace 常量）与 `latestUserMessageText`（外源轮文本捕获）。
+- `tests/question-rpc.spec.ts`：问答 wire 模型（帧归一化/按 rpcId 幂等归并/resolved 优先/
+  按会话投影/答案批次全量按序/计划三态含修订反馈）。
+- `tests/automation.spec.ts`：自动化投影（automationRowsOf 一行形状）与规则归一化。
+- `tests/card-face.spec.ts`：卡片统一投影（运行窗口/评论计数与最新/剩余槽/绑定任务兜底）。
+- `tests/drop-position.spec.ts`：插入间隙算法 + `indicatorTopOf` 滚动内容坐标与边界钳制。
+- `tests/comment-thread.spec.ts`：评论归属与排队位次、状态→色/文案映射、
+  `latestCommentView`（外源轮带文本/空文本回退状态词）。
+- `tests/interaction.spec.ts`：会话 todo 读取（todo/write last-write-wins）。
+- `tests/controller.spec.ts`：端到端含**绑定瞬间同步**（拖入 running→立即进行中/补外源轮/
+  未读/进线程、空闲不虚构、重复换绑幂等、完成后落待审核）与**会话规则 queue/steer 分流**。
 
 ## 版本管理流程（必守）
 
