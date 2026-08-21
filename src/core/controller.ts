@@ -32,6 +32,11 @@ import {
 /** Default auto-cruise concurrency when the user has not configured one. */
 export const DEFAULT_CRUISE_LIMIT = 5
 
+/** The concurrency budget's real ceiling — the same cap the board's number
+ *  input advertises (max=20). The controller clamps, so the advertised bound
+ *  is enforced at the single write point, never just decorated in the UI. */
+export const MAX_CRUISE_LIMIT = 20
+
 /** The native session-list "waiting for the user" signal (sidebar amber dot). */
 export type PendingInteractionKind = 'approval' | 'plan-review' | 'question'
 
@@ -1546,8 +1551,9 @@ export class BoardController {
     let changed = false
     this.tasks = this.tasks.map(task => {
       if (task.id !== taskId || task.rules === undefined) return task
-      const rules = task.rules.map(rule => rule.id === ruleId ? { ...rule, enabled } : rule)
-      if (rules.some((rule, index) => rule !== task.rules![index])) changed = true
+      const current = task.rules
+      const rules = current.map(rule => rule.id === ruleId ? { ...rule, enabled } : rule)
+      if (rules.some((rule, index) => rule !== current[index])) changed = true
       return withSessionRules(task, rules)
     })
     if (changed) this.persistAndNotify()
@@ -1874,9 +1880,11 @@ export class BoardController {
     this.notify()
   }
 
-  /** Change the concurrency budget (persisted; the dispatcher re-pumps). */
+  /** Change the concurrency budget (persisted; the dispatcher re-pumps). The
+   *  one clamp: the floor is 1, the ceiling MAX_CRUISE_LIMIT — the same bound
+   *  the input advertises, enforced at the write point. */
   setCruiseLimit(limit: number): void {
-    const clamped = Math.max(1, Math.floor(limit))
+    const clamped = Math.min(MAX_CRUISE_LIMIT, Math.max(1, Math.floor(limit)))
     if (this.cruiseState.limit === clamped) return
     this.cruiseState = { ...this.cruiseState, limit: clamped }
     this.deps.cruiseStorage?.write(this.cruiseState)

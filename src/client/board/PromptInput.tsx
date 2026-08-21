@@ -18,7 +18,7 @@ import type { BoardController, SlashCandidate } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import {
-  commandCompletion, commandTokenAt, mentionTokenAt, filterMentionCandidates, filterSlashCandidates,
+  commandTokenAt, insertCommand, mentionTokenAt, filterMentionCandidates, filterSlashCandidates,
   mentionCompletion, type CommandToken, type MentionCandidate,
 } from './slash-token.ts'
 import { shouldFlipMenuUp } from './menu-direction.ts'
@@ -154,13 +154,17 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, me
       setMenu(undefined)
       return
     }
-    const insertion = menu.kind === 'mention'
-      ? mentionCompletion((row as MentionCandidate).title)
-      : commandCompletion(row as SlashCandidate)
-    const result = {
-      text: `${valueRef.current.slice(0, menu.token.start)}${insertion}${valueRef.current.slice(menu.token.end)}`,
-      caret: menu.token.start + insertion.length,
-    }
+    // Slash completion goes through the ONE insertion helper (insertCommand);
+    // a mention is a plain prefix replacement (no candidate grammar).
+    const result = menu.kind === 'mention'
+      ? (() => {
+        const insertion = mentionCompletion((row as MentionCandidate).title)
+        return {
+          text: `${valueRef.current.slice(0, menu.token.start)}${insertion}${valueRef.current.slice(menu.token.end)}`,
+          caret: menu.token.start + insertion.length,
+        }
+      })()
+      : insertCommand(valueRef.current, menu.token, row as SlashCandidate)
     setMenu(undefined)
     valueRef.current = result.text
     caretRef.current = result.caret

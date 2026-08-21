@@ -50,7 +50,7 @@ export function flipCandidatesOf(
 
 /** Collect the structural snapshot of a board region (columns → cards in
  *  DOM order) plus each card's rect at the same instant. */
-export function snapshotRegion(container: HTMLElement): {
+function snapshotRegion(container: HTMLElement): {
   structures: Map<string, CardStructure>
   rects: Map<string, DOMRect>
 } {

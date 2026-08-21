@@ -68,7 +68,7 @@ export function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: 
 }
 
 /** The transcript-tail state + controls a consumer binds to its scroll region. */
-export interface TranscriptTailState {
+interface TranscriptTailState {
   /** Folded transcript lines; undefined while the first load is in flight. */
   lines: readonly TranscriptLine[] | undefined
   /** Whether the last load failed (the session/reader is unavailable). */
@@ -103,7 +103,7 @@ export function useTranscriptTail(
   const [lines, setLines] = useState<readonly TranscriptLine[] | undefined>(undefined)
   const [error, setError] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
-  const scrollRef = useRef<HTMLDivElement>(null!)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
   const watermarkRef = useRef<number | undefined>(undefined)
   // The latest `atBottom`, mirrored for the resize follower (the observer
   // callback reads it outside renders).

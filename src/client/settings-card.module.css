@@ -7,11 +7,6 @@
   transition: border-color 0.16s, background 0.16s;
 }
 
-.cardOpen {
-  background: var(--dsw-alias-bg-layer-2);
-  border-color: var(--dsw-alias-label-dimmed);
-}
-
 .header {
   display: flex;
   align-items: center;
@@ -206,15 +201,6 @@
   background: var(--dsw-specific-input-major);
 }
 
-.inputInvalid {
-  padding: 6px 8px;
-  border: 1px solid var(--dsw-alias-state-error-primary);
-  border-radius: 6px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--dsw-alias-label-primary);
-}
-
 .input:disabled,
 .select:disabled {
   opacity: 0.6;
@@ -224,12 +210,6 @@
   margin: 0;
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
-}
-
-.invalid {
-  margin: 0;
-  font-size: 12px;
-  color: var(--dsw-alias-state-error-primary);
 }
 
 /* --- polish: header keyboard focus / press, unified motion, reduced-motion --- */

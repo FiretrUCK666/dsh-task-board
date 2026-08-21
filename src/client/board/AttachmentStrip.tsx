@@ -76,8 +76,3 @@ export function AttachmentStrip({ images, onChange }: {
     </div>
   )
 }
-
-/** True when at least one image is attached (the composer may enable send). */
-export function hasAttachments(images: readonly DraftImage[]): boolean {
-  return images.length > 0
-}

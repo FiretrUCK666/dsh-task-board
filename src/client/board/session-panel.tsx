@@ -32,16 +32,11 @@ import { admitDraftImages, type DraftImage, type HostImageRefView } from './atta
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Notice, SendModeToggle } from './ui.tsx'
+import { workspaceLabelOf } from '../../core/linked-sessions.ts'
+import { waitingKeyOf } from './session-chip.ts'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
-
-/** The session's real workspace root → short display label (last path
- *  segment). Shared by every session panel. */
-function workspaceLabelOf(cwd: string): string {
-  const segment = cwd.split(/[\\/]+/).filter(Boolean).pop()
-  return segment !== undefined && segment !== '' ? segment : cwd
-}
 
 /**
  * One memoized transcript row. Props are the primitive render facts (never
@@ -127,7 +122,7 @@ export function SessionWaitingNotice({ waiting }: { waiting: PendingInteractionK
   if (waiting === undefined) return null
   return (
     <Notice chip={t('review.waiting')}>
-      {t('review.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })}
+      {t('review.waitingTitle', { kind: t(waitingKeyOf(waiting)) })}
     </Notice>
   )
 }
@@ -206,7 +201,7 @@ export function ContextMeterPanel({ projections, usage }: {
           {segments.map(segment => (
             <span
               key={segment.key}
-              className={`${css.reviewMeterSegment}${segment.className !== undefined ? ` ${css[segment.className as keyof typeof css]}` : ''}`}
+              className={`${css.reviewMeterSegment}${segment.className !== undefined ? ` ${css[segment.className]}` : ''}`}
               style={{ width: `${segment.width}%` }}
             />
           ))}

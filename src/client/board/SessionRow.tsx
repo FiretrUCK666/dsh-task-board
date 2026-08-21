@@ -14,26 +14,16 @@
 import type { ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Chip, type ChipKind } from './Chip.tsx'
+import { Chip } from './Chip.tsx'
+import type { SessionChipShape, SessionRowState } from './session-chip.ts'
 import { AttentionDot, Button } from './ui.tsx'
-
-/** The row's status chip data (the chip rendering grammar lives here once). */
-export type SessionRowChip = {
-  kind: ChipKind
-  label: string
-  /** Show the activity spinner (running / waiting). */
-  spinner?: boolean
-}
-
-/** The row's live session state (execution kind): the data-state hook. */
-export type SessionRowState = 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
 
 /** The unified session row (one grammar for every session of a task). */
 export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, onDelete, deleteTitle }: {
   /** Live session state (execution kind): rendered as data-state/data-waiting. */
   state?: SessionRowState
   /** Status chip on the top line (undefined = no chip). */
-  chip: SessionRowChip | undefined
+  chip: SessionChipShape | undefined
   /** Top-line identity slot (session title + run note / workspace label). */
   leading: ReactNode
   /** Meta line below the top line (times / last-updated). */

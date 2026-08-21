@@ -106,9 +106,13 @@ export function RefineSection({ controller, task }: {
                 <Chip kind="warn">
                   {waiting !== undefined ? t('review.waiting') : t('detail.result.running')}
                 </Chip>
+              ) : lastRound === undefined ? (
+                /* A bound refine session with no settled round yet: its own
+                   neutral state — never a guessed "成功". */
+                <Chip kind="muted">{t('detail.refine.noResult')}</Chip>
               ) : (
-                <Chip kind={lastRound?.result === 'failed' ? 'error' : 'success'}>
-                  {lastRound?.result === 'failed' ? t('detail.result.failed') : t('detail.result.succeeded')}
+                <Chip kind={lastRound.result === 'failed' ? 'error' : 'success'}>
+                  {lastRound.result === 'failed' ? t('detail.result.failed') : t('detail.result.succeeded')}
                 </Chip>
               )}
               <span className={css.refineRounds}>{t('detail.refine.rounds', { n: String(rounds.length) })}</span>

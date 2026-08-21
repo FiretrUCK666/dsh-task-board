@@ -5,10 +5,10 @@
  * execution's session transcript.
  */
 import { useEffect, useRef, useState } from 'react'
-import type { BoardController, PendingInteractionKind } from '../../core/controller.ts'
+import type { BoardController } from '../../core/controller.ts'
 import { LocalStoragePresetStore } from '../../core/presets.ts'
 import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, taskBindsOf, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, chainUnlimited, hasOpenRun, latestExecutionOf, plainRunsOf, ruleReadiness, taskBindsOf, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
@@ -20,8 +20,9 @@ import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
 import { mergedPresets, PresetManager } from './PresetManager.tsx'
-import { CronField, SessionRulesSection } from './automation-ui.tsx'
+import { CronField, SessionRulesSection, scheduleSummary } from './automation-ui.tsx'
 import { cronHumanLabel } from './cron-label.ts'
+import { sessionStateChip, waitingKeyOf } from './session-chip.ts'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
@@ -48,43 +49,35 @@ function pausedLabelOf(status: 'backlog' | 'review' | 'done'): TaskBoardKey {
   return 'detail.schedule.paused.backlog'
 }
 
-/** Map session display state to chip kind. */
-function stateToChipKind(state: 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'): ChipKind {
-  switch (state) {
-    case 'running':
-    case 'waiting':
-      return 'warn'
-    case 'succeeded':
-      return 'success'
-    case 'failed':
-      return 'error'
-    case 'cancelled':
-      return 'muted'
-  }
-}
-
-/** Session state → locale key. */
-function sessionStateKey(state: 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled', waitingKind: PendingInteractionKind | undefined): TaskBoardKey {
-  if (state === 'waiting' && waitingKind !== undefined) {
-    return `waiting.${waitingKind}` as TaskBoardKey
-  }
-  switch (state) {
-    case 'running':
-      return 'detail.result.running'
-    case 'succeeded':
-      return 'detail.result.succeeded'
-    case 'failed':
-      return 'detail.result.failed'
-    case 'cancelled':
-      return 'detail.result.cancelled'
-    default:
-      return 'detail.result.running'
-  }
+/** The one comment summary of a session row (count + newest body + time),
+ *  shared verbatim by run rows and linked rows: a body-less round leaves the
+ *  slot to the row's own state chip + time — never a state word dressed up as
+ *  content. */
+function CommentSummary({ task, sessionId, cruiseOn }: {
+  task: TaskRecord
+  sessionId: string | undefined
+  cruiseOn: boolean
+}) {
+  const comments = sessionId !== undefined ? sessionCommentsOf(task, sessionId, cruiseOn) : []
+  const latest = sessionId !== undefined ? latestCommentView(task, sessionId, cruiseOn) : undefined
+  if (latest === undefined) return null
+  return (
+    <span className={css.executionComments} title={latest.text}>
+      <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
+      {latest.text !== '' && (
+        <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latest.text })}</span>
+      )}
+      <span className={css.executionCommentsTime}>{latest.at !== undefined ? formatTime(latest.at) : ''}</span>
+    </span>
+  )
 }
 
 /** One session row of a task — THE single row grammar for every session
- *  (run rows open their review page + show run index/comments/dynamics/error;
- *  external workspace sessions show workspace label + last-updated). */
+ *  (run rows open their review page + show comments/dynamics/error; linked
+ *  rows show the workspace label + idle chip). The state chip comes from the
+ *  ONE derivation (sessionStateChip) — only the settled-label pair differs
+ *  between a run row (the execution result) and a linked row (the bound
+ *  session's activity). */
 function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, onOpenSessionPanel }: {
   row: import('../../core/session-list.ts').TaskSessionRow
   task: TaskRecord
@@ -103,16 +96,11 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
     const session = sessionDisplay(task, execution, row.display.waitingKind)
     const times = sessionTimes(task, execution)
     const isActive = session.state === 'running' || session.state === 'waiting'
-    const comments = sessionId !== undefined ? sessionCommentsOf(task, sessionId, cruiseOn) : []
-    const latest = sessionId !== undefined ? latestCommentView(task, sessionId, cruiseOn) : undefined
     return (
       <SessionRow
         state={session.state}
-        chip={{
-          kind: stateToChipKind(session.state),
-          label: t(sessionStateKey(session.state, session.waitingKind)),
-          spinner: isActive,
-        }}
+        /* THE chip derivation — the run row names the execution result. */
+        chip={sessionStateChip(session.state, session.waitingKind, 'detail.result.succeeded', 'detail.result.cancelled')}
         leading={
           <span className={css.sessionRowLeading} title={row.title}>
             {/* The SAME leading grammar as a linked row: a kind icon (play =
@@ -135,23 +123,12 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
         }
         footer={
           <>
-            {latest !== undefined && (
-              <span className={css.executionComments} title={latest.text}>
-                <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
-                {/* The newest body when there IS one; a body-less round leaves
-                    the slot to the row's state chip + time — never a state
-                    word dressed up as content. */}
-                {latest.text !== '' && (
-                  <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latest.text })}</span>
-                )}
-                <span className={css.executionCommentsTime}>{latest.at !== undefined ? formatTime(latest.at) : ''}</span>
-              </span>
-            )}
+            <CommentSummary task={task} sessionId={sessionId} cruiseOn={cruiseOn} />
             {isActive && (
               <span className={css.executionDynamics}>
                 <span className={css.executionDynamicsLabel}>
-                  {session.state === 'waiting'
-                    ? t('detail.handleHint', { kind: t(`waiting.${session.waitingKind}` as 'waiting.approval') })
+                  {session.waitingKind !== undefined
+                    ? t('detail.handleHint', { kind: t(waitingKeyOf(session.waitingKind)) })
                     : t('detail.sessionActive')}
                 </span>
               </span>
@@ -172,23 +149,14 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
       />
     )
   }
-  const waiting = row.display.waitingKind
   // ONE chip grammar with the run rows: every linked row carries a state chip
   // (waiting / running / completed / idle) — a row never reads as "no state"
   // next to a run row that always has one.
-  const chip = waiting !== undefined
-    ? { kind: 'warn' as const, label: t(`waiting.${waiting}` as 'waiting.approval'), spinner: true }
-    : row.display.state === 'running'
-      ? { kind: 'warn' as const, label: t('detail.result.running'), spinner: true }
-      : row.display.state === 'succeeded'
-        ? { kind: 'success' as const, label: t('detail.linkedDone') }
-        : { kind: 'muted' as const, label: t('detail.linkedIdle') }
+  const chip = sessionStateChip(row.display.state, row.display.waitingKind, 'detail.linkedDone', 'detail.linkedIdle')
   // The SAME grammar as a run row: the session's activity window (its rounds
   // on this task — board runs and externally-observed turns alike) plus its
   // comment thread (count + newest body; the state chip is the row's own).
   const window = sessionWindowOf(task, sessionId)
-  const comments = sessionId !== undefined ? sessionCommentsOf(task, sessionId, cruiseOn) : []
-  const latest = sessionId !== undefined ? latestCommentView(task, sessionId, cruiseOn) : undefined
   return (
     <SessionRow
       chip={chip}
@@ -218,18 +186,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
         )
       }
       footer={
-        latest !== undefined && (
-          <span className={css.executionComments} title={latest.text}>
-            <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
-            {/* The newest body when there IS one; a body-less round leaves
-                the slot to the row's state chip + time — never a state word
-                dressed up as content. */}
-            {latest.text !== '' && (
-              <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latest.text })}</span>
-            )}
-            <span className={css.executionCommentsTime}>{latest.at !== undefined ? formatTime(latest.at) : ''}</span>
-          </span>
-        )
+        <CommentSummary task={task} sessionId={sessionId} cruiseOn={cruiseOn} />
       }
       sessionId={sessionId}
       onActivate={() => { onOpenSessionPanel(sessionId) }}
@@ -326,7 +283,9 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
       return
     }
     setError(undefined)
-    if (next && mode === 'chain' && (maxRuns.trim() === '' || Number(maxRuns) < 1)) {
+    // The ONE unlimited-chain guard (shared with the overview's switch): an
+    // endless loop of real agent sessions confirms once, never silently.
+    if (next && chainUnlimited(mode, maxRuns.trim() === '' ? undefined : Number(maxRuns))) {
       setConfirm('unlimited-enable')
       return
     }
@@ -357,7 +316,7 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
    *  card's column is untouched). Unlimited chains confirm once (endless
    *  loop of real agent sessions is a big side effect). */
   const stopChain = (): void => {
-    if (maxRuns.trim() === '' || Number(maxRuns) < 1) {
+    if (chainUnlimited(mode, maxRuns.trim() === '' ? undefined : Number(maxRuns))) {
       setConfirm('stop-chain')
       return
     }
@@ -406,7 +365,7 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
   const stoppedReason = readiness.kind === 'paused'
     ? {
         extraFailed: readiness.status === 'review'
-          && task.executions[task.executions.length - 1]?.result === 'failed',
+          && latestExecutionOf(task)?.result === 'failed',
         key: pausedLabelOf(readiness.status),
       }
     : undefined
@@ -418,15 +377,9 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
   // "按过启用后，下次打开必自动展开" (the user asked for exactly this).
   const [open, setOpen] = useState(() => schedule?.enabled === true)
   const [confirm, setConfirm] = useState<'unlimited-enable' | 'stop-chain' | undefined>(undefined)
-  const summary = !enabled
-    ? t('detail.schedule.off')
-    : readiness.kind === 'paused'
-      ? `${t('detail.schedule.paused')}${stoppedReason?.extraFailed === true
-          ? ` · ${t('detail.schedule.pausedFailedShort')}`
-          : ` (${t(STATUS_KEY[readiness.status])})`}`
-      : mode === 'cron'
-        ? `${t('detail.schedule.mode.cron')} · ${nextLabel}`
-        : `${t('detail.schedule.mode.chain')} · ${t('detail.schedule.runsSoFar')} ${chainRuns}${chainBudget !== undefined ? `/${chainBudget}` : ''}`
+  // THE one summary grammar (shared with the overview and the card tooltip);
+  // the detail only adds its failed-pause reason word on top.
+  const summary = scheduleSummary(task, stoppedReason?.extraFailed === true)
 
   return (
     <Disclosure
@@ -739,8 +692,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     bindDropTimer.current = setTimeout(() => { setBindDropFlash(false) }, 600)
   }
 
-  // Copy-prompt inline feedback (近处反馈，位于滚动区内).
+  // Copy-prompt inline feedback (近处反馈，位于滚动区内): success flashes the
+  // check, a real failure says so — never a silent swallow.
   const [promptCopied, setPromptCopied] = useState(false)
+  const [promptCopyFailed, setPromptCopyFailed] = useState(false)
+  const promptCopyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => { if (promptCopyTimer.current !== undefined) clearTimeout(promptCopyTimer.current) }, [])
 
   const editing = draft !== undefined
 
@@ -762,10 +719,19 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   /** Copy the execution prompt to the clipboard (best-effort; no throw). */
   const copyPrompt = (): void => {
     if (current.prompt === '') return
-    void navigator.clipboard?.writeText(current.prompt).then(() => {
-      setPromptCopied(true)
-      window.setTimeout(() => { setPromptCopied(false) }, 1500)
-    }).catch(() => { /* clipboard unavailable — select manually */ })
+    const flash = (state: 'ok' | 'failed'): void => {
+      setPromptCopied(state === 'ok')
+      setPromptCopyFailed(state === 'failed')
+      if (promptCopyTimer.current !== undefined) clearTimeout(promptCopyTimer.current)
+      promptCopyTimer.current = setTimeout(() => {
+        setPromptCopied(false)
+        setPromptCopyFailed(false)
+      }, 1500)
+    }
+    void navigator.clipboard?.writeText(current.prompt).then(
+      () => { flash('ok') },
+      () => { flash('failed') },
+    )
   }
 
   /** Persist the draft; a blank title is rejected with an inline error. */
@@ -846,7 +812,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                     <button
                       type="button"
                       className={css.promptCopy}
-                      title={promptCopied ? t('detail.copied') : t('detail.copyPrompt')}
+                      title={promptCopied ? t('detail.copied') : promptCopyFailed ? t('detail.copyFailed') : t('detail.copyPrompt')}
                       aria-label={t('detail.copyPrompt')}
                       onClick={copyPrompt}
                     >

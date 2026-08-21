@@ -32,18 +32,14 @@ export function formatCruiseTime(ms: number, now = Date.now()): string {
     : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${clock}`
 }
 
-/** The next whole hour boundary (for prefilling the window-start picker):
- *  the next hour tick after `now` — e.g. 14:23 → 15:00. */
-export function nextWholeHour(now = Date.now()): number {
-  const date = new Date(now)
-  date.setMinutes(0, 0, 0)
-  date.setHours(date.getHours() + 1)
-  return date.getTime()
-}
-
-/** An epoch millisecond as a `datetime-local` input value (`YYYY-MM-DDTHH:mm` —
- *  the picker's native granularity is minutes). */
-export function toDatetimeLocal(ms: number): string {
-  const date = new Date(ms)
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+/** Whether `b` lies on the calendar day AFTER `a` — the cross-midnight
+ *  display rule: a normalized window ending at 02:00 started at 22:00 the
+ *  previous day reads "次日 02:00" / "next day 02:00". */
+export function isNextDay(a: number, b: number): boolean {
+  const from = new Date(a)
+  const to = new Date(b)
+  if (to.getTime() <= from.getTime()) return false
+  return to.getFullYear() !== from.getFullYear()
+    || to.getMonth() !== from.getMonth()
+    || to.getDate() !== from.getDate()
 }

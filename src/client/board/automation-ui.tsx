@@ -24,7 +24,7 @@ import {
   automationRowsOf, sessionRuleOf, sessionRuleReadiness, type AutomationRow,
 } from '../../core/automation.ts'
 import { isValidCron } from '../../core/schedule.ts'
-import type { TaskRecord } from '../../core/tasks.ts'
+import { ruleReadiness, type TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { cronHumanLabel } from './cron-label.ts'
@@ -99,6 +99,33 @@ export function CronField({ value, presets, onChange, onCommit, onPreset, onMana
 function ruleSessionTitle(controller: BoardController, task: TaskRecord, sessionId: string): string {
   const label = controller.sessionLabelsOf(task.id).find(item => item.sessionId === sessionId)
   return label?.title ?? sessionId
+}
+
+/** THE one schedule-summary text (off / paused(reason) / chain runs / cron
+ *  human label + next instant), read by the detail's disclosure header, the
+ *  automation overview's row and the card's tooltip — one grammar, three
+ *  surfaces, never three branch sets. `pausedFailed` opts into the detail's
+ *  "failed pause" reason word (a review pause after a failed run). */
+export function scheduleSummary(task: TaskRecord, pausedFailed = false): string {
+  const schedule = task.schedule
+  if (schedule === undefined || !schedule.enabled) return t('detail.schedule.off')
+  const readiness = ruleReadiness(task)
+  if (readiness.kind === 'paused') {
+    return pausedFailed
+      ? `${t('detail.schedule.paused')} · ${t('detail.schedule.pausedFailedShort')}`
+      : `${t('detail.schedule.paused')} (${t(STATUS_KEY[readiness.status])})`
+  }
+  if (schedule.mode === 'chain') {
+    const budget = schedule.maxRuns
+    return `${t('detail.schedule.mode.chain')} · ${t('detail.schedule.runsSoFar')} ${schedule.runCount}${budget !== undefined ? `/${budget}` : ''}`
+  }
+  const next = schedule.nextRunAt
+  const nextLabel = next === undefined
+    ? t('detail.schedule.notScheduled')
+    : next <= Date.now()
+      ? t('detail.schedule.dueSoon')
+      : new Date(next).toLocaleString()
+  return `${t('detail.schedule.mode.cron')} · ${cronHumanLabel(schedule.cron ?? '')} · ${nextLabel}`
 }
 
 /** One session-rule row (readiness / enable / edit / delete). */

@@ -46,8 +46,11 @@ export function contextOccupancy(
 /** One bar segment: which breakdown bucket it is and its share of the bar width (%). */
 interface ContextSegment {
   key: string
-  /** The meter's tint class (native color), or undefined for the uncolored fallback bar. */
-  className: string | undefined
+  /** The meter's tint class (a literal of the CSS module's meter classes), or
+   *  undefined for the uncolored fallback bar. Typed as a literal union so
+   *  the renderer needs no `as keyof typeof css` cast and a rename fails
+   *  loudly. */
+  className: 'meterSystem' | 'meterTools' | 'meterMessages' | undefined
   /** Percent of the bar width this segment occupies (> 0). */
   width: number
 }

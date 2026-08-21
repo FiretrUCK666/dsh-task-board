@@ -7,11 +7,12 @@
 import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf, cardSourceLabel } from '../../core/tasks.ts'
+import { hasOpenRun, latestExecutionOf, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf, cardSourceLabel } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
-import { STATUS_KEY } from './status.ts'
+import { scheduleSummary } from './automation-ui.tsx'
 import { Chip } from './Chip.tsx'
+import { waitingKeyOf } from './session-chip.ts'
 import { ColorSwatches, Icon } from './ui.tsx'
 
 /** Compact relative/absolute time label. */
@@ -32,20 +33,12 @@ export function formatDateTime(ms: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-/** Tooltip for the schedule chip: honest about the rule's readiness —
- *  automation is active as soon as it is armed (no manual-first gate):
+/** Tooltip for the schedule chip: THE one summary grammar (shared with the
+ *  detail's disclosure and the overview) — honest about the rule's readiness:
  *  chain reports its run budget, cron its next due instant, paused its
  *  blocking status. */
 function scheduleChipTitle(task: TaskRecord): string {
-  const schedule = task.schedule
-  if (schedule === undefined || !schedule.enabled) return t('card.scheduled')
-  if (schedule.mode === 'chain') {
-    return `${t('detail.schedule.mode.chain')} · ${t('detail.schedule.runsSoFar')} ${schedule.runCount}`
-  }
-  if (ruleReadiness(task).kind === 'active' && schedule.nextRunAt !== undefined) {
-    return `${t('card.scheduled')} · ${t('detail.schedule.nextRun')} ${new Date(schedule.nextRunAt).toLocaleString()}`
-  }
-  return `${t('card.scheduled')} · ${t('detail.schedule.paused')} (${t(STATUS_KEY[task.status])})`
+  return scheduleSummary(task)
 }
 
 /** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */
@@ -67,7 +60,7 @@ export function formatDuration(ms: number): string {
  *  user ("等待回应 · 计划确认"). Pure so the chip composition is testable. */
 export function runningStateLabel(waiting: PendingInteractionKind | undefined): string {
   return waiting !== undefined
-    ? `${t('card.waiting')} · ${t(`waiting.${waiting}` as 'waiting.approval')}`
+    ? `${t('card.waiting')} · ${t(waitingKeyOf(waiting))}`
     : t('detail.result.running')
 }
 
@@ -109,11 +102,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   onColorPick?: (color: string | undefined) => void
 }) {
   const [dragging, setDragging] = useState(false)
-  const latest = task.executions[task.executions.length - 1]
+  const latest = latestExecutionOf(task)
   // Plain-run count (comment continuation rounds are not executions): the
   // single numbering source shared with the detail list and review badge.
-  const runs = plainRunsOf(task).length
-  const lastPlain = plainRunsOf(task)[plainRunsOf(task).length - 1]
+  const runs = plainRunsOf(task)
+  const lastPlain = runs[runs.length - 1]
   // Only a genuinely open run shows the in-progress indicator: the card's
   // status must be 'running' AND its latest round unsettled. A pending
   // comment round (task sitting in review) must never spin.
@@ -135,8 +128,14 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   const pausedFailed = readiness.kind === 'paused' && readiness.status === 'review'
     && lastPlain !== undefined && lastPlain.result === 'failed'
   return (
-    <button
-      type="button"
+    /* A card is a clickable REGION, never a <button>: the color swatches and
+       the quick-run control inside are real interactive elements, and a
+       button inside a button is invalid HTML with a broken keyboard/screen
+       reader model. The region handles Enter/Space itself (same activation
+       as a click); the inner controls stop propagation. */
+    <div
+      role="button"
+      tabIndex={0}
       className={`${css.card}${dragging ? ` ${css.dragging}` : ''}${selected ? ` ${css.selectedCard}` : ''}`}
       style={task.color !== undefined ? ({ '--card-tint': task.color } as CSSProperties) : undefined}
       data-status={task.status}
@@ -144,6 +143,12 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
       data-unviewed={unviewed ? '' : undefined}
       draggable
       onClick={onClick}
+      onKeyDown={event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onClick(event as unknown as React.MouseEvent)
+        }
+      }}
       title={task.description !== '' ? task.description : task.title}
       onDragStart={event => {
         setDragging(true)
@@ -284,7 +289,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
             )}
             {running ? (
               <Chip kind="warn" fill={false} title={waiting !== undefined
-                ? t('card.waitingTitle', { kind: t(`waiting.${waiting}` as 'waiting.approval') })
+                ? t('card.waitingTitle', { kind: t(waitingKeyOf(waiting)) })
                 : undefined}
                 icon={<span className={css.spinner} aria-hidden="true" />}>
                 {runningStateLabel(waiting)}
@@ -294,7 +299,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                 kind={latest.result === 'failed' ? 'error' : latest.result === 'succeeded' ? 'success' : 'muted'}
                 fill={false}
               >
-                {settledChipLabel(runs)}
+                {settledChipLabel(runs.length)}
               </Chip>
             )}
           </span>
@@ -305,6 +310,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
           <ColorSwatches value={task.color} onChange={color => { onColorPick(color) }} />
         </span>
       )}
-    </button>
+    </div>
   )
 }

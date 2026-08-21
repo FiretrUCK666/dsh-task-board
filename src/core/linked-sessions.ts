@@ -57,8 +57,9 @@ export interface LinkedSources {
   boundWorkspaceTitle?: string
 }
 
-/** Short display label of a directory path (last non-empty segment). */
-function baseOf(cwd: string): string | undefined {
+/** Short display label of a directory path (last non-empty segment). THE one
+ *  cwd→label derivation, shared with the session panels' workspace rows. */
+export function workspaceLabelOf(cwd: string): string {
   const segment = cwd.split(/[\\/]+/).filter(Boolean).pop()
   return segment !== undefined && segment !== '' ? segment : cwd
 }
@@ -75,7 +76,7 @@ export function boundSourceTitle(
     const session = ctx.sessions[bind.sessionId]
     if (session !== undefined) {
       if (session.title !== undefined && session.title !== '') return session.title
-      const base = session.cwd !== undefined ? baseOf(session.cwd) : undefined
+      const base = session.cwd !== undefined ? workspaceLabelOf(session.cwd) : undefined
       if (base !== undefined && base !== '') return base
     }
     return bind.sessionId
@@ -97,7 +98,7 @@ export function resolveExternalKind(
  *  The workspace label is the cwd's last segment, falling back to the bound
  *  workspace's title so it never blinks off for sessions without a cwd. */
 function rowOf(sessionId: string, source: LinkedSessionSource, boundWorkspaceTitle?: string): LinkedSessionRow {
-  const workspaceLabel = (source.cwd !== undefined ? baseOf(source.cwd) : undefined) ?? boundWorkspaceTitle
+  const workspaceLabel = (source.cwd !== undefined ? workspaceLabelOf(source.cwd) : undefined) ?? boundWorkspaceTitle
   return {
     sessionId,
     title: source.title !== undefined && source.title !== '' ? source.title : (workspaceLabel ?? sessionId),

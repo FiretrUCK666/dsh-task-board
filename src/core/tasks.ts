@@ -367,6 +367,26 @@ export function canMoveManually(_from: TaskStatus, to: TaskStatus): boolean {
   return (MANUAL_STATUSES as readonly TaskStatus[]).includes(to)
 }
 
+/**
+ * The task's latest execution (rounds are appended chronologically). The ONE
+ * "what's the newest round" derivation every surface reads — the card's
+ * settled chip, the board's waiting probe, the detail's failure hint.
+ */
+export function latestExecutionOf(task: TaskRecord): ExecutionRecord | undefined {
+  return task.executions[task.executions.length - 1]
+}
+
+/**
+ * Whether arming a chain rule needs the one-shot "endless loop" confirmation:
+ * an unlimited chain (no run budget) keeps firing real agent sessions until a
+ * run fails or the user stops it. One guard, shared by every surface that can
+ * arm a chain (the detail editor and the overview's enable switch) — a second
+ * surface must never re-derive this decision.
+ */
+export function chainUnlimited(mode: ScheduleMode | undefined, maxRuns: number | undefined): boolean {
+  return mode === 'chain' && (maxRuns === undefined || maxRuns < 1)
+}
+
 /** Create a task from user input. */
 export function createTask(input: NewTaskInput, now: number, id: string, order = 0): TaskRecord {
   return {

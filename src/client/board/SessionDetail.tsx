@@ -17,6 +17,7 @@ import { formatDateTime } from './TaskCard.tsx'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
+import { sessionStateChip } from './session-chip.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { Button } from './ui.tsx'
 import { useSessionContext, useWireQuestion } from './use-interaction.ts'
@@ -75,14 +76,20 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const taskDone = task.status === 'done'
   const liveGone = row === undefined
 
-  // The live state row: waiting / running / completed — absent hides the row.
-  const stateChip = waiting !== undefined
-    ? { kind: 'warn' as const, label: t(`waiting.${waiting}` as 'waiting.approval'), spinner: true }
+  // The live state row: waiting / running / completed — THE one state-chip
+  // derivation; an idle bound session shows no state row at all (nothing has
+  // happened — the row exists only when the session is actually doing
+  // something or has finished).
+  const sessionState = waiting !== undefined
+    ? 'waiting'
     : row?.running === true
-      ? { kind: 'warn' as const, label: t('detail.result.running'), spinner: true }
+      ? 'running'
       : row?.completed === true
-        ? { kind: 'success' as const, label: t('detail.linkedDone') }
+        ? 'succeeded'
         : undefined
+  const stateChip = sessionState !== undefined
+    ? sessionStateChip(sessionState, waiting, 'detail.linkedDone', 'detail.linkedIdle')
+    : undefined
   const updatedAt = row !== undefined ? formatDateTime(row.updatedAt) : undefined
 
   // The hint under the thread header: the blocking reason when there is one,

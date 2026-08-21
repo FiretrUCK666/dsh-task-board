@@ -70,11 +70,6 @@ export function normalizeSessionRules(raw: unknown): SessionRule[] | undefined {
   return out.length > 0 ? out : undefined
 }
 
-/** Read-only rule view lifted off a task (empty when none). */
-export function sessionRulesOf(task: TaskRecord): SessionRule[] {
-  return task.rules ?? []
-}
-
 /** The projection row back to a full rule (the rows are the single read shape;
  *  this is the one bridge back for consumers that need the rule's own shape,
  *  e.g. the readiness judgment). */
@@ -175,12 +170,6 @@ export function automationRowsOf(task: TaskRecord): AutomationRow[] {
  */
 export function nextSessionRuleAt(rule: SessionRule): number | undefined {
   return nextRunAtMs(rule.cron, rule.nextAt)
-}
-
-/** Repair a rule whose due instant is missing (legacy/paused): recompute from
- *  now and return the new rule; undefined keeps it un-repaired (skipped). */
-export function repairedNextAt(rule: SessionRule, now: number): number | undefined {
-  return nextRunAtMs(rule.cron, now)
 }
 
 /** Add / replace rules immutably on a task. */

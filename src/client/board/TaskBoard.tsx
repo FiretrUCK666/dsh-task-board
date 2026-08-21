@@ -14,14 +14,15 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
-import { COLUMNS, landingStatusOf, plainRunsOf, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
+import { COLUMNS, landingStatusOf, latestExecutionOf, plainRunsOf, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
-import { duplicateWindowOf, type CruiseWindow } from '../../core/cruise.ts'
-import { formatCruiseTime } from './format-time.ts'
+import { coveringWindow, duplicateWindowOf, type CruiseWindow } from '../../core/cruise.ts'
+import { formatCruiseTime, isNextDay } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
@@ -31,6 +32,7 @@ import { TaskDetail } from './TaskDetail.tsx'
 import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
+import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
@@ -39,17 +41,6 @@ function matchesFilter(task: TaskRecord, filter: string): boolean {
   if (filter.trim() === '') return true
   const needle = filter.trim().toLowerCase()
   return task.title.toLowerCase().includes(needle) || task.description.toLowerCase().includes(needle)
-}
-
-/** Whether `b` lies on the calendar day AFTER `a` (a normalized cross-midnight
- *  window end: e.g. 22:00 开始、次日 02:00 结束 → display "次日 02:00"). */
-function isNextDay(a: number, b: number): boolean {
-  const from = new Date(a)
-  const to = new Date(b)
-  if (to.getTime() <= from.getTime()) return false
-  return to.getFullYear() !== from.getFullYear()
-    || to.getMonth() !== from.getMonth()
-    || to.getDate() !== from.getDate()
 }
 
 /** Board component; subscribes to the controller snapshot. */
@@ -141,15 +132,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // 均可选（无开始=从当前起视为开；无结束=保持开）。
   const cruiseSchedule = snapshot.cruise.schedule
   const cruiseNow = Date.now()
-  const coveringWindow = cruiseSchedule.find(window =>
-    (window.startAt === undefined || window.startAt <= cruiseNow)
-    && (window.endAt === undefined || window.endAt > cruiseNow))
+  // The covering window is the CORE derivation (same rule the scheduler
+  // applies) — never a re-implementation of the coverage logic in the UI.
+  const covering = coveringWindow(snapshot.cruise, cruiseNow)
   const nextWindow = cruiseSchedule
     .filter(window => (window.startAt ?? cruiseNow) > cruiseNow)
     .sort((a, b) => (a.startAt ?? a.endAt ?? 0) - (b.startAt ?? b.endAt ?? 0))[0]
   const cruiseStateLine = snapshot.cruise.enabled
-    ? coveringWindow !== undefined && coveringWindow.endAt !== undefined
-      ? t('board.cruiseStateOnUntil', { time: formatCruiseTime(coveringWindow.endAt) })
+    ? covering !== undefined && covering.endAt !== undefined
+      ? t('board.cruiseStateOnUntil', { time: formatCruiseTime(covering.endAt) })
       : t('board.cruiseStateOn')
     : nextWindow !== undefined && nextWindow.startAt !== undefined
       ? t('board.cruiseStateNext', { time: formatCruiseTime(nextWindow.startAt) })
@@ -445,7 +436,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       className={css.cruiseLimit}
                       type="number"
                       min={1}
-                      max={20}
+                      max={MAX_CRUISE_LIMIT}
                       value={snapshot.cruise.limit}
                       title={t('board.cruiseLimit')}
                       aria-label={t('board.cruiseLimit')}
@@ -518,10 +509,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     </ul>
                   )}
                   <div className={css.cruiseWindowAdd}>
+                    {/* Both endpoints are optional (至少一个 start 或 end): a
+                        cleared start commits undefined — an "only-end" window
+                        (立即开、到点关) is reached the same way the only-start
+                        one is, no stale value can survive a clear. The
+                        add-guard below rejects neither-set. */}
                     <TimeField
                       label={t('board.cruiseWindowStart')}
                       value={windowStart}
-                      allowEmpty={false}
                       onChange={next => { setWindowStart(next); setCruiseError(undefined) }}
                     />
                     <TimeField
@@ -753,7 +748,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   // question) across every execution + the refine session —
                   // read live so cards reflect the moment a session starts
                   // waiting (the controller notifies on session-list changes).
-                  const latest = task.executions[task.executions.length - 1]
+                  const latest = latestExecutionOf(task)
                   const pending = taskPendingCount(task, sessionId => controller.pendingInteractionOf(sessionId))
                   const waiting = latest?.sessionId !== undefined
                     ? controller.pendingInteractionOf(latest.sessionId)
@@ -765,11 +760,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                           const index = plainRunsOf(task).findIndex(run => run.id === item.executionId) + 1
                           return t('card.pendingItem', {
                             n: String(index),
-                            kind: t(`waiting.${item.waitingKind}` as 'waiting.approval'),
+                            kind: t(waitingKeyOf(item.waitingKind)),
                           })
                         }
                         return t('card.pendingRefine', {
-                          kind: t(`waiting.${item.waitingKind}` as 'waiting.approval'),
+                          kind: t(waitingKeyOf(item.waitingKind)),
                         })
                       }).join('；')
                   return (

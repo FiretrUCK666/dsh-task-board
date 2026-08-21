@@ -1,11 +1,11 @@
 /**
  * Compact cruise-time formatting (format-time.ts, see there for the why) and
- * the two picker helpers. All functions are locale-aware (zh first, else
- * English via the document language) and take an injectable `now`, so the
- * same-day / same-year / cross-year verdicts are deterministic here.
+ * the cross-midnight display rule. All functions are locale-aware (zh first,
+ * else English via the document language) and take an injectable `now`, so
+ * the same-day / same-year / cross-year verdicts are deterministic here.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { formatCruiseTime, nextWholeHour, toDatetimeLocal } from '../src/client/board/format-time.ts'
+import { formatCruiseTime, isNextDay } from '../src/client/board/format-time.ts'
 
 function useLanguage(lang: string): void {
   vi.stubGlobal('document', { documentElement: { lang } })
@@ -46,21 +46,18 @@ describe('formatCruiseTime', () => {
   })
 })
 
-describe('nextWholeHour', () => {
-  it('rounds any minute up to the next hour tick', () => {
-    expect(nextWholeHour(new Date(2025, 0, 5, 14, 23).getTime()))
-      .toBe(new Date(2025, 0, 5, 15, 0).getTime())
+describe('isNextDay (cross-midnight display rule)', () => {
+  it('is true only for the calendar day after', () => {
+    const start = new Date(2025, 0, 5, 22, 0).getTime()
+    expect(isNextDay(start, new Date(2025, 0, 6, 2, 0).getTime())).toBe(true)
+    expect(isNextDay(start, new Date(2025, 0, 5, 23, 59).getTime())).toBe(false)
+    expect(isNextDay(start, new Date(2025, 0, 5, 22, 0).getTime())).toBe(false)
+    expect(isNextDay(start, new Date(2025, 0, 4, 22, 0).getTime())).toBe(false)
+    // Same instant / earlier instants are never "next day".
+    expect(isNextDay(start, start)).toBe(false)
   })
 
-  it('advances a whole-hour instant to the NEXT hour', () => {
-    expect(nextWholeHour(new Date(2025, 0, 5, 14, 0).getTime()))
-      .toBe(new Date(2025, 0, 5, 15, 0).getTime())
-  })
-})
-
-describe('toDatetimeLocal', () => {
-  it('formats as YYYY-MM-DDTHH:mm (the picker granularity)', () => {
-    expect(toDatetimeLocal(new Date(2025, 0, 5, 9, 5).getTime())).toBe('2025-01-05T09:05')
-    expect(toDatetimeLocal(new Date(2025, 11, 31, 23, 59).getTime())).toBe('2025-12-31T23:59')
+  it('crosses year boundaries', () => {
+    expect(isNextDay(new Date(2025, 11, 31, 23, 0).getTime(), new Date(2026, 0, 1, 1, 0).getTime())).toBe(true)
   })
 })

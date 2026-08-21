@@ -33,6 +33,7 @@ import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
+import { sessionStateChip } from './session-chip.ts'
 import { useSessionContext, useWireQuestion } from './use-interaction.ts'
 import { Button } from './ui.tsx'
 
@@ -116,18 +117,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const waiting = controller.pendingInteractionOf(sessionId)
 
   // The live state row (shared rail grammar): the run's own outcome chip +
-  // its last activity time — a running run shows 进行中 + spinner.
+  // its last activity time — THE one state-chip derivation (the review page
+  // names the execution result; an open run spins).
   const session = sessionDisplay(current, execution, waiting)
-  const sessionActive = session.state === 'running' || session.state === 'waiting'
-  const stateChip = waiting !== undefined
-    ? { kind: 'warn' as const, label: t(`waiting.${waiting}` as 'waiting.approval'), spinner: true }
-    : session.state === 'succeeded'
-      ? { kind: 'success' as const, label: t('detail.result.succeeded') }
-      : session.state === 'failed'
-        ? { kind: 'error' as const, label: t('detail.result.failed') }
-        : session.state === 'cancelled'
-          ? { kind: 'muted' as const, label: t('detail.result.cancelled') }
-          : { kind: 'warn' as const, label: t('detail.result.running'), spinner: sessionActive }
+  const stateChip = sessionStateChip(session.state, waiting, 'detail.result.succeeded', 'detail.result.cancelled')
   const updatedAt = formatDateTime(execution.endedAt ?? execution.startedAt)
   // The hint under the thread header: the blocking reason when there is one
   // (a done task rejects comments), the drive explanation otherwise.
@@ -202,6 +195,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               taskId={current.id}
               sessionId={sessionId}
               placeholder={t('review.commentPlaceholder')}
+              /* Same send gating as the linked panel: a done task rejects
+                 comments (the hint above says so) — the composer must read
+                 that state, not silently no-op on submit. */
+              disabled={current.status === 'done' || sessionId === undefined}
               onDrive={text => controller.submitComment(current.id, execution.id, text, text.startsWith('/')) !== undefined}
               onSteer={text => sessionId === undefined
                 ? Promise.resolve(false)
