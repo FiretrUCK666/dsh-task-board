@@ -37,12 +37,9 @@ export function CommentsThread({ task, views, onCancel }: {
               {view.round.comment !== undefined && view.round.comment !== '' && <Markdown text={view.round.comment} />}
             </span>
             <span className={css.reviewCommentMeta}>
-              {/* 直发轮 = 用户直接发给原生会话的消息记录：只读、已送达、不驱动。
-                  与驱动轮同一条线程，用安静副标签区分身份（研究：永不只靠颜色）。 */}
-              {view.round.direct === true && <span className={css.reviewCommentDirect}>{t('review.commentDirect')}</span>}
-              {/* 外源轮 = 用户在原生会话界面（非看板）发起的回合：看板观察同步而来，
-                  同线程同状态，用同一安静副标签标明来源。 */}
-              {view.round.external === true && <span className={css.reviewCommentDirect}>{t('review.commentExternal')}</span>}
+              {/* 来源不再分家：直发/驱动/原生会话已并轨为一种「会话活动」，
+                  每行统一为 文本 + 状态 chip + 时间；回合的真实性质由数据
+                  (direct/external) 承载，界面上不并排来源标签。 */}
               <Chip kind={commentKindOf(view.state)}>
                 {view.state === 'queued'
                   ? t('review.commentQueued', { n: String(position) })

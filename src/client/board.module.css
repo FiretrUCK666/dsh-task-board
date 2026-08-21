@@ -3377,20 +3377,9 @@ textarea.input {
   color: var(--dsw-alias-state-business-primary);
 }
 
-/* The quiet "直发" identity tag of a direct-send round: it shares the thread
-   with drive comments but is a read-only record — never queued, never
-   driving. A tertiary label with a hairline frame; never a colored badge
-   (identity via label, not color alone). */
-.reviewCommentDirect {
-  flex: none;
-  padding: 0 6px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--dsh-tb-text-3);
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 999px;
-  white-space: nowrap;
-}
+/* The comment meta line: 状态 chip + 时间 + (pending) cancel. Sources no
+   longer split (direct/external/native are one "session activity"); the
+   comment body, state chip and time are the whole grammar. */
 
 /* The outcome text of a settled command round (successful commands carry
    their registry text here, e.g. `/permission read-only` → "preset

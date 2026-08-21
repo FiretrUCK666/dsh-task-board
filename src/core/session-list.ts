@@ -38,6 +38,35 @@ export interface TaskSessionRow {
 }
 
 /**
+ * The activity window a session has ON this task — the earliest round's
+ * start, the latest round's end, and the duration between them. The ONE
+ * derivation for every session row (a board-run session and a bound
+ * session's externally-observed turns read the same records), so the
+ * 「开始 / 结束 / 耗时」line of a linked row is never a different grammar
+ * from an execution row's. Empty when the session has no rounds.
+ */
+export function sessionWindowOf(task: TaskRecord, sessionId: string | undefined): {
+  startedAt?: number
+  endedAt?: number
+  duration?: number
+} {
+  if (sessionId === undefined) return {}
+  let startedAt: number | undefined
+  let endedAt: number | undefined
+  for (const round of task.executions) {
+    if (round.sessionId !== sessionId) continue
+    if (startedAt === undefined || round.startedAt < startedAt) startedAt = round.startedAt
+    if (round.endedAt !== undefined && (endedAt === undefined || round.endedAt > endedAt)) endedAt = round.endedAt
+  }
+  if (startedAt === undefined) return {}
+  return {
+    startedAt,
+    ...endedAt !== undefined ? { endedAt } : {},
+    ...(endedAt !== undefined && endedAt >= startedAt) ? { duration: endedAt - startedAt } : {},
+  }
+}
+
+/**
  * The derived per-session hidden set: `hidden.sessions` (session ids) plus
  * `hidden.executions` mapped to their execution's session id. THE single
  * source of truth for "is this session hidden" — hide is defined once in

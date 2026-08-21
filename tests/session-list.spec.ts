@@ -4,7 +4,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createTask, settleExecution, startExecution, type TaskRecord } from '../src/core/tasks.ts'
-import { hasHiddenSessions, hiddenSessionIdsOf, taskSessionsOf } from '../src/core/session-list.ts'
+import { hasHiddenSessions, hiddenSessionIdsOf, sessionWindowOf, taskSessionsOf } from '../src/core/session-list.ts'
+import { newExternalRound } from '../src/core/tasks.ts'
 import type { LinkedSessionRow } from '../src/core/linked-sessions.ts'
 
 const NOW = 1_700_000_000_000
@@ -93,5 +94,23 @@ describe('taskSessionsOf (统一会话列表)', () => {
     expect(rows[0].sessionId).toBe('s-2') // newest run activity first
     expect(rows[1].sessionId).toBe('s-1')
     expect(rows[2].sessionId).toBe('s-9') // linked group after the run group
+  })
+})
+
+describe('sessionWindowOf (the linked row derives the same start/end/duration grammar)', () => {
+  it('derives the window from every round of the session (runs and external turns alike)', () => {
+    let task = withOneRun() // e-1: startedAt NOW, endedAt NOW+1
+    task = { ...task, executions: [...task.executions,
+      newExternalRound({ id: 'x1', now: NOW + 10, sessionId: 's-1', text: '你好' }),
+      { ...newExternalRound({ id: 'x2', now: NOW + 20, sessionId: 's-1' }), endedAt: NOW + 30, result: 'succeeded' as const },
+    ] }
+    expect(sessionWindowOf(task, 's-1')).toEqual({ startedAt: NOW, endedAt: NOW + 30, duration: 30 })
+  })
+
+  it('is empty for an unknown session and skips other sessions', () => {
+    const task = withOneRun()
+    expect(sessionWindowOf(task, 'nope')).toEqual({})
+    expect(sessionWindowOf(task, 's-1')).toEqual({ startedAt: NOW, endedAt: NOW + 1, duration: 1 })
+    expect(sessionWindowOf(task, undefined)).toEqual({})
   })
 })

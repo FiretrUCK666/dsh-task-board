@@ -9,7 +9,7 @@ import type { BoardController, PendingInteractionKind } from '../../core/control
 import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
 import { describeCron, isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
-import { hiddenSessionIdsOf } from '../../core/session-list.ts'
+import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
@@ -131,9 +131,12 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
             {latest !== undefined && (
               <span className={css.executionComments} title={latest.text}>
                 <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
-                {/* The newest round's body; when nothing is renderable the
-                    state word fills the slot — 「最新」 is never empty again. */}
-                <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latest.text !== '' ? latest.text : t(latest.stateKey) })}</span>
+                {/* The newest body when there IS one; a body-less round leaves
+                    the slot to the row's state chip + time — never a state
+                    word dressed up as content. */}
+                {latest.text !== '' && (
+                  <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latest.text })}</span>
+                )}
                 <span className={css.executionCommentsTime}>{latest.at !== undefined ? formatTime(latest.at) : ''}</span>
               </span>
             )}
@@ -170,6 +173,12 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
       : row.display.state === 'succeeded'
         ? { kind: 'success' as const, label: t('detail.linkedDone') }
         : undefined
+  // The SAME grammar as a run row: the session's activity window (its rounds
+  // on this task — board runs and externally-observed turns alike) plus its
+  // comment thread (count + newest body; the state chip is the row's own).
+  const window = sessionWindowOf(task, sessionId)
+  const comments = sessionId !== undefined ? sessionCommentsOf(task, sessionId, cruiseOn) : []
+  const latest = sessionId !== undefined ? latestCommentView(task, sessionId, cruiseOn) : undefined
   return (
     <SessionRow
       chip={chip}
@@ -183,9 +192,34 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
         </span>
       }
       meta={
-        <>
-          {t('detail.sessionUpdated')} {formatDateTime(row.updatedAt)}
-        </>
+        window.startedAt !== undefined ? (
+          <>
+            {t('detail.executionStarted')} {formatDateTime(window.startedAt)}
+            {' · '}
+            {t('detail.executionEnded')} {window.endedAt !== undefined ? formatDateTime(window.endedAt) : '—'}
+            {window.duration !== undefined && (
+              <> · {t('detail.duration', { d: formatDuration(window.duration) })}</>
+            )}
+          </>
+        ) : (
+          <>
+            {t('detail.sessionUpdated')} {formatDateTime(row.updatedAt)}
+          </>
+        )
+      }
+      footer={
+        latest !== undefined && (
+          <span className={css.executionComments} title={latest.text}>
+            <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
+            {/* The newest body when there IS one; a body-less round leaves
+                the slot to the row's state chip + time — never a state word
+                dressed up as content. */}
+            {latest.text !== '' && (
+              <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latest.text })}</span>
+            )}
+            <span className={css.executionCommentsTime}>{latest.at !== undefined ? formatTime(latest.at) : ''}</span>
+          </span>
+        )
       }
       sessionId={sessionId}
       onActivate={() => { onOpenSessionPanel(sessionId) }}
