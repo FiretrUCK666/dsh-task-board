@@ -18,6 +18,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
 import { Button, Icon, Section, SendModeToggle, Switch } from './ui.tsx'
+import { PromptInput } from './PromptInput.tsx'
 import { STATUS_KEY } from './status.ts'
 
 /** Compact one-line summary of a task's schedule rule (shared grammar with the
@@ -231,13 +232,13 @@ export function AutomationPanel({ controller, onClose }: {
                         </label>
                         <label className={css.autoField}>
                           <span className={css.autoFieldLabel}>{t('auto.form.instruction')}</span>
-                          <textarea
-                            className={`${css.input} ${css.autoInstruction}`}
+                          <PromptInput
                             value={instruction}
+                            onChange={next => { setInstruction(next); setError(undefined) }}
                             placeholder={t('auto.form.instructionPlaceholder')}
-                            spellCheck={false}
-                            aria-label={t('auto.form.instruction')}
-                            onChange={event => { setInstruction(event.target.value); setError(undefined) }}
+                            rows={3}
+                            controller={controller}
+                            mentions={labels.map(({ sessionId, title }) => ({ id: sessionId, title }))}
                           />
                         </label>
                         <label className={css.autoField}>

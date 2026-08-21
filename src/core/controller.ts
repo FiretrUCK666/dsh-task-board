@@ -1559,10 +1559,22 @@ export class BoardController {
         if (!rule.enabled) continue
         if (byId[rule.sessionId] === undefined) continue // session gone: keep due slot
         if (rule.nextAt > now) continue
-        // Fire: slash-aware instruction → recorded as a direct round so it shows
-        // in the session's thread. Failure does not advance (retried next tick
-        // is safer than silently dropping the instruction).
-        const fired = await this.sendSessionMessage(task.id, rule.sessionId, rule.instruction)
+        // Fire, send-mode consistent with the comment SendModeToggle grammar:
+        // queue = the instruction enters the task's comment queue and the
+        // dispatcher injects it in submission order (cruise-gated); steer =
+        // delivered straight to the session now, recorded as a direct round.
+        let fired: { ok: true } | { ok: false; error: string }
+        if (rule.send === 'queue') {
+          const round = this.submitSessionComment(task.id, rule.sessionId, rule.instruction, rule.instruction.trimStart().startsWith('/'))
+          if (round === undefined) {
+            // The injector refused (blank line / completed task / unknown
+            // task): keep the due slot, retried next tick.
+            continue
+          }
+          fired = { ok: true }
+        } else {
+          fired = await this.sendSessionMessage(task.id, rule.sessionId, rule.instruction)
+        }
         if (!fired.ok) continue
         taskChanged = true
         const next = nextSessionRuleAt(rule)

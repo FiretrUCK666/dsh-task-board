@@ -2242,11 +2242,11 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'x', cron: 'not a cron', send: 'queue' })).toBeUndefined()
   })
 
-  it('fires a due rule: sends the instruction, records a direct round, rolls forward', async () => {
+  it('fires a due steer rule: sends the instruction, records a direct round, rolls forward', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
-    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'queue' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'steer' })!
     await controller.tickSessionRules(NOW + 120_000)
     expect(sent).toHaveLength(1)
     expect(sent[0]).toEqual(['s-a', 'hello'])
@@ -2263,6 +2263,22 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(sent).toHaveLength(2)
   })
 
+  it('a queue-mode rule queues a comment round for the dispatcher (nothing direct)', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'queue' })!
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toHaveLength(0) // never sent directly
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    const queued = row.executions.find(round => round.comment === 'hello')
+    expect(queued?.comment).toBe('hello')
+    expect(queued?.direct).toBeUndefined()
+    expect(queued?.injectedAt).toBeUndefined() // awaiting the dispatcher
+    expect(row.rules?.[0].lastAt).toBe(NOW + 120_000)
+    expect(row.rules?.[0].nextAt).toBeGreaterThan(NOW + 120_000 - 60_000)
+  })
+
   it('a disabled rule never fires; a rule whose session is gone keeps its slot', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a', 's-b'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
@@ -2276,13 +2292,13 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(row.rules?.find(r => r.id === gone.id)?.nextAt).toBe(gone.nextAt)
   })
 
-  it('slash instructions route through the command registry', async () => {
+  it('slash instructions route through the command registry (steer)', async () => {
     const lines: string[] = []
     const { controller } = ruleHarness(['s-a'], {
       sessionCommand: async (_sessionId, line) => { lines.push(line); return { ok: true as const, matched: true } },
     })
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
-    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '/goal', cron: '* * * * *', send: 'queue' })
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '/goal', cron: '* * * * *', send: 'steer' })
     await controller.tickSessionRules(NOW + 120_000)
     expect(lines).toEqual(['/goal'])
   })

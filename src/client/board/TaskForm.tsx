@@ -16,12 +16,15 @@ import type { TaskDraft } from './task-draft.ts'
 const MODEL_SEP = '\u0000'
 
 /** The shared new/edit task form. */
-export function TaskForm({ draft, onChange, controller, withStatus = false }: {
+export function TaskForm({ draft, onChange, controller, withStatus = false, mentions = [] }: {
   draft: TaskDraft
   onChange: (next: TaskDraft) => void
   controller: BoardController
   /** Show the landing-column selector (new-task modal only). */
   withStatus?: boolean
+  /** The task's related sessions for the prompt's @ mention (the edit form
+   *  supplies them; a new task has none yet). */
+  mentions?: ReadonlyArray<{ id: string; title: string }>
 }) {
   const [presets, setPresets] = useState<readonly AgentPresetRow[]>([])
   const [groups, setGroups] = useState<readonly ModelGroupRow[]>([])
@@ -111,6 +114,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false }: {
           placeholder={t('new.promptPlaceholder')}
           rows={4}
           controller={controller}
+          mentions={mentions}
         />
       </label>
 
