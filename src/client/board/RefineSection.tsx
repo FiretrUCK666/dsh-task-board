@@ -21,7 +21,7 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { refineDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
-import { useSessionContext } from './use-interaction.ts'
+import { useSessionContext, useWireQuestion } from './use-interaction.ts'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { InteractionCard } from './InteractionCard.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
@@ -40,7 +40,7 @@ export function RefineSection({ controller, task }: {
   // The open native interaction (plan confirm / question) + live to-do/goal/
   // subagents of the refine session.
   const context = useSessionContext(controller, sessionId)
-  const { pendingInteraction } = context
+  const pendingInteraction = useWireQuestion(controller, sessionId)
   const [contextOpen, setContextOpen] = useState(false)
 
   // 草稿记忆：回答框里打了一半的文字，切走再回来仍保留（按任务各自保存）；
@@ -150,8 +150,8 @@ export function RefineSection({ controller, task }: {
           <div className={css.refineInputArea}>
             {pendingInteraction !== undefined && sessionId !== undefined && (
               <InteractionCard
-                interaction={pendingInteraction}
-                taskId={task.id}
+                key={pendingInteraction.rpcId}
+                question={pendingInteraction}
                 sessionId={sessionId}
                 controller={controller}
               />

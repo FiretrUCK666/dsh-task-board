@@ -1,18 +1,22 @@
 /**
- * Pending native interaction + session context over the composer: the review
+ * Pending native question + session context over the composer: the review
  * page, session panel and refinement panel all render one surface while the
  * session's agent is awaiting a human decision (a plan for confirmation or an
  * ask_user_question), alongside the session's live to-do / goal / subagent
- * readout. Detection reuses the transcript tail's raw events (the same load
- * channel, watermark-gated: an idle session costs nothing) — so the card
- * appears/disappears with the real tool lifecycle and needs no extra host
- * bridge. The to-do list rides the same event window (last-write-wins
- * `todo/write` snapshot); goal + subagents come from the narrow session-state
- * bridge when the host registered it.
+ * readout.
+ *
+ * The pending QUESTION comes from the controller's mux tracker
+ * (questionPendingOf / subscribeQuestions) — the mux frame is the only
+ * answerable source (it carries the rpcId an answer must echo), so the card
+ * appears/disappears with the real tool lifecycle and answers really settle
+ * the suspended call. The to-do list still rides the transcript tail
+ * (last-write-wins `todo/write` snapshot); goal + subagents come from the
+ * narrow session-state bridge when the host registered it.
  */
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
-import { detectPendingInteraction, latestSessionTodos, type PendingInteraction, type SessionTodo } from './interaction.ts'
+import type { WireQuestion } from '../../core/question-rpc.ts'
+import { latestSessionTodos, type SessionTodo } from './interaction.ts'
 
 /** The goal/subagent readout the host bridge carries (structural, degraded). */
 export interface SessionGoalView {
@@ -26,8 +30,6 @@ export interface SessionSubagentView {
 
 /** The full session-context read (all blocks optional by availability). */
 export interface SessionContext {
-  /** Open ask_user_question / plan-review awaiting the user, if any. */
-  pendingInteraction?: PendingInteraction
   /** The latest `todo/write` snapshot, if the session ever wrote one. */
   todos?: readonly SessionTodo[]
   /** The active native goal, if any. */
@@ -38,7 +40,7 @@ export interface SessionContext {
 
 const STATE_URL = '/api/dsh-task-board/session-state'
 
-/** One 3s poll: transcript → interaction + todos; bridge → goal + subagents. */
+/** One 3s poll: transcript → todos; bridge → goal + subagents. */
 export function useSessionContext(controller: BoardController, sessionId: string | undefined): SessionContext {
   const [context, setContext] = useState<SessionContext>({})
   useEffect(() => {
@@ -54,7 +56,6 @@ export function useSessionContext(controller: BoardController, sessionId: string
         if (!alive || result === undefined) return
         setContext(current => ({
           ...current,
-          pendingInteraction: detectPendingInteraction(result.events),
           todos: latestSessionTodos(result.events),
         }))
       })
@@ -63,7 +64,6 @@ export function useSessionContext(controller: BoardController, sessionId: string
     const pollSessionState = (): void => {
       void fetch(`${STATE_URL}?sessionId=${encodeURIComponent(sessionId)}`)
         .then(response => (response.ok ? response.json() as Promise<{
-          plan?: { active: boolean; pending: boolean }
           goal?: { title: string; active: boolean }
           subagents?: Array<{ title: string; status?: string }>
         }> : undefined))
@@ -92,7 +92,18 @@ export function useSessionContext(controller: BoardController, sessionId: string
   return context
 }
 
-/** The pending interaction alone (the subset surfaces that only need it). */
-export function usePendingInteraction(controller: BoardController, sessionId: string | undefined): PendingInteraction | undefined {
-  return useSessionContext(controller, sessionId).pendingInteraction
+/** The pending wire question for one session (mux-driven, reactive). */
+export function useWireQuestion(controller: BoardController, sessionId: string | undefined): WireQuestion | undefined {
+  const [question, setQuestion] = useState<WireQuestion | undefined>(() => controller.questionPendingOf(sessionId))
+  useEffect(() => {
+    if (sessionId === undefined) {
+      setQuestion(undefined)
+      return undefined
+    }
+    setQuestion(controller.questionPendingOf(sessionId))
+    return controller.subscribeQuestions(() => {
+      setQuestion(controller.questionPendingOf(sessionId))
+    })
+  }, [controller, sessionId])
+  return question
 }

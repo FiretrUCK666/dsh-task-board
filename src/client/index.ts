@@ -10,6 +10,7 @@
  */
 import type { ClientContext, SessionId, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import { QuestionTracker } from './board/question-tracker.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
@@ -385,9 +386,15 @@ export function apply(ctx: ClientContext): void {
       }
     }
 
+    // Pending native questions ride the board's own mux stream: the host
+    // replays every still-pending frame on open, and answers flow through
+    // the same respond wire call the native composer uses — the only path
+    // that can settle a suspended ask_user_question.
+    const questionTracker = new QuestionTracker(connection.api)
     const controller = new BoardController({
       store,
       exec,
+      questionRpc: questionTracker,
       sessions: {
         list: sessions.list,
         exists: id => sessions.list.getSnapshot().byId[id as SessionId] !== undefined,
@@ -653,6 +660,7 @@ export function apply(ctx: ClientContext): void {
       for (const dispose of disposers.splice(0)) dispose()
       scheduler.dispose()
       controller.dispose()
+      questionTracker.dispose()
       uiDisposer = undefined
     }
   }

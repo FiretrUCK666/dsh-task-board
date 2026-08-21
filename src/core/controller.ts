@@ -22,6 +22,7 @@ import { applyManualToggle, isCruiseWindow, normalizeWindow, setCruiseSchedule a
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, withinGrace, type ActivityBook } from './session-activity.ts'
 import { createTag, normalizeCatalog, recolorTag, removeTag, renameTag, withTaskColor, withTaskTags, type Tag, type TagCatalog } from './tags.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
+import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
 import {
   applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
@@ -322,6 +323,11 @@ export interface ControllerDeps {
     | { ok: true; matched: boolean; outcome?: { kind: 'success' | 'error'; text?: string } }
     | { ok: false; error: string }
   >
+  /** The live pending-question tracker (native mux channel): the only path
+   *  that can settle a suspended `ask_user_question` — a plain message never
+   *  does. Absent = the interaction card degrades (the native side still
+   *  answers it). */
+  questionRpc?: QuestionRpcFace
 }
 
 /** A durable attachment ref returned by the host attachment bridge (the
@@ -555,6 +561,29 @@ export class BoardController {
   pendingInteractionOf(sessionId: string | undefined): PendingInteractionKind | undefined {
     if (sessionId === undefined) return undefined
     return this.deps.sessions.list.getSnapshot().byId[sessionId]?.pendingInteraction
+  }
+
+  // --- pending native questions (mux channel) -----------------------------------
+
+  /** The open ask_user_question batch for a session (the interaction card's
+   *  source of truth — frames carry the rpcId an answer must echo). */
+  questionPendingOf(sessionId: string | undefined): WireQuestion | undefined {
+    return this.deps.questionRpc?.pendingOf(sessionId)
+  }
+
+  /** Subscribe to pending-question changes across sessions. */
+  subscribeQuestions(listener: () => void): () => void {
+    return this.deps.questionRpc?.subscribe(listener) ?? (() => {})
+  }
+
+  /** Deliver one answer batch to the suspended ask (true = accepted). */
+  answerQuestion(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean> {
+    return this.deps.questionRpc?.answer(rpcId, sessionId, answers) ?? Promise.resolve(false)
+  }
+
+  /** Reject the whole ask (the model sees ASK_CANCELLED and continues). */
+  cancelQuestion(rpcId: string): Promise<boolean> {
+    return this.deps.questionRpc?.cancel(rpcId) ?? Promise.resolve(false)
   }
 
   /** The session's real workspace root + composed agent preset (native list summary). */

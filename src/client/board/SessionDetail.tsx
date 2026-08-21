@@ -36,7 +36,7 @@ import { useTranscriptTail } from './use-transcript.tsx'
 import { Button, SendModeToggle } from './ui.tsx'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
 import { admitDraftImages, type DraftImage } from './attach.ts'
-import { useSessionContext } from './use-interaction.ts'
+import { useSessionContext, useWireQuestion } from './use-interaction.ts'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { InteractionCard } from './InteractionCard.tsx'
 
@@ -98,7 +98,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   // The open native interaction (plan confirm / question) + live to-do/goal/
   // subagents of the session.
   const context = useSessionContext(controller, sessionId)
-  const { pendingInteraction } = context
+  const pendingInteraction = useWireQuestion(controller, sessionId)
   const [contextOpen, setContextOpen] = useState(false)
   // Pending browser images to attach to the next comment.
   const [attachedImages, setAttachedImages] = useState<readonly DraftImage[]>([])
@@ -243,8 +243,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
           {/* Pending native interaction (plan confirm / question). */}
           {pendingInteraction !== undefined && (
             <InteractionCard
-              interaction={pendingInteraction}
-              taskId={task.id}
+              key={pendingInteraction.rpcId}
+              question={pendingInteraction}
               sessionId={sessionId}
               controller={controller}
             />

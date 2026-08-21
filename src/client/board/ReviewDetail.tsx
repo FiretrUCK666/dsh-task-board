@@ -47,7 +47,7 @@ import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
 import { admitDraftImages, type DraftImage } from './attach.ts'
-import { useSessionContext } from './use-interaction.ts'
+import { useSessionContext, useWireQuestion } from './use-interaction.ts'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { InteractionCard } from './InteractionCard.tsx'
 import { Button, SendModeToggle } from './ui.tsx'
@@ -74,11 +74,12 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     ? sessionCommentsOf(current, sessionId, cruiseOn)
     : []
 
-  // The open native interaction (plan confirm / question), if any: the card
-  // over the composer answers it in place. Plus the live session context
-  // (to-do / goal / subagents) for the readout above the composer.
+  // The open native interaction (plan confirm / question): the card over the
+  // composer answers it in place through the mux channel (the only path that
+  // settles the suspended call). Plus the live session context (to-do / goal
+  // / subagents) for the readout above the composer.
   const context = useSessionContext(controller, sessionId)
-  const { pendingInteraction } = context
+  const pendingInteraction = useWireQuestion(controller, sessionId)
   const [contextOpen, setContextOpen] = useState(false)
 
   // Native projection baseline (context pressure / breakdown / permissions)
@@ -307,8 +308,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 card rides the composer so the user answers in place. */}
             {pendingInteraction !== undefined && sessionId !== undefined && (
               <InteractionCard
-                interaction={pendingInteraction}
-                taskId={current.id}
+                key={pendingInteraction.rpcId}
+                question={pendingInteraction}
                 sessionId={sessionId}
                 controller={controller}
               />
