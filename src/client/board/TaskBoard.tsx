@@ -581,6 +581,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         {(organizing || selectedCards.length > 0) && (
           <div className={css.boardRow}>
             <span className={css.organizeBar}>
+              {/* Color group: swatches + remove color — one concern. */}
               <span className={css.organizeGroup}>
                 <span className={css.organizeLabel}>{t('board.organizeColor')}</span>
                 <ColorSwatches
@@ -594,10 +595,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 )}
               </span>
               <span className={css.organizeCount}>{t('board.organizeCount', { n: String(selectedCards.length) })}</span>
+              {/* Selection group: select-all / clear / done. */}
               <span className={css.organizeActions}>
-                <Button size="sm" disabled={selectedCards.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
-                  {t('board.organizeDelete')}
-                </Button>
                 <Button size="sm" onClick={() => { setSelectedCards(visible.map(task => task.id)) }}>
                   {t('board.organizeSelectAll')}
                 </Button>
@@ -606,6 +605,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 </Button>
                 <Button size="sm" variant="primary" onClick={exitOrganize}>
                   {t('board.organizeDone')}
+                </Button>
+              </span>
+              {/* Danger group: delete the selected cards — visibly separate
+                  from the color row so it can never read as "delete color". */}
+              <span className={css.organizeDanger}>
+                <Button size="sm" variant="danger" disabled={selectedCards.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
+                  {t('board.organizeDelete')}
                 </Button>
               </span>
             </span>

@@ -1044,36 +1044,43 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
         </div>
 
         <footer className={css.detailFooter}>
-          {editing ? (
-            <>
-              <Button variant="primary" onClick={saveEdit}>
-                {t('detail.save')}
+          {/* Primary group: the run action (save/cancel while editing). */}
+          <span className={css.detailFooterGroup}>
+            {editing ? (
+              <>
+                <Button variant="primary" onClick={saveEdit}>
+                  {t('detail.save')}
+                </Button>
+                <Button onClick={cancelEdit}>
+                  {t('detail.cancel')}
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="primary"
+                disabled={busy}
+                title={t('detail.rerunHint')}
+                onClick={() => {
+                  // Running kicks off a real agent session; close the detail so
+                  // the whole board stays visible while the task executes.
+                  controller.closeTask()
+                  void controller.rerunTask(current.id)
+                }}
+              >
+                {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
               </Button>
-              <Button onClick={cancelEdit}>
-                {t('detail.cancel')}
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="primary"
-              disabled={busy}
-              title={t('detail.rerunHint')}
-              onClick={() => {
-                // Running kicks off a real agent session; close the detail so
-                // the whole board stays visible while the task executes.
-                controller.closeTask()
-                void controller.rerunTask(current.id)
-              }}
-            >
-              {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
+            )}
+            <Button title={t('detail.duplicateTitle')} onClick={duplicateTask}>
+              {t('detail.duplicate')}
             </Button>
-          )}
-          <Button title={t('detail.duplicateTitle')} onClick={duplicateTask}>
-            {t('detail.duplicate')}
-          </Button>
-          <Button variant="danger" onClick={() => { setConfirmDelete(true) }}>
-            {t('detail.delete')}
-          </Button>
+          </span>
+          {/* Danger group: destructive actions sit apart (hairline separation),
+              so the footer reads 主操作 → 复制 → ‖ 删除 → created. */}
+          <span className={css.detailFooterDanger}>
+            <Button variant="danger" onClick={() => { setConfirmDelete(true) }}>
+              {t('detail.delete')}
+            </Button>
+          </span>
           <span className={css.detailMeta}>
             {t('board.created')} {formatTime(current.createdAt)}
           </span>

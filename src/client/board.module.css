@@ -709,10 +709,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   /* Cards are inner floating surfaces: opaque under a glass skin (the
      translucent canvas stays behind them). Radius md (sharper than the
      column container's lg) so a card reads as an item inside a panel.
-     A per-card accent color tints the WHOLE card background (9% of the
-     user's color over the surface, applied as data through --card-tint —
-     never a CSS literal); unset cards stay the plain surface. */
-  background: color-mix(in srgb, var(--card-tint, transparent) 9%, var(--dsh-tb-surface-float));
+     A per-card accent color tints the WHOLE card background VERY lightly
+     (6% over the surface — pure atmosphere, NEVER the identity: the solid
+     8px dot on the title line carries the exact picked color, identical to
+     the palette swatch, so the card never looks 偏色). Applied as data
+     through --card-tint, never a CSS literal; unset cards stay plain. */
+  background: color-mix(in srgb, var(--card-tint, transparent) 6%, var(--dsh-tb-surface-float));
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-md);
   cursor: pointer;
@@ -830,6 +832,27 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    reduced-motion block below). */
 .card[data-unviewed] {
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
+}
+
+/* The title line: the card's solid color mark (exact picked color, 100% of
+   the swatch value) sits in front of the title; the row is a shrink-only
+   flex so the clamped title can never push the mark away. */
+.cardTitleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.cardColorMark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  /* The mark's hairline ring is a soft transparency of the SAME data color:
+     the visible dot is exactly the picked color — no blend, no偏色. */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--card-tint) 30%, transparent);
 }
 
 .cardTitle {
@@ -2602,8 +2625,24 @@ textarea.input {
   flex: none;
 }
 
-.detailMeta {
+/* Group rhythm: 8px inside a group, the danger group separated by a hairline
+   and its own 14px inset — the footer reads 主操作 → ‖ 删除 → created. */
+.detailFooterGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detailFooterDanger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
+  padding-left: 14px;
+  border-left: 1px solid var(--dsh-tb-separator);
+}
+
+.detailMeta {
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -3810,5 +3849,16 @@ textarea.input {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+/* The danger group of the organize strip stands apart from the color and
+   selection groups: hairline separation + its own rhythm, so "删除" can
+   never read as part of the palette (["remove color" vs "delete cards"]). */
+.organizeDanger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 14px;
+  border-left: 1px solid var(--dsh-tb-separator);
 }
 

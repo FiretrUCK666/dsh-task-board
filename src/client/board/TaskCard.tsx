@@ -193,7 +193,16 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
           <Icon name="play" />
         </span>
       )}
-      <span className={css.cardTitle}>{task.title}</span>
+      <span className={css.cardTitleRow}>
+        {/* The card's真实 color: a solid dot in the EXACT picked color (the
+            palette swatch is 100% of the data color; a blended card tint can
+            never show it exactly). The dot carries the identity, the 6% tint
+            below is pure atmosphere. */}
+        {task.color !== undefined && (
+          <span className={css.cardColorMark} style={{ background: task.color }} aria-hidden="true" />
+        )}
+        <span className={css.cardTitle}>{task.title}</span>
+      </span>
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
       <span className={css.cardMeta}>
         {/* Row 1 is identical on every card: workspace + last activity. */}
