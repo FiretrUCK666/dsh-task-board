@@ -32,7 +32,6 @@ import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
-import { PALETTE } from '../../core/colors.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
 /** Case-insensitive keyword match over title/description. */
@@ -75,7 +74,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     setOrganizing(false)
     clearSelection()
   }
-  /** 批量换色（undefined = 清除）。 */
+  /** 批量换色（undefined = 移除颜色，经单一色表文法的「移除颜色」点触发）。 */
   const applyColorToSelected = (color: string | undefined): void => {
     const targets = snapshot.tasks.filter(task => selectedCards.includes(task.id))
     for (const task of targets) controller.setTaskColor(task.id, color)
@@ -252,15 +251,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     if (organizing || event?.ctrlKey === true || event?.metaKey === true) toggleCard(id)
     else controller.openTask(id)
   }
-  // Organize-bar color slot: the first selected card's color, else the head of
-  // the preset palette (the swatch row applies instantly on click).
+  // Organize-bar color slot: the first selected card's color, else none —
+  // the ring never appears on a guessed default (a colorless selection has
+  // no ring; 「移除颜色」 dot lights instead).
   const orgColorValue = (() => {
     for (const task of snapshot.tasks) {
       if (selectedCards.includes(task.id) && task.color !== undefined) return task.color
     }
-    return PALETTE[0]
+    return undefined
   })()
-  const hasSelectedColor = selectedCards.some(id => snapshot.tasks.find(task => task.id === id)?.color !== undefined)
   const draggedTask = dragId !== undefined
     ? snapshot.tasks.find(candidate => candidate.id === dragId)
     : undefined
@@ -581,18 +580,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         {(organizing || selectedCards.length > 0) && (
           <div className={css.boardRow}>
             <span className={css.organizeBar}>
-              {/* Color group: swatches + remove color — one concern. */}
+              {/* Color group: swatches (palette / custom / 移除颜色) — one
+                  grammar with the card hover bar; applying is instant. */}
               <span className={css.organizeGroup}>
                 <span className={css.organizeLabel}>{t('board.organizeColor')}</span>
                 <ColorSwatches
                   value={orgColorValue}
-                  onChange={color => { applyColorToSelected(color) }}
+                  onChange={applyColorToSelected}
                 />
-                {hasSelectedColor && (
-                  <button type="button" className={css.rowHide} onClick={() => { applyColorToSelected(undefined) }}>
-                    {t('board.clearCardColor')}
-                  </button>
-                )}
               </span>
               <span className={css.organizeCount}>{t('board.organizeCount', { n: String(selectedCards.length) })}</span>
               {/* Selection group: select-all / clear / done. */}

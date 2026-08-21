@@ -6,14 +6,13 @@
  */
 import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
-import { PALETTE } from '../../core/colors.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf, cardSourceLabel } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { STATUS_KEY } from './status.ts'
 import { Chip } from './Chip.tsx'
-import { Icon } from './ui.tsx'
+import { ColorSwatches, Icon } from './ui.tsx'
 
 /** Compact relative/absolute time label. */
 export function formatTime(ms: number): string {
@@ -303,22 +302,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
       </span>
       {onColorPick !== undefined && (
         <span className={css.cardColorBar} data-ghost-hide="" onClick={event => { event.stopPropagation() }}>
-          <button
-            type="button"
-            className={css.cardColorNone + (task.color === undefined ? ` ${css.cardColorOn}` : '')}
-            title={t('card.colorNone')}
-            onClick={(event) => { event.stopPropagation(); onColorPick(undefined) }}
-          />
-          {PALETTE.map(color => (
-            <button
-              key={color}
-              type="button"
-              className={`${css.cardColorDot}${task.color === color ? ` ${css.cardColorOn}` : ''}`}
-              style={{ background: color }}
-              title={color}
-              onClick={event => { event.stopPropagation(); onColorPick(color) }}
-            />
-          ))}
+          <ColorSwatches value={task.color} onChange={color => { onColorPick(color) }} />
         </span>
       )}
     </button>
