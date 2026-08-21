@@ -18,7 +18,8 @@ import { COLUMNS, landingStatusOf, plainRunsOf, resolveCardDrop, type TaskRecord
 import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { insertionGapOf, type InsertionGap } from './drop-position.ts'
+import { useFlipRegion } from './use-flip.ts'
+import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { duplicateWindowOf, type CruiseWindow } from '../../core/cruise.ts'
 import { formatCruiseTime } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
@@ -175,10 +176,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       : t('board.cruiseStateOff')
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
   const [dragReject, setDragReject] = useState<TaskStatus | undefined>(undefined)
-  // The column that accepted a drop, for the one-shot accent flash. Own
-  // timer lifecycle: the window-level `drop` listener fires right after the
-  // column handler and must not erase the flash before its animation plays.
-  const [dropFlash, setDropFlash] = useState<TaskStatus | undefined>(undefined)
   // The id of the card being dragged and the insertion gap it would land at —
   // a gap now also recalls WHICH column it was computed for, so a cross-column
   // move previews (and drops at) an exact position, not just the tail. The
@@ -194,11 +191,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   useEffect(() => () => {
     if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
   }, [])
-  // Guards the drop-confirm flash timer against unmount (drop feedback only).
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => () => {
-    if (flashTimer.current !== undefined) clearTimeout(flashTimer.current)
-  }, [])
+  // The board root: the FLIP region (card move = the card itself settles into
+  // its new position — the drop confirmation, not a column-edge flash).
+  const boardRef = useRef<HTMLDivElement | null>(null)
+  useFlipRegion(boardRef)
   // The column currently accepting an external sidebar drag (session/workspace
   // dragged in from the sidebar): a distinct highlight from the board's own
   // card-reorder affordances. The latch refs below make the highlight stable:
@@ -300,10 +296,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         rect: element.getBoundingClientRect(),
       }))
     const gap = insertionGapOf(cards, dropY, dragId, 8)
-    // Clamp into the container: the column-top gap center may fall above the
-    // padding box; the indicator must never be clipped thinner by the
-    // scroll container.
-    return { beforeId: gap.beforeId, top: Math.max(0, gap.top - containerTop) }
+    // Content coordinates (viewport → scrolled content), clamped so the bar
+    // always sits exactly at the gap it promises — even mid-scroll.
+    return {
+      beforeId: gap.beforeId,
+      top: indicatorTopOf(gap.top, containerTop, container.scrollTop, container.scrollHeight),
+    }
   }
 
   // Resolve a workspace id to its display title through the run catalog
@@ -331,22 +329,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     })
   }
 
-  /** One-shot accent confirmation on the column that accepted a drop. The
-      flash is transient feedback: its own timer (not clearDrag) removes the
-      attribute, because the window-level drop listener runs right after the
-      column handler and would erase the flash before the animation plays. */
-  const flashColumn = (status: TaskStatus): void => {
-    setDropFlash(status)
-    if (flashTimer.current !== undefined) clearTimeout(flashTimer.current)
-    flashTimer.current = setTimeout(() => { setDropFlash(undefined) }, 600)
-  }
-
   /**
    * Column-level drop: same-column drops reorder (the half-split anchor the
    * last dragover computed); cross-column drops keep the classic
    * move/rerun/reject semantics; an external sidebar drag (session/workspace)
    * creates a bound task in this column. Every drop ends with a full drag
-   * reset, so no transient highlight can survive the gesture.
+   * reset, so no transient highlight can survive the gesture. The moved card
+   * settles into place via the board's FLIP animation — the drop feedback is
+   * the card itself, never a column-edge flash.
    */
   const handleDrop = (status: TaskStatus) => (event: React.DragEvent): void => {
     event.preventDefault()
@@ -364,25 +354,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     if (external !== undefined) {
       event.stopPropagation()
       createFromSidebar(external, status)
-      flashColumn(status)
       return
     }
     const task = snapshot.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return
     if (dragId !== undefined && task.status === status) {
       controller.moveTask(task.id, status, gapOf(status))
-      flashColumn(status)
       return
     }
     const decision = resolveCardDrop(task, status)
     if (decision.kind === 'move') {
       controller.moveTask(task.id, decision.status, gapOf(decision.status))
-      flashColumn(decision.status)
     } else if (decision.kind === 'run') {
       // Dropping on 'running' means "run again" (same semantics as the
       // detail button; the shared run guard rejects a live run).
       void controller.rerunTask(task.id)
-      flashColumn(status)
     } else if (decision.kind === 'reject') {
       setDragReject(status)
       if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
@@ -392,6 +378,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
   return (
     <div
+      ref={boardRef}
       className={css.board}
       data-dsh-taskboard-board=""
       onDragEnter={event => {
@@ -721,7 +708,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               data-status={column.status}
               data-dragover={dragOver === column.status ? '' : undefined}
               data-dragreject={dragReject === column.status ? '' : undefined}
-              data-flash={dropFlash === column.status ? '' : undefined}
               data-dropaccept={dropAccept === column.status ? 'link' : undefined}
               onDragOver={event => {
                 // A latched external sidebar drag (session/workspace) marks

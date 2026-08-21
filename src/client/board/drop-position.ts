@@ -16,6 +16,19 @@ export interface InsertionGap {
 }
 
 /**
+ * The indicator bar's Y in the scroll container's CONTENT coordinate space:
+ * the viewport gap top minus the container's viewport top PLUS the container's
+ * scroll offset — without the scroll term the bar drifts upward by exactly
+ * the scrolled amount, and drops land at a visually different gap than the
+ * bar promised. Clamped to the content's top and bottom so the bar is never
+ * clipped away from its gap.
+ */
+export function indicatorTopOf(viewportTop: number, containerTop: number, scrollTop: number, contentHeight: number): number {
+  const top = viewportTop - containerTop + scrollTop
+  return Math.min(Math.max(top, 0), contentHeight)
+}
+
+/**
  * Compute the insertion gap for a drag at `dropY` over a column's cards (in
  * visual order, excluding the dragged card itself): the nearest gap center
  * to the pointer wins — a gap center is `gap / 2` above each card and

@@ -1,10 +1,12 @@
 /**
  * Drop-position tests: the insertion-gap algorithm — the pointer's Y
  * against each card's gap centers decides the landing gap, symmetric in
- * both directions and correct for any column size.
+ * both directions and correct for any column size — and the scrolled
+ * indicator math (content coordinates, so the bar sits where the gap is
+ * even mid-scroll).
  */
 import { describe, expect, it } from 'vitest'
-import { insertionGapOf } from '../src/client/board/drop-position.ts'
+import { indicatorTopOf, insertionGapOf } from '../src/client/board/drop-position.ts'
 
 /** Cards at fixed vertical positions (top, 40px tall, 8px gaps). */
 function cards(ids: string[], startY = 0): Array<{ id: string; rect: { top: number; height: number } }> {
@@ -48,5 +50,19 @@ describe('insertionGapOf', () => {
   it('handles an empty column and a lone dragged card', () => {
     expect(insertionGapOf([], 100, 'ghost', GAP)).toEqual({ beforeId: undefined, top: 0 })
     expect(insertionGapOf(cards(['a']), 100, 'a', GAP)).toEqual({ beforeId: undefined, top: 0 })
+  })
+})
+
+describe('indicatorTopOf (scrolled content coordinates)', () => {
+  it('adds the container scroll offset — the bar never drifts mid-scroll', () => {
+    // Container's viewport top 200, scrolled 120 down; a gap at viewport 260
+    // sits at content 260 - 200 + 120 = 180.
+    expect(indicatorTopOf(260, 200, 120, 1000)).toBe(180)
+    expect(indicatorTopOf(260, 200, 0, 1000)).toBe(60)
+  })
+
+  it('clamps to the content box (never above the top or below the bottom)', () => {
+    expect(indicatorTopOf(5, 200, 0, 1000)).toBe(0)
+    expect(indicatorTopOf(5000, 200, 0, 1000)).toBe(1000)
   })
 })

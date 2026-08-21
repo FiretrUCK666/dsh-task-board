@@ -659,8 +659,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 8px;
   /* Top padding leaves room for the drop indicator at the column-top gap
      (gap/2 + indicator half-height): without it the bar's negative offset
-     would be clipped by the scroll container and render thinner. */
-  padding: 6px 8px 10px;
+     would be clipped by the scroll container and render thinner. The bottom
+     padding is the column's breathing room — the last card never sits flush
+     against the board edge or gets clipped at maximum scroll. */
+  padding: 6px 8px 22px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
@@ -760,17 +762,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   z-index: 1;
 }
 
-/* A successful drop confirmation: the landing column's border flashes the
-   accent once (180ms), so the eye registers "this column received it". */
-.column[data-flash] {
-  animation: dshTbDropConfirm 180ms ease;
-}
-
-@keyframes dshTbDropConfirm {
-  0%, 100% { border-color: var(--dsh-tb-border-soft); }
-  50% { border-color: var(--dsh-tb-accent); }
-}
-
 /* A rejected drop: a one-shot danger flash (not a persistent state). */
 .column[data-dragreject] {
   animation: dshTbRejectFlash 180ms ease;
@@ -780,6 +771,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   0%, 100% { border-color: var(--dsh-tb-border-soft); }
   50% { border-color: var(--dsh-tb-danger); }
 }
+
+/* A successful drop needs no column flash: the moved card settles into its
+   new position through the board's FLIP animation (use-flip.ts) — the drop
+   confirmation IS the card's own motion. */
 
 .card[data-status='running'] {
   border-color: var(--dsw-alias-state-warn-primary);
@@ -2648,8 +2643,19 @@ textarea.input {
 }
 
 .card.dragging {
-  opacity: 0.45;
+  /* Grab feel: the source card lifts (scale + tilt + deep shadow) instead of
+     plain fading — it reads as "I am holding this" for the drag's whole
+     duration; the native drag image follows the pointer underneath. */
+  opacity: 0.5;
+  transform: scale(1.02) rotate(0.5deg);
   box-shadow: var(--dsh-tb-shadow-3);
+  transition: box-shadow var(--dsh-tb-motion), transform var(--dsh-tb-motion), opacity var(--dsh-tb-motion);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.dragging {
+    transform: none;
+  }
 }
 
 /* Drop targets: business accent while hovering. Rejection and successful
@@ -2730,11 +2736,6 @@ textarea.input {
     /* Static ring only: the indicator has no entrance animation to strip,
        this keeps its reduced-motion look hairline-bordered. */
     box-shadow: inset 0 0 0 1px var(--dsh-tb-border);
-  }
-
-  .column[data-flash] {
-    animation: none;
-    box-shadow: inset 0 0 0 1px var(--dsh-tb-attention);
   }
 
   .sessionDropZone[data-bindactive] {
