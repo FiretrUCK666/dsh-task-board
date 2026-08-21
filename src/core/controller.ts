@@ -19,7 +19,7 @@ import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, isCruiseWindow, normalizeWindow, setCruiseSchedule as applySchedule, sortWindows, tickCruise as tickSchedule } from './cruise.ts'
-import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, withinGrace, type ActivityBook } from './session-activity.ts'
+import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessageText, withinGrace, type ActivityBook } from './session-activity.ts'
 import { createTag, normalizeCatalog, recolorTag, removeTag, renameTag, withTaskColor, withTaskTags, type Tag, type TagCatalog } from './tags.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
@@ -710,7 +710,7 @@ export class BoardController {
     // session/workspace mid-conversation): reflect that instantly — the card
     // jumps to 「进行中」 and the running turn is recorded as an external
     // round; it settles to 「待审核」 when the native turn ends.
-    this.reconcileBoundTask(boundTask.id)
+    void this.reconcileBoundTask(boundTask.id)
     return boundTask
   }
 
@@ -879,7 +879,7 @@ export class BoardController {
     if (changed) {
       this.persistAndNotify()
       // A rebind replaces the live source: its state joins the card instantly.
-      this.reconcileBoundTask(taskId)
+      void this.reconcileBoundTask(taskId)
     }
     return changed
   }
@@ -1998,7 +1998,7 @@ export class BoardController {
       // `running` with no board-owned open round is an out-of-band turn (the
       // user chatted in the native UI). It is recorded as an external round
       // and drives the card state, so the board mirrors the native reality.
-      let changed = this.scanExternalActivity()
+      let changed = await this.scanExternalActivity()
 
       // Stage 1 — reconcile every task with an open round worth settling:
       // running tasks (plain runs, comment rounds, external rounds) plus any
@@ -2030,7 +2030,7 @@ export class BoardController {
         // controller must never keep settling into a dropped ledger.
         if (this.disposed) return
         if (event !== undefined && event.kind === 'settled') {
-          events.push({ task, event })
+          events.push({ task: await this.fillExternalText(task, event.executionId), event })
           this.activeExecutionIds.delete(event.executionId)
         }
       }
@@ -2089,9 +2089,11 @@ export class BoardController {
    * Detect out-of-band activity on related sessions (see session-activity.ts)
    * and record external rounds: the round enters the session's comment thread,
    * a non-refine round moves the card to 「进行中」, a refine round keeps the
-   * column but turns `refining` on. Returns whether anything changed.
+   * column but turns `refining` on. The round body is the user's native
+   * message text captured at observation (so the thread shows what was said).
+   * Returns whether anything changed.
    */
-  private scanExternalActivity(): boolean {
+  private async scanExternalActivity(): Promise<boolean> {
     const byId = this.deps.sessions.list.getSnapshot().byId
     const now = this.now()
     const candidates = this.tasks.map(task => ({
@@ -2105,40 +2107,62 @@ export class BoardController {
     }))
     const turns = detectExternalTurns(candidates, this.activityBook, byId)
     if (turns.length === 0) return false
-    const byTask = new Map<string, Array<{ sessionId: string; refine: boolean }>>()
     for (const turn of turns) {
-      const list = byTask.get(turn.taskId) ?? []
-      list.push({ sessionId: turn.sessionId, refine: turn.refine })
-      byTask.set(turn.taskId, list)
-    }
-    let changed = false
-    let nextTasks = this.tasks.map(task => {
-      const list = byTask.get(task.id)
-      if (list === undefined) return task
-      let next = task
-      for (const turn of list) {
-        next = {
-          ...next,
+      const text = await this.userTextOf(turn.sessionId)
+      this.tasks = this.tasks.map(task => {
+        if (task.id !== turn.taskId) return task
+        const withRound = {
+          ...task,
           updatedAt: now,
-          executions: [...next.executions, newExternalRound({ id: this.uuid(), now, sessionId: turn.sessionId, refine: turn.refine })],
+          executions: [...task.executions, newExternalRound({
+            id: this.uuid(),
+            now,
+            sessionId: turn.sessionId,
+            refine: turn.refine,
+            ...text !== undefined ? { text } : {},
+          })],
         }
-        this.activityBook.externalSince.set(turn.sessionId, now)
-        if (!turn.refine && next.status !== 'running') next = { ...next, status: 'running' }
-      }
-      changed = true
-      return next
-    })
+        if (turn.refine || withRound.status === 'running') return withRound
+        return { ...withRound, status: 'running' }
+      })
+      this.activityBook.externalSince.set(turn.sessionId, now)
+    }
     // Cards that flipped to running rank newest at the top of 「进行中」.
-    if (changed) {
-      nextTasks = [...nextTasks]
-      for (const task of nextTasks) {
-        if (byTask.has(task.id) && task.status === 'running') {
-          nextTasks = promoteToColumnTop(nextTasks, task.id, 'running', now)
-        }
+    let nextTasks = [...this.tasks]
+    for (const turn of turns) {
+      const task = nextTasks.find(candidate => candidate.id === turn.taskId)
+      if (task !== undefined && !turn.refine && task.status === 'running') {
+        nextTasks = promoteToColumnTop(nextTasks, turn.taskId, 'running', now)
       }
     }
     this.tasks = nextTasks
-    return changed
+    return true
+  }
+
+  /** The newest native user message text of a session (the line that started
+   *  the observed turn); undefined when the transcript is unavailable or the
+   *  tail window missed it. */
+  private async userTextOf(sessionId: string | undefined): Promise<string | undefined> {
+    if (sessionId === undefined || this.deps.transcript === undefined) return undefined
+    const result = await this.deps.transcript(sessionId)
+    if (result === undefined) return undefined
+    return latestUserMessageText(result.events)
+  }
+
+  /** Backfill the body of an external round settling empty (legacy records /
+   *  an observation that missed the text): reads the native user message of
+   *  the session and patches the round's comment. Never changes non-external
+   *  rounds; non-empty bodies stay untouched. */
+  private async fillExternalText(task: TaskRecord, executionId: string): Promise<TaskRecord> {
+    const execution = task.executions.find(round => round.id === executionId)
+    if (execution === undefined || execution.external !== true) return task
+    if (execution.comment !== undefined && execution.comment !== '') return task
+    const text = await this.userTextOf(execution.sessionId)
+    if (text === undefined) return task
+    return {
+      ...task,
+      executions: task.executions.map(round => round.id === executionId ? { ...round, comment: text } : round),
+    }
   }
 
   /**
@@ -2156,7 +2180,7 @@ export class BoardController {
    * running-flip detection keeps working from this point on. Idempotent: a
    * session with an open round is never double-recorded.
    */
-  private reconcileBoundTask(taskId: string): void {
+  private async reconcileBoundTask(taskId: string): Promise<void> {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return
     const byId = this.deps.sessions.list.getSnapshot().byId
@@ -2169,13 +2193,19 @@ export class BoardController {
       if (!current) continue
       if (task.executions.some(round => round.sessionId === session.sessionId && round.endedAt === undefined)) continue
       if (withinGrace(this.directGraceUntil.get(session.sessionId), now)) continue
+      const text = await this.userTextOf(session.sessionId)
       next = {
         ...next,
         updatedAt: now,
         // Unviewed on purpose: this external round is brand-new content the
         // user has not seen (it happened before/while they bound it).
         viewedAt: now - 1,
-        executions: [...next.executions, newExternalRound({ id: this.uuid(), now, sessionId: session.sessionId })],
+        executions: [...next.executions, newExternalRound({
+          id: this.uuid(),
+          now,
+          sessionId: session.sessionId,
+          ...text !== undefined ? { text } : {},
+        })],
       }
       if (next.status !== 'running') next = { ...next, status: 'running' }
       this.activityBook.externalSince.set(session.sessionId, now)

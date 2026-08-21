@@ -24,7 +24,7 @@ import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
 import { SessionRow } from './SessionRow.tsx'
-import { sessionCommentsOf } from './comment-thread.ts'
+import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
 import { Button, Disclosure, Icon, Section, Switch } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
@@ -102,7 +102,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
     const times = sessionTimes(task, execution)
     const isActive = session.state === 'running' || session.state === 'waiting'
     const comments = sessionId !== undefined ? sessionCommentsOf(task, sessionId, cruiseOn) : []
-    const latestComment = comments.length > 0 ? comments[comments.length - 1] : undefined
+    const latest = sessionId !== undefined ? latestCommentView(task, sessionId, cruiseOn) : undefined
     return (
       <SessionRow
         state={session.state}
@@ -128,11 +128,13 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
         }
         footer={
           <>
-            {latestComment !== undefined && (
-              <span className={css.executionComments} title={latestComment.round.comment}>
+            {latest !== undefined && (
+              <span className={css.executionComments} title={latest.text}>
                 <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
-                <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latestComment.round.comment ?? '' })}</span>
-                <span className={css.executionCommentsTime}>{formatTime(latestComment.round.startedAt)}</span>
+                {/* The newest round's body; when nothing is renderable the
+                    state word fills the slot — 「最新」 is never empty again. */}
+                <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latest.text !== '' ? latest.text : t(latest.stateKey) })}</span>
+                <span className={css.executionCommentsTime}>{latest.at !== undefined ? formatTime(latest.at) : ''}</span>
               </span>
             )}
             {isActive && (

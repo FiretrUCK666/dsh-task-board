@@ -422,7 +422,14 @@ export function startExecution(
  * happening. `refine: true` marks a refinement-session round, which keeps
  * the task in its column.
  */
-export function newExternalRound(options: { id: string; now: number; sessionId: string; refine?: boolean }): ExecutionRecord {
+export function newExternalRound(options: {
+  id: string
+  now: number
+  sessionId: string
+  /** The native user message text observed at creation (the thread body). */
+  text?: string
+  refine?: boolean
+}): ExecutionRecord {
   return {
     id: options.id,
     sessionId: options.sessionId,
@@ -430,7 +437,7 @@ export function newExternalRound(options: { id: string; now: number; sessionId: 
     endedAt: undefined,
     result: undefined,
     error: undefined,
-    comment: '',
+    comment: options.text ?? '',
     sessionAnchor: options.sessionId,
     external: true,
     ...(options.refine === true ? { refine: true } : {}),

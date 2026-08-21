@@ -17,6 +17,51 @@ export interface ActivityBook {
   externalSince: Map<string, number>
 }
 
+/** Narrow transcript slice: a native user text message. */
+interface UserMessageEventShape {
+  type: 'user/message'
+  data?: {
+    source?: { kind?: unknown }
+    content?: unknown
+  }
+}
+
+/**
+ * The text of the newest native user message in a transcript tail — the line
+ * the user typed in the native chat that started the observed turn. The
+ * external round records this as its body, so the comment thread shows what
+ * was actually said (never an empty row). Mirrors the review page's user
+ * text extraction; undefined when the tail carries none (window missed it).
+ */
+export function latestUserMessageText(events: readonly unknown[]): string | undefined {
+  if (!Array.isArray(events)) return undefined
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as UserMessageEventShape | null
+    if (typeof event !== 'object' || event === null || event.type !== 'user/message') continue
+    const data = event.data
+    if (typeof data !== 'object' || data === null) continue
+    if (data.source?.kind !== 'user') continue
+    const text = textOf(data.content)
+    if (text !== '') return text
+  }
+  return undefined
+}
+
+/** Join a message's text blocks (each trimmed); returns '' when there is no text. */
+function textOf(content: unknown): string {
+  if (!Array.isArray(content)) return ''
+  const parts: string[] = []
+  for (const block of content) {
+    if (typeof block !== 'object' || block === null) continue
+    const entry = block as { type?: unknown; text?: unknown }
+    if (entry.type === 'text' && typeof entry.text === 'string') {
+      const text = entry.text.trim()
+      if (text !== '') parts.push(text)
+    }
+  }
+  return parts.join('\n')
+}
+
 /** One concrete detection: record an external round on this task's session. */
 export interface DetectedExternalTurn {
   taskId: string

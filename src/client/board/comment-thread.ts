@@ -95,6 +95,30 @@ export function commentKindOf(state: CommentViewState): 'success' | 'error' | 'w
   }
 }
 
+/** The newest round of a session's thread as a display summary: its body
+ *  text ('' when nothing renderable) plus the state word the surface falls
+ *  back to — the 「最新」 slot never shows an empty caption again. */
+export interface LatestCommentView {
+  /** The newest round's body text ('' = no renderable text). */
+  text: string
+  /** The locale key of the state chip the fallback renders. */
+  stateKey: ReturnType<typeof commentStateKey>
+  /** The round's submission instant. */
+  at: number | undefined
+}
+
+/** The latest round of one session's comment thread (the 「最新」 source). */
+export function latestCommentView(task: TaskRecord, sessionId: string, cruiseOn: boolean): LatestCommentView | undefined {
+  const views = sessionCommentsOf(task, sessionId, cruiseOn)
+  if (views.length === 0) return undefined
+  const latest = views[views.length - 1]
+  return {
+    text: latest.round.comment ?? '',
+    stateKey: commentStateKey(latest.state),
+    at: latest.round.startedAt,
+  }
+}
+
 /** The locale key of a comment state's chip label (callers pass `{ n }` for queued). */
 export function commentStateKey(state: CommentViewState):
   | 'review.commentSucceeded'

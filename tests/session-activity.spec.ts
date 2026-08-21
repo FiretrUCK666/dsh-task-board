@@ -5,7 +5,7 @@
  * board already owns or already recorded via direct-send.
  */
 import { describe, expect, it } from 'vitest'
-import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, withinGrace, type ActivityBook } from '../src/core/session-activity.ts'
+import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessageText, withinGrace, type ActivityBook } from '../src/core/session-activity.ts'
 
 const TASK = 't-1'
 const SESSION = 's-1'
@@ -86,5 +86,22 @@ describe('grace helpers', () => {
     expect(withinGrace(1_000_000, 999_000)).toBe(true)
     expect(withinGrace(999_000, 1_000_000)).toBe(false)
     expect(withinGrace(undefined, 1_000_000)).toBe(false)
+  })
+})
+
+describe('latestUserMessageText', () => {
+  it('returns the newest native user text (skipping injected/context rows)', () => {
+    const events = [
+      { type: 'user/message', data: { source: { kind: 'injected' }, content: [{ type: 'text', text: '插件注入' }] } },
+      { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '回应' }] } } },
+      { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: ' 你好，plan mode ' }, { type: 'text', text: '继续' }] } },
+    ]
+    expect(latestUserMessageText(events)).toBe('你好，plan mode\n继续')
+  })
+
+  it('returns undefined for a missing window or non-user tails', () => {
+    expect(latestUserMessageText([])).toBeUndefined()
+    expect(latestUserMessageText([{ type: 'assistant/message', data: {} }])).toBeUndefined()
+    expect(latestUserMessageText([{ type: 'user/message', data: { source: { kind: 'injected' }, content: [{ type: 'text', text: 'x' }] } }])).toBeUndefined()
   })
 })

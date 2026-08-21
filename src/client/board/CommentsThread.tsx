@@ -31,7 +31,10 @@ export function CommentsThread({ task, views, onCancel }: {
           <li key={view.round.id} className={css.reviewComment}>
             <span className={css.reviewCommentText}>
               {view.round.command === true && <span className={css.reviewCommentCommand} aria-hidden="true">/</span>}
-              {view.round.comment !== undefined && <Markdown text={view.round.comment} />}
+              {/* A round without renderable text (legacy external records)
+                  never draws an empty body: the state chip alone carries the
+                  row, and the settle path backfills the body. */}
+              {view.round.comment !== undefined && view.round.comment !== '' && <Markdown text={view.round.comment} />}
             </span>
             <span className={css.reviewCommentMeta}>
               {/* 直发轮 = 用户直接发给原生会话的消息记录：只读、已送达、不驱动。

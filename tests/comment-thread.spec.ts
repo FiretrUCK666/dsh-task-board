@@ -2,7 +2,7 @@
  *  state, and the task-level queue position behind the session chips. */
 import { describe, expect, it } from 'vitest'
 import { createTask, newDirectRound, newExternalRound, pendingCommentCount, settleExecution, startExecution, type ExecutionRecord, type TaskRecord } from '../src/core/tasks.ts'
-import { commentKindOf, commentRoundState, commentStateKey, queuePositionOf, sessionCommentsOf } from '../src/client/board/comment-thread.ts'
+import { commentKindOf, commentRoundState, commentStateKey, latestCommentView, queuePositionOf, sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -247,5 +247,45 @@ describe('external rounds (原生会话活动)', () => {
     expect(sessionCommentsOf(task, 's-1', true).map(view => view.round.id)).toContain('x1')
     expect(queuePositionOf(task, 'x1')).toBe(0)
     expect(pendingCommentCount(task)).toBe(0)
+  })
+
+  it('carries the captured native message as its body (never an empty row)', () => {
+    const round = newExternalRound({ id: 'x2', now: NOW + 11, sessionId: 's-1', text: '切到 plan mode。' })
+    expect(round.comment).toBe('切到 plan mode。')
+    expect(round.external).toBe(true)
+  })
+})
+
+describe('latestCommentView', () => {
+  it('returns the newest round of the session thread with its body text', () => {
+    const task = {
+      ...withTwoRuns(),
+      executions: [
+        ...withTwoRuns().executions,
+        newExternalRound({ id: 'x1', now: NOW + 10, sessionId: 's-1', text: '你好' }),
+      ],
+    }
+    const latest = latestCommentView(task, 's-1', true)
+    expect(latest?.text).toBe('你好')
+    expect(latest?.stateKey).toBe('review.commentRunning')
+  })
+
+  it('falls back to the state word when the body is empty (legacy records)', () => {
+    const task = {
+      ...withTwoRuns(),
+      executions: [
+        ...withTwoRuns().executions,
+        newExternalRound({ id: 'x1', now: NOW + 10, sessionId: 's-1' }),
+        { ...newExternalRound({ id: 'x2', now: NOW + 20, sessionId: 's-1' }), endedAt: NOW + 30, result: 'succeeded' as const },
+      ],
+    }
+    const latest = latestCommentView(task, 's-1', true)
+    expect(latest?.text).toBe('')
+    expect(latest?.stateKey).toBe('review.commentSucceeded')
+    expect(latest?.at).toBe(NOW + 20)
+  })
+
+  it('is undefined when the session has no thread', () => {
+    expect(latestCommentView(withTwoRuns(), 'none', true)).toBeUndefined()
   })
 })

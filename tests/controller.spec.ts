@@ -2133,6 +2133,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
       { kind: 'session', sessionId: 's-live' },
       { title: 'live', description: '', prompt: 'run' },
     )!
+    await flush() // the bind sync captures the running turn (async transcript read)
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.status).toBe('running')
     const ext = row.executions[row.executions.length - 1]
@@ -2178,11 +2179,13 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     sessions.setRunning('s-live', true)
     controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    await flush() // the rebind sync is async (transcript read)
     let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.status).toBe('running')
     expect(row.executions.filter(round => round.external === true).length).toBe(1)
     // Rebinding the same live source must not double-record.
     controller.bindTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    await flush()
     row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.executions.filter(round => round.external === true).length).toBe(1)
   })
@@ -2199,6 +2202,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     controller.start()
     await flush()
     const task = controller.createBoundTask({ kind: 'session', sessionId: 's-live' }, { title: 'live', description: '', prompt: 'run' })!
+    await flush() // the bind sync appends the external round asynchronously
     const extId = controller.getSnapshot().tasks[0].executions[0].id
     stub.reconcileResult = { kind: 'settled', taskId: task.id, executionId: extId, outcome: 'succeeded' }
     sessions.setRunning('s-live', false)
