@@ -2933,7 +2933,7 @@ textarea.input {
   display: flex;
   flex-direction: column;
   flex: none;
-  width: 320px;
+  width: 344px;
   min-width: 0;
   min-height: 0;
   border-left: var(--dsh-tb-separator);
@@ -2948,7 +2948,7 @@ textarea.input {
   flex-direction: column;
   gap: 12px;
   flex: none;
-  padding: 12px 12px 8px;
+  padding: 12px 14px 10px;
   border-bottom: var(--dsh-tb-separator);
 }
 
@@ -2964,7 +2964,7 @@ textarea.input {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 12px 8px;
+  padding: 12px 14px 10px;
 }
 
 /* The conversation region scrolls on its own — a long transcript never
@@ -3107,6 +3107,9 @@ textarea.input {
 
 .reviewMeterFigures {
   margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
@@ -3269,7 +3272,7 @@ textarea.input {
   align-items: center;
   gap: 8px;
   flex: none;
-  padding: 12px 12px 0;
+  padding: 12px 14px 0;
 }
 
 .reviewThreadTitle {
@@ -3301,7 +3304,7 @@ textarea.input {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px 10px;
+  padding: 8px 12px;
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 10px;

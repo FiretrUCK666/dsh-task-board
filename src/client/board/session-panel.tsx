@@ -414,11 +414,15 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
                 disabled={configBusy}
                 onChange={event => { applyModel(event.target.value) }}
               >
-                {sessionModels.groups.flatMap(group => group.models.map(model => (
-                  <option key={`${group.provider}${MODEL_SEP}${model.id}`} value={`${group.provider}${MODEL_SEP}${model.id}`}>
-                    {group.provider} / {model.name ?? model.id}
-                  </option>
-                )))}
+                {sessionModels.groups.map(group => (
+                  <optgroup key={group.provider} label={group.provider}>
+                    {group.models.map(model => (
+                      <option key={`${group.provider}${MODEL_SEP}${model.id}`} value={`${group.provider}${MODEL_SEP}${model.id}`}>
+                        {model.name ?? model.id}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </span>
           </span>

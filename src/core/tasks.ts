@@ -127,6 +127,19 @@ export function sameBind(a: TaskBind, b: TaskBind): boolean {
   return false
 }
 
+/** The card's source-line label — ONE derivation for every card: the bound
+ *  session's title when the task has a session source and that title differs
+ *  from the task's own title (a source named exactly like the task is the
+ *  task itself — never a repeated line), else the workspace label, skipped
+ *  the same way. Empty = no source line (the card shows no source, never a
+ *  guessed default). Callers pass the RESOLVED titles (live titles, raw ids
+ *  as fallback); this is pure display policy. */
+export function cardSourceLabel(task: TaskRecord, boundTitle: string, workspaceTitle: string): string {
+  if (boundTitle !== '' && boundTitle !== task.title) return boundTitle
+  if (workspaceTitle !== '' && workspaceTitle !== task.title) return workspaceTitle
+  return ''
+}
+
 /** Brand an unknown string as a schedule mode. */
 export function isScheduleMode(value: unknown): value is ScheduleMode {
   return value === 'cron' || value === 'chain'

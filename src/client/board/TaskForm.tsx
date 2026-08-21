@@ -55,15 +55,6 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, ment
     return () => { alive = false }
   }, [catalog])
 
-  /** Flat "provider / model" options across the catalog. */
-  const modelOptions = useMemo(() => groups.flatMap(group => group.models.map(model => {
-    const key = `${group.provider}${MODEL_SEP}${model.id}`
-    const label = model.name !== undefined && model.name !== model.id
-      ? `${group.provider} · ${model.name}`
-      : `${group.provider} / ${model.id}`
-    return { key, label }
-  })), [groups])
-
   /** Efforts of the selected model (empty when none advertised). */
   const effortOptions = useMemo(() => {
     if (draft.provider === '' || draft.model === '') return []
@@ -189,8 +180,14 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, ment
             onChange={event => { setModel(event.target.value) }}
           >
             <option value="">{t('new.modelDefault')}</option>
-            {modelOptions.map(option => (
-              <option key={option.key} value={option.key}>{option.label}</option>
+            {groups.map(group => (
+              <optgroup key={group.provider} label={group.provider}>
+                {group.models.map(model => (
+                  <option key={`${group.provider}${MODEL_SEP}${model.id}`} value={`${group.provider}${MODEL_SEP}${model.id}`}>
+                    {model.name ?? model.id}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
           </span>

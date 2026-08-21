@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -650,5 +650,30 @@ describe('disarmSchedule', () => {
     expect(disarmSchedule(plain, NOW)).toBe(plain)
     const off = withSchedule(sampleTask(), { enabled: false, cron: '0 9 * * *' }, NOW)
     expect(disarmSchedule(off, NOW)).toBe(off)
+  })
+})
+
+describe('cardSourceLabel', () => {
+  it('shows the bound session title only when it differs from the task title', () => {
+    const task = createTask({ title: 'My task', description: '', prompt: '' }, NOW, 'task-1')
+    expect(cardSourceLabel(task, 'My task', 'workspace-a')).toBe('workspace-a')
+    expect(cardSourceLabel(task, 'The real session', 'workspace-a')).toBe('The real session')
+  })
+
+  it('skips a source named exactly like the task, in order: session then workspace', () => {
+    const task = createTask({ title: 'Same name', description: '', prompt: '' }, NOW, 'task-1')
+    expect(cardSourceLabel(task, 'Same name', 'workspace-a')).toBe('workspace-a')
+    expect(cardSourceLabel(task, '', 'Same name')).toBe('')
+    expect(cardSourceLabel(task, 'Same name', 'Same name')).toBe('')
+  })
+
+  it('prefers the session source over the workspace label', () => {
+    const task = createTask({ title: 'Task', description: '', prompt: '' }, NOW, 'task-1')
+    expect(cardSourceLabel(task, 'Session X', 'Workspace Y')).toBe('Session X')
+  })
+
+  it('is empty when there is nothing to show (never a guessed default)', () => {
+    const task = createTask({ title: 'Task', description: '', prompt: '' }, NOW, 'task-1')
+    expect(cardSourceLabel(task, '', '')).toBe('')
   })
 })

@@ -8,7 +8,7 @@ import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import { PALETTE } from '../../core/colors.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
+import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf, cardSourceLabel } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { STATUS_KEY } from './status.ts'
@@ -122,11 +122,14 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // Comments saved but not yet injected (the task's queue): a quiet warn
   // badge so a card waiting for the dispatcher is never mistaken for idle.
   const queuedComments = pendingCommentCount(task)
-  const workspaceLabel = taskBindsOf(task).some(bind => bind.kind === 'session')
-    ? boundTitleOf?.(task) ?? t('card.workspaceDefault')
-    : task.workspaceId !== undefined
-      ? workspaceTitleOf(task.workspaceId)
-      : t('card.workspaceDefault')
+  // The card's source line — one derivation for every card (see
+  // cardSourceLabel): the bound session's title when it differs from the
+  // task title, else the workspace label. Empty = no source line.
+  const sourceLabel = cardSourceLabel(
+    task,
+    taskBindsOf(task).some(bind => bind.kind === 'session') ? boundTitleOf?.(task) ?? '' : '',
+    task.workspaceId !== undefined ? workspaceTitleOf(task.workspaceId) : '',
+  )
   // Automation paused because the latest plain run failed (the "failure
   // pauses the rule" signal), vs. a review pause for a successful run.
   const readiness = ruleReadiness(task)
@@ -205,15 +208,18 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
       </span>
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
       <span className={css.cardMeta}>
-        {/* Row 1 is identical on every card: workspace + last activity. */}
+        {/* Row 1 is identical on every card: source line (when there IS one
+            — a source named like the task is never repeated) + last activity. */}
         <span className={css.cardMetaRow}>
-          <span
-            className={css.cardWorkspace}
-            title={task.workspaceId ?? t('card.workspaceDefault')}
-          >
-            <span className={css.cardWorkspaceDot} aria-hidden="true" />
-            <span className={css.cardWorkspaceName}>{workspaceLabel}</span>
-          </span>
+          {sourceLabel !== '' && (
+            <span
+              className={css.cardWorkspace}
+              title={sourceLabel}
+            >
+              <span className={css.cardWorkspaceDot} aria-hidden="true" />
+              <span className={css.cardWorkspaceName}>{sourceLabel}</span>
+            </span>
+          )}
           <span className={css.cardTime} title={formatDateTime(task.updatedAt)}>
             {t('board.updated')} {formatTime(task.updatedAt)}
           </span>
