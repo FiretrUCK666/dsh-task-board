@@ -1825,6 +1825,32 @@ describe('linked sessions & bind', () => {
     expect(controller.boundSourceTitleOf({ kind: 'session', sessionId: 's-1' })).toBe('s-1')
   })
 
+  it('removeTaskSession removes the session records, clears its hide state and unbinds a sole session source', () => {
+    const { controller, store } = makeController()
+    const task = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, { title: 't', description: '', prompt: 'run' })!
+    controller.hideTaskSession(task.id, 's-1')
+    // The task has no rounds for the session, but it IS hidden — removal
+    // clears the hide state + unbinds the sole session source.
+    expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
+    const after = store.load()[0]
+    expect(after.hidden).toBeUndefined()
+    expect(after.bind).toBeUndefined()
+  })
+
+  it('removeTaskSession removes that session rounds while keeping every other session and the task', () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.submitSessionComment(task.id, 's-1', '给 s-1 的评论')
+    controller.submitSessionComment(task.id, 's-2', '给 s-2 的评论')
+    expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.executions.filter(round => round.sessionId === 's-1')).toHaveLength(0)
+    expect(row.executions.some(round => round.sessionId === 's-2')).toBe(true)
+    // Removing an unknown session is a no-op.
+    expect(controller.removeTaskSession(task.id, 's-none')).toBe(false)
+  })
+
   it('externalKindOf classifies sidebar ids and linkedOf derives workspace rows live', () => {
     const wss = workspaces()
     wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]

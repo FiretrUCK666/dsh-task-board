@@ -650,6 +650,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   dragSourceRef: { readonly current: boolean }
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Red-flag per-session removal (hidden-tray only): the session's rounds
+  // and hide history are permanently removed after confirmation.
+  const [confirmRemoveSession, setConfirmRemoveSession] = useState<string | undefined>(undefined)
   // Edit-mode draft; undefined = not editing. Kept separate from `current`
   // so live record updates (e.g. an execution settling) never clobber it.
   const [draft, setDraft] = useState<TaskDraft | undefined>(undefined)
@@ -1009,6 +1012,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                         <Button size="sm" variant="ghost" onClick={() => { controller.unhideTaskSession(current.id, sessionId) }}>
                           {t('detail.restoreOne')}
                         </Button>
+                        <Button size="sm" variant="danger" onClick={() => { setConfirmRemoveSession(sessionId) }}>
+                          {t('detail.delete')}
+                        </Button>
                       </li>
                     ))}
                   </ul>
@@ -1084,6 +1090,19 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
             setConfirmDelete(false)
             controller.deleteTask(current.id)
             controller.closeTask()
+          }}
+        />
+      )}
+      {confirmRemoveSession !== undefined && (
+        <ConfirmDialog
+          title={t('detail.sessionRemoveTitle', { name: controller.sessionTitle(confirmRemoveSession) ?? confirmRemoveSession })}
+          message={t('detail.sessionRemoveConfirm')}
+          confirmLabel={t('detail.sessionRemoveOk')}
+          danger
+          onCancel={() => { setConfirmRemoveSession(undefined) }}
+          onConfirm={() => {
+            controller.removeTaskSession(current.id, confirmRemoveSession)
+            setConfirmRemoveSession(undefined)
           }}
         />
       )}

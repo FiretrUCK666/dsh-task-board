@@ -29,7 +29,7 @@ export type SessionRowChip = {
 export type SessionRowState = 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
 
 /** The unified session row (one grammar for every session of a task). */
-export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle }: {
+export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, onDelete, deleteTitle }: {
   /** Live session state (execution kind): rendered as data-state/data-waiting. */
   state?: SessionRowState
   /** Status chip on the top line (undefined = no chip). */
@@ -55,6 +55,11 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
   onHide: () => void
   /** Tooltip of the quiet hide affordance. */
   hideTitle: string
+  /** Permanently remove this session's records (hidden-tray rows only: a
+   *  hide-then-delete two-step protection). Absent = no delete affordance. */
+  onDelete?: () => void
+  /** Tooltip of the delete affordance. */
+  deleteTitle?: string
 }) {
   return (
     <li
@@ -105,6 +110,16 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
           >
             {t('detail.hide')}
           </button>
+          {onDelete !== undefined && (
+            <button
+              type="button"
+              className={css.sessionRowDelete}
+              onClick={event => { event.stopPropagation(); onDelete() }}
+              title={deleteTitle}
+            >
+              {t('detail.delete')}
+            </button>
+          )}
         </span>
       </div>
       <span className={css.sessionRowMeta}>{meta}</span>

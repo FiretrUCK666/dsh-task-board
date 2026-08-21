@@ -2206,6 +2206,27 @@ textarea.input {
   background: var(--dsh-tb-hover);
 }
 
+/* The destructive sibling of the quiet hide affordance (hidden-tray rows):
+   same quiet geometry, danger tone — the delete has to be noticed, but never
+   shout over the row. */
+.sessionRowDelete {
+  flex: none;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--dsw-alias-state-error-primary);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion);
+}
+
+.sessionRowDelete:hover {
+  color: var(--dsh-tb-text-1);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);
+}
+
 /* --- linked sessions (bound task's live view of its native source) --------- */
 
 /* The linked row's identity slot inside the shared SessionRow top line:

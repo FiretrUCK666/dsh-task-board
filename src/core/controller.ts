@@ -808,6 +808,47 @@ export class BoardController {
     return changed
   }
 
+  /** Permanently remove ONE session from the task (the hidden-tray 删除):
+   *  its rounds are deleted, its hide state is cleared, and a live session
+   *  binding that points ONLY at this session is unbound (a deleted source
+   *  cannot stay bound). The task itself and every other session remain.
+   *  @returns true when anything was removed. */
+  removeTaskSession(taskId: string, sessionId: string): boolean {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId) return task
+      const kept = task.executions.filter(round => round.sessionId !== sessionId)
+      const wasHidden = task.hidden?.sessions?.includes(sessionId) === true
+      if (kept.length === task.executions.length && !wasHidden) return task
+      changed = true
+      const next: TaskRecord = { ...task, updatedAt: this.now(), executions: kept }
+      const hidden = task.hidden
+      if (hidden !== undefined) {
+        const sessions = (hidden.sessions ?? []).filter(id => id !== sessionId)
+        const executions = (hidden.executions ?? []).filter(id =>
+          task.executions.find(round => round.id === id && round.sessionId === sessionId) === undefined)
+        if (sessions.length > 0 || executions.length > 0) {
+          next.hidden = {
+            ...(sessions.length > 0 ? { sessions } : {}),
+            ...(executions.length > 0 ? { executions } : {}),
+          }
+        } else {
+          delete next.hidden
+        }
+      }
+      // A live session binding that points ONLY at this session cannot stay:
+      // its source no longer exists on the task.
+      if (next.bind?.kind === 'session' && next.bind.sessionId === sessionId) {
+        const unbound: TaskRecord = { ...next }
+        delete unbound.bind
+        return unbound
+      }
+      return next
+    })
+    if (changed) this.persistAndNotify()
+    return changed
+  }
+
   /** Restore ONE hidden session (single-item restore; the bulk "恢复全部"
    *  stays available too — a folder's many hidden rows can be brought back
    *  one by one without restoring everything). */
