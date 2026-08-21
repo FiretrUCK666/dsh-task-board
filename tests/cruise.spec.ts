@@ -1,12 +1,19 @@
 /**
- * Cruise scheduled-window tests (v3): `enabled` is the truth, manual intent is
- * a runtime override that the next boundary takes over, and start/end are
- * BOTH optional — every combination (start-only / end-only / both) with any
- * manual position composes to a deterministic state. Cross-midnight windows
- * normalize (+1 day) instead of erroring, and expired windows prune.
+ * Cruise scheduled-window tests (v4): `enabled` (the switch) is the user's
+ * state; a window is an APPOINTMENT — its start/end instants are the only
+ * automatic flippers, and EDITING the plan never flips the switch (except
+ * an added only-end window, whose start instant IS the add). Start/end are
+ * BOTH optional: every combination with any manual position composes to a
+ * deterministic state. Cross-midnight windows normalize (+1 day) instead of
+ * erroring; user-error ranges (both-empty / same instant / end more than a
+ * day before start / past endpoints) are rejected with concrete messages.
  */
 import { describe, expect, it } from 'vitest'
-import { CRUISE_TICK_MS, DAY_MS, applyManualToggle, coveringWindow, cruiseWindowGrammarOf, duplicateWindowOf, isIllegalWindowRange, normalizeWindow, setCruiseSchedule, sortWindows, tickCruise, windowSortKeyOf, type CruiseWindow } from '../src/core/cruise.ts'
+import {
+  CRUISE_TICK_MS, DAY_MS, applyManualToggle, coveringWindow, cruiseStatusLineOf, cruiseWindowGrammarOf,
+  duplicateWindowOf, isWindowActive, normalizeWindow, setCruiseSchedule, sortWindows, tickCruise,
+  windowRangeIssueOf, windowSortKeyOf, type CruiseWindow,
+} from '../src/core/cruise.ts'
 import type { CruiseState } from '../src/core/controller.ts'
 
 const NOW = 1_700_000_000_000
@@ -44,11 +51,98 @@ describe('normalizeWindow / coveringWindow (three-state semantics)', () => {
     expect(cross.endAt).toBe(NOW + 2 * HOUR - DAY + DAY)
     expect(coveringWindow(state([cross]), NOW)).toEqual(cross)
   })
+  it('an end more than a whole day before the start is a DATE MISTAKE — left as-entered', () => {
+    expect(normalizeWindow({ startAt: NOW, endAt: NOW - 26 * HOUR })).toEqual({ startAt: NOW, endAt: NOW - 26 * HOUR })
+  })
   it('coveringWindow honors absent ends (open) and absent starts (since now)', () => {
     expect(coveringWindow(state([{ startAt: NOW - 1 }]), NOW + HOUR)?.startAt).toBe(NOW - 1)
     expect(coveringWindow(state([{ endAt: NOW + HOUR }]), NOW)).toEqual({ endAt: NOW + HOUR })
     expect(coveringWindow(state([{ endAt: NOW - 1 }]), NOW)).toBeUndefined()
     expect(coveringWindow(state([{ startAt: NOW + 1, endAt: NOW + HOUR }]), NOW)).toBeUndefined()
+  })
+})
+
+describe('windowRangeIssueOf (concrete, explainable window validation)', () => {
+  it('neither endpoint set is an error; single-ended windows are always well-formed', () => {
+    expect(windowRangeIssueOf({}, NOW)).toBe('both-empty')
+    expect(windowRangeIssueOf({ startAt: NOW + HOUR }, NOW)).toBeUndefined()
+    expect(windowRangeIssueOf({ endAt: NOW + HOUR }, NOW)).toBeUndefined()
+  })
+  it('a same-instant start/end is rejected (zero-length is not a window)', () => {
+    expect(windowRangeIssueOf({ startAt: NOW + HOUR, endAt: NOW + HOUR }, NOW)).toBe('same-instant')
+  })
+  it('an end more than a day before the start is a date mistake, not a night', () => {
+    expect(windowRangeIssueOf(normalizeWindow({ startAt: NOW, endAt: NOW - 25 * HOUR }), NOW)).toBe('end-too-early')
+    expect(windowRangeIssueOf(normalizeWindow({ startAt: NOW, endAt: NOW - DAY }), NOW)).toBe('end-too-early')
+  })
+  it('a genuine cross-midnight night (end within (start-24h, start]) passes once normalized', () => {
+    expect(windowRangeIssueOf(normalizeWindow({ startAt: NOW + 1, endAt: NOW + 2 * HOUR - DAY }), NOW)).toBeUndefined()
+    expect(windowRangeIssueOf(normalizeWindow({ startAt: NOW + 1, endAt: NOW + HOUR }), NOW)).toBeUndefined()
+  })
+  it('past endpoints are named: start-past / end-past', () => {
+    expect(windowRangeIssueOf({ startAt: NOW - 1, endAt: NOW + HOUR }, NOW)).toBe('start-past')
+    expect(windowRangeIssueOf({ startAt: NOW + HOUR, endAt: NOW - 1 }, NOW)).toBe('end-past')
+    expect(windowRangeIssueOf({ endAt: NOW - 1 }, NOW)).toBe('end-past')
+  })
+})
+
+describe('setCruiseSchedule (v4: editing the PLAN never flips the switch)', () => {
+  it('adding a future window keeps enabled+manual untouched', () => {
+    const on = state([], true, true)
+    const next = setCruiseSchedule(on, [{ startAt: NOW + HOUR, endAt: NOW + 2 * HOUR }], NOW)
+    expect(next.enabled).toBe(true)
+    expect(next.manual).toBe(true)
+    expect(next.schedule).toEqual([{ startAt: NOW + HOUR, endAt: NOW + 2 * HOUR }])
+  })
+  it('removing EVERY window keeps the switch as-is (manual on/off always matches up)', () => {
+    const on = state([{ startAt: NOW, endAt: NOW + HOUR }], true)
+    const cleared = setCruiseSchedule(on, [], NOW)
+    expect(cleared.enabled).toBe(true)
+    expect(cleared.schedule).toEqual([])
+    const off = state([{ startAt: NOW, endAt: NOW + HOUR }], false, false)
+    expect(setCruiseSchedule(off, [], NOW).enabled).toBe(false)
+  })
+  it('an ADDED only-end window fires its start boundary at creation (turns on, manual clears)', () => {
+    const off = state([], false, false)
+    const next = setCruiseSchedule(off, [{ endAt: NOW + HOUR }], NOW)
+    expect(next.enabled).toBe(true)
+    expect(next.manual).toBeUndefined()
+    expect(next.schedule).toEqual([{ endAt: NOW + HOUR }])
+    // Already on: adding another only-end window keeps it on.
+    const on = state([{ endAt: NOW + HOUR }], true)
+    expect(setCruiseSchedule(on, [{ endAt: NOW + HOUR }, { endAt: NOW + 2 * HOUR }], NOW).enabled).toBe(true)
+  })
+  it('sorts + normalizes + drops empties; an identical list is a no-op', () => {
+    const unsorted = [{ startAt: NOW + 2 * HOUR, endAt: NOW + 3 * HOUR }, { endAt: NOW + HOUR }]
+    const next = setCruiseSchedule(state([]), unsorted, NOW)
+    expect(next.schedule.map(w => w.startAt ?? w.endAt)).toEqual([NOW + HOUR, NOW + 2 * HOUR])
+    expect(setCruiseSchedule(state([]), [{ startAt: NOW, endAt: NOW + 2 * HOUR - DAY }, {}], NOW).schedule)
+      .toEqual([{ startAt: NOW, endAt: NOW + 2 * HOUR - DAY + DAY }])
+    // same list → identical state object (no touch, no re-extend).
+    const once = setCruiseSchedule(state([]), [{ endAt: NOW + HOUR }], NOW)
+    expect(setCruiseSchedule(once, [{ endAt: NOW + HOUR }], NOW)).toBe(once)
+  })
+})
+
+describe('cruiseStatusLineOf (one honest sentence: why is the switch what it is)', () => {
+  it('enabled + covering window with an end → window-on until that end', () => {
+    const line = cruiseStatusLineOf(state([{ startAt: NOW - 1, endAt: NOW + HOUR }], true), NOW)
+    expect(line).toEqual({ kind: 'window-on', endAt: NOW + HOUR })
+  })
+  it('enabled + an open covering window (start-only) → held on, no end', () => {
+    expect(cruiseStatusLineOf(state([{ startAt: NOW - 1 }], true), NOW)).toEqual({ kind: 'window-on' })
+  })
+  it('enabled + nothing covering → manual on', () => {
+    expect(cruiseStatusLineOf(state([], true, true), NOW)).toEqual({ kind: 'manual-on' })
+    expect(cruiseStatusLineOf(state([{ startAt: NOW + HOUR }], true), NOW)).toEqual({ kind: 'manual-on' })
+  })
+  it('disabled + a live window → manual-off (the window still covers, the switch says off)', () => {
+    expect(cruiseStatusLineOf(state([{ endAt: NOW + HOUR }], false, false), NOW)).toEqual({ kind: 'manual-off', endAt: NOW + HOUR })
+    expect(cruiseStatusLineOf(state([{ startAt: NOW - 1 }], false, false), NOW)).toEqual({ kind: 'manual-off' })
+  })
+  it('disabled + a future start → scheduled-off at that instant; nothing → off', () => {
+    expect(cruiseStatusLineOf(state([{ startAt: NOW + HOUR }], false), NOW)).toEqual({ kind: 'scheduled-off', startAt: NOW + HOUR })
+    expect(cruiseStatusLineOf(state([], false), NOW)).toEqual({ kind: 'off' })
   })
 })
 
@@ -118,40 +212,13 @@ describe('tickCruise (boundary events + manual takeover + pruning)', () => {
   })
 })
 
-describe('setCruiseSchedule (editor path)', () => {
-  it('sorts + normalizes + recomputes: covering turns on, clearing all turns off', () => {
-    const unsorted = [{ startAt: NOW + 2 * HOUR, endAt: NOW + 3 * HOUR }, { endAt: NOW + HOUR }]
-    const on = setCruiseSchedule(state([]), unsorted, NOW)
-    expect(on.enabled).toBe(true) // the end-only window is on from now
-    const off = setCruiseSchedule(on, [], NOW)
-    expect(off.enabled).toBe(false)
-  })
-  it('drops structurally empty windows and normalizes cross-midnight on add', () => {
-    const next = setCruiseSchedule(state([]), [{ startAt: NOW, endAt: NOW + 2 * HOUR - DAY }, {}], NOW)
-    expect(next.schedule).toHaveLength(1)
-    expect(next.schedule[0].endAt).toBe(NOW + 2 * HOUR - DAY + DAY)
-  })
-  it('sortWindows orders by the effective start (start-less by end)', () => {
-    expect(sortWindows([{ startAt: NOW + HOUR }, { endAt: NOW }, { startAt: NOW, endAt: NOW + 1 }].map(normalizeWindow))
-      .map(w => w.startAt ?? w.endAt ?? 0)).toEqual([NOW, NOW, NOW + HOUR])
-  })
-})
-
-describe('isIllegalWindowRange (end more than a day before start = a date mistake)', () => {
-  it('an end over 24h before the start is illegal — not a cross-midnight window', () => {
-    expect(isIllegalWindowRange({ startAt: NOW, endAt: NOW - 25 * HOUR })).toBe(true)
-    expect(isIllegalWindowRange({ startAt: NOW, endAt: NOW - DAY })).toBe(true)
-  })
-  it('any end within (start - 24h, start] is a real cross-midnight night — legal', () => {
-    expect(isIllegalWindowRange({ startAt: NOW, endAt: NOW + 2 * HOUR - DAY })).toBe(false)
-    expect(isIllegalWindowRange({ startAt: NOW, endAt: NOW + HOUR })).toBe(false)
-  })
-  it('single-ended windows are never illegal', () => {
-    expect(isIllegalWindowRange({ startAt: NOW })).toBe(false)
-    expect(isIllegalWindowRange({ endAt: NOW - 3 * DAY })).toBe(false)
-  })
-  it('normalizeWindow never fabricates a next-midnight end for an illegal range', () => {
-    expect(normalizeWindow({ startAt: NOW, endAt: NOW - 26 * HOUR })).toEqual({ startAt: NOW, endAt: NOW - 26 * HOUR })
+describe('isWindowActive (a window is LIVE when it covers now)', () => {
+  it('covers when start (if any) is not future and end (if any) is not past', () => {
+    expect(isWindowActive({ startAt: NOW - 1, endAt: NOW + HOUR }, NOW)).toBe(true)
+    expect(isWindowActive({ startAt: NOW + 1, endAt: NOW + HOUR }, NOW)).toBe(false)
+    expect(isWindowActive({ endAt: NOW + HOUR }, NOW)).toBe(true)
+    expect(isWindowActive({ startAt: NOW - 1 }, NOW)).toBe(true)
+    expect(isWindowActive({ endAt: NOW - 1 }, NOW)).toBe(false)
   })
 })
 

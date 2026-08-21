@@ -36,7 +36,7 @@ import { cronHumanLabel } from './cron-label.ts'
 import { mergedPresets, presetIsDefault, PresetManager } from './PresetManager.tsx'
 import { STATUS_KEY } from './status.ts'
 import { PromptInput } from './PromptInput.tsx'
-import { Button, Icon, Section, SendModeToggle, Switch } from './ui.tsx'
+import { Button, Icon, Section, Segmented, SendModeToggle, Switch } from './ui.tsx'
 import { Chip } from './Chip.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 
@@ -183,9 +183,16 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
       <span className={css.autoRuleInstruction} title={row.instruction}>
         {row.instruction}
       </span>
-      <span className={css.autoRuleMeta} title={row.cron}>
-        {t('auto.cron')} {cronHumanLabel(row.cron)}
-        {row.nextAt > Date.now() && ` · ${t('auto.rule.next', { time: new Date(row.nextAt).toLocaleString() })}`}
+      <span className={css.autoRuleMeta} title={row.trigger === 'cron' ? row.cron : undefined}>
+        {row.trigger === 'cron' ? (
+          <>
+            {t('auto.cron')} {cronHumanLabel(row.cron)}
+            {row.nextAt !== undefined && row.nextAt > Date.now()
+              && ` · ${t('auto.rule.next', { time: new Date(row.nextAt).toLocaleString() })}`}
+          </>
+        ) : (
+          t('auto.rule.onComplete')
+        )}
       </span>
       <span className={css.autoRuleActions}>
         <Switch
@@ -193,20 +200,24 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           onChange={next => { controller.toggleSessionRule(task.id, row.ruleId, next) }}
           label={t('auto.rule.enable')}
         />
-        <Button size="sm" title={t('auto.rule.editTitle')} onClick={onEdit}>
-          {t('auto.rule.edit')}
-        </Button>
-        {/* A destructive row action uses the row-level danger grammar (ghost
-            outline + danger tone) — same geometry as the edit beside it,
-            never the quiet hide-text style. */}
-        <Button
-          size="sm"
-          variant="dangerGhost"
-          title={t('auto.rule.deleteTitle')}
-          onClick={() => { controller.deleteSessionRule(task.id, row.ruleId) }}
-        >
-          {t('auto.rule.delete')}
-        </Button>
+        {/* Grammar: the row switch leads; the two text actions group on the
+            right (编辑 beside 删除 — never stranded in the middle). */}
+        <span className={css.autoRuleButtons}>
+          <Button size="sm" title={t('auto.rule.editTitle')} onClick={onEdit}>
+            {t('auto.rule.edit')}
+          </Button>
+          {/* A destructive row action uses the row-level danger grammar (ghost
+              outline + danger tone) — same geometry as the edit beside it,
+              never the quiet hide-text style. */}
+          <Button
+            size="sm"
+            variant="dangerGhost"
+            title={t('auto.rule.deleteTitle')}
+            onClick={() => { controller.deleteSessionRule(task.id, row.ruleId) }}
+          >
+            {t('auto.rule.delete')}
+          </Button>
+        </span>
       </span>
     </li>
   )
@@ -228,7 +239,11 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
     : undefined
   const [sessionId, setSessionId] = useState(existing?.sessionId ?? labels[0]?.sessionId ?? '')
   const [instruction, setInstruction] = useState(existing?.instruction ?? '')
-  const [cron, setCron] = useState(existing?.cron ?? '0 9 * * *')
+  // The SAME trigger choice as the task-level driving mode (按时间表 /
+  // 任务完成后) — one segmented grammar; cron rules carry an expression,
+  // on-complete rules carry none (the settle is the appointment).
+  const [trigger, setTrigger] = useState<'cron' | 'on-complete'>(existing?.trigger ?? 'cron')
+  const [cron, setCron] = useState(existing?.trigger === 'on-complete' ? '0 9 * * *' : existing?.cron ?? '0 9 * * *')
   const [steer, setSteer] = useState(existing?.send === 'steer')
   // The ONE failing field at a time (first failure wins): the message renders
   // inline next to that field and only that field wears the red border — a
@@ -257,22 +272,28 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
       setError('instruction')
       return
     }
-    if (!isValidCron(trimmedCron)) {
+    if (trigger === 'cron' && !isValidCron(trimmedCron)) {
       setError('cron')
       return
     }
-    const send = steer ? 'steer' : 'queue'
+    const send: 'queue' | 'steer' = steer ? 'steer' : 'queue'
+    const input: {
+      sessionId: string
+      instruction: string
+      trigger: 'cron' | 'on-complete'
+      cron: string
+      send: 'queue' | 'steer'
+    } = {
+      sessionId, instruction: trimmedInstruction, trigger,
+      cron: trigger === 'cron' ? trimmedCron : '', send,
+    }
     if (existing !== undefined) {
-      const ok = controller.updateSessionRule(task.id, existing.id, {
-        sessionId, instruction: trimmedInstruction, cron: trimmedCron, send,
-      })
+      const ok = controller.updateSessionRule(task.id, existing.id, input)
       if (!ok) {
         setError('save')
         return
       }
-    } else if (controller.createSessionRule(task.id, {
-      sessionId, instruction: trimmedInstruction, cron: trimmedCron, send,
-    }) === undefined) {
+    } else if (controller.createSessionRule(task.id, input) === undefined) {
       setError('save')
       return
     }
@@ -306,6 +327,18 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
             {error === 'session' && <span className={css.formError}>{t('auto.form.invalidSession')}</span>}
           </label>
           <label className={css.autoField}>
+            <span className={css.autoFieldLabel}>{t('auto.form.trigger')}</span>
+            <Segmented
+              ariaLabel={t('auto.form.trigger')}
+              options={[
+                { value: 'cron', label: t('auto.trigger.cron') },
+                { value: 'on-complete', label: t('auto.trigger.onComplete') },
+              ]}
+              value={trigger}
+              onChange={next => { setTrigger(next as 'cron' | 'on-complete'); setError(undefined) }}
+            />
+          </label>
+          <label className={css.autoField}>
             <span className={css.autoFieldLabel}>{t('auto.form.instruction')}</span>
             <PromptInput
               value={instruction}
@@ -318,18 +351,20 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
             />
             {error === 'instruction' && <span className={css.formError}>{t('auto.form.invalidInstruction')}</span>}
           </label>
-          <label className={css.autoField}>
-            <span className={css.autoFieldLabel}>{t('auto.form.cron')}</span>
-            <CronField
-              value={cron}
-              presets={presets}
-              invalid={error === 'cron'}
-              onChange={next => { setCron(next); setError(undefined) }}
-              onManagePresets={() => { setShowPresets(true) }}
-              label={t('auto.form.cron')}
-            />
-            {error === 'cron' && <span className={css.formError}>{t('auto.form.invalidCron')}</span>}
-          </label>
+          {trigger === 'cron' && (
+            <label className={css.autoField}>
+              <span className={css.autoFieldLabel}>{t('auto.form.cron')}</span>
+              <CronField
+                value={cron}
+                presets={presets}
+                invalid={error === 'cron'}
+                onChange={next => { setCron(next); setError(undefined) }}
+                onManagePresets={() => { setShowPresets(true) }}
+                label={t('auto.form.cron')}
+              />
+              {error === 'cron' && <span className={css.formError}>{t('auto.form.invalidCron')}</span>}
+            </label>
+          )}
           <div className={css.autoField}>
             <span className={css.autoFieldLabel}>{t('auto.form.send')}</span>
             <SendModeToggle steer={steer} onChange={setSteer} />
@@ -595,29 +630,17 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
         label={t('detail.schedule.enable')}
       />
 
-      {/* Driving mode: fixed times (cron) or run-after-completion (chain). */}
-      <div className={css.segmentedRow} role="radiogroup" aria-label={t('detail.schedule')}>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === 'cron'}
-          className={`${css.segmentedButton}${mode === 'cron' ? ` ${css.segmentedActive}` : ''}`}
-          title={t('detail.schedule.mode.cronHint')}
-          onClick={() => { switchMode('cron') }}
-        >
-          {t('detail.schedule.mode.cron')}
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === 'chain'}
-          className={`${css.segmentedButton}${mode === 'chain' ? ` ${css.segmentedActive}` : ''}`}
-          title={t('detail.schedule.mode.chainHint')}
-          onClick={() => { switchMode('chain') }}
-        >
-          {t('detail.schedule.mode.chain')}
-        </button>
-      </div>
+      {/* Driving mode: fixed times (cron) or run-after-completion (chain) —
+          the ONE segmented grammar shared with the session-rule trigger. */}
+      <Segmented
+        ariaLabel={t('detail.schedule')}
+        options={[
+          { value: 'cron', label: t('detail.schedule.mode.cron'), title: t('detail.schedule.mode.cronHint') },
+          { value: 'chain', label: t('detail.schedule.mode.chain'), title: t('detail.schedule.mode.chainHint') },
+        ]}
+        value={mode}
+        onChange={next => { switchMode(next as ScheduleMode) }}
+      />
 
       {mode === 'cron' ? (
         /* ONE grid for every schedule row (cron + run budget): the label

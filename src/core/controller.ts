@@ -1582,27 +1582,31 @@ export class BoardController {
   }
 
   // --- session automation rules (scheduled "send a preset instruction to a session") ---
-  /** Create a session rule for one of the task's sessions (cron via the task
-   *  schedule parser; an unparseable cron is rejected). */
+  /** Create a session rule for one of the task's sessions. Two triggers use
+   *  the SAME model: cron (cron via the task schedule parser; an unparseable
+   *  expression is rejected) and on-complete (no cron, fires at run settle). */
   createSessionRule(taskId: string, input: {
     sessionId: string
     instruction: string
     cron: string
+    trigger?: 'cron' | 'on-complete'
     send: 'queue' | 'steer'
   }): import('./automation.ts').SessionRule | undefined {
     const instruction = input.instruction.trim()
-    const cron = input.cron.trim()
-    if (instruction === '' || cron === '') return undefined
-    const nextAt = nextRunAtMs(cron, this.now())
-    if (nextAt === undefined) return undefined
+    const trigger = input.trigger === 'on-complete' ? 'on-complete' : 'cron'
+    if (instruction === '') return undefined
+    const cron = trigger === 'cron' ? input.cron.trim() : ''
+    const nextAt = trigger === 'cron' ? nextRunAtMs(cron, this.now()) : undefined
+    if (trigger === 'cron' && (cron === '' || nextAt === undefined)) return undefined
     const rule: import('./automation.ts').SessionRule = {
       id: this.uuid(),
       sessionId: input.sessionId,
       instruction,
+      trigger,
       cron,
       send: input.send,
       enabled: true,
-      nextAt,
+      ...nextAt !== undefined ? { nextAt } : {},
     }
     let changed = false
     this.tasks = this.tasks.map(task => {
@@ -1618,17 +1622,18 @@ export class BoardController {
   }
 
   /**
-   * Edit an existing session rule: replace its target / instruction / cron /
-   * send mode in place (the rule id and enable state stay). An invalid patch
-   * (blank instruction, unparseable cron, unknown rule) is rejected outright
-   * — the old rule is left untouched, never half-applied. A cron change
-   * recomputes the due instant from now (the rule restarts its schedule); a
-   * send-mode/target change never touches the due slot.
+   * Edit an existing session rule: replace its target / instruction / trigger
+   * / cron / send mode in place (the rule id and enable state stay). An
+   * invalid patch (blank instruction, unparseable cron, unknown rule) is
+   * rejected outright — the old rule is left untouched, never half-applied.
+   * A cron change recomputes the due instant from now (the rule restarts its
+   * schedule); switching to on-complete drops the due slot and vice versa.
    * @returns true when the rule was updated.
    */
   updateSessionRule(taskId: string, ruleId: string, patch: {
     sessionId?: string
     instruction?: string
+    trigger?: 'cron' | 'on-complete'
     cron?: string
     send?: 'queue' | 'steer'
   }): boolean {
@@ -1639,16 +1644,24 @@ export class BoardController {
       const rules = task.rules.map(rule => {
         if (rule.id !== ruleId) return rule
         const instruction = patch.instruction?.trim() ?? rule.instruction
-        const cron = patch.cron?.trim() ?? rule.cron
+        const trigger = patch.trigger ?? rule.trigger
+        const cron = trigger === 'cron' ? (patch.cron?.trim() ?? rule.cron) : ''
         const sessionId = patch.sessionId ?? rule.sessionId
         const send = patch.send ?? rule.send
         // Validate BEFORE applying: an invalid rule is never half-updated.
-        if (instruction === '' || cron === '' || sessionId === '') return rule
-        if (cron !== rule.cron && nextRunAtMs(cron, now) === undefined) return rule
-        const nextAt = cron !== rule.cron ? nextRunAtMs(cron, now) ?? rule.nextAt : rule.nextAt
-        const updated = { ...rule, sessionId, instruction, cron, send, nextAt }
+        if (instruction === '' || sessionId === '') return rule
+        if (trigger === 'cron') {
+          if (cron === '' || (cron !== rule.cron && nextRunAtMs(cron, now) === undefined)) return rule
+        }
+        const nextAt = trigger === 'cron'
+          ? cron !== rule.cron
+            ? nextRunAtMs(cron, now) ?? rule.nextAt
+            : rule.nextAt
+          : undefined
+        const updated = { ...rule, sessionId, instruction, trigger, cron, send, ...nextAt !== undefined ? { nextAt } : { nextAt: undefined } }
         if (updated.sessionId === rule.sessionId && updated.instruction === rule.instruction
-          && updated.cron === rule.cron && updated.send === rule.send) return rule
+          && updated.trigger === rule.trigger && updated.cron === rule.cron
+          && updated.send === rule.send && updated.nextAt === rule.nextAt) return rule
         changed = true
         return updated
       })
@@ -1684,13 +1697,15 @@ export class BoardController {
   }
 
   /**
-   * The minute heartbeat for session rules (the scheduler's sessionRulesTick):
-   * for every enabled rule whose due instant has passed, send its preset
-   * instruction to the target session (slash-aware; the sent line is recorded
-   * as a direct round so it shows in the session's thread), then roll forward
-   * to the next cron match. A session that is gone is skipped (its due slot is
-   * kept — it fires when the session returns); an unparseable expression
-   * auto-disables the rule (错过即跳过), never re-fires forever.
+   * The minute heartbeat for CRON session rules (the scheduler's
+   * sessionRulesTick): for every enabled cron rule whose due instant has
+   * passed, send its preset instruction to the target session (slash-aware;
+   * the sent line is recorded as a direct round so it shows in the session's
+   * thread), then roll forward to the next cron match. A session that is
+   * gone is skipped (its due slot is kept — it fires when the session
+   * returns); an unparseable expression auto-disables the rule (错过即跳过),
+   * never re-fires forever. On-complete rules have no due slot — they fire
+   * at run settle (fireOnCompleteRules), never here.
    */
   async tickSessionRules(now: number): Promise<void> {
     const byId = this.deps.sessions.list.getSnapshot().byId
@@ -1700,7 +1715,8 @@ export class BoardController {
       const rules = task.rules.map(rule => ({ ...rule }))
       let taskChanged = false
       for (const rule of rules) {
-        if (!rule.enabled) continue
+        if (!rule.enabled || rule.trigger !== 'cron') continue
+        if (rule.nextAt === undefined) continue // defensive: no due slot → skip
         if (byId[rule.sessionId] === undefined) continue // session gone: keep due slot
         // The SAME readiness semantics as the task-level schedule: a rule is
         // active only while the task sits in a drivable column. A paused rule
@@ -2074,6 +2090,7 @@ export class BoardController {
     }
     this.activeExecutionIds.delete(event.executionId)
     const before = this.tasks.find(task => task.id === event.taskId)
+    const settledRound = before?.executions.find(round => round.id === event.executionId)
     this.tasks = this.tasks.map(task => task.id === event.taskId
       ? this.settleRound(task, event.executionId, event.outcome, event.error)
       : task)
@@ -2089,6 +2106,51 @@ export class BoardController {
     // 'running' between hand-offs and its next run is queued before any
     // comment/cruise work competes for the freed slot.
     this.maybeContinueChain(event.taskId)
+    this.persistAndNotify()
+    // A settled PLAIN TASK RUN is the on-complete appointment for the task's
+    // session rules. Comment rounds carry `comment`, refine rounds carry
+    // `refine: true` — neither is a task run, so an on-complete rule can
+    // never re-trigger itself through its own queued comment's settle (no
+    // send loops). Fired after the persist so the rule bookkeeping layers on
+    // the settled object.
+    if (settledRound?.comment === undefined && settledRound?.refine !== true) {
+      void this.fireOnCompleteRules(event.taskId)
+    }
+  }
+
+  /**
+   * 任务一次执行结算时触发其 on-complete 会话规则（"任务完成后"）。发送文法
+   * 与 cron 心跳一致（queue = 入队、steer = 立即发送），判定 = 规则启用 +
+   * 执行 Prompt 非空 + 目标会话在场；每次结算每个规则至多一次并记 lastAt。
+   * 列暂停不适用：结算瞬间任务刚被移动，这里的"完成"才是约定本身。
+   */
+  async fireOnCompleteRules(taskId: string): Promise<void> {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined || task.rules === undefined || task.rules.length === 0) return
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    const fired = new Set<string>()
+    for (const rule of task.rules) {
+      if (rule.trigger !== 'on-complete' || !rule.enabled) continue
+      if (!taskExecutable(task)) continue
+      if (byId[rule.sessionId] === undefined) continue
+      if (rule.send === 'queue') {
+        const round = this.submitSessionComment(
+          task.id, rule.sessionId, rule.instruction,
+          rule.instruction.trimStart().startsWith('/'))
+        if (round === undefined) continue
+      } else {
+        // 立即发送：sendSessionMessage 自行记录直接轮并持久化。
+        void this.sendSessionMessage(task.id, rule.sessionId, rule.instruction)
+      }
+      fired.add(rule.id)
+    }
+    if (fired.size === 0) return
+    this.tasks = this.tasks.map(candidate => {
+      if (candidate.id !== taskId) return candidate
+      const rules = (candidate.rules ?? []).map(rule =>
+        fired.has(rule.id) ? { ...rule, lastAt: this.now() } : rule)
+      return withSessionRules(candidate, rules)
+    })
     this.persistAndNotify()
   }
 

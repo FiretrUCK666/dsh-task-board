@@ -252,6 +252,36 @@ export function ColorSwatches({ value, onChange, none = true, custom = true }: {
 }
 
 /**
+ * The ONE segmented-control grammar (radiogroup of labeled chips): driving
+ * mode (按时间表/完成后接续), rule trigger (按时间表/任务完成后) and the
+ * send mode all read/speak alike — one component, one style, zero drift.
+ */
+export function Segmented({ options, value, onChange, ariaLabel }: {
+  options: readonly { value: string; label: string; title?: string }[]
+  value: string
+  onChange: (next: string) => void
+  ariaLabel: string
+}) {
+  return (
+    <span className={css.segmentedRow} role="radiogroup" aria-label={ariaLabel}>
+      {options.map(option => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={value === option.value}
+          className={`${css.segmentedButton}${value === option.value ? ` ${css.segmentedActive}` : ''}`}
+          title={option.title}
+          onClick={() => { onChange(option.value) }}
+        >
+          {option.label}
+        </button>
+      ))}
+    </span>
+  )
+}
+
+/**
  * The composer's send-mode switch: 排队 (queue — the dispatcher injects the
  * message, default) vs 插话 (steer — deliver straight to the session now,
  * bypassing queue/budget/cruise). One switch at the send row, shared by the
@@ -259,27 +289,14 @@ export function ColorSwatches({ value, onChange, none = true, custom = true }: {
  */
 export function SendModeToggle({ steer, onChange }: { steer: boolean; onChange: (steer: boolean) => void }) {
   return (
-    <span className={css.segmentedRow} role="radiogroup" aria-label={t('review.sendMode')}>
-      <button
-        type="button"
-        role="radio"
-        aria-checked={!steer}
-        className={`${css.segmentedButton}${!steer ? ` ${css.segmentedActive}` : ''}`}
-        title={t('review.sendQueueTitle')}
-        onClick={() => { onChange(false) }}
-      >
-        {t('review.sendQueue')}
-      </button>
-      <button
-        type="button"
-        role="radio"
-        aria-checked={steer}
-        className={`${css.segmentedButton}${steer ? ` ${css.segmentedActive}` : ''}`}
-        title={t('review.sendSteerTitle')}
-        onClick={() => { onChange(true) }}
-      >
-        {t('review.sendSteer')}
-      </button>
-    </span>
+    <Segmented
+      ariaLabel={t('review.sendMode')}
+      options={[
+        { value: 'queue', label: t('review.sendQueue'), title: t('review.sendQueueTitle') },
+        { value: 'steer', label: t('review.sendSteer'), title: t('review.sendSteerTitle') },
+      ]}
+      value={steer ? 'steer' : 'queue'}
+      onChange={next => { onChange(next === 'steer') }}
+    />
   )
 }

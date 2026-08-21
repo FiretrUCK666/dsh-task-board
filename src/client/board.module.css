@@ -2591,19 +2591,6 @@ textarea.input {
   color: var(--dsh-tb-text-2);
 }
 
-.autoMeta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-}
-
 .autoMetaIcon {
   flex: none;
   color: var(--dsh-tb-accent);
@@ -2690,9 +2677,17 @@ textarea.input {
 .autoRuleActions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   margin-top: 2px;
+}
+
+/* The row's text actions (编辑 + 删除) group on the right — the switch leads
+   the row, the pair never spreads into a middle-stranded 编辑. */
+.autoRuleButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 /* New-session-rule form (one at a time, per task). */

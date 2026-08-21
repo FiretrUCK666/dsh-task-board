@@ -272,7 +272,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 - `tasks.ts`（状态机/plainRunsOf/COLUMNS/latestExecutionOf/chainUnlimited/
   taskColumnAllowsAutomation）· `schedule.ts`（cron）· `scheduler.ts`（每分钟 tick +
-  cruiseTick）· `cruise.ts`（巡航窗口 v3）· `presets.ts`（schedule 预设）·
+  cruiseTick）· `cruise.ts`（巡航窗口 v4）· `presets.ts`（schedule 预设）·
   `automation.ts`（会话规则 + automationRowsOf 单一投影 + 就绪语义 +
   automationTasksOf）· `colors.ts`（PALETTE + withTaskColor，标签已删仅留颜色）·
   `session-activity.ts`（原生侧对账 + `latestUserMessage`）· `session-list.ts`
@@ -297,8 +297,13 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   展开是 rail 内 absolute 面板，45vh 独立滚动、外点关闭），有则全有、无则全无。
 - **上下文块（有未完成的才显示）**：`contextWorthOf(context)` 是唯一判定——todo 任一
   未 completed / `goal.active === true` / 子代理 status 缺失或不在 finished 集
-  （finished/completed/done/settled）→ 值得显示；全部弄好才整块隐藏（已完成的 todo
-  条目保留勾+划线作为上下文；子代理 status 缺失保守视为进行中——不藏可能还在跑的）。
+  （inactive/finished/completed/done/settled）→ 值得显示；全部弄好才整块隐藏（已完成
+  todo 条目保留勾+划线作为进度上下文；子代理 status 缺失保守视为进行中——不藏可能还在
+  跑的）。**桥读原生形状**（session-state-route，`listChildren` 异步 + 按父会话 id）：
+  goal = `GoalView.{objective, phase}`（`phase === 'complete'` 即完成、不返回）；
+  子代理 = `SubagentListEntry.{label, activity}`（只返回 `kind === 'child'` 且在跑的，
+  `activity === 'inactive'` = 已结束）；旧实现的 `activeGoal`/`title/status` 读法是错的
+  且与原生不符——永不回退。
 - **原生侧同步**：原生会话直接发言 → 观察 running 翻转补记**外源轮**（不排队/不注入）；
   主动添加（拖入源）立即「进行中」+ 未读呼吸，跑完落「待审核」，空闲不虚构、同源幂等；
   页面加载被动观察不补历史。**外源轮正文 = `latestUserMessage`（最新一条 user 消息即
@@ -310,19 +315,28 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - **完成态留言自动移回「待办」并驱动**（`reviveTaskIfDone`，queue/steer 同规则）；任务
   自动化在 done 列暂停（`ruleReadiness` 显示原因），移回自动恢复。
 - **自动化两半互不干扰**：任务级 `schedule`（按时间表 / 完成后接续）与会话级 `rules`
-  （定时给会话发指令）字段正交、语义独立——关任务级 schedule 会话规则照常触发，只有
-  会话规则时任务级自动化不激活（controller 单测钉死）；两者共用 `AutomationEditor`
-  （唯一 UI，板与详情一致），编辑器内分「任务自动化」「会话规则」两个成对分区标题；
-  `AutomationPanel` 只列已启动项（`automationTasksOf`）。
-- **巡航窗口 v3 文法**：窗口 `{startAt?; endAt?}` 三态（都填=区间、只填开始=到点开并
-  保持、只填结束=现在开到点关）；列表**自动排序**（立即开启→按开始→同开始按结束，
-  开口的排最后 —— `windowSortKeyOf`/`sortWindows` 纯函数，绝不存手排序）；每窗口
-  **一行文法**（`cruiseWindowGrammarOf` + `cruiseWindowLabelOf`：
-  `开始 → 次日 结束` / `{time} 起保持开启` / `现在开启 · 至 {time}`，中英文案单测
-  钉死，完整时刻走 tooltip）；跨午夜 = 结束在（开始-24h, 开始] 内自动 +1 天；
-  **结束早于开始超过一天 = 日期错误**（`isIllegalWindowRange` 拒绝，内联提示
-  「结束早于开始超过一天，请检查日期」，`normalizeWindow` 对非法范围绝不虚构次日）；
-  表单占位「不填=立即开启 / 不填=一直保持」，语义提示一行。
+  （给会话发指令——触发方式 = 按时间表 cron 或 任务完成后 on-complete）字段正交、语义
+  独立——关任务级 schedule 会话规则照常触发，只有会话规则时任务级自动化不激活
+  （controller 单测钉死）。两者共用 `AutomationEditor`（唯一 UI，板与详情一致），编辑器
+  内分「任务自动化」「会话规则」两个成对分区标题；**启用开关只在编辑器内（唯一一份）**
+  ——面板卡片 = 身份头 + 一行可展开摘要（有 schedule 用 `scheduleSummary`，只有规则用
+  规则数）+ 展开体 = 共享编辑器原样，无第二份开关；「按时间表/完成后接续」与规则「触发
+  方式」共用 `Segmented` 分段文法。**on-complete 语义**：任务一次**普通执行结算**时触发
+  （评论轮/完善轮不触发，防自触发环），不受列暂停约束（结算瞬间任务刚被移动，「完成」
+  才是约定本身），无 cron 槽位；老数据（无 trigger）归一化为 cron。
+- **巡航窗口 v4 文法**：**总开关主权**——`enabled` 是当前状态、用户点为主；窗口是计划
+  表，只有「开始/结束时刻」越过时翻转开关；**增删窗口绝不动开关**（`setCruiseSchedule`
+  不再按覆盖率重算；唯一例外：新增「只填结束」窗口，其开始时刻 = 创建时刻，立即触发
+  一次开始边界）——拔光窗口后手动开/关永远匹配得上。窗口 `{startAt?; endAt?}` 三态
+  （都填=区间、只填开始=到点开并保持、只填结束=创建即开、到点关）；列表**自动排序**
+  （立即开启→按开始→同开始按结束，开口的排最后——`windowSortKeyOf`/`sortWindows` 纯
+  函数）；每窗口**一行文法**（`cruiseWindowGrammarOf` + `cruiseWindowLabelOf`：
+  `[生效中 ·] 开始 → 次日 结束` / `{time} 起保持开启` / `已开启 · 至 {time}`，中英文案
+  单测钉死，完整时刻走 tooltip）；**状态行永远一句话解释开关为什么是当前值**
+  （`cruiseStatusLineOf`：窗口开启中·至 X / 手动开启中 / 已手动关闭·窗口仍生效 / 关闭·X
+  自动开启 / 关闭·未排程）。校验 = `windowRangeIssueOf`（归一化后判定）：双空/同时刻/
+  结束早于开始超过一天（文案带**实际天数和起止值**并说明跨午夜只支持一晚）/ 开始已过/
+  结束已过，各具专属内联提示；`normalizeWindow` 对非法范围绝不虚构次日。
 - **校验反馈文法**：`inputInvalid` 是唯一错误边框（cron/select/PromptInput/数字共用）；
   会话规则表单按 会话→指令→Cron 顺序报**首个失败字段**的专属文案
   （`auto.form.invalidSession/invalidInstruction/invalidCron`），绝不合并成一句

@@ -1,17 +1,23 @@
 /**
- * Session automation rules: scheduled "send a preset instruction to THIS
- * session" rules — one per session, fired by the minute heartbeat (cron).
- * A rule is scoped to a session the task owns; firing the instruction is
- * exactly "typing in the native conversation" (queue by default), never a
+ * Session automation rules: "send a preset instruction to THIS session" —
+ * one per session, scoped to a session the task owns; firing the instruction
+ * is exactly "typing in the native conversation" (queue by default), never a
  * task execution — so a session rule and the task's own execution prompt
  * never conflict: one drives the task, the other talks to its session.
  *
- * Model (research-backed): rule = target(session) + trigger(cron) +
- * action(send instruction, queue|steer). Pure and unit-testable.
+ * Model: rule = target(session) + trigger + action(send instruction,
+ * queue|steer). TWO triggers, one shared row/appearance grammar:
+ * - cron ("按时间表"): fired by the minute heartbeat (tickSessionRules);
+ * - on-complete ("任务完成后"): fired when a plain run of the task settles.
+ *   No due slot, no cron expression — the completion IS the appointment.
+ * Pure and unit-testable.
  */
 import type { TaskRecord } from './tasks.ts'
 import { taskColumnAllowsAutomation, taskExecutable } from './tasks.ts'
 import { nextRunAtMs } from './schedule.ts'
+
+/** A rule's trigger: cron (schedule) or on-complete (fires at run settle). */
+export type SessionRuleTrigger = 'cron' | 'on-complete'
 
 /** One session-scoped automation rule of a task. */
 export interface SessionRule {
@@ -21,7 +27,11 @@ export interface SessionRule {
   /** The preset instruction/text to send; a leading '/' goes through the
    *  native command registry (slashes = commands, everything = plain text). */
   instruction: string
-  /** Five-segment cron ("分钟 小时 日 月 周"); due instants computed on tick. */
+  /** 触发方式: cron = 按时间表 (default; legacy rows normalize to this);
+   *  on-complete = 任务一次执行结算时发送. */
+  trigger: SessionRuleTrigger
+  /** Five-segment cron ("分钟 小时 日 月 周"); due instants computed on tick.
+   *  Empty for on-complete rules (no schedule slot). */
   cron: string
   /** Send mode: 'queue' appends to the session's queue; 'steer' is reserved
    *  for immediate interruption (mapped the same for now — no interrupt RPC
@@ -29,8 +39,8 @@ export interface SessionRule {
    *  available). */
   send: 'queue' | 'steer'
   enabled: boolean
-  /** Next due instant (ms); recomputed on fire / when missing. */
-  nextAt: number
+  /** Next due instant (ms); cron rules only, recomputed on fire / when missing. */
+  nextAt?: number
   /** Last fired instant. */
   lastAt?: number
 }
@@ -39,16 +49,19 @@ export interface SessionRule {
 export function isSessionRule(value: unknown): value is SessionRule {
   if (typeof value !== 'object' || value === null) return false
   const rule = value as Record<string, unknown>
-  return typeof rule.id === 'string' && rule.id !== ''
-    && typeof rule.sessionId === 'string' && rule.sessionId !== ''
-    && typeof rule.instruction === 'string' && rule.instruction !== ''
-    && typeof rule.cron === 'string' && rule.cron !== ''
-    && (rule.send === 'queue' || rule.send === 'steer')
-    && typeof rule.enabled === 'boolean'
+  if (typeof rule.id !== 'string' || rule.id === '') return false
+  if (typeof rule.sessionId !== 'string' || rule.sessionId === '') return false
+  if (typeof rule.instruction !== 'string' || rule.instruction === '') return false
+  if (rule.send !== 'queue' && rule.send !== 'steer') return false
+  if (typeof rule.enabled !== 'boolean') return false
+  const trigger = rule.trigger === 'on-complete' ? 'on-complete' : 'cron'
+  if (trigger === 'on-complete') return rule.nextAt === undefined
+  return typeof rule.cron === 'string' && rule.cron !== ''
     && typeof rule.nextAt === 'number' && Number.isFinite(rule.nextAt)
 }
 
-/** Parse + validate a persisted rule list (invalid rows dropped). */
+/** Parse + validate a persisted rule list (invalid rows dropped; legacy rows
+ *  without a trigger normalize to cron). */
 export function normalizeSessionRules(raw: unknown): SessionRule[] | undefined {
   if (!Array.isArray(raw)) return undefined
   const out: SessionRule[] = []
@@ -56,14 +69,15 @@ export function normalizeSessionRules(raw: unknown): SessionRule[] | undefined {
   for (const row of raw) {
     if (!isSessionRule(row) || seen.has(row.id)) continue
     seen.add(row.id)
+    const trigger = row.trigger === 'on-complete' ? 'on-complete' : 'cron'
     out.push({
       id: row.id,
       sessionId: row.sessionId,
       instruction: row.instruction,
-      cron: row.cron,
+      trigger,
+      ...trigger === 'cron' ? { cron: row.cron, nextAt: row.nextAt } : { cron: '' },
       send: row.send,
       enabled: row.enabled,
-      nextAt: row.nextAt,
       ...(typeof row.lastAt === 'number' ? { lastAt: row.lastAt } : {}),
     })
   }
@@ -78,10 +92,11 @@ export function sessionRuleOf(row: Extract<AutomationRow, { kind: 'session-rule'
     id: row.ruleId,
     sessionId: row.sessionId,
     instruction: row.instruction,
+    trigger: row.trigger,
     cron: row.cron,
     send: row.send,
     enabled: row.enabled,
-    nextAt: row.nextAt,
+    ...row.nextAt !== undefined ? { nextAt: row.nextAt } : {},
     ...row.lastAt !== undefined ? { lastAt: row.lastAt } : {},
   }
 }
@@ -95,6 +110,11 @@ export function sessionRuleOf(row: Extract<AutomationRow, { kind: 'session-rule'
  * The ticker skips paused/blocked rules (keeping their due slot — the pause
  * is a hold, not a drop), exactly like the task scheduler treats a paused
  * schedule.
+ *
+ * NOTE — the column pause governs the CRON heartbeat only: an on-complete
+ * rule fires AT the settle instant (the task was drivable when the run
+ * started; the settle itself is the appointment), so the column that the
+ * settlement lands in never cancels it.
  */
 export type SessionRuleReadiness =
   | { kind: 'disabled' }
@@ -105,6 +125,7 @@ export type SessionRuleReadiness =
 export function sessionRuleReadiness(task: TaskRecord, rule: SessionRule): SessionRuleReadiness {
   if (!rule.enabled) return { kind: 'disabled' }
   if (!taskExecutable(task)) return { kind: 'blocked' }
+  if (rule.trigger === 'on-complete') return { kind: 'active' }
   return taskColumnAllowsAutomation(task)
     ? { kind: 'active' }
     : { kind: 'paused', status: task.status as 'backlog' | 'review' | 'done' }
@@ -131,10 +152,11 @@ export type AutomationRow =
     ruleId: string
     sessionId: string
     instruction: string
+    trigger: SessionRuleTrigger
     cron: string
     send: 'queue' | 'steer'
     enabled: boolean
-    nextAt: number
+    nextAt?: number
     lastAt?: number
   }
 
@@ -146,10 +168,11 @@ export function automationRowsOf(task: TaskRecord): AutomationRow[] {
     ruleId: rule.id,
     sessionId: rule.sessionId,
     instruction: rule.instruction,
+    trigger: rule.trigger,
     cron: rule.cron,
     send: rule.send,
     enabled: rule.enabled,
-    nextAt: rule.nextAt,
+    ...rule.nextAt !== undefined ? { nextAt: rule.nextAt } : {},
     ...rule.lastAt !== undefined ? { lastAt: rule.lastAt } : {},
   }))
   const schedule = task.schedule
@@ -170,9 +193,11 @@ export function automationRowsOf(task: TaskRecord): AutomationRow[] {
 /**
  * When a rule should fire next given its current due instant (the next cron
  * match AFTER that instant, like the task scheduler's forward roll). Returns
- * the new due instant, or undefined when the expression is unparseable.
+ * the new due instant, or undefined when the expression is unparseable (or
+ * the rule has no cron slot — an on-complete rule never rolls).
  */
 export function nextSessionRuleAt(rule: SessionRule): number | undefined {
+  if (rule.trigger !== 'cron' || rule.nextAt === undefined) return undefined
   return nextRunAtMs(rule.cron, rule.nextAt)
 }
 

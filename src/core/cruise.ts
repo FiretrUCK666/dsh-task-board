@@ -1,23 +1,24 @@
 /**
- * Auto-cruise scheduled windows (v3): the pure state machine behind "定时自动
- * 开/关", redesigned so ANY combination of start / end and the manual switch
- * is well-defined and robust.
+ * Auto-cruise scheduled windows (v4): the pure state machine behind "定时自动
+ * 开/关", redesigned so the manual switch and the scheduled windows compose
+ * with ONE explainable rule:
  *
- * - `enabled` is the single source of truth; `manual?: boolean` records the
- *   last explicit manual intent (true = 手动开, false = 手动关).
+ * - `enabled` (the switch) is the CURRENT state — the user controls it; a
+ *   window boundary (start/end instant) is the ONLY automatic flipper.
  * - A window is `CruiseWindow { startAt?; endAt? }` — EITHER may be set:
  *   - both      → the interval [startAt, endAt) is ON, outside is OFF;
  *   - only start → turns ON at startAt and stays on (no auto-off);
- *   - only end   → considered ON from now and turns OFF at endAt.
- *   This matches the industry baseline (Azure TimeWindow / Flaggr / Amps).
- * - Manual intent wins BETWEEN boundary events, but a boundary always takes
- *   over (`manual = undefined`, the appointment resumes). So "都设" 的窗口
- *   区间内外开关、无论手动怎么点最终都对得上；"只设开始/只设结束"与手动任意
- *   组合也有确定结果。
- * - Cross-midnight windows (an end earlier than start in the SAME intent,
- *   e.g. 22:00 → 02:00) are normalized at add time: `endAt <= startAt` ⇒
- *   `endAt += 24h`, anchored to the start's calendar day — never a false
- *   "逆序报错"; the list only ever shows live or future appointments.
+ *   - only end   → its start instant is CREATION: adding it fires the start
+ *     boundary at once (turns ON if off), then END flips OFF at endAt.
+ * - Editing the plan (add/remove/change windows) NEVER flips the switch —
+ *   except the only-end add above (its start is the add itself). Removing
+ *   every window leaves the switch exactly as it is: manual on/off after
+ *   that always matches up ("拔了窗口，手动开关也稳").
+ * - Cross-midnight windows end earlier than start in the SAME intent
+ *   (22:00 → 02:00) are normalized +24h at add time; an end more than a
+ *   whole day BEFORE the start is a date mistake (windowRangeIssueOf).
+ * - Manual intent (`manual?: boolean`) records the last explicit toggle;
+ *   the next boundary takes over (`manual = undefined`).
  * Framework-free and fully unit-testable.
  */
 import type { CruiseState } from './controller.ts'
@@ -50,11 +51,10 @@ export function isCruiseWindow(value: unknown): value is CruiseWindow {
  * Normalize a window: a within-the-same-intent end earlier than the start is
  * a cross-midnight window (22:00 → 02:00 is legal) — yield the end on the
  * start's next day. An end more than a whole day BEFORE the start is NOT a
- * cross-midnight window; it is a date mistake (see `isIllegalWindowRange`)
- * and is left as-entered — the editor rejects it with a specific message
- * instead of the stale rule silently surviving as a "everyday 22:00→01:00
- * of yesterday" artifact. Starts that equal the end collapse to zero-length
- * tonight and are kept as-is for explicit UI review.
+ * cross-midnight window; it is a date mistake (windowRangeIssueOf returns
+ * 'end-too-early') and is left as-entered — the editor rejects it with a
+ * specific message instead of the stale rule silently surviving as a
+ * "everyday 22:00→01:00 of yesterday" artifact.
  */
 export function normalizeWindow(window: CruiseWindow): CruiseWindow {
   const startAt = window.startAt
@@ -70,24 +70,48 @@ export function normalizeWindow(window: CruiseWindow): CruiseWindow {
 }
 
 /**
- * A user-error window: the end lies more than one whole day BEFORE the start
- * (e.g. 01-05 09:00 → 01-03 09:00). Cross-midnight is at most one night
- * (end within (start - 24h, start]); anything earlier cannot be "次日" — the
- * dates themselves are wrong. The editor rejects this with an inline message;
- * the state machine never needs to interpret it.
+ * A user-error window (input validation before the write point):
+ * - 'both-empty'    → neither endpoint set;
+ * - 'same-instant'  → start equals end (zero length; cross-midnight reads
+ *   22:00 → 次日 22:00, never an ambiguous same moment);
+ * - 'end-too-early' → the end lies more than one whole day BEFORE the start
+ *   (dates are wrong — cross-midnight is at most one night);
+ * - 'start-past'    → the start already passed (a missed boundary never
+ *   silently pretends to fire; leave it blank = start now);
+ * - 'end-past'      → the end already passed (nothing left to schedule).
+ * undefined = the window is well-formed. Checked on the NORMALIZED window.
  */
-export function isIllegalWindowRange(window: CruiseWindow): boolean {
-  return window.startAt !== undefined && window.endAt !== undefined
-    && window.endAt <= window.startAt - DAY_MS
+export type CruiseWindowRangeIssue =
+  | 'both-empty' | 'same-instant' | 'end-too-early' | 'start-past' | 'end-past'
+
+/** The one validation verdict for a (normalized) candidate window. */
+export function windowRangeIssueOf(window: CruiseWindow, now: number): CruiseWindowRangeIssue | undefined {
+  const { startAt, endAt } = window
+  if (startAt === undefined && endAt === undefined) return 'both-empty'
+  if (startAt !== undefined && endAt !== undefined) {
+    if (endAt === startAt) return 'same-instant'
+    if (endAt <= startAt - DAY_MS) return 'end-too-early'
+    if (endAt <= now) return 'end-past'
+    if (startAt <= now) return 'start-past'
+    return undefined
+  }
+  if (endAt !== undefined && endAt <= now) return 'end-past'
+  return undefined
+}
+
+/** Whether a window covers `now` (its appointment is live right now). */
+export function isWindowActive(window: CruiseWindow, now: number): boolean {
+  return (window.startAt === undefined || window.startAt <= now)
+    && (window.endAt === undefined || window.endAt > now)
 }
 
 /**
- * The display grammar of a window — ONE clear line per shape, no
+ * THE display grammar of a window — ONE clear line per shape, no
  * label-pairing that must be re-assembled by each surface:
  * - both set   → a range (start → end; a normalized cross-midnight end reads
  *   "次日" on the surface);
  * - only start → turns on at start and stays on;
- * - only end   → on since now, off at end.
+ * - only end   → on since creation, off at end.
  */
 export type CruiseWindowGrammar =
   | { kind: 'range'; startAt: number; endAt: number }
@@ -205,19 +229,66 @@ export function tickCruise(state: CruiseState, now: number): CruiseState {
 
 /**
  * Replace the window list (the editor's add/remove path): normalized
- * (cross-midnight) + sorted, empties dropped, then the effective state is
- * recomputed at once against the NEW list — a window already covering now
- * turns the cruise on, and removing every covering window turns it off (the
- * old "按新表重算" contract; the user visibly edited the plan). Manual intent
- * is preserved unless the edit itself flips the coverage.
+ * (cross-midnight) + sorted, empties dropped. v4 semantics — editing the
+ * PLAN never flips the switch; the windows only flip it at their own
+ * instants. The single exception: an ADDED start-less window (只填结束) has
+ * its start instant AT CREATION — adding one fires the start boundary now
+ * (cruise turns on, manual clears), because "立即开启、到点关" is exactly
+ * what that window says. Removing windows leaves the switch untouched, so
+ * manual on/off after clearing the plan always matches up.
  */
 export function setCruiseSchedule(state: CruiseState, windows: readonly CruiseWindow[], now: number): CruiseState {
   const schedule = sortWindows(windows
     .map(normalizeWindow)
     .filter(window => !isEmptyWindow(window)))
-  const enabled = coveringWindow({ ...state, schedule }, now) !== undefined
-  if (schedule === state.schedule && enabled === state.enabled) return state
-  return { ...state, schedule, enabled }
+  if (sameWindowList(schedule, state.schedule)) return state
+  const addedStartless = schedule.some(window => window.startAt === undefined && (window.endAt ?? 0) > now)
+    && !state.schedule.some(window => window.startAt === undefined)
+  const enabled = addedStartless ? true : state.enabled
+  const manual = addedStartless ? undefined : state.manual
+  if (enabled === state.enabled && manual === state.manual) {
+    return { ...state, schedule }
+  }
+  return { ...state, schedule, enabled, manual }
+}
+
+/** Whether two window lists are identical (normalized bounds, any order). */
+function sameWindowList(a: readonly CruiseWindow[], b: readonly CruiseWindow[]): boolean {
+  if (a.length !== b.length) return false
+  return [...a].every(window =>
+    b.some(other => other.startAt === window.startAt && other.endAt === window.endAt))
+}
+
+/**
+ * THE status line of the cruise panel — one sentence that always explains WHY
+ * the switch reads what it reads (the panel renders this verbatim):
+ * - enabled + covering window with end  → "窗口开启中 · 至 {end}";
+ * - enabled + open covering window      → held on (no end set);
+ * - enabled + no covering               → manual on (no window constraint);
+ * - disabled + covering                 → 已手动关闭 · 窗口仍生效；
+ * - disabled + future start             → 关闭 · {start} 自动开启；
+ * - disabled + nothing                  → off, no plan.
+ */
+export type CruiseStatusLine =
+  | { kind: 'window-on'; endAt?: number }
+  | { kind: 'manual-on' }
+  | { kind: 'manual-off'; endAt?: number }
+  | { kind: 'scheduled-off'; startAt: number }
+  | { kind: 'off' }
+
+export function cruiseStatusLineOf(state: CruiseState, now: number): CruiseStatusLine {
+  const covering = coveringWindow(state, now)
+  if (state.enabled) {
+    if (covering !== undefined) return { kind: 'window-on', ...covering.endAt !== undefined ? { endAt: covering.endAt } : {} }
+    return { kind: 'manual-on' }
+  }
+  if (covering !== undefined) {
+    return { kind: 'manual-off', ...covering.endAt !== undefined ? { endAt: covering.endAt } : {} }
+  }
+  const nextStart = sortWindows(state.schedule.filter(window => (window.startAt ?? 0) > now))[0]
+  return nextStart?.startAt !== undefined
+    ? { kind: 'scheduled-off', startAt: nextStart.startAt }
+    : { kind: 'off' }
 }
 
 /** Sort windows: 立即开启 (start-less) first, then by start, then by end. */

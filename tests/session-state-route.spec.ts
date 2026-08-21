@@ -1,29 +1,54 @@
 /**
  * Session-state bridge (host, session-state-route.ts): the narrow read-only
- * plan/goal view and its HTTP envelope — missing faces and malformed leaves
- * degrade to absent blocks (no command catalog here, by design).
+ * plan/goal/subagent view and its HTTP envelope — native shapes only
+ * (GoalView objective/phase, SubagentListEntry label/activity, async
+ * listChildren keyed by the parent session id); missing faces and malformed
+ * leaves degrade to absent blocks (no command catalog here, by design).
  */
 import { describe, expect, it } from 'vitest'
 import { createSessionStateHandler, queryParamOf, readSessionState } from '../src/host/session-state-route.ts'
 
 const planMode = { get: (agent: unknown) => (agent === 'agent' ? { active: true, pending: true } : null) }
-const goals = { get: (agent: unknown) => (agent === 'agent' ? { activeGoal: { title: '发布 v2', status: 'active' } } : undefined) }
-
-const subagents = { listChildren: (agent: unknown) => (agent === 'agent' ? [{ title: '子任务 A', status: 'running' }, { name: 'name-only' }, { id: 'no-title' }] : []) }
+// Native GoalView shape: objective + phase (active/paused/blocked/complete).
+const goals = {
+  get: (agent: unknown) => agent === 'agent'
+    ? { objective: '发布 v2', phase: 'active' }
+    : undefined,
+}
+// Native SubagentListEntry shape: kind/label/activity (async, session-id keyed).
+const subagents = {
+  listChildren: (parent: string) => parent === 's1' ? Promise.resolve([
+    { kind: 'child', id: 'c1', activity: 'running', hasChildren: false, mode: 'continuable', label: '子任务 A' },
+    { kind: 'child', id: 'c2', activity: 'inactive', hasChildren: true, mode: 'one-shot', label: '已结束 B' },
+    { kind: 'diagnostic', id: 'c3', reason: 'corrupt' },
+    { kind: 'child', id: 'c4', activity: 'running', hasChildren: false, mode: 'one-shot' },
+  ]) : Promise.resolve([]),
+}
 
 describe('readSessionState (structural read of native plan/goal/subagents)', () => {
-  it('reads plan + goal from the native faces', () => {
-    const view = readSessionState({ sessions: { get: id => id === 's1' ? 'agent' : undefined }, planMode, goals }, 's1')
+  it('reads plan + goal from the native faces (GoalView objective/phase)', async () => {
+    const view = await readSessionState({ sessions: { get: id => id === 's1' ? 'agent' : undefined }, planMode, goals }, 's1')
     expect(view.plan).toEqual({ active: true, pending: true })
     expect(view.goal).toEqual({ title: '发布 v2', active: true })
   })
-  it('reads subagent thumbnails (title/name tolerant) and drops untitled rows', () => {
-    const view = readSessionState({ sessions: { get: () => 'agent' }, subagents }, 's1')
-    expect(view.subagents).toEqual([{ title: '子任务 A', status: 'running' }, { title: 'name-only' }])
+
+  it('a COMPLETED goal (phase complete) is surfaced nowhere', async () => {
+    const done = { get: () => ({ objective: '收尾', phase: 'complete' }) }
+    const view = await readSessionState({ sessions: { get: () => 'agent' }, goals: done }, 's1')
+    expect(view.goal).toBeUndefined()
   })
-  it('unknown session → no blocks; a throwing service degrades that block only', () => {
-    expect(readSessionState({ sessions: { get: () => undefined }, planMode, goals }, 'ghost')).toEqual({})
-    const view = readSessionState({ sessions: { get: () => 'agent' }, planMode: { get: () => { throw new Error('boom') } }, goals }, 's1')
+
+  it('reads LIVE subagents: kind child + label + activity running (async, by session id)', async () => {
+    const view = await readSessionState({ sessions: { get: () => 'agent' }, subagents }, 's1')
+    expect(view.subagents).toEqual([{ title: '子任务 A', status: 'running' }])
+  })
+
+  it('unknown session → no blocks; a throwing service degrades that block only', async () => {
+    expect(await readSessionState({ sessions: { get: () => undefined }, planMode, goals }, 'ghost')).toEqual({})
+    const view = await readSessionState(
+      { sessions: { get: () => 'agent' }, planMode: { get: () => { throw new Error('boom') } }, goals },
+      's1',
+    )
     expect(view.plan).toBeUndefined()
     expect(view.goal).toBeDefined()
   })

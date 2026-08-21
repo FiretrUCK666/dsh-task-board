@@ -22,7 +22,7 @@ import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
-import { coveringWindow, cruiseWindowGrammarOf, duplicateWindowOf, isIllegalWindowRange, sortWindows, type CruiseWindow } from '../../core/cruise.ts'
+import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
 import { formatCruiseTime, cruiseWindowLabelOf } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
@@ -42,6 +42,26 @@ function matchesFilter(task: TaskRecord, filter: string): boolean {
   if (filter.trim() === '') return true
   const needle = filter.trim().toLowerCase()
   return task.title.toLowerCase().includes(needle) || task.description.toLowerCase().includes(needle)
+}
+
+/** ONE inline message per window-range issue — explanatory, never jargon:
+ *  the actual values and the one-night boundary are named, so a 3-days-early
+ *  end says "3 天" and why it cannot be 次日. */
+function cruiseRangeError(issue: CruiseWindowRangeIssue, window: CruiseWindow): string {
+  if (issue === 'both-empty') return t('board.cruiseWindowErrorStart')
+  if (issue === 'same-instant') return t('board.cruiseWindowErrorSame')
+  if (issue === 'end-too-early') {
+    const startAt = window.startAt ?? 0
+    const endAt = window.endAt ?? 0
+    const days = Math.max(1, Math.ceil((startAt - endAt) / DAY_MS))
+    return t('board.cruiseWindowErrorRange', {
+      end: formatCruiseTime(endAt, startAt),
+      start: formatCruiseTime(startAt, startAt),
+      days: String(days),
+    })
+  }
+  if (issue === 'start-past') return t('board.cruiseWindowErrorStartPast')
+  return t('board.cruiseWindowErrorEndPast')
 }
 
 /** The window row tooltip: the exact instants behind its one-line label. */
@@ -114,8 +134,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   /**
    * 添加一条巡航定时窗口：开始与结束均可选（至少一个；留空结束=到点开、之后
    * 保持开；留空开始=立即视为开、到点关）。结束早于开始 = 跨午夜（如 22:00 →
-   * 02:00）合法：归一化在 setCruiseSchedule 里自动 +1 天处理，绝不拒绝；但
-   * 结束早于开始超过一天是日期错误（不是跨午夜），就地拒绝并指明原因。
+   * 02:00）合法：归一化自动 +1 天处理，绝不拒绝；每个非法形态（双空/同时刻/
+   * 早于开始超过一天/开始已过/结束已过）都有专属提示，绝不带病写入。
    */
   const addCruiseWindow = (): void => {
     if (windowStart === undefined && windowEnd === undefined) {
@@ -126,10 +146,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       ...windowStart !== undefined ? { startAt: windowStart } : {},
       ...windowEnd !== undefined ? { endAt: windowEnd } : {},
     }
-    // A "yesterday 09:00" end cannot be a next-midnight window: the dates
-    // are wrong — name it, never silently normalize it into the past.
-    if (isIllegalWindowRange(candidate)) {
-      setCruiseError(t('board.cruiseWindowErrorRange'))
+    const normalized = normalizeWindow(candidate)
+    const issue = windowRangeIssueOf(normalized, cruiseNow)
+    if (issue !== undefined) {
+      setCruiseError(cruiseRangeError(issue, candidate))
       return
     }
     // The single write point validates: an exact duplicate adds nothing but
@@ -144,23 +164,28 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     setCruiseError(undefined)
   }
 
-  // 弹层里的巡航状态行：当前开启中（至何时）或 关闭（下一窗口何时）；开始/结束
-  // 均可选（无开始=从当前起视为开；无结束=保持开）。
+  // 弹层里的巡航状态行：永远一句话解释「为什么开关是当前值」（手动/窗口/计划
+  // 三种来源，cruiseStatusLineOf 唯一推导）。
   const cruiseSchedule = snapshot.cruise.schedule
   const cruiseNow = Date.now()
-  // The covering window is the CORE derivation (same rule the scheduler
-  // applies) — never a re-implementation of the coverage logic in the UI.
-  const covering = coveringWindow(snapshot.cruise, cruiseNow)
-  const nextWindow = sortWindows(
-    cruiseSchedule.filter(window => (window.startAt ?? cruiseNow) > cruiseNow),
-  )[0]
-  const cruiseStateLine = snapshot.cruise.enabled
-    ? covering !== undefined && covering.endAt !== undefined
-      ? t('board.cruiseStateOnUntil', { time: formatCruiseTime(covering.endAt) })
-      : t('board.cruiseStateOn')
-    : nextWindow !== undefined && nextWindow.startAt !== undefined
-      ? t('board.cruiseStateNext', { time: formatCruiseTime(nextWindow.startAt) })
-      : t('board.cruiseStateOff')
+  const cruiseStateLine = (() => {
+    const line = cruiseStatusLineOf(snapshot.cruise, cruiseNow)
+    if (line.kind === 'window-on') {
+      return line.endAt !== undefined
+        ? t('board.cruiseStatusWindow', { time: formatCruiseTime(line.endAt, cruiseNow) })
+        : t('board.cruiseStatusWindowHold')
+    }
+    if (line.kind === 'manual-on') return t('board.cruiseStatusManualOn')
+    if (line.kind === 'manual-off') {
+      return line.endAt !== undefined
+        ? t('board.cruiseStatusManualOff', { time: formatCruiseTime(line.endAt, cruiseNow) })
+        : t('board.cruiseStatusManualOffHold')
+    }
+    if (line.kind === 'scheduled-off') {
+      return t('board.cruiseStatusScheduled', { time: formatCruiseTime(line.startAt, cruiseNow) })
+    }
+    return t('board.cruiseStatusOff')
+  })()
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
   const [dragReject, setDragReject] = useState<TaskStatus | undefined>(undefined)
   // The id of the card being dragged and the insertion gap it would land at —

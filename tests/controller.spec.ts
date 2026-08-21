@@ -1792,7 +1792,7 @@ describe('linked sessions & bind', () => {
     expect(copy!.rules![0].id).not.toBe(current!.rules![0].id)
   })
 
-  it('cruise windows: setCruiseSchedule recomputes effective state; tickCruise flips at boundaries', () => {
+  it('cruise windows v4: the switch is sovereign — boundaries flip it, edits never do', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub, { now: () => NOW })
     // A future window: still off now, the heartbeat flips it on at its start.
@@ -1800,11 +1800,16 @@ describe('linked sessions & bind', () => {
     expect(controller.getSnapshot().cruise.enabled).toBe(false)
     controller.tickCruise(NOW + 2000)
     expect(controller.getSnapshot().cruise.enabled).toBe(true)
-    // A window covering now enables immediately; removing it flips off.
-    controller.setCruiseSchedule([{ startAt: NOW - 1000 }])
-    expect(controller.getSnapshot().cruise.enabled).toBe(true)
+    // REMOVING the window keeps the switch exactly where it is (no recompute):
     controller.setCruiseSchedule([])
+    expect(controller.getSnapshot().cruise.enabled).toBe(true)
+    // Manual off → removing/adding future windows never turns it back on.
+    controller.setCruiseEnabled(false)
+    controller.setCruiseSchedule([{ startAt: NOW + 1000, endAt: NOW + 2000 }])
     expect(controller.getSnapshot().cruise.enabled).toBe(false)
+    // An ADDED only-end window fires its start boundary at creation.
+    controller.setCruiseSchedule([{ endAt: NOW + 60_000 }])
+    expect(controller.getSnapshot().cruise.enabled).toBe(true)
   })
 
   it('sendSessionMessage records a direct round into the session thread (read-only, never drives)', async () => {
@@ -2386,7 +2391,7 @@ describe('session automation rules (给会话定时发指令)', () => {
   function ruleHarness(sessionIds: string[], faces: {
     sessionMessage?: (sessionId: string, text: string) => Promise<{ ok: true } | { ok: false; error: string }>
     sessionCommand?: (sessionId: string, line: string) => Promise<{ ok: true; matched: boolean } | { ok: false; error: string }>
-  }) {
+  }): { controller: BoardController; sessions: FakeSessions; stub: StubExec } {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
     const sessions = new FakeSessions()
@@ -2400,7 +2405,7 @@ describe('session automation rules (给会话定时发指令)', () => {
       ...faces,
     })
     controller.start()
-    return { controller, sessions }
+    return { controller, sessions, stub }
   }
 
   it('creates a rule with a due instant and rejects an unparseable cron', () => {
@@ -2426,7 +2431,7 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(row.rules?.[0].nextAt).toBeGreaterThan(NOW + 120_000 - 60_000)
     // Rolled forward to the next cron match: a tick before that instant does
     // not re-fire; the minute rule fires again at the new boundary.
-    const rolled = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].nextAt
+    const rolled = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].nextAt!
     await controller.tickSessionRules(rolled - 1000)
     expect(sent).toHaveLength(1)
     await controller.tickSessionRules(rolled + 1000)
@@ -2542,6 +2547,62 @@ describe('session automation rules (给会话定时发指令)', () => {
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.schedule).toBeUndefined() // the task schedule was never created
     expect(ruleReadiness(row).kind).toBe('disabled') // task-level automation: off
+  })
+
+  it('an ON-COMPLETE rule fires at a PLAIN RUN settle (queue mode), never from the cron tick', async () => {
+    const { controller, stub } = ruleHarness(['s-a'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '', trigger: 'on-complete', send: 'queue' })!
+    // The minute heartbeat never touches an on-complete rule (no due slot).
+    await controller.tickSessionRules(NOW + 120_000)
+    let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.executions.some(round => round.comment === 'hello')).toBe(false)
+    // A plain run settles → the queued instruction is recorded once.
+    await controller.runTask(task.id)
+    stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
+    row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    const queued = row.executions.find(round => round.comment === 'hello')
+    expect(queued?.comment).toBe('hello')
+    expect(queued?.direct).toBeUndefined()
+    expect(queued?.injectedAt).toBeUndefined() // awaiting the dispatcher
+    expect(row.rules?.[0].lastAt).toBe(NOW)
+    // Its OWN comment settle must never re-fire (a comment round has a
+    // comment — it is not a task run; no send loops).
+    const commentCall = stub.commentCalls.find(call => call.text === 'hello')
+    commentCall?.fire({ kind: 'settled', taskId: task.id, executionId: commentCall.executionId, outcome: 'succeeded' })
+    row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.executions.filter(round => round.comment === 'hello')).toHaveLength(1)
+  })
+
+  it('an ON-COMPLETE steer rule sends the line immediately at settle', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller, stub } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '收尾提示', cron: '', trigger: 'on-complete', send: 'steer' })!
+    await controller.runTask(task.id)
+    stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
+    await flush()
+    expect(sent).toEqual([['s-a', '收尾提示']])
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.rules?.[0].lastAt).toBe(NOW)
+  })
+
+  it('an ON-COMPLETE rule respects enabled/executable/session-present (disabled, blocked, gone)', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const off = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'a', cron: '', trigger: 'on-complete', send: 'steer' })!
+    controller.toggleSessionRule(task.id, off.id, false)
+    await controller.fireOnCompleteRules(task.id)
+    expect(sent).toHaveLength(0) // disabled
+    const gone = controller.createSessionRule(task.id, { sessionId: 's-gone', instruction: 'b', cron: '', trigger: 'on-complete', send: 'steer' })!
+    void gone
+    await controller.fireOnCompleteRules(task.id)
+    expect(sent).toHaveLength(0) // session absent
+    const blank = controller.createTask({ title: 'b', description: '', prompt: '', status: 'todo' })!
+    controller.createSessionRule(blank.id, { sessionId: 's-a', instruction: 'c', cron: '', trigger: 'on-complete', send: 'steer' })!
+    await controller.fireOnCompleteRules(blank.id)
+    expect(sent).toHaveLength(0) // blocked: nothing to drive
   })
 })
 

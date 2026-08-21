@@ -334,5 +334,7 @@ describe('contextWorthOf (show only UNFINISHED context)', () => {
     expect(contextWorthOf({ subagents: [{ title: 'w' }] })).toBe(true)
     expect(contextWorthOf({ subagents: [{ title: 'w', status: 'finished' }] })).toBe(false)
     expect(contextWorthOf({ subagents: [{ title: 'w', status: 'done' }] })).toBe(false)
+    // The native activity word the host bridge maps ('inactive' = finished).
+    expect(contextWorthOf({ subagents: [{ title: 'w', status: 'inactive' }] })).toBe(false)
   })
 })

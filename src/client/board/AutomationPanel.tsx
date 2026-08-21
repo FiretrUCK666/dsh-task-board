@@ -5,45 +5,39 @@
  *
  * Membership = live automation only (`automationTasksOf`: an enabled schedule
  * or at least one session rule — a disarmed rule is not listed as if it were
- * running). Every card shows its identity + one live summary row (the ONE
- * summary grammar, scheduleSummary — including 接续 · 已运行 N/上限) with the
- * quick enable switch (the same chainUnlimited gate as the editor), and
- * expanding renders the SHARED AutomationEditor verbatim — the board has
- * every capability the detail has (including 完成后接续), and no surface can
- * drift into a reduced second editor.
+ * running). EVERY card is one expand row: identity header + a single live
+ * summary line (the ONE summary grammar — a task-level schedule renders
+ * scheduleSummary, a rules-only task renders its rule count) that expands
+ * into the SHARED AutomationEditor verbatim. The enable switch lives ONLY in
+ * the editor (one switch, one place, no duplicated affordances), and the
+ * board has every capability the detail has (including 完成后接续).
  */
 import { useEffect, useState } from 'react'
 import { type BoardController } from '../../core/controller.ts'
 import { automationTasksOf } from '../../core/automation.ts'
-import { chainUnlimited, type TaskRecord } from '../../core/tasks.ts'
+import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Dialog } from './Dialog.tsx'
 import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
-import { Button, Icon, Switch } from './ui.tsx'
+import { Button, Icon } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
 
-/** One automated task in the overview: identity + live summary row (with the
- *  quick switch) + expand into the shared full editor. */
+/** One automated task in the overview: identity + ONE expand row (live
+ *  summary) + the shared full editor when expanded. */
 function AutomationTaskCard({ controller, task, onClose }: {
   controller: BoardController
   task: TaskRecord
   onClose: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  // The overview's quick switch shares the editor's unlimited-chain gate:
-  // arming an endless chain confirms once, never silently.
-  const [confirmUnlimited, setConfirmUnlimited] = useState(false)
   const schedule = task.schedule
-
-  const quickToggle = (next: boolean): void => {
-    if (next && chainUnlimited(schedule?.mode, schedule?.maxRuns)) {
-      setConfirmUnlimited(true)
-      return
-    }
-    controller.setSchedule(task.id, { enabled: next })
-  }
+  // The expand row renders the live task-level summary (the same string the
+  // detail's 自动化 disclosure header reads); a rules-only task (no schedule)
+  // shows its rule count — never a fake 未启用 for a system that isn't there.
+  const summary = schedule !== undefined
+    ? scheduleSummary(task)
+    : t('auto.ruleCount', { n: String(task.rules?.length ?? 0) })
 
   return (
     <section className={css.autoTask}>
@@ -59,25 +53,9 @@ function AutomationTaskCard({ controller, task, onClose }: {
         </Button>
       </header>
 
-      {/* Task-level automation: one live summary row + enable switch — the
-          same summary grammar as the detail's disclosure header (接续 · 已运行
-          N/上限 included), so the board reads exactly what the detail reads. */}
-      {schedule !== undefined && (
-        <div className={css.autoScheduleRow}>
-          <span className={css.autoMeta} title={schedule.cron}>
-            <Icon name="play" className={css.autoMetaIcon} />
-            {scheduleSummary(task)}
-          </span>
-          <Switch
-            checked={schedule.enabled}
-            onChange={quickToggle}
-            label={t('auto.schedule.enable')}
-          />
-        </div>
-      )}
-
-      {/* Expand affordance: the shared full editor (same component as the
-          task detail's automation disclosure). */}
+      {/* ONE expand row: chevron + live summary (the detail's disclosure
+          header grammar) — the editor's enable switch stays in the body, so
+          the card never carries a second copy of the same control. */}
       <button
         type="button"
         className={css.autoTaskExpand}
@@ -86,23 +64,9 @@ function AutomationTaskCard({ controller, task, onClose }: {
         onClick={() => { setExpanded(value => !value) }}
       >
         <Icon name="chevronDown" className={`${css.autoTaskChevron}${expanded ? ` ${css.autoTaskChevronOpen}` : ''}`} />
-        <span className={css.autoTaskSummary}>{t('auto.editAutomation')}</span>
+        <span className={css.autoTaskSummary} title={summary}>{summary}</span>
       </button>
       {expanded && <AutomationEditor controller={controller} task={task} />}
-
-      {confirmUnlimited && (
-        <ConfirmDialog
-          title={t('detail.schedule.unlimitedTitle')}
-          message={t('detail.schedule.unlimitedConfirm')}
-          confirmLabel={t('detail.schedule.unlimitedOk')}
-          danger
-          onCancel={() => { setConfirmUnlimited(false) }}
-          onConfirm={() => {
-            setConfirmUnlimited(false)
-            controller.setSchedule(task.id, { enabled: true })
-          }}
-        />
-      )}
     </section>
   )
 }

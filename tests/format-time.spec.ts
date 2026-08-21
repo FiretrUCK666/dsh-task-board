@@ -84,10 +84,18 @@ describe('cruiseWindowLabelOf (one grammar line per window, both languages)', ()
     expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 6, 9, 0).getTime() }, NOW)).toBe('From 1/6 09:00, stays on')
   })
 
-  it('end-only: 现在开启一直到点关 / on now until the end', () => {
+  it('end-only: 已开启一直到点关 / on now until the end (no extra active marker)', () => {
     useLanguage('zh')
-    expect(cruiseWindowLabelOf({ endAt: new Date(2025, 0, 5, 18, 0).getTime() }, NOW)).toBe('现在开启 · 至 18:00')
+    expect(cruiseWindowLabelOf({ endAt: new Date(2025, 0, 5, 18, 0).getTime() }, NOW)).toBe('已开启 · 至 18:00')
     useLanguage('en')
     expect(cruiseWindowLabelOf({ endAt: new Date(2025, 0, 5, 18, 0).getTime() }, NOW)).toBe('On now · until 18:00')
+  })
+
+  it('a LIVE range leads with 生效中 / active; a future one does not', () => {
+    useLanguage('zh')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 5, 10, 0).getTime(), endAt: new Date(2025, 0, 5, 16, 0).getTime() }, NOW)).toBe('生效中 · 10:00 → 16:00')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 8, 22, 0).getTime(), endAt: new Date(2025, 0, 9, 2, 0).getTime() }, NOW)).toBe('1月8日 22:00 → 次日 02:00')
+    useLanguage('en')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 5, 10, 0).getTime(), endAt: new Date(2025, 0, 5, 16, 0).getTime() }, NOW)).toBe('active · 10:00 → 16:00')
   })
 })

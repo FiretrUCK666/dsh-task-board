@@ -14,7 +14,7 @@ import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 const NOW = 1_700_000_000_000
 
 function rule(): SessionRule {
-  return { id: 'r1', sessionId: 's-1', instruction: '/goal', cron: '0 9 * * *', send: 'queue', enabled: true, nextAt: NOW + 3_600_000 }
+  return { id: 'r1', sessionId: 's-1', instruction: '/goal', trigger: 'cron', cron: '0 9 * * *', send: 'queue', enabled: true, nextAt: NOW + 3_600_000 }
 }
 
 function task(status: TaskRecord['status']): TaskRecord {
@@ -74,6 +74,17 @@ describe('normalizeSessionRules', () => {
     expect(normalized).toHaveLength(1)
     expect(isSessionRule(normalized![0])).toBe(true)
   })
+
+  it('legacy rows (no trigger) normalize to cron; on-complete rows carry no cron slot', () => {
+    const legacy = { id: 'old', sessionId: 's-1', instruction: 'hi', cron: '0 9 * * *', send: 'queue' as const, enabled: true, nextAt: 5 }
+    const onComplete = { id: 'oc', sessionId: 's-1', instruction: 'hi', trigger: 'on-complete', cron: '', send: 'steer' as const, enabled: true }
+    const normalized = normalizeSessionRules([legacy, onComplete])
+    expect(normalized).toHaveLength(2)
+    expect(isSessionRule(legacy)).toBe(true)
+    expect(isSessionRule(onComplete)).toBe(true)
+    expect(isSessionRule({ ...onComplete, nextAt: 5 })).toBe(false) // a due slot is cron-only
+    expect(isSessionRule({ ...rule(), trigger: 'on-complete' })).toBe(false)
+  })
 })
 
 describe('sessionRuleReadiness (one semantics with the task schedule)', () => {
@@ -95,13 +106,26 @@ describe('sessionRuleReadiness (one semantics with the task schedule)', () => {
     expect(sessionRuleReadiness(task('todo'), { ...rule(), enabled: false })).toEqual({ kind: 'disabled' })
     expect(sessionRuleReadiness(task('done'), { ...rule(), enabled: false })).toEqual({ kind: 'disabled' })
   })
+
+  it('an ON-COMPLETE rule ignores the column pause: the settle IS the appointment', () => {
+    const after: SessionRule = { id: 'r2', sessionId: 's-1', instruction: '/goal', trigger: 'on-complete', cron: '', send: 'steer', enabled: true }
+    expect(sessionRuleReadiness(task('review'), after)).toEqual({ kind: 'active' })
+    expect(sessionRuleReadiness(task('done'), after)).toEqual({ kind: 'active' })
+    expect(sessionRuleReadiness({ ...task('done'), prompt: '' }, after)).toEqual({ kind: 'blocked' })
+  })
 })
 
 describe('sessionRuleOf (projection row back to the rule shape)', () => {
   it('round-trips the row fields including the optional last fired instant', () => {
     const row = automationRowsOf(withSessionRules(task('todo'), [{ ...rule(), lastAt: NOW }]))[0]
     expect(sessionRuleOf(row as Extract<ReturnType<typeof automationRowsOf>[number], { kind: 'session-rule' }>)).toMatchObject({
-      id: 'r1', sessionId: 's-1', instruction: '/goal', cron: '0 9 * * *', send: 'queue', enabled: true, nextAt: NOW + 3_600_000, lastAt: NOW,
+      id: 'r1', sessionId: 's-1', instruction: '/goal', trigger: 'cron', cron: '0 9 * * *', send: 'queue', enabled: true, nextAt: NOW + 3_600_000, lastAt: NOW,
     })
+  })
+
+  it('round-trips an on-complete row (no cron slot, no due instant)', () => {
+    const after: SessionRule = { id: 'r2', sessionId: 's-1', instruction: '收尾', trigger: 'on-complete', cron: '', send: 'queue', enabled: true }
+    const row = automationRowsOf(withSessionRules(task('todo'), [after]))[0]
+    expect(sessionRuleOf(row as Extract<ReturnType<typeof automationRowsOf>[number], { kind: 'session-rule' }>)).toEqual(after)
   })
 })

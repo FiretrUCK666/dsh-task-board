@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import type { SessionContext } from './use-interaction.ts'
-import { contextWorthOf } from './interaction.ts'
+import { contextWorthOf, FINISHED_SUBAGENT_STATUS } from './interaction.ts'
 import { Icon } from './ui.tsx'
 
 /** One todo glyph: pending = dashed circle, in_progress = the shared spinner,
@@ -54,12 +54,17 @@ export function SessionContextBlock({ context }: { context: SessionContext }) {
   const done = todos.filter(item => item.status === 'completed').length
   const active = todos.filter(item => item.status === 'in_progress').length
   const pending = todos.length - done - active
-  const subagentCount = context.subagents?.length ?? 0
+  // The host bridge already serves only LIVE subagents (finished ones are not
+  // in flight); an unknown status still counts as live (never hides work).
+  const liveSubagents = (context.subagents ?? []).filter(sub =>
+    sub.status === undefined || !FINISHED_SUBAGENT_STATUS.has(sub.status))
+  const subagentCount = liveSubagents.length
+  const goalActive = context.goal?.active === true
   // THE display rule: only UNFINISHED things are worth the block — a fully
-  // completed todo list (or a non-active goal / finished subagents) hides the
+  // completed todo list (or no active goal / no live subagents) hides the
   // whole readout (the "todo 全完成还显示" issue). Unknown statuses count as
   // active (a host reshape never hides live work).
-  if (!contextWorthOf(context)) return null
+  if (!contextWorthOf({ ...context, subagents: liveSubagents })) return null
 
   // The header summary — the harness's per-status progress counts (zero
   // segments omitted as noise), plus goal / subagent facts in the same line.
@@ -67,7 +72,7 @@ export function SessionContextBlock({ context }: { context: SessionContext }) {
     ...done > 0 ? [t('review.todosDone', { n: String(done) })] : [],
     ...active > 0 ? [t('review.todosActive', { n: String(active) })] : [],
     ...pending > 0 ? [t('review.todosPending', { n: String(pending) })] : [],
-    context.goal !== undefined ? t('review.goalActiveWith') : undefined,
+    goalActive ? t('review.goalActiveWith') : undefined,
     subagentCount > 0 ? t('review.subagents', { n: String(subagentCount) }) : undefined,
   ].filter((part): part is string => part !== undefined).join(' · ')
 
@@ -100,12 +105,12 @@ export function SessionContextBlock({ context }: { context: SessionContext }) {
               ))}
             </ul>
           )}
-          {context.goal !== undefined && (
+          {goalActive && (
             <div className={css.sessionContextRow}>
-              <span className={`${css.chip}${context.goal.active ? ` ${css.sessionContextGoalOn}` : ''}`}>
-                {context.goal.active ? t('review.goalActive') : t('review.goal')}
+              <span className={`${css.chip} ${css.sessionContextGoalOn}`}>
+                {t('review.goalActive')}
               </span>
-              <span className={css.sessionContextText}>{context.goal.title}</span>
+              <span className={css.sessionContextText}>{context.goal!.title}</span>
             </div>
           )}
           {subagentCount > 0 && (
@@ -114,7 +119,7 @@ export function SessionContextBlock({ context }: { context: SessionContext }) {
                 {t('review.subagents', { n: String(subagentCount) })}
               </span>
               <span className={css.sessionContextSubList}>
-                {context.subagents!.map(sub => (
+                {liveSubagents.map(sub => (
                   <span key={sub.title} className={css.sessionContextSubItem} title={sub.status ?? undefined}>
                     {sub.title}
                   </span>

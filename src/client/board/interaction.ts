@@ -49,8 +49,10 @@ export function isOpenTodo(row: SessionTodo): boolean {
 
 /** Subagent statuses that mean "finished" (the tolerant set: a native
  *  reshape that adds a new word degrades to "still active" — the context
- *  block shows work in flight, never finished work). */
-const FINISHED_SUBAGENT_STATUS = new Set(['finished', 'completed', 'done', 'settled'])
+ *  block shows work in flight, never finished work). 'inactive' is the
+ *  native word the host bridge maps activity to; the legacy words stay for
+ *  older bridge payloads. */
+export const FINISHED_SUBAGENT_STATUS = new Set(['inactive', 'finished', 'completed', 'done', 'settled'])
 
 /**
  * Whether the session context is WORTH showing: at least one OPEN todo, an
