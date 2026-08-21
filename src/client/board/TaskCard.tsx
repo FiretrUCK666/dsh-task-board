@@ -8,8 +8,7 @@ import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import { PALETTE } from '../../core/colors.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness } from '../../core/tasks.ts'
-import { cardFaceOf } from './card-face.ts'
+import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { STATUS_KEY } from './status.ts'
@@ -65,12 +64,6 @@ export function formatDuration(ms: number): string {
   return isEnglish() ? `${seconds}s` : `${seconds} 秒`
 }
 
-/** Time-of-day label (HH:mm) for the card's run window end. */
-export function formatClockTime(ms: number): string {
-  const date = new Date(ms)
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
 /** The open run's state text: either working ("进行中") or blocked on the
  *  user ("等待回应 · 计划确认"). Pure so the chip composition is testable. */
 export function runningStateLabel(waiting: PendingInteractionKind | undefined): string {
@@ -84,10 +77,12 @@ export function settledChipLabel(runs: number): string {
   return `${runs} ${t('board.runs')}`
 }
 
-/** One card in a column — every card (bound session/workspace task or a plain
- *  created task) renders the SAME face (cardFaceOf), so the two kinds never
- *  drift: title, run window (start/end/duration), comment count + latest, and
- *  the remaining-time slot (next run / running elapsed). */
+/** One card in a column — a PURE state summary: title, description, source
+ *  line (workspace / bound session), the updated stamp, and the status chips
+ *  (what the task IS doing: running / waiting / scheduled / chaining / failed
+ *  paused / queued / refining / new). The run window (start/end/duration) and
+ *  the comment timeline live in the detail — cards never carry content that
+ *  belongs to the conversation pages. */
 export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onColorPick }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
@@ -116,8 +111,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
 }) {
   const [dragging, setDragging] = useState(false)
   const latest = task.executions[task.executions.length - 1]
-  // The card's unified display face — the one projection both card kinds share.
-  const face = cardFaceOf(task, Date.now())
   // Plain-run count (comment continuation rounds are not executions): the
   // single numbering source shared with the detail list and review badge.
   const runs = plainRunsOf(task).length
@@ -129,7 +122,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // Comments saved but not yet injected (the task's queue): a quiet warn
   // badge so a card waiting for the dispatcher is never mistaken for idle.
   const queuedComments = pendingCommentCount(task)
-  const workspaceLabel = task.bind?.kind === 'session'
+  const workspaceLabel = taskBindsOf(task).some(bind => bind.kind === 'session')
     ? boundTitleOf?.(task) ?? t('card.workspaceDefault')
     : task.workspaceId !== undefined
       ? workspaceTitleOf(task.workspaceId)
@@ -290,41 +283,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                 {settledChipLabel(runs)}
               </Chip>
             )}
-          </span>
-        )}
-        {/* Row 2: the unified run/window info — start/end/duration (the latest
-            plain run) and the remaining-time slot (next run / elapsed). Text
-            cells truncate (min-width:0 + ellipsis); nothing pushes the card. */}
-        {(face.startedAt !== undefined || face.running || face.nextRunAt !== undefined) && (
-          <span className={css.cardRunInfo}>
-            {face.startedAt !== undefined && (
-              <span className={css.cardRunCell} title={formatDateTime(face.startedAt)}>
-                {t('detail.executionStarted')} {formatDateTime(face.startedAt)}
-              </span>
-            )}
-            {face.endedAt !== undefined && face.duration !== undefined && (
-              <span className={css.cardRunCell} title={t('detail.duration', { d: formatDuration(face.duration) })}>
-                {t('detail.executionEnded')} {formatClockTime(face.endedAt)} {t('detail.duration', { d: formatDuration(face.duration) })}
-              </span>
-            )}
-            {face.nextRunAt !== undefined && (
-              <span className={css.cardRunCell} title={formatDateTime(face.nextRunAt)}>
-                {t('card.nextRun', { time: formatTime(face.nextRunAt) })}
-              </span>
-            )}
-            {face.running && face.elapsed !== undefined && (
-              <span className={css.cardRunCell}>{t('card.elapsed', { time: formatDuration(face.elapsed) })}</span>
-            )}
-          </span>
-        )}
-        {/* Row 3: the latest activity — comment count + newest body (or state
-            word), truncated. Never an empty caption again. */}
-        {face.commentCount > 0 && face.latest !== undefined && (
-          <span className={css.cardLatest} title={face.latest.text}>
-            <span className={css.cardLatestCount}>{t('detail.comments', { n: String(face.commentCount) })}</span>
-            <span className={css.cardLatestText}>
-              {t('detail.latestComment', { text: face.latest.text !== '' ? face.latest.text : t(face.latest.stateKey) })}
-            </span>
           </span>
         )}
       </span>

@@ -928,38 +928,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-width: 0;
 }
 
-/* The unified run/latest info rows (cardFaceOf): every cell is a shrink-only
-   flex item with the ellipsis trio, so the widest content can only truncate,
-   never stretch the card (the no-breakout contract). */
-.cardRunInfo,
-.cardLatest {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.cardRunCell {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cardLatestCount {
-  flex: none;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.cardLatestText {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* The card is a PURE state summary: the meta line (source + updated) and the
+   badges are the whole content — the run window and comment timeline were
+   moved back to the detail pages where they belong. */
 
 /* --- shared badge system ----------------------------------------------------- */
 
