@@ -200,6 +200,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
           <Icon name="play" />
         </span>
       )}
+      {selected === true && (
+        <span className={css.cardSelectedBadge} data-ghost-hide="" aria-hidden="true">
+          <Icon name="check" />
+        </span>
+      )}
       <span className={css.cardTitleRow}>
         {/* The card's真实 color: a solid dot in the EXACT picked color (the
             palette swatch is 100% of the data color; a blended card tint can

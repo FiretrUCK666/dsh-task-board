@@ -19,7 +19,7 @@ import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, isCruiseWindow, normalizeWindow, setCruiseSchedule as applySchedule, sortWindows, tickCruise as tickSchedule } from './cruise.ts'
-import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessageText, withinGrace, type ActivityBook } from './session-activity.ts'
+import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
 import { withTaskColor } from './colors.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
@@ -233,11 +233,22 @@ export interface PermissionSelectShape {
   currentValue: string
 }
 
+/** The native todo item shape (the official `todos` projection's row — the
+ *  same `TodoItem` the harness's own TodoPanel renders; read structurally so
+ *  future reshapes degrade, never crash). */
+export interface SessionTodoShape {
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
 /** The projection slice the review page reads (the history tail page's block). */
 export interface TranscriptProjectionsShape {
   contextPressure?: ContextPressureShape
   contextBreakdown?: ContextBreakdownShape
   permissions?: PermissionSelectShape
+  /** The agent's whole todo list (the official `todos` projection, last-write
+   *  wins); absent when the domain package/deployment does not serve it. */
+  todos?: readonly SessionTodoShape[]
 }
 
 /** The review-page transcript: raw events plus the session's projection baseline. */
@@ -731,6 +742,9 @@ export class BoardController {
     const byId = this.deps.sessions.list.getSnapshot().byId
     const rows: LinkedSessionRow[] = []
     const seen = new Set<string>()
+    // Permanently removed sessions never re-derive — a deleted workspace
+    // member must stay deleted (hidden would still re-appear; removed cannot).
+    const removed = task.removedSessions ?? []
     for (const bind of binds) {
       for (const row of deriveLinkedSessions(bind, {
         byId: byId as unknown as Readonly<Record<string, LinkedSessionSource>>,
@@ -743,7 +757,7 @@ export class BoardController {
           ? { boundWorkspaceTitle: snap.items.find(item => item.id === bind.workspaceId)?.title }
           : {},
       })) {
-        if (seen.has(row.sessionId)) continue
+        if (seen.has(row.sessionId) || removed.includes(row.sessionId)) continue
         seen.add(row.sessionId)
         rows.push(row)
       }
@@ -806,6 +820,35 @@ export class BoardController {
   }
 
   /**
+   * Reorder the task's 会话 list by dragging: the moved row lands BEFORE
+   * `beforeId` (or at the end when undefined). The full current display order
+   * is persisted as the manual order, so sessions that arrive later keep
+   * landing at the TOP (the default newest-activity rule) until the user drags
+   * them too. @returns true when the order changed.
+   */
+  reorderTaskSession(taskId: string, sessionId: string, beforeId: string | undefined): boolean {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId) return task
+      const ids = taskSessionsOf(task, {
+        linked: this.linkedOf(task),
+        titleOf: sid => this.sessionTitle(sid),
+        pendingInteractionOf: sid => this.pendingInteractionOf(sid),
+      }).map(row => row.sessionId)
+      if (!ids.includes(sessionId)) return task
+      const rest = ids.filter(id => id !== sessionId)
+      let at = beforeId === undefined ? rest.length : rest.indexOf(beforeId)
+      if (at < 0) at = rest.length
+      const next = [...rest.slice(0, at), sessionId, ...rest.slice(at)]
+      if (next.join() === ids.join()) return task
+      changed = true
+      return { ...task, sessionsOrder: next }
+    })
+    if (changed) this.persistAndNotify()
+    return changed
+  }
+
+  /**
    * ADD a live source (a sidebar session or workspace folder) to an EXISTING
    * task — the "drag a folder/session into the open task's 会话 area" path.
    * NEVER replaces: an already-bound identical source is an idempotent no-op,
@@ -832,9 +875,12 @@ export class BoardController {
   }
 
   /** Permanently remove ONE session from the task (the hidden-tray 删除):
-   *  its rounds are deleted, its hide state is cleared, and a live session
-   *  binding that points ONLY at this session is unbound (a deleted source
-   *  cannot stay bound). The task itself and every other session remain.
+   *  its rounds are deleted, its hide state is cleared, and it joins the
+   *  REMOVED set so a bound workspace can never re-derive it (the delete was
+   *  irreversible — deleting a workspace member must actually remove it). A
+   *  live session binding that points ONLY at this session is unbound (a
+   *  deleted source cannot stay bound). The task itself and every other
+   *  session remain.
    *  @returns true when anything was removed. */
   removeTaskSession(taskId: string, sessionId: string): boolean {
     let changed = false
@@ -844,7 +890,13 @@ export class BoardController {
       const wasHidden = task.hidden?.sessions?.includes(sessionId) === true
       if (kept.length === task.executions.length && !wasHidden) return task
       changed = true
-      const next: TaskRecord = { ...task, updatedAt: this.now(), executions: kept }
+      const removed = task.removedSessions ?? []
+      const next: TaskRecord = {
+        ...task,
+        updatedAt: this.now(),
+        executions: kept,
+        ...!removed.includes(sessionId) ? { removedSessions: [...removed, sessionId] } : {},
+      }
       const hidden = task.hidden
       if (hidden !== undefined) {
         const sessions = (hidden.sessions ?? []).filter(id => id !== sessionId)
@@ -858,6 +910,14 @@ export class BoardController {
         } else {
           delete next.hidden
         }
+      }
+      // A removed session cannot stay in the manual order either (it can never
+      // rejoin the list) — its slot is gone for good.
+      const order = task.sessionsOrder
+      if (order !== undefined) {
+        const kept = order.filter(id => id !== sessionId)
+        if (kept.length > 0) next.sessionsOrder = kept
+        else delete next.sessionsOrder
       }
       // A live binding that points ONLY at this session cannot stay: its
       // source no longer exists on the task.
@@ -2161,7 +2221,7 @@ export class BoardController {
     const turns = detectExternalTurns(candidates, this.activityBook, byId)
     if (turns.length === 0) return false
     for (const turn of turns) {
-      const text = await this.userTextOf(turn.sessionId)
+      const msg = await this.userMessageOf(turn.sessionId)
       this.tasks = this.tasks.map(task => {
         if (task.id !== turn.taskId) return task
         const withRound = {
@@ -2172,7 +2232,8 @@ export class BoardController {
             now,
             sessionId: turn.sessionId,
             refine: turn.refine,
-            ...text !== undefined ? { text } : {},
+            ...msg?.text !== undefined ? { text: msg.text } : {},
+            ...msg !== undefined && msg.text === undefined && msg.hasImage ? { imageOnly: true } : {},
           })],
         }
         if (turn.refine || withRound.status === 'running') return withRound
@@ -2192,14 +2253,19 @@ export class BoardController {
     return true
   }
 
-  /** The newest native user message text of a session (the line that started
-   *  the observed turn); undefined when the transcript is unavailable or the
-   *  tail window missed it. */
-  private async userTextOf(sessionId: string | undefined): Promise<string | undefined> {
+  /** The newest native user message of a session (the line that started the
+   *  observed turn, or a picture-only marker); undefined when the transcript
+   *  is unavailable or the tail window missed it. */
+  private async userMessageOf(sessionId: string | undefined): Promise<LatestUserMessage | undefined> {
     if (sessionId === undefined || this.deps.transcript === undefined) return undefined
     const result = await this.deps.transcript(sessionId)
     if (result === undefined) return undefined
-    return latestUserMessageText(result.events)
+    return latestUserMessage(result.events)
+  }
+
+  /** The newest native user message TEXT of a session (legacy-path helper). */
+  private async userTextOf(sessionId: string | undefined): Promise<string | undefined> {
+    return (await this.userMessageOf(sessionId))?.text
   }
 
   /** Backfill the body of an external round settling empty (legacy records /
@@ -2246,7 +2312,7 @@ export class BoardController {
       if (!current) continue
       if (task.executions.some(round => round.sessionId === session.sessionId && round.endedAt === undefined)) continue
       if (withinGrace(this.directGraceUntil.get(session.sessionId), now)) continue
-      const text = await this.userTextOf(session.sessionId)
+      const msg = await this.userMessageOf(session.sessionId)
       next = {
         ...next,
         updatedAt: now,
@@ -2257,7 +2323,8 @@ export class BoardController {
           id: this.uuid(),
           now,
           sessionId: session.sessionId,
-          ...text !== undefined ? { text } : {},
+          ...msg?.text !== undefined ? { text: msg.text } : {},
+          ...msg !== undefined && msg.text === undefined && msg.hasImage ? { imageOnly: true } : {},
         })],
       }
       if (next.status !== 'running') next = { ...next, status: 'running' }

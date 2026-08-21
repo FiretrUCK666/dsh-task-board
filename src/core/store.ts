@@ -211,6 +211,16 @@ export function parseLedger(raw: string | null): TaskRecord[] {
       }
     }
     if (task.hidden === undefined) delete task.hidden
+    // Sessions permanently removed from the task: the same id-array shape as
+    // hidden's session set, kept as its own field (removed ≠ hidden — a
+    // removed session must never re-derive from a bound workspace).
+    const removedSessions = cleanIdArray((row as Record<string, unknown>).removedSessions)
+    if (removedSessions !== undefined) task.removedSessions = removedSessions
+    else delete (task as { removedSessions?: unknown }).removedSessions
+    // The manual session-list order (top first), the same id-array shape.
+    const sessionsOrder = cleanIdArray((row as Record<string, unknown>).sessionsOrder)
+    if (sessionsOrder !== undefined) task.sessionsOrder = sessionsOrder
+    else delete (task as { sessionsOrder?: unknown }).sessionsOrder
     // The per-card accent color is a forward-compatible optional field:
     // validate it loosely (old data keeps working untouched). The legacy tag
     // ids field is dropped silently — tags were removed, color only remains.

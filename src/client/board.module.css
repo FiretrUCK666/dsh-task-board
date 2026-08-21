@@ -281,6 +281,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 6px;
   flex: none;
   font-size: 12px;
+  line-height: 1;
   color: var(--dsh-tb-text-3);
   white-space: nowrap;
 }
@@ -292,6 +293,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
   background: var(--dsh-tb-accent);
   box-shadow: 0 0 4px var(--dsh-tb-accent);
+  /* Optical centering: the dot's geometric center is the flex center, but a
+     12px text's visual center rides slightly above it — nudge the dot up so
+     it reads on the same axis as the label beside it. */
+  transform: translateY(-0.5px);
 }
 
 .search {
@@ -732,11 +737,49 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   transition: box-shadow var(--dsh-tb-motion), border-color var(--dsh-tb-motion), transform var(--dsh-tb-motion), background var(--dsh-tb-motion);
 }
 
-/* A card picked in the board's organize/tidy mode: accent outline + slight
-   rise, unmistakable but quiet. */
+/* A card picked in the board's organize/tidy mode: an unmistakable but
+   premium selection — accent double-ring + soft glow + a slight rise + the
+   round check badge. Same light family as the attention/breath system (one
+   accent, alpha 22%/10% steps, motion token); a running card's warn border
+   stays visible underneath (border-color wins on top, status semantics kept
+   in the chip row below). */
 .card.selectedCard {
   border-color: var(--dsw-alias-state-business-primary);
-  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha), var(--dsh-tb-shadow-2);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent),
+    0 0 0 5px color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent),
+    0 4px 18px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent),
+    var(--dsh-tb-shadow-2);
+  transform: translateY(-1px);
+  animation: dshTbSelectIn var(--dsh-tb-motion) ease-out;
+}
+
+@keyframes dshTbSelectIn {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+/* The selection check badge: top-right round accent chip — the one glyph
+   that reads "picked" next to the glow ring. The hover quick-run shifts left
+   so the two never overlap. */
+.cardSelectedBadge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-state-business-primary);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.card.selectedCard .cardQuickRun {
+  right: 32px;
 }
 
 .card:hover {
@@ -849,7 +892,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  margin-top: 4px;
+  /* Optical centering against the first title line (14px / 1.35 ≈ 18.9px):
+     the dot's center must sit on the line's visual center, NOT on the
+     flex-start edge — the 4px offset read "high" next to the title. */
+  margin-top: 5px;
   /* The mark's hairline ring is a soft transparency of the SAME data color:
      the visible dot is exactly the picked color — no blend, no偏色. */
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--card-tint) 30%, transparent);
@@ -1142,6 +1188,29 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .dangerButton:disabled {
   opacity: 0.5;
+  cursor: default;
+}
+
+/* Row-level destructive affordance: outline + danger text. A light danger
+   action in a dense list (hidden-tray delete) — the FILLED danger button
+   stays reserved for the step's primary destroyer (confirm dialogs). */
+.dangerGhostButton {
+  color: var(--dsh-tb-danger);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) 45%, transparent);
+}
+
+.dangerGhostButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dsh-tb-danger) 10%, transparent);
+  border-color: var(--dsh-tb-danger);
+}
+
+.dangerGhostButton:active:not(:disabled) {
+  background: color-mix(in srgb, var(--dsh-tb-danger) 22%, transparent);
+}
+
+.dangerGhostButton:disabled {
+  opacity: 0.45;
   cursor: default;
 }
 
@@ -1925,6 +1994,20 @@ textarea.input {
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   overflow: hidden;
+  /* Relative for the manual-reorder insertion bar (the same dropIndicator
+     grammar as the board's card reorder — one mechanism, one look). */
+  position: relative;
+}
+
+/* A session row is grabbable for the manual 会话 reorder; while a reorder is
+   in flight the whole list suppresses its hover lift so the gesture reads as
+   one clean move (same discipline as the board's [data-dragging]). */
+.sessionList[data-reordering] .sessionRow {
+  cursor: grabbing;
+}
+
+.sessionList[data-reordering] .sessionRow:hover {
+  box-shadow: none;
 }
 
 /* The 会话 section doubles as a bind drop target: dragging a sidebar
@@ -1988,9 +2071,17 @@ textarea.input {
 .hiddenTrayRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   padding: 4px 0;
+}
+
+/* The right-clustered row actions (restore ‖ delete): one pair, tucked
+   against the row's right edge — the name flexes left, nothing scatters. */
+.hiddenTrayActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
 }
 
 .hiddenTrayRow + .hiddenTrayRow {
@@ -1998,6 +2089,7 @@ textarea.input {
 }
 
 .hiddenTrayName {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2106,6 +2198,22 @@ textarea.input {
   font-size: 12px;
   color: var(--dsw-alias-state-error-primary);
   overflow-wrap: anywhere;
+}
+
+/* A failed comment round's reason line — quiet secondary text (the failure
+   already reads in the red state chip; the reason is context, not an alarm). */
+.reviewCommentError {
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  overflow-wrap: anywhere;
+}
+
+/* The picture-only placeholder of an externally observed message (its "what
+   was said" is the picture) — same quiet rhythm, never dressed as content. */
+.reviewCommentImage {
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+  font-style: italic;
 }
 
 /* The live-session line: what the active session is doing right now
@@ -2710,6 +2818,11 @@ textarea.input {
 
 @media (prefers-reduced-motion: reduce) {
   .card.dragging {
+    transform: none;
+  }
+  /* Selection stays a static ring (no entrance fade, no rise). */
+  .card.selectedCard {
+    animation: none;
     transform: none;
   }
 }
@@ -3600,58 +3713,161 @@ textarea.input {
   color: var(--dsh-tb-text-3);
 }
 
-/* The deterministic session-context readout above the composer: to-do /
-   goal / subagents when the session has them, nothing at all otherwise. */
-.sessionContext {
+/* The deterministic session-context readout — HARNESS-ISOMORPHIC todo grammar
+   (official `todos` projection, three status glyphs, per-status progress
+   counts, default collapsed) in one quiet header row; the expanded content is
+   a POPOVER anchored under the head (absolute in the rail, opaque menu
+   surface, own scroll region) so expanding can never push the meter/config/
+   comment thread away and nothing clips it. */
+.sessionContextWrap {
+  position: relative;
+  flex: none;
+}
+
+.sessionContextHead {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.sessionContextHead:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.sessionContextLead {
+  flex: none;
+  color: var(--dsh-tb-accent);
+}
+
+.sessionContextTitle {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sessionContextSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+}
+
+.sessionContextChevron {
+  flex: none;
+  color: var(--dsh-tb-text-3);
+  transition: transform var(--dsh-tb-motion);
+}
+
+.sessionContextChevronOpen {
+  transform: rotate(180deg);
+}
+
+.sessionContextPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 2px 0 6px;
+  padding: 10px 12px;
+  max-height: 45vh;
+  overflow-y: auto;
+  background: var(--dsh-tb-surface-menu);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-md);
+  box-shadow: var(--dsh-tb-shadow-2);
 }
+
 .sessionContextRow {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
+
 .sessionContextText {
   font-size: 12px;
   color: var(--dsh-tb-text-2);
   min-width: 0;
   overflow-wrap: break-word;
 }
+
+/* Completed todo rows read as done (quiet + strike) — the same meaning the
+   harness's completed glyph carries, never a busy open item. */
+.sessionContextText[data-done] {
+  color: var(--dsh-tb-text-3);
+  text-decoration: line-through;
+}
+
 .sessionContextGoalOn {
   border-color: color-mix(in srgb, var(--dsh-tb-success) 45%, transparent);
   color: var(--dsh-tb-success);
 }
+
 .sessionContextTodos {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
+
 .sessionContextTodo {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-width: 0;
 }
-.sessionContextTodo[data-active='true'] .sessionContextTodoDot {
-  background: var(--dsh-tb-accent);
-}
-.sessionContextTodoDot {
+
+.sessionContextTodoGlyph {
   flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--dsh-tb-text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
 }
+
+/* The three todo glyphs (harness TodoPanel grammar): pending = dashed circle,
+   in_progress = the shared spinner, completed = the shared check. */
+.sessionContextGlyphPending {
+  width: 9px;
+  height: 9px;
+  border: 1px dashed var(--dsh-tb-text-3);
+  border-radius: 50%;
+}
+
+.sessionContextGlyphActive {
+  width: 10px;
+  height: 10px;
+}
+
+.sessionContextGlyphDone {
+  color: var(--dsh-tb-success);
+}
+
 .sessionContextSubagent {
   border-color: color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent);
   color: var(--dsh-tb-accent);
 }
+
 .sessionContextSubList {
   display: flex;
   align-items: center;
@@ -3659,6 +3875,7 @@ textarea.input {
   flex-wrap: wrap;
   min-width: 0;
 }
+
 .sessionContextSubItem {
   font-size: 11px;
   color: var(--dsh-tb-text-2);
@@ -3848,12 +4065,15 @@ textarea.input {
 
 /* The danger group of the organize strip stands apart from the color and
    selection groups: hairline separation + its own rhythm, so "删除" can
-   never read as part of the palette (["remove color" vs "delete cards"]). */
+   never read as part of the palette (["remove color" vs "delete cards"]).
+   The separation is TIGHT: 完成 → 删除 read as one right-clustered control
+   group (the bar's actions sit flush right, the hairline marks the divide). */
 .organizeDanger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding-left: 14px;
+  gap: 8px;
+  margin-left: 6px;
+  padding-left: 12px;
   border-left: 1px solid var(--dsh-tb-separator);
 }
 

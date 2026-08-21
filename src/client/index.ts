@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController, type HostImageRef, type PermissionOptionShape, type SessionConfigFace, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
+import { BoardController, type HostImageRef, type PermissionOptionShape, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
@@ -144,7 +144,21 @@ function pickProjections(values: Record<string, unknown> | undefined): Pick<Tran
       if (rows.length > 0) projections.permissions = { options: rows, currentValue }
     }
   }
-  return projections.contextPressure !== undefined || projections.contextBreakdown !== undefined || projections.permissions !== undefined
+  // The official `todos` projection (the harness's own TodoPanel reads the
+  // same host-computed whole list) — structural pick, no typing imports.
+  const todos = values.todos
+  if (Array.isArray(todos)) {
+    const rows: SessionTodoShape[] = []
+    for (const item of todos) {
+      if (typeof item !== 'object' || item === null) continue
+      const row = item as Record<string, unknown>
+      if (typeof row.content !== 'string' || row.content === '') continue
+      const status = row.status === 'in_progress' || row.status === 'completed' ? row.status : 'pending'
+      rows.push({ content: row.content, status })
+    }
+    if (rows.length > 0) projections.todos = rows
+  }
+  return projections.contextPressure !== undefined || projections.contextBreakdown !== undefined || projections.permissions !== undefined || projections.todos !== undefined
     ? { projections }
     : {}
 }

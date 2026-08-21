@@ -110,6 +110,9 @@ export interface TaskSessionContext {
  */
 export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskSessionRow[] {
   const hidden = hiddenSessionIdsOf(task)
+  // Permanently removed sessions never show — even from a bound workspace
+  // (the hidden set is reversible; removed is not).
+  const removed = task.removedSessions ?? []
 
   // Run candidates, one per session (the latest plain run of that session is
   // the representative — comments sharing the session never add a row).
@@ -117,6 +120,7 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
   for (const execution of plainRunsOf(task)) {
     if (execution.sessionId === undefined) continue
     const sessionId = execution.sessionId
+    if (removed.includes(sessionId)) continue
     runBySession.set(sessionId, {
       sessionId,
       title: ctx.titleOf(sessionId) ?? task.title,
@@ -134,9 +138,10 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
   rows.sort((a, b) => b.updatedAt - a.updatedAt)
 
   // External candidates (bound workspace/session members) — skip any session
-  // already shown as a run (the run carries the execution identity).
+  // already shown as a run (the run carries the execution identity) or one
+  // permanently removed (the delete was irreversible).
   for (const linked of ctx.linked) {
-    if (hidden.has(linked.sessionId) || runBySession.has(linked.sessionId)) continue
+    if (hidden.has(linked.sessionId) || removed.includes(linked.sessionId) || runBySession.has(linked.sessionId)) continue
     rows.push({
       sessionId: linked.sessionId,
       title: linked.title,
@@ -156,5 +161,24 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
       unviewed: false,
     })
   }
-  return rows
+  return orderedSessionsOf(task, rows)
+}
+
+/**
+ * The displayed order of the unified list: the user's manual array first
+ * (rows inside it follow its exact order), then every other row — a session
+ * that arrived after the reorder (a new bind, a fresh run, a rerun) lands at
+ * the TOP, newest-activity first. A manual order never hides a row; it only
+ * overrides the default sort.
+ */
+export function orderedSessionsOf(task: TaskRecord, rows: readonly TaskSessionRow[]): TaskSessionRow[] {
+  const order = task.sessionsOrder ?? []
+  if (order.length === 0) return [...rows]
+  const indexOf = new Map(order.map((id, index) => [id, index]))
+  const listed = rows.filter(row => indexOf.has(row.sessionId))
+  listed.sort((a, b) => (indexOf.get(a.sessionId) ?? 0) - (indexOf.get(b.sessionId) ?? 0))
+  const fresh = rows
+    .filter(row => !indexOf.has(row.sessionId))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  return [...fresh, ...listed]
 }

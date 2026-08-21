@@ -1891,6 +1891,76 @@ describe('linked sessions & bind', () => {
     wss.notify()
     expect(controller.linkedOf(task).map(row => row.sessionId)).toEqual(['s-1', 's-3'])
   })
+
+  it('removeTaskSession keeps a workspace-bound session removed permanently (no resurrection)', () => {
+    const wss = workspaces()
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    sessions.runningById['s-2'] = false
+    const controller = new BoardController({
+      store: new InMemoryTaskStore(),
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions,
+      workspaces: wss,
+      now: () => NOW,
+      uuid,
+    })
+    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 't', description: '', prompt: '' })!
+    // A manual order is in effect before the removal: dropping s-2 BEFORE s-1
+    // persists ['s-2', 's-1'] — the removal must also strip its slot.
+    expect(controller.reorderTaskSession(task.id, 's-2', 's-1')).toBe(true)
+    controller.hideTaskSession(task.id, 's-1')
+    let current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(current).map(row => row.sessionId)).toEqual(['s-2'])
+    expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
+    // The workspace still contains s-1, but the removal is permanent: it never
+    // re-derives, neither in the list nor in linkedOf.
+    current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(current).map(row => row.sessionId)).toEqual(['s-2'])
+    expect(controller.linkedOf(current).map(row => row.sessionId)).toEqual(['s-2'])
+    expect(current.removedSessions).toContain('s-1')
+    expect(current.hidden).toBeUndefined()
+    // The removed session's manual-order slot is gone with it; only s-2's
+    // remains. Removing the last ordered session clears the field entirely.
+    expect(current.sessionsOrder).toEqual(['s-2'])
+    controller.hideTaskSession(task.id, 's-2')
+    expect(controller.removeTaskSession(task.id, 's-2')).toBe(true)
+    current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(current.sessionsOrder).toBeUndefined()
+  })
+
+  it('reorderTaskSession persists the manual 会话 order (drop into a slot)', () => {
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    const wss = workspaces()
+    wss.items = [{ id: 'w-x', title: 'W', sessionIds: [] }]
+    const controller = new BoardController({
+      store: new InMemoryTaskStore(),
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions,
+      workspaces: wss,
+      now: () => NOW,
+      uuid,
+    })
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    sessions.runningById['s-2'] = false
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
+    const before = controller.sessionsOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)
+      .map(row => row.sessionId)
+    expect(before).toContain('s-1')
+    // Drag s-1 to the END (beforeId undefined) — the persisted order equals
+    // the new display order.
+    expect(controller.reorderTaskSession(task.id, 's-1', undefined)).toBe(true)
+    const after = controller.sessionsOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)
+      .map(row => row.sessionId)
+    expect(after).toEqual([...before.filter(id => id !== 's-1'), 's-1'])
+    const persisted = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(persisted.sessionsOrder).toEqual(after)
+    // The same order on a second drag is a no-op.
+    expect(controller.reorderTaskSession(task.id, 's-1', undefined)).toBe(false)
+  })
 })
 
 describe('sendSessionMessage (direct linked-session messages)', () => {

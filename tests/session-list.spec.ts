@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createTask, settleExecution, startExecution, type TaskRecord } from '../src/core/tasks.ts'
-import { hasHiddenSessions, hiddenSessionIdsOf, sessionWindowOf, taskSessionsOf } from '../src/core/session-list.ts'
+import { hasHiddenSessions, hiddenSessionIdsOf, orderedSessionsOf, sessionWindowOf, taskSessionsOf } from '../src/core/session-list.ts'
 import { newExternalRound } from '../src/core/tasks.ts'
 import type { LinkedSessionRow } from '../src/core/linked-sessions.ts'
 
@@ -56,6 +56,14 @@ describe('taskSessionsOf (统一会话列表)', () => {
     expect(rows[0]).toMatchObject({ sessionId: 's-1', executionId: 'e-2' })
   })
 
+  it('permanently removed sessions never re-derive — even from bound sources', () => {
+    // s-9 is a genuine linked-only session: removing it must drop its row for
+    // good (the hidden set would re-show it; removed cannot).
+    const task = { ...withOneRun(), removedSessions: ['s-9'] }
+    const rows = taskSessionsOf(task, ctx([linkedRow({ sessionId: 's-9', title: '外部', updatedAt: NOW + 5 })]))
+    expect(rows.map(row => row.sessionId)).toEqual(['s-1'])
+  })
+
   it('appends linked rows that are not run sessions; run wins on a clash', () => {
     const task = withOneRun() // run session s-1
     const rows = taskSessionsOf(task, ctx([
@@ -94,6 +102,30 @@ describe('taskSessionsOf (统一会话列表)', () => {
     expect(rows[0].sessionId).toBe('s-2') // newest run activity first
     expect(rows[1].sessionId).toBe('s-1')
     expect(rows[2].sessionId).toBe('s-9') // linked group after the run group
+  })
+})
+
+describe('orderedSessionsOf (manual 会话 order)', () => {
+  const rows = [
+    { sessionId: 's-run', title: 'a', executionId: 'e-1', display: { state: 'succeeded' as const, lastActivity: NOW, waitingKind: undefined }, updatedAt: NOW, unviewed: false },
+    { sessionId: 's-9', title: 'b', display: { state: 'cancelled' as const, lastActivity: NOW + 2, waitingKind: undefined }, updatedAt: NOW + 5, unviewed: false },
+  ]
+
+  it('defaults to the passed order when the user never reordered', () => {
+    expect(orderedSessionsOf(sampleTask(), rows).map(row => row.sessionId)).toEqual(['s-run', 's-9'])
+  })
+
+  it('follows the manual array exactly, and NEW sessions land at the TOP', () => {
+    const task = { ...sampleTask(), sessionsOrder: ['s-9', 's-run'] }
+    const withNew = [...rows, {
+      sessionId: 's-new', title: 'c', display: { state: 'cancelled' as const, lastActivity: NOW + 9, waitingKind: undefined }, updatedAt: NOW + 9, unviewed: false,
+    }]
+    expect(orderedSessionsOf(task, withNew).map(row => row.sessionId)).toEqual(['s-new', 's-9', 's-run'])
+  })
+
+  it('never hides a row — an order array without a row just leaves it fresh', () => {
+    const task = { ...sampleTask(), sessionsOrder: ['s-run'] }
+    expect(orderedSessionsOf(task, rows).map(row => row.sessionId)).toEqual(['s-9', 's-run'])
   })
 })
 

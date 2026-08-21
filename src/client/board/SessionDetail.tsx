@@ -70,7 +70,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   // subagents of the session.
   const context = useSessionContext(controller, sessionId)
   const pendingInteraction = useWireQuestion(controller, sessionId)
-  const [contextOpen, setContextOpen] = useState(false)
 
   // Send gates: a done task rejects comments; a gone session blocks the send.
   const taskDone = task.status === 'done'
@@ -130,8 +129,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       rail={
         <SessionRail
           context={context}
-          contextOpen={contextOpen}
-          onToggleContext={() => { setContextOpen(value => !value) }}
           stateChip={stateChip}
           updatedAt={updatedAt}
           sessionId={sessionId}

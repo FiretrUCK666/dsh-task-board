@@ -56,7 +56,10 @@ export function useSessionContext(controller: BoardController, sessionId: string
         if (!alive || result === undefined) return
         setContext(current => ({
           ...current,
-          todos: latestSessionTodos(result.events),
+          // The official `todos` projection FIRST (the harness's own TodoPanel
+          // reads the same host-computed whole list), the transcript snapshot
+          // parse as the legacy fallback when no deployment serves it.
+          todos: result.projections?.todos ?? latestSessionTodos(result.events),
         }))
       })
     }

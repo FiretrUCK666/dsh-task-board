@@ -41,7 +41,6 @@ export function RefineSection({ controller, task }: {
   // subagents of the refine session.
   const context = useSessionContext(controller, sessionId)
   const pendingInteraction = useWireQuestion(controller, sessionId)
-  const [contextOpen, setContextOpen] = useState(false)
 
   // 草稿记忆：回答框里打了一半的文字，切走再回来仍保留（按任务各自保存）；
   // 发送成功即清除。切换任务时读对应任务的草稿。
@@ -161,7 +160,7 @@ export function RefineSection({ controller, task }: {
               />
             )}
             {sessionId !== undefined && (
-              <SessionContextBlock context={context} open={contextOpen} onToggle={() => { setContextOpen(value => !value) }} />
+              <SessionContextBlock context={context} />
             )}
             <PromptInput
               value={draft}

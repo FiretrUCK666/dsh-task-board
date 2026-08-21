@@ -65,7 +65,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // / subagents) for the readout above the composer.
   const context = useSessionContext(controller, sessionId)
   const pendingInteraction = useWireQuestion(controller, sessionId)
-  const [contextOpen, setContextOpen] = useState(false)
 
   // Native projection baseline (context pressure / breakdown / permissions)
   // from the history tail page — the source of the context meter below and
@@ -174,8 +173,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
       rail={
         <SessionRail
           context={context}
-          contextOpen={contextOpen}
-          onToggleContext={() => { setContextOpen(value => !value) }}
           stateChip={stateChip}
           updatedAt={updatedAt}
           sessionId={sessionId}

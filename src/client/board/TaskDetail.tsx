@@ -23,6 +23,7 @@ import { mergedPresets, PresetManager } from './PresetManager.tsx'
 import { CronField, SessionRulesSection, scheduleSummary } from './automation-ui.tsx'
 import { cronHumanLabel } from './cron-label.ts'
 import { sessionStateChip, waitingKeyOf } from './session-chip.ts'
+import { indicatorTopOf, insertionGapOf } from './drop-position.ts'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
@@ -78,7 +79,7 @@ function CommentSummary({ task, sessionId, cruiseOn }: {
  *  ONE derivation (sessionStateChip) — only the settled-label pair differs
  *  between a run row (the execution result) and a linked row (the bound
  *  session's activity). */
-function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, onOpenSessionPanel }: {
+function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, onOpenSessionPanel, draggable, onDragStart, onDragEnd }: {
   row: import('../../core/session-list.ts').TaskSessionRow
   task: TaskRecord
   controller: BoardController
@@ -87,6 +88,11 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
   onReviewExecution: (execution: ExecutionRecord) => void
   /** Every row opens the session panel/thread for its native session. */
   onOpenSessionPanel: (sessionId: string) => void
+  /** The manual 会话 reorder wiring (drag + settle), passed through to the
+   *  shared row — one row skeleton, the reorder stays a detail concern. */
+  draggable?: boolean
+  onDragStart?: (event: React.DragEvent) => void
+  onDragEnd?: () => void
 }) {
   const isRun = row.executionId !== undefined
   const sessionId = row.sessionId
@@ -99,8 +105,10 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
     return (
       <SessionRow
         state={session.state}
-        /* THE chip derivation — the run row names the execution result. */
-        chip={sessionStateChip(session.state, session.waitingKind, 'detail.result.succeeded', 'detail.result.cancelled')}
+        /* THE chip derivation — ONE vocabulary with the linked rows: a
+           settled session reads 已完成 (the run's outcome facts — duration,
+           comments, the review page — carry the execution semantics). */
+        chip={sessionStateChip(session.state, session.waitingKind, 'detail.linkedDone', 'detail.result.cancelled')}
         leading={
           <span className={css.sessionRowLeading} title={row.title}>
             {/* The SAME leading grammar as a linked row: a kind icon (play =
@@ -142,6 +150,9 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
         unviewedTitle={t('detail.unviewedTitle')}
         handle={session.state === 'waiting' && sessionId !== undefined ? t('detail.handle') : undefined}
         sessionId={sessionId}
+        draggable={draggable}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
         onActivate={() => { onReviewExecution(execution) }}
         onOpenSession={() => { if (sessionId !== undefined) controller.openSession(sessionId) }}
         onHide={() => { controller.hideTaskSession(task.id, sessionId) }}
@@ -189,6 +200,9 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
         <CommentSummary task={task} sessionId={sessionId} cruiseOn={cruiseOn} />
       }
       sessionId={sessionId}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onActivate={() => { onOpenSessionPanel(sessionId) }}
       onOpenSession={() => { controller.openSession(sessionId) }}
       onHide={() => { controller.hideTaskSession(task.id, sessionId) }}
@@ -638,11 +652,13 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
 
   // Window-level safety net (same contract as the board root): a drag ending
   // outside the zone — on the sidebar, outside the window, or cancelled —
-  // must clear the latch so no ring can survive the gesture.
+  // must clear the latch so no ring can survive the gesture. Also resets the
+  // manual session-reorder transient state (a dropped/cancelled reorder).
   useEffect(() => {
     const clear = (): void => {
       bindDropLatch.current = false
       setBindDropActive(false)
+      clearSessionDrag()
     }
     window.addEventListener('drop', clear)
     window.addEventListener('dragend', clear)
@@ -654,6 +670,37 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     // The handlers read only stable refs/setters; a mount-time instance works.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // --- 会话列表手动排序（拖拽） ----------------------------------------------
+  // Drag a session row onto another position: the SAME insertion-gap grammar
+  // as the board's card reorder (insertionGapOf / indicatorTopOf — one pure
+  // drop-position module, never a second hand-rolled measurement). The gap is
+  // mirrored in a ref (written synchronously on dragover, read at drop) so
+  // the drop always matches the preview. The settled order persists through
+  // controller.reorderTaskSession; sessions arriving later stay on top.
+  const [sessionDragId, setSessionDragId] = useState<string | undefined>(undefined)
+  const [sessionGap, setSessionGap] = useState<{ beforeId: string | undefined; top: number } | undefined>(undefined)
+  const sessionGapRef = useRef<{ beforeId: string | undefined; top: number } | undefined>(undefined)
+  const sessionListRef = useRef<HTMLUListElement | null>(null)
+  const sessionIndicatorRef = useRef<HTMLSpanElement | null>(null)
+  const clearSessionDrag = (): void => {
+    setSessionDragId(undefined)
+    setSessionGap(undefined)
+    sessionGapRef.current = undefined
+  }
+  /** The exact insertion slot of a session-row drag at `dropY` (content coords). */
+  const sessionGapAt = (dropY: number): { beforeId: string | undefined; top: number } => {
+    const container = sessionListRef.current
+    if (container === null || sessionDragId === undefined) return { beforeId: undefined, top: 0 }
+    const cards = Array.from(container.querySelectorAll<HTMLElement>('[data-session-id]'))
+      .map(element => ({
+        id: element.getAttribute('data-session-id') ?? '',
+        rect: element.getBoundingClientRect(),
+      }))
+    const gap = insertionGapOf(cards, dropY, sessionDragId, 8)
+    const containerTop = container.getBoundingClientRect().top
+    return { beforeId: gap.beforeId, top: indicatorTopOf(gap.top, containerTop, container.scrollTop, container.scrollHeight) }
+  }
 
   /** Latch an external sidebar drag once, on entry into the zone. */
   const onZoneDragEnter = (event: React.DragEvent): void => {
@@ -897,7 +944,42 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                       : t('detail.noExecution')}
                 </p>
               ) : (
-                <ul className={css.sessionList}>
+                <ul
+                  className={css.sessionList}
+                  ref={sessionListRef}
+                  data-reordering={sessionDragId !== undefined ? '' : undefined}
+                  onDragOver={event => {
+                    // A session-row reorder: compute the exact insertion slot
+                    // from pointer coordinates (the same gap grammar as the
+                    // board), mirror it in the ref.
+                    if (sessionDragId === undefined) return
+                    event.preventDefault()
+                    const gap = sessionGapAt(event.clientY)
+                    sessionGapRef.current = gap
+                    const indicator = sessionIndicatorRef.current
+                    if (indicator !== null) indicator.style.top = `${gap.top}px`
+                    setSessionGap(current =>
+                      current !== undefined && current.beforeId === gap.beforeId ? current : gap)
+                  }}
+                  onDrop={event => {
+                    if (sessionDragId === undefined) return
+                    event.preventDefault()
+                    // Read the decision BEFORE clearing (same contract as the
+                    // board): the ref holds the slot the preview promised.
+                    const gap = sessionGapRef.current
+                    const dragged = sessionDragId
+                    clearSessionDrag()
+                    controller.reorderTaskSession(current.id, dragged, gap?.beforeId)
+                  }}
+                >
+                  {sessionGap !== undefined && (
+                    <span
+                      ref={sessionIndicatorRef}
+                      className={css.dropIndicator}
+                      style={{ top: sessionGap.top }}
+                      aria-hidden="true"
+                    />
+                  )}
                   {sessions.map(row => (
                     <SessionActionRow
                       key={row.sessionId}
@@ -907,6 +989,13 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                       cruiseOn={controller.getSnapshot().cruise.enabled}
                       onReviewExecution={execution => { setReviewExecution(execution) }}
                       onOpenSessionPanel={sessionId => { setLinkedSession(sessionId) }}
+                      draggable
+                      onDragStart={event => {
+                        setSessionDragId(row.sessionId)
+                        event.dataTransfer.effectAllowed = 'move'
+                        event.dataTransfer.setData('text/plain', row.sessionId)
+                      }}
+                      onDragEnd={clearSessionDrag}
                     />
                   ))}
                 </ul>
@@ -929,12 +1018,18 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                         <span className={css.hiddenTrayName} title={sessionId}>
                           {controller.sessionTitle(sessionId) ?? sessionId}
                         </span>
-                        <Button size="sm" variant="ghost" onClick={() => { controller.unhideTaskSession(current.id, sessionId) }}>
-                          {t('detail.restoreOne')}
-                        </Button>
-                        <Button size="sm" variant="danger" onClick={() => { setConfirmRemoveSession(sessionId) }}>
-                          {t('detail.delete')}
-                        </Button>
+                        {/* ONE right-clustered action group: restore (ghost) ‖
+                            delete (row-level danger ghost — the filled danger
+                            stays with the confirm dialog itself). The name
+                            flexes, the pair never scatters. */}
+                        <span className={css.hiddenTrayActions}>
+                          <Button size="sm" variant="ghost" onClick={() => { controller.unhideTaskSession(current.id, sessionId) }}>
+                            {t('detail.restoreOne')}
+                          </Button>
+                          <Button size="sm" variant="dangerGhost" onClick={() => { setConfirmRemoveSession(sessionId) }}>
+                            {t('detail.delete')}
+                          </Button>
+                        </span>
                       </li>
                     ))}
                   </ul>

@@ -12,8 +12,11 @@ import css from '../board.module.css'
 import { t } from '../locales.ts'
 import { Chip } from './Chip.tsx'
 
-/** One button variant; shared "primary / ghost / danger" rhythm everywhere. */
-export type ButtonVariant = 'primary' | 'ghost' | 'danger'
+/** One button variant; shared rhythm everywhere. `dangerGhost` is the
+ *  row-level destructive affordance (outline + danger text) — the filled
+ *  `danger` stays reserved for the primary destroyer (confirm dialogs,
+ *  the detail footer's delete). */
+export type ButtonVariant = 'primary' | 'ghost' | 'danger' | 'dangerGhost'
 
 /** The board's one button (see module doc). The click handler receives the
  *  native event so callers inside clickable rows can stopPropagation; plain
@@ -36,7 +39,8 @@ export function Button({ variant = 'ghost', size, type = 'button', className, di
 }) {
   const base = variant === 'primary' ? css.primaryButton
     : variant === 'danger' ? css.dangerButton
-      : css.ghostButton
+      : variant === 'dangerGhost' ? css.dangerGhostButton
+        : css.ghostButton
   return (
     <button
       type={type}
@@ -148,7 +152,7 @@ export function AttentionDot({ title }: { title?: string }) {
  * glyph can ever balloon to the SVG default 300x150 box). Every board icon
  * route goes through this component.
  */
-export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'calendar' | 'copy' | 'check'
+export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'calendar' | 'copy' | 'check' | 'checklist'
 
 const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5',
   chevronDown: 'M3 6 8 11 13 6',
@@ -160,6 +164,7 @@ const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5
   calendar: 'M3.5 6.5v6a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-6zM3.5 6.5h9M5.5 3.5v3M10.5 3.5v3',
   copy: 'M7 4h5a2 2 0 0 1 2 2v5M5 6h5a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z',
   check: 'M3.5 8.5 6.5 11.5 12.5 5',
+  checklist: 'M2.5 4h.5M2.5 8h.5M2.5 12h.5M5.5 4h8M5.5 8h8M5.5 12h8',
 }
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {

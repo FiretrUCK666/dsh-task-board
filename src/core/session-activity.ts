@@ -26,14 +26,23 @@ interface UserMessageEventShape {
   }
 }
 
+/** The renderable facts of the newest native user message. */
+export interface LatestUserMessage {
+  /** The message's text (absent when the message carried no text). */
+  text?: string
+  /** Whether the message carried image blocks. */
+  hasImage: boolean
+}
+
 /**
- * The text of the newest native user message in a transcript tail — the line
- * the user typed in the native chat that started the observed turn. The
- * external round records this as its body, so the comment thread shows what
- * was actually said (never an empty row). Mirrors the review page's user
- * text extraction; undefined when the tail carries none (window missed it).
+ * THE newest native user message in a transcript tail — the line the user
+ * typed in the native chat that started the observed turn. The LATEST user
+ * message is the truth and never falls back to an older one: a picture-only
+ * message reports `{ text: undefined, hasImage: true }` so the thread shows a
+ * 图片消息 placeholder instead of stale text from an earlier message.
+ * undefined when the tail carries no user message at all.
  */
-export function latestUserMessageText(events: readonly unknown[]): string | undefined {
+export function latestUserMessage(events: readonly unknown[]): LatestUserMessage | undefined {
   if (!Array.isArray(events)) return undefined
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index] as UserMessageEventShape | null
@@ -42,9 +51,18 @@ export function latestUserMessageText(events: readonly unknown[]): string | unde
     if (typeof data !== 'object' || data === null) continue
     if (data.source?.kind !== 'user') continue
     const text = textOf(data.content)
-    if (text !== '') return text
+    return {
+      ...text !== '' ? { text } : {},
+      hasImage: hasImageBlock(data.content),
+    }
   }
   return undefined
+}
+
+/** The text of the newest native user message, undefined when it has none
+ *  (it was picture-only, or no message was seen). */
+export function latestUserMessageText(events: readonly unknown[]): string | undefined {
+  return latestUserMessage(events)?.text
 }
 
 /** Join a message's text blocks (each trimmed); returns '' when there is no text. */
@@ -60,6 +78,18 @@ function textOf(content: unknown): string {
     }
   }
   return parts.join('\n')
+}
+
+/** Whether a message's blocks carry an image block (the "what was said" of a
+ *  picture-only message is the picture itself). */
+function hasImageBlock(content: unknown): boolean {
+  if (!Array.isArray(content)) return false
+  for (const block of content) {
+    if (typeof block !== 'object' || block === null) continue
+    const entry = block as { type?: unknown }
+    if (entry.type === 'image') return true
+  }
+  return false
 }
 
 /** One concrete detection: record an external round on this task's session. */

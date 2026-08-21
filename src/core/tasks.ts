@@ -100,6 +100,13 @@ export interface ExecutionRecord {
    * a refine-external round keeps the task in its column while `refining`.
    */
   external?: boolean
+  /**
+   * An externally-observed round whose latest native user message carried NO
+   * text (a picture-only message): the thread shows the 图片消息 placeholder
+   * instead of a state word dressed up as content — never stale text from an
+   * older message.
+   */
+  imageOnly?: boolean
 }
 
 /** How a scheduled task is driven: cron = fire at fixed times; chain = rerun right after each run settles. */
@@ -238,6 +245,22 @@ export interface TaskRecord {
    * "同步 / 恢复全部已隐藏" actions clear the relevant set.
    */
   hidden?: { executions?: string[]; sessions?: string[] }
+  /**
+   * Sessions PERMANENTLY removed from this task (the hidden tray's irreversible
+   * 删除). Unlike {@link hidden}, a removed session can never re-derive from a
+   * bound workspace — deleting a workspace member must not resurrect it. The
+   * execution rounds of a removed session are also gone; the task itself and
+   * every other session stay. Absent = nothing removed.
+   */
+  removedSessions?: string[]
+  /**
+   * The user's manual order of the 会话 list (sessionIds, top first). Written
+   * only after the user re-orders rows by drag; rows outside the array (new
+   * sessions from a bind, a fresh run or a rerun) keep landing at the TOP
+   * (newest-activity-first), so "拖进来的/重跑的都排最上面" stays true unless
+   * the user drags them. Absent = the default newest-activity order.
+   */
+  sessionsOrder?: string[]
   /**
    * When the user last opened this task's detail (ms epoch), clearing the
    * card's unread reminder. Absent on legacy rows — the display layer falls

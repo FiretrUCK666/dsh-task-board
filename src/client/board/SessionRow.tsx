@@ -19,7 +19,7 @@ import type { SessionChipShape, SessionRowState } from './session-chip.ts'
 import { AttentionDot, Button } from './ui.tsx'
 
 /** The unified session row (one grammar for every session of a task). */
-export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, onDelete, deleteTitle }: {
+export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, onDelete, deleteTitle, draggable, onDragStart, onDragEnd }: {
   /** Live session state (execution kind): rendered as data-state/data-waiting. */
   state?: SessionRowState
   /** Status chip on the top line (undefined = no chip). */
@@ -50,6 +50,10 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
   onDelete?: () => void
   /** Tooltip of the delete affordance. */
   deleteTitle?: string
+  /** Make the row draggable (the detail's manual 会话 reorder). */
+  draggable?: boolean
+  onDragStart?: (event: React.DragEvent) => void
+  onDragEnd?: () => void
 }) {
   return (
     <li
@@ -57,9 +61,13 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
       data-state={state}
       data-waiting={state === 'waiting' ? 'true' : undefined}
       data-unviewed={unviewed === true ? 'true' : undefined}
+      data-session-id={sessionId ?? undefined}
       role="button"
       tabIndex={0}
+      draggable={draggable === true}
       onClick={onActivate}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onActivate() } }}
     >
       <div className={css.sessionRowTop}>

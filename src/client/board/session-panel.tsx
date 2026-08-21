@@ -542,10 +542,8 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
  * data and their send semantics; the grammar, the follow mechanics and the
  * hint line live here exactly once — no panel can drift again.
  */
-export function SessionRail({ context, contextOpen, onToggleContext, stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, hint, task, thread, onCancelComment, interaction, composer }: {
+export function SessionRail({ context, stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, hint, task, thread, onCancelComment, interaction, composer }: {
   context: SessionContext
-  contextOpen: boolean
-  onToggleContext: () => void
   /** The live state row (chip + updated time); absent hides the whole row. */
   stateChip?: { kind: ChipKind; label: string; spinner?: boolean }
   updatedAt?: string
@@ -595,7 +593,7 @@ export function SessionRail({ context, contextOpen, onToggleContext, stateChip, 
   }
   return (
     <>
-      <SessionContextBlock context={context} open={contextOpen} onToggle={onToggleContext} />
+      <SessionContextBlock context={context} />
       {stateChip !== undefined && updatedAt !== undefined && (
         <div className={css.sessionFacts}>
           <Chip
