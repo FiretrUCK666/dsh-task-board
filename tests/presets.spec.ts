@@ -8,6 +8,10 @@ import {
   addPreset, mergePresets, parsePresets, removePreset, updatePreset,
   type SchedulePreset,
 } from '../src/core/presets.ts'
+import {
+  DEPLOY_DEFAULT_PRESET_ID, LocalStorageRunPresetStore, defaultRunPresetOf,
+  mergedRunPresets, normalizeRunPresetDocument,
+} from '../src/core/run-presets.ts'
 
 const CUSTOM: SchedulePreset = { id: 'my-preset', label: '我的预设', cron: '0 13 * * 3' }
 
@@ -103,5 +107,57 @@ describe('InMemoryPresetStore', () => {
     expect(store.load()).toEqual([CUSTOM])
     store.clear()
     expect(store.load()).toEqual([])
+  })
+})
+
+describe('run-config presets (normalize / default fallback / store)', () => {
+  it('normalizes a document: known keys only, malformed and duplicates dropped', () => {
+    const doc = normalizeRunPresetDocument({
+      presets: [
+        { id: 'p1', name: '日常', config: { model: 'm1', junk: 'x' } },
+        { id: 'p1', name: 'dup', config: {} },
+        { id: 'p2', name: '', config: { workspaceId: 5 } },
+        { id: DEPLOY_DEFAULT_PRESET_ID, name: 'x', config: {} },
+        'junk',
+      ],
+      defaultId: 'p1',
+    })
+    expect(doc.presets).toEqual([{ id: 'p1', name: '日常', config: { model: 'm1' } }])
+    expect(doc.defaultId).toBe('p1')
+  })
+
+  it('resolves the default: a valid defaultId wins; never-set / dangling / deleted falls back to 部署默认', () => {
+    expect(defaultRunPresetOf(normalizeRunPresetDocument(undefined)).id).toBe(DEPLOY_DEFAULT_PRESET_ID)
+    expect(defaultRunPresetOf(normalizeRunPresetDocument('junk')).id).toBe(DEPLOY_DEFAULT_PRESET_ID)
+    const doc = normalizeRunPresetDocument({
+      presets: [{ id: 'p1', name: '日常', config: { model: 'm' } }],
+      defaultId: 'p1',
+    })
+    expect(defaultRunPresetOf(doc).name).toBe('日常')
+    // Dangling id (preset no longer exists) → deployment default.
+    expect(defaultRunPresetOf(normalizeRunPresetDocument({ presets: [], defaultId: 'p1' })).id).toBe(DEPLOY_DEFAULT_PRESET_ID)
+    // Deleting the preset that was the default → deployment default.
+    const afterDelete = { presets: doc.presets.filter(item => item.id !== 'p1') }
+    expect(defaultRunPresetOf(afterDelete).id).toBe(DEPLOY_DEFAULT_PRESET_ID)
+  })
+
+  it('the built-in 部署默认 preset is always first and never deletable via normalize', () => {
+    const doc = normalizeRunPresetDocument({ presets: [{ id: 'x', name: 'x', config: {} }] })
+    expect(mergedRunPresets(doc).map(preset => preset.id)).toEqual([DEPLOY_DEFAULT_PRESET_ID, 'x'])
+  })
+
+  it('store round-trips and degrades on corrupt input', () => {
+    const mem = new Map<string, string>()
+    const storage = {
+      getItem: (key: string): string | null => mem.get(key) ?? null,
+      setItem: (key: string, value: string): void => { mem.set(key, value) },
+      removeItem: (key: string): void => { mem.delete(key) },
+    }
+    const store = new LocalStorageRunPresetStore(storage, 'k')
+    store.save({ presets: [{ id: 'p1', name: 'n', config: { model: 'm' } }], defaultId: 'p1' })
+    expect(store.load().presets).toHaveLength(1)
+    expect(store.load().defaultId).toBe('p1')
+    mem.set('k', 'not json')
+    expect(store.load()).toEqual({ presets: [] })
   })
 })

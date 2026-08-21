@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
-import { MANUAL_STATUSES, hasOpenRun, latestExecutionOf, plainRunsOf, ruleReadiness, taskBindsOf, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, hasOpenRun, latestExecutionOf, plainRunsOf, ruleReadiness, taskBindsOf, taskExecutable, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
@@ -219,13 +219,18 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
   // A paused rule names its blocking status; a review pause caused by a
   // failed run adds the "because it failed" reason word (the one summary
   // grammar is scheduleSummary; the detail only adds this word on top).
+  // A paused rule names its blocking status; a review pause caused by a
+  // failed run adds the "because it failed" reason word; a BLOCKED rule (an
+  // empty execution prompt) names the emptiness — one reason-line grammar.
   const stoppedReason = readiness.kind === 'paused'
     ? {
         extraFailed: readiness.status === 'review'
           && latestExecutionOf(task)?.result === 'failed',
         key: pausedLabelOf(readiness.status),
       }
-    : undefined
+    : readiness.kind === 'blocked'
+      ? { extraFailed: false, key: 'detail.schedule.blocked' as TaskBoardKey }
+      : undefined
 
   // Collapsed by default: the detail stays quiet, one summary line reads the
   // rule's true state — off / paused (with the blocking reason) / running.
@@ -778,11 +783,15 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
             ) : (
               <Button
                 variant="primary"
-                disabled={busy}
-                title={t('detail.rerunHint')}
+                /* An empty execution prompt is a hard gate: NOTHING may run
+                   (manual/quick/re-run/automation/cruise/comments). The button
+                   reads the gate + the hint line names the reason. */
+                disabled={busy || !taskExecutable(current)}
+                title={taskExecutable(current) ? t('detail.rerunHint') : t('detail.promptEmpty')}
                 onClick={() => {
                   // Running kicks off a real agent session; close the detail so
                   // the whole board stays visible while the task executes.
+                  if (!taskExecutable(current)) return
                   controller.closeTask()
                   void controller.rerunTask(current.id)
                 }}

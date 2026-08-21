@@ -346,8 +346,20 @@ export function landingStatusOf(dropStatus: TaskStatus): TaskStatus {
  */
 export type RuleReadiness =
   | { kind: 'disabled' }
+  | { kind: 'blocked' }
   | { kind: 'paused'; status: 'backlog' | 'review' | 'done' }
   | { kind: 'active' }
+
+/**
+ * Whether the task has anything EXECUTABLE to drive: its execution prompt is
+ * non-empty (trimmed). THE one judgment every drive path reads — a task with
+ * no prompt can never be run, automated, cruised or comment-driven (the
+ * refine flow itself is the exception: it PRODUCES the prompt, it does not
+ * execute it). Empty means strictly blank; placeholder text is not empty.
+ */
+export function taskExecutable(task: TaskRecord): boolean {
+  return task.prompt.trim() !== ''
+}
 
 /**
  * Whether the task's COLUMN currently allows automation to run. One shared
@@ -364,6 +376,9 @@ export function taskColumnAllowsAutomation(task: TaskRecord): boolean {
 export function ruleReadiness(task: TaskRecord): RuleReadiness {
   const schedule = task.schedule
   if (schedule === undefined || !schedule.enabled) return { kind: 'disabled' }
+  // Nothing to drive: an armed rule with an empty prompt cannot execute —
+  // it reads as blocked (a reason, not a pause), never silently fires.
+  if (!taskExecutable(task)) return { kind: 'blocked' }
   // Every status outside the rule's active set (backlog/review/done) is a
   // pause: the rule must never drive a task a human is holding.
   if (!taskColumnAllowsAutomation(task)) {

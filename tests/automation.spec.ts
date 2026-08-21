@@ -18,7 +18,7 @@ function rule(): SessionRule {
 }
 
 function task(status: TaskRecord['status']): TaskRecord {
-  return { ...createTask({ title: 't', description: '', prompt: '' }, NOW, 'task-1'), status }
+  return { ...createTask({ title: 't', description: '', prompt: 'run' }, NOW, 'task-1'), status }
 }
 
 describe('automationRowsOf', () => {
@@ -50,10 +50,10 @@ describe('automationTasksOf (the overview membership)', () => {
     primed: false,
   })
 
-  it('includes armed and DISARMED schedules (manageable from the board)', () => {
+  it('shows only ARMED schedules (a disarmed one is not listed as running)', () => {
     const armed = { ...bare, id: 'a', schedule: scheduleOf('cron', true) }
     const disarmed = { ...bare, id: 'b', schedule: scheduleOf('chain', false) }
-    expect(automationTasksOf([bare, armed, disarmed]).map(t => t.id)).toEqual(['a', 'b'])
+    expect(automationTasksOf([bare, armed, disarmed]).map(t => t.id)).toEqual(['a'])
   })
 
   it('includes tasks with session rules, and excludes fully plain tasks', () => {
@@ -83,6 +83,12 @@ describe('sessionRuleReadiness (one semantics with the task schedule)', () => {
     expect(sessionRuleReadiness(task('backlog'), rule())).toEqual({ kind: 'paused', status: 'backlog' })
     expect(sessionRuleReadiness(task('review'), rule())).toEqual({ kind: 'paused', status: 'review' })
     expect(sessionRuleReadiness(task('done'), rule())).toEqual({ kind: 'paused', status: 'done' })
+  })
+
+  it('is blocked when the execution prompt is empty — regardless of the column', () => {
+    const blank = { ...task('todo'), prompt: '' }
+    expect(sessionRuleReadiness(blank, rule())).toEqual({ kind: 'blocked' })
+    expect(sessionRuleReadiness({ ...blank, status: 'done' }, rule())).toEqual({ kind: 'blocked' })
   })
 
   it('is disabled when the rule is toggled off — regardless of the column', () => {

@@ -4,11 +4,55 @@
  * session to-do readout — the pure helpers the review page / session panel
  * render from, tested together as one contract file.
  */
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { foldTranscript, sumUsage, type TranscriptEvent } from '../src/client/board/review-transcript.ts'
 import { contextOccupancy, contextSegments, formatTokens } from '../src/client/board/context-meter.ts'
 import { shouldFlipMenuUp } from '../src/client/board/menu-direction.ts'
 import { isOpenTodo, latestSessionTodos } from '../src/client/board/interaction.ts'
+
+describe('rail layout CSS contract (interaction card never bursts the rail)', () => {
+  const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
+  const source = readFileSync(cssPath, 'utf8')
+
+  function ruleOf(name: string): string {
+    const lines = source.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() !== `.${name} {`) continue
+      let depth = 0
+      const chunks: string[] = []
+      for (let j = i; j < lines.length; j++) {
+        const line = lines[j]
+        chunks.push(line)
+        for (const ch of line) {
+          if (ch === '{') depth++
+          else if (ch === '}') {
+            depth--
+            if (depth === 0) return chunks.join('\n')
+          }
+        }
+      }
+    }
+    throw new Error(`rule ".${name}" not found in board.module.css`)
+  }
+
+  it('the interaction card is shrinkable and sits on the rail 14px box', () => {
+    const card = ruleOf('interactionCard')
+    expect(card).toContain('min-width: 0')
+    expect(card).toContain('margin: 0 14px 2px')
+  })
+
+  it('action rows wrap instead of bursting the card right edge', () => {
+    const actions = ruleOf('interactionActions')
+    expect(actions).toContain('flex-wrap: wrap')
+  })
+
+  it('the scroll region and the composer stay inside the rail content box', () => {
+    expect(ruleOf('sessionRailScroll')).toContain('min-width: 0')
+    expect(ruleOf('reviewComposer')).toContain('padding: 12px 14px')
+  })
+})
 
 describe('foldTranscript', () => {
   const base = { seq: 1, time: 1000 }

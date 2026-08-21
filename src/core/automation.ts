@@ -10,7 +10,7 @@
  * action(send instruction, queue|steer). Pure and unit-testable.
  */
 import type { TaskRecord } from './tasks.ts'
-import { taskColumnAllowsAutomation } from './tasks.ts'
+import { taskColumnAllowsAutomation, taskExecutable } from './tasks.ts'
 import { nextRunAtMs } from './schedule.ts'
 
 /** One session-scoped automation rule of a task. */
@@ -90,17 +90,21 @@ export function sessionRuleOf(row: Extract<AutomationRow, { kind: 'session-rule'
  * The readiness of a session rule — ONE semantics with the task-level
  * schedule (ruleReadiness): a rule is active only while its task sits in a
  * drivable column (todo/running); backlog/review/done pause it (the reason
- * is the task's own status); a toggled-off rule is disabled. The ticker
- * skips paused rules (keeping their due slot — the pause is a hold, not a
- * drop), exactly like the task scheduler treats a paused schedule.
+ * is the task's own status); a toggled-off rule is disabled; an EMPTY
+ * execution prompt blocks it (nothing to drive — a reason, not a pause).
+ * The ticker skips paused/blocked rules (keeping their due slot — the pause
+ * is a hold, not a drop), exactly like the task scheduler treats a paused
+ * schedule.
  */
 export type SessionRuleReadiness =
   | { kind: 'disabled' }
+  | { kind: 'blocked' }
   | { kind: 'paused'; status: 'backlog' | 'review' | 'done' }
   | { kind: 'active' }
 
 export function sessionRuleReadiness(task: TaskRecord, rule: SessionRule): SessionRuleReadiness {
   if (!rule.enabled) return { kind: 'disabled' }
+  if (!taskExecutable(task)) return { kind: 'blocked' }
   return taskColumnAllowsAutomation(task)
     ? { kind: 'active' }
     : { kind: 'paused', status: task.status as 'backlog' | 'review' | 'done' }
@@ -182,11 +186,11 @@ export function withSessionRules(task: TaskRecord, rules: SessionRule[] | undefi
   return { ...task, rules }
 }
 
-/** Tasks carrying ANY automation — an armed or disarmed schedule, or at least
- *  one session rule. The overview's membership: everything the user may want
- *  to see or manage from the board, including a disarmed schedule (so it can
- *  be re-armed / re-configured in place instead of needing the detail). */
+/** Tasks with LIVE automation — an ENABLED schedule, or at least one session
+ *  rule. The overview's membership: only what is actually armed shows (a
+ *  disarmed schedule is managed from the task detail / the expanded editor,
+ *  never listed as if it were running). */
 export function automationTasksOf(tasks: readonly TaskRecord[]): TaskRecord[] {
   return tasks.filter(task =>
-    task.schedule !== undefined || (task.rules !== undefined && task.rules.length > 0))
+    task.schedule?.enabled === true || (task.rules !== undefined && task.rules.length > 0))
 }

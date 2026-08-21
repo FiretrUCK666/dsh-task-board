@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
-import { COLUMNS, landingStatusOf, latestExecutionOf, plainRunsOf, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { COLUMNS, landingStatusOf, latestExecutionOf, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -816,7 +816,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       unviewedCount={taskUnviewedCount(task)}
                       selected={selectedCards.includes(task.id)}
                       onClick={event => { cardClick(task.id, event) }}
-                      onQuickRun={() => { void controller.rerunTask(task.id) }}
+                      onQuickRun={taskExecutable(task) ? () => { void controller.rerunTask(task.id) } : undefined}
                       onColorPick={color => { controller.setTaskColor(task.id, color) }}
                     />
                   )

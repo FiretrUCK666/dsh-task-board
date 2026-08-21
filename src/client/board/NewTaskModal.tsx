@@ -4,6 +4,9 @@
  */
 import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
+import {
+  defaultRunPresetOf, LocalStorageRunPresetStore, normalizeRunPresetDocument,
+} from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
@@ -28,6 +31,24 @@ function freshDraft(): TaskDraft {
   }
 }
 
+/** The initial draft of a NEW task: the run-config preset marked DEFAULT is
+ *  applied (the fallback chain in run-presets.ts — never set / deleted ->
+ *  部署默认 = the previous behavior). Only the run-config fields;
+ *  title/description/prompt always start empty. */
+function initialDraft(): TaskDraft {
+  const doc = normalizeRunPresetDocument(new LocalStorageRunPresetStore().load())
+  const config = defaultRunPresetOf(doc).config
+  return {
+    ...freshDraft(),
+    ...config.workspaceId !== undefined ? { workspaceId: config.workspaceId } : {},
+    ...config.provider !== undefined ? { provider: config.provider } : {},
+    ...config.model !== undefined ? { model: config.model } : {},
+    ...config.reasoningEffort !== undefined ? { reasoningEffort: config.reasoningEffort } : {},
+    ...config.agentPreset !== undefined ? { agentPreset: config.agentPreset } : {},
+    ...config.permission !== undefined ? { permission: config.permission } : {},
+  }
+}
+
 /** New-task form overlay. */
 export function NewTaskModal({ controller, onClose }: { controller: BoardController; onClose: () => void }) {
   // Draft memory: opening the modal restores the last unsaved new-task draft
@@ -43,7 +64,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
         // A corrupt draft falls through to a fresh form.
       }
     }
-    return freshDraft()
+    return initialDraft()
   })
   const [error, setError] = useState<string | undefined>(undefined)
 

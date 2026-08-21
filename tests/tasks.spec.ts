@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 
@@ -625,6 +625,27 @@ describe('ruleReadiness', () => {
     // safety net for legacy rows that still carry a stale enabled flag).
     const done = withSchedule(withStatus(sampleTask(), 'done', NOW), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
     expect(ruleReadiness(done)).toEqual({ kind: 'paused', status: 'done' })
+  })
+
+  it('is BLOCKED when the execution prompt is empty (an armed rule cannot drive nothing)', () => {
+    const blank = {
+      ...withSchedule(withStatus(sampleTask(), 'todo', NOW), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW),
+      prompt: '',
+    }
+    expect(ruleReadiness(blank)).toEqual({ kind: 'blocked' })
+    // Column state does not matter: blocked wins over the column pause, and a
+    // disarmed rule stays disabled (disabled wins).
+    expect(ruleReadiness({ ...blank, status: 'done' })).toEqual({ kind: 'blocked' })
+    expect(ruleReadiness(withSchedule(blank, { enabled: false, cron: '0 9 * * *' }, NOW))).toEqual({ kind: 'disabled' })
+  })
+})
+
+describe('taskExecutable', () => {
+  it('is true only when the prompt has real (trimmed) content', () => {
+    expect(taskExecutable({ ...sampleTask(), prompt: 'run' })).toBe(true)
+    expect(taskExecutable({ ...sampleTask(), prompt: '  run  ' })).toBe(true)
+    expect(taskExecutable({ ...sampleTask(), prompt: '' })).toBe(false)
+    expect(taskExecutable({ ...sampleTask(), prompt: '   ' })).toBe(false)
   })
 })
 

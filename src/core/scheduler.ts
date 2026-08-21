@@ -124,10 +124,11 @@ export class SchedulerService {
         await this.deps.runTask(task.id)
         continue
       }
-      // Paused: the rule must not drive a shelved or failed task. Due
+      // Paused or BLOCKED: the rule must not drive a shelved/failed task (or
+      // one with an empty execution prompt — nothing to execute). Due
       // instants are skipped and rolled forward, never caught up, so a
       // resumed rule continues from the next match instead of firing at once.
-      if (readiness.kind === 'paused') {
+      if (readiness.kind === 'paused' || readiness.kind === 'blocked') {
         if (schedule.nextRunAt === undefined || schedule.nextRunAt > now) continue
         const next = nextRunAtMs(schedule.cron, schedule.nextRunAt)
         if (next !== undefined) this.deps.applySchedule(task.id, next, undefined)

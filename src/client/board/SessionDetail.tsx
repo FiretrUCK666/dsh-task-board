@@ -10,7 +10,7 @@
  */
 import { useState } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
-import type { TaskRecord } from '../../core/tasks.ts'
+import { hasOpenRun, taskExecutable, type TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { formatDateTime } from './TaskCard.tsx'
@@ -71,8 +71,9 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const context = useSessionContext(controller, sessionId)
   const pendingInteraction = useWireQuestion(controller, sessionId)
 
-  // Send gates: a gone session blocks the send. A done task is NOT a blocker
-  // — its comment revives the task (moved back to 待办) and drives it.
+  // Send gates: a gone session blocks the send; an empty execution prompt
+  // blocks a comment that would START work (an open round stays continuable).
+  const driveBlocked = !taskExecutable(task) && !hasOpenRun(task)
   const liveGone = row === undefined
 
   // The live state row: waiting / running / completed — THE one state-chip
@@ -92,9 +93,9 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const updatedAt = row !== undefined ? formatDateTime(row.updatedAt) : undefined
 
   // The hint under the thread header: the blocking reason when there is one
-  // (a gone session), the standing drive explanation otherwise (never a
-  // guessed bulk of nested ternaries inline in the JSX).
-  const hint = liveGone ? t('detail.sessionUnavailable') : undefined
+  // (a gone session / an empty execution prompt), the standing drive
+  // explanation otherwise (never a guessed bulk of nested ternaries inline).
+  const hint = liveGone ? t('detail.sessionUnavailable') : driveBlocked ? t('detail.promptEmpty') : undefined
 
   return (
     <SessionFrame
@@ -147,7 +148,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               taskId={task.id}
               sessionId={sessionId}
               placeholder={t('detail.sessionDrivePlaceholder')}
-              disabled={liveGone}
+              disabled={liveGone || driveBlocked}
               onDrive={text => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/')) !== undefined}
               onSteer={text => controller.steerComment(task.id, sessionId, text).then(result => result.ok)}
               onSteerImages={(text, refs) => controller.steerCommentWithImages(task.id, sessionId, text, refs).then(result => result.ok)}

@@ -905,28 +905,24 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 /* The title line: the card's solid color mark (exact picked color, 100% of
-   the swatch value) hangs in a FIXED gutter beside the title — the title
-   text, excerpt and meta/badges all share ONE content column, and the dot is
-   the only element in the gutter (a colorless card keeps the same indent, so
-   one geometry — the text never shifts when a color is picked/cleared). */
+   the swatch value) sits in front of the title; the row is a shrink-only
+   flex so the clamped title can never push the mark away. */
 .cardTitleRow {
   display: flex;
   align-items: flex-start;
+  gap: 7px;
   min-width: 0;
-  position: relative;
-  padding-left: 15px;
 }
 
 .cardColorMark {
-  position: absolute;
-  left: 0;
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   /* Optical centering against the first title line (14px / 1.35 ≈ 18.9px):
      the dot's center must sit on the line's visual center, NOT on the
      flex-start edge — the 4px offset read "high" next to the title. */
-  top: 5px;
+  margin-top: 5px;
   /* The mark's hairline ring is a soft transparency of the SAME data color:
      the visible dot is exactly the picked color — no blend, no偏色. */
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--card-tint) 30%, transparent);
@@ -948,8 +944,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .cardExcerpt {
   min-width: 0;
-  /* Aligned with the title text — the color dot is the only gutter content. */
-  padding-left: 15px;
   font-size: 12px;
   line-height: 1.4;
   color: var(--dsw-alias-label-secondary);
@@ -971,11 +965,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-  /* Aligned with the title text — the color-dot gutter applies to the whole
-     card body, so one content column (see .cardTitleRow). The gap (6px) is
-     the card's column rhythm alone: no extra padding-top double-space. */
-  padding-left: 15px;
-  font-size: 12px;
+  /* Separated from the title by air, not a rule: a hairline between title
+     and meta on a 60px-wide card reads as noise on a dense board. */
+  padding-top: 6px;
+  margin-top: 0;
+  font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -1949,6 +1943,43 @@ textarea.input {
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* Run-config preset manager rows: name | note | actions (right cluster) —
+   one row grammar for the manager; the add/edit form below reuses the
+   automation form classes. */
+.runPresetRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 4px;
+  border-radius: 8px;
+}
+
+.runPresetRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.runPresetName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runPresetDefaultBadge {
+  flex: none;
+  padding: 1px 8px;
+  font-size: 12px;
+  color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+  border-radius: 999px;
+}
+
 .presetNew {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
@@ -2425,6 +2456,7 @@ textarea.input {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
   /* The rail's 14px content box (like the context block / head / thread). */
   padding: 0 14px;
 }
@@ -3173,6 +3205,7 @@ textarea.input {
   flex-direction: column;
   gap: 12px;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   padding: 12px 14px 10px;
@@ -3698,14 +3731,18 @@ textarea.input {
 
 /* The pending native-interaction card, pinned just above the composer: a
    plan awaiting confirmation or an ask_user_question. Surfaces live with the
-   real tool lifecycle; one grammar for plan and question. */
+   real tool lifecycle; one grammar for plan and question. The card is a rail
+   flex child and must never exceed the rail's content box — min-width: 0
+   lets its rows wrap instead of bursting out of the rail's right edge (the
+   reported 「放弃整组爆出框」bug); margins land on the rail's 14px box. */
 .interactionCard {
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex: none;
+  min-width: 0;
   padding: 10px 12px;
-  margin: 0 12px 2px;
+  margin: 0 14px 2px;
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
@@ -3749,7 +3786,11 @@ textarea.input {
 .interactionActions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* Wrapping is the graceful layer: a narrow rail wraps the button row onto
+     a second line instead of forcing the card past the rail's right edge
+     (question row: 下一题/上一题/跳过本题/放弃整组; plan row: 确认/拒绝/讨论). */
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .interactionAmend {
   display: flex;

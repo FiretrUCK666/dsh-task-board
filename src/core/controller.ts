@@ -25,7 +25,7 @@ import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, taskBindsOf, taskColumnAllowsAutomation, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -1227,15 +1227,6 @@ export class BoardController {
    * stale (task deleted, completed, paused, or busy). Returns whether a
    * request was consumed (so the caller keeps draining).
    */
-  /** Whether a task carries executable content: a real prompt, bound rules,
-   *  or active session-automation rules. A blank-prompt task (the new-task
-   *  form's default) must never be started by automation. */
-  private hasExecutableContent(task: TaskRecord): boolean {
-    if (task.prompt.trim() !== '') return true
-    if (task.rules !== undefined && task.rules.length > 0) return true
-    return false
-  }
-
   private drainQueuedLaunch(): boolean {
     const queued = this.queuedLaunches[0]
     if (queued === undefined) return false
@@ -1246,7 +1237,7 @@ export class BoardController {
     // queued auto run (the same "skip when busy" semantics as a direct hit).
     // A task with no executable content is dropped too — automation never
     // starts a blank-prompt card (the new-task default).
-    if (task === undefined || hasOpenRun(task) || ruleReadiness(task).kind !== 'active' || !this.hasExecutableContent(task)) return true
+    if (task === undefined || hasOpenRun(task) || ruleReadiness(task).kind !== 'active' || !taskExecutable(task)) return true
     this.launchTask(task)
     return true
   }
@@ -1284,7 +1275,7 @@ export class BoardController {
     const todo = this.tasks.find(task => {
       if (task.status !== 'todo' || hasOpenRun(task)) return false
       // Automation never starts a blank-prompt card (the new-task default).
-      if (!this.hasExecutableContent(task)) return false
+      if (!taskExecutable(task)) return false
       return !task.executions.some(candidate =>
         candidate.comment !== undefined && candidate.injectedAt === undefined && candidate.endedAt === undefined && candidate.external !== true)
     })
@@ -1352,6 +1343,11 @@ export class BoardController {
   async runTask(id: string, trigger: RunTrigger = 'manual'): Promise<boolean> {
     const task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return false
+    // NOTHING can execute an empty prompt — manual, quick-run, re-run,
+    // drag-rerun, schedule fire, cruise pickup and chain hand-off all funnel
+    // through here (the one launch door); a blank-prompt task stays inert
+    // until a real prompt is written.
+    if (!taskExecutable(task)) return false
     // Only a genuinely open run blocks a new one: a pending comment round
     // (task not running) must never block the Run button or a drag-rerun.
     if (hasOpenRun(task)) return false
@@ -1547,6 +1543,12 @@ export class BoardController {
     // A steer on a completed task revives it (moved back to 待办) — the same
     // rule as the queued comment paths: the message drives the task.
     this.reviveTaskIfDone(taskId)
+    // A BLANK prompt cannot be steer-driven either; an already-open round
+    // (running/waiting mid-work) stays continuable.
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task !== undefined && !taskExecutable(task) && !hasOpenRun(task)) {
+      return Promise.resolve({ ok: false, error: 'empty prompt' })
+    }
     return this.sendRawMessage(sessionId, trimmed, images).then(result => {
       if (!result.ok) return result
       // The direct-sent turn is already what the steer created — keep the
@@ -1790,6 +1792,10 @@ export class BoardController {
     // same rule as the linked-session composer; the work is driven, never
     // dead-ended.
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
+    // A BLANK prompt cannot be comment-driven either: no prompt = nothing to
+    // execute. An ALREADY OPEN round may still be continued (its session is
+    // live and mid-work — the continuation is not a new execution).
+    if (!taskExecutable(task) && !hasOpenRun(task)) return undefined
     const execution = task.executions.find(candidate => candidate.id === executionId)
     if (execution === undefined || execution.sessionId === undefined || execution.endedAt === undefined) return undefined
     const round = newCommentRound({
@@ -1841,6 +1847,9 @@ export class BoardController {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
+    // A BLANK prompt cannot be comment-driven (no prompt = nothing to
+    // execute); an ALREADY OPEN round stays continuable.
+    if (!taskExecutable(task) && !hasOpenRun(task)) return undefined
     const round = newCommentRound({
       id: this.uuid(),
       now: this.now(),

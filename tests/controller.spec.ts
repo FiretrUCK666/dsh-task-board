@@ -2049,6 +2049,30 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
     expect(store.load()[0].status).toBe('todo')
   })
 
+  it('blocks every drive path when the execution prompt is empty (nothing can run)', async () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub, {
+      sessionMessage: async () => ({ ok: true as const }),
+    })
+    const task = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    // A blank prompt never launches: manual, quick-run, re-run, chain/schedule/
+    // cruise all funnel through runTask — one door, one gate.
+    await expect(controller.runTask(task.id)).resolves.toBe(false)
+    await controller.rerunTask(task.id)
+    expect(store.load()[0].executions).toHaveLength(0)
+    expect(store.load()[0].status).toBe('todo')
+    // Comments (queue) and steer (direct) are gated too — with the same
+    // reason, not a silent no-op.
+    expect(controller.submitSessionComment(task.id, 'linked-7', '别驱动')).toBeUndefined()
+    await expect(controller.steerComment(task.id, 'linked-7', '也别直接发')).resolves.toEqual({ ok: false, error: 'empty prompt' })
+    expect(store.load()[0].executions).toHaveLength(0)
+    // Filling the prompt restores every path.
+    controller.updateTask(task.id, { prompt: '真实内容' })
+    expect(store.load()[0].prompt).toBe('真实内容')
+    await expect(controller.runTask(task.id)).resolves.toBe(true)
+    expect(store.load()[0].status).toBe('running')
+  })
+
   it('routes a leading slash through the command registry; unmatched falls back to plain text', async () => {
     const sent: string[] = []
     const { controller } = makeController(new StubExec(), {

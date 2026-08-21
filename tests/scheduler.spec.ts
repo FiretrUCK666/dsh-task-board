@@ -14,7 +14,10 @@ function at(year: number, month: number, day: number, hour: number, minute: numb
 
 /** A task carrying an armed, manually-primed schedule rule. */
 function scheduledTask(id: string, cron: string, nextRunAt: number | undefined, enabled = true): TaskRecord {
-  const base = createTask({ title: id, description: '', prompt: '' }, at(2026, 1, 1, 0, 0), `t-${id}`)
+  // A real prompt keeps the fixture OUT of the blocked state — these tests
+  // exercise the schedule machine, not the empty-prompt gate (which has its
+  // own dedicated test).
+  const base = createTask({ title: id, description: '', prompt: 'run' }, at(2026, 1, 1, 0, 0), `t-${id}`)
   return withSchedule(base, { enabled, cron, nextRunAt, lastTriggeredAt: undefined, primed: true }, at(2026, 1, 1, 0, 0))
 }
 
@@ -106,7 +109,7 @@ describe('SchedulerService.tick', () => {
     const h = makeHarness()
     // Armed + due: automation is active as soon as the rule is on — arming
     // alone triggers, there is no manual-first step to gate it.
-    const base = createTask({ title: 'a', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-a')
+    const base = createTask({ title: 'a', description: '', prompt: 'run' }, at(2026, 1, 1, 0, 0), 't-a')
     h.setTasks([withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0) }, at(2026, 1, 1, 10, 0, 30))])
     await h.scheduler.tick()
     expect(h.runs).toEqual(['t-a'])
@@ -115,7 +118,7 @@ describe('SchedulerService.tick', () => {
   it('skips due instants while paused (review/backlog) and resumes from the next match', async () => {
     const h = makeHarness()
     h.setNow(at(2026, 1, 1, 10, 0, 30))
-    const base = createTask({ title: 'a', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-a')
+    const base = createTask({ title: 'a', description: '', prompt: 'run' }, at(2026, 1, 1, 0, 0), 't-a')
     // A primed rule on a paused (here: review) card: no trigger, the missed
     // due instant rolls forward (skip, never catch up). Backlog shares the
     // same path — both come out of ruleReadiness as 'paused'.
@@ -129,6 +132,16 @@ describe('SchedulerService.tick', () => {
     h.setTasks([withStatus(withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 1, 0), primed: true }, at(2026, 1, 1, 10, 1, 0)), 'todo', at(2026, 1, 1, 10, 1, 0))])
     await h.scheduler.tick()
     expect(h.runs).toEqual(['t-a'])
+  })
+
+  it('holds an armed rule whose prompt is empty (blocked): no run, due slot rolls forward', async () => {
+    const h = makeHarness()
+    h.setNow(at(2026, 1, 1, 10, 0, 30))
+    const base = createTask({ title: 'a', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-a')
+    h.setTasks([withSchedule(base, { enabled: true, cron: '* * * * *', nextRunAt: at(2026, 1, 1, 10, 0, 0) }, at(2026, 1, 1, 10, 0, 30))])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+    expect(h.applied).toEqual([{ id: 't-a', nextRunAt: at(2026, 1, 1, 10, 1, 0), lastTriggeredAt: undefined }])
   })
 
   it('ignores disabled rules and tasks without a schedule', async () => {

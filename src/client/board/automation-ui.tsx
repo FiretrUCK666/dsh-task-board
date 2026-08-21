@@ -123,6 +123,10 @@ export function scheduleSummary(task: TaskRecord, pausedFailed = false): string 
   const schedule = task.schedule
   if (schedule === undefined || !schedule.enabled) return t('detail.schedule.off')
   const readiness = ruleReadiness(task)
+  if (readiness.kind === 'blocked') {
+    // Empty prompt: the rule cannot drive anything — a reason, not a pause.
+    return `${t('detail.schedule.paused')} · ${t('detail.schedule.blocked')}`
+  }
   if (readiness.kind === 'paused') {
     return pausedFailed
       ? `${t('detail.schedule.paused')} · ${t('detail.schedule.pausedFailedShort')}`
@@ -168,6 +172,11 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
         {readiness.kind === 'disabled' && (
           <Chip kind="muted" fill={false}>
             {t('auto.rule.off')}
+          </Chip>
+        )}
+        {readiness.kind === 'blocked' && (
+          <Chip kind="muted" fill={false}>
+            {t('detail.schedule.blocked')}
           </Chip>
         )}
       </span>
@@ -540,14 +549,17 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
   const canSkip = enabled && mode === 'cron' && readiness.kind === 'active'
     && nextRunAt !== undefined && nextRunAt > Date.now()
   // A paused rule names its blocking status; a review pause caused by a
-  // failed run adds the "because it failed" reason word.
+  // failed run adds the "because it failed" reason word; a BLOCKED rule (an
+  // empty execution prompt) names the emptiness — one reason-line grammar.
   const stoppedReason = readiness.kind === 'paused'
     ? {
         extraFailed: readiness.status === 'review'
           && latestExecutionOf(task)?.result === 'failed',
         key: pausedLabelOf(readiness.status),
       }
-    : undefined
+    : readiness.kind === 'blocked'
+      ? { extraFailed: false, key: 'detail.schedule.blocked' as TaskBoardKey }
+      : undefined
 
   return (
     <>

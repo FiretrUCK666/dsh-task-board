@@ -6,10 +6,15 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import type { AgentPresetRow, BoardController, ModelGroupRow, PermissionRow } from '../../core/controller.ts'
+import {
+  defaultRunPresetOf, findRunPreset, LocalStorageRunPresetStore, mergedRunPresets,
+  normalizeRunPresetDocument, type RunConfigPresetConfig, type RunPresetsDocument,
+} from '../../core/run-presets.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { PromptInput } from './PromptInput.tsx'
+import { RunPresetManager } from './RunPresetManager.tsx'
 import type { TaskDraft } from './task-draft.ts'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
@@ -31,6 +36,38 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, ment
   // undefined while loading or when the deployment exposes no permission
   // service — the selector is hidden then, mirroring the native capability.
   const [permissionRows, setPermissionRows] = useState<readonly PermissionRow[] | undefined>(undefined)
+
+  // The run-config preset state (the SAME store the new-task modal and the
+  // edit form share — one grammar, one source; both surfaces instant-switch).
+  const [presetStore] = useState(() => new LocalStorageRunPresetStore())
+  const [presetDoc, setPresetDoc] = useState<RunPresetsDocument>(() =>
+    normalizeRunPresetDocument(presetStore.load()))
+  const [showPresetManager, setShowPresetManager] = useState(false)
+
+  /** The form's current run-config — the snapshot add/edit captures. */
+  const currentConfig: RunConfigPresetConfig = {
+    ...draft.workspaceId !== '' ? { workspaceId: draft.workspaceId } : {},
+    ...draft.provider !== '' ? { provider: draft.provider } : {},
+    ...draft.model !== '' ? { model: draft.model } : {},
+    ...draft.reasoningEffort !== '' ? { reasoningEffort: draft.reasoningEffort } : {},
+    ...draft.agentPreset !== '' ? { agentPreset: draft.agentPreset } : {},
+    ...draft.permission !== '' ? { permission: draft.permission } : {},
+  }
+
+  /** Pick a preset: INSTANTLY rewrites the form's run-config fields. */
+  const applyRunPreset = (id: string): void => {
+    const preset = findRunPreset(presetDoc, id)
+    if (preset === undefined) return
+    onChange({
+      ...draft,
+      workspaceId: preset.config.workspaceId ?? '',
+      agentPreset: preset.config.agentPreset ?? '',
+      provider: preset.config.provider ?? '',
+      model: preset.config.model ?? '',
+      reasoningEffort: preset.config.reasoningEffort ?? '',
+      permission: preset.config.permission ?? '',
+    })
+  }
 
   const catalog = controller.runCatalog()
 
@@ -131,6 +168,40 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, ment
 
       <div className={css.field}>
         <span className={css.fieldLabel}>{t('new.runConfig')}</span>
+
+        {/* 配置预设 row: ONE picker for both surfaces. Choosing a preset
+            instantly rewrites the fields below (瞬切); 管理 opens the shared
+            manager (add / edit / delete / set default). */}
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{t('new.runPresets')}</span>
+          <span className={css.selectWrap}>
+            <select
+              className={css.input}
+              value=""
+              aria-label={t('new.runPresets')}
+              onChange={event => {
+                if (event.target.value === '') return
+                if (event.target.value === '__manage') {
+                  setShowPresetManager(true)
+                  return
+                }
+                applyRunPreset(event.target.value)
+              }}
+            >
+              <option value="">{t('runPreset.placeholder')}…</option>
+              {mergedRunPresets(presetDoc).map(preset => (
+                <option
+                  key={preset.id}
+                  value={preset.id}
+                >
+                  {preset.name}
+                  {preset.id === defaultRunPresetOf(presetDoc).id ? ` (${t('runPreset.defaultBadge')})` : ''}
+                </option>
+              ))}
+              <option value="__manage">{t('runPreset.manage')}…</option>
+            </select>
+          </span>
+        </label>
 
         <label className={css.field}>
           <span className={css.fieldLabel}>{t('new.agentPreset')}</span>
@@ -238,6 +309,16 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, ment
           </label>
         )}
       </div>
+
+      {showPresetManager && (
+        <RunPresetManager
+          store={presetStore}
+          doc={presetDoc}
+          current={currentConfig}
+          onChanged={setPresetDoc}
+          onClose={() => { setShowPresetManager(false) }}
+        />
+      )}
     </>
   )
 }
