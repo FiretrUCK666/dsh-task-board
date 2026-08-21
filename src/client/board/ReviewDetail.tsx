@@ -267,10 +267,17 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
       }
       rail={
         <>
-          {/* Right rail: the shared session head (context meter + live config
-              + session facts — always visible no matter how long the comment
-              thread grows), then the comment thread in its own scroll region,
-              and the composer pinned at the rail's bottom. */}
+          {/* Unified rail grammar (shared with the linked-session panel):
+              the session context FIRST (above everything), then the shared
+              session head (context meter + live config + session facts —
+              always visible no matter how long the comment thread grows),
+              then the fixed thread header, then the comment thread in its
+              own scroll region, and the composer pinned at the rail's
+              bottom. */}
+            {/* Live to-do / goal / subagents of the session — the rail's first
+                block, above the conversation and the comment thread. */}
+            <SessionContextBlock context={context} open={contextOpen} onToggle={() => { setContextOpen(value => !value) }} />
+
           <div className={css.sessionRailHead}>
           <SessionRailHead
             sessionId={sessionId}
@@ -281,10 +288,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             reloadKey={configReloadKey}
           />
             </div>
-
-            {/* Live to-do / goal / subagents of the session — above the comment
-                thread (the context the thread lives in), always before it. */}
-            <SessionContextBlock context={context} open={contextOpen} onToggle={() => { setContextOpen(value => !value) }} />
 
             {/* The thread header: title + count, fixed — the count never
                 scrolls away no matter how long the comment list grows. */}

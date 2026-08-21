@@ -19,7 +19,7 @@
  * The mode's boundary is stated plainly under the composer, so a user never
  * guesses which send drives the task.
  */
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
@@ -32,7 +32,7 @@ import { sessionCommentsOf } from './comment-thread.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionRailHead, SessionTranscript } from './session-panel.tsx'
-import { useTranscriptTail } from './use-transcript.tsx'
+import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow, useTranscriptTail } from './use-transcript.tsx'
 import { Button, SendModeToggle } from './ui.tsx'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
 import { admitDraftImages, type DraftImage } from './attach.ts'
@@ -84,6 +84,33 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const cruiseOn = controller.getSnapshot().cruise.enabled
   // The session's own comment thread (the session-scoped model), live states.
   const thread = sessionCommentsOf(task, sessionId, cruiseOn)
+
+  // The comment thread auto-follows its latest round (fingerprint-gated) and
+  // scrolls in its OWN region — the rail head and the thread header stay
+  // fixed, the list scrolls, and 跳到底 jumps to the newest comment. Same
+  // mechanism as the execution review page: one comment rail grammar.
+  const threadScrollRef = useRef<HTMLDivElement | null>(null)
+  const [threadAtBottom, setThreadAtBottom] = useState(true)
+  const threadAtBottomRef = useRef(true)
+  useEffect(() => { threadAtBottomRef.current = threadAtBottom })
+  useResizeFollow(threadScrollRef, threadAtBottomRef)
+  const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
+  useEffect(() => {
+    const element = threadScrollRef.current
+    if (element === null || !threadAtBottom) return
+    element.scrollTop = element.scrollHeight
+  }, [threadFingerprint, threadAtBottom])
+  const onThreadScroll = (): void => {
+    const element = threadScrollRef.current
+    if (element === null) return
+    setThreadAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM_PX)
+  }
+  const jumpThread = (): void => {
+    const element = threadScrollRef.current
+    if (element === null) return
+    element.scrollTop = element.scrollHeight
+    setThreadAtBottom(true)
+  }
 
   // Composer state: a failure keeps the draft so the user can retry. Draft
   // memory: the text survives switching away (shared with the execution review
@@ -152,14 +179,14 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
         ? { kind: 'success' as const, label: t('detail.linkedDone') }
         : undefined
 
-  // The hint under the send button, one branch per situation — never a
+  // The hint under the thread header, one branch per situation — never a
   // guessed bulk of nested ternaries inline in the JSX.
   let composerHint: ReactNode = null
   if (taskDone) {
     // A done task rejects comments — the hint explains how to release them.
-    composerHint = <span className={css.reviewComposerHint}>{t('detail.commentQueuedDone')}</span>
+    composerHint = t('detail.commentQueuedDone')
   } else if (liveGone) {
-    composerHint = <span className={css.reviewComposerHint}>{t('detail.sessionUnavailable')}</span>
+    composerHint = t('detail.sessionUnavailable')
   }
 
   return (
@@ -194,50 +221,54 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       }
       rail={
         <>
-          {/* The head + thread scroll inside their own region; the composer
-              below is flex:none and stays pinned — a taller head (status,
-              config, thread) can never squeeze the send button out of the
-              rail. */}
-          <div className={css.sessionRailScroll}>
-            {stateChip !== undefined && row !== undefined && (
-              <div className={css.sessionFacts}>
-                <Chip
-                  kind={stateChip.kind}
-                  icon={(row.running || waiting !== undefined)
-                    ? <span className={css.spinner} aria-hidden="true" />
-                    : undefined}
-                >
-                  {stateChip.label}
-                </Chip>
-                <span className={css.sessionFactTime}>
-                  {t('detail.sessionUpdated')} {formatDateTime(row.updatedAt)}
-                </span>
-              </div>
-            )}
-            <SessionRailHead
-              sessionId={sessionId}
-              controller={controller}
-              projections={projections}
-              lines={lines}
-              onChanged={reload}
+          {/* The unified rail grammar (shared with the execution review
+              page): session context first (above everything), then the
+              session head, then the fixed thread header + hint, then the
+              comment thread in its OWN scroll region (with 跳到底), then
+              the pending interaction card, then the pinned composer. */}
+          <SessionContextBlock context={context} open={contextOpen} onToggle={() => { setContextOpen(value => !value) }} />
+
+          {stateChip !== undefined && row !== undefined && (
+            <div className={css.sessionFacts}>
+              <Chip
+                kind={stateChip.kind}
+                icon={(row.running || waiting !== undefined)
+                  ? <span className={css.spinner} aria-hidden="true" />
+                  : undefined}
+              >
+                {stateChip.label}
+              </Chip>
+              <span className={css.sessionFactTime}>
+                {t('detail.sessionUpdated')} {formatDateTime(row.updatedAt)}
+              </span>
+            </div>
+          )}
+          <SessionRailHead
+            sessionId={sessionId}
+            controller={controller}
+            projections={projections}
+            lines={lines}
+            onChanged={reload}
+          />
+
+          <div className={css.reviewThreadHeader}>
+            <h4 className={css.reviewThreadTitle}>
+              {t('review.comments')}
+              <span className={css.reviewThreadCount}>{thread.length}</span>
+            </h4>
+          </div>
+          {/* One quiet line under the header: the drive explanation in the
+              normal case, the blocking reason (done task / gone session) in
+              the exceptional case — never a stack of texts. */}
+          <p className={css.detailHint}>{composerHint !== null ? composerHint : t('detail.sessionDriveHint')}</p>
+
+          <div className={css.sessionRailScroll} ref={threadScrollRef} onScroll={onThreadScroll}>
+            <CommentsThread
+              task={task}
+              views={thread}
+              onCancel={id => controller.cancelComment(id)}
             />
-            {/* The session's own comment thread — ONE shared record for every
-                way this session is driven: comments from this panel and from
-                an execution's review page land in the same list (session-scoped
-                model). A quiet hint states the boundary; it never replaces the
-                thread. */}
-            <section className={css.sessionThread}>
-              <h4 className={css.reviewThreadTitle}>
-                {t('review.comments')}
-                <span className={css.reviewThreadCount}>{thread.length}</span>
-              </h4>
-              <CommentsThread
-                task={task}
-                views={thread}
-                onCancel={id => controller.cancelComment(id)}
-              />
-              <p className={css.detailHint}>{t('detail.sessionDriveHint')}</p>
-            </section>
+            <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
           </div>
 
           {/* Pending native interaction (plan confirm / question). */}
@@ -249,8 +280,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               controller={controller}
             />
           )}
-          {/* Live to-do / goal / subagents of the session (deterministic). */}
-          <SessionContextBlock context={context} open={contextOpen} onToggle={() => { setContextOpen(value => !value) }} />
           {/* The composer, pinned: one comment is one session-scoped message.
               Same visual rhythm and primary send button as the review page. */}
           <div className={css.reviewComposer}>
@@ -275,7 +304,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               >
                 {t('review.commentSend')}
               </Button>
-              {composerHint}
             </div>
           </div>
         </>

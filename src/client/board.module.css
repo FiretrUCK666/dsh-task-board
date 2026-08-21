@@ -2267,17 +2267,9 @@ textarea.input {
   border-radius: var(--dsh-tb-radius-sm);
 }
 
-/* Drive-mode comment thread inside the linked-session rail: the shared
-   comment grammar (CommentsThread) framed as its own section, separated
-   from the rail head above — the live record of everything that drives the
-   task from this panel. */
-.sessionThread {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: 10px;
-  border-top: var(--dsh-tb-separator);
-}
+/* The comment thread's scroll region lives inside the shared rail grammar
+   (session context / head / header / thread / composer); the thread section
+   frame below is obsolete — the unified rail owns the composition. */
 
 /* Board columns accept external session/workspace drops (drag-in from the
    sidebar): the target column breathes with the same attention light as the
@@ -3685,11 +3677,6 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.reviewComposerHint {
-  font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
 }
 
 /* Narrow viewports: the two-column review falls back to a stacked layout —
