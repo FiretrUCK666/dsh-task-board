@@ -49,18 +49,71 @@ export function isCruiseWindow(value: unknown): value is CruiseWindow {
 /**
  * Normalize a window: a within-the-same-intent end earlier than the start is
  * a cross-midnight window (22:00 → 02:00 is legal) — yield the end on the
- * start's next day. Starts that equal the end collapse to zero-length tonight
- * and are kept as-is for explicit UI review.
+ * start's next day. An end more than a whole day BEFORE the start is NOT a
+ * cross-midnight window; it is a date mistake (see `isIllegalWindowRange`)
+ * and is left as-entered — the editor rejects it with a specific message
+ * instead of the stale rule silently surviving as a "everyday 22:00→01:00
+ * of yesterday" artifact. Starts that equal the end collapse to zero-length
+ * tonight and are kept as-is for explicit UI review.
  */
 export function normalizeWindow(window: CruiseWindow): CruiseWindow {
   const startAt = window.startAt
   let endAt = window.endAt
-  if (startAt !== undefined && endAt !== undefined && endAt <= startAt) {
+  if (startAt !== undefined && endAt !== undefined
+    && endAt <= startAt && endAt > startAt - DAY_MS) {
     endAt += DAY_MS
   }
   return {
     ...(startAt !== undefined ? { startAt } : {}),
     ...(endAt !== undefined ? { endAt } : {}),
+  }
+}
+
+/**
+ * A user-error window: the end lies more than one whole day BEFORE the start
+ * (e.g. 01-05 09:00 → 01-03 09:00). Cross-midnight is at most one night
+ * (end within (start - 24h, start]); anything earlier cannot be "次日" — the
+ * dates themselves are wrong. The editor rejects this with an inline message;
+ * the state machine never needs to interpret it.
+ */
+export function isIllegalWindowRange(window: CruiseWindow): boolean {
+  return window.startAt !== undefined && window.endAt !== undefined
+    && window.endAt <= window.startAt - DAY_MS
+}
+
+/**
+ * The display grammar of a window — ONE clear line per shape, no
+ * label-pairing that must be re-assembled by each surface:
+ * - both set   → a range (start → end; a normalized cross-midnight end reads
+ *   "次日" on the surface);
+ * - only start → turns on at start and stays on;
+ * - only end   → on since now, off at end.
+ */
+export type CruiseWindowGrammar =
+  | { kind: 'range'; startAt: number; endAt: number }
+  | { kind: 'from-start'; startAt: number }
+  | { kind: 'until-end'; endAt: number }
+
+/** Derive one window's display grammar (see {@link CruiseWindowGrammar}). */
+export function cruiseWindowGrammarOf(window: CruiseWindow): CruiseWindowGrammar {
+  if (window.startAt !== undefined && window.endAt !== undefined) {
+    return { kind: 'range', startAt: window.startAt, endAt: window.endAt }
+  }
+  if (window.startAt !== undefined) return { kind: 'from-start', startAt: window.startAt }
+  return { kind: 'until-end', endAt: window.endAt as number }
+}
+
+/**
+ * The sort key of one window: start-less (only-end = 立即开启) leads, then
+ * windows ascend by start; a tie on start ascends by end, an open end
+ * (stays on) last. The list order is derived — never a stored order.
+ */
+export function windowSortKeyOf(window: CruiseWindow): { start: number; end: number } {
+  return {
+    // A start-less window is on since NOW — key 0 leads the list.
+    start: window.startAt ?? 0,
+    // An open window extends forever — Infinity sorts after finite ends.
+    end: window.endAt ?? Number.MAX_SAFE_INTEGER,
   }
 }
 
@@ -167,7 +220,11 @@ export function setCruiseSchedule(state: CruiseState, windows: readonly CruiseWi
   return { ...state, schedule, enabled }
 }
 
-/** Sort windows by their effective start (start-less windows by their end). */
+/** Sort windows: 立即开启 (start-less) first, then by start, then by end. */
 export function sortWindows(windows: readonly CruiseWindow[]): CruiseWindow[] {
-  return [...windows].sort((a, b) => (a.startAt ?? a.endAt ?? 0) - (b.startAt ?? b.endAt ?? 0))
+  return [...windows].sort((a, b) => {
+    const keyA = windowSortKeyOf(a)
+    const keyB = windowSortKeyOf(b)
+    return keyA.start - keyB.start || keyA.end - keyB.end
+  })
 }

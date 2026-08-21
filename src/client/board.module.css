@@ -465,40 +465,18 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: var(--dsh-tb-hover);
 }
 
-/* The window row's time block: two short labeled lines (开始 / 结束), each
-   its own row — compact enough that BOTH endpoints always fit, so the end
-   time is never clipped away by an ellipsis (the compact format plus the
-   tooltip carry the full value). */
+/* The window row's time: ONE grammar line per window (range / from-start /
+   on-now-until-end). A single no-break line with ellipsis — the compact
+   format plus the tooltip carry the full value. */
 .cruiseWindowTime {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.cruiseWindowTimeRow {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-
-.cruiseWindowTimeLabel {
-  flex: none;
-  font-size: 11px;
-  color: var(--dsh-tb-text-3);
-  white-space: nowrap;
-}
-
-.cruiseWindowTimeValue {
-  flex: 1;
-  min-width: 0;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--dsh-tb-text-2);
 }
 
@@ -901,6 +879,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    count; reduced-motion users get a quiet static ring instead (see the
    reduced-motion block below). */
 .card[data-unviewed] {
+  animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
+}
+
+/* A LIVE card breathes: running / waiting / refining — the one STATE-BOUND
+   light (same family as the unread ring; a card can carry both, still one
+   light). Never driven by the unread baseline: a running card always pulses,
+   even when every round is technically "seen" (the old unread-only ring was
+   the 进行中有时不闪 symptom). */
+.card[data-active] {
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
@@ -1788,11 +1775,13 @@ textarea.input {
   font-size: 13px;
 }
 
-.scheduleInputInvalid {
+/* Any invalid form field (cron input, session select, prompt textarea): the
+   ONE error-border grammar shared by every validation surface. */
+.inputInvalid {
   border-color: var(--dsw-alias-state-error-primary);
 }
 
-.scheduleInputInvalid:focus {
+.inputInvalid:focus {
   border-color: var(--dsw-alias-state-error-primary);
 }
 
@@ -3025,7 +3014,8 @@ textarea.input {
     animation: none;
   }
 
-  .card[data-unviewed] {
+  .card[data-unviewed],
+  .card[data-active] {
     animation: none;
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--dsh-tb-attention) 35%, transparent);
   }
@@ -4233,15 +4223,12 @@ textarea.input {
   gap: 6px;
 }
 
-/* The danger group sits INSIDE the actions cluster right after 完成: an 8px
-   gap + hairline separation — "删除" reads as part of the same right-aligned
-   control group (the parent's gap carries the rhythm; no extra margin
-   doubles it). */
+/* The danger group sits INSIDE the actions cluster right after 完成, with the
+   SAME 6px rhythm as the neighboring buttons (no extra padding, no hairline —
+   the filled danger button is its own separation; extra insets were the
+   "删除键间距不一样" complaint). */
 .organizeDanger {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--dsh-tb-separator);
 }
 

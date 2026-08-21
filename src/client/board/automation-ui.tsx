@@ -70,7 +70,7 @@ export function CronField({ value, presets, onChange, onCommit, onPreset, onMana
   return (
     <span className={css.scheduleCronRow}>
       <input
-        className={`${css.input} ${css.scheduleInput}${invalid === true ? ` ${css.scheduleInputInvalid}` : ''}`}
+        className={`${css.input} ${css.scheduleInput}${invalid === true ? ` ${css.inputInvalid}` : ''}`}
         value={value}
         placeholder="0 9 * * *"
         spellCheck={false}
@@ -230,7 +230,10 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
   const [instruction, setInstruction] = useState(existing?.instruction ?? '')
   const [cron, setCron] = useState(existing?.cron ?? '0 9 * * *')
   const [steer, setSteer] = useState(existing?.send === 'steer')
-  const [error, setError] = useState<string | undefined>(undefined)
+  // The ONE failing field at a time (first failure wins): the message renders
+  // inline next to that field and only that field wears the red border — a
+  // combined "instruction AND cron" error names nothing.
+  const [error, setError] = useState<'session' | 'instruction' | 'cron' | 'save' | undefined>(undefined)
   const [presetStore] = useState(() => new LocalStoragePresetStore())
   const [presets, setPresets] = useState(() => mergedPresets(presetStore))
   const [showPresets, setShowPresets] = useState(false)
@@ -243,8 +246,19 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
   const submit = (): void => {
     const trimmedInstruction = instruction.trim()
     const trimmedCron = cron.trim()
-    if (trimmedInstruction === '' || !isValidCron(trimmedCron) || sessionId === '') {
-      setError(t('auto.form.invalid'))
+    // ONE message per failing field (first failure wins): a combined "fill in
+    // the instruction AND a valid cron" error is unreadable — picking a cron
+    // preset and hitting 保存 must name the ACTUAL missing piece.
+    if (sessionId === '') {
+      setError('session')
+      return
+    }
+    if (trimmedInstruction === '') {
+      setError('instruction')
+      return
+    }
+    if (!isValidCron(trimmedCron)) {
+      setError('cron')
       return
     }
     const send = steer ? 'steer' : 'queue'
@@ -253,13 +267,13 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
         sessionId, instruction: trimmedInstruction, cron: trimmedCron, send,
       })
       if (!ok) {
-        setError(t('auto.form.invalid'))
+        setError('save')
         return
       }
     } else if (controller.createSessionRule(task.id, {
       sessionId, instruction: trimmedInstruction, cron: trimmedCron, send,
     }) === undefined) {
-      setError(t('auto.form.invalid'))
+      setError('save')
       return
     }
     onClose()
@@ -275,10 +289,11 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
             <span className={css.autoFieldLabel}>{t('auto.form.session')}</span>
             <span className={css.selectWrap}>
               <select
-                className={`${css.input} ${css.autoSelect}`}
+                className={`${css.input} ${css.autoSelect}${error === 'session' ? ` ${css.inputInvalid}` : ''}`}
                 value={sessionId}
                 disabled={existing !== undefined}
                 aria-label={t('auto.form.session')}
+                aria-invalid={error === 'session' ? true : undefined}
                 onChange={event => { setSessionId(event.target.value); setError(undefined) }}
               >
                 {options.map(label => (
@@ -288,6 +303,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
                 ))}
               </select>
             </span>
+            {error === 'session' && <span className={css.formError}>{t('auto.form.invalidSession')}</span>}
           </label>
           <label className={css.autoField}>
             <span className={css.autoFieldLabel}>{t('auto.form.instruction')}</span>
@@ -298,23 +314,27 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
               rows={3}
               controller={controller}
               mentions={labels.map(({ sessionId, title }) => ({ id: sessionId, title }))}
+              invalid={error === 'instruction'}
             />
+            {error === 'instruction' && <span className={css.formError}>{t('auto.form.invalidInstruction')}</span>}
           </label>
           <label className={css.autoField}>
             <span className={css.autoFieldLabel}>{t('auto.form.cron')}</span>
             <CronField
               value={cron}
               presets={presets}
+              invalid={error === 'cron'}
               onChange={next => { setCron(next); setError(undefined) }}
               onManagePresets={() => { setShowPresets(true) }}
               label={t('auto.form.cron')}
             />
+            {error === 'cron' && <span className={css.formError}>{t('auto.form.invalidCron')}</span>}
           </label>
           <div className={css.autoField}>
             <span className={css.autoFieldLabel}>{t('auto.form.send')}</span>
             <SendModeToggle steer={steer} onChange={setSteer} />
           </div>
-          {error !== undefined && <p className={css.formError}>{error}</p>}
+          {error === 'save' && <p className={css.formError}>{t('auto.form.saveFailed')}</p>}
           <p className={css.detailHint}>{t('auto.form.hint')}</p>
           <span className={css.autoFormActions}>
             <Button size="sm" variant="primary" onClick={submit}>
@@ -408,7 +428,9 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
   const [maxRuns, setMaxRuns] = useState(schedule?.maxRuns?.toString() ?? '')
   const [nextRunAt, setNextRunAt] = useState<number | undefined>(schedule?.nextRunAt)
   const [lastTriggeredAt, setLastTriggeredAt] = useState<number | undefined>(schedule?.lastTriggeredAt)
-  const [error, setError] = useState<string | undefined>(undefined)
+  // The ONE failing field: the cron input or the max-runs input each carry
+  // their own inline error; a max-runs error must never light the cron border.
+  const [error, setError] = useState<'cron' | 'runs' | undefined>(undefined)
   const [showPresets, setShowPresets] = useState(false)
   const [presetStore] = useState(() => new LocalStoragePresetStore())
   // The merged preset list (built-ins + custom); rebuilt when the manager closes.
@@ -432,7 +454,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
     const trimmed = value.trim()
     setCron(trimmed)
     if (trimmed === '' || !isValidCron(trimmed)) {
-      setError(t('detail.schedule.invalid'))
+      setError('cron')
       return
     }
     setError(undefined)
@@ -449,7 +471,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
     }
     const parsed = Number(trimmed)
     if (!Number.isInteger(parsed) || parsed < 1) {
-      setError(t('detail.schedule.invalidRuns'))
+      setError('runs')
       return
     }
     setError(undefined)
@@ -467,7 +489,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
   const toggleEnabled = (next: boolean): void => {
     const trimmed = cron.trim()
     if (next && mode === 'cron' && (trimmed === '' || !isValidCron(trimmed))) {
-      setError(t('detail.schedule.invalid'))
+      setError('cron')
       return
     }
     setError(undefined)
@@ -486,7 +508,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
   const switchMode = (next: ScheduleMode): void => {
     if (next === mode) return
     if (next === 'cron' && (cron.trim() === '' || !isValidCron(cron))) {
-      setError(t('detail.schedule.invalid'))
+      setError('cron')
       return
     }
     setError(undefined)
@@ -563,6 +585,10 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
 
   return (
     <>
+      {/* Task-level automation and session rules are the TWO halves of the
+          same editor; each gets its own paired section header so the two
+          systems never blur into one unlabeled block. */}
+      <Section title={t('auto.taskSchedule')} className={css.autoRules}>
       <Switch
         checked={enabled}
         onChange={toggleEnabled}
@@ -604,7 +630,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
           <CronField
             value={cron}
             presets={presets}
-            invalid={error !== undefined}
+            invalid={error === 'cron'}
             onChange={next => { setCron(next); setError(undefined) }}
             onCommit={saveCron}
             onPreset={applyPreset}
@@ -614,13 +640,14 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
           <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
           <span className={css.scheduleMaxRow}>
             <input
-              className={`${css.input} ${css.scheduleMaxInput}`}
+              className={`${css.input} ${css.scheduleMaxInput}${error === 'runs' ? ` ${css.inputInvalid}` : ''}`}
               value={maxRuns}
               type="number"
               min={1}
               placeholder="∞"
               spellCheck={false}
               aria-label={t('detail.schedule.maxRuns')}
+              aria-invalid={error === 'runs' ? true : undefined}
               onChange={event => { setMaxRuns(event.target.value); setError(undefined) }}
               onBlur={() => { saveMaxRuns(maxRuns) }}
               onKeyDown={event => { if (event.key === 'Enter') saveMaxRuns(maxRuns) }}
@@ -655,13 +682,14 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
             <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
             <span className={css.scheduleMaxRow}>
               <input
-                className={`${css.input} ${css.scheduleMaxInput}`}
+                className={`${css.input} ${css.scheduleMaxInput}${error === 'runs' ? ` ${css.inputInvalid}` : ''}`}
                 value={maxRuns}
                 type="number"
                 min={1}
                 placeholder="∞"
                 spellCheck={false}
                 aria-label={t('detail.schedule.maxRuns')}
+                aria-invalid={error === 'runs' ? true : undefined}
                 onChange={event => { setMaxRuns(event.target.value); setError(undefined) }}
                 onBlur={() => { saveMaxRuns(maxRuns) }}
                 onKeyDown={event => { if (event.key === 'Enter') saveMaxRuns(maxRuns) }}
@@ -674,7 +702,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
           </div>
         </>
       )}
-      {error !== undefined && <p className={css.formError}>{error}</p>}
+      {error !== undefined && <p className={css.formError}>{t(error === 'cron' ? 'detail.schedule.invalid' : 'detail.schedule.invalidRuns')}</p>}
       {mode === 'cron' && (
         <>
           <div className={css.scheduleActionRow}>
@@ -703,6 +731,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
 
       {/* Session-level rules: the shared module of the automation overview —
           one grammar on both surfaces, always complete. */}
+      </Section>
       <SessionRulesSection controller={controller} task={task} />
 
       {showPresets && (

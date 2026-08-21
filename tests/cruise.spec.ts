@@ -6,7 +6,7 @@
  * normalize (+1 day) instead of erroring, and expired windows prune.
  */
 import { describe, expect, it } from 'vitest'
-import { CRUISE_TICK_MS, DAY_MS, applyManualToggle, coveringWindow, duplicateWindowOf, normalizeWindow, setCruiseSchedule, sortWindows, tickCruise, type CruiseWindow } from '../src/core/cruise.ts'
+import { CRUISE_TICK_MS, DAY_MS, applyManualToggle, coveringWindow, cruiseWindowGrammarOf, duplicateWindowOf, isIllegalWindowRange, normalizeWindow, setCruiseSchedule, sortWindows, tickCruise, windowSortKeyOf, type CruiseWindow } from '../src/core/cruise.ts'
 import type { CruiseState } from '../src/core/controller.ts'
 
 const NOW = 1_700_000_000_000
@@ -134,6 +134,54 @@ describe('setCruiseSchedule (editor path)', () => {
   it('sortWindows orders by the effective start (start-less by end)', () => {
     expect(sortWindows([{ startAt: NOW + HOUR }, { endAt: NOW }, { startAt: NOW, endAt: NOW + 1 }].map(normalizeWindow))
       .map(w => w.startAt ?? w.endAt ?? 0)).toEqual([NOW, NOW, NOW + HOUR])
+  })
+})
+
+describe('isIllegalWindowRange (end more than a day before start = a date mistake)', () => {
+  it('an end over 24h before the start is illegal — not a cross-midnight window', () => {
+    expect(isIllegalWindowRange({ startAt: NOW, endAt: NOW - 25 * HOUR })).toBe(true)
+    expect(isIllegalWindowRange({ startAt: NOW, endAt: NOW - DAY })).toBe(true)
+  })
+  it('any end within (start - 24h, start] is a real cross-midnight night — legal', () => {
+    expect(isIllegalWindowRange({ startAt: NOW, endAt: NOW + 2 * HOUR - DAY })).toBe(false)
+    expect(isIllegalWindowRange({ startAt: NOW, endAt: NOW + HOUR })).toBe(false)
+  })
+  it('single-ended windows are never illegal', () => {
+    expect(isIllegalWindowRange({ startAt: NOW })).toBe(false)
+    expect(isIllegalWindowRange({ endAt: NOW - 3 * DAY })).toBe(false)
+  })
+  it('normalizeWindow never fabricates a next-midnight end for an illegal range', () => {
+    expect(normalizeWindow({ startAt: NOW, endAt: NOW - 26 * HOUR })).toEqual({ startAt: NOW, endAt: NOW - 26 * HOUR })
+  })
+})
+
+describe('cruiseWindowGrammarOf (ONE clear display shape per window)', () => {
+  it('both → range; only start → from-start; only end → until-end', () => {
+    expect(cruiseWindowGrammarOf({ startAt: NOW, endAt: NOW + HOUR })).toEqual({ kind: 'range', startAt: NOW, endAt: NOW + HOUR })
+    expect(cruiseWindowGrammarOf({ startAt: NOW + HOUR })).toEqual({ kind: 'from-start', startAt: NOW + HOUR })
+    expect(cruiseWindowGrammarOf({ endAt: NOW + HOUR })).toEqual({ kind: 'until-end', endAt: NOW + HOUR })
+  })
+})
+
+describe('windowSortKeyOf / sortWindows (the list order is derived, never stored)', () => {
+  it('start-less (立即开启) leads, then start asc, then end asc with an open end last', () => {
+    const windows = [
+      { startAt: NOW + 3 * HOUR },
+      { endAt: NOW + 1 * HOUR }, // immediate-on, earliest end
+      { startAt: NOW + 1 * HOUR, endAt: NOW + 2 * HOUR },
+      { startAt: NOW + 1 * HOUR }, // same start, open end → after the finite end
+    ]
+    expect(sortWindows(windows)).toEqual([
+      { endAt: NOW + 1 * HOUR },
+      { startAt: NOW + 1 * HOUR, endAt: NOW + 2 * HOUR },
+      { startAt: NOW + 1 * HOUR },
+      { startAt: NOW + 3 * HOUR },
+    ])
+  })
+  it('windowSortKeyOf: start-less keys 0 (first), open ends key MAX (last among ties)', () => {
+    expect(windowSortKeyOf({ endAt: NOW + HOUR })).toEqual({ start: 0, end: NOW + HOUR })
+    expect(windowSortKeyOf({ startAt: NOW, endAt: NOW + HOUR })).toEqual({ start: NOW, end: NOW + HOUR })
+    expect(windowSortKeyOf({ startAt: NOW }).end).toBe(Number.MAX_SAFE_INTEGER)
   })
 })
 

@@ -55,7 +55,7 @@ function clippingAncestorOf(element: HTMLElement): HTMLElement | undefined {
 }
 
 /** Prompt textarea with a slash-command and mention dropdown. */
-export function PromptInput({ value, onChange, placeholder, rows, controller, mentions }: {
+export function PromptInput({ value, onChange, placeholder, rows, controller, mentions, invalid }: {
   value: string
   onChange: (next: string) => void
   placeholder?: string
@@ -63,6 +63,8 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, me
   controller: BoardController
   /** Optional '@' candidates (related sessions); when absent only '/' opens. */
   mentions?: readonly MentionCandidate[]
+  /** Validation error state: the field's invalid border. */
+  invalid?: boolean
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fieldRef = useRef<HTMLDivElement | null>(null)
@@ -221,7 +223,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, me
     <div className={css.promptField} ref={fieldRef}>
       <textarea
         ref={textareaRef}
-        className={`${css.input} ${css.promptTextarea}`}
+        className={`${css.input} ${css.promptTextarea}${invalid === true ? ` ${css.inputInvalid}` : ''}`}
         rows={rows}
         value={value}
         placeholder={placeholder}

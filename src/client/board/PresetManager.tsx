@@ -54,7 +54,7 @@ function PresetRow({ preset, onSave, onDelete }: {
       />
       <span className={css.presetCronWrap}>
         <input
-          className={`${css.input} ${css.presetCron}${!valid ? ` ${css.scheduleInputInvalid}` : ''}`}
+          className={`${css.input} ${css.presetCron}${!valid ? ` ${css.inputInvalid}` : ''}`}
           value={cron}
           spellCheck={false}
           aria-label={t('detail.schedule.cron')}
@@ -147,7 +147,7 @@ export function PresetManager({ store, onClose }: {
           onChange={event => { setNewLabel(event.target.value); setNewError(undefined) }}
         />
         <input
-          className={`${css.input} ${css.presetCron}${newCron.trim() !== '' && !isValidCron(newCron) ? ` ${css.scheduleInputInvalid}` : ''}`}
+          className={`${css.input} ${css.presetCron}${newCron.trim() !== '' && !isValidCron(newCron) ? ` ${css.inputInvalid}` : ''}`}
           value={newCron}
           placeholder={t('detail.schedule.presets.newCron')}
           spellCheck={false}

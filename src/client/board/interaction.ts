@@ -46,3 +46,28 @@ export function latestSessionTodos(events: readonly TranscriptEventShape[]): Ses
 export function isOpenTodo(row: SessionTodo): boolean {
   return row.status !== 'completed'
 }
+
+/** Subagent statuses that mean "finished" (the tolerant set: a native
+ *  reshape that adds a new word degrades to "still active" — the context
+ *  block shows work in flight, never finished work). */
+const FINISHED_SUBAGENT_STATUS = new Set(['finished', 'completed', 'done', 'settled'])
+
+/**
+ * Whether the session context is WORTH showing: at least one OPEN todo, an
+ * ACTIVE goal, or an unfinished subagent. Fully-done things are not the
+ * readout's business — when everything listed is finished, the block hides
+ * entirely (the "todo 全完成还显示上下文" issue); an unknown subagent
+ * status is treated as active (shown) so a host reshape never hides running
+ * work. THE one predicate every context surface reads.
+ */
+export function contextWorthOf(context: {
+  todos?: readonly { content?: string; status?: string }[]
+  goal?: { title?: string; active?: boolean }
+  subagents?: readonly { title?: string; status?: string }[]
+}): boolean {
+  if ((context.todos ?? []).some(todo => todo.status !== 'completed')) return true
+  if (context.goal?.active === true) return true
+  if ((context.subagents ?? []).some(sub =>
+    sub.status === undefined || !FINISHED_SUBAGENT_STATUS.has(sub.status))) return true
+  return false
+}

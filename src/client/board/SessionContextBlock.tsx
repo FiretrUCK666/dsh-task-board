@@ -22,6 +22,7 @@ import { useEffect, useRef, useState } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import type { SessionContext } from './use-interaction.ts'
+import { contextWorthOf } from './interaction.ts'
 import { Icon } from './ui.tsx'
 
 /** One todo glyph: pending = dashed circle, in_progress = the shared spinner,
@@ -54,8 +55,11 @@ export function SessionContextBlock({ context }: { context: SessionContext }) {
   const active = todos.filter(item => item.status === 'in_progress').length
   const pending = todos.length - done - active
   const subagentCount = context.subagents?.length ?? 0
-  const hasAnything = todos.length > 0 || context.goal !== undefined || subagentCount > 0
-  if (!hasAnything) return null
+  // THE display rule: only UNFINISHED things are worth the block — a fully
+  // completed todo list (or a non-active goal / finished subagents) hides the
+  // whole readout (the "todo 全完成还显示" issue). Unknown statuses count as
+  // active (a host reshape never hides live work).
+  if (!contextWorthOf(context)) return null
 
   // The header summary — the harness's per-status progress counts (zero
   // segments omitted as noise), plus goal / subagent facts in the same line.

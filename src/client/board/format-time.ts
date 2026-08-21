@@ -8,7 +8,8 @@
  * `title`. Locale-aware (zh numeric-locale style vs en M/D), framework-free
  * so it unit-tests in isolation.
  */
-import { isEnglish } from '../locales.ts'
+import { cruiseWindowGrammarOf, type CruiseWindow } from '../../core/cruise.ts'
+import { isEnglish, t } from '../locales.ts'
 
 const pad = (value: number): string => String(value).padStart(2, '0')
 
@@ -42,4 +43,27 @@ export function isNextDay(a: number, b: number): boolean {
   return to.getFullYear() !== from.getFullYear()
     || to.getMonth() !== from.getMonth()
     || to.getDate() !== from.getDate()
+}
+
+/** ONE line of copy per cruise window — the list's single grammar:
+ *  both set → "{start} → {end}" (a cross-midnight end reads 次日/next day);
+ *  only start → "{time} 起保持开启" / "From {time}, stays on";
+ *  only end → "现在开启 · 至 {time}" / "On now · until {time}".
+ *  Pure (locale + a fixed `now`) so the exact strings are testable in both
+ *  languages; the full instants stay in the element's `title`. */
+export function cruiseWindowLabelOf(window: CruiseWindow, now = Date.now()): string {
+  const grammar = cruiseWindowGrammarOf(window)
+  if (grammar.kind === 'range') {
+    // The end is anchored to the START's calendar day: a next-midnight end
+    // reads "次日 02:00" (the 次日 word IS the date bump), never a redundant
+    // "次日 1月6日 02:00" — a clock-only end with its own day as the base.
+    const end = isNextDay(grammar.startAt, grammar.endAt)
+      ? `${t('board.cruiseNextDay')} ${formatCruiseTime(grammar.endAt, grammar.endAt)}`
+      : formatCruiseTime(grammar.endAt, grammar.startAt)
+    return t('board.cruiseWindowRange', { start: formatCruiseTime(grammar.startAt, now), end })
+  }
+  if (grammar.kind === 'from-start') {
+    return t('board.cruiseWindowFromStart', { time: formatCruiseTime(grammar.startAt, now) })
+  }
+  return t('board.cruiseWindowOnlyEnd', { time: formatCruiseTime(grammar.endAt, now) })
 }

@@ -5,7 +5,7 @@
  * the same-day / same-year / cross-year verdicts are deterministic here.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { formatCruiseTime, isNextDay } from '../src/client/board/format-time.ts'
+import { cruiseWindowLabelOf, formatCruiseTime, isNextDay } from '../src/client/board/format-time.ts'
 
 function useLanguage(lang: string): void {
   vi.stubGlobal('document', { documentElement: { lang } })
@@ -59,5 +59,35 @@ describe('isNextDay (cross-midnight display rule)', () => {
 
   it('crosses year boundaries', () => {
     expect(isNextDay(new Date(2025, 11, 31, 23, 0).getTime(), new Date(2026, 0, 1, 1, 0).getTime())).toBe(true)
+  })
+})
+
+describe('cruiseWindowLabelOf (one grammar line per window, both languages)', () => {
+  it('range: same-day start → end (zh / en)', () => {
+    useLanguage('zh')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 5, 22, 0).getTime(), endAt: new Date(2025, 0, 5, 23, 30).getTime() }, NOW)).toBe('22:00 → 23:30')
+    useLanguage('en')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 5, 22, 0).getTime(), endAt: new Date(2025, 0, 5, 23, 30).getTime() }, NOW)).toBe('22:00 → 23:30')
+  })
+
+  it('range: a cross-midnight end reads 次日 / next day', () => {
+    useLanguage('zh')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 5, 22, 0).getTime(), endAt: new Date(2025, 0, 6, 2, 0).getTime() }, NOW)).toBe('22:00 → 次日 02:00')
+    useLanguage('en')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 5, 22, 0).getTime(), endAt: new Date(2025, 0, 6, 2, 0).getTime() }, NOW)).toBe('22:00 → next day 02:00')
+  })
+
+  it('start-only: 到点开、之后保持开启 / turns on and stays on', () => {
+    useLanguage('zh')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 6, 9, 0).getTime() }, NOW)).toBe('1月6日 09:00 起保持开启')
+    useLanguage('en')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 6, 9, 0).getTime() }, NOW)).toBe('From 1/6 09:00, stays on')
+  })
+
+  it('end-only: 现在开启一直到点关 / on now until the end', () => {
+    useLanguage('zh')
+    expect(cruiseWindowLabelOf({ endAt: new Date(2025, 0, 5, 18, 0).getTime() }, NOW)).toBe('现在开启 · 至 18:00')
+    useLanguage('en')
+    expect(cruiseWindowLabelOf({ endAt: new Date(2025, 0, 5, 18, 0).getTime() }, NOW)).toBe('On now · until 18:00')
   })
 })

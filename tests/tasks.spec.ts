@@ -6,6 +6,7 @@ import {
   applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
+import { taskUnviewed } from '../src/core/session-display.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -596,6 +597,16 @@ describe('requirement refinement', () => {
     // Unknown or already-settled rounds are no-ops.
     expect(settleRefine(task, 'ghost', 'succeeded', NOW + 9, undefined)).toBe(task)
     expect(settleRefine(settled, 'r1', 'failed', NOW + 10, undefined)).toBe(settled)
+  })
+
+  it('a settled refine round is seen at its own settle (no eternal unread ring)', () => {
+    const task = withRefine()
+    const settled = settleRefine(task, 'r2', 'succeeded', NOW + 8, undefined)
+    const round = settled.executions.find(item => item.id === 'r2')!
+    expect(round.viewedAt).toBe(NOW + 8)
+    // With the task's own baseline at/after the settle, the finished refine
+    // turn never counts as unread — the 完善中 glow was state-bound anyway.
+    expect(taskUnviewed({ ...settled, viewedAt: NOW + 8 })).toBe(false)
   })
 })
 

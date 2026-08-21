@@ -127,6 +127,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   const readiness = ruleReadiness(task)
   const pausedFailed = readiness.kind === 'paused' && readiness.status === 'review'
     && lastPlain !== undefined && lastPlain.result === 'failed'
+  // ONE active-light rule: running / waiting (pending interaction) /
+  // refining cards breathe — state-bound, independent of the unread baseline,
+  // so a live card NEVER misses its pulse (the old ring was unread-only:
+  // "进行中有时不闪").
+  const active = task.status === 'running' || pendingCount > 0 || refining(task)
   return (
     /* A card is a clickable REGION, never a <button>: the color swatches and
        the quick-run control inside are real interactive elements, and a
@@ -141,6 +146,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
       data-status={task.status}
       data-task-id={task.id}
       data-unviewed={unviewed ? '' : undefined}
+      data-active={active ? '' : undefined}
       draggable
       onClick={onClick}
       onKeyDown={event => {

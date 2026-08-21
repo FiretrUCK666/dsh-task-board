@@ -606,9 +606,11 @@ export class BoardController {
 
   /**
    * Mark one execution as viewed (the user opened its review page), clearing
-   * its row's unread dot: its session's content is now seen. Persisted so the
-   * cleared state survives refreshes. A no-op (no persist) for unknown tasks
-   * or executions.
+   * its row's unread dot AND the task card's unread ring — ONE baseline
+   * (task.viewedAt) governs the card's glow, the row's dot/halo is the same
+   * moment seen; opening the review page means the task's content is seen.
+   * Persisted so the cleared state survives refreshes. A no-op (no persist)
+   * for unknown tasks or executions.
    */
   markExecutionViewed(taskId: string, executionId: string): void {
     const at = this.now()
@@ -621,7 +623,15 @@ export class BoardController {
         changed = true
         return { ...round, viewedAt: at }
       })
-      return executions === task.executions ? task : { ...task, executions }
+      // The task-level baseline moves with the execution-level one: opening
+      // the review page clears the CARD ring too (not just the row dot) —
+      // otherwise the same "seen" moment keeps one glow pulsing (the
+      // 待审核一直带光效 symptom).
+      if (executions !== task.executions || (task.viewedAt ?? 0) < at) {
+        changed = true
+        return { ...task, executions, viewedAt: Math.max(task.viewedAt ?? 0, at) }
+      }
+      return task
     })
     if (changed) this.persistAndNotify()
   }

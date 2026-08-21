@@ -13,10 +13,12 @@ import css from '../board.module.css'
 import { formatTimeInput, parseTimeText } from './time-parse.ts'
 import { Icon } from './ui.tsx'
 
-export function TimeField({ label, hint, value, onChange, allowEmpty = true }: {
+export function TimeField({ label, hint, placeholder, value, onChange, allowEmpty = true }: {
   label: string
   /** Quiet helper text under the field (e.g. "留空=一直保持"). */
   hint?: string
+  /** Input placeholder; falls back to the shared format example. */
+  placeholder?: string
   value: number | undefined
   onChange: (ms: number | undefined) => void
   /** Whether clearing the field is legal (undefined value allowed). */
@@ -66,9 +68,9 @@ export function TimeField({ label, hint, value, onChange, allowEmpty = true }: {
       <span className={css.timeFieldLabel}>{label}</span>
       <span className={css.timeFieldRow}>
         <input
-          className={`${css.input}${error ? ` ${css.scheduleInputInvalid}` : ''}`}
+          className={`${css.input}${error ? ` ${css.inputInvalid}` : ''}`}
           value={text}
-          placeholder={t('board.cruiseTimePlaceholder')}
+          placeholder={placeholder ?? t('board.cruiseTimePlaceholder')}
           aria-label={label}
           onFocus={event => { event.target.select() }}
           onChange={event => { setText(event.target.value); setError(false) }}

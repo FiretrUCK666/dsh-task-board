@@ -232,8 +232,25 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   SessionRulesSection/SessionRuleForm/**AutomationEditor**/scheduleSummary——
   **自动化唯一 UI**）。
 - **动效唯一语法**：注意力 = `--dsh-tb-attention` + `--dsh-tb-breath`（2.6s）；卡片外层
-  呼吸环 `dshTbBreathRing`、执行行内层柔晕（`.sessionRow::after` 光晕层，`data-glow`
-  状态绑定、pause 而非 cancelled——永不闪烁）；`prefers-reduced-motion` 全部静态降级。
+  呼吸环 `dshTbBreathRing`（`.card[data-unviewed]` / `.card[data-active]`）、执行行内层
+  柔晕（`.sessionRow::after` 光晕层，`data-glow` 状态绑定、pause 而非 cancelled——
+  永不闪烁）；`prefers-reduced-motion` 全部静态降级。
+- **光效规则表（呼吸显示与否的唯一判定，无例外）**：
+
+  | 任务状态 | 卡片 | 会话行 |
+  | --- | --- | --- |
+  | 等待（处理/计划确认/提问） | 呼吸（状态 waiting） | 呼吸（状态 waiting） |
+  | 进行中（板内运行/外源轮/续跑） | 呼吸（状态 running） | 呼吸（状态 running） |
+  | 完善中 | 呼吸（状态 refining） | 无 |
+  | 已结束且未读 | 呼吸（未读） | 呼吸（未读） |
+  | 已读已结束 / 空闲 | 静默 | 静默 |
+
+  「进行中」的呼吸只由状态驱动、与未读无关，永不缺闪（`TaskCard` 的 `data-active` =
+  running/待回应/完善中，不是未读再加一档）。已结束的未读呼吸各自单基线清除
+  （`markExecutionViewed` 复盘打开、详情打开清 `task.viewedAt`、`settleRefine` 结算
+  自清完善轮）。外源轮从观察起视为 open（`sessionDisplay` 的 open 判定含
+  `external === true`）并计入会话轮次集——主会话发话后的进行中会话行必亮，不再有
+  「左右脑互搏」。
 - **拖拽落点**：插入条 = `drop-position.ts`（`insertionGapOf`/`indicatorTopOf`，纯函数
   单测）+ 行/盒内 22px 底部留白（否则尾部槽被裁剪）；**拖拽自动滚动** =
   `drag-autoscroll.ts`（`edgeScrollStep` + `useDragAutoScroll`，滚动期间把根元素
@@ -278,6 +295,10 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   自动跟随；投影缺席降级事件解析）；goal/子代理走 `/api/dsh-task-board/session-state`
   桥（缺面即降级）。`SessionContextBlock` 为**浮层**（头部一行 + chevron 默认折叠；
   展开是 rail 内 absolute 面板，45vh 独立滚动、外点关闭），有则全有、无则全无。
+- **上下文块（有未完成的才显示）**：`contextWorthOf(context)` 是唯一判定——todo 任一
+  未 completed / `goal.active === true` / 子代理 status 缺失或不在 finished 集
+  （finished/completed/done/settled）→ 值得显示；全部弄好才整块隐藏（已完成的 todo
+  条目保留勾+划线作为上下文；子代理 status 缺失保守视为进行中——不藏可能还在跑的）。
 - **原生侧同步**：原生会话直接发言 → 观察 running 翻转补记**外源轮**（不排队/不注入）；
   主动添加（拖入源）立即「进行中」+ 未读呼吸，跑完落「待审核」，空闲不虚构、同源幂等；
   页面加载被动观察不补历史。**外源轮正文 = `latestUserMessage`（最新一条 user 消息即
@@ -288,6 +309,24 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   **显式拖回（会话或工作区）可恢复**——`addTaskSource` 清 removed，被动派生绝不复活。
 - **完成态留言自动移回「待办」并驱动**（`reviveTaskIfDone`，queue/steer 同规则）；任务
   自动化在 done 列暂停（`ruleReadiness` 显示原因），移回自动恢复。
+- **自动化两半互不干扰**：任务级 `schedule`（按时间表 / 完成后接续）与会话级 `rules`
+  （定时给会话发指令）字段正交、语义独立——关任务级 schedule 会话规则照常触发，只有
+  会话规则时任务级自动化不激活（controller 单测钉死）；两者共用 `AutomationEditor`
+  （唯一 UI，板与详情一致），编辑器内分「任务自动化」「会话规则」两个成对分区标题；
+  `AutomationPanel` 只列已启动项（`automationTasksOf`）。
+- **巡航窗口 v3 文法**：窗口 `{startAt?; endAt?}` 三态（都填=区间、只填开始=到点开并
+  保持、只填结束=现在开到点关）；列表**自动排序**（立即开启→按开始→同开始按结束，
+  开口的排最后 —— `windowSortKeyOf`/`sortWindows` 纯函数，绝不存手排序）；每窗口
+  **一行文法**（`cruiseWindowGrammarOf` + `cruiseWindowLabelOf`：
+  `开始 → 次日 结束` / `{time} 起保持开启` / `现在开启 · 至 {time}`，中英文案单测
+  钉死，完整时刻走 tooltip）；跨午夜 = 结束在（开始-24h, 开始] 内自动 +1 天；
+  **结束早于开始超过一天 = 日期错误**（`isIllegalWindowRange` 拒绝，内联提示
+  「结束早于开始超过一天，请检查日期」，`normalizeWindow` 对非法范围绝不虚构次日）；
+  表单占位「不填=立即开启 / 不填=一直保持」，语义提示一行。
+- **校验反馈文法**：`inputInvalid` 是唯一错误边框（cron/select/PromptInput/数字共用）；
+  会话规则表单按 会话→指令→Cron 顺序报**首个失败字段**的专属文案
+  （`auto.form.invalidSession/invalidInstruction/invalidCron`），绝不合并成一句
+  「请填写非空指令与合法 Cron」；`saveFailed` 兜底「保存失败」。
 - **卡片 = 纯状态摘要**：标题/描述/来源行（`cardSourceLabel` 单一推导）/更新时间/状态
   与自动化 chips；运行窗口与评论时间线只归详情页；**视觉对齐**：色点在标题行前（行内
   8px 圆点 + 5px 顶距光学居中，标题随其后；元信息贴卡片内容边——**不要用「固定槽位/

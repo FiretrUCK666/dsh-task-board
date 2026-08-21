@@ -38,7 +38,12 @@ export function sessionRoundsOf(task: TaskRecord, execution: ExecutionRecord): r
     // Session-anchored rounds (submitted from a linked-session panel) belong
     // to that session's own thread, never to an execution's review page —
     // even when the anchored session id coincides with an execution's.
-    (sid !== undefined && round.sessionId === sid && round.sessionAnchor === undefined) ||
+    // EXCEPTION: externally-observed rounds (a native-side turn recorded onto
+    // the task) are deliberately part of the session's activity — they keep
+    // their thread slot, but the session's live state/unread MUST see them
+    // (without this an out-of-band turn stays invisible to the row: the
+    // "进行中不闪、光效不往下走" bug).
+    (sid !== undefined && round.sessionId === sid && (round.sessionAnchor === undefined || round.external === true)) ||
     round.parentExecutionId === id
   )
 }
@@ -64,10 +69,13 @@ export function sessionDisplay(
   // Any round currently open (running in its session)? A plain run or a
   // refine round is open from its start (they carry no `injectedAt`); a
   // comment round is open only once actually injected — a saved/queued
-  // comment has not started and must not make the session look live. The
-  // displayed activity is the most recently opened round's start.
+  // comment has not started and must not make the session look live. An
+  // EXTERNALLY-observed round is open from its observation (it is the native
+  // turn itself, never a queued comment): its comment field is a thread body,
+  // not a queue marker. The displayed activity is the most recently opened
+  // round's start.
   const open = rounds.filter(r =>
-    r.endedAt === undefined && (r.injectedAt !== undefined || r.comment === undefined))
+    r.endedAt === undefined && (r.injectedAt !== undefined || r.comment === undefined || r.external === true))
   if (open.length > 0) {
     const openRound = open.reduce((latest, r) => (r.startedAt > latest.startedAt ? r : latest))
     // Session is live.

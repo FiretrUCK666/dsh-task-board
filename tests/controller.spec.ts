@@ -9,7 +9,7 @@ import { InMemoryTaskStore } from '../src/core/store.ts'
 import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
 import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import type { CruiseWindow } from '../src/core/cruise.ts'
-import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, ruleReadiness, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 let nextId = 0
@@ -428,6 +428,10 @@ describe('view state', () => {
     expect(viewed.viewedAt).toBe(NOW + 2_000)
     expect(store.load()[0].executions.find(round => round.id === executionId)!.viewedAt).toBe(NOW + 2_000)
     expect(executionUnviewed(controller.getSnapshot().tasks[0], viewed)).toBe(false)
+    // ONE baseline: the review-page open ALSO clears the card-level ring
+    // (task.viewedAt moves with it) — the "待审核打开复盘后卡片还带光效"
+    // symptom is gone.
+    expect(taskUnviewed(controller.getSnapshot().tasks[0])).toBe(false)
   })
 
   it('openSession selects the session on the runtime', () => {
@@ -2510,6 +2514,34 @@ describe('session automation rules (给会话定时发指令)', () => {
     controller.moveTask(task.id, 'todo')
     await controller.tickSessionRules(NOW + 120_000)
     expect(sent).toEqual([['s-a', 'hello']])
+  })
+
+  it('the task-level schedule and session rules are INDEPENDENT: turning the task schedule off never pauses session rules', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    // Arm BOTH halves, then disarm ONLY the task-level schedule.
+    controller.setSchedule(task.id, { enabled: true, mode: 'cron', cron: '* * * * *' })
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'steer' })!
+    controller.setSchedule(task.id, { enabled: false })
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toEqual([['s-a', 'hello']]) // the session rule still fired
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.schedule?.enabled).toBe(false)
+    expect(row.rules?.some(rule => rule.lastAt !== undefined)).toBe(true)
+  })
+
+  it('with only a session rule (no task schedule) the task-level automation stays off', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'steer' })!
+    // The rule fires without ever touching the task-level half.
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toEqual([['s-a', 'hello']])
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.schedule).toBeUndefined() // the task schedule was never created
+    expect(ruleReadiness(row).kind).toBe('disabled') // task-level automation: off
   })
 })
 

@@ -736,7 +736,12 @@ export function settleRefine(
   const round = task.executions[index]
   if (round.endedAt !== undefined) return task
   const executions = [...task.executions]
-  executions[index] = { ...round, endedAt: now, result: outcome, error }
+  // The settled refine round is SEEN at its own settle — a finished refine
+  // turn never accumulates unread (the 完善中 glow is state-bound while it
+  // runs; once it settles there is nothing new to notice: the prompt/result
+  // is applied through the explicit apply step). Without the baseline the
+  // card ring would pulse forever (the 完善中永亮 symptom).
+  executions[index] = { ...round, endedAt: now, result: outcome, error, viewedAt: now }
   return { ...task, updatedAt: now, executions }
 }
 

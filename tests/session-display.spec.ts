@@ -553,3 +553,40 @@ describe('unviewed reminders', () => {
     expect(taskUnviewedCount(task)).toBe(0)
   })
 })
+
+describe('external rounds are part of the session (the native-turn glow)', () => {
+  function extRound(id: string, sessionId: string, startedAt: number, opts: Partial<ExecutionRecord> = {}): ExecutionRecord {
+    return {
+      id,
+      sessionId,
+      startedAt,
+      endedAt: undefined,
+      result: undefined,
+      error: undefined,
+      comment: '',
+      sessionAnchor: sessionId,
+      external: true,
+      ...opts,
+    }
+  }
+
+  it('an open external round keeps the run row running and unlit (halo via state)', () => {
+    const exec = round('exec-1', { startedAt: 50, sessionId: 's1', endedAt: 80, result: 'succeeded', viewedAt: 80 })
+    const external = extRound('e1', 's1', 100)
+    const task = taskWith([exec, external])
+    // The session reads RUNNING again (the native turn is live) — the row's
+    // state-bound halo lights; the unread dot also lights (activity after the
+    // execution's baseline).
+    expect(sessionDisplay(task, exec, undefined).state).toBe('running')
+    expect(executionUnviewed(task, exec)).toBe(true)
+  })
+
+  it('a settled external turn reads as the session outcome', () => {
+    const exec = round('exec-1', { startedAt: 50, sessionId: 's1', endedAt: 80, result: 'succeeded', viewedAt: 80 })
+    const external = extRound('e1', 's1', 100, { endedAt: 140, result: 'succeeded' })
+    const task = taskWith([exec, external])
+    const display = sessionDisplay(task, exec, undefined)
+    expect(display.state).toBe('succeeded')
+    expect(display.lastActivity).toBe(140)
+  })
+})

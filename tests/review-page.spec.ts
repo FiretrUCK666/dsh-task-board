@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { foldTranscript, sumUsage, type TranscriptEvent } from '../src/client/board/review-transcript.ts'
 import { contextOccupancy, contextSegments, formatTokens } from '../src/client/board/context-meter.ts'
 import { shouldFlipMenuUp } from '../src/client/board/menu-direction.ts'
-import { isOpenTodo, latestSessionTodos } from '../src/client/board/interaction.ts'
+import { contextWorthOf, isOpenTodo, latestSessionTodos } from '../src/client/board/interaction.ts'
 
 describe('rail layout CSS contract (interaction card never bursts the rail)', () => {
   const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
@@ -307,5 +307,32 @@ describe('latestSessionTodos (session live to-do readout)', () => {
       { type: 'todo/write', seq: 1, data: { todos: [{ content: '', status: 'x' }, { content: 'ok', status: 'weird' }, 'junk'] } },
     ])
     expect(todos).toEqual([{ content: 'ok', status: 'pending' }])
+  })
+})
+
+describe('contextWorthOf (show only UNFINISHED context)', () => {
+  const allDone = { todos: [{ content: 'a', status: 'completed' as const }, { content: 'b', status: 'completed' as const }] }
+
+  it('hides a fully-completed todo list (the all-done still shows bug)', () => {
+    expect(contextWorthOf(allDone)).toBe(false)
+    expect(contextWorthOf({ todos: [] })).toBe(false)
+    expect(contextWorthOf({})).toBe(false)
+  })
+
+  it('shows when any todo is still open, and keeps the done rows as progress context', () => {
+    expect(contextWorthOf({ todos: [{ content: 'a', status: 'completed' as const }, { content: 'b', status: 'pending' as const }] })).toBe(true)
+    expect(contextWorthOf({ todos: [{ content: 'a', status: 'in_progress' as const }] })).toBe(true)
+  })
+
+  it('shows only an ACTIVE goal; a non-active/completed goal is finished business', () => {
+    expect(contextWorthOf({ goal: { active: true } })).toBe(true)
+    expect(contextWorthOf({ goal: { active: false } })).toBe(false)
+  })
+
+  it('shows unfinished subagents; finished ones hide; an unknown status is treated as active', () => {
+    expect(contextWorthOf({ subagents: [{ title: 'w', status: 'running' }] })).toBe(true)
+    expect(contextWorthOf({ subagents: [{ title: 'w' }] })).toBe(true)
+    expect(contextWorthOf({ subagents: [{ title: 'w', status: 'finished' }] })).toBe(false)
+    expect(contextWorthOf({ subagents: [{ title: 'w', status: 'done' }] })).toBe(false)
   })
 })

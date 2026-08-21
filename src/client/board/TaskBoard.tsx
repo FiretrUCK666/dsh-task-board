@@ -22,8 +22,8 @@ import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
-import { coveringWindow, duplicateWindowOf, type CruiseWindow } from '../../core/cruise.ts'
-import { formatCruiseTime, isNextDay } from './format-time.ts'
+import { coveringWindow, cruiseWindowGrammarOf, duplicateWindowOf, isIllegalWindowRange, sortWindows, type CruiseWindow } from '../../core/cruise.ts'
+import { formatCruiseTime, cruiseWindowLabelOf } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
@@ -42,6 +42,14 @@ function matchesFilter(task: TaskRecord, filter: string): boolean {
   if (filter.trim() === '') return true
   const needle = filter.trim().toLowerCase()
   return task.title.toLowerCase().includes(needle) || task.description.toLowerCase().includes(needle)
+}
+
+/** The window row tooltip: the exact instants behind its one-line label. */
+function cruiseWindowTitleOf(window: CruiseWindow): string {
+  const grammar = cruiseWindowGrammarOf(window)
+  if (grammar.kind === 'range') return `${formatDateTime(grammar.startAt)} → ${formatDateTime(grammar.endAt)}`
+  if (grammar.kind === 'from-start') return formatDateTime(grammar.startAt)
+  return formatDateTime(grammar.endAt)
 }
 
 /** Board component; subscribes to the controller snapshot. */
@@ -106,7 +114,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   /**
    * 添加一条巡航定时窗口：开始与结束均可选（至少一个；留空结束=到点开、之后
    * 保持开；留空开始=立即视为开、到点关）。结束早于开始 = 跨午夜（如 22:00 →
-   * 02:00）合法：归一化在 setCruiseSchedule 里自动 +1 天处理，绝不拒绝。
+   * 02:00）合法：归一化在 setCruiseSchedule 里自动 +1 天处理，绝不拒绝；但
+   * 结束早于开始超过一天是日期错误（不是跨午夜），就地拒绝并指明原因。
    */
   const addCruiseWindow = (): void => {
     if (windowStart === undefined && windowEnd === undefined) {
@@ -116,6 +125,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     const candidate: CruiseWindow = {
       ...windowStart !== undefined ? { startAt: windowStart } : {},
       ...windowEnd !== undefined ? { endAt: windowEnd } : {},
+    }
+    // A "yesterday 09:00" end cannot be a next-midnight window: the dates
+    // are wrong — name it, never silently normalize it into the past.
+    if (isIllegalWindowRange(candidate)) {
+      setCruiseError(t('board.cruiseWindowErrorRange'))
+      return
     }
     // The single write point validates: an exact duplicate adds nothing but
     // noise — reject with an inline error instead of a silent no-op.
@@ -136,9 +151,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // The covering window is the CORE derivation (same rule the scheduler
   // applies) — never a re-implementation of the coverage logic in the UI.
   const covering = coveringWindow(snapshot.cruise, cruiseNow)
-  const nextWindow = cruiseSchedule
-    .filter(window => (window.startAt ?? cruiseNow) > cruiseNow)
-    .sort((a, b) => (a.startAt ?? a.endAt ?? 0) - (b.startAt ?? b.endAt ?? 0))[0]
+  const nextWindow = sortWindows(
+    cruiseSchedule.filter(window => (window.startAt ?? cruiseNow) > cruiseNow),
+  )[0]
   const cruiseStateLine = snapshot.cruise.enabled
     ? covering !== undefined && covering.endAt !== undefined
       ? t('board.cruiseStateOnUntil', { time: formatCruiseTime(covering.endAt) })
@@ -500,36 +515,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                           className={css.cruiseWindowRow}
                           style={{ animationDelay: `${index * 20}ms` }}
                         >
-                          {/* 双行紧凑时间：开始/结束各占一行、各自完整可读，
-                              不再用长格式白单行拼 → 结束被省略号截掉。完整时间在
-                              每行的 title（tooltip）里始终可取。 */}
-                          <span className={css.cruiseWindowTime}>
-                            {window.startAt !== undefined && (
-                              <span className={css.cruiseWindowTimeRow}>
-                                <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinStart')}</span>
-                                <span className={css.cruiseWindowTimeValue} title={formatDateTime(window.startAt)}>
-                                  {formatCruiseTime(window.startAt)}
-                                </span>
-                              </span>
-                            )}
-                            {window.endAt !== undefined ? (
-                              <span className={css.cruiseWindowTimeRow}>
-                                <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinEnd')}</span>
-                                {/* A normalized cross-midnight window shows the
-                                    end on the start's NEXT day (22:00 → 次日 02:00). */}
-                                <span className={css.cruiseWindowTimeValue} title={formatDateTime(window.endAt)}>
-                                  {window.startAt !== undefined && isNextDay(window.startAt, window.endAt)
-                                    ? `${t('board.cruiseNextDay')} ${formatCruiseTime(window.endAt)}`
-                                    : formatCruiseTime(window.endAt)}
-                                </span>
-                              </span>
-                            ) : (
-                              <span className={css.cruiseWindowTimeRow}>
-                                <span className={css.cruiseWindowTimeLabel}>{t('board.cruiseWinEnd')}</span>
-                                <span className={css.cruiseWindowTimeValue}>{t('board.cruiseWindowNoEnd')}</span>
-                              </span>
-                            )}
-                          </span>
+                          {/* ONE grammar line per window (range / from-start /
+                              on-now-until-end; a cross-midnight range already
+                              reads 次日 inside the label). The exact instants
+                              live in the tooltip; the list itself auto-sorts. */}
+                          <span className={css.cruiseWindowTime} title={cruiseWindowTitleOf(window)}>{cruiseWindowLabelOf(window, cruiseNow)}</span>
                           <button
                             type="button"
                             className={css.rowHide}
@@ -552,12 +542,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                         add-guard below rejects neither-set. */}
                     <TimeField
                       label={t('board.cruiseWindowStart')}
+                      placeholder={t('board.cruiseWindowStartPlaceholder')}
                       value={windowStart}
                       onChange={next => { setWindowStart(next); setCruiseError(undefined) }}
                     />
                     <TimeField
                       label={t('board.cruiseWindowEnd')}
-                      hint={t('board.cruiseWinEndHint')}
+                      placeholder={t('board.cruiseWindowEndPlaceholder')}
                       value={windowEnd}
                       onChange={next => { setWindowEnd(next); setCruiseError(undefined) }}
                     />
