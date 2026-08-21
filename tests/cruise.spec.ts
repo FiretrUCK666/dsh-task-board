@@ -6,7 +6,7 @@
  * normalize (+1 day) instead of erroring, and expired windows prune.
  */
 import { describe, expect, it } from 'vitest'
-import { CRUISE_TICK_MS, DAY_MS, applyManualToggle, coveringWindow, normalizeWindow, setCruiseSchedule, sortWindows, tickCruise, type CruiseWindow } from '../src/core/cruise.ts'
+import { CRUISE_TICK_MS, DAY_MS, applyManualToggle, coveringWindow, duplicateWindowOf, normalizeWindow, setCruiseSchedule, sortWindows, tickCruise, type CruiseWindow } from '../src/core/cruise.ts'
 import type { CruiseState } from '../src/core/controller.ts'
 
 const NOW = 1_700_000_000_000
@@ -134,5 +134,22 @@ describe('setCruiseSchedule (editor path)', () => {
   it('sortWindows orders by the effective start (start-less by end)', () => {
     expect(sortWindows([{ startAt: NOW + HOUR }, { endAt: NOW }, { startAt: NOW, endAt: NOW + 1 }].map(normalizeWindow))
       .map(w => w.startAt ?? w.endAt ?? 0)).toEqual([NOW, NOW, NOW + HOUR])
+  })
+})
+
+describe('duplicateWindowOf (single write point rejects exact duplicates)', () => {
+  it('matches identical normalized bounds incl. cross-midnight re-entries', () => {
+    const windows: CruiseWindow[] = [{ startAt: NOW, endAt: NOW + HOUR }, { startAt: NOW + 22 * HOUR, endAt: NOW + 4 * HOUR }]
+    expect(duplicateWindowOf(windows, { startAt: NOW, endAt: NOW + HOUR })?.endAt).toBe(NOW + HOUR)
+    // 22:00 → 02:00 normalized (+1 day); a re-entry with the raw time matches.
+    expect(duplicateWindowOf(windows, { startAt: NOW + 22 * HOUR, endAt: NOW + 4 * HOUR })?.startAt).toBe(NOW + 22 * HOUR)
+  })
+
+  it('start-only vs end-only windows are never duplicates; distinct bounds match nothing', () => {
+    const windows: CruiseWindow[] = [{ startAt: NOW }, { endAt: NOW + HOUR }]
+    expect(duplicateWindowOf(windows, { startAt: NOW })).toBeDefined()
+    expect(duplicateWindowOf(windows, { endAt: NOW + HOUR })).toBeDefined()
+    expect(duplicateWindowOf(windows, { startAt: NOW, endAt: NOW + HOUR })).toBeUndefined()
+    expect(duplicateWindowOf(windows, { startAt: NOW + 1 })).toBeUndefined()
   })
 })

@@ -75,6 +75,63 @@ export function sessionRulesOf(task: TaskRecord): SessionRule[] {
 }
 
 /**
+ * One unified automation view row — the single read-side projection every
+ * automation surface renders (the panel's rule rows read this; the task
+ * detail derives from the same task fields). Locale-free: components map
+ * `kind` + fields to their own labels.
+ */
+export type AutomationRow =
+  | {
+    kind: 'schedule'
+    mode: 'cron' | 'chain'
+    enabled: boolean
+    cron?: string
+    runCount: number
+    maxRuns?: number
+    nextRunAt?: number
+  }
+  | {
+    kind: 'session-rule'
+    ruleId: string
+    sessionId: string
+    instruction: string
+    cron: string
+    send: 'queue' | 'steer'
+    enabled: boolean
+    nextAt: number
+    lastAt?: number
+  }
+
+/** The task's unified automation projection: session rules first, then the
+ *  task-level schedule rule (when present) — every surface reads one shape. */
+export function automationRowsOf(task: TaskRecord): AutomationRow[] {
+  const rows: AutomationRow[] = (task.rules ?? []).map(rule => ({
+    kind: 'session-rule' as const,
+    ruleId: rule.id,
+    sessionId: rule.sessionId,
+    instruction: rule.instruction,
+    cron: rule.cron,
+    send: rule.send,
+    enabled: rule.enabled,
+    nextAt: rule.nextAt,
+    ...rule.lastAt !== undefined ? { lastAt: rule.lastAt } : {},
+  }))
+  const schedule = task.schedule
+  if (schedule !== undefined) {
+    rows.push({
+      kind: 'schedule',
+      mode: schedule.mode,
+      enabled: schedule.enabled,
+      ...schedule.cron !== undefined ? { cron: schedule.cron } : {},
+      runCount: schedule.runCount,
+      ...schedule.maxRuns !== undefined ? { maxRuns: schedule.maxRuns } : {},
+      ...schedule.nextRunAt !== undefined ? { nextRunAt: schedule.nextRunAt } : {},
+    })
+  }
+  return rows
+}
+
+/**
  * When a rule should fire next given its current due instant (the next cron
  * match AFTER that instant, like the task scheduler's forward roll). Returns
  * the new due instant, or undefined when the expression is unparseable.

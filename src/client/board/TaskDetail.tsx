@@ -572,10 +572,6 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
         />
       )}
 
-      {/* 作用域边界：本模块只管本任务；自动巡航是板级批量开关 — 一个短提示，
-          不铺陈。*/}
-      <p className={css.detailHint}>{t('detail.schedule.boundary')}</p>
-
       {/* Side-effect confirms for automation: enabling an unlimited chain and
           stopping one both confirm once — an endless loop of real agent
           sessions is a big side effect. */}

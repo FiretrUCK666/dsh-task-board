@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react'
 import { type BoardController } from '../../core/controller.ts'
 import { ruleReadiness, type TaskRecord } from '../../core/tasks.ts'
+import { automationRowsOf, type AutomationRow } from '../../core/automation.ts'
 import { describeCron, isValidCron } from '../../core/schedule.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -131,7 +132,10 @@ export function AutomationPanel({ controller, onClose }: {
           {automated.map(task => {
             const schedule = task.schedule
             const labels = controller.sessionLabelsOf(task.id)
-            const rules = task.rules ?? []
+            // The single read-side projection: every row (session rule +
+            // task-level schedule) is one shape; components only format it.
+            const rows = automationRowsOf(task)
+            const rules = rows.filter((row): row is Extract<AutomationRow, { kind: 'session-rule' }> => row.kind === 'session-rule')
             return (
               <section key={task.id} className={css.autoTask}>
                 {/* Card identity: title + status + jump into the detail. */}
@@ -170,7 +174,7 @@ export function AutomationPanel({ controller, onClose }: {
                   <Section title={t('auto.rules')} className={css.autoRules}>
                     <ul className={css.autoRuleList}>
                       {rules.map(rule => (
-                        <li key={rule.id} className={css.autoRuleRow}>
+                        <li key={rule.ruleId} className={css.autoRuleRow}>
                           <span className={css.autoRuleTop}>
                             <span className={css.autoRuleSession} title={sessionTitleOf(task, rule.sessionId)}>
                               {sessionTitleOf(task, rule.sessionId)}
@@ -188,14 +192,14 @@ export function AutomationPanel({ controller, onClose }: {
                           <span className={css.autoRuleActions}>
                             <Switch
                               checked={rule.enabled}
-                              onChange={next => { controller.toggleSessionRule(task.id, rule.id, next) }}
+                              onChange={next => { controller.toggleSessionRule(task.id, rule.ruleId, next) }}
                               label={t('auto.rule.enable')}
                             />
                             <button
                               type="button"
                               className={css.rowHide}
                               title={t('auto.rule.deleteTitle')}
-                              onClick={() => { controller.deleteSessionRule(task.id, rule.id) }}
+                              onClick={() => { controller.deleteSessionRule(task.id, rule.ruleId) }}
                             >
                               {t('auto.rule.delete')}
                             </button>

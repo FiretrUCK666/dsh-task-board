@@ -70,6 +70,21 @@ export function isEmptyWindow(window: CruiseWindow): boolean {
 }
 
 /**
+ * The existing window a candidate duplicates (same normalized bounds), or
+ * undefined. The single write point rejects exact duplicates — an identical
+ * window adds no schedule and would only confuse the list; the cross-midnight
+ * normalization is applied to both sides so "22:00 → 02:00" and its re-entry
+ * match one another.
+ */
+export function duplicateWindowOf(windows: readonly CruiseWindow[], candidate: CruiseWindow): CruiseWindow | undefined {
+  const normalized = normalizeWindow(candidate)
+  return windows.find(window => {
+    const current = normalizeWindow(window)
+    return current.startAt === normalized.startAt && current.endAt === normalized.endAt
+  })
+}
+
+/**
  * The window covering `now` (preferring the one ending latest; undefined =
  * off): a window covers when its start (if any) is not in the future and its
  * end (if any) is not in the past. A start-less window is on since minus

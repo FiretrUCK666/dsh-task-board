@@ -19,6 +19,7 @@ import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/se
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { insertionGapOf, type InsertionGap } from './drop-position.ts'
+import { duplicateWindowOf, type CruiseWindow } from '../../core/cruise.ts'
 import { formatCruiseTime } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
@@ -139,10 +140,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       setCruiseError(t('board.cruiseWindowErrorStart'))
       return
     }
-    controller.setCruiseSchedule([...snapshot.cruise.schedule, {
+    const candidate: CruiseWindow = {
       ...windowStart !== undefined ? { startAt: windowStart } : {},
       ...windowEnd !== undefined ? { endAt: windowEnd } : {},
-    }])
+    }
+    // The single write point validates: an exact duplicate adds nothing but
+    // noise — reject with an inline error instead of a silent no-op.
+    if (duplicateWindowOf(cruiseSchedule, candidate) !== undefined) {
+      setCruiseError(t('board.cruiseWindowErrorDuplicate'))
+      return
+    }
+    controller.setCruiseSchedule([...cruiseSchedule, candidate])
     setWindowStart(undefined)
     setWindowEnd(undefined)
     setCruiseError(undefined)
