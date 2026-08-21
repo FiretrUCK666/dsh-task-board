@@ -2161,7 +2161,7 @@ export class BoardController {
 
   /**
    * Instant state sync for an ACTIVE binding: right after a session/workspace
-   * is dragged in (createBoundTask / bindTaskSource), evaluate its live state
+   * is dragged in (createBoundTask / addTaskSource), evaluate its live state
    * — a related session that is running RIGHT NOW gets an open external round
    * and the card jumps to 「进行中」 immediately (its completion later settles
    * to 「待审核」 through the ordinary reconcile), and the new content turns

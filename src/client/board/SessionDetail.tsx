@@ -1,23 +1,20 @@
 /**
- * Session detail: the linked-session panel opened by clicking a "链接会话"
- * row. It shares the exact shell (SessionFrame) and the full right-rail
- * experience (SessionRailHead: context meter + live config + session facts)
- * with the execution review page — one panel grammar for every session.
+ * Session detail: the linked-session panel opened by clicking a session row.
+ * It shares the exact shell (SessionFrame) and the full right-rail grammar
+ * with the execution review page — one panel grammar for every session:
+ * session context block (always first, above everything) → session head →
+ * fixed thread header + one quiet hint line → the comment thread in its OWN
+ * scroll region (auto-follow + 滑到最新) → pending interaction card → the
+ * pinned composer.
  *
- * The one deliberate difference is the composer semantics, split into two
- * explicit modes (one switch, default drive):
- * - 「驱动任务」(drive, default): a comment here is a session-anchored comment
- *   round — it enters the task's per-task FIFO queue and, under the cruise/
- *   budget rule, is injected into this very session, exactly like a comment
- *   from an execution's review page. It moves the card (任务 → 运行中 → 待审核)
- *   and is fully cancellable while pending. The panel shows this session's
- *   own comment thread with live states.
- * - 「直发会话」(direct): sends a message DIRECTLY to the native session (as
- *   if typed in its own conversation) — it never creates execution records,
- *   never enters the dispatcher, never changes task state, cruise, chain or
- *   schedules, and needs the native direct-message faces.
- * The mode's boundary is stated plainly under the composer, so a user never
- * guesses which send drives the task.
+ * The composer is single-state: one comment is one session-scoped message —
+ * comments from this panel and comments from an execution review page land in
+ * the same thread when they share this session. The only switch is the send
+ * mode (SendModeToggle): 排队 (default — the dispatcher injects a
+ * session-anchored message round under the queue/budget/cruise rule,
+ * cancellable while pending) vs 插话 (deliver straight to the native session
+ * now, bypassing queue/budget/cruise, recorded as a settled message round in
+ * the same thread). A done task rejects comments and the hint explains why.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
