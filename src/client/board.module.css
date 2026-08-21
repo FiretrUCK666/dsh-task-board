@@ -2685,6 +2685,14 @@ textarea.input {
   transition: box-shadow var(--dsh-tb-motion), transform var(--dsh-tb-motion), opacity var(--dsh-tb-motion);
 }
 
+/* A live drag: hover lifts and the drag tilt stop moving geometry (they
+   would otherwise pollute the drop-rect measurement and feed the old
+   rect-driven FLIP). The grab feel on the dragged card stays. */
+.board[data-dragging] .card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card.dragging {
     transform: none;

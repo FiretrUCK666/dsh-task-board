@@ -162,19 +162,26 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // gap is mirrored in a ref (written synchronously on every dragover, read at
   // drop) so the drop always matches the preview, never a stale render closure.
   const [dragId, setDragId] = useState<string | undefined>(undefined)
-  const [dropGap, setDropGap] = useState<{ status: TaskStatus; gap: InsertionGap } | undefined>(undefined)
-  const dropGapRef = useRef<{ status: TaskStatus; gap: InsertionGap } | undefined>(undefined)
+  const [dropGap, setDropGap] = useState<{ status: TaskStatus; beforeId: string | undefined; top: number } | undefined>(undefined)
+  // Mirrored in a ref, written synchronously on EVERY dragover (also without a
+  // re-render: the indicator's top follows the pointer through the DOM), read
+  // at drop so the drop always matches the preview, never a stale closure.
+  const dropGapRef = useRef<{ status: TaskStatus; beforeId: string | undefined; top: number } | undefined>(undefined)
   // The .cards container per column (for half-split rect measurements).
   const cardsRefs = useRef<Partial<Record<TaskStatus, HTMLDivElement | null>>>({})
+  // The drop-indicator element per column: its top is written directly during
+  // dragover (no per-frame React state), while React re-renders only when the
+  // STRUCTURE of the gap (status + beforeId) changes — no flicker, no storm.
+  const indicatorRefs = useRef<Partial<Record<TaskStatus, HTMLSpanElement | null>>>({})
   // Guards the reject-flash timer against unmount (drop feedback only).
   const rejectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => {
     if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
   }, [])
-  // The board root: the FLIP region (card move = the card itself settles into
-  // its new position — the drop confirmation, not a column-edge flash).
+  // The board root: the FLIP region. Structure-driven and fully suppressed
+  // while a card drag is active (the post-drop settle is the moment it plays).
   const boardRef = useRef<HTMLDivElement | null>(null)
-  useFlipRegion(boardRef)
+  useFlipRegion(boardRef, dragId !== undefined)
   // The column currently accepting an external sidebar drag (session/workspace
   // dragged in from the sidebar): a distinct highlight from the board's own
   // card-reorder affordances. The latch refs below make the highlight stable:
@@ -323,7 +330,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     // a cross-column move previewed at a position drops exactly there.
     const gapRef = dropGapRef.current
     const gapOf = (target: TaskStatus): string | undefined =>
-      gapRef !== undefined && gapRef.status === target ? gapRef.gap.beforeId : undefined
+      gapRef !== undefined && gapRef.status === target ? gapRef.beforeId : undefined
     const external = externalOf(event)
     const id = dragId ?? event.dataTransfer.getData('text/plain')
     clearDrag()
@@ -357,6 +364,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       ref={boardRef}
       className={css.board}
       data-dsh-taskboard-board=""
+      data-dragging={dragId !== undefined ? '' : undefined}
       onDragEnter={event => {
         // Latch an external sidebar drag once, on entry: dragover cannot
         // read the payload (protected data store), but the advertised types
@@ -670,16 +678,27 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 // feedback, no column border, for moves into any column.
                 setDragOver(undefined)
                 const gap = gapAt(column.status, event.clientY)
-                const moved = dropGapRef.current === undefined
-                  || dropGapRef.current.status !== column.status
-                  || gap.beforeId !== dropGapRef.current.gap.beforeId
-                  || gap.top !== dropGapRef.current.gap.top
-                if (moved) {
-                  dropGapRef.current = { status: column.status, gap }
-                  setDropGap({ status: column.status, gap })
+                // React state only churns when the STRUCTURE of the gap
+                // changes (status + beforeId); the indicator's top is written
+                // straight into the DOM on every dragover (its ref exists
+                // once the bar is mounted), so a pointer move or a scroll can
+                // never trigger a re-render — no flicker, no storm.
+                dropGapRef.current = { status: column.status, beforeId: gap.beforeId, top: gap.top }
+                const indicator = indicatorRefs.current[column.status]
+                if (indicator !== null && indicator !== undefined) {
+                  indicator.style.top = `${gap.top}px`
+                }
+                if (dropGap === undefined || dropGap.status !== column.status || dropGap.beforeId !== gap.beforeId) {
+                  setDropGap({ status: column.status, beforeId: gap.beforeId, top: gap.top })
                 }
               }}
-              onDragLeave={() => {
+              onDragLeave={event => {
+                // A leave to a child of this column is not a leave of the
+                // column: crossing cards/elements must never flicker the
+                // highlight. relatedTarget null (left the window/drag end) is
+                // a real leave.
+                const related = event.relatedTarget as Node | null
+                if (related !== null && (event.currentTarget as HTMLElement).contains(related)) return
                 setDragOver(current => current === column.status ? undefined : current)
               }}
               onDrop={handleDrop(column.status)}
@@ -713,8 +732,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               >
                 {dropGap !== undefined && dropGap.status === column.status && (
                   <span
+                    ref={element => { indicatorRefs.current[column.status] = element }}
                     className={css.dropIndicator}
-                    style={{ top: dropGap.gap.top }}
+                    style={{ top: dropGap.top }}
                     aria-hidden="true"
                   />
                 )}

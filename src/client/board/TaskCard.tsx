@@ -154,17 +154,31 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
         setDragging(true)
         event.dataTransfer.setData('text/plain', task.id)
         event.dataTransfer.effectAllowed = 'move'
-        // Anchor the drag image on the pointer's center, so the ghost's
-        // visual position always matches the pointer — the insertion
-        // decision is made from the pointer, never from an offset ghost.
-        const element = event.currentTarget
-        event.dataTransfer.setDragImage(element, element.offsetWidth / 2, element.offsetHeight / 2)
+        // Self-drawn ghost: a CLONE of the card with every hover decoration
+        // (color bar / quick-run / attention ring) stripped — the native
+        // snap of the live element would freeze the hover palette and the
+        // play pill inside the drag image (the "ghost contains color dots"
+        // symptom). The clone is detached and removed after the snapshot;
+        // the pointer stays the anchor.
+        const source = event.currentTarget
+        const clone = source.cloneNode(true) as HTMLElement
+        clone.style.position = 'fixed'
+        clone.style.left = '-9999px'
+        clone.style.top = '0'
+        clone.style.width = `${source.offsetWidth}px`
+        for (const hidden of clone.querySelectorAll('[data-ghost-hide]')) {
+          (hidden as HTMLElement).style.display = 'none'
+        }
+        document.body.appendChild(clone)
+        event.dataTransfer.setDragImage(clone, source.offsetWidth / 2, source.offsetHeight / 2)
+        window.setTimeout(() => { clone.remove() }, 0)
       }}
       onDragEnd={() => { setDragging(false) }}
     >
       {onQuickRun !== undefined && (
         <span
           className={css.cardQuickRun}
+          data-ghost-hide=""
           role="button"
           tabIndex={running ? -1 : 0}
           title={t('card.quickRun')}
@@ -315,7 +329,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
         )}
       </span>
       {onColorPick !== undefined && (
-        <span className={css.cardColorBar} onClick={event => { event.stopPropagation() }}>
+        <span className={css.cardColorBar} data-ghost-hide="" onClick={event => { event.stopPropagation() }}>
           <button
             type="button"
             className={css.cardColorNone + (task.color === undefined ? ` ${css.cardColorOn}` : '')}
