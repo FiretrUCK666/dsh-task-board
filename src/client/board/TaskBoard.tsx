@@ -558,9 +558,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             onChange={event => { setFilter(event.target.value) }}
             aria-label={t('board.search')}
           />
+          {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
+              never the brand fill, so the bar reads quiet until there is a
+              real selection to manage. */}
           <Button
             size="sm"
-            variant={organizing ? 'primary' : 'ghost'}
+            variant="ghost"
+            pressed={organizing}
             onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
           >
             {t('board.organize')}
@@ -602,13 +606,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   {t('board.organizeDone')}
                 </Button>
               </span>
-              {/* Danger group: delete the selected cards — visibly separate
-                  from the color row so it can never read as "delete color". */}
-              <span className={css.organizeDanger}>
-                <Button size="sm" variant="danger" disabled={selectedCards.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
-                  {t('board.organizeDelete')}
-                </Button>
-              </span>
+              {/* Danger group: delete the selected cards — only once there
+                  IS a selection (an empty organize mode never flashes a
+                  destructive button next to the color row), and visibly
+                  separate from the color row via the hairline. */}
+              {selectedCards.length > 0 && (
+                <span className={css.organizeDanger}>
+                  <Button size="sm" variant="danger" disabled={selectedCards.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
+                    {t('board.organizeDelete')}
+                  </Button>
+                </span>
+              )}
             </span>
           </div>
         )}

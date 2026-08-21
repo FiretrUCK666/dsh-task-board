@@ -1756,6 +1756,14 @@ describe('linked sessions & bind', () => {
     expect(copy!.schedule).toMatchObject({ enabled: true, mode: 'chain', maxRuns: 3, runCount: 0 })
     // The source task is untouched; the board now holds both.
     expect(controller.getSnapshot().tasks).toHaveLength(2)
+    // A template lands at the TOP of its landing column (待规划) exactly like
+    // a manually created task — never appended to the bottom.
+    expect(copy!.status).toBe('backlog')
+    expect(copy!.order).toBe(0)
+    const backlogCards = controller.getSnapshot().tasks
+      .filter(task => task.status === 'backlog')
+      .sort((a, b) => a.order - b.order)
+    expect(backlogCards[0].id).toBe(copy!.id)
   })
 
   it('copyTask carries accent color and session rules as part of the template', () => {
@@ -2294,6 +2302,49 @@ describe('session automation rules (给会话定时发指令)', () => {
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '/goal', cron: '* * * * *', send: 'steer' })
     await controller.tickSessionRules(NOW + 120_000)
     expect(lines).toEqual(['/goal'])
+  })
+
+  it('updateSessionRule edits in place: cron change recomputes the due slot, invalid patches are rejected', () => {
+    const { controller } = ruleHarness(['s-a'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const rule = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '0 0 * * *', send: 'queue' })!
+    // Non-cron fields change without touching the due slot.
+    const before = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0]
+    expect(controller.updateSessionRule(task.id, rule.id, { instruction: 'nightly check', send: 'steer' })).toBe(true)
+    const after = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0]
+    expect(after.instruction).toBe('nightly check')
+    expect(after.send).toBe('steer')
+    expect(after.nextAt).toBe(before.nextAt)
+    // A cron change recomputes the due instant from now.
+    expect(controller.updateSessionRule(task.id, rule.id, { cron: '0 12 * * *' })).toBe(true)
+    const changed = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0]
+    expect(changed.cron).toBe('0 12 * * *')
+    expect(changed.nextAt).not.toBe(before.nextAt)
+    expect(changed.nextAt).toBeGreaterThan(NOW)
+    // Invalid patches leave the rule untouched.
+    expect(controller.updateSessionRule(task.id, rule.id, { cron: 'not a cron' })).toBe(false)
+    expect(controller.updateSessionRule(task.id, rule.id, { instruction: '' })).toBe(false)
+    const intact = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0]
+    expect(intact.cron).toBe('0 12 * * *')
+    expect(intact.instruction).toBe('nightly check')
+  })
+
+  it('a rule on a non-drivable column stays paused: never fires, keeps its slot', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const rule = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'steer' })!
+    controller.moveTask(task.id, 'done')
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toHaveLength(0) // paused on done: the due slot is a hold, never a retry storm
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.rules![0].enabled).toBe(true)
+    expect(row.rules![0].nextAt).toBe(rule.nextAt)
+    expect(row.rules![0].lastAt).toBeUndefined()
+    // Moving the task back to a drivable column resumes the rule.
+    controller.moveTask(task.id, 'todo')
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toEqual([['s-a', 'hello']])
   })
 })
 

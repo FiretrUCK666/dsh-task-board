@@ -1116,6 +1116,14 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   cursor: default;
 }
 
+/* A toggle-state ghost (aria-pressed): the mode reads through a gentle
+   press (hover tone + stronger border), never through the primary fill —
+   entering 整理 stays a quiet affordance. */
+.buttonPressed {
+  background: var(--dsh-tb-hover);
+  border-color: var(--dsw-alias-border-l3);
+}
+
 .dangerButton {
   color: var(--dsw-alias-label-primary-foreground);
   background: var(--dsh-tb-danger);
@@ -2401,6 +2409,14 @@ textarea.input {
 }
 
 .autoRuleSession {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.autoRuleSessionTitle {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -3206,36 +3222,20 @@ textarea.input {
   color: var(--dsw-alias-state-error-primary);
 }
 
-.reviewConfigHint {
-  font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
-  line-height: 1.5;
-}
-
-/* The session's real workspace + composed Agent: read-only facts, distinct
-   from the task card's run configuration (which feeds the next fresh run). */
-.reviewSessionFacts {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.reviewSessionFact {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-}
-
-.reviewSessionFactLabel {
-  flex: none;
-}
-
-.reviewSessionFactValue {
-  color: var(--dsw-alias-label-secondary);
+/* The session's real workspace + composed Agent: read-only value rows inside
+   the live config grid. Same box geometry as the selects (height / padding /
+   border / radius) so the row grammar is one; the meaning "read-only" is the
+   absence of a dropdown arrow, never a prose paragraph. */
+.reviewConfigValue {
+  display: block;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+  line-height: 32px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-input-bg);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3769,8 +3769,12 @@ textarea.input {
   background: var(--dsh-tb-surface-sunken);
 }
 
-/* The native color input, dressed as one round dot of the same size — the
-   inner swatch is rounded too, so it never shows a square among circles. */
+/* The native color input dressed as one round dot of the same size. The wrap
+   carries the LOOK: the picked custom color when one is active (data, applied
+   inline), otherwise a conic rainbow affordance ("open the picker" — named
+   colors only, never a white circle that reads as a second 移除颜色 dot).
+   The native input floats on top invisibly: still opens the picker and stays
+   focusable (the focus ring comes from the wrap's :focus-within). */
 .tagCustomWrap {
   position: relative;
   display: inline-flex;
@@ -3778,32 +3782,30 @@ textarea.input {
   width: 16px;
   height: 16px;
   border-radius: 50%;
+  overflow: hidden;
+}
+
+.tagCustomEmpty {
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+
+.tagCustomWrap:focus-within {
+  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsw-alias-state-business-primary);
 }
 
 .tagCustomColor {
   appearance: none;
   -webkit-appearance: none;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   padding: 0;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0;
   border-radius: 50%;
   background: transparent;
+  opacity: 0;
   cursor: pointer;
-}
-
-.tagCustomColor::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.tagCustomColor::-webkit-color-swatch {
-  border: none;
-  border-radius: 50%;
-}
-
-.tagCustomColor::-moz-color-swatch {
-  border: none;
-  border-radius: 50%;
 }
 
 /* --- organize (tidy) mode bar: the board header strip for bulk tagging and

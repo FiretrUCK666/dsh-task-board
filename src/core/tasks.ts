@@ -326,14 +326,25 @@ export type RuleReadiness =
   | { kind: 'paused'; status: 'backlog' | 'review' | 'done' }
   | { kind: 'active' }
 
+/**
+ * Whether the task's COLUMN currently allows automation to run. One shared
+ * judgment for EVERY automation kind — the task-level schedule rule and the
+ * session-level rules read the same set: only todo/running are drivable;
+ * backlog (shelved), review (a human decision is pending) and done
+ * (completed) pause whichever rule armed them.
+ */
+export function taskColumnAllowsAutomation(task: TaskRecord): boolean {
+  return task.status !== 'backlog' && task.status !== 'review' && task.status !== 'done'
+}
+
 /** The readiness of a task's schedule rule (see {@link RuleReadiness}). */
 export function ruleReadiness(task: TaskRecord): RuleReadiness {
   const schedule = task.schedule
   if (schedule === undefined || !schedule.enabled) return { kind: 'disabled' }
   // Every status outside the rule's active set (backlog/review/done) is a
   // pause: the rule must never drive a task a human is holding.
-  if (task.status === 'backlog' || task.status === 'review' || task.status === 'done') {
-    return { kind: 'paused', status: task.status }
+  if (!taskColumnAllowsAutomation(task)) {
+    return { kind: 'paused', status: task.status as 'backlog' | 'review' | 'done' }
   }
   return { kind: 'active' }
 }

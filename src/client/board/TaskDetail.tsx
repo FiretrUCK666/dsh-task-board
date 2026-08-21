@@ -6,13 +6,13 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { BoardController, PendingInteractionKind } from '../../core/controller.ts'
-import { DEFAULT_PRESETS, LocalStoragePresetStore, type SchedulePreset } from '../../core/presets.ts'
-import { describeCron, isValidCron, nextRunAtMs } from '../../core/schedule.ts'
+import { LocalStoragePresetStore } from '../../core/presets.ts'
+import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, ruleReadiness, taskBindsOf, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
-import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
+import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Chip, type ChipKind } from './Chip.tsx'
@@ -20,6 +20,8 @@ import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
 import { mergedPresets, PresetManager } from './PresetManager.tsx'
+import { CronField, SessionRulesSection } from './automation-ui.tsx'
+import { cronHumanLabel } from './cron-label.ts'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
@@ -113,6 +115,11 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
         }}
         leading={
           <span className={css.sessionRowLeading} title={row.title}>
+            {/* The SAME leading grammar as a linked row: a kind icon (play =
+                this task's own run, link = an externally bound session), the
+                session title, then the optional workspace label — one row
+                skeleton for every session of a task. */}
+            <Icon name="play" className={css.sessionRowIcon} />
             <span className={css.sessionRowName}>{row.title}</span>
           </span>
         }
@@ -166,13 +173,16 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
     )
   }
   const waiting = row.display.waitingKind
+  // ONE chip grammar with the run rows: every linked row carries a state chip
+  // (waiting / running / completed / idle) — a row never reads as "no state"
+  // next to a run row that always has one.
   const chip = waiting !== undefined
     ? { kind: 'warn' as const, label: t(`waiting.${waiting}` as 'waiting.approval'), spinner: true }
     : row.display.state === 'running'
       ? { kind: 'warn' as const, label: t('detail.result.running'), spinner: true }
       : row.display.state === 'succeeded'
         ? { kind: 'success' as const, label: t('detail.linkedDone') }
-        : undefined
+        : { kind: 'muted' as const, label: t('detail.linkedIdle') }
   // The SAME grammar as a run row: the session's activity window (its rounds
   // on this task — board runs and externally-observed turns alike) plus its
   // comment thread (count + newest body; the state chip is the row's own).
@@ -230,51 +240,13 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
   )
 }
 
-/** Short weekday names (0 = Sunday), locale-aware. */
-const WEEKDAYS_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-/** Human label for a list of weekday numbers. */
-function weekdayLabel(weekdays: readonly number[]): string {
-  const names = isEnglish() ? WEEKDAYS_EN : WEEKDAYS_ZH
-  const joiner = isEnglish() ? ', ' : '、'
-  return weekdays.map(day => names[day] ?? String(day)).join(joiner)
-}
-
-/** Human-readable description of the cron text currently in the editor. */
-function cronDescriptionLabel(expr: string): string {
-  const description = describeCron(expr)
-  if (description === undefined) return t('detail.schedule.invalid')
-  switch (description.kind) {
-    case 'everyMinute':
-      return t('schedule.desc.everyMinute')
-    case 'everyMinutes':
-      return t('schedule.desc.everyMinutes', { n: String(description.minutes) })
-    case 'everyHours':
-      return t('schedule.desc.everyHours', { n: String(description.hours) })
-    case 'dailyAt':
-      return t('schedule.desc.dailyAt', { time: description.time })
-    case 'weekdaysAt':
-      return t('schedule.desc.weekdaysAt', { time: description.time })
-    case 'weeklyAt':
-      return t('schedule.desc.weeklyAt', {
-        days: weekdayLabel(description.weekdays),
-        time: description.time,
-      })
-    case 'monthlyAt':
-      return t('schedule.desc.monthlyAt', {
-        days: description.days.map(String).join(isEnglish() ? ', ' : '、'),
-        time: description.time,
-      })
-    case 'custom':
-      return t('schedule.desc.custom')
-  }
-}
-
 /** The automation module (task-level orchestration): one collapsed line = the
  *  live state; the expanded editor = 触发方式 (分段) + 当前模式的配置 + 按状态
  *  显隐的最小操作 (跳过本次 / 停止接续) — no save/cancel (即改即生效), and its
- *  boundary with the board-level 自动巡航 is one quiet line, not prose. */
+ *  boundary with the board-level 自动巡航 is one quiet line, not prose.
+ *  Session-level rules live in the SAME disclosure below the schedule editor
+ *  through the shared SessionRulesSection (the module the board's 自动化
+ *  overview renders verbatim — one rule system, never a second copy). */
 function AutomationSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
   const schedule = task.schedule
   // `||` (not `??`) falls back to the default even for an empty stored
@@ -496,37 +468,18 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
       {mode === 'cron' ? (
         <div className={css.scheduleGrid}>
           <span className={css.scheduleLabel}>{t('detail.schedule.cron')}</span>
-          <span className={css.scheduleCronRow}>
-            <input
-              className={`${css.input} ${css.scheduleInput}${error !== undefined ? ` ${css.scheduleInputInvalid}` : ''}`}
-              value={cron}
-              placeholder="0 9 * * *"
-              spellCheck={false}
-              aria-label={t('detail.schedule.cron')}
-              onChange={event => { setCron(event.target.value); setError(undefined) }}
-              onBlur={() => { saveCron(cron) }}
-              onKeyDown={event => { if (event.key === 'Enter') saveCron(cron) }}
-            />
-            <span className={css.selectWrap}>
-              <select
-                className={css.schedulePreset}
-                value=""
-                aria-label={t('detail.schedule.presets')}
-                onChange={event => { applyPreset(event.target.value) }}
-              >
-                <option value="">{t('detail.schedule.presets')}…</option>
-                {presets.map(preset => (
-                  <option key={preset.id} value={preset.cron}>
-                    {preset.label}
-                    {!presetIsDefault(preset) ? ` (${t('detail.schedule.presets.custom')})` : ''}
-                  </option>
-                ))}
-              </select>
-            </span>
-            <Button onClick={() => { setShowPresets(true) }}>
-              {t('detail.schedule.managePresets')}
-            </Button>
-          </span>
+          {/* The ONE cron grammar (input + presets + manager) shared with the
+              session-rule form — expressions always speak alike. */}
+          <CronField
+            value={cron}
+            presets={presets}
+            invalid={error !== undefined}
+            onChange={next => { setCron(next); setError(undefined) }}
+            onCommit={saveCron}
+            onPreset={applyPreset}
+            onManagePresets={() => { setShowPresets(true) }}
+            label={t('detail.schedule.cron')}
+          />
         </div>
       ) : (
         <>
@@ -577,7 +530,7 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
         <>
           <div className={css.scheduleActionRow}>
             <span className={css.scheduleMeta}>
-              {cronDescriptionLabel(cron)}
+              {cronHumanLabel(cron)}
               {' · '}
               {readiness.kind === 'active'
                 ? `${t('detail.schedule.nextRun')} ${nextLabel}`
@@ -598,6 +551,11 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
           )}
         </>
       )}
+
+      {/* Session-level rules: the shared module of the automation overview —
+          the board's 自动化 panel renders this verbatim, so the session-rule
+          system has exactly ONE UI and it is always complete. */}
+      <SessionRulesSection controller={controller} task={task} />
 
       {showPresets && (
         <PresetManager
@@ -631,11 +589,6 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
       )}
     </Disclosure>
   )
-}
-
-/** Whether a preset id belongs to the built-in defaults. */
-function presetIsDefault(preset: SchedulePreset): boolean {
-  return DEFAULT_PRESETS.some(candidate => candidate.id === preset.id)
 }
 
 /** Task detail overlay. */

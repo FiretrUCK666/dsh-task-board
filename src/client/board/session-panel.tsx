@@ -132,27 +132,31 @@ export function SessionWaitingNotice({ waiting }: { waiting: PendingInteractionK
   )
 }
 
-/** The session facts block: its real workspace + composed Agent (read-only). */
+/**
+ * The session's real workspace + composed Agent: read-only value rows INSIDE
+ * the live config grid (the same row grammar as the model/effort/permission
+ * selects, same field order as the task detail's 运行配置) — one module,
+ * no separate facts strip, no explanatory paragraph. A value row renders in
+ * the same box geometry as a select, so the read-only meaning is carried by
+ * the absence of a dropdown affordance, never by prose.
+ */
 export function SessionFacts({ info }: { info: { cwd?: string; agentPreset?: string } | undefined }) {
   if (info === undefined) return null
   return (
-    <div className={css.reviewSessionFacts}>
-      <span className={css.reviewSessionFact}>
-        <span className={css.reviewSessionFactLabel}>{t('review.sessionWorkspace')}</span>
-        <span
-          className={css.reviewSessionFactValue}
-          title={info.cwd ?? undefined}
-        >
+    <>
+      <span className={css.reviewConfigRow}>
+        <span className={css.reviewConfigLabel}>{t('review.sessionWorkspace')}</span>
+        <span className={css.reviewConfigValue} title={info.cwd ?? undefined}>
           {info.cwd !== undefined ? workspaceLabelOf(info.cwd) : t('review.sessionUnknown')}
         </span>
       </span>
-      <span className={css.reviewSessionFact}>
-        <span className={css.reviewSessionFactLabel}>{t('review.sessionAgent')}</span>
-        <span className={css.reviewSessionFactValue}>
+      <span className={css.reviewConfigRow}>
+        <span className={css.reviewConfigLabel}>{t('review.sessionAgent')}</span>
+        <span className={css.reviewConfigValue} title={info.agentPreset ?? undefined}>
           {info.agentPreset !== undefined ? info.agentPreset : t('review.sessionDefaultAgent')}
         </span>
       </span>
-    </div>
+    </>
   )
 }
 
@@ -405,6 +409,11 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
         <span className={css.reviewConfigUnavailable}>{t('review.configUnavailable')}</span>
       ) : (
         <div className={css.reviewConfigGrid}>
+          {/* The session's real composition first, matching the task detail's
+              run-config field order: workspace → agent → model → effort →
+              permission. Read-only rows are plain value boxes (no dropdown
+              affordance); the selects apply instantly. */}
+          <SessionFacts info={controller.sessionInfo(sessionId)} />
           <span className={css.reviewConfigRow}>
             <span className={css.reviewConfigLabel}>{t('review.model')}</span>
             <span className={css.selectWrap}>
@@ -478,8 +487,6 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
         </div>
       )}
       {configMessage !== undefined && <span className={css.reviewConfigMessage}>{configMessage}</span>}
-      <SessionFacts info={controller.sessionInfo(sessionId)} />
-      <span className={css.reviewConfigHint}>{t('review.sessionHint')}</span>
     </section>
   )
 }

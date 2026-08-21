@@ -27,8 +27,6 @@ export interface TaskSessionRow {
   /** The representative plain-run execution, when this session carried a run
    *  (opens its review page; external sessions carry none). */
   executionId?: string
-  /** Quiet run sequence (run rows; comments/refine are never numbered). */
-  runIndex?: number
   /** Live session state (the same shape every SessionRow reads). */
   display: SessionDisplay
   /** When the session last saw activity. */
@@ -123,7 +121,6 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
       sessionId,
       title: ctx.titleOf(sessionId) ?? task.title,
       executionId: execution.id,
-      runIndex: plainRunsOf(task).findIndex(run => run.id === execution.id) + 1,
       display: sessionDisplay(task, execution, ctx.pendingInteractionOf(sessionId)),
       updatedAt: sessionTimes(task, execution).endedAt ?? execution.startedAt,
       unviewed: executionUnviewed(task, execution),

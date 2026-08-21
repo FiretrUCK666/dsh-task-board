@@ -1,15 +1,24 @@
 /**
  * Automation core: the unified read-side projection (task-level schedule +
- * session rules in ONE shape) plus the rule model guards.
+ * session rules in ONE shape) plus the rule model guards and the shared
+ * readiness semantics (session rules read the same column judgment as the
+ * task schedule).
  */
 import { describe, expect, it } from 'vitest'
-import { automationRowsOf, isSessionRule, normalizeSessionRules, withSessionRules, type SessionRule } from '../src/core/automation.ts'
-import { createTask } from '../src/core/tasks.ts'
+import {
+  automationRowsOf, isSessionRule, normalizeSessionRules, sessionRuleReadiness,
+  sessionRuleOf, withSessionRules, type SessionRule,
+} from '../src/core/automation.ts'
+import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 
 function rule(): SessionRule {
   return { id: 'r1', sessionId: 's-1', instruction: '/goal', cron: '0 9 * * *', send: 'queue', enabled: true, nextAt: NOW + 3_600_000 }
+}
+
+function task(status: TaskRecord['status']): TaskRecord {
+  return { ...createTask({ title: 't', description: '', prompt: '' }, NOW, 'task-1'), status }
 }
 
 describe('automationRowsOf', () => {
@@ -38,5 +47,29 @@ describe('normalizeSessionRules', () => {
     ])
     expect(normalized).toHaveLength(1)
     expect(isSessionRule(normalized![0])).toBe(true)
+  })
+})
+
+describe('sessionRuleReadiness (one semantics with the task schedule)', () => {
+  it('is active only while the task sits in a drivable column', () => {
+    expect(sessionRuleReadiness(task('todo'), rule())).toEqual({ kind: 'active' })
+    expect(sessionRuleReadiness(task('running'), rule())).toEqual({ kind: 'active' })
+    expect(sessionRuleReadiness(task('backlog'), rule())).toEqual({ kind: 'paused', status: 'backlog' })
+    expect(sessionRuleReadiness(task('review'), rule())).toEqual({ kind: 'paused', status: 'review' })
+    expect(sessionRuleReadiness(task('done'), rule())).toEqual({ kind: 'paused', status: 'done' })
+  })
+
+  it('is disabled when the rule is toggled off — regardless of the column', () => {
+    expect(sessionRuleReadiness(task('todo'), { ...rule(), enabled: false })).toEqual({ kind: 'disabled' })
+    expect(sessionRuleReadiness(task('done'), { ...rule(), enabled: false })).toEqual({ kind: 'disabled' })
+  })
+})
+
+describe('sessionRuleOf (projection row back to the rule shape)', () => {
+  it('round-trips the row fields including the optional last fired instant', () => {
+    const row = automationRowsOf(withSessionRules(task('todo'), [{ ...rule(), lastAt: NOW }]))[0]
+    expect(sessionRuleOf(row as Extract<ReturnType<typeof automationRowsOf>[number], { kind: 'session-rule' }>)).toMatchObject({
+      id: 'r1', sessionId: 's-1', instruction: '/goal', cron: '0 9 * * *', send: 'queue', enabled: true, nextAt: NOW + 3_600_000, lastAt: NOW,
+    })
   })
 })

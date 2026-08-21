@@ -21,12 +21,15 @@ export type ButtonVariant = 'primary' | 'ghost' | 'danger'
  *  `size="sm"` is the quiet row/header variant (view-session, refresh, row
  *  actions): one compact size for every secondary in-list affordance, so the
  *  board never mixes a full-size button into a row. */
-export function Button({ variant = 'ghost', size, type = 'button', className, disabled, onClick, title, children }: {
+export function Button({ variant = 'ghost', size, type = 'button', className, disabled, pressed, onClick, title, children }: {
   variant?: ButtonVariant
   size?: 'sm'
   type?: 'button' | 'submit'
   className?: string
   disabled?: boolean
+  /** Toggle-state styling (aria-pressed): an active mode reads through a
+   *  gentle press, never through the primary/danger fill. */
+  pressed?: boolean
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void
   title?: string
   children: ReactNode
@@ -37,8 +40,9 @@ export function Button({ variant = 'ghost', size, type = 'button', className, di
   return (
     <button
       type={type}
-      className={`${base}${size === 'sm' ? ` ${css.buttonSm}` : ''}${className !== undefined ? ` ${className}` : ''}`}
+      className={`${base}${size === 'sm' ? ` ${css.buttonSm}` : ''}${pressed === true ? ` ${css.buttonPressed}` : ''}${className !== undefined ? ` ${className}` : ''}`}
       disabled={disabled}
+      aria-pressed={pressed === true ? 'true' : undefined}
       onClick={onClick}
       title={title}
     >
@@ -209,8 +213,15 @@ export function ColorSwatches({ value, onChange, none = true, custom = true }: {
         />
       ))}
       {custom && (
+        /* The native custom-color dot: NOT a paint of the current value
+           (that read as a plain white circle next to 「移除颜色」 when no
+           custom color was picked — two white dots). The wrap carries the
+           look: the picked custom color when one IS active, a conic rainbow
+           affordance when not; the native input sits on top invisibly
+           (still opens the picker / stays keyboard-focusable). */
         <span
-          className={`${css.tagCustomWrap}${isCustom ? ` ${css.tagSwatchOn}` : ''}`}
+          className={`${css.tagCustomWrap}${isCustom ? ` ${css.tagSwatchOn}` : ` ${css.tagCustomEmpty}`}`}
+          style={isCustom ? { background: value } : undefined}
           title={t('color.custom')}
         >
           <input

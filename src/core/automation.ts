@@ -10,6 +10,7 @@
  * action(send instruction, queue|steer). Pure and unit-testable.
  */
 import type { TaskRecord } from './tasks.ts'
+import { taskColumnAllowsAutomation } from './tasks.ts'
 import { nextRunAtMs } from './schedule.ts'
 
 /** One session-scoped automation rule of a task. */
@@ -72,6 +73,42 @@ export function normalizeSessionRules(raw: unknown): SessionRule[] | undefined {
 /** Read-only rule view lifted off a task (empty when none). */
 export function sessionRulesOf(task: TaskRecord): SessionRule[] {
   return task.rules ?? []
+}
+
+/** The projection row back to a full rule (the rows are the single read shape;
+ *  this is the one bridge back for consumers that need the rule's own shape,
+ *  e.g. the readiness judgment). */
+export function sessionRuleOf(row: Extract<AutomationRow, { kind: 'session-rule' }>): SessionRule {
+  return {
+    id: row.ruleId,
+    sessionId: row.sessionId,
+    instruction: row.instruction,
+    cron: row.cron,
+    send: row.send,
+    enabled: row.enabled,
+    nextAt: row.nextAt,
+    ...row.lastAt !== undefined ? { lastAt: row.lastAt } : {},
+  }
+}
+
+/**
+ * The readiness of a session rule — ONE semantics with the task-level
+ * schedule (ruleReadiness): a rule is active only while its task sits in a
+ * drivable column (todo/running); backlog/review/done pause it (the reason
+ * is the task's own status); a toggled-off rule is disabled. The ticker
+ * skips paused rules (keeping their due slot — the pause is a hold, not a
+ * drop), exactly like the task scheduler treats a paused schedule.
+ */
+export type SessionRuleReadiness =
+  | { kind: 'disabled' }
+  | { kind: 'paused'; status: 'backlog' | 'review' | 'done' }
+  | { kind: 'active' }
+
+export function sessionRuleReadiness(task: TaskRecord, rule: SessionRule): SessionRuleReadiness {
+  if (!rule.enabled) return { kind: 'disabled' }
+  return taskColumnAllowsAutomation(task)
+    ? { kind: 'active' }
+    : { kind: 'paused', status: task.status as 'backlog' | 'review' | 'done' }
 }
 
 /**

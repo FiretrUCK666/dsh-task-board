@@ -6,12 +6,13 @@
  * constants and are never persisted.
  */
 import { useState } from 'react'
-import { describeCron, isValidCron } from '../../core/schedule.ts'
-import { isEnglish, t } from '../locales.ts'
+import { isValidCron } from '../../core/schedule.ts'
+import { t } from '../locales.ts'
 import css from '../board.module.css'
 import {
   DEFAULT_PRESETS, mergePresets, type LocalStoragePresetStore, type SchedulePreset,
 } from '../../core/presets.ts'
+import { cronHumanLabel } from './cron-label.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Dialog } from './Dialog.tsx'
 import { Button } from './ui.tsx'
@@ -21,32 +22,15 @@ export function mergedPresets(store: LocalStoragePresetStore): SchedulePreset[] 
   return mergePresets(DEFAULT_PRESETS, store.load())
 }
 
-/** Short weekday names (0 = Sunday), locale-aware. */
-const WEEKDAYS_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+/** Whether a preset id belongs to the built-in defaults. */
+export function presetIsDefault(preset: SchedulePreset): boolean {
+  return DEFAULT_PRESETS.some(candidate => candidate.id === preset.id)
+}
 
-/** Human cron description for the manager rows ('' when invalid). */
+/** Human cron hint for the manager rows ('' when invalid — the raw expression
+ *  is noise there; the row already shows it in its own input). */
 function presetCronHint(cron: string): string {
-  const description = describeCron(cron)
-  if (description === undefined) return ''
-  switch (description.kind) {
-    case 'everyMinute': return t('schedule.desc.everyMinute')
-    case 'everyMinutes': return t('schedule.desc.everyMinutes', { n: String(description.minutes) })
-    case 'everyHours': return t('schedule.desc.everyHours', { n: String(description.hours) })
-    case 'dailyAt': return t('schedule.desc.dailyAt', { time: description.time })
-    case 'weekdaysAt': return t('schedule.desc.weekdaysAt', { time: description.time })
-    case 'weeklyAt': return t('schedule.desc.weeklyAt', {
-      days: description.weekdays
-        .map(day => (isEnglish() ? WEEKDAYS_EN : WEEKDAYS_ZH)[day] ?? String(day))
-        .join(isEnglish() ? ', ' : '、'),
-      time: description.time,
-    })
-    case 'monthlyAt': return t('schedule.desc.monthlyAt', {
-      days: description.days.map(String).join(isEnglish() ? ', ' : '、'),
-      time: description.time,
-    })
-    case 'custom': return t('schedule.desc.custom')
-  }
+  return cronHumanLabel(cron, '')
 }
 
 /** One editable row: name + cron + save/delete. */

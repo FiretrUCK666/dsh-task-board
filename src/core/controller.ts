@@ -25,7 +25,7 @@ import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, taskBindsOf, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, taskBindsOf, taskColumnAllowsAutomation, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -702,9 +702,14 @@ export class BoardController {
         ? { rules: source.rules.map(rule => ({ ...rule, id: this.uuid() })) }
         : {},
     }
-    this.tasks = [...this.tasks, task]
+    // A template is a NEW card: it lands at the top of its landing column
+    // (待规划) exactly like a manually created task — a copied card reads as
+    // the newest of the column, never appended to the bottom.
+    this.tasks = promoteToColumnTop([...this.tasks, task], task.id, task.status, this.now())
     this.persistAndNotify()
-    return task
+    // Re-read the promoted row (createTask's contract): the copy the caller
+    // sees IS the card on the board, never the pre-promotion object.
+    return this.tasks.find(candidate => candidate.id === task.id) ?? task
   }
 
   /**
@@ -1495,6 +1500,47 @@ export class BoardController {
     return undefined
   }
 
+  /**
+   * Edit an existing session rule: replace its target / instruction / cron /
+   * send mode in place (the rule id and enable state stay). An invalid patch
+   * (blank instruction, unparseable cron, unknown rule) is rejected outright
+   * — the old rule is left untouched, never half-applied. A cron change
+   * recomputes the due instant from now (the rule restarts its schedule); a
+   * send-mode/target change never touches the due slot.
+   * @returns true when the rule was updated.
+   */
+  updateSessionRule(taskId: string, ruleId: string, patch: {
+    sessionId?: string
+    instruction?: string
+    cron?: string
+    send?: 'queue' | 'steer'
+  }): boolean {
+    const now = this.now()
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId || task.rules === undefined) return task
+      const rules = task.rules.map(rule => {
+        if (rule.id !== ruleId) return rule
+        const instruction = patch.instruction?.trim() ?? rule.instruction
+        const cron = patch.cron?.trim() ?? rule.cron
+        const sessionId = patch.sessionId ?? rule.sessionId
+        const send = patch.send ?? rule.send
+        // Validate BEFORE applying: an invalid rule is never half-updated.
+        if (instruction === '' || cron === '' || sessionId === '') return rule
+        if (cron !== rule.cron && nextRunAtMs(cron, now) === undefined) return rule
+        const nextAt = cron !== rule.cron ? nextRunAtMs(cron, now) ?? rule.nextAt : rule.nextAt
+        const updated = { ...rule, sessionId, instruction, cron, send, nextAt }
+        if (updated.sessionId === rule.sessionId && updated.instruction === rule.instruction
+          && updated.cron === rule.cron && updated.send === rule.send) return rule
+        changed = true
+        return updated
+      })
+      return withSessionRules(task, rules)
+    })
+    if (changed) this.persistAndNotify()
+    return changed
+  }
+
   /** Toggle a session rule's enabled state (the row's live switch). */
   toggleSessionRule(taskId: string, ruleId: string, enabled: boolean): void {
     let changed = false
@@ -1538,6 +1584,11 @@ export class BoardController {
       for (const rule of rules) {
         if (!rule.enabled) continue
         if (byId[rule.sessionId] === undefined) continue // session gone: keep due slot
+        // The SAME readiness semantics as the task-level schedule: a rule is
+        // active only while the task sits in a drivable column. A paused rule
+        // keeps its due slot (the pause is a hold, never a drop) and is NOT
+        // retried every tick — the across-status skip is what a pause means.
+        if (!taskColumnAllowsAutomation(task)) continue
         if (rule.nextAt > now) continue
         // Fire, send-mode consistent with the comment SendModeToggle grammar:
         // queue = the instruction enters the task's comment queue and the

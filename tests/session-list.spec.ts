@@ -47,13 +47,13 @@ describe('taskSessionsOf (统一会话列表)', () => {
   it('lists run sessions — one per session, latest run as the representative', () => {
     let task = withOneRun()
     // A second run reusing s-1 must not add a row, and the representative is
-    // the latest one (runIndex 2).
+    // the latest one.
     task = { ...task, executions: [...task.executions, {
       id: 'e-2', sessionId: 's-1', startedAt: NOW + 10, endedAt: NOW + 11, result: 'succeeded' as const, error: undefined,
     }] }
     const rows = taskSessionsOf(task, ctx())
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ sessionId: 's-1', executionId: 'e-2', runIndex: 2 })
+    expect(rows[0]).toMatchObject({ sessionId: 's-1', executionId: 'e-2' })
   })
 
   it('appends linked rows that are not run sessions; run wins on a clash', () => {
