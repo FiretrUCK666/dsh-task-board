@@ -12,14 +12,26 @@
  */
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController, PendingInteractionKind, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
+import type { WireQuestion } from '../../core/question-rpc.ts'
+import type { TaskRecord } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { Markdown } from './Markdown.tsx'
 import { sumUsage, type TranscriptLine } from './review-transcript.ts'
-import { JumpToLatest } from './use-transcript.tsx'
-import { Notice } from './ui.tsx'
+import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow } from './use-transcript.tsx'
+import { Chip, type ChipKind } from './Chip.tsx'
+import { CommentsThread } from './CommentsThread.tsx'
+import type { CommentView } from './comment-thread.ts'
+import { SessionContextBlock } from './SessionContextBlock.tsx'
+import type { SessionContext } from './use-interaction.ts'
+import { InteractionCard } from './InteractionCard.tsx'
+import { AttachmentStrip } from './AttachmentStrip.tsx'
+import { admitDraftImages, type DraftImage, type HostImageRefView } from './attach.ts'
+import { commentDraftKey, draftStore } from './drafts.ts'
+import { PromptInput } from './PromptInput.tsx'
+import { Button, Notice, SendModeToggle } from './ui.tsx'
 
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
@@ -510,5 +522,196 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
         permissionOptions={permissionOptions}
       />
     </>
+  )
+}
+
+/**
+ * THE session rail — the one composition every session panel renders (the
+ * execution review page and the linked-session panel share it verbatim):
+ * session context block → live state row (chip + updated time; absent hides
+ * the row) → the fixed rail head (context meter + live config + session
+ * facts, own padding/separation) → fixed thread header → one quiet hint line
+ * → the comment thread in its OWN scroll region (auto-follow + 滑到最新) →
+ * the pending interaction card → the caller's pinned composer. Callers pass
+ * data and their send semantics; the grammar, the follow mechanics and the
+ * hint line live here exactly once — no panel can drift again.
+ */
+export function SessionRail({ context, contextOpen, onToggleContext, stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, hint, task, thread, onCancelComment, interaction, composer }: {
+  context: SessionContext
+  contextOpen: boolean
+  onToggleContext: () => void
+  /** The live state row (chip + updated time); absent hides the whole row. */
+  stateChip?: { kind: ChipKind; label: string; spinner?: boolean }
+  updatedAt?: string
+  sessionId: string | undefined
+  controller: BoardController
+  projections: TranscriptProjectionsShape | undefined
+  lines: readonly TranscriptLine[] | undefined
+  onChanged?: () => void
+  reloadKey?: unknown
+  /** The quiet line under the thread header: a blocking reason, or the drive
+   *  explanation (the default when absent). */
+  hint?: string
+  task: TaskRecord
+  thread: readonly CommentView[]
+  onCancelComment: (roundId: string) => boolean
+  /** The pending native question (plan confirm / ask); absent hides the card. */
+  interaction: WireQuestion | undefined
+  /** The pinned composer (the panel's send semantics stay in the caller). */
+  composer: ReactNode
+}) {
+  // The comment thread auto-follows its latest round (fingerprint-gated) and
+  // scrolls in its OWN region: the rail head and the thread header stay
+  // fixed, the list scrolls, and 滑到最新 jumps to the newest comment. One
+  // mechanism for every panel — the region's size also depends on the async
+  // rail head, so a resize follower re-pins while at the bottom.
+  const threadScrollRef = useRef<HTMLDivElement | null>(null)
+  const [threadAtBottom, setThreadAtBottom] = useState(true)
+  const threadAtBottomRef = useRef(true)
+  useEffect(() => { threadAtBottomRef.current = threadAtBottom })
+  useResizeFollow(threadScrollRef, threadAtBottomRef)
+  const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
+  useEffect(() => {
+    const element = threadScrollRef.current
+    if (element === null || !threadAtBottom) return
+    element.scrollTop = element.scrollHeight
+  }, [threadFingerprint, threadAtBottom])
+  const onThreadScroll = (): void => {
+    const element = threadScrollRef.current
+    if (element === null) return
+    setThreadAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM_PX)
+  }
+  const jumpThread = (): void => {
+    const element = threadScrollRef.current
+    if (element === null) return
+    element.scrollTop = element.scrollHeight
+    setThreadAtBottom(true)
+  }
+  return (
+    <>
+      <SessionContextBlock context={context} open={contextOpen} onToggle={onToggleContext} />
+      {stateChip !== undefined && updatedAt !== undefined && (
+        <div className={css.sessionFacts}>
+          <Chip
+            kind={stateChip.kind}
+            icon={stateChip.spinner === true ? <span className={css.spinner} aria-hidden="true" /> : undefined}
+          >
+            {stateChip.label}
+          </Chip>
+          <span className={css.sessionFactTime}>{t('detail.sessionUpdated')} {updatedAt}</span>
+        </div>
+      )}
+      <div className={css.sessionRailHead}>
+        <SessionRailHead
+          sessionId={sessionId}
+          controller={controller}
+          projections={projections}
+          lines={lines}
+          onChanged={onChanged}
+          reloadKey={reloadKey}
+        />
+      </div>
+      <div className={css.reviewThreadHeader}>
+        <h4 className={css.reviewThreadTitle}>
+          {t('review.comments')}
+          <span className={css.reviewThreadCount}>{thread.length}</span>
+        </h4>
+      </div>
+      {/* One quiet line: the drive explanation in the normal case, the
+          blocking reason (done task / gone session) in the exceptional
+          case — never a stack of texts, never inside the send row. */}
+      <p className={css.detailHint}>{hint ?? t('detail.sessionDriveHint')}</p>
+      <div className={css.sessionRailScroll} ref={threadScrollRef} onScroll={onThreadScroll}>
+        <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
+        <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
+      </div>
+      {interaction !== undefined && sessionId !== undefined && (
+        <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
+      )}
+      {composer}
+    </>
+  )
+}
+
+/**
+ * The pinned composer of the rail — one grammar for every session panel:
+ * prompt input (slash autocomplete) + attachment strip + send-mode switch
+ * (排队/插话) + the primary send button. Draft / steer mode / attached
+ * images live here (the per-session draft slot, shared across panels); the
+ * caller supplies only the send semantics:
+ *   - onDrive(text) schedules a session-anchored comment round (true = saved,
+ *     the draft clears) — / commands route through the native registry;
+ *   - onSteer(text) delivers the comment straight to the session now;
+ *   - onSteerImages(text, refs) delivers text + admitted image refs at once
+ *     (images always go immediately — they belong to the current exchange).
+ */
+export function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, onDrive, onSteer, onSteerImages }: {
+  controller: BoardController
+  taskId: string
+  sessionId: string | undefined
+  placeholder: string
+  /** Extra rejection state (done task / gone session): blocks the send. */
+  disabled?: boolean
+  onDrive: (text: string) => boolean
+  onSteer: (text: string) => Promise<boolean>
+  onSteerImages: (text: string, refs: readonly HostImageRefView[]) => Promise<boolean>
+}) {
+  const storeKey = sessionId === undefined ? undefined : commentDraftKey(taskId, sessionId)
+  const [draft, setDraft] = useState<string>(() => (storeKey !== undefined ? draftStore.get(storeKey) ?? '' : ''))
+  const [steer, setSteer] = useState(false)
+  const [attachedImages, setAttachedImages] = useState<readonly DraftImage[]>([])
+  const mentions = controller.sessionLabelsOf(taskId).map(({ sessionId, title }) => ({ id: sessionId, title }))
+  const clear = (): void => {
+    setDraft('')
+    setAttachedImages([])
+    if (storeKey !== undefined) draftStore.clear(storeKey)
+  }
+  const submit = (): void => {
+    const text = draft.trim()
+    if ((text === '' && attachedImages.length === 0) || disabled === true) return
+    if (attachedImages.length > 0) {
+      // Images go out immediately through the steer path — a picture belongs
+      // to the current exchange, not a queue.
+      void admitDraftImages(attachedImages).then(refs => {
+        if (refs.length === 0) return
+        void onSteerImages(text, refs).then(ok => { if (ok) clear() })
+      })
+      return
+    }
+    // Send mode: 排队 = the dispatcher injects a session-anchored message
+    // round (same queue as every comment); 插话 = deliver straight to the
+    // native session now, bypassing queue/budget/cruise. One message, two
+    // send modes, one grammar everywhere.
+    if (steer) {
+      void onSteer(text).then(ok => { if (ok) clear() })
+      return
+    }
+    if (onDrive(text)) clear()
+  }
+  return (
+    <div className={css.reviewComposer}>
+      <PromptInput
+        value={draft}
+        onChange={next => {
+          setDraft(next)
+          if (storeKey !== undefined) draftStore.set(storeKey, next)
+        }}
+        placeholder={placeholder}
+        rows={3}
+        controller={controller}
+        mentions={mentions}
+      />
+      <div className={css.reviewComposerRow}>
+        <AttachmentStrip images={attachedImages} onChange={setAttachedImages} />
+        <SendModeToggle steer={steer} onChange={setSteer} />
+        <Button
+          variant="primary"
+          disabled={(draft.trim() === '' && attachedImages.length === 0) || disabled === true}
+          onClick={submit}
+        >
+          {t('review.commentSend')}
+        </Button>
+      </div>
+    </div>
   )
 }

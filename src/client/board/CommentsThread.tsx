@@ -17,7 +17,7 @@ import { formatDateTime } from './TaskCard.tsx'
 /** Renders the task's comment views (oldest first) with cancel affordances. */
 export function CommentsThread({ task, views, onCancel }: {
   task: TaskRecord
-  views: CommentView[]
+  views: readonly CommentView[]
   /** Cancel a pending round (a saved/queued round is removed on true). */
   onCancel: (roundId: string) => boolean
 }) {
