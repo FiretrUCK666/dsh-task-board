@@ -20,7 +20,7 @@ import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource }
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, isCruiseWindow, normalizeWindow, setCruiseSchedule as applySchedule, sortWindows, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessageText, withinGrace, type ActivityBook } from './session-activity.ts'
-import { createTag, normalizeCatalog, recolorTag, removeTag, renameTag, withTaskColor, withTaskTags, type Tag, type TagCatalog } from './tags.ts'
+import { withTaskColor } from './colors.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
@@ -301,8 +301,6 @@ export interface ControllerDeps {
   reconcileDebounceMs?: number
   /** Cruise-state persistence; absent = cruise defaults that are not persisted. */
   cruiseStorage?: CruiseStorageFace
-  /** Tag-catalog persistence; absent = tags are not persisted (usable in-memory). */
-  tagStorage?: { read(): TagCatalog | undefined; write(catalog: TagCatalog): void }
   /** Reads a session's recent history events (review-page transcript); absent = the page shows a hint. */
   transcript?: (sessionId: string) => Promise<TranscriptLoadResult | undefined>
   /** Session-config surface (review-page model/permission panel); absent = the panel degrades gracefully. */
@@ -348,8 +346,6 @@ export interface ControllerSnapshot {
   selectedTaskId: string | undefined
   /** Auto-cruise toggle + concurrency limit. */
   cruise: CruiseState
-  /** The board-level tag catalog (labels; cards hold tag ids). */
-  tags: readonly import('./tags.ts').Tag[]
   /** Live execution stats for the board's quiet status line: how many
    *  sessions are running right now, and how many auto launches are queued
    *  for a freed slot. Both zero → the status line hides itself. */
@@ -399,7 +395,6 @@ export class BoardController {
   private readonly now: () => number
   private readonly uuid: () => string
   private cruiseState: CruiseState
-  private tagCatalog: TagCatalog = []
 
   /** @param deps - store, execution service, and the sessions navigation face. */
   constructor(private readonly deps: ControllerDeps) {
@@ -420,7 +415,6 @@ export class BoardController {
         ? sortWindows(stored!.schedule.filter(isCruiseWindow).map(normalizeWindow))
         : [],
     }
-    this.tagCatalog = normalizeCatalog(deps.tagStorage?.read())
   }
 
   // --- lifecycle -------------------------------------------------------------
@@ -464,60 +458,8 @@ export class BoardController {
       boardOpen: this.boardOpen,
       selectedTaskId: this.selectedTaskId,
       cruise: { ...this.cruiseState },
-      tags: [...this.tagCatalog],
       stats: { running: this.inFlightCount(), queued: this.queuedLaunches.length },
     }
-  }
-
-  // --- tags (label catalog + per-card color) -----------------------------------
-
-  /** The board's live tag catalog (read-only view). */
-  listTags(): readonly Tag[] {
-    return this.tagCatalog
-  }
-
-  /** Create a labeled, colored tag in the catalog. */
-  createTag(name: string, color: string): Tag {
-    const tag: Tag = { id: this.uuid(), name: name.trim(), color }
-    this.tagCatalog = createTag(this.tagCatalog, tag)
-    this.persistTagCatalog()
-    this.persistAndNotify()
-    return tag
-  }
-
-  /** Rename a tag (every card carrying it reflects the new name at once). */
-  renameTag(id: string, name: string): void {
-    this.tagCatalog = renameTag(this.tagCatalog, id, name.trim())
-    this.persistTagCatalog()
-    this.persistAndNotify()
-  }
-
-  /** Re-color a tag (every card carrying it updates at once). */
-  recolorTag(id: string, color: string): void {
-    this.tagCatalog = recolorTag(this.tagCatalog, id, color)
-    this.persistTagCatalog()
-    this.persistAndNotify()
-  }
-
-  /** Delete a tag and strip it from every card that carries it. */
-  deleteTag(id: string): void {
-    if (!this.tagCatalog.some(tag => tag.id === id)) return
-    this.tagCatalog = removeTag(this.tagCatalog, id)
-    this.tasks = this.tasks.map(task => {
-      if (task.tags === undefined || !task.tags.includes(id)) return task
-      const tags = task.tags.filter(tagId => tagId !== id)
-      return { ...task, updatedAt: this.now(), ...(tags.length > 0 ? { tags } : { tags: undefined }) }
-    })
-    this.persistTagCatalog()
-    this.persistAndNotify()
-  }
-
-  /** Replace a task's tag set (immutable). */
-  setTaskTags(taskId: string, tags: string[]): void {
-    this.tasks = this.tasks.map(task => task.id === taskId
-      ? withTaskTags({ ...task, updatedAt: this.now() }, tags.filter(id => this.tagCatalog.some(tag => tag.id === id)))
-      : task)
-    this.persistAndNotify()
   }
 
   /** Set (or clear, with undefined) a task's accent color. */
@@ -526,10 +468,6 @@ export class BoardController {
       ? withTaskColor({ ...task, updatedAt: this.now() }, color)
       : task)
     this.persistAndNotify()
-  }
-
-  private persistTagCatalog(): void {
-    this.deps.tagStorage?.write(this.tagCatalog)
   }
 
   /** The run-catalog face for form selects, or undefined when not wired. */
@@ -752,14 +690,13 @@ export class BoardController {
           : undefined,
       }, now)
     }
-    // The template carries the card's full configuration: tags, accent color
+    // The template carries the card's full configuration: the accent color
     // and session automation rules are PART of what "复制为模板" means — a
     // template keeps the shape of the work, so future configuration fields
     // land in createTask below and flow into templates automatically (the
     // spread-based single source, never a per-field list to maintain).
     task = {
       ...task,
-      ...source.tags !== undefined ? { tags: [...source.tags] } : {},
       ...source.color !== undefined ? { color: source.color } : {},
       ...source.rules !== undefined && source.rules.length > 0
         ? { rules: source.rules.map(rule => ({ ...rule, id: this.uuid() })) }
@@ -846,19 +783,6 @@ export class BoardController {
       titleOf: sessionId => this.sessionTitle(sessionId),
       pendingInteractionOf: sessionId => this.pendingInteractionOf(sessionId),
     })
-  }
-
-  /** Drop the live binding, turning the task back into a plain prompt-driven one. */
-  unbindTask(taskId: string): void {
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId || task.bind === undefined) return task
-      changed = true
-      const rest = { ...task }
-      delete rest.bind
-      return rest
-    })
-    if (changed) this.persistAndNotify()
   }
 
   /**

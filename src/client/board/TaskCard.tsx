@@ -6,7 +6,7 @@
  */
 import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
-import { TAG_PALETTE, type Tag } from '../../core/tags.ts'
+import { PALETTE } from '../../core/colors.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { hasOpenRun, pendingCommentCount, plainRunsOf, refining, ruleReadiness } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
@@ -78,11 +78,9 @@ export function settledChipLabel(runs: number): string {
 }
 
 /** One card in a column. */
-export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onTagClick, onColorPick }: {
+export function TaskCard({ task, selected, workspaceTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onColorPick }: {
   task: TaskRecord
-  /** The resolved tag rows this card carries (catalog lookup done by the board). */
-  tags: readonly Tag[]
-  /** Whether the card is picked in the board's organize (tidy) mode. */
+  /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
@@ -96,12 +94,10 @@ export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pend
   unviewed: boolean
   /** How many plain-run executions are unviewed (the "新 N" badge figure). */
   unviewedCount: number
-  onClick: () => void
+  onClick: (event: React.MouseEvent) => void
   /** Optional hover quick-action: run the task right from the card (rerun
    *  semantics, same run guard; disabled while a run is open). */
   onQuickRun?: () => void
-  /** Clicking a card's tag chip filters the board to that tag. */
-  onTagClick?: (tagId: string) => void
   /** Optional hover quick-action: pick a card color right from the card. */
   onColorPick?: (color: string | undefined) => void
 }) {
@@ -174,36 +170,6 @@ export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pend
         </span>
       )}
       <span className={css.cardTitle}>{task.title}</span>
-      {/* The card's labels: small colored-dot chips (capped with a +N tail so
-          a long set can never crowd the card), clicking one filters the board
-          to that tag. */}
-      {tags.length > 0 && (
-        <span className={css.cardTags}>
-          {tags.slice(0, 3).map(tag => (
-            <span
-              key={tag.id}
-              role="button"
-              tabIndex={0}
-              className={css.cardTag}
-              title={tag.name}
-              onClick={event => { event.stopPropagation(); onTagClick?.(tag.id) }}
-              onKeyDown={event => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  onTagClick?.(tag.id)
-                }
-              }}
-            >
-              <span className={css.cardTagDot} style={{ background: tag.color }} aria-hidden="true" />
-              {tag.name}
-            </span>
-          ))}
-          {tags.length > 3 && (
-            <span className={css.cardTagMore} title={tags.slice(3).map(tag => tag.name).join('、')}>+{tags.length - 3}</span>
-          )}
-        </span>
-      )}
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
       <span className={css.cardMeta}>
         {/* Row 1 is identical on every card: workspace + last activity. */}
@@ -304,7 +270,7 @@ export function TaskCard({ task, tags, selected, workspaceTitleOf, waiting, pend
             title={t('card.colorNone')}
             onClick={(event) => { event.stopPropagation(); onColorPick(undefined) }}
           />
-          {TAG_PALETTE.map(color => (
+          {PALETTE.map(color => (
             <button
               key={color}
               type="button"

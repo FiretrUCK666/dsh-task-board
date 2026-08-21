@@ -189,12 +189,10 @@ export function parseLedger(raw: string | null): TaskRecord[] {
       }
     }
     if (task.hidden === undefined) delete task.hidden
-    // The tag ids (free classification) and per-card accent color are
-    // forward-compatible optional fields: validate them loosely, drop anything
-    // malformed (old data keeps working untouched).
-    const tags = cleanIdArray((row as Record<string, unknown>).tags)
-    if (tags !== undefined) task.tags = tags
-    else delete task.tags
+    // The per-card accent color is a forward-compatible optional field:
+    // validate it loosely (old data keeps working untouched). The legacy tag
+    // ids field is dropped silently — tags were removed, color only remains.
+    delete (task as { tags?: unknown }).tags
     const rawColor = (row as Record<string, unknown>).color
     if (typeof rawColor === 'string' && rawColor !== '') task.color = rawColor
     else delete task.color

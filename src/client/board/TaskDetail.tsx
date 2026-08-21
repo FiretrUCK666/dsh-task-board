@@ -1030,13 +1030,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
           <Button title={t('detail.duplicateTitle')} onClick={duplicateTask}>
             {t('detail.duplicate')}
           </Button>
-          {/* 解绑属于"任务卡片"层面：只在绑定了工作区/会话时出现，与其它
-              footer 按钮同尺寸同节奏。 */}
-          {current.bind !== undefined && (
-            <Button title={t('detail.linkedUnbindTitle')} onClick={() => { controller.unbindTask(current.id) }}>
-              {t('detail.linkedUnbind')}
-            </Button>
-          )}
           <Button variant="danger" onClick={() => { setConfirmDelete(true) }}>
             {t('detail.delete')}
           </Button>

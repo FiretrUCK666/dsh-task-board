@@ -7,7 +7,7 @@
  * any per-surface styling drift.
  */
 import { type ReactNode } from 'react'
-import { TAG_PALETTE } from '../../core/tags.ts'
+import { PALETTE } from '../../core/colors.ts'
 import css from '../board.module.css'
 import { t } from '../locales.ts'
 import { Chip } from './Chip.tsx'
@@ -180,13 +180,13 @@ export function Icon({ name, className }: { name: IconName; className?: string }
 /**
  * The one color-picker row of the whole board: the preset palette swatches
  * plus a native custom color input. Effect colors are DATA (applied inline),
- * so this is safe to reuse wherever a data color is chosen — the tag manager
- * and the board's organize bar share exactly this grammar.
+ * so this is safe to reuse wherever a data color is chosen — the card hover
+ * swatches and the board's organize bar share exactly this grammar.
  */
 export function ColorSwatches({ value, onChange }: { value: string; onChange: (color: string) => void }) {
   return (
     <span className={css.tagSwatches}>
-      {TAG_PALETTE.map(color => (
+      {PALETTE.map(color => (
         <button
           key={color}
           type="button"
@@ -200,7 +200,7 @@ export function ColorSwatches({ value, onChange }: { value: string; onChange: (c
         type="color"
         className={css.tagCustomColor}
         value={value}
-        aria-label={t('tags.customColor')}
+        aria-label={t('color.custom')}
         onChange={event => { onChange(event.target.value) }}
       />
     </span>

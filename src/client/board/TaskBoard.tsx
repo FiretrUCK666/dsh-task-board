@@ -26,23 +26,19 @@ import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { formatDateTime } from './TaskCard.tsx'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { AutomationPanel } from './AutomationPanel.tsx'
-import { TagManager } from './TagManager.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
-import { TAG_PALETTE, taskMatchesTags, type Tag } from '../../core/tags.ts'
+import { PALETTE } from '../../core/colors.ts'
 
-/** Case-insensitive keyword match over title/description AND tag names. */
-function matchesFilter(task: TaskRecord, filter: string, tagNames: Record<string, string>): boolean {
-  if (filter.trim() !== '') {
-    const needle = filter.trim().toLowerCase()
-    const byTitle = task.title.toLowerCase().includes(needle) || task.description.toLowerCase().includes(needle)
-    const byTag = (task.tags ?? []).some(id => tagNames[id]?.toLowerCase().includes(needle))
-    if (!byTitle && !byTag) return false
-  }
-  return true
+/** Case-insensitive keyword match over title/description. */
+function matchesFilter(task: TaskRecord, filter: string): boolean {
+  if (filter.trim() === '') return true
+  const needle = filter.trim().toLowerCase()
+  return task.title.toLowerCase().includes(needle) || task.description.toLowerCase().includes(needle)
 }
 
 /** Whether `b` lies on the calendar day AFTER `a` (a normalized cross-midnight
@@ -65,16 +61,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   )
   const [filter, setFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
-  // 标签筛选：多选 AND（同时含全部选中标签），再点取消；空 = 不过滤。
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
-  // 标签管理弹层。
-  const [showTags, setShowTags] = useState(false)
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
   const [showAutomation, setShowAutomation] = useState(false)
-  const toggleTag = (id: string): void => {
-    setSelectedTags(current => current.includes(id) ? current.filter(tagId => tagId !== id) : [...current, id])
-  }
-  // 整理模式（批量）：点击卡片切换选中（高亮），板头横栏对选中集批量打标签/换色。
+  // 多选（Ctrl/Cmd+点击即选，整理模式整选；板头横栏批量换色/删除/全选清选）。
   const [organizing, setOrganizing] = useState(false)
   const [selectedCards, setSelectedCards] = useState<string[]>([])
   const toggleCard = (id: string): void => {
@@ -85,25 +74,16 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     setOrganizing(false)
     clearSelection()
   }
-  /** 批量加/去标签：全部选中卡都有该标签则移除，否则加上（与单卡 toggle 一致）。 */
-  const applyTagToSelected = (tagId: string): void => {
-    const targets = snapshot.tasks.filter(task => selectedCards.includes(task.id))
-    if (targets.length === 0) return
-    const allHave = targets.every(task => (task.tags ?? []).includes(tagId))
-    for (const task of targets) {
-      const owned = new Set(task.tags ?? [])
-      if (allHave) {
-        owned.delete(tagId)
-      } else {
-        owned.add(tagId)
-      }
-      controller.setTaskTags(task.id, [...owned])
-    }
-  }
   /** 批量换色（undefined = 清除）。 */
   const applyColorToSelected = (color: string | undefined): void => {
     const targets = snapshot.tasks.filter(task => selectedCards.includes(task.id))
     for (const task of targets) controller.setTaskColor(task.id, color)
+  }
+  /** 批量删除（确认后）；删除会同步取消板上的选中集。 */
+  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false)
+  const deleteSelected = (): void => {
+    for (const id of selectedCards) controller.deleteTask(id)
+    clearSelection()
   }
 
   // 自动巡航设置弹层：点击胶囊的 ▾ 展开；点击弹层外任意处关闭。
@@ -257,15 +237,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     id => controller.externalKindOf(id),
   )
   const selected = selectedTaskOf(snapshot)
-  const tags = snapshot.tags
-  // id → name map for keyword search over tag names.
-  const tagNames = Object.fromEntries(tags.map(tag => [tag.id, tag.name]))
-  const visible = snapshot.tasks.filter(task =>
-    matchesFilter(task, filter, tagNames) && taskMatchesTags(task, selectedTags))
-  // In organize mode clicking a card toggles its selection; otherwise it opens
-  // the detail — one decision point for the whole board.
-  const cardClick = (id: string): void => {
-    if (organizing) toggleCard(id)
+  const visible = snapshot.tasks.filter(task => matchesFilter(task, filter))
+  // Clicking a card: a modifier click (Ctrl/Cmd) toggles multi-selection any
+  // time; in organize mode every click toggles; otherwise it opens the detail.
+  const cardClick = (id: string, event?: React.MouseEvent): void => {
+    if (organizing || event?.ctrlKey === true || event?.metaKey === true) toggleCard(id)
     else controller.openTask(id)
   }
   // Organize-bar color slot: the first selected card's color, else the head of
@@ -274,7 +250,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     for (const task of snapshot.tasks) {
       if (selectedCards.includes(task.id) && task.color !== undefined) return task.color
     }
-    return TAG_PALETTE[0]
+    return PALETTE[0]
   })()
   const hasSelectedColor = selectedCards.some(id => snapshot.tasks.find(task => task.id === id)?.color !== undefined)
   const draggedTask = dragId !== undefined
@@ -591,39 +567,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           </Button>
         </div>
 
-        {/* 整理模式横栏：标签与配色、卡片颜色的批量操作全部在板头完成——
-            先点卡片（选中高亮），再点标签/色板批量应用到选中集。 */}
-        {organizing && (
+        {/* 多选横栏（整理模式或已有选中时出现）：先点卡片（Ctrl/Cmd+点击或整理
+            模式下直接点）选中高亮，再在板头横栏批量换色 / 删除 / 全选清选。 */}
+        {(organizing || selectedCards.length > 0) && (
           <div className={css.boardRow}>
             <span className={css.organizeBar}>
-              <span className={css.organizeGroup}>
-                <span className={css.organizeLabel}>{t('board.organizeTags')}</span>
-                {tags.length === 0
-                  ? <span className={css.organizeLabel}>{t('board.organizeNoTags')}</span>
-                  : tags.map(tag => {
-                    const targets = snapshot.tasks.filter(task => selectedCards.includes(task.id))
-                    const on = targets.length > 0 && targets.every(task => (task.tags ?? []).includes(tag.id))
-                    return (
-                      <span
-                        key={tag.id}
-                        role="button"
-                        tabIndex={0}
-                        className={`${css.cardTag}${on ? ` ${css.cardTagOn}` : ''}`}
-                        title={t('board.organizeTagTitle')}
-                        onClick={() => { applyTagToSelected(tag.id) }}
-                        onKeyDown={event => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            applyTagToSelected(tag.id)
-                          }
-                        }}
-                      >
-                        <span className={css.cardTagDot} style={{ background: tag.color }} aria-hidden="true" />
-                        {tag.name}
-                      </span>
-                    )
-                  })}
-              </span>
               <span className={css.organizeGroup}>
                 <span className={css.organizeLabel}>{t('board.organizeColor')}</span>
                 <ColorSwatches
@@ -632,12 +580,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 />
                 {hasSelectedColor && (
                   <button type="button" className={css.rowHide} onClick={() => { applyColorToSelected(undefined) }}>
-                    {t('tags.clearColor')}
+                    {t('board.clearCardColor')}
                   </button>
                 )}
               </span>
               <span className={css.organizeCount}>{t('board.organizeCount', { n: String(selectedCards.length) })}</span>
               <span className={css.organizeActions}>
+                <Button size="sm" disabled={selectedCards.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
+                  {t('board.organizeDelete')}
+                </Button>
                 <Button size="sm" onClick={() => { setSelectedCards(visible.map(task => task.id)) }}>
                   {t('board.organizeSelectAll')}
                 </Button>
@@ -651,44 +602,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             </span>
           </div>
         )}
-
-        {/* 标签筛选行（第三行，仅在已有标签或正在筛选时出现）：点击标签多选
-            AND 筛选，再点取消；「管理」打开标签管理弹层；筛选激活时显示「清除」。 */}
-        {(tags.length > 0 || selectedTags.length > 0) && (
-          <div className={css.boardRow}>
-            {tags.map(tag => {
-              const on = selectedTags.includes(tag.id)
-              return (
-                <span
-                  key={tag.id}
-                  role="button"
-                  tabIndex={0}
-                  className={`${css.tagFilter}${on ? ` ${css.tagFilterOn}` : ''}`}
-                  title={t('tags.filterTitle')}
-                  onClick={() => { toggleTag(tag.id) }}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      toggleTag(tag.id)
-                    }
-                  }}
-                >
-                  <span className={css.tagFilterDot} style={{ background: tag.color }} aria-hidden="true" />
-                  {tag.name}
-                </span>
-              )
-            })}
-            <span className={css.tagFilterActions}>
-              {selectedTags.length > 0 && (
-                <button type="button" className={css.rowHide} onClick={() => { setSelectedTags([]) }}>
-                  {t('tags.clear')}
-                </button>
-              )}
-              <Button size="sm" onClick={() => { setShowTags(true) }}>
-                {t('tags.manage')}
-              </Button>
-            </span>
-          </div>
+        {confirmDeleteSelected && (
+          <ConfirmDialog
+            title={t('board.deleteSelectedTitle', { n: String(selectedCards.length) })}
+            message={t('board.deleteSelectedConfirm')}
+            confirmLabel={t('board.deleteSelectedOk')}
+            danger
+            onConfirm={() => { setConfirmDeleteSelected(false); deleteSelected() }}
+            onCancel={() => { setConfirmDeleteSelected(false) }}
+          />
         )}
 
       </header>
@@ -824,17 +746,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     <TaskCard
                       key={task.id}
                       task={task}
-                      tags={(task.tags ?? []).map(id => tags.find(tag => tag.id === id)).filter((tag): tag is Tag => tag !== undefined)}
                       workspaceTitleOf={workspaceTitleOf}
                       waiting={waiting}
                       pendingCount={pending.count}
                       pendingTitle={pendingTitle}
                       unviewed={taskUnviewed(task)}
                       unviewedCount={taskUnviewedCount(task)}
-                      selected={organizing && selectedCards.includes(task.id)}
-                      onClick={() => { cardClick(task.id) }}
+                      selected={selectedCards.includes(task.id)}
+                      onClick={event => { cardClick(task.id, event) }}
                       onQuickRun={() => { void controller.rerunTask(task.id) }}
-                      onTagClick={id => { toggleTag(id) }}
                       onColorPick={color => { controller.setTaskColor(task.id, color) }}
                     />
                   )
@@ -858,12 +778,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         <NewTaskModal
           controller={controller}
           onClose={() => { setShowNew(false) }}
-        />
-      )}
-      {showTags && (
-        <TagManager
-          controller={controller}
-          onClose={() => { setShowTags(false) }}
         />
       )}
       {showAutomation && (

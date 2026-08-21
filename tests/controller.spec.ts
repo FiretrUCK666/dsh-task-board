@@ -9,7 +9,6 @@ import { InMemoryTaskStore } from '../src/core/store.ts'
 import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
 import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import type { CruiseWindow } from '../src/core/cruise.ts'
-import type { TagCatalog } from '../src/core/tags.ts'
 import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -1753,19 +1752,15 @@ describe('linked sessions & bind', () => {
     expect(controller.getSnapshot().tasks).toHaveLength(2)
   })
 
-  it('copyTask carries tags, accent color and session rules as part of the template', () => {
+  it('copyTask carries accent color and session rules as part of the template', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub)
-    controller.createTag('设计', '#4f46e5')
     const source = controller.createTask({ title: '源', description: '', prompt: 'run' })!
-    const tagId = controller.getSnapshot().tags[0].id
-    controller.setTaskTags(source.id, [tagId])
     controller.setTaskColor(source.id, '#4f46e5')
     controller.createSessionRule(source.id, { sessionId: 's-1', instruction: '继续', cron: '0 * * * *', send: 'steer' })
     const current = controller.getSnapshot().tasks.find(task => task.id === source.id)
     const copy = controller.copyTask(source.id)
     expect(copy).toBeDefined()
-    expect(copy!.tags).toEqual([tagId])
     expect(copy!.color).toBe('#4f46e5')
     // Session rules are cloned with fresh ids (never shared state).
     expect(copy!.rules).toHaveLength(1)
@@ -1810,15 +1805,6 @@ describe('linked sessions & bind', () => {
     const t2 = c2.createTask({ title: 'y', description: '', prompt: 'run' })!
     await c2.sendSessionMessage(t2.id, 's-2', '失败句')
     expect(s2.load()[0].executions).toHaveLength(0)
-  })
-
-  it('unbindTask drops the live binding and persists', () => {
-    const { controller, store } = makeController()
-    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
-      title: '项目A', description: '', prompt: 'run', status: 'backlog',
-    })!
-    controller.unbindTask(task.id)
-    expect(store.load()[0].bind).toBeUndefined()
   })
 
   it('boundSourceTitleOf resolves from the native snapshots', () => {
@@ -2078,42 +2064,16 @@ describe('native-activity sync (两端同步)', () => {
   })
 })
 
-describe('tags (label catalog)', () => {
-  it('create/rename/recolor feed the snapshot and persist through tagStorage', () => {
-    const writes: TagCatalog[] = []
-    const { controller } = makeController(new StubExec(), {
-      tagStorage: {
-        read: () => writes[writes.length - 1],
-        write: catalog => { writes.push(catalog) },
-      },
-    })
-    const created = controller.createTag('紧急', '#e5484d')
-    expect(controller.getSnapshot().tags).toEqual([{ id: created.id, name: '紧急', color: '#e5484d' }])
-    controller.renameTag(created.id, '重要')
-    expect(controller.getSnapshot().tags[0].name).toBe('重要')
-    controller.recolorTag(created.id, '#3e63dd')
-    expect(controller.getSnapshot().tags[0].color).toBe('#3e63dd')
-    expect(writes.length).toBe(3)
-  })
-
-  it('setTaskTags only keeps catalog ids; setTaskColor sets/clears; deleteTag strips every card', () => {
+describe('card accent color', () => {
+  it('setTaskColor sets/clears on the card', () => {
     const { controller } = makeController()
-    const a = controller.createTag('A', '#e5484d')
-    const b = controller.createTag('B', '#3e63dd')
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.setTaskTags(task.id, [a.id, b.id, 'ghost'])
     controller.setTaskColor(task.id, '#12a594')
     let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
-    expect(row.tags).toEqual([a.id, b.id]) // ghost filtered out
     expect(row.color).toBe('#12a594')
     controller.setTaskColor(task.id, undefined)
     row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.color).toBeUndefined()
-    // Deleting a tag removes it from every card automatically.
-    controller.deleteTag(a.id)
-    row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
-    expect(row.tags).toEqual([b.id])
-    expect(controller.getSnapshot().tags.some(tag => tag.id === a.id)).toBe(false)
   })
 })
 
