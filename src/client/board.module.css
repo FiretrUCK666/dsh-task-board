@@ -279,7 +279,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: none;
+  /* Shrinkable + clipped: a long live-status text never pushes the action
+     buttons out of the header row (nowrap stays, the overflow hides). */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   font-size: 12px;
   line-height: 1;
   color: var(--dsh-tb-text-3);
@@ -303,7 +307,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: 1 1 260px;
   max-width: 520px;
   min-width: 140px;
-  padding: 7px 12px;
+  /* 28px — the same row rhythm as the header action buttons (28px standard),
+     so 搜索框 and 整理/自动化/新建任务 read as one control row. */
+  height: 28px;
+  padding: 0 12px;
   font-size: 13px;
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-input-bg);
@@ -617,7 +624,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 12px;
+  /* The card text column (cards 8px inset + card 12px padding): the header
+     title/count share the SAME 20px content box, so the column reads with
+     one left/right edge instead of an 8px drift against the cards. */
+  padding: 10px 20px;
   flex: none;
 }
 
@@ -649,6 +659,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   height: 8px;
   border-radius: 50%;
   flex: none;
+  /* Optical centering against the 13px column title (same rule as the board
+     header's status dot): a geometric center reads "high" beside the text. */
+  transform: translateY(-0.5px);
 }
 
 .statusDot[data-status='backlog'] { background: var(--dsw-alias-label-tertiary); }
@@ -788,6 +801,20 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   transform: translateY(-1px);
 }
 
+/* Selection wins over hover while the pointer stays on the card: equal
+   specificity with .card:hover (written later) would replace the selection
+   ring with the plain hover shadow until the pointer left — the glow must
+   appear the instant the card is picked and stay while it is selected,
+   hover or not (the badge is selection-bound; the ring is too). */
+.card.selectedCard:hover {
+  border-color: var(--dsw-alias-state-business-primary);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent),
+    0 0 0 5px color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent),
+    0 4px 18px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent),
+    var(--dsh-tb-shadow-2);
+}
+
 /* Same-column reorder: a bold accent bar drawn exactly at the insertion
    gap (see drop-position.ts) — the whole feedback, never a column-wide
    highlight. Positioned inside the cards container (relative above).
@@ -878,30 +905,35 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 /* The title line: the card's solid color mark (exact picked color, 100% of
-   the swatch value) sits in front of the title; the row is a shrink-only
-   flex so the clamped title can never push the mark away. */
+   the swatch value) hangs in a FIXED gutter beside the title — the title
+   text, excerpt and meta/badges all share ONE content column, and the dot is
+   the only element in the gutter (a colorless card keeps the same indent, so
+   one geometry — the text never shifts when a color is picked/cleared). */
 .cardTitleRow {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
   min-width: 0;
+  position: relative;
+  padding-left: 15px;
 }
 
 .cardColorMark {
-  flex: none;
+  position: absolute;
+  left: 0;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   /* Optical centering against the first title line (14px / 1.35 ≈ 18.9px):
      the dot's center must sit on the line's visual center, NOT on the
      flex-start edge — the 4px offset read "high" next to the title. */
-  margin-top: 5px;
+  top: 5px;
   /* The mark's hairline ring is a soft transparency of the SAME data color:
      the visible dot is exactly the picked color — no blend, no偏色. */
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--card-tint) 30%, transparent);
 }
 
 .cardTitle {
+  min-width: 0;
   font-size: 14px;
   font-weight: 500;
   line-height: 1.35;
@@ -915,6 +947,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .cardExcerpt {
+  min-width: 0;
+  /* Aligned with the title text — the color dot is the only gutter content. */
+  padding-left: 15px;
   font-size: 12px;
   line-height: 1.4;
   color: var(--dsw-alias-label-secondary);
@@ -936,11 +971,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-  /* Separated from the title by air, not a rule: a hairline between title
-     and meta on a 60px-wide card reads as noise on a dense board. */
-  padding-top: 6px;
-  margin-top: 0;
-  font-size: 11px;
+  /* Aligned with the title text — the color-dot gutter applies to the whole
+     card body, so one content column (see .cardTitleRow). The gap (6px) is
+     the card's column rhythm alone: no extra padding-top double-space. */
+  padding-left: 15px;
+  font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
 
@@ -1390,7 +1425,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 4px;
 }
 
 .field {
@@ -1719,11 +1753,11 @@ textarea.input {
 /* --- scheduled runs ---------------------------------------------------------- */
 
 /* Label/value grid mirrors the run-config grid so every detail row shares
-   one aligned label column. */
+   one aligned label column (same column/row rhythm as .configGrid). */
 .scheduleGrid {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 8px 14px;
+  gap: 6px 18px;
   align-items: center;
 }
 
@@ -1782,6 +1816,12 @@ textarea.input {
   transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
+/* The manage-presets button sits next to the 34px input/select controls —
+   one height so the whole cron row reads as a single control row. */
+.scheduleManageButton {
+  height: 34px;
+}
+
 .scheduleMeta {
   margin: 0;
   font-size: 12px;
@@ -1814,10 +1854,16 @@ textarea.input {
    drive mode, session composer mode): a quiet track, an elevated active
    segment, no per-mode styling — both controls read as siblings. */
 .segmentedButton {
-  padding: 5px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 22px + the 3px track padding on each side = 28px total — the SAME height
+     as the primary/composer buttons the segmented sits beside. */
+  padding: 0 14px;
   font-size: 12px;
   font-weight: 500;
-  height: 26px;
+  height: 22px;
+  line-height: 1;
   color: var(--dsh-tb-text-2);
   background: transparent;
   border: none;
@@ -1990,7 +2036,11 @@ textarea.input {
 .sessionList {
   list-style: none;
   margin: 0;
-  padding: 0;
+  /* The bottom strip gives the tail insertion slot room INSIDE the box (same
+     grammar as the board columns' breathing bottom padding): without it the
+     tail bar clamps to the very bottom edge and overflow: hidden clips it —
+     the "dragging to the bottom shows no bar" bug. */
+  padding: 0 0 14px;
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   overflow: hidden;
@@ -2118,13 +2168,32 @@ textarea.input {
   border-top: var(--dsh-tb-separator);
 }
 
-/* Row-level attention: the waiting signal stays on its amber "处理" button;
-   an unviewed row gets the same attention light as the card — a soft
-   breathing inner halo (no per-row border, no flat tint; the halo is clipped
-   inside the row and reads as light). Defined before the hover rule so hover
-   (later, equal specificity) still wins while the pointer is over the row. */
-.sessionRow[data-unviewed='true'] {
+.sessionRow {
+  position: relative;
+}
+
+/* Row-level attention: ONE state-bound glow — a soft inner halo (no per-row
+   border, no flat tint) painted by the row's ::after layer, gated by the
+   STABLE data-glow attribute: waiting / running / settled-unread rows (glow =
+   attention) breathe; viewed / idle rows are quiet (the AttentionDot keeps
+   the unread signal). The animation is paused (not cancelled) whenever the
+   row is not glowing — the halo's opacity fades smoothly on state change and
+   no frame of a running pulse is ever torn out, so a row cannot flicker. */
+.sessionRow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dsh-tb-motion);
   animation: dshTbBreathHalo var(--dsh-tb-breath) infinite;
+  animation-play-state: paused;
+}
+
+.sessionRow[data-glow='attention']::after {
+  opacity: 1;
+  animation-play-state: running;
 }
 
 .sessionRow:hover {
@@ -2134,6 +2203,14 @@ textarea.input {
 .sessionRow:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: -2px;
+}
+
+/* The row's bare buttons keep the SAME focus ring as the row and the shared
+   Button component (one keyboard grammar, no stray browser outline). */
+.sessionRowHandle:focus-visible,
+.rowHide:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
 }
 
 .sessionRowTop {
@@ -2167,19 +2244,22 @@ textarea.input {
   gap: 8px;
 }
 
-/* Prominent "处理" button when session is waiting for user action */
+/* Prominent "处理" button when session is waiting for user action — SAME
+   geometry as the row's other sm affordances (24px pill); only the fill is
+   the warn tone, so switching waiting/idle never shifts the row's geometry. */
 .sessionRowHandle {
   flex: none;
-  padding: 4px 12px;
+  height: 24px;
+  padding: 0 10px;
   font-size: 12px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary-foreground);
   background: var(--dsw-alias-state-warn-primary);
   border: none;
-  border-radius: 4px;
+  border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 120ms ease;
+  transition: background var(--dsh-tb-motion);
 }
 
 .sessionRowHandle:hover {
@@ -2291,7 +2371,7 @@ textarea.input {
 .rowHide {
   flex: none;
   padding: 2px 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsh-tb-text-3);
   background: none;
   border: none;
@@ -2304,27 +2384,6 @@ textarea.input {
 .rowHide:hover {
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-hover);
-}
-
-/* The destructive sibling of the quiet hide affordance (hidden-tray rows):
-   same quiet geometry, danger tone — the delete has to be noticed, but never
-   shout over the row. */
-.sessionRowDelete {
-  flex: none;
-  padding: 2px 6px;
-  font-size: 11px;
-  color: var(--dsw-alias-state-error-primary);
-  background: none;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion);
-}
-
-.sessionRowDelete:hover {
-  color: var(--dsh-tb-text-1);
-  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 10%, transparent);
 }
 
 /* --- linked sessions (bound task's live view of its native source) --------- */
@@ -2366,6 +2425,8 @@ textarea.input {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  /* The rail's 14px content box (like the context block / head / thread). */
+  padding: 0 14px;
 }
 
 .sessionFactTime {
@@ -2394,6 +2455,13 @@ textarea.input {
   font-size: 12px;
   line-height: 1.5;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* The rail's hint line sits on the UNPADDED review rail — this variant adds
+   the same 14px content box as the thread header / scroll region / composer,
+   so the text never starts a column left of everything else. */
+.sessionRailHint {
+  padding: 0 14px;
 }
 
 /* --- automation overview panel (board header "自动化") ----------------------
@@ -2458,13 +2526,48 @@ textarea.input {
   border-radius: 999px;
 }
 
-/* Task-level schedule: one quiet summary row + enable switch. */
-.autoScheduleRow {
-  display: flex;
+/* One expandable summary row per automated task: the LIVE schedule summary
+   (the one grammar — scheduleSummary) on a quiet expand affordance. Expanded
+   shows the shared AutomationEditor inline (the same component as the task
+   detail's automation disclosure). */
+.autoTaskExpand {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 7px;
+  width: 100%;
   min-width: 0;
+  padding: 0;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.autoTaskExpand:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.autoTaskChevron {
+  flex: none;
+  color: var(--dsh-tb-text-3);
+  transition: transform var(--dsh-tb-motion);
+}
+
+.autoTaskChevronOpen {
+  transform: rotate(180deg);
+}
+
+.autoTaskSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
 }
 
 .autoMeta {
@@ -2538,7 +2641,7 @@ textarea.input {
 .autoRuleSend {
   flex: none;
   padding: 1px 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-surface-sunken);
   border-radius: 999px;
@@ -2592,7 +2695,7 @@ textarea.input {
 }
 
 .autoFieldLabel {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--dsh-tb-text-3);
@@ -2702,7 +2805,6 @@ textarea.input {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-top: 8px;
   border-top: 1px solid var(--dsw-alias-border-l2);
 }
 
@@ -2896,8 +2998,12 @@ textarea.input {
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--dsh-tb-attention) 35%, transparent);
   }
 
-  .sessionRow[data-unviewed='true'] {
+  .sessionRow::after {
+    transition: none;
     animation: none;
+  }
+
+  .sessionRow[data-glow='attention']::after {
     box-shadow: inset 0 0 0 1px var(--dsh-tb-attention-alpha-soft);
   }
 
@@ -3296,7 +3402,9 @@ textarea.input {
 }
 
 .reviewConfigTitle {
-  font-size: 12px;
+  /* The same section-title tier as the thread header (13px / 500) — one
+     分节标题 grammar on the rail. */
+  font-size: 13px;
   font-weight: 500;
   color: var(--dsw-alias-label-secondary);
 }
@@ -3536,7 +3644,7 @@ textarea.input {
 }
 
 .reviewCommentTime {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
 }
@@ -3582,7 +3690,9 @@ textarea.input {
   flex-direction: column;
   gap: 8px;
   flex: none;
-  padding: 12px;
+  /* The rail's 14px content box on the sides (the thread/hint/head all sit
+     there too); vertical keeps the composer's own 12px breathing. */
+  padding: 12px 14px;
   border-top: 1px solid var(--dsw-alias-separator-primary);
 }
 
@@ -3690,7 +3800,16 @@ textarea.input {
   padding: 2px 6px 2px 8px;
   overflow: hidden;
   white-space: nowrap;
+}
+
+/* The chip's text is its own truncation item (the chip two-slot grammar):
+   ellipsis engages on a block box — a raw text child of the inline-flex
+   chip would hard-clip instead. */
+.attachChipName {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .attachRemove {
   display: inline-flex;
@@ -3722,6 +3841,11 @@ textarea.input {
 .sessionContextWrap {
   position: relative;
   flex: none;
+  /* The rail's 14px content box: the head row AND the anchored popover both
+     align with the meter/config/thread (the rail itself has no padding, so a
+     direct child would otherwise hug its edges — the "glued to the right
+     edge" bug). */
+  padding: 0 14px;
 }
 
 .sessionContextHead {
@@ -3761,7 +3885,9 @@ textarea.input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  /* Same size as the title beside it — hierarchy via the tertiary color,
+     never via a second font size on one line. */
+  font-size: 12px;
   color: var(--dsh-tb-text-3);
 }
 
@@ -3778,8 +3904,11 @@ textarea.input {
 .sessionContextPanel {
   position: absolute;
   top: calc(100% + 6px);
-  left: 0;
-  right: 0;
+  /* Absolute children anchor to the wrap's PADDING box, not its content box
+     — inset by the same 14px content box so the panel spans exactly the
+     meter/config/thread width. */
+  left: 14px;
+  right: 14px;
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -4043,14 +4172,14 @@ textarea.input {
 
 .organizeLabel {
   flex: none;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--dsh-tb-text-3);
   white-space: nowrap;
 }
 
 .organizeCount {
   flex: none;
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--dsh-tb-text-2);
   white-space: nowrap;
@@ -4063,17 +4192,15 @@ textarea.input {
   gap: 6px;
 }
 
-/* The danger group of the organize strip stands apart from the color and
-   selection groups: hairline separation + its own rhythm, so "删除" can
-   never read as part of the palette (["remove color" vs "delete cards"]).
-   The separation is TIGHT: 完成 → 删除 read as one right-clustered control
-   group (the bar's actions sit flush right, the hairline marks the divide). */
+/* The danger group sits INSIDE the actions cluster right after 完成: an 8px
+   gap + hairline separation — "删除" reads as part of the same right-aligned
+   control group (the parent's gap carries the rhythm; no extra margin
+   doubles it). */
 .organizeDanger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-left: 6px;
-  padding-left: 12px;
+  padding-left: 8px;
   border-left: 1px solid var(--dsh-tb-separator);
 }
 

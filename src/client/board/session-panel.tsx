@@ -624,7 +624,7 @@ export function SessionRail({ context, stateChip, updatedAt, sessionId, controll
       {/* One quiet line: the drive explanation in the normal case, the
           blocking reason (done task / gone session) in the exceptional
           case — never a stack of texts, never inside the send row. */}
-      <p className={css.detailHint}>{hint ?? t('detail.sessionDriveHint')}</p>
+      <p className={`${css.detailHint} ${css.sessionRailHint}`}>{hint ?? t('detail.sessionDriveHint')}</p>
       <div className={css.sessionRailScroll} ref={threadScrollRef} onScroll={onThreadScroll}>
         <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
         <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />

@@ -71,8 +71,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const context = useSessionContext(controller, sessionId)
   const pendingInteraction = useWireQuestion(controller, sessionId)
 
-  // Send gates: a done task rejects comments; a gone session blocks the send.
-  const taskDone = task.status === 'done'
+  // Send gates: a gone session blocks the send. A done task is NOT a blocker
+  // — its comment revives the task (moved back to 待办) and drives it.
   const liveGone = row === undefined
 
   // The live state row: waiting / running / completed — THE one state-chip
@@ -91,10 +91,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     : undefined
   const updatedAt = row !== undefined ? formatDateTime(row.updatedAt) : undefined
 
-  // The hint under the thread header: the blocking reason when there is one,
-  // the standing drive explanation otherwise (never a guessed bulk of nested
-  // ternaries inline in the JSX).
-  const hint = taskDone ? t('detail.commentQueuedDone') : liveGone ? t('detail.sessionUnavailable') : undefined
+  // The hint under the thread header: the blocking reason when there is one
+  // (a gone session), the standing drive explanation otherwise (never a
+  // guessed bulk of nested ternaries inline in the JSX).
+  const hint = liveGone ? t('detail.sessionUnavailable') : undefined
 
   return (
     <SessionFrame
@@ -147,7 +147,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               taskId={task.id}
               sessionId={sessionId}
               placeholder={t('detail.sessionDrivePlaceholder')}
-              disabled={liveGone || taskDone}
+              disabled={liveGone}
               onDrive={text => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/')) !== undefined}
               onSteer={text => controller.steerComment(task.id, sessionId, text).then(result => result.ok)}
               onSteerImages={(text, refs) => controller.steerCommentWithImages(task.id, sessionId, text, refs).then(result => result.ok)}

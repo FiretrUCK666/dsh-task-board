@@ -121,9 +121,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const session = sessionDisplay(current, execution, waiting)
   const stateChip = sessionStateChip(session.state, waiting, 'detail.result.succeeded', 'detail.result.cancelled')
   const updatedAt = formatDateTime(execution.endedAt ?? execution.startedAt)
-  // The hint under the thread header: the blocking reason when there is one
-  // (a done task rejects comments), the drive explanation otherwise.
-  const hint = current.status === 'done' ? t('detail.commentQueuedDone') : undefined
+  // The hint stays the plain drive line: a completed task is not a blocker
+  // anymore — its comment REVIVES the task (moved back to 待办) and drives
+  // it, so no blocking reason is needed here.
 
   return (
     <SessionFrame
@@ -181,7 +181,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           lines={lines}
           onChanged={reload}
           reloadKey={configReloadKey}
-          hint={hint}
+          hint={undefined}
           task={current}
           thread={comments}
           onCancelComment={id => controller.cancelComment(id)}
@@ -192,10 +192,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               taskId={current.id}
               sessionId={sessionId}
               placeholder={t('review.commentPlaceholder')}
-              /* Same send gating as the linked panel: a done task rejects
-                 comments (the hint above says so) — the composer must read
-                 that state, not silently no-op on submit. */
-              disabled={current.status === 'done' || sessionId === undefined}
+              /* Same send gating as the linked panel: only a GONE session
+                 disables the composer. A done task is fine — its comment
+                 revives the task (moved back to 待办) and drives it. */
+              disabled={sessionId === undefined}
               onDrive={text => controller.submitComment(current.id, execution.id, text, text.startsWith('/')) !== undefined}
               onSteer={text => sessionId === undefined
                 ? Promise.resolve(false)

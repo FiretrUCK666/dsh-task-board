@@ -1,12 +1,13 @@
 /**
- * Drop-position tests: the insertion-gap algorithm — the pointer's Y
+ * Drag-geometry contract: the insertion-gap algorithm — the pointer's Y
  * against each card's gap centers decides the landing gap, symmetric in
- * both directions and correct for any column size — and the scrolled
- * indicator math (content coordinates, so the bar sits where the gap is
- * even mid-scroll).
+ * both directions and correct for any column size — the scrolled indicator
+ * math (content coordinates, so the bar sits where the gap is even
+ * mid-scroll), and the edge-scroll stepper (the drag auto-scroll grammar).
  */
 import { describe, expect, it } from 'vitest'
 import { indicatorTopOf, insertionGapOf } from '../src/client/board/drop-position.ts'
+import { edgeScrollStep } from '../src/client/board/drag-autoscroll.ts'
 
 /** Cards at fixed vertical positions (top, 40px tall, 8px gaps). */
 function cards(ids: string[], startY = 0): Array<{ id: string; rect: { top: number; height: number } }> {
@@ -64,5 +65,41 @@ describe('indicatorTopOf (scrolled content coordinates)', () => {
   it('clamps to the content box (never above the top or below the bottom)', () => {
     expect(indicatorTopOf(5, 200, 0, 1000)).toBe(0)
     expect(indicatorTopOf(5000, 200, 0, 1000)).toBe(1000)
+  })
+
+  it('keeps the tail bar inside a container whose scroll height ends at the last row bottom (session-list grammar)', () => {
+    // The session list's tail slot: last row bottom (content) + gap/2, with
+    // the container's scroll height = last row bottom + the bottom strip
+    // (without the strip the bar clamps to the very edge and is clipped by
+    // overflow: hidden — the reported "no bar after the last row" bug). The
+    // strip is 14px in the real list; the math contract holds for any strip
+    // >= the bar height. Use the 22px board grammar for the example.
+    const lastRowBottom = 88
+    const strip = 22
+    const contentHeight = lastRowBottom + strip
+    const tail = indicatorTopOf(200 + lastRowBottom + 4, 200, 0, contentHeight)
+    expect(tail).toBe(lastRowBottom + 4)
+    expect(tail + 4).toBeLessThanOrEqual(contentHeight)
+  })
+})
+
+describe('edgeScrollStep (drag edge auto-scroll)', () => {
+  it('returns 0 outside the edge zones and outside the box', () => {
+    expect(edgeScrollStep(100, 0, 600, 48, 14)).toBe(0)
+    expect(edgeScrollStep(599 - 48 - 1, 0, 599)).toBe(0)
+    expect(edgeScrollStep(-10, 0, 600)).toBe(0)
+    expect(edgeScrollStep(700, 0, 600)).toBe(0)
+  })
+
+  it('scrolls down near the bottom edge, scaling with proximity', () => {
+    expect(edgeScrollStep(600, 0, 600, 48, 14)).toBe(14)
+    expect(edgeScrollStep(576, 0, 600, 48, 14)).toBe(7)
+    expect(edgeScrollStep(553, 0, 600, 48, 14)).toBe(1)
+  })
+
+  it('scrolls up near the top edge, negative (up)', () => {
+    expect(edgeScrollStep(0, 0, 600, 48, 14)).toBe(-14)
+    expect(edgeScrollStep(24, 0, 600, 48, 14)).toBe(-7)
+    expect(edgeScrollStep(47, 0, 600, 48, 14)).toBe(-1)
   })
 })

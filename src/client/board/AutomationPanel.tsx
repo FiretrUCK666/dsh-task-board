@@ -1,28 +1,68 @@
 /**
- * AutomationPanel: the board header's unified "自动化" overview. One place to
- * see BOTH automatic-driving kinds — the task-level schedule rule (cron /
- * run-after-completion) and the session-level rules (send a preset instruction
- * to one of the task's sessions on a cron).
+ * AutomationPanel: the board header's "自动化" overview. One place to see AND
+ * manage BOTH automatic-driving kinds of every automated task — the
+ * task-level schedule (cron / 完成后接续) and the session-level rules.
  *
- * It is deliberately an OVERVIEW: task-level automation gets a live summary +
- * enable switch + a jump into the task detail (where the full schedule editor
- * already lives) — and arming an unlimited chain from the switch raises the
- * SAME one-shot confirmation the detail editor shows (chainUnlimited, the one
- * guard). Session-level rules render through the SHARED SessionRulesSection —
- * exactly the same rows and the same add/edit form as the task detail's
- * automation disclosure — so the session-rule system has one UI and no
- * surface can carry a reduced second copy again.
+ * It is the SAME editor as the task detail's 自动化 disclosure: each task card
+ * shows its identity + one live summary line, and expanding it renders the
+ * shared AutomationEditor verbatim — so the board has every capability the
+ * detail has (including 完成后接续), and no surface can drift into a reduced
+ * second editor. Cards start collapsed: the overview stays a scan-able list,
+ * and everything is editable in place (即改即生效, the same gates —
+ * chainUnlimited — move with the editor).
  */
 import { useEffect, useState } from 'react'
 import { type BoardController } from '../../core/controller.ts'
-import { chainUnlimited, type TaskRecord } from '../../core/tasks.ts'
+import { automationTasksOf } from '../../core/automation.ts'
+import { type TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Dialog } from './Dialog.tsx'
-import { SessionRulesSection, scheduleSummary } from './automation-ui.tsx'
-import { Button, Icon, Switch } from './ui.tsx'
+import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
+import { Button, Icon } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
+
+/** One automated task in the overview: identity row + live summary + expand
+ *  into the shared full editor (the exact component the detail renders). */
+function AutomationTaskCard({ controller, task, onClose }: {
+  controller: BoardController
+  task: TaskRecord
+  onClose: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const schedule = task.schedule
+  const summary = schedule !== undefined
+    ? scheduleSummary(task)
+    : t('auto.ruleCount', { n: String(task.rules?.length ?? 0) })
+  return (
+    <section className={css.autoTask}>
+      <header className={css.autoTaskHead}>
+        <span className={css.autoTaskTitle} title={task.title}>{task.title}</span>
+        <span className={css.autoTaskStatus}>{t(STATUS_KEY[task.status])}</span>
+        <Button
+          size="sm"
+          title={t('auto.openDetail')}
+          onClick={() => { controller.openTask(task.id); onClose() }}
+        >
+          {t('auto.openDetail')}
+        </Button>
+      </header>
+      {/* One expandable summary row — THE one summary grammar (scheduleSummary).
+          The editor opens expanded (default collapsed keeps the overview tidy). */}
+      <button
+        type="button"
+        className={css.autoTaskExpand}
+        aria-expanded={expanded}
+        title={summary}
+        onClick={() => { setExpanded(value => !value) }}
+      >
+        <Icon name="chevronDown" className={`${css.autoTaskChevron}${expanded ? ` ${css.autoTaskChevronOpen}` : ''}`} />
+        <span className={css.autoTaskSummary}>{summary}</span>
+      </button>
+      {expanded && <AutomationEditor controller={controller} task={task} />}
+    </section>
+  )
+}
 
 /** The unified automation overview panel (see module doc). */
 export function AutomationPanel({ controller, onClose }: {
@@ -35,25 +75,9 @@ export function AutomationPanel({ controller, onClose }: {
     [controller],
   )
 
-  // Tasks carrying live automation: a task-level schedule that is armed, or at
-  // least one session rule. A task with no rules and a disarmed schedule is not
-  // shown (there is nothing to manage in the overview).
-  const automated = snapshot.tasks.filter(task =>
-    (task.schedule?.enabled === true) || (task.rules !== undefined && task.rules.length > 0))
-
-  // The overview's enable switch shares the detail's unlimited-chain guard:
-  // arming an endless chain confirms once, before it is ever armed.
-  const [confirmUnlimited, setConfirmUnlimited] = useState<TaskRecord | undefined>(undefined)
-
-  /** Arm/disarm the task schedule from the overview (same semantics as the
-   *  detail editor's toggle, minus the local-edit syncing). */
-  const applyToggle = (task: TaskRecord, next: boolean): void => {
-    if (next && chainUnlimited(task.schedule?.mode, task.schedule?.maxRuns)) {
-      setConfirmUnlimited(task)
-      return
-    }
-    controller.setSchedule(task.id, { enabled: next })
-  }
+  // Tasks carrying ANY automation config (armed or disarmed schedule, or at
+  // least one session rule) — everything manageable from the board.
+  const automated = automationTasksOf(snapshot.tasks)
 
   return (
     <Dialog title={t('auto.title')} label={t('auto.title')} onClose={onClose} className={css.autoModal}>
@@ -61,61 +85,10 @@ export function AutomationPanel({ controller, onClose }: {
         <p className={css.autoEmpty}>{t('auto.empty')}</p>
       ) : (
         <div className={css.autoList}>
-          {automated.map(task => {
-            const schedule = task.schedule
-            return (
-              <section key={task.id} className={css.autoTask}>
-                {/* Card identity: title + status + jump into the detail. */}
-                <header className={css.autoTaskHead}>
-                  <span className={css.autoTaskTitle} title={task.title}>{task.title}</span>
-                  <span className={css.autoTaskStatus}>{t(STATUS_KEY[task.status])}</span>
-                  <Button
-                    size="sm"
-                    title={t('auto.openDetail')}
-                    onClick={() => { controller.openTask(task.id); onClose() }}
-                  >
-                    {t('auto.openDetail')}
-                  </Button>
-                </header>
-
-                {/* Task-level automation: one summary row + enable switch + jump
-                    to the detail's full schedule editor. */}
-                {schedule !== undefined && schedule.enabled && (
-                  <div className={css.autoScheduleRow}>
-                    <span className={css.autoMeta} title={schedule.cron}>
-                      <Icon name="play" className={css.autoMetaIcon} />
-                      {scheduleSummary(task)}
-                    </span>
-                    <Switch
-                      checked={schedule.enabled}
-                      onChange={next => { applyToggle(task, next) }}
-                      label={t('auto.schedule.enable')}
-                    />
-                  </div>
-                )}
-
-                {/* Session-level rules: THE shared module (rows + add/edit
-                    form) — one grammar with the task detail, never a second
-                    copy. */}
-                <SessionRulesSection controller={controller} task={task} />
-              </section>
-            )
-          })}
+          {automated.map(task => (
+            <AutomationTaskCard key={task.id} controller={controller} task={task} onClose={onClose} />
+          ))}
         </div>
-      )}
-      {confirmUnlimited !== undefined && (
-        <ConfirmDialog
-          title={t('detail.schedule.unlimitedTitle')}
-          message={t('detail.schedule.unlimitedConfirm')}
-          confirmLabel={t('detail.schedule.unlimitedOk')}
-          danger
-          onCancel={() => { setConfirmUnlimited(undefined) }}
-          onConfirm={() => {
-            const task = confirmUnlimited
-            setConfirmUnlimited(undefined)
-            controller.setSchedule(task.id, { enabled: true })
-          }}
-        />
       )}
     </Dialog>
   )

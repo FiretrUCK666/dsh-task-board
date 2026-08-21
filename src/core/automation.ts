@@ -181,3 +181,12 @@ export function withSessionRules(task: TaskRecord, rules: SessionRule[] | undefi
   }
   return { ...task, rules }
 }
+
+/** Tasks carrying ANY automation — an armed or disarmed schedule, or at least
+ *  one session rule. The overview's membership: everything the user may want
+ *  to see or manage from the board, including a disarmed schedule (so it can
+ *  be re-armed / re-configured in place instead of needing the detail). */
+export function automationTasksOf(tasks: readonly TaskRecord[]): TaskRecord[] {
+  return tasks.filter(task =>
+    task.schedule !== undefined || (task.rules !== undefined && task.rules.length > 0))
+}

@@ -1,5 +1,7 @@
 /**
- * Card no-breakout CSS contract. The compact kanban card must never let any
+ * The card contract (domain grouping — the two halves of ONE guarantee):
+ *
+ * card no-breakout CSS contract — the compact kanban card must never let any
  * text escape its box, whatever content lands inside it now or later. That
  * guarantee is enforced by the CSS in board.module.css; this spec freezes the
  * contract so a future refactor that removes or weakens any layer fails the
@@ -8,13 +10,20 @@
  * Contract (three layers):
  *   1. the card box is a hard clip boundary (overflow: hidden);
  *   2. every text path inside the card truncates rather than stretching
- *      (min-width: 0 on every flex child, shredder-able cardTime, the chip
+ *      (min-width: 0 on every flex child, shrinkable cardTime, the chip
  *      body ellipsis wrapper, overflow-wrap on title/excerpt);
  *   3. chips may shrink but never exceed their container.
+ *
+ * card chip label composition — the compact card's badges are assembled from
+ * locale copy through the pure helpers in TaskCard.tsx; this pins the exact
+ * strings in both languages for every run state (plain running + each waiting
+ * kind), so the card's text can never drift from its copy and the composed
+ * labels stay short enough to truncate gracefully instead of overflowing.
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { runningStateLabel, settledChipLabel } from '../src/client/board/TaskCard.tsx'
 
 const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
 const source = readFileSync(cssPath, 'utf8')
@@ -118,5 +127,42 @@ describe('card no-breakout CSS contract', () => {
     const badges = expectRule('cardBadges')
     expect(badges).toContain('flex-wrap: wrap')
     expect(badges).toContain('min-width: 0')
+  })
+})
+
+describe('card chip label composition', () => {
+  function useLanguage(lang: string): void {
+    vi.stubGlobal('document', { documentElement: { lang } })
+  }
+
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('running state: plain running keeps a short one-word label (zh)', () => {
+    useLanguage('zh')
+    expect(runningStateLabel(undefined)).toBe('进行中')
+  })
+
+  it('running state: each user-blocking kind is named (zh)', () => {
+    useLanguage('zh')
+    expect(runningStateLabel('approval')).toBe('等待回应 · 权限审批')
+    expect(runningStateLabel('plan-review')).toBe('等待回应 · 计划确认')
+    expect(runningStateLabel('question')).toBe('等待回应 · 提问')
+  })
+
+  it('running state: english mirror', () => {
+    useLanguage('en')
+    expect(runningStateLabel(undefined)).toBe('Running')
+    expect(runningStateLabel('approval')).toBe('Waiting for you · Approval')
+    expect(runningStateLabel('plan-review')).toBe('Waiting for you · Plan review')
+    expect(runningStateLabel('question')).toBe('Waiting for you · Question')
+  })
+
+  it('settled count label (zh / en)', () => {
+    useLanguage('zh')
+    expect(settledChipLabel(0)).toBe('0 次执行')
+    expect(settledChipLabel(3)).toBe('3 次执行')
+    useLanguage('en')
+    expect(settledChipLabel(0)).toBe('0 runs')
+    expect(settledChipLabel(3)).toBe('3 runs')
   })
 })

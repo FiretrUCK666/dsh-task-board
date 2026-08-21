@@ -12,7 +12,7 @@
  * dragover, read at drop) so the drop always matches the preview; only the
  * indicator rendering goes through state.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
 import { COLUMNS, landingStatusOf, latestExecutionOf, plainRunsOf, resolveCardDrop, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
@@ -21,6 +21,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
+import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { coveringWindow, duplicateWindowOf, type CruiseWindow } from '../../core/cruise.ts'
 import { formatCruiseTime, isNextDay } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
@@ -202,6 +203,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     setDropGap(undefined)
     dropGapRef.current = undefined
     setDragOver(undefined)
+    autoScrollRef.current = null
   }
 
   // Window-level safety net: a drag that ends outside the board — released
@@ -277,6 +279,40 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       top: indicatorTopOf(gap.top, containerTop, container.scrollTop, container.scrollHeight),
     }
   }
+
+  /** Apply a insertion gap to the UI: THE one gap-write path (dragover and the
+   *  auto-scroll frame share it — the indicator stays truthful mid-scroll).
+   *  React state only churns when the STRUCTURE of the gap changes
+   *  (status + beforeId); the indicator's top is written straight into the
+   *  DOM on every call, so a pointer move or a scroll can never trigger a
+   *  re-render — no flicker, no storm. */
+  const applyGap = useCallback((status: TaskStatus, dropY: number): void => {
+    const gap = gapAt(status, dropY)
+    dropGapRef.current = { status, beforeId: gap.beforeId, top: gap.top }
+    const indicator = indicatorRefs.current[status]
+    if (indicator !== null && indicator !== undefined) {
+      indicator.style.top = `${gap.top}px`
+    }
+    setDropGap(current =>
+      current !== undefined && current.status === status && current.beforeId === gap.beforeId
+        ? current
+        : { status, beforeId: gap.beforeId, top: gap.top })
+  }, [gapAt])
+
+  // Drag edge auto-scroll: the column under the pointer scrolls itself while
+  // the drag nears its top/bottom edge (the same grammar for the detail's
+  // session list). getRoot is stable (a ref read); the frame callback
+  // re-applies the gap with the last pointer position.
+  const autoScrollRef = useRef<{ status: TaskStatus; cards: HTMLElement } | null>(null)
+  const autoScrollRoot = useCallback(() => autoScrollRef.current?.cards ?? null, [])
+  useDragAutoScroll(
+    autoScrollRoot,
+    dragId !== undefined || dropAccept !== undefined,
+    useCallback((pointerY: number) => {
+      const target = autoScrollRef.current
+      if (target !== null) applyGap(target.status, pointerY)
+    }, [applyGap]),
+  )
 
   // Resolve a workspace id to its display title through the run catalog
   // (live workspace list; falls back to the raw id when the workspace no
@@ -557,7 +593,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               never the brand fill, so the bar reads quiet until there is a
               real selection to manage. */}
           <Button
-            size="sm"
             variant="ghost"
             pressed={organizing}
             onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
@@ -565,7 +600,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             {t('board.organize')}
           </Button>
           <Button
-            size="sm"
             variant="ghost"
             title={t('board.automationTitle')}
             onClick={() => { setShowAutomation(true) }}
@@ -589,7 +623,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 />
               </span>
               <span className={css.organizeCount}>{t('board.organizeCount', { n: String(selectedCards.length) })}</span>
-              {/* Selection group: select-all / clear / done. */}
+              {/* Selection group: select-all / clear / done + the danger
+                  delete right next to 完成 (one right-cluster, hairline
+                  between — the destructive action reads as part of the same
+                  group instead of drifting across the bar). */}
               <span className={css.organizeActions}>
                 <Button size="sm" onClick={() => { setSelectedCards(visible.map(task => task.id)) }}>
                   {t('board.organizeSelectAll')}
@@ -600,18 +637,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 <Button size="sm" variant="primary" onClick={exitOrganize}>
                   {t('board.organizeDone')}
                 </Button>
+                {/* Danger group: delete the selected cards — only once there
+                    IS a selection (an empty organize mode never flashes a
+                    destructive button next to the color row), separated from
+                    完成 by the hairline. */}
+                {selectedCards.length > 0 && (
+                  <span className={css.organizeDanger}>
+                    <Button size="sm" variant="danger" disabled={selectedCards.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
+                      {t('board.organizeDelete')}
+                    </Button>
+                  </span>
+                )}
               </span>
-              {/* Danger group: delete the selected cards — only once there
-                  IS a selection (an empty organize mode never flashes a
-                  destructive button next to the color row), and visibly
-                  separate from the color row via the hairline. */}
-              {selectedCards.length > 0 && (
-                <span className={css.organizeDanger}>
-                  <Button size="sm" variant="danger" disabled={selectedCards.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
-                    {t('board.organizeDelete')}
-                  </Button>
-                </span>
-              )}
             </span>
           </div>
         )}
@@ -645,6 +682,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               data-dragreject={dragReject === column.status ? '' : undefined}
               data-dropaccept={dropAccept === column.status ? 'link' : undefined}
               onDragOver={event => {
+                // The drag edge auto-scroll targets the column under the
+                // pointer; the loop re-checks the pointer against the root
+                // rect every frame, so a stale target is harmless.
+                const cardsEl = cardsRefs.current[column.status]
+                if (cardsEl !== null && cardsEl !== undefined) {
+                  autoScrollRef.current = { status: column.status, cards: cardsEl }
+                }
                 // A latched external sidebar drag (session/workspace) marks
                 // this column as the drop target; the board's own card drags
                 // keep the reorder/move feedback below. The latch is cleared
@@ -680,22 +724,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   return
                 }
                 // The nearest gap decides — the indicator bar is the whole
-                // feedback, no column border, for moves into any column.
+                // feedback, no column border, for moves into any column
+                // (applyGap is THE one gap-write path, shared with the
+                // auto-scroll frame).
                 setDragOver(undefined)
-                const gap = gapAt(column.status, event.clientY)
-                // React state only churns when the STRUCTURE of the gap
-                // changes (status + beforeId); the indicator's top is written
-                // straight into the DOM on every dragover (its ref exists
-                // once the bar is mounted), so a pointer move or a scroll can
-                // never trigger a re-render — no flicker, no storm.
-                dropGapRef.current = { status: column.status, beforeId: gap.beforeId, top: gap.top }
-                const indicator = indicatorRefs.current[column.status]
-                if (indicator !== null && indicator !== undefined) {
-                  indicator.style.top = `${gap.top}px`
-                }
-                if (dropGap === undefined || dropGap.status !== column.status || dropGap.beforeId !== gap.beforeId) {
-                  setDropGap({ status: column.status, beforeId: gap.beforeId, top: gap.top })
-                }
+                applyGap(column.status, event.clientY)
               }}
               onDragLeave={event => {
                 // A leave to a child of this column is not a leave of the

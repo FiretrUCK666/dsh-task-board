@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  automationRowsOf, isSessionRule, normalizeSessionRules, sessionRuleReadiness,
+  automationRowsOf, automationTasksOf, isSessionRule, normalizeSessionRules, sessionRuleReadiness,
   sessionRuleOf, withSessionRules, type SessionRule,
 } from '../src/core/automation.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
@@ -34,6 +34,32 @@ describe('automationRowsOf', () => {
 
   it('yields an empty list for a task with neither kind', () => {
     expect(automationRowsOf(createTask({ title: 't', description: '', prompt: '' }, NOW, 'task-1'))).toEqual([])
+  })
+})
+
+describe('automationTasksOf (the overview membership)', () => {
+  const bare = createTask({ title: 't', description: '', prompt: '' }, NOW, 'task-1')
+  const scheduleOf = (mode: 'cron' | 'chain', enabled: boolean): NonNullable<TaskRecord['schedule']> => ({
+    enabled,
+    mode,
+    cron: mode === 'cron' ? '0 9 * * *' : '',
+    runCount: 0,
+    nextRunAt: undefined,
+    lastTriggeredAt: undefined,
+    maxRuns: undefined,
+    primed: false,
+  })
+
+  it('includes armed and DISARMED schedules (manageable from the board)', () => {
+    const armed = { ...bare, id: 'a', schedule: scheduleOf('cron', true) }
+    const disarmed = { ...bare, id: 'b', schedule: scheduleOf('chain', false) }
+    expect(automationTasksOf([bare, armed, disarmed]).map(t => t.id)).toEqual(['a', 'b'])
+  })
+
+  it('includes tasks with session rules, and excludes fully plain tasks', () => {
+    const ruled = withSessionRules({ ...bare, id: 'c' }, [rule()])
+    expect(automationTasksOf([bare, ruled]).map(t => t.id)).toEqual(['c'])
+    expect(automationTasksOf([bare])).toEqual([])
   })
 })
 

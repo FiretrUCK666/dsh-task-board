@@ -855,23 +855,60 @@ export class BoardController {
    * anything else joins the multi-source set. Persisted; the linked rows then
    * derive live from every bound source (new sessions in a bound folder sync
    * in automatically via deriveLinkedSessions).
-   * @returns true when the binding was added, false for a no-op/unknown task.
+   *
+   * An explicit re-add is also the RESTORE gesture: the sessions the source
+   * carries leave the removed set (the hidden tray's 删除 is reversible BY
+   * THE USER'S HAND — dragging the session or its workspace back shows it
+   * again), while passive workspace derivation never resurrects a removed
+   * session.
+   * @returns true when the binding was added or anything was restored, false
+   * for a pure no-op / unknown task.
    */
   addTaskSource(taskId: string, bind: TaskBind): boolean {
     let changed = false
     this.tasks = this.tasks.map(task => {
       if (task.id !== taskId) return task
       const current = taskBindsOf(task)
-      if (current.some(existing => sameBind(existing, bind))) return task
-      changed = true
-      return { ...task, binds: [...current, bind], updatedAt: this.now() }
+      const isSame = current.some(existing => sameBind(existing, bind))
+      const removed = task.removedSessions
+      let next = task
+      if (removed !== undefined && removed.length > 0) {
+        const carried = this.sourceMemberIdsOf(bind)
+        const kept = carried.length > 0
+          ? removed.filter(id => !carried.includes(id))
+          : removed
+        if (kept.length !== removed.length) {
+          changed = true
+          if (kept.length > 0) {
+            next = { ...task, removedSessions: kept }
+          } else {
+            next = { ...task }
+            delete next.removedSessions
+          }
+        }
+      }
+      if (!isSame) {
+        next = { ...next, binds: [...current, bind], updatedAt: this.now() }
+        changed = true
+      }
+      return next
     })
     if (changed) {
       this.persistAndNotify()
-      // A newly added source's state joins the card instantly.
+      // A newly added / restored source's state joins the card instantly.
       void this.reconcileBoundTask(taskId)
     }
     return changed
+  }
+
+  /** The sessions a bound source carries (a session bind is itself; a
+   *  workspace bind is its current members) — the ids an explicit re-add
+   *  restores. */
+  private sourceMemberIdsOf(bind: TaskBind): string[] {
+    if (bind.kind === 'session') return [bind.sessionId]
+    const snap = this.deps.workspaces?.list.getSnapshot()
+    if (snap === undefined) return []
+    return [...(snap.items.find(item => item.id === bind.workspaceId)?.sessionIds ?? [])]
   }
 
   /** Permanently remove ONE session from the task (the hidden-tray 删除):
@@ -1507,6 +1544,9 @@ export class BoardController {
     if (trimmed === '' && (images === undefined || images.length === 0)) {
       return Promise.resolve({ ok: false, error: 'empty message' })
     }
+    // A steer on a completed task revives it (moved back to 待办) — the same
+    // rule as the queued comment paths: the message drives the task.
+    this.reviveTaskIfDone(taskId)
     return this.sendRawMessage(sessionId, trimmed, images).then(result => {
       if (!result.ok) return result
       // The direct-sent turn is already what the steer created — keep the
@@ -1739,13 +1779,17 @@ export class BoardController {
    * @param text - the comment to send to the session's agent.
    * @param command - whether the comment is a slash-command line.
    * @returns the queued comment round, or undefined when rejected (unknown
-   *   task/execution, completed task, execution not settled).
+   *   task/execution, execution not settled).
    */
   submitComment(taskId: string, executionId: string, text: string, command = false): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
-    if (task === undefined || task.status === 'done') return undefined
+    if (task === undefined) return undefined
+    // A comment on a completed task revives it (moved back to 待办) — the
+    // same rule as the linked-session composer; the work is driven, never
+    // dead-ended.
+    if (task.status === 'done') this.reviveTaskIfDone(taskId)
     const execution = task.executions.find(candidate => candidate.id === executionId)
     if (execution === undefined || execution.sessionId === undefined || execution.endedAt === undefined) return undefined
     const round = newCommentRound({
@@ -1763,6 +1807,15 @@ export class BoardController {
     return round
   }
 
+  /** A comment on a completed task revives it: moving the task back to 待办 is
+   *  the SAME column transition as a drag (the schedule re-arms per column
+   *  rules), so the comment drives the task instead of hitting a dead end. */
+  private reviveTaskIfDone(taskId: string): void {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined || task.status !== 'done') return
+    this.moveTask(taskId, 'todo')
+  }
+
   /**
    * Save a comment continuation against a linked session — the drive-mode
    * composer of the linked-session panel. Semantics are identical to
@@ -1772,21 +1825,22 @@ export class BoardController {
    * comment submitted from an execution's review page. The only difference
    * is the anchor (`sessionAnchor` instead of `parentExecutionId`), which
    * puts the round in the linked session's own comment thread and reuses
-   * that session instead of a settled execution's. A completed task cannot
-   * be commented (its work is done); every other state can — a running
-   * task's comment queues for when its current round settles.
+   * that session instead of a settled execution's. A completed task is
+   * REVIVED by its comment (moved back to 待办) — the comment drives it
+   * instead of being a dead end; every other state queues as usual.
    * @param taskId - the task owning the linked session.
    * @param sessionId - the linked session to continue (never created).
    * @param text - the comment to send to the session's agent.
    * @param command - whether the comment is a slash-command line.
    * @returns the queued comment round, or undefined when rejected (unknown
-   *   task, completed task).
+   *   task).
    */
   submitSessionComment(taskId: string, sessionId: string, text: string, command = false): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
-    if (task === undefined || task.status === 'done') return undefined
+    if (task === undefined) return undefined
+    if (task.status === 'done') this.reviveTaskIfDone(taskId)
     const round = newCommentRound({
       id: this.uuid(),
       now: this.now(),

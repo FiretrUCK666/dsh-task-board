@@ -4,11 +4,9 @@
  * delete (with confirmation), manual status moves, and a jump to the
  * execution's session transcript.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
-import { LocalStoragePresetStore } from '../../core/presets.ts'
-import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
-import { MANUAL_STATUSES, chainUnlimited, hasOpenRun, latestExecutionOf, plainRunsOf, ruleReadiness, taskBindsOf, type ExecutionRecord, type ScheduleMode, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, hasOpenRun, latestExecutionOf, plainRunsOf, ruleReadiness, taskBindsOf, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
@@ -19,18 +17,17 @@ import { Chip, type ChipKind } from './Chip.tsx'
 import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
-import { mergedPresets, PresetManager } from './PresetManager.tsx'
-import { CronField, SessionRulesSection, scheduleSummary } from './automation-ui.tsx'
-import { cronHumanLabel } from './cron-label.ts'
+import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
 import { sessionStateChip, waitingKeyOf } from './session-chip.ts'
 import { indicatorTopOf, insertionGapOf } from './drop-position.ts'
+import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
 import { SessionRow } from './SessionRow.tsx'
 import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
-import { Button, Disclosure, Icon, Section, Switch } from './ui.tsx'
+import { Button, Disclosure, Icon, Section } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
 import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
 
@@ -212,170 +209,16 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
 }
 
 /** The automation module (task-level orchestration): one collapsed line = the
- *  live state; the expanded editor = 触发方式 (分段) + 当前模式的配置 + 按状态
- *  显隐的最小操作 (跳过本次 / 停止接续) — no save/cancel (即改即生效), and its
- *  boundary with the board-level 自动巡航 is one quiet line, not prose.
- *  Session-level rules live in the SAME disclosure below the schedule editor
- *  through the shared SessionRulesSection (the module the board's 自动化
- *  overview renders verbatim — one rule system, never a second copy). */
+ *  live state; the expanded body is the SHARED AutomationEditor — the same
+ *  full editor the board's 自动化 overview task cards render, so the
+ *  task-level schedule (按时间表 / 完成后接续) and the session rules have
+ *  exactly ONE UI and the board CAN edit everything the detail can. */
 function AutomationSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
   const schedule = task.schedule
-  // `||` (not `??`) falls back to the default even for an empty stored
-  // expression, so switching modes can never leave the editor with a blank
-  // cron value.
-  const [cron, setCron] = useState(schedule?.cron || '0 9 * * *')
-  const [enabled, setEnabled] = useState(schedule?.enabled ?? false)
-  const [mode, setMode] = useState<ScheduleMode>(schedule?.mode ?? 'cron')
-  const [maxRuns, setMaxRuns] = useState(schedule?.maxRuns?.toString() ?? '')
-  const [nextRunAt, setNextRunAt] = useState<number | undefined>(schedule?.nextRunAt)
-  const [lastTriggeredAt, setLastTriggeredAt] = useState<number | undefined>(schedule?.lastTriggeredAt)
-  const [error, setError] = useState<string | undefined>(undefined)
-  const [showPresets, setShowPresets] = useState(false)
-  const [presetStore] = useState(() => new LocalStoragePresetStore())
-  // The merged preset list (built-ins + custom); rebuilt when the manager closes.
-  const [presets, setPresets] = useState(() => mergedPresets(presetStore))
-
-  // Keep the editor in sync when the task record changes underneath (the
-  // schedule rolls forward as runs trigger).
-  useEffect(() => {
-    setCron(schedule?.cron || '0 9 * * *')
-    setEnabled(schedule?.enabled ?? false)
-    setMode(schedule?.mode ?? 'cron')
-    setMaxRuns(schedule?.maxRuns?.toString() ?? '')
-    setNextRunAt(schedule?.nextRunAt)
-    setLastTriggeredAt(schedule?.lastTriggeredAt)
-    setError(undefined)
-  }, [task.id, schedule?.enabled, schedule?.mode, schedule?.cron, schedule?.nextRunAt, schedule?.lastTriggeredAt, schedule?.maxRuns, schedule?.runCount])
-
-  // Arming the rule expands the editor at once (the initial state already
-  // keeps an armed rule expanded on open — "按过启用后下次打开自动展开").
-  useEffect(() => {
-    if (schedule?.enabled === true) setOpen(true)
-  }, [task.id, schedule?.enabled])
-
-  /** Validate + persist the current cron text (Enter or blur). */
-  const saveCron = (value: string): void => {
-    const trimmed = value.trim()
-    setCron(trimmed)
-    if (trimmed === '' || !isValidCron(trimmed)) {
-      setError(t('detail.schedule.invalid'))
-      return
-    }
-    setError(undefined)
-    controller.setSchedule(task.id, { cron: trimmed })
-  }
-
-  /** Persist the run budget (blank = unlimited). */
-  const saveMaxRuns = (value: string): void => {
-    const trimmed = value.trim()
-    setMaxRuns(trimmed)
-    if (trimmed === '') {
-      controller.setSchedule(task.id, { maxRuns: undefined })
-      return
-    }
-    const parsed = Number(trimmed)
-    if (!Number.isInteger(parsed) || parsed < 1) {
-      setError(t('detail.schedule.invalidRuns'))
-      return
-    }
-    setError(undefined)
-    controller.setSchedule(task.id, { maxRuns: parsed })
-  }
-
-  /** Arm/disarm the schedule. Arming a chain without a run budget (unlimited)
-   *  risks an endless loop of real agent sessions — confirm once first. */
-  const applyEnabled = (next: boolean): void => {
-    if (next && mode === 'cron' && cron.trim() !== schedule?.cron) controller.setSchedule(task.id, { cron: cron.trim() })
-    if (controller.setSchedule(task.id, { enabled: next, mode })) setEnabled(next)
-  }
-
-  /** Arm/disarm the schedule (arming first persists the edited cron). */
-  const toggleEnabled = (next: boolean): void => {
-    const trimmed = cron.trim()
-    if (next && mode === 'cron' && (trimmed === '' || !isValidCron(trimmed))) {
-      setError(t('detail.schedule.invalid'))
-      return
-    }
-    setError(undefined)
-    // The ONE unlimited-chain guard (shared with the overview's switch): an
-    // endless loop of real agent sessions confirms once, never silently.
-    if (next && chainUnlimited(mode, maxRuns.trim() === '' ? undefined : Number(maxRuns))) {
-      setConfirm('unlimited-enable')
-      return
-    }
-    applyEnabled(next)
-  }
-
-  /** Switch the driving mode (cron ↔ chain). Switching back to cron first
-   *  persists the editor's current expression, so the stored rule is never
-   *  left with an empty cron (which cron mode would reject). */
-  const switchMode = (next: ScheduleMode): void => {
-    if (next === mode) return
-    if (next === 'cron' && (cron.trim() === '' || !isValidCron(cron))) {
-      setError(t('detail.schedule.invalid'))
-      return
-    }
-    setError(undefined)
-    setMode(next)
-    if (next === 'cron' && cron.trim() !== schedule?.cron) {
-      controller.setSchedule(task.id, { cron: cron.trim() })
-    }
-    if (controller.setSchedule(task.id, { mode: next })) {
-      // Re-arm under the new mode so an enabled switch takes effect at once.
-      controller.setSchedule(task.id, { enabled, mode: next })
-    }
-  }
-
-  /** Stop an active chain: only the automation stops (enabled:false — the
-   *  card's column is untouched). Unlimited chains confirm once (endless
-   *  loop of real agent sessions is a big side effect). */
-  const stopChain = (): void => {
-    if (chainUnlimited(mode, maxRuns.trim() === '' ? undefined : Number(maxRuns))) {
-      setConfirm('stop-chain')
-      return
-    }
-    if (controller.setSchedule(task.id, { enabled: false, mode })) setEnabled(false)
-  }
-  const applyStopChain = (): void => {
-    if (controller.setSchedule(task.id, { enabled: false, mode })) setEnabled(false)
-  }
-
-  /** Skip the next cron firing: roll nextRunAt forward to the following
-   *  match while keeping the rule armed — a "defer once", never a catch-up. */
-  const skipNext = (): void => {
-    if (mode !== 'cron' || nextRunAt === undefined) return
-    const next = nextRunAtMs(cron, nextRunAt)
-    if (next === undefined) return
-    setNextRunAt(next)
-    controller.applyScheduleNextRun(task.id, next, lastTriggeredAt)
-  }
-
-  const applyPreset = (preset: string): void => {
-    if (preset === '') return
-    setCron(preset)
-    setError(undefined)
-    controller.setSchedule(task.id, { cron: preset })
-  }
-
-  const closePresets = (): void => {
-    setShowPresets(false)
-    setPresets(mergedPresets(presetStore))
-  }
-
   const readiness = ruleReadiness(task)
-  const chainRuns = schedule?.runCount ?? 0
-  const chainBudget = schedule?.maxRuns
-  const nextLabel = !enabled || mode !== 'cron' || nextRunAt === undefined
-    ? t('detail.schedule.notScheduled')
-    : nextRunAt <= Date.now()
-      ? t('detail.schedule.dueSoon')
-      : new Date(nextRunAt).toLocaleString()
-  const lastLabel = lastTriggeredAt === undefined ? '—' : new Date(lastTriggeredAt).toLocaleString()
-  // Cron skip is offered only when a future due instant actually exists.
-  const canSkip = enabled && mode === 'cron' && readiness.kind === 'active'
-    && nextRunAt !== undefined && nextRunAt > Date.now()
   // A paused rule names its blocking status; a review pause caused by a
-  // failed run adds the "because it failed" reason word.
+  // failed run adds the "because it failed" reason word (the one summary
+  // grammar is scheduleSummary; the detail only adds this word on top).
   const stoppedReason = readiness.kind === 'paused'
     ? {
         extraFailed: readiness.status === 'review'
@@ -385,14 +228,15 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
     : undefined
 
   // Collapsed by default: the detail stays quiet, one summary line reads the
-  // rule's true state — closed / paused (with the blocking reason) / running.
+  // rule's true state — off / paused (with the blocking reason) / running.
   // Collapsed by default UNLESS the rule is already enabled: an armed
   // automation opens expanded, so its live state is immediately visible —
   // "按过启用后，下次打开必自动展开" (the user asked for exactly this).
   const [open, setOpen] = useState(() => schedule?.enabled === true)
-  const [confirm, setConfirm] = useState<'unlimited-enable' | 'stop-chain' | undefined>(undefined)
-  // THE one summary grammar (shared with the overview and the card tooltip);
-  // the detail only adds its failed-pause reason word on top.
+  useEffect(() => {
+    if (schedule?.enabled === true) setOpen(true)
+  }, [task.id, schedule?.enabled])
+  // THE one summary grammar (shared with the overview and the card tooltip).
   const summary = scheduleSummary(task, stoppedReason?.extraFailed === true)
 
   return (
@@ -402,158 +246,7 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
       open={open}
       onToggle={() => { setOpen(!open) }}
     >
-      <Switch
-        checked={enabled}
-        onChange={toggleEnabled}
-        label={t('detail.schedule.enable')}
-      />
-
-      {/* Driving mode: fixed times (cron) or run-after-completion (chain). */}
-      <div className={css.segmentedRow} role="radiogroup" aria-label={t('detail.schedule')}>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === 'cron'}
-          className={`${css.segmentedButton}${mode === 'cron' ? ` ${css.segmentedActive}` : ''}`}
-          title={t('detail.schedule.mode.cronHint')}
-          onClick={() => { switchMode('cron') }}
-        >
-          {t('detail.schedule.mode.cron')}
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === 'chain'}
-          className={`${css.segmentedButton}${mode === 'chain' ? ` ${css.segmentedActive}` : ''}`}
-          title={t('detail.schedule.mode.chainHint')}
-          onClick={() => { switchMode('chain') }}
-        >
-          {t('detail.schedule.mode.chain')}
-        </button>
-      </div>
-
-      {mode === 'cron' ? (
-        <div className={css.scheduleGrid}>
-          <span className={css.scheduleLabel}>{t('detail.schedule.cron')}</span>
-          {/* The ONE cron grammar (input + presets + manager) shared with the
-              session-rule form — expressions always speak alike. */}
-          <CronField
-            value={cron}
-            presets={presets}
-            invalid={error !== undefined}
-            onChange={next => { setCron(next); setError(undefined) }}
-            onCommit={saveCron}
-            onPreset={applyPreset}
-            onManagePresets={() => { setShowPresets(true) }}
-            label={t('detail.schedule.cron')}
-          />
-        </div>
-      ) : (
-        <>
-          <p className={css.scheduleMeta}>{t('detail.schedule.chainNote')}</p>
-          <div className={css.scheduleActionRow}>
-            <span className={css.scheduleMeta}>
-              {t('detail.schedule.runsSoFar')} {chainRuns}
-              {chainBudget !== undefined ? ` / ${chainBudget}` : ` · ${t('detail.schedule.unlimited')}`}
-            </span>
-            {enabled && (
-              <Button size="sm" variant="ghost" onClick={stopChain}>
-                {t('detail.schedule.stopChain')}
-              </Button>
-            )}
-          </div>
-          {stoppedReason !== undefined && (
-            <p className={css.scheduleMeta}>
-              {stoppedReason.extraFailed && <>{t('detail.schedule.pausedFailed')} </>}
-              {t(stoppedReason.key)}
-            </p>
-          )}
-        </>
-      )}
-
-      <div className={css.scheduleGrid}>
-        <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
-        <span className={css.scheduleMaxRow}>
-          <input
-            className={`${css.input} ${css.scheduleMaxInput}`}
-            value={maxRuns}
-            type="number"
-            min={1}
-            placeholder="∞"
-            spellCheck={false}
-            aria-label={t('detail.schedule.maxRuns')}
-            onChange={event => { setMaxRuns(event.target.value); setError(undefined) }}
-            onBlur={() => { saveMaxRuns(maxRuns) }}
-            onKeyDown={event => { if (event.key === 'Enter') saveMaxRuns(maxRuns) }}
-          />
-          <span className={css.scheduleMeta}>
-            {t('detail.schedule.runsSoFar')} {schedule?.runCount ?? 0}
-            {schedule?.maxRuns !== undefined && ` / ${schedule.maxRuns}`}
-          </span>
-        </span>
-      </div>
-      {error !== undefined && <p className={css.formError}>{error}</p>}
-      {mode === 'cron' && (
-        <>
-          <div className={css.scheduleActionRow}>
-            <span className={css.scheduleMeta}>
-              {cronHumanLabel(cron)}
-              {' · '}
-              {readiness.kind === 'active'
-                ? `${t('detail.schedule.nextRun')} ${nextLabel}`
-                : t('detail.schedule.paused')}
-              {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
-            </span>
-            {canSkip && (
-              <Button size="sm" variant="ghost" onClick={skipNext}>
-                {t('detail.schedule.skip')}
-              </Button>
-            )}
-          </div>
-          {stoppedReason !== undefined && (
-            <p className={css.scheduleMeta}>
-              {stoppedReason.extraFailed && <>{t('detail.schedule.pausedFailed')} </>}
-              {t(stoppedReason.key)}
-            </p>
-          )}
-        </>
-      )}
-
-      {/* Session-level rules: the shared module of the automation overview —
-          the board's 自动化 panel renders this verbatim, so the session-rule
-          system has exactly ONE UI and it is always complete. */}
-      <SessionRulesSection controller={controller} task={task} />
-
-      {showPresets && (
-        <PresetManager
-          store={presetStore}
-          onClose={closePresets}
-        />
-      )}
-
-      {/* Side-effect confirms for automation: enabling an unlimited chain and
-          stopping one both confirm once — an endless loop of real agent
-          sessions is a big side effect. */}
-      {confirm === 'unlimited-enable' && (
-        <ConfirmDialog
-          title={t('detail.schedule.unlimitedTitle')}
-          message={t('detail.schedule.unlimitedConfirm')}
-          confirmLabel={t('detail.schedule.unlimitedOk')}
-          danger
-          onCancel={() => { setConfirm(undefined) }}
-          onConfirm={() => { setConfirm(undefined); applyEnabled(true) }}
-        />
-      )}
-      {confirm === 'stop-chain' && (
-        <ConfirmDialog
-          title={t('detail.schedule.stopChainTitle')}
-          message={t('detail.schedule.stopChainConfirm')}
-          confirmLabel={t('detail.schedule.stopChain')}
-          danger
-          onCancel={() => { setConfirm(undefined) }}
-          onConfirm={() => { setConfirm(undefined); applyStopChain() }}
-        />
-      )}
+      <AutomationEditor controller={controller} task={task} />
     </Disclosure>
   )
 }
@@ -701,6 +394,23 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     const containerTop = container.getBoundingClientRect().top
     return { beforeId: gap.beforeId, top: indicatorTopOf(gap.top, containerTop, container.scrollTop, container.scrollHeight) }
   }
+  /** Apply a session insertion gap to the UI — THE one gap-write path
+   *  (dragover and the auto-scroll frame share it). */
+  const applySessionGap = useCallback((dropY: number): void => {
+    const gap = sessionGapAt(dropY)
+    sessionGapRef.current = gap
+    const indicator = sessionIndicatorRef.current
+    if (indicator !== null) indicator.style.top = `${gap.top}px`
+    setSessionGap(current =>
+      current !== undefined && current.beforeId === gap.beforeId ? current : gap)
+  }, [sessionGapAt])
+
+  // Drag edge auto-scroll: while a session row is dragged, the detail body
+  // (the REAL scroll container of the modal) scrolls itself near its
+  // top/bottom edge — one gesture to the far ends of a long session list.
+  const detailBodyRef = useRef<HTMLDivElement | null>(null)
+  const detailBodyRoot = useCallback(() => detailBodyRef.current, [])
+  useDragAutoScroll(detailBodyRoot, sessionDragId !== undefined, applySessionGap)
 
   /** Latch an external sidebar drag once, on entry into the zone. */
   const onZoneDragEnter = (event: React.DragEvent): void => {
@@ -823,7 +533,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
           </button>
         </header>
 
-        <div className={css.detailBody}>
+        <div className={css.detailBody} ref={detailBodyRef}>
           {editing && draft !== undefined ? (
             <>
               <TaskForm
@@ -951,15 +661,11 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                   onDragOver={event => {
                     // A session-row reorder: compute the exact insertion slot
                     // from pointer coordinates (the same gap grammar as the
-                    // board), mirror it in the ref.
+                    // board), mirror it in the ref (applySessionGap is the
+                    // one gap-write path, shared with the auto-scroll frame).
                     if (sessionDragId === undefined) return
                     event.preventDefault()
-                    const gap = sessionGapAt(event.clientY)
-                    sessionGapRef.current = gap
-                    const indicator = sessionIndicatorRef.current
-                    if (indicator !== null) indicator.style.top = `${gap.top}px`
-                    setSessionGap(current =>
-                      current !== undefined && current.beforeId === gap.beforeId ? current : gap)
+                    applySessionGap(event.clientY)
                   }}
                   onDrop={event => {
                     if (sessionDragId === undefined) return

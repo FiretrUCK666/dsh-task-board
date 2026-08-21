@@ -14,18 +14,23 @@
  * - SessionRuleForm: the ONE add/edit form for a session rule (the "给某个
  *   会话进行自动化" surface — full capability, never a reduced clone);
  * - SessionRulesSection: rows + form toggled in place, the only surface
- *   needing composition (used by the detail and the overview verbatim).
+ *   needing composition (used by the detail and the overview verbatim);
+ * - AutomationEditor: THE one task-automation editor — task-level schedule
+ *   (cron / after-completion chain) + the session-rules section, rendered by
+ *   the detail's disclosure AND the board overview's task card verbatim.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { type SchedulePreset } from '../../core/presets.ts'
 import { LocalStoragePresetStore } from '../../core/presets.ts'
 import {
   automationRowsOf, sessionRuleOf, sessionRuleReadiness, type AutomationRow,
 } from '../../core/automation.ts'
-import { isValidCron } from '../../core/schedule.ts'
-import { ruleReadiness, type TaskRecord } from '../../core/tasks.ts'
-import { t } from '../locales.ts'
+import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
+import {
+  chainUnlimited, latestExecutionOf, ruleReadiness, type ScheduleMode, type TaskRecord, type TaskStatus,
+} from '../../core/tasks.ts'
+import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { cronHumanLabel } from './cron-label.ts'
 import { mergedPresets, presetIsDefault, PresetManager } from './PresetManager.tsx'
@@ -33,6 +38,14 @@ import { STATUS_KEY } from './status.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Icon, Section, SendModeToggle, Switch } from './ui.tsx'
 import { Chip } from './Chip.tsx'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
+
+/** The paused-rule reason word per blocking column (one map, both surfaces). */
+function pausedLabelOf(status: TaskStatus): TaskBoardKey {
+  if (status === 'review') return 'detail.schedule.paused.review'
+  if (status === 'done') return 'detail.schedule.paused.done'
+  return 'detail.schedule.paused.backlog'
+}
 
 /**
  * The one cron grammar: text input + preset dropdown (+ optional preset
@@ -87,7 +100,7 @@ export function CronField({ value, presets, onChange, onCommit, onPreset, onMana
         </select>
       </span>
       {onManagePresets !== undefined && (
-        <Button onClick={onManagePresets}>
+        <Button className={css.scheduleManageButton} onClick={onManagePresets}>
           {t('detail.schedule.managePresets')}
         </Button>
       )}
@@ -174,14 +187,17 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
         <Button size="sm" title={t('auto.rule.editTitle')} onClick={onEdit}>
           {t('auto.rule.edit')}
         </Button>
-        <button
-          type="button"
-          className={css.rowHide}
+        {/* A destructive row action uses the row-level danger grammar (ghost
+            outline + danger tone) — same geometry as the edit beside it,
+            never the quiet hide-text style. */}
+        <Button
+          size="sm"
+          variant="dangerGhost"
           title={t('auto.rule.deleteTitle')}
           onClick={() => { controller.deleteSessionRule(task.id, row.ruleId) }}
         >
           {t('auto.rule.delete')}
-        </button>
+        </Button>
       </span>
     </li>
   )
@@ -356,5 +372,357 @@ export function SessionRulesSection({ controller, task }: {
         </span>
       )}
     </Section>
+  )
+}
+
+/**
+ * THE one task-automation editor — the task-level schedule (cron /
+ * after-completion chain: switch + driving mode + fields + live meta +
+ * skip/stop, 即改即生效) and then the session rules (SessionRulesSection,
+ * the same shared module).
+ *
+ * The task detail's 自动化 disclosure and the board's 自动化 overview task
+ * cards render THIS verbatim — the board therefore has the SAME full
+ * capability as the detail (including 完成后接续), and no surface can ever
+ * drift into a reduced second editor. The two side-effect confirms (arming /
+ * stopping an unlimited chain) live here so both surfaces share the same
+ * gate (chainUnlimited).
+ */
+export function AutomationEditor({ controller, task }: { controller: BoardController; task: TaskRecord }) {
+  const schedule = task.schedule
+  // `||` (not `??`) falls back to the default even for an empty stored
+  // expression, so switching modes can never leave the editor with a blank
+  // cron value.
+  const [cron, setCron] = useState(schedule?.cron || '0 9 * * *')
+  const [enabled, setEnabled] = useState(schedule?.enabled ?? false)
+  const [mode, setMode] = useState<ScheduleMode>(schedule?.mode ?? 'cron')
+  const [maxRuns, setMaxRuns] = useState(schedule?.maxRuns?.toString() ?? '')
+  const [nextRunAt, setNextRunAt] = useState<number | undefined>(schedule?.nextRunAt)
+  const [lastTriggeredAt, setLastTriggeredAt] = useState<number | undefined>(schedule?.lastTriggeredAt)
+  const [error, setError] = useState<string | undefined>(undefined)
+  const [showPresets, setShowPresets] = useState(false)
+  const [presetStore] = useState(() => new LocalStoragePresetStore())
+  // The merged preset list (built-ins + custom); rebuilt when the manager closes.
+  const [presets, setPresets] = useState(() => mergedPresets(presetStore))
+  const [confirm, setConfirm] = useState<'unlimited-enable' | 'stop-chain' | undefined>(undefined)
+
+  // Keep the editor in sync when the task record changes underneath (the
+  // schedule rolls forward as runs trigger).
+  useEffect(() => {
+    setCron(schedule?.cron || '0 9 * * *')
+    setEnabled(schedule?.enabled ?? false)
+    setMode(schedule?.mode ?? 'cron')
+    setMaxRuns(schedule?.maxRuns?.toString() ?? '')
+    setNextRunAt(schedule?.nextRunAt)
+    setLastTriggeredAt(schedule?.lastTriggeredAt)
+    setError(undefined)
+  }, [task.id, schedule?.enabled, schedule?.mode, schedule?.cron, schedule?.nextRunAt, schedule?.lastTriggeredAt, schedule?.maxRuns, schedule?.runCount])
+
+  /** Validate + persist the current cron text (Enter or blur). */
+  const saveCron = (value: string): void => {
+    const trimmed = value.trim()
+    setCron(trimmed)
+    if (trimmed === '' || !isValidCron(trimmed)) {
+      setError(t('detail.schedule.invalid'))
+      return
+    }
+    setError(undefined)
+    controller.setSchedule(task.id, { cron: trimmed })
+  }
+
+  /** Persist the run budget (blank = unlimited). */
+  const saveMaxRuns = (value: string): void => {
+    const trimmed = value.trim()
+    setMaxRuns(trimmed)
+    if (trimmed === '') {
+      controller.setSchedule(task.id, { maxRuns: undefined })
+      return
+    }
+    const parsed = Number(trimmed)
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      setError(t('detail.schedule.invalidRuns'))
+      return
+    }
+    setError(undefined)
+    controller.setSchedule(task.id, { maxRuns: parsed })
+  }
+
+  /** Arm/disarm the schedule. Arming a chain without a run budget (unlimited)
+   *  risks an endless loop of real agent sessions — confirm once first. */
+  const applyEnabled = (next: boolean): void => {
+    if (next && mode === 'cron' && cron.trim() !== schedule?.cron) controller.setSchedule(task.id, { cron: cron.trim() })
+    if (controller.setSchedule(task.id, { enabled: next, mode })) setEnabled(next)
+  }
+
+  /** Arm/disarm the schedule (arming first persists the edited cron). */
+  const toggleEnabled = (next: boolean): void => {
+    const trimmed = cron.trim()
+    if (next && mode === 'cron' && (trimmed === '' || !isValidCron(trimmed))) {
+      setError(t('detail.schedule.invalid'))
+      return
+    }
+    setError(undefined)
+    // The ONE unlimited-chain guard (shared with the overview's switch): an
+    // endless loop of real agent sessions confirms once, never silently.
+    if (next && chainUnlimited(mode, maxRuns.trim() === '' ? undefined : Number(maxRuns))) {
+      setConfirm('unlimited-enable')
+      return
+    }
+    applyEnabled(next)
+  }
+
+  /** Switch the driving mode (cron ↔ chain). Switching back to cron first
+   *  persists the editor's current expression, so the stored rule is never
+   *  left with an empty cron (which cron mode would reject). */
+  const switchMode = (next: ScheduleMode): void => {
+    if (next === mode) return
+    if (next === 'cron' && (cron.trim() === '' || !isValidCron(cron))) {
+      setError(t('detail.schedule.invalid'))
+      return
+    }
+    setError(undefined)
+    setMode(next)
+    if (next === 'cron' && cron.trim() !== schedule?.cron) {
+      controller.setSchedule(task.id, { cron: cron.trim() })
+    }
+    if (controller.setSchedule(task.id, { mode: next })) {
+      // Re-arm under the new mode so an enabled switch takes effect at once.
+      controller.setSchedule(task.id, { enabled, mode: next })
+    }
+  }
+
+  /** Stop an active chain: only the automation stops (enabled:false — the
+   *  card's column is untouched). Unlimited chains confirm once (endless
+   *  loop of real agent sessions is a big side effect). */
+  const stopChain = (): void => {
+    if (chainUnlimited(mode, maxRuns.trim() === '' ? undefined : Number(maxRuns))) {
+      setConfirm('stop-chain')
+      return
+    }
+    if (controller.setSchedule(task.id, { enabled: false, mode })) setEnabled(false)
+  }
+  const applyStopChain = (): void => {
+    if (controller.setSchedule(task.id, { enabled: false, mode })) setEnabled(false)
+  }
+
+  /** Skip the next cron firing: roll nextRunAt forward to the following
+   *  match while keeping the rule armed — a "defer once", never a catch-up. */
+  const skipNext = (): void => {
+    if (mode !== 'cron' || nextRunAt === undefined) return
+    const next = nextRunAtMs(cron, nextRunAt)
+    if (next === undefined) return
+    setNextRunAt(next)
+    controller.applyScheduleNextRun(task.id, next, lastTriggeredAt)
+  }
+
+  const applyPreset = (preset: string): void => {
+    if (preset === '') return
+    setCron(preset)
+    setError(undefined)
+    controller.setSchedule(task.id, { cron: preset })
+  }
+
+  const closePresets = (): void => {
+    setShowPresets(false)
+    setPresets(mergedPresets(presetStore))
+  }
+
+  const readiness = ruleReadiness(task)
+  const chainRuns = schedule?.runCount ?? 0
+  const chainBudget = schedule?.maxRuns
+  const nextLabel = !enabled || mode !== 'cron' || nextRunAt === undefined
+    ? t('detail.schedule.notScheduled')
+    : nextRunAt <= Date.now()
+      ? t('detail.schedule.dueSoon')
+      : new Date(nextRunAt).toLocaleString()
+  const lastLabel = lastTriggeredAt === undefined ? '—' : new Date(lastTriggeredAt).toLocaleString()
+  // Cron skip is offered only when a future due instant actually exists.
+  const canSkip = enabled && mode === 'cron' && readiness.kind === 'active'
+    && nextRunAt !== undefined && nextRunAt > Date.now()
+  // A paused rule names its blocking status; a review pause caused by a
+  // failed run adds the "because it failed" reason word.
+  const stoppedReason = readiness.kind === 'paused'
+    ? {
+        extraFailed: readiness.status === 'review'
+          && latestExecutionOf(task)?.result === 'failed',
+        key: pausedLabelOf(readiness.status),
+      }
+    : undefined
+
+  return (
+    <>
+      <Switch
+        checked={enabled}
+        onChange={toggleEnabled}
+        label={t('detail.schedule.enable')}
+      />
+
+      {/* Driving mode: fixed times (cron) or run-after-completion (chain). */}
+      <div className={css.segmentedRow} role="radiogroup" aria-label={t('detail.schedule')}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={mode === 'cron'}
+          className={`${css.segmentedButton}${mode === 'cron' ? ` ${css.segmentedActive}` : ''}`}
+          title={t('detail.schedule.mode.cronHint')}
+          onClick={() => { switchMode('cron') }}
+        >
+          {t('detail.schedule.mode.cron')}
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={mode === 'chain'}
+          className={`${css.segmentedButton}${mode === 'chain' ? ` ${css.segmentedActive}` : ''}`}
+          title={t('detail.schedule.mode.chainHint')}
+          onClick={() => { switchMode('chain') }}
+        >
+          {t('detail.schedule.mode.chain')}
+        </button>
+      </div>
+
+      {mode === 'cron' ? (
+        /* ONE grid for every schedule row (cron + run budget): the label
+           column is shared, so the cron input and the max-runs input align
+           on the same left edge. */
+        <div className={css.scheduleGrid}>
+          <span className={css.scheduleLabel}>{t('detail.schedule.cron')}</span>
+          {/* The ONE cron grammar (input + presets + manager) shared with the
+              session-rule form — expressions always speak alike. */}
+          <CronField
+            value={cron}
+            presets={presets}
+            invalid={error !== undefined}
+            onChange={next => { setCron(next); setError(undefined) }}
+            onCommit={saveCron}
+            onPreset={applyPreset}
+            onManagePresets={() => { setShowPresets(true) }}
+            label={t('detail.schedule.cron')}
+          />
+          <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
+          <span className={css.scheduleMaxRow}>
+            <input
+              className={`${css.input} ${css.scheduleMaxInput}`}
+              value={maxRuns}
+              type="number"
+              min={1}
+              placeholder="∞"
+              spellCheck={false}
+              aria-label={t('detail.schedule.maxRuns')}
+              onChange={event => { setMaxRuns(event.target.value); setError(undefined) }}
+              onBlur={() => { saveMaxRuns(maxRuns) }}
+              onKeyDown={event => { if (event.key === 'Enter') saveMaxRuns(maxRuns) }}
+            />
+            <span className={css.scheduleMeta}>
+              {t('detail.schedule.runsSoFar')} {schedule?.runCount ?? 0}
+              {schedule?.maxRuns !== undefined && ` / ${schedule.maxRuns}`}
+            </span>
+          </span>
+        </div>
+      ) : (
+        <>
+          <p className={css.scheduleMeta}>{t('detail.schedule.chainNote')}</p>
+          <div className={css.scheduleActionRow}>
+            <span className={css.scheduleMeta}>
+              {t('detail.schedule.runsSoFar')} {chainRuns}
+              {chainBudget !== undefined ? ` / ${chainBudget}` : ` · ${t('detail.schedule.unlimited')}`}
+            </span>
+            {enabled && (
+              <Button size="sm" variant="ghost" onClick={stopChain}>
+                {t('detail.schedule.stopChain')}
+              </Button>
+            )}
+          </div>
+          {stoppedReason !== undefined && (
+            <p className={css.scheduleMeta}>
+              {stoppedReason.extraFailed && <>{t('detail.schedule.pausedFailed')} </>}
+              {t(stoppedReason.key)}
+            </p>
+          )}
+          <div className={css.scheduleGrid}>
+            <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
+            <span className={css.scheduleMaxRow}>
+              <input
+                className={`${css.input} ${css.scheduleMaxInput}`}
+                value={maxRuns}
+                type="number"
+                min={1}
+                placeholder="∞"
+                spellCheck={false}
+                aria-label={t('detail.schedule.maxRuns')}
+                onChange={event => { setMaxRuns(event.target.value); setError(undefined) }}
+                onBlur={() => { saveMaxRuns(maxRuns) }}
+                onKeyDown={event => { if (event.key === 'Enter') saveMaxRuns(maxRuns) }}
+              />
+              <span className={css.scheduleMeta}>
+                {t('detail.schedule.runsSoFar')} {schedule?.runCount ?? 0}
+                {schedule?.maxRuns !== undefined && ` / ${schedule.maxRuns}`}
+              </span>
+            </span>
+          </div>
+        </>
+      )}
+      {error !== undefined && <p className={css.formError}>{error}</p>}
+      {mode === 'cron' && (
+        <>
+          <div className={css.scheduleActionRow}>
+            <span className={css.scheduleMeta}>
+              {cronHumanLabel(cron)}
+              {' · '}
+              {readiness.kind === 'active'
+                ? `${t('detail.schedule.nextRun')} ${nextLabel}`
+                : t('detail.schedule.paused')}
+              {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
+            </span>
+            {canSkip && (
+              <Button size="sm" variant="ghost" onClick={skipNext}>
+                {t('detail.schedule.skip')}
+              </Button>
+            )}
+          </div>
+          {stoppedReason !== undefined && (
+            <p className={css.scheduleMeta}>
+              {stoppedReason.extraFailed && <>{t('detail.schedule.pausedFailed')} </>}
+              {t(stoppedReason.key)}
+            </p>
+          )}
+        </>
+      )}
+
+      {/* Session-level rules: the shared module of the automation overview —
+          one grammar on both surfaces, always complete. */}
+      <SessionRulesSection controller={controller} task={task} />
+
+      {showPresets && (
+        <PresetManager
+          store={presetStore}
+          onClose={closePresets}
+        />
+      )}
+
+      {/* Side-effect confirms for automation: enabling an unlimited chain and
+          stopping one both confirm once — an endless loop of real agent
+          sessions is a big side effect. */}
+      {confirm === 'unlimited-enable' && (
+        <ConfirmDialog
+          title={t('detail.schedule.unlimitedTitle')}
+          message={t('detail.schedule.unlimitedConfirm')}
+          confirmLabel={t('detail.schedule.unlimitedOk')}
+          danger
+          onCancel={() => { setConfirm(undefined) }}
+          onConfirm={() => { setConfirm(undefined); applyEnabled(true) }}
+        />
+      )}
+      {confirm === 'stop-chain' && (
+        <ConfirmDialog
+          title={t('detail.schedule.stopChainTitle')}
+          message={t('detail.schedule.stopChainConfirm')}
+          confirmLabel={t('detail.schedule.stopChain')}
+          danger
+          onCancel={() => { setConfirm(undefined) }}
+          onConfirm={() => { setConfirm(undefined); applyStopChain() }}
+        />
+      )}
+    </>
   )
 }

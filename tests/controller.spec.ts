@@ -998,14 +998,18 @@ describe('comments', () => {
     expect(exec.commentCalls).toHaveLength(2)
   })
 
-  it('rejects comments on completed tasks', async () => {
+  it('revives a completed task when a comment is submitted (moved back to 待办, no dead end)', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)
     const { taskId, executionId } = await settledReviewTask(stub, controller)
     controller.moveTask(taskId, 'done')
     expect(store.load()[0].status).toBe('done')
-    expect(controller.submitComment(taskId, executionId, '完成了还评？')).toBeUndefined()
-    expect(store.load()[0].executions).toHaveLength(1)
+    // The comment is NOT rejected: the task moves back to 待办 (the same
+    // column transition as a drag) and the comment queues to drive it.
+    const round = controller.submitComment(taskId, executionId, '完成了还评？')
+    expect(round).toBeDefined()
+    expect(store.load()[0].status).toBe('todo')
+    expect(store.load()[0].executions).toHaveLength(2)
   })
 
   it('flags slash-command comments and injects them through the command path', async () => {
@@ -1114,15 +1118,17 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
     expect(store.load()[0].status).toBe('todo')
   })
 
-  it('rejects blank text, unknown tasks, and completed tasks', async () => {
+  it('rejects blank text and unknown tasks; a completed task is revived by its comment', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     expect(controller.submitSessionComment(task.id, 'linked-7', '   ')).toBeUndefined()
     expect(controller.submitSessionComment('ghost', 'linked-7', 'hi')).toBeUndefined()
     controller.moveTask(task.id, 'done')
-    expect(controller.submitSessionComment(task.id, 'linked-7', '完成了还评？')).toBeUndefined()
-    expect(store.load()[0].executions).toEqual([])
+    const round = controller.submitSessionComment(task.id, 'linked-7', '完成了还评？')
+    expect(round).toBeDefined()
+    expect(store.load()[0].status).toBe('todo')
+    expect(store.load()[0].executions).toHaveLength(1)
   })
 
   it('injects the session-anchored comment into the linked session and settles into review', async () => {
@@ -1961,6 +1967,58 @@ describe('linked sessions & bind', () => {
     // The same order on a second drag is a no-op.
     expect(controller.reorderTaskSession(task.id, 's-1', undefined)).toBe(false)
   })
+
+  it('addTaskSource restores a removed session when the session itself is re-dragged (explicit bring-back)', () => {
+    const wss = workspaces()
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    sessions.runningById['s-2'] = false
+    const controller = new BoardController({
+      store: new InMemoryTaskStore(),
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions,
+      workspaces: wss,
+      now: () => NOW,
+      uuid,
+    })
+    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 't', description: '', prompt: '' })!
+    controller.hideTaskSession(task.id, 's-1')
+    expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
+    let current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(current).map(row => row.sessionId)).toEqual(['s-2'])
+    // Removal stays passive-immune (no resurrection), but the USER dragging
+    // the session back is the restore gesture: it shows again.
+    expect(controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(true)
+    current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(current).map(row => row.sessionId)).toContain('s-1')
+    expect(current.removedSessions ?? []).not.toContain('s-1')
+  })
+
+  it('addTaskSource restores the workspace\'s removed members when the folder itself is re-dragged (same-source re-add)', () => {
+    const wss = workspaces()
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    sessions.runningById['s-2'] = false
+    const controller = new BoardController({
+      store: new InMemoryTaskStore(),
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions,
+      workspaces: wss,
+      now: () => NOW,
+      uuid,
+    })
+    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 't', description: '', prompt: '' })!
+    controller.hideTaskSession(task.id, 's-1')
+    expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
+    // Re-dragging the SAME folder (an identical bind) is not a no-op when the
+    // folder carries removed members: the restore gesture clears them.
+    expect(controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(true)
+    const current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(current).map(row => row.sessionId)).toContain('s-1')
+    expect(current.removedSessions).toBeUndefined()
+  })
 })
 
 describe('sendSessionMessage (direct linked-session messages)', () => {
@@ -1976,6 +2034,19 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
     expect(controller.directMessageAvailable()).toBe(true)
     await expect(controller.sendSessionMessage(task.id, 's-1', '  继续   ')).resolves.toEqual({ ok: true })
     expect(sent).toEqual(['s-1:继续'])
+  })
+
+  it('revives a completed task when a steer is sent to its session', async () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub, {
+      sessionMessage: async () => ({ ok: true as const }),
+    })
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.moveTask(task.id, 'done')
+    expect(store.load()[0].status).toBe('done')
+    // Steer on a done task = the same revive rule as queued comments.
+    await expect(controller.steerComment(task.id, 's-1', '直接说')).resolves.toEqual({ ok: true })
+    expect(store.load()[0].status).toBe('todo')
   })
 
   it('routes a leading slash through the command registry; unmatched falls back to plain text', async () => {

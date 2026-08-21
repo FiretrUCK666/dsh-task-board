@@ -61,7 +61,11 @@ export function AttachmentStrip({ images, onChange }: {
       />
       {images.map(image => (
         <span key={image.id} className={css.attachChip} title={image.name}>
-          {image.name}
+          {/* The name is its own truncation item (min-width 0 + ellipsis) —
+              the chip grammar: text truncates, the remove button never
+              shrinks. A raw text child of an inline-flex chip would clip
+              without an ellipsis (text-overflow needs a block box). */}
+          <span className={css.attachChipName}>{image.name}</span>
           <button
             type="button"
             className={css.attachRemove}
