@@ -746,6 +746,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      boundTitleOf={candidate => candidate.bind !== undefined ? controller.boundSourceTitleOf(candidate.bind) : ''}
                       workspaceTitleOf={workspaceTitleOf}
                       waiting={waiting}
                       pendingCount={pending.count}

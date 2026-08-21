@@ -282,6 +282,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           />
             </div>
 
+            {/* Live to-do / goal / subagents of the session — above the comment
+                thread (the context the thread lives in), always before it. */}
+            <SessionContextBlock context={context} open={contextOpen} onToggle={() => { setContextOpen(value => !value) }} />
+
             {/* The thread header: title + count, fixed — the count never
                 scrolls away no matter how long the comment list grows. */}
             <div className={css.reviewThreadHeader}>
@@ -314,8 +318,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                 controller={controller}
               />
             )}
-            {/* Live to-do / goal / subagents of the session (deterministic). */}
-            <SessionContextBlock context={context} open={contextOpen} onToggle={() => { setContextOpen(value => !value) }} />
             {/* The composer, pinned at the rail's bottom: a comment continues
                 the conversation in-session. It shares the prompt autocomplete
                 with the task form — the same live slash catalog, so commands
