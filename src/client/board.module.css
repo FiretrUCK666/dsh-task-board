@@ -3122,10 +3122,11 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* The page's ONE alignment grammar: 14px content box — the header title
-     lines up with the left column's conversation text and the close button
-     with the rail's elements (never a second inset family inside one panel). */
-  padding: 14px;
+  /* The page's OUTER grid: 14px vertical / 20px horizontal — the header
+     title lines up with the conversation's text (left column at 20) and the
+     action cluster with the page's own 20px box; the right rail keeps its
+     own inner 14px box. Two grids, each coherent, no mixed numbers. */
+  padding: 14px 20px;
   border-bottom: var(--dsh-tb-separator);
   flex: none;
 }
@@ -3181,16 +3182,19 @@ textarea.input {
 
 /* Left column: the conversation, full height — a long transcript never
    competes with config or comments (they live in the right rail).
-   GRID note: inset 14px on the left = the rail's content box (the page's ONE
-   alignment grammar, see .reviewTranscriptScroll); the RIGHT side carries no
-   padding so the transcript's scrollbar lands flush on the column divider. */
+   GRID note: the OUTER content box of the page is 20px (the panel header's
+   title sits on the same vertical line as the conversation, and the header
+   is 14/20 in the same grid). The RIGHT rail is its own inner 14px box; the
+   conversation's scrollbar lands flush ON the column divider (the pane's
+   right side carries no padding — a bar belongs to the split line, never
+   floating in a gutter). */
 .reviewMain {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 14px 0 20px 14px;
+  padding: 14px 0 20px 20px;
   overflow: hidden;
 }
 
