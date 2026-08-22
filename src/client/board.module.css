@@ -3122,7 +3122,10 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 20px;
+  /* The page's ONE alignment grammar: 14px content box — the header title
+     lines up with the left column's conversation text and the close button
+     with the rail's elements (never a second inset family inside one panel). */
+  padding: 14px;
   border-bottom: var(--dsh-tb-separator);
   flex: none;
 }
@@ -3177,14 +3180,17 @@ textarea.input {
 }
 
 /* Left column: the conversation, full height — a long transcript never
-   competes with config or comments (they live in the right rail). */
+   competes with config or comments (they live in the right rail).
+   GRID note: inset 14px on the left = the rail's content box (the page's ONE
+   alignment grammar, see .reviewTranscriptScroll); the RIGHT side carries no
+   padding so the transcript's scrollbar lands flush on the column divider. */
 .reviewMain {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 14px 20px 20px;
+  padding: 14px 0 20px 14px;
   overflow: hidden;
 }
 
@@ -3222,13 +3228,10 @@ textarea.input {
    list, scrolls inside its own region while the composer stays pinned at
    the bottom (flex: none) — a taller head can never squeeze the send button
    out. The composer's own top border separates the regions.
-   PADDING note: the rail grammar is a 14px content box everywhere (head /
-   thread header / hint / composer). The scroll region's native scrollbar
-   eats into its own right padding, so the comments would otherwise hug the
-   bar ("太贴") — the right side gets the SAME absorption pattern as the
-   left column's transcript (14px content box + 4px breathing + the bar's
-   own width = 18px), so the content keeps the exact 14px box on the left
-   and reads 4px off the bar on the right. */
+   GRID note: the rail's content box is 14px everywhere (head / hint / thread
+   header / composer); the scroll region keeps the same 14px — a THIN bar
+   fits inside it with breathing, so the comments never hug the thumb and
+   read on the same 14px line as every other rail element. */
 .sessionRailScroll {
   display: flex;
   flex-direction: column;
@@ -3237,20 +3240,21 @@ textarea.input {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 18px 10px;
+  padding: 12px 14px 10px;
+  scrollbar-width: thin;
 }
 
 /* The conversation region scrolls on its own — a long transcript never
    pushes the comment thread out of view.
-   SCROLLBAR note: a native bar here would render at this container's right
-   edge — INSIDE the 20px gutter between the two columns (reviewMain's right
-   padding), i.e. floating in the whitespace between the conversation and the
-   rail, hugging the transcript text on one side and leaving a big gap on the
-   other ("贴着又别扭"). The board's own grammar for such panes is
-   scrollbar-less scrolling (the card columns): the wheel/trackpad still
-   scrolls, the transcript auto-follows the bottom, and the content box stays
-   the pane's clean 20px on both sides — no bar to position, no absorption
-   padding needed. */
+   GRID note (the review page's ONE alignment grammar): every column's
+   content box is 14px from the panel edges — the rail's segments (head /
+   hint / thread header / composer), the left column's conversation, and the
+   page header all read on the same 14px line. The left pane carries NO right
+   padding, so the transcript's scrollbar renders flush ON the divider
+   between the columns (the two-pane rule: a bar belongs to the split line,
+   never floating in a gutter); a THIN bar fits inside the 14px content box
+   with breathing, so the conversation keeps the same 14px on both sides and
+   never hugs the thumb. */
 .reviewTranscriptScroll {
   display: flex;
   flex-direction: column;
@@ -3258,10 +3262,8 @@ textarea.input {
   min-height: 120px;
   flex: 1;
   overflow-y: auto;
-  scrollbar-width: none;
-}
-.reviewTranscriptScroll::-webkit-scrollbar {
-  display: none;
+  padding-right: 14px;
+  scrollbar-width: thin;
 }
 
 /* The run's outcome banner: what the agent came back with. */
