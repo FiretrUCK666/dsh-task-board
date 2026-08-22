@@ -680,10 +680,12 @@ export class BoardController {
 
   /**
    * Copy a task as a fresh template ("复制为模板"): the same content, run
-   * configuration AND automation rule (enable state, mode, cron, budget —
-   * runCount reset to 0, the cron next-run instant recomputed), landing in
-   * 待规划. Executions, hide state and live bindings are never copied — a
-   * template, not a clone of the work history.
+   * configuration AND task-level automation rule (enable state, mode, cron,
+   * budget — runCount reset to 0, the cron next-run instant recomputed),
+   * landing in 待规划. Executions, hide state, live bindings and SESSION
+   * RULES are never copied — a template has none of the source's sessions
+   * (a session rule automates a SPECIFIC session of the source task; the
+   * template is a new blank card, "绘画规则" would point at nothing).
    * @param id - the source task.
    * @returns the new task, or undefined when the source is unknown.
    */
@@ -716,17 +718,14 @@ export class BoardController {
           : undefined,
       }, now)
     }
-    // The template carries the card's full configuration: the accent color
-    // and session automation rules are PART of what "复制为模板" means — a
-    // template keeps the shape of the work, so future configuration fields
-    // land in createTask below and flow into templates automatically (the
-    // spread-based single source, never a per-field list to maintain).
+    // The template keeps the card's SHAPE: the accent color rides along, but
+    // session rules do NOT — they are bound to the source's own sessions
+    // ("给这个绘画会话定时发指令"), and the template is a new card without
+    // them; copying them would silently automate sessions the template does
+    // not own.
     task = {
       ...task,
       ...source.color !== undefined ? { color: source.color } : {},
-      ...source.rules !== undefined && source.rules.length > 0
-        ? { rules: source.rules.map(rule => ({ ...rule, id: this.uuid() })) }
-        : {},
     }
     // A template is a NEW card: it lands at the top of its landing column
     // (待规划) exactly like a manually created task — a copied card reads as
@@ -1135,9 +1134,14 @@ export class BoardController {
     // (so switching back to cron keeps the last valid value).
     const cron = patch.cron !== undefined ? patch.cron.trim() : (current?.cron ?? '')
     if (mode === 'cron' && (cron === '' || !isValidCron(cron))) return false
+    const enabled = patch.enabled ?? current?.enabled ?? false
+    // Arming 完成后接续 on a card with NO execution prompt is rejected
+    // outright (returns false, nothing persisted): the rule would never run
+    // and the switch would read "on" silently — the editor surfaces the
+    // blocked reason instead of a dead arm.
+    if (enabled && mode === 'chain' && !taskExecutable(task)) return false
     const maxRunsChanged = patch.maxRuns !== undefined && patch.maxRuns !== current?.maxRuns
     const maxRuns = patch.maxRuns !== undefined ? patch.maxRuns : current?.maxRuns
-    const enabled = patch.enabled ?? current?.enabled ?? false
     const nextRunAt = enabled && mode === 'cron' ? nextRunAtMs(cron, this.now()) : undefined
     this.tasks = this.tasks.map(candidate =>
       candidate.id === id
@@ -1153,9 +1157,9 @@ export class BoardController {
     // "完成后接续" arms AND starts: an enabled chain launches its first run
     // at once whenever the prompt is executable and no run is open — ANY
     // column (a review/done card armed by the user means "keep it running",
-    // never "wait for a manual re-run"), empty prompt stays inert via the
-    // taskExecutable gate. Cron waits for its due instant via the scheduler
-    // tick.
+    // never "wait for a manual re-run"); an empty prompt was already rejected
+    // above (never a silent dead arm). Cron waits for its due instant via the
+    // scheduler tick.
     if (enabled && mode === 'chain' && taskExecutable(task) && !hasOpenRun(task)) {
       void this.runTask(id, 'chain')
     }
@@ -1258,8 +1262,23 @@ export class BoardController {
     | { kind: 'comment'; task: TaskRecord; round: ExecutionRecord }
     | { kind: 'task'; task: TaskRecord }
     | undefined {
-    if (!this.cruiseState.enabled) return undefined
-    let best: { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined
+    // 完成后续跑 rule rounds flow in their OWN lane: the automation's own
+    // turn never waits for the board cruise (a manually saved comment does —
+    // its injection is still cruise-gated below).
+    let ruleRound: { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined
+    for (const task of this.tasks) {
+      if (task.status === 'running' || task.status === 'done') continue
+      const round = task.executions.find(candidate =>
+        candidate.comment !== undefined && candidate.ruleId !== undefined
+        && candidate.sessionId !== undefined
+        && candidate.injectedAt === undefined && candidate.endedAt === undefined
+        && candidate.external !== true)
+      if (round !== undefined && (ruleRound === undefined || round.startedAt < ruleRound.round.startedAt)) {
+        ruleRound = { kind: 'comment', task, round }
+      }
+    }
+    if (!this.cruiseState.enabled) return ruleRound
+    let best = ruleRound
     for (const task of this.tasks) {
       // Comment continuations may inject on any non-busy, non-completed task
       // (backlog included — a user's comment keeps its session conversation
@@ -1556,12 +1575,9 @@ export class BoardController {
     // A steer on a completed task revives it (moved back to 待办) — the same
     // rule as the queued comment paths: the message drives the task.
     this.reviveTaskIfDone(taskId)
-    // A BLANK prompt cannot be steer-driven either; an already-open round
-    // (running/waiting mid-work) stays continuable.
-    const task = this.tasks.find(candidate => candidate.id === taskId)
-    if (task !== undefined && !taskExecutable(task) && !hasOpenRun(task)) {
-      return Promise.resolve({ ok: false, error: 'empty prompt' })
-    }
+    // A steer is a human message — never gated by the task's execution prompt
+    // (that gate belongs to task execution only); the blank-message rejection
+    // above is the one guard.
     return this.sendRawMessage(sessionId, trimmed, images).then(result => {
       if (!result.ok) return result
       // The direct-sent turn is already what the steer created — keep the
@@ -1587,10 +1603,13 @@ export class BoardController {
   // --- session automation rules (scheduled "send a preset instruction to a session") ---
   /** Create a session rule for one of the task's sessions. Two triggers use
    *  the SAME model: cron (cron via the task schedule parser; an unparseable
-   *  expression is rejected) and on-complete (no cron, fires at run settle).
-   *  Content mode: `usePrompt` sends the task's CURRENT execution prompt
-   *  (绘画 = 定时/每次完成注入执行 Prompt 到单个会话); otherwise the custom
-   *  `instruction` text is sent. */
+   *  expression is rejected) and on-complete (no cron, fires at run settle —
+   *  完成后续跑). Content mode: `usePrompt` sends the task's CURRENT execution
+   *  prompt (绘画 = 定时/每次完成注入执行 Prompt 到单个会话); otherwise the
+   *  custom `instruction` text is sent. ONE rule per session: a second rule
+   *  for a session the task already automates is rejected outright — a
+   *  session's automation is one definition (change it by editing), never a
+   *  stack of conflicting triggers ("同时设 7 个" 不可能出现). */
   createSessionRule(taskId: string, input: {
     sessionId: string
     instruction: string
@@ -1606,6 +1625,8 @@ export class BoardController {
     const cron = trigger === 'cron' ? input.cron.trim() : ''
     const nextAt = trigger === 'cron' ? nextRunAtMs(cron, this.now()) : undefined
     if (trigger === 'cron' && (cron === '' || nextAt === undefined)) return undefined
+    const existing = this.tasks.find(task => task.id === taskId)
+    if (existing?.rules?.some(rule => rule.sessionId === input.sessionId)) return undefined
     const rule: import('./automation.ts').SessionRule = {
       id: this.uuid(),
       sessionId: input.sessionId,
@@ -1839,10 +1860,11 @@ export class BoardController {
     // same rule as the linked-session composer; the work is driven, never
     // dead-ended.
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
-    // A BLANK prompt cannot be comment-driven either: no prompt = nothing to
-    // execute. An ALREADY OPEN round may still be continued (its session is
-    // live and mid-work — the continuation is not a new execution).
-    if (!taskExecutable(task) && !hasOpenRun(task)) return undefined
+    // A comment is the user's own words — never gated by the task's execution
+    // prompt (that gate belongs to task execution only: runTask / chain /
+    // cron / cruise / usePrompt rules). The session-anchored round enters the
+    // task's FIFO like any drive comment; a blank text or unknown task/round
+    // is rejected below.
     const execution = task.executions.find(candidate => candidate.id === executionId)
     if (execution === undefined || execution.sessionId === undefined || execution.endedAt === undefined) return undefined
     const round = newCommentRound({
@@ -1894,22 +1916,23 @@ export class BoardController {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
-    // A BLANK prompt cannot be comment-driven (no prompt = nothing to
-    // execute); an ALREADY OPEN round stays continuable.
-    if (!taskExecutable(task) && !hasOpenRun(task)) return undefined
     return this.queueRuleComment(taskId, sessionId, trimmed, command)
   }
 
   /**
    * Session-RULE enqueue: the same session-anchored round as
-   * {@link submitSessionComment} but WITHOUT the task-execution-prompt gate.
-   * A rule's content (a custom instruction, or the task's own execution
-   * prompt for a usePrompt rule — already validated by the readiness
-   * judgment) IS the work, so the task's prompt never mis-blocks it ("对单个
-   * 会话发指令" 与任务 Prompt 无关); every other guard stays: done revival,
-   * blank text, unknown task.
+   * {@link submitSessionComment} marked with the rule's id. A rule's content
+   * (a custom instruction, or the task's own execution prompt for a usePrompt
+   * rule — already validated by the readiness judgment) IS the work, so the
+   * task's prompt never mis-blocks it ("对单个会话发指令" 与任务 Prompt 无关);
+   * same for a user comment: a comment is human words, never a task
+   * execution, so no prompt gate applies to any comment path. Every other
+   * guard stays: done revival, blank text, unknown task. `ruleId` marks the
+   * round as a rule's own turn — a succeeded settle of such a round re-fires
+   * its on-complete rule (完成后续跑 loop); a user comment carries none and
+   * never loops.
    */
-  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false): ExecutionRecord | undefined {
+  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -1922,6 +1945,7 @@ export class BoardController {
       command,
       sessionId,
       sessionAnchor: sessionId,
+      ...ruleId !== undefined ? { ruleId } : {},
     })
     this.tasks = this.tasks.map(candidate => candidate.id === taskId
       ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
@@ -2155,44 +2179,66 @@ export class BoardController {
     if (settledRound?.comment === undefined && settledRound?.refine !== true) {
       void this.fireOnCompleteRules(event.taskId)
     }
+    // 完成后续跑：一条「规则自己的指令轮」（ruleId 标记）成功结算 = 一轮完成，
+    // 同一规则再发送一条——永续循环从这里续上；失败/取消不续。
+    if (settledRound?.ruleId !== undefined && event.outcome === 'succeeded') {
+      void this.fireLoopRule(event.taskId, settledRound.ruleId, settledRound.sessionId ?? '')
+    }
   }
 
   /**
-   * 任务一次执行结算时触发其 on-complete 会话规则（"每次完成任务时发送
-   * 一次"，不循环）。发送文法与 cron 心跳一致（queue = 入队、steer = 立即
-   * 发送），判定 = 规则启用 + 内容可得（usePrompt 规则要求任务执行 Prompt
-   * 非空；自定义规则内容自带）+ 目标会话在场；每次结算每个规则至多一次并记
-   * lastAt。列暂停不适用：结算瞬间任务刚被移动，这里的"完成"才是约定本身。
+   * 完成后续跑（on-complete 循环规则）的一次发送：一条带 ruleId 标记的可观察
+   * 指令轮（注入成功结算后再触发）。发送只有一种文法——进入自己的车道（下一轮
+   * 可用即注入、预算内排队，与巡航开关无关）；queue/steer 是 cron 触发规则的
+   * 发送选择（车道等待 vs 立即直达），on-complete 的循环需要可观察的结算才能
+   * 续上，两类轮永远走同一条车道——编辑器在 on-complete 下不提供该选择。
+   */
+  private fireRuleRound(task: TaskRecord, rule: import('./automation.ts').SessionRule, text: string): void {
+    const round = this.queueRuleComment(task.id, rule.sessionId, text, text.trimStart().startsWith('/'), rule.id)
+    if (round === undefined) return
+    this.tasks = this.tasks.map(candidate => candidate.id === task.id
+      ? withSessionRules(candidate, (candidate.rules ?? []).map(candidateRule =>
+        candidateRule.id === rule.id ? { ...candidateRule, lastAt: this.now() } : candidateRule))
+      : candidate)
+    this.persistAndNotify()
+  }
+
+  /**
+   * 任务一次执行结算时触发其 on-complete 会话规则（"完成后续跑"——永续循环：
+   * 规则轮成功结算后继续下一轮，直到关闭/删除/会话消失/内容不可用）。发送文法
+   * = 一条 ruleId 标记的观察轮（queue/steer，与巡航无关）；判定 = 规则启用 +
+   * 内容可得（usePrompt 规则要求任务执行 Prompt 非空；自定义规则内容自带）+
+   * 目标会话在场；每次结算每个规则至多一次（lastAt 由 fireRuleRound 记录）。
+   * 列暂停不适用：结算瞬间任务刚被移动，这里的"完成"才是约定本身。
    */
   async fireOnCompleteRules(taskId: string): Promise<void> {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined || task.rules === undefined || task.rules.length === 0) return
     const byId = this.deps.sessions.list.getSnapshot().byId
-    const fired = new Set<string>()
     for (const rule of task.rules) {
       if (rule.trigger !== 'on-complete' || !rule.enabled) continue
       const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
       if (text === '') continue // usePrompt + 空 Prompt = blocked, nothing to send
       if (byId[rule.sessionId] === undefined) continue
-      if (rule.send === 'queue') {
-        const round = this.queueRuleComment(
-          task.id, rule.sessionId, text,
-          text.trimStart().startsWith('/'))
-        if (round === undefined) continue
-      } else {
-        // 立即发送：sendSessionMessage 自行记录直接轮并持久化。
-        void this.sendSessionMessage(task.id, rule.sessionId, text)
-      }
-      fired.add(rule.id)
+      this.fireRuleRound(task, rule, text)
     }
-    if (fired.size === 0) return
-    this.tasks = this.tasks.map(candidate => {
-      if (candidate.id !== taskId) return candidate
-      const rules = (candidate.rules ?? []).map(rule =>
-        fired.has(rule.id) ? { ...rule, lastAt: this.now() } : rule)
-      return withSessionRules(candidate, rules)
-    })
-    this.persistAndNotify()
+  }
+
+  /**
+   * 完成后续跑：规则自己的指令轮（ruleId 标记）**成功**结算后的再触发——同一
+   * 规则再发一条，一轮接一轮；失败/取消不续（错误不风暴）、规则被关/会话消失/
+   * 内容不可用即停；用户手写评论（无 ruleId）永不触发。
+   */
+  async fireLoopRule(taskId: string, ruleId: string, sessionId: string): Promise<void> {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const rule = task?.rules?.find(candidate => candidate.id === ruleId)
+    if (task === undefined || rule === undefined || rule.trigger !== 'on-complete' || !rule.enabled) return
+    if (rule.sessionId !== sessionId) return
+    const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
+    if (text === '') return
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    if (byId[sessionId] === undefined) return
+    this.fireRuleRound(task, rule, text)
   }
 
   /** Settle a round with the rule its kind demands: refine rounds keep the

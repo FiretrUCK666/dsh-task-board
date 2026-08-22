@@ -161,9 +161,13 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           <Icon name="link" className={css.autoMetaIcon} />
           <span className={css.autoRuleSessionTitle} title={title}>{title}</span>
         </span>
-        <span className={css.autoRuleSend}>
-          {t(row.send === 'queue' ? 'review.sendQueue' : 'review.sendSteer')}
-        </span>
+        {/* 排队/插话 only labels a cron rule's delivery; an on-complete rule's
+            round always rides its own lane (循环靠可观察结算续上) — no chip. */}
+        {row.trigger === 'cron' && (
+          <span className={css.autoRuleSend}>
+            {t(row.send === 'queue' ? 'review.sendQueue' : 'review.sendSteer')}
+          </span>
+        )}
         {readiness.kind === 'paused' && (
           <Chip kind="warn" fill={false}>
             {t('auto.schedule.paused')} ({t(STATUS_KEY[readiness.status])})
@@ -279,7 +283,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
       setError('cron')
       return
     }
-    const send: 'queue' | 'steer' = steer ? 'steer' : 'queue'
+    const send: 'queue' | 'steer' = trigger === 'on-complete' ? 'queue' : (steer ? 'steer' : 'queue')
     const input: {
       sessionId: string
       instruction: string
@@ -386,10 +390,16 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
               {error === 'cron' && <span className={css.formError}>{t('auto.form.invalidCron')}</span>}
             </label>
           )}
-          <div className={css.autoField}>
-            <span className={css.autoFieldLabel}>{t('auto.form.send')}</span>
-            <SendModeToggle steer={steer} onChange={setSteer} />
-          </div>
+          {/* 排队/插话 is a CRON rule's delivery choice (调度器等待 vs 立即直达);
+              an on-complete rule's round always rides its own lane — its settle
+              is what continues the loop, so the toggle would be a dead control
+              here (same conditional grammar as the cron field above). */}
+          {trigger === 'cron' && (
+            <div className={css.autoField}>
+              <span className={css.autoFieldLabel}>{t('auto.form.send')}</span>
+              <SendModeToggle steer={steer} onChange={setSteer} />
+            </div>
+          )}
           {error === 'save' && <p className={css.formError}>{t('auto.form.saveFailed')}</p>}
           <p className={css.detailHint}>{t('auto.form.hint')}</p>
           <span className={css.autoFormActions}>
@@ -486,7 +496,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
   const [lastTriggeredAt, setLastTriggeredAt] = useState<number | undefined>(schedule?.lastTriggeredAt)
   // The ONE failing field: the cron input or the max-runs input each carry
   // their own inline error; a max-runs error must never light the cron border.
-  const [error, setError] = useState<'cron' | 'runs' | undefined>(undefined)
+  const [error, setError] = useState<'cron' | 'runs' | 'promptEmpty' | undefined>(undefined)
   const [showPresets, setShowPresets] = useState(false)
   const [presetStore] = useState(() => new LocalStoragePresetStore())
   // The merged preset list (built-ins + custom); rebuilt when the manager closes.
@@ -538,7 +548,13 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
    *  risks an endless loop of real agent sessions — confirm once first. */
   const applyEnabled = (next: boolean): void => {
     if (next && mode === 'cron' && cron.trim() !== schedule?.cron) controller.setSchedule(task.id, { cron: cron.trim() })
-    if (controller.setSchedule(task.id, { enabled: next, mode })) setEnabled(next)
+    if (!controller.setSchedule(task.id, { enabled: next, mode })) {
+      // The one rejected arm: 完成后接续 with an empty execution prompt —
+      // name the reason inline, never a silent dead switch.
+      if (next && mode === 'chain') setError('promptEmpty')
+      return
+    }
+    setEnabled(next)
   }
 
   /** Arm/disarm the schedule (arming first persists the edited cron). */
@@ -746,7 +762,9 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
           </div>
         </>
       )}
-      {error !== undefined && <p className={css.formError}>{t(error === 'cron' ? 'detail.schedule.invalid' : 'detail.schedule.invalidRuns')}</p>}
+      {error !== undefined && <p className={css.formError}>
+        {t(error === 'cron' ? 'detail.schedule.invalid' : error === 'runs' ? 'detail.schedule.invalidRuns' : 'detail.promptEmpty')}
+      </p>}
       {mode === 'cron' && (
         <>
           <div className={css.scheduleActionRow}>

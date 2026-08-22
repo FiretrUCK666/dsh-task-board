@@ -1795,20 +1795,29 @@ describe('linked sessions & bind', () => {
     expect(backlogCards[0].id).toBe(copy!.id)
   })
 
-  it('copyTask carries accent color and session rules as part of the template', () => {
+  it('copyTask carries the accent color and the TASK-level automation, but NEVER the session rules', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub)
     const source = controller.createTask({ title: '源', description: '', prompt: 'run' })!
     controller.setTaskColor(source.id, '#4f46e5')
+    controller.setSchedule(source.id, { enabled: true, mode: 'cron', cron: '0 9 * * *' })
     controller.createSessionRule(source.id, { sessionId: 's-1', instruction: '继续', cron: '0 * * * *', send: 'steer' })
-    const current = controller.getSnapshot().tasks.find(task => task.id === source.id)
     const copy = controller.copyTask(source.id)
     expect(copy).toBeDefined()
     expect(copy!.color).toBe('#4f46e5')
-    // Session rules are cloned with fresh ids (never shared state).
-    expect(copy!.rules).toHaveLength(1)
-    expect(copy!.rules![0].instruction).toBe('继续')
-    expect(copy!.rules![0].id).not.toBe(current!.rules![0].id)
+    // The TASK-level schedule is the card's own shape — it comes along.
+    expect(copy!.schedule).toMatchObject({ enabled: true, mode: 'cron', cron: '0 9 * * *', runCount: 0 })
+    // Session rules automate the SOURCE's own sessions (the 绘画): the template
+    // is a new card with none of them — copying would automate nothing real.
+    expect(copy!.rules).toBeUndefined()
+  })
+  it('copyTask copies an armed CHAIN schedule with its budget (runCount reset)', () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const source = controller.createTask({ title: '源', description: '', prompt: 'run' })!
+    controller.setSchedule(source.id, { enabled: true, mode: 'chain', maxRuns: 7 })
+    const copy = controller.copyTask(source.id)
+    expect(copy!.schedule).toMatchObject({ enabled: true, mode: 'chain', maxRuns: 7, runCount: 0 })
   })
 
   it('cruise windows v4: the switch is sovereign — boundaries flip it, edits never do', () => {
@@ -2077,7 +2086,7 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
     expect(store.load()[0].status).toBe('todo')
   })
 
-  it('blocks every drive path when the execution prompt is empty (nothing can run)', async () => {
+  it('gates EXECUTION paths on an empty prompt; comments are human words, never gated', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub, {
       sessionMessage: async () => ({ ok: true as const }),
@@ -2089,12 +2098,18 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
     await controller.rerunTask(task.id)
     expect(store.load()[0].executions).toHaveLength(0)
     expect(store.load()[0].status).toBe('todo')
-    // Comments (queue) and steer (direct) are gated too — with the same
-    // reason, not a silent no-op.
-    expect(controller.submitSessionComment(task.id, 'linked-7', '别驱动')).toBeUndefined()
-    await expect(controller.steerComment(task.id, 'linked-7', '也别直接发')).resolves.toEqual({ ok: false, error: 'empty prompt' })
-    expect(store.load()[0].executions).toHaveLength(0)
-    // Filling the prompt restores every path.
+    // Arming 完成后接续 on a blank-prompt card is rejected outright (the
+    // editor surfaces the blocked reason — never a silent dead arm).
+    expect(controller.setSchedule(task.id, { enabled: true, mode: 'chain' })).toBe(false)
+    expect(store.load()[0].schedule).toBeUndefined()
+    // Comments (queue) and steer (direct) are the user's own words — they
+    // drive the agent in the session and are NEVER gated by the execution
+    // prompt (that gate belongs to task execution only).
+    const saved = controller.submitSessionComment(task.id, 'linked-7', '帮我把需求整理清楚')
+    expect(saved?.comment).toBe('帮我把需求整理清楚')
+    await expect(controller.steerComment(task.id, 'linked-7', '先回答我')).resolves.toEqual({ ok: true })
+    expect(store.load()[0].executions.length).toBeGreaterThanOrEqual(2)
+    // Filling the prompt restores the execution path.
     controller.updateTask(task.id, { prompt: '真实内容' })
     expect(store.load()[0].prompt).toBe('真实内容')
     await expect(controller.runTask(task.id)).resolves.toBe(true)
@@ -2436,6 +2451,22 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'x', cron: 'not a cron', send: 'queue' })).toBeUndefined()
   })
 
+  it('a session gets AT MOST ONE rule: a second rule is rejected outright — one definition, edited, never a stack', () => {
+    const { controller } = ruleHarness(['s-a', 's-b'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const first = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'one', cron: '* * * * *', send: 'queue' })
+    expect(first).toBeDefined()
+    // The same session again — any trigger/content — is rejected.
+    expect(controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'two', cron: '0 0 * * *', send: 'steer' })).toBeUndefined()
+    expect(controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '', cron: '', trigger: 'on-complete', usePrompt: true, send: 'steer' })).toBeUndefined()
+    expect(task.rules ?? []).toHaveLength(0) // the ORIGINAL snapshot was never mutated
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.rules).toHaveLength(1)
+    // A DIFFERENT session is free to automate its own.
+    expect(controller.createSessionRule(task.id, { sessionId: 's-b', instruction: 'beside', cron: '* * * * *', send: 'queue' })).toBeDefined()
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules).toHaveLength(2)
+  })
+
   it('fires a due steer rule: sends the instruction, records a direct round, rolls forward', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
@@ -2568,7 +2599,7 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(ruleReadiness(row).kind).toBe('disabled') // task-level automation: off
   })
 
-  it('an ON-COMPLETE rule fires at a PLAIN RUN settle (queue mode), never from the cron tick', async () => {
+  it('an ON-COMPLETE rule fires at a PLAIN RUN settle (queue mode) — its OWN lane, never the cron tick', async () => {
     const { controller, stub } = ruleHarness(['s-a'], {})
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '', trigger: 'on-complete', send: 'queue' })!
@@ -2576,33 +2607,52 @@ describe('session automation rules (给会话定时发指令)', () => {
     await controller.tickSessionRules(NOW + 120_000)
     let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.executions.some(round => round.comment === 'hello')).toBe(false)
-    // A plain run settles → the queued instruction is recorded once.
+    // A plain run settles → the rule's OWN round is recorded and injected:
+    // the rule's turn flows in its own lane and never waits for the board
+    // cruise (a manually saved comment would).
     await controller.runTask(task.id)
     stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
+    await flush()
     row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
-    const queued = row.executions.find(round => round.comment === 'hello')
-    expect(queued?.comment).toBe('hello')
-    expect(queued?.direct).toBeUndefined()
-    expect(queued?.injectedAt).toBeUndefined() // awaiting the dispatcher
+    const round = row.executions.find(candidate => candidate.comment === 'hello')
+    expect(round?.comment).toBe('hello')
+    expect(round?.ruleId).toBeDefined() // a rule's own turn — the loop marker
+    expect(round?.injectedAt).toBe(NOW) // injected by its own lane
     expect(row.rules?.[0].lastAt).toBe(NOW)
-    // Its OWN comment settle must never re-fire (a comment round has a
-    // comment — it is not a task run; no send loops).
-    const commentCall = stub.commentCalls.find(call => call.text === 'hello')
-    commentCall?.fire({ kind: 'settled', taskId: task.id, executionId: commentCall.executionId, outcome: 'succeeded' })
+    const call = stub.commentCalls.find(candidate => candidate.text === 'hello')
+    expect(call).toBeDefined()
+    // 完成后续跑 = 永续循环: the rule round's SUCCEEDED settle re-fires the
+    // same rule — one round per cycle; failure/cancel never re-fires (no
+    // error storm), and a user comment (no ruleId) never triggers.
+    call!.fire({ kind: 'settled', taskId: task.id, executionId: call!.executionId, outcome: 'succeeded' })
+    await flush()
     row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
-    expect(row.executions.filter(round => round.comment === 'hello')).toHaveLength(1)
+    expect(row.executions.filter(candidate => candidate.comment === 'hello')).toHaveLength(2)
+    expect(stub.commentCalls.filter(candidate => candidate.text === 'hello')).toHaveLength(2)
+    // A FAILED rule round ends the loop: the next cycle is not fired.
+    const second = stub.commentCalls.find(candidate => candidate.text === 'hello' && candidate !== call)!
+    second.fire({ kind: 'settled', taskId: task.id, executionId: second.executionId, outcome: 'failed' })
+    await flush()
+    row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.executions.filter(candidate => candidate.comment === 'hello')).toHaveLength(2)
+    expect(stub.commentCalls.filter(candidate => candidate.text === 'hello')).toHaveLength(2)
   })
 
-  it('an ON-COMPLETE steer rule sends the line immediately at settle', async () => {
-    const sent: Array<[string, string]> = []
-    const { controller, stub } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+  it('an ON-COMPLETE rule rides its OWN lane: exactly one observable round per fire (send is a cron-only concern)', async () => {
+    const { controller, stub } = ruleHarness(['s-a'], {})
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    // A 'steer' send stored on an on-complete rule changes nothing: the loop
+    // needs the observable settle, so the round always rides the own lane —
+    // never a direct raw message, and never a double launch.
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '收尾提示', cron: '', trigger: 'on-complete', send: 'steer' })!
     await controller.runTask(task.id)
     stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
     await flush()
-    expect(sent).toEqual([['s-a', '收尾提示']])
+    expect(stub.commentCalls.map(call => call.text)).toEqual(['收尾提示'])
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    const round = row.executions.find(candidate => candidate.comment === '收尾提示')
+    expect(round?.injectedAt).toBe(NOW)
+    expect(round?.direct).toBeUndefined()
     expect(row.rules?.[0].lastAt).toBe(NOW)
   })
 

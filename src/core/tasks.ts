@@ -72,6 +72,14 @@ export interface ExecutionRecord {
    */
   sessionAnchor?: string
   /**
+   * The session automation rule this comment round was created by (preset
+   * instruction / 完成后续跑 loop). A settled rule round with a SUCCEEDED
+   * outcome re-fires its owning on-complete rule — the 完成后续跑 loop — so
+   * the rule keeps repeating after each turn it triggered; rounds without a
+   * ruleId (or with a failed outcome) never re-fire anything, so no storm.
+   */
+  ruleId?: string
+  /**
    * A direct-send round: a message the user sent straight to the native
    * session (直发模式) — recorded so it appears in the session's comment
    * thread next to drive comments and execution comments, but never queued,
@@ -362,18 +370,16 @@ export function taskExecutable(task: TaskRecord): boolean {
 }
 
 /**
- * 首次真执行的自动补全（仅一次）：新建任务允许标题/描述全空——第一次真正
- * 执行时缺什么补什么，之后（无论执行多少次、用同样的还是改过的执行 Prompt）
- * 系统绝不再动这两个字段。
- * - 只对「首次真执行」：`plainRunsOf` 为空（评论轮/完善轮/外源轮不计入）且
- *   执行 Prompt 可执行；
- * - 标题缺 → 执行 Prompt 的第一个非空行（trim + 40 字符上限）；
- * - 描述缺 → 整个执行 Prompt（trim）；
- * - 已存在的字段永不覆盖。返回需要补的字段（无则 undefined）。
+ * 真执行自动补全（缺则补、填则守、任何执行时刻）：新建任务允许
+ * 标题/描述全空——**任何一次**真正执行（手动/重复/接续链/定时/巡航/自动化）
+ * 时，缺什么补什么；已存在的字段永不覆盖（用户内容保真——「不会再动」=
+ * 已填的不动，缺的补齐）。评论轮/完善轮/外源轮不是任务执行，不触发。
+ * 标题缺 → 执行 Prompt 的第一个非空行（trim + 40 字符上限）；
+ * 描述缺 → 整个执行 Prompt（trim）。
+ * 返回需要补的字段（无则 undefined）。
  */
 export function supplementLaunchFields(task: TaskRecord): { title?: string; description?: string } | undefined {
   if (!taskExecutable(task)) return undefined
-  if (plainRunsOf(task).length > 0) return undefined
   const prompt = task.prompt.trim()
   if (prompt === '') return undefined
   const supplements: { title?: string; description?: string } = {}
@@ -600,6 +606,8 @@ export function newCommentRound(options: {
   parentExecutionId?: string
   /** The linked session this comment continues (session-anchored). */
   sessionAnchor?: string
+  /** The session automation rule that created this round (loop marker). */
+  ruleId?: string
 }): ExecutionRecord {
   return {
     id: options.id,
@@ -612,6 +620,7 @@ export function newCommentRound(options: {
     ...(options.command === true ? { command: true } : {}),
     ...(options.parentExecutionId !== undefined ? { parentExecutionId: options.parentExecutionId } : {}),
     ...(options.sessionAnchor !== undefined ? { sessionAnchor: options.sessionAnchor } : {}),
+    ...(options.ruleId !== undefined ? { ruleId: options.ruleId } : {}),
   }
 }
 

@@ -14,8 +14,9 @@ import type { ChipKind } from './Chip.tsx'
 /** The live session state every row derives (execution kind). */
 export type SessionRowState = 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
 
-/** The chip's data (kind + label + spinner) — the row renders it. */
-export type SessionChipShape = { kind: ChipKind; label: string; spinner?: boolean }
+/** The chip's data (kind + label + spinner + optional explainer) — the row
+ *  renders it; `title` carries the state's one-line meaning (hover). */
+export type SessionChipShape = { kind: ChipKind; label: string; spinner?: boolean; title?: string }
 
 /** The waiting-kind locale key, typed (never a string cast). */
 export function waitingKeyOf(kind: PendingInteractionKind): TaskBoardKey {
@@ -31,10 +32,12 @@ export function waitingKeyOf(kind: PendingInteractionKind): TaskBoardKey {
  * waiting label names the interaction kind); succeeded/failed/cancelled are
  * settled and take the caller's label pair (`settled` for succeeded — the
  * execution result vs the linked activity, `idle` for cancelled — a bound
- * session's no-activity state, a run's cancelled result). Locale-free logic
- * stays in session-display; this is the presentation mapping only.
+ * session's no-activity state, a run's cancelled result). `idleTitle` is the
+ * hover meaning of the IDLE label — only a linked row passes it (未运行 needs
+ * the one-line explanation; a run's 已取消 is self-evident). Locale-free
+ * logic stays in session-display; this is the presentation mapping only.
  */
-export function sessionStateChip(state: SessionRowState, waitingKind: PendingInteractionKind | undefined, settled: TaskBoardKey, idle: TaskBoardKey): SessionChipShape {
+export function sessionStateChip(state: SessionRowState, waitingKind: PendingInteractionKind | undefined, settled: TaskBoardKey, idle: TaskBoardKey, idleTitle?: TaskBoardKey): SessionChipShape {
   switch (state) {
     case 'waiting':
       return waitingKind !== undefined
@@ -47,6 +50,11 @@ export function sessionStateChip(state: SessionRowState, waitingKind: PendingInt
     case 'failed':
       return { kind: 'error', label: t('detail.result.failed') }
     case 'cancelled':
-      return { kind: 'muted', label: t(idle) }
+      // The idle label names the state the caller chose (a run's 已取消 or a
+      // bound session's 未运行); the title explains what the WORD means —
+      // only for the linked-idle pair (未运行 是什么状态 is never a guess).
+      return idleTitle !== undefined
+        ? { kind: 'muted', label: t(idle), title: t(idleTitle) }
+        : { kind: 'muted', label: t(idle) }
   }
 }

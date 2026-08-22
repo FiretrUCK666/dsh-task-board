@@ -75,6 +75,7 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
         {chip !== undefined && (
           <Chip
             kind={chip.kind}
+            title={chip.title}
             icon={chip.spinner === true ? <span className={css.spinner} aria-hidden="true" /> : undefined}
           >
             {chip.label}

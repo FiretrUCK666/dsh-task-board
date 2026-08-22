@@ -76,11 +76,13 @@ function CommentSummary({ task, sessionId, cruiseOn }: {
  *  ONE derivation (sessionStateChip) — only the settled-label pair differs
  *  between a run row (the execution result) and a linked row (the bound
  *  session's activity). */
-function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, onOpenSessionPanel, draggable, onDragStart, onDragEnd }: {
+function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, onReviewExecution, onOpenSessionPanel, draggable, onDragStart, onDragEnd }: {
   row: import('../../core/session-list.ts').TaskSessionRow
   task: TaskRecord
   controller: BoardController
   cruiseOn: boolean
+  /** Resolve the task's workspace id to its display title (row grammar). */
+  workspaceTitleOf: (workspaceId: string) => string
   /** A run row opens its review page (review the conversation and comment). */
   onReviewExecution: (execution: ExecutionRecord) => void
   /** Every row opens the session panel/thread for its native session. */
@@ -99,6 +101,10 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
     const session = sessionDisplay(task, execution, row.display.waitingKind)
     const times = sessionTimes(task, execution)
     const isActive = session.state === 'running' || session.state === 'waiting'
+    // The ONE workspace chip grammar with the linked rows: a run row names
+    // its workspace (the task's configured workspace) the same way a linked
+    // row names its own — no row family reads differently.
+    const runWorkspace = task.workspaceId !== undefined ? workspaceTitleOf(task.workspaceId) : ''
     return (
       <SessionRow
         state={session.state}
@@ -114,6 +120,9 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
                 skeleton for every session of a task. */}
             <Icon name="play" className={css.sessionRowIcon} />
             <span className={css.sessionRowName}>{row.title}</span>
+            {runWorkspace !== '' && runWorkspace !== row.title && (
+              <span className={css.sessionRowWorkspace}>{runWorkspace}</span>
+            )}
           </span>
         }
         meta={
@@ -160,7 +169,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, onReviewExecution, 
   // ONE chip grammar with the run rows: every linked row carries a state chip
   // (waiting / running / completed / idle) — a row never reads as "no state"
   // next to a run row that always has one.
-  const chip = sessionStateChip(row.display.state, row.display.waitingKind, 'detail.linkedDone', 'detail.linkedIdle')
+  const chip = sessionStateChip(row.display.state, row.display.waitingKind, 'detail.linkedDone', 'detail.linkedIdle', 'detail.idleHint')
   // The SAME grammar as a run row: the session's activity window (its rounds
   // on this task — board runs and externally-observed turns alike) plus its
   // comment thread (count + newest body; the state chip is the row's own).
@@ -696,6 +705,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                       task={current}
                       controller={controller}
                       cruiseOn={controller.getSnapshot().cruise.enabled}
+                      workspaceTitleOf={workspaceTitleOf}
                       onReviewExecution={execution => { setReviewExecution(execution) }}
                       onOpenSessionPanel={sessionId => { setLinkedSession(sessionId) }}
                       draggable

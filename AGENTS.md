@@ -309,16 +309,18 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   页面加载被动观察不补历史。**外源轮正文 = `latestUserMessage`（最新一条 user 消息即
   真相，绝不回退旧消息；纯图片 → `imageOnly` 占位）**。
 - **多源绑定（拖入 = 添加，绝不刷新替代）**：`TaskRecord.binds: TaskBind[]` 是真相源；
-  所有读者走 `taskBindsOf(task)` 投影；`copyTask` 不复制 binds（模板语义）。
+  所有读者走 `taskBindsOf(task)` 投影；`copyTask` 不复制 binds 与会话规则（模板语义
+  ——模板没有源任务的会话；「绘画规则」绑定的是特定 session 的自动化，绝不进模板）。
   **隐藏托盘「删除」= 从任务移除**（`removedSessions`，清记录/隐藏史/手动序槽位）；
   **显式拖回（会话或工作区）可恢复**——`addTaskSource` 清 removed，被动派生绝不复活。
 - **完成态留言自动移回「待办」并驱动**（`reviveTaskIfDone`，queue/steer 同规则）。
-- **首次运行自动补全（仅一次）**：新建任务 标题/描述/执行 Prompt **全可空**（空 Prompt
-  只让任务惰性——真正运行/接续链被 `taskExecutable` 门禁拦截，创建不受限；卡片空标题
-  显示 `card.untitled`）。首**次真执行**（`plainRunsOf` 为空时的第一次 runTask，评论轮/
-  完善轮/外源轮不计入）由 `supplementLaunchFields` 补全：标题缺 → 执行 Prompt 第一个
-  非空行（trim + 40 上限）；描述缺 → 整个执行 Prompt（trim）；已存在字段永不覆盖；
-  **之后任何重复执行（改不改 Prompt）绝不再动这两个字段**（controller 单测钉死）。
+- **真执行自动补全（缺则补、填则守、任何执行时刻）**：新建任务 标题/描述/执行 Prompt
+  **全可空**（空 Prompt 只让任务惰性——真正运行/接续链被 `taskExecutable` 门禁拦截，
+  创建不受限；卡片空标题显示 `card.untitled`）。**任何一次**真正执行（手动/重复/
+  接续链/定时/巡航/自动化）都经 `supplementLaunchFields` 补全：标题缺 → 执行 Prompt
+  第一个非空行（trim + 40 上限）；描述缺 → 整个执行 Prompt（trim）；已存在字段
+  **永不覆盖**（用户内容保真——「不会再动」= 已填的不动，缺的补齐）；评论轮/完善轮/
+  外源轮不是任务执行，不触发（tasks 单测钉死）。
 - **自动化两半互不干扰**：任务级 `schedule`（按时间表 / 完成后接续）与会话级 `rules`
   （给会话发指令——内容模式 = 自定义指令 或 **任务执行 Prompt**（usePrompt，每次发送
   时取任务当前 Prompt，非快照）；触发方式 = 按时间表 cron 或 每次完成 on-complete）
@@ -327,10 +329,17 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   编辑器内分「任务自动化」「会话规则」两个成对分区标题；**启用开关只在编辑器内（唯一
   一份）**——面板卡片 = 身份头 + 一行可展开摘要 + 展开体 = 共享编辑器原样；「按时间表/
   完成后接续」与规则「触发方式」「指令内容」共用 `Segmented` 分段文法。
-  **on-complete 语义**：任务一次**普通执行结算**时触发（评论轮/完善轮不触发，防自触发
-  环），不受列暂停约束（结算瞬间任务刚被移动，「完成」才是约定本身），无 cron 槽位，
-  每次结算每规则至多一次（浏览器文案「每次完成时发送一次」，绝不读成接续/循环）；
-  老数据（无 trigger/usePrompt）归一化为 cron + 自定义指令。
+  **on-complete 语义（完成后继续 = 永续循环）**：任务一次**普通执行结算**时触发（评论轮/
+  完善轮不触发，防自触发环），不受列暂停约束（结算瞬间任务刚被移动，「完成」才是约定
+  本身），无 cron 槽位，每次结算每规则至多一次。**规则自己的指令轮**（`ExecutionRecord.ruleId`
+  标记）**成功**结算即再触发同一规则——一轮接一轮，直到关闭/删除/会话消失/内容不可用
+  （usePrompt 规则要求任务 Prompt 非空）；失败/取消不续（错误不风暴）；用户手写评论
+  （无 ruleId）永不触发。规则轮走**自己的车道**（`nextEligible` 的 ruleRound 优先并
+  不受巡航开关约束；调度器按全局 FIFO + 预算注入），**发送只有一条文法**：可观察的
+  指令轮（结算驱动续跑）——queue/steer 选择只属 cron 规则（等待调度器 vs 立即直达），
+  on-complete 表单不提供该选择，避免死控件。**每会话至多一条规则**（`createSessionRule`
+  拒绝同会话的第二条：会话的自动化是一份定义，改它用编辑，绝不叠触发器——"同时设
+  7 个"不可能出现）；老数据（无 trigger/usePrompt）归一化为 cron + 自定义指令。
 - **完成接续（链）语义**：武装即开跑（`setSchedule`：`enabled && chain && 可执行 &&
   无在途轮`，**任意列**——待审核/已完成武装后立即跑，绝不等待手动重新执行）；每次
   **普通执行成功结算**瞬间接续下一轮（失败/取消/完善轮不接续；预算到顶自动解除武装）；
@@ -364,15 +373,19 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   `translateY(-0.5px)`；**选中态**：`.card.selectedCard:hover` 必须覆盖 hover（同特异性会
   被 `.card:hover` 压掉——光标在卡上就看不到选中光环），accent 双环 + 上浮 + 右上对勾
   徽章 + 120ms 入场。
-- **执行 Prompt 空 = 全链路阻断**：`taskExecutable(task)`（严格 `prompt.trim() !== ''`）
-  是唯一判定；`ruleReadiness`（cron）与 `sessionRuleReadiness`（仅 usePrompt 规则）给
-  `{kind:'blocked'}`（次序 disabled → blocked → paused(列) → active；**链模式跳过列暂停、
-  自定义指令会话规则永不因任务 Prompt 为空而 blocked**——内容自带）；`runTask` 单点拦截
-  手动/快速/重新执行/拖拽重跑/定时/巡航/接续链，评论 `submitComment`/`submitSessionComment`
-  与 `steerCommentWithImages` 在 `!taskExecutable && !hasOpenRun` 时拒绝（会话规则的入队走
-  `queueRuleComment`——保留 done 复活/空文本/未知任务守卫、去掉 Prompt 段），调度器 tick
-  把 blocked 当 paused 滚动到期槽；**例外（不封）**：需求完善流程（产出 Prompt）、mux
-  交互卡回答、在途开轮续评、绑定会话被动观察；UI 用 `detail.promptEmpty` 显示原因。
+- **执行 Prompt 空 = 全链路阻断（执行专用）**：`taskExecutable(task)`（严格
+  `prompt.trim() !== ''`）是唯一判定；`ruleReadiness`（cron）与 `sessionRuleReadiness`
+  （仅 usePrompt 规则）给 `{kind:'blocked'}`（次序 disabled → blocked → paused(列) →
+  active；**链模式跳过列暂停、自定义指令会话规则永不因任务 Prompt 为空而 blocked**——
+  内容自带）；`runTask` 单点拦截手动/快速/重新执行/拖拽重跑/定时/巡航/接续链，
+  **「完成后接续」武装**在 `enabled && chain && !taskExecutable` 时直接拒绝（返回
+  false、什么都不持久化——编辑器显示 `detail.promptEmpty`，绝不出现「开关亮了但没
+  反应」的假死武装），调度器 tick 把 blocked 当 paused 滚动到期槽；**评论与插话是
+  人的话，永不被 Prompt 门禁**（`submitComment`/`submitSessionComment`/
+  `steerCommentWithImages` 只留 done 复活/空文本/未知任务/会话缺失守卫；composer
+  只在会话消失时禁用——发送灰 bug 根因）；**例外（不封）**：需求完善流程（产出
+  Prompt）、mux 交互卡回答、在途开轮续评、绑定会话被动观察；UI 用 `detail.promptEmpty`
+  显示原因。
 - **运行配置预设（自定义 + 默认应用）**：`src/core/run-presets.ts`（键
   `dsh.taskBoard.runPresets.v1`，文档 `{presets[], defaultId?}`）；内置不可删
   `deploy-default`（空配置 = 部署原生默认）；**默认回退链** = `defaultRunPresetOf`：
@@ -394,7 +407,14 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   `review-page.spec.ts` 的 CSS 契约钉死。
 - **会话列表**：`orderedSessionsOf`（`sessionsOrder` 全量手动序；数组外新会话置顶——
   默认规则不变，除非用户拖过）；板列与详情共用 `drop-position.ts` 插入条；详情列表
-  拖拽用 `useDragAutoScroll`（滚动根 = `.detailBody`）。
+  拖拽用 `useDragAutoScroll`（滚动根 = `.detailBody`）。**行文法（执行/链接统一
+  `SessionRow` 骨架 + `sessionStateChip` 唯一状态推导）**：已有轮次的会话 = 行标题 +
+  状态 chip；执行行命名执行结果（已完成/已取消），链接行命名会话活动（已完成/未运行——
+  「未运行」带 `detail.idleHint` 悬浮说明，用户分得清已完成与空闲）；行首 = 类型图标 +
+  会话标题 + **可选工作区标签**（执行行取任务工作区、链接行取会话自身；与标题相同则
+  省略——一句一个来源，绝不重复）。**.sessionList 不容忍底部死区**：久置列表 `padding: 0`
+  （最后一行 hover 覆盖整行），只有 `.sessionList[data-reordering]` 期间底部呼吸 14px 给
+  尾部插入槽——拖拽落点与静止观感互不打架。
 - **稳定性**：受控组件本地回退；composer 之上可滚动中区；就近 inline 反馈；订阅/轮询
   必带终止路径；正文永不省略（break-word），元信息可 ellipsis+title；正文禁用固定高 +
   overflow hidden 裁字。

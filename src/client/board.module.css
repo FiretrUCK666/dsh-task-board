@@ -2056,17 +2056,26 @@ textarea.input {
 .sessionList {
   list-style: none;
   margin: 0;
-  /* The bottom strip gives the tail insertion slot room INSIDE the box (same
-     grammar as the board columns' breathing bottom padding): without it the
-     tail bar clamps to the very bottom edge and overflow: hidden clips it —
-     the "dragging to the bottom shows no bar" bug. */
-  padding: 0 0 14px;
+  /* No trailing strip for a settled list: the last row's hover must cover the
+     whole row — a permanent 14px dead zone at the bottom reads as a phantom
+     row. The tail insertion slot only exists while a reorder is in flight
+     (data-reordering below gives it its room, same grammar as the board
+     columns' breathing bottom padding while dragging). */
+  padding: 0;
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   overflow: hidden;
   /* Relative for the manual-reorder insertion bar (the same dropIndicator
      grammar as the board's card reorder — one mechanism, one look). */
   position: relative;
+}
+
+/* During a reorder the bottom strip breathes so the tail insertion slot has
+   room INSIDE the box — without it the tail bar clamps to the very bottom
+   edge and overflow: hidden clips it (the "dragging to the bottom shows no
+   bar" bug). Settled lists carry no strip; only a drag in flight needs it. */
+.sessionList[data-reordering] {
+  padding-bottom: 14px;
 }
 
 /* A session row is grabbable for the manual 会话 reorder; while a reorder is

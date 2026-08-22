@@ -23,7 +23,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
-import { taskExecutable, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
+import { type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
 import { sessionDisplay } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -121,10 +121,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const session = sessionDisplay(current, execution, waiting)
   const stateChip = sessionStateChip(session.state, waiting, 'detail.result.succeeded', 'detail.result.cancelled')
   const updatedAt = formatDateTime(execution.endedAt ?? execution.startedAt)
-  // An empty execution prompt blocks comments that would START work: the
-  // composer + hint read the same gate (an open round stays continuable).
-  const driveBlocked = !taskExecutable(current) && execution.endedAt !== undefined
-  const hint = driveBlocked ? t('detail.promptEmpty') : undefined
 
   return (
     <SessionFrame
@@ -182,7 +178,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           lines={lines}
           onChanged={reload}
           reloadKey={configReloadKey}
-          hint={hint}
           task={current}
           thread={comments}
           onCancelComment={id => controller.cancelComment(id)}
@@ -193,10 +188,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               taskId={current.id}
               sessionId={sessionId}
               placeholder={t('review.commentPlaceholder')}
-              /* Same send gating as the linked panel: a gone session or a
-                 blocked task (empty execution prompt, no open round) disables
-                 the composer — the hint line names the reason. */
-              disabled={sessionId === undefined || driveBlocked}
+              /* Send gating: a gone session is the only disable — a comment
+                 is the user's own words, never gated by the task's execution
+                 prompt (that gate belongs to task execution only). */
+              disabled={sessionId === undefined}
               onDrive={text => controller.submitComment(current.id, execution.id, text, text.startsWith('/')) !== undefined}
               onSteer={text => sessionId === undefined
                 ? Promise.resolve(false)

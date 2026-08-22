@@ -724,7 +724,7 @@ describe('cardSourceLabel', () => {
   })
 })
 
-describe('supplementLaunchFields (首次真执行自动补全 — 仅一次，之后永不再动)', () => {
+describe('supplementLaunchFields (真执行自动补全 — 缺则补、填则守，任何一次执行)', () => {
   const prompt = '画一只猫\n并解释配色'
 
   it('(a) title+description both missing → both filled from the prompt', () => {
@@ -747,8 +747,15 @@ describe('supplementLaunchFields (首次真执行自动补全 — 仅一次，�
     expect(supplementLaunchFields(task)).toBeUndefined()
   })
 
-  it('a task that has ALREADY run once is never touched again (repeat runs keep user fields)', () => {
+  it('an already-run task is STILL supplemented when a field is missing (任何一次执行缺则补)', () => {
     const ran = { ...sampleTask(), prompt, title: '', description: '' }
+    const withRun = startExecution(ran, NOW, 'e1').task
+    const settled = settleExecution(withRun, 'e1', 'succeeded', NOW + 1, undefined)
+    expect(supplementLaunchFields(settled)).toEqual({ title: '画一只猫', description: prompt })
+  })
+
+  it('an already-settled task with fields present is never touched (填则守)', () => {
+    const ran = { ...sampleTask(), prompt, title: '猫咪插画', description: '描述' }
     const withRun = startExecution(ran, NOW, 'e1').task
     const settled = settleExecution(withRun, 'e1', 'succeeded', NOW + 1, undefined)
     expect(supplementLaunchFields(settled)).toBeUndefined()
