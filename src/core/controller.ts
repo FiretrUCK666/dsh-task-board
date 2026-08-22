@@ -25,7 +25,7 @@ import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -645,8 +645,9 @@ export class BoardController {
   // --- task mutations ---------------------------------------------------------
 
   createTask(input: NewTaskInput): TaskRecord | undefined {
-    const title = input.title.trim()
-    if (title === '') return undefined
+    // Title/description/prompt are ALL optional at creation — a blank prompt
+    // only makes the task inert (nothing can run), and the first real run
+    // auto-supplements the missing title/description (supplementLaunchFields).
     const task = createTask(input, this.now(), this.uuid(), this.nextOrder())
     // A fresh card reads as the newest of its layout column.
     this.tasks = promoteToColumnTop([...this.tasks, task], task.id, task.status, this.now())
@@ -657,15 +658,14 @@ export class BoardController {
   /**
    * Create a task bound to a live native source (a session or a whole
    * workspace folder dragged in from the sidebar). The bind wires the card's
-   * "链接会话" section; everything else behaves like a plain task.
+   * "链接会话" section; everything else behaves like a plain task — title is
+   * optional like any new task (the first real run supplements it).
    * @param bind - the live binding.
-   * @param input - title/description/prompt/landing column (title resolved
-   *   from the source by the caller / drag layer).
-   * @returns the created task, or undefined for a blank title.
+   * @param input - title/description/prompt/landing column.
+   * @returns the created task, or undefined for a bad bind.
    */
   createBoundTask(bind: TaskBind, input: NewTaskInput): TaskRecord | undefined {
-    const title = input.title.trim()
-    if (title === '' || bind === undefined) return undefined
+    if (bind === undefined) return undefined
     const task = createTask(input, this.now(), this.uuid(), this.nextOrder())
     const boundTask: TaskRecord = { ...task, binds: [bind] }
     this.tasks = promoteToColumnTop([...this.tasks, boundTask], boundTask.id, boundTask.status, this.now())
@@ -1037,16 +1037,16 @@ export class BoardController {
    * run configuration. A run-config key present in the patch with an empty
    * string or `undefined` clears the field (the run then falls back to
    * defaults); a value sets it; absent keys keep their current value. Text
-   * fields are trimmed; a blank title is rejected (returns false, state
-   * untouched). The next execution — manual or scheduled — reads the updated
-   * record, so edits apply from the following run onward.
-   * @returns true when applied, false when rejected (blank title / unknown task).
+   * fields are trimmed; a blank title is allowed (the card shows an 未命名
+   * placeholder and the first real run supplements it). The next execution —
+   * manual or scheduled — reads the updated record, so edits apply from the
+   * following run onward.
+   * @returns true when applied, false when rejected (unknown task).
    */
   updateTask(id: string, patch: TaskUpdatePatch): boolean {
     const task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return false
-    const title = patch.title?.trim()
-    if (title !== undefined && title === '') return false
+    const title = patch.title?.trim() ?? ''
     const applied: Partial<TaskRecord> = {}
     if (patch.title !== undefined) applied.title = title
     if (patch.description !== undefined) applied.description = patch.description.trim()
@@ -1077,14 +1077,10 @@ export class BoardController {
    * leaves the rule off until the user re-arms it.
    *
    * Automation never locks a card in place (see resolveCardDrop); leaving
-   * the lane speaks its own language:
-   * - to 'backlog'/'review' — the rule pauses via its status (ruleReadiness
-   *   calls it paused); the card is free.
-   * - to 'todo' — manual takeover defeats an active chain loop (a todo card
-   *   with an armed chain would otherwise chain right back), so a chain that
-   *   has already run is stopped; an armed-but-never-run chain (armed while
-   *   shelved in backlog) instead starts its first run — the "resume on
-   *   move to todo" path.
+   * the lane speaks its own language: a chain hand-off happens ONLY at a
+   * settle — a manual move (except done) never disarms the rule and never
+   * starts anything, so 完成后接续 stays armed and matches up ("跑到一半
+   * 移动卡片不会误杀链").
    */
   moveTask(id: string, status: TaskStatus, beforeId?: string): void {
     const previous = this.tasks.find(task => task.id === id)
@@ -1094,17 +1090,11 @@ export class BoardController {
       // Completion is a hard stop, not a pause. The rule's configuration
       // survives, so re-arming from the detail editor resumes the schedule.
       if (status === 'done') return disarmSchedule(task, this.now())
-      // A chain that has already run, moved to todo = manual takeover: stop
-      // it (todo would otherwise immediately chain again).
-      if (status === 'todo' && previous !== undefined
-        && task.schedule?.enabled === true && task.schedule.mode === 'chain'
-        && previous.executions.length > 0) {
-        return withSchedule(task, { enabled: false }, this.now())
-      }
       return task
     })
-    // An armed-but-never-run chain leaving backlog for a drivable column
-    // starts its first run — the "paused, then move to todo resumes" path.
+    // An armed-but-never-run chain leaving backlog for todo starts its first
+    // run (arming already covers any column; this stays as the idempotent
+    // resume path — hasOpenRun/taskExecutable gate it either way).
     const after = this.tasks.find(task => task.id === id)
     if (after !== undefined && previous !== undefined && previous.status === 'backlog'
       && status === 'todo' && after.schedule?.enabled === true && after.schedule.mode === 'chain') {
@@ -1160,11 +1150,13 @@ export class BoardController {
           }, this.now())
         : candidate)
     this.persistAndNotify()
-    // "Opened, so it runs": a chain rule fires its first run as soon as it
-    // is armed (there is no manual-prime step), unless the card sits in a
-    // paused status (backlog/review/done) — moving it to a drivable column
-    // starts it. Cron waits for its due instant via the scheduler tick.
-    if (enabled && mode === 'chain' && (task.status === 'todo' || task.status === 'running')) {
+    // "完成后接续" arms AND starts: an enabled chain launches its first run
+    // at once whenever the prompt is executable and no run is open — ANY
+    // column (a review/done card armed by the user means "keep it running",
+    // never "wait for a manual re-run"), empty prompt stays inert via the
+    // taskExecutable gate. Cron waits for its due instant via the scheduler
+    // tick.
+    if (enabled && mode === 'chain' && taskExecutable(task) && !hasOpenRun(task)) {
       void this.runTask(id, 'chain')
     }
     return true
@@ -1361,8 +1353,19 @@ export class BoardController {
     // Only a genuinely open run blocks a new one: a pending comment round
     // (task not running) must never block the Run button or a drag-rerun.
     if (hasOpenRun(task)) return false
+    // FIRST real run: auto-supplement the missing title/description (once
+    // only — later repeats never touch them); the launch then reads the
+    // supplemented record (its title names the fresh session).
+    let launch = task
+    const supplements = supplementLaunchFields(task)
+    if (supplements !== undefined) {
+      const supplemented = { ...task, ...supplements, updatedAt: this.now() }
+      this.tasks = this.tasks.map(candidate => candidate.id === task.id ? supplemented : candidate)
+      this.persistAndNotify()
+      launch = this.tasks.find(candidate => candidate.id === task.id) ?? supplemented
+    }
     if (trigger === 'manual' || this.inFlightCount() < this.cruiseState.limit) {
-      this.launchTask(task)
+      this.launchTask(launch)
       return true
     }
     if (!this.queuedLaunches.some(candidate => candidate.taskId === id)) {
@@ -1584,24 +1587,30 @@ export class BoardController {
   // --- session automation rules (scheduled "send a preset instruction to a session") ---
   /** Create a session rule for one of the task's sessions. Two triggers use
    *  the SAME model: cron (cron via the task schedule parser; an unparseable
-   *  expression is rejected) and on-complete (no cron, fires at run settle). */
+   *  expression is rejected) and on-complete (no cron, fires at run settle).
+   *  Content mode: `usePrompt` sends the task's CURRENT execution prompt
+   *  (绘画 = 定时/每次完成注入执行 Prompt 到单个会话); otherwise the custom
+   *  `instruction` text is sent. */
   createSessionRule(taskId: string, input: {
     sessionId: string
     instruction: string
     cron: string
     trigger?: 'cron' | 'on-complete'
+    usePrompt?: boolean
     send: 'queue' | 'steer'
   }): import('./automation.ts').SessionRule | undefined {
     const instruction = input.instruction.trim()
+    const usePrompt = input.usePrompt === true
+    if (instruction === '' && !usePrompt) return undefined
     const trigger = input.trigger === 'on-complete' ? 'on-complete' : 'cron'
-    if (instruction === '') return undefined
     const cron = trigger === 'cron' ? input.cron.trim() : ''
     const nextAt = trigger === 'cron' ? nextRunAtMs(cron, this.now()) : undefined
     if (trigger === 'cron' && (cron === '' || nextAt === undefined)) return undefined
     const rule: import('./automation.ts').SessionRule = {
       id: this.uuid(),
       sessionId: input.sessionId,
-      instruction,
+      instruction: usePrompt ? '' : instruction,
+      ...usePrompt ? { usePrompt: true } : {},
       trigger,
       cron,
       send: input.send,
@@ -1622,18 +1631,20 @@ export class BoardController {
   }
 
   /**
-   * Edit an existing session rule: replace its target / instruction / trigger
-   * / cron / send mode in place (the rule id and enable state stay). An
-   * invalid patch (blank instruction, unparseable cron, unknown rule) is
-   * rejected outright — the old rule is left untouched, never half-applied.
-   * A cron change recomputes the due instant from now (the rule restarts its
-   * schedule); switching to on-complete drops the due slot and vice versa.
+   * Edit an existing session rule: replace its target / instruction / content
+   * mode / trigger / cron / send mode in place (the rule id and enable state
+   * stay). An invalid patch (blank instruction for a custom rule, unparseable
+   * cron, unknown rule) is rejected outright — the old rule is left
+   * untouched, never half-applied. A cron change recomputes the due instant
+   * from now (the rule restarts its schedule); switching to on-complete drops
+   * the due slot and vice versa.
    * @returns true when the rule was updated.
    */
   updateSessionRule(taskId: string, ruleId: string, patch: {
     sessionId?: string
     instruction?: string
     trigger?: 'cron' | 'on-complete'
+    usePrompt?: boolean
     cron?: string
     send?: 'queue' | 'steer'
   }): boolean {
@@ -1643,13 +1654,15 @@ export class BoardController {
       if (task.id !== taskId || task.rules === undefined) return task
       const rules = task.rules.map(rule => {
         if (rule.id !== ruleId) return rule
-        const instruction = patch.instruction?.trim() ?? rule.instruction
+        const usePrompt = patch.usePrompt === true
+        const instruction = usePrompt ? '' : (patch.instruction ?? rule.instruction).trim()
         const trigger = patch.trigger ?? rule.trigger
         const cron = trigger === 'cron' ? (patch.cron?.trim() ?? rule.cron) : ''
         const sessionId = patch.sessionId ?? rule.sessionId
         const send = patch.send ?? rule.send
         // Validate BEFORE applying: an invalid rule is never half-updated.
-        if (instruction === '' || sessionId === '') return rule
+        if (sessionId === '') return rule
+        if (!usePrompt && instruction === '') return rule
         if (trigger === 'cron') {
           if (cron === '' || (cron !== rule.cron && nextRunAtMs(cron, now) === undefined)) return rule
         }
@@ -1658,10 +1671,14 @@ export class BoardController {
             ? nextRunAtMs(cron, now) ?? rule.nextAt
             : rule.nextAt
           : undefined
-        const updated = { ...rule, sessionId, instruction, trigger, cron, send, ...nextAt !== undefined ? { nextAt } : { nextAt: undefined } }
+        const updated = {
+          ...rule, sessionId, instruction, trigger, cron, send,
+          ...usePrompt ? { usePrompt: true } : { usePrompt: undefined },
+          ...nextAt !== undefined ? { nextAt } : { nextAt: undefined },
+        }
         if (updated.sessionId === rule.sessionId && updated.instruction === rule.instruction
-          && updated.trigger === rule.trigger && updated.cron === rule.cron
-          && updated.send === rule.send && updated.nextAt === rule.nextAt) return rule
+          && updated.trigger === rule.trigger && updated.usePrompt === rule.usePrompt
+          && updated.cron === rule.cron && updated.send === rule.send && updated.nextAt === rule.nextAt) return rule
         changed = true
         return updated
       })
@@ -1724,13 +1741,17 @@ export class BoardController {
         // retried every tick — the across-status skip is what a pause means.
         if (!taskColumnAllowsAutomation(task)) continue
         if (rule.nextAt > now) continue
+        // A usePrompt rule has nothing to send while the task's execution
+        // prompt is empty (blocked); a custom rule's content is its own.
+        const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
+        if (text === '') continue
         // Fire, send-mode consistent with the comment SendModeToggle grammar:
         // queue = the instruction enters the task's comment queue and the
         // dispatcher injects it in submission order (cruise-gated); steer =
         // delivered straight to the session now, recorded as a direct round.
         let fired: { ok: true } | { ok: false; error: string }
         if (rule.send === 'queue') {
-          const round = this.submitSessionComment(task.id, rule.sessionId, rule.instruction, rule.instruction.trimStart().startsWith('/'))
+          const round = this.queueRuleComment(task.id, rule.sessionId, text, text.trimStart().startsWith('/'))
           if (round === undefined) {
             // The injector refused (blank line / completed task / unknown
             // task): keep the due slot, retried next tick.
@@ -1738,7 +1759,7 @@ export class BoardController {
           }
           fired = { ok: true }
         } else {
-          fired = await this.sendSessionMessage(task.id, rule.sessionId, rule.instruction)
+          fired = await this.sendSessionMessage(task.id, rule.sessionId, text)
         }
         if (!fired.ok) continue
         taskChanged = true
@@ -1876,6 +1897,24 @@ export class BoardController {
     // A BLANK prompt cannot be comment-driven (no prompt = nothing to
     // execute); an ALREADY OPEN round stays continuable.
     if (!taskExecutable(task) && !hasOpenRun(task)) return undefined
+    return this.queueRuleComment(taskId, sessionId, trimmed, command)
+  }
+
+  /**
+   * Session-RULE enqueue: the same session-anchored round as
+   * {@link submitSessionComment} but WITHOUT the task-execution-prompt gate.
+   * A rule's content (a custom instruction, or the task's own execution
+   * prompt for a usePrompt rule — already validated by the readiness
+   * judgment) IS the work, so the task's prompt never mis-blocks it ("对单个
+   * 会话发指令" 与任务 Prompt 无关); every other guard stays: done revival,
+   * blank text, unknown task.
+   */
+  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false): ExecutionRecord | undefined {
+    const trimmed = text.trim()
+    if (trimmed === '') return undefined
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return undefined
+    if (task.status === 'done') this.reviveTaskIfDone(taskId)
     const round = newCommentRound({
       id: this.uuid(),
       now: this.now(),
@@ -2119,10 +2158,11 @@ export class BoardController {
   }
 
   /**
-   * 任务一次执行结算时触发其 on-complete 会话规则（"任务完成后"）。发送文法
-   * 与 cron 心跳一致（queue = 入队、steer = 立即发送），判定 = 规则启用 +
-   * 执行 Prompt 非空 + 目标会话在场；每次结算每个规则至多一次并记 lastAt。
-   * 列暂停不适用：结算瞬间任务刚被移动，这里的"完成"才是约定本身。
+   * 任务一次执行结算时触发其 on-complete 会话规则（"每次完成任务时发送
+   * 一次"，不循环）。发送文法与 cron 心跳一致（queue = 入队、steer = 立即
+   * 发送），判定 = 规则启用 + 内容可得（usePrompt 规则要求任务执行 Prompt
+   * 非空；自定义规则内容自带）+ 目标会话在场；每次结算每个规则至多一次并记
+   * lastAt。列暂停不适用：结算瞬间任务刚被移动，这里的"完成"才是约定本身。
    */
   async fireOnCompleteRules(taskId: string): Promise<void> {
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -2131,16 +2171,17 @@ export class BoardController {
     const fired = new Set<string>()
     for (const rule of task.rules) {
       if (rule.trigger !== 'on-complete' || !rule.enabled) continue
-      if (!taskExecutable(task)) continue
+      const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
+      if (text === '') continue // usePrompt + 空 Prompt = blocked, nothing to send
       if (byId[rule.sessionId] === undefined) continue
       if (rule.send === 'queue') {
-        const round = this.submitSessionComment(
-          task.id, rule.sessionId, rule.instruction,
-          rule.instruction.trimStart().startsWith('/'))
+        const round = this.queueRuleComment(
+          task.id, rule.sessionId, text,
+          text.trimStart().startsWith('/'))
         if (round === undefined) continue
       } else {
         // 立即发送：sendSessionMessage 自行记录直接轮并持久化。
-        void this.sendSessionMessage(task.id, rule.sessionId, rule.instruction)
+        void this.sendSessionMessage(task.id, rule.sessionId, text)
       }
       fired.add(rule.id)
     }

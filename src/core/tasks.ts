@@ -362,6 +362,32 @@ export function taskExecutable(task: TaskRecord): boolean {
 }
 
 /**
+ * 首次真执行的自动补全（仅一次）：新建任务允许标题/描述全空——第一次真正
+ * 执行时缺什么补什么，之后（无论执行多少次、用同样的还是改过的执行 Prompt）
+ * 系统绝不再动这两个字段。
+ * - 只对「首次真执行」：`plainRunsOf` 为空（评论轮/完善轮/外源轮不计入）且
+ *   执行 Prompt 可执行；
+ * - 标题缺 → 执行 Prompt 的第一个非空行（trim + 40 字符上限）；
+ * - 描述缺 → 整个执行 Prompt（trim）；
+ * - 已存在的字段永不覆盖。返回需要补的字段（无则 undefined）。
+ */
+export function supplementLaunchFields(task: TaskRecord): { title?: string; description?: string } | undefined {
+  if (!taskExecutable(task)) return undefined
+  if (plainRunsOf(task).length > 0) return undefined
+  const prompt = task.prompt.trim()
+  if (prompt === '') return undefined
+  const supplements: { title?: string; description?: string } = {}
+  if (task.title.trim() === '') {
+    const firstLine = prompt.split(/\r?\n/).map(line => line.trim()).find(line => line !== '') ?? ''
+    supplements.title = firstLine.slice(0, 40)
+  }
+  if (task.description.trim() === '') {
+    supplements.description = prompt
+  }
+  return supplements.title !== undefined || supplements.description !== undefined ? supplements : undefined
+}
+
+/**
  * Whether the task's COLUMN currently allows automation to run. One shared
  * judgment for EVERY automation kind — the task-level schedule rule and the
  * session-level rules read the same set: only todo/running are drivable;
@@ -379,6 +405,12 @@ export function ruleReadiness(task: TaskRecord): RuleReadiness {
   // Nothing to drive: an armed rule with an empty prompt cannot execute —
   // it reads as blocked (a reason, not a pause), never silently fires.
   if (!taskExecutable(task)) return { kind: 'blocked' }
+  // A CHAIN's column never pauses it: the hand-off runs at the settle
+  // instant (the task was drivable when the run started; the completion IS
+  // the appointment — "完成后接续" keeps going). Only the cron wheel obeys
+  // the column pause, because its scheduled instant can land on a shelved
+  // card.
+  if (schedule.mode === 'chain') return { kind: 'active' }
   // Every status outside the rule's active set (backlog/review/done) is a
   // pause: the rule must never drive a task a human is holding.
   if (!taskColumnAllowsAutomation(task)) {

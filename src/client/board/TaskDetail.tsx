@@ -496,13 +496,11 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     )
   }
 
-  /** Persist the draft; a blank title is rejected with an inline error. */
+  /** Persist the draft; title may be blank (the first real run supplements
+   *  it) — updateTask only rejects an unknown task. */
   const saveEdit = (): void => {
     if (draft === undefined) return
-    if (!controller.updateTask(current.id, draftToUpdatePatch(draft))) {
-      setEditError(t('new.required'))
-      return
-    }
+    if (!controller.updateTask(current.id, draftToUpdatePatch(draft))) return
     setDraft(undefined)
     setEditError(undefined)
     setDraftRestored(false)

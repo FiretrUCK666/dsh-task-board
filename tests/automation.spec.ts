@@ -96,10 +96,16 @@ describe('sessionRuleReadiness (one semantics with the task schedule)', () => {
     expect(sessionRuleReadiness(task('done'), rule())).toEqual({ kind: 'paused', status: 'done' })
   })
 
-  it('is blocked when the execution prompt is empty — regardless of the column', () => {
+  it('a CUSTOM rule ignores the task prompt entirely — its content is its own', () => {
     const blank = { ...task('todo'), prompt: '' }
-    expect(sessionRuleReadiness(blank, rule())).toEqual({ kind: 'blocked' })
-    expect(sessionRuleReadiness({ ...blank, status: 'done' }, rule())).toEqual({ kind: 'blocked' })
+    expect(sessionRuleReadiness(blank, rule())).toEqual({ kind: 'active' })
+    expect(sessionRuleReadiness({ ...blank, status: 'done' }, rule())).toEqual({ kind: 'paused', status: 'done' })
+  })
+
+  it('a usePrompt rule is BLOCKED while the task execution prompt is empty', () => {
+    const using = { ...rule(), usePrompt: true as const, instruction: '' }
+    expect(sessionRuleReadiness({ ...task('todo'), prompt: '' }, using)).toEqual({ kind: 'blocked' })
+    expect(sessionRuleReadiness({ ...task('done'), prompt: '' }, using)).toEqual({ kind: 'blocked' })
   })
 
   it('is disabled when the rule is toggled off — regardless of the column', () => {
@@ -111,7 +117,9 @@ describe('sessionRuleReadiness (one semantics with the task schedule)', () => {
     const after: SessionRule = { id: 'r2', sessionId: 's-1', instruction: '/goal', trigger: 'on-complete', cron: '', send: 'steer', enabled: true }
     expect(sessionRuleReadiness(task('review'), after)).toEqual({ kind: 'active' })
     expect(sessionRuleReadiness(task('done'), after)).toEqual({ kind: 'active' })
-    expect(sessionRuleReadiness({ ...task('done'), prompt: '' }, after)).toEqual({ kind: 'blocked' })
+    // Blocked applies to the prompt-sending variant only.
+    const usingPrompt: SessionRule = { ...after, usePrompt: true, instruction: '' }
+    expect(sessionRuleReadiness({ ...task('done'), prompt: '' }, usingPrompt)).toEqual({ kind: 'blocked' })
   })
 })
 
@@ -127,5 +135,11 @@ describe('sessionRuleOf (projection row back to the rule shape)', () => {
     const after: SessionRule = { id: 'r2', sessionId: 's-1', instruction: '收尾', trigger: 'on-complete', cron: '', send: 'queue', enabled: true }
     const row = automationRowsOf(withSessionRules(task('todo'), [after]))[0]
     expect(sessionRuleOf(row as Extract<ReturnType<typeof automationRowsOf>[number], { kind: 'session-rule' }>)).toEqual(after)
+  })
+
+  it('round-trips a usePrompt row (task-execution-prompt content mode)', () => {
+    const using: SessionRule = { id: 'r3', sessionId: 's-1', instruction: '', usePrompt: true, trigger: 'on-complete', cron: '', send: 'steer', enabled: true }
+    const row = automationRowsOf(withSessionRules(task('todo'), [using]))[0]
+    expect(sessionRuleOf(row as Extract<ReturnType<typeof automationRowsOf>[number], { kind: 'session-rule' }>)).toEqual(using)
   })
 })

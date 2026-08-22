@@ -219,7 +219,9 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
         {task.color !== undefined && (
           <span className={css.cardColorMark} style={{ background: task.color }} aria-hidden="true" />
         )}
-        <span className={css.cardTitle}>{task.title}</span>
+        <span className={css.cardTitle}>
+          {task.title.trim() === '' ? t('card.untitled') : task.title}
+        </span>
       </span>
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
       <span className={css.cardMeta}>

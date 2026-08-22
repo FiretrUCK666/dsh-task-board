@@ -3164,6 +3164,9 @@ textarea.input {
   width: 344px;
   min-width: 0;
   min-height: 0;
+  /* Hard clip: nothing inside the rail — head, comments, interaction card,
+     composer — can ever spill past its borders and cover other UI. */
+  overflow: hidden;
   border-left: var(--dsh-tb-separator);
   /* An inner floating surface; the separator alone marks the rail. */
   background: var(--dsh-tb-surface-float);
@@ -3714,23 +3717,41 @@ textarea.input {
   border-top: 1px solid var(--dsw-alias-separator-primary);
 }
 
-/* The pending native-interaction card, pinned just above the composer: a
-   plan awaiting confirmation or an ask_user_question. Surfaces live with the
-   real tool lifecycle; one grammar for plan and question. The card is a rail
-   flex child and must never exceed the rail's content box — min-width: 0
-   lets its rows wrap instead of bursting out of the rail's right edge (the
-   reported 「放弃整组爆出框」bug); margins land on the rail's 14px box. */
+/* The pending native-interaction card, pinned just above the composer (or
+   inside the rail's scroll zone — same grammar everywhere): a plan awaiting
+   confirmation or an ask_user_question. Surfaces live with the real tool
+   lifecycle; one grammar for plan and question. The card is a rail flex
+   child and must never exceed the rail's content box — min-width: 0 lets
+   its rows wrap instead of bursting out of the rail's right edge (the
+   reported 「放弃整组爆出框」bug); margins land on the rail's 14px box.
+   HEIGHT CONTRACT: the card is capped (max-height) and the body scrolls
+   internally while the ACTION ROW stays pinned at its bottom — a long
+   plan/question can never push 确认/拒绝 or the composer out of reach
+   (the reported 「长计划把评论区/发送挤掉」bug). */
 .interactionCard {
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex: none;
   min-width: 0;
+  max-height: min(320px, 40vh);
+  overflow: hidden;
   padding: 10px 12px;
   margin: 0 14px 2px;
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
+}
+
+/* The card's own scroll slot: the text/options/input part scrolls inside
+   the capped card; the action row stays outside it, always visible. */
+.interactionCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
 }
 .interactionCard[data-plan='true'] {
   border-color: color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent);

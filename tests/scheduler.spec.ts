@@ -271,17 +271,35 @@ describe('SchedulerService lifecycle', () => {
     expect(h.runs).toEqual(['t-c'])
   })
 
-  it('never restarts a chain the user must resume by hand', async () => {
+  it('restarts a stalled chain FROM ANY SETTLED COLUMN — 完成后接续 never waits for a manual re-run', async () => {
     const h = makeHarness()
     const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
-    // Review: the rule is paused — no clock-driven restart.
+    // A settled review card whose hand-off was lost to a reload is restarted
+    // by the recovery tick: the rule is armed and within budget, and the
+    // stalled state means the chain should be running again.
     const review = withStatus(withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0)), 'review', at(2026, 1, 1, 10, 0, 0))
     h.setTasks([review])
     await h.scheduler.tick()
+    expect(h.runs).toEqual(['t-c'])
+  })
+
+  it('never restarts a chain with an open run, a hit budget, or a completed (done) card', async () => {
+    const h = makeHarness()
+    const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
+    // Open execution: the tick must not relaunch.
+    const chain = withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0))
+    const { task: running } = startExecution(chain, at(2026, 1, 1, 10, 0, 0), 'e1')
+    h.setTasks([running])
+    await h.scheduler.tick()
     expect(h.runs).toEqual([])
-    // Cancelled (todo): no open run, but the chain was not kept in progress.
-    const cancelled = withStatus(withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0)), 'todo', at(2026, 1, 1, 10, 0, 0))
-    h.setTasks([cancelled])
+    // Budget reached: disarmed? No — runCount cap is the guard.
+    h.setTasks([withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true, maxRuns: 2, runCount: 2 }, at(2026, 1, 1, 0, 0))])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+    // Done card: completion is the hard stop (legacy rows with a stale
+    // enabled flag are still skipped outright).
+    const done = withStatus(withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true }, at(2026, 1, 1, 0, 0)), 'done', at(2026, 1, 1, 10, 0, 0))
+    h.setTasks([done])
     await h.scheduler.tick()
     expect(h.runs).toEqual([])
   })

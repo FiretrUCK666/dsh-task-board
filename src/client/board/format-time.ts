@@ -33,16 +33,21 @@ export function formatCruiseTime(ms: number, now = Date.now()): string {
     : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${clock}`
 }
 
-/** Whether `b` lies on the calendar day AFTER `a` — the cross-midnight
- *  display rule: a normalized window ending at 02:00 started at 22:00 the
- *  previous day reads "次日 02:00" / "next day 02:00". */
+/** Whether `b` lies on the calendar day IMMEDIATELY AFTER `a` (a's 日历日 + 1,
+ *  month/year rollovers included) — the ONE rule the "次日" display word
+ *  obeys: a cross-midnight night (22:00 → 02:00, normalized +1 day) and an
+ *  explicitly filled next-morning end both read 次日, while an end two days
+ *  or a month later shows its REAL date (the "结束晚 33 天也显示次日" bug).
+ *  Ends at or before the start are never "next day". */
 export function isNextDay(a: number, b: number): boolean {
   const from = new Date(a)
   const to = new Date(b)
   if (to.getTime() <= from.getTime()) return false
-  return to.getFullYear() !== from.getFullYear()
-    || to.getMonth() !== from.getMonth()
-    || to.getDate() !== from.getDate()
+  const previous = new Date(to)
+  previous.setDate(previous.getDate() - 1)
+  return previous.getFullYear() === from.getFullYear()
+    && previous.getMonth() === from.getMonth()
+    && previous.getDate() === from.getDate()
 }
 
 /** ONE line of copy per cruise window — the list's single grammar:

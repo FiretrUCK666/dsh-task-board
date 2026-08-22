@@ -151,13 +151,17 @@ describe('BoardController lifecycle', () => {
 })
 
 describe('task mutations', () => {
-  it('creates, persists, and rejects blank titles', () => {
+  it('creates and persists; a blank title is allowed (the first run supplements it)', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: ' 新任务 ', description: '', prompt: 'run' })
     expect(task).toBeDefined()
     expect(controller.getSnapshot().tasks).toHaveLength(1)
     expect(store.load()[0].title).toBe('新任务')
-    expect(controller.createTask({ title: '   ', description: '', prompt: 'run' })).toBeUndefined()
+    // Title/description/prompt are all optional at creation.
+    const blank = controller.createTask({ title: '   ', description: '', prompt: 'run' })
+    expect(blank).toBeDefined()
+    expect(store.load()).toHaveLength(2)
+    expect(store.load()[1].title).toBe('')
   })
 
   it('deletes and clears the selection when the selected task is removed', () => {
@@ -302,12 +306,13 @@ describe('task mutations', () => {
     expect(persisted.permission).toBeUndefined()
   })
 
-  it('rejects blank titles and unknown tasks without touching state', () => {
+  it('a blank edit title is allowed; an unknown task is rejected without touching state', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    expect(controller.updateTask(task.id, { title: '   ' })).toBe(false)
+    // Blank titles are legal (the card shows 未命名; the first run fills it).
+    expect(controller.updateTask(task.id, { title: '   ' })).toBe(true)
+    expect(store.load()[0].title).toBe('')
     expect(controller.updateTask('missing', { title: 'y' })).toBe(false)
-    expect(store.load()[0].title).toBe('x')
   })
 
   it('bumps updatedAt on every applied update', () => {
@@ -787,7 +792,7 @@ describe('scheduling', () => {
     expect(store.load()[0].schedule?.enabled).toBe(true) // stays armed (paused on review)
   })
 
-  it('manually moving a running chain card to todo stops the chain (manual takeover)', async () => {
+  it('manually moving a chain card to todo keeps the chain armed (only done stops it)', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
@@ -797,27 +802,40 @@ describe('scheduling', () => {
     exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
     expect(exec.runCalls).toHaveLength(2) // the chain hands off to the next run
-    // Manual takeover: dragging the chain card to todo stops the chain (a
-    // todo card would otherwise chain right back) — it never blocks the move.
+    // A manual card move (except done) never disarms the rule: the chain only
+    // continues at settle — moving around must never kill 完成后接续.
     controller.moveTask(task.id, 'todo')
     const after = store.load()[0]
-    expect(after.schedule?.enabled).toBe(false)
+    expect(after.schedule?.enabled).toBe(true)
     expect(after.status).toBe('todo')
   })
 
-  it('an armed-but-never-run chain in backlog starts its first run when moved to todo', async () => {
+  it('an armed chain starts its FIRST run at arming even from a shelved column (no manual re-run needed)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    // Armed while the card sits in review (the user just reviewed it and said
+    // "keep going"): the first run starts at once — 完成后接续 never waits
+    // for a manual re-run.
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run', status: 'review' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
+    expect(exec.runCalls).toHaveLength(1)
+    expect(store.load()[0].status).toBe('running')
+  })
+
+  it('an armed chain in backlog also starts at arming (any column); the todo resume path is idempotent', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run', status: 'backlog' })!
     controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
-    // Armed while shelved (backlog): paused, nothing runs yet.
-    expect(exec.runCalls).toHaveLength(0)
+    // Arming with an executable prompt starts the first run regardless of
+    // the column — no manual re-run, no move required.
+    expect(exec.runCalls).toHaveLength(1)
     expect(store.load()[0].schedule?.enabled).toBe(true)
-    // Moving it to todo resumes the chain — the first run starts.
+    // Moving to todo while a run is open must not launch a duplicate (the
+    // card just changes column; the open run stays the one in flight).
     controller.moveTask(task.id, 'todo')
     expect(exec.runCalls).toHaveLength(1)
-    expect(store.load()[0].status).toBe('running')
-    expect(store.load()[0].schedule?.enabled).toBe(true)
+    expect(store.load()[0].status).toBe('todo')
   })
 
   it('stopping a chain only disarms the rule without moving the card', async () => {
@@ -1616,10 +1634,11 @@ describe('linked sessions & bind', () => {
     expect(created?.binds).toEqual([{ kind: 'session', sessionId: 's-1' }])
     expect(controller.getSnapshot().tasks[0].status).toBe('todo')
     expect(store.load()[0].binds).toEqual([{ kind: 'session', sessionId: 's-1' }])
-    // Rejects a blank title like a plain create.
-    expect(controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+    // A blank title is allowed like any new task (the first run fills it).
+    const blank = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
       title: '  ', description: '', prompt: 'run', status: 'todo',
-    })).toBeUndefined()
+    })!
+    expect(blank.title).toBe('')
   })
 
   it('createBoundTask honors any landing column (external drops stay where dropped)', () => {
@@ -2587,7 +2606,7 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(row.rules?.[0].lastAt).toBe(NOW)
   })
 
-  it('an ON-COMPLETE rule respects enabled/executable/session-present (disabled, blocked, gone)', async () => {
+  it('an ON-COMPLETE rule respects enabled/present; a usePrompt rule is blocked on an empty prompt', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
@@ -2599,10 +2618,56 @@ describe('session automation rules (给会话定时发指令)', () => {
     void gone
     await controller.fireOnCompleteRules(task.id)
     expect(sent).toHaveLength(0) // session absent
+    // A usePrompt rule has NOTHING to send while the task prompt is empty
+    // (blocked) — a custom rule on the same empty-prompt task would fire.
     const blank = controller.createTask({ title: 'b', description: '', prompt: '', status: 'todo' })!
-    controller.createSessionRule(blank.id, { sessionId: 's-a', instruction: 'c', cron: '', trigger: 'on-complete', send: 'steer' })!
+    controller.createSessionRule(blank.id, { sessionId: 's-a', instruction: '', cron: '', trigger: 'on-complete', usePrompt: true, send: 'steer' })!
     await controller.fireOnCompleteRules(blank.id)
-    expect(sent).toHaveLength(0) // blocked: nothing to drive
+    expect(sent).toHaveLength(0) // blocked: nothing to send
+  })
+
+  it('a usePrompt CRON rule sends the TASK execution prompt on schedule', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: '画一只猫' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '', cron: '* * * * *', usePrompt: true, send: 'steer' })!
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toEqual([['s-a', '画一只猫']])
+    // An edit to the prompt applies at the NEXT fire (non-snapshot content).
+    controller.updateTask(task.id, { prompt: '画一只狗' })
+    await controller.tickSessionRules(NOW + 240_000)
+    expect(sent).toEqual([['s-a', '画一只猫'], ['s-a', '画一只狗']])
+  })
+
+  it('a CUSTOM rule on an EMPTY-prompt task still fires on schedule (its content is its own)', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '哈哈', cron: '* * * * *', send: 'queue' })!
+    await controller.tickSessionRules(NOW + 120_000)
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    const queued = row.executions.find(round => round.comment === '哈哈')
+    expect(queued?.comment).toBe('哈哈') // queued: the empty task prompt never mis-blocks it
+    expect(queued?.direct).toBeUndefined()
+  })
+
+  it('the FIRST real run auto-supplements title/description; repeats never touch them', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: '', description: '', prompt: '画一只猫\n并解释配色' })!
+    await controller.runTask(task.id)
+    let row = store.load()[0]
+    expect(row.title).toBe('画一只猫') // (a) title = first line
+    expect(row.description).toBe('画一只猫\n并解释配色') // (a) description = the prompt
+    // The first run settles; its prompt is edited (repeat run with a DIFFERENT
+    // prompt): the supplement must NOT touch the fields again.
+    const e1 = exec.runCalls[0].executionId
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
+    controller.updateTask(task.id, { prompt: '画一只狗' })
+    await controller.rerunTask(task.id)
+    row = store.load()[0]
+    expect(row.title).toBe('画一只猫')
+    expect(row.description).toBe('画一只猫\n并解释配色')
   })
 })
 

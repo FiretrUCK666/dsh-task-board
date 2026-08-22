@@ -66,7 +66,6 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     }
     return initialDraft()
   })
-  const [error, setError] = useState<string | undefined>(undefined)
 
   const changeDraft = (next: TaskDraft): void => {
     setDraft(next)
@@ -74,11 +73,10 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
   }
 
   const submit = (): void => {
+    // Title/description/prompt are all optional: a blank prompt just makes
+    // the task inert, and the first real run auto-supplements the rest.
     const task = controller.createTask(draftToNewInput(draft))
-    if (task === undefined) {
-      setError(t('new.required'))
-      return
-    }
+    if (task === undefined) return
     draftStore.clear(NEW_TASK_DRAFT_KEY)
     onClose()
   }
@@ -90,8 +88,6 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
         onSubmit={event => { event.preventDefault(); submit() }}
       >
         <TaskForm draft={draft} onChange={changeDraft} controller={controller} withStatus />
-
-        {error !== undefined && <p className={css.formError}>{error}</p>}
 
         <footer className={css.modalFooter}>
           <Button onClick={onClose}>

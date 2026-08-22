@@ -625,13 +625,17 @@ export function SessionRail({ context, stateChip, updatedAt, sessionId, controll
           blocking reason (done task / gone session) in the exceptional
           case — never a stack of texts, never inside the send row. */}
       <p className={`${css.detailHint} ${css.sessionRailHint}`}>{hint ?? t('detail.sessionDriveHint')}</p>
+      {/* The rail's ONE scroll region: comments + the pending interaction
+          card. The comment auto-follow pins the zone bottom, so a card that
+          just appeared is immediately visible; the composer stays pinned
+          below the zone no matter how long either gets. */}
       <div className={css.sessionRailScroll} ref={threadScrollRef} onScroll={onThreadScroll}>
         <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
+        {interaction !== undefined && sessionId !== undefined && (
+          <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
+        )}
         <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
       </div>
-      {interaction !== undefined && sessionId !== undefined && (
-        <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
-      )}
       {composer}
     </>
   )

@@ -110,13 +110,13 @@ export class SchedulerService {
       const readiness = ruleReadiness(task)
       // Chain mode: recovery tick only — a stalled chain (e.g. after a page
       // reload, when the settle hand-off was lost) is restarted when no
-      // execution is open and a further run is within budget. Only a
-      // 'running' card is a chain hand-off candidate: paused (review /
-      // backlog) and cancelled (todo) chains are resumed by hand, never by
-      // the clock. The live hand-off runs synchronously after each settle in
-      // the controller, so this tick can never double-launch.
+      // execution is open and a further run is within budget. The card may
+      // sit anywhere (the settle lands it in review; 完成后接续 keeps going
+      // from there — only a hard done stops it via disarm). The live hand-off
+      // runs synchronously after each settle in the controller, so this tick
+      // can never double-launch.
       if (schedule.mode === 'chain') {
-        if (task.status !== 'running') continue
+        if (task.status === 'done') continue // completed = disarmed already
         const latest = task.executions[task.executions.length - 1]
         const open = latest !== undefined && latest.endedAt === undefined
         if (open) continue

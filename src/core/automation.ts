@@ -25,8 +25,13 @@ export interface SessionRule {
   /** The target native session this task owns (by id). */
   sessionId: string
   /** The preset instruction/text to send; a leading '/' goes through the
-   *  native command registry (slashes = commands, everything = plain text). */
+   *  native command registry (slashes = commands, everything = plain text).
+   *  Only meaningful when `usePrompt` is false. */
   instruction: string
+  /** 发送内容模式：true = 发送任务当前的执行 Prompt（每次发送时取任务记录，
+   *  非快照——改 Prompt 即时生效）；false/缺省 = 发送 `instruction`。
+   *  绘画场景：对单个会话定时/每次完成时注入执行 Prompt。 */
+  usePrompt?: boolean
   /** 触发方式: cron = 按时间表 (default; legacy rows normalize to this);
    *  on-complete = 任务一次执行结算时发送. */
   trigger: SessionRuleTrigger
@@ -51,7 +56,8 @@ export function isSessionRule(value: unknown): value is SessionRule {
   const rule = value as Record<string, unknown>
   if (typeof rule.id !== 'string' || rule.id === '') return false
   if (typeof rule.sessionId !== 'string' || rule.sessionId === '') return false
-  if (typeof rule.instruction !== 'string' || rule.instruction === '') return false
+  const usePrompt = rule.usePrompt === true
+  if (typeof rule.instruction !== 'string' || (rule.instruction === '' && !usePrompt)) return false
   if (rule.send !== 'queue' && rule.send !== 'steer') return false
   if (typeof rule.enabled !== 'boolean') return false
   const trigger = rule.trigger === 'on-complete' ? 'on-complete' : 'cron'
@@ -61,7 +67,7 @@ export function isSessionRule(value: unknown): value is SessionRule {
 }
 
 /** Parse + validate a persisted rule list (invalid rows dropped; legacy rows
- *  without a trigger normalize to cron). */
+ *  without a trigger normalize to cron, without usePrompt to custom text). */
 export function normalizeSessionRules(raw: unknown): SessionRule[] | undefined {
   if (!Array.isArray(raw)) return undefined
   const out: SessionRule[] = []
@@ -74,6 +80,7 @@ export function normalizeSessionRules(raw: unknown): SessionRule[] | undefined {
       id: row.id,
       sessionId: row.sessionId,
       instruction: row.instruction,
+      ...row.usePrompt === true ? { usePrompt: true } : {},
       trigger,
       ...trigger === 'cron' ? { cron: row.cron, nextAt: row.nextAt } : { cron: '' },
       send: row.send,
@@ -92,6 +99,7 @@ export function sessionRuleOf(row: Extract<AutomationRow, { kind: 'session-rule'
     id: row.ruleId,
     sessionId: row.sessionId,
     instruction: row.instruction,
+    ...row.usePrompt === true ? { usePrompt: true } : {},
     trigger: row.trigger,
     cron: row.cron,
     send: row.send,
@@ -124,7 +132,10 @@ export type SessionRuleReadiness =
 
 export function sessionRuleReadiness(task: TaskRecord, rule: SessionRule): SessionRuleReadiness {
   if (!rule.enabled) return { kind: 'disabled' }
-  if (!taskExecutable(task)) return { kind: 'blocked' }
+  // The task-prompt gate applies ONLY to a rule that sends the prompt itself:
+  // a custom-instruction rule has its own content and never reads the task's
+  // execution prompt ("对单个会话发指令" 与任务 Prompt 无关).
+  if (rule.usePrompt === true && !taskExecutable(task)) return { kind: 'blocked' }
   if (rule.trigger === 'on-complete') return { kind: 'active' }
   return taskColumnAllowsAutomation(task)
     ? { kind: 'active' }
@@ -152,6 +163,7 @@ export type AutomationRow =
     ruleId: string
     sessionId: string
     instruction: string
+    usePrompt?: boolean
     trigger: SessionRuleTrigger
     cron: string
     send: 'queue' | 'steer'
@@ -168,6 +180,7 @@ export function automationRowsOf(task: TaskRecord): AutomationRow[] {
     ruleId: rule.id,
     sessionId: rule.sessionId,
     instruction: rule.instruction,
+    ...rule.usePrompt === true ? { usePrompt: true } : {},
     trigger: rule.trigger,
     cron: rule.cron,
     send: rule.send,

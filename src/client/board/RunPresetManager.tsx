@@ -1,12 +1,14 @@
 /**
  * Run-config preset manager: the list (部署默认 + custom presets) with
- * set-default / edit / delete, and the add/edit form — which snapshots the
- * FORM's current run-config (the values the user just tuned), so "save as
- * preset" is one click from any state. Deleting whatever preset was the
- * default falls back to 部署默认 (the built-in, never deletable): the
+ * set-default / edit / delete, and the add/edit form — **名称 + the SAME
+ * RunConfigEditor as the task form**, so the preset's content is visible and
+ * editable in place (a new preset seeds from the form's current config, so
+ * "save what I just tuned" stays one click). Deleting whatever preset was
+ * the default falls back to 部署默认 (the built-in, never deletable): the
  * fallback chain lives in run-presets.ts (defaultRunPresetOf).
  */
 import { useState } from 'react'
+import type { BoardController } from '../../core/controller.ts'
 import type {
   RunConfigPreset, RunConfigPresetConfig, RunPresetStore, RunPresetsDocument,
 } from '../../core/run-presets.ts'
@@ -15,6 +17,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Button } from './ui.tsx'
 import { Dialog } from './Dialog.tsx'
+import { RunConfigEditor } from './RunConfigEditor.tsx'
 
 function presetId(): string {
   return `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -26,18 +29,20 @@ function configCount(config: RunConfigPresetConfig): number {
 }
 
 /** The run-config preset manager (see module doc). */
-export function RunPresetManager({ store, doc, current, onChanged, onClose }: {
+export function RunPresetManager({ store, doc, current, controller, onChanged, onClose }: {
   store: RunPresetStore
   doc: RunPresetsDocument
-  /** The form's current run-config (the snapshot add/edit captures). */
+  /** The form's current run-config (a NEW preset seeds from it). */
   current: RunConfigPresetConfig
+  controller: BoardController
   onChanged: (next: RunPresetsDocument) => void
   onClose: () => void
 }) {
-  // undefined = form closed; 'new' = add; a preset id = edit (rename + refresh
-  // the config from the current form state).
+  // undefined = form closed; 'new' = add; a preset id = edit (rename + edit
+  // the preset's own config inline — title and fields, fully visible).
   const [formKey, setFormKey] = useState<string | undefined>(undefined)
   const [name, setName] = useState('')
+  const [config, setConfig] = useState<RunConfigPresetConfig>({})
   const [error, setError] = useState<string | undefined>(undefined)
 
   const persist = (next: RunPresetsDocument): void => {
@@ -66,14 +71,14 @@ export function RunPresetManager({ store, doc, current, onChanged, onClose }: {
       return
     }
     if (formKey === 'new') {
-      persist({ ...doc, presets: [...doc.presets, { id: presetId(), name: trimmed, config: current }] })
+      persist({ ...doc, presets: [...doc.presets, { id: presetId(), name: trimmed, config }] })
     } else if (formKey !== undefined) {
       const existing = doc.presets.find(candidate => candidate.id === formKey)
       if (existing !== undefined) {
         persist({
           ...doc,
           presets: doc.presets.map(candidate => candidate.id === formKey
-            ? { ...candidate, name: trimmed, config: current }
+            ? { ...candidate, name: trimmed, config }
             : candidate),
         })
       }
@@ -87,6 +92,9 @@ export function RunPresetManager({ store, doc, current, onChanged, onClose }: {
     const existing = key !== 'new' ? findRunPreset(doc, key) : undefined
     setFormKey(key)
     setName(existing !== undefined && existing.id !== DEPLOY_DEFAULT_PRESET_ID ? existing.name : '')
+    // A new preset seeds from the form's current config; an edit edits its
+    // own stored config — never an invisible snapshot.
+    setConfig(existing !== undefined && existing.id !== DEPLOY_DEFAULT_PRESET_ID ? existing.config : current)
     setError(undefined)
   }
 
@@ -156,6 +164,7 @@ export function RunPresetManager({ store, doc, current, onChanged, onClose }: {
           </label>
           <p className={css.detailHint}>{t('runPreset.formHint')}</p>
           {error !== undefined && <p className={css.formError}>{error}</p>}
+          <RunConfigEditor value={config} onChange={setConfig} controller={controller} />
           <span className={css.autoFormActions}>
             <Button size="sm" variant="primary" onClick={save}>
               {t('runPreset.save')}

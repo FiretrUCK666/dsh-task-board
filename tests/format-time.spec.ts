@@ -98,4 +98,16 @@ describe('cruiseWindowLabelOf (one grammar line per window, both languages)', ()
     useLanguage('en')
     expect(cruiseWindowLabelOf({ startAt: new Date(2025, 0, 5, 10, 0).getTime(), endAt: new Date(2025, 0, 5, 16, 0).getTime() }, NOW)).toBe('active · 10:00 → 16:00')
   })
+
+  it('an end more than one day later shows its REAL date — never 次日 (the 33-days bug)', () => {
+    useLanguage('zh')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 7, 23, 15, 25).getTime(), endAt: new Date(2025, 8, 25, 9, 25).getTime() }, NOW)).toBe('8月23日 15:25 → 9月25日 09:25')
+    useLanguage('en')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 7, 23, 15, 25).getTime(), endAt: new Date(2025, 8, 25, 9, 25).getTime() }, NOW)).toBe('8/23 15:25 → 9/25 09:25')
+  })
+
+  it('a same-day end keeps both clock times', () => {
+    useLanguage('zh')
+    expect(cruiseWindowLabelOf({ startAt: new Date(2025, 7, 23, 15, 25).getTime(), endAt: new Date(2025, 7, 23, 23, 0).getTime() }, NOW)).toBe('8月23日 15:25 → 23:00')
+  })
 })

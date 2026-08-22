@@ -312,18 +312,32 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   所有读者走 `taskBindsOf(task)` 投影；`copyTask` 不复制 binds（模板语义）。
   **隐藏托盘「删除」= 从任务移除**（`removedSessions`，清记录/隐藏史/手动序槽位）；
   **显式拖回（会话或工作区）可恢复**——`addTaskSource` 清 removed，被动派生绝不复活。
-- **完成态留言自动移回「待办」并驱动**（`reviveTaskIfDone`，queue/steer 同规则）；任务
-  自动化在 done 列暂停（`ruleReadiness` 显示原因），移回自动恢复。
+- **完成态留言自动移回「待办」并驱动**（`reviveTaskIfDone`，queue/steer 同规则）。
+- **首次运行自动补全（仅一次）**：新建任务 标题/描述/执行 Prompt **全可空**（空 Prompt
+  只让任务惰性——真正运行/接续链被 `taskExecutable` 门禁拦截，创建不受限；卡片空标题
+  显示 `card.untitled`）。首**次真执行**（`plainRunsOf` 为空时的第一次 runTask，评论轮/
+  完善轮/外源轮不计入）由 `supplementLaunchFields` 补全：标题缺 → 执行 Prompt 第一个
+  非空行（trim + 40 上限）；描述缺 → 整个执行 Prompt（trim）；已存在字段永不覆盖；
+  **之后任何重复执行（改不改 Prompt）绝不再动这两个字段**（controller 单测钉死）。
 - **自动化两半互不干扰**：任务级 `schedule`（按时间表 / 完成后接续）与会话级 `rules`
-  （给会话发指令——触发方式 = 按时间表 cron 或 任务完成后 on-complete）字段正交、语义
-  独立——关任务级 schedule 会话规则照常触发，只有会话规则时任务级自动化不激活
-  （controller 单测钉死）。两者共用 `AutomationEditor`（唯一 UI，板与详情一致），编辑器
-  内分「任务自动化」「会话规则」两个成对分区标题；**启用开关只在编辑器内（唯一一份）**
-  ——面板卡片 = 身份头 + 一行可展开摘要（有 schedule 用 `scheduleSummary`，只有规则用
-  规则数）+ 展开体 = 共享编辑器原样，无第二份开关；「按时间表/完成后接续」与规则「触发
-  方式」共用 `Segmented` 分段文法。**on-complete 语义**：任务一次**普通执行结算**时触发
-  （评论轮/完善轮不触发，防自触发环），不受列暂停约束（结算瞬间任务刚被移动，「完成」
-  才是约定本身），无 cron 槽位；老数据（无 trigger）归一化为 cron。
+  （给会话发指令——内容模式 = 自定义指令 或 **任务执行 Prompt**（usePrompt，每次发送
+  时取任务当前 Prompt，非快照）；触发方式 = 按时间表 cron 或 每次完成 on-complete）
+  字段正交、语义独立——关任务级 schedule 会话规则照常触发，只有会话规则时任务级自动化
+  不激活（controller 单测钉死）。两者共用 `AutomationEditor`（唯一 UI，板与详情一致），
+  编辑器内分「任务自动化」「会话规则」两个成对分区标题；**启用开关只在编辑器内（唯一
+  一份）**——面板卡片 = 身份头 + 一行可展开摘要 + 展开体 = 共享编辑器原样；「按时间表/
+  完成后接续」与规则「触发方式」「指令内容」共用 `Segmented` 分段文法。
+  **on-complete 语义**：任务一次**普通执行结算**时触发（评论轮/完善轮不触发，防自触发
+  环），不受列暂停约束（结算瞬间任务刚被移动，「完成」才是约定本身），无 cron 槽位，
+  每次结算每规则至多一次（浏览器文案「每次完成时发送一次」，绝不读成接续/循环）；
+  老数据（无 trigger/usePrompt）归一化为 cron + 自定义指令。
+- **完成接续（链）语义**：武装即开跑（`setSchedule`：`enabled && chain && 可执行 &&
+  无在途轮`，**任意列**——待审核/已完成武装后立即跑，绝不等待手动重新执行）；每次
+  **普通执行成功结算**瞬间接续下一轮（失败/取消/完善轮不接续；预算到顶自动解除武装）；
+  **手动移动卡片（除 done）绝不解除武装/不误杀链**（链只在结算瞬间动作；「停止接续」
+  用编辑器内按钮）；`done` = 硬停解除。`ruleReadiness` 链模式**跳过列暂停**
+  （disabled → blocked → active），列暂停只属 cron 轮盘；调度器链恢复 tick 以「最新一轮
+  已结算且未到预算」为条件（页面刷新/丢失接续后自动恢复，含落 review 的卡片）。
 - **巡航窗口 v4 文法**：**总开关主权**——`enabled` 是当前状态、用户点为主；窗口是计划
   表，只有「开始/结束时刻」越过时翻转开关；**增删窗口绝不动开关**（`setCruiseSchedule`
   不再按覆盖率重算；唯一例外：新增「只填结束」窗口，其开始时刻 = 创建时刻，立即触发
@@ -332,7 +346,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   （立即开启→按开始→同开始按结束，开口的排最后——`windowSortKeyOf`/`sortWindows` 纯
   函数）；每窗口**一行文法**（`cruiseWindowGrammarOf` + `cruiseWindowLabelOf`：
   `[生效中 ·] 开始 → 次日 结束` / `{time} 起保持开启` / `已开启 · 至 {time}`，中英文案
-  单测钉死，完整时刻走 tooltip）；**状态行永远一句话解释开关为什么是当前值**
+  单测钉死，完整时刻走 tooltip）；**「次日」只用于结束为开始「紧邻后一日」**（`isNextDay`
+  按日历日 +1 判定，跨月/跨年正确）——间隔多天的绝对时刻按真实日期显示（
+  「8月23日 → 9月25日」绝不显示成「次日」）；**状态行永远一句话解释开关为什么是当前值**
   （`cruiseStatusLineOf`：窗口开启中·至 X / 手动开启中 / 已手动关闭·窗口仍生效 / 关闭·X
   自动开启 / 关闭·未排程）。校验 = `windowRangeIssueOf`（归一化后判定）：双空/同时刻/
   结束早于开始超过一天（文案带**实际天数和起止值**并说明跨午夜只支持一晚）/ 开始已过/
@@ -349,23 +365,33 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   被 `.card:hover` 压掉——光标在卡上就看不到选中光环），accent 双环 + 上浮 + 右上对勾
   徽章 + 120ms 入场。
 - **执行 Prompt 空 = 全链路阻断**：`taskExecutable(task)`（严格 `prompt.trim() !== ''`）
-  是唯一判定；`ruleReadiness`/`sessionRuleReadiness` 增加 `{kind:'blocked'}`（次序
-  disabled → blocked → paused(列) → active）；`runTask` 单点拦截手动/快速/重新执行/
-  拖拽重跑/定时/巡航/接续链，评论 `submitComment`/`submitSessionComment` 与
-  `steerCommentWithImages` 在 `!taskExecutable && !hasOpenRun` 时拒绝，调度器 tick 把
-  blocked 当 paused 滚动到期槽；**例外（不封）**：需求完善流程（产出 Prompt）、mux
+  是唯一判定；`ruleReadiness`（cron）与 `sessionRuleReadiness`（仅 usePrompt 规则）给
+  `{kind:'blocked'}`（次序 disabled → blocked → paused(列) → active；**链模式跳过列暂停、
+  自定义指令会话规则永不因任务 Prompt 为空而 blocked**——内容自带）；`runTask` 单点拦截
+  手动/快速/重新执行/拖拽重跑/定时/巡航/接续链，评论 `submitComment`/`submitSessionComment`
+  与 `steerCommentWithImages` 在 `!taskExecutable && !hasOpenRun` 时拒绝（会话规则的入队走
+  `queueRuleComment`——保留 done 复活/空文本/未知任务守卫、去掉 Prompt 段），调度器 tick
+  把 blocked 当 paused 滚动到期槽；**例外（不封）**：需求完善流程（产出 Prompt）、mux
   交互卡回答、在途开轮续评、绑定会话被动观察；UI 用 `detail.promptEmpty` 显示原因。
 - **运行配置预设（自定义 + 默认应用）**：`src/core/run-presets.ts`（键
   `dsh.taskBoard.runPresets.v1`，文档 `{presets[], defaultId?}`）；内置不可删
   `deploy-default`（空配置 = 部署原生默认）；**默认回退链** = `defaultRunPresetOf`：
   defaultId 缺失/悬挂/被删 → 一律「部署默认」，无脆弱状态、无需迁移（旧默认就是部署
   默认）；UI 唯一 = `TaskForm` 的「配置预设」行（选择即瞬时改写表单运行配置字段）+
-  `RunPresetManager`（添加/编辑 = 命名 + 当前表单配置快照、删除、设为默认），新建任务
-  `initialDraft` 应用默认预设（有未发送草稿时草稿优先）。
-- **交互卡/rail 永不横向爆框**：rail 的 flex 子项全部 `min-width: 0`
+  `RunPresetManager`（添加/编辑 = **名称 + RunConfigEditor 同字段自编辑**（工作区/Agent/
+  模型/思考程度/权限——与任务表单共用 `RunConfigEditor` 唯一一套字段），新建以当前表单
+  配置为起点、删除、设为默认），新建任务 `initialDraft` 应用默认预设（有未发送草稿时
+  草稿优先）。
+- **交互卡/rail 永不横向爆框、纵向不挤**：rail 的 flex 子项全部 `min-width: 0`
   （`.sessionRailScroll`/`.interactionCard`/`.sessionFacts`…）；行内按钮组可换行
-  （`.interactionActions` `flex-wrap: wrap`）；卡片 `margin: 0 14px` 落 rail 14px 内容盒
-  ——合同由 `review-page.spec.ts` 的 CSS 契约钉死。
+  （`.interactionActions` `flex-wrap: wrap`）；卡片 `margin: 0 14px` 落 rail 14px 内容盒。
+  **高度契约**：`.interactionCard` `max-height: min(320px, 40vh)` + `overflow: hidden`，
+  正文在 `.interactionCardBody`（`overflow-y: auto; min-height: 0`）内滚动，**动作行
+  （确认/拒绝、上一题/下一题/提交…）钉在卡外永远可见**——长计划/长问题绝不把评论区、
+  插队发送、评论按钮挤出可视区（长计划挤压 bug 根因）；`.reviewRail` `overflow: hidden`
+  任何内容都不可能溢出 rail；`SessionRail` 的交互卡位于 `.sessionRailScroll`（评论 + 卡
+  同一滚动区，贴底自动跟随 = 卡片出现即在可视区），composer 钉在 rail 底部。合同由
+  `review-page.spec.ts` 的 CSS 契约钉死。
 - **会话列表**：`orderedSessionsOf`（`sessionsOrder` 全量手动序；数组外新会话置顶——
   默认规则不变，除非用户拖过）；板列与详情共用 `drop-position.ts` 插入条；详情列表
   拖拽用 `useDragAutoScroll`（滚动根 = `.detailBody`）。

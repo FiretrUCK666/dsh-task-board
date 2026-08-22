@@ -180,8 +180,8 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           </Chip>
         )}
       </span>
-      <span className={css.autoRuleInstruction} title={row.instruction}>
-        {row.instruction}
+      <span className={css.autoRuleInstruction} title={row.usePrompt === true ? t('auto.content.usePrompt') : row.instruction}>
+        {row.usePrompt === true ? t('auto.content.usePrompt') : row.instruction}
       </span>
       <span className={css.autoRuleMeta} title={row.trigger === 'cron' ? row.cron : undefined}>
         {row.trigger === 'cron' ? (
@@ -244,6 +244,9 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
   // on-complete rules carry none (the settle is the appointment).
   const [trigger, setTrigger] = useState<'cron' | 'on-complete'>(existing?.trigger ?? 'cron')
   const [cron, setCron] = useState(existing?.trigger === 'on-complete' ? '0 9 * * *' : existing?.cron ?? '0 9 * * *')
+  // Content mode: the rule's own custom instruction, or the task's CURRENT
+  // execution prompt (绘画 = 定时/每次完成把执行 Prompt 注入单个会话).
+  const [usePrompt, setUsePrompt] = useState(existing?.usePrompt === true)
   const [steer, setSteer] = useState(existing?.send === 'steer')
   // The ONE failing field at a time (first failure wins): the message renders
   // inline next to that field and only that field wears the red border — a
@@ -268,7 +271,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
       setError('session')
       return
     }
-    if (trimmedInstruction === '') {
+    if (!usePrompt && trimmedInstruction === '') {
       setError('instruction')
       return
     }
@@ -281,10 +284,12 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
       sessionId: string
       instruction: string
       trigger: 'cron' | 'on-complete'
+      usePrompt?: boolean
       cron: string
       send: 'queue' | 'steer'
     } = {
-      sessionId, instruction: trimmedInstruction, trigger,
+      sessionId, instruction: usePrompt ? '' : trimmedInstruction, trigger,
+      ...usePrompt ? { usePrompt: true } : {},
       cron: trigger === 'cron' ? trimmedCron : '', send,
     }
     if (existing !== undefined) {
@@ -339,18 +344,34 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
             />
           </label>
           <label className={css.autoField}>
-            <span className={css.autoFieldLabel}>{t('auto.form.instruction')}</span>
-            <PromptInput
-              value={instruction}
-              onChange={next => { setInstruction(next); setError(undefined) }}
-              placeholder={t('auto.form.instructionPlaceholder')}
-              rows={3}
-              controller={controller}
-              mentions={labels.map(({ sessionId, title }) => ({ id: sessionId, title }))}
-              invalid={error === 'instruction'}
+            <span className={css.autoFieldLabel}>{t('auto.form.content')}</span>
+            <Segmented
+              ariaLabel={t('auto.form.content')}
+              options={[
+                { value: 'custom', label: t('auto.content.custom') },
+                { value: 'usePrompt', label: t('auto.content.usePrompt') },
+              ]}
+              value={usePrompt ? 'usePrompt' : 'custom'}
+              onChange={next => { setUsePrompt(next === 'usePrompt'); setError(undefined) }}
             />
-            {error === 'instruction' && <span className={css.formError}>{t('auto.form.invalidInstruction')}</span>}
           </label>
+          {!usePrompt ? (
+            <label className={css.autoField}>
+              <span className={css.autoFieldLabel}>{t('auto.form.instruction')}</span>
+              <PromptInput
+                value={instruction}
+                onChange={next => { setInstruction(next); setError(undefined) }}
+                placeholder={t('auto.form.instructionPlaceholder')}
+                rows={3}
+                controller={controller}
+                mentions={labels.map(({ sessionId, title }) => ({ id: sessionId, title }))}
+                invalid={error === 'instruction'}
+              />
+              {error === 'instruction' && <span className={css.formError}>{t('auto.form.invalidInstruction')}</span>}
+            </label>
+          ) : (
+            <p className={css.detailHint}>{t('auto.form.usePromptHint')}</p>
+          )}
           {trigger === 'cron' && (
             <label className={css.autoField}>
               <span className={css.autoFieldLabel}>{t('auto.form.cron')}</span>

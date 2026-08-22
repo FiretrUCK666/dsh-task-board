@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, taskExecutable,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
 } from '../src/core/tasks.ts'
 import { taskUnviewed } from '../src/core/session-display.ts'
@@ -626,16 +626,30 @@ describe('ruleReadiness', () => {
     }
   })
 
-  it('is paused for backlog/review/done, naming the blocking status', () => {
-    const backlog = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
+  it('is paused for backlog/review/done in CRON mode, naming the blocking status', () => {
+    // The column pause belongs to the cron wheel: a scheduled instant can
+    // land on a shelved card, so it must not drive one.
+    const armedCron = { mode: 'cron' as const, cron: '0 9 * * *', maxRuns: undefined, runCount: 0 }
+    const backlog = withSchedule(withStatus(sampleTask(), 'backlog', NOW), { ...armedCron, enabled: true }, NOW)
     expect(ruleReadiness(backlog)).toEqual({ kind: 'paused', status: 'backlog' })
-    const review = withSchedule(withStatus(sampleTask(), 'review', NOW), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
+    const review = withSchedule(withStatus(sampleTask(), 'review', NOW), { ...armedCron, enabled: true }, NOW)
     expect(ruleReadiness(review)).toEqual({ kind: 'paused', status: 'review' })
     // Done is also paused: a completed task's armed rule must never drive it
     // (the completion path additionally disarms it outright — this is the
     // safety net for legacy rows that still carry a stale enabled flag).
-    const done = withSchedule(withStatus(sampleTask(), 'done', NOW), { ...armed, enabled: true, cron: '0 9 * * *' }, NOW)
+    const done = withSchedule(withStatus(sampleTask(), 'done', NOW), { ...armedCron, enabled: true }, NOW)
     expect(ruleReadiness(done)).toEqual({ kind: 'paused', status: 'done' })
+  })
+
+  it('a CHAIN is never column-paused: 完成后接续 keeps going at every settle', () => {
+    // The hand-off runs at the settle instant (the task was drivable when the
+    // run started; the completion IS the appointment), so a chain armed on a
+    // review/done card reads active — 待审核/已完成 are what the run landed
+    // in, never a reason for the chain to stop.
+    for (const status of ['backlog', 'review', 'done'] as const) {
+      const chain = withSchedule(withStatus(sampleTask(), status, NOW), { ...armed, enabled: true }, NOW)
+      expect(ruleReadiness(chain)).toEqual({ kind: 'active' })
+    }
   })
 
   it('is BLOCKED when the execution prompt is empty (an armed rule cannot drive nothing)', () => {
@@ -707,5 +721,46 @@ describe('cardSourceLabel', () => {
   it('is empty when there is nothing to show (never a guessed default)', () => {
     const task = createTask({ title: 'Task', description: '', prompt: '' }, NOW, 'task-1')
     expect(cardSourceLabel(task, '', '')).toBe('')
+  })
+})
+
+describe('supplementLaunchFields (首次真执行自动补全 — 仅一次，之后永不再动)', () => {
+  const prompt = '画一只猫\n并解释配色'
+
+  it('(a) title+description both missing → both filled from the prompt', () => {
+    const task = { ...sampleTask(), prompt, title: '  ', description: '' }
+    expect(supplementLaunchFields(task)).toEqual({ title: '画一只猫', description: prompt })
+  })
+
+  it('(b) only description missing → description filled, title untouched', () => {
+    const task = { ...sampleTask(), prompt, title: '猫咪插画', description: '  ' }
+    expect(supplementLaunchFields(task)).toEqual({ description: prompt })
+  })
+
+  it('(c) only title missing → title filled, description untouched', () => {
+    const task = { ...sampleTask(), prompt, title: '', description: '猫咪插画' }
+    expect(supplementLaunchFields(task)).toEqual({ title: '画一只猫' })
+  })
+
+  it('existing fields are never overwritten', () => {
+    const task = { ...sampleTask(), prompt, title: '猫咪插画', description: '描述' }
+    expect(supplementLaunchFields(task)).toBeUndefined()
+  })
+
+  it('a task that has ALREADY run once is never touched again (repeat runs keep user fields)', () => {
+    const ran = { ...sampleTask(), prompt, title: '', description: '' }
+    const withRun = startExecution(ran, NOW, 'e1').task
+    const settled = settleExecution(withRun, 'e1', 'succeeded', NOW + 1, undefined)
+    expect(supplementLaunchFields(settled)).toBeUndefined()
+  })
+
+  it('an empty prompt is never supplemented (the task is inert anyway)', () => {
+    expect(supplementLaunchFields({ ...sampleTask(), prompt: '  ' })).toBeUndefined()
+  })
+
+  it('the title takes the first non-empty line, capped at 40 chars', () => {
+    const long = '先行行' + 'x'.repeat(60)
+    const task = { ...sampleTask(), prompt: `\n${long}\n第二行`, title: '', description: '' }
+    expect(supplementLaunchFields(task)).toEqual({ title: long.slice(0, 40), description: `${long}\n第二行` })
   })
 })

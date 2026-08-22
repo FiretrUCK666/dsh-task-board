@@ -147,62 +147,70 @@ export function InteractionCard({ question, sessionId, controller }: {
 
   return (
     <div className={css.interactionCard} data-plan={planQuestion !== undefined ? 'true' : undefined}>
-      {planQuestion !== undefined ? (
-        <>
-          <span className={css.chip} data-kind="warn">{t('review.planAwaiting')}</span>
-          <span className={css.interactionQuestion}>{planQuestion.question}</span>
-          {planQuestion.detail !== undefined && <span className={css.interactionDetail}>{planQuestion.detail}</span>}
-          <span className={css.interactionAmend}>
+      {/* The body scrolls on its own; the action row stays pinned at the
+          card's bottom — a long plan/question can never push 确认/拒绝 (or
+          the composer below) out of reach. One grammar for plan and ask. */}
+      <div className={css.interactionCardBody}>
+        {planQuestion !== undefined ? (
+          <>
+            <span className={css.chip} data-kind="warn">{t('review.planAwaiting')}</span>
+            <span className={css.interactionQuestion}>{planQuestion.question}</span>
+            {planQuestion.detail !== undefined && <span className={css.interactionDetail}>{planQuestion.detail}</span>}
+            <span className={css.interactionAmend}>
+              <input
+                className={css.input}
+                value={amend}
+                placeholder={t('review.interactionAmendPlaceholder')}
+                onChange={event => { setAmend(event.target.value) }}
+              />
+              <span className={css.detailHint}>{t('review.interactionAmendHint')}</span>
+            </span>
+          </>
+        ) : current !== undefined ? (
+          <>
+            <span className={css.chip} data-kind="warn">{t('review.questionIndex', { n: String(current.index + 1), total: String(question.questions.length) })}</span>
+            <span className={css.interactionQuestion}>{current.item.question}</span>
+            {current.item.detail !== undefined && <span className={css.interactionDetail}>{current.item.detail}</span>}
+            {options.length > 0 && (
+              <span className={css.interactionOptions}>
+                {options.map((option: { label: string; description?: string }) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    className={`${css.interactionOption}${drafts[current.index].selected.includes(option.label) ? ` ${css.interactionOptionOn}` : ''}`}
+                    onClick={() => { toggleOption(option.label) }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </span>
+            )}
             <input
               className={css.input}
-              value={amend}
-              placeholder={t('review.interactionAmendPlaceholder')}
-              onChange={event => { setAmend(event.target.value) }}
+              value={drafts[current.index].custom ?? ''}
+              placeholder={t('review.interactionTypePlaceholder')}
+              onChange={event => { setCustom(event.target.value) }}
             />
-            <span className={css.detailHint}>{t('review.interactionAmendHint')}</span>
-          </span>
-          <span className={css.interactionActions}>
-            <Button variant="primary" disabled={busy} onClick={confirmPlan}>{t('review.planConfirm')}</Button>
-            <Button variant="ghost" disabled={busy} onClick={declinePlan}>{t('review.planDecline')}</Button>
-            <Button variant="ghost" disabled={busy} onClick={discussPlan}>{t('review.interactionDiscuss')}</Button>
-          </span>
-        </>
+          </>
+        ) : null}
+      </div>
+      {planQuestion !== undefined ? (
+        <span className={css.interactionActions}>
+          <Button variant="primary" disabled={busy} onClick={confirmPlan}>{t('review.planConfirm')}</Button>
+          <Button variant="ghost" disabled={busy} onClick={declinePlan}>{t('review.planDecline')}</Button>
+          <Button variant="ghost" disabled={busy} onClick={discussPlan}>{t('review.interactionDiscuss')}</Button>
+        </span>
       ) : current !== undefined ? (
-        <>
-          <span className={css.chip} data-kind="warn">{t('review.questionIndex', { n: String(current.index + 1), total: String(question.questions.length) })}</span>
-          <span className={css.interactionQuestion}>{current.item.question}</span>
-          {current.item.detail !== undefined && <span className={css.interactionDetail}>{current.item.detail}</span>}
-          {options.length > 0 && (
-            <span className={css.interactionOptions}>
-              {options.map((option: { label: string; description?: string }) => (
-                <button
-                  key={option.label}
-                  type="button"
-                  className={`${css.interactionOption}${drafts[current.index].selected.includes(option.label) ? ` ${css.interactionOptionOn}` : ''}`}
-                  onClick={() => { toggleOption(option.label) }}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </span>
-          )}
-          <input
-            className={css.input}
-            value={drafts[current.index].custom ?? ''}
-            placeholder={t('review.interactionTypePlaceholder')}
-            onChange={event => { setCustom(event.target.value) }}
-          />
-          <span className={css.interactionActions}>
-            <Button variant="primary" disabled={busy} onClick={lastQuestion ? submitAnswers : nextQuestion}>
-              {lastQuestion ? t('review.interactionSubmit') : t('review.interactionNext')}
-            </Button>
-            <Button variant="ghost" disabled={busy || current.index === 0} onClick={() => { setQuestionIndex(current.index - 1) }}>
-              {t('review.interactionPrev')}
-            </Button>
-            <Button variant="ghost" disabled={busy} onClick={skipQuestion}>{t('review.interactionSkip')}</Button>
-            <Button variant="ghost" disabled={busy} onClick={discussPlan}>{t('review.interactionAbandon')}</Button>
-          </span>
-        </>
+        <span className={css.interactionActions}>
+          <Button variant="primary" disabled={busy} onClick={lastQuestion ? submitAnswers : nextQuestion}>
+            {lastQuestion ? t('review.interactionSubmit') : t('review.interactionNext')}
+          </Button>
+          <Button variant="ghost" disabled={busy || current.index === 0} onClick={() => { setQuestionIndex(current.index - 1) }}>
+            {t('review.interactionPrev')}
+          </Button>
+          <Button variant="ghost" disabled={busy} onClick={skipQuestion}>{t('review.interactionSkip')}</Button>
+          <Button variant="ghost" disabled={busy} onClick={discussPlan}>{t('review.interactionAbandon')}</Button>
+        </span>
       ) : null}
       {error !== undefined && <span className={css.detailHint}>{error}</span>}
     </div>

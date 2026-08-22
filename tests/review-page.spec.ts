@@ -43,6 +43,21 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(card).toContain('margin: 0 14px 2px')
   })
 
+  it('HEIGHT CONTRACT: the interaction card is capped, its body scrolls, its actions stay pinned', () => {
+    const card = ruleOf('interactionCard')
+    expect(card).toContain('max-height: min(320px, 40vh)')
+    expect(card).toContain('overflow: hidden')
+    // The body is the scroll slot (never the card itself): long plan/question
+    // text scrolls inside while the action row remains visible at the bottom.
+    const body = ruleOf('interactionCardBody')
+    expect(body).toContain('overflow-y: auto')
+    expect(body).toContain('min-height: 0')
+  })
+
+  it('the rail clips its own box — nothing can spill past and cover other UI', () => {
+    expect(ruleOf('reviewRail')).toContain('overflow: hidden')
+  })
+
   it('action rows wrap instead of bursting the card right edge', () => {
     const actions = ruleOf('interactionActions')
     expect(actions).toContain('flex-wrap: wrap')
