@@ -3241,7 +3241,16 @@ textarea.input {
 }
 
 /* The conversation region scrolls on its own — a long transcript never
-   pushes the comment thread out of view. */
+   pushes the comment thread out of view.
+   SCROLLBAR note: a native bar here would render at this container's right
+   edge — INSIDE the 20px gutter between the two columns (reviewMain's right
+   padding), i.e. floating in the whitespace between the conversation and the
+   rail, hugging the transcript text on one side and leaving a big gap on the
+   other ("贴着又别扭"). The board's own grammar for such panes is
+   scrollbar-less scrolling (the card columns): the wheel/trackpad still
+   scrolls, the transcript auto-follows the bottom, and the content box stays
+   the pane's clean 20px on both sides — no bar to position, no absorption
+   padding needed. */
 .reviewTranscriptScroll {
   display: flex;
   flex-direction: column;
@@ -3249,7 +3258,10 @@ textarea.input {
   min-height: 120px;
   flex: 1;
   overflow-y: auto;
-  padding-right: 4px;
+  scrollbar-width: none;
+}
+.reviewTranscriptScroll::-webkit-scrollbar {
+  display: none;
 }
 
 /* The run's outcome banner: what the agent came back with. */
