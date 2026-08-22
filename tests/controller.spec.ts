@@ -2488,9 +2488,9 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(sent).toHaveLength(2)
   })
 
-  it('a queue-mode rule queues a comment round for the dispatcher (nothing direct)', async () => {
+  it('a queue-mode rule rides the AUTOMATION lane: injected at once, never direct, never cruise-gated', async () => {
     const sent: Array<[string, string]> = []
-    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const { controller, stub } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'queue' })!
     await controller.tickSessionRules(NOW + 120_000)
@@ -2499,7 +2499,11 @@ describe('session automation rules (给会话定时发指令)', () => {
     const queued = row.executions.find(round => round.comment === 'hello')
     expect(queued?.comment).toBe('hello')
     expect(queued?.direct).toBeUndefined()
-    expect(queued?.injectedAt).toBeUndefined() // awaiting the dispatcher
+    // The scheduled instruction is automation: it rides the own lane and is
+    // never left waiting for the board cruise ("定时发指令却没有任何反应" 的
+    // 根因就是旧版把排队规则轮当作普通留言、巡航一关就永远等)。
+    expect(queued?.injectedAt).toBe(NOW)
+    expect(stub.commentCalls.map(call => call.text)).toEqual(['hello'])
     expect(row.rules?.[0].lastAt).toBe(NOW + 120_000)
     expect(row.rules?.[0].nextAt).toBeGreaterThan(NOW + 120_000 - 60_000)
   })
@@ -2638,12 +2642,13 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(stub.commentCalls.filter(candidate => candidate.text === 'hello')).toHaveLength(2)
   })
 
-  it('an ON-COMPLETE rule rides its OWN lane: exactly one observable round per fire (send is a cron-only concern)', async () => {
+  it('an ON-COMPLETE steer rule rides the lane with priority: exactly one observable round per fire', async () => {
     const { controller, stub } = ruleHarness(['s-a'], {})
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
-    // A 'steer' send stored on an on-complete rule changes nothing: the loop
-    // needs the observable settle, so the round always rides the own lane —
-    // never a direct raw message, and never a double launch.
+    // 'steer' on an on-complete rule = the rule's round takes lane priority
+    // (插话跳过排队等待) — still ONE observable round per fire: the loop
+    // needs the observable settle, so it always rides the comment machinery,
+    // never a raw direct message and never a double launch.
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '收尾提示', cron: '', trigger: 'on-complete', send: 'steer' })!
     await controller.runTask(task.id)
     stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
@@ -2674,6 +2679,85 @@ describe('session automation rules (给会话定时发指令)', () => {
     controller.createSessionRule(blank.id, { sessionId: 's-a', instruction: '', cron: '', trigger: 'on-complete', usePrompt: true, send: 'steer' })!
     await controller.fireOnCompleteRules(blank.id)
     expect(sent).toHaveLength(0) // blocked: nothing to send
+  })
+
+  it('a RECONCILED plain-run settle fires on-complete rules (恢复/对账结算也算完成)', async () => {
+    const stub = new StubExec()
+    stub.reconcileResult = { kind: 'settled', taskId: 'task-a', executionId: 'e1', outcome: 'succeeded' }
+    const store = new InMemoryTaskStore()
+    const task = seedTask(store, { id: 'task-a', prompt: 'run' })
+    // A leftover plain run from a previous page — settled by reconcile, never
+    // by the live watch: "任务完成了一次，on-complete 规则却没有任何反应" 的
+    // 根因（reconcile 路径曾直接 settle，不走 on-complete 钩子）。
+    store.save([{
+      ...task,
+      status: 'running',
+      rules: [{ id: 'r1', sessionId: 's-a', instruction: 'hi', cron: '', trigger: 'on-complete', send: 'queue', enabled: true }],
+      executions: [{ id: 'e1', sessionId: 's-a', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    }])
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-a', false) // known to the list; the turn already finished
+    const reloaded = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    reloaded.start()
+    await flush()
+    const row = reloaded.getSnapshot().tasks.find(candidate => candidate.id === 'task-a')!
+    // The plain run settled AND the rule round fired + injected by its lane:
+    // the task is running again (its rule's turn is now the open round).
+    expect(row.executions.find(round => round.id === 'e1')?.result).toBe('succeeded')
+    const fired = row.executions.find(round => round.ruleId === 'r1')
+    expect(fired?.comment).toBe('hi')
+    expect(fired?.injectedAt).toBe(NOW)
+    expect(stub.commentCalls.map(call => call.text)).toEqual(['hi'])
+    expect(row.rules?.[0].lastAt).toBe(NOW)
+  })
+
+  it('many rules due at the same completion: one at a time, steer first, then queue FIFO (never a burst)', async () => {
+    const { controller, stub } = ruleHarness(['s-a', 's-b', 's-c'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'aa', cron: '', trigger: 'on-complete', send: 'queue' })!
+    controller.createSessionRule(task.id, { sessionId: 's-b', instruction: 'bb', cron: '', trigger: 'on-complete', send: 'queue' })!
+    controller.createSessionRule(task.id, { sessionId: 's-c', instruction: 'cc', cron: '', trigger: 'on-complete', send: 'steer' })!
+    await controller.runTask(task.id)
+    stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
+    await flush()
+    // THREE rules due at once — the budget injects ONE round: the steer rule
+    // jumps the queue, the queue rules wait their FIFO turn.
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)
+    expect(stub.commentCalls.map(call => call.text)).toEqual(['cc'])
+    stub.commentCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.commentCalls[0].executionId, outcome: 'succeeded' })
+    await flush()
+    expect(stub.commentCalls.map(call => call.text)).toEqual(['cc', 'aa'])
+    stub.commentCalls[1].fire({ kind: 'settled', taskId: task.id, executionId: stub.commentCalls[1].executionId, outcome: 'succeeded' })
+    await flush()
+    expect(stub.commentCalls.map(call => call.text)).toEqual(['cc', 'aa', 'bb'])
+  })
+
+  it('a USER comment round settle fires the rule too (评论驱动的完成也是完成)', async () => {
+    const { controller, stub } = ruleHarness(['s-a'], {})
+    // A settled-column task: comments still inject there (the drive mode), and
+    // the cruise ON cannot hijack it with a fresh pickup.
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run', status: 'review' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hi', cron: '', trigger: 'on-complete', send: 'queue' })!
+    controller.setCruiseEnabled(true)
+    // The user drives the session from the review-page composer: the comment
+    // round injects (cruise on) — "在评论区留言过" 之后任务落 「待审核」。
+    controller.submitSessionComment(task.id, 's-a', '用户的话')
+    expect(stub.commentCalls.map(call => call.text)).toEqual(['用户的话'])
+    // That turn settles: it IS a completion — the on-complete rule fires.
+    stub.commentCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.commentCalls[0].executionId, outcome: 'succeeded' })
+    await flush()
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    const fired = row.executions.find(candidate => candidate.ruleId !== undefined)
+    expect(fired?.comment).toBe('hi')
+    expect(stub.commentCalls.map(call => call.text)).toEqual(['用户的话', 'hi'])
+    // The rule's OWN round settle continues the loop — never a double fire.
+    const loop = stub.commentCalls.find(call => call.text === 'hi')!
+    loop.fire({ kind: 'settled', taskId: task.id, executionId: loop.executionId, outcome: 'succeeded' })
+    await flush()
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.executions.filter(candidate => candidate.ruleId !== undefined)).toHaveLength(2)
   })
 
   it('a usePrompt CRON rule sends the TASK execution prompt on schedule', async () => {

@@ -161,13 +161,9 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           <Icon name="link" className={css.autoMetaIcon} />
           <span className={css.autoRuleSessionTitle} title={title}>{title}</span>
         </span>
-        {/* 排队/插话 only labels a cron rule's delivery; an on-complete rule's
-            round always rides its own lane (循环靠可观察结算续上) — no chip. */}
-        {row.trigger === 'cron' && (
-          <span className={css.autoRuleSend}>
-            {t(row.send === 'queue' ? 'review.sendQueue' : 'review.sendSteer')}
-          </span>
-        )}
+        <span className={css.autoRuleSend}>
+          {t(row.send === 'queue' ? 'review.sendQueue' : 'review.sendSteer')}
+        </span>
         {readiness.kind === 'paused' && (
           <Chip kind="warn" fill={false}>
             {t('auto.schedule.paused')} ({t(STATUS_KEY[readiness.status])})
@@ -283,7 +279,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
       setError('cron')
       return
     }
-    const send: 'queue' | 'steer' = trigger === 'on-complete' ? 'queue' : (steer ? 'steer' : 'queue')
+    const send: 'queue' | 'steer' = steer ? 'steer' : 'queue'
     const input: {
       sessionId: string
       instruction: string
@@ -390,18 +386,17 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
               {error === 'cron' && <span className={css.formError}>{t('auto.form.invalidCron')}</span>}
             </label>
           )}
-          {/* 排队/插话 is a CRON rule's delivery choice (调度器等待 vs 立即直达);
-              an on-complete rule's round always rides its own lane — its settle
-              is what continues the loop, so the toggle would be a dead control
-              here (same conditional grammar as the cron field above). */}
-          {trigger === 'cron' && (
-            <div className={css.autoField}>
-              <span className={css.autoFieldLabel}>{t('auto.form.send')}</span>
-              <SendModeToggle steer={steer} onChange={setSteer} />
-            </div>
-          )}
+          {/* 排队/插话是每一条规则的发送方式（两种触发共用）：排队 = 按序等
+              轮次（自动化车道 FIFO），插话 = 跳过排队立即注入——都是预算内的
+              一个轮次，绝不瞬时齐发；提示行按触发方式给专属文案。 */}
+          <div className={css.autoField}>
+            <span className={css.autoFieldLabel}>{t('auto.form.send')}</span>
+            <SendModeToggle steer={steer} onChange={setSteer} />
+          </div>
           {error === 'save' && <p className={css.formError}>{t('auto.form.saveFailed')}</p>}
-          <p className={css.detailHint}>{t('auto.form.hint')}</p>
+          <p className={css.detailHint}>
+            {t(trigger === 'cron' ? 'auto.form.hint' : 'auto.form.hintLoop')}
+          </p>
           <span className={css.autoFormActions}>
             <Button size="sm" variant="primary" onClick={submit}>
               {t('auto.form.save')}

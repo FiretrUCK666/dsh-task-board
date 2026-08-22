@@ -1262,9 +1262,12 @@ export class BoardController {
     | { kind: 'comment'; task: TaskRecord; round: ExecutionRecord }
     | { kind: 'task'; task: TaskRecord }
     | undefined {
-    // 完成后续跑 rule rounds flow in their OWN lane: the automation's own
-    // turn never waits for the board cruise (a manually saved comment does —
-    // its injection is still cruise-gated below).
+    // 规则轮走自己的车道（自动化车道）：cron 排队轮与 on-complete 循环轮都是
+    // ruleId 标记的可观察轮——自动化的回合永不等待板级巡航（用户手写评论仍是
+    // 巡航门控的普通留言，见下面的 cruise 分支）。车道内严格按提交时间 FIFO +
+    // 全局预算：同一瞬间到点的很多规则只会一个个按序注入（插话规则由
+    // fireOnCompleteRules 先入队——完成时刻插话先发，之后不再跳队——绝不
+    // 饿死排队规则，也绝无瞬时齐发）。
     let ruleRound: { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined
     for (const task of this.tasks) {
       if (task.status === 'running' || task.status === 'done') continue
@@ -1767,12 +1770,15 @@ export class BoardController {
         const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
         if (text === '') continue
         // Fire, send-mode consistent with the comment SendModeToggle grammar:
-        // queue = the instruction enters the task's comment queue and the
-        // dispatcher injects it in submission order (cruise-gated); steer =
-        // delivered straight to the session now, recorded as a direct round.
+        // queue = the instruction becomes a rule-marked round that rides the
+        // AUTOMATION lane (not cruise-gated: a scheduled rule must fire on
+        // schedule, never wait for the board cruise; the `ruleId` marker is
+        // what the lane keys on — the loop hook is inert for cron rules via
+        // its trigger guard); steer = delivered straight to the session now,
+        // recorded as a direct round.
         let fired: { ok: true } | { ok: false; error: string }
         if (rule.send === 'queue') {
-          const round = this.queueRuleComment(task.id, rule.sessionId, text, text.trimStart().startsWith('/'))
+          const round = this.queueRuleComment(task.id, rule.sessionId, text, text.trimStart().startsWith('/'), rule.id)
           if (round === undefined) {
             // The injector refused (blank line / completed task / unknown
             // task): keep the due slot, retried next tick.
@@ -2170,30 +2176,58 @@ export class BoardController {
     // comment/cruise work competes for the freed slot.
     this.maybeContinueChain(event.taskId)
     this.persistAndNotify()
-    // A settled PLAIN TASK RUN is the on-complete appointment for the task's
+    // A settled plain TASK RUN is the on-complete appointment for the task's
     // session rules. Comment rounds carry `comment`, refine rounds carry
     // `refine: true` — neither is a task run, so an on-complete rule can
     // never re-trigger itself through its own queued comment's settle (no
     // send loops). Fired after the persist so the rule bookkeeping layers on
     // the settled object.
-    if (settledRound?.comment === undefined && settledRound?.refine !== true) {
-      void this.fireOnCompleteRules(event.taskId)
+    this.settledFollowUp(settledRound, event.taskId, event.outcome)
+  }
+
+  /**
+   * EVERY way a round can settle runs the SAME post-settle appointments —
+   * the live run watch ({@link handleExecutionEvent}) and the recovery /
+   * background reconcile ({@link reconcileRunningTasks}): a completion found
+   * after a page reload, a missed list flip or through a cold session must
+   * still keep automation alive ("任务完成了一次却没有任何反应" 正是这个缺口).
+   * 1. on-complete rules (fireOnCompleteRules — ANY completion is the
+   *    任务完成 appointment: a plain run, a user comment round or a native/
+   *    external turn all landed the card in 「待审核」; refine rounds are
+   *    preparation, never a completion, and the rule's OWN round is excluded
+   *    — its loop is the dedicated fireLoopRule hook, so a settle never
+   *    double-fires; the one-in-flight guard is the second backstop);
+   * 2. the rule's own loop (fireLoopRule — a ruleId round's succeeded settle
+   *    continues 完成后继续; failure/cancel never does).
+   * The chain hand-off stays OUTSIDE (both call sites run it BEFORE their
+   * persist — a freed slot is booked before any comment/cruise work competes
+   * for it).
+   */
+  private settledFollowUp(
+    settledRound: ExecutionRecord | undefined,
+    taskId: string,
+    outcome: 'succeeded' | 'failed' | 'cancelled',
+  ): void {
+    if (settledRound?.refine !== true && settledRound?.ruleId === undefined) {
+      void this.fireOnCompleteRules(taskId)
     }
-    // 完成后续跑：一条「规则自己的指令轮」（ruleId 标记）成功结算 = 一轮完成，
-    // 同一规则再发送一条——永续循环从这里续上；失败/取消不续。
-    if (settledRound?.ruleId !== undefined && event.outcome === 'succeeded') {
-      void this.fireLoopRule(event.taskId, settledRound.ruleId, settledRound.sessionId ?? '')
+    if (settledRound?.ruleId !== undefined && outcome === 'succeeded') {
+      void this.fireLoopRule(taskId, settledRound.ruleId, settledRound.sessionId ?? '')
     }
   }
 
   /**
    * 完成后续跑（on-complete 循环规则）的一次发送：一条带 ruleId 标记的可观察
-   * 指令轮（注入成功结算后再触发）。发送只有一种文法——进入自己的车道（下一轮
-   * 可用即注入、预算内排队，与巡航开关无关）；queue/steer 是 cron 触发规则的
-   * 发送选择（车道等待 vs 立即直达），on-complete 的循环需要可观察的结算才能
-   * 续上，两类轮永远走同一条车道——编辑器在 on-complete 下不提供该选择。
+   * 指令轮（注入成功结算后再触发）。发送只有一种文法——进入自动化车道（下一轮
+   * 可用即注入、预算内排队，与巡航开关无关）；queue/steer 只决定同一完成时刻
+   * 的发送次序（插话先发，排队按序——车道内一律 FIFO + 预算，绝不瞬时齐发，
+   * 也绝不饿死任何一条）。**一条规则同时在途至多一轮**：规则已有未结算的指令轮
+   * （在跑或排队中）时跳过本次发送——任何一次任务完成都不会给同一规则叠第二个
+   * 轮子，「轮子在跑」就是「继续进行中」；它结算成功时 fireLoopRule 续上下一轮。
+   * 「关闭/删除/会话消失/内容不可用」= 停止；失败/取消 = 不续。
    */
   private fireRuleRound(task: TaskRecord, rule: import('./automation.ts').SessionRule, text: string): void {
+    if (task.executions.some(candidate => candidate.ruleId === rule.id && candidate.endedAt === undefined)) return
     const round = this.queueRuleComment(task.id, rule.sessionId, text, text.trimStart().startsWith('/'), rule.id)
     if (round === undefined) return
     this.tasks = this.tasks.map(candidate => candidate.id === task.id
@@ -2215,11 +2249,18 @@ export class BoardController {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined || task.rules === undefined || task.rules.length === 0) return
     const byId = this.deps.sessions.list.getSnapshot().byId
+    // 同一完成时刻的多个规则：插话先发（立即注入、排在队头），排队按序——每个
+    // 轮子都是可观察的自动化轮，车道 FIFO + 预算保证一次只有一个在跑。
+    const due: Array<{ rule: import('./automation.ts').SessionRule; text: string }> = []
     for (const rule of task.rules) {
       if (rule.trigger !== 'on-complete' || !rule.enabled) continue
       const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
       if (text === '') continue // usePrompt + 空 Prompt = blocked, nothing to send
       if (byId[rule.sessionId] === undefined) continue
+      due.push({ rule, text })
+    }
+    for (const { rule, text } of [...due].sort((a, b) =>
+      (a.rule.send === 'steer' ? 0 : 1) - (b.rule.send === 'steer' ? 0 : 1))) {
       this.fireRuleRound(task, rule, text)
     }
   }
@@ -2337,7 +2378,7 @@ export class BoardController {
       // running tasks (plain runs, comment rounds, external rounds) plus any
       // task with an open refinement round (refinement keeps its column).
       type Settled = Extract<ExecutionEvent, { kind: 'settled' }>
-      const events: Array<{ task: TaskRecord; event: Settled }> = []
+      const events: Array<{ task: TaskRecord; round: ExecutionRecord | undefined; event: Settled }> = []
       for (const task of this.tasks) {
         const execution = task.executions[task.executions.length - 1]
         if (execution === undefined || execution.endedAt !== undefined) continue
@@ -2363,19 +2404,21 @@ export class BoardController {
         // controller must never keep settling into a dropped ledger.
         if (this.disposed) return
         if (event !== undefined && event.kind === 'settled') {
-          events.push({ task: await this.fillExternalText(task, event.executionId), event })
+          events.push({ task: await this.fillExternalText(task, event.executionId), round: execution, event })
           this.activeExecutionIds.delete(event.executionId)
         }
       }
 
       // Stage 2 — apply the settled rounds (refine rounds keep the column).
       const continued: string[] = []
-      for (const { task, event } of events) {
+      const applied: Array<{ round: ExecutionRecord | undefined; event: Settled }> = []
+      for (const { task, round, event } of events) {
         const next = this.settleRound(task, event.executionId, event.outcome, event.error)
         if (next === task) continue
         this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
         changed = true
         continued.push(task.id)
+        applied.push({ round, event })
       }
       // A reconciled settle hands off to the next chained run like a live one
       // (the chain request precedes the persist so the freed slot is
@@ -2387,6 +2430,14 @@ export class BoardController {
       if (this.cancelSpuriousExternal()) changed = true
 
       if (changed) this.persistAndNotify()
+      // Stage 4 — the SAME post-settle appointments as a live settle: a
+      // recovery/background settlement is a completion too, and automation
+      // (on-complete rules + the rule's own loop) must keep working exactly
+      // as if the live watch had seen it.
+      for (const { round, event } of applied) {
+        if (this.disposed) return
+        this.settledFollowUp(round, event.taskId, event.outcome)
+      }
     } finally {
       this.reconcileInFlight = false
       // A list change that arrived while this pass was queued or in flight
