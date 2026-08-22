@@ -118,46 +118,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: none !important;
 }
 
-/* --- shared scrollbar grammar (ONE look, every scrollable surface) ----------
- * The floating pill: a thin rounded thumb on a transparent track, inset from
- * the box edge by its own transparent border — never a chrome bar glued to
- * the panel boundary ("贴边/突破边界"). One grammar for the modal, the detail
- * body, rails, transcripts and menus; the board card lanes opt out below
- * (they scroll silently by design), and their hide rules sit later in the
- * file on equal specificity — the cascade keeps them invisible. */
-[data-dsh-taskboard-view] ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-[data-dsh-taskboard-view] ::-webkit-scrollbar-track {
-  background: transparent;
-}
-[data-dsh-taskboard-view] ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--dsh-tb-text-3) 32%, transparent);
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background-clip: content-box;
-}
-[data-dsh-taskboard-view] ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--dsh-tb-text-3) 48%, transparent);
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background-clip: content-box;
-}
-/* Firefox (no -webkit pseudo-elements): the same thin quiet pill via the
-   standard properties, applied only where WebKit styling cannot exist so the
-   floating geometry above stays authoritative in Chromium/Safari. */
-@supports not selector(::-webkit-scrollbar) {
-  [data-dsh-taskboard-view] :where(
-    .modal, .detailBody, .sessionRailScroll, .reviewTranscriptScroll,
-    .refineTranscriptArea, .interactionCardBody, .sessionContextPanel,
-    .sessionRailHead, .slashMenu, .contentBlock
-  ) {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--dsh-tb-text-3) 32%, transparent) transparent;
-  }
-}
-
 /* --- sidebar entry row ------------------------------------------------------- */
 
 /* The entry mirrors the shell's 新会话 button exactly: same geometry, same
@@ -1405,16 +1365,17 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .modal {
   display: flex;
   flex-direction: column;
-  gap: 16px;
   position: relative;
   width: min(520px, calc(100vw - 48px));
   max-height: calc(100vh - 96px);
   /* The panel never scrolls as a whole: the header and the footer stay
      pinned, only the middle body region (modalScroll) scrolls — a long form
-     never drags its actions out of reach, matching the review rail's
-     "composer pinned" discipline. */
+     never drags its actions out of reach (the review rail's "composer
+     pinned" discipline; this is the EDIT panel's .detail grammar, so the
+     native scrollbar renders in the body region between the pinned edges,
+     exactly where the edit panel's does). NO panel padding and NO panel gap:
+     header / body / footer own their insets. */
   overflow: hidden;
-  padding: 18px;
   background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-xl);
@@ -1423,9 +1384,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   animation: dshTbDialogIn 140ms ease;
 }
 
-/* The dialog's ONE scroll region between the pinned header and footer: the
-   same flex rhythm as the panel (16px gaps), a slight right inset so the
-   floating scrollbar pill never crowds the fields. */
+/* The dialog's ONE scroll region: the same insets as the edit panel's
+   .detailBody (14px 18px), so the native bar sits at the panel edge inside
+   those insets — never a half-panel floating bar, never full-height. */
 .modalScroll {
   display: flex;
   flex-direction: column;
@@ -1433,7 +1394,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 2px;
+  padding: 14px 18px;
 }
 
 .modalTitle {
@@ -1448,6 +1409,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  padding: 14px 18px;
+  border-bottom: var(--dsh-tb-separator);
+  flex: none;
 }
 
 .confirmMessage {
@@ -1463,6 +1427,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  padding: 14px 18px;
+  border-top: var(--dsh-tb-separator);
   /* Pinned: the action row never shrinks out of reach (see .modal). */
   flex: none;
 }
