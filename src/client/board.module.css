@@ -3221,7 +3221,14 @@ textarea.input {
    the linked-session rail's head content, or the review page's comment
    list, scrolls inside its own region while the composer stays pinned at
    the bottom (flex: none) — a taller head can never squeeze the send button
-   out. The composer's own top border separates the regions. */
+   out. The composer's own top border separates the regions.
+   PADDING note: the rail grammar is a 14px content box everywhere (head /
+   thread header / hint / composer). The scroll region's native scrollbar
+   eats into its own right padding, so the comments would otherwise hug the
+   bar ("太贴") — the right side gets the SAME absorption pattern as the
+   left column's transcript (14px content box + 4px breathing + the bar's
+   own width = 18px), so the content keeps the exact 14px box on the left
+   and reads 4px off the bar on the right. */
 .sessionRailScroll {
   display: flex;
   flex-direction: column;
@@ -3230,7 +3237,7 @@ textarea.input {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 14px 10px;
+  padding: 12px 18px 10px;
 }
 
 /* The conversation region scrolls on its own — a long transcript never
