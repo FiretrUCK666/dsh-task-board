@@ -126,6 +126,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     <SessionFrame
       title={current.title}
       ariaLabel={t('review.title')}
+      context={context}
       actions={
         <>
           <Button size="sm" onClick={reload} title={t('review.refresh')}>
@@ -169,7 +170,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
       }
       rail={
         <SessionRail
-          context={context}
           stateChip={stateChip}
           updatedAt={updatedAt}
           sessionId={sessionId}

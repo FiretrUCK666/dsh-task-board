@@ -35,8 +35,11 @@ function TodoGlyph({ status }: { status: 'pending' | 'in_progress' | 'completed'
 }
 
 /** The deterministic context readout (see module doc): self-contained — the
- *  collapsed/expanded state and the outside-click dismissal live here. */
-export function SessionContextBlock({ context }: { context: SessionContext }) {
+ *  collapsed/expanded state and the outside-click dismissal live here.
+ *  `className` lets a surface place the block (the review pane docks its
+ *  head at the conversation's top-right; the rail/refine surfaces keep the
+ *  default in-flow slot). */
+export function SessionContextBlock({ context, className }: { context: SessionContext; className?: string }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -77,7 +80,7 @@ export function SessionContextBlock({ context }: { context: SessionContext }) {
   ].filter((part): part is string => part !== undefined).join(' · ')
 
   return (
-    <div className={css.sessionContextWrap} ref={wrapRef}>
+    <div className={`${css.sessionContextWrap}${className !== undefined ? ` ${className}` : ''}`} ref={wrapRef}>
       <button
         type="button"
         className={css.sessionContextHead}

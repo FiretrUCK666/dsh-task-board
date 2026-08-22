@@ -65,7 +65,9 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
 
   it('the scroll region and the composer stay inside the rail content box', () => {
     expect(ruleOf('sessionRailScroll')).toContain('min-width: 0')
-    expect(ruleOf('reviewComposer')).toContain('padding: 12px 14px')
+    // The rail owns ONE 12px vertical rhythm; each segment keeps only its
+    // own 14px content box (the composer's bottom breathing stays its own).
+    expect(ruleOf('reviewComposer')).toContain('padding: 0 14px 12px')
   })
 })
 

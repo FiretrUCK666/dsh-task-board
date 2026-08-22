@@ -15,9 +15,11 @@ import type { ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
+import { SessionContextBlock } from './SessionContextBlock.tsx'
+import type { SessionContext } from './use-interaction.ts'
 
 /** The shared panel frame (see module doc). */
-export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onClose }: {
+export function SessionFrame({ title, badge, ariaLabel, actions, context, main, rail, onClose }: {
   /** Panel title (the task title on both surfaces). */
   title: string
   /** Optional type badge text — its family identity; absent hides the badge. */
@@ -26,6 +28,10 @@ export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onC
   ariaLabel: string
   /** Header actions (refresh / view session; the close button is built in). */
   actions: ReactNode
+  /** The session's live context readout (todos/goal/subagents): docks at the
+   *  conversation pane's top-right — the context belongs to the conversation,
+   *  never squeezed into the rail head (the cramped + uneven-gaps look). */
+  context?: SessionContext
   /** Left column: the conversation region (caller owns its scroll region). */
   main: ReactNode
   /** Right column: the rail (caller owns its content). */
@@ -53,7 +59,12 @@ export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onC
           </div>
         </header>
         <div className={css.reviewBody}>
-          <div className={css.reviewMain}>{main}</div>
+          <div className={css.reviewMain}>
+            {context !== undefined && (
+              <SessionContextBlock context={context} className={css.reviewContextBlock} />
+            )}
+            {main}
+          </div>
           <aside className={css.reviewRail}>{rail}</aside>
         </div>
       </div>

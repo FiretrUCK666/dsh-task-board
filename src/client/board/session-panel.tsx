@@ -24,8 +24,6 @@ import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow } from './use-transcript.
 import { Chip, type ChipKind } from './Chip.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import type { CommentView } from './comment-thread.ts'
-import { SessionContextBlock } from './SessionContextBlock.tsx'
-import type { SessionContext } from './use-interaction.ts'
 import { InteractionCard } from './InteractionCard.tsx'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
 import { admitDraftImages, type DraftImage, type HostImageRefView } from './attach.ts'
@@ -542,8 +540,7 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
  * data and their send semantics; the grammar, the follow mechanics and the
  * hint line live here exactly once — no panel can drift again.
  */
-export function SessionRail({ context, stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, hint, task, thread, onCancelComment, interaction, composer }: {
-  context: SessionContext
+export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, hint, task, thread, onCancelComment, interaction, composer }: {
   /** The live state row (chip + updated time); absent hides the whole row. */
   stateChip?: { kind: ChipKind; label: string; spinner?: boolean }
   updatedAt?: string
@@ -593,7 +590,6 @@ export function SessionRail({ context, stateChip, updatedAt, sessionId, controll
   }
   return (
     <>
-      <SessionContextBlock context={context} />
       {stateChip !== undefined && updatedAt !== undefined && (
         <div className={css.sessionFacts}>
           <Chip

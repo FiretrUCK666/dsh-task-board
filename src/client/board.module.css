@@ -3200,10 +3200,16 @@ textarea.input {
 
 /* Right rail: context meter, session config, comments and the composer.
    One column that scrolls on its own; the composer stays pinned at the
-   rail's bottom (see .reviewComposer). */
+   rail's bottom (see .reviewComposer).
+   VERTICAL GRAMMAR: the rail owns ONE 12px rhythm between every segment
+   (facts → head → thread header → hint → scroll → composer) — a segment's
+   own vertical padding is ZERO so no gap can ever read wider than another
+   ("状态行 与 上下文已用 之间的空隙比别处宽"的根因: the meter's internal
+   border+10px stacked on the segment gaps). */
 .reviewRail {
   display: flex;
   flex-direction: column;
+  gap: 12px;
   flex: none;
   width: 344px;
   min-width: 0;
@@ -3217,13 +3223,14 @@ textarea.input {
 }
 
 /* The rail head — context meter, session config, session facts: fixed and
-   always visible, so a long comment thread can never push them away. */
+   always visible, so a long comment thread can never push them away. The
+   vertical rhythm comes from the rail's own 12px gap (see .reviewRail). */
 .sessionRailHead {
   display: flex;
   flex-direction: column;
   gap: 12px;
   flex: none;
-  padding: 12px 14px 10px;
+  padding: 0 14px;
   border-bottom: var(--dsh-tb-separator);
 }
 
@@ -3235,7 +3242,9 @@ textarea.input {
    GRID note: the rail's content box is 14px everywhere (head / hint / thread
    header / composer); the scroll region keeps the same 14px — a THIN bar
    fits inside it with breathing, so the comments never hug the thumb and
-   read on the same 14px line as every other rail element. */
+   read on the same 14px line as every other rail element. The vertical
+   rhythm comes from the rail's own 12px gap (see .reviewRail); the region
+   keeps only its own bottom breathing before the composer. */
 .sessionRailScroll {
   display: flex;
   flex-direction: column;
@@ -3244,7 +3253,7 @@ textarea.input {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 14px 10px;
+  padding: 0 14px 10px;
   scrollbar-width: thin;
 }
 
@@ -3355,14 +3364,15 @@ textarea.input {
    styling (see above), rendered right where the run's outcome reads. */
 
 /* Context meter strip: the native occupancy figure + colored composition bar,
-   always visible below the conversation (see context-meter.ts for the math). */
+   always visible below the conversation (see context-meter.ts for the math).
+   NO internal top border/padding: the rail's own 12px rhythm separates it
+   from the state row above — the segment gaps read uniformly (no more
+   "状态行 与 上下文已用 之间偏宽"). */
 .reviewContextMeter {
   display: flex;
   flex-direction: column;
   gap: 6px;
   flex: none;
-  padding-top: 10px;
-  border-top: 1px solid var(--dsw-alias-separator-primary);
 }
 
 .reviewMeterHead {
@@ -3543,13 +3553,14 @@ textarea.input {
 }
 
 /* The fixed thread header — title + count stay visible no matter how long
-   the comment list below grows; the list alone scrolls. */
+   the comment list below grows; the list alone scrolls. The vertical rhythm
+   comes from the rail's own 12px gap (see .reviewRail). */
 .reviewThreadHeader {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: none;
-  padding: 12px 14px 0;
+  padding: 0 14px;
 }
 
 .reviewThreadTitle {
@@ -3764,15 +3775,17 @@ textarea.input {
 
 /* The composer, pinned at the rail's bottom: sending a comment never
    requires scrolling the conversation or the rail — it stays visible no
-   matter how long either gets. */
+   matter how long either gets. The vertical rhythm above it comes from the
+   rail's own 12px gap (see .reviewRail); the composer keeps only its own
+   bottom breathing below the input. */
 .reviewComposer {
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex: none;
   /* The rail's 14px content box on the sides (the thread/hint/head all sit
-     there too); vertical keeps the composer's own 12px breathing. */
-  padding: 12px 14px;
+     there too). */
+  padding: 0 14px 12px;
   border-top: 1px solid var(--dsw-alias-separator-primary);
 }
 
@@ -3947,11 +3960,26 @@ textarea.input {
 .sessionContextWrap {
   position: relative;
   flex: none;
-  /* The rail's 14px content box: the head row AND the anchored popover both
-     align with the meter/config/thread (the rail itself has no padding, so a
-     direct child would otherwise hug its edges — the "glued to the right
-     edge" bug). */
+  /* The 14px content box (the rail's segments / the pane's transcript): the
+     head row AND the anchored popover both align with the surrounding
+     content (the containers have no padding of their own, so a direct child
+     would otherwise hug their edges). */
   padding: 0 14px;
+}
+
+/* The review-page placement: the context readout docks at the conversation
+   pane's TOP-RIGHT — it belongs to the conversation (same family), never
+   squeezed into the rail head. The wrap spans the pane's content box; the
+   head row hugs the right 14px line, and the popover still anchors under it
+   (left/right 14 = the conversation's content box) over the transcript. */
+.reviewContextBlock {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.reviewContextBlock .sessionContextHead {
+  width: auto;
+  max-width: 100%;
 }
 
 .sessionContextHead {

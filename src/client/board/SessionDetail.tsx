@@ -102,6 +102,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       title={row?.title ?? sessionId}
       badge={t('detail.sessionCountBadge', { n: String(controller.linkedOf(task).length) })}
       ariaLabel={t('detail.sessionPanel')}
+      context={context}
       actions={
         <>
           <Button size="sm" onClick={reload} title={t('review.refresh')}>
@@ -129,7 +130,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       }
       rail={
         <SessionRail
-          context={context}
           stateChip={stateChip}
           updatedAt={updatedAt}
           sessionId={sessionId}
