@@ -644,11 +644,23 @@ export class BoardController {
 
   // --- task mutations ---------------------------------------------------------
 
+  /**
+   * 缺则补、填则守：任务被写入（创建/编辑）或被真正启动（唯一发射门 launchTask）
+   * 的时刻，空标题/空描述从执行 Prompt 补齐（`supplementLaunchFields` 纯函数）——
+   * 已填字段永不覆盖。这是整个特性的唯一作用点：任何路径（手动/重复/接续链/定时/
+   * 巡航/自动化/创建/编辑）都得到同一套语义，卡片永远不会无故空着头。
+   */
+  private supplementedTask(task: TaskRecord): TaskRecord {
+    const supplements = supplementLaunchFields(task)
+    return supplements !== undefined ? { ...task, ...supplements } : task
+  }
+
   createTask(input: NewTaskInput): TaskRecord | undefined {
     // Title/description/prompt are ALL optional at creation — a blank prompt
-    // only makes the task inert (nothing can run), and the first real run
-    // auto-supplements the missing title/description (supplementLaunchFields).
-    const task = createTask(input, this.now(), this.uuid(), this.nextOrder())
+    // only makes the task inert (nothing can run); a PRESENT prompt fills the
+    // empty title/description at once (缺则补), so the card never reads
+    // empty-headed when the content was already there.
+    const task = this.supplementedTask(createTask(input, this.now(), this.uuid(), this.nextOrder()))
     // A fresh card reads as the newest of its layout column.
     this.tasks = promoteToColumnTop([...this.tasks, task], task.id, task.status, this.now())
     this.persistAndNotify()
@@ -666,7 +678,7 @@ export class BoardController {
    */
   createBoundTask(bind: TaskBind, input: NewTaskInput): TaskRecord | undefined {
     if (bind === undefined) return undefined
-    const task = createTask(input, this.now(), this.uuid(), this.nextOrder())
+    const task = this.supplementedTask(createTask(input, this.now(), this.uuid(), this.nextOrder()))
     const boundTask: TaskRecord = { ...task, binds: [bind] }
     this.tasks = promoteToColumnTop([...this.tasks, boundTask], boundTask.id, boundTask.status, this.now())
     this.persistAndNotify()
@@ -1037,8 +1049,9 @@ export class BoardController {
    * string or `undefined` clears the field (the run then falls back to
    * defaults); a value sets it; absent keys keep their current value. Text
    * fields are trimmed; a blank title is allowed (the card shows an 未命名
-   * placeholder and the first real run supplements it). The next execution —
-   * manual or scheduled — reads the updated record, so edits apply from the
+   * placeholder and the 缺则补 supplement fills empty title/description from
+   * a present execution prompt at once). The next execution — manual or
+   * scheduled — reads the updated record, so edits apply from the
    * following run onward.
    * @returns true when applied, false when rejected (unknown task).
    */
@@ -1059,7 +1072,7 @@ export class BoardController {
       }
     }
     this.tasks = this.tasks.map(candidate => candidate.id === id
-      ? { ...candidate, ...applied, updatedAt: this.now() }
+      ? this.supplementedTask({ ...candidate, ...applied, updatedAt: this.now() })
       : candidate)
     this.persistAndNotify()
     return true
@@ -1311,9 +1324,14 @@ export class BoardController {
    * execution record, and hand off to the ExecutionService. Automation no
    * longer awaits a manual first run — arming a schedule activates it at
    * once (see setSchedule / ruleReadiness) — so any trigger just starts.
+   * THE 缺则补 supplement lives here (plus at create/update): every real
+   * launch — manual, rerun, chain, cron, cruise pickup, queued auto run —
+   * reads the supplemented record, so no launch path can run a card with an
+   * empty head (its title names the fresh session).
    */
   private launchTask(task: TaskRecord): void {
-    const { task: next, execution } = startExecution(task, this.now(), this.uuid())
+    const launch = this.supplementedTask(task)
+    const { task: next, execution } = startExecution(launch, this.now(), this.uuid())
     const withExecution = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
     this.tasks = promoteToColumnTop(withExecution, task.id, 'running', this.now())
     this.persistAndNotify()
@@ -1375,19 +1393,9 @@ export class BoardController {
     // Only a genuinely open run blocks a new one: a pending comment round
     // (task not running) must never block the Run button or a drag-rerun.
     if (hasOpenRun(task)) return false
-    // FIRST real run: auto-supplement the missing title/description (once
-    // only — later repeats never touch them); the launch then reads the
-    // supplemented record (its title names the fresh session).
-    let launch = task
-    const supplements = supplementLaunchFields(task)
-    if (supplements !== undefined) {
-      const supplemented = { ...task, ...supplements, updatedAt: this.now() }
-      this.tasks = this.tasks.map(candidate => candidate.id === task.id ? supplemented : candidate)
-      this.persistAndNotify()
-      launch = this.tasks.find(candidate => candidate.id === task.id) ?? supplemented
-    }
+    // The 缺则补 supplement applies at the ONE launch door (launchTask).
     if (trigger === 'manual' || this.inFlightCount() < this.cruiseState.limit) {
-      this.launchTask(launch)
+      this.launchTask(task)
       return true
     }
     if (!this.queuedLaunches.some(candidate => candidate.taskId === id)) {

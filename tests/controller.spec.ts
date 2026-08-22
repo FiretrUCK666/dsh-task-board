@@ -151,17 +151,20 @@ describe('BoardController lifecycle', () => {
 })
 
 describe('task mutations', () => {
-  it('creates and persists; a blank title is allowed (the first run supplements it)', () => {
+  it('creates and persists; a blank title with a present prompt fills at once (缺则补)', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: ' 新任务 ', description: '', prompt: 'run' })
     expect(task).toBeDefined()
     expect(controller.getSnapshot().tasks).toHaveLength(1)
     expect(store.load()[0].title).toBe('新任务')
-    // Title/description/prompt are all optional at creation.
+    // Title/description/prompt are all optional at creation; a PRESENT prompt
+    // fills the blank head at once — the card never reads empty-headed when
+    // the content was already there.
     const blank = controller.createTask({ title: '   ', description: '', prompt: 'run' })
     expect(blank).toBeDefined()
     expect(store.load()).toHaveLength(2)
-    expect(store.load()[1].title).toBe('')
+    expect(store.load()[1].title).toBe('run')
+    expect(store.load()[1].description).toBe('run')
   })
 
   it('deletes and clears the selection when the selected task is removed', () => {
@@ -306,12 +309,17 @@ describe('task mutations', () => {
     expect(persisted.permission).toBeUndefined()
   })
 
-  it('a blank edit title is allowed; an unknown task is rejected without touching state', () => {
+  it('a blank edit title is allowed when there is no prompt; an unknown task is rejected without touching state', () => {
     const { controller, store } = makeController()
-    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    // Blank titles are legal (the card shows 未命名; the first run fills it).
-    expect(controller.updateTask(task.id, { title: '   ' })).toBe(true)
+    const bare = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    // No prompt = nothing to derive: a blank title stays legal (未命名 card).
+    expect(controller.updateTask(bare.id, { title: '   ' })).toBe(true)
     expect(store.load()[0].title).toBe('')
+    // With a prompt present the 缺则补 supplement fills a blank head at once
+    // (the user demand: empty title/description auto-fill from the prompt).
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    expect(controller.updateTask(task.id, { title: '   ' })).toBe(true)
+    expect(store.load().find(candidate => candidate.id === task.id)?.title).toBe('run')
     expect(controller.updateTask('missing', { title: 'y' })).toBe(false)
   })
 
@@ -1634,11 +1642,13 @@ describe('linked sessions & bind', () => {
     expect(created?.binds).toEqual([{ kind: 'session', sessionId: 's-1' }])
     expect(controller.getSnapshot().tasks[0].status).toBe('todo')
     expect(store.load()[0].binds).toEqual([{ kind: 'session', sessionId: 's-1' }])
-    // A blank title is allowed like any new task (the first run fills it).
+    // A blank title with a PRESENT prompt fills at once (缺则补 — the card
+    // never reads empty-headed when the content was already there).
     const blank = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
       title: '  ', description: '', prompt: 'run', status: 'todo',
     })!
-    expect(blank.title).toBe('')
+    expect(blank.title).toBe('run')
+    expect(blank.description).toBe('run')
   })
 
   it('createBoundTask honors any landing column (external drops stay where dropped)', () => {
@@ -2802,6 +2812,50 @@ describe('session automation rules (给会话定时发指令)', () => {
     row = store.load()[0]
     expect(row.title).toBe('画一只猫')
     expect(row.description).toBe('画一只猫\n并解释配色')
+  })
+
+  it('createTask supplements empty title/description from a present prompt AT ONCE (缺则补)', () => {
+    const { controller } = makeController()
+    const task = controller.createTask({ title: '  ', description: '', prompt: '画一只猫\n并解释配色' })!
+    expect(task.title).toBe('画一只猫')
+    expect(task.description).toBe('画一只猫\n并解释配色')
+    // No prompt — nothing to derive: the head stays blank (未命名 placeholder).
+    const bare = controller.createTask({ title: '', description: '', prompt: '' })!
+    expect(bare.title).toBe('')
+    expect(bare.description).toBe('')
+  })
+
+  it('updateTask supplements a blank head once a prompt arrives (编辑时缺则补)', () => {
+    const { controller } = makeController()
+    const task = controller.createTask({ title: '', description: '', prompt: '' })!
+    expect(task.title).toBe('') // before the prompt there is nothing to derive
+    controller.updateTask(task.id, { prompt: '画一只猫\n并解释配色' })
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.title).toBe('画一只猫')
+    expect(row.description).toBe('画一只猫\n并解释配色')
+    // 填则守: an edit that keeps the (filled) fields never touches them.
+    controller.updateTask(task.id, { prompt: '画一只狗' })
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.title).toBe('画一只猫')
+  })
+
+  it('every real launch supplements: a seeded blank-head task picked up by the CRUISE runs with its head', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const task = seedTask(store, { id: 'task-a' })
+    store.save([{ ...task, title: '', description: '', prompt: '干活\n第二行', status: 'todo' }])
+    const sessions = new FakeSessions()
+    const reloaded = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    reloaded.start()
+    // The cruise pickup launches through the ONE launch door — the supplement
+    // applies there, never bypassed by automation (launchTask, not runTask).
+    reloaded.setCruiseEnabled(true)
+    expect(reloaded.getSnapshot().tasks[0].title).toBe('干活')
+    expect(reloaded.getSnapshot().tasks[0].description).toBe('干活\n第二行')
+    expect(stub.runCalls).toHaveLength(1)
+    expect(stub.runCalls[0].task.title).toBe('干活')
   })
 })
 

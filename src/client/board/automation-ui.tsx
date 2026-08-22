@@ -161,9 +161,22 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           <Icon name="link" className={css.autoMetaIcon} />
           <span className={css.autoRuleSessionTitle} title={title}>{title}</span>
         </span>
-        <span className={css.autoRuleSend}>
+        {/* 排队/插话 labels the SEND MODE, never a queueing state — the row
+            carries a real readiness glyph below; the tooltip says it plainly. */}
+        <span
+          className={css.autoRuleSend}
+          title={t(row.send === 'queue' ? 'review.sendQueueTitle' : 'review.sendSteerTitle')}
+        >
           {t(row.send === 'queue' ? 'review.sendQueue' : 'review.sendSteer')}
         </span>
+        {/* An armed on-complete rule has NOTHING queued yet: it waits for the
+            NEXT completion (驱动一次/留言一次). The chip names the REAL state
+            so the row never reads as "已经在跑" — 只有暂停/关闭/阻断才有旧 chips。 */}
+        {readiness.kind === 'active' && row.trigger === 'on-complete' && (
+          <Chip kind="muted" fill={false} title={t('auto.rule.awaitingTitle')}>
+            {t('auto.rule.awaiting')}
+          </Chip>
+        )}
         {readiness.kind === 'paused' && (
           <Chip kind="warn" fill={false}>
             {t('auto.schedule.paused')} ({t(STATUS_KEY[readiness.status])})
