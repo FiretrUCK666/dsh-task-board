@@ -46,6 +46,9 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
             <h2 className={css.reviewTitle}>{title}</h2>
             {badge !== undefined && <span className={css.reviewBadge}>{badge}</span>}
           </div>
+          {context !== undefined && (
+            <SessionContextBlock context={context} className={css.reviewHeaderContext} />
+          )}
           <div className={css.reviewActions}>
             {actions}
             <button
@@ -59,12 +62,7 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
           </div>
         </header>
         <div className={css.reviewBody}>
-          <div className={css.reviewMain}>
-            {context !== undefined && (
-              <SessionContextBlock context={context} className={css.reviewContextBlock} />
-            )}
-            {main}
-          </div>
+          <div className={css.reviewMain}>{main}</div>
           <aside className={css.reviewRail}>{rail}</aside>
         </div>
       </div>

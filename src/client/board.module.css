@@ -3967,19 +3967,22 @@ textarea.input {
   padding: 0 14px;
 }
 
-/* The review-page placement: the context readout docks at the conversation
-   pane's TOP-RIGHT — it belongs to the conversation (same family), never
-   squeezed into the rail head. The wrap spans the pane's content box; the
-   head row hugs the right 14px line, and the popover still anchors under it
-   (left/right 14 = the conversation's content box) over the transcript. */
-.reviewContextBlock {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
+/* The header placement (the ONE horizontal line of the page): the context
+   readout sits between the title and the action cluster — same baseline as
+   视频文案 / 刷新 / 查看会话 — never stealing height from either column,
+   never squeezed into the rail. The head row is content-sized (the summary
+   caps and ellipsizes); the popover anchors under its right edge and drops
+   over the body (the two-pane content, never covering the header itself). */
+.reviewHeaderContext {
+  flex: none;
+  min-width: 0;
+  max-width: 320px;
+  padding: 0;
 }
-.reviewContextBlock .sessionContextHead {
-  width: auto;
-  max-width: 100%;
+.reviewHeaderContext .sessionContextPanel {
+  left: auto;
+  right: 0;
+  width: min(360px, 56vw);
 }
 
 .sessionContextHead {
