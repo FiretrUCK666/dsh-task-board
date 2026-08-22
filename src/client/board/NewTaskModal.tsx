@@ -87,7 +87,11 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
         className={css.modalForm}
         onSubmit={event => { event.preventDefault(); submit() }}
       >
-        <TaskForm draft={draft} onChange={changeDraft} controller={controller} withStatus />
+        {/* The ONE scroll region of the dialog: the fields scroll, the header
+            and the 创建/取消 footer stay pinned (see .modal / .modalScroll). */}
+        <div className={css.modalScroll}>
+          <TaskForm draft={draft} onChange={changeDraft} controller={controller} withStatus />
+        </div>
 
         <footer className={css.modalFooter}>
           <Button onClick={onClose}>

@@ -22,7 +22,11 @@ interface ConfirmDialogProps {
 export function ConfirmDialog({ title, message, confirmLabel, danger, onCancel, onConfirm }: ConfirmDialogProps) {
   return (
     <Dialog title={title} label={title} onClose={onCancel}>
-      <p className={css.confirmMessage}>{message}</p>
+      {/* The ONE scroll region of the dialog (a long message scrolls; the
+          actions stay pinned — see .modal / .modalScroll). */}
+      <div className={css.modalScroll}>
+        <p className={css.confirmMessage}>{message}</p>
+      </div>
       <footer className={css.modalFooter}>
         <Button onClick={onCancel}>
           {t('delete.cancel')}

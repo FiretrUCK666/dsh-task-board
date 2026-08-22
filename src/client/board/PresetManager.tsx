@@ -120,47 +120,51 @@ export function PresetManager({ store, onClose }: {
       title={t('detail.schedule.presets.title')}
       className={css.presetModal}
     >
-      <div className={css.presetToolbar}>
-        <Button onClick={() => { setConfirmRestore(true) }}>
-          {t('detail.schedule.presets.restore')}
-        </Button>
-      </div>
+      {/* The ONE scroll region of the dialog: the preset list scrolls, the
+          footer stays pinned (see .modal / .modalScroll). */}
+      <div className={css.modalScroll}>
+        <div className={css.presetToolbar}>
+          <Button onClick={() => { setConfirmRestore(true) }}>
+            {t('detail.schedule.presets.restore')}
+          </Button>
+        </div>
 
-      <ul className={css.presetList}>
-        {custom.length === 0 && <li className={css.presetEmpty}>{t('detail.schedule.presets.empty')}</li>}
-        {custom.map(preset => (
-          <PresetRow
-            key={preset.id}
-            preset={preset}
-            onSave={next => { persist(custom.map(candidate => candidate.id === next.id ? next : candidate)) }}
-            onDelete={() => { persist(custom.filter(candidate => candidate.id !== preset.id)) }}
+        <ul className={css.presetList}>
+          {custom.length === 0 && <li className={css.presetEmpty}>{t('detail.schedule.presets.empty')}</li>}
+          {custom.map(preset => (
+            <PresetRow
+              key={preset.id}
+              preset={preset}
+              onSave={next => { persist(custom.map(candidate => candidate.id === next.id ? next : candidate)) }}
+              onDelete={() => { persist(custom.filter(candidate => candidate.id !== preset.id)) }}
+            />
+          ))}
+        </ul>
+
+        <div className={css.presetNew}>
+          <input
+            className={`${css.input} ${css.presetName}`}
+            value={newLabel}
+            placeholder={t('detail.schedule.presets.newName')}
+            aria-label={t('detail.schedule.presets.name')}
+            onChange={event => { setNewLabel(event.target.value); setNewError(undefined) }}
           />
-        ))}
-      </ul>
-
-      <div className={css.presetNew}>
-        <input
-          className={`${css.input} ${css.presetName}`}
-          value={newLabel}
-          placeholder={t('detail.schedule.presets.newName')}
-          aria-label={t('detail.schedule.presets.name')}
-          onChange={event => { setNewLabel(event.target.value); setNewError(undefined) }}
-        />
-        <input
-          className={`${css.input} ${css.presetCron}${newCron.trim() !== '' && !isValidCron(newCron) ? ` ${css.inputInvalid}` : ''}`}
-          value={newCron}
-          placeholder={t('detail.schedule.presets.newCron')}
-          spellCheck={false}
-          aria-label={t('detail.schedule.cron')}
-          onChange={event => { setNewCron(event.target.value); setNewError(undefined) }}
-          onKeyDown={event => { if (event.key === 'Enter') add() }}
-        />
-        <Button variant="primary" onClick={add}>
-          {t('detail.schedule.presets.add')}
-        </Button>
+          <input
+            className={`${css.input} ${css.presetCron}${newCron.trim() !== '' && !isValidCron(newCron) ? ` ${css.inputInvalid}` : ''}`}
+            value={newCron}
+            placeholder={t('detail.schedule.presets.newCron')}
+            spellCheck={false}
+            aria-label={t('detail.schedule.cron')}
+            onChange={event => { setNewCron(event.target.value); setNewError(undefined) }}
+            onKeyDown={event => { if (event.key === 'Enter') add() }}
+          />
+          <Button variant="primary" onClick={add}>
+            {t('detail.schedule.presets.add')}
+          </Button>
+        </div>
+        {newError !== undefined && <p className={css.formError}>{newError}</p>}
+        {newHint !== '' && <p className={css.scheduleMeta}>{newHint}</p>}
       </div>
-      {newError !== undefined && <p className={css.formError}>{newError}</p>}
-      {newHint !== '' && <p className={css.scheduleMeta}>{newHint}</p>}
 
       <footer className={css.modalFooter}>
         <Button onClick={onClose}>
