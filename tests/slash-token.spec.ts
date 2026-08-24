@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { SlashCandidate } from '../src/core/controller.ts'
 import {
   commandTokenAt, filterSlashCandidates, insertCommand, insertMention, mentionTokenAt,
+  referenceMenuAvailable, continueAfterPick,
 } from '../src/client/board/slash-token.ts'
 
 const CANDIDATES: readonly SlashCandidate[] = [
@@ -176,5 +177,28 @@ describe('insertMention', () => {
     const result = insertMention('@"', token, '@"src/')
     expect(result.text).toBe('@"src/')
     expect(result.caret).toBe(6)
+  })
+})
+
+describe('referenceMenuAvailable (@ 菜单能力门 — 与 / 需要 catalog 同一纪律)', () => {
+  it('opens only with BOTH a target session and the official bridge', () => {
+    expect(referenceMenuAvailable('s-1', true)).toBe(true)
+    expect(referenceMenuAvailable(undefined, true)).toBe(false)
+    expect(referenceMenuAvailable('s-1', false)).toBe(false)
+    expect(referenceMenuAvailable(undefined, false)).toBe(false)
+  })
+})
+
+describe('continueAfterPick (插入后只对目录下钻续开)', () => {
+  it('re-opens the menu ONLY for the official directory descent row', () => {
+    expect(continueAfterPick({ continue: true })).toBe(true)
+    expect(continueAfterPick({ insert: '@"src/', continue: true })).toBe(true)
+  })
+
+  it('stays closed after a plain file, a session mention or a slash pick', () => {
+    expect(continueAfterPick({ insert: '@src/main.ts' })).toBe(false)
+    expect(continueAfterPick({ insert: '@[绘画](dsh-session:czc3)' })).toBe(false)
+    expect(continueAfterPick(undefined)).toBe(false)
+    expect(continueAfterPick({ insert: '@src/main.ts', continue: false })).toBe(false)
   })
 })

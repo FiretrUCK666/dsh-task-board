@@ -300,6 +300,11 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   URI、host 不解析，是 "@ 不到 session" 的根因）。`PromptInput` 以 `sessionId`（目标
   会话）为作用域：任务的 `referenceSessionOf`（refine→执行→绑定 → 当前会话 → 列表
   首项）是唯一解析；`@"` 引号路径内不弹会话候选（官方规则）；目录下钻靠开口引号延续。
+  **@ 菜单三文法（纯函数定死）**：能力门 `referenceMenuAvailable`（缺目标会话或缺桥
+  = 不弹，与 / 缺 catalog 同一纪律，绝不显示空菜单）；空态文案 `prompt.noReferences`
+  专属（绝不借用 / 的「无匹配命令」）；插入后续开 `continueAfterPick` —— 只有目录
+  下钻（`@"路径/`）才重开菜单，文件/会话// 命令插入后一律静默（光标落在活 token 上
+  时盲重开是「无匹配命令」回归根因）。
 - **原生交互卡（评论区即答）**：agent 挂起时 `InteractionCard` 实时弹出；**回答只走
   原生 mux 通道**（`connection.api.respond({rpcId, result})`），普通留言不解决挂起的
   ask_user_question。to-do 读**官方 `todos` projection**（`pickProjections` 从历史尾页

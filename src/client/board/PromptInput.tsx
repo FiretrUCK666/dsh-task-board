@@ -21,7 +21,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import {
   commandTokenAt, insertCommand, insertMention, mentionTokenAt, filterSlashCandidates,
-  type CommandToken,
+  referenceMenuAvailable, continueAfterPick, type CommandToken,
 } from './slash-token.ts'
 import { listReferenceRows, type ReferenceRow } from './reference-source.ts'
 import { shouldFlipMenuUp } from './menu-direction.ts'
@@ -138,10 +138,15 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
   const syncMenu = (): void => {
     const text = valueRef.current
     const caret = caretRef.current
-    // '@' only when the caller supplied a target session; '/' needs the
-    // catalog ready. A typed '@' wins over a '/' when both could match (the
-    // '/' scan would otherwise treat '@foo' as a non-slash word).
-    const mentionToken = sessionId !== undefined ? mentionTokenAt(text, caret) : undefined
+    // '@' needs BOTH a target session and the official reference bridge —
+    // a missing capability never opens an empty menu (the same gate as '/'
+    // needing the slash catalog). A typed '@' wins over a '/' when both
+    // could match (the '/' scan would otherwise treat '@foo' as a non-slash
+    // word).
+    const bridgePresent = controller.referenceSources() !== undefined
+    const mentionToken = referenceMenuAvailable(sessionId, bridgePresent)
+      ? mentionTokenAt(text, caret)
+      : undefined
     const slashToken = commandTokenAt(text, caret)
     let kind: 'mention' | 'slash' | undefined
     let token: CommandToken | undefined
@@ -217,9 +222,14 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
       if (element === null) return
       element.focus()
       element.setSelectionRange(result.caret, result.caret)
-      // Re-sync after the splice: a directory's open quote (`@"path/`)
-      // re-opens the '@' menu for the next level (official descent).
-      syncMenu()
+      // Re-sync ONLY on the official directory descent (`@"path/` keeps its
+      // quote open for the next level). A plain file, a session mention and
+      // every slash completion close the menu for good — their splices leave
+      // the caret inside a live token, which would otherwise instantly
+      // re-open the menu the user just used.
+      if (menu.kind === 'mention' && continueAfterPick(row as ReferenceRow)) {
+        syncMenu()
+      }
     })
   }
 
@@ -284,7 +294,9 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
       {menu !== undefined && (
         <div className={css.slashMenu} data-direction={menu.flip ? 'up' : 'down'} role="listbox" aria-label={t('prompt.commandList')}>
           {menu.rows.length === 0 ? (
-            <div className={css.slashMenuEmpty} role="option">{t('prompt.noCommands')}</div>
+            <div className={css.slashMenuEmpty} role="option">
+              {t(menu.kind === 'mention' ? 'prompt.noReferences' : 'prompt.noCommands')}
+            </div>
           ) : menu.kind === 'mention' ? (
             (() => {
               let lastSection: ReferenceRow['section'] | undefined

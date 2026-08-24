@@ -391,6 +391,7 @@ export const zh = {
   'card.commentQueueDone': '已保存 {n} 条评论：任务已完成不会运行它们，移回「待办」后才会按顺序注入',
   'prompt.commandList': '命令列表',
   'prompt.noCommands': '无匹配命令',
+  'prompt.noReferences': '没有匹配的文件或会话',
   'prompt.skillUserOnly': '仅用户可用',
   // 插件设置卡片（settings.plugin.item 席位）。
   'settings.title': '任务看板',
@@ -802,6 +803,7 @@ export const en: Record<keyof typeof zh, string> = {
   'card.commentQueueDone': '{n} saved comments: the task is done so they will not run — move the task back to To Do to inject them in order',
   'prompt.commandList': 'Command list',
   'prompt.noCommands': 'No matching commands',
+  'prompt.noReferences': 'No matching files or sessions',
   'prompt.skillUserOnly': 'User only',
   // Plugin settings card (the `settings.plugin.item` seat).
   'settings.title': 'Task Board',

@@ -147,3 +147,27 @@ export function insertMention(
   const next = `${text.slice(0, token.start)}${insert}${text.slice(token.end)}`
   return { text: next, caret: token.start + insert.length }
 }
+
+/** THE '@' menu capability gate — same discipline as '/' (which needs the
+ *  slash catalog): the reference menu opens only when a target session
+ *  scopes the discovery AND the official reference bridge exists. A missing
+ *  capability never shows an empty "no match" menu — it behaves as if the
+ *  trigger did not exist at all. */
+export function referenceMenuAvailable(
+  sessionId: string | undefined,
+  bridgePresent: boolean,
+): boolean {
+  return sessionId !== undefined && bridgePresent
+}
+
+/** Whether picking a row should re-open the menu right after insertion.
+ *  ONLY the official directory-descent splice (`@"路径/` keeps its quote
+ *  open for the next level) continues; a plain file mention, a session
+ *  mention and every slash completion all close the menu silently — the
+ *  cursor sits inside a live token after their splice and would otherwise
+ *  instantly re-open the very menu the user just used. */
+export function continueAfterPick(
+  row: { insert?: string; continue?: boolean } | undefined,
+): boolean {
+  return row?.continue === true
+}
