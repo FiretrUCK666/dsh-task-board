@@ -288,6 +288,18 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - **统一会话与评论单轨**：相同会话 = 同一条线程（`sessionCommentsOf`）；直发/驱动/
   评论并轨为一种留言；发送两态 = 排队（经调度器/巡航/FIFO，可取消）与插话
   （`steerComment` 立即送达）；图片走 `AttachmentStrip` → host 附件桥 → prompt part。
+- **官方 @ 引用机制（文件的唯一实现 = reference-source.ts）**：所有输入框（留言/
+  完善回答/规则指令/执行 Prompt/交互卡回答）的 `@` 共用同一桥——**与主界面 ui-reference
+  相同的两个 Remote 命名空间**（`remote.fileReferences` + `remote.sessionReferenceResolver`，
+  结构化读取，缺面降级为无 @ 菜单）；插入用**官方文法**（`file-reference-grammar.ts`：
+  `activeAtToken` 引号 token + `formatFileMention`——官方包的**逐字镜像**；部署的
+  client 打包门禁禁止跨插件值导入，所以镜像 + `file-reference-grammar.spec.ts` 契约
+  测试钉死官方行为，不用任何新依赖）；会话候选插入官方规范 URI
+  `@[label](dsh-session:…)`，host 在任意 user 消息的 agent/pre-step 自动解析为
+  「引用会话」上下文——**板子只产出官方文本，解析全走官方链路**（旧版 `@标题` 无
+  URI、host 不解析，是 "@ 不到 session" 的根因）。`PromptInput` 以 `sessionId`（目标
+  会话）为作用域：任务的 `referenceSessionOf`（refine→执行→绑定 → 当前会话 → 列表
+  首项）是唯一解析；`@"` 引号路径内不弹会话候选（官方规则）；目录下钻靠开口引号延续。
 - **原生交互卡（评论区即答）**：agent 挂起时 `InteractionCard` 实时弹出；**回答只走
   原生 mux 通道**（`connection.api.respond({rpcId, result})`），普通留言不解决挂起的
   ask_user_question。to-do 读**官方 `todos` projection**（`pickProjections` 从历史尾页
@@ -475,7 +487,8 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   `presets`、`store`、`execution`、`session-activity`、`session-list`、
   `session-display`、`linked-sessions`、`question-rpc`、`refine`、`format-time`
   （核心纯逻辑）；`drag-contract`（drop-position + drag-autoscroll）、`flip`、
-  `comment-thread`、`markdown`、`slash-token`、`drafts`、`sidebar-drag`、
+  `comment-thread`、`markdown`、`slash-token`、`reference-source`（官方 @ 引用桥）、
+  `file-reference-grammar`（官方文法镜像契约）、`drafts`、`sidebar-drag`、
   `review-page`（review-transcript/context-meter/menu-direction/interaction 合并）、
   `card-contract`（card-layout + card-label 合并）、`settings-route`、
   `permission-route`、`attachment-route`、`session-state-route`（host 路由，同一

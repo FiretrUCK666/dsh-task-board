@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SlashCandidate } from '../src/core/controller.ts'
 import {
-  commandTokenAt, filterSlashCandidates, insertCommand,
+  commandTokenAt, filterSlashCandidates, insertCommand, insertMention, mentionTokenAt,
 } from '../src/client/board/slash-token.ts'
 
 const CANDIDATES: readonly SlashCandidate[] = [
@@ -123,5 +123,58 @@ describe('insertCommand', () => {
 
   it('clears the query after a space', () => {
     expect(commandTokenAt('/skills ', 8)).toBeUndefined()
+  })
+})
+
+describe('mentionTokenAt (官方 @ 文法委托 @deepseek-ai/dsh-file-reference)', () => {
+  it('detects a plain @ token at line start', () => {
+    expect(mentionTokenAt('@src', 4)).toEqual({ start: 0, end: 4, query: 'src', leading: true })
+  })
+
+  it('detects an @ token mid-line after a space', () => {
+    expect(mentionTokenAt('see @src/a', 10)).toEqual({ start: 4, end: 10, query: 'src/a', leading: false })
+  })
+
+  it('detects an OPEN QUOTED path spanning whitespace (@")', () => {
+    expect(mentionTokenAt('@"my file', 9)).toEqual({ start: 0, end: 9, query: 'my file', quoted: true, leading: true })
+  })
+
+  it('keeps an open quote alive after a directory descent (official descent)', () => {
+    const token = mentionTokenAt('@"src/', 6)
+    expect(token?.quoted).toBe(true)
+    expect(token?.query).toBe('src/')
+    expect(token?.start).toBe(0)
+  })
+
+  it('does not treat an @ inside a word (email) as a trigger', () => {
+    expect(mentionTokenAt('a@b.com', 6)).toBeUndefined()
+  })
+
+  it('returns undefined outside an @ token', () => {
+    expect(mentionTokenAt('hello', 5)).toBeUndefined()
+    expect(mentionTokenAt('', 0)).toBeUndefined()
+  })
+})
+
+describe('insertMention', () => {
+  it('splices the official mention over the whole @ token and returns the caret', () => {
+    const token = mentionTokenAt('@src', 4)!
+    const result = insertMention('@src', token, '@[绘画](dsh-session:czc3) ')
+    expect(result.text).toBe('@[绘画](dsh-session:czc3) ')
+    expect(result.caret).toBe(24)
+  })
+
+  it('replaces the quoted token including the opening quote', () => {
+    const token = mentionTokenAt('go @"my file', 12)!
+    const result = insertMention('go @"my file', token, '@"src/main.ts" ')
+    expect(result.text).toBe('go @"src/main.ts" ')
+    expect(result.caret).toBe(18)
+  })
+
+  it('keeps the directory quote open for descent (@"path/)', () => {
+    const token = mentionTokenAt('@"', 2)!
+    const result = insertMention('@"', token, '@"src/')
+    expect(result.text).toBe('@"src/')
+    expect(result.caret).toBe(6)
   })
 })

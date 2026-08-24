@@ -664,7 +664,6 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   const [draft, setDraft] = useState<string>(() => (storeKey !== undefined ? draftStore.get(storeKey) ?? '' : ''))
   const [steer, setSteer] = useState(false)
   const [attachedImages, setAttachedImages] = useState<readonly DraftImage[]>([])
-  const mentions = controller.sessionLabelsOf(taskId).map(({ sessionId, title }) => ({ id: sessionId, title }))
   const clear = (): void => {
     setDraft('')
     setAttachedImages([])
@@ -703,7 +702,7 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
         placeholder={placeholder}
         rows={3}
         controller={controller}
-        mentions={mentions}
+        sessionId={sessionId}
       />
       <div className={css.reviewComposerRow}>
         <AttachmentStrip images={attachedImages} onChange={setAttachedImages} />

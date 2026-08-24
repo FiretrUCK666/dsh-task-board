@@ -23,6 +23,7 @@ import {
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Button } from './ui.tsx'
+import { PromptInput } from './PromptInput.tsx'
 
 /** Whether a draft carries an answer (an option picked, custom text, or an
  *  explicit skip — all three make the batch complete for that question). */
@@ -157,11 +158,13 @@ export function InteractionCard({ question, sessionId, controller }: {
             <span className={css.interactionQuestion}>{planQuestion.question}</span>
             {planQuestion.detail !== undefined && <span className={css.interactionDetail}>{planQuestion.detail}</span>}
             <span className={css.interactionAmend}>
-              <input
-                className={css.input}
+              <PromptInput
                 value={amend}
+                onChange={setAmend}
                 placeholder={t('review.interactionAmendPlaceholder')}
-                onChange={event => { setAmend(event.target.value) }}
+                rows={2}
+                controller={controller}
+                sessionId={sessionId}
               />
               <span className={css.detailHint}>{t('review.interactionAmendHint')}</span>
             </span>
@@ -185,11 +188,13 @@ export function InteractionCard({ question, sessionId, controller }: {
                 ))}
               </span>
             )}
-            <input
-              className={css.input}
+            <PromptInput
               value={drafts[current.index].custom ?? ''}
+              onChange={next => { setCustom(next) }}
               placeholder={t('review.interactionTypePlaceholder')}
-              onChange={event => { setCustom(event.target.value) }}
+              rows={2}
+              controller={controller}
+              sessionId={sessionId}
             />
           </>
         ) : null}

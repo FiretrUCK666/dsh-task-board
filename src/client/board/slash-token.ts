@@ -2,13 +2,19 @@
  * Trigger autocomplete: pure text/token logic for the prompt input.
  * Framework-free so the token scan, candidate filtering and insertion rules
  * are unit-testable without React or the runtime. One tokenizer serves both
- * triggers — '/' (slash commands + skills) and '@' (session/task mentions) —
- * so the two menus share the same token, filter and flip behaviour.
+ * triggers — '/' (slash commands + skills) and '@' (files/sessions) — so the
+ * two menus share the same token, filter and flip behaviour.
  *
  * The slash candidate model mirrors the native composer's '/' menu, which
  * merges two sources: host commands (the command registry) and skills (the
  * skill catalog — every skill name is itself a slash entry like `/skill-xxx`).
+ *
+ * The '@' token delegates to the OFFICIAL grammar
+ * (`@deepseek-ai/dsh-file-reference/grammar`): `@"path with spaces` quoted
+ * tokens, word-boundary rules and the same open-quote behaviour the harness's
+ * own ui-reference input uses — the board never re-implements it.
  */
+import { activeAtToken } from './file-reference-grammar.ts'
 import type { SlashCandidate } from '../../core/controller.ts'
 
 /** The trigger token at the caret, when the caret sits in one. */
@@ -21,6 +27,8 @@ export interface CommandToken {
   query: string
   /** Whether the token starts a line (slash commands with hints show only then). */
   leading: boolean
+  /** Whether the token is an open quoted path (`@"…`); '@' only. */
+  quoted?: boolean
 }
 
 function isSeparator(char: string): boolean {
@@ -51,12 +59,24 @@ export function commandTokenAt(text: string, caret: number): CommandToken | unde
 }
 
 /**
- * Find the mention token at `caret`, the '@' twin of commandTokenAt —
- * identical scan/separator rules, different trigger, so typing `@` in the
- * composer opens the same upward/downward menu grammar as `/`.
+ * Find the mention token at `caret` — the OFFICIAL `@` grammar from
+ * `@deepseek-ai/dsh-file-reference/grammar`: an `@` must sit at a word
+ * boundary, and an open quoted path (`@"…`) is one token that may span
+ * whitespace. The span covers the whole trigger prefix (`@` or `@"`);
+ * `quoted` rides the token so the reference bridge can suppress session
+ * discovery inside quoted paths (the official source's rule).
  */
 export function mentionTokenAt(text: string, caret: number): CommandToken | undefined {
-  return tokenAt(text, caret, '@')
+  const at = activeAtToken(text, caret)
+  if (at === undefined) return undefined
+  const start = caret - at.prefix.length
+  return {
+    start,
+    end: caret,
+    query: at.query,
+    leading: text.search(/\S/) === start,
+    ...at.quoted ? { quoted: true } : {},
+  }
 }
 
 const byName = (a: { name: string }, b: { name: string }): number => a.name.localeCompare(b.name)
@@ -91,45 +111,12 @@ export function filterSlashCandidates(
   return [...commandPrefix, ...commandRest, ...skills]
 }
 
-/** A mention candidate: one session (or task) addressable by '@'. */
-export interface MentionCandidate {
-  /** Stable session id (or task id) carried into the draft for reply targeting. */
-  id: string
-  /** Display title inserted as `@<title>`. */
-  title: string
-}
-
-/**
- * Filter mention candidates against the query with the same prefix-first,
- * then-includes case-insensitive ordering the '/' menu uses, so both menus
- * sort identically.
- */
-export function filterMentionCandidates(
-  candidates: readonly MentionCandidate[],
-  query: string,
-): MentionCandidate[] {
-  const needle = query.trim().toLowerCase()
-  const matching = candidates
-    .filter(candidate => needle === '' || candidate.title.toLowerCase().includes(needle))
-  const prefix = matching
-    .filter(candidate => needle !== '' && candidate.title.toLowerCase().startsWith(needle))
-  const rest = matching
-    .filter(candidate => needle === '' || !candidate.title.toLowerCase().startsWith(needle))
-  return [...prefix, ...rest]
-}
-
-/**
- * The replacement text for a picked candidate, mirroring the native menu.
- * Slash completions mirror the native '/' menu; '@' completions insert the
- * mentioned session's title with a trailing space so typing continues.
- */
+/** The replacement text for a picked slash candidate, mirroring the native
+ *  menu: commands complete to `/<name>`, skills and commands with an input
+ *  hint add a trailing space so typing continues. */
 export function commandCompletion(candidate: SlashCandidate): string {
   const needsSpace = candidate.kind === 'skill' || candidate.hint !== undefined
   return `/${candidate.name}${needsSpace ? ' ' : ''}`
-}
-
-export function mentionCompletion(title: string): string {
-  return `@${title} `
 }
 
 /**
@@ -144,4 +131,19 @@ export function insertCommand(
   const completion = commandCompletion(candidate)
   const next = `${text.slice(0, token.start)}${completion}${text.slice(token.end)}`
   return { text: next, caret: token.start + completion.length }
+}
+
+/**
+ * Replace the whole '@' token span with an official mention splice (a
+ * `@path` / `@"path"` file mention or a canonical `@[label](dsh-session:…)`
+ * session mention). Pure span surgery shared by every board input.
+ * @returns the new text and the caret position after insertion.
+ */
+export function insertMention(
+  text: string,
+  token: CommandToken,
+  insert: string,
+): { text: string; caret: number } {
+  const next = `${text.slice(0, token.start)}${insert}${text.slice(token.end)}`
+  return { text: next, caret: token.start + insert.length }
 }

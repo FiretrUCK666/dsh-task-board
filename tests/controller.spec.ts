@@ -1220,6 +1220,32 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
   })
 })
 
+describe('referenceSessionOf (官方 @ 菜单的目标会话解析)', () => {
+  it('resolves the task own related session first (refine → execution → linked)', () => {
+    const { controller, sessions } = makeController()
+    sessions.setCurrent('native-current')
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    // A bound session makes it the task's own related session.
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 'bound-1' })
+    expect(controller.referenceSessionOf(task.id)).toBe('bound-1')
+    expect(controller.referenceSessionOf(undefined)).toBe('native-current')
+  })
+
+  it('falls back to the staged native session, then the first list entry', () => {
+    const { controller, sessions } = makeController()
+    sessions.setCurrent('staged')
+    expect(controller.referenceSessionOf(undefined)).toBe('staged')
+    sessions.setCurrent(undefined)
+    sessions.setRunning('only-one', false)
+    expect(controller.referenceSessionOf(undefined)).toBe('only-one')
+  })
+
+  it('returns undefined only when there is no task session and no native session', () => {
+    const { controller } = makeController()
+    expect(controller.referenceSessionOf(undefined)).toBeUndefined()
+  })
+})
+
 describe('auto-cruise', () => {
   it('defaults to off with a limit of 5 when nothing is stored', () => {
     const { controller } = makeController()

@@ -164,6 +164,42 @@ export interface RunCatalogFace {
   listSlashCandidates(): Promise<readonly SlashCandidate[] | undefined>
 }
 
+/** One file/directory candidate of the OFFICIAL `@file` discovery (the
+ *  `remote.fileReferences.list` result row). Structural — no SDK import. */
+export interface ReferenceFileCandidate {
+  kind: 'file' | 'directory'
+  path: string
+}
+
+/** One session candidate of the OFFICIAL session-reference discovery (the
+ *  `remote.sessionReferenceResolver.candidates` result row). Structural —
+ *  no SDK import. `mention` is the canonical `@[label](dsh-session:…)`
+ *  prompt text, pre-serialized by the host. */
+export interface ReferenceSessionCandidate {
+  sessionId: string
+  label: string
+  cwd?: string
+  createdAt: number
+  mention: string
+}
+
+/** The structural face of the two Remote namespaces behind the OFFICIAL '@'
+ *  reference source (the harness's ui-reference calls exactly these). */
+export interface ReferenceRemoteFace {
+  fileReferences?: {
+    list(sessionId: string, query: string, signal: AbortSignal): Promise<
+      | { ok: true; value: readonly ReferenceFileCandidate[] }
+      | { ok: false; error: unknown }
+    >
+  }
+  sessionReferenceResolver?: {
+    candidates(sessionId: string, query: string, signal: AbortSignal): Promise<
+      | { ok: true; value: readonly ReferenceSessionCandidate[] }
+      | { ok: false; error: unknown }
+    >
+  }
+}
+
 /** The editable slice of a task (content + run configuration). */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   'title' | 'description' | 'prompt' | 'workspaceId' | 'provider' | 'model'
@@ -309,6 +345,13 @@ export interface ControllerDeps {
   workspaces?: WorkspacesControllerFace
   /** Optional run-catalog surface (workspace/model pickers in the new-task form). */
   runCatalog?: RunCatalogFace
+  /**
+   * Optional official reference bridge for the '@' mention menus: the SAME
+   * two Remote namespaces the harness's own ui-reference source calls
+   * (file discovery + session-reference discovery). Structurally narrowed so
+   * no SDK package is imported; unavailable surfaces degrade to no '@' menu.
+   */
+  reference?: ReferenceRemoteFace
   /** Clock; defaults to Date.now. */
   now?: () => number
   /** Id minting; defaults to a random-uuid. */
@@ -489,6 +532,40 @@ export class BoardController {
   /** The run-catalog face for form selects, or undefined when not wired. */
   runCatalog(): RunCatalogFace | undefined {
     return this.deps.runCatalog
+  }
+
+  /** The OFFICIAL '@' reference bridge (file + session discovery), or
+   *  undefined when the deployment does not expose the Remote namespaces —
+   *  the '@' menu then stays closed (the same graceful degradation as a
+   *  missing slash catalog). */
+  referenceSources(): ReferenceRemoteFace | undefined {
+    return this.deps.reference
+  }
+
+  /**
+   * The best session to scope an input's '@' menu to — ONE deterministic
+   * resolution shared by every board input (the reference RPCs are
+   * session-scoped: file discovery uses the session's cwd, session
+   * discovery excludes the target itself):
+   * 1. the task's own related session (refine → execution → linked, the
+   *    same order every surface reads);
+   * 2. the currently staged native session;
+   * 3. the first session of the native list.
+   * undefined only when there is no task and no session at all.
+   */
+  referenceSessionOf(taskId: string | undefined): string | undefined {
+    if (taskId !== undefined) {
+      const task = this.tasks.find(candidate => candidate.id === taskId)
+      if (task !== undefined) {
+        for (const { sessionId } of this.relatedSessionsOf(task)) {
+          if (sessionId !== undefined) return sessionId
+        }
+      }
+    }
+    const state = this.deps.sessions.list.getSnapshot()
+    if (state.current !== undefined) return state.current
+    const first = Object.keys(state.byId)[0]
+    return first !== undefined ? first : undefined
   }
 
   /**

@@ -1613,6 +1613,18 @@ textarea.input {
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* The official reference menu's group heading (文件与文件夹 / Session 对话):
+   a quiet one-line label above each group's rows, shown only when the group
+   changes — the native menu's section grammar. */
+.slashMenuSection {
+  padding: 5px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 /* --- detail ------------------------------------------------------------------- */
 
 .detail {

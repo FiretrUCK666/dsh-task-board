@@ -300,9 +300,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   const [latest, setLatest] = useState(task)
   useEffect(() => { setLatest(task) }, [task])
   const current = latest
-  // The task's related sessions for every composer's @ mention (edit form,
-  // review/refine surfaces share the same picker grammar).
-  const mentions = controller.sessionLabelsOf(current.id).map(({ sessionId, title }) => ({ id: sessionId, title }))
+  // The ONE session scoping every composer's official '@' reference menu on
+  // this surface: the task's own first related session (deterministic).
+  const referenceSession = controller.referenceSessionOf(current.id)
 
   // Unsaved-edit draft memory: switching to a task restores its stored draft
   // (auto-entering edit mode), so half-typed edits survive switching away and
@@ -557,7 +557,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                   draftStore.set(editDraftKey(current.id), JSON.stringify(next))
                 }}
                 controller={controller}
-                mentions={mentions}
+                sessionId={referenceSession}
               />
               {editError !== undefined && <p className={css.formError}>{editError}</p>}
               {draftRestored && <p className={css.detailHint}>{t('detail.editDraftRestored')}</p>}

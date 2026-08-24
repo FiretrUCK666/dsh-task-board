@@ -20,15 +20,16 @@ import { RunPresetManager } from './RunPresetManager.tsx'
 import type { TaskDraft } from './task-draft.ts'
 
 /** The shared new/edit task form. */
-export function TaskForm({ draft, onChange, controller, withStatus = false, mentions = [] }: {
+export function TaskForm({ draft, onChange, controller, withStatus = false, sessionId }: {
   draft: TaskDraft
   onChange: (next: TaskDraft) => void
   controller: BoardController
   /** Show the landing-column selector (new-task modal only). */
   withStatus?: boolean
-  /** The task's related sessions for the prompt's @ mention (the edit form
-   *  supplies them; a new task has none yet). */
-  mentions?: ReadonlyArray<{ id: string; title: string }>
+  /** The session scoping the run prompt's official '@' reference menu — the
+   *  task's own session when editing; a resolved current/first session (or
+   *  undefined = '@' closed) when creating. */
+  sessionId?: string
 }) {
   // The run-config preset state (the SAME store the new-task modal and the
   // edit form share — one grammar, one source; both surfaces instant-switch).
@@ -98,7 +99,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, ment
           placeholder={t('new.promptPlaceholder')}
           rows={4}
           controller={controller}
-          mentions={mentions}
+          sessionId={sessionId}
         />
       </label>
 

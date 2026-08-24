@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController, type HostImageRef, type PermissionOptionShape, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
+import { BoardController, type HostImageRef, type PermissionOptionShape, type ReferenceRemoteFace, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
@@ -397,6 +397,28 @@ export function apply(ctx: ClientContext): void {
       }
     }
 
+    // The OFFICIAL '@' reference bridge: the two Remote namespaces behind the
+    // harness's own ui-reference source (file discovery + session-reference
+    // discovery). Read structurally, exactly like remote.commands above —
+    // namespace service by registered name first, then the parent remote
+    // service's child property. Absent namespaces degrade to "no @ menu"
+    // (see reference-source.ts); nothing is hard-coded, so the deployment's
+    // own file/session discovery is consumed as-is.
+    const referenceBridge = ((): ReferenceRemoteFace | undefined => {
+      const fileReferences = ctx.get('remote.fileReferences') as ReferenceRemoteFace['fileReferences'] | undefined
+        ?? (ctx.get('remote') as Partial<ReferenceRemoteFace> | undefined)?.fileReferences
+      const sessionReferenceResolver = ctx.get('remote.sessionReferenceResolver') as ReferenceRemoteFace['sessionReferenceResolver'] | undefined
+        ?? (ctx.get('remote') as Partial<ReferenceRemoteFace> | undefined)?.sessionReferenceResolver
+      if (fileReferences === undefined && sessionReferenceResolver === undefined) {
+        console.warn('[dsh-task-board] @ reference menu unavailable: no remote file/session bridge')
+        return undefined
+      }
+      return {
+        ...fileReferences !== undefined ? { fileReferences } : {},
+        ...sessionReferenceResolver !== undefined ? { sessionReferenceResolver } : {},
+      }
+    })()
+
     // Pending native questions ride the board's own mux stream: the host
     // replays every still-pending frame on open, and answers flow through
     // the same respond wire call the native composer uses — the only path
@@ -425,6 +447,11 @@ export function apply(ctx: ClientContext): void {
           subscribe: fn => workspaces.list.subscribe(fn),
         },
       },
+      // The OFFICIAL '@' reference bridge: the two Remote namespaces behind
+      // the harness's own ui-reference source (file discovery + session
+      // discovery), read structurally like remote.commands — absent namespaces
+      // degrade to "no @ menu" (the prompt inputs stay fully usable).
+      reference: referenceBridge,
       // Auto-cruise state persists across reloads (toggle + concurrency).
       cruiseStorage: {
         read: () => {

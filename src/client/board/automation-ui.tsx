@@ -377,7 +377,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
                 placeholder={t('auto.form.instructionPlaceholder')}
                 rows={3}
                 controller={controller}
-                mentions={labels.map(({ sessionId, title }) => ({ id: sessionId, title }))}
+                sessionId={sessionId === '' ? undefined : sessionId}
                 invalid={error === 'instruction'}
               />
               {error === 'instruction' && <span className={css.formError}>{t('auto.form.invalidInstruction')}</span>}

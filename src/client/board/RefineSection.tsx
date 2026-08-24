@@ -171,7 +171,7 @@ export function RefineSection({ controller, task }: {
               placeholder={t('detail.refine.answerPlaceholder')}
               rows={3}
               controller={controller}
-              mentions={controller.sessionLabelsOf(task.id).map(({ sessionId, title }) => ({ id: sessionId, title }))}
+              sessionId={sessionId}
             />
             <Button variant="primary" disabled={draft.trim() === ''} onClick={send}>
               {t('detail.refine.send')}
