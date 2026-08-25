@@ -23,7 +23,7 @@ import {
   commandTokenAt, insertCommand, insertMention, mentionTokenAt, filterSlashCandidates,
   referenceMenuAvailable, continueAfterPick, type CommandToken,
 } from './slash-token.ts'
-import { listReferenceRows, type ReferenceDiag, type ReferenceRow } from './reference-source.ts'
+import { fallbackSessionRowsOf, listReferenceRows, type ReferenceDiag, type ReferenceRow } from './reference-source.ts'
 import { shouldFlipMenuUp } from './menu-direction.ts'
 
 /** Menu row cap: keeps the list scannable and scrollbar-free. */
@@ -119,11 +119,24 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
       controllerRef.signal,
     ).then(({ rows, diag }) => {
       if (!alive || controllerRef.signal.aborted) return
-      if (diag.files !== undefined || diag.sessions !== undefined) {
-        console.warn('[dsh-task-board] @ reference menu degraded:', JSON.stringify(diag))
+      let nextRows = rows
+      let nextDiag = diag
+      // Host sessions-half unavailable (e.g. the target session is
+      // subagent-owned and the gateway refuses the lookup): degrade to the
+      // board's own session catalog with the OFFICIAL mention grammar —
+      // a picked row still resolves through the host's pre-step parser.
+      if (diag.sessions !== undefined && rows.every(row => (row as ReferenceRow).section !== 'sessions')) {
+        const fallback = fallbackSessionRowsOf(controller.referenceSessionCatalog(), sessionId)
+        if (fallback.length > 0) {
+          nextRows = [...rows, ...fallback]
+          nextDiag = { ...diag, sessions: { ...diag.sessions, fallback: true } }
+        }
+      }
+      if (nextDiag.files !== undefined || nextDiag.sessions !== undefined) {
+        console.warn('[dsh-task-board] @ reference menu degraded:', JSON.stringify(nextDiag))
       }
       setMenu(previous => previous !== undefined && previous.kind === 'mention' && sameMentionSpan(previous.token, mentionReq)
-        ? { ...previous, rows, diag }
+        ? { ...previous, rows: nextRows, diag: nextDiag }
         : previous)
     }).catch(() => {
       if (alive) console.warn('[dsh-task-board] @ reference fetch failed unexpectedly')
@@ -304,6 +317,18 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
           {t(section === 'files' ? 'ref.section.files' : 'ref.section.sessions')}
         </div>,
       )
+      // A failed half reports its notice IN its section — above the rows when
+      // the board catalog substituted them (honest: the rows are not the host
+      // candidates), instead of a bare "no match".
+      if (failed !== undefined && (sectionRows.length === 0 || failed.fallback === true)) {
+        items.push(
+          <div key={`fail:${section}`} className={css.slashMenuEmpty} role="option" aria-disabled="true">
+            {t(section === 'files' ? 'ref.fail.files' : 'ref.fail.sessions')}
+            {failed.code !== undefined ? ` (${failed.code})` : ''}
+            {failed.fallback === true ? ` · ${t('ref.fail.fallback')}` : ''}
+          </div>,
+        )
+      }
       if (sectionRows.length > 0) {
         for (const mention of sectionRows) {
           rowIndex += 1
@@ -324,13 +349,6 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
             </button>,
           )
         }
-      } else if (failed !== undefined) {
-        items.push(
-          <div key={`fail:${section}`} className={css.slashMenuEmpty} role="option" aria-disabled="true">
-            {t(section === 'files' ? 'ref.fail.files' : 'ref.fail.sessions')}
-            {failed.code !== undefined ? ` (${failed.code})` : ''}
-          </div>,
-        )
       }
     }
     if (items.length === 0) {

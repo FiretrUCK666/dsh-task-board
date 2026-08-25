@@ -18,10 +18,11 @@ interface ConfirmDialogProps {
   onConfirm: () => void
 }
 
-/** Small confirm overlay. */
+/** Small confirm overlay. AlWAYS portaled: a confirmation is an overlay on
+ *  an overlay — it must escape the enclosing dialog's box (see Dialog). */
 export function ConfirmDialog({ title, message, confirmLabel, danger, onCancel, onConfirm }: ConfirmDialogProps) {
   return (
-    <Dialog title={title} label={title} onClose={onCancel}>
+    <Dialog title={title} label={title} onClose={onCancel} portal>
       {/* The ONE scroll region of the dialog (a long message scrolls; the
           actions stay pinned — see .modal / .modalScroll). */}
       <div className={css.modalScroll}>

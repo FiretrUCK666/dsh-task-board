@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { ReferenceRemoteFace } from '../src/core/controller.ts'
-import { listReferenceRows, type ReferenceMenuResult } from '../src/client/board/reference-source.ts'
+import { fallbackSessionRowsOf, listReferenceRows, type ReferenceMenuResult } from '../src/client/board/reference-source.ts'
 
 /** A fake OFFLINE bridge shaped exactly like the structural face. */
 function fakeBridge(): ReferenceRemoteFace {
@@ -198,5 +198,42 @@ describe('listReferenceRows (官方 @ 候选桥)', () => {
     const pending = listReferenceRows(bridge, 's-target', '', false, controller.signal)
     controller.abort()
     expect(await pending).toEqual({ rows: [], diag: {} })
+  })
+})
+
+describe('fallbackSessionRowsOf (宿主会话候选不可用时的板内目录降级)', () => {
+  const catalog = [
+    { sessionId: 's-target', label: '目标(排除)' },
+    { sessionId: 's-1', label: '绘画' },
+    { sessionId: 's-2', label: 's-2' },
+  ]
+
+  it('excludes the target session (official self rule)', () => {
+    const rows = fallbackSessionRowsOf(catalog, 's-target')
+    expect(rows.map(row => row.key)).toEqual(['session:s-1', 'session:s-2'])
+  })
+
+  it('renders official row copy and the OFFICIAL canonical mention', () => {
+    const rows = fallbackSessionRowsOf(catalog, 's-target')
+    expect(rows[0].name).toBe('Session · 绘画')
+    expect(rows[0].description).toBe('s-1 · （无工作目录）')
+    expect(rows[0].insert).toBe('@[绘画](dsh-session:InMtMSI)')
+    expect(rows[1].description).toBe('（无工作目录）')
+    expect(rows[1].insert).toBe('@[s-2](dsh-session:InMtMiI)')
+  })
+
+  it('escapes a label like the deployed mention grammar', () => {
+    const rows = fallbackSessionRowsOf([{ sessionId: 's1', label: 'a[b]\\c' }], 'target')
+    expect(rows[0].insert).toBe('@[a[b\\]\\\\c](dsh-session:InMxIg)')
+  })
+
+  it('caps at the host candidateLimit default', () => {
+    const many = Array.from({ length: 60 }, (_value, index) => ({ sessionId: `s-${index}`, label: `L${index}` }))
+    expect(fallbackSessionRowsOf(many, 's-target').length).toBe(50)
+  })
+
+  it('preserves catalog order', () => {
+    const rows = fallbackSessionRowsOf([{ sessionId: 'b', label: 'B' }, { sessionId: 'a', label: 'A' }], 'target')
+    expect(rows.map(row => row.name)).toEqual(['Session · B', 'Session · A'])
   })
 })

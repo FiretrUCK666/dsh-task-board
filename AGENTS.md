@@ -220,7 +220,12 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   背景；所有内层浮起/下沉表面（卡片/对话/面板/评论/菜单，`--dsh-tb-surface-float/
   -sunken/-menu`）一律**不透明**（原生约定：玻璃皮肤下内表面保可读）。
 - **面板几何（随板居中）**：`.modalBackdrop` 为看板盒内 absolute 定位，浮层由 flex 在
-  其中居中——与侧栏宽度、祖先 transform/filter、皮肤效果完全解耦。
+  其中居中——与侧栏宽度、祖先 transform/filter、皮肤效果完全解耦。**嵌套浮层（弹窗
+  内再开的弹窗/确认框）必须 `portal` 到看板盒**（`Dialog` 的 `portal` 选项；`ConfirmDialog`
+  恒真）——内层若留在外层弹窗 DOM 内，其 backdrop（absolute inset:0）会锚定外层
+  `.modal`（position:relative）并被其 `overflow:hidden` 裁剪，浮层随即「被限死/被截住」
+  （管理预设弹窗回归的根因）；portaled 浮层与所有板浮层同层居中、自持滚动，永不受
+  外层盒子约束。
 - **共用部件**（一律复用，不手写重复标记）：`ui.tsx`（Button primary/ghost/danger/
   **dangerGhost**（行内轻量危险）+ `size="sm"`（24px 胶囊）+ `pressed`、Section、
   Disclosure、Notice、AttentionDot、Icon、Switch）、`Chip`、`Dialog`、`PromptInput`、
@@ -308,7 +313,15 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   或会话」根因之一）；失败原因进 `diag`（宿主错误码透传），菜单按官方分节顺序
   （文件→会话）就地显示 `ref.fail.*`「暂不可用」提示行（带错误码），只有两域都成功
   且真无匹配才显示 `prompt.noReferences`；PromptInput 拉取效果链带兜底 catch（失败
-  保留旧行，绝不留空菜单死等——「等太久不弹结果」亦是同一根因）。
+  保留旧行，绝不留空菜单死等——「等太久不弹结果」亦是同一根因）。**宿主会话候选
+  不可用（例如目标会话由子代理路由托管，网关以 `agent-busy` 拒绝查找——实测该场景
+  下官方与看板都以空降级）时启用板内目录降级**：`controller.referenceSessionCatalog()`
+  （原生会话目录 id+标题）+ `fallbackSessionRowsOf`（排除自身、上限 50、描述文法同
+  官方）——插入文本仍是**官方规范 mention**（`session-mention.ts`：部署版
+  `encodeSessionReferenceUri/escapeLabel/formatSessionReferenceMention` 的逐字镜像，
+  `dsh-session:` + base64url(JSON(id))，`session-mention.spec.ts` 用部署模块生成的
+  固定值钉死）——**只降级「发现」，绝不降级「解析」**：宿主 pre-step 照常解析该
+  mention。降级行在会话分组内以「已列出板内会话」诚实标注，绝不冒充宿主候选。
   **@ 菜单三文法（纯函数定死）**：能力门 `referenceMenuAvailable`（缺目标会话或缺桥
   = 不弹，与 / 缺 catalog 同一纪律，绝不显示空菜单）；空态文案 `prompt.noReferences`
   专属（绝不借用 / 的「无匹配命令」）；插入后续开 `continueAfterPick` —— 只有目录

@@ -569,6 +569,22 @@ export class BoardController {
   }
 
   /**
+   * The board's own session catalog (id + latest title, native list order)
+   * for the '@' fallback rows: when the host's candidates half is
+   * unavailable (e.g. the target session is subagent-owned and the gateway
+   * refuses the lookup with agent-busy), the menu still offers the other
+   * sessions — the INSERTED text stays the official canonical mention, so
+   * the host's pre-step parser resolves them exactly like host candidates.
+   */
+  referenceSessionCatalog(): ReadonlyArray<{ sessionId: string; label: string }> {
+    const state = this.deps.sessions.list.getSnapshot()
+    return Object.entries(state.byId).map(([sessionId, summary]) => ({
+      sessionId,
+      label: typeof summary.title === 'string' && summary.title !== '' ? summary.title : sessionId,
+    }))
+  }
+
+  /**
    * Read a session's recent history events for the review page's transcript
    * (the fold happens in the UI), together with the native projection
    * baseline (context pressure / breakdown) riding the history tail page.

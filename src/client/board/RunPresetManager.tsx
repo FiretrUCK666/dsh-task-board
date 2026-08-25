@@ -104,81 +104,87 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
       onClose={onClose}
       title={t('runPreset.manageTitle')}
       className={css.autoModal}
+      portal
     >
-      <div className={css.presetList}>
-        <div className={css.runPresetRow}>
-          <span className={css.runPresetName} title={t('runPreset.deployDefaultHint')}>
-            {t('runPreset.deployDefault')}
-            {doc.defaultId === undefined && <span className={css.runPresetDefaultBadge}>{t('runPreset.defaultBadge')}</span>}
-          </span>
-          <span className={css.detailHint}>{t('runPreset.deployDefaultNote')}</span>
-          {doc.defaultId !== undefined && (
-            <Button size="sm" onClick={() => { setDefault(DEPLOY_DEFAULT_PRESET_ID) }}>
-              {t('runPreset.setDefault')}
-            </Button>
-          )}
-        </div>
-        {doc.presets.map(preset => (
-          <div key={preset.id} className={css.runPresetRow}>
-            <span className={css.runPresetName} title={preset.name}>
-              {preset.name}
-              {doc.defaultId === preset.id && <span className={css.runPresetDefaultBadge}>{t('runPreset.defaultBadge')}</span>}
+      {/* The ONE scroll region: the preset list and the add/edit form scroll
+          together; the hint footer stays pinned (see .modal / .modalScroll)
+          — a tall form never clips or hides its actions. */}
+      <div className={css.modalScroll}>
+        <div className={css.presetList}>
+          <div className={css.runPresetRow}>
+            <span className={css.runPresetName} title={t('runPreset.deployDefaultHint')}>
+              {t('runPreset.deployDefault')}
+              {doc.defaultId === undefined && <span className={css.runPresetDefaultBadge}>{t('runPreset.defaultBadge')}</span>}
             </span>
-            <span className={css.detailHint}>{t('runPreset.configCount', { n: String(configCount(preset.config)) })}</span>
-            <span className={css.autoRuleActions}>
-              {doc.defaultId !== preset.id && (
-                <Button size="sm" onClick={() => { setDefault(preset.id) }}>
-                  {t('runPreset.setDefault')}
-                </Button>
-              )}
-              <Button size="sm" title={t('runPreset.editTitle')} onClick={() => { startForm(preset.id) }}>
-                {t('runPreset.edit')}
+            <span className={css.detailHint}>{t('runPreset.deployDefaultNote')}</span>
+            {doc.defaultId !== undefined && (
+              <Button size="sm" onClick={() => { setDefault(DEPLOY_DEFAULT_PRESET_ID) }}>
+                {t('runPreset.setDefault')}
               </Button>
-              <Button size="sm" variant="dangerGhost" title={t('runPreset.deleteTitle')} onClick={() => { remove(preset) }}>
-                {t('runPreset.delete')}
+            )}
+          </div>
+          {doc.presets.map(preset => (
+            <div key={preset.id} className={css.runPresetRow}>
+              <span className={css.runPresetName} title={preset.name}>
+                {preset.name}
+                {doc.defaultId === preset.id && <span className={css.runPresetDefaultBadge}>{t('runPreset.defaultBadge')}</span>}
+              </span>
+              <span className={css.detailHint}>{t('runPreset.configCount', { n: String(configCount(preset.config)) })}</span>
+              <span className={css.autoRuleActions}>
+                {doc.defaultId !== preset.id && (
+                  <Button size="sm" onClick={() => { setDefault(preset.id) }}>
+                    {t('runPreset.setDefault')}
+                  </Button>
+                )}
+                <Button size="sm" title={t('runPreset.editTitle')} onClick={() => { startForm(preset.id) }}>
+                  {t('runPreset.edit')}
+                </Button>
+                <Button size="sm" variant="dangerGhost" title={t('runPreset.deleteTitle')} onClick={() => { remove(preset) }}>
+                  {t('runPreset.delete')}
+                </Button>
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {formKey === undefined ? (
+          <span className={css.autoAddAction}>
+            <Button size="sm" onClick={() => { startForm('new') }}>
+              {t('runPreset.add')}
+            </Button>
+          </span>
+        ) : (
+          <div className={css.autoForm}>
+            <label className={css.autoField}>
+              <span className={css.autoFieldLabel}>{t('runPreset.name')}</span>
+              <input
+                className={`${css.input} ${css.scheduleMaxInput}`}
+                value={name}
+                autoFocus
+                placeholder={t('runPreset.namePlaceholder')}
+                spellCheck={false}
+                onChange={event => { setName(event.target.value); setError(undefined) }}
+                onKeyDown={event => { if (event.key === 'Enter') save() }}
+              />
+            </label>
+            <p className={css.detailHint}>{t('runPreset.formHint')}</p>
+            {error !== undefined && <p className={css.formError}>{error}</p>}
+            <RunConfigEditor value={config} onChange={setConfig} controller={controller} />
+            <span className={css.autoFormActions}>
+              <Button size="sm" variant="primary" onClick={save}>
+                {t('runPreset.save')}
+              </Button>
+              <Button size="sm" onClick={() => { setFormKey(undefined); setName(''); setError(undefined) }}>
+                {t('detail.cancel')}
               </Button>
             </span>
           </div>
-        ))}
+        )}
       </div>
 
-      {formKey === undefined ? (
-        <span className={css.autoAddAction}>
-          <Button size="sm" onClick={() => { startForm('new') }}>
-            {t('runPreset.add')}
-          </Button>
-        </span>
-      ) : (
-        <div className={css.autoForm}>
-          <label className={css.autoField}>
-            <span className={css.autoFieldLabel}>{t('runPreset.name')}</span>
-            <input
-              className={`${css.input} ${css.scheduleMaxInput}`}
-              value={name}
-              autoFocus
-              placeholder={t('runPreset.namePlaceholder')}
-              spellCheck={false}
-              onChange={event => { setName(event.target.value); setError(undefined) }}
-              onKeyDown={event => { if (event.key === 'Enter') save() }}
-            />
-          </label>
-          <p className={css.detailHint}>{t('runPreset.formHint')}</p>
-          {error !== undefined && <p className={css.formError}>{error}</p>}
-          <RunConfigEditor value={config} onChange={setConfig} controller={controller} />
-          <span className={css.autoFormActions}>
-            <Button size="sm" variant="primary" onClick={save}>
-              {t('runPreset.save')}
-            </Button>
-            <Button size="sm" onClick={() => { setFormKey(undefined); setName(''); setError(undefined) }}>
-              {t('detail.cancel')}
-            </Button>
-          </span>
-        </div>
-      )}
-
-      <div className={css.presetToolbar}>
+      <footer className={css.presetFooter}>
         <span className={css.detailHint}>{t('runPreset.hint')}</span>
-      </div>
+      </footer>
     </Dialog>
   )
 }
