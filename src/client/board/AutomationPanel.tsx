@@ -87,15 +87,21 @@ export function AutomationPanel({ controller, onClose }: {
 
   return (
     <Dialog title={t('auto.title')} label={t('auto.title')} onClose={onClose} className={css.autoModal}>
-      {automated.length === 0 ? (
-        <p className={css.autoEmpty}>{t('auto.empty')}</p>
-      ) : (
-        <div className={css.autoList}>
-          {automated.map(task => (
-            <AutomationTaskCard key={task.id} controller={controller} task={task} onClose={onClose} />
-          ))}
-        </div>
-      )}
+      {/* The ONE scroll region of the dialog: the task cards (each expanding
+          into the full automation editor) scroll together; the header stays
+          pinned — tall editors never clip their own bottom (save buttons
+          stay reachable). See .modal / .modalScroll. */}
+      <div className={css.modalScroll}>
+        {automated.length === 0 ? (
+          <p className={css.autoEmpty}>{t('auto.empty')}</p>
+        ) : (
+          <div className={css.autoList}>
+            {automated.map(task => (
+              <AutomationTaskCard key={task.id} controller={controller} task={task} onClose={onClose} />
+            ))}
+          </div>
+        )}
+      </div>
     </Dialog>
   )
 }

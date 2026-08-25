@@ -24,7 +24,6 @@
  * so the menu can show it honestly instead of a bare "no match".
  */
 import { formatFileMention } from './file-reference-grammar.ts'
-import { formatSessionReferenceMention } from './session-mention.ts'
 import { t } from '../locales.ts'
 import type {
   ReferenceFileCandidate,
@@ -48,21 +47,15 @@ export interface ReferenceRow {
   continue?: boolean
 }
 
-/** Why one half produced no rows: the host envelope's error code when one
- *  was carried, and — sessions only — whether the board catalog substituted
- *  rows (see fallbackSessionRowsOf). */
-export interface ReferenceDiagEntry {
-  code?: string
-  fallback?: boolean
-}
-
-/** Why one candidate half produced no rows — the honest empty-state input.
- *  A half is absent from `diag` when it simply had no matches. */
+/** Why one half produced no rows — the OFFICIAL log-only contract: a failed
+ *  source is removed from the menu silently and logged (the official
+ *  ui-reference behaves exactly this way); the menu never carries a failure
+ *  text. `code` is the host envelope's error code when one was carried. */
 export interface ReferenceDiag {
   /** Files half unavailable (missing namespace / failed RPC). */
-  files?: ReferenceDiagEntry
+  files?: { code?: string }
   /** Sessions half unavailable (missing namespace / failed RPC). */
-  sessions?: ReferenceDiagEntry
+  sessions?: { code?: string }
   /** Malformed candidates skipped by the row guard (never crashes the menu). */
   skipped?: number
 }
@@ -215,31 +208,4 @@ export async function listReferenceRows(
   }
   if (skipped > 0) diag.skipped = skipped
   return { rows, diag }
-}
-
-/**
- * The board-catalog session rows: the SAME ReferenceRow shape as the official
- * half, but sourced from the board's own session catalog (id + latest title,
- * native list order). Inserted text stays the OFFICIAL canonical mention
- * (`formatSessionReferenceMention`), so the host's pre-step parser resolves a
- * picked row exactly like a host candidate — only the DISCOVERY half
- * degrades (the host `candidates` endpoint failed or the target session is
- * subagent-owned). Self is excluded (the official rule); cap mirrors the
- * host's candidateLimit default.
- */
-export function fallbackSessionRowsOf(
-  catalog: ReadonlyArray<{ sessionId: string; label: string }>,
-  targetSessionId: string,
-  limit = 50,
-): ReferenceRow[] {
-  return catalog
-    .filter(entry => entry.sessionId !== targetSessionId)
-    .slice(0, limit)
-    .map(entry => ({
-      section: 'sessions' as const,
-      name: `${t('ref.candidate.session')} · ${entry.label}`,
-      description: `${entry.label === entry.sessionId ? '' : `${entry.sessionId} · `}${t('ref.candidate.noCwd')}`,
-      key: `session:${entry.sessionId}`,
-      insert: formatSessionReferenceMention(entry),
-    }))
 }

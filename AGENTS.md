@@ -222,10 +222,14 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - **面板几何（随板居中）**：`.modalBackdrop` 为看板盒内 absolute 定位，浮层由 flex 在
   其中居中——与侧栏宽度、祖先 transform/filter、皮肤效果完全解耦。**嵌套浮层（弹窗
   内再开的弹窗/确认框）必须 `portal` 到看板盒**（`Dialog` 的 `portal` 选项；`ConfirmDialog`
-  恒真）——内层若留在外层弹窗 DOM 内，其 backdrop（absolute inset:0）会锚定外层
-  `.modal`（position:relative）并被其 `overflow:hidden` 裁剪，浮层随即「被限死/被截住」
-  （管理预设弹窗回归的根因）；portaled 浮层与所有板浮层同层居中、自持滚动，永不受
-  外层盒子约束。
+  恒真；`PresetManager`/`RunPresetManager` 亦然）——内层若留在外层弹窗 DOM 内，其
+  backdrop（absolute inset:0）会锚定外层 `.modal`（position:relative）并被其
+  `overflow:hidden` 裁剪，浮层随即「被限死/被截住」；portaled 浮层与所有板浮层同层
+  居中、自持滚动，永不受外层盒子约束。**每个弹窗正文必须是 `.modalScroll` 唯一滚动体**
+  （NewTaskModal/ConfirmDialog/PresetManager/RunPresetManager/AutomationPanel——内容
+  超高时内部滚动，底部按钮/提示永远可达；`.modal` 本身 overflow:hidden 无滚动，正文
+  裸露堆叠即「底部被截、按不到」回归根因）；`.dialogHeader` 分隔线之下由滚动体自带
+  14px 内边距留出呼吸空间，绝不允许卡片/内容紧贴分隔线。
 - **共用部件**（一律复用，不手写重复标记）：`ui.tsx`（Button primary/ghost/danger/
   **dangerGhost**（行内轻量危险）+ `size="sm"`（24px 胶囊）+ `pressed`、Section、
   Disclosure、Notice、AttentionDot、Icon、Switch）、`Chip`、`Dialog`、`PromptInput`、
@@ -305,23 +309,16 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   URI、host 不解析，是 "@ 不到 session" 的根因）。`PromptInput` 以 `sessionId`（目标
   会话）为作用域：任务的 `referenceSessionOf`（refine→执行→绑定 → 当前会话 → 列表
   首项）是唯一解析；`@"` 引号路径内不弹会话候选（官方规则）；目录下钻靠开口引号延续。
-  **失败契约（官方保证：「任一候选领域可独立失败，不隐藏另一领域返回的行」）**：
-  `listReferenceRows` 永不 reject——两域各自独立解析（缺面 / RPC 拒绝 / `{ok:false}`
-  错误 envelope 只降级自身），行映射逐行守卫（坏行跳过计数进 `diag.skipped`）；会话
-  候选 `createdAt` 按官方契约为 Unix epoch 毫秒，缺失/非法只省略日期段
-  （`safeCreatedAt`），绝不整棵菜单陪葬（旧版裸调用 `toISOString` 是「没有匹配的文件
-  或会话」根因之一）；失败原因进 `diag`（宿主错误码透传），菜单按官方分节顺序
-  （文件→会话）就地显示 `ref.fail.*`「暂不可用」提示行（带错误码），只有两域都成功
-  且真无匹配才显示 `prompt.noReferences`；PromptInput 拉取效果链带兜底 catch（失败
-  保留旧行，绝不留空菜单死等——「等太久不弹结果」亦是同一根因）。**宿主会话候选
-  不可用（例如目标会话由子代理路由托管，网关以 `agent-busy` 拒绝查找——实测该场景
-  下官方与看板都以空降级）时启用板内目录降级**：`controller.referenceSessionCatalog()`
-  （原生会话目录 id+标题）+ `fallbackSessionRowsOf`（排除自身、上限 50、描述文法同
-  官方）——插入文本仍是**官方规范 mention**（`session-mention.ts`：部署版
-  `encodeSessionReferenceUri/escapeLabel/formatSessionReferenceMention` 的逐字镜像，
-  `dsh-session:` + base64url(JSON(id))，`session-mention.spec.ts` 用部署模块生成的
-  固定值钉死）——**只降级「发现」，绝不降级「解析」**：宿主 pre-step 照常解析该
-  mention。降级行在会话分组内以「已列出板内会话」诚实标注，绝不冒充宿主候选。
+  **失败契约（官方 log-only 语义，官方契约原文：source-failed = 静默移除该组 + log，
+  无错误 UI 层）**：`listReferenceRows` 永不 reject——两域各自独立解析（缺面 / RPC 拒绝 /
+  `{ok:false}` 错误 envelope 只降级自身），行映射逐行守卫（坏行跳过计数进 `diag.skipped`）；
+  会话候选 `createdAt` 按官方契约为 Unix epoch 毫秒，缺失/非法只省略日期段
+  （`safeCreatedAt`），绝不整棵菜单陪葬；失败原因只进 `diag`（宿主错误码透传）→ 由
+  `PromptInput` 写 console（与官方同款 log-only），**菜单里绝无失败文案**——失败组
+  不出现，只有两域都成功且真无匹配才显示 `prompt.noReferences`；PromptInput 拉取
+  效果链带兜底 catch（失败保留旧行，绝不留空菜单死等）。**上一版「菜单内暂不可用
+  提示行 + 板内目录降级（fallback/session-mention）」偏离官方标准，已删除**——板内 @ 与
+  官方 composer 行为完全一致。
   **@ 菜单三文法（纯函数定死）**：能力门 `referenceMenuAvailable`（缺目标会话或缺桥
   = 不弹，与 / 缺 catalog 同一纪律，绝不显示空菜单）；空态文案 `prompt.noReferences`
   专属（绝不借用 / 的「无匹配命令」）；插入后续开 `continueAfterPick` —— 只有目录

@@ -119,6 +119,7 @@ export function PresetManager({ store, onClose }: {
       onClose={onClose}
       title={t('detail.schedule.presets.title')}
       className={css.presetModal}
+      portal
     >
       {/* The ONE scroll region of the dialog: the preset list scrolls, the
           footer stays pinned (see .modal / .modalScroll). */}
