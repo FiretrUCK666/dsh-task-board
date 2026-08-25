@@ -1,11 +1,13 @@
 /**
  * Reference-source tests: THE ONE '@' bridge of the board — the official
  * candidate discovery (same two Remote namespaces the harness's ui-reference
- * calls), official insertion grammar, and graceful degradation.
+ * calls), official insertion grammar, and the per-domain failure guarantee:
+ * "either candidate domain can fail independently without hiding the rows
+ * the other domain returned" — listReferenceRows NEVER rejects.
  */
 import { describe, expect, it } from 'vitest'
 import type { ReferenceRemoteFace } from '../src/core/controller.ts'
-import { listReferenceRows } from '../src/client/board/reference-source.ts'
+import { listReferenceRows, type ReferenceMenuResult } from '../src/client/board/reference-source.ts'
 
 /** A fake OFFLINE bridge shaped exactly like the structural face. */
 function fakeBridge(): ReferenceRemoteFace {
@@ -32,14 +34,14 @@ const signal = (): AbortSignal => new AbortController().signal
 
 describe('listReferenceRows (官方 @ 候选桥)', () => {
   it('merges files and sessions in official order (files first, then sessions)', async () => {
-    const rows = await listReferenceRows(fakeBridge(), 's-target', '', false, signal())
+    const { rows } = await listReferenceRows(fakeBridge(), 's-target', '', false, signal())
     expect(rows.map(row => row.section)).toEqual([
       'files', 'files', 'files', 'files', 'sessions', 'sessions',
     ])
   })
 
   it('renders the official copy: 文件/文件夹/Session names + descriptions', async () => {
-    const rows = await listReferenceRows(fakeBridge(), 's-target', '', false, signal())
+    const { rows } = await listReferenceRows(fakeBridge(), 's-target', '', false, signal())
     expect(rows[0].name).toBe('文件 · main.ts')
     expect(rows[0].description).toBe('src/main.ts')
     expect(rows[1].name).toBe('文件夹 · components/')
@@ -55,7 +57,7 @@ describe('listReferenceRows (官方 @ 候选桥)', () => {
   })
 
   it('inserts OFFICIAL file mentions (@path; quoted only when needed)', async () => {
-    const rows = await listReferenceRows(fakeBridge(), 's-target', '', false, signal())
+    const { rows } = await listReferenceRows(fakeBridge(), 's-target', '', false, signal())
     expect(rows[0].insert).toBe('@src/main.ts')
     expect(rows[1].insert).toBe('@src/components/')
     expect(rows[1].continue).toBe(true) // directory descent
@@ -63,29 +65,124 @@ describe('listReferenceRows (官方 @ 候选桥)', () => {
   })
 
   it('suppresses session discovery inside an open quoted path (official rule)', async () => {
-    const rows = await listReferenceRows(fakeBridge(), 's-target', 'src/', true, signal())
+    let candidatesCalled = 0
+    const bridge: ReferenceRemoteFace = {
+      fileReferences: {
+        list: async () => ({ ok: true as const, value: [{ kind: 'file', path: 'notes.md' }] }),
+      },
+      sessionReferenceResolver: {
+        candidates: async () => {
+          candidatesCalled += 1
+          return { ok: true as const, value: [] }
+        },
+      },
+    }
+    const { rows, diag } = await listReferenceRows(bridge, 's-target', 'src/', true, signal())
     expect(rows.every(row => row.section === 'files')).toBe(true)
+    expect(candidatesCalled).toBe(0)
+    expect(diag.sessions).toBeUndefined() // suppressed half is not a failure
   })
 
   it('passes the query through to the official namespaces (server-side filter)', async () => {
-    const rows = await listReferenceRows(fakeBridge(), 's-target', 'x', false, signal())
+    const { rows } = await listReferenceRows(fakeBridge(), 's-target', 'x', false, signal())
     expect(rows.some(row => row.description === 'xfile.ts')).toBe(true)
   })
 
-  it('returns an empty list when the bridge is absent (no @ menu)', async () => {
-    expect(await listReferenceRows(undefined, 's-target', '', false, signal())).toEqual([])
+  it('returns no rows and no diag when the bridge is absent (no @ menu)', async () => {
+    expect(await listReferenceRows(undefined, 's-target', '', false, signal())).toEqual({ rows: [], diag: {} })
   })
 
-  it('degrades each half independently when a namespace fails', async () => {
+  it('reports both halves when the host envelope is ok:false for both', async () => {
     const failing: ReferenceRemoteFace = {
       fileReferences: {
-        list: async () => ({ ok: false as const, error: 'boom' }),
+        list: async () => ({ ok: false as const, error: { code: 'FILE_INDEX_UNAVAILABLE', message: 'no index' } }),
       },
       sessionReferenceResolver: {
-        candidates: async () => ({ ok: false as const, error: 'boom' }),
+        candidates: async () => ({ ok: false as const, error: { code: 'SESSION_REFERENCE_INVALID_CONFIG', message: 'no config' } }),
       },
     }
-    expect(await listReferenceRows(failing, 's-target', '', false, signal())).toEqual([])
+    const { rows, diag } = await listReferenceRows(failing, 's-target', '', false, signal())
+    expect(rows).toEqual([])
+    expect(diag.files).toEqual({ code: 'FILE_INDEX_UNAVAILABLE' })
+    expect(diag.sessions).toEqual({ code: 'SESSION_REFERENCE_INVALID_CONFIG' })
+  })
+
+  it('keeps one half when the other half rejects (official per-domain guarantee)', async () => {
+    const bridge: ReferenceRemoteFace = {
+      fileReferences: {
+        list: async () => { throw new Error('file half down') },
+      },
+      sessionReferenceResolver: {
+        candidates: async () => ({ ok: true as const, value: [
+          { sessionId: 's-9', label: '绘画', cwd: '/work', createdAt: 1000, mention: '@[绘画](dsh-session:czc9)' },
+        ] }),
+      },
+    }
+    const { rows, diag } = await listReferenceRows(bridge, 's-target', '', false, signal())
+    expect(rows.map(row => row.section)).toEqual(['sessions'])
+    expect(diag.files).toBeDefined()
+    expect(diag.sessions).toBeUndefined()
+  })
+
+  it('keeps the files half when the sessions namespace is absent', async () => {
+    const bridge: ReferenceRemoteFace = {
+      fileReferences: {
+        list: async () => ({ ok: true as const, value: [{ kind: 'file', path: 'notes.md' }] }),
+      },
+    }
+    const { rows, diag } = await listReferenceRows(bridge, 's-target', '', false, signal())
+    expect(rows.map(row => row.section)).toEqual(['files'])
+    expect(diag.sessions).toBeDefined()
+    expect(diag.files).toBeUndefined()
+  })
+
+  it('carries a synchronous throw as a degraded half, never a rejection', async () => {
+    const bridge: ReferenceRemoteFace = {
+      fileReferences: {
+        list: () => { throw new Error('sync boom') },
+      },
+      sessionReferenceResolver: {
+        candidates: async () => ({ ok: true as const, value: [] }),
+      },
+    }
+    const result: ReferenceMenuResult = await listReferenceRows(bridge, 's-target', '', false, signal())
+    expect(result.rows).toEqual([])
+    expect(result.diag.files).toBeDefined()
+  })
+
+  it('omits the date for missing or malformed createdAt instead of crashing', async () => {
+    const bridge: ReferenceRemoteFace = {
+      sessionReferenceResolver: {
+        candidates: async () => ({ ok: true as const, value: [
+          { sessionId: 'a', label: '无日期', cwd: '/w', createdAt: undefined as unknown as number, mention: '@[无日期](dsh-session:a)' },
+          { sessionId: 'b', label: 'NaN', createdAt: NaN, mention: '@[NaN](dsh-session:b)' },
+          { sessionId: 'c', label: '坏串', createdAt: 'not-a-date' as unknown as number, mention: '@[坏串](dsh-session:c)' },
+          { sessionId: 'd', label: '字串', createdAt: '2026-01-02T03:04:05.000Z' as unknown as number, mention: '@[字串](dsh-session:d)' },
+        ] }),
+      },
+    }
+    const { rows, diag } = await listReferenceRows(bridge, 's-target', '', false, signal())
+    expect(rows.map(row => row.description)).toEqual([
+      'a · /w',
+      'b · （无工作目录）',
+      'c · （无工作目录）',
+      'd · （无工作目录） · 2026-01-02T03:04:05.000Z',
+    ])
+    expect(diag.skipped).toBeUndefined()
+  })
+
+  it('skips malformed file rows without losing the healthy ones', async () => {
+    const bridge: ReferenceRemoteFace = {
+      fileReferences: {
+        list: async () => ({ ok: true as const, value: [
+          { kind: 'file', path: 'ok.ts' },
+          { kind: 'file', path: undefined as unknown as string },
+        ] }),
+      },
+    }
+    const { rows, diag } = await listReferenceRows(bridge, 's-target', '', false, signal())
+    expect(rows.map(row => row.name)).toEqual(['文件 · ok.ts'])
+    expect(diag.skipped).toBe(1)
   })
 
   it('returns empty rows once the request is aborted', async () => {
@@ -100,6 +197,6 @@ describe('listReferenceRows (官方 @ 候选桥)', () => {
     }
     const pending = listReferenceRows(bridge, 's-target', '', false, controller.signal)
     controller.abort()
-    expect(await pending).toEqual([])
+    expect(await pending).toEqual({ rows: [], diag: {} })
   })
 })

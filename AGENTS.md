@@ -300,6 +300,15 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   URI、host 不解析，是 "@ 不到 session" 的根因）。`PromptInput` 以 `sessionId`（目标
   会话）为作用域：任务的 `referenceSessionOf`（refine→执行→绑定 → 当前会话 → 列表
   首项）是唯一解析；`@"` 引号路径内不弹会话候选（官方规则）；目录下钻靠开口引号延续。
+  **失败契约（官方保证：「任一候选领域可独立失败，不隐藏另一领域返回的行」）**：
+  `listReferenceRows` 永不 reject——两域各自独立解析（缺面 / RPC 拒绝 / `{ok:false}`
+  错误 envelope 只降级自身），行映射逐行守卫（坏行跳过计数进 `diag.skipped`）；会话
+  候选 `createdAt` 按官方契约为 Unix epoch 毫秒，缺失/非法只省略日期段
+  （`safeCreatedAt`），绝不整棵菜单陪葬（旧版裸调用 `toISOString` 是「没有匹配的文件
+  或会话」根因之一）；失败原因进 `diag`（宿主错误码透传），菜单按官方分节顺序
+  （文件→会话）就地显示 `ref.fail.*`「暂不可用」提示行（带错误码），只有两域都成功
+  且真无匹配才显示 `prompt.noReferences`；PromptInput 拉取效果链带兜底 catch（失败
+  保留旧行，绝不留空菜单死等——「等太久不弹结果」亦是同一根因）。
   **@ 菜单三文法（纯函数定死）**：能力门 `referenceMenuAvailable`（缺目标会话或缺桥
   = 不弹，与 / 缺 catalog 同一纪律，绝不显示空菜单）；空态文案 `prompt.noReferences`
   专属（绝不借用 / 的「无匹配命令」）；插入后续开 `continueAfterPick` —— 只有目录

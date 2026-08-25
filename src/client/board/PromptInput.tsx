@@ -23,7 +23,7 @@ import {
   commandTokenAt, insertCommand, insertMention, mentionTokenAt, filterSlashCandidates,
   referenceMenuAvailable, continueAfterPick, type CommandToken,
 } from './slash-token.ts'
-import { listReferenceRows, type ReferenceRow } from './reference-source.ts'
+import { listReferenceRows, type ReferenceDiag, type ReferenceRow } from './reference-source.ts'
 import { shouldFlipMenuUp } from './menu-direction.ts'
 
 /** Menu row cap: keeps the list scannable and scrollbar-free. */
@@ -39,6 +39,8 @@ interface TriggerMenuState {
   /** '/' rows when `sessionId` is undefined, '@' rows otherwise. */
   kind: 'slash' | 'mention'
   rows: readonly (SlashCandidate | ReferenceRow)[]
+  /** Why a '@' candidate half produced no rows (honest empty state). */
+  diag: ReferenceDiag
   highlight: number
   /** Whether the menu opens upward (insufficient space below the field). */
   flip: boolean
@@ -101,7 +103,10 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
 
   // The official reference candidates (files + sessions) for the active '@'
   // token — the SAME two Remote namespaces the harness's ui-reference source
-  // calls; every keystroke supersedes the previous fetch (abort).
+  // calls; every keystroke supersedes the previous fetch (abort). The bridge
+  // never rejects (per-domain failure guarantee), and this catch is the
+  // last-resort net: a surprise failure keeps the previous rows instead of
+  // leaving a dead empty menu stuck open.
   useEffect(() => {
     if (mentionReq === undefined || sessionId === undefined) return
     const controllerRef = new AbortController()
@@ -112,11 +117,16 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
       mentionReq.query,
       mentionReq.quoted === true,
       controllerRef.signal,
-    ).then(rows => {
+    ).then(({ rows, diag }) => {
       if (!alive || controllerRef.signal.aborted) return
+      if (diag.files !== undefined || diag.sessions !== undefined) {
+        console.warn('[dsh-task-board] @ reference menu degraded:', JSON.stringify(diag))
+      }
       setMenu(previous => previous !== undefined && previous.kind === 'mention' && sameMentionSpan(previous.token, mentionReq)
-        ? { ...previous, rows }
+        ? { ...previous, rows, diag }
         : previous)
+    }).catch(() => {
+      if (alive) console.warn('[dsh-task-board] @ reference fetch failed unexpectedly')
     })
     return () => { alive = false; controllerRef.abort() }
   }, [mentionReq, sessionId, controller])
@@ -175,7 +185,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
       setMenu(previous =>
         previous !== undefined && previous.kind === 'mention' && sameMentionSpan(previous.token, token)
           ? previous
-          : { token, kind, rows: previous?.kind === 'mention' ? previous.rows : [], highlight: 0, flip })
+          : { token, kind, rows: previous?.kind === 'mention' ? previous.rows : [], diag: previous?.kind === 'mention' ? previous.diag : {}, highlight: 0, flip })
       setMentionReq(token)
       return
     }
@@ -192,7 +202,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
         && previous.token.end === token.end
         && previous.token.query === token.query
         ? previous // same span: keep the keyboard highlight
-        : { token, kind, rows, highlight: 0, flip })
+        : { token, kind, rows, diag: {}, highlight: 0, flip })
   }
 
   // The catalog may land after the user already typed '/': reopen the menu
@@ -276,6 +286,63 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
     setMentionReq(undefined)
   }
 
+  /** The '@' menu items: the official sections in order (files, then
+   *  sessions). A half that failed shows its notice in its own section
+   *  slot — the bare "no match" line appears only when both halves
+   *  genuinely returned nothing. */
+  const mentionMenu = (menu: TriggerMenuState): React.ReactNode[] => {
+    const bySection: Record<'files' | 'sessions', ReferenceRow[]> = { files: [], sessions: [] }
+    for (const row of menu.rows as readonly ReferenceRow[]) bySection[row.section].push(row)
+    const items: React.ReactNode[] = []
+    let rowIndex = -1
+    for (const section of ['files', 'sessions'] as const) {
+      const sectionRows = bySection[section]
+      const failed = menu.diag[section]
+      if (sectionRows.length === 0 && failed === undefined) continue
+      items.push(
+        <div key={`section:${section}`} className={css.slashMenuSection}>
+          {t(section === 'files' ? 'ref.section.files' : 'ref.section.sessions')}
+        </div>,
+      )
+      if (sectionRows.length > 0) {
+        for (const mention of sectionRows) {
+          rowIndex += 1
+          items.push(
+            <button
+              key={mention.key}
+              type="button"
+              role="option"
+              aria-selected={rowIndex === menu.highlight}
+              className={`${css.slashMenuRow}${rowIndex === menu.highlight ? ` ${css.slashMenuRowActive}` : ''}`}
+              onMouseDown={event => { event.preventDefault() }}
+              onClick={() => { accept(mention) }}
+            >
+              <span className={css.slashMenuName}>{mention.name}</span>
+              {mention.description !== undefined && (
+                <span className={css.slashMenuDesc}>{mention.description}</span>
+              )}
+            </button>,
+          )
+        }
+      } else if (failed !== undefined) {
+        items.push(
+          <div key={`fail:${section}`} className={css.slashMenuEmpty} role="option" aria-disabled="true">
+            {t(section === 'files' ? 'ref.fail.files' : 'ref.fail.sessions')}
+            {failed.code !== undefined ? ` (${failed.code})` : ''}
+          </div>,
+        )
+      }
+    }
+    if (items.length === 0) {
+      items.push(
+        <div className={css.slashMenuEmpty} role="option">
+          {t('prompt.noReferences')}
+        </div>,
+      )
+    }
+    return items
+  }
+
   return (
     <div className={css.promptField} ref={fieldRef}>
       <textarea
@@ -293,44 +360,15 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
       />
       {menu !== undefined && (
         <div className={css.slashMenu} data-direction={menu.flip ? 'up' : 'down'} role="listbox" aria-label={t('prompt.commandList')}>
-          {menu.rows.length === 0 ? (
-            <div className={css.slashMenuEmpty} role="option">
-              {t(menu.kind === 'mention' ? 'prompt.noReferences' : 'prompt.noCommands')}
-            </div>
-          ) : menu.kind === 'mention' ? (
-            (() => {
-              let lastSection: ReferenceRow['section'] | undefined
-              const items: React.ReactNode[] = []
-              menu.rows.forEach((row, index) => {
-                const mention = row as ReferenceRow
-                if (mention.section !== lastSection) {
-                  lastSection = mention.section
-                  items.push(
-                    <div key={`section:${mention.section}`} className={css.slashMenuSection}>
-                      {t(mention.section === 'files' ? 'ref.section.files' : 'ref.section.sessions')}
-                    </div>,
-                  )
-                }
-                items.push(
-                  <button
-                    key={mention.key}
-                    type="button"
-                    role="option"
-                    aria-selected={index === menu.highlight}
-                    className={`${css.slashMenuRow}${index === menu.highlight ? ` ${css.slashMenuRowActive}` : ''}`}
-                    onMouseDown={event => { event.preventDefault() }}
-                    onClick={() => { accept(mention) }}
-                  >
-                    <span className={css.slashMenuName}>{mention.name}</span>
-                    {mention.description !== undefined && (
-                      <span className={css.slashMenuDesc}>{mention.description}</span>
-                    )}
-                  </button>,
-                )
-              })
-              return items
-            })()
-          ) : menu.rows.map((row, index) => {
+          {menu.kind === 'mention'
+            ? mentionMenu(menu)
+            : menu.rows.length === 0
+              ? (
+                <div className={css.slashMenuEmpty} role="option">
+                  {t('prompt.noCommands')}
+                </div>
+              )
+              : menu.rows.map((row, index) => {
             const slash = row as SlashCandidate
             return (
               <button
