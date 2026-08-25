@@ -23,7 +23,7 @@ import {
   commandTokenAt, insertCommand, insertMention, mentionTokenAt, filterSlashCandidates,
   referenceMenuAvailable, continueAfterPick, type CommandToken,
 } from './slash-token.ts'
-import { listReferenceRows, type ReferenceDiag, type ReferenceRow } from './reference-source.ts'
+import { catalogSessionRowsOf, listReferenceRows, type ReferenceDiag, type ReferenceRow } from './reference-source.ts'
 import { shouldFlipMenuUp } from './menu-direction.ts'
 
 /** Menu row cap: keeps the list scannable and scrollbar-free. */
@@ -119,15 +119,22 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
       controllerRef.signal,
     ).then(({ rows, diag }) => {
       if (!alive || controllerRef.signal.aborted) return
-      // OFFICIAL log-only failure contract: a failed source group silently
-      // disappears; the reason lands in the console (the harness's own
-      // ui-reference behaves identically). The menu never carries an error
-      // text — only real rows or a true empty state.
+      let nextRows = rows
+      // Sessions half unavailable (the gateway refuses the agent lookup for
+      // subagent-routed target sessions, failing the official discovery
+      // too): the menu's sessions group takes the board-catalog rows instead
+      // — same row shape, OFFICIAL mention text, so a pick still resolves
+      // through the host pre-step. No failure text in the menu (the official
+      // log-only look stays; the reason rides the console).
+      if (diag.sessions !== undefined && rows.every(row => (row as ReferenceRow).section !== 'sessions')) {
+        const catalog = catalogSessionRowsOf(controller.referenceSessionCatalog(), sessionId)
+        if (catalog.length > 0) nextRows = [...rows, ...catalog]
+      }
       if (diag.files !== undefined || diag.sessions !== undefined) {
         console.warn('[dsh-task-board] @ reference menu degraded:', JSON.stringify(diag))
       }
       setMenu(previous => previous !== undefined && previous.kind === 'mention' && sameMentionSpan(previous.token, mentionReq)
-        ? { ...previous, rows, diag }
+        ? { ...previous, rows: nextRows, diag }
         : previous)
     }).catch(() => {
       if (alive) console.warn('[dsh-task-board] @ reference fetch failed unexpectedly')

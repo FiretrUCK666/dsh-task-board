@@ -569,6 +569,24 @@ export class BoardController {
   }
 
   /**
+   * The board's own session catalog (id + latest title, native list order):
+   * the '@' MENU's second source for the sessions half. It is used when the
+   * host's `candidates` half is unavailable — the gateway refuses the agent
+   * lookup for subagent-routed (agent-busy) target sessions, which fails the
+   * official discovery too; the board's catalog still lists every session,
+   * and its rows carry the OFFICIAL mention text (see session-mention.ts),
+   * so a picked row resolves through the host's pre-step parser exactly like
+   * a host candidate.
+   */
+  referenceSessionCatalog(): ReadonlyArray<{ sessionId: string; label: string }> {
+    const state = this.deps.sessions.list.getSnapshot()
+    return Object.entries(state.byId).map(([sessionId, summary]) => ({
+      sessionId,
+      label: typeof summary.title === 'string' && summary.title !== '' ? summary.title : sessionId,
+    }))
+  }
+
+  /**
    * Read a session's recent history events for the review page's transcript
    * (the fold happens in the UI), together with the native projection
    * baseline (context pressure / breakdown) riding the history tail page.

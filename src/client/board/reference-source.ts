@@ -24,6 +24,7 @@
  * so the menu can show it honestly instead of a bare "no match".
  */
 import { formatFileMention } from './file-reference-grammar.ts'
+import { formatSessionReferenceMention } from './session-mention.ts'
 import { t } from '../locales.ts'
 import type {
   ReferenceFileCandidate,
@@ -208,4 +209,32 @@ export async function listReferenceRows(
   }
   if (skipped > 0) diag.skipped = skipped
   return { rows, diag }
+}
+
+/**
+ * The board-catalog session rows: the SAME ReferenceRow shape as the official
+ * half, sourced from the board's own session catalog (id + latest title,
+ * native list order). Used only when the host `candidates` half is
+ * unavailable — the gateway refuses the agent lookup for subagent-routed
+ * (agent-busy) target sessions, which fails the official discovery too.
+ * Inserted text stays the OFFICIAL canonical mention
+ * (`formatSessionReferenceMention`), so the host's pre-step parser resolves a
+ * picked row exactly like a host candidate. Self is excluded (the official
+ * rule); the cap mirrors the host's candidateLimit default.
+ */
+export function catalogSessionRowsOf(
+  catalog: ReadonlyArray<{ sessionId: string; label: string }>,
+  targetSessionId: string,
+  limit = 50,
+): ReferenceRow[] {
+  return catalog
+    .filter(entry => entry.sessionId !== targetSessionId)
+    .slice(0, limit)
+    .map(entry => ({
+      section: 'sessions' as const,
+      name: `${t('ref.candidate.session')} · ${entry.label}`,
+      description: `${entry.label === entry.sessionId ? '' : `${entry.sessionId} · `}${t('ref.candidate.noCwd')}`,
+      key: `session:${entry.sessionId}`,
+      insert: formatSessionReferenceMention(entry),
+    }))
 }
