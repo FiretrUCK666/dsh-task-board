@@ -4158,25 +4158,41 @@ textarea.input {
   color: var(--dsh-tb-accent);
 }
 
+/* The subagent block: chip line + ONE row per subagent (the same row grammar
+   as todos/goal — marker + full text). Long titles never overlap and never
+   ellipsize away; every subagent is visible at a glance. */
+.sessionContextBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
 .sessionContextSubList {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   min-width: 0;
 }
 
 .sessionContextSubItem {
-  font-size: 11px;
-  color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-surface-sunken);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  padding: 1px 7px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.sessionContextSubDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--dsh-tb-attention);
 }
 
 .reviewComposerRow {

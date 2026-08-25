@@ -117,17 +117,23 @@ export function SessionContextBlock({ context, className }: { context: SessionCo
             </div>
           )}
           {subagentCount > 0 && (
-            <div className={css.sessionContextRow}>
+            <div className={css.sessionContextBlock}>
               <span className={`${css.chip} ${css.sessionContextSubagent}`}>
                 {t('review.subagents', { n: String(subagentCount) })}
               </span>
-              <span className={css.sessionContextSubList}>
+              {/* ONE row per subagent — same row grammar as the todo/goal
+                  lines (marker + full text). Long titles never overlap or
+                  ellipsize away: the whole crew is visible at a glance. */}
+              <ul className={css.sessionContextSubList}>
                 {liveSubagents.map(sub => (
-                  <span key={sub.title} className={css.sessionContextSubItem} title={sub.status ?? undefined}>
-                    {sub.title}
-                  </span>
+                  <li key={sub.title} className={css.sessionContextSubItem}>
+                    <span className={css.sessionContextSubDot} aria-hidden="true" />
+                    <span className={css.sessionContextText} title={sub.status ?? undefined}>
+                      {sub.title}
+                    </span>
+                  </li>
                 ))}
-              </span>
+              </ul>
             </div>
           )}
         </div>
