@@ -14,7 +14,7 @@ import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Chip, type ChipKind } from './Chip.tsx'
-import { formatDateTime, formatDuration, formatTime } from './TaskCard.tsx'
+import { formatDateTime, formatDuration, formatTime } from './format-time.ts'
 import { TaskForm } from './TaskForm.tsx'
 import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
 import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
@@ -28,7 +28,7 @@ import { SessionRow } from './SessionRow.tsx'
 import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
 import { Button, Disclosure, Icon, Section } from './ui.tsx'
-import { STATUS_KEY } from './status.ts'
+import { STATUS_KEY, PAUSED_REASON_KEY } from './status.ts'
 import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
 
 /** Status → shared-chip color (detail badge). */
@@ -38,13 +38,6 @@ const STATUS_CHIP: Record<TaskStatus, ChipKind> = {
   running: 'warn',
   review: 'neutral',
   done: 'success',
-}
-
-/** Paused-readiness explanation keyed by the pausing status. */
-function pausedLabelOf(status: 'backlog' | 'review' | 'done'): TaskBoardKey {
-  if (status === 'review') return 'detail.schedule.paused.review'
-  if (status === 'done') return 'detail.schedule.paused.done'
-  return 'detail.schedule.paused.backlog'
 }
 
 /** The one comment summary of a session row (count + newest body + time),
@@ -226,23 +219,20 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
   const schedule = task.schedule
   const readiness = ruleReadiness(task)
   // A paused rule names its blocking status; a review pause caused by a
-  // failed run adds the "because it failed" reason word (the one summary
-  // grammar is scheduleSummary; the detail only adds this word on top).
-  // A paused rule names its blocking status; a review pause caused by a
   // failed run adds the "because it failed" reason word; a BLOCKED rule (an
-  // empty execution prompt) names the emptiness — one reason-line grammar.
+  // empty execution prompt) names the emptiness — one reason-line grammar
+  // (the one summary grammar is scheduleSummary; the detail only adds this
+  // word on top).
   const stoppedReason = readiness.kind === 'paused'
     ? {
         extraFailed: readiness.status === 'review'
           && latestExecutionOf(task)?.result === 'failed',
-        key: pausedLabelOf(readiness.status),
+        key: PAUSED_REASON_KEY[readiness.status],
       }
     : readiness.kind === 'blocked'
       ? { extraFailed: false, key: 'detail.schedule.blocked' as TaskBoardKey }
       : undefined
 
-  // Collapsed by default: the detail stays quiet, one summary line reads the
-  // rule's true state — off / paused (with the blocking reason) / running.
   // Collapsed by default UNLESS the rule is already enabled: an armed
   // automation opens expanded, so its live state is immediately visible —
   // "按过启用后，下次打开必自动展开" (the user asked for exactly this).
@@ -296,10 +286,10 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   // The linked session whose detail panel is open (undefined = none).
   const [linkedSession, setLinkedSession] = useState<string | undefined>(undefined)
 
-  // Keep the overlay in sync if the task record changes underneath.
-  const [latest, setLatest] = useState(task)
-  useEffect(() => { setLatest(task) }, [task])
-  const current = latest
+  // The record IS the prop: the parent re-renders with every ledger change
+  // (the selected snapshot is a fresh record), so a prop-to-state mirror
+  // would only render a stale frame and then re-render for nothing.
+  const current = task
   // The ONE session scoping every composer's official '@' reference menu on
   // this surface: the task's own first related session (deterministic).
   const referenceSession = controller.referenceSessionOf(current.id)

@@ -208,7 +208,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - **令牌只消费原生语义层**：样式只引用 `--dsw-*`（宿主按浅/深色与皮肤重映射）；**硬性：CSS 不得出现 hex/rgb 字面量**（verify 审计为零）。板上经 `board.module.css` 顶部 `--dsh-tb-*` 别名层统一引用；侧栏入口与设置卡在 scope 外只用原生令牌。
 - **表面三层（玻璃皮肤也照此）**：画布层（`--dsh-tb-glass`/`--dsh-tb-bg`）只用于板/列背景；所有内层浮起/下沉表面（卡片/对话/面板/评论/菜单）一律**不透明**（玻璃皮肤下内表面保可读）。
 - **面板几何（随板居中）**：`.modalBackdrop` 为看板盒内 absolute 定位，浮层由 flex 在其中居中（与侧栏/祖先 transform/皮肤解耦）。**嵌套浮层（弹窗内的弹窗/确认框）必须 `portal` 到看板盒**（`Dialog` 的 `portal`；`ConfirmDialog` 恒真；`PresetManager`/`RunPresetManager` 亦然）——内层留在外层弹窗 DOM 会被外层 `.modal`（position:relative + overflow:hidden）锚定并裁剪（「被限死/被截住」根因）。**每个弹窗正文必须是 `.modalScroll` 唯一滚动体**（NewTaskModal/ConfirmDialog/PresetManager/RunPresetManager/AutomationPanel——超高内部滚动，底部按钮永远可达；正文裸露堆叠即「底部被截」根因）；`.dialogHeader` 分隔线之下由滚动体 14px 内边距留出呼吸空间，内容绝不紧贴分隔线。
-- **共用部件**（一律复用，不手写重复标记）：`ui.tsx`（Button primary/ghost/danger/**dangerGhost**+`size="sm"`+`pressed`、Section、Disclosure、Notice、AttentionDot、Icon、Switch）、`Chip`、`Dialog`、`PromptInput`、`TimeField`、`Markdown`（`markdown-parser.ts` 安全子集，**勿改回全局 `g` 正则**，此前 OOM 根因）、`SessionRow`、`CommentsThread`、`session-panel.tsx`（SessionRailHead/SessionTranscript/SessionConfigEditor/SessionFacts/SessionWaitingNotice）、`session-chip.ts`（**状态 chip 唯一文法**）、`cron-label.ts`（cron 文案唯一映射）、`automation-ui.tsx`（CronField/SessionRulesSection/SessionRuleForm/**AutomationEditor**/scheduleSummary——**自动化唯一 UI**）。
+- **共用部件**（一律复用，不手写重复标记）：`ui.tsx`（Button primary/ghost/danger/**dangerGhost**+`size="sm"`+`pressed`、Section、Disclosure、Notice、AttentionDot、Icon、Switch）、`Chip`、`Dialog`、`PromptInput`、`TimeField`、`Markdown`（`markdown-parser.ts` 安全子集，**勿改回全局 `g` 正则**，此前 OOM 根因）、`SessionRow`、`CommentsThread`、`session-panel.tsx`（SessionRailHead/SessionTranscript/SessionConfigEditor/SessionFacts/SessionWaitingNotice）、`session-chip.ts`（**状态 chip 唯一文法**）、`format-time.ts`（**时间文案唯一映射**：formatTime/formatDateTime/formatDuration/formatCruiseTime）、`cron-label.ts`（cron 文案唯一映射）、`automation-ui.tsx`（CronField/SessionRulesSection/SessionRuleForm/**AutomationEditor**/scheduleSummary——**自动化唯一 UI**）。
 - **动效唯一语法**：注意力 = `--dsh-tb-attention` + `--dsh-tb-breath`（2.6s）；卡片外层呼吸环 `dshTbBreathRing`（`.card[data-unviewed]`/`.card[data-active]`）、执行行内层柔晕（`.sessionRow::after`，`data-glow` 绑定、pause 而非 cancelled——永不闪烁）；`prefers-reduced-motion` 全部静态降级。
 - **光效规则表（呼吸显示与否的唯一判定，无例外）**：
 
@@ -295,7 +295,7 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
 - 清单：`tests/` 下 `tasks`、`schedule`、`scheduler`、`cruise`、`automation`、
   `presets`、`store`、`execution`、`session-activity`、`session-list`、
   `session-display`、`linked-sessions`、`task-live`（运行态唯一推导）、`question-rpc`、`refine`、`format-time`
-  （核心纯逻辑）；`drag-contract`（drop-position + drag-autoscroll）、`flip`、
+  （核心纯逻辑）；`question-tracker`（mux 问答流自愈契约：失败/关闭后必重连、dispose 后必不重连）；`drag-contract`（drop-position + drag-autoscroll）、`flip`、
   `comment-thread`、`markdown`、`slash-token`、`reference-source`（官方 @ 引用桥）、
   `file-reference-grammar`（官方文法镜像契约）、`drafts`、`sidebar-drag`、
   `review-page`（review-transcript/context-meter/menu-direction/interaction 合并）、

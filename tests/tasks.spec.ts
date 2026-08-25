@@ -243,19 +243,29 @@ describe('settleExecution', () => {
     expect(settled.executions[1].result).toBe('succeeded')
   })
 
-  it('keeps a budgeted scheduled batch running until the final run', () => {
-    let task = withSchedule(sampleTask(), { enabled: true, cron: '* * * * *', maxRuns: 2, runCount: 0 }, NOW)
+  it('keeps a budgeted scheduled batch running until the final run (fire counts at launch)', () => {
+    // Real order: the scheduler persists the incremented runCount at
+    // fire-accept, BEFORE the run can settle — a settled scheduled run is
+    // already counted, so "more runs remain" is `runCount < maxRuns`.
+    let task = withSchedule(sampleTask(), { enabled: true, cron: '* * * * *', maxRuns: 3, runCount: 1 }, NOW)
     const first = startExecution(task, NOW, 'e1')
     const settled1 = settleExecution(first.task, 'e1', 'succeeded', NOW + 1, undefined)
-    // Run 1 of 2: the card stays 'running' (the batch is not complete).
+    // Run 1 of 3: the card stays 'running' (the batch is not complete).
     expect(settled1.status).toBe('running')
     expect(settled1.executions[0].result).toBe('succeeded')
-    // The scheduler increments the counter after the settle, then run 2…
-    task = withSchedule(settled1, { runCount: 1 }, NOW + 2)
+    // Run 2 of 3: still within budget — the off-by-one form (`+1`) would land
+    // 'review' here and the next tick would skip the final fire via the
+    // column pause, leaving the batch one run short.
+    task = withSchedule(settled1, { runCount: 2 }, NOW + 2)
     const second = startExecution(task, NOW + 3, 'e2')
     const settled2 = settleExecution(second.task, 'e2', 'succeeded', NOW + 4, undefined)
-    // …the final budgeted run settles into review.
-    expect(settled2.status).toBe('review')
+    expect(settled2.status).toBe('running')
+    // The final budgeted run: disarmed at fire (runCount = maxRuns), settles
+    // into review — the human gate.
+    task = withSchedule(settled2, { runCount: 3, enabled: false }, NOW + 5)
+    const third = startExecution(task, NOW + 6, 'e3')
+    const settled3 = settleExecution(third.task, 'e3', 'succeeded', NOW + 7, undefined)
+    expect(settled3.status).toBe('review')
   })
 
   it('settles an unlimited schedule into review per run', () => {

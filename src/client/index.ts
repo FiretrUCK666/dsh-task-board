@@ -80,6 +80,41 @@ interface RemoteFace {
   commands?: RemoteCommandsFace
 }
 
+/** THE one client-remote resolution: the host command registry by registered
+ *  name (`remote.commands`), with the parent remote service's child property
+ *  as the fallback. Three surfaces read the same bridge — the slash menu, the
+ *  slash-command send and the /permission switch — so the resolution grammar
+ *  and its "unavailable" warning live here once, never in three copies.
+ *  Nothing is hard-coded: commands registered by DSH or any plugin show up
+ *  without a plugin update. */
+function commandsOf(ctx: ClientContext): RemoteCommandsFace | undefined {
+  const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
+    ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
+  if (commands === undefined) {
+    console.warn('[dsh-task-board] slash commands unavailable: no remote.commands bridge')
+  }
+  return commands
+}
+
+/** THE one native model-selection write: the sessions.selectModel API — the
+ *  run config's model route and the session panel's model selector submit
+ *  the same wire call, so the mapping exists once. */
+async function selectModelOf(
+  connection: ConnectionHandle,
+  sessionId: string,
+  selection: { provider: string; model: string; reasoningEffort?: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const response = await connection.api.sessions.selectModel({
+    sessionId: sessionId as SessionId,
+    provider: selection.provider,
+    model: selection.model,
+    ...selection.reasoningEffort !== undefined ? { reasoningEffort: selection.reasoningEffort } : {},
+  })
+  return response.result.ok
+    ? { ok: true as const }
+    : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+}
+
 /**
  * Required services (fiber inject waiting — the runtime must be up first).
  *
@@ -245,10 +280,8 @@ export function apply(ctx: ClientContext): void {
       | { ok: true; matched: boolean; outcome?: { kind: 'success' | 'error'; text?: string } }
       | { ok: false; error: string }
     > => {
-      const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
-        ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
+      const commands = commandsOf(ctx)
       if (commands === undefined) {
-        console.warn('[dsh-task-board] slash commands unavailable: no remote.commands bridge')
         return { ok: true as const, matched: false }
       }
       try {
@@ -291,17 +324,7 @@ export function apply(ctx: ClientContext): void {
             : undefined
         },
       },
-      selectModel: async (sessionId, selection) => {
-        const response = await connection.api.sessions.selectModel({
-          sessionId: sessionId as SessionId,
-          provider: selection.provider,
-          model: selection.model,
-          ...selection.reasoningEffort !== undefined ? { reasoningEffort: selection.reasoningEffort } : {},
-        })
-        return response.result.ok
-          ? { ok: true as const }
-          : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
-      },
+      selectModel: (sessionId, selection) => selectModelOf(connection, sessionId, selection),
       selectAgentPreset: async (sessionId, agentPreset) => {
         const response = await connection.api.agentPresets.select({
           sessionId: sessionId as SessionId,
@@ -346,19 +369,8 @@ export function apply(ctx: ClientContext): void {
     // Slash-menu sources (see listSlashCandidates): each fetches one native
     // catalog and degrades to [] on any failure, with the reason logged.
     const fetchSlashCommands = async (sessionId: string): Promise<readonly SlashCandidate[]> => {
-      // Lazy read of the client remote bridge (registered by the web shell's
-      // api-gateway): the host command registry — the same catalog the native
-      // composer's '/' menu reads. Resolution mirrors the composer: the
-      // namespace service by registered name (`remote.commands`, the inject
-      // path), with a fallback through the parent remote service's child
-      // property. Nothing is hard-coded, so commands registered by DSH or any
-      // plugin show up without a plugin update.
-      const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
-        ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
-      if (commands === undefined) {
-        console.warn('[dsh-task-board] slash commands unavailable: no remote.commands bridge')
-        return []
-      }
+      const commands = commandsOf(ctx)
+      if (commands === undefined) return []
       try {
         const result = await commands.list(sessionId as SessionId)
         if (!result.ok) {
@@ -520,17 +532,7 @@ export function apply(ctx: ClientContext): void {
             return undefined
           }
         },
-        selectModel: async (sessionId, selection) => {
-          const response = await connection.api.sessions.selectModel({
-            sessionId: sessionId as SessionId,
-            provider: selection.provider,
-            model: selection.model,
-            ...selection.reasoningEffort !== undefined ? { reasoningEffort: selection.reasoningEffort } : {},
-          })
-          return response.result.ok
-            ? { ok: true as const }
-            : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
-        },
+        selectModel: (sessionId, selection) => selectModelOf(connection, sessionId, selection),
         setPermission: async (sessionId, permission) => {
           // The native write path for per-session permission switches: the
           // `/permission` command through the host command registry (the
@@ -539,8 +541,7 @@ export function apply(ctx: ClientContext): void {
           // would answer in natural language instead of the permission
           // actually changing. The registry path never produces a model
           // turn; an unrecognized line reports unmatched.
-          const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
-            ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
+          const commands = commandsOf(ctx)
           if (commands === undefined) {
             return { ok: false as const, error: 'permission commands unavailable: no remote.commands bridge' }
           }

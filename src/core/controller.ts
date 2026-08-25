@@ -1285,9 +1285,10 @@ export class BoardController {
    * Auto launches waiting for a free slot. Only schedule/chain triggers ever
    * queue here: a manual run is an explicit user action that always starts
    * immediately (it still occupies a slot, so auto launches wait for the
-   * budget it consumes).
+   * budget it consumes). The trigger kind is not read at drain time
+   * (re-validation re-derives eligibility), so only the task id is kept.
    */
-  private queuedLaunches: Array<{ taskId: string; trigger: 'schedule' | 'chain' }> = []
+  private queuedLaunches: Array<{ taskId: string }> = []
 
   /** How many rounds are genuinely open right now (the concurrency truth). */
   private inFlightCount(): number {
@@ -1481,9 +1482,9 @@ export class BoardController {
    * forward exactly once. A second call while the task's latest run is still
    * open is ignored.
    *
-   * A manual run primes an enabled schedule rule: auto triggers only drive
-   * tasks a manual run has started, so arming a rule never executes anything
-   * by itself.
+   * A manual run is not a prerequisite for an armed rule: arming activates
+   * the schedule at once (see setSchedule), so auto triggers drive the task
+   * on their own — this door merely reports whether THIS launch was accepted.
    */
   async runTask(id: string, trigger: RunTrigger = 'manual'): Promise<boolean> {
     const task = this.tasks.find(candidate => candidate.id === id)
@@ -1502,7 +1503,7 @@ export class BoardController {
       return true
     }
     if (!this.queuedLaunches.some(candidate => candidate.taskId === id)) {
-      this.queuedLaunches.push({ taskId: id, trigger })
+      this.queuedLaunches.push({ taskId: id })
     }
     return true
   }
@@ -1643,7 +1644,7 @@ export class BoardController {
   }
 
   /**
-  /** Related-session labels of a task (for the composer's @ mention): the
+   * Related-session labels of a task (for the composer's @ mention): the
    *  task's sessions, each with a native title (falling back to the raw id),
    *  de-duplicated in related-session order. */
   sessionLabelsOf(taskId: string): Array<{ sessionId: string; title: string }> {
@@ -2259,6 +2260,9 @@ export class BoardController {
   }
 
   private handleExecutionEvent(event: ExecutionEvent): void {
+    // Late events (a run settling after the board unmounted/disposed) must
+    // never mutate the closed controller — no state writes after teardown.
+    if (this.disposed) return
     if (event.kind === 'started') {
       this.tasks = this.tasks.map(task => task.id === event.taskId
         ? attachSessionId(task, event.executionId, event.sessionId, this.now())

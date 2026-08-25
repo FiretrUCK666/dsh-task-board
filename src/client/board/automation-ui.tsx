@@ -28,24 +28,17 @@ import {
 } from '../../core/automation.ts'
 import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import {
-  chainUnlimited, latestExecutionOf, ruleReadiness, type ScheduleMode, type TaskRecord, type TaskStatus,
+  chainUnlimited, latestExecutionOf, ruleReadiness, type ScheduleMode, type TaskRecord,
 } from '../../core/tasks.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { cronHumanLabel } from './cron-label.ts'
 import { mergedPresets, presetIsDefault, PresetManager } from './PresetManager.tsx'
-import { STATUS_KEY } from './status.ts'
+import { STATUS_KEY, PAUSED_REASON_KEY } from './status.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Icon, Section, Segmented, SendModeToggle, Switch } from './ui.tsx'
 import { Chip } from './Chip.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
-
-/** The paused-rule reason word per blocking column (one map, both surfaces). */
-function pausedLabelOf(status: TaskStatus): TaskBoardKey {
-  if (status === 'review') return 'detail.schedule.paused.review'
-  if (status === 'done') return 'detail.schedule.paused.done'
-  return 'detail.schedule.paused.backlog'
-}
 
 /**
  * The one cron grammar: text input + preset dropdown (+ optional preset
@@ -657,7 +650,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
     ? {
         extraFailed: readiness.status === 'review'
           && latestExecutionOf(task)?.result === 'failed',
-        key: pausedLabelOf(readiness.status),
+        key: PAUSED_REASON_KEY[readiness.status],
       }
     : readiness.kind === 'blocked'
       ? { extraFailed: false, key: 'detail.schedule.blocked' as TaskBoardKey }

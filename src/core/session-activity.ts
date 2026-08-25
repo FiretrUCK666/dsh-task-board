@@ -50,7 +50,7 @@ export function latestUserMessage(events: readonly unknown[]): LatestUserMessage
     const data = event.data
     if (typeof data !== 'object' || data === null) continue
     if (data.source?.kind !== 'user') continue
-    const text = textOf(data.content)
+    const text = contentTextOf(data.content)
     return {
       ...text !== '' ? { text } : {},
       hasImage: hasImageBlock(data.content),
@@ -59,14 +59,13 @@ export function latestUserMessage(events: readonly unknown[]): LatestUserMessage
   return undefined
 }
 
-/** The text of the newest native user message, undefined when it has none
- *  (it was picture-only, or no message was seen). */
-export function latestUserMessageText(events: readonly unknown[]): string | undefined {
-  return latestUserMessage(events)?.text
-}
-
-/** Join a message's text blocks (each trimmed); returns '' when there is no text. */
-function textOf(content: unknown): string {
+/**
+ * Join a native message's text blocks (each trimmed); returns '' when the
+ * content carries no text. THE shared block-joiner for native content — the
+ * activity reader and the review transcript read the same wire shape, so the
+ * join grammar lives here, not in two private copies.
+ */
+export function contentTextOf(content: unknown): string {
   if (!Array.isArray(content)) return ''
   const parts: string[] = []
   for (const block of content) {

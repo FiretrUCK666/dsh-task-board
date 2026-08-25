@@ -1,17 +1,53 @@
 /**
- * Compact cruise-time formatting: window rows and the popover status line
- * need both endpoints readable at a glance inside a ~300px popover. The full
- * `YYYY-MM-DD HH:mm:ss` from formatDateTime is too long to sit next to the
- * arrow and the remove button, so cruise surfaces use this short form —
- * today collapses to the clock, any other day to month/day, cross-year adds
- * the year. The exact value is always reachable through the element's
- * `title`. Locale-aware (zh numeric-locale style vs en M/D), framework-free
- * so it unit-tests in isolation.
+ * THE time-formatting module: every clock/label grammar of the board lives
+ * here, never in a component. Two families:
+ * - exact/local labels (`formatDateTime`, `formatDuration`) and the compact
+ *   relative label (`formatTime`) used by cards, details and threads;
+ * - compact cruise-time formatting (`formatCruiseTime`): window rows and the
+ *   popover status line need both endpoints readable at a glance inside a
+ *   ~300px popover — the full `YYYY-MM-DD HH:mm:ss` is too long next to the
+ *   arrow and the remove button, so cruise surfaces use the short form —
+ *   today collapses to the clock, any other day to month/day, cross-year
+ *   adds the year. The exact value is always reachable through the
+ *   element's `title`. Locale-aware (zh numeric-locale style vs en M/D),
+ *   framework-free so it unit-tests in isolation.
  */
 import { cruiseWindowGrammarOf, isWindowActive, type CruiseWindow } from '../../core/cruise.ts'
 import { isEnglish, t } from '../locales.ts'
 
 const pad = (value: number): string => String(value).padStart(2, '0')
+
+/** Compact relative/absolute time label: just now → `Nm` → `Nh` → `Y-M-D`. */
+export function formatTime(ms: number): string {
+  const date = new Date(ms)
+  const now = Date.now()
+  const minutes = Math.floor((now - ms) / 60000)
+  if (minutes < 1) return t('time.justNow')
+  if (minutes < 60) return `${minutes}m`
+  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** Exact local time label: `YYYY-MM-DD HH:mm:ss`. */
+export function formatDateTime(ms: number): string {
+  const date = new Date(ms)
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+/** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */
+export function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) return isEnglish() ? `${hours}h ${minutes}m` : `${hours} 小时 ${minutes} 分`
+  if (minutes > 0) {
+    return isEnglish()
+      ? seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+      : seconds > 0 ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分`
+  }
+  return isEnglish() ? `${seconds}s` : `${seconds} 秒`
+}
 
 /** Compact cruise time label: `HH:mm` when same-day, `M月D日 HH:mm` /
  *  `M/D HH:mm` when same-year, full date otherwise. */

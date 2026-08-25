@@ -7,7 +7,8 @@
  * fails softly with a clear envelope, never a crash.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { readJsonBody, json } from './settings-route.ts'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { readJsonBody } from './settings-route.ts'
 
 /** One accepted image wire entry from the browser. */
 export interface AttachmentWireImage {
@@ -19,9 +20,11 @@ export interface AttachmentWireImage {
   name?: string
 }
 
-/** The validated request body: ordered images to admit. */
+/** The request body: ordered wire images to admit. Each entry stays unknown —
+ *  the browser body is never trusted past this point; normalizeWireImage
+ *  shape-guards every entry downstream. */
 export interface AttachImagesRequest {
-  images: AttachmentWireImage[]
+  images: unknown[]
 }
 
 /** The durable attachment refs returned to the browser (mirror of
@@ -103,24 +106,41 @@ export async function admitImages(
   }
 }
 
-/** HTTP handler: POST /api/dsh-task-board/attachments (body: admitted images). */
+/** The bridge's own envelope (its shape is NOT the settings value envelope:
+ *  ok carries refs, fail carries a stable error). The client reads exactly
+ *  this shape, so nothing is cast into a foreign one. */
+export type AttachEnvelope =
+  | { ok: true; refs: AttachImageRefView[] }
+  | { ok: false; error: { code: string; message: string } }
+
+function writeResponse(res: ServerResponse, envelope: AttachEnvelope, status = 200): void {
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
+  res.end(JSON.stringify(envelope))
+}
+
+/** HTTP handler: POST /api/dsh-task-board/attachments (body: admitted images).
+ *  The attachments service is resolved PER REQUEST through `resolveAttachments`
+ *  — never captured — so a service that mounts after the route (or remounts
+ *  after a host reload) still serves admissions. */
 export function createAttachHandler(
-  attachments: AttachmentsFace | undefined,
+  resolveAttachments: () => AttachmentsFace | undefined,
   admit: (attachments: AttachmentsFace | undefined, request: AttachImagesRequest | undefined) => Promise<{ refs: AttachImageRefView[]; error?: string }> = admitImages,
-): (req: import('http').IncomingMessage, res: import('http').ServerResponse) => Promise<void> {
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res) => {
     const body = await readJsonBody(req)
-    const request = isPlainObject(body) ? body as unknown as AttachImagesRequest : undefined
-    if (request === undefined || !Array.isArray(request.images)) {
-      json(res, { ok: false, error: { code: 'internal', message: 'invalid body' } }, 400)
+    const request = isPlainObject(body) && Array.isArray(body.images)
+      ? { images: body.images as unknown[] }
+      : undefined
+    if (request === undefined) {
+      writeResponse(res, { ok: false, error: { code: 'internal', message: 'invalid body' } }, 400)
       return
     }
-    const outcome = await admit(attachments, request)
+    const outcome = await admit(resolveAttachments(), request)
     if (outcome.error !== undefined) {
-      json(res, { ok: false, error: { code: 'internal', message: outcome.error } }, 500)
+      writeResponse(res, { ok: false, error: { code: 'internal', message: outcome.error } }, 500)
       return
     }
-    json(res, { ok: true, refs: outcome.refs } as unknown as import('./settings-route.ts').RouteEnvelope)
+    writeResponse(res, { ok: true, refs: outcome.refs })
   }
 }
 
@@ -128,10 +148,9 @@ export function createAttachHandler(
 export function registerAttachRoute(ctx: Context): () => void {
   const webServer = ctx.get('webServer') as { register(options: unknown): () => void } | undefined
   if (webServer === undefined) return () => undefined
-  const attachments = ctx.get('attachments') as AttachmentsFace | undefined
   return webServer.register({
     kind: 'exact',
     path: '/api/dsh-task-board/attachments',
-    handler: createAttachHandler(attachments),
+    handler: createAttachHandler(() => ctx.get('attachments') as AttachmentsFace | undefined),
   })
 }

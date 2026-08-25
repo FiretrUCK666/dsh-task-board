@@ -23,12 +23,13 @@ export class QuestionTracker implements QuestionRpcFace {
   private pending: ReadonlyMap<string, WireQuestion> = new Map()
   private readonly listeners = new Set<() => void>()
   private controller: AbortController | undefined
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly api: IApiClient) {}
 
   /** Start the mux stream once (idempotent); aborts on teardown. */
   start(): void {
-    if (this.controller !== undefined) return
+    if (this.controller !== undefined || this.reconnectTimer !== undefined) return
     const controller = new AbortController()
     this.controller = controller
     void this.pump(controller)
@@ -38,6 +39,8 @@ export class QuestionTracker implements QuestionRpcFace {
   dispose(): void {
     this.controller?.abort()
     this.controller = undefined
+    if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = undefined
     this.listeners.clear()
     this.pending = new Map()
   }
@@ -53,9 +56,20 @@ export class QuestionTracker implements QuestionRpcFace {
         }
       }
     } catch {
-      // Stream closed (abort / reconnect) — the tracker is a live cache; the
-      // next start() reopens and the host replays the pending set.
+      // Transient stream failure — the reconnect below repairs it.
     }
+    // Self-healing stream: a dead mux (host restart, network blip, error
+    // frame, plain close) must never wedge the tracker, because a subscribed
+    // reader would show a stale question card forever. Release the slot and
+    // reopen shortly — the host replays every still-pending frame on a new
+    // stream, so nothing is lost. A real teardown already cleared the slot
+    // (dispose) and the guard below stops the restart.
+    if (this.controller !== controller) return
+    this.controller = undefined
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined
+      this.start()
+    }, 1_000)
   }
 
   private apply(frame: { type: 'question/requested'; rpcId: string; sessionId: string; questions: unknown }

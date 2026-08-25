@@ -5,7 +5,7 @@
  * board already owns or already recorded via direct-send.
  */
 import { describe, expect, it } from 'vitest'
-import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, latestUserMessageText, withinGrace, type ActivityBook } from '../src/core/session-activity.ts'
+import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook } from '../src/core/session-activity.ts'
 
 const TASK = 't-1'
 const SESSION = 's-1'
@@ -89,14 +89,13 @@ describe('grace helpers', () => {
   })
 })
 
-describe('latestUserMessage / latestUserMessageText', () => {
+describe('latestUserMessage', () => {
   it('returns the newest native user text (skipping injected/context rows)', () => {
     const events = [
       { type: 'user/message', data: { source: { kind: 'injected' }, content: [{ type: 'text', text: '插件注入' }] } },
       { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '回应' }] } } },
       { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: ' 你好，plan mode ' }, { type: 'text', text: '继续' }] } },
     ]
-    expect(latestUserMessageText(events)).toBe('你好，plan mode\n继续')
     expect(latestUserMessage(events)).toEqual({ text: '你好，plan mode\n继续', hasImage: false })
   })
 
@@ -108,7 +107,6 @@ describe('latestUserMessage / latestUserMessageText', () => {
       { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'image', attachment: {} }] } },
     ]
     expect(latestUserMessage(events)).toEqual({ hasImage: true })
-    expect(latestUserMessageText(events)).toBeUndefined()
   })
 
   it('a picture + text message reports both facts', () => {
@@ -119,8 +117,8 @@ describe('latestUserMessage / latestUserMessageText', () => {
   })
 
   it('returns undefined for a missing window or non-user tails', () => {
-    expect(latestUserMessageText([])).toBeUndefined()
+    expect(latestUserMessage([])).toBeUndefined()
     expect(latestUserMessage([{ type: 'assistant/message', data: {} }])).toBeUndefined()
-    expect(latestUserMessageText([{ type: 'user/message', data: { source: { kind: 'injected' }, content: [{ type: 'text', text: 'x' }] } }])).toBeUndefined()
+    expect(latestUserMessage([{ type: 'user/message', data: { source: { kind: 'injected' }, content: [{ type: 'text', text: 'x' }] } }])).toBeUndefined()
   })
 })

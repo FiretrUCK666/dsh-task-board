@@ -18,13 +18,15 @@ export function AttachmentStrip({ images, onChange }: {
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   const addFiles = async (files: FileList | File[]): Promise<void> => {
-    const images: DraftImage[] = []
+    // Appends to the current selection: picking a second batch must never
+    // drop the first (the strip is the composer's one image ledger).
+    const added: DraftImage[] = []
     for (const file of Array.from(files)) {
       if (!IMAGE_MEDIA_TYPES.includes(file.type as (typeof IMAGE_MEDIA_TYPES)[number])) continue
       const draft = await encodeImageFile(file)
-      if (draft !== undefined) images.push(draft)
+      if (draft !== undefined) added.push(draft)
     }
-    if (images.length > 0) onChange(images)
+    if (added.length > 0) onChange([...images, ...added])
   }
 
   const onDrop = (event: React.DragEvent<HTMLDivElement>): void => {
@@ -43,7 +45,6 @@ export function AttachmentStrip({ images, onChange }: {
       <button
         type="button"
         className={css.attachAdd}
-        title={css !== undefined ? undefined : undefined}
         onClick={() => { fileRef.current?.click() }}
       >
         <Icon name="link" />

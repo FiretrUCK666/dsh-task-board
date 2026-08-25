@@ -115,12 +115,17 @@ export class SchedulerService {
       // from there — only a hard done stops it via disarm). The live hand-off
       // runs synchronously after each settle in the controller, so this tick
       // can never double-launch.
+      // Budget check: runCount counts hand-off-launched runs (the armed
+      // first run is never counted), so the run count so far is one ahead of
+      // the counter and this recovery launch WOULD be another uncounted one
+      // — the last legal recovery slot is `runCount + 1 < maxRuns` (a
+      // settle-then-count style check would over-run the budget by one).
       if (schedule.mode === 'chain') {
         if (task.status === 'done') continue // completed = disarmed already
         const latest = task.executions[task.executions.length - 1]
         const open = latest !== undefined && latest.endedAt === undefined
         if (open) continue
-        if (schedule.maxRuns !== undefined && schedule.runCount >= schedule.maxRuns) continue
+        if (schedule.maxRuns !== undefined && schedule.runCount + 1 >= schedule.maxRuns) continue
         await this.deps.runTask(task.id)
         continue
       }

@@ -16,6 +16,7 @@
  *   surface and are skipped.
  * Pure and framework-free so the fold unit-tests in isolation.
  */
+import { contentTextOf } from '../../core/session-activity.ts'
 
 /** One rendered transcript line: a real message or a context-injection row. */
 export type TranscriptLine =
@@ -104,7 +105,7 @@ export function foldTranscript(events: readonly TranscriptEvent[]): TranscriptLi
         })
         continue
       }
-      const text = textOf(data.content)
+      const text = contentTextOf(data.content)
       if (text === '') continue
       lines.push({
         kind: 'message',
@@ -118,7 +119,7 @@ export function foldTranscript(events: readonly TranscriptEvent[]): TranscriptLi
       if (typeof data !== 'object' || data === null) continue
       const message = data.message
       if (typeof message !== 'object' || message === null) continue
-      const text = textOf(message.content)
+      const text = contentTextOf(message.content)
       if (text === '') continue
       const usage = data.usage
       lines.push({
@@ -159,19 +160,4 @@ export function sumUsage(lines: readonly TranscriptLine[]): TranscriptUsage | un
     }
   }
   return total
-}
-
-/** Join a message's text blocks (each trimmed); returns '' when there is no text. */
-function textOf(content: unknown): string {
-  if (!Array.isArray(content)) return ''
-  const parts: string[] = []
-  for (const block of content) {
-    if (typeof block !== 'object' || block === null) continue
-    const entry = block as { type?: unknown; text?: unknown }
-    if (entry.type === 'text' && typeof entry.text === 'string') {
-      const text = entry.text.trim()
-      if (text !== '') parts.push(text)
-    }
-  }
-  return parts.join('\n')
 }

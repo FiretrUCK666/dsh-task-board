@@ -14,3 +14,14 @@ export const STATUS_KEY: Record<TaskStatus, TaskBoardKey> = {
   review: 'board.status.review',
   done: 'board.status.done',
 }
+
+/**
+ * Paused-rule explanation keyed by the pausing status: ONE map read by both
+ * automation surfaces (the detail editor and the overview row derive the same
+ * readiness reason, so the reason copy can never drift).
+ */
+export const PAUSED_REASON_KEY: Record<'backlog' | 'review' | 'done', TaskBoardKey> = {
+  backlog: 'detail.schedule.paused.backlog',
+  review: 'detail.schedule.paused.review',
+  done: 'detail.schedule.paused.done',
+}

@@ -660,11 +660,14 @@ export function newDirectRound(options: {
  * and completion: succeeded runs await human confirmation, failed runs await
  * a decision (comment to steer, rerun, or move on). The only exception is a
  * scheduled batch that keeps the card 'running' between runs: a succeeded
- * run belonging to an armed schedule whose next automatic run is already
- * committed stays 'running' — for a budgeted cron batch
- * (`runCount + 1 < maxRuns`, the counter is incremented by the scheduler
- * only after this settle) and for chain mode (unlimited, or a further
- * budgeted run remains). A cancelled run returns to 'todo'.
+ * run belonging to an armed schedule whose next automatic run is still to
+ * come stays 'running' — for a budgeted cron batch (`runCount < maxRuns`:
+ * the scheduler increments the counter at fire-accept, before the run can
+ * settle, so a just-settled scheduled run is already counted) and for chain
+ * mode (`runCount + 1 < maxRuns`: the hand-off increments the counter when
+ * it launches the NEXT run, while the armed first run is never counted, so
+ * a just-settled run is one behind; unlimited chains always stay 'running').
+ * A cancelled run returns to 'todo'.
  */
 export function settleExecution(
   task: TaskRecord,
@@ -686,12 +689,17 @@ export function settleExecution(
     && schedule.enabled
     && schedule.mode === 'chain'
     && (schedule.maxRuns === undefined || schedule.runCount + 1 < schedule.maxRuns)
+  // Cron keeps the card running while fewer than maxRuns scheduled fires have
+  // launched. The counter already counts THIS run (the scheduler persisted the
+  // increment at fire-accept); the +1 form would land the penultimate run in
+  // review and the next tick would then skip the final fire via the column
+  // pause — the batch would silently run one run short.
   const batchIncomplete = outcome === 'succeeded'
     && schedule !== undefined
     && schedule.enabled
     && schedule.mode === 'cron'
     && schedule.maxRuns !== undefined
-    && schedule.runCount + 1 < schedule.maxRuns
+    && schedule.runCount < schedule.maxRuns
   const status: TaskStatus = outcome === 'cancelled'
     ? task.status === 'running' ? 'todo' : task.status
     : chainIncomplete || batchIncomplete ? 'running'

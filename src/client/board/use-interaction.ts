@@ -40,7 +40,11 @@ export interface SessionContext {
 
 const STATE_URL = '/api/dsh-task-board/session-state'
 
-/** One 3s poll: transcript → todos; bridge → goal + subagents. */
+/** One 3s poll: transcript → todos; bridge → goal + subagents. The board's
+ *  tree stays mounted while hidden (the conversation view takes over), so the
+ *  poll pauses whenever the board is not visible — `data-dsh-taskboard-active`
+ *  on <html> is the ONE visibility marker (board-mount owns it) — and resumes
+ *  with an immediate refresh the moment the board reappears. */
 export function useSessionContext(controller: BoardController, sessionId: string | undefined): SessionContext {
   const [context, setContext] = useState<SessionContext>({})
   useEffect(() => {
@@ -50,6 +54,7 @@ export function useSessionContext(controller: BoardController, sessionId: string
     }
     let alive = true
     let timer: number | undefined
+    const visible = (): boolean => document.documentElement.hasAttribute('data-dsh-taskboard-active')
 
     const pollTranscript = (): void => {
       void controller.loadTranscript(sessionId).then(result => {
@@ -81,15 +86,21 @@ export function useSessionContext(controller: BoardController, sessionId: string
         .catch(() => { /* bridge unavailable — silence */ })
     }
 
-    pollTranscript()
-    pollSessionState()
+    const poll = (): void => { pollTranscript(); pollSessionState() }
+    // Visibility flips (the board opening/closing) refresh the read at once.
+    const observer = new MutationObserver(() => {
+      if (visible()) poll()
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-dsh-taskboard-active'] })
+
+    if (visible()) poll()
     timer = window.setInterval(() => {
-      pollTranscript()
-      pollSessionState()
+      if (visible()) { pollTranscript(); pollSessionState() }
     }, 3_000)
     return () => {
       alive = false
       if (timer !== undefined) window.clearInterval(timer)
+      observer.disconnect()
     }
   }, [controller, sessionId])
   return context

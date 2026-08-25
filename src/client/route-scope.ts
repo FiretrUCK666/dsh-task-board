@@ -67,12 +67,19 @@ export class RouteSettingsScope<T> {
   private snapshot: SettingsScopeSnapshot<T> = { status: 'loading', value: undefined, base: undefined, user: undefined, revision: undefined, writable: false, mode: 'host' }
   private readonly listeners = new Set<() => void>()
   private disposed = false
+  /**
+   * Serialized request lane: the initial load and every mutation run one at a
+   * time, so a slow load response can never overwrite the fresh view of a
+   * write that ran after it, and a write's revision always comes from the
+   * snapshot the previous request settled (the SDK scope's write queue).
+   */
+  private lane: Promise<void> = Promise.resolve()
 
   /**
    * @param namespace - the settings namespace this scope reads (route path tail).
    */
   constructor(private readonly namespace: string) {
-    void this.load()
+    void this.enqueue(() => this.load())
   }
 
   /** @returns the current snapshot (stable reference until the next change). */
@@ -98,7 +105,9 @@ export class RouteSettingsScope<T> {
    * @param value - JSON-shaped value selected by the user.
    */
   async set(field: string, value: unknown): Promise<void> {
-    await this.mutate([{ op: 'set', path: [field], value }], this.snapshot.revision)
+    await this.enqueue(async () => {
+      await this.mutate([{ op: 'set', path: [field], value }], this.snapshot.revision)
+    })
   }
 
   /**
@@ -106,13 +115,24 @@ export class RouteSettingsScope<T> {
    * @param field - scalar field inside the namespace section.
    */
   async unset(field: string): Promise<void> {
-    await this.mutate([{ op: 'unset', path: [field] }], this.snapshot.revision)
+    await this.enqueue(async () => {
+      await this.mutate([{ op: 'unset', path: [field] }], this.snapshot.revision)
+    })
   }
 
   /** Stop all listeners and drops further updates. */
   dispose(): void {
     this.disposed = true
     this.listeners.clear()
+  }
+
+  /** Run one request on the serialized lane (order = arrival stay order). */
+  private enqueue(task: () => Promise<void>): Promise<void> {
+    const run = this.lane.then(task)
+    // The lane never rejects: every task settles its own failure into the
+    // unavailable snapshot, so the chain keeps flowing.
+    this.lane = run.catch(() => undefined)
+    return run
   }
 
   /** Fetch the namespace view through the route and adopt it. */

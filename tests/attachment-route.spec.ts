@@ -53,7 +53,7 @@ describe('admitImages', () => {
 describe('createAttachHandler', () => {
   it('answers ok with refs for a valid body', async () => {
     const attachments: AttachmentsFace = { saveImages: async () => [] }
-    const handler = createAttachHandler(attachments, async () => ({
+    const handler = createAttachHandler(() => attachments, async () => ({
       refs: [{ attachmentId: 'a-1', mediaType: 'image/png', bytes: 1, width: 1, height: 1 }],
     }))
     const res = makeResponse()
@@ -70,7 +70,7 @@ describe('createAttachHandler', () => {
     expect(parsed.refs[0].attachmentId).toBe('a-1')
   })
   it('returns 400 on a malformed body', async () => {
-    const handler = createAttachHandler(undefined)
+    const handler = createAttachHandler(() => undefined)
     const res = makeResponse()
     const req = {
       [Symbol.asyncIterator]: async function* () {
@@ -79,5 +79,27 @@ describe('createAttachHandler', () => {
     } as never
     await handler(req, res as never)
     expect(res.writeHead).toHaveBeenCalledWith(400, expect.anything())
+  })
+
+  it('resolves the attachments service per request (mount after register still serves)', async () => {
+    // The route is registered before the attachments service exists; the
+    // handler must answer through the service present AT REQUEST time.
+    let current: AttachmentsFace | undefined = undefined
+    const handler = createAttachHandler(() => current)
+    current = {
+      saveImages: async () => [
+        { attachmentId: 'att-x', mediaType: 'image/png', bytes: 1, width: 1, height: 1 },
+      ],
+    }
+    const res = makeResponse()
+    const req = {
+      [Symbol.asyncIterator]: async function* () {
+        yield Buffer.from(JSON.stringify({ images: [{ mediaType: 'image/png', data: 'aGk=' }] }))
+      },
+    } as never
+    await handler(req, res as never)
+    const parsed = JSON.parse(res.end.mock.calls[0][0] as string)
+    expect(parsed.ok).toBe(true)
+    expect(parsed.refs[0].attachmentId).toBe('att-x')
   })
 })

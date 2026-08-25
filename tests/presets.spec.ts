@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_PRESETS, InMemoryPresetStore, LocalStoragePresetStore,
-  addPreset, mergePresets, parsePresets, removePreset, updatePreset,
+  mergePresets, parsePresets,
   type SchedulePreset,
 } from '../src/core/presets.ts'
 import {
@@ -36,7 +36,7 @@ describe('DEFAULT_PRESETS', () => {
   })
 })
 
-describe('mergePresets / add / update / remove', () => {
+describe('mergePresets', () => {
   it('appends custom presets after the defaults', () => {
     const merged = mergePresets(DEFAULT_PRESETS, [CUSTOM])
     expect(merged).toHaveLength(DEFAULT_PRESETS.length + 1)
@@ -48,15 +48,6 @@ describe('mergePresets / add / update / remove', () => {
     const merged = mergePresets(DEFAULT_PRESETS, [replacement])
     expect(merged).toHaveLength(DEFAULT_PRESETS.length)
     expect(merged.find(preset => preset.id === 'hourly')).toEqual(replacement)
-  })
-
-  it('add / update / remove mutate the list functionally', () => {
-    const added = addPreset([], CUSTOM)
-    expect(added).toEqual([CUSTOM])
-    const edited = updatePreset(added, { ...CUSTOM, label: '改名' })
-    expect(edited[0].label).toBe('改名')
-    expect(removePreset(edited, CUSTOM.id)).toEqual([])
-    expect(removePreset([], 'missing')).toEqual([])
   })
 })
 

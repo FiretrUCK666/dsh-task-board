@@ -1,9 +1,10 @@
 /**
- * Markdown renderer for board surfaces: maps the parser's node tree (markdown.ts)
- * to React elements with the board's design tokens — NO HTML strings are ever
- * produced, so the preview has the native look and there is no injection
- * surface. Used by the shared transcript rows and the comment thread, so
- * every conversation surface previews markdown identically.
+ * Markdown renderer for board surfaces: maps the parser's node tree
+ * (markdown-parser.ts) to React elements with the board's design tokens — NO
+ * HTML strings are ever produced, so the preview has the native look and
+ * there is no injection surface. Used by the shared transcript rows and the
+ * comment thread, so every conversation surface previews markdown
+ * identically.
  */
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'

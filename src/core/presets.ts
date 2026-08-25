@@ -89,21 +89,6 @@ export function mergePresets(defaults: readonly SchedulePreset[], custom: readon
   ]
 }
 
-/** Append a preset (returns the new list). */
-export function addPreset(presets: readonly SchedulePreset[], preset: SchedulePreset): SchedulePreset[] {
-  return [...presets, preset]
-}
-
-/** Replace one preset by id (returns the same list when the id is absent). */
-export function updatePreset(presets: readonly SchedulePreset[], preset: SchedulePreset): SchedulePreset[] {
-  return presets.map(candidate => candidate.id === preset.id ? preset : candidate)
-}
-
-/** Remove one preset by id (returns the same list when the id is absent). */
-export function removePreset(presets: readonly SchedulePreset[], id: string): SchedulePreset[] {
-  return presets.filter(preset => preset.id !== id)
-}
-
 /** localStorage-backed preset store (the browser backend). */
 export class LocalStoragePresetStore implements PresetStore {
   /**

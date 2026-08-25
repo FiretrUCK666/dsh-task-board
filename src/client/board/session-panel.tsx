@@ -672,12 +672,26 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   const submit = (): void => {
     const text = draft.trim()
     if ((text === '' && attachedImages.length === 0) || disabled === true) return
+    // ONE clear grammar for every send mode: the draft leaves the composer at
+    // submit, so a repeated click can never double-send (queue cleared right
+    // away; steer only after the host answered — a quick second click would
+    // have sent the same message twice). A rejection restores the draft so
+    // the user keeps their words to retry.
+    const restore = (): void => {
+      setDraft(text)
+      setAttachedImages(attachedImages)
+      if (storeKey !== undefined) draftStore.set(storeKey, text)
+    }
+    clear()
     if (attachedImages.length > 0) {
       // Images go out immediately through the steer path — a picture belongs
       // to the current exchange, not a queue.
       void admitDraftImages(attachedImages).then(refs => {
-        if (refs.length === 0) return
-        void onSteerImages(text, refs).then(ok => { if (ok) clear() })
+        if (refs.length === 0) {
+          restore()
+          return
+        }
+        void onSteerImages(text, refs).then(ok => { if (!ok) restore() })
       })
       return
     }
@@ -686,10 +700,10 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     // native session now, bypassing queue/budget/cruise. One message, two
     // send modes, one grammar everywhere.
     if (steer) {
-      void onSteer(text).then(ok => { if (ok) clear() })
+      void onSteer(text).then(ok => { if (!ok) restore() })
       return
     }
-    if (onDrive(text)) clear()
+    if (!onDrive(text)) restore()
   }
   return (
     <div className={css.reviewComposer}>

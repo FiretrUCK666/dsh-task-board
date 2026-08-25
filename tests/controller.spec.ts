@@ -714,33 +714,37 @@ describe('scheduling', () => {
     expect(controller.getSnapshot().tasks[0].schedule).toBeUndefined()
   })
 
-  it('keeps a budgeted scheduled batch running until the final run settles', async () => {
+  it('keeps a budgeted scheduled batch running until the final run (fire counts at launch)', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.setSchedule(task.id, { enabled: true, cron: '* * * * *', maxRuns: 3 })
 
-    // Run 1 settles succeeded → the batch is not complete, the card stays
-    // 'running' so the scheduler can fire the next run.
+    // Real scheduler order: the counter is persisted at fire-accept — BEFORE
+    // the run can settle — so a settled scheduled run is already counted.
     await controller.runTask(task.id)
     const e1 = exec.runCalls[0].executionId
+    controller.applyScheduleNextRun(task.id, NOW + 60_000, NOW, 1)
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
+    // Run 1 of 3: the batch is not complete, the card stays 'running' so the
+    // scheduler can fire the next run.
     expect(store.load()[0].status).toBe('running')
     expect(store.load()[0].executions[0].result).toBe('succeeded')
-    // The scheduler increments the run counter after the settle.
-    controller.applyScheduleNextRun(task.id, NOW + 60_000, NOW, 1)
 
-    // Run 2 (a settled latest execution frees the run slot).
+    // Run 2 of 3: still within budget. A settle-then-count ordering would
+    // land 'review' here and the next tick would skip the final fire via the
+    // column pause — the batch would silently run one run short.
     await controller.runTask(task.id)
     expect(exec.runCalls).toHaveLength(2)
     const e2 = exec.runCalls[1].executionId
+    controller.applyScheduleNextRun(task.id, NOW + 120_000, NOW, 2)
     exec.runCalls[1].fire({ kind: 'settled', taskId: task.id, executionId: e2, outcome: 'succeeded' })
     expect(store.load()[0].status).toBe('running')
-    controller.applyScheduleNextRun(task.id, NOW + 120_000, NOW, 2)
 
-    // Run 3 is the final budgeted run → review (the human gate).
+    // Run 3 is the final budgeted run → disarmed at fire, settles into review.
     await controller.runTask(task.id)
     const e3 = exec.runCalls[2].executionId
+    controller.applyScheduleNextRun(task.id, undefined, NOW, 3, true)
     exec.runCalls[2].fire({ kind: 'settled', taskId: task.id, executionId: e3, outcome: 'succeeded' })
     expect(store.load()[0].status).toBe('review')
     expect(store.load()[0].executions).toHaveLength(3)

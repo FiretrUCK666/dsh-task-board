@@ -50,7 +50,8 @@ export function taskLiveStateOf(
 ): TaskLiveState {
   const sessions = relatedSessionIdsOf(task)
   for (const sessionId of sessions) {
-    if (waitingOf(sessionId) !== undefined && waitingOf(sessionId) !== null) return 'waiting'
+    const waiting = waitingOf(sessionId)
+    if (waiting !== undefined && waiting !== null) return 'waiting'
   }
   for (const sessionId of sessions) {
     if (isRunningOf(sessionId)) return 'running'

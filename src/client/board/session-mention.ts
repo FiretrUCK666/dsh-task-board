@@ -28,8 +28,9 @@ export function encodeSessionReferenceUri(sessionId: string): string {
   return `${SESSION_REFERENCE_SCHEME}${base64urlUtf8(JSON.stringify(sessionId))}`
 }
 
-/** Escape the display label for the Markdown mention (the deployed grammar:
- *  `[` `]` `\` get a backslash prefix). */
+/** Escape the display label for the Markdown mention — the deployed grammar
+ *  verbatim: `]` and `\` get a backslash prefix (`[` is deliberately NOT
+ *  escaped — the host's parse pattern does not unescape it either). */
 export function escapeSessionReferenceLabel(label: string): string {
   return label.replace(/[\\\]]/gu, match => `\\${match}`)
 }

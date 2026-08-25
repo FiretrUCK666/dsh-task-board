@@ -13,7 +13,7 @@ import type { BoardController, TranscriptProjectionsShape } from '../../core/con
 import { type TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { formatDateTime } from './TaskCard.tsx'
+import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'

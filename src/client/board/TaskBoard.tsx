@@ -23,11 +23,10 @@ import { useFlipRegion } from './use-flip.ts'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
-import { formatCruiseTime, cruiseWindowLabelOf } from './format-time.ts'
+import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
-import { formatDateTime } from './TaskCard.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { AutomationPanel } from './AutomationPanel.tsx'
@@ -108,6 +107,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
   // 自动巡航设置弹层：点击胶囊的 ▾ 展开；点击弹层外任意处关闭。
   const [cruiseOpen, setCruiseOpen] = useState(false)
+  // Cruise-limit input: a directly controlled number field cannot be cleared
+  // to retype (any invalid edit snaps back), so the input keeps its own text;
+  // a valid integer commits on edit (the controller clamps), an invalid or
+  // empty text stays for typing and blur restores the committed value.
+  const [limitText, setLimitText] = useState(String(snapshot.cruise.limit))
+  useEffect(() => { setLimitText(String(snapshot.cruise.limit)) }, [snapshot.cruise.limit])
   const cruiseWrapRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!cruiseOpen) return
@@ -513,13 +518,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       type="number"
                       min={1}
                       max={MAX_CRUISE_LIMIT}
-                      value={snapshot.cruise.limit}
+                      value={limitText}
                       title={t('board.cruiseLimit')}
                       aria-label={t('board.cruiseLimit')}
                       onChange={event => {
+                        setLimitText(event.target.value)
                         const value = Number(event.target.value)
-                        if (Number.isInteger(value) && value >= 1) controller.setCruiseLimit(value)
+                        if (event.target.value.trim() !== '' && Number.isInteger(value) && value >= 1) {
+                          controller.setCruiseLimit(value)
+                        }
                       }}
+                      onBlur={() => { setLimitText(String(snapshot.cruise.limit)) }}
                     />
                   </span>
                 </div>

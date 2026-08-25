@@ -12,7 +12,7 @@ import type { TaskRecord } from '../../core/tasks.ts'
 import { Chip } from './Chip.tsx'
 import { commentKindOf, commentStateKey, queuePositionOf, type CommentView } from './comment-thread.ts'
 import { Markdown } from './Markdown.tsx'
-import { formatDateTime } from './TaskCard.tsx'
+import { formatDateTime } from './format-time.ts'
 
 /** Renders the task's comment views (oldest first) with cancel affordances. */
 export function CommentsThread({ task, views, onCancel }: {

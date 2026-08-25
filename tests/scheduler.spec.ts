@@ -313,6 +313,19 @@ describe('SchedulerService lifecycle', () => {
     expect(h.runs).toEqual([])
   })
 
+  it('does not restart a chain when the budget is filled by the uncounted first run', async () => {
+    // runCount = 1 means the hand-off has launched 2 runs so far (the armed
+    // first run is never counted) — maxRuns = 2, the budget is exhausted, so
+    // a recovery launch would over-run it. The guard must read
+    // `runCount + 1 >= maxRuns` (one ahead of the counter).
+    const h = makeHarness()
+    const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
+    const chain = withSchedule(task, { enabled: true, mode: 'chain', cron: '', primed: true, maxRuns: 2, runCount: 1 }, at(2026, 1, 1, 0, 0))
+    h.setTasks([chain])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+  })
+
   it('ticks on tab-visibility recovery through the environment listener', () => {
     let listener: (() => void) | undefined
     const environment: SchedulerDeps['environment'] = {

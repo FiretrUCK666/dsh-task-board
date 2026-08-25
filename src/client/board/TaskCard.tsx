@@ -9,30 +9,13 @@ import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskLiveState } from '../../core/task-live.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { hasOpenRun, latestExecutionOf, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf, cardSourceLabel } from '../../core/tasks.ts'
-import { isEnglish, t } from '../locales.ts'
+import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
 import { Chip } from './Chip.tsx'
 import { waitingKeyOf } from './session-chip.ts'
 import { ColorSwatches, Icon } from './ui.tsx'
-
-/** Compact relative/absolute time label. */
-export function formatTime(ms: number): string {
-  const date = new Date(ms)
-  const now = Date.now()
-  const minutes = Math.floor((now - ms) / 60000)
-  if (minutes < 1) return t('time.justNow')
-  if (minutes < 60) return `${minutes}m`
-  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-/** Exact local time label: `YYYY-MM-DD HH:mm:ss`. */
-export function formatDateTime(ms: number): string {
-  const date = new Date(ms)
-  const pad = (value: number): string => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-}
+import { formatDateTime, formatTime } from './format-time.ts'
 
 /** Tooltip for the schedule chip: THE one summary grammar (shared with the
  *  detail's disclosure and the overview) — honest about the rule's readiness:
@@ -40,21 +23,6 @@ export function formatDateTime(ms: number): string {
  *  blocking status. */
 function scheduleChipTitle(task: TaskRecord): string {
   return scheduleSummary(task)
-}
-
-/** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */
-export function formatDuration(ms: number): string {
-  const totalSeconds = Math.max(0, Math.round(ms / 1000))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  if (hours > 0) return isEnglish() ? `${hours}h ${minutes}m` : `${hours} 小时 ${minutes} 分`
-  if (minutes > 0) {
-    return isEnglish()
-      ? seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
-      : seconds > 0 ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分`
-  }
-  return isEnglish() ? `${seconds}s` : `${seconds} 秒`
 }
 
 /** The open run's state text: either working ("进行中") or blocked on the

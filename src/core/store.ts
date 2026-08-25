@@ -2,7 +2,7 @@
  * Task persistence: a small storage seam with a localStorage backend.
  *
  * The task-board client plugin runs in the browser, and dsh exposes no
- * browser-writable file channel , so tasks persist in the browser's
+ * browser-writable file channel, so tasks persist in the browser's
  * localStorage under a versioned key — the same persistence mechanism dsh's
  * own client snapshot stores use (`createSnapshotStore` persist). Data
  * survives page refreshes and dsh restarts (same origin), and survives
