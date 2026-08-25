@@ -6,6 +6,7 @@
  */
 import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
+import type { TaskLiveState } from '../../core/task-live.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { hasOpenRun, latestExecutionOf, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf, cardSourceLabel } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
@@ -75,7 +76,7 @@ export function settledChipLabel(runs: number): string {
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onColorPick }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onColorPick, live }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -100,6 +101,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   onQuickRun?: () => void
   /** Optional hover quick-action: pick a card color right from the card. */
   onColorPick?: (color: string | undefined) => void
+  /** THE live-state derivation (taskLiveStateOf, controller.liveStateOf):
+   *  'running' = a related session is genuinely working (board run, direct
+   *  steer, session rule, out-of-band chat). Absent = falls back to the
+   *  status-based judgment (card used without a controller). */
+  live?: TaskLiveState
 }) {
   const [dragging, setDragging] = useState(false)
   const latest = latestExecutionOf(task)
@@ -131,7 +137,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // refining cards breathe — state-bound, independent of the unread baseline,
   // so a live card NEVER misses its pulse (the old ring was unread-only:
   // "进行中有时不闪").
-  const active = task.status === 'running' || pendingCount > 0 || refining(task)
+  const active = (live ?? (task.status === 'running' ? 'running' : 'idle')) === 'running' || pendingCount > 0 || refining(task)
   return (
     /* A card is a clickable REGION, never a <button>: the color swatches and
        the quick-run control inside are real interactive elements, and a

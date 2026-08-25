@@ -98,7 +98,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
   if (isRun) {
     const execution = task.executions.find(candidate => candidate.id === row.executionId)
     if (execution === undefined) return null
-    const session = sessionDisplay(task, execution, row.display.waitingKind)
+    const session = sessionDisplay(task, execution, row.display.waitingKind, controller.nativeRunningOf(sessionId))
     const times = sessionTimes(task, execution)
     const isActive = session.state === 'running' || session.state === 'waiting'
     // The ONE workspace chip grammar with the linked rows: a run row names

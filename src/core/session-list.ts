@@ -94,6 +94,10 @@ export interface TaskSessionContext {
   titleOf(sessionId: string): string | undefined
   /** Resolve a session's pending interaction. */
   pendingInteractionOf(sessionId: string): PendingInteractionKind | undefined
+  /** Resolve a session's NATIVE running flag (host truth — a direct steer's
+   *  round is settled at birth, so without this the row stays dark while the
+   *  agent is genuinely working). */
+  nativeRunningOf?(sessionId: string): boolean
 }
 
 /**
@@ -125,7 +129,7 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
       sessionId,
       title: ctx.titleOf(sessionId) ?? task.title,
       executionId: execution.id,
-      display: sessionDisplay(task, execution, ctx.pendingInteractionOf(sessionId)),
+      display: sessionDisplay(task, execution, ctx.pendingInteractionOf(sessionId), ctx.nativeRunningOf?.(sessionId) ?? false),
       updatedAt: sessionTimes(task, execution).endedAt ?? execution.startedAt,
       unviewed: executionUnviewed(task, execution),
     })

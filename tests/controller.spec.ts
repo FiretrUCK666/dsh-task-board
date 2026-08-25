@@ -2459,7 +2459,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
 
 describe('session automation rules (给会话定时发指令)', () => {
   function ruleHarness(sessionIds: string[], faces: {
-    sessionMessage?: (sessionId: string, text: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    sessionMessage?: (sessionId: string, text: string, images?: unknown, mode?: 'queue' | 'steer') => Promise<{ ok: true } | { ok: false; error: string }>
     sessionCommand?: (sessionId: string, line: string) => Promise<{ ok: true; matched: boolean } | { ok: false; error: string }>
   }): { controller: BoardController; sessions: FakeSessions; stub: StubExec } {
     const stub = new StubExec()
@@ -2750,25 +2750,57 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(row.rules?.[0].lastAt).toBe(NOW)
   })
 
-  it('many rules due at the same completion: one at a time, steer first, then queue FIFO (never a burst)', async () => {
+  it('many rules due at the same completion: steer injects immediately, queue rules FIFO (never a burst)', async () => {
     const { controller, stub } = ruleHarness(['s-a', 's-b', 's-c'], {})
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'aa', cron: '', trigger: 'on-complete', send: 'queue' })!
     controller.createSessionRule(task.id, { sessionId: 's-b', instruction: 'bb', cron: '', trigger: 'on-complete', send: 'queue' })!
-    controller.createSessionRule(task.id, { sessionId: 's-c', instruction: 'cc', cron: '', trigger: 'on-complete', send: 'steer' })!
+    const ccRule = controller.createSessionRule(task.id, { sessionId: 's-c', instruction: 'cc', cron: '', trigger: 'on-complete', send: 'steer' })!
     await controller.runTask(task.id)
     stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
     await flush()
-    // THREE rules due at once — the budget injects ONE round: the steer rule
-    // jumps the queue, the queue rules wait their FIFO turn.
-    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)
+    // THREE rules due at once — ONE round injected: the steer rule goes out
+    // immediately (a real 插话), the queue rules wait their FIFO turn.
     expect(stub.commentCalls.map(call => call.text)).toEqual(['cc'])
+    // Isolate the FIFO lane from the on-complete loop: closing the steer rule
+    // before its round settles means no 续轮 — only the queued aa follows.
+    controller.toggleSessionRule(task.id, ccRule.id, false)
     stub.commentCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.commentCalls[0].executionId, outcome: 'succeeded' })
     await flush()
     expect(stub.commentCalls.map(call => call.text)).toEqual(['cc', 'aa'])
     stub.commentCalls[1].fire({ kind: 'settled', taskId: task.id, executionId: stub.commentCalls[1].executionId, outcome: 'succeeded' })
     await flush()
     expect(stub.commentCalls.map(call => call.text)).toEqual(['cc', 'aa', 'bb'])
+  })
+
+  it('a direct steer sends with the OFFICIAL steer mode and drives the card running → review (插话状态根治)', async () => {
+    let receivedMode: string | undefined
+    const { controller, sessions } = ruleHarness(['s-a'], {
+      sessionMessage: async (_sessionId, _text, _images, mode) => { receivedMode = mode; return { ok: true as const } },
+    })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    await controller.steerComment(task.id, 's-a', '现在立刻做')
+    await flush()
+    // 插话 = 真插话：the wire got the OFFICIAL steer disposition.
+    expect(receivedMode).toBe('steer')
+    const row0 = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row0.executions.some(round => round.direct === true && round.comment === '现在立刻做')).toBe(true)
+    // Not running yet: the session hasn't started on the host.
+    expect(row0.status).not.toBe('running')
+    // The native session starts working → the card joins 进行中 (one live
+    // derivation — never a dead card again).
+    sessions.setRunning('s-a', true)
+    await flush()
+    const row1 = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.liveStateOf(task.id)).toBe('running')
+    expect(row1.status).toBe('running')
+    // The session finishes → the steer's completion is a completion: 待审核
+    // (and any on-complete rule would fire through the shared appointment).
+    sessions.setRunning('s-a', false)
+    await flush()
+    const row2 = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.liveStateOf(task.id)).toBe('idle')
+    expect(row2.status).toBe('review')
   })
 
   it('a USER comment round settle fires the rule too (评论驱动的完成也是完成)', async () => {

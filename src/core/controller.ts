@@ -20,6 +20,7 @@ import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource }
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, isCruiseWindow, normalizeWindow, setCruiseSchedule as applySchedule, sortWindows, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
+import { DIRECT_FALLBACK_STATUS, isDirectLike, latestRoundOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
@@ -370,8 +371,11 @@ export interface ControllerDeps {
    *  task-execution path: it never creates execution records, never enters
    *  the dispatcher and never affects task state — it is exactly "typing in
    *  the native conversation". Images are durable attachment refs (admitted
-   *  through the host attachment bridge) appended to the prompt content. */
-  sessionMessage?: (sessionId: string, text: string, images?: readonly HostImageRef[] | undefined) => Promise<{ ok: true } | { ok: false; error: string }>
+   *  through the host attachment bridge) appended to the prompt content.
+   *  `mode` is the OFFICIAL prompt disposition: 'queue' (in order) or
+   *  'steer' (interrupt the current turn now) — a 插话 is only a 插话 when
+   *  the wire says so. */
+  sessionMessage?: (sessionId: string, text: string, images?: readonly HostImageRef[] | undefined, mode?: 'queue' | 'steer') => Promise<{ ok: true } | { ok: false; error: string }>
   /** Executes one slash-command line against any native session through the
    *  host command registry (matched = recognized; unmatched = the caller
    *  falls back to sending the line as plain text). Absent = slash lines
@@ -932,6 +936,7 @@ export class BoardController {
       linked: this.linkedOf(task),
       titleOf: sessionId => this.sessionTitle(sessionId),
       pendingInteractionOf: sessionId => this.pendingInteractionOf(sessionId),
+      nativeRunningOf: sessionId => this.nativeRunningOf(sessionId),
     })
   }
 
@@ -1438,9 +1443,11 @@ export class BoardController {
    * Inject one comment continuation: mark the round injected, move the task
    * to 'running', and send the text to the execution session (a fresh turn
    * in the same session, watched like a plain run). Only ever called by
-   * {@link dispatch}, after eligibility was validated.
+   * {@link dispatch}, after eligibility was validated — or by a session
+   * rule with `send: 'steer'`, which injects immediately (the same watched
+   * round, only the handoff is now instead of the FIFO lane).
    */
-  private launchComment(task: TaskRecord, round: ExecutionRecord): void {
+  private launchComment(task: TaskRecord, round: ExecutionRecord, mode: 'queue' | 'steer' = 'queue'): void {
     if (round.sessionId === undefined || round.comment === undefined) return
     const marked = { ...round, injectedAt: this.now() }
     const running = withStatus({
@@ -1461,6 +1468,7 @@ export class BoardController {
       round.sessionId,
       round.comment,
       (event) => { this.handleExecutionEvent(event) },
+      mode,
     )
   }
 
@@ -1684,7 +1692,7 @@ export class BoardController {
     // A steer is a human message — never gated by the task's execution prompt
     // (that gate belongs to task execution only); the blank-message rejection
     // above is the one guard.
-    return this.sendRawMessage(sessionId, trimmed, images).then(result => {
+    return this.sendRawMessage(sessionId, trimmed, images, 'steer').then(result => {
       if (!result.ok) return result
       // The direct-sent turn is already what the steer created — keep the
       // running flip from ALSO becoming an external round.
@@ -1913,8 +1921,9 @@ export class BoardController {
   }
 
   /** The raw host send for a direct line (slash-aware, no recording).
-   *  `images` are durable attachment refs appended to the message content. */
-  private sendRawMessage(sessionId: string, text: string, images?: readonly HostImageRef[]): Promise<{ ok: true } | { ok: false; error: string }> {
+   *  `images` are durable attachment refs appended to the message content;
+   *  `mode` is the official prompt disposition (queue / steer). */
+  private sendRawMessage(sessionId: string, text: string, images?: readonly HostImageRef[], mode: 'queue' | 'steer' = 'queue'): Promise<{ ok: true } | { ok: false; error: string }> {
     const direct = this.deps.sessionMessage
     if (text.startsWith('/')) {
       const command = this.deps.sessionCommand
@@ -1925,12 +1934,12 @@ export class BoardController {
           // Unknown command: the native default-sink — deliver the line as
           // plain text (never drop a user's input), images still attach.
           if (direct === undefined) return { ok: false as const, error: 'direct message unavailable' }
-          return direct(sessionId, text, images)
+          return direct(sessionId, text, images, mode)
         })
       }
     }
     if (direct === undefined) return Promise.resolve({ ok: false, error: 'direct message unavailable' })
-    return direct(sessionId, text, images)
+    return direct(sessionId, text, images, mode)
   }
 
   // --- comments ---------------------------------------------------------------
@@ -2041,21 +2050,28 @@ export class BoardController {
    * its on-complete rule (完成后续跑 loop); a user comment carries none and
    * never loops.
    */
-  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string): ExecutionRecord | undefined {
+  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string, injectedAt?: number): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
-    const round = newCommentRound({
-      id: this.uuid(),
-      now: this.now(),
-      text: trimmed,
-      command,
-      sessionId,
-      sessionAnchor: sessionId,
-      ...ruleId !== undefined ? { ruleId } : {},
-    })
+    const round = {
+      ...newCommentRound({
+        id: this.uuid(),
+        now: this.now(),
+        text: trimmed,
+        command,
+        sessionId,
+        sessionAnchor: sessionId,
+        ...ruleId !== undefined ? { ruleId } : {},
+      }),
+      // A STEER rule round is born already-injected: it is handed to the
+      // session immediately, so the dispatcher must NEVER see it as a fresh
+      // queue entry (the persist below triggers a dispatch pass — marking
+      // FIRST is what makes the steer launch single-shot).
+      ...injectedAt !== undefined ? { injectedAt } : {},
+    }
     this.tasks = this.tasks.map(candidate => candidate.id === taskId
       ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
       : candidate)
@@ -2331,13 +2347,26 @@ export class BoardController {
    */
   private fireRuleRound(task: TaskRecord, rule: import('./automation.ts').SessionRule, text: string): void {
     if (task.executions.some(candidate => candidate.ruleId === rule.id && candidate.endedAt === undefined)) return
-    const round = this.queueRuleComment(task.id, rule.sessionId, text, text.trimStart().startsWith('/'), rule.id)
+    // A STEER rule round is born injected (see queueRuleComment) — the
+    // dispatcher can never race it; the explicit launch below is the ONE
+    // handoff. A queue rule waits for dispatch as before.
+    const round = this.queueRuleComment(
+      task.id, rule.sessionId, text, text.trimStart().startsWith('/'), rule.id,
+      rule.send === 'steer' ? this.now() : undefined,
+    )
     if (round === undefined) return
     this.tasks = this.tasks.map(candidate => candidate.id === task.id
       ? withSessionRules(candidate, (candidate.rules ?? []).map(candidateRule =>
         candidateRule.id === rule.id ? { ...candidateRule, lastAt: this.now() } : candidateRule))
       : candidate)
     this.persistAndNotify()
+    if (rule.send === 'steer') {
+      const current = this.tasks.find(candidate => candidate.id === task.id)
+      const currentRound = current?.executions.find(candidate => candidate.id === round.id)
+      if (current !== undefined && currentRound !== undefined) {
+        this.launchComment(current, currentRound, 'steer')
+      }
+    }
   }
 
   /**
@@ -2477,6 +2506,13 @@ export class BoardController {
       // and drives the card state, so the board mirrors the native reality.
       let changed = await this.scanExternalActivity()
 
+      // Stage 0.5 — live-state drive for eventless paths: a direct steer's
+      // round is settled at birth, so its only signal is the native session's
+      // running flip. While the agent works the task must show 进行中; once
+      // the session stops, the steer's completion lands in 待审核 through
+      // the SAME post-settle appointments as any completion.
+      if (this.driveLiveStates()) changed = true
+
       // Stage 1 — reconcile every task with an open round worth settling:
       // running tasks (plain runs, comment rounds, external rounds) plus any
       // task with an open refinement round (refinement keeps its column).
@@ -2550,6 +2586,69 @@ export class BoardController {
         this.scheduleReconcile()
       }
     }
+  }
+
+  /**
+   * Drive task status from the native live state for EVENTLESS rounds only:
+   * a direct steer (插话) is settled at birth — no turn/end settle event
+   * exists — so its life is entirely the session's running flip. When the
+   * agent works, the task joins 进行中 (like any real execution); when the
+   * session stops, the steer's completion is a completion: it lands in
+   * 待审核 and goes through the SAME settledFollowUp appointment (on-complete
+   * rules, chain hand-off) as a watched settle. Board-open rounds and
+   * refine/external rounds keep their own event paths; this pass never
+   * settles anything twice (isDirectLike is only true for already-settled
+   * direct rounds, and the fallback fires exactly once — status was
+   * 'running' before the transition).
+   */
+  private driveLiveStates(): boolean {
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    let changed = false
+    for (const task of this.tasks) {
+      const latest = latestRoundOf(task)
+      if (!isDirectLike(latest)) continue
+      const live = taskLiveStateOf(
+        task,
+        sessionId => byId[sessionId]?.running === true,
+        sessionId => byId[sessionId]?.pendingInteraction,
+      )
+      const now = this.now()
+      if (live === 'running') {
+        if (task.status !== 'running') {
+          this.tasks = promoteToColumnTop(
+            this.tasks.map(candidate => candidate.id === task.id ? withStatus(candidate, 'running', now) : candidate),
+            task.id,
+            'running',
+            now,
+          )
+          changed = true
+        }
+      } else if (live === 'idle' && task.status === 'running') {
+        const next = withStatus(task, DIRECT_FALLBACK_STATUS, now)
+        this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
+        changed = true
+        if (!this.disposed) this.settledFollowUp(latest, task.id, 'succeeded')
+      }
+    }
+    return changed
+  }
+
+  /** THE live-state question for one task (card breathing source): waiting >
+   *  running > idle — same single derivation for every surface. */
+  liveStateOf(taskId: string): TaskLiveState {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return 'idle'
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    return taskLiveStateOf(
+      task,
+      sessionId => byId[sessionId]?.running === true,
+      sessionId => byId[sessionId]?.pendingInteraction,
+    )
+  }
+
+  /** Whether one session is genuinely running right now (the native truth). */
+  nativeRunningOf(sessionId: string): boolean {
+    return this.deps.sessions.list.getSnapshot().byId[sessionId]?.running === true
   }
 
   /** Every related session of a task (de-duplicated): the refine session

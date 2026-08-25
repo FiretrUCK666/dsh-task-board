@@ -74,9 +74,12 @@ export interface AgentPresetSelectFace {
  * execution session through the host-level `session.prompt` API (works for
  * any session id, not just the currently staged one). When absent the
  * service falls back to the client binding driver.
+ * `mode` is the OFFICIAL prompt disposition: 'queue' (inject in order) or
+ * 'steer' (interrupt the current turn now) — a session-rule steer lives here,
+ * so an immediate rule message is genuinely immediate.
  */
 export interface CommentSendFace {
-  (sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }>
+  (sessionId: string, text: string, mode?: 'queue' | 'steer'): Promise<{ ok: true } | { ok: false; error: string }>
 }
 
 /**
@@ -131,7 +134,7 @@ export interface SessionDriver {
   rename(title: string): Promise<unknown>
   prompt(
     content: readonly unknown[],
-    mode: 'queue',
+    mode: 'queue' | 'steer',
   ): Promise<{ ok: true } | { ok: false; error: unknown }>
   /**
    * Execute one slash-command line against the session's agent (the native
@@ -327,6 +330,7 @@ export class ExecutionService {
     sessionId: string,
     text: string,
     onEvent: (event: ExecutionEvent) => void,
+    mode: 'queue' | 'steer' = 'queue',
   ): Promise<void> {
     try {
       if (execution.command === true) {
@@ -334,7 +338,7 @@ export class ExecutionService {
         if (routed === 'fallback') {
           // Unknown command (or no registry): the native default-sink —
           // deliver the line as text, never drop the user's input.
-          await this.commentRun(task, { ...execution, command: false }, sessionId, text, onEvent)
+          await this.commentRun(task, { ...execution, command: false }, sessionId, text, onEvent, mode)
         }
         return
       }
@@ -343,9 +347,9 @@ export class ExecutionService {
         ?? (async (id, content) => {
           const bound = this.driverOf(id)
           if (bound === undefined) return { ok: false as const, error: 'comment session is not ready' }
-          return bound.prompt([{ type: 'text', text: content }], 'queue')
+          return bound.prompt([{ type: 'text', text: content }], mode)
         })
-      const result = await send(sessionId, text)
+      const result = await send(sessionId, text, mode)
       if (!result.ok) {
         onEvent({
           kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',

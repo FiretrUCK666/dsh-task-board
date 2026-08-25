@@ -392,6 +392,7 @@ export const zh = {
   'prompt.commandList': '命令列表',
   'prompt.noCommands': '无匹配命令',
   'prompt.noReferences': '没有匹配的文件或会话',
+  'prompt.loading': '正在查找…',
   'prompt.skillUserOnly': '仅用户可用',
   // 插件设置卡片（settings.plugin.item 席位）。
   'settings.title': '任务看板',
@@ -804,6 +805,7 @@ export const en: Record<keyof typeof zh, string> = {
   'prompt.commandList': 'Command list',
   'prompt.noCommands': 'No matching commands',
   'prompt.noReferences': 'No matching files or sessions',
+  'prompt.loading': 'Searching…',
   'prompt.skillUserOnly': 'User only',
   // Plugin settings card (the `settings.plugin.item` seat).
   'settings.title': 'Task Board',

@@ -820,6 +820,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     <TaskCard
                       key={task.id}
                       task={task}
+                      live={controller.liveStateOf(task.id)}
                       boundTitleOf={candidate => {
                         const binds = taskBindsOf(candidate)
                         return binds.length > 0 ? controller.boundSourceTitleOf(binds[0]) : ''

@@ -41,6 +41,9 @@ interface TriggerMenuState {
   rows: readonly (SlashCandidate | ReferenceRow)[]
   /** Why a '@' candidate half produced no rows (honest empty state). */
   diag: ReferenceDiag
+  /** The candidate request is still in flight (never show "no match" early —
+   *  the official pending semantics: the menu waits, then shows rows/empty). */
+  pending: boolean
   highlight: number
   /** Whether the menu opens upward (insufficient space below the field). */
   flip: boolean
@@ -134,7 +137,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
         console.warn('[dsh-task-board] @ reference menu degraded:', JSON.stringify(diag))
       }
       setMenu(previous => previous !== undefined && previous.kind === 'mention' && sameMentionSpan(previous.token, mentionReq)
-        ? { ...previous, rows: nextRows, diag }
+        ? { ...previous, rows: nextRows, diag, pending: false }
         : previous)
     }).catch(() => {
       if (alive) console.warn('[dsh-task-board] @ reference fetch failed unexpectedly')
@@ -196,7 +199,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
       setMenu(previous =>
         previous !== undefined && previous.kind === 'mention' && sameMentionSpan(previous.token, token)
           ? previous
-          : { token, kind, rows: previous?.kind === 'mention' ? previous.rows : [], diag: previous?.kind === 'mention' ? previous.diag : {}, highlight: 0, flip })
+          : { token, kind, rows: previous?.kind === 'mention' ? previous.rows : [], diag: previous?.kind === 'mention' ? previous.diag : {}, pending: previous?.kind === 'mention' ? previous.pending : true, highlight: 0, flip })
       setMentionReq(token)
       return
     }
@@ -213,7 +216,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
         && previous.token.end === token.end
         && previous.token.query === token.query
         ? previous // same span: keep the keyboard highlight
-        : { token, kind, rows, diag: {}, highlight: 0, flip })
+        : { token, kind, rows, diag: {}, pending: false, highlight: 0, flip })
   }
 
   // The catalog may land after the user already typed '/': reopen the menu
@@ -339,7 +342,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
     if (items.length === 0) {
       items.push(
         <div className={css.slashMenuEmpty} role="option">
-          {t('prompt.noReferences')}
+          {menu.pending ? t('prompt.loading') : t('prompt.noReferences')}
         </div>,
       )
     }

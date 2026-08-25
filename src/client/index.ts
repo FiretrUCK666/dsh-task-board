@@ -211,6 +211,7 @@ export function apply(ctx: ClientContext): void {
       sessionId: string,
       text: string,
       images?: readonly HostImageRef[] | undefined,
+      mode: 'queue' | 'steer' = 'queue',
     ): Promise<{ ok: true } | { ok: false; error: string }> => {
       const content: Array<{ type: string; text?: string; attachment?: unknown }> = text.trim() !== ''
         ? [{ type: 'text', text }]
@@ -223,7 +224,10 @@ export function apply(ctx: ClientContext): void {
       if (content.length === 0) return { ok: false as const, error: 'empty message' }
       const response = await connection.api.sessions.prompt({
         sessionId: sessionId as SessionId,
-        mode: 'queue',
+        // The OFFICIAL prompt disposition: queue injects in order; steer
+        // interrupts the current turn now (the composer's 插话 — a steer is
+        // only a steer when the wire says so).
+        mode,
         content: content as never,
       })
       return response.result.ok
@@ -307,7 +311,7 @@ export function apply(ctx: ClientContext): void {
           ? { ok: true as const }
           : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
       },
-      sendComment,
+      sendComment: (sessionId, text, mode) => sendComment(sessionId, text, undefined, mode),
       sendCommand,
     })
     // Review-page transcripts: the recent history window of an execution

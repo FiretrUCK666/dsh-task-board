@@ -109,6 +109,49 @@ describe('sessionDisplay', () => {
       expect(result.lastActivity).toBe(200)
     })
 
+    it('returns running when all rounds are settled but the session is natively running (直发轮场景)', () => {
+      // A direct steer round is settled at birth; the native running flag is
+      // the ONLY signal that the agent is working — without it the row reads
+      // finished while the turn is live.
+      const exec = round('exec-1', {
+        startedAt: 100,
+        sessionId: 's1',
+        endedAt: 150,
+        result: 'succeeded',
+        direct: true,
+        comment: '现在立刻做',
+        sessionAnchor: 's1',
+      })
+      const result = sessionDisplay(taskWith([exec]), exec, undefined, true)
+      expect(result.state).toBe('running')
+    })
+
+    it('keeps waiting above a natively-running settled session (human turn first)', () => {
+      const exec = round('exec-1', {
+        startedAt: 100,
+        sessionId: 's1',
+        endedAt: 150,
+        result: 'succeeded',
+        direct: true,
+        comment: '现在立刻做',
+        sessionAnchor: 's1',
+      })
+      const result = sessionDisplay(taskWith([exec]), exec, 'question', true)
+      expect(result.state).toBe('waiting')
+      expect(result.waitingKind).toBe('question')
+    })
+
+    it('stays settled when the session is idle (nativeRunning absent)', () => {
+      const exec = round('exec-1', {
+        startedAt: 100,
+        sessionId: 's1',
+        endedAt: 150,
+        result: 'succeeded',
+      })
+      const result = sessionDisplay(taskWith([exec]), exec, undefined, false)
+      expect(result.state).toBe('succeeded')
+    })
+
     it('returns succeeded when all rounds settled successfully', () => {
       const exec = round('exec-1', {
         startedAt: 100,
