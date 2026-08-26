@@ -4085,7 +4085,10 @@ textarea.input {
 
 .sessionContextRow {
   display: flex;
-  align-items: center;
+  /* Badge rides the FIRST line of the text (same grammar as the todo glyph /
+     subagent dot): a multi-line goal title never leaves it floating over the
+     middle of the block. */
+  align-items: flex-start;
   gap: 8px;
   min-width: 0;
 }
@@ -4105,7 +4108,10 @@ textarea.input {
 }
 
 .sessionContextGoalOn {
-  border-color: color-mix(in srgb, var(--dsh-tb-success) 45%, transparent);
+  /* Never shrink: a tiny box would overflow its nowrap label over the goal
+     text beside it. Ellipsis lives in .chipBody; flex: none keeps the chip's
+     natural width and the label inside. */
+  flex: none;
   color: var(--dsh-tb-success);
 }
 
@@ -4154,6 +4160,7 @@ textarea.input {
 }
 
 .sessionContextSubagent {
+  flex: none;
   border-color: color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent);
   color: var(--dsh-tb-accent);
 }

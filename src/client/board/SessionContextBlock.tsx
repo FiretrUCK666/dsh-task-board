@@ -23,6 +23,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import type { SessionContext } from './use-interaction.ts'
 import { contextWorthOf, FINISHED_SUBAGENT_STATUS } from './interaction.ts'
+import { Chip } from './Chip.tsx'
 import { Icon } from './ui.tsx'
 
 /** One todo glyph: pending = dashed circle, in_progress = the shared spinner,
@@ -110,17 +111,21 @@ export function SessionContextBlock({ context, className }: { context: SessionCo
           )}
           {goalActive && (
             <div className={css.sessionContextRow}>
-              <span className={`${css.chip} ${css.sessionContextGoalOn}`}>
+              {/* The badge rides the shared Chip two-slot grammar: the label
+                  text lives in .chipBody (breaks only into an ellipsis, never
+                  out of its box), and the chip shrinks never (flex: none) —
+                  a long goal title can never push it over the paragraph. */}
+              <Chip fill={false} className={css.sessionContextGoalOn}>
                 {t('review.goalActive')}
-              </span>
+              </Chip>
               <span className={css.sessionContextText}>{context.goal!.title}</span>
             </div>
           )}
           {subagentCount > 0 && (
             <div className={css.sessionContextBlock}>
-              <span className={`${css.chip} ${css.sessionContextSubagent}`}>
+              <Chip fill={false} className={css.sessionContextSubagent}>
                 {t('review.subagents', { n: String(subagentCount) })}
-              </span>
+              </Chip>
               {/* ONE row per subagent — same row grammar as the todo/goal
                   lines (marker + full text). Long titles never overlap or
                   ellipsize away: the whole crew is visible at a glance. */}

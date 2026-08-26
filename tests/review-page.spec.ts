@@ -355,3 +355,51 @@ describe('contextWorthOf (show only UNFINISHED context)', () => {
     expect(contextWorthOf({ subagents: [{ title: 'w', status: 'inactive' }] })).toBe(false)
   })
 })
+
+describe('session context panel row grammar (badge never spills over the text)', () => {
+  const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
+  const cssSource = readFileSync(cssPath, 'utf8')
+
+  function ruleOf(name: string): string {
+    const lines = cssSource.split('\n')
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() !== `.${name} {`) continue
+      let depth = 0
+      const chunks: string[] = []
+      for (let j = i; j < lines.length; j++) {
+        const line = lines[j]
+        chunks.push(line)
+        for (const ch of line) {
+          if (ch === '{') depth++
+          else if (ch === '}') {
+            depth--
+            if (depth === 0) return chunks.join('\n')
+          }
+        }
+      }
+    }
+    throw new Error(`rule ".${name}" not found in board.module.css`)
+  }
+
+  const tsxPath = fileURLToPath(new URL('../src/client/board/SessionContextBlock.tsx', import.meta.url))
+  const tsxSource = readFileSync(tsxPath, 'utf8')
+
+  it('the badge rides the FIRST text line (never centered over a multi-line block)', () => {
+    expect(ruleOf('sessionContextRow')).toContain('align-items: flex-start')
+    expect(ruleOf('sessionContextRow')).not.toContain('align-items: center')
+  })
+
+  it('the badge chip never shrinks below its label (a squeezed box would overflow)', () => {
+    expect(ruleOf('sessionContextGoalOn')).toContain('flex: none')
+    expect(ruleOf('sessionContextSubagent')).toContain('flex: none')
+  })
+
+  it('the badge label rides the shared Chip two-slot grammar, never a naked .chip', () => {
+    // The goal/subagent badges must flow through <Chip> (label into .chipBody,
+    // ellipsis instead of overflow); a naked css.chip + nowrap is the root
+    // cause of the label spilling over the goal paragraph.
+    expect(tsxSource).toContain('<Chip fill={false} className={css.sessionContextGoalOn}>')
+    expect(tsxSource).toContain('<Chip fill={false} className={css.sessionContextSubagent}>')
+    expect(tsxSource).not.toContain('`${css.chip}')
+  })
+})
