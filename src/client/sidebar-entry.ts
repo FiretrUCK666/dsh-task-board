@@ -17,9 +17,12 @@ import type { BoardController } from '../core/controller.ts'
 import { t } from './locales.ts'
 import css from './board.module.css'
 
-/** Inline icon: a small kanban board (rect + two columns) — the plugin's own
- *  identity mark, kept at 14px to match the shell's nav-icon look. */
+/** The inline icon (shared by the sidebar row and the off-canvas fallback). */
 const ICON = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M2 6.5h12M6.5 6.5v7"/></svg>`
+
+/** How long to wait for the shell sidebar before offering the floating
+ *  fallback (a settled boot mounts the sidebar well inside this). */
+const FALLBACK_AFTER_MS = 4_000
 
 /** Find the sidebar shell root element, or undefined while not yet mounted. */
 function sidebarRoot(): HTMLElement | undefined {
@@ -103,9 +106,26 @@ function syncEntrySurface(entry: HTMLButtonElement, root: HTMLElement): void {
   entry.style.setProperty('--dsh-tb-entry-color', native.color)
 }
 
+/** Build the off-canvas fallback button (a floating corner affordance shown
+ *  only when the shell sidebar never mounts — e.g. a mobile shell that hides
+ *  it entirely — so the board is always reachable). */
+function createFallback(controller: BoardController): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.dataset.dshTaskboardFallback = ''
+  button.className = css.entryFallback
+  button.setAttribute('aria-label', t('entry.label'))
+  button.innerHTML = `<span class="${css.entryIcon}">${ICON}</span>`
+  button.addEventListener('click', () => { controller.toggleBoard() })
+  return button
+}
+
 /**
  * Mount the sidebar entry, waiting for the shell to render and self-healing
- * on later React re-renders.
+ * on later React re-renders. If the sidebar never appears within the boot
+ * settle window (an off-canvas / hidden mobile sidebar), a floating corner
+ * button takes over; if the sidebar later mounts, the row wins and the
+ * fallback retires — one entry, whichever shell shape is live.
  * @param controller - the board controller the entry toggles.
  * @returns disposer removing the entry and its observers.
  */
@@ -113,6 +133,14 @@ export function mountSidebarEntry(controller: BoardController): () => void {
   const entry = createEntry(controller)
   let root: HTMLElement | undefined
   let placed = false
+  let fallback: HTMLButtonElement | undefined
+  let disposed = false
+
+  const removeFallback = (): void => {
+    if (fallback === undefined) return
+    fallback.remove()
+    fallback = undefined
+  }
 
   const tryPlace = (): void => {
     if (placed) return
@@ -120,6 +148,8 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     if (root === undefined) return
     placed = placeEntry(root, entry)
     if (placed) {
+      // The real sidebar arrived: retire the fallback (the row is the entry).
+      removeFallback()
       syncEntrySurface(entry, root)
       rootObserver.observe(root, { childList: true, subtree: true, attributes: true })
     }
@@ -144,18 +174,33 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     syncEntrySurface(entry, root)
   })
 
+  // The off-canvas fallback: only if the sidebar is still absent after the
+  // boot settle window (a settled shell mounts the sidebar well inside it).
+  const fallbackTimer = setTimeout(() => {
+    if (disposed || placed || fallback !== undefined) return
+    if (sidebarRoot() !== undefined) return
+    fallback = createFallback(controller)
+    fallback.dataset.active = controller.getSnapshot().boardOpen ? 'true' : undefined
+    document.body.appendChild(fallback)
+  }, FALLBACK_AFTER_MS)
+
   // Reflect the board's open state on the row (active highlight).
   const unsubscribe = controller.subscribe(() => {
-    entry.dataset.active = controller.getSnapshot().boardOpen ? 'true' : undefined
+    const active = controller.getSnapshot().boardOpen
+    entry.dataset.active = active ? 'true' : undefined
+    if (fallback !== undefined) fallback.dataset.active = active ? 'true' : undefined
   })
   entry.dataset.active = controller.getSnapshot().boardOpen ? 'true' : undefined
 
   tryPlace()
 
   return () => {
+    disposed = true
+    clearTimeout(fallbackTimer)
     waitObserver.disconnect()
     rootObserver.disconnect()
     unsubscribe()
+    removeFallback()
     entry.remove()
   }
 }

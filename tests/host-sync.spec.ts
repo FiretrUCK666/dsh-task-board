@@ -13,6 +13,18 @@ import { BoardDataService } from '../src/host/board-service.ts'
 
 const T0 = 1_700_000_000_000
 
+/** A minimal in-memory KV unit (the real service persists through it). */
+class FakeUnit {
+  private global: unknown = undefined
+  async loadAll(): Promise<{ global: unknown }> {
+    return { global: this.global }
+  }
+  async setGlobal(value: unknown): Promise<void> {
+    this.global = JSON.parse(JSON.stringify(value))
+  }
+  async close(): Promise<void> { /* no-op */ }
+}
+
 /** A fake timer queue: `defer` collects callbacks; `flush` runs due ones. */
 function fakeTimers() {
   const pending: Array<{ fn: () => void; ms: number; at: number; id: number }> = []
