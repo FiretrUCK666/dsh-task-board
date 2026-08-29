@@ -273,10 +273,22 @@ export function apply(ctx: ClientContext): void {
   // falls back to the composition default (enabled).
   let uiDisposer: (() => void) | undefined
   let mounting = false
+  /** The live enabled decision (the mount gate): ready scope → its value,
+   *  unavailable scope → the composition default (true), loading → false. */
+  const currentEnabled = (): boolean => {
+    const snapshot = scope.getSnapshot()
+    return snapshot.status === 'ready'
+      ? snapshot.value?.enabled ?? true
+      : snapshot.status === 'unavailable'
+  }
   const mountUi = (): void => {
     if (uiDisposer !== undefined || mounting) return
     mounting = true
-    void mountUiBody().finally(() => { mounting = false })
+    mountUiBody().catch(error => {
+      // A failed mount must never strand the gate or surface an unhandled
+      // rejection: log it, stay unmounted, the next scope event may retry.
+      console.error('[dsh-task-board] mount failed:', error)
+    }).finally(() => { mounting = false })
   }
   const mountUiBody = async (): Promise<void> => {
     if (uiDisposer !== undefined) return
@@ -306,6 +318,13 @@ export function apply(ctx: ClientContext): void {
       }
     })
     const mode = await sync.start(readLocalView)
+    // The only long await in the mount path is also the window where the user
+    // can flip the plugin off in settings: re-check before committing to the
+    // mount, and never leave the sync loops running behind a closed door.
+    if (!currentEnabled()) {
+      sync.dispose()
+      return
+    }
     const synced = mode === 'synced'
     if (synced) {
       // Warm the offline mirror with the host truth so a later reload (or a
@@ -842,11 +861,7 @@ export function apply(ctx: ClientContext): void {
     }
   }
   const syncEnabled = (): void => {
-    const snapshot = scope.getSnapshot()
-    const enabled = snapshot.status === 'ready'
-      ? snapshot.value?.enabled ?? true
-      : snapshot.status === 'unavailable'
-    if (enabled) mountUi()
+    if (currentEnabled()) mountUi()
     else uiDisposer?.()
   }
   scope.subscribe(syncEnabled)

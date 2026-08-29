@@ -189,8 +189,9 @@
 ## 项目定位
 
 DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列看板 + 任务经 DSH 会话机制
-真实执行 + 5 段 cron 定时调度。单一 npm 包，cordis 插件，host/client 双半区，MIT 许可，
-全新独立项目（零历史仓库引用）。
+真实执行 + 5 段 cron 定时调度。**看板数据持久化在 DSH host 端（存储单元 `dsh-task-board`），
+任意设备/浏览器（桌面 + 手机，跨 origin）经 SSE 实时同步看到的是同一块板；窄屏为紧凑布局。**
+单一 npm 包，cordis 插件，host/client 双半区，MIT 许可，全新独立项目（零历史仓库引用）。
 
 ### 命名矩阵（硬性规范 3，新增标识不得偏离）
 
@@ -199,9 +200,11 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 包名 / 文件夹名 / 行 id / 设置命名空间 / locale 命名空间 | `dsh-task-board` |
 | 设置路由 | `/api/dsh-task-board/settings` |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
+| 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
+| host 存储单元名（storage hub json 后端） | `dsh-task-board`（落 `~/.dsh/storages/dsh-task-board.json`） |
 | 公告 section | `plugin:dsh-task-board`（order 200） |
 | 设置卡 slot id | `dsh-task-board`（`settings.plugin.item`，order 110） |
-| localStorage 数据键 | `dsh.taskBoard.v1`（**不得改名**，用户数据依赖） |
+| localStorage 键（现为离线镜像 + 草稿 + 备份） | `dsh.taskBoard.v1` 等（**不得改名**，见「数据键稳定」） |
 
 挂载：`cordis.patch.yml` 声明 `dsh.bundle.patch`，安装命令
 `dsh plugin --profile web add link:<本目录>`。
@@ -210,13 +213,15 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### host 半区（DSH 主进程）
 
-- `src/index.ts`：`inject = ['webServer','systemPrompt','settings']`；注册设置命名空间（settings.yaml 持久化）并联动公告；注册设置/权限路由；`sync()` 按 `enabled`/`announceToAgent` 注册/撤销 systemPrompt section。
-- `src/host/*-route.ts`：纯 `create*Handler`（settings/permission/attachment/session-state），可注入测试；服务读取一律 `ctx.get`；权限选项实时读原生 `permissionPresets` 服务（未挂载则 available:false，随 DSH 预设表自动适配）。
+- `src/index.ts`：`inject = ['webServer','systemPrompt','settings']`；注册设置命名空间（settings.yaml 持久化）并联动公告；注册设置/权限/看板数据路由；`sync()` 按 `enabled`/`announceToAgent` 注册/撤销 systemPrompt section。
+- `src/host/*-route.ts`：纯 `create*Handler`（settings/permission/attachment/session-state/board），可注入测试；服务读取一律 `ctx.get`；权限选项实时读原生 `permissionPresets` 服务（未挂载则 available:false，随 DSH 预设表自动适配）。
+- `src/host/board-service.ts` + `board-route.ts`：**看板数据真相服务**——host 端持有整份 `BoardDoc`（tasks + cruise + schedulePresets + runPresets + tombstones + revision），经 storage hub 的 json 后端 `KvUnit`（单元名 `dsh-task-board`，落 `~/.dsh/storages/`）原子持久化；写链串行、`applyCommit` 合并、先持久化后应答后 SSE 广播。路由（前缀 `/api/dsh-task-board/board`）：GET 文档（`?since` 短路 unchanged）、POST commit（合并写回，返回权威文档）、POST `/lease`（引擎租约）、POST `/command`（发射中继）、GET `/events`（SSE：commit/lease/command 帧 + keep-alive）。storage hub 缺席 → available:false → 客户端整体退回 localStorage 模式（功能不降级为错误）。
 
 ### client 半区（浏览器）
 
-- `src/client/index.ts`：`inject = ['slots','sessions','workspaces','connection','locale']`；设置卡（settings.plugin.item）+ `RouteSettingsScope` 快照（失败降级不抛）+ `syncEnabled` 门控；接线 `BoardController` + `ExecutionService` + `SchedulerService`（localStorage 存储）。
-- 挂载（无官方槽位，DOM 级，失败 console.error 不抛）：侧边栏入口与看板视图，MutationObserver 自愈重插；`html[data-dsh-taskboard-active]` 显隐，对话子树保持挂载。
+- `src/client/index.ts`：`inject = ['slots','sessions','workspaces','connection','locale']`；设置卡（settings.plugin.item）+ `RouteSettingsScope` 快照（失败降级不抛）+ `syncEnabled` 门控；`mountUi` 先 `await sync.start()`（迁移探测 + 首次租约）再按模式选存储（同步态 `Synced*Store` over host，回退态 `LocalStorage*Store`）；接线 `BoardController` + `ExecutionService` + `SchedulerService`；`sync.onRemote → controller.applyRemote + writeMirror`、`onEngine(held) → controller.setEngine(held)`、`onCommand → controller.runTask`；调度器 `ready()` 并联 `sync.isEngine()`（非引擎端 tick 空转）。
+- `src/client/board-transport.ts`：`BoardSyncTransport` 的浏览器实现（fetch 四调 + EventSource；EventSource 缺席降级为纯轮询，仍收敛）。
+- 挂载（无官方槽位，DOM 级，失败 console.error 不抛）：侧边栏入口与看板视图，MutationObserver 自愈重插；`html[data-dsh-taskboard-active]` 显隐，对话子树保持挂载；侧栏在启动稳定窗内始终不出现（离屏/隐藏式）时挂**浮动角落入口**（`.entryFallback`，侧栏稍后出现则自动让位）。
 
 ### 设计系统层（板上 UI 的宪法，改 UI 先读这里）
 
@@ -239,13 +244,16 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - **拖拽落点**：插入条 = `drop-position.ts`（`insertionGapOf`/`indicatorTopOf`，纯函数单测）+ 行/盒内 22px 底部留白（否则尾部槽被裁剪）；**拖拽自动滚动** = `drag-autoscroll.ts`（滚动期间根元素 `scroll-behavior` 临时置 auto——smooth 与逐帧滚动打架）；成功落点 = FLIP 落位（`use-flip.ts`，`flipCandidatesOf` 单测）。
 - **卡片永不穿模（板上任何内容的硬契约）**：① 卡片盒 `overflow: hidden` 硬剪辑地板；② 所有 flex 子项 `min-width: 0` + 截断/换行链路（`cardTime` 可收缩、标题/描述 `overflow-wrap: anywhere`）；③ 徽章两槽位文法——`Chip`：文字进 `.chipBody`（ellipsis）、前导图形进 `.chipLead`。`tests/card-contract.spec.ts` 钉死。
 - **UI 小规则**：一个语义强调色（`--dsh-tb-accent`）+ 四个状态色（attention/success/danger/neutral），全令牌；半透明 `color-mix(in srgb, 令牌 alpha%, transparent)`，alpha 22%/10% 两级；4px 节奏、圆角 8/12/16/24；字号：标题 13-14 + 负字距、正文 13-14、元信息 12（同排不混字号）；交互 `--dsh-tb-motion`(160ms)；hover `--dsh-tb-hover`；focus 2px outline（`:focus-visible`，裸按钮也要纳入）；**同一排控件同级高**（按钮 28px / `buttonSm` 24px / 分段轨道=28px）。
+- **响应式与触屏（改窄屏/触摸问题先读这里）**：① **单一响应式参照 = 板盒宽，不用视口**——`[data-dsh-taskboard-view]` 设 `container-type: inline-size` + `container-name: dsh-tb`，所有几何断点写进 `@container dsh-tb (max-width: …)`（compact 档 680px、review 堆叠 719px）；侧栏折叠/分屏/手机都自动正确，绝不再用 `@media (max-width)` 驱动板体布局。② **浮层几何一律板盒参照（%），禁 vh/vw**：`.modal/.detail/.presetModal/.autoModal` 宽高 `calc(100% - …)`，compact 档 `.modalBackdrop` `overflow:auto` + 顶部对齐（面板高于板盒时可滚，底部动作永不被吞）；确需视口参照才用 `dvh`。③ **触屏能力块** `@media (hover: none) and (pointer: coarse)`（与尺寸断点正交）：hover-only 三件套（`.cardQuickRun`/`.cardColorBar`/`.promptCopy`）常显；小目标用 `::before` 透明热区扩到 ≥36px（视觉 28/24 节奏不破）；输入 `font-size:16px`（防聚焦自动缩放）；会话行 `.sessionRowMove` 上/下移对显现（HTML5 拖拽无触屏等价）。④ 板根 `-webkit-text-size-adjust:100%`（抗安卓/微信 font boosting）；compact 底 `env(safe-area-inset-bottom)`。⑤ 触屏操作等价：卡片换列走详情 `.moveRow`、会话排序走行内上/下移、侧栏拖入走详情「添加已有会话」选择器（`AddSessionModal` + `referenceSessionCatalog` + `addTaskSource`）——不自研触屏 DnD。`tests/mobile-contract.spec.ts` 钉死以上。
 
 ### 核心层（`src/core/` 纯逻辑 + 关键职责；细节以代码为准）
 
-- `tasks.ts`（状态机/plainRunsOf/COLUMNS/latestExecutionOf/chainUnlimited/taskColumnAllowsAutomation）· `schedule.ts`（cron）· `scheduler.ts`（每分钟 tick + cruiseTick）· `cruise.ts`（巡航窗口 v4）· `presets.ts`（schedule 预设）· `automation.ts`（会话规则 + automationRowsOf + 就绪语义 + automationTasksOf）· `colors.ts`（PALETTE + withTaskColor）· `session-activity.ts`（原生侧对账 + `latestUserMessage`）· `session-list.ts`（taskSessionsOf/orderedSessionsOf/sessionWindowOf）· `session-display.ts`（waiting>running>settled + viewedAt 基线 + nativeRunning）· `task-live.ts`（**任务运行态 + 相关会话集双重唯一推导**：taskLiveStateOf/relatedSessionIdsOf（refine → session binds → 执行轮 → 注入 linked ids，去重稳定序——外部相关面一律注入 linked，绝不再手写第二套列表）/isDirectLike）· `linked-sessions.ts`（deriveLinkedSessions）· `comment-thread.ts`（会话线程 + 排队位次 + latestCommentView）· `question-rpc.ts`（原生问答 wire 模型）· `store.ts`（ledger 持久化 + 老数据归一化）· `execution.ts`（投递与结算 + `createSession`：新建配置化会话，配置失败 = 诚实部分成功）· `controller.ts`（台账 + 统一并发调度器 + `createTaskSession`）。
+- `tasks.ts`（状态机/plainRunsOf/COLUMNS/latestExecutionOf/chainUnlimited/taskColumnAllowsAutomation）· `schedule.ts`（cron）· `scheduler.ts`（每分钟 tick + cruiseTick）· `cruise.ts`（巡航窗口 v4）· `presets.ts`（schedule 预设）· `automation.ts`（会话规则 + automationRowsOf + 就绪语义 + automationTasksOf）· `colors.ts`（PALETTE + withTaskColor）· `session-activity.ts`（原生侧对账 + `latestUserMessage`）· `session-list.ts`（taskSessionsOf/orderedSessionsOf/sessionWindowOf）· `session-display.ts`（waiting>running>settled + viewedAt 基线 + nativeRunning）· `task-live.ts`（**任务运行态 + 相关会话集双重唯一推导**：taskLiveStateOf/relatedSessionIdsOf（refine → session binds → 执行轮 → 注入 linked ids，去重稳定序——外部相关面一律注入 linked，绝不再手写第二套列表）/isDirectLike）· `linked-sessions.ts`（deriveLinkedSessions）· `comment-thread.ts`（会话线程 + 排队位次 + latestCommentView）· `question-rpc.ts`（原生问答 wire 模型）· `store.ts`（ledger 持久化 + 老数据归一化）· `execution.ts`（投递与结算 + `createSession`：新建配置化会话，配置失败 = 诚实部分成功）· `controller.ts`（台账 + 统一并发调度器 + `createTaskSession` + `applyRemote`/`setEngine` 引擎席位）。
+- **同步域（多端一致的地基）**：`board-doc.ts`（**BoardDoc 类型 + 合并文法唯一居所**：`applyCommit` 逐记录 LWW（updatedAt 新者胜、平手 host 保）+ 墓碑（at = 所见最新 updatedAt+1，抗时钟偏移地压住旧副本复活）+ section LWW（at >= 覆盖）+ `diffDeletions`/`normalizeBoardDoc`/`normalizeCruiseValue`——host 与 client 共享同一文法）· `host-sync.ts`（`BoardSyncClient`：boot 迁移（host 空 → 上传本地 bootstrap；host 有 → host 胜 + 本地分歧交 `onBackup` 停放）、去抖提交（在途合并、trailing refire、失败退避重试）、SSE + 轮询 + 重连三通道汇入单一 resync、引擎租约心跳（任何 API 命中即续期——后台标签节流饿不死活持有者）、`requestLaunch` 中继；`SyncedTaskStore`/`SyncedPresetStore`/`SyncedRunPresetStore`/`SyncedCruiseStore` = 既有同步 store 接缝 over 共享文档 + 本地镜像）。
 
 ### 关键不变量（避免重造已有机制；改前先读对应文件）
 
+- **多端同步（host 唯一真相 + 引擎租约，一切数据一致性问题的根解）**：看板真相 = host 的 `BoardDoc`（storage hub json 后端持久化，单元 `dsh-task-board`），localStorage 五键**降级为离线镜像/草稿/备份**（键名不变）。浏览器 = 乐观副本：本地写即时生效，经 `store.save → SyncedTaskStore → BoardSyncClient` 的去抖提交上送，**host `applyCommit` 合并后返回权威文档，所有副本向它收敛（无 CAS 也无不收敛）**；远端变化经 SSE（+ 轮询兜底 + 重连/回前台对账）→ `controller.applyRemote`（**永不回写**——回写即回声）。合并文法唯一居所 = `board-doc.ts`：逐记录 LWW（updatedAt 新者胜、平手 host 保）、删除带 `baseUpdatedAt` 对账 + 墓碑（at=所见最新+1，抗时钟偏移压复活、真更新可复活）。「添加已有会话」与侧栏拖入同走 `addTaskSource`。**引擎租约**：host 内存租约（TTL + 任何 API 命中续期 + SSE 断流宽限期提前过期），**只有引擎端**跑 dispatch 泵/scheduler tick/reconcile/外源轮补记/cruise 翻转/settledFollowUp+链接续；非引擎端 = 纯视图 + 提交器，用户动作照常写台账（同步后由引擎泵出），手动执行经 `requestLaunch` → host `/command` → 引擎 SSE 执行（无引擎时 park，下次授约重放）——单泵 = 单并发预算 = 多端绝不双发（同浏览器双标签同样受约，根治旧双标签脑裂）。question tracker 每端独立流（先到先答，官方语义）；drafts 刻意设备本地不同步。storage hub 缺席 → 整体回退 localStorage 模式 = 旧行为，功能不降级为错误。
 - **统一会话与评论单轨**：相同会话 = 同一条线程（`sessionCommentsOf`）；直发/驱动/评论并轨为一种留言；发送两态 = 排队（调度器/巡航/FIFO，可取消）与插话（`steerComment` 立即送达）；图片走 `AttachmentStrip` → host 附件桥 → prompt part。
 - **插话与任务运行态（单一推导，杜绝各面各判）**：发送层 mode 参数化——`sessionMessage`/`sendRawMessage`/`commentRun`/driver.prompt 都收官方 `'queue' | 'steer'`（官方 prompt 枚举）；**三入口统一**（评论线程插话 → `steerComment`('steer')；会话规则 `send:'steer'` → 建轮**即带 injectedAt**（`queueRuleComment` 第 6 参——dispatch 按注入标记过滤，杜绝「同一轮双注入」竞态）+ `launchComment(...,'steer')` 立即注入（结算/续跑机制与排队轮完全相同）；直接留言/交互卡回答不走此层）。**运行态唯一推导** = `task-live.ts`：**相关会话集也唯一**——`relatedSessionIdsOf(task, linkedIds)`（refine → session binds → 执行轮 → 注入 linked ids，去重稳定序；`controller.relatedSessionsOf` 只是对它的薄包装，任何新相关面一律注入 linked，绝不手写第二套列表）；`taskLiveStateOf`（waiting > running > idle，running 以「任一相关会话原生 `byId.running`」为真相——插话/规则/外源/执行/**链接（workspace 成员）**一视同仁；`controller.liveStateOf` 传入 `linkedOf` ids、`nativeRunningOf` 供 UI）；`sessionDisplay` 新增 `nativeRunning` 参数（settled 轮但会话真在跑 → running；waiting 仍最优先）；`reconcile` 的 `driveLiveStates` 驱动**直发轮**（settle-at-birth 无事件路径）：会话跑 → 卡片/行进入进行中（`withStatus running`），会话停 → 落「待审核」并走**同一条 `settledFollowUp`**（on-complete 规则/接续链照常触发——插话完成也是完成）；板内执行/评论/完善/外源轮的事件结算路径不变，落列归它们（`isDirectLike` 只认已结算直发轮，永不双结算）。
 - **官方 @ 引用机制（唯一桥 = reference-source.ts）**：所有输入框（留言/完善回答/规则指令/执行 Prompt/交互卡回答）共用同一桥——与主界面 ui-reference 相同的两个 Remote 命名空间（`remote.fileReferences` + `remote.sessionReferenceResolver`，结构化读取，缺面降级为无 @ 菜单）。**官方身份政策（不可绕过，勿在代码里绕——属官方 api-remotes 政策，参见 README 能力边界）**：目标会话为「子代理路由会话」（`origin === 'subagent'` 或挂在活跃父代理下）时，宿主对一切通用 RPC（含两个引用命名空间）返回 `agent-busy`，官方 composer 同样不可用（官方语义：子代理会话请走子代理投递通道；无官方修复版本）。插入用**官方文法**：`file-reference-grammar.ts`（`activeAtToken` 引号 token + `formatFileMention`，官方包**逐字镜像**——打包门禁禁止跨插件值导入，镜像 + 契约测试钉死官方行为）与 `session-mention.ts`（官方会话引用编码逐字镜像：`dsh-session:` + base64url(JSON(id)) + label 转义）；会话候选插入官方规范 URI `@[label](dsh-session:…)`，host 在任意 user 消息的 agent/pre-step 自动解析为「引用会话」上下文——**板子只产出官方文本，解析全走官方链路**。`PromptInput` 以 `sessionId`（目标会话）为作用域：`referenceSessionOf`（refine→执行→绑定 → 当前会话 → 列表首项）是唯一解析；`@"` 引号路径内不弹会话候选（官方规则）；目录下钻靠开口引号延续。
@@ -293,7 +301,10 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
 3. **命名一致性**：见命名矩阵；不得引入新前缀/新命名空间。
 4. **零历史残留**：项目内不得出现任何历史仓库标识、路径或来源表述；
    `scripts/verify-standalone.mjs` 内置防回归黑名单（其自身文件豁免）。
-5. **数据键稳定**：`dsh.taskBoard.v1` 不得改名。
+5. **数据键稳定**：`dsh.taskBoard.v1` 不得改名。同步模式下这些键是**离线镜
+   像/草稿/preSync 备份**（真相在 host 存储单元）；回退模式下仍是真相——两种
+   模式下用户数据都不因升级丢失（首连 host 空则本地 bootstrap 上传，host 有
+   数据则 host 胜且本地分歧一次性备份到 `dsh.taskBoard.preSync.v1`）。
 6. **生命周期纪律**：订阅/监听/定时器/observer 全部注册 disposer；DOM 失败
    console.error 不抛；`ctx.effect` 内创建的资源随 effect 清理。
 7. **独立自包含**：运行时依赖仅 `schemastery`（host Config schema）；不依赖兄弟
@@ -312,14 +323,18 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
 - 清单：`tests/` 下 `tasks`、`schedule`、`scheduler`、`cruise`、`automation`、
   `presets`、`store`、`execution`、`session-activity`、`session-list`、
   `session-display`、`linked-sessions`、`task-live`（运行态唯一推导）、`question-rpc`、`refine`、`format-time`
-  （核心纯逻辑）；`question-tracker`（mux 问答流自愈契约：失败/关闭后必重连、dispose 后必不重连）；`drag-contract`（drop-position + drag-autoscroll）、`flip`、
+  （核心纯逻辑）；`board-doc`（同步合并文法：LWW/墓碑/section/收敛）；
+  `host-sync`（同步客户端全状态机：迁移/去抖提交/对账/租约 + **双客户端共享真实
+  BoardDataService 的端到端收敛**）；`question-tracker`（mux 问答流自愈契约：失败/关闭后必重连、dispose 后必不重连）；`drag-contract`（drop-position + drag-autoscroll）、`flip`、
   `comment-thread`、`markdown`、`slash-token`、`reference-source`（官方 @ 引用桥）、
   `file-reference-grammar`（官方文法镜像契约）、`drafts`、`sidebar-drag`、
   `review-page`（review-transcript/context-meter/menu-direction/interaction 合并）、
-  `card-contract`（card-layout + card-label 合并）、`settings-route`、
+  `card-contract`（card-layout + card-label 合并）、`mobile-contract`（容器查询
+  机制/compact 几何无 vh/vw/触屏块/溢出修复/离屏入口——钉死移动端设计）、
+  `settings-route`、`board-route`、`board-service`、
   `permission-route`、`attachment-route`、`session-state-route`（host 路由，同一
   惯用法各占一个）、`route-scope`（client 设置 scope）、`controller`（端到端，
-  唯一大文件——共享 harness 不拆分）。
+  唯一大文件——共享 harness 不拆分；含引擎席位/applyRemote/中继门控）。
 
 ## 版本管理流程（必守）
 
