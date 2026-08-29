@@ -2414,6 +2414,74 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 
+/* Touch reorder affordance: hidden wherever drag works (desktop), revealed on
+   coarse pointers (see the touch block). The pair rides the row's action
+   grammar so it never reflows the identity slot. */
+.sessionRowMove {
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The session toolbar's action cluster (添加会话 ‖ 新建会话): the hint stays
+   left, the pair hugs the right and wraps under it on a narrow panel. */
+.sessionToolbarActions {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The add-existing-session picker list (one row per candidate session). */
+.addSessionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.addSessionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  background: transparent;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+  color: var(--dsh-tb-text-1);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion);
+}
+
+.addSessionRow:hover {
+  background: var(--dsh-tb-hover);
+}
+
+.addSessionRow:focus-visible {
+  outline: 2px solid var(--dsh-tb-focus-color);
+  outline-offset: 1px;
+}
+
+.addSessionLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.addSessionChevron {
+  flex: none;
+  color: var(--dsh-tb-text-3);
+}
+
 /* Right-aligned action group of a session row (查看会话 / 处理 / 隐藏): the
    one place the row's actions sit; the shared ghost button inside matches
    every other session surface. */
@@ -4614,6 +4682,12 @@ textarea.input {
    the browser stops auto-zooming the whole page on focus.
    ══════════════════════════════════════════════════════════════════════════ */
 @media (hover: none) and (pointer: coarse) {
+  /* Touch reorder: the drag affordance has no touch equivalent, so the row's
+     up/down pair takes over. */
+  .sessionRowMove {
+    display: inline-flex;
+  }
+
   /* Hover-revealed actions: always visible on touch. */
   .cardQuickRun {
     opacity: 1;

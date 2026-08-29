@@ -25,6 +25,7 @@ import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
 import { NewSessionModal } from './NewSessionModal.tsx'
+import { AddSessionModal } from './AddSessionModal.tsx'
 import { SessionRow } from './SessionRow.tsx'
 import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
@@ -70,7 +71,7 @@ function CommentSummary({ task, sessionId, cruiseOn }: {
  *  ONE derivation (sessionStateChip) — only the settled-label pair differs
  *  between a run row (the execution result) and a linked row (the bound
  *  session's activity). */
-function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, onReviewExecution, onOpenSessionPanel, draggable, onDragStart, onDragEnd }: {
+function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, onReviewExecution, onOpenSessionPanel, draggable, onDragStart, onDragEnd, onMoveUp, onMoveDown }: {
   row: import('../../core/session-list.ts').TaskSessionRow
   task: TaskRecord
   controller: BoardController
@@ -86,6 +87,9 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
   draggable?: boolean
   onDragStart?: (event: React.DragEvent) => void
   onDragEnd?: () => void
+  /** Touch reorder (up / down one slot); undefined at the boundary. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }) {
   const isRun = row.executionId !== undefined
   const sessionId = row.sessionId
@@ -153,6 +157,8 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
         draggable={draggable}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
+        onMoveUp={onMoveUp}
+        onMoveDown={onMoveDown}
         onRename={async title => {
           const result = await controller.renameTaskSession(task.id, sessionId, title)
           if (!result.ok) throw new Error(result.error)
@@ -208,6 +214,8 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onMoveUp={onMoveUp}
+      onMoveDown={onMoveDown}
       onRename={async title => {
         const result = await controller.renameTaskSession(task.id, sessionId, title)
         if (!result.ok) throw new Error(result.error)
@@ -298,6 +306,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   const [linkedSession, setLinkedSession] = useState<string | undefined>(undefined)
   // The 新建会话 dialog (undefined = closed).
   const [showNewSession, setShowNewSession] = useState(false)
+  const [showAddSession, setShowAddSession] = useState(false)
 
   // The record IS the prop: the parent re-renders with every ledger change
   // (the selected snapshot is a fresh record), so a prop-to-state mirror
@@ -663,13 +672,23 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
             >
               <div className={css.sessionToolbar}>
                 <p className={css.detailHint}>{t('detail.executionHint')}</p>
-                <Button
-                  size="sm"
-                  title={t('detail.sessionNewTitle')}
-                  onClick={() => { setShowNewSession(true) }}
-                >
-                  + {t('detail.sessionNew')}
-                </Button>
+                <span className={css.sessionToolbarActions}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title={t('detail.addSessionTitle')}
+                    onClick={() => { setShowAddSession(true) }}
+                  >
+                    {t('detail.addSession')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    title={t('detail.sessionNewTitle')}
+                    onClick={() => { setShowNewSession(true) }}
+                  >
+                    + {t('detail.sessionNew')}
+                  </Button>
+                </span>
               </div>
               {sessions.length === 0 ? (
                 <p className={css.detailText}>
@@ -712,7 +731,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                       aria-hidden="true"
                     />
                   )}
-                  {sessions.map(row => (
+                  {sessions.map((row, index) => (
                     <SessionActionRow
                       key={row.sessionId}
                       row={row}
@@ -723,6 +742,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                       onReviewExecution={execution => { setReviewExecution(execution) }}
                       onOpenSessionPanel={sessionId => { setLinkedSession(sessionId) }}
                       draggable
+                      onMoveUp={index > 0
+                        ? () => { controller.reorderTaskSession(current.id, row.sessionId, sessions[index - 1].sessionId) }
+                        : undefined}
+                      onMoveDown={index < sessions.length - 1
+                        ? () => { controller.reorderTaskSession(current.id, row.sessionId, sessions[index + 2]?.sessionId) }
+                        : undefined}
                       onDragStart={event => {
                         setSessionDragId(row.sessionId)
                         event.dataTransfer.effectAllowed = 'move'
@@ -893,6 +918,13 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
             if (bindDropTimer.current !== undefined) clearTimeout(bindDropTimer.current)
             bindDropTimer.current = setTimeout(() => { setBindDropFlash(false) }, 600)
           }}
+        />
+      )}
+      {showAddSession && (
+        <AddSessionModal
+          controller={controller}
+          task={current}
+          onClose={() => { setShowAddSession(false) }}
         />
       )}
     </div>

@@ -19,7 +19,7 @@ import type { SessionChipShape, SessionRowState } from './session-chip.ts'
 import { AttentionDot, Button, Icon } from './ui.tsx'
 
 /** The unified session row (one grammar for every session of a task). */
-export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle }: {
+export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle, onMoveUp, onMoveDown }: {
   /** Live session state (execution kind): rendered as data-state/data-waiting. */
   state?: SessionRowState
   /** Status chip on the top line (undefined = no chip). */
@@ -54,6 +54,11 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
   onRename?: (title: string) => Promise<void>
   /** Tooltip of the rename affordance. */
   renameTitle?: string
+  /** Touch reorder (the HTML5 drag has no touch equivalent): move this row
+   *  up / down one slot. Rendered only when provided; CSS reveals the pair on
+   *  coarse pointers so desktop keeps the drag gesture and the quiet row. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
 }) {
   // ONE state-bound glow: waiting / running / settled-unread rows breathe
   // attention; viewed / idle rows are quiet — the halo never toggles with the
@@ -146,6 +151,32 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
             >
               <Icon name="copy" />
             </button>
+          )}
+          {(onMoveUp !== undefined || onMoveDown !== undefined) && (
+            <span className={css.sessionRowMove}>
+              {onMoveUp !== undefined && (
+                <button
+                  type="button"
+                  className={css.rowHide}
+                  aria-label={t('detail.moveUp')}
+                  title={t('detail.moveUp')}
+                  onClick={event => { event.stopPropagation(); onMoveUp() }}
+                >
+                  <Icon name="arrowUp" />
+                </button>
+              )}
+              {onMoveDown !== undefined && (
+                <button
+                  type="button"
+                  className={css.rowHide}
+                  aria-label={t('detail.moveDown')}
+                  title={t('detail.moveDown')}
+                  onClick={event => { event.stopPropagation(); onMoveDown() }}
+                >
+                  <Icon name="arrowDown" />
+                </button>
+              )}
+            </span>
           )}
           <button
             type="button"
