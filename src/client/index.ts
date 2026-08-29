@@ -19,6 +19,11 @@ import { BoardController, type HostImageRef, type PermissionOptionShape, type Re
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
+import { LocalStoragePresetStore } from '../core/presets.ts'
+import { LocalStorageRunPresetStore } from '../core/run-presets.ts'
+import { BoardSyncClient, SyncedCruiseStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore } from '../core/host-sync.ts'
+import type { BoardView, CruiseValue } from '../core/board-doc.ts'
+import { createBoardTransport } from './board-transport.ts'
 import { mountBoard } from './board-mount.tsx'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { RouteSettingsScope } from './route-scope.ts'
@@ -33,6 +38,47 @@ const TASK_BOARD_NS = 'dsh-task-board'
 
 /** localStorage key for the auto-cruise state (toggle + concurrency limit). */
 const CRUISE_STORAGE_KEY = 'dsh.taskBoard.cruise.v1'
+
+/** localStorage key where a diverging pre-sync local ledger is parked (the
+ *  host truth wins on first connect; the local copy is never silently lost). */
+const PRE_SYNC_BACKUP_KEY = 'dsh.taskBoard.preSync.v1'
+
+/** Read the four local board keys as a single view (the sync migration source). */
+function readLocalView(): BoardView {
+  let cruise: CruiseValue = { enabled: false, limit: 5, schedule: [] }
+  try {
+    const raw = localStorage.getItem(CRUISE_STORAGE_KEY)
+    if (raw !== null) {
+      const parsed = JSON.parse(raw) as Partial<CruiseValue>
+      cruise = {
+        enabled: parsed.enabled === true,
+        ...typeof parsed.manual === 'boolean' ? { manual: parsed.manual } : {},
+        limit: typeof parsed.limit === 'number' && Number.isInteger(parsed.limit) && parsed.limit >= 1 ? parsed.limit : 5,
+        schedule: Array.isArray(parsed.schedule) ? parsed.schedule : [],
+      }
+    }
+  } catch (error) {
+    console.error('[dsh-task-board] local cruise read failed', error)
+  }
+  return {
+    tasks: new LocalStorageTaskStore().load(),
+    cruise,
+    schedulePresets: new LocalStoragePresetStore().load(),
+    runPresets: new LocalStorageRunPresetStore().load(),
+  }
+}
+
+/** Write the four local board keys from a view (the offline first-paint mirror). */
+function writeMirror(view: BoardView): void {
+  new LocalStorageTaskStore().save(view.tasks)
+  new LocalStoragePresetStore().save(view.schedulePresets)
+  new LocalStorageRunPresetStore().save(view.runPresets)
+  try {
+    localStorage.setItem(CRUISE_STORAGE_KEY, JSON.stringify(view.cruise))
+  } catch (error) {
+    console.error('[dsh-task-board] cruise mirror write failed', error)
+  }
+}
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -226,14 +272,51 @@ export function apply(ctx: ClientContext): void {
   // nothing mounts yet. Only an unavailable scope (no settings surface served)
   // falls back to the composition default (enabled).
   let uiDisposer: (() => void) | undefined
+  let mounting = false
   const mountUi = (): void => {
+    if (uiDisposer !== undefined || mounting) return
+    mounting = true
+    void mountUiBody().finally(() => { mounting = false })
+  }
+  const mountUiBody = async (): Promise<void> => {
     if (uiDisposer !== undefined) return
     const sessions = ctx.sessions
     const workspaces = ctx.workspaces
     const connection = ctx.get('connection') as ConnectionHandle
 
+    // ── sync client: this tab becomes a replica of the host board document ──
+    // The client boots BEFORE the controller so the first ledger the board
+    // renders is already the host truth (or, if the host serves no synced
+    // board, the plain localStorage mode — today's behavior, unchanged).
+    const sync = new BoardSyncClient({
+      transport: createBoardTransport(),
+      defer: (fn, ms) => {
+        const timer = setTimeout(fn, ms)
+        return () => clearTimeout(timer)
+      },
+    })
+    // A diverging local ledger is parked under a dedicated key before the
+    // host truth overwrites the mirror (nothing is ever silently dropped).
+    sync.onBackup(view => {
+      try {
+        localStorage.setItem(PRE_SYNC_BACKUP_KEY, JSON.stringify({ savedAt: Date.now(), ...view }))
+        console.warn('[dsh-task-board] local board data differed from the host truth; kept a copy under', PRE_SYNC_BACKUP_KEY)
+      } catch (error) {
+        console.error('[dsh-task-board] pre-sync backup failed', error)
+      }
+    })
+    const mode = await sync.start(readLocalView)
+    const synced = mode === 'synced'
+    if (synced) {
+      // Warm the offline mirror with the host truth so a later reload (or a
+      // dropped connection) first-paints the real board, not a stale copy.
+      writeMirror(sync.view())
+    }
+
     // Core wiring: real runtime faces into the framework-free services.
-    const store = new LocalStorageTaskStore()
+    const store = synced
+      ? new SyncedTaskStore(sync, new LocalStorageTaskStore())
+      : new LocalStorageTaskStore()
     // Comment continuations go through the host-level session.prompt API:
     // it addresses any session id (the execution session is usually not
     // the currently staged one, so a client binding is not guaranteed). The
@@ -478,6 +561,17 @@ export function apply(ctx: ClientContext): void {
       store,
       exec,
       questionRpc: questionTracker,
+      // Presets ride the shared document in synced mode (edits propagate to
+      // every replica), the local keys otherwise. The localStorage instance
+      // stays as the offline mirror behind the synced one.
+      presetStore: synced ? new SyncedPresetStore(sync, new LocalStoragePresetStore()) : undefined,
+      runPresetStore: synced ? new SyncedRunPresetStore(sync, new LocalStorageRunPresetStore()) : undefined,
+      // A non-engine replica relays a user-initiated launch to the lease
+      // holder (the host forwards it over the SSE command frame). In fallback
+      // mode this replica is always the engine, so the relay is never used.
+      requestLaunch: synced
+        ? (taskId, trigger) => { sync.requestLaunch(taskId, trigger) }
+        : undefined,
       sessions: {
         list: sessions.list,
         exists: id => sessions.list.getSnapshot().byId[id as SessionId] !== undefined,
@@ -502,31 +596,35 @@ export function apply(ctx: ClientContext): void {
       // discovery), read structurally like remote.commands — absent namespaces
       // degrade to "no @ menu" (the prompt inputs stay fully usable).
       reference: referenceBridge,
-      // Auto-cruise state persists across reloads (toggle + concurrency).
-      cruiseStorage: {
-        read: () => {
-          try {
-            const raw = localStorage.getItem(CRUISE_STORAGE_KEY)
-            if (raw === null) return undefined
-            const parsed = JSON.parse(raw) as { enabled?: boolean; manual?: boolean; limit?: number }
-            return {
-              enabled: parsed.enabled === true,
-              ...(parsed.manual === true || parsed.manual === false ? { manual: parsed.manual } : {}),
-              limit: parsed.limit,
-            }
-          } catch (error) {
-            console.error('[dsh-task-board] cruise state read failed', error)
-            return undefined
-          }
-        },
-        write: state => {
-          try {
-            localStorage.setItem(CRUISE_STORAGE_KEY, JSON.stringify(state))
-          } catch (error) {
-            console.error('[dsh-task-board] cruise state write failed (persistence skipped)', error)
-          }
-        },
-      },
+      // Auto-cruise state persists across reloads (toggle + concurrency). In
+      // synced mode it rides the shared document section (every replica sees
+      // the same switch/limit/windows); in fallback mode it stays local.
+      cruiseStorage: synced
+        ? new SyncedCruiseStore(sync)
+        : {
+            read: () => {
+              try {
+                const raw = localStorage.getItem(CRUISE_STORAGE_KEY)
+                if (raw === null) return undefined
+                const parsed = JSON.parse(raw) as { enabled?: boolean; manual?: boolean; limit?: number }
+                return {
+                  enabled: parsed.enabled === true,
+                  ...(parsed.manual === true || parsed.manual === false ? { manual: parsed.manual } : {}),
+                  limit: parsed.limit,
+                }
+              } catch (error) {
+                console.error('[dsh-task-board] cruise state read failed', error)
+                return undefined
+              }
+            },
+            write: state => {
+              try {
+                localStorage.setItem(CRUISE_STORAGE_KEY, JSON.stringify(state))
+              } catch (error) {
+                console.error('[dsh-task-board] cruise state write failed (persistence skipped)', error)
+              }
+            },
+          },
       // Review-page transcripts: recent history of an execution session.
       transcript: transcriptLoader,
       // Review-page session panel: the live model directory + selection of
@@ -682,10 +780,27 @@ export function apply(ctx: ClientContext): void {
     // first real message).
     controller.untitledSessionLabel = t('detail.sessionUntitled')
 
+    // Sync wiring (only meaningful in synced mode): the replica's engine seat
+    // follows the host lease, and every remote document lands in the
+    // controller + refreshes the offline mirror. sync.start already awaited
+    // the first lease probe, so isEngine() is authoritative here.
+    if (synced) {
+      controller.setEngine(sync.isEngine())
+      sync.onRemote(view => {
+        controller.applyRemote(view)
+        writeMirror(view)
+      })
+      sync.onEngine(held => { controller.setEngine(held) })
+      sync.onCommand(command => { void controller.runTask(command.taskId, command.trigger) })
+    }
+
     // Scheduled runs: a browser-side heartbeat that triggers due tasks through
     // the same run path as the manual Run button. The first tick is gated on
     // the session list baseline so a page-load catch-up never fires into a
-    // not-yet-ready runtime; tab visibility recovery ticks immediately.
+    // not-yet-ready runtime; tab visibility recovery ticks immediately. In
+    // synced mode the heartbeat ALSO requires the engine seat — a non-engine
+    // replica ticks a no-op (the engine drives automation for all of them),
+    // so many open boards never double-fire a schedule.
     const scheduler = new SchedulerService({
       tasks: () => controller.getSnapshot().tasks,
       now: () => Date.now(),
@@ -694,7 +809,7 @@ export function apply(ctx: ClientContext): void {
       runTask: id => controller.runTask(id, 'schedule'),
       applySchedule: (id, nextRunAt, lastTriggeredAt, runCount, disable) =>
         controller.applyScheduleNextRun(id, nextRunAt, lastTriggeredAt, runCount, disable),
-      ready: () => sessions.list.getSnapshot().phase === 'ready',
+      ready: () => sessions.list.getSnapshot().phase === 'ready' && (!synced || sync.isEngine()),
       // Cruise scheduled windows flip on/off at their boundaries on the same
       // heartbeat as task schedules.
       cruiseTick: now => controller.tickCruise(now),
@@ -720,6 +835,7 @@ export function apply(ctx: ClientContext): void {
     uiDisposer = () => {
       for (const dispose of disposers.splice(0)) dispose()
       scheduler.dispose()
+      sync.dispose()
       controller.dispose()
       questionTracker.dispose()
       uiDisposer = undefined

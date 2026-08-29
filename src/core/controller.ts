@@ -18,10 +18,13 @@ import { nextSessionRuleAt, withSessionRules } from './automation.ts'
 import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
-import { applyManualToggle, isCruiseWindow, normalizeWindow, setCruiseSchedule as applySchedule, sortWindows, tickCruise as tickSchedule } from './cruise.ts'
+import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
 import { DIRECT_FALLBACK_STATUS, isDirectLike, latestRoundOf, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
+import { normalizeCruiseValue } from './board-doc.ts'
+import { LocalStoragePresetStore } from './presets.ts'
+import { LocalStorageRunPresetStore } from './run-presets.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
@@ -361,6 +364,14 @@ export interface ControllerDeps {
   reconcileDebounceMs?: number
   /** Cruise-state persistence; absent = cruise defaults that are not persisted. */
   cruiseStorage?: CruiseStorageFace
+  /**
+   * Schedule-preset persistence. Absent = the localStorage default (the
+   * single-browser mode); the synced wiring injects a store over the shared
+   * document so preset edits propagate to every replica.
+   */
+  presetStore?: import('./presets.ts').PresetStore
+  /** Run-preset persistence; same synced/local split as {@link presetStore}. */
+  runPresetStore?: import('./run-presets.ts').RunPresetStore
   /** Reads a session's recent history events (review-page transcript); absent = the page shows a hint. */
   transcript?: (sessionId: string) => Promise<TranscriptLoadResult | undefined>
   /** Session-config surface (review-page model/permission panel); absent = the panel degrades gracefully. */
@@ -389,6 +400,14 @@ export interface ControllerDeps {
    *  does. Absent = the interaction card degrades (the native side still
    *  answers it). */
   questionRpc?: QuestionRpcFace
+  /**
+   * Relay one user-initiated launch to the engine (a non-engine replica's
+   * Run button): the host forwards it to the lease holder, which runs it
+   * through the ordinary pump (one pump = one concurrency budget = no
+   * double launch). Absent = this controller never leaves the engine seat
+   * (the single-browser/localStorage mode).
+   */
+  requestLaunch?: (taskId: string, trigger: RunTrigger) => void
 }
 
 /** A durable attachment ref returned by the host attachment bridge (the
@@ -463,21 +482,11 @@ export class BoardController {
   constructor(private readonly deps: ControllerDeps) {
     this.now = deps.now ?? (() => Date.now())
     this.uuid = deps.uuid ?? randomUuid
-    const stored = deps.cruiseStorage?.read()
-    const storedLimit = stored !== undefined && typeof stored.limit === 'number'
-      && Number.isInteger(stored.limit) && stored.limit >= 1
-      ? stored.limit
-      : DEFAULT_CRUISE_LIMIT
-    this.cruiseState = {
-      enabled: stored?.enabled === true,
-      ...(stored?.manual === true || stored?.manual === false ? { manual: stored.manual } : {}),
-      limit: storedLimit,
-      // Old documents carry no schedule; only well-formed windows load
-      // (cross-midnight normalization applied on read too).
-      schedule: Array.isArray(stored?.schedule)
-        ? sortWindows(stored!.schedule.filter(isCruiseWindow).map(normalizeWindow))
-        : [],
-    }
+    // The cruise seed reads through the ONE shared normalization grammar
+    // (board-doc.normalizeCruiseValue) — the same function the host applies
+    // to the synced section, so a persisted cruise value is judged
+    // identically on every path.
+    this.cruiseState = normalizeCruiseValue(deps.cruiseStorage?.read())
   }
 
   // --- lifecycle -------------------------------------------------------------
@@ -513,6 +522,43 @@ export class BoardController {
     this.reconcileTimer = undefined
   }
 
+  /**
+   * Take or yield the engine seat (the synced wiring calls this from the
+   * host lease callback). Taking the seat immediately re-pumps the queue and
+   * reconciles (catch-up for anything that came due while this replica was a
+   * viewer); yielding it stops the pump (in-flight launches finish on their
+   * own, and the new engine's reconcile picks up the rest).
+   */
+  setEngine(on: boolean): void {
+    if (this.disposed || this.engine === on) return
+    this.engine = on
+    if (on) {
+      void this.reconcileRunningTasks()
+      this.dispatch()
+    }
+    this.notify()
+  }
+
+  /** Whether this replica currently holds the engine seat. */
+  isEngine(): boolean {
+    return this.engine
+  }
+
+  /**
+   * Adopt a remotely-authored board view (the sync client's onRemote):
+   * replace the ledger and cruise state, notify, and (engine only) re-pump.
+   * Deliberately does NOT persist — this state came from the host, saving it
+   * back would echo the commit. The controller's own newer-in-flight writes
+   * are preserved by the sync client's dirty overlay before this is called.
+   */
+  applyRemote(view: import('./board-doc.ts').BoardView): void {
+    if (this.disposed) return
+    this.tasks = [...view.tasks]
+    this.cruiseState = normalizeCruiseValue(view.cruise)
+    this.notify()
+    if (this.engine) this.dispatch()
+  }
+
   // --- snapshot / subscription ------------------------------------------------
 
   getSnapshot(): ControllerSnapshot {
@@ -536,6 +582,21 @@ export class BoardController {
   /** The run-catalog face for form selects, or undefined when not wired. */
   runCatalog(): RunCatalogFace | undefined {
     return this.deps.runCatalog
+  }
+
+  /**
+   * The schedule-preset store every preset surface reads/writes: the synced
+   * document section when multi-device sync is live, the localStorage default
+   * otherwise. One accessor = one source of truth, never a re-`new` per
+   * component (which would fork the synced state from the shared document).
+   */
+  presetStore(): import('./presets.ts').PresetStore {
+    return this.deps.presetStore ?? new LocalStoragePresetStore()
+  }
+
+  /** The run-preset store (same single-source discipline as presetStore()). */
+  runPresetStore(): import('./run-presets.ts').RunPresetStore {
+    return this.deps.runPresetStore ?? new LocalStorageRunPresetStore()
   }
 
   /** The OFFICIAL '@' reference bridge (file + session discovery), or
@@ -1393,6 +1454,18 @@ export class BoardController {
   private disposed = false
 
   /**
+   * Whether THIS replica holds the engine seat (the host lease). The engine
+   * is the only replica that drives time-based automation and launches:
+   * scheduler ticks, the dispatch pump, reconciliation, external-turn
+   * recording and the settle hand-offs. A non-engine replica still serves
+   * user actions (its writes sync; a Run relays to the engine) and mirrors
+   * remote state, but never pumps — so many open boards cannot double-fire.
+   * Defaults to true: the single-browser/localStorage mode is always the
+   * engine, and the synced wiring only ever lowers it after the host says so.
+   */
+  private engine = true
+
+  /**
    * The one concurrency-bounded launch decision point. Called after every
    * ledger mutation (through {@link persistAndNotify}) and the cruise
    * switches: while the in-flight budget has room, it starts work in
@@ -1405,6 +1478,10 @@ export class BoardController {
    */
   private dispatch(): void {
     if (this.disposed) return
+    // Only the engine pumps launches (one concurrency budget across every
+    // open replica); a viewer's queued work waits for the engine to see it
+    // through the synced ledger.
+    if (!this.engine) return
     if (this.dispatching) {
       this.dispatchQueued = true
       return
@@ -1585,6 +1662,15 @@ export class BoardController {
     // Only a genuinely open run blocks a new one: a pending comment round
     // (task not running) must never block the Run button or a drag-rerun.
     if (hasOpenRun(task)) return false
+    // A non-engine replica never launches locally: it relays the request to
+    // the engine (the host forwards it to the lease holder), so the single
+    // pump and its concurrency budget stay the only source of launches. The
+    // run is "accepted" — the engine's ledger write will surface it here.
+    if (!this.engine) {
+      if (this.deps.requestLaunch === undefined) return false
+      this.deps.requestLaunch(id, trigger)
+      return true
+    }
     // The 缺则补 supplement applies at the ONE launch door (launchTask).
     if (trigger === 'manual' || this.inFlightCount() < this.cruiseState.limit) {
       this.launchTask(task)
@@ -2338,6 +2424,7 @@ export class BoardController {
    *  windows are pruned and persisted away — "到点自动开启 / 到点自动关闭",
    *  过期记录自动消失. Persist and pump dispatch when anything changed. */
   tickCruise(now: number): void {
+    if (!this.engine) return
     const next = tickSchedule(this.cruiseState, now)
     if (next === this.cruiseState) return
     const turnedOn = next.enabled && !this.cruiseState.enabled
@@ -2385,7 +2472,10 @@ export class BoardController {
     // The chain request precedes the final persist: a chain-armed task keeps
     // 'running' between hand-offs and its next run is queued before any
     // comment/cruise work competes for the freed slot.
-    this.maybeContinueChain(event.taskId)
+    // Automation hand-offs are engine-only: a replica that lost the seat
+    // mid-run still settles its own watch (idempotent, persisted), but the
+    // new engine's reconcile carries the chain/automation forward.
+    if (this.engine) this.maybeContinueChain(event.taskId)
     this.persistAndNotify()
     // A settled plain TASK RUN is the on-complete appointment for the task's
     // session rules. Comment rounds carry `comment`, refine rounds carry
@@ -2393,7 +2483,7 @@ export class BoardController {
     // never re-trigger itself through its own queued comment's settle (no
     // send loops). Fired after the persist so the rule bookkeeping layers on
     // the settled object.
-    this.settledFollowUp(settledRound, event.taskId, event.outcome)
+    if (this.engine) this.settledFollowUp(settledRound, event.taskId, event.outcome)
   }
 
   /**
@@ -2573,6 +2663,9 @@ export class BoardController {
    * after the pass, so none is silently dropped.
    */
   private scheduleReconcile(): void {
+    // Reconciliation (settle + external-turn recording) is the engine's job;
+    // a viewer's UI still refreshes from the synced ledger + session list.
+    if (!this.engine) return
     this.reconcilePending = true
     if (this.reconcileTimer !== undefined || this.reconcileInFlight) return
     this.reconcileTimer = setTimeout(() => {
@@ -2588,7 +2681,7 @@ export class BoardController {
 
   /** Settle tasks left 'running' whose sessions already finished. */
   private async reconcileRunningTasks(): Promise<void> {
-    if (this.disposed || this.reconcileInFlight) return
+    if (this.disposed || this.reconcileInFlight || !this.engine) return
     this.reconcileInFlight = true
     this.reconcilePending = false
     try {
@@ -2611,7 +2704,7 @@ export class BoardController {
       // running tasks (plain runs, comment rounds, external rounds) plus any
       // task with an open refinement round (refinement keeps its column).
       type Settled = Extract<ExecutionEvent, { kind: 'settled' }>
-      const events: Array<{ task: TaskRecord; round: ExecutionRecord | undefined; event: Settled }> = []
+      const events: Array<{ taskId: string; round: ExecutionRecord | undefined; event: Settled; externalText: string | undefined }> = []
       for (const task of this.tasks) {
         const execution = task.executions[task.executions.length - 1]
         if (execution === undefined || execution.endedAt !== undefined) continue
@@ -2637,20 +2730,36 @@ export class BoardController {
         // controller must never keep settling into a dropped ledger.
         if (this.disposed) return
         if (event !== undefined && event.kind === 'settled') {
-          events.push({ task: await this.fillExternalText(task, event.executionId), round: execution, event })
+          // Only the backfill TEXT is read here; it lands on the CURRENT
+          // record in Stage 2 (a remote apply may have rewritten the row
+          // while these reads were in flight — a stale snapshot is never
+          // written over a newer one, the reconcileBoundTask discipline).
+          const externalText = await this.externalTextIfNeeded(task, event.executionId)
+          events.push({ taskId: task.id, round: execution, event, externalText })
           this.activeExecutionIds.delete(event.executionId)
         }
       }
 
-      // Stage 2 — apply the settled rounds (refine rounds keep the column).
+      // Stage 2 — apply the settled rounds (refine rounds keep the column),
+      // re-reading each record at write time so mid-await changes survive.
       const continued: string[] = []
       const applied: Array<{ round: ExecutionRecord | undefined; event: Settled }> = []
-      for (const { task, round, event } of events) {
-        const next = this.settleRound(task, event.executionId, event.outcome, event.error)
-        if (next === task) continue
-        this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
+      for (const { taskId, round, event, externalText } of events) {
+        const current = this.tasks.find(candidate => candidate.id === taskId)
+        if (current === undefined) continue
+        const next = this.settleRound(current, event.executionId, event.outcome, event.error)
+        if (next === current) continue
+        const settled = externalText === undefined ? next : {
+          ...next,
+          executions: next.executions.map(candidate => candidate.id === event.executionId
+            && candidate.external === true
+            && (candidate.comment === undefined || candidate.comment === '')
+            ? { ...candidate, comment: externalText }
+            : candidate),
+        }
+        this.tasks = this.tasks.map(candidate => candidate.id === taskId ? settled : candidate)
         changed = true
-        continued.push(task.id)
+        continued.push(taskId)
         applied.push({ round, event })
       }
       // A reconciled settle hands off to the next chained run like a live one
@@ -2833,20 +2942,15 @@ export class BoardController {
     return (await this.userMessageOf(sessionId))?.text
   }
 
-  /** Backfill the body of an external round settling empty (legacy records /
-   *  an observation that missed the text): reads the native user message of
-   *  the session and patches the round's comment. Never changes non-external
-   *  rounds; non-empty bodies stay untouched. */
-  private async fillExternalText(task: TaskRecord, executionId: string): Promise<TaskRecord> {
+  /** The backfill text for an external round settling with an empty body
+   *  (legacy records / an observation that missed the text); undefined when
+   *  there is nothing to fill. The text lands on the CURRENT record at write
+   *  time (Stage 2), never on a pre-await snapshot. */
+  private async externalTextIfNeeded(task: TaskRecord, executionId: string): Promise<string | undefined> {
     const execution = task.executions.find(round => round.id === executionId)
-    if (execution === undefined || execution.external !== true) return task
-    if (execution.comment !== undefined && execution.comment !== '') return task
-    const text = await this.userTextOf(execution.sessionId)
-    if (text === undefined) return task
-    return {
-      ...task,
-      executions: task.executions.map(round => round.id === executionId ? { ...round, comment: text } : round),
-    }
+    if (execution === undefined || execution.external !== true) return undefined
+    if (execution.comment !== undefined && execution.comment !== '') return undefined
+    return await this.userTextOf(execution.sessionId)
   }
 
   /**

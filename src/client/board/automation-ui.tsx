@@ -22,7 +22,6 @@
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { type SchedulePreset } from '../../core/presets.ts'
-import { LocalStoragePresetStore } from '../../core/presets.ts'
 import {
   automationRowsOf, sessionRuleOf, sessionRuleReadiness, type AutomationRow,
 } from '../../core/automation.ts'
@@ -258,7 +257,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
   // inline next to that field and only that field wears the red border — a
   // combined "instruction AND cron" error names nothing.
   const [error, setError] = useState<'session' | 'instruction' | 'cron' | 'save' | undefined>(undefined)
-  const [presetStore] = useState(() => new LocalStoragePresetStore())
+  const [presetStore] = useState(() => controller.presetStore())
   const [presets, setPresets] = useState(() => mergedPresets(presetStore))
   const [showPresets, setShowPresets] = useState(false)
   // In edit mode the target session may have gone from the native list — the
@@ -499,7 +498,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
   // their own inline error; a max-runs error must never light the cron border.
   const [error, setError] = useState<'cron' | 'runs' | 'promptEmpty' | undefined>(undefined)
   const [showPresets, setShowPresets] = useState(false)
-  const [presetStore] = useState(() => new LocalStoragePresetStore())
+  const [presetStore] = useState(() => controller.presetStore())
   // The merged preset list (built-ins + custom); rebuilt when the manager closes.
   const [presets, setPresets] = useState(() => mergedPresets(presetStore))
   const [confirm, setConfirm] = useState<'unlimited-enable' | 'stop-chain' | undefined>(undefined)

@@ -39,7 +39,7 @@ export interface CruiseValue {
   enabled: boolean
   manual?: boolean
   limit: number
-  schedule: readonly CruiseWindow[]
+  schedule: CruiseWindow[]
 }
 
 /** One synced section: the value plus the client write stamp (LWW key). */
@@ -53,6 +53,29 @@ export interface BoardSection<T> {
 export interface BoardDelete {
   id: string
   baseUpdatedAt: number
+}
+
+/** One relayed user action: run this task with this trigger (the engine
+ *  executes; a non-engine replica forwards the request through the host). */
+export interface BoardCommand {
+  type: 'run'
+  taskId: string
+  trigger: 'manual' | 'schedule' | 'chain'
+  /** The replica the user acted on (informational; the engine executes). */
+  clientId: string
+}
+
+/** Everything an SSE subscriber receives; plain JSON, one line per frame. */
+export type BoardEvent =
+  | { type: 'commit'; revision: number; clientId: string }
+  | { type: 'lease'; holder: string | undefined; expiresAt: number | undefined }
+  | { type: 'command'; command: BoardCommand }
+
+/** The engine-lease state every board API call answers with. */
+export interface LeaseState {
+  held: boolean
+  holder: string | undefined
+  expiresAt: number | undefined
 }
 
 /** One tombstone: the logical stamp a newer edit must beat, plus the host

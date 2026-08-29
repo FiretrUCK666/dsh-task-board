@@ -24,7 +24,11 @@
  * the next lease is granted.
  */
 import { applyCommit, emptyBoardDoc, normalizeBoardDoc } from '../core/board-doc.ts'
-import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
+import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts'
+
+// The wire types live in the shared core (the client sync layer reads the
+// same shapes); re-exported here so host callers keep one import surface.
+export type { BoardCommand, BoardEvent, LeaseState } from '../core/board-doc.ts'
 
 /** Structural face of the storage hub's opened KV unit (no SDK import). */
 export interface KvUnitLike {
@@ -51,27 +55,7 @@ export const LEASE_DISCONNECT_GRACE_MS = 5_000
 /** The cap on parked launch commands (newest-per-task dedup keeps this small). */
 export const PENDING_COMMAND_LIMIT = 20
 
-/** One relayed user action: run this task with this trigger. */
-export interface BoardCommand {
-  type: 'run'
-  taskId: string
-  trigger: 'manual' | 'schedule' | 'chain'
-  /** The replica the user acted on (informational; the engine executes). */
-  clientId: string
-}
-
-/** Everything an SSE subscriber receives; plain JSON, one line per event. */
-export type BoardEvent =
-  | { type: 'commit'; revision: number; clientId: string }
-  | { type: 'lease'; holder: string | undefined; expiresAt: number | undefined }
-  | { type: 'command'; command: BoardCommand }
-
-/** The lease answer every API call carries. */
-export interface LeaseState {
-  held: boolean
-  holder: string | undefined
-  expiresAt: number | undefined
-}
+/** One relayed user action lives in the shared core (see BoardCommand). */
 
 /** Injectable seams (tests drive the service with fakes). */
 export interface BoardServiceDeps {

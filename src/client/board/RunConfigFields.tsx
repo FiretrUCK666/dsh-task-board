@@ -9,7 +9,7 @@
 import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import {
-  defaultRunPresetOf, findRunPreset, LocalStorageRunPresetStore, mergedRunPresets,
+  defaultRunPresetOf, findRunPreset, mergedRunPresets,
   normalizeRunPresetDocument, type RunConfigPresetConfig, type RunPresetsDocument,
 } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
@@ -25,7 +25,7 @@ export function RunConfigFields({ value, onChange, controller }: {
   // The run-config preset state (the SAME store the task form and the
   // new-session dialog share — one grammar, one source; both surfaces
   // instant-switch).
-  const [presetStore] = useState(() => new LocalStorageRunPresetStore())
+  const [presetStore] = useState(() => controller.runPresetStore())
   const [presetDoc, setPresetDoc] = useState<RunPresetsDocument>(() =>
     normalizeRunPresetDocument(presetStore.load()))
   const [showPresetManager, setShowPresetManager] = useState(false)

@@ -9,7 +9,7 @@ import { InMemoryTaskStore } from '../src/core/store.ts'
 import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
 import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import type { CruiseWindow } from '../src/core/cruise.ts'
-import { createTask, ruleReadiness, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, ruleReadiness, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 let nextId = 0
@@ -3097,6 +3097,104 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(reloaded.getSnapshot().tasks[0].description).toBe('干活\n第二行')
     expect(stub.runCalls).toHaveLength(1)
     expect(stub.runCalls[0].task.title).toBe('干活')
+  })
+})
+
+describe('BoardController engine seat + remote apply', () => {
+  /** A store wrapper that counts save calls (to prove applyRemote never echoes). */
+  function countingStore(): { store: InMemoryTaskStore; saves: () => number } {
+    const inner = new InMemoryTaskStore()
+    let saves = 0
+    const store = new Proxy(inner, {
+      get(target, prop) {
+        if (prop === 'save') return (tasks: readonly TaskRecord[]): void => { saves += 1; target.save(tasks) }
+        const value = Reflect.get(target, prop, target)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    }) as InMemoryTaskStore
+    return { store, saves: () => saves }
+  }
+
+  it('a non-engine replica relays runTask to the engine instead of launching', async () => {
+    const stub = new StubExec()
+    const relays: Array<{ id: string; trigger: string }> = []
+    const store = new InMemoryTaskStore()
+    store.save([createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'task-a')])
+    const sessions = new FakeSessions()
+    const controller = new BoardController({ store, exec: stub as unknown as ExecutionService, sessions, now: () => NOW, uuid, requestLaunch: (id, trigger) => relays.push({ id, trigger }) })
+    controller.start()
+    controller.setEngine(false)
+    const accepted = await controller.runTask('task-a', 'manual')
+    expect(accepted).toBe(true)
+    expect(relays).toEqual([{ id: 'task-a', trigger: 'manual' }])
+    expect(stub.runCalls).toHaveLength(0)
+  })
+
+  it('a non-engine replica with no relay rejects the run', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    store.save([createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'task-a')])
+    const controller = new BoardController({ store, exec: stub as unknown as ExecutionService, sessions: new FakeSessions(), now: () => NOW, uuid })
+    controller.start()
+    controller.setEngine(false)
+    expect(await controller.runTask('task-a', 'manual')).toBe(false)
+    expect(stub.runCalls).toHaveLength(0)
+  })
+
+  it('the dispatch pump is a no-op off the engine and re-pumps on takeover', () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    store.save([createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'task-a')])
+    const controller = new BoardController({ store, exec: stub as unknown as ExecutionService, sessions: new FakeSessions(), now: () => NOW, uuid })
+    controller.start()
+    // A todo task with a prompt: cruise would pick it up when the engine pumps.
+    controller.setEngine(false)
+    controller.setCruiseEnabled(true)
+    expect(stub.runCalls).toHaveLength(0)
+    // Taking the seat re-pumps: the pending cruise pickup launches now.
+    controller.setEngine(true)
+    expect(controller.isEngine()).toBe(true)
+    expect(stub.runCalls).toHaveLength(1)
+  })
+
+  it('applyRemote replaces the ledger + cruise and notifies, without echoing a save', () => {
+    const { store, saves } = countingStore()
+    const controller = new BoardController({
+      store, exec: new StubExec() as unknown as ExecutionService,
+      sessions: new FakeSessions(), now: () => NOW, uuid,
+    })
+    controller.start()
+    // A review-column task: the engine pump never picks it up (cruise takes
+    // todo only), so a launch cannot mask the "applyRemote does not save" check.
+    const remote = withStatus(createTask({ title: '远端', description: '', prompt: 'p' }, NOW, 'task-remote'), 'review', NOW)
+    let notified = 0
+    controller.subscribe(() => { notified += 1 })
+    const savesBefore = saves()
+    controller.applyRemote({
+      tasks: [remote],
+      cruise: { enabled: true, limit: 4, schedule: [] },
+      schedulePresets: [],
+      runPresets: { presets: [] },
+    })
+    expect(controller.getSnapshot().tasks.map(t => t.id)).toEqual(['task-remote'])
+    expect(controller.getSnapshot().cruise.enabled).toBe(true)
+    expect(controller.getSnapshot().cruise.limit).toBe(4)
+    expect(notified).toBeGreaterThan(0)
+    // The remote state came from the host: applying it must not write back.
+    expect(saves()).toBe(savesBefore)
+  })
+
+  it('a non-engine replica still accepts user writes and mirrors remote state', () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    store.save([createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'task-a')])
+    const controller = new BoardController({ store, exec: stub as unknown as ExecutionService, sessions: new FakeSessions(), now: () => NOW, uuid })
+    controller.start()
+    controller.setEngine(false)
+    // A local edit is accepted (it will sync); no launch happens here.
+    controller.setTaskColor('task-a', '#ff0000')
+    expect(controller.getSnapshot().tasks[0].color).toBe('#ff0000')
+    expect(stub.runCalls).toHaveLength(0)
   })
 })
 

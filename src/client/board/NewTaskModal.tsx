@@ -5,7 +5,7 @@
 import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import {
-  defaultRunPresetOf, LocalStorageRunPresetStore, normalizeRunPresetDocument,
+  defaultRunPresetOf, normalizeRunPresetDocument, type RunPresetStore,
 } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -35,8 +35,8 @@ function freshDraft(): TaskDraft {
  *  applied (the fallback chain in run-presets.ts — never set / deleted ->
  *  部署默认 = the previous behavior). Only the run-config fields;
  *  title/description/prompt always start empty. */
-function initialDraft(): TaskDraft {
-  const doc = normalizeRunPresetDocument(new LocalStorageRunPresetStore().load())
+function initialDraft(presetStore: RunPresetStore): TaskDraft {
+  const doc = normalizeRunPresetDocument(presetStore.load())
   const config = defaultRunPresetOf(doc).config
   return {
     ...freshDraft(),
@@ -64,7 +64,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
         // A corrupt draft falls through to a fresh form.
       }
     }
-    return initialDraft()
+    return initialDraft(controller.runPresetStore())
   })
 
   const changeDraft = (next: TaskDraft): void => {

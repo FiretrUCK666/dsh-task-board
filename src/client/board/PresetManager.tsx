@@ -10,7 +10,7 @@ import { isValidCron } from '../../core/schedule.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import {
-  DEFAULT_PRESETS, mergePresets, type LocalStoragePresetStore, type SchedulePreset,
+  DEFAULT_PRESETS, mergePresets, type PresetStore, type SchedulePreset,
 } from '../../core/presets.ts'
 import { cronHumanLabel } from './cron-label.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
@@ -18,7 +18,7 @@ import { Dialog } from './Dialog.tsx'
 import { Button } from './ui.tsx'
 
 /** The merged list shown in the preset dropdown (defaults + custom). */
-export function mergedPresets(store: LocalStoragePresetStore): SchedulePreset[] {
+export function mergedPresets(store: PresetStore): SchedulePreset[] {
   return mergePresets(DEFAULT_PRESETS, store.load())
 }
 
@@ -77,7 +77,7 @@ function PresetRow({ preset, onSave, onDelete }: {
 
 /** The preset manager overlay. */
 export function PresetManager({ store, onClose }: {
-  store: LocalStoragePresetStore
+  store: PresetStore
   onClose: () => void
 }) {
   const [custom, setCustom] = useState<readonly SchedulePreset[]>(() => store.load())
