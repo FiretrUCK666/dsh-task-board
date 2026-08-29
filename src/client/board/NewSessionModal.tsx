@@ -40,10 +40,16 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
   onCreated: (sessionId: string) => void
 }) {
   const [config, setConfig] = useState<RunConfigPresetConfig>(() => taskConfigOf(task))
+  // Optional title: blank = leave the naming to the host (it names the
+  // session automatically from the first real message — fallback + provider
+  // cadence). A filled title goes through the OFFICIAL user rename, which
+  // pins it against automatic regeneration — the two paths never fight.
+  const [title, setTitle] = useState('')
   const [busy, setBusy] = useState(false)
-  // Inline feedback: a creation failure keeps the dialog open; a config
-  // failure after the session exists is surfaced as a partial success
-  // (the session stays bound — the message names exactly what happened).
+  // Inline feedback: a creation failure keeps the dialog open; a config or
+  // rename failure after the session exists is surfaced as a partial
+  // success (the session stays bound — the message names exactly what
+  // happened).
   const [error, setError] = useState<string | undefined>(undefined)
   const [partial, setPartial] = useState<string | undefined>(undefined)
 
@@ -52,10 +58,18 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
     setBusy(true)
     setError(undefined)
     setPartial(undefined)
-    void controller.createTaskSession(task.id, config).then(result => {
+    void controller.createTaskSession(task.id, { ...config, title }).then(result => {
       setBusy(false)
       if (!result.ok) {
         setError(result.error)
+        return
+      }
+      if (result.titleError !== undefined) {
+        // The session was created and bound; only its title did not stick.
+        // Keep the dialog open on the partial note (a retry would create a
+        // SECOND session — the honest close is the user's call).
+        setPartial(t('detail.sessionNewTitleFailed', { error: result.titleError }))
+        onCreated(result.sessionId)
         return
       }
       onCreated(result.sessionId)
@@ -75,6 +89,16 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
           <p className={css.detailHint}>{t('detail.sessionNewHint')}</p>
           {partial !== undefined && <p className={css.detailHint}>{partial}</p>}
           {error !== undefined && <p className={css.formError}>{error}</p>}
+          <label className={css.field}>
+            <span className={css.fieldLabel}>{t('detail.sessionNewTitleLabel')}</span>
+            <input
+              className={css.input}
+              value={title}
+              placeholder={t('detail.sessionNewTitlePlaceholder')}
+              onChange={event => { setTitle(event.target.value) }}
+            />
+            <span className={css.fieldHint}>{t('detail.sessionNewTitleHint')}</span>
+          </label>
           <RunConfigFields value={config} onChange={setConfig} controller={controller} />
         </div>
 

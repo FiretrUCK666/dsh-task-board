@@ -11,15 +11,15 @@
  * (chip + spinner, ghost "查看会话", quiet "隐藏", keyboard activation)
  * lives here once.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import type { SessionChipShape, SessionRowState } from './session-chip.ts'
-import { AttentionDot, Button } from './ui.tsx'
+import { AttentionDot, Button, Icon } from './ui.tsx'
 
 /** The unified session row (one grammar for every session of a task). */
-export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd }: {
+export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle }: {
   /** Live session state (execution kind): rendered as data-state/data-waiting. */
   state?: SessionRowState
   /** Status chip on the top line (undefined = no chip). */
@@ -49,11 +49,48 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
   draggable?: boolean
   onDragStart?: (event: React.DragEvent) => void
   onDragEnd?: () => void
+  /** Rename affordance (the quiet pencil in the action group): submits the
+   *  new title; a rejection throws so the row can surface it inline. */
+  onRename?: (title: string) => Promise<void>
+  /** Tooltip of the rename affordance. */
+  renameTitle?: string
 }) {
   // ONE state-bound glow: waiting / running / settled-unread rows breathe
   // attention; viewed / idle rows are quiet — the halo never toggles with the
   // per-render unviewed boolean, so no row can flicker.
   const glow = state === 'waiting' || state === 'running' || unviewed === true ? 'attention' : 'none'
+  // Inline rename state: idle → editing → (saving). The pencil flips the
+  // identity slot into a small input prefilled with the current title; the
+  // input lives ON the row (no modal), Enter commits, Escape cancels.
+  const [renaming, setRenaming] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [renameError, setRenameError] = useState<string | undefined>(undefined)
+  const startRename = (): void => {
+    setDraft('')
+    setRenameError(undefined)
+    setRenaming(true)
+  }
+  const commitRename = (): void => {
+    if (saving) return
+    const trimmed = draft.trim()
+    if (trimmed === '') {
+      setRenameError(t('detail.renameEmpty'))
+      return
+    }
+    setSaving(true)
+    setRenameError(undefined)
+    void onRename?.(trimmed).then(
+      () => {
+        setSaving(false)
+        setRenaming(false)
+      },
+      (error: unknown) => {
+        setSaving(false)
+        setRenameError(String(error))
+      },
+    )
+  }
   return (
     <li
       className={css.sessionRow}
@@ -100,6 +137,16 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
               {t('detail.viewSession')} →
             </Button>
           )}
+          {onRename !== undefined && sessionId !== undefined && !renaming && (
+            <button
+              type="button"
+              className={css.rowHide}
+              title={renameTitle}
+              onClick={event => { event.stopPropagation(); startRename() }}
+            >
+              <Icon name="copy" />
+            </button>
+          )}
           <button
             type="button"
             className={css.rowHide}
@@ -110,7 +157,34 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
           </button>
         </span>
       </div>
-      <span className={css.sessionRowMeta}>{meta}</span>
+      {renaming ? (
+        /* The rename editor rides where the meta line sits — one row, no
+           modal, no layout jump; the row click is suppressed while editing. */
+        <span className={css.sessionRenameRow} onClick={event => { event.stopPropagation() }}>
+          <input
+            className={`${css.input} ${css.sessionRenameInput}`}
+            value={draft}
+            autoFocus
+            disabled={saving}
+            placeholder={renameTitle}
+            aria-label={renameTitle}
+            onChange={event => { setDraft(event.target.value) }}
+            onKeyDown={event => {
+              if (event.key === 'Enter') { event.preventDefault(); commitRename() }
+              if (event.key === 'Escape') { event.preventDefault(); setRenaming(false) }
+            }}
+          />
+          <Button size="sm" variant="primary" disabled={saving} onClick={commitRename}>
+            {t('detail.renameOk')}
+          </Button>
+          <Button size="sm" disabled={saving} onClick={() => { setRenaming(false) }}>
+            {t('detail.renameCancel')}
+          </Button>
+        </span>
+      ) : (
+        <span className={css.sessionRowMeta}>{meta}</span>
+      )}
+      {renameError !== undefined && <span className={css.executionError}>{renameError}</span>}
       {footer}
     </li>
   )

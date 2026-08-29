@@ -541,6 +541,50 @@ describe('ExecutionService.createSession (新建会话)', () => {
   })
 })
 
+describe('ExecutionService.renameSession (会话重命名)', () => {
+  it('routes through the host-level rename face', async () => {
+    const calls: Array<[string, string]> = []
+    const { env } = makeEnv()
+    const service = new ExecutionService({
+      ...env,
+      renameSession: async (sessionId, title) => {
+        calls.push([sessionId, title])
+        return { ok: true }
+      },
+    })
+    const result = await service.renameSession('s-9', ' 新标题 ')
+    expect(result).toEqual({ ok: true })
+    expect(calls).toEqual([['s-9', '新标题']])
+  })
+
+  it('rejects a blank title before any channel is touched', async () => {
+    const { env } = makeEnv()
+    let called = 0
+    const service = new ExecutionService({
+      ...env,
+      renameSession: async () => { called += 1; return { ok: true } },
+    })
+    expect(await service.renameSession('s-9', '   ')).toMatchObject({ ok: false })
+    expect(called).toBe(0)
+  })
+
+  it('degrades to the binding driver when no face is wired', async () => {
+    const { env, drivers } = makeEnv()
+    const driver = new FakeDriver()
+    drivers.set('s-9', driver)
+    const service = new ExecutionService(env)
+    const result = await service.renameSession('s-9', '驱动改名')
+    expect(result).toEqual({ ok: true })
+    expect(driver.renameCalls).toEqual(['驱动改名'])
+  })
+
+  it('reports unavailable when neither face nor binding exists', async () => {
+    const { env } = makeEnv()
+    const service = new ExecutionService(env)
+    expect(await service.renameSession('s-none', 'x')).toMatchObject({ ok: false })
+  })
+})
+
 describe('ExecutionService.reconcile', () => {
   it('settles a task whose execution session no longer exists', async () => {
     const { env } = makeEnv()

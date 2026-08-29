@@ -153,6 +153,11 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
         draggable={draggable}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
+        onRename={async title => {
+          const result = await controller.renameTaskSession(task.id, sessionId, title)
+          if (!result.ok) throw new Error(result.error)
+        }}
+        renameTitle={t('detail.renameSessionTitle')}
         onActivate={() => { onReviewExecution(execution) }}
         onOpenSession={() => { if (sessionId !== undefined) controller.openSession(sessionId) }}
         onHide={() => { controller.hideTaskSession(task.id, sessionId) }}
@@ -203,6 +208,11 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onRename={async title => {
+        const result = await controller.renameTaskSession(task.id, sessionId, title)
+        if (!result.ok) throw new Error(result.error)
+      }}
+      renameTitle={t('detail.renameSessionTitle')}
       onActivate={() => { onOpenSessionPanel(sessionId) }}
       onOpenSession={() => { controller.openSession(sessionId) }}
       onHide={() => { controller.hideTaskSession(task.id, sessionId) }}
@@ -640,20 +650,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               同一会话看到的是同一条评论线程。行文法统一（SessionRow）。
               本区同时是绑定落点：把侧栏的会话/工作区拖进来 = 绑定为新增来源
               （多源可叠加、同源幂等，绝不刷新替代；与「拖到列上 = 新建绑定卡」互补）。
-              标题行右侧的「新建会话」直达同一集合：新建一个配置化原生会话并
-              加入本任务，无需回到工作区。 */}
-          <Section
-            title={`${t('detail.sessions')} ${sessions.length}`}
-            action={(
-              <Button
-                size="sm"
-                title={t('detail.sessionNewTitle')}
-                onClick={() => { setShowNewSession(true) }}
-              >
-                + {t('detail.sessionNew')}
-              </Button>
-            )}
-          >
+              「新建会话」住在列表正上方的动作行（与列表首个内容同宽对齐，
+              不悬在区块标题旁），空列表也常驻——空任务从此有明确入口。 */}
+          <Section title={`${t('detail.sessions')} ${sessions.length}`}>
             <div
               className={css.sessionDropZone}
               data-bindactive={bindDropActive ? '' : undefined}
@@ -662,7 +661,16 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               onDragOver={onZoneDragOver}
               onDrop={onZoneDrop}
             >
-              <p className={css.detailHint}>{t('detail.executionHint')}</p>
+              <div className={css.sessionToolbar}>
+                <p className={css.detailHint}>{t('detail.executionHint')}</p>
+                <Button
+                  size="sm"
+                  title={t('detail.sessionNewTitle')}
+                  onClick={() => { setShowNewSession(true) }}
+                >
+                  + {t('detail.sessionNew')}
+                </Button>
+              </div>
               {sessions.length === 0 ? (
                 <p className={css.detailText}>
                   {plainRunsOf(current).length > 0

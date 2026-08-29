@@ -54,6 +54,20 @@ export interface SessionCreateFace {
   (workspaceId: string | undefined): Promise<string>
 }
 
+/**
+ * Optional host session-rename face: the OFFICIAL user-title write
+ * (`sessions.rename` — appends a `session/title` event with the `user`
+ * source). The native semantics do the conflict-free work by themselves:
+ * a user rename PINS the title against automatic regeneration and
+ * supersedes any in-flight automatic generation; leaving a session
+ * unnamed leaves the automatic naming chain (first-prompt fallback +
+ * provider cadence) fully intact. Absent = renaming degrades to the
+ * client binding driver (`session.rename` on the face below).
+ */
+export interface SessionRenameFace {
+  (sessionId: string, title: string): Promise<{ ok: true } | { ok: false; error: string }>
+}
+
 /** One raw session-history event narrowed to the failure signal reconcile needs. */
 export interface ExecutionHistoryEvent {
   type: string
@@ -124,6 +138,8 @@ export interface ExecutionEnvironment {
   history?: HistoryExecutionFace
   /** Guaranteed-fresh session creation (never blank-reuse); absent = degrade to connectWorkspace. */
   createSession?: SessionCreateFace
+  /** Official user-title write (pins against auto naming); absent = degrade to the binding driver. */
+  renameSession?: SessionRenameFace
   /** Applies a task's configured model route; absent = tasks always run on session defaults. */
   selectModel?: ModelSelectFace
   /** Applies a task's configured agent preset; absent = sessions run on the deployment default. */
@@ -284,6 +300,29 @@ export class ExecutionService {
         if (!applied.ok) configError = applied.error
       }
       return { ok: true, sessionId, ...configError !== undefined ? { configError } : {} }
+    } catch (error) {
+      return { ok: false, error: messageOf(error) }
+    }
+  }
+
+  /**
+   * Rename a native session with an explicit user title — the OFFICIAL
+   * user-title write. Prefers the host-level face (any session id, exactly
+   * like the comment channel); degraded to the client binding driver when
+   * no face is wired (works only for sessions with a live binding). Never
+   * rejects.
+   */
+  async renameSession(sessionId: string, title: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const trimmed = title.trim()
+    if (trimmed === '') return { ok: false, error: 'empty title' }
+    if (this.env.renameSession !== undefined) {
+      return this.env.renameSession(sessionId, trimmed)
+    }
+    const driver = this.driverOf(sessionId)
+    if (driver === undefined) return { ok: false, error: 'rename channel unavailable' }
+    try {
+      const result = await driver.rename(trimmed) as { ok: true } | { ok: false; error: unknown }
+      return result.ok ? { ok: true } : { ok: false, error: messageOf(result.error) }
     } catch (error) {
       return { ok: false, error: messageOf(error) }
     }

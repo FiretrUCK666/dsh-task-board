@@ -2173,6 +2173,40 @@ textarea.input {
   border-radius: var(--dsh-tb-radius-md);
 }
 
+/* The session area's action row: the quiet hint line left, the「+ 新建会话」
+   button right — sits directly above the list (never floating beside the
+   section title), so the entry point reads as part of the list it creates
+   into and stays reachable with zero list items. */
+.sessionToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sessionToolbar .detailHint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The row's inline rename editor: rides where the meta line sits (one row,
+   no modal, no layout jump), controls on one baseline, input flexible. */
+.sessionRenameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sessionRenameInput {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  font-size: 13px;
+}
+
 .sessionDropZone[data-bindactive] {
   box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;

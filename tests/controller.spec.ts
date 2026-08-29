@@ -2556,6 +2556,88 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect(result).toEqual({ ok: false, error: 'session creation is unavailable' })
     expect(store.load()[0].binds).toBeUndefined()
   })
+
+  it('createTaskSession applies a filled title through the official rename (pinned against auto naming)', async () => {
+    const renames: Array<[string, string]> = []
+    const stub = new StubExec() as StubExec & {
+      createSession?: (config: Record<string, unknown>) => Promise<{ ok: true; sessionId: string } | { ok: false; error: string }>
+      renameSession?: (sessionId: string, title: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    }
+    stub.createSession = async config => {
+      // The launch config never carries the title (it is not a run field).
+      expect(config.title).toBeUndefined()
+      return { ok: true as const, sessionId: 's-titled' }
+    }
+    stub.renameSession = async (sessionId, title) => {
+      renames.push([sessionId, title])
+      return { ok: true as const }
+    }
+    const { controller, store } = makeController(stub as unknown as StubExec)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    const result = await controller.createTaskSession(task.id, { workspaceId: 'ws-1', title: ' 酒标第二轮 ' })
+    expect(result).toEqual({ ok: true, sessionId: 's-titled' })
+    expect(renames).toEqual([['s-titled', '酒标第二轮']])
+    expect(store.load()[0].binds).toEqual([{ kind: 'session', sessionId: 's-titled' }])
+  })
+
+  it('createTaskSession sends NOTHING when the title is blank (auto naming stays intact)', async () => {
+    let renameCalls = 0
+    const stub = new StubExec() as StubExec & {
+      createSession?: () => Promise<{ ok: true; sessionId: string } | { ok: false; error: string }>
+      renameSession?: () => Promise<{ ok: true } | { ok: false; error: string }>
+    }
+    stub.createSession = async () => ({ ok: true as const, sessionId: 's-auto' })
+    stub.renameSession = async () => { renameCalls += 1; return { ok: true as const } }
+    const { controller } = makeController(stub as unknown as StubExec)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    const result = await controller.createTaskSession(task.id, { title: '   ' })
+    expect(result).toEqual({ ok: true, sessionId: 's-auto' })
+    expect(renameCalls).toBe(0)
+  })
+
+  it('createTaskSession surfaces a title failure as a partial success (session stays bound)', async () => {
+    const stub = new StubExec() as StubExec & {
+      createSession?: () => Promise<{ ok: true; sessionId: string } | { ok: false; error: string }>
+      renameSession?: () => Promise<{ ok: true } | { ok: false; error: string }>
+    }
+    stub.createSession = async () => ({ ok: true as const, sessionId: 's-part' })
+    stub.renameSession = async () => ({ ok: false as const, error: 'title-invalid' })
+    const { controller, store } = makeController(stub as unknown as StubExec)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    const result = await controller.createTaskSession(task.id, { title: '名字' })
+    expect(result).toMatchObject({ ok: true, sessionId: 's-part' })
+    expect((result as { titleError?: string }).titleError).toBe('title-invalid')
+    expect(store.load()[0].binds).toEqual([{ kind: 'session', sessionId: 's-part' }])
+  })
+
+  it('renameTaskSession renames a related session through the exec face', async () => {
+    const renames: Array<[string, string]> = []
+    const stub = new StubExec() as StubExec & {
+      renameSession?: (sessionId: string, title: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    }
+    stub.renameSession = async (sessionId, title) => {
+      renames.push([sessionId, title])
+      return { ok: true as const }
+    }
+    const { controller } = makeController(stub as unknown as StubExec)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    expect(await controller.renameTaskSession(task.id, 's-1', ' 新名 ')).toEqual({ ok: true })
+    expect(renames).toEqual([['s-1', '新名']])
+  })
+
+  it('renameTaskSession refuses sessions outside the task, blank titles, and unknown tasks', async () => {
+    const stub = new StubExec() as StubExec & {
+      renameSession?: () => Promise<{ ok: true } | { ok: false; error: string }>
+    }
+    stub.renameSession = async () => ({ ok: true as const })
+    const { controller } = makeController(stub as unknown as StubExec)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    expect(await controller.renameTaskSession(task.id, 's-other', '名')).toMatchObject({ ok: false })
+    expect(await controller.renameTaskSession(task.id, 's-1', '   ')).toMatchObject({ ok: false })
+    expect(await controller.renameTaskSession('nope', 's-1', '名')).toMatchObject({ ok: false })
+  })
 })
 
 describe('session automation rules (给会话定时发指令)', () => {

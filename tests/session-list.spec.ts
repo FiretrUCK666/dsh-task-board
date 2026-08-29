@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { createTask, settleExecution, startExecution, type TaskRecord } from '../src/core/tasks.ts'
-import { hasHiddenSessions, hiddenSessionIdsOf, orderedSessionsOf, sessionWindowOf, taskSessionsOf } from '../src/core/session-list.ts'
+import { hasHiddenSessions, hiddenSessionIdsOf, orderedSessionsOf, sessionRowTitleOf, sessionWindowOf, taskSessionsOf } from '../src/core/session-list.ts'
 import { newExternalRound } from '../src/core/tasks.ts'
 import type { LinkedSessionRow } from '../src/core/linked-sessions.ts'
 
@@ -40,6 +40,7 @@ function ctx(linked: readonly LinkedSessionRow[] = []) {
     linked,
     titleOf: (id: string): string | undefined => id === 's-1' ? '原生标题' : undefined,
     pendingInteractionOf: () => undefined,
+    untitledLabel: '未命名',
   }
 }
 
@@ -102,6 +103,35 @@ describe('taskSessionsOf (统一会话列表)', () => {
     expect(rows[0].sessionId).toBe('s-2') // newest run activity first
     expect(rows[1].sessionId).toBe('s-1')
     expect(rows[2].sessionId).toBe('s-9') // linked group after the run group
+  })
+
+  it('shows 未命名 for a title-less run session (never the task title, never a raw id)', () => {
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'e-1')
+    const withSession = { ...running, executions: running.executions.map(e => ({ ...e, sessionId: 's-x' })) }
+    const rows = taskSessionsOf(withSession, {
+      linked: [],
+      titleOf: () => undefined,
+      pendingInteractionOf: () => undefined,
+      untitledLabel: '未命名',
+    })
+    expect(rows[0].title).toBe('未命名')
+  })
+
+  it('a linked row named by its raw id (no title, no cwd) reads 未命名 too', () => {
+    const rows = taskSessionsOf(withOneRun(), ctx([
+      linkedRow({ sessionId: 's-bare', title: 's-bare', workspaceLabel: undefined, updatedAt: NOW + 7 }),
+    ]))
+    const bare = rows.find(row => row.sessionId === 's-bare')
+    expect(bare?.title).toBe('未命名')
+  })
+})
+
+describe('sessionRowTitleOf (未命名文法)', () => {
+  it('shows the native title when present, else the untitled placeholder', () => {
+    expect(sessionRowTitleOf('原生标题', '未命名')).toBe('原生标题')
+    expect(sessionRowTitleOf(undefined, '未命名')).toBe('未命名')
+    expect(sessionRowTitleOf('', '未命名')).toBe('未命名')
   })
 })
 

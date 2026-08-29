@@ -36,6 +36,22 @@ export interface TaskSessionRow {
 }
 
 /**
+ * The displayed title of one session row: the native title, else the
+ * 未命名 placeholder — the ONE unnamed-grammar. A session without a durable
+ * title is not nameless data: the host names it automatically from the
+ * first real message (deterministic fallback + provider cadence), so the
+ * honest display until then is exactly what the native New Session flow
+ * would show. Title-less rows therefore read 「未命名」 (never a workspace
+ * label, never a raw id dressed up as a name); the workspace still shows
+ * in its own slot.
+ */
+export const UNTITLED_SESSION_KEY = 'detail.sessionUntitled'
+
+export function sessionRowTitleOf(nativeTitle: string | undefined, fallback: string): string {
+  return nativeTitle !== undefined && nativeTitle !== '' ? nativeTitle : fallback
+}
+
+/**
  * The activity window a session has ON this task — the earliest round's
  * start, the latest round's end, and the duration between them. The ONE
  * derivation for every session row (a board-run session and a bound
@@ -98,6 +114,8 @@ export interface TaskSessionContext {
    *  round is settled at birth, so without this the row stays dark while the
    *  agent is genuinely working). */
   nativeRunningOf?(sessionId: string): boolean
+  /** The localized 未命名 placeholder (native title absent → row shows it). */
+  untitledLabel?: string
 }
 
 /**
@@ -127,7 +145,7 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
     if (removed.includes(sessionId)) continue
     runBySession.set(sessionId, {
       sessionId,
-      title: ctx.titleOf(sessionId) ?? task.title,
+      title: sessionRowTitleOf(ctx.titleOf(sessionId), ctx.untitledLabel ?? task.title),
       executionId: execution.id,
       display: sessionDisplay(task, execution, ctx.pendingInteractionOf(sessionId), ctx.nativeRunningOf?.(sessionId) ?? false),
       updatedAt: sessionTimes(task, execution).endedAt ?? execution.startedAt,
@@ -146,9 +164,15 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
   // permanently removed (the delete was irreversible).
   for (const linked of ctx.linked) {
     if (hidden.has(linked.sessionId) || removed.includes(linked.sessionId) || runBySession.has(linked.sessionId)) continue
+    // The linked row's own title derivation falls back through the cwd
+    // label and finally the id; an id-named row (no durable title, no cwd)
+    // reads 未命名 like every other title-less session.
+    const linkedTitle = linked.title !== linked.sessionId
+      ? linked.title
+      : sessionRowTitleOf(ctx.titleOf(linked.sessionId), ctx.untitledLabel ?? linked.sessionId)
     rows.push({
       sessionId: linked.sessionId,
-      title: linked.title,
+      title: linkedTitle,
       ...linked.workspaceLabel !== undefined ? { workspaceLabel: linked.workspaceLabel } : {},
       display: {
         state: linked.pendingInteraction !== undefined

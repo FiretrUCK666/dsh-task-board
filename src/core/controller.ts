@@ -657,6 +657,11 @@ export class BoardController {
     return this.deps.sessions.list.getSnapshot().byId[sessionId]?.title
   }
 
+  /** The localized 未命名 placeholder the session rows show for a session
+   *  the host has not titled yet (set by the client wiring; undefined in
+   *  tests = legacy task-title fallback). */
+  untitledSessionLabel?: string
+
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn)
     return () => { this.listeners.delete(fn) }
@@ -937,6 +942,7 @@ export class BoardController {
       titleOf: sessionId => this.sessionTitle(sessionId),
       pendingInteractionOf: sessionId => this.pendingInteractionOf(sessionId),
       nativeRunningOf: sessionId => this.nativeRunningOf(sessionId),
+      untitledLabel: this.untitledSessionLabel,
     })
   }
 
@@ -955,6 +961,7 @@ export class BoardController {
         linked: this.linkedOf(task),
         titleOf: sid => this.sessionTitle(sid),
         pendingInteractionOf: sid => this.pendingInteractionOf(sid),
+        untitledLabel: this.untitledSessionLabel,
       }).map(row => row.sessionId)
       if (!ids.includes(sessionId)) return task
       const rest = ids.filter(id => id !== sessionId)
@@ -979,24 +986,75 @@ export class BoardController {
    * dispatcher, no automation involvement. A config failure after the
    * session exists is an honest partial success: the session stays bound
    * and the error is surfaced for a retry of the config only.
+   *
+   * Title semantics (conflict-free by the native design): a non-blank title
+   * is applied through the OFFICIAL user rename — it pins the title against
+   * automatic regeneration, exactly as if typed in the native composer. A
+   * blank title sends NOTHING: the host's automatic naming chain (first
+   * user message → deterministic fallback + provider cadence) stays fully
+   * intact, so an unnamed session names itself after the first real chat —
+   * never a guessed placeholder that fights the native behavior. A rename
+   * failure is a partial success too (the session exists); it is surfaced
+   * as `titleError` alongside `configError`.
    * @param taskId - the task to bind the session to.
-   * @param config - the run configuration to compose the session with.
-   * @returns the session id (+ optional configError), or ok:false with the
-   *   creation error.
+   * @param config - the run configuration (plus optional title) to compose
+   *   the session with.
+   * @returns the session id (+ optional configError/titleError), or
+   *   ok:false with the creation error.
    */
   async createTaskSession(
     taskId: string,
-    config: import('./execution.ts').SessionLaunchConfig,
-  ): Promise<import('./execution.ts').SessionLaunchResult> {
+    config: import('./execution.ts').SessionLaunchConfig & { title?: string },
+  ): Promise<import('./execution.ts').SessionLaunchResult & { titleError?: string }> {
     if (this.deps.exec.createSession === undefined) {
       return { ok: false, error: 'session creation is unavailable' }
     }
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return { ok: false, error: 'unknown task' }
-    const result = await this.deps.exec.createSession(config)
+    const title = config.title?.trim() ?? ''
+    const { title: _ignored, ...launchConfig } = config
+    const result = await this.deps.exec.createSession(launchConfig)
     if (!result.ok) return result
+    let titleError: string | undefined
+    if (title !== '') {
+      const renamed = await this.deps.exec.renameSession?.(result.sessionId, title)
+      if (renamed !== undefined && !renamed.ok) titleError = renamed.error
+    }
     this.addTaskSource(taskId, { kind: 'session', sessionId: result.sessionId })
-    return result
+    return { ...result, ...titleError !== undefined ? { titleError } : {} }
+  }
+
+  /**
+   * Rename one of a task's native sessions ("会话行重命名"): the OFFICIAL
+   * user-title write — the accepted title pins against automatic
+   * regeneration, so the native sidebar, the board rows and every future
+   * reload all read the same durable title (one truth, zero drift). A
+   * blank title is rejected (the native rename contract normalizes empty
+   * to invalid — a session cannot be UN-titled, only re-titled).
+   * @param taskId - the task owning the session (an unknown task refuses).
+   * @param sessionId - the native session to rename.
+   * @param title - the new title (trimmed; blank = rejected).
+   * @returns ok, or ok:false with an error string.
+   */
+  async renameTaskSession(taskId: string, sessionId: string, title: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    const trimmed = title.trim()
+    if (trimmed === '') return { ok: false, error: 'empty title' }
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return { ok: false, error: 'unknown task' }
+    // The session must be a related session of THIS task (a run session,
+    // a bound session, or a linked workspace member) — renaming through a
+    // task the session does not belong to would be a confusing surface.
+    const related = relatedSessionIdsOf(task, this.linkedOf(task).map(row => row.sessionId))
+    if (!related.some(entry => entry.sessionId === sessionId)) {
+      return { ok: false, error: 'session does not belong to this task' }
+    }
+    const renamed = await this.deps.exec.renameSession?.(sessionId, trimmed)
+    if (renamed === undefined) return { ok: false, error: 'rename channel unavailable' }
+    if (!renamed.ok) return renamed
+    // The accepted title is already the list truth (the host folded a
+    // session/title event); re-render rows and panels immediately.
+    this.notify()
+    return { ok: true }
   }
 
   /**

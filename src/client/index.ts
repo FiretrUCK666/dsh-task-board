@@ -357,6 +357,19 @@ export function apply(ctx: ClientContext): void {
       },
       sendComment: (sessionId, text, mode) => sendComment(sessionId, text, undefined, mode),
       sendCommand,
+      // Session rename: the OFFICIAL user-title write (host-level rename RPC
+      // — works for any session id, not just bound/staged ones). The native
+      // semantics own the conflict story: an accepted title pins against
+      // automatic regeneration; the wire error text is surfaced verbatim.
+      renameSession: async (sessionId, title) => {
+        const response = await connection.api.sessions.rename({
+          sessionId: sessionId as SessionId,
+          title,
+        })
+        return response.result.ok
+          ? { ok: true as const }
+          : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+      },
     })
     // Review-page transcripts: the recent history window of an execution
     // session (raw events; the review page folds them into messages), plus
@@ -664,6 +677,10 @@ export function apply(ctx: ClientContext): void {
       },
     })
     controller.start()
+    // The localized 未命名 placeholder the session rows show for a session
+    // the host has not titled yet (the host names it automatically from the
+    // first real message).
+    controller.untitledSessionLabel = t('detail.sessionUntitled')
 
     // Scheduled runs: a browser-side heartbeat that triggers due tasks through
     // the same run path as the manual Run button. The first tick is gated on
