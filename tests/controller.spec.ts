@@ -2459,6 +2459,103 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     await flush()
     expect(controller.getSnapshot().tasks[0].status).toBe('review')
   })
+
+  it('a NEW session born running inside a bound workspace is recorded as an external round (首聊根因)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    const wss = new FakeWorkspaces()
+    // The workspace is bound BEFORE the new session exists: the seed pass
+    // baselines an empty related set.
+    wss.items = [{ id: 'w-a', title: '工作区A', sessionIds: [] }]
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, workspaces: wss, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: '' })!
+    await flush()
+    // The user creates a new session in the workspace and chats: the session
+    // is born AT its first message (listed + running at the same instant —
+    // no false→true flip can ever be observed for it).
+    wss.items = [{ id: 'w-a', title: '工作区A', sessionIds: ['s-new'] }]
+    sessions.setRunning('s-new', true)
+    wss.notify()
+    await flush()
+    await flush()
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.status).toBe('running')
+    const ext = row.executions[row.executions.length - 1]
+    expect(ext.external).toBe(true)
+    expect(ext.sessionId).toBe('s-new')
+    expect(ext.endedAt).toBeUndefined()
+    // Exactly one round: the detection is idempotent.
+    expect(row.executions.filter(round => round.external === true)).toHaveLength(1)
+  })
+
+  it('a linked (workspace-member) session running RIGHT NOW makes the card live (运行态单一推导)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    const wss = new FakeWorkspaces()
+    // The member was idle at seed time, then the user chatted natively: the
+    // flip is observed and the live state (card breathing) must follow.
+    wss.items = [{ id: 'w-a', title: '工作区A', sessionIds: ['s-member'] }]
+    sessions.setRunning('s-member', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, workspaces: wss, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: '' })!
+    await flush()
+    expect(controller.liveStateOf(task.id)).toBe('idle')
+    sessions.setRunning('s-member', true)
+    wss.notify()
+    await flush()
+    await flush()
+    expect(controller.liveStateOf(task.id)).toBe('running')
+  })
+
+  it('createTaskSession creates a fresh session through the exec service and binds it (新建会话)', async () => {
+    const stub = new StubExec() as StubExec & {
+      createSession?: (config: unknown) => Promise<{ ok: true; sessionId: string } | { ok: false; error: string }>
+    }
+    stub.createSession = async config => {
+      expect(config).toEqual({ workspaceId: 'ws-1', agentPreset: 'butler' })
+      return { ok: true as const, sessionId: 's-created' }
+    }
+    const { controller, store } = makeController(stub as unknown as StubExec)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    const result = await controller.createTaskSession(task.id, { workspaceId: 'ws-1', agentPreset: 'butler' })
+    expect(result).toEqual({ ok: true, sessionId: 's-created' })
+    // The created session joined the task's source set (persisted, additive).
+    expect(store.load()[0].binds).toEqual([{ kind: 'session', sessionId: 's-created' }])
+    // No execution round was opened (a session is not a run).
+    expect(store.load()[0].executions).toHaveLength(0)
+  })
+
+  it('createTaskSession surfaces a creation failure without touching the task', async () => {
+    const stub = new StubExec() as StubExec & {
+      createSession?: () => Promise<{ ok: true; sessionId: string } | { ok: false; error: string }>
+    }
+    stub.createSession = async () => ({ ok: false as const, error: 'no workspace' })
+    const { controller, store } = makeController(stub as unknown as StubExec)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    const result = await controller.createTaskSession(task.id, {})
+    expect(result).toEqual({ ok: false, error: 'no workspace' })
+    expect(store.load()[0].binds).toBeUndefined()
+  })
+
+  it('createTaskSession reports unavailable when the exec service offers no createSession face', async () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    const result = await controller.createTaskSession(task.id, {})
+    expect(result).toEqual({ ok: false, error: 'session creation is unavailable' })
+    expect(store.load()[0].binds).toBeUndefined()
+  })
 })
 
 describe('session automation rules (给会话定时发指令)', () => {

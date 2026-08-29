@@ -313,6 +313,27 @@ export function apply(ctx: ClientContext): void {
         list: workspaces.list,
         connectWorkspace: id => workspaces.connectWorkspace(id as WorkspaceId),
       },
+      // The detail page's "新建会话": a guaranteed-FRESH host session —
+      // never the workspace blank-reuse entry. The concrete runtime's
+      // create() guarantees the session is in the list store and addressable
+      // on resolution (the New Session draft hand-off guarantee), so the
+      // binding and the linked derivation can use it at once; read
+      // structurally (ISessions does not declare it) with the raw wire
+      // create as the fallback.
+      createSession: async workspaceId => {
+        const target = workspaceId as WorkspaceId
+        const runtime = ctx.sessions as Partial<typeof ctx.sessions> & {
+          create?: (opts?: { workspaceId?: WorkspaceId }) => Promise<SessionId>
+        }
+        if (runtime.create !== undefined) {
+          return runtime.create({ workspaceId: target })
+        }
+        const response = await connection.api.sessions.create({ workspaceId: target })
+        if (!response.result.ok) {
+          throw new Error(`${response.result.error.code}: ${response.result.error.message}`)
+        }
+        return response.result.value.sessionId
+      },
       history: {
         loadTail: async sessionId => {
           const response = await connection.api.sessions.history({

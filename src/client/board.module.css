@@ -1732,6 +1732,26 @@ textarea.input {
   text-transform: none;
 }
 
+/* The section title row: title left, optional action right (the section's
+   own "+ 新建" affordance). The title never shrinks; the action hugs the
+   right edge and keeps the quiet small-button scale of row actions. */
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sectionHead h4 {
+  flex: none;
+}
+
+.sectionAction {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .detailText {
   margin: 0;
   font-size: 14px;

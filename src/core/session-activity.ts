@@ -2,11 +2,18 @@
  * Native-side activity detection — the "两端同步" contract. When a user chats
  * in the native conversation UI (not through the board), no submission ever
  * reaches the board: the only out-of-band signal the native session list
- * exposes is the `running` flag, so a related session flipping false→true is
- * "a turn started outside the board". This module reads that signal and
- * decides concretely which external rounds the controller must record so the
- * card, the comment thread and the refine badge all follow the native reality.
- * Pure and framework-free.
+ * exposes is the `running` flag. Two observations therefore prove an
+ * out-of-band turn:
+ * - a KNOWN related session flips false→true (the classic flip), and
+ * - a session NEVER seen before enters the related set while ALREADY running
+ *   (a freshly created session is born at its first message — blank→listed
+ *   and running→true happen together, so no flip will ever be observed; the
+ *   flip-only rule silently missed every "new session, first chat" turn).
+ * The one carve-out stays: the controller's very first pass after a page
+ * load only seeds baselines (passive observation never re-fires history).
+ * This module reads the signals and decides concretely which external rounds
+ * the controller must record so the card, the comment thread and the refine
+ * badge all follow the native reality. Pure and framework-free.
  */
 
 /** Bookkeeping the controller keeps between passes (baselines + grace). */
@@ -15,6 +22,14 @@ export interface ActivityBook {
   running: Map<string, boolean>
   /** When an external round was created per session (for the settle grace). */
   externalSince: Map<string, number>
+  /**
+   * Whether the seeding pass has run (the controller's first scan after a
+   * page load baselines every related session without firing — passive
+   * observation never re-fires history). From the second pass on, a session
+   * entering the related set for the first time WHILE already running
+   * triggers an external round (see the module doc).
+   */
+  seeded?: boolean
 }
 
 /** Narrow transcript slice: a native user text message. */
@@ -110,10 +125,15 @@ export interface ActivityCandidate {
 }
 
 /**
- * Scan all candidates for out-of-band turns that started since the baseline:
- * a false→true flip of `running` on a related session with no board-owned
- * open round and no direct-send grace. The first pass only records baselines
- * (history is never re-fired as external activity).
+ * Scan all candidates for out-of-band turns:
+ * - The seeding pass (first scan after a page load, `!book.seeded`) only
+ *   records baselines — history is never re-fired as external activity.
+ * - Afterwards, a session never seen before that is ALREADY running when it
+ *   first enters the related set fires an external turn (it was born at its
+ *   first message: no false→true flip can ever be observed for it).
+ * - A known session keeps the classic false→true flip semantics.
+ * Open board rounds and the direct-send grace suppress detection exactly as
+ * before, for both signal shapes.
  */
 export function detectExternalTurns(
   candidates: ReadonlyArray<{ taskId: string; candidate: ActivityCandidate }>,
@@ -121,21 +141,23 @@ export function detectExternalTurns(
   byId: Readonly<Record<string, { running: boolean } | undefined>>,
 ): DetectedExternalTurn[] {
   const found: DetectedExternalTurn[] = []
+  const seeding = book.seeded !== true
   for (const { taskId, candidate } of candidates) {
     for (const session of candidate.sessions) {
       const current = byId[session.sessionId]?.running ?? false
       const previous = book.running.get(session.sessionId)
-      if (previous === undefined) {
-        book.running.set(session.sessionId, current)
-        continue
-      }
-      const flippedOn = !previous && current
       book.running.set(session.sessionId, current)
+      if (seeding) continue
+      // Never-seen sessions have no baseline to flip from: a first sighting
+      // while already running IS the out-of-band turn (a fresh session is
+      // born at its first message). Known sessions need the classic flip.
+      const flippedOn = previous === undefined ? current : (!previous && current)
       if (!flippedOn) continue
       if (candidate.hasOpenRoundOn(session.sessionId) || candidate.inGrace(session.sessionId)) continue
       found.push({ taskId, sessionId: session.sessionId, refine: session.refine })
     }
   }
+  book.seeded = true
   return found
 }
 

@@ -1,22 +1,17 @@
 /**
  * Shared task form: content fields (title / description / prompt) plus the
  * run-configuration selector row — the config FIELDS themselves are the ONE
- * RunConfigEditor shared with the preset manager, so a task and a preset
- * configure the same things in the same order. Used by the new-task modal
- * and the detail edit mode so both surfaces stay identical. Fully controlled:
- * the parent owns the draft.
+ * RunConfigFields block (preset picker + RunConfigEditor) shared with the
+ * new-session dialog, so a task and a session configure the same things in
+ * the same order. Used by the new-task modal and the detail edit mode so
+ * both surfaces stay identical. Fully controlled: the parent owns the draft.
  */
-import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
-import {
-  defaultRunPresetOf, findRunPreset, LocalStorageRunPresetStore, mergedRunPresets,
-  normalizeRunPresetDocument, type RunConfigPresetConfig, type RunPresetsDocument,
-} from '../../core/run-presets.ts'
+import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { PromptInput } from './PromptInput.tsx'
-import { RunConfigEditor } from './RunConfigEditor.tsx'
-import { RunPresetManager } from './RunPresetManager.tsx'
+import { RunConfigFields } from './RunConfigFields.tsx'
 import type { TaskDraft } from './task-draft.ts'
 
 /** The shared new/edit task form. */
@@ -31,13 +26,6 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
    *  undefined = '@' closed) when creating. */
   sessionId?: string
 }) {
-  // The run-config preset state (the SAME store the new-task modal and the
-  // edit form share — one grammar, one source; both surfaces instant-switch).
-  const [presetStore] = useState(() => new LocalStorageRunPresetStore())
-  const [presetDoc, setPresetDoc] = useState<RunPresetsDocument>(() =>
-    normalizeRunPresetDocument(presetStore.load()))
-  const [showPresetManager, setShowPresetManager] = useState(false)
-
   /** The form's current run-config — the add preset seeds from it. */
   const currentConfig: RunConfigPresetConfig = {
     ...draft.workspaceId !== '' ? { workspaceId: draft.workspaceId } : {},
@@ -48,7 +36,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
     ...draft.permission !== '' ? { permission: draft.permission } : {},
   }
 
-  /** The shared config editor writes back into the draft fields. */
+  /** The shared config block writes back into the draft fields. */
   const applyConfig = (next: RunConfigPresetConfig): void => {
     onChange({
       ...draft,
@@ -59,13 +47,6 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
       reasoningEffort: next.reasoningEffort ?? '',
       permission: next.permission ?? '',
     })
-  }
-
-  /** Pick a preset: INSTANTLY rewrites the form's run-config fields. */
-  const applyRunPreset = (id: string): void => {
-    const preset = findRunPreset(presetDoc, id)
-    if (preset === undefined) return
-    applyConfig(preset.config)
   }
 
   return (
@@ -123,57 +104,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         </label>
       )}
 
-      <div className={css.field}>
-        <span className={css.fieldLabel}>{t('new.runConfig')}</span>
-
-        {/* 配置预设 row: ONE picker for both surfaces. Choosing a preset
-            instantly rewrites the fields below (瞬切); 管理 opens the shared
-            manager — whose add/edit form is the SAME RunConfigEditor, so a
-            preset's content is visible and editable, never a hidden snapshot. */}
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('new.runPresets')}</span>
-          <span className={css.selectWrap}>
-            <select
-              className={css.input}
-              value=""
-              aria-label={t('new.runPresets')}
-              onChange={event => {
-                if (event.target.value === '') return
-                if (event.target.value === '__manage') {
-                  setShowPresetManager(true)
-                  return
-                }
-                applyRunPreset(event.target.value)
-              }}
-            >
-              <option value="">{t('runPreset.placeholder')}…</option>
-              {mergedRunPresets(presetDoc).map(preset => (
-                <option
-                  key={preset.id}
-                  value={preset.id}
-                >
-                  {preset.name}
-                  {preset.id === defaultRunPresetOf(presetDoc).id ? ` (${t('runPreset.defaultBadge')})` : ''}
-                </option>
-              ))}
-              <option value="__manage">{t('runPreset.manage')}…</option>
-            </select>
-          </span>
-        </label>
-
-        <RunConfigEditor value={currentConfig} onChange={applyConfig} controller={controller} />
-      </div>
-
-      {showPresetManager && (
-        <RunPresetManager
-          store={presetStore}
-          doc={presetDoc}
-          current={currentConfig}
-          controller={controller}
-          onChanged={setPresetDoc}
-          onClose={() => { setShowPresetManager(false) }}
-        />
-      )}
+      <RunConfigFields value={currentConfig} onChange={applyConfig} controller={controller} />
     </>
   )
 }

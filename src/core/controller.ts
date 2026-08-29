@@ -20,7 +20,7 @@ import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource }
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, isCruiseWindow, normalizeWindow, setCruiseSchedule as applySchedule, sortWindows, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
-import { DIRECT_FALLBACK_STATUS, isDirectLike, latestRoundOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
+import { DIRECT_FALLBACK_STATUS, isDirectLike, latestRoundOf, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
@@ -967,6 +967,36 @@ export class BoardController {
     })
     if (changed) this.persistAndNotify()
     return changed
+  }
+
+  /**
+   * Create one fresh native session from a task's detail ("新建会话") and
+   * bind it to the task: the session is created through the execution
+   * service (composed with the given run configuration — the detail form's
+   * fields), then joins the task's source set through {@link addTaskSource}
+   * (persisted, additive, and instantly reconciled — the same path a sidebar
+   * drag takes). The task itself is untouched: no execution record, no
+   * dispatcher, no automation involvement. A config failure after the
+   * session exists is an honest partial success: the session stays bound
+   * and the error is surfaced for a retry of the config only.
+   * @param taskId - the task to bind the session to.
+   * @param config - the run configuration to compose the session with.
+   * @returns the session id (+ optional configError), or ok:false with the
+   *   creation error.
+   */
+  async createTaskSession(
+    taskId: string,
+    config: import('./execution.ts').SessionLaunchConfig,
+  ): Promise<import('./execution.ts').SessionLaunchResult> {
+    if (this.deps.exec.createSession === undefined) {
+      return { ok: false, error: 'session creation is unavailable' }
+    }
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return { ok: false, error: 'unknown task' }
+    const result = await this.deps.exec.createSession(config)
+    if (!result.ok) return result
+    this.addTaskSource(taskId, { kind: 'session', sessionId: result.sessionId })
+    return result
   }
 
   /**
@@ -2514,8 +2544,10 @@ export class BoardController {
       // round is settled at birth, so its only signal is the native session's
       // running flip. While the agent works the task must show 进行中; once
       // the session stops, the steer's completion lands in 待审核 through
-      // the SAME post-settle appointments as any completion.
-      if (this.driveLiveStates()) changed = true
+      // the SAME post-settle appointments as any completion. Linked ids ride
+      // along so a bound workspace's live members count toward the state.
+      const linkedIds = this.tasks.map(task => ({ task, ids: this.linkedOf(task).map(row => row.sessionId) }))
+      if (this.driveLiveStates(linkedIds)) changed = true
 
       // Stage 1 — reconcile every task with an open round worth settling:
       // running tasks (plain runs, comment rounds, external rounds) plus any
@@ -2605,8 +2637,10 @@ export class BoardController {
    * direct rounds, and the fallback fires exactly once — status was
    * 'running' before the transition).
    */
-  private driveLiveStates(): boolean {
+  private driveLiveStates(linked?: ReadonlyArray<{ task: TaskRecord; ids: readonly string[] }>): boolean {
     const byId = this.deps.sessions.list.getSnapshot().byId
+    const linkedIdsOf = (taskId: string): readonly string[] | undefined =>
+      linked?.find(entry => entry.task.id === taskId)?.ids
     let changed = false
     for (const task of this.tasks) {
       const latest = latestRoundOf(task)
@@ -2615,6 +2649,7 @@ export class BoardController {
         task,
         sessionId => byId[sessionId]?.running === true,
         sessionId => byId[sessionId]?.pendingInteraction,
+        linkedIdsOf(task.id),
       )
       const now = this.now()
       if (live === 'running') {
@@ -2638,7 +2673,10 @@ export class BoardController {
   }
 
   /** THE live-state question for one task (card breathing source): waiting >
-   *  running > idle — same single derivation for every surface. */
+   *  running > idle — same single derivation for every surface. The related
+   *  set includes the linked (bound workspace) sessions, so a workspace
+   *  member working right now makes the card breathe exactly like a board
+   *  run does. */
   liveStateOf(taskId: string): TaskLiveState {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return 'idle'
@@ -2647,6 +2685,7 @@ export class BoardController {
       task,
       sessionId => byId[sessionId]?.running === true,
       sessionId => byId[sessionId]?.pendingInteraction,
+      this.linkedOf(task).map(row => row.sessionId),
     )
   }
 
@@ -2655,26 +2694,15 @@ export class BoardController {
     return this.deps.sessions.list.getSnapshot().byId[sessionId]?.running === true
   }
 
-  /** Every related session of a task (de-duplicated): the refine session
-   *  first (so it always reads `refine: true`), then execution sessions, then
-   *  linked sessions. */
+  /**
+   * Every related session of a task (de-duplicated, refine first) — THE one
+   * derivation from task-live.ts, consumed by the external-activity scanner,
+   * the bound-task reconcile and the '@' reference scoping. The controller
+   * only supplies the linked (workspace-member) ids; everything else (binds,
+   * execution rounds, refine session) is pure task shape.
+   */
   private relatedSessionsOf(task: TaskRecord): Array<{ sessionId: string; refine: boolean }> {
-    const seen = new Set<string>()
-    const out: Array<{ sessionId: string; refine: boolean }> = []
-    const push = (sessionId: string | undefined, refine: boolean): void => {
-      if (sessionId === undefined || seen.has(sessionId)) return
-      seen.add(sessionId)
-      out.push({ sessionId, refine })
-    }
-    push(task.refineSessionId, true)
-    // Every bound session source is a related session (instant-sync works
-    // whenever the native list knows them).
-    for (const bind of taskBindsOf(task)) {
-      if (bind.kind === 'session') push(bind.sessionId, false)
-    }
-    for (const execution of task.executions) push(execution.sessionId, false)
-    for (const linked of this.linkedOf(task)) push(linked.sessionId, false)
-    return out
+    return relatedSessionIdsOf(task, this.linkedOf(task).map(row => row.sessionId))
   }
 
   /**
@@ -2777,43 +2805,62 @@ export class BoardController {
    * Baselines are set for every related session here too, so the passive
    * running-flip detection keeps working from this point on. Idempotent: a
    * session with an open round is never double-recorded.
+   *
+   * Concurrency-safe: the transcript read (`userMessageOf`) awaits, and other
+   * channels (the passive scanner, a live settle) may rewrite the ledger
+   * meanwhile — the round is therefore built INSIDE the final map pass, from
+   * the CURRENT record, with the open-round guard re-checked at write time.
+   * A stale pre-await snapshot is never written over a newer one.
    */
   private async reconcileBoundTask(taskId: string): Promise<void> {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return
     const byId = this.deps.sessions.list.getSnapshot().byId
     const now = this.now()
-    let next = task
-    let changed = false
+    // Baselines + the instant-sync facts captured before any await.
+    let runningSessionId: string | undefined
     for (const session of this.relatedSessionsOf(task)) {
       const current = byId[session.sessionId]?.running ?? false
       this.activityBook.running.set(session.sessionId, current)
-      if (!current) continue
-      if (task.executions.some(round => round.sessionId === session.sessionId && round.endedAt === undefined)) continue
-      if (withinGrace(this.directGraceUntil.get(session.sessionId), now)) continue
-      const msg = await this.userMessageOf(session.sessionId)
-      next = {
-        ...next,
+      if (runningSessionId === undefined && current
+        && !task.executions.some(round => round.sessionId === session.sessionId && round.endedAt === undefined)
+        && !withinGrace(this.directGraceUntil.get(session.sessionId), now)) {
+        runningSessionId = session.sessionId
+      }
+    }
+    if (runningSessionId === undefined) return
+    const msg = await this.userMessageOf(runningSessionId)
+    // A dispose may land while the transcript read is in flight — a dead
+    // controller must never keep writing into a dropped ledger.
+    if (this.disposed) return
+    this.activityBook.externalSince.set(runningSessionId, now)
+    let changed = false
+    this.tasks = this.tasks.map(candidate => {
+      if (candidate.id !== taskId) return candidate
+      // Re-check on the CURRENT record: another channel may have opened or
+      // recorded a round on this session while we awaited.
+      if (candidate.executions.some(round => round.sessionId === runningSessionId && round.endedAt === undefined)) {
+        return candidate
+      }
+      changed = true
+      // Unviewed on purpose: this external round is brand-new content the
+      // user has not seen (it happened before/while they bound it).
+      const withRound: TaskRecord = {
+        ...candidate,
         updatedAt: now,
-        // Unviewed on purpose: this external round is brand-new content the
-        // user has not seen (it happened before/while they bound it).
         viewedAt: now - 1,
-        executions: [...next.executions, newExternalRound({
+        executions: [...candidate.executions, newExternalRound({
           id: this.uuid(),
           now,
-          sessionId: session.sessionId,
+          sessionId: runningSessionId!,
           ...msg?.text !== undefined ? { text: msg.text } : {},
           ...msg !== undefined && msg.text === undefined && msg.hasImage ? { imageOnly: true } : {},
         })],
       }
-      if (next.status !== 'running') next = { ...next, status: 'running' }
-      this.activityBook.externalSince.set(session.sessionId, now)
-      changed = true
-      break // one external round per bound task per reconcile
-    }
+      return withRound.status !== 'running' ? { ...withRound, status: 'running' } : withRound
+    })
     if (!changed) return
-    const withRound = this.tasks.map(candidate => candidate.id === taskId ? next : candidate)
-    this.tasks = promoteToColumnTop(withRound, taskId, 'running', now)
+    this.tasks = promoteToColumnTop(this.tasks, taskId, 'running', now)
     this.persistAndNotify()
   }
 

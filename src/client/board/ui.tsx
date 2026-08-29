@@ -84,15 +84,23 @@ export function Switch({ checked, onChange, label, title, disabled }: {
   )
 }
 
-/** A titled detail section: one shared title style for every detail module. */
-export function Section({ title, children, className }: {
+/** A titled detail section: one shared title style for every detail module.
+ *  `action` is an optional right-aligned affordance on the title row (the
+ *  section's own "+ 新建" style button) — the head is a flex row, the title
+ *  never shrinks, the action hugs the right edge. */
+export function Section({ title, action, children, className }: {
   title: string
+  /** Optional right-aligned affordance rendered on the title row. */
+  action?: ReactNode
   children: ReactNode
   className?: string
 }) {
   return (
     <section className={`${css.detailSection}${className !== undefined ? ` ${className}` : ''}`}>
-      <h4>{title}</h4>
+      <div className={css.sectionHead}>
+        <h4>{title}</h4>
+        {action !== undefined && <span className={css.sectionAction}>{action}</span>}
+      </div>
       {children}
     </section>
   )

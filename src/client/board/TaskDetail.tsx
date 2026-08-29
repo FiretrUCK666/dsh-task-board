@@ -24,6 +24,7 @@ import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
+import { NewSessionModal } from './NewSessionModal.tsx'
 import { SessionRow } from './SessionRow.tsx'
 import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
@@ -285,6 +286,8 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   const [reviewExecution, setReviewExecution] = useState<ExecutionRecord | undefined>(undefined)
   // The linked session whose detail panel is open (undefined = none).
   const [linkedSession, setLinkedSession] = useState<string | undefined>(undefined)
+  // The 新建会话 dialog (undefined = closed).
+  const [showNewSession, setShowNewSession] = useState(false)
 
   // The record IS the prop: the parent re-renders with every ledger change
   // (the selected snapshot is a fresh record), so a prop-to-state mirror
@@ -636,8 +639,21 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               显示在一个列表里——同一会话绝不出现两次，从执行页或链接面板进入
               同一会话看到的是同一条评论线程。行文法统一（SessionRow）。
               本区同时是绑定落点：把侧栏的会话/工作区拖进来 = 绑定为新增来源
-              （多源可叠加、同源幂等，绝不刷新替代；与「拖到列上 = 新建绑定卡」互补）。 */}
-          <Section title={`${t('detail.sessions')} ${sessions.length}`}>
+              （多源可叠加、同源幂等，绝不刷新替代；与「拖到列上 = 新建绑定卡」互补）。
+              标题行右侧的「新建会话」直达同一集合：新建一个配置化原生会话并
+              加入本任务，无需回到工作区。 */}
+          <Section
+            title={`${t('detail.sessions')} ${sessions.length}`}
+            action={(
+              <Button
+                size="sm"
+                title={t('detail.sessionNewTitle')}
+                onClick={() => { setShowNewSession(true) }}
+              >
+                + {t('detail.sessionNew')}
+              </Button>
+            )}
+          >
             <div
               className={css.sessionDropZone}
               data-bindactive={bindDropActive ? '' : undefined}
@@ -855,6 +871,20 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
           task={current}
           sessionId={linkedSession}
           onClose={() => { setLinkedSession(undefined) }}
+        />
+      )}
+      {showNewSession && (
+        <NewSessionModal
+          controller={controller}
+          task={current}
+          onClose={() => { setShowNewSession(false) }}
+          onCreated={() => {
+            // The same confirm flash a sidebar bind drop plays: the new row
+            // is visible at the top of the list, the section says so once.
+            setBindDropFlash(true)
+            if (bindDropTimer.current !== undefined) clearTimeout(bindDropTimer.current)
+            bindDropTimer.current = setTimeout(() => { setBindDropFlash(false) }, 600)
+          }}
         />
       )}
     </div>

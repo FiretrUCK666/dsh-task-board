@@ -5,7 +5,6 @@
 import { describe, expect, it } from 'vitest'
 import { ExecutionService, type ExecutionEnvironment, type ExecutionEvent, type SessionDriver } from '../src/core/execution.ts'
 import { createTask, startExecution } from '../src/core/tasks.ts'
-
 const NOW = 1_700_000_000_000
 
 /** Controllable SessionDriver fake. */
@@ -459,6 +458,86 @@ describe('ExecutionService.run', () => {
     await new Promise(resolve => { setTimeout(resolve, 0) })
     // Still no turn evidence → no settle.
     expect(events.map(e => e.kind)).toEqual(['started'])
+  })
+})
+
+describe('ExecutionService.createSession (新建会话)', () => {
+  it('creates a FRESH session via the createSession face (never blank-reuse) and applies no config when none given', async () => {
+    const { env, drivers, connectCalls } = makeEnv()
+    const createdWorkspaces: Array<string | undefined> = []
+    const service = new ExecutionService({
+      ...env,
+      createSession: async workspaceId => {
+        createdWorkspaces.push(workspaceId)
+        drivers.set('s-new', new FakeDriver())
+        return 's-new'
+      },
+    })
+    const result = await service.createSession({ workspaceId: 'ws-9' })
+    expect(result).toEqual({ ok: true, sessionId: 's-new' })
+    expect(createdWorkspaces).toEqual(['ws-9'])
+    expect(connectCalls).toEqual([])
+  })
+
+  it('applies the model route, agent preset and permission in order to the new session', async () => {
+    const { env, drivers } = makeEnv()
+    const order: string[] = []
+    const service = new ExecutionService({
+      ...env,
+      createSession: async () => {
+        order.push('create')
+        drivers.set('s-new', new FakeDriver())
+        return 's-new'
+      },
+      selectModel: async () => {
+        order.push('model')
+        return { ok: true }
+      },
+      selectAgentPreset: async () => {
+        order.push('preset')
+        return { ok: true }
+      },
+    })
+    const result = await service.createSession({
+      workspaceId: 'ws-1',
+      provider: 'deepseek',
+      model: 'chat',
+      reasoningEffort: 'high',
+      agentPreset: 'butler',
+      permission: 'read-only',
+    })
+    expect(result).toEqual({ ok: true, sessionId: 's-new' })
+    expect(order).toEqual(['create', 'model', 'preset'])
+    expect(drivers.get('s-new')?.commandCalls).toEqual(['/permission read-only'])
+  })
+
+  it('surfaces a config failure after creation as a partial success (the session stays usable)', async () => {
+    const { env, drivers } = makeEnv()
+    drivers.set('s-new', new FakeDriver())
+    const service = new ExecutionService({
+      ...env,
+      createSession: async () => 's-new',
+      selectAgentPreset: async () => ({ ok: false as const, error: 'preset missing' }),
+    })
+    const result = await service.createSession({ workspaceId: 'ws-1', agentPreset: 'butler' })
+    expect(result).toMatchObject({ ok: true, sessionId: 's-new' })
+    expect((result as { configError?: string }).configError).toContain('preset')
+  })
+
+  it('fails cleanly when the session cannot be created (no workspace available)', async () => {
+    const { env } = makeEnv({ items: [], recentWorkspaceId: undefined })
+    const service = new ExecutionService(env)
+    const result = await service.createSession({})
+    expect(result).toMatchObject({ ok: false })
+    expect(result.ok === false && result.error).toContain('workspace')
+  })
+
+  it('degrades to the workspace blank-reuse entry when no createSession face is wired', async () => {
+    const { env, connectCalls } = makeEnv()
+    const service = new ExecutionService(env)
+    const result = await service.createSession({ workspaceId: 'ws-1' })
+    expect(result).toMatchObject({ ok: true, sessionId: 's-1' })
+    expect(connectCalls).toEqual(['ws-1'])
   })
 })
 

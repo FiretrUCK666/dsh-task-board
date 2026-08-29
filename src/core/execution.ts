@@ -41,6 +41,19 @@ export interface WorkspacesExecutionFace {
   connectWorkspace(workspaceId: string): Promise<string>
 }
 
+/**
+ * Optional host session-creation face: resolves a guaranteed-FRESH session
+ * (never a reused blank placeholder — `sessions.create` on the client
+ * runtime). Absent = session creation degrades to {@link WorkspacesExecutionFace.connectWorkspace}
+ * (the workspace's blank-reuse entry; a "new session" may then reuse the
+ * workspace's existing blank one, matching the native New Session flow).
+ * The creation guarantee is the runtime's own: by resolution the session is
+ * in the list store and addressable.
+ */
+export interface SessionCreateFace {
+  (workspaceId: string | undefined): Promise<string>
+}
+
 /** One raw session-history event narrowed to the failure signal reconcile needs. */
 export interface ExecutionHistoryEvent {
   type: string
@@ -109,6 +122,8 @@ export interface ExecutionEnvironment {
   workspaces: WorkspacesExecutionFace
   /** Raw-history reader for failure detection of never-opened sessions. */
   history?: HistoryExecutionFace
+  /** Guaranteed-fresh session creation (never blank-reuse); absent = degrade to connectWorkspace. */
+  createSession?: SessionCreateFace
   /** Applies a task's configured model route; absent = tasks always run on session defaults. */
   selectModel?: ModelSelectFace
   /** Applies a task's configured agent preset; absent = sessions run on the deployment default. */
@@ -156,6 +171,25 @@ export interface SessionDriver {
 export type ExecutionEvent =
   | { kind: 'started'; taskId: string; executionId: string; sessionId: string }
   | { kind: 'settled'; taskId: string; executionId: string; outcome: 'succeeded' | 'failed' | 'cancelled'; error?: string }
+
+/**
+ * The run configuration one fresh session is composed with (the task card's
+ * own run-config slice — the same fields a run applies before its first
+ * prompt). Absent fields follow the deployment defaults.
+ */
+export interface SessionLaunchConfig {
+  workspaceId?: string
+  provider?: string
+  model?: string
+  reasoningEffort?: string
+  agentPreset?: string
+  permission?: string
+}
+
+/** The result of {@link ExecutionService.createSession}. */
+export type SessionLaunchResult =
+  | { ok: true; sessionId: string; configError?: string }
+  | { ok: false; error: string }
 
 /** Human copy for a run failure. */
 function messageOf(error: unknown): string {
@@ -208,6 +242,69 @@ export interface RunOptions {
 export class ExecutionService {
   /** @param env - the runtime faces (real or fake). */
   constructor(private readonly env: ExecutionEnvironment) {}
+
+  /**
+   * Create one guaranteed-fresh native session and compose it with a run
+   * configuration — the board's "新建会话" engine. Deliberately NOT a task
+   * execution: no execution record, no dispatcher, no watch. The session is
+   * created first (via the createSession face; degraded to the workspace
+   * blank-reuse entry when the face is absent), then the SAME per-session
+   * setup chain a plain run uses is applied in the same order — model route,
+   * agent preset (safe: a fresh session is always blank), permission.
+   *
+   * Failure policy: the session creation itself failing is THE failure (the
+   * caller gets ok:false, nothing exists). A CONFIG step failing is NOT: the
+   * session already exists on the host and is perfectly usable — it is
+   * returned with `configError` so the caller can surface an honest partial
+   * success instead of silently dropping a created session or pretending
+   * nothing happened. Never rejects.
+   */
+  async createSession(config: SessionLaunchConfig): Promise<SessionLaunchResult> {
+    try {
+      const sessionId = await this.resolveNewSessionId(config.workspaceId)
+      const driver = this.driverOf(sessionId)
+      if (driver === undefined) {
+        return { ok: true, sessionId, configError: 'execution session is not ready' }
+      }
+      let configError: string | undefined
+      if (config.provider !== undefined && config.model !== undefined && this.env.selectModel !== undefined) {
+        const selection = await this.env.selectModel(sessionId, {
+          provider: config.provider,
+          model: config.model,
+          ...config.reasoningEffort !== undefined ? { reasoningEffort: config.reasoningEffort } : {},
+        })
+        if (!selection.ok) configError = `model selection failed: ${selection.error}`
+      }
+      if (configError === undefined && config.agentPreset !== undefined && this.env.selectAgentPreset !== undefined) {
+        const applied = await this.env.selectAgentPreset(sessionId, config.agentPreset)
+        if (!applied.ok) configError = `agent preset switch failed: ${applied.error}`
+      }
+      if (configError === undefined && config.permission !== undefined) {
+        const applied = await this.applyPermission(driver, config.permission)
+        if (!applied.ok) configError = applied.error
+      }
+      return { ok: true, sessionId, ...configError !== undefined ? { configError } : {} }
+    } catch (error) {
+      return { ok: false, error: messageOf(error) }
+    }
+  }
+
+  /**
+   * The session id a "new session" lands in: the createSession face wins
+   * (a guaranteed-fresh host session); without it the workspace blank-reuse
+   * entry degrades gracefully (the native New Session flow itself).
+   */
+  private async resolveNewSessionId(workspaceId?: string): Promise<string> {
+    if (this.env.createSession !== undefined) {
+      const workspace = this.env.workspaces.list.getSnapshot()
+      const resolved = workspaceId ?? workspace.recentWorkspaceId ?? workspace.items[0]?.workspaceId
+      if (resolved === undefined) {
+        throw new Error('no workspace available to run the task in')
+      }
+      return this.env.createSession(resolved)
+    }
+    return this.connectSession(workspaceId)
+  }
 
   async run(
     task: TaskRecord,

@@ -77,6 +77,56 @@ describe('detectExternalTurns', () => {
     detectExternalTurns([candidate()], b, byId({ [SESSION]: false }))
     expect(detectExternalTurns([candidate()], b, byId({}))).toEqual([])
   })
+
+  it('seeding: a never-seen session already running does NOT fire during the seed pass', () => {
+    const b = book()
+    expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true }))).toEqual([])
+    expect(b.seeded).toBe(true)
+  })
+
+  it('after seeding, a session entering the related set while already running fires (born at its first message)', () => {
+    const b = book()
+    // Seed with a DIFFERENT session: the target session has never been seen.
+    const other = {
+      taskId: TASK,
+      candidate: {
+        sessions: [{ sessionId: 's-other', refine: false }],
+        hasOpenRoundOn: () => false,
+        inGrace: () => false,
+      },
+    }
+    detectExternalTurns([other], b, byId({ 's-other': false }))
+    expect(b.seeded).toBe(true)
+    // The new session appears (a fresh workspace member mid-conversation):
+    // no flip can ever be observed for it — its first sighting IS the turn.
+    expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true })))
+      .toEqual([{ taskId: TASK, sessionId: SESSION, refine: false }])
+    // Idempotent: the second sighting is a baseline, never a duplicate.
+    expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true }))).toEqual([])
+  })
+
+  it('after seeding, a first sighting that is NOT running only baselines', () => {
+    const b = book()
+    detectExternalTurns([candidate(false, false)], b, byId({ [SESSION]: false }))
+    // Classic flip still applies to the now-known session.
+    expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true })))
+      .toEqual([{ taskId: TASK, sessionId: SESSION, refine: false }])
+  })
+
+  it('first-sighting detection respects the open-round and grace guards', () => {
+    const b = book()
+    detectExternalTurns([candidate(false, false)], b, byId({ [SESSION]: false }))
+    expect(detectExternalTurns([candidate(false, true)], b, byId({ [SESSION]: true }))).toEqual([])
+    const graced = {
+      taskId: TASK,
+      candidate: {
+        sessions: [{ sessionId: 's-g', refine: false }],
+        hasOpenRoundOn: () => false,
+        inGrace: () => true,
+      },
+    }
+    expect(detectExternalTurns([graced], b, byId({ 's-g': true }))).toEqual([])
+  })
 })
 
 describe('grace helpers', () => {

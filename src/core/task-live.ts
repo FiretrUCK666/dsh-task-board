@@ -13,24 +13,57 @@
  * surface started it (board execution, direct steer, a session rule, an
  * out-of-band native chat). Board rounds stay authoritative for their own
  * settle events; this module only answers the live question.
+ *
+ * "Related" is defined ONCE here: the refine session, every bound session
+ * source, every execution-round session and every live linked (workspace)
+ * session — one de-duplicated, stable-ordered set. Every surface that asks
+ * the live question reads this same set, so a workspace-bound card can never
+ * go dark while one of its bound workspace's sessions is genuinely running
+ * (the "行显示进行中、卡片不动" bug).
  */
 import type { ExecutionRecord, TaskRecord } from './tasks.ts'
+import { taskBindsOf } from './tasks.ts'
 
 /** The live question's answer. */
 export type TaskLiveState = 'running' | 'waiting' | 'idle'
 
-/** Every session this task relates to (execution/comment/direct/external
- *  rounds + the refine session, de-duplicated, stable order). */
-export function relatedSessionIdsOf(task: TaskRecord): string[] {
+/** The classify facts a caller supplies for the derived set's rows. */
+export interface RelatedSessionFact {
+  sessionId: string
+  /** True only for the task's own refine session. */
+  refine: boolean
+}
+
+/**
+ * THE related-session set of a task (de-duplicated, stable order — refine
+ * first, then binds, then execution rounds, then injected linked ids; the
+ * same order every consumer has always read):
+ * - the task's refine session,
+ * - every bound session source (session binds; a workspace bind contributes
+ *   through the linked ids below),
+ * - every session an execution round ran in,
+ * - every live linked session id the caller derived from the native
+ *   workspace snapshots (`linkedSessionIdsOf`) — bound workspaces surface
+ *   their CURRENT members, so a workspace member counts without ever having
+ *   carried a board round.
+ * @param task - the task owning the sessions.
+ * @param linkedSessionIds - the task's live linked-session ids (the
+ *   controller derives them from the workspaces face; undefined = skip).
+ */
+export function relatedSessionIdsOf(task: TaskRecord, linkedSessionIds?: readonly string[]): RelatedSessionFact[] {
   const seen = new Set<string>()
-  const out: string[] = []
-  const push = (sessionId: string | undefined): void => {
+  const out: RelatedSessionFact[] = []
+  const push = (sessionId: string | undefined, refine: boolean): void => {
     if (sessionId === undefined || sessionId === '' || seen.has(sessionId)) return
     seen.add(sessionId)
-    out.push(sessionId)
+    out.push({ sessionId, refine })
   }
-  push(task.refineSessionId)
-  for (const round of task.executions) push(round.sessionId)
+  push(task.refineSessionId, true)
+  for (const bind of taskBindsOf(task)) {
+    if (bind.kind === 'session') push(bind.sessionId, false)
+  }
+  for (const round of task.executions) push(round.sessionId, false)
+  for (const sessionId of linkedSessionIds ?? []) push(sessionId, false)
   return out
 }
 
@@ -47,13 +80,14 @@ export function taskLiveStateOf(
   task: TaskRecord,
   isRunningOf: (sessionId: string) => boolean,
   waitingOf: (sessionId: string) => unknown,
+  linkedSessionIds?: readonly string[],
 ): TaskLiveState {
-  const sessions = relatedSessionIdsOf(task)
-  for (const sessionId of sessions) {
+  const sessions = relatedSessionIdsOf(task, linkedSessionIds)
+  for (const { sessionId } of sessions) {
     const waiting = waitingOf(sessionId)
     if (waiting !== undefined && waiting !== null) return 'waiting'
   }
-  for (const sessionId of sessions) {
+  for (const { sessionId } of sessions) {
     if (isRunningOf(sessionId)) return 'running'
   }
   return 'idle'

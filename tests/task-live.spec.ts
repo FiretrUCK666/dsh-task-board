@@ -50,7 +50,31 @@ describe('relatedSessionIdsOf', () => {
       [{ sessionId: 'a' }, { sessionId: 'b' }, { sessionId: 'a' }],
       'refine',
     )
-    expect(relatedSessionIdsOf(task)).toEqual(['refine', 'a', 'b'])
+    expect(relatedSessionIdsOf(task)).toEqual([
+      { sessionId: 'refine', refine: true },
+      { sessionId: 'a', refine: false },
+      { sessionId: 'b', refine: false },
+    ])
+  })
+
+  it('includes session binds before the execution rounds', () => {
+    const task = {
+      ...taskWith([{ sessionId: 'run' }]),
+      binds: [{ kind: 'session' as const, sessionId: 'bound' }],
+    }
+    expect(relatedSessionIdsOf(task)).toEqual([
+      { sessionId: 'bound', refine: false },
+      { sessionId: 'run', refine: false },
+    ])
+  })
+
+  it('appends the injected linked ids (workspace members) after the rounds, de-duplicated', () => {
+    const task = taskWith([{ sessionId: 'run' }])
+    expect(relatedSessionIdsOf(task, ['link-1', 'run', 'link-2'])).toEqual([
+      { sessionId: 'run', refine: false },
+      { sessionId: 'link-1', refine: false },
+      { sessionId: 'link-2', refine: false },
+    ])
   })
 })
 
@@ -73,6 +97,16 @@ describe('taskLiveStateOf (任务运行态唯一推导)', () => {
   it('is idle when nothing runs and nobody waits', () => {
     const task = taskWith([{ sessionId: 'a', direct: true, endedAt: 5 }])
     expect(taskLiveStateOf(task, runningOf({}), waitingOf({}))).toBe('idle')
+  })
+
+  it('is running when a LINKED (workspace-member) session is working — the bound-card glow bug', () => {
+    const task = taskWith([{ sessionId: 'run', endedAt: 5 }])
+    expect(taskLiveStateOf(task, runningOf({ run: false, link: true }), waitingOf({}), ['link'])).toBe('running')
+  })
+
+  it('is waiting when a linked session waits on the user', () => {
+    const task = taskWith([])
+    expect(taskLiveStateOf(task, runningOf({}), waitingOf({ link: 'plan-review' }), ['link'])).toBe('waiting')
   })
 })
 
