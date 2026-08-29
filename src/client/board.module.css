@@ -104,6 +104,16 @@
   inset: 0;
   display: none;
   z-index: 200;
+  /* The ONE responsive reference for the whole board is the board BOX's own
+     width, never the viewport: it is correct under a collapsed/expanded
+     sidebar, a split-screen, and a phone alike. Every compact rule below is
+     a @container query against this name. */
+  container-type: inline-size;
+  container-name: dsh-tb;
+  /* Defeat Android/WeChat font boosting, which inflates px text inside a
+     narrow layout and blows out the columns. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 html[data-dsh-taskboard-active] [data-dsh-taskboard-view] {
@@ -260,11 +270,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .boardTitle {
   margin: 0;
+  /* Shrinkable so a long title never pushes the cruise/new-task actions out
+     of the header row (flex children default to min-width:auto). */
+  min-width: 0;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--dsh-tb-text-1);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 命令栏中的弹性留白：把右侧动作推到末尾，不用分隔线分组。 */
@@ -1656,6 +1671,7 @@ textarea.input {
 .detailTitle {
   margin: 0;
   flex: 1;
+  min-width: 0;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -2537,7 +2553,13 @@ textarea.input {
 }
 
 .sessionRowWorkspace {
-  flex: none;
+  /* Shrinkable + ellipsized: a long workspace name must never push the row's
+     actions group (查看会话/隐藏) out of the row and over the title — the one
+     grammar every inline pill follows (Chip's .chipBody). */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 11px;
   font-weight: 400;
   color: var(--dsh-tb-text-3);
@@ -4262,12 +4284,18 @@ textarea.input {
   gap: 10px;
 }
 
-/* Narrow viewports: the two-column review falls back to a stacked layout —
+/* Narrow board boxes: the two-column review falls back to a stacked layout —
    conversation on top (its own scroll), rail below (full width). Nothing is
-   dropped; only the geometry changes. */
-@media (max-width: 719px) {
+   dropped; only the geometry changes. Container-scoped (the board box), so it
+   is correct under a collapsed sidebar / split-screen, not just a narrow
+   window — the same reference every compact rule uses. */
+@container dsh-tb (max-width: 719px) {
   .review {
-    width: calc(100vw - 24px);
+    /* Board-box relative (never vw/vh): the review fills the backdrop, so a
+       mobile dynamic toolbar or a split-screen cannot push its composer off. */
+    width: calc(100% - 16px);
+    height: calc(100% - 16px);
+    max-height: calc(100% - 16px);
   }
 
   .reviewBody {
@@ -4275,24 +4303,29 @@ textarea.input {
   }
 
   .reviewMain {
-    max-height: 42vh;
+    /* Share the stacked height with the rail; each scrolls on its own. */
+    max-height: none;
+    flex: 1 1 50%;
+    min-height: 0;
   }
 
   .reviewRail {
     width: 100%;
+    flex: 1 1 50%;
+    min-height: 0;
     border-left: none;
     border-top: 1px solid var(--dsw-alias-separator-primary);
   }
 
   .sessionRailHead {
-    max-height: 34vh;
+    max-height: none;
     overflow-y: auto;
   }
 
   /* The linked-session panel wraps its head in a scroll region: the cap
      moves to the wrapper so there is exactly one scrollbar, never two. */
   .sessionRailScroll {
-    max-height: 34vh;
+    max-height: none;
   }
 }
 
@@ -4438,4 +4471,182 @@ textarea.input {
   display: inline-flex;
   align-items: center;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   COMPACT LAYOUT — one mechanism, board-box relative (@container dsh-tb).
+   The board's own width (not the window) is the truth: it is correct under a
+   collapsed/expanded sidebar, a split-screen, and a phone alike. Below the
+   threshold the five-column grid becomes a horizontal scroll-snap track (each
+   column wide enough to read), the header rows wrap, and every floating panel
+   sizes to the board box instead of the viewport. Nothing is hidden — only
+   the geometry changes. Colors stay on the --dsh-tb-* tokens (no new literals).
+   ══════════════════════════════════════════════════════════════════════════ */
+@container dsh-tb (max-width: 680px) {
+  .board {
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+    gap: 10px;
+  }
+
+  /* Command rows breathe by wrapping instead of overflowing. */
+  .boardRow {
+    flex-wrap: wrap;
+  }
+
+  /* The filter field drops to its own full-width line so the action pills
+     (整理/自动化/新建) never squeeze it below usability. */
+  .search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  /* Five equal columns → a swipeable track. Each column is wide enough to
+     read a card; the track snaps column-to-column. */
+  .columns {
+    display: flex;
+    flex-direction: row;
+    grid-template-columns: none;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    /* A little bottom room so the horizontal bar never sits under a card. */
+    padding-bottom: 2px;
+  }
+  .columns::-webkit-scrollbar {
+    display: none;
+  }
+
+  .column {
+    flex: 0 0 min(80cqw, 320px);
+    scroll-snap-align: center;
+  }
+
+  .columnHeader {
+    padding: 10px 12px;
+  }
+
+  /* The cruise popover clamps to the board width and scrolls internally. */
+  .cruisePopover {
+    width: min(300px, calc(100cqw - 20px));
+    max-height: calc(100% - 16px);
+    overflow-y: auto;
+  }
+
+  /* Floating panels: board-box relative, and the backdrop can scroll a panel
+     taller than the box (the mobile dynamic toolbar makes vh unreliable, and
+     a non-scrollable backdrop hid the panel's bottom actions). */
+  .modalBackdrop {
+    overflow: auto;
+    align-items: flex-start;
+    padding: 8px;
+  }
+
+  .modal,
+  .detail,
+  .presetModal,
+  .autoModal {
+    width: calc(100% - 4px);
+    max-width: none;
+    max-height: calc(100% - 4px);
+  }
+
+  /* Action rows wrap rather than overflow off the panel edge. */
+  .modalFooter,
+  .detailFooter,
+  .reviewComposerRow {
+    flex-wrap: wrap;
+  }
+
+  /* A session row's identity + actions share the width; on a narrow panel the
+     actions drop to their own line instead of overlapping the title. */
+  .sessionRowTop {
+    flex-wrap: wrap;
+  }
+
+  /* Preset rows go from a four-column grid to a stacked block (name over
+     cron), so the cron input stays readable. */
+  .presetRow {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TOUCH MODEL — one capability block, orthogonal to the compact geometry.
+   A device with no hover and a coarse pointer cannot reach hover-only
+   affordances or hit 16–24px targets, so: the three hover-revealed controls
+   become always-on, every small control grows an invisible hit area (visual
+   size and the 28/24px rhythm are untouched), and text inputs reach 16px so
+   the browser stops auto-zooming the whole page on focus.
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (hover: none) and (pointer: coarse) {
+  /* Hover-revealed actions: always visible on touch. */
+  .cardQuickRun {
+    opacity: 1;
+  }
+
+  .cardColorBar {
+    display: flex;
+  }
+
+  .promptCopy {
+    opacity: 1;
+  }
+
+  /* Invisible hit-area expansion (visual geometry unchanged). Each control
+     gets a transparent border ring it can spare; the row/card is the
+     positioned ancestor already. */
+  .buttonSm,
+  .rowHide,
+  .cruiseMore,
+  .boardBack,
+  .iconButton,
+  .sessionRowHandle,
+  .segmentedButton,
+  .attachAdd,
+  .attachRemove,
+  .reviewCommentCancel,
+  .timeFieldCalendar {
+    position: relative;
+  }
+
+  .buttonSm::before,
+  .rowHide::before,
+  .cruiseMore::before,
+  .boardBack::before,
+  .iconButton::before,
+  .sessionRowHandle::before,
+  .segmentedButton::before,
+  .attachAdd::before,
+  .attachRemove::before,
+  .reviewCommentCancel::before,
+  .timeFieldCalendar::before {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border-radius: inherit;
+  }
+
+  /* The 16px color dots are too small to tap; grow the swatch itself. */
+  .tagSwatch,
+  .tagCustomWrap {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* 16px input text stops iOS/Android auto-zoom on focus. */
+  .input,
+  .promptTextarea,
+  .search,
+  .selectWrap select,
+  .sessionRenameInput,
+  .scheduleInput,
+  .presetCron,
+  .cruiseLimit,
+  .timeFieldRow .input {
+    font-size: 16px;
+  }
+}
+
 

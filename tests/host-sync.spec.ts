@@ -9,6 +9,7 @@ import { BoardSyncClient, type BoardSyncTransport, type SyncFetchResult } from '
 import { emptyBoardDoc, applyCommit, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView } from '../src/core/board-doc.ts'
 import type { LeaseState } from '../src/core/board-doc.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
+import { BoardDataService } from '../src/host/board-service.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -332,6 +333,124 @@ describe('BoardSyncClient requestLaunch + dispose', () => {
     const n = t.calls.lease.length
     await timers.advance(60_000)
     expect(t.calls.lease.length).toBe(n)
+  })
+})
+
+// ── end-to-end convergence over the REAL host service ──────────────────────
+//
+// Two sync clients share one BoardDataService (a service-direct transport,
+// no HTTP): this exercises the whole loop — commit → merge → persist → SSE
+// broadcast → coalesced resync → adopt — exactly as two browsers would, and
+// pins the guarantees the multi-device fix rests on: writes converge both
+// ways, a delete propagates as a tombstone (no stale replica resurrects it),
+// and concurrent edits to different rows coexist.
+
+/** A transport that calls the real service directly (shared-clock harness). */
+function serviceTransport(service: BoardDataService): BoardSyncTransport {
+  return {
+    async fetch(_clientId, since) {
+      await service.ensureInit()
+      const doc = service.getDoc()
+      if (since !== undefined && since >= doc.revision) return { available: true, revision: doc.revision, unchanged: true }
+      return { available: true, revision: doc.revision, doc }
+    },
+    async commit(commit) {
+      const doc = await service.commit(commit)
+      return { available: true, revision: doc.revision, doc }
+    },
+    async lease(clientId, options) {
+      return options.release ? service.releaseLease(clientId) : service.acquireLease(clientId, options.ttlMs)
+    },
+    async command(_clientId, cmd) { service.submitCommand(cmd) },
+    openStream(_clientId, handlers) {
+      const off = service.subscribe(event => handlers.onEvent(event))
+      handlers.onOpen()
+      return off
+    },
+  }
+}
+
+function makeNode(service: BoardDataService, timers: ReturnType<typeof fakeTimers>, id: string): BoardSyncClient {
+  return new BoardSyncClient({
+    transport: serviceTransport(service),
+    defer: timers.defer,
+    now: timers.now,
+    uuid: () => id,
+    commitDebounceMs: 250,
+    resyncCoalesceMs: 120,
+    leaseRenewMs: 7_000,
+    pollMs: 30_000,
+  })
+}
+
+/** Advance until every scheduled commit/resync (and its follow-on) has run. */
+async function settle(timers: ReturnType<typeof fakeTimers>): Promise<void> {
+  for (let i = 0; i < 6; i++) await timers.advance(400)
+}
+
+describe('two replicas over one host service', () => {
+  async function twoNodes() {
+    const timers = fakeTimers()
+    const service = new BoardDataService({ now: timers.now, openUnit: async () => new FakeUnit(), log: () => undefined })
+    await service.init()
+    const a = makeNode(service, timers, 'A')
+    const b = makeNode(service, timers, 'B')
+    await a.start()
+    await b.start()
+    return { timers, service, a, b }
+  }
+
+  it('a write on one replica converges on the other', async () => {
+    const { timers, a, b } = await twoNodes()
+    a.setTasks([createTask({ title: 'A', description: '', prompt: 'p' }, timers.now(), 't-1')])
+    await settle(timers)
+    expect(b.view().tasks.map(x => x.id)).toEqual(['t-1'])
+  })
+
+  it('a delete on one replica tombstones it for the other (no resurrection)', async () => {
+    const { timers, a, b } = await twoNodes()
+    const original = createTask({ title: 'A', description: '', prompt: 'p' }, timers.now(), 't-1')
+    a.setTasks([original])
+    await settle(timers)
+    expect(b.view().tasks.map(x => x.id)).toEqual(['t-1'])
+    b.setTasks([]) // B deletes it
+    await settle(timers)
+    expect(a.view().tasks).toHaveLength(0)
+    // A's later re-commit of its stale copy (same original updatedAt) must
+    // NOT resurrect it — the tombstone outranks the stale write.
+    a.setTasks([original])
+    await settle(timers)
+    expect(b.view().tasks).toHaveLength(0)
+  })
+
+  it('concurrent edits to different rows coexist; the newer row wins its own', async () => {
+    const { timers, a, b } = await twoNodes()
+    const shared = createTask({ title: 'S', description: '', prompt: 'p' }, timers.now(), 't-s')
+    a.setTasks([shared])
+    await settle(timers)
+    // Both now hold [shared]. A adds one row, B adds another (neither sees the other yet).
+    a.setTasks([shared, createTask({ title: 'from-A', description: '', prompt: 'p' }, timers.now(), 't-a')])
+    b.setTasks([shared, createTask({ title: 'from-B', description: '', prompt: 'p' }, timers.now(), 't-b')])
+    await settle(timers)
+    const idsA = a.view().tasks.map(x => x.id).sort()
+    const idsB = b.view().tasks.map(x => x.id).sort()
+    expect(idsA).toEqual(['t-a', 't-b', 't-s'])
+    expect(idsB).toEqual(['t-a', 't-b', 't-s'])
+  })
+
+  it('exactly one replica holds the engine seat at a time', async () => {
+    const { a, b } = await twoNodes()
+    // A started first and took the lease on open; B is a viewer.
+    expect(a.isEngine()).toBe(true)
+    expect(b.isEngine()).toBe(false)
+  })
+
+  it('a cruise change on one replica reaches the other', async () => {
+    const { timers, a, b } = await twoNodes()
+    a.setCruise({ enabled: true, limit: 3, schedule: [] })
+    await settle(timers)
+    expect(b.view().cruise.enabled).toBe(true)
+    expect(b.view().cruise.limit).toBe(3)
   })
 })
 
