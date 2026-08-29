@@ -21,6 +21,7 @@ import { registerPermissionRoute } from './host/permission-route.ts'
 import { registerAttachRoute } from './host/attachment-route.ts'
 import { registerSessionStateRoute } from './host/session-state-route.ts'
 import { registerSettingsRoute } from './host/settings-route.ts'
+import { registerBoardRoute } from './host/board-route.ts'
 
 /** Order of the announcement section within the tool-guidance band. */
 const SECTION_ORDER = 200
@@ -28,7 +29,7 @@ const SECTION_ORDER = 200
 export const inject = ['webServer', 'systemPrompt', 'settings']
 
 /** Model-facing announcement: plugin presence, capabilities, and limits. */
-export const TASK_BOARD_GUIDANCE = '本机已安装 dsh-task-board 独立插件（DSH Web GUI 的任务看板，可挂载到 web profile）：侧边栏「任务看板」入口。能力：多列看板管理任务；任务可真实执行（驱动 agent 会话）；任务支持 5 段 cron 定时执行（如 0 23 * * *）；数据存浏览器 localStorage（键 dsh.taskBoard.v1）。限制：定时调度在浏览器端，需 GUI 标签页打开，错过即跳过；执行消耗 API 额度。用户提到「任务看板 / 看板 / 定时任务」时即指本插件，请据此协作。'
+export const TASK_BOARD_GUIDANCE = '本机已安装 dsh-task-board 独立插件（DSH Web GUI 的任务看板，可挂载到 web profile）：侧边栏「任务看板」入口。能力：多列看板管理任务；任务可真实执行（驱动 agent 会话）；任务支持 5 段 cron 定时执行（如 0 23 * * *）；看板数据（任务/巡航/预设）持久化在 DSH host 端（存储单元 dsh-task-board），任意设备任意浏览器打开同一部署看到的都是同一块板，改动经 SSE 实时同步；手机等窄屏为紧凑布局。限制：调度引擎同一时刻只由一个打开的 GUI 端持有（host 租约仲裁，多端同开不会双份执行），至少一个 GUI 标签页保持打开，否则定时/巡航/接续停摆、错过即跳过；执行消耗 API 额度。用户提到「任务看板 / 看板 / 定时任务」时即指本插件，请据此协作。'
 
 /**
  * Settings namespace of the board's announcement capability — the section the
@@ -123,6 +124,14 @@ export function apply(ctx: Context, config?: Config): void {
   ctx.effect(
     () => registerAttachRoute(ctx),
     'dsh-task-board: attachments route',
+  )
+
+  // Serve the host-owned board document (the synced truth every replica —
+  // desktop or phone, any origin — reads, commits and watches), plus the
+  // engine lease and the launch-command relay.
+  ctx.effect(
+    () => registerBoardRoute(ctx, 'dsh-task-board'),
+    'dsh-task-board: board route',
   )
 
   // Initial registration from the composition entry (covers deployments with

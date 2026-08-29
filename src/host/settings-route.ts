@@ -59,16 +59,19 @@ const BAD_REQUEST: RouteFail = { ok: false, error: { code: 'internal', message: 
 /**
  * Read a JSON request body into an unknown value; null when unparseable.
  * @param req - the incoming request stream.
+ * @param maxBytes - size cap (beyond it the body is rejected as null). The
+ *   board routes raise it for whole-document commits; settings patches keep
+ *   the default.
  * @returns the parsed body, or null.
  */
-export async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+export async function readJsonBody(req: IncomingMessage, maxBytes: number = 1 << 20): Promise<unknown> {
   const chunks: Buffer[] = []
   let total = 0
   for await (const chunk of req) {
     const buffer = chunk as Buffer
     chunks.push(buffer)
     total += buffer.length
-    if (total > 1 << 20) return null
+    if (total > maxBytes) return null
   }
   const text = Buffer.concat(chunks).toString('utf8')
   if (text === '') return null
