@@ -597,14 +597,14 @@ export function apply(ctx: ClientContext): void {
         open: id => sessions.open(id as SessionId),
       },
       workspaces: {
-        // Live "链接会话" derivation: one workspace's accounted sessions +
-        // the registry-global archive set (the native grouping facts).
+        // Source labels, the run-config picker and drag classification —
+        // workspace MEMBERSHIP is deliberately not read (a bound workspace
+        // never surfaces its sessions into a task card).
         list: {
           getSnapshot: () => {
             const snap = workspaces.list.getSnapshot()
             return {
-              items: snap.items.map(item => ({ id: item.workspaceId, title: item.title, sessionIds: item.sessionIds })),
-              archivedSessionIds: snap.archivedSessionIds,
+              items: snap.items.map(item => ({ id: item.workspaceId, title: item.title })),
             }
           },
           subscribe: fn => workspaces.list.subscribe(fn),

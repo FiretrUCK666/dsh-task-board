@@ -1783,7 +1783,7 @@ describe('linked sessions & bind', () => {
     expect(controller.addTaskSource('nope', { kind: 'session', sessionId: 's-1' })).toBe(false)
   })
 
-  it('a folder bound onto an existing task syncs newly opened sessions live (regression)', () => {
+  it('a folder bound onto an existing task NEVER surfaces folder sessions (the flood is sealed)', () => {
     const wss = workspaces()
     wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1'] }]
     const sessions = new FakeSessions()
@@ -1798,15 +1798,21 @@ describe('linked sessions & bind', () => {
     })
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })
-    // The added source is persisted through the ledger.
+    // The bind is persisted (it is the card's source association)…
     const bound = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
-    expect(controller.sessionsOf(bound).map(row => row.sessionId)).toEqual(['s-1'])
-    // A session opens inside the folder later: the board picks it up with no
-    // manual "sync" step (the earlier sessionsOf snapshot is already stale).
+    expect(bound.binds).toEqual([{ kind: 'workspace', workspaceId: 'w-a' }])
+    // …but the folder's conversations are NOT rows: neither the existing
+    // session nor one opened later ever appears (the old live-derivation was
+    // the "主界面新建会话突然进卡片" bug).
+    expect(controller.sessionsOf(bound).map(row => row.sessionId)).toEqual([])
     wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
     sessions.runningById['s-2'] = false
     wss.notify()
-    expect(controller.sessionsOf(bound).map(row => row.sessionId)).toEqual(['s-1', 's-2'])
+    expect(controller.sessionsOf(bound).map(row => row.sessionId)).toEqual([])
+    // An explicit session bind DOES surface its row.
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
+    const withSession = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(withSession).map(row => row.sessionId)).toEqual(['s-2'])
   })
 
   it('copyTask clones content, run config and the automation rule (runCount reset)', () => {
@@ -1949,10 +1955,9 @@ describe('linked sessions & bind', () => {
     expect(controller.removeTaskSession(task.id, 's-none')).toBe(false)
   })
 
-  it('externalKindOf classifies sidebar ids and linkedOf derives workspace rows live', () => {
+  it('externalKindOf classifies sidebar ids; linkedOf surfaces ONLY explicit session binds', () => {
     const wss = workspaces()
     wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
-    wss.archivedSessionIds = ['s-2']
     const sessions = new FakeSessions()
     sessions.runningById['s-1'] = true
     const controller = new BoardController({
@@ -1965,22 +1970,20 @@ describe('linked sessions & bind', () => {
     })
     expect(controller.externalKindOf('w-a')).toBe('workspace')
     expect(controller.externalKindOf('s-1')).toBe('session')
-    const task: TaskRecord = taskWithBind({ kind: 'workspace', workspaceId: 'w-a' })
-    const rows = controller.linkedOf(task)
-    expect(rows.map(row => row.sessionId)).toEqual(['s-1'])
-    // A snapshot change surfaces live (new session added, not archived).
-    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2', 's-3'] }]
-    sessions.runningById['s-3'] = false
-    wss.notify()
-    expect(controller.linkedOf(task).map(row => row.sessionId)).toEqual(['s-1', 's-3'])
+    // A workspace bind contributes no rows — membership is never derived.
+    const workspaceTask: TaskRecord = taskWithBind({ kind: 'workspace', workspaceId: 'w-a' })
+    expect(controller.linkedOf(workspaceTask)).toEqual([])
+    // An explicit session bind surfaces exactly its session.
+    const sessionTask: TaskRecord = taskWithBind({ kind: 'session', sessionId: 's-1' })
+    expect(controller.linkedOf(sessionTask).map(row => row.sessionId)).toEqual(['s-1'])
   })
 
-  it('removeTaskSession keeps a workspace-bound session removed permanently (no resurrection)', () => {
-    const wss = workspaces()
-    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
+  it('removeTaskSession keeps a session removed permanently (no resurrection)', () => {
     const sessions = new FakeSessions()
     sessions.runningById['s-1'] = false
     sessions.runningById['s-2'] = false
+    const wss = workspaces()
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
     const controller = new BoardController({
       store: new InMemoryTaskStore(),
       exec: new StubExec() as unknown as ExecutionService,
@@ -1989,7 +1992,9 @@ describe('linked sessions & bind', () => {
       now: () => NOW,
       uuid,
     })
-    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 't', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
     // A manual order is in effect before the removal: dropping s-2 BEFORE s-1
     // persists ['s-2', 's-1'] — the removal must also strip its slot.
     expect(controller.reorderTaskSession(task.id, 's-2', 's-1')).toBe(true)
@@ -1997,8 +2002,8 @@ describe('linked sessions & bind', () => {
     let current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).toEqual(['s-2'])
     expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
-    // The workspace still contains s-1, but the removal is permanent: it never
-    // re-derives, neither in the list nor in linkedOf.
+    // The removal is permanent: it never re-derives, neither in the list nor
+    // in linkedOf, and the removed session's own bind is gone with it.
     current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).toEqual(['s-2'])
     expect(controller.linkedOf(current).map(row => row.sessionId)).toEqual(['s-2'])
@@ -2007,6 +2012,11 @@ describe('linked sessions & bind', () => {
     // The removed session's manual-order slot is gone with it; only s-2's
     // remains. Removing the last ordered session clears the field entirely.
     expect(current.sessionsOrder).toEqual(['s-2'])
+    // Re-adding the workspace never resurrects the removed session (folder
+    // membership is not derived at all).
+    expect(controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(true)
+    current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(current).map(row => row.sessionId)).toEqual(['s-2'])
     controller.hideTaskSession(task.id, 's-2')
     expect(controller.removeTaskSession(task.id, 's-2')).toBe(true)
     current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
@@ -2046,8 +2056,6 @@ describe('linked sessions & bind', () => {
   })
 
   it('addTaskSource restores a removed session when the session itself is re-dragged (explicit bring-back)', () => {
-    const wss = workspaces()
-    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
     const sessions = new FakeSessions()
     sessions.runningById['s-1'] = false
     sessions.runningById['s-2'] = false
@@ -2055,24 +2063,26 @@ describe('linked sessions & bind', () => {
       store: new InMemoryTaskStore(),
       exec: new StubExec() as unknown as ExecutionService,
       sessions,
-      workspaces: wss,
       now: () => NOW,
       uuid,
     })
-    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 't', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
     controller.hideTaskSession(task.id, 's-1')
     expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
     let current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).toEqual(['s-2'])
-    // Removal stays passive-immune (no resurrection), but the USER dragging
-    // the session back is the restore gesture: it shows again.
+    // Removal stays passive-immune (no workspace re-add resurrects it), but
+    // the USER dragging the session back is the restore gesture: it shows
+    // again and leaves the removed set.
     expect(controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(true)
     current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).toContain('s-1')
     expect(current.removedSessions ?? []).not.toContain('s-1')
   })
 
-  it('addTaskSource restores the workspace\'s removed members when the folder itself is re-dragged (same-source re-add)', () => {
+  it('re-adding a workspace bind restores nothing (a folder is not a session subscription)', () => {
     const wss = workspaces()
     wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
     const sessions = new FakeSessions()
@@ -2087,14 +2097,17 @@ describe('linked sessions & bind', () => {
       uuid,
     })
     const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 't', description: '', prompt: '' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
     controller.hideTaskSession(task.id, 's-1')
     expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
-    // Re-dragging the SAME folder (an identical bind) is not a no-op when the
-    // folder carries removed members: the restore gesture clears them.
-    expect(controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(true)
+    // Re-dragging the SAME folder is a pure no-op now: the bind exists and a
+    // folder carries no restorable membership (the old same-source re-add
+    // restored members — membership is no longer derived at all).
+    expect(controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(false)
     const current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
-    expect(controller.sessionsOf(current).map(row => row.sessionId)).toContain('s-1')
-    expect(current.removedSessions).toBeUndefined()
+    expect(controller.sessionsOf(current).map(row => row.sessionId)).not.toContain('s-1')
+    expect(current.removedSessions).toContain('s-1')
   })
 })
 
@@ -2460,13 +2473,12 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect(controller.getSnapshot().tasks[0].status).toBe('review')
   })
 
-  it('a NEW session born running inside a bound workspace is recorded as an external round (首聊根因)', async () => {
+  it('a session born running inside a bound workspace is NOT recorded (the flood is sealed); an explicit bind IS', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
     const sessions = new FakeSessions()
     const wss = new FakeWorkspaces()
-    // The workspace is bound BEFORE the new session exists: the seed pass
-    // baselines an empty related set.
+    // The workspace is bound BEFORE the new session exists.
     wss.items = [{ id: 'w-a', title: '工作区A', sessionIds: [] }]
     const controller = new BoardController({
       store, exec: stub as unknown as ExecutionService,
@@ -2476,16 +2488,24 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     await flush()
     const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: '' })!
     await flush()
-    // The user creates a new session in the workspace and chats: the session
-    // is born AT its first message (listed + running at the same instant —
-    // no false→true flip can ever be observed for it).
+    // The user creates a new session in the folder and chats: the folder is a
+    // source association, NOT a conversation subscription — the card stays
+    // untouched (this was the "主界面新建会话突然进任务卡片" bug).
     wss.items = [{ id: 'w-a', title: '工作区A', sessionIds: ['s-new'] }]
     sessions.setRunning('s-new', true)
     wss.notify()
     await flush()
     await flush()
-    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
-    expect(row.status).toBe('running')
+    let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.status).not.toBe('running')
+    expect(row.executions.filter(round => round.external === true)).toHaveLength(0)
+    // The same session EXPLICITLY bound (the user's own gesture) keeps the
+    // 首聊根因 fix: born running with no observable flip is still recorded
+    // (the add itself triggers the instant sync).
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-new' })
+    await flush()
+    await flush()
+    row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     const ext = row.executions[row.executions.length - 1]
     expect(ext.external).toBe(true)
     expect(ext.sessionId).toBe('s-new')
@@ -2494,13 +2514,11 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect(row.executions.filter(round => round.external === true)).toHaveLength(1)
   })
 
-  it('a linked (workspace-member) session running RIGHT NOW makes the card live (运行态单一推导)', async () => {
+  it('a workspace-member session running RIGHT NOW does NOT make the card live; an explicit bind does (运行态单一推导)', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
     const sessions = new FakeSessions()
     const wss = new FakeWorkspaces()
-    // The member was idle at seed time, then the user chatted natively: the
-    // flip is observed and the live state (card breathing) must follow.
     wss.items = [{ id: 'w-a', title: '工作区A', sessionIds: ['s-member'] }]
     sessions.setRunning('s-member', false)
     const controller = new BoardController({
@@ -2512,8 +2530,15 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: '' })!
     await flush()
     expect(controller.liveStateOf(task.id)).toBe('idle')
+    // The folder member starts chattering natively: the card does NOT follow
+    // (membership is not a relation; the flood stays sealed).
     sessions.setRunning('s-member', true)
     wss.notify()
+    await flush()
+    await flush()
+    expect(controller.liveStateOf(task.id)).toBe('idle')
+    // Bind the session explicitly and the live state rides the native truth.
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-member' })
     await flush()
     await flush()
     expect(controller.liveStateOf(task.id)).toBe('running')

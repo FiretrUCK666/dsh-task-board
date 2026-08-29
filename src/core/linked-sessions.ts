@@ -1,16 +1,20 @@
 /**
- * Linked-sessions derivation: the pure logic behind a task's "链接会话" section.
+ * Linked-sessions derivation: the pure logic behind a task's 链接会话 section.
  *
- * A task can be bound to a native source — one session, or a whole workspace
- * folder (dragged in from the sidebar). The bound source is NOT copied into
- * the board; instead the linked rows are derived live from the native session
- * + workspaces snapshots on every render, mirroring exactly the rule the
- * native workspace browser uses (`deriveGroups`): a workspace's sessions are
- * its `sessionIds` in order, archived sessions (`archivedSessionIds`) and
- * blank reuse placeholders are hidden, and the user's own "hide" set (`hidden`)
- * is applied on top. Because it is a pure function of the native snapshots,
- * new sessions, renames, archive toggles and hides all surface automatically —
- * no manual copy, no drift. Framework-free and unit-testable in isolation.
+ * A linked row exists ONLY for a session the user explicitly bound to the task
+ * (dragged in from the sidebar, created through the detail, or picked in the
+ * add-session dialog). A WORKSPACE BIND DELIBERATELY CONTRIBUTES NO SESSION
+ * ROWS: it is a source/config association (where the task came from, where it
+ * runs), never a subscription to that folder's conversations — a session the
+ * user creates in the main UI must never appear on a task card by itself.
+ * (The earlier live-member derivation was exactly that bug: every new session
+ * in a bound workspace flooded into the card.)
+ *
+ * The session row is derived live from the native session snapshot (title,
+ * running, pending interaction), so renames and state changes surface with no
+ * manual copy, no drift. An explicitly bound session is NEVER filtered by
+ * archived/blank (the user dragged it in on purpose); only the user's own
+ * hide set applies. Pure and framework-free.
  */
 import type { TaskRecord } from './tasks.ts'
 import type { PendingInteractionKind } from './controller.ts'
@@ -45,16 +49,8 @@ export interface LinkedSessionRow {
 export interface LinkedSources {
   /** Every session row, keyed by id (sessions.list.byId). */
   byId: Readonly<Record<string, LinkedSessionSource>>
-  /** Registry-global archive set (workspaces.list.archivedSessionIds). */
-  archived: readonly string[]
-  /** A workspace's accounted session ids in display order; undefined = unknown/deleted workspace. */
-  workspaceSessionIds: (workspaceId: string) => readonly string[] | undefined
   /** The task's display-hidden linked-session ids (task.hidden.sessions). */
   hidden: readonly string[]
-  /** The bound workspace's display title, when the bind is a workspace — the
-   *  stable workspace label for every row whose cwd is unknown (so the label
-   *  never blinks off for some sessions). */
-  boundWorkspaceTitle?: string
 }
 
 /** Short display label of a directory path (last non-empty segment). THE one
@@ -94,11 +90,9 @@ export function resolveExternalKind(
   return undefined
 }
 
-/** One derived row from a native session source (title fallbacks + cwd label).
- *  The workspace label is the cwd's last segment, falling back to the bound
- *  workspace's title so it never blinks off for sessions without a cwd. */
-function rowOf(sessionId: string, source: LinkedSessionSource, boundWorkspaceTitle?: string): LinkedSessionRow {
-  const workspaceLabel = (source.cwd !== undefined ? workspaceLabelOf(source.cwd) : undefined) ?? boundWorkspaceTitle
+/** One derived row from a native session source (title fallbacks + cwd label). */
+function rowOf(sessionId: string, source: LinkedSessionSource): LinkedSessionRow {
+  const workspaceLabel = source.cwd !== undefined ? workspaceLabelOf(source.cwd) : undefined
   return {
     sessionId,
     title: source.title !== undefined && source.title !== '' ? source.title : (workspaceLabel ?? sessionId),
@@ -111,43 +105,21 @@ function rowOf(sessionId: string, source: LinkedSessionSource, boundWorkspaceTit
 }
 
 /**
- * Derive the linked-session rows of a task from the native snapshots. Rows are
- * the workspace's accounted sessions in order (minus archived, minus blank
- * placeholders, minus the user's hidden set) — or, for a single-session bind,
- * exactly that session (which is deliberately NEVER filtered by archived/blank:
- * the user dragged it in on purpose, so it always shows).
+ * Derive the linked-session rows of one bind from the native snapshot.
  *
- * @param bind - the task's live binding (undefined = no linked section).
- * @param sources - native read faces + hidden set + bound workspace title.
+ * - session bind → exactly that session (never filtered by archived/blank:
+ *   the user dragged it in on purpose; only the hide set applies);
+ * - workspace bind → NO rows (a workspace is a source/config association,
+ *   never a subscription to its conversations — see the module doc);
+ * - unbound → no rows.
  */
 export function deriveLinkedSessions(
   bind: TaskRecord['bind'],
   sources: LinkedSources,
 ): readonly LinkedSessionRow[] {
-  if (bind === undefined) return []
-  const hidden = new Set(sources.hidden)
-
-  const eligible = (sessionId: string): LinkedSessionRow | undefined => {
-    if (hidden.has(sessionId)) return undefined
-    const source = sources.byId[sessionId]
-    if (source === undefined) return undefined
-    if (source.blank) return undefined
-    if (sources.archived.includes(sessionId)) return undefined
-    return rowOf(sessionId, source, sources.boundWorkspaceTitle)
-  }
-
-  if (bind.kind === 'session') {
-    const source = sources.byId[bind.sessionId]
-    if (source === undefined || hidden.has(bind.sessionId)) return []
-    return [rowOf(bind.sessionId, source)]
-  }
-
-  const ids = sources.workspaceSessionIds(bind.workspaceId)
-  if (ids === undefined) return []
-  const rows: LinkedSessionRow[] = []
-  for (const sessionId of ids) {
-    const row = eligible(sessionId)
-    if (row !== undefined) rows.push(row)
-  }
-  return rows
+  if (bind === undefined || bind.kind === 'workspace') return []
+  if (sources.hidden.includes(bind.sessionId)) return []
+  const source = sources.byId[bind.sessionId]
+  if (source === undefined) return []
+  return [rowOf(bind.sessionId, source)]
 }

@@ -3,10 +3,11 @@ import {
   boundSourceTitle,
   deriveLinkedSessions,
   resolveExternalKind,
+  workspaceLabelOf,
   type LinkedSessionSource,
 } from '../src/core/linked-sessions.ts'
 
-/** Minimal workspace-session source. */
+/** Minimal native-session source. */
 function session(overrides: Partial<LinkedSessionSource> & { title?: string }): LinkedSessionSource {
   return {
     title: undefined,
@@ -20,11 +21,10 @@ function session(overrides: Partial<LinkedSessionSource> & { title?: string }): 
   }
 }
 
-/** Sources fixture: two sessions under /work/a, one archived, one blank; two workspaces. */
+/** Sources fixture: sessions incl. an archived-looking one, a blank and a
+ *  running one; only byId + hidden exist (membership is never read). */
 function sources(overrides: { hidden?: string[] } = {}): {
   byId: Record<string, LinkedSessionSource>
-  archived: string[]
-  workspaceSessionIds: (id: string) => readonly string[] | undefined
   hidden: string[]
 } {
   return {
@@ -34,10 +34,6 @@ function sources(overrides: { hidden?: string[] } = {}): {
       's-3': session({ title: '空白', blank: true, updatedAt: 30 }),
       's-4': session({ title: '进行中', running: true, updatedAt: 40 }),
     },
-    archived: ['s-2'],
-    workspaceSessionIds: id => id === 'w-a'
-      ? ['s-1', 's-2', 's-3', 's-4']
-      : id === 'w-b' ? ['s-x'] : undefined,
     hidden: overrides.hidden ?? [],
   }
 }
@@ -47,73 +43,50 @@ describe('deriveLinkedSessions', () => {
     expect(deriveLinkedSessions(undefined, sources())).toEqual([])
   })
 
-  it('lists a workspace\'s sessions in order, skipping archived, blank and unknown', () => {
-    const rows = deriveLinkedSessions({ kind: 'workspace', workspaceId: 'w-a' }, sources())
-    expect(rows.map(row => row.sessionId)).toEqual(['s-1', 's-4'])
+  it('a WORKSPACE bind derives NO session rows (the folder-into-card flood is gone)', () => {
+    // The old behavior surfaced every workspace member (and every NEW session
+    // created in the folder) into the card. A workspace bind is a source
+    // association only — never a conversation subscription.
+    expect(deriveLinkedSessions({ kind: 'workspace', workspaceId: 'w-a' }, sources())).toEqual([])
+    expect(deriveLinkedSessions({ kind: 'workspace', workspaceId: 'gone' }, sources())).toEqual([])
   })
 
-  it('live status rides through (running / pendingInteraction / completed)', () => {
+  it('a session bind rides live status through (running / pendingInteraction / completed)', () => {
     const src = sources()
     src.byId['s-4'] = session({ title: '进行中', running: false, pendingInteraction: 'question', updatedAt: 40 })
-    src.byId['s-5'] = session({ title: '已完成', completed: true, updatedAt: 50 })
-    src.workspaceSessionIds = () => ['s-4', 's-5']
-    const rows = deriveLinkedSessions({ kind: 'workspace', workspaceId: 'w-a' }, src)
+    const rows = deriveLinkedSessions({ kind: 'session', sessionId: 's-4' }, src)
+    expect(rows).toHaveLength(1)
     expect(rows[0].pendingInteraction).toBe('question')
-    expect(rows[1].completed).toBe(true)
   })
 
-  it('applies the user hide set on top of archived/blank filtering', () => {
-    const rows = deriveLinkedSessions({ kind: 'workspace', workspaceId: 'w-a' }, sources({ hidden: ['s-4'] }))
-    expect(rows.map(row => row.sessionId)).toEqual(['s-1'])
-  })
-
-  it('title falls back to cwd basename then to the session id', () => {
+  it('title falls back to the cwd basename, never to a raw id dressed up', () => {
     const byId: Record<string, LinkedSessionSource> = {
       's-a': session({ title: '', cwd: '/work/alpha' }),
       's-b': session({ title: undefined, cwd: '/work/alpha' }),
     }
-    const rows = deriveLinkedSessions({ kind: 'session', sessionId: 's-a' }, {
-      byId, archived: [], workspaceSessionIds: () => undefined, hidden: [],
-    })
+    const rows = deriveLinkedSessions({ kind: 'session', sessionId: 's-a' }, { byId, hidden: [] })
     expect(rows[0].title).toBe('alpha')
-    const rowsB = deriveLinkedSessions({ kind: 'session', sessionId: 's-b' }, {
-      byId, archived: [], workspaceSessionIds: () => undefined, hidden: [],
-    })
+    const rowsB = deriveLinkedSessions({ kind: 'session', sessionId: 's-b' }, { byId, hidden: [] })
     expect(rowsB[0].title).toBe('alpha')
     expect(rowsB[0].workspaceLabel).toBe('alpha')
   })
 
-  it('a missing single session yields no row; an explicitly bound archived/blank one still shows', () => {
+  it('a missing single session yields no row; an explicitly bound blank one still shows', () => {
     const src = sources()
-    // Missing: nothing to show.
     expect(deriveLinkedSessions({ kind: 'session', sessionId: 'nope' }, src)).toEqual([])
-    // A session the user dragged in on purpose is NEVER filtered as archived
-    // or blank — explicit inclusion beats the implicit filters.
-    expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-2' }, src).map(row => row.sessionId)).toEqual(['s-2'])
+    // A session the user dragged in on purpose is NEVER filtered as blank —
+    // explicit inclusion beats the implicit filters.
     expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-3' }, src).map(row => row.sessionId)).toEqual(['s-3'])
     // …but an explicitly hidden one still obeys the hide set.
     expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-1' }, sources({ hidden: ['s-1'] }))).toEqual([])
   })
+})
 
-  it('workspace bound title is the stable workspace label for rows without a cwd', () => {
-    const byId: Record<string, LinkedSessionSource> = {
-      's-a': session({ title: 'A', cwd: '/work/alpha' }),
-      's-b': session({ title: 'B', cwd: undefined }),
-    }
-    const rows = deriveLinkedSessions({ kind: 'workspace', workspaceId: 'w-a' }, {
-      byId,
-      archived: [],
-      workspaceSessionIds: () => ['s-a', 's-b'],
-      hidden: [],
-      boundWorkspaceTitle: '项目A',
-    })
-    // s-a's own cwd basename wins; s-b (no cwd) falls back to the bound title.
-    expect(rows[0].workspaceLabel).toBe('alpha')
-    expect(rows[1].workspaceLabel).toBe('项目A')
-  })
-
-  it('an unknown or deleted workspace yields no rows', () => {
-    expect(deriveLinkedSessions({ kind: 'workspace', workspaceId: 'gone' }, sources())).toEqual([])
+describe('workspaceLabelOf', () => {
+  it('takes the last non-empty path segment (both separators)', () => {
+    expect(workspaceLabelOf('/work/alpha')).toBe('alpha')
+    expect(workspaceLabelOf('C:\\work\\beta')).toBe('beta')
+    expect(workspaceLabelOf('/work/alpha/')).toBe('alpha')
   })
 })
 

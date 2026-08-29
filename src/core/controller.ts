@@ -71,15 +71,15 @@ export interface SessionsControllerFace {
 }
 
 /**
- * The workspaces face the controller needs for live "链接会话" derivation:
- * one workspace's accounted sessions (in order) plus the registry-global
- * archive set — exactly the facts the native workspace browser groups by.
+ * The workspaces face the controller needs: the registry's workspace rows
+ * (id + title) for source labels, the run-config picker and drag
+ * classification. Workspace MEMBERSHIP is deliberately not read — a bound
+ * workspace never surfaces its sessions (see linked-sessions.ts).
  */
 export interface WorkspacesControllerFace {
   list: {
     getSnapshot(): {
-      items: readonly { id: string; title: string; sessionIds: readonly string[] }[]
-      archivedSessionIds: readonly string[]
+      items: readonly { id: string; title: string }[]
     }
     subscribe(fn: () => void): () => void
   }
@@ -916,32 +916,25 @@ export class BoardController {
 
   /**
    * The live linked-session rows of a task (pure derivation over the native
-   * snapshots; see linked-sessions.ts). Returns [] for unbound tasks or when
-   * the workspaces face is absent. EVERY bound source contributes — dragging
-   * more sources into a task ADDS to the set (same session, one row).
+   * session snapshot; see linked-sessions.ts). ONLY explicit session binds
+   * contribute — a workspace bind is a source association and surfaces no
+   * session rows, so a chat created in the main UI never appears on a card
+   * by itself. Dragging more session sources in ADDS to the set (same
+   * session, one row).
    */
   linkedOf(task: TaskRecord): LinkedSessionRow[] {
-    const workspaces = this.deps.workspaces
     const binds = taskBindsOf(task)
-    if (binds.length === 0 || workspaces === undefined) return []
-    const snap = workspaces.list.getSnapshot()
+    if (binds.length === 0) return []
     const byId = this.deps.sessions.list.getSnapshot().byId
     const rows: LinkedSessionRow[] = []
     const seen = new Set<string>()
-    // Permanently removed sessions never re-derive — a deleted workspace
-    // member must stay deleted (hidden would still re-appear; removed cannot).
+    // Permanently removed sessions never re-derive — a deleted source must
+    // stay deleted (hidden would still re-appear; removed cannot).
     const removed = task.removedSessions ?? []
     for (const bind of binds) {
       for (const row of deriveLinkedSessions(bind, {
         byId: byId as unknown as Readonly<Record<string, LinkedSessionSource>>,
-        archived: snap.archivedSessionIds,
-        workspaceSessionIds: workspaceId => snap.items.find(item => item.id === workspaceId)?.sessionIds,
         hidden: task.hidden?.sessions ?? [],
-        // The bound workspace's title is the stable workspace label fallback
-        // for rows whose cwd is unknown (workspace binds only).
-        ...bind.kind === 'workspace'
-          ? { boundWorkspaceTitle: snap.items.find(item => item.id === bind.workspaceId)?.title }
-          : {},
       })) {
         if (seen.has(row.sessionId) || removed.includes(row.sessionId)) continue
         seen.add(row.sessionId)
@@ -1122,15 +1115,14 @@ export class BoardController {
    * ADD a live source (a sidebar session or workspace folder) to an EXISTING
    * task — the "drag a folder/session into the open task's 会话 area" path.
    * NEVER replaces: an already-bound identical source is an idempotent no-op,
-   * anything else joins the multi-source set. Persisted; the linked rows then
-   * derive live from every bound source (new sessions in a bound folder sync
-   * in automatically via deriveLinkedSessions).
+   * anything else joins the multi-source set. Persisted. A session bind
+   * surfaces its session as a linked row; a workspace bind is a source
+   * association only — it NEVER surfaces the folder's conversations (a chat
+   * created in the main UI must not appear on a card by itself).
    *
-   * An explicit re-add is also the RESTORE gesture: the sessions the source
-   * carries leave the removed set (the hidden tray's 删除 is reversible BY
-   * THE USER'S HAND — dragging the session or its workspace back shows it
-   * again), while passive workspace derivation never resurrects a removed
-   * session.
+   * An explicit re-add is also the RESTORE gesture: a session bind re-added
+   * leaves the removed set (the hidden tray's 删除 is reversible BY THE
+   * USER'S HAND — dragging the session back shows it again).
    * @returns true when the binding was added or anything was restored, false
    * for a pure no-op / unknown task.
    */
@@ -1171,14 +1163,11 @@ export class BoardController {
     return changed
   }
 
-  /** The sessions a bound source carries (a session bind is itself; a
-   *  workspace bind is its current members) — the ids an explicit re-add
-   *  restores. */
+  /** The sessions a re-added bind contributes to the display set: a session
+   *  bind is itself (its removal is reversible by dragging it back); a
+   *  workspace bind contributes none — it surfaces no session rows at all. */
   private sourceMemberIdsOf(bind: TaskBind): string[] {
-    if (bind.kind === 'session') return [bind.sessionId]
-    const snap = this.deps.workspaces?.list.getSnapshot()
-    if (snap === undefined) return []
-    return [...(snap.items.find(item => item.id === bind.workspaceId)?.sessionIds ?? [])]
+    return bind.kind === 'session' ? [bind.sessionId] : []
   }
 
   /** Permanently remove ONE session from the task (the hidden-tray 删除):
