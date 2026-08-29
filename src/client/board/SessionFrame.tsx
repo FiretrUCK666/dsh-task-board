@@ -10,12 +10,22 @@
  * execution semantics (comment drives the task) and the linked-session
  * semantics (read-only live view) must never leak into each other through
  * a shared component.
+ *
+ * The whole backdrop PORTALS to the board box (the same layer every nested
+ * overlay anchors to). ReviewDetail/SessionDetail render from INSIDE the task
+ * detail panel, whose `position:relative + overflow:hidden` would otherwise
+ * anchor and clip the backdrop — on a phone (where the detail is nearly the
+ * whole box and its height is content-driven) that made the comment panel
+ * "pop open" into an unseeable sliver. Portaling gives the frame the full
+ * board box on every surface, exactly like the shared Dialog.
  */
+import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
+import { boardBox } from './Dialog.tsx'
 import type { SessionContext } from './use-interaction.ts'
 
 /** The shared panel frame (see module doc). */
@@ -38,7 +48,7 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
   rail: ReactNode
   onClose: () => void
 }) {
-  return (
+  return createPortal(
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div className={css.review} role="dialog" aria-label={ariaLabel}>
         <header className={css.reviewHeader}>
@@ -66,6 +76,7 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
           <aside className={css.reviewRail}>{rail}</aside>
         </div>
       </div>
-    </div>
+    </div>,
+    boardBox(),
   )
 }

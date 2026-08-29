@@ -21,6 +21,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { activeColumnIndexAt } from '../src/client/board/column-tabs.ts'
+import { keyboardOverlapPx } from '../src/client/board/keyboard-inset.ts'
 
 const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
 const source = readFileSync(cssPath, 'utf8')
@@ -103,23 +105,50 @@ describe('compact columns + panel geometry', () => {
     expect(column).toMatch(/scroll-snap-align/)
   })
 
-  it('floating panels size to the board box, never vh/vw', () => {
-    const modal = compact.slice(compact.indexOf('.modal,') >= 0 ? compact.indexOf('.modal,') : compact.indexOf('.modal'))
-    // The compact override uses percentages (board-box relative)…
-    expect(modal).toMatch(/max-height:\s*calc\(100%\s*-\s*\d+px\)/)
-    // …and the compact block contains no vh/vw at all.
+  it('floating panels size to the board box at EVERY width, never vh/vw', () => {
+    // The geometry is now width-invariant base law (the compact block only
+    // tightens gutters): % of the board box + margin-auto centering, so a
+    // phone in DESktop mode gets the same honest geometry.
+    const modal = ruleOf('modal')
+    expect(modal).toMatch(/width:\s*min\(\d+px,\s*100%\)/)
+    expect(modal).toMatch(/max-height:\s*100%/)
+    expect(modal).toMatch(/margin:\s*auto/)
+    for (const panel of ['detail', 'review', 'presetModal', 'autoModal', 'modal']) {
+      expect(ruleOf(panel)).not.toMatch(/\d+(vh|vw)\b/)
+    }
+    // …and the compact block carries no viewport units either.
     expect(compact).not.toMatch(/\dvh/)
     expect(compact).not.toMatch(/\dvw/)
   })
 
-  it('the backdrop scrolls a panel taller than the box', () => {
-    const backdrop = compact.slice(compact.indexOf('.modalBackdrop'))
+  it('the backdrop scrolls, pads by the keyboard inset, and contains itself', () => {
+    const backdrop = ruleOf('modalBackdrop')
     expect(backdrop).toMatch(/overflow:\s*auto/)
+    // One CSS variable feeds every overlay: the soft keyboard shrinks the
+    // stage instead of burying panel headers (「添加已有会话」标题被遮 root fix).
+    expect(backdrop).toMatch(/var\(--dsh-tb-kb,\s*0px\)/)
+    expect(backdrop).toMatch(/overscroll-behavior:\s*contain/)
   })
 
   it('action rows and the session row wrap instead of overflowing', () => {
     expect(compact).toMatch(/\.modalFooter[\s\S]*?flex-wrap:\s*wrap/)
     expect(compact).toMatch(/\.sessionRowTop[\s\S]*?flex-wrap:\s*wrap/)
+    // Session rows stack to a clean block: the action cluster takes its own
+    // right-aligned line on a narrow panel (the 「排版很乱」 fix).
+    expect(compact).toMatch(/\.sessionRowActions\s*\{[\s\S]*?flex-basis:\s*100%/)
+  })
+
+  it('a column navigator strip exists, hidden by default and revealed compact', () => {
+    // Desktop: all five columns share the screen, no tabs needed (base hides).
+    expect(ruleOf('columnTabs')).toMatch(/display:\s*none/)
+    // Compact: the tabs ride above the swipeable track.
+    expect(compact).toMatch(/\.columnTabs\s*\{\s*\n?\s*display:\s*flex/)
+    // A column is capped well under full width — roughly two columns plus the
+    // next column's edge share a phone board (「一列占满整屏」 fix).
+    const column = compact.slice(compact.indexOf('.column {'))
+    expect(column).toMatch(/flex:\s*0 0 clamp\(\d+px,\s*\d+cqw,\s*3\d\dpx\)/)
+    // FLIP flights pin the snap off so it cannot yank the animating card.
+    expect(compact).toMatch(/\.columns\[data-flip-active\][\s\S]*?scroll-snap-type:\s*none/)
   })
 })
 
@@ -191,5 +220,26 @@ describe('no raw color literals leak in (design-system rule)', () => {
     // The board's hard rule: colors ride --dsw-*/--dsh-tb-* tokens only.
     expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     expect(source).not.toMatch(/rgba?\(\s*\d/)
+  })
+})
+
+describe('column tab math', () => {
+  it('the column nearest the scroll position owns the tab', () => {
+    expect(activeColumnIndexAt(0, [0, 240, 480, 720, 960])).toBe(0)
+    expect(activeColumnIndexAt(480, [0, 240, 480, 720, 960])).toBe(2)
+    expect(activeColumnIndexAt(599, [0, 240, 480, 720, 960])).toBe(2)
+    expect(activeColumnIndexAt(601, [0, 240, 480, 720, 960])).toBe(3)
+    // Overscroll at either end clamps to the first/last column.
+    expect(activeColumnIndexAt(5000, [0, 240, 480])).toBe(2)
+  })
+})
+
+describe('keyboard inset math', () => {
+  it('reports the keyboard height once it clears the toolbar noise floor', () => {
+    expect(keyboardOverlapPx(800, 500, 0)).toBe(300) // a real keyboard
+    expect(keyboardOverlapPx(800, 740, 0)).toBe(0)   // the dynamic toolbar (~60px)
+    expect(keyboardOverlapPx(800, 800, 0)).toBe(0)   // nothing open
+    expect(keyboardOverlapPx(800, 650, 60)).toBe(0)  // 90px below the floor: toolbar noise, not a keyboard
+    expect(keyboardOverlapPx(800, 460, 40)).toBe(300) // keyboard below a hidden toolbar
   })
 })

@@ -52,7 +52,6 @@ export function AddSessionModal({ controller, task, onClose }: {
           value={query}
           placeholder={t('detail.addSessionSearch')}
           aria-label={t('detail.addSessionSearch')}
-          autoFocus
           onChange={event => { setQuery(event.target.value) }}
         />
         {rows.length === 0 ? (

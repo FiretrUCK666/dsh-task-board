@@ -20,8 +20,9 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
 
-/** The board box: the anchor every board dialog's backdrop covers. */
-function boardBox(): Element {
+/** The board box: the anchor every board dialog's backdrop covers. Exported
+ *  for overlay shells that portal directly (SessionFrame). */
+export function boardBox(): Element {
   return document.querySelector('[data-dsh-taskboard-view]') ?? document.body
 }
 

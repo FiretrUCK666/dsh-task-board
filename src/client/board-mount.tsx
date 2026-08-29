@@ -12,6 +12,7 @@
 import { createRoot, type Root } from 'react-dom/client'
 import type { BoardController } from '../core/controller.ts'
 import { TaskBoard } from './board/TaskBoard.tsx'
+import { watchKeyboardInset } from './board/keyboard-inset.ts'
 
 /** The center column: the official `data-pane="conversation"` marker first,
  * then the css-module class (legacy shells without the marker). The plugin
@@ -34,6 +35,7 @@ function conversationColumn(): HTMLElement | undefined {
 export function mountBoard(controller: BoardController): () => void {
   let root: Root | undefined
   let container: HTMLDivElement | undefined
+  let detachKeyboardInset: (() => void) | undefined
 
   const ensure = (): void => {
     if (container !== undefined) return
@@ -42,6 +44,9 @@ export function mountBoard(controller: BoardController): () => void {
     container = document.createElement('div')
     container.dataset.dshTaskboardView = ''
     column.appendChild(container)
+    // One inset variable for every floating panel: the soft keyboard shrinks
+    // the dialog stage instead of burying its header (see keyboard-inset.ts).
+    detachKeyboardInset = watchKeyboardInset(container)
     root = createRoot(container)
     root.render(<TaskBoard controller={controller} />)
   }
@@ -64,6 +69,8 @@ export function mountBoard(controller: BoardController): () => void {
   return () => {
     waitObserver.disconnect()
     unsubscribe()
+    detachKeyboardInset?.()
+    detachKeyboardInset = undefined
     document.documentElement.removeAttribute(ACTIVE_ATTR)
     root?.unmount()
     root = undefined

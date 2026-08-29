@@ -71,7 +71,18 @@ function snapshotRegion(container: HTMLElement): {
   return { structures, rects }
 }
 
-/** Animate the cards whose structure changed into their new positions. */
+/**
+ * Animate the cards whose structure changed into their new positions.
+ *
+ * Compact horizontal track: a cross-column move on a phone lands OFF-SCREEN
+ * (the target column is not the one under the eye), so the animation —
+ * though it plays — is never seen: 「移动没有动效」. Before playing, the
+ * moved card's TARGET column is brought into view (instant scroll: a smooth
+ * one would fight the rects the animation is computed from), and the track's
+ * scroll-snap is pinned off while the flights run — snapping mid-animation
+ * would yank the stage under the moving card. Desktop (no horizontal scroll)
+ * never touches either.
+ */
 export function useFlipRegion(containerRef: RefObject<HTMLElement | null>, disabled: boolean): void {
   const previousStructures = useRef<ReadonlyMap<string, CardStructure>>(new Map())
   const previousRects = useRef<ReadonlyMap<string, DOMRect>>(new Map())
@@ -80,21 +91,43 @@ export function useFlipRegion(containerRef: RefObject<HTMLElement | null>, disab
     if (container === null) return
     const { structures, rects } = snapshotRegion(container)
     if (!disabled && !reducedMotion()) {
-      for (const id of flipCandidatesOf(previousStructures.current, structures)) {
-        const before = previousRects.current.get(id)
-        const after = rects.get(id)
-        if (before === undefined || after === undefined) continue
-        const dx = before.left - after.left
-        const dy = before.top - after.top
-        if (dx === 0 && dy === 0) continue
-        const element = container.querySelector<HTMLElement>(`[data-task-id="${id}"]`)
-        if (element === null) continue
-        // WAAPI: the animation object is owned by the browser (auto-cancel on
-        // unmount, no inline style left behind); no transitionend needed.
-        element.animate(
-          [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
-          { duration: FLIP_MS, easing: FLIP_EASING },
-        )
+      const candidates = flipCandidatesOf(previousStructures.current, structures)
+      if (candidates.length > 0) {
+        const track = container.querySelector<HTMLElement>('[data-dsh-tb-columns]')
+        const scrollsSideways = track !== null && track.scrollWidth > track.clientWidth + 1
+        if (track !== null && scrollsSideways) {
+          // Center the first moved card's target column in view, instantly.
+          const first = container.querySelector<HTMLElement>(`[data-task-id="${candidates[0]}"]`)
+          const targetColumn = first?.closest('section[data-status]')
+          if (targetColumn !== null && targetColumn !== undefined) {
+            targetColumn.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' })
+          }
+          track.dataset.flipActive = ''
+        }
+        const flights: Array<Promise<void>> = []
+        for (const id of candidates) {
+          const before = previousRects.current.get(id)
+          if (before === undefined) continue
+          const after = rects.get(id)
+          // Re-measure AFTER the scroll: the pre-scroll rect is not where the
+          // card visually departed from once the track moved.
+          const element = container.querySelector<HTMLElement>(`[data-task-id="${id}"]`)
+          if (element === null || after === undefined) continue
+          const live = element.getBoundingClientRect()
+          const dx = before.left - live.left
+          const dy = before.top - live.top
+          if (dx === 0 && dy === 0) continue
+          // WAAPI: the animation object is owned by the browser (auto-cancel on
+          // unmount, no inline style left behind); no transitionend needed.
+          const animation = element.animate(
+            [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+            { duration: FLIP_MS, easing: FLIP_EASING },
+          )
+          flights.push(animation.finished.then(() => undefined).catch(() => undefined))
+        }
+        if (track !== null && scrollsSideways && flights.length > 0) {
+          void Promise.all(flights).then(() => { delete track.dataset.flipActive })
+        }
       }
     }
     previousStructures.current = structures

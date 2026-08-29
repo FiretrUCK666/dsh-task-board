@@ -634,6 +634,60 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-height: 0;
 }
 
+/* The compact column navigator (revealed in the compact container block;
+   hidden wherever all five columns already share the screen). Grammar is
+   the column header's own: status dot + name + count, so a tab reads as the
+   column it jumps to. */
+.columnTabs {
+  display: none;
+  flex: none;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 1px 2px 4px;
+}
+
+.columnTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.columnTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  border: var(--dsh-tb-border);
+  border-radius: 999px;
+  background: var(--dsh-tb-surface-sunken);
+  color: var(--dsh-tb-text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.columnTab:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.columnTab[data-active='true'] {
+  color: var(--dsh-tb-text-1);
+  border-color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+}
+
+.columnTab:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+.columnTabCount {
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+}
+
 .column {
   display: flex;
   flex-direction: column;
@@ -1379,16 +1433,22 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .modalBackdrop {
   /* Board-relative: absolutely positioned inside the board's own box ([data-
-     dsh-taskboard-view], position:absolute inset:0). Centered by flex within
-     that box, so the dialog is always centered in the visible board area —
-     never shifted by the shell sidebar, and immune to any transform/filter
-     a skin applies to an ancestor (viewport-fixed would be absorbed by it). */
+     dsh-taskboard-view], position:absolute inset:0). Panels center via the
+     `margin: auto` flex pattern (NOT align-items:center — a centered flex
+     child TALLER than the container clips its own top past the scroll start;
+     margin:auto keeps every pixel reachable when the backdrop scrolls). The
+     keyboard inset (--dsh-tb-kb, see keyboard-inset.ts) rides the bottom
+     padding, so an open soft keyboard shrinks the stage instead of burying
+     the panel header. Centering lives inside the board box, so the dialog is
+     never shifted by the shell sidebar and immune to any transform/filter a
+     skin applies to an ancestor (viewport-fixed would be absorbed by it). */
   position: absolute;
   inset: 0;
   z-index: 40;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: auto;
+  padding: 24px 24px calc(24px + var(--dsh-tb-kb, 0px));
+  overscroll-behavior: contain;
   /* A touch stronger than the native mask-1 so the column lines behind the
      glassy board no longer glimmer through the dialog edges. */
   background: var(--dsh-tb-mask);
@@ -1414,8 +1474,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   flex-direction: column;
   position: relative;
-  width: min(520px, calc(100vw - 48px));
-  max-height: calc(100vh - 96px);
+  /* Board-box relative at EVERY width (% of the backdrop content box, never
+     vw/vh — the mobile dynamic toolbar and the sidebar rail make viewport
+     units lie). margin:auto centers inside the scrollable backdrop. */
+  margin: auto;
+  width: min(520px, 100%);
+  max-height: 100%;
   /* The panel never scrolls as a whole: the header and the footer stay
      pinned, only the middle body region (modalScroll) scrolls — a long form
      never drags its actions out of reach (the review rail's "composer
@@ -1678,10 +1742,11 @@ textarea.input {
 .detail {
   display: flex;
   flex-direction: column;
-  /* Board-relative: the .modalBackdrop above centers it inside the board box. */
+  /* Board-relative (see .modal): % of the backdrop content box, never vw/vh. */
   position: relative;
-  width: min(640px, calc(100vw - 48px));
-  max-height: calc(100vh - 80px);
+  margin: auto;
+  width: min(640px, 100%);
+  max-height: 100%;
   /* An inner floating surface: opaque for readability, exactly like the
      shell's own dialogs under a glass skin. */
   background: var(--dsh-tb-surface-float);
@@ -1975,7 +2040,7 @@ textarea.input {
 /* --- preset manager ----------------------------------------------------------- */
 
 .presetModal {
-  width: min(560px, calc(100vw - 48px));
+  width: min(560px, 100%);
 }
 
 /* The form inside the new-task dialog: layout comes from the panel (flex
@@ -2717,7 +2782,7 @@ textarea.input {
    stays in the task detail; the panel adds/switches/deletes session rules. */
 
 .autoModal {
-  width: min(600px, calc(100vw - 48px));
+  width: min(600px, 100%);
 }
 
 .autoEmpty {
@@ -3298,10 +3363,13 @@ textarea.input {
 .review {
   display: flex;
   flex-direction: column;
-  /* Board-relative: the .modalBackdrop above centers it inside the board box. */
+  /* Board-relative at every width (see .modal): % of the backdrop content
+     box, never vw/vh — this panel is the portaled SessionFrame, and on a
+     phone the viewport units buried its header under the keyboard. */
   position: relative;
-  width: min(880px, calc(100vw - 48px));
-  max-height: min(86vh, 860px);
+  margin: auto;
+  width: min(880px, 100%);
+  max-height: min(100%, 860px);
   background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-xl);
@@ -4591,8 +4659,10 @@ textarea.input {
     max-width: none;
   }
 
-  /* Five equal columns → a swipeable track. Each column is wide enough to
-     read a card; the track snaps column-to-column. */
+  /* Five equal columns → a swipeable track. A column stays wide enough to
+     read a card while roughly two columns (plus the next column's edge)
+     share the screen — a full-width column made "see every status" a slog.
+     The track snaps column-to-column; the tab strip above jumps directly. */
   .columns {
     display: flex;
     flex-direction: row;
@@ -4609,38 +4679,32 @@ textarea.input {
     display: none;
   }
 
+  /* While a FLIP flight runs (use-flip sets the attribute), snap must not
+     yank the track under the animating card — restored on completion. */
+  .columns[data-flip-active] {
+    scroll-snap-type: none;
+  }
+
   .column {
-    flex: 0 0 min(80cqw, 320px);
+    flex: 0 0 clamp(200px, 46cqw, 320px);
     scroll-snap-align: center;
+  }
+
+  /* The compact column navigator: one tap jumps a status column into view
+     (revealed only in this block — hidden by the base rule on desktop,
+     where all five columns already share the screen). */
+  .columnTabs {
+    display: flex;
   }
 
   .columnHeader {
     padding: 10px 12px;
   }
 
-  /* The cruise popover clamps to the board width and scrolls internally. */
-  .cruisePopover {
-    width: min(300px, calc(100cqw - 20px));
-    max-height: calc(100% - 16px);
-    overflow-y: auto;
-  }
-
-  /* Floating panels: board-box relative, and the backdrop can scroll a panel
-     taller than the box (the mobile dynamic toolbar makes vh unreliable, and
-     a non-scrollable backdrop hid the panel's bottom actions). */
+  /* The floating-panel geometry is board-relative at EVERY width now (see
+     .modalBackdrop/.modal) — the compact block only tightens the gutters. */
   .modalBackdrop {
-    overflow: auto;
-    align-items: flex-start;
-    padding: 8px;
-  }
-
-  .modal,
-  .detail,
-  .presetModal,
-  .autoModal {
-    width: calc(100% - 4px);
-    max-width: none;
-    max-height: calc(100% - 4px);
+    padding: 8px 8px calc(8px + var(--dsh-tb-kb, 0px));
   }
 
   /* Action rows wrap rather than overflow off the panel edge. */
@@ -4650,10 +4714,16 @@ textarea.input {
     flex-wrap: wrap;
   }
 
-  /* A session row's identity + actions share the width; on a narrow panel the
-     actions drop to their own line instead of overlapping the title. */
+  /* Session rows go to a clean stacked block: identity + chip on the first
+     line, the action cluster on its own right-aligned line — the desktop row
+     squeezed all three into one unreadable wrap (the 「排版很乱」 report). */
   .sessionRowTop {
     flex-wrap: wrap;
+  }
+
+  .sessionRowActions {
+    flex-basis: 100%;
+    justify-content: flex-end;
   }
 
   /* Preset rows go from a four-column grid to a stacked block (name over
@@ -4665,12 +4735,13 @@ textarea.input {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   TOUCH MODEL — one capability block, orthogonal to the compact geometry.
-   A device with no hover and a coarse pointer cannot reach hover-only
-   affordances or hit 16–24px targets, so: the three hover-revealed controls
-   become always-on, every small control grows an invisible hit area (visual
-   size and the 28/24px rhythm are untouched), and text inputs reach 16px so
-   the browser stops auto-zooming the whole page on focus.
+   TOUCH ERGONOMICS — one capability block, orthogonal to the compact
+   geometry. Interactions stay IDENTICAL to the desktop board (hover-revealed
+   actions reveal on hover/focus, drag reorder stays the reorder). This block
+   carries ONLY invisible ergonomics: every small control grows an invisible
+   hit area (visual size and the 28/24px rhythm untouched), the tap-sized
+   color swatches, and 16px input text so the browser stops auto-zooming the
+   whole page on focus.
    ══════════════════════════════════════════════════════════════════════════ */
 @media (hover: none) and (pointer: coarse) {
   /* Touch parity: interactions stay IDENTICAL to the desktop board (the

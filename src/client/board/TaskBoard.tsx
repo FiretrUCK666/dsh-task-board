@@ -13,6 +13,7 @@
  * indicator rendering goes through state.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
 import { COLUMNS, landingStatusOf, latestExecutionOf, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
@@ -20,6 +21,9 @@ import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/se
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
+import { useNarrow } from './use-narrow.ts'
+import { activeColumnIndexAt } from './column-tabs.ts'
+import { Dialog } from './Dialog.tsx'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
@@ -41,6 +45,31 @@ function matchesFilter(task: TaskRecord, filter: string): boolean {
   if (filter.trim() === '') return true
   const needle = filter.trim().toLowerCase()
   return task.title.toLowerCase().includes(needle) || task.description.toLowerCase().includes(needle)
+}
+
+/**
+ * The cruise settings in its two forms, one content: the anchored popover
+ * beside the header pill on a wide board; the SAME children as a full Dialog
+ * on a narrow screen (useNarrow). An absolutely positioned popover cannot
+ * size itself against the board box from inside the header row — on a phone
+ * it collapsed to a sliver (the 「面板只剩一条」 report); the Dialog grammar
+ * (board-box relative, scrollable body, pinned actions) is the honest form
+ * once the board is narrow.
+ */
+function CruiseSettingsHost({ narrow, label, onClose, children }: {
+  narrow: boolean
+  label: string
+  onClose: () => void
+  children: ReactNode
+}) {
+  if (!narrow) {
+    return <div className={css.cruisePopover} role="menu" aria-label={label}>{children}</div>
+  }
+  return (
+    <Dialog title={label} label={label} onClose={onClose} portal className={css.autoModal}>
+      <div className={css.modalScroll}>{children}</div>
+    </Dialog>
+  )
 }
 
 /** ONE inline message per window-range issue — explanatory, never jargon:
@@ -105,8 +134,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     clearSelection()
   }
 
-  // 自动巡航设置弹层：点击胶囊的 ▾ 展开；点击弹层外任意处关闭。
+  // 自动巡航设置：宽屏 = 胶囊下的锚定弹层（点层外关闭）；窄屏 = 同一内容的
+  // 完整 Dialog（弹层几何在小板上不可靠——这是「面板只剩一条」的根治）。
   const [cruiseOpen, setCruiseOpen] = useState(false)
+  const narrow = useNarrow()
   // Cruise-limit input: a directly controlled number field cannot be cleared
   // to retype (any invalid edit snaps back), so the input keeps its own text;
   // a valid integer commits on edit (the controller clamps), an invalid or
@@ -115,7 +146,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   useEffect(() => { setLimitText(String(snapshot.cruise.limit)) }, [snapshot.cruise.limit])
   const cruiseWrapRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (!cruiseOpen) return
+    // Only the anchored popover closes on outside press; the Dialog owns its
+    // backdrop/close-button dismiss (and portals OUTSIDE this wrap — a blanket
+    // listener would close the moment the user taps anything).
+    if (!cruiseOpen || narrow) return
     const onDown = (event: MouseEvent): void => {
       if (cruiseWrapRef.current !== null && !cruiseWrapRef.current.contains(event.target as Node)) {
         setCruiseOpen(false)
@@ -123,7 +157,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     }
     document.addEventListener('mousedown', onDown)
     return () => { document.removeEventListener('mousedown', onDown) }
-  }, [cruiseOpen])
+  }, [cruiseOpen, narrow])
   // 定时窗口表单（epoch ms；TimeField 打字式输入 + 日历按钮）。打开弹层时把
   // 「开始」预填为下一个整点；「结束」留空 = 一直保持，且必须晚于「开始」；
   // 校验失败就地提示，不做静默 no-op。打开弹层不预填任何时间——只留占位提示，
@@ -219,6 +253,25 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // while a card drag is active (the post-drop settle is the moment it plays).
   const boardRef = useRef<HTMLDivElement | null>(null)
   useFlipRegion(boardRef, dragId !== undefined)
+  // Compact column navigator: the tabs mirror the horizontal track's scroll
+  // position and jump a column into view on tap (hidden on desktop by the
+  // base CSS — this state simply rides along).
+  const columnsRef = useRef<HTMLDivElement | null>(null)
+  const [activeColumn, setActiveColumn] = useState<TaskStatus>(COLUMNS[0].status)
+  const syncActiveColumn = useCallback((): void => {
+    const root = columnsRef.current
+    if (root === null) return
+    const sections = Array.from(root.querySelectorAll<HTMLElement>('section[data-status]'))
+    if (sections.length === 0) return
+    const at = activeColumnIndexAt(root.scrollLeft, sections.map(section => section.offsetLeft))
+    const status = sections[at]?.dataset.status as TaskStatus | undefined
+    if (status !== undefined) setActiveColumn(status)
+  }, [])
+  const jumpToColumn = (status: TaskStatus): void => {
+    columnsRef.current
+      ?.querySelector<HTMLElement>(`section[data-status="${status}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  }
   // The column currently accepting an external sidebar drag (session/workspace
   // dragged in from the sidebar): a distinct highlight from the board's own
   // card-reorder affordances. The latch refs below make the highlight stable:
@@ -503,7 +556,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               </button>
             </div>
             {cruiseOpen && (
-              <div className={css.cruisePopover} role="menu" aria-label={t('board.cruiseSettings')}>
+              <CruiseSettingsHost
+                narrow={narrow}
+                label={t('board.cruiseSettings')}
+                onClose={() => { setCruiseOpen(false) }}
+              >
                 <div className={css.cruisePopoverHead}>
                   <Switch
                     checked={snapshot.cruise.enabled}
@@ -593,7 +650,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     </Button>
                   </div>
                 </div>
-              </div>
+              </CruiseSettingsHost>
             )}
           </div>
           <Button
@@ -690,7 +747,35 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
       </header>
 
-      <div className={css.columns}>
+      {/* 紧凑列导航（仅 compact 档显示）：点按直达状态列，滚动位置回写高亮。
+          文法即列头——状态点 + 名称 + 计数，tab 就是它跳转的列。 */}
+      <div className={css.columnTabs} role="tablist" aria-label={t('board.title')}>
+        {COLUMNS.map(column => {
+          const count = visible.filter(task => task.status === column.status).length
+          return (
+            <button
+              key={column.status}
+              type="button"
+              role="tab"
+              className={css.columnTab}
+              aria-selected={activeColumn === column.status}
+              data-active={activeColumn === column.status ? 'true' : undefined}
+              onClick={() => { jumpToColumn(column.status) }}
+            >
+              <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
+              {t(STATUS_KEY[column.status])}
+              <span className={css.columnTabCount}>{String(count)}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div
+        className={css.columns}
+        ref={columnsRef}
+        data-dsh-tb-columns=""
+        onScroll={syncActiveColumn}
+      >
         {COLUMNS.map(column => {
           // Cards render in their column sort order (reorder drags rewrite
           // the order keys; the ledger array order is stable).
