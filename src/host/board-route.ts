@@ -166,7 +166,10 @@ export function createBoardHandler(
     }
 
     if (req.method === 'GET' && tail === '') {
-      const since = Number(url.searchParams.get('since'))
+      // `since` is absent (Number(null) === 0 — the initial-fetch trap) vs a
+      // real revision: only an explicit param may short-circuit the body.
+      const sinceParam = url.searchParams.get('since')
+      const since = sinceParam === null ? Number.NaN : Number(sinceParam)
       const doc = deps.doc()
       const clientId = url.searchParams.get('clientId') ?? undefined
       deps.noteActivity(clientId)

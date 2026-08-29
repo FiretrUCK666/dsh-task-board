@@ -40,8 +40,9 @@ export interface KvUnitLike {
 /** Opens the board unit over the platform storage hub; undefined = no hub. */
 export type KvUnitOpener = () => Promise<KvUnitLike | undefined>
 
-/** The unit identity stamped on the medium (name must be file-safe). */
-export const BOARD_UNIT_NAME = 'dsh-task-board'
+/** The unit identity stamped on the medium (name must be file-safe: the
+ * platform's UNIT_NAME_RE is `^[a-z][a-z0-9_]*$` — underscores, not hyphens). */
+export const BOARD_UNIT_NAME = 'dsh_task_board'
 /** The document grammar version this build reads and writes. */
 export const BOARD_UNIT_VERSION = 1
 
