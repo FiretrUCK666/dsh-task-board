@@ -1005,7 +1005,10 @@ export class BoardController {
    * `beforeId` (or at the end when undefined). The full current display order
    * is persisted as the manual order, so sessions that arrive later keep
    * landing at the TOP (the default newest-activity rule) until the user drags
-   * them too. @returns true when the order changed.
+   * them too. A USER-INTENT write: it bumps `updatedAt` like any edit (a
+   * record carrying a new order but the old stamp used to lose the sync
+   * merge — the two-device order drift this closes). @returns true when the
+   * order changed.
    */
   reorderTaskSession(taskId: string, sessionId: string, beforeId: string | undefined): boolean {
     let changed = false
@@ -1024,7 +1027,7 @@ export class BoardController {
       const next = [...rest.slice(0, at), sessionId, ...rest.slice(at)]
       if (next.join() === ids.join()) return task
       changed = true
-      return { ...task, sessionsOrder: next }
+      return { ...task, sessionsOrder: next, updatedAt: this.now() }
     })
     if (changed) this.persistAndNotify()
     return changed

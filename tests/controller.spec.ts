@@ -2023,9 +2023,11 @@ describe('linked sessions & bind', () => {
     expect(current.sessionsOrder).toBeUndefined()
   })
 
-  it('reorderTaskSession persists the manual 会话 order (drop into a slot)', () => {
+  it('reorderTaskSession persists the manual 会话 order and advances updatedAt (sync-merge freshness)', () => {
+    let clock = NOW - 5_000
     const sessions = new FakeSessions()
     sessions.runningById['s-1'] = false
+    sessions.runningById['s-2'] = false
     const wss = workspaces()
     wss.items = [{ id: 'w-x', title: 'W', sessionIds: [] }]
     const controller = new BoardController({
@@ -2033,16 +2035,18 @@ describe('linked sessions & bind', () => {
       exec: new StubExec() as unknown as ExecutionService,
       sessions,
       workspaces: wss,
-      now: () => NOW,
+      now: () => clock,
       uuid,
     })
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
-    sessions.runningById['s-2'] = false
     controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
     const before = controller.sessionsOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)
       .map(row => row.sessionId)
     expect(before).toContain('s-1')
+    const stampedBefore = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.updatedAt
+    // A later real time for the drag itself.
+    clock = NOW
     // Drag s-1 to the END (beforeId undefined) — the persisted order equals
     // the new display order.
     expect(controller.reorderTaskSession(task.id, 's-1', undefined)).toBe(true)
@@ -2051,6 +2055,11 @@ describe('linked sessions & bind', () => {
     expect(after).toEqual([...before.filter(id => id !== 's-1'), 's-1'])
     const persisted = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(persisted.sessionsOrder).toEqual(after)
+    // A user-intent write: the reorder advances `updatedAt` past the bind
+    // stamp, so the sync merge ranks it newer (the two-device order-drift
+    // root fix, defense one — defense two is the authorship claim).
+    expect(persisted.updatedAt).toBe(NOW)
+    expect(persisted.updatedAt).toBeGreaterThan(stampedBefore)
     // The same order on a second drag is a no-op.
     expect(controller.reorderTaskSession(task.id, 's-1', undefined)).toBe(false)
   })

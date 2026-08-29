@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyCommit,
   boardViewOf,
+  changedIdsOf,
   diffDeletions,
   emptyBoardDoc,
   normalizeBoardDoc,
@@ -258,5 +259,68 @@ describe('convergence', () => {
     const newer = commitOf({ clientId: 'r2', tasks: [{ ...truth.tasks[0], title: 'wins', updatedAt: T0 + 20 }] })
     const after = applyCommit(applyCommit(truth, newer, T0 + 21), older, T0 + 22)
     expect(after.tasks[0].title).toBe('wins')
+  })
+})
+
+describe('applyCommit: authorship claims (clock-proof sync)', () => {
+  const doc = emptyBoardDoc(T0)
+
+  it('a CLAIMED record wins even with an older updatedAt (a skewed phone clock keeps its newest gesture)', () => {
+    const fresh = createTask({ title: 'pc-new', description: '', prompt: 'p' }, T0 + 1000, 't-1')
+    const withFresh = applyCommit(doc, commitOf({ tasks: [fresh] }), T0 + 1)
+    // The phone's clock runs minutes behind; its drag-reorder must still land.
+    const phone = { ...fresh, title: 'phone-move', sessionsOrder: ['s-2', 's-1'], updatedAt: T0 }
+    const merged = applyCommit(withFresh, commitOf({ tasks: [phone], changed: ['t-1'] }), T0 + 2)
+    expect(merged.tasks[0].title).toBe('phone-move')
+    expect(merged.tasks[0].sessionsOrder).toEqual(['s-2', 's-1'])
+  })
+
+  it('an UNCLAIMED older copy can never clobber the newer host record', () => {
+    const fresh = createTask({ title: 'pc-new', description: '', prompt: 'p' }, T0 + 1000, 't-1')
+    const withFresh = applyCommit(doc, commitOf({ tasks: [fresh] }), T0 + 1)
+    const staleUntouched = { ...fresh, title: 'ancient', updatedAt: T0 }
+    expect(applyCommit(withFresh, commitOf({ tasks: [staleUntouched] }), T0 + 2)).toBe(withFresh)
+  })
+
+  it('a content-equal claim is a no-op (no revision bump, no stamp churn)', () => {
+    const task = createTask({ title: 'A', description: '', prompt: 'p' }, T0, 't-1')
+    const withTask = applyCommit(doc, commitOf({ tasks: [task] }), T0 + 1)
+    expect(applyCommit(withTask, commitOf({ tasks: [withTask.tasks[0]!], changed: ['t-1'] }), T0 + 2)).toBe(withTask)
+  })
+
+  it('stamps accepted rows with the host clock and sheds stamps with deleted rows', () => {
+    const task = createTask({ title: 'A', description: '', prompt: 'p' }, T0, 't-1')
+    const withTask = applyCommit(doc, commitOf({ tasks: [task] }), T0 + 77)
+    expect(withTask.stamps['t-1']).toBe(T0 + 77)
+    const moved = applyCommit(withTask, commitOf({ tasks: [{ ...task, title: 'B' }], changed: ['t-1'] }), T0 + 88)
+    expect(moved.stamps['t-1']).toBe(T0 + 88)
+    const removed = applyCommit(moved, commitOf({ deleted: [{ id: 't-1', baseUpdatedAt: T0 + 88 }] }), T0 + 99)
+    expect(removed.stamps['t-1']).toBeUndefined()
+    expect(removed.tombstones['t-1']).toBeDefined()
+  })
+
+  it('normalizeBoardDoc keeps sane stamps and drops corrupt ones', () => {
+    const doc2 = normalizeBoardDoc({ stamps: { 't-a': T0, 't-b': 'x', 't-c': -1 } })
+    expect(doc2.stamps).toEqual({ 't-a': T0 })
+  })
+})
+
+describe('changedIdsOf', () => {
+  it('claims content moves and new rows; never an untouched copy', () => {
+    const a = createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')
+    const b = createTask({ title: 'B', description: '', prompt: '' }, T0, 't-b')
+    const c = createTask({ title: 'C', description: '', prompt: '' }, T0, 't-c')
+    const editedA = { ...a, sessionsOrder: ['s-1'] }
+    // b survives unchanged in the next view (a remote row the replica carries
+    // but never touched) → not claimed. c is new → claimed.
+    expect(changedIdsOf([a, b], [editedA, b, c]).sort()).toEqual(['t-a', 't-c'])
+    // Dropped rows are not claims (they are deletions).
+    expect(changedIdsOf([a, b], [a])).toEqual([])
+  })
+
+  it('a re-ordered array with identical content claims nothing', () => {
+    const a = createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')
+    const b = createTask({ title: 'B', description: '', prompt: '' }, T0, 't-b')
+    expect(changedIdsOf([a, b], [b, a])).toEqual([])
   })
 })

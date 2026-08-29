@@ -26,7 +26,7 @@
  * tests drive every path without a browser or a server.
  */
 import type { BoardDoc, BoardView } from './board-doc.ts'
-import { boardViewOf, diffDeletions } from './board-doc.ts'
+import { boardViewOf, changedIdsOf, diffDeletions, emptyBoardDoc } from './board-doc.ts'
 import type {
   BoardCommit,
   BoardCommand,
@@ -92,15 +92,7 @@ interface DirtyState {
 
 /** Default empty document for a client that never synced (fallback mode). */
 function emptyBaseline(now: number): BoardDoc {
-  return {
-    revision: 0,
-    tasks: [],
-    cruise: { value: { enabled: false, limit: 5, schedule: [] }, at: now },
-    schedulePresets: { value: [], at: now },
-    runPresets: { value: { presets: [] }, at: now },
-    tombstones: {},
-    bornAt: now,
-  }
+  return emptyBoardDoc(now)
 }
 
 /** Whether a legacy view carries anything worth migrating (defaults alone do not). */
@@ -124,6 +116,8 @@ export class BoardSyncClient {
   private dirty: DirtyState = {}
   /** The snapshot currently in flight (identity-compared on ack). */
   private inFlight: DirtyState | undefined
+  /** Authorship claims accrued since the last fully-acked commit (see setTasks). */
+  private readonly claims = new Set<string>()
   private refire = false
   private engine = false
   private disposed = false
@@ -280,6 +274,19 @@ export class BoardSyncClient {
 
   setTasks(tasks: readonly TaskRecord[]): void {
     if (this.dirty.tasks === tasks) return
+    // Authorship accrual: claim exactly the rows THIS edit moved against the
+    // view the replica was serving (its own controller's ledger source), not
+    // against a baseline remote frames may have advanced since — a
+    // remote-updated row an untouched snapshot still carries is never claimed,
+    // so a stale full array can never clobber a newer remote edit (the
+    // claim-then-revert trap). Dropped rows shed their claim (they become
+    // deletions, carried by the explicit deleted list).
+    const previous = this.view().tasks
+    for (const id of changedIdsOf(previous, tasks)) this.claims.add(id)
+    const kept = new Set(tasks.map(task => task.id))
+    for (const id of [...this.claims]) {
+      if (!kept.has(id)) this.claims.delete(id)
+    }
     this.dirty.tasks = tasks
     this.scheduleCommit()
   }
@@ -371,6 +378,10 @@ export class BoardSyncClient {
     const commit: BoardCommit = {
       clientId: this.clientId,
       tasks,
+      // The accrued authorship claims (see setTasks): the host takes these
+      // unconditionally (its serial order decides — client clocks are
+      // irrelevant); everything else in the array merges under LWW.
+      changed: [...this.claims],
       deleted: diffDeletions(this.baseline.tasks, tasks),
       cruise: this.dirty.cruise ?? this.baseline.cruise,
       schedulePresets: this.dirty.schedulePresets ?? this.baseline.schedulePresets,
@@ -393,6 +404,9 @@ export class BoardSyncClient {
     if (snapshot.cruise !== undefined && this.dirty.cruise === snapshot.cruise) delete this.dirty.cruise
     if (snapshot.schedulePresets !== undefined && this.dirty.schedulePresets === snapshot.schedulePresets) delete this.dirty.schedulePresets
     if (snapshot.runPresets !== undefined && this.dirty.runPresets === snapshot.runPresets) delete this.dirty.runPresets
+    // The ledger layer is fully acknowledged: the host has every claim it was
+    // sent, so authorship state resets (the next claim accrues from here).
+    if (this.dirty.tasks === undefined) this.claims.clear()
     const refire = this.refire
     this.refire = false
     if (refire || this.dirty.tasks !== undefined || this.dirty.cruise !== undefined

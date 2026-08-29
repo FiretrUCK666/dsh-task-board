@@ -17,10 +17,17 @@
  * - `revision` is the host's monotonic change counter (the SSE resync signal
  *   and the "did anything actually move" test), never a write gate.
  *
- * Clock-skew rule: a tombstone is stamped one millisecond above the newest
+ * Clock-skew rule: record conflicts are resolved by AUTHORSHIP, not by
+ * clocks — a commit declares `changed` (the ids its own edits moved against
+ * the last synced baseline), the host accepts those unconditionally (its
+ * serial commit order decides, so a phone whose clock runs minutes behind
+ * still wins with its newest gesture), and every record the replica does NOT
+ * claim merges by `updatedAt` LWW (an untouched stale copy can never clobber
+ * a newer edit). Tombstones are stamped one millisecond above the newest
  * `updatedAt` the host ever saw for that id, so a delete always beats the
  * stale copies other replicas still hold, while a genuinely newer edit (a
- * concurrent revive) still wins.
+ * concurrent revive) still wins. `stamps` records the host wall time each
+ * row was last accepted (diagnostics / future pruning).
  *
  * Framework-free pure logic: host and client share this one grammar; tests
  * drive it directly.
@@ -99,14 +106,21 @@ export interface BoardDoc {
   runPresets: BoardSection<RunPresetsDocument>
   /** taskId → tombstone; suppresses stale replicas resurrecting a delete. */
   tombstones: Record<string, Tombstone>
+  /** taskId → host wall time the row was last accepted (diagnostics). */
+  stamps: Record<string, number>
   /** When the host first created the document (migration probe). */
   bornAt: number
 }
 
-/** What a client sends per commit: its full view + observed deletions. */
+/** What a client sends per commit: its full view, the ids its own edits
+ *  moved since the last synced baseline (authorship claims), and the
+ *  deletions it observed. */
 export interface BoardCommit {
   clientId: string
   tasks: readonly TaskRecord[]
+  /** The records THIS replica changed against its baseline — the host takes
+   *  these unconditionally (clock-independent); absence = untouched copy. */
+  changed?: readonly string[]
   deleted: readonly BoardDelete[]
   cruise: BoardSection<CruiseValue>
   schedulePresets: BoardSection<SchedulePreset[]>
@@ -129,6 +143,7 @@ export function emptyBoardDoc(now: number): BoardDoc {
     schedulePresets: { value: [], at: now },
     runPresets: { value: { presets: [] }, at: now },
     tombstones: {},
+    stamps: {},
     bornAt: now,
   }
 }
@@ -178,6 +193,12 @@ export function normalizeBoardDoc(value: unknown, now: number = Date.now()): Boa
     }
   }
   const empty = emptyBoardDoc(bornAt)
+  const stamps: Record<string, number> = {}
+  if (typeof row.stamps === 'object' && row.stamps !== null) {
+    for (const [id, at] of Object.entries(row.stamps as Record<string, unknown>)) {
+      if (typeof at === 'number' && Number.isFinite(at) && at >= 0) stamps[id] = at
+    }
+  }
   return {
     revision,
     tasks,
@@ -185,6 +206,7 @@ export function normalizeBoardDoc(value: unknown, now: number = Date.now()): Boa
     schedulePresets: normalizeSection(row.schedulePresets, empty.schedulePresets.at, [], parsePresetsRaw),
     runPresets: normalizeSection(row.runPresets, empty.runPresets.at, { presets: [] }, normalizeRunPresetDocument),
     tombstones,
+    stamps,
     bornAt,
   }
 }
@@ -211,6 +233,27 @@ export function diffDeletions(
   return deleted
 }
 
+/**
+ * The AUTHORSHIP set of a commit: ids whose CONTENT moved between the
+ * baseline the replica synced and the view it now commits. An untouched
+ * copy of a host row (same content, same serialization) is never claimed,
+ * so the claim can only vouch for edits this replica genuinely made —
+ * reorders, title changes, new tasks, read-state flips all count; a stale
+ * copy the replica never touched does not.
+ */
+export function changedIdsOf(
+  baseline: readonly TaskRecord[],
+  next: readonly TaskRecord[],
+): string[] {
+  const before = new Map(baseline.map(task => [task.id, JSON.stringify(task)]))
+  const changed: string[] = []
+  for (const task of next) {
+    const previous = before.get(task.id)
+    if (previous === undefined || previous !== JSON.stringify(task)) changed.push(task.id)
+  }
+  return changed
+}
+
 /** Structural equality of two documents (the "did anything move" test that
  *  keeps a no-op commit from bumping the revision and storming replicas). */
 export function sameBoardDocs(a: BoardDoc, b: BoardDoc): boolean {
@@ -223,8 +266,12 @@ export function sameBoardDocs(a: BoardDoc, b: BoardDoc): boolean {
  * truth (the input is never mutated). The merge is the whole sync contract:
  *
  * - put: a record the host lacks is inserted unless a tombstone outranks it
- *   (then the delete stands); a record the host has is replaced only when the
- *   incoming copy is strictly newer (`updatedAt` LWW, host wins ties).
+ *   (then the delete stands); a record the host has is replaced when the
+ *   replica CLAIMS it (in `changed` — the commit arrived after whatever the
+ *   host holds, host serialization decides, clocks are irrelevant; content-
+ *   equal claims are no-ops) or, unclaimed, when the incoming copy is simply
+ *   newer (`updatedAt` LWW, host wins ties). Every acceptance stamps the row
+ *   with the host clock.
  * - delete: honored only when the host copy is not newer than the baseline
  *   stamp the delete was computed against; the tombstone lands one ms above
  *   the newest `updatedAt` ever seen for the id (skew-proof).
@@ -236,7 +283,9 @@ export function sameBoardDocs(a: BoardDoc, b: BoardDoc): boolean {
 export function applyCommit(doc: BoardDoc, commit: BoardCommit, now: number): BoardDoc {
   const byId = new Map(doc.tasks.map(task => [task.id, task]))
   const tombstones = { ...doc.tombstones }
+  const stamps = { ...doc.stamps }
   const result = new Map(byId)
+  const claimed = new Set(commit.changed ?? [])
 
   // 1) puts — the client's full array (absence is NOT a delete; deletes are
   // the explicit list below, so remote rows the client never saw survive).
@@ -249,8 +298,18 @@ export function applyCommit(doc: BoardDoc, commit: BoardCommit, now: number): Bo
       if (tomb !== undefined && incoming.updatedAt <= tomb.at) continue
       delete tombstones[incoming.id]
       result.set(incoming.id, incoming)
+      stamps[incoming.id] = now
+    } else if (claimed.has(incoming.id)) {
+      // The replica vouches for this content: accepted unconditionally
+      // (host-serialized last-write-wins — the phone-clock class of bugs
+      // cannot flip it). A content-equal claim is a no-op.
+      if (JSON.stringify(host) !== JSON.stringify(incoming)) {
+        result.set(incoming.id, incoming)
+        stamps[incoming.id] = now
+      }
     } else if (incoming.updatedAt > host.updatedAt) {
       result.set(incoming.id, incoming)
+      stamps[incoming.id] = now
     }
   }
 
@@ -264,12 +323,16 @@ export function applyCommit(doc: BoardDoc, commit: BoardCommit, now: number): Bo
     if (host.updatedAt > del.baseUpdatedAt) continue // edited after the client's baseline → the delete loses
     const newest = Math.max(host.updatedAt, ...commit.tasks.filter(task => task.id === del.id).map(task => task.updatedAt), 0)
     result.delete(del.id)
+    delete stamps[del.id]
     tombstones[del.id] = { at: newest + 1, seenAt: now }
   }
 
-  // 3) prune ancient tombstones.
+  // 3) prune ancient tombstones (and the host stamps of rows long gone).
   for (const [id, tomb] of Object.entries(tombstones)) {
     if (now - tomb.seenAt > TOMBSTONE_TTL_MS && !result.has(id)) delete tombstones[id]
+  }
+  for (const id of Object.keys(stamps)) {
+    if (!result.has(id)) delete stamps[id]
   }
 
   const tasks = doc.tasks
@@ -293,6 +356,7 @@ export function applyCommit(doc: BoardDoc, commit: BoardCommit, now: number): Bo
     schedulePresets: mergeSection(doc.schedulePresets, commit.schedulePresets, parsePresetsRaw),
     runPresets: mergeSection(doc.runPresets, commit.runPresets, normalizeRunPresetDocument),
     tombstones,
+    stamps,
     bornAt: doc.bornAt,
   }
   return sameBoardDocs(doc, next) ? doc : { ...next, revision: doc.revision + 1 }

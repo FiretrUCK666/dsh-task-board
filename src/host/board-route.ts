@@ -107,9 +107,15 @@ export function parseBoardCommit(body: unknown): BoardCommit | undefined {
       })
       .filter((entry): entry is { id: string; baseUpdatedAt: number } => entry !== undefined)
     : []
+  // Authorship claims: a plain id list (the grammar itself re-checks every
+  // row; a claim can only vouch for content this replica carries anyway).
+  const changed = Array.isArray(row.changed)
+    ? row.changed.filter((id): id is string => typeof id === 'string' && id !== '')
+    : []
   return {
     clientId: row.clientId,
     tasks: Array.isArray(row.tasks) ? row.tasks as BoardCommit['tasks'] : [],
+    changed,
     deleted,
     cruise: section(row.cruise) as BoardCommit['cruise'],
     schedulePresets: section(row.schedulePresets) as BoardCommit['schedulePresets'],

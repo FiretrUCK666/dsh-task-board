@@ -480,6 +480,39 @@ describe('two replicas over one host service', () => {
     expect(b.view().cruise.enabled).toBe(true)
     expect(b.view().cruise.limit).toBe(3)
   })
+
+  it('a clock-skewed reorder on B still lands (authorship claim, not timestamp)', async () => {
+    const { timers, a, b } = await twoNodes()
+    // A establishes a two-session task on the shared row (A's clock is ahead).
+    const base = createTask({ title: 'S', description: '', prompt: 'p' }, timers.now(), 't-s')
+    a.setTasks([{ ...base, sessionsOrder: ['s-1', 's-2'] }])
+    await settle(timers)
+    // B reorders, but its record carries an OLDER updatedAt (skewed clock):
+    // LWW alone would reject it; the content diff claims it, so the host takes
+    // B's order and it reaches A.
+    b.setTasks([{ ...a.view().tasks[0]!, sessionsOrder: ['s-2', 's-1'], updatedAt: 10 }])
+    await settle(timers)
+    expect(a.view().tasks[0].sessionsOrder).toEqual(['s-2', 's-1'])
+    expect(b.view().tasks[0].sessionsOrder).toEqual(['s-2', 's-1'])
+  })
+
+  it('a stale full-array write does not clobber a newer remote row it never edited', async () => {
+    const { timers, a, b } = await twoNodes()
+    const shared = createTask({ title: 'S', description: '', prompt: 'p' }, timers.now(), 't-s')
+    const other = createTask({ title: 'O', description: '', prompt: 'p' }, timers.now(), 't-o')
+    a.setTasks([shared, other])
+    await settle(timers)
+    // B now holds both. B edits ONLY t-o (its t-s copy is untouched).
+    b.setTasks([shared, { ...other, title: 'O-from-B', updatedAt: timers.now() + 5 }])
+    // Meanwhile A renames t-s (a row B's snapshot still carries stale).
+    a.setTasks([{ ...shared, title: 'S-from-A', updatedAt: timers.now() + 1 }, other])
+    await settle(timers)
+    // B's stale t-s copy must not resurrect over A's rename; B's real t-o edit lands.
+    const byId = (id: string) => a.view().tasks.find(task => task.id === id)!.title
+    expect(byId('t-s')).toBe('S-from-A')
+    expect(byId('t-o')).toBe('O-from-B')
+    expect(b.view().tasks.find(task => task.id === 't-s')!.title).toBe('S-from-A')
+  })
 })
 
 // -- helpers ----------------------------------------------------------------
