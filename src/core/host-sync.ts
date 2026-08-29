@@ -181,24 +181,38 @@ export class BoardSyncClient {
     if (this.disposed) return this.mode
 
     const legacyView = legacy?.()
-    if (legacyView !== undefined) {
-      if (this.baseline.revision === 0 && this.baseline.tasks.length === 0 && Object.keys(this.baseline.tombstones).length === 0) {
-        if (hasLegacyContent(legacyView)) {
-          // Bootstrap: upload the local ledger as the first commit.
-          const at = this.now()
+    if (legacyView !== undefined && hasLegacyContent(legacyView)) {
+      // One-time migration of a pre-sync local ledger into the shared truth.
+      // Tasks UNION (per-record LWW): a device's locally-created records join
+      // the host even when another device bootstrapped first — nothing a user
+      // ever made is hidden behind "first origin wins". Absence is never a
+      // delete, so host rows a replica lacks always survive. Shared sections
+      // (cruise/presets) belong to the FIRST writer (config is single-valued;
+      // a late device's stale defaults must not stomp a live setup), and the
+      // full local view is parked to the backup sink for forensics whenever
+      // it actually diverged.
+      const at = this.now()
+      const hostIds = new Map(this.baseline.tasks.map(task => [task.id, task]))
+      const identical = legacyView.tasks.length === this.baseline.tasks.length
+        && legacyView.tasks.every(task => hostIds.get(task.id)?.updatedAt === task.updatedAt)
+      if (!identical) {
+        if (this.baseline.revision === 0) {
           this.dirty = {
             tasks: legacyView.tasks,
             cruise: { value: legacyView.cruise, at },
             schedulePresets: { value: legacyView.schedulePresets, at },
             runPresets: { value: legacyView.runPresets, at },
           }
-          await this.flush()
+        } else {
+          const merged = new Map(hostIds)
+          for (const task of legacyView.tasks) {
+            const host = merged.get(task.id)
+            if (host === undefined || task.updatedAt > host.updatedAt) merged.set(task.id, task)
+          }
+          this.dirty = { tasks: [...merged.values()] }
+          this.backupListener?.(legacyView)
         }
-      } else if (legacyView.tasks.length > 0
-        && JSON.stringify(legacyView.tasks) !== JSON.stringify(this.baseline.tasks)) {
-        // Host truth wins; the diverging local copy is handed to the backup
-        // sink (the wiring parks it under a dedicated key, never dropped).
-        this.backupListener?.(legacyView)
+        await this.flush()
       }
     }
 

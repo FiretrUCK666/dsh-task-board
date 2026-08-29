@@ -249,7 +249,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 ### 核心层（`src/core/` 纯逻辑 + 关键职责；细节以代码为准）
 
 - `tasks.ts`（状态机/plainRunsOf/COLUMNS/latestExecutionOf/chainUnlimited/taskColumnAllowsAutomation）· `schedule.ts`（cron）· `scheduler.ts`（每分钟 tick + cruiseTick）· `cruise.ts`（巡航窗口 v4）· `presets.ts`（schedule 预设）· `automation.ts`（会话规则 + automationRowsOf + 就绪语义 + automationTasksOf）· `colors.ts`（PALETTE + withTaskColor）· `session-activity.ts`（原生侧对账 + `latestUserMessage`）· `session-list.ts`（taskSessionsOf/orderedSessionsOf/sessionWindowOf）· `session-display.ts`（waiting>running>settled + viewedAt 基线 + nativeRunning）· `task-live.ts`（**任务运行态 + 相关会话集双重唯一推导**：taskLiveStateOf/relatedSessionIdsOf（refine → session binds → 执行轮 → 注入 linked ids，去重稳定序——外部相关面一律注入 linked，绝不再手写第二套列表）/isDirectLike）· `linked-sessions.ts`（deriveLinkedSessions）· `comment-thread.ts`（会话线程 + 排队位次 + latestCommentView）· `question-rpc.ts`（原生问答 wire 模型）· `store.ts`（ledger 持久化 + 老数据归一化）· `execution.ts`（投递与结算 + `createSession`：新建配置化会话，配置失败 = 诚实部分成功）· `controller.ts`（台账 + 统一并发调度器 + `createTaskSession` + `applyRemote`/`setEngine` 引擎席位）。
-- **同步域（多端一致的地基）**：`board-doc.ts`（**BoardDoc 类型 + 合并文法唯一居所**：`applyCommit` 逐记录 LWW（updatedAt 新者胜、平手 host 保）+ 墓碑（at = 所见最新 updatedAt+1，抗时钟偏移地压住旧副本复活）+ section LWW（at >= 覆盖）+ `diffDeletions`/`normalizeBoardDoc`/`normalizeCruiseValue`——host 与 client 共享同一文法）· `host-sync.ts`（`BoardSyncClient`：boot 迁移（host 空 → 上传本地 bootstrap；host 有 → host 胜 + 本地分歧交 `onBackup` 停放）、去抖提交（在途合并、trailing refire、失败退避重试）、SSE + 轮询 + 重连三通道汇入单一 resync、引擎租约心跳（任何 API 命中即续期——后台标签节流饿不死活持有者）、`requestLaunch` 中继；`SyncedTaskStore`/`SyncedPresetStore`/`SyncedRunPresetStore`/`SyncedCruiseStore` = 既有同步 store 接缝 over 共享文档 + 本地镜像）。
+- **同步域（多端一致的地基）**：`board-doc.ts`（**BoardDoc 类型 + 合并文法唯一居所**：`applyCommit` 逐记录 LWW（updatedAt 新者胜、平手 host 保）+ 墓碑（at = 所见最新 updatedAt+1，抗时钟偏移地压住旧副本复活）+ section LWW（at >= 覆盖）+ `diffDeletions`/`normalizeBoardDoc`/`normalizeCruiseValue`——host 与 client 共享同一文法）· `host-sync.ts`（`BoardSyncClient`：boot 一次性迁移（host 空 → 本地整视图 bootstrap；host 非空且本地分歧 → **任务按记录 LWW 联合并入 host**（缺席永不是删除、后连设备的自建任务绝不被首台掩盖），共享 section 归首写者（迟设备的陈旧巡航/预设不翻活配置），分歧本地整视图交 `onBackup` 停放取证；去抖提交（在途合并、trailing refire、失败退避重试）、SSE + 轮询 + 重连三通道汇入单一 resync、引擎租约心跳（任何 API 命中即续期——后台标签节流饿不死活持有者）、`requestLaunch` 中继；`SyncedTaskStore`/`SyncedPresetStore`/`SyncedRunPresetStore`/`SyncedCruiseStore` = 既有同步 store 接缝 over 共享文档 + 本地镜像）。
 
 ### 关键不变量（避免重造已有机制；改前先读对应文件）
 
@@ -303,8 +303,9 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
    `scripts/verify-standalone.mjs` 内置防回归黑名单（其自身文件豁免）。
 5. **数据键稳定**：`dsh.taskBoard.v1` 不得改名。同步模式下这些键是**离线镜
    像/草稿/preSync 备份**（真相在 host 存储单元）；回退模式下仍是真相——两种
-   模式下用户数据都不因升级丢失（首连 host 空则本地 bootstrap 上传，host 有
-   数据则 host 胜且本地分歧一次性备份到 `dsh.taskBoard.preSync.v1`）。
+   模式下用户数据都不因升级丢失（首连 host 空 → 本地整视图 bootstrap；host 已
+   有数据 → 本地记录按 LWW 联合并入、分歧整视图一次性备份到
+   `dsh.taskBoard.preSync.v1`，见「同步域」迁移文法）。
 6. **生命周期纪律**：订阅/监听/定时器/observer 全部注册 disposer；DOM 失败
    console.error 不抛；`ctx.effect` 内创建的资源随 effect 清理。
 7. **独立自包含**：运行时依赖仅 `schemastery`（host Config schema）；不依赖兄弟

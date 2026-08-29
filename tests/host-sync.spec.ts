@@ -179,19 +179,34 @@ describe('BoardSyncClient migration', () => {
     expect(t.calls.commit).toHaveLength(0)
   })
 
-  it('backs up a diverging local ledger when the host already has truth', async () => {
+  it('unions a diverging local ledger into a non-empty host and parks a backup', async () => {
     const { client, t } = makeClient()
     t.setDoc(applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [task('host')] }), T0))
     const backups: BoardView[] = []
     client.onBackup(v => backups.push(v))
-    await client.start(() => ({ tasks: [task('local')], cruise: { enabled: false, limit: 5, schedule: [] }, schedulePresets: [], runPresets: { presets: [] } }))
+    await client.start(() => ({ tasks: [task('local')], cruise: { enabled: true, limit: 9, schedule: [] }, schedulePresets: [], runPresets: { presets: [] } }))
+    // The diverging local copy is parked (forensics), and BOTH records live on
+    // the shared board — a late device's own tasks are never hidden behind
+    // the first device's bootstrap.
     expect(backups).toHaveLength(1)
     expect(backups[0].tasks.map(x => x.id)).toEqual(['local'])
-    // Host truth is what the replica serves.
-    expect(client.view().tasks.map(x => x.id)).toEqual(['host'])
+    expect(client.view().tasks.map(x => x.id).sort()).toEqual(['host', 'local'])
+    expect(t.getDoc().tasks.map(x => x.id).sort()).toEqual(['host', 'local'])
+    // Sections stay the host's (the late device's stale cruise must not stomp).
+    expect(client.view().cruise.enabled).toBe(false)
   })
 
-  it('no backup when local matches host', async () => {
+  it('an older local copy of a host task never overwrites the newer host record', async () => {
+    const { client, t } = makeClient()
+    const fresh = { ...task('a'), title: 'host-new', updatedAt: T0 + 100 }
+    t.setDoc(applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [fresh] }), T0))
+    // The replica still holds a stale copy of the SAME task (older updatedAt).
+    await client.start(() => ({ tasks: [task('a')], cruise: { enabled: false, limit: 5, schedule: [] }, schedulePresets: [], runPresets: { presets: [] } }))
+    expect(client.view().tasks).toHaveLength(1)
+    expect(client.view().tasks[0].title).toBe('host-new')
+  })
+
+  it('no backup and no commit when local matches host', async () => {
     const { client, t } = makeClient()
     const doc = applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [task('a')] }), T0)
     t.setDoc(doc)
@@ -199,6 +214,7 @@ describe('BoardSyncClient migration', () => {
     client.onBackup(v => backups.push(v))
     await client.start(() => boardView(doc))
     expect(backups).toHaveLength(0)
+    expect(t.calls.commit).toHaveLength(0)
   })
 })
 
