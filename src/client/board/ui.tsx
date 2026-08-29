@@ -160,10 +160,9 @@ export function AttentionDot({ title }: { title?: string }) {
  * glyph can ever balloon to the SVG default 300x150 box). Every board icon
  * route goes through this component.
  */
-export type IconName = 'arrowDown' | 'arrowUp' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'calendar' | 'copy' | 'check' | 'checklist'
+export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'calendar' | 'copy' | 'check' | 'checklist'
 
 const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5',
-  arrowUp: 'M3 9.5 8 4.5 13 9.5',
   chevronDown: 'M3 6 8 11 13 6',
   close: 'M4 4 12 12M12 4 4 12',
   arrowRight: 'M4 8h8M9 4l4 4-4 4',

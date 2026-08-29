@@ -2414,15 +2414,6 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 
-/* Touch reorder affordance: hidden wherever drag works (desktop), revealed on
-   coarse pointers (see the touch block). The pair rides the row's action
-   grammar so it never reflows the identity slot. */
-.sessionRowMove {
-  display: none;
-  align-items: center;
-  gap: 2px;
-}
-
 /* The session toolbar's action cluster (添加会话 ‖ 新建会话): the hint stays
    left, the pair hugs the right and wraps under it on a narrow panel. */
 .sessionToolbarActions {
@@ -4682,24 +4673,11 @@ textarea.input {
    the browser stops auto-zooming the whole page on focus.
    ══════════════════════════════════════════════════════════════════════════ */
 @media (hover: none) and (pointer: coarse) {
-  /* Touch reorder: the drag affordance has no touch equivalent, so the row's
-     up/down pair takes over. */
-  .sessionRowMove {
-    display: inline-flex;
-  }
-
-  /* Hover-revealed actions: always visible on touch. */
-  .cardQuickRun {
-    opacity: 1;
-  }
-
-  .cardColorBar {
-    display: flex;
-  }
-
-  .promptCopy {
-    opacity: 1;
-  }
+  /* Touch parity: interactions stay IDENTICAL to the desktop board (the
+     phone user drives the desktop-mode affordances — hover-revealed actions,
+     drag reorder). This block carries ONLY invisible ergonomics: hit-area
+     expansion and input font size (no visual difference, so mobile = desktop
+     in layout, actions and animation). */
 
   /* Invisible hit-area expansion (visual geometry unchanged). Each control
      gets a transparent border ring it can spare; the row/card is the

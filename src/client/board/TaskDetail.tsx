@@ -71,7 +71,7 @@ function CommentSummary({ task, sessionId, cruiseOn }: {
  *  ONE derivation (sessionStateChip) — only the settled-label pair differs
  *  between a run row (the execution result) and a linked row (the bound
  *  session's activity). */
-function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, onReviewExecution, onOpenSessionPanel, draggable, onDragStart, onDragEnd, onMoveUp, onMoveDown }: {
+function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, onReviewExecution, onOpenSessionPanel, draggable, onDragStart, onDragEnd }: {
   row: import('../../core/session-list.ts').TaskSessionRow
   task: TaskRecord
   controller: BoardController
@@ -87,9 +87,6 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
   draggable?: boolean
   onDragStart?: (event: React.DragEvent) => void
   onDragEnd?: () => void
-  /** Touch reorder (up / down one slot); undefined at the boundary. */
-  onMoveUp?: () => void
-  onMoveDown?: () => void
 }) {
   const isRun = row.executionId !== undefined
   const sessionId = row.sessionId
@@ -157,8 +154,6 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
         draggable={draggable}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        onMoveUp={onMoveUp}
-        onMoveDown={onMoveDown}
         onRename={async title => {
           const result = await controller.renameTaskSession(task.id, sessionId, title)
           if (!result.ok) throw new Error(result.error)
@@ -214,8 +209,6 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      onMoveUp={onMoveUp}
-      onMoveDown={onMoveDown}
       onRename={async title => {
         const result = await controller.renameTaskSession(task.id, sessionId, title)
         if (!result.ok) throw new Error(result.error)
@@ -731,7 +724,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                       aria-hidden="true"
                     />
                   )}
-                  {sessions.map((row, index) => (
+                  {sessions.map(row => (
                     <SessionActionRow
                       key={row.sessionId}
                       row={row}
@@ -742,12 +735,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                       onReviewExecution={execution => { setReviewExecution(execution) }}
                       onOpenSessionPanel={sessionId => { setLinkedSession(sessionId) }}
                       draggable
-                      onMoveUp={index > 0
-                        ? () => { controller.reorderTaskSession(current.id, row.sessionId, sessions[index - 1].sessionId) }
-                        : undefined}
-                      onMoveDown={index < sessions.length - 1
-                        ? () => { controller.reorderTaskSession(current.id, row.sessionId, sessions[index + 2]?.sessionId) }
-                        : undefined}
                       onDragStart={event => {
                         setSessionDragId(row.sessionId)
                         event.dataTransfer.effectAllowed = 'move'

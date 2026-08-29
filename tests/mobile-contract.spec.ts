@@ -12,8 +12,10 @@
  *      track (each column wide enough to read) below the threshold.
  *   3. Floating panels size to the board box (percentages), not `vh`/`vw`,
  *      and the backdrop can scroll a panel taller than the box.
- *   4. Touch model: a `(hover: none) and (pointer: coarse)` block reveals the
- *      hover-only affordances + the reorder pair and grows small targets.
+ *   4. Touch parity: interactions on touch are IDENTICAL to desktop (hover-
+ *      revealed actions stay hover-revealed, drag reorder stays the reorder —
+ *      no always-on overrides, no extra button pairs). The coarse-pointer
+ *      block carries ONLY invisible ergonomics (hit-area growth, 16px inputs).
  *   5. Font-boosting defence + safe-area + 16px inputs.
  */
 import { readFileSync } from 'node:fs'
@@ -121,18 +123,25 @@ describe('compact columns + panel geometry', () => {
   })
 })
 
-describe('touch model block', () => {
+describe('touch parity block (invisible ergonomics only)', () => {
   const touch = blockFrom(line => /@media\s*\(hover:\s*none\)\s*and\s*\(pointer:\s*coarse\)/.test(line))
 
-  it('exists and reveals every hover-only affordance', () => {
+  it('exists', () => {
     expect(touch).not.toBe('')
-    expect(touch).toMatch(/\.cardQuickRun\s*\{[^}]*opacity:\s*1/)
-    expect(touch).toMatch(/\.cardColorBar\s*\{[^}]*display:\s*flex/)
-    expect(touch).toMatch(/\.promptCopy\s*\{[^}]*opacity:\s*1/)
   })
 
-  it('reveals the touch reorder pair (drag has no touch equivalent)', () => {
-    expect(touch).toMatch(/\.sessionRowMove\s*\{[^}]*display:\s*inline-flex/)
+  it('never force-reveals the hover-only affordances (mobile IS desktop)', () => {
+    // The user's contract: quick-run / color bar / copy ride hover exactly
+    // like on the desktop board — an always-visible override is a regression.
+    expect(touch).not.toMatch(/\.cardQuickRun\s*\{[^}]*opacity:\s*1/)
+    expect(touch).not.toMatch(/\.cardColorBar\s*\{[^}]*display:\s*flex/)
+    expect(touch).not.toMatch(/\.promptCopy\s*\{[^}]*opacity:\s*1/)
+  })
+
+  it('the touch reorder button pair is gone (drag stays the only reorder)', () => {
+    // The affordance was removed on user request: session reorder is the
+    // press-and-drag gesture, everywhere, exactly like desktop.
+    expect(source).not.toMatch(/sessionRowMove/)
   })
 
   it('grows small hit areas without changing visual size', () => {
@@ -143,6 +152,15 @@ describe('touch model block', () => {
 
   it('inputs reach 16px to stop the mobile auto-zoom on focus', () => {
     expect(touch).toMatch(/\.input[\s\S]*?font-size:\s*16px/)
+  })
+})
+
+describe('drag reorder machinery survives (the user gesture)', () => {
+  it('the drop indicator and reordering breathing room stay styled', () => {
+    // Press-and-drag session reorder (desktop + mobile alike) depends on
+    // these CSS surfaces; a "touch cleanup" must never strip them.
+    expect(ruleOf('dropIndicator')).toMatch(/position:\s*absolute/)
+    expect(source).toMatch(/\.sessionList\[data-reordering\]/)
   })
 })
 
