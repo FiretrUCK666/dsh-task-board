@@ -2266,14 +2266,16 @@ describe('native-activity sync (两端同步)', () => {
     expect(round?.result).toBe('succeeded')
   })
 
-  it('past activity never re-fires on the initial baseline', async () => {
+  it('a session already running at page load IS recorded (the card follows live reality)', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
     const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
     store.save([{ ...seeded, status: 'review', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed', error: undefined }] }])
     const sessions = new FakeSessions()
-    // The native session is ALREADY running before the board's first scan —
-    // the controller must baseline it, never record past activity.
+    // The native session is ALREADY running when the board's first scan
+    // happens: the old edge rule only baselined it (the row showed 进行中
+    // while the card never moved — the reported bug). The state rule records
+    // the live turn and drives the card.
     sessions.setRunning('s-1', true)
     const controller = new BoardController({
       store, exec: stub as unknown as ExecutionService,
@@ -2282,8 +2284,33 @@ describe('native-activity sync (两端同步)', () => {
     controller.start()
     await flush()
     const task = controller.getSnapshot().tasks[0]
-    expect(task.executions.some(run => run.external === true)).toBe(false)
-    expect(task.status).toBe('review')
+    const ext = task.executions[task.executions.length - 1]
+    expect(ext.external).toBe(true)
+    expect(ext.sessionId).toBe('s-1')
+    expect(ext.endedAt).toBeUndefined()
+    expect(task.status).toBe('running')
+    // Idempotent: later passes never double-record the same run period.
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].executions.filter(run => run.external === true)).toHaveLength(1)
+  })
+
+  it('a session idle at page load re-fires nothing (past turns stay past)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{ ...seeded, status: 'review', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'succeeded', error: undefined }] }])
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-1', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].executions.some(run => run.external === true)).toBe(false)
+    expect(controller.getSnapshot().tasks[0].status).toBe('review')
   })
 
   it('a board direct-send does not double-record its turn as an external round', async () => {
@@ -2363,6 +2390,123 @@ describe('native-activity sync (两端同步)', () => {
     const task = controller.getSnapshot().tasks[0]
     expect(task.status).toBe('backlog')
     expect(task.executions.some(run => run.refine === true && run.external === true && run.endedAt === undefined)).toBe(true)
+  })
+})
+
+describe('recordNativeTurn (live mux channel)', () => {
+  /** A controller with one bound session, seeded idle. */
+  async function boundHarness() {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-1', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    await flush()
+    return { controller, sessions, stub }
+  }
+
+  it('a live user/message records the external round with text + anchor and drives the card', async () => {
+    const { controller } = await boundHarness()
+    controller.recordNativeTurn('s-1', { text: '帮我重构', hasImage: false, anchor: 42 })
+    const task = controller.getSnapshot().tasks[0]
+    const ext = task.executions[task.executions.length - 1]
+    expect(ext.external).toBe(true)
+    expect(ext.comment).toBe('帮我重构')
+    expect(ext.anchor).toBe(42)
+    expect(task.status).toBe('running')
+  })
+
+  it('the same anchor never records twice (mux frame + reconcile backstop)', async () => {
+    const { controller, sessions } = await boundHarness()
+    controller.recordNativeTurn('s-1', { text: '同一轮', hasImage: false, anchor: 7 })
+    // The backstop now sees the session running (the frame baselined it) —
+    // even a second frame for the same seq must not double-record.
+    sessions.setRunning('s-1', true)
+    await flush()
+    controller.recordNativeTurn('s-1', { text: '同一轮', hasImage: false, anchor: 7 })
+    await flush()
+    const task = controller.getSnapshot().tasks[0]
+    expect(task.executions.filter(run => run.external === true)).toHaveLength(1)
+  })
+
+  it('a turn on a session with an open board round is the board\'s own — not recorded, period consumed', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-1', true)
+    // Seed a task with an OPEN board round on the session (injected, running):
+    // the native activity IS the board's own turn.
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      status: 'running',
+      executions: [{ id: 'e-open', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    // The state backstop sees the session running but the board round is open
+    // — nothing to record.
+    expect(controller.getSnapshot().tasks[0].executions.some(run => run.external === true)).toBe(false)
+    // The mux echo of the board's OWN injection must not add an external round.
+    controller.recordNativeTurn('s-1', { text: '驱动一下', hasImage: false, anchor: 99 })
+    const after = controller.getSnapshot().tasks[0]
+    expect(after.executions.some(run => run.external === true)).toBe(false)
+    expect(after.executions).toHaveLength(1)
+    void stub
+  })
+
+  it('a refine-session turn records a refine round that never moves the column', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-refine', false)
+    // Seed a task whose refine session is bound directly (the refine flow's
+    // persisted shape): the related set marks it refine.
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-r')
+    store.save([{ ...seeded, status: 'review', refineSessionId: 's-refine' }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    controller.recordNativeTurn('s-refine', { text: '补充需求', hasImage: false, anchor: 5 })
+    const after = controller.getSnapshot().tasks[0]
+    const ext = after.executions[after.executions.length - 1]
+    expect(ext.external).toBe(true)
+    expect(ext.refine).toBe(true)
+    // A refine round is preparation: the card keeps its column.
+    expect(after.status).toBe('review')
+  })
+
+  it('a non-engine replica records nothing (the engine records once, sync carries it)', async () => {
+    const { controller } = await boundHarness()
+    controller.setEngine(false)
+    controller.recordNativeTurn('s-1', { text: ' viewer 端不记', hasImage: false, anchor: 3 })
+    const task = controller.getSnapshot().tasks[0]
+    expect(task.executions.some(run => run.external === true)).toBe(false)
+  })
+
+  it('two tasks sharing one bound session each get their own round', async () => {
+    const { controller } = await boundHarness()
+    const second = controller.createTask({ title: 'y', description: '', prompt: 'run' })!
+    controller.addTaskSource(second.id, { kind: 'session', sessionId: 's-1' })
+    await flush()
+    controller.recordNativeTurn('s-1', { text: '共同会话', hasImage: false, anchor: 11 })
+    const tasks = controller.getSnapshot().tasks
+    expect(tasks.every(task => task.executions.some(run => run.external === true && run.anchor === 11))).toBe(true)
+    expect(tasks.every(task => task.status === 'running')).toBe(true)
   })
 })
 

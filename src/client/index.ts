@@ -22,6 +22,7 @@ import { LocalStorageTaskStore } from '../core/store.ts'
 import { LocalStoragePresetStore } from '../core/presets.ts'
 import { LocalStorageRunPresetStore } from '../core/run-presets.ts'
 import { BoardSyncClient, SyncedCruiseStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore } from '../core/host-sync.ts'
+import { nativeTurnOf } from '../core/session-activity.ts'
 import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
 import { mountBoard } from './board-mount.tsx'
@@ -799,6 +800,14 @@ export function apply(ctx: ClientContext): void {
     // already awaited the first lease probe, so isEngine() is authoritative.
     if (synced) controller.setEngine(sync.isEngine())
     controller.start()
+    // The PRIMARY native-turn channel: every live `user/message` frame the
+    // mux stream carries goes straight to the controller (engine-only inside,
+    // anchor-deduped against the reconcile backstop). A chat that starts AND
+    // finishes between two reconcile passes can never be missed again.
+    const detachTurnWatcher = questionTracker.addSessionListener((sessionId, event) => {
+      const turn = nativeTurnOf(event)
+      if (turn !== undefined) controller.recordNativeTurn(sessionId, turn)
+    })
     // The localized 未命名 placeholder the session rows show for a session
     // the host has not titled yet (the host names it automatically from the
     // first real message).
@@ -856,6 +865,7 @@ export function apply(ctx: ClientContext): void {
 
     uiDisposer = () => {
       for (const dispose of disposers.splice(0)) dispose()
+      detachTurnWatcher()
       scheduler.dispose()
       sync.dispose()
       controller.dispose()

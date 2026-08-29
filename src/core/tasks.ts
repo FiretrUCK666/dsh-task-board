@@ -115,6 +115,14 @@ export interface ExecutionRecord {
    * older message.
    */
   imageOnly?: boolean
+  /**
+   * The native log seq of the user message that started an externally-observed
+   * turn — THE turn anchor. Both detection channels (the live mux frame and
+   * the reconcile state backstop) dedup on it, across passes, devices and
+   * engine handovers: the same native turn is never recorded twice, and a
+   * reload cannot lose the "already recorded this turn" fact.
+   */
+  anchor?: number
 }
 
 /** How a scheduled task is driven: cron = fire at fixed times; chain = rerun right after each run settles. */
@@ -569,6 +577,10 @@ export function newExternalRound(options: {
   /** The native user message text observed at creation (the thread body). */
   text?: string
   refine?: boolean
+  /** The native seq of the message that started this turn (dedup anchor). */
+  anchor?: number
+  /** The observed message carried only image blocks (thread placeholder). */
+  imageOnly?: boolean
 }): ExecutionRecord {
   return {
     id: options.id,
@@ -581,6 +593,8 @@ export function newExternalRound(options: {
     sessionAnchor: options.sessionId,
     external: true,
     ...(options.refine === true ? { refine: true } : {}),
+    ...options.anchor !== undefined ? { anchor: options.anchor } : {},
+    ...options.imageOnly === true ? { imageOnly: true } : {},
   }
 }
 

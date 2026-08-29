@@ -1,40 +1,45 @@
 /**
  * Native-side activity detection — the "两端同步" contract. When a user chats
- * in the native conversation UI (not through the board), no submission ever
- * reaches the board: the only out-of-band signal the native session list
- * exposes is the `running` flag. Two observations therefore prove an
- * out-of-band turn:
- * - a KNOWN related session flips false→true (the classic flip), and
- * - a session NEVER seen before enters the related set while ALREADY running
- *   (a freshly created session is born at its first message — blank→listed
- *   and running→true happen together, so no flip will ever be observed; the
- *   flip-only rule silently missed every "new session, first chat" turn).
- * The one carve-out stays: the controller's very first pass after a page
- * load only seeds baselines (passive observation never re-fires history).
- * This module reads the signals and decides concretely which external rounds
- * the controller must record so the card, the comment thread and the refine
- * badge all follow the native reality. Pure and framework-free.
+ * in the native conversation UI (not through the board), the board learns of
+ * the turn through two complementary channels:
+ * - the PRIMARY one: the live mux stream's `user/message` frame (parsed by
+ *   `nativeTurnOf`), which the engine records the instant it arrives — no
+ *   sampling, so a turn that starts AND finishes between two reconcile passes
+ *   can never be missed;
+ * - the CATCH-UP backstop here: a STATE rule on every reconcile pass — a
+ *   related session that is running RIGHT NOW with no board-owned round for
+ *   this run period fires an external round. "Running now" covers the cases
+ *   the old edge (flip) rule silently missed: a session already running when
+ *   the page loaded (the "行显示进行中、卡片不过列" gap), a session born
+ *   running at its first message, and frames lost while the tab was frozen.
+ *
+ * One rule per RUNNING PERIOD: `book.recorded` consumes a session's current
+ * run (set when it fires or is suppressed by an open board round / the
+ * direct-send grace; cleared the moment the session reads idle), so the same
+ * native turn is never recorded twice, while every NEW turn re-arms it. Past
+ * completed turns are never re-fired (a finished turn is not running).
+ * Pure and framework-free.
  */
 
 /** Bookkeeping the controller keeps between passes (baselines + grace). */
 export interface ActivityBook {
-  /** Last observed running flag per session (baseline — past activity never re-fires). */
+  /** Last observed running flag per session (baseline bookkeeping). */
   running: Map<string, boolean>
   /** When an external round was created per session (for the settle grace). */
   externalSince: Map<string, number>
   /**
-   * Whether the seeding pass has run (the controller's first scan after a
-   * page load baselines every related session without firing — passive
-   * observation never re-fires history). From the second pass on, a session
-   * entering the related set for the first time WHILE already running
-   * triggers an external round (see the module doc).
+   * Sessions whose CURRENT running period is already consumed (fired or
+   * suppressed by a board-owned turn). Cleared when the session reads idle,
+   * so the next native turn re-arms detection — one external round per turn,
+   * never two, never zero.
    */
-  seeded?: boolean
+  recorded: Set<string>
 }
 
 /** Narrow transcript slice: a native user text message. */
 interface UserMessageEventShape {
   type: 'user/message'
+  seq?: number
   data?: {
     source?: { kind?: unknown }
     content?: unknown
@@ -47,6 +52,10 @@ export interface LatestUserMessage {
   text?: string
   /** Whether the message carried image blocks. */
   hasImage: boolean
+  /** The native log seq of the message that started the turn — THE anchor
+   *  identifying this turn across detection channels, devices and engines
+   *  (same session, same seq = same turn; never record it twice). */
+  anchor?: number
 }
 
 /**
@@ -60,18 +69,35 @@ export interface LatestUserMessage {
 export function latestUserMessage(events: readonly unknown[]): LatestUserMessage | undefined {
   if (!Array.isArray(events)) return undefined
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index] as UserMessageEventShape | null
-    if (typeof event !== 'object' || event === null || event.type !== 'user/message') continue
-    const data = event.data
-    if (typeof data !== 'object' || data === null) continue
-    if (data.source?.kind !== 'user') continue
-    const text = contentTextOf(data.content)
-    return {
-      ...text !== '' ? { text } : {},
-      hasImage: hasImageBlock(data.content),
-    }
+    const turn = turnOfMessageEvent(events[index])
+    if (turn !== undefined) return turn
   }
   return undefined
+}
+
+/**
+ * Parse ONE native event into the turn facts the board records: a
+ * `user/message` from the user source (the mux stream's `session/event`
+ * payload carries exactly this shape). undefined for anything else — the
+ * caller ignores assistant chatter, tool events and system frames.
+ */
+export function nativeTurnOf(event: unknown): LatestUserMessage | undefined {
+  return turnOfMessageEvent(event)
+}
+
+/** The one reader of the user-message wire shape (transcript tail + mux). */
+function turnOfMessageEvent(event: unknown): LatestUserMessage | undefined {
+  const entry = event as UserMessageEventShape | null
+  if (typeof entry !== 'object' || entry === null || entry.type !== 'user/message') return undefined
+  const data = entry.data
+  if (typeof data !== 'object' || data === null) return undefined
+  if (data.source?.kind !== 'user') return undefined
+  const text = contentTextOf(data.content)
+  return {
+    ...text !== '' ? { text } : {},
+    hasImage: hasImageBlock(data.content),
+    ...typeof entry.seq === 'number' && Number.isFinite(entry.seq) ? { anchor: entry.seq } : {},
+  }
 }
 
 /**
@@ -116,24 +142,25 @@ export interface DetectedExternalTurn {
 
 /** The per-task facts the detector needs to avoid false positives. */
 export interface ActivityCandidate {
-  /** Every related session: executions + linked + refine (de-duplicated). */
+  /** Every related session: executions + bound sessions + refine (de-duplicated). */
   sessions: ReadonlyArray<{ sessionId: string; refine: boolean }>
   /** Whether the task already has an open round on this session (board-owned or previously detected). */
   hasOpenRoundOn(sessionId: string): boolean
-  /** Whether the session is in the direct-send grace (its turn is already recorded by the board). */
-  inGrace(sessionId: string): boolean
+  /** Whether the session's CURRENT turn is board-owned already: the live
+   *  direct-send grace OR a direct round the board recorded for this same
+   *  running period (survives reloads — the in-memory grace alone would let
+   *  a long direct turn be double-recorded after 60s). */
+  inBoardTurnOn(sessionId: string): boolean
 }
 
 /**
- * Scan all candidates for out-of-band turns:
- * - The seeding pass (first scan after a page load, `!book.seeded`) only
- *   records baselines — history is never re-fired as external activity.
- * - Afterwards, a session never seen before that is ALREADY running when it
- *   first enters the related set fires an external turn (it was born at its
- *   first message: no false→true flip can ever be observed for it).
- * - A known session keeps the classic false→true flip semantics.
- * Open board rounds and the direct-send grace suppress detection exactly as
- * before, for both signal shapes.
+ * Scan all candidates for out-of-band turns — the STATE rule (see the module
+ * doc): a related session running RIGHT NOW whose current run period is not
+ * consumed yet fires one external round. Board-owned turns (an open round,
+ * the direct-send grace, a direct round of this run) consume the period
+ * WITHOUT firing — the turn is already in the ledger. A session reading idle
+ * re-arms its period, so every new native turn fires exactly once and past
+ * completed turns never re-fire.
  */
 export function detectExternalTurns(
   candidates: ReadonlyArray<{ taskId: string; candidate: ActivityCandidate }>,
@@ -141,23 +168,23 @@ export function detectExternalTurns(
   byId: Readonly<Record<string, { running: boolean } | undefined>>,
 ): DetectedExternalTurn[] {
   const found: DetectedExternalTurn[] = []
-  const seeding = book.seeded !== true
   for (const { taskId, candidate } of candidates) {
     for (const session of candidate.sessions) {
       const current = byId[session.sessionId]?.running ?? false
-      const previous = book.running.get(session.sessionId)
       book.running.set(session.sessionId, current)
-      if (seeding) continue
-      // Never-seen sessions have no baseline to flip from: a first sighting
-      // while already running IS the out-of-band turn (a fresh session is
-      // born at its first message). Known sessions need the classic flip.
-      const flippedOn = previous === undefined ? current : (!previous && current)
-      if (!flippedOn) continue
-      if (candidate.hasOpenRoundOn(session.sessionId) || candidate.inGrace(session.sessionId)) continue
+      if (!current) {
+        // Idle: the run period ends, the next native turn re-arms.
+        book.recorded.delete(session.sessionId)
+        continue
+      }
+      if (book.recorded.has(session.sessionId)) continue
+      // This running period is now consumed — whether the round fires here or
+      // a board-owned turn already covers it.
+      book.recorded.add(session.sessionId)
+      if (candidate.hasOpenRoundOn(session.sessionId) || candidate.inBoardTurnOn(session.sessionId)) continue
       found.push({ taskId, sessionId: session.sessionId, refine: session.refine })
     }
   }
-  book.seeded = true
   return found
 }
 

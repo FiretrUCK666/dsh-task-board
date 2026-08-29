@@ -22,10 +22,24 @@ import {
 export class QuestionTracker implements QuestionRpcFace {
   private pending: ReadonlyMap<string, WireQuestion> = new Map()
   private readonly listeners = new Set<() => void>()
+  /** Raw session-event fan-out (the mux stream's `session/event` frames):
+   *  the board's PRIMARY native-turn channel (see controller.recordNativeTurn). */
+  private readonly sessionListeners = new Set<(sessionId: string, event: unknown) => void>()
   private controller: AbortController | undefined
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly api: IApiClient) {}
+
+  /**
+   * Observe raw native session events as they stream in (every session, live
+   * — the stream replays only pending approval/question frames, so listeners
+   * never see history re-fired). @returns the disposer.
+   */
+  addSessionListener(listener: (sessionId: string, event: unknown) => void): () => void {
+    this.sessionListeners.add(listener)
+    this.start()
+    return () => { this.sessionListeners.delete(listener) }
+  }
 
   /** Start the mux stream once (idempotent); aborts on teardown. */
   start(): void {
@@ -42,6 +56,7 @@ export class QuestionTracker implements QuestionRpcFace {
     if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = undefined
     this.listeners.clear()
+    this.sessionListeners.clear()
     this.pending = new Map()
   }
 
@@ -49,7 +64,17 @@ export class QuestionTracker implements QuestionRpcFace {
     try {
       for await (const envelope of this.api.events.mux({}, controller.signal)) {
         const frame = envelope.payload
-        if (frame.type === 'question/requested') {
+        if (frame.type === 'session/event') {
+          // Live native-turn channel: fan the raw event out (a throwing
+          // listener must never kill the stream).
+          for (const listener of [...this.sessionListeners]) {
+            try {
+              listener(frame.sessionId, frame.event)
+            } catch {
+              // One listener's failure isolates to that listener.
+            }
+          }
+        } else if (frame.type === 'question/requested') {
           this.apply({ type: 'question/requested', rpcId: envelope.rpcId, sessionId: frame.sessionId, questions: frame.questions })
         } else if (frame.type === 'question/resolved') {
           this.apply({ type: 'question/resolved', questionRpcId: frame.questionRpcId })
