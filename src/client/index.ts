@@ -793,18 +793,21 @@ export function apply(ctx: ClientContext): void {
         },
       },
     })
+    // Adopt the engine seat BEFORE start(): start() runs a reconcile and (when
+    // cruise is on) a dispatch, both seat-gated — a viewer must never pump on
+    // boot alongside the real engine (that would double-launch). sync.start
+    // already awaited the first lease probe, so isEngine() is authoritative.
+    if (synced) controller.setEngine(sync.isEngine())
     controller.start()
     // The localized 未命名 placeholder the session rows show for a session
     // the host has not titled yet (the host names it automatically from the
     // first real message).
     controller.untitledSessionLabel = t('detail.sessionUntitled')
 
-    // Sync wiring (only meaningful in synced mode): the replica's engine seat
-    // follows the host lease, and every remote document lands in the
-    // controller + refreshes the offline mirror. sync.start already awaited
-    // the first lease probe, so isEngine() is authoritative here.
+    // Sync wiring (only meaningful in synced mode): every remote document lands
+    // in the controller + refreshes the offline mirror; the seat and relayed
+    // launches follow the host's lease/command frames.
     if (synced) {
-      controller.setEngine(sync.isEngine())
       sync.onRemote(view => {
         controller.applyRemote(view)
         writeMirror(view)

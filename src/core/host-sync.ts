@@ -492,7 +492,9 @@ export class SyncedTaskStore implements TaskStore {
   }
 }
 
-/** PresetStore over the synced schedule-presets section. */
+/** PresetStore over the synced schedule-presets section. The mirror is
+ *  write-only (offline bootstrap for fallback mode); reads always take the
+ *  synced view, which is the freshest truth in synced mode. */
 export class SyncedPresetStore implements PresetStore {
   constructor(
     private readonly sync: SyncLedger,
@@ -500,7 +502,7 @@ export class SyncedPresetStore implements PresetStore {
   ) {}
 
   load(): SchedulePreset[] {
-    return this.mirror?.load() ?? this.sync.view().schedulePresets
+    return this.sync.view().schedulePresets
   }
 
   save(presets: readonly SchedulePreset[]): void {
@@ -514,7 +516,8 @@ export class SyncedPresetStore implements PresetStore {
   }
 }
 
-/** RunPresetStore over the synced run-presets section. */
+/** RunPresetStore over the synced run-presets section (mirror write-only,
+ *  same discipline as SyncedPresetStore). */
 export class SyncedRunPresetStore implements RunPresetStore {
   constructor(
     private readonly sync: SyncLedger,
@@ -522,7 +525,7 @@ export class SyncedRunPresetStore implements RunPresetStore {
   ) {}
 
   load(): RunPresetsDocument {
-    return this.mirror?.load() ?? this.sync.view().runPresets
+    return this.sync.view().runPresets
   }
 
   save(doc: RunPresetsDocument): void {
