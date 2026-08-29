@@ -76,7 +76,11 @@ export interface BoardServiceDeps {
 export class BoardDataService {
   private doc: BoardDoc = emptyBoardDoc(0)
   private unit: KvUnitLike | undefined
-  private lease: { clientId: string; expiresAt: number } | undefined
+  private lease: { clientId: string; expiresAt: number; ttl: number } | undefined
+  /** Live SSE connections per clientId. An open stream is the holder's
+   *  liveness proof: unlike client timers it survives background-tab timer
+   *  throttling, so the engine lease never flaps while its stream is up. */
+  private readonly streams = new Map<string, number>()
   private pendingCommands = new Map<string, BoardCommand>()
   private readonly listeners = new Set<(event: BoardEvent) => void>()
   private lane: Promise<void> = Promise.resolve()
@@ -167,19 +171,20 @@ export class BoardDataService {
   }
 
   /**
-   * Acquire or renew the engine lease. The holder keeps renewing (any board
-   * API call refreshes it); a free or expired lease is granted to the caller.
+   * Acquire or renew the engine lease. Liveness is the leaseState view (an
+   * open SSE stream or any board API call keeps the holder alive); a free or
+   * expired lease is granted to the caller.
    */
   acquireLease(clientId: string, ttlMs?: number): LeaseState {
     const now = this.now()
     const ttl = clampLeaseTtl(ttlMs)
-    const active = this.lease !== undefined && this.lease.expiresAt > now
-    if (active && this.lease !== undefined && this.lease.clientId !== clientId) {
-      // Held (and not yet expired) by someone else: the caller is NOT the engine.
-      return { held: false, holder: this.lease.clientId, expiresAt: this.lease.expiresAt }
+    const current = this.leaseState(now)
+    if (current.held && current.holder !== clientId) {
+      // Held (live stream or unexpired) by someone else: the caller is NOT the engine.
+      return { held: false, holder: current.holder, expiresAt: current.expiresAt }
     }
-    const renewing = active && this.lease !== undefined && this.lease.clientId === clientId
-    this.lease = { clientId, expiresAt: now + ttl }
+    const renewing = current.held && current.holder === clientId
+    this.lease = { clientId, expiresAt: now + ttl, ttl }
     if (!renewing) this.broadcast({ type: 'lease', holder: clientId, expiresAt: this.lease.expiresAt })
     this.drainPendingCommands()
     return this.leaseState(this.now())
@@ -194,30 +199,53 @@ export class BoardDataService {
     return this.leaseState(this.now())
   }
 
-  /** Any API touch from the holder renews the lease (throttle-proof). */
+  /** Any API touch from the holder renews the lease for its granted TTL
+   *  (throttle-proof: every commit/get/lease call refreshes the seat). */
   noteActivity(clientId: string | undefined): void {
     if (clientId === undefined || this.lease === undefined || this.lease.clientId !== clientId) return
-    const ttl = Math.max(LEASE_MIN_TTL_MS, this.lease.expiresAt - this.now())
-    this.lease = { ...this.lease, expiresAt: this.now() + ttl }
+    this.lease = { ...this.lease, expiresAt: this.now() + this.lease.ttl }
   }
 
-  /** An SSE connection dropped: if it carried the holder, shorten its lease
-   *  to the grace window so a reload keeps the seat but a closed tab yields
-   *  it fast. */
+  /** An SSE connection dropped: retire its count; when the holder's last
+   *  stream goes, shorten its lease to the grace window (a reload reopens the
+   *  stream and keeps the seat; a closed tab yields it fast). */
   noteDisconnect(clientId: string | undefined): void {
-    if (clientId === undefined || this.lease === undefined || this.lease.clientId !== clientId) return
+    if (clientId === undefined || clientId === '') return
+    const live = (this.streams.get(clientId) ?? 0) - 1
+    if (live > 0) this.streams.set(clientId, live)
+    else this.streams.delete(clientId)
+    if (this.lease === undefined || this.lease.clientId !== clientId) return
     const graceUntil = this.now() + LEASE_DISCONNECT_GRACE_MS
     if (this.lease.expiresAt > graceUntil) {
       this.lease = { ...this.lease, expiresAt: graceUntil }
     }
   }
 
-  /** The current lease state (an expired lease reads as free, holderless). */
+  /** The current lease state. A holder with a live SSE stream never expires
+   *  (the stream is refreshed by the keep-alive writes; a dead one surfaces
+   *  through noteDisconnect); an expired lease reads as free, holderless. */
   leaseState(now = this.now()): LeaseState {
-    if (this.lease === undefined || this.lease.expiresAt <= now) {
+    if (this.lease === undefined) {
+      return { held: false, holder: undefined, expiresAt: undefined }
+    }
+    if ((this.streams.get(this.lease.clientId) ?? 0) > 0) {
+      // Stream-alive renewal: push the deadline out so a throttled background
+      // tab keeps the seat it legitimately holds.
+      if (this.lease.expiresAt < now + this.lease.ttl) {
+        this.lease = { ...this.lease, expiresAt: now + this.lease.ttl }
+      }
+      return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt }
+    }
+    if (this.lease.expiresAt <= now) {
       return { held: false, holder: undefined, expiresAt: undefined }
     }
     return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt }
+  }
+
+  /** An SSE connection for `clientId` opened (route layer, stream accepted). */
+  noteStreamOpen(clientId: string | undefined): void {
+    if (clientId === undefined || clientId === '') return
+    this.streams.set(clientId, (this.streams.get(clientId) ?? 0) + 1)
   }
 
   /**

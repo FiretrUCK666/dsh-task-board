@@ -77,6 +77,7 @@ export interface BoardRouteDeps {
   acquireLease(clientId: string, ttlMs?: number): LeaseState
   releaseLease(clientId: string): LeaseState
   noteActivity(clientId: string | undefined): void
+  noteStreamOpen(clientId: string | undefined): void
   noteDisconnect(clientId: string | undefined): void
   submitCommand(command: BoardCommand): { queued: boolean }
   subscribe(listener: (event: BoardEvent) => void): () => void
@@ -248,6 +249,9 @@ function serveEvents(deps: BoardRouteDeps, url: URL, res: ServerResponse): void 
     'x-accel-buffering': 'no',
   })
   res.write('retry: 3000\n\n')
+  // The open stream is the holder's liveness proof (survives tab timer
+  // throttling; a dead socket surfaces through the close event).
+  deps.noteStreamOpen(clientId)
   let open = true
   const unsubscribe = deps.subscribe(event => {
     if (!open) return
@@ -300,6 +304,7 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
     acquireLease: (clientId, ttlMs) => service.acquireLease(clientId, ttlMs),
     releaseLease: clientId => service.releaseLease(clientId),
     noteActivity: clientId => service.noteActivity(clientId),
+    noteStreamOpen: clientId => service.noteStreamOpen(clientId),
     noteDisconnect: clientId => service.noteDisconnect(clientId),
     submitCommand: command => service.submitCommand(command),
     subscribe: listener => service.subscribe(listener),

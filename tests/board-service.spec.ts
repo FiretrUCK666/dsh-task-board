@@ -190,6 +190,32 @@ describe('BoardDataService lease', () => {
     expect(service.leaseState().held).toBe(false)
   })
 
+  it('an open SSE stream keeps the lease alive past its deadline (no background-tab flap)', async () => {
+    const { service, clock } = makeService(new FakeUnit())
+    await service.init()
+    service.acquireLease('a', LEASE_MIN_TTL_MS)
+    service.noteStreamOpen('a')
+    // Far beyond the TTL: the live stream renews the seat on every read.
+    clock.t += LEASE_MIN_TTL_MS * 10
+    expect(service.leaseState().held).toBe(true)
+    expect(service.acquireLease('b').held).toBe(false)
+    // The stream closes: the grace window applies, then b takes over.
+    service.noteDisconnect('a')
+    clock.t += LEASE_DISCONNECT_GRACE_MS + 1
+    expect(service.leaseState().held).toBe(false)
+    expect(service.acquireLease('b').held).toBe(true)
+  })
+
+  it('release clears the lease even with a live stream', async () => {
+    const { service } = makeService(new FakeUnit())
+    await service.init()
+    service.acquireLease('a')
+    service.noteStreamOpen('a')
+    service.releaseLease('a')
+    expect(service.leaseState().held).toBe(false)
+    expect(service.acquireLease('b').held).toBe(true)
+  })
+
   it('release frees the seat immediately', async () => {
     const { service } = makeService(new FakeUnit())
     await service.init()

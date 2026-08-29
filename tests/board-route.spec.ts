@@ -85,6 +85,7 @@ function fakeDeps() {
       return lease
     },
     noteActivity: clientId => activities.push(clientId),
+    noteStreamOpen: () => undefined,
     noteDisconnect: clientId => disconnects.push(clientId),
     submitCommand: command => {
       commands.push(command)
