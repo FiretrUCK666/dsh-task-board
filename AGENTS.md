@@ -189,7 +189,7 @@
 ## 项目定位
 
 DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列看板 + 任务经 DSH 会话机制
-真实执行 + 5 段 cron 定时调度。**看板数据持久化在 DSH host 端（存储单元 `dsh-task-board`），
+真实执行 + 5 段 cron 定时调度。**看板数据持久化在 DSH host 端（存储单元 `dsh_task_board`），
 任意设备/浏览器（桌面 + 手机，跨 origin）经 SSE 实时同步看到的是同一块板；窄屏为紧凑布局。**
 单一 npm 包，cordis 插件，host/client 双半区，MIT 许可，全新独立项目（零历史仓库引用）。
 
@@ -201,7 +201,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 设置路由 | `/api/dsh-task-board/settings` |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
-| host 存储单元名（storage hub json 后端） | `dsh-task-board`（落 `~/.dsh/storages/dsh-task-board.json`） |
+| host 存储单元名（storage hub json 后端） | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board.json`；平台 `UNIT_NAME_RE` 只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
 | 公告 section | `plugin:dsh-task-board`（order 200） |
 | 设置卡 slot id | `dsh-task-board`（`settings.plugin.item`，order 110） |
 | localStorage 键（现为离线镜像 + 草稿 + 备份） | `dsh.taskBoard.v1` 等（**不得改名**，见「数据键稳定」） |
@@ -215,7 +215,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 - `src/index.ts`：`inject = ['webServer','systemPrompt','settings']`；注册设置命名空间（settings.yaml 持久化）并联动公告；注册设置/权限/看板数据路由；`sync()` 按 `enabled`/`announceToAgent` 注册/撤销 systemPrompt section。
 - `src/host/*-route.ts`：纯 `create*Handler`（settings/permission/attachment/session-state/board），可注入测试；服务读取一律 `ctx.get`；权限选项实时读原生 `permissionPresets` 服务（未挂载则 available:false，随 DSH 预设表自动适配）。
-- `src/host/board-service.ts` + `board-route.ts`：**看板数据真相服务**——host 端持有整份 `BoardDoc`（tasks + cruise + schedulePresets + runPresets + tombstones + revision），经 storage hub 的 json 后端 `KvUnit`（单元名 `dsh-task-board`，落 `~/.dsh/storages/`）原子持久化；写链串行、`applyCommit` 合并、先持久化后应答后 SSE 广播。路由（前缀 `/api/dsh-task-board/board`）：GET 文档（`?since` 短路 unchanged）、POST commit（合并写回，返回权威文档）、POST `/lease`（引擎租约）、POST `/command`（发射中继）、GET `/events`（SSE：commit/lease/command 帧 + keep-alive）。storage hub 缺席 → available:false → 客户端整体退回 localStorage 模式（功能不降级为错误）。
+- `src/host/board-service.ts` + `board-route.ts`：**看板数据真相服务**——host 端持有整份 `BoardDoc`（tasks + cruise + schedulePresets + runPresets + tombstones + revision），经 storage hub 的 json 后端 `KvUnit`（单元名 `dsh_task_board`，落 `~/.dsh/storages/`）原子持久化；写链串行、`applyCommit` 合并、先持久化后应答后 SSE 广播。路由（前缀 `/api/dsh-task-board/board`）：GET 文档（`?since` 短路 unchanged，**无 since 参数必须回全文档**——初始 fetch 靠它）、POST commit（合并写回，返回权威文档）、POST `/lease`（引擎租约）、POST `/command`（发射中继）、GET `/events`（SSE：commit/lease/command 帧 + keep-alive）。storage hub 缺席 → available:false → 客户端整体退回 localStorage 模式（功能不降级为错误）。`tests/board-http.spec.ts` 用真实 `JsonStorageBackend` + 真实 `http.Server` + 真实 SSE 覆盖这条链（单测的 fake req/res 测不到单元名/HTTP/SSE/落盘恢复）。
 
 ### client 半区（浏览器）
 
@@ -253,7 +253,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### 关键不变量（避免重造已有机制；改前先读对应文件）
 
-- **多端同步（host 唯一真相 + 引擎租约，一切数据一致性问题的根解）**：看板真相 = host 的 `BoardDoc`（storage hub json 后端持久化，单元 `dsh-task-board`），localStorage 五键**降级为离线镜像/草稿/备份**（键名不变）。浏览器 = 乐观副本：本地写即时生效，经 `store.save → SyncedTaskStore → BoardSyncClient` 的去抖提交上送，**host `applyCommit` 合并后返回权威文档，所有副本向它收敛（无 CAS 也无不收敛）**；远端变化经 SSE（+ 轮询兜底 + 重连/回前台对账）→ `controller.applyRemote`（**永不回写**——回写即回声）。合并文法唯一居所 = `board-doc.ts`：逐记录 LWW（updatedAt 新者胜、平手 host 保）、删除带 `baseUpdatedAt` 对账 + 墓碑（at=所见最新+1，抗时钟偏移压复活、真更新可复活）。「添加已有会话」与侧栏拖入同走 `addTaskSource`。**引擎租约**：host 内存租约（TTL + 任何 API 命中续期 + SSE 断流宽限期提前过期），**只有引擎端**跑 dispatch 泵/scheduler tick/reconcile/外源轮补记/cruise 翻转/settledFollowUp+链接续；非引擎端 = 纯视图 + 提交器，用户动作照常写台账（同步后由引擎泵出），手动执行经 `requestLaunch` → host `/command` → 引擎 SSE 执行（无引擎时 park，下次授约重放）——单泵 = 单并发预算 = 多端绝不双发（同浏览器双标签同样受约，根治旧双标签脑裂）。question tracker 每端独立流（先到先答，官方语义）；drafts 刻意设备本地不同步。storage hub 缺席 → 整体回退 localStorage 模式 = 旧行为，功能不降级为错误。
+- **多端同步（host 唯一真相 + 引擎租约，一切数据一致性问题的根解）**：看板真相 = host 的 `BoardDoc`（storage hub json 后端持久化，单元 `dsh_task_board`），localStorage 五键**降级为离线镜像/草稿/备份**（键名不变）。浏览器 = 乐观副本：本地写即时生效，经 `store.save → SyncedTaskStore → BoardSyncClient` 的去抖提交上送，**host `applyCommit` 合并后返回权威文档，所有副本向它收敛（无 CAS 也无不收敛）**；远端变化经 SSE（+ 轮询兜底 + 重连/回前台对账）→ `controller.applyRemote`（**永不回写**——回写即回声）。合并文法唯一居所 = `board-doc.ts`：逐记录 LWW（updatedAt 新者胜、平手 host 保）、删除带 `baseUpdatedAt` 对账 + 墓碑（at=所见最新+1，抗时钟偏移压复活、真更新可复活）。「添加已有会话」与侧栏拖入同走 `addTaskSource`。**引擎租约**：host 内存租约（TTL + 任何 API 命中续期 + SSE 断流宽限期提前过期），**只有引擎端**跑 dispatch 泵/scheduler tick/reconcile/外源轮补记/cruise 翻转/settledFollowUp+链接续；非引擎端 = 纯视图 + 提交器，用户动作照常写台账（同步后由引擎泵出），手动执行经 `requestLaunch` → host `/command` → 引擎 SSE 执行（无引擎时 park，下次授约重放）——单泵 = 单并发预算 = 多端绝不双发（同浏览器双标签同样受约，根治旧双标签脑裂）。question tracker 每端独立流（先到先答，官方语义）；drafts 刻意设备本地不同步。storage hub 缺席 → 整体回退 localStorage 模式 = 旧行为，功能不降级为错误。
 - **统一会话与评论单轨**：相同会话 = 同一条线程（`sessionCommentsOf`）；直发/驱动/评论并轨为一种留言；发送两态 = 排队（调度器/巡航/FIFO，可取消）与插话（`steerComment` 立即送达）；图片走 `AttachmentStrip` → host 附件桥 → prompt part。
 - **插话与任务运行态（单一推导，杜绝各面各判）**：发送层 mode 参数化——`sessionMessage`/`sendRawMessage`/`commentRun`/driver.prompt 都收官方 `'queue' | 'steer'`（官方 prompt 枚举）；**三入口统一**（评论线程插话 → `steerComment`('steer')；会话规则 `send:'steer'` → 建轮**即带 injectedAt**（`queueRuleComment` 第 6 参——dispatch 按注入标记过滤，杜绝「同一轮双注入」竞态）+ `launchComment(...,'steer')` 立即注入（结算/续跑机制与排队轮完全相同）；直接留言/交互卡回答不走此层）。**运行态唯一推导** = `task-live.ts`：**相关会话集也唯一**——`relatedSessionIdsOf(task, linkedIds)`（refine → session binds → 执行轮 → 注入 linked ids，去重稳定序；`controller.relatedSessionsOf` 只是对它的薄包装，任何新相关面一律注入 linked，绝不手写第二套列表）；`taskLiveStateOf`（waiting > running > idle，running 以「任一相关会话原生 `byId.running`」为真相——插话/规则/外源/执行/**链接（workspace 成员）**一视同仁；`controller.liveStateOf` 传入 `linkedOf` ids、`nativeRunningOf` 供 UI）；`sessionDisplay` 新增 `nativeRunning` 参数（settled 轮但会话真在跑 → running；waiting 仍最优先）；`reconcile` 的 `driveLiveStates` 驱动**直发轮**（settle-at-birth 无事件路径）：会话跑 → 卡片/行进入进行中（`withStatus running`），会话停 → 落「待审核」并走**同一条 `settledFollowUp`**（on-complete 规则/接续链照常触发——插话完成也是完成）；板内执行/评论/完善/外源轮的事件结算路径不变，落列归它们（`isDirectLike` 只认已结算直发轮，永不双结算）。
 - **官方 @ 引用机制（唯一桥 = reference-source.ts）**：所有输入框（留言/完善回答/规则指令/执行 Prompt/交互卡回答）共用同一桥——与主界面 ui-reference 相同的两个 Remote 命名空间（`remote.fileReferences` + `remote.sessionReferenceResolver`，结构化读取，缺面降级为无 @ 菜单）。**官方身份政策（不可绕过，勿在代码里绕——属官方 api-remotes 政策，参见 README 能力边界）**：目标会话为「子代理路由会话」（`origin === 'subagent'` 或挂在活跃父代理下）时，宿主对一切通用 RPC（含两个引用命名空间）返回 `agent-busy`，官方 composer 同样不可用（官方语义：子代理会话请走子代理投递通道；无官方修复版本）。插入用**官方文法**：`file-reference-grammar.ts`（`activeAtToken` 引号 token + `formatFileMention`，官方包**逐字镜像**——打包门禁禁止跨插件值导入，镜像 + 契约测试钉死官方行为）与 `session-mention.ts`（官方会话引用编码逐字镜像：`dsh-session:` + base64url(JSON(id)) + label 转义）；会话候选插入官方规范 URI `@[label](dsh-session:…)`，host 在任意 user 消息的 agent/pre-step 自动解析为「引用会话」上下文——**板子只产出官方文本，解析全走官方链路**。`PromptInput` 以 `sessionId`（目标会话）为作用域：`referenceSessionOf`（refine→执行→绑定 → 当前会话 → 列表首项）是唯一解析；`@"` 引号路径内不弹会话候选（官方规则）；目录下钻靠开口引号延续。
@@ -331,7 +331,9 @@ pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
   `review-page`（review-transcript/context-meter/menu-direction/interaction 合并）、
   `card-contract`（card-layout + card-label 合并）、`mobile-contract`（容器查询
   机制/compact 几何无 vh/vw/触屏块/溢出修复/离屏入口——钉死移动端设计）、
-  `settings-route`、`board-route`、`board-service`、
+  `settings-route`、`board-route`、`board-service`、`board-http`（真实
+  `JsonStorageBackend` + 真实 `http.Server` + 真实 SSE 的端到端冒烟——单测 fake 测不到的
+  HTTP/落盘/流式契约）、
   `permission-route`、`attachment-route`、`session-state-route`（host 路由，同一
   惯用法各占一个）、`route-scope`（client 设置 scope）、`controller`（端到端，
   唯一大文件——共享 harness 不拆分；含引擎席位/applyRemote/中继门控）。

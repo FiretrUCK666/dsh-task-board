@@ -8,7 +8,7 @@ host 端，**桌面与手机（任何设备、任何地址）打开同一部署�
 ## 核心能力
 
 - **多端实时同步（host 唯一真相）**：看板数据（任务、巡航、预设）由 DSH host 端持久化
-  （`~/.dsh/storages/dsh-task-board.json`，人可读、可备份），浏览器只是乐观副本：
+  （`~/.dsh/storages/dsh_task_board.json`，人可读、可备份），浏览器只是乐观副本：
   电脑建卡 → 手机秒级可见，手机操作 → 电脑同步更新；同浏览器多标签也共享同一份真相。
   两端并发编辑按记录合并（新者胜、删除不被旧副本复活）；弱网/断线时看板照常可用
   （本地镜像先渲染），恢复后自动追平。首次升级自动迁移：旧 localStorage 数据上传为
@@ -138,7 +138,7 @@ pnpm verify     # 独立插件静态校验门禁（含禁 emoji、无 hex/rgb �
 
 ## 数据存储位置
 
-- **真相在 DSH host**：`~/.dsh/storages/dsh-task-board.json`（任务台账 + 巡航 + 定时预设 +
+- **真相在 DSH host**：`~/.dsh/storages/dsh_task_board.json`（任务台账 + 巡航 + 定时预设 +
   运行配置预设 + 删除墓碑，单文件原子写、人可读、可直接备份；删除该文件 = 清空看板）。
 - 浏览器 localStorage 各键为**离线镜像/本地状态**（断网首屏秒开、刷新不丢）：
   `dsh.taskBoard.v1`（台账镜像）、`dsh.taskBoard.cruise.v1`、`dsh.taskBoard.presets.v1`、
@@ -168,7 +168,7 @@ pnpm verify     # 独立插件静态校验门禁（含禁 emoji、无 hex/rgb �
 | 设置路由 | `/api/dsh-task-board/settings` |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由 | `/api/dsh-task-board/board`（含 `/lease` `/command` `/events`） |
-| host 存储单元 | `dsh-task-board`（`~/.dsh/storages/`） |
+| host 存储单元 | `dsh_task_board`（`~/.dsh/storages/`） |
 | 设置卡 slot id | `dsh-task-board` |
 | localStorage 键 | `dsh.taskBoard.v1` 等（保持稳定，现为镜像/草稿/备份） |
 
