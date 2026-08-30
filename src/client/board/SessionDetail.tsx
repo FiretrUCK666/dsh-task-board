@@ -17,6 +17,7 @@ import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
+import { toPromptImage } from './attach.ts'
 import { sessionStateChip } from './session-chip.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { Button } from './ui.tsx'
@@ -125,6 +126,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               jumpToBottom={jumpToBottom}
               waiting={waiting}
               onRetry={reload}
+              sessionId={sessionId}
+              controller={controller}
             />
           </div>
         )
@@ -152,7 +155,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               disabled={liveGone}
               onDrive={text => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/')) !== undefined}
               onSteer={text => controller.steerComment(task.id, sessionId, text).then(result => result.ok)}
-              onSteerImages={(text, refs) => controller.steerCommentWithImages(task.id, sessionId, text, refs).then(result => result.ok)}
+              onSteerImages={(text, images) => controller.steerCommentWithImages(task.id, sessionId, text, images.map(toPromptImage)).then(result => result.ok)}
             />
           }
         />

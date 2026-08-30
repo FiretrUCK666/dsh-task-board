@@ -32,6 +32,7 @@ import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
+import { toPromptImage } from './attach.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { sessionStateChip } from './session-chip.ts'
 import { useSessionContext, useWireQuestion } from './use-interaction.ts'
@@ -155,6 +156,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               jumpToBottom={jumpTranscript}
               waiting={waiting}
               onRetry={reloadTranscript}
+              sessionId={sessionId}
+              controller={controller}
               before={
                 <div className={css.reviewOutcome}>
                   <Chip
@@ -201,9 +204,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               onSteer={text => sessionId === undefined
                 ? Promise.resolve(false)
                 : controller.steerComment(current.id, sessionId, text).then(result => result.ok)}
-              onSteerImages={(text, refs) => sessionId === undefined
+              onSteerImages={(text, images) => sessionId === undefined
                 ? Promise.resolve(false)
-                : controller.steerCommentWithImages(current.id, sessionId, text, refs).then(result => result.ok)}
+                : controller.steerCommentWithImages(current.id, sessionId, text, images.map(toPromptImage)).then(result => result.ok)}
             />
           }
         />

@@ -19,14 +19,14 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { Markdown } from './Markdown.tsx'
-import { sumUsage, type TranscriptLine } from './review-transcript.ts'
+import { sumUsage, type TranscriptImage, type TranscriptLine } from './review-transcript.ts'
 import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow } from './use-transcript.tsx'
 import { Chip, type ChipKind } from './Chip.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import type { CommentView } from './comment-thread.ts'
 import { InteractionCard } from './InteractionCard.tsx'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
-import { admitDraftImages, type DraftImage, type HostImageRefView } from './attach.ts'
+import { type DraftImage } from './attach.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Notice, SendModeToggle } from './ui.tsx'
@@ -37,13 +37,48 @@ import { waitingKeyOf } from './session-chip.ts'
 const MODEL_SEP = '\u0000'
 
 /**
+ * One message image: the durable ref is read back through the official
+ * attachment RPC (cached + single-flighted by the wiring), then shown as a
+ * click-to-open thumbnail. While loading it keeps its box (no layout jump);
+ * a failed/absent read degrades to a quiet name chip, never a broken icon.
+ */
+function MessageImage({ controller, sessionId, image }: {
+  controller: BoardController
+  sessionId: string
+  image: TranscriptImage
+}) {
+  const [src, setSrc] = useState<string | undefined>(undefined)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let alive = true
+    void controller.loadImage(sessionId, image.attachmentId).then(value => {
+      if (!alive) return
+      if (value === undefined) setFailed(true)
+      else setSrc(`data:${value.mediaType};base64,${value.data}`)
+    })
+    return () => { alive = false }
+  }, [controller, sessionId, image.attachmentId])
+  if (failed) {
+    return <span className={css.reviewImageMissing} title={image.name ?? ''}>{t('review.imageMissing')}</span>
+  }
+  if (src === undefined) {
+    return <span className={css.reviewImageBox} aria-hidden="true" />
+  }
+  return (
+    <a className={css.reviewImageBox} href={src} target="_blank" rel="noreferrer" title={image.name ?? ''}>
+      <img className={css.reviewImage} src={src} alt={image.name ?? ''} loading="lazy" />
+    </a>
+  )
+}
+
+/**
  * One memoized transcript row. Props are the primitive render facts (never
  * the line object), so a light poll that re-folds the tail only re-renders
  * the rows whose content actually changed — long transcripts stay smooth.
  */
 const TranscriptRow = memo(function TranscriptRow(props:
   | { kind: 'context'; plugin: string; summary: string }
-  | { kind: 'message'; role: 'user' | 'assistant'; text: string }
+  | { kind: 'message'; role: 'user' | 'assistant'; text: string; sessionId?: string; controller?: BoardController; images?: TranscriptImage[] }
 ) {
   if (props.kind === 'context') {
     return (
@@ -52,11 +87,22 @@ const TranscriptRow = memo(function TranscriptRow(props:
       </li>
     )
   }
+  const images = props.images ?? []
+  const { controller, sessionId } = props
   return (
     <li className={css.reviewMessage} data-role={props.role}>
-      <div className={css.reviewMessageText}>
-        <Markdown text={props.text} />
-      </div>
+      {images.length > 0 && controller !== undefined && sessionId !== undefined && (
+        <span className={css.reviewImageRow}>
+          {images.map(image => (
+            <MessageImage key={image.attachmentId} controller={controller} sessionId={sessionId} image={image} />
+          ))}
+        </span>
+      )}
+      {props.text !== '' && (
+        <div className={css.reviewMessageText}>
+          <Markdown text={props.text} />
+        </div>
+      )}
     </li>
   )
 })
@@ -69,7 +115,7 @@ const TranscriptRow = memo(function TranscriptRow(props:
  * is pure rendering, so every live session surface looks and behaves
  * identically.
  */
-export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, before, onRetry }: {
+export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, before, onRetry, sessionId, controller }: {
   lines: readonly TranscriptLine[] | undefined
   error: boolean
   atBottom: boolean
@@ -82,6 +128,10 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
   /** Re-read the tail (the error state's retry — a timeout/unavailable read
    *  must never be a dead end; the caller wires this to the hook's reload). */
   onRetry?: () => void
+  /** The session the tail belongs to + the controller (message images read
+   *  their bytes through the official attachment RPC; absent = refs only). */
+  sessionId?: string
+  controller?: BoardController
 }) {
   const shown = lines === undefined ? undefined : maxLines === undefined ? lines : lines.slice(-maxLines)
   return (
@@ -114,6 +164,9 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
               kind="message"
               role={line.role}
               text={line.text}
+              sessionId={sessionId}
+              controller={controller}
+              images={line.images}
             />
           ))}
         </ul>
@@ -666,14 +719,14 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   disabled?: boolean
   onDrive: (text: string) => boolean
   onSteer: (text: string) => Promise<boolean>
-  onSteerImages: (text: string, refs: readonly HostImageRefView[]) => Promise<boolean>
+  onSteerImages: (text: string, images: readonly DraftImage[]) => Promise<boolean>
 }) {
   const storeKey = sessionId === undefined ? undefined : commentDraftKey(taskId, sessionId)
   const [draft, setDraft] = useState<string>(() => (storeKey !== undefined ? draftStore.get(storeKey) ?? '' : ''))
   const [steer, setSteer] = useState(false)
   const [attachedImages, setAttachedImages] = useState<readonly DraftImage[]>([])
-  // A failed image admission is surfaced right under the composer (never a
-  // silent drop — the user must know why their picture did not send).
+  // A failed image send is surfaced right under the composer (never a silent
+  // drop — the user must know why their picture did not go out).
   const [attachError, setAttachError] = useState<string | undefined>(undefined)
   const clear = (): void => {
     setDraft('')
@@ -697,14 +750,10 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     clear()
     if (attachedImages.length > 0) {
       // Images go out immediately through the steer path — a picture belongs
-      // to the current exchange, not a queue.
-      void admitDraftImages(attachedImages).then(outcome => {
-        if (outcome.refs.length === 0) {
-          restore()
-          setAttachError(outcome.error ?? '图片上传失败')
-          return
-        }
-        void onSteerImages(text, outcome.refs).then(ok => { if (!ok) { restore(); setAttachError('发送失败，请重试') } })
+      // to the current exchange, not a queue. The drafts carry their base64
+      // bytes; the host admits them durably as part of taking the prompt.
+      void onSteerImages(text, attachedImages).then(ok => {
+        if (!ok) { restore(); setAttachError('发送失败，请重试') }
       })
       return
     }

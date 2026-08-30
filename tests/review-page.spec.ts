@@ -169,6 +169,38 @@ describe('foldTranscript', () => {
     ])
   })
 
+  it('keeps durable image refs (the host-promoted form) and image-only messages', () => {
+    const events: TranscriptEvent[] = [
+      {
+        ...base,
+        type: 'user/message',
+        data: {
+          id: 'm1',
+          role: 'user',
+          source: { kind: 'user' },
+          content: [
+            { type: 'text', text: '看这张图' },
+            // The stored (post-admission) shape: a durable ref, not bytes.
+            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', name: 'a.png', bytes: 10, width: 2, height: 2 } },
+            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png' } }, // dup → dropped
+            { type: 'image', attachment: { mediaType: 'image/png' } }, // no id → skipped
+          ],
+        },
+      },
+      {
+        ...base,
+        seq: 2,
+        type: 'user/message',
+        data: { id: 'm2', role: 'user', source: { kind: 'user' }, content: [{ type: 'image', attachment: { attachmentId: 'att-2', mediaType: 'image/jpeg' } }] },
+      },
+    ]
+    const lines = foldTranscript(events)
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toMatchObject({ kind: 'message', text: '看这张图', images: [{ attachmentId: 'att-1', mediaType: 'image/png', name: 'a.png' }] })
+    // An image-only message is NOT dropped (empty text, one image).
+    expect(lines[1]).toMatchObject({ kind: 'message', text: '', images: [{ attachmentId: 'att-2' }] })
+  })
+
   it('turns system/plugin injections into context rows, never user bubbles', () => {
     const events: TranscriptEvent[] = [
       // AGENTS.md / skill / runtime-context injections (plugin source).

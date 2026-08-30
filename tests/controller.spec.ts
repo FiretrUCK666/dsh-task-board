@@ -2242,6 +2242,22 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
     expect(sent).toEqual(['s-1:继续'])
   })
 
+  it('passes prompt images through to the sessionMessage face unchanged (official bytes shape)', async () => {
+    const seen: Array<{ text: string; images: unknown }> = []
+    const { controller } = makeController(new StubExec(), {
+      sessionMessage: async (_sessionId, text, images) => {
+        seen.push({ text, images })
+        return { ok: true as const }
+      },
+    })
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    const images = [{ mediaType: 'image/png', data: 'aGk=', name: 'a.png' }]
+    await expect(controller.steerCommentWithImages(task.id, 's-1', '看图', images)).resolves.toEqual({ ok: true })
+    // The wiring receives the temporary-bytes parts as-is (attachmentId is the
+    // HOST's business after admission — the board never invents a ref shape).
+    expect(seen[0].images).toEqual(images)
+  })
+
   it('revives a completed task when a steer is sent to its session', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub, {

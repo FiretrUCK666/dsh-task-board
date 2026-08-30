@@ -143,6 +143,8 @@ export function RefineSection({ controller, task }: {
                 jumpToBottom={jumpToBottom}
                 maxLines={12}
                 onRetry={reload}
+                sessionId={sessionId}
+                controller={controller}
               />
             </div>
           </div>

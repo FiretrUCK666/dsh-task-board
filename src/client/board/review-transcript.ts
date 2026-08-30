@@ -18,6 +18,16 @@
  */
 import { contentTextOf } from '../../core/session-activity.ts'
 
+/** One image attached to a message — the DURABLE ref form the host stores
+ *  after admission (the browser submitted temporary bytes; the stored event
+ *  carries the promoted reference). Renderers fetch the bytes through the
+ *  official `sessions.attachment` read. */
+export interface TranscriptImage {
+  attachmentId: string
+  mediaType: string
+  name?: string
+}
+
 /** One rendered transcript line: a real message or a context-injection row. */
 export type TranscriptLine =
   | {
@@ -25,8 +35,10 @@ export type TranscriptLine =
     /** Stable message id (falls back to the event sequence). */
     id: string
     role: 'user' | 'assistant'
-    /** The message's text (text blocks joined; empty messages are dropped). */
+    /** The message's text (text blocks joined; image-only messages carry ''). */
     text: string
+    /** Images attached to the message (empty/absent when none). */
+    images?: TranscriptImage[]
     /** Event timestamp (ms epoch); 0 when the event carried none. */
     at: number
     /** Token accounting reported with the assistant message, when present. */
@@ -106,12 +118,14 @@ export function foldTranscript(events: readonly TranscriptEvent[]): TranscriptLi
         continue
       }
       const text = contentTextOf(data.content)
-      if (text === '') continue
+      const images = contentImagesOf(data.content)
+      if (text === '' && images.length === 0) continue
       lines.push({
         kind: 'message',
         id: String(data.id ?? fallbackId),
         role: 'user',
         text,
+        ...images.length > 0 ? { images } : {},
         at,
       })
     } else if (event.type === 'assistant/message') {
@@ -120,19 +134,50 @@ export function foldTranscript(events: readonly TranscriptEvent[]): TranscriptLi
       const message = data.message
       if (typeof message !== 'object' || message === null) continue
       const text = contentTextOf(message.content)
-      if (text === '') continue
+      const images = contentImagesOf(message.content)
+      if (text === '' && images.length === 0) continue
       const usage = data.usage
       lines.push({
         kind: 'message',
         id: String(message.id ?? fallbackId),
         role: 'assistant',
         text,
+        ...images.length > 0 ? { images } : {},
         at,
         ...usage !== undefined && isUsage(usage) ? { usage } : {},
       })
     }
   }
   return lines
+}
+
+/**
+ * The durable image refs one message content carries (structural): parts of
+ * the shape `{type:'image', attachment:{attachmentId, mediaType, name?}}` —
+ * exactly what the host stores after promoting the submitted bytes. Anything
+ * malformed is skipped (never a crash on an unknown part).
+ */
+export function contentImagesOf(content: unknown): TranscriptImage[] {
+  if (!Array.isArray(content)) return []
+  const out: TranscriptImage[] = []
+  const seen = new Set<string>()
+  for (const part of content) {
+    if (typeof part !== 'object' || part === null) continue
+    const row = part as Record<string, unknown>
+    if (row.type !== 'image') continue
+    const attachment = row.attachment
+    if (typeof attachment !== 'object' || attachment === null) continue
+    const ref = attachment as Record<string, unknown>
+    if (typeof ref.attachmentId !== 'string' || ref.attachmentId === '') continue
+    if (seen.has(ref.attachmentId)) continue
+    seen.add(ref.attachmentId)
+    out.push({
+      attachmentId: ref.attachmentId,
+      mediaType: typeof ref.mediaType === 'string' ? ref.mediaType : 'image/png',
+      ...typeof ref.name === 'string' && ref.name !== '' ? { name: ref.name } : {},
+    })
+  }
+  return out
 }
 
 /** Structural guard for the native token-accounting payload. */

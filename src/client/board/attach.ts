@@ -1,21 +1,16 @@
 /**
- * Browser image admission: encode a dropped/picked File into the base64 wire
- * form the host attachment bridge accepts (png/jpeg/webp/gif only — the
- * version-one native whitelist — with a generous size cap each), then admit
- * them to durable refs through that bridge. Pure and framework-free so the
- * encoding + validation rules are unit-testable (the breath of the browser
- * fetch stays in the caller).
+ * Browser image intake: encode a dropped/picked File into the base64 form the
+ * OFFICIAL native prompt part carries (png/jpeg/webp/gif — the native
+ * whitelist — with a generous per-image cap). The HOST performs the durable
+ * admission when it takes the prompt (its `PromptContentPart` image variant
+ * is temporary bytes, not a ref), so the board never uploads images through a
+ * side channel — there is exactly one image mechanism, shared with the native
+ * composer. Pure and framework-free so the encoding + validation rules are
+ * unit-testable.
  */
-export interface HostImageRefView {
-  attachmentId: string
-  mediaType: string
-  bytes?: number
-  width?: number
-  height?: number
-  name?: string
-}
+import type { PromptImage } from '../../core/controller.ts'
 
-/** An admitted, ready-to-send browser image. */
+/** An encoded, ready-to-send browser image. */
 export interface DraftImage {
   /** Stable local identity for the composer strip. */
   id: string
@@ -27,10 +22,15 @@ export interface DraftImage {
   name: string
 }
 
+/** The official temporary-bytes part for one draft image. */
+export function toPromptImage(image: DraftImage): PromptImage {
+  return { mediaType: image.mediaType, data: image.data, name: image.name }
+}
+
 /** The accepted raster media types (the native version-one whitelist). */
 export const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
 
-/** Per-image byte cap (20 MB) — generous, still protects the bridge. */
+/** Per-image byte cap (20 MB) — generous, still protects the prompt channel. */
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 
 let sequence = 0
@@ -62,41 +62,4 @@ export function encodeImageFile(file: File): Promise<DraftImage | undefined> {
     reader.onerror = () => { resolve(undefined) }
     reader.readAsDataURL(file)
   })
-}
-
-/** The attachment-bridge endpoint the browser half POSTs to. */
-export const ATTACH_URL = '/api/dsh-task-board/attachments'
-
-/** Outcome of admitting drafts: durable refs, or a human reason for failure
- *  (never a silent empty list — the composer must be able to tell the user
- *  WHY their picture did not send). */
-export interface AdmitOutcome {
-  refs: HostImageRefView[]
-  error?: string
-}
-
-/** Admit draft images to durable refs through the host bridge. A failure
- *  (bridge down, oversized, service error) carries a message; success never
- *  does. The caller restores the draft AND shows the reason. */
-export async function admitDraftImages(images: readonly DraftImage[]): Promise<AdmitOutcome> {
-  if (images.length === 0) return { refs: [] }
-  try {
-    const response = await fetch(ATTACH_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        images: images.map(image => ({ mediaType: image.mediaType, data: image.data, name: image.name })),
-      }),
-    })
-    const body = await response.json().catch(() => undefined) as
-      | { ok: true; refs?: HostImageRefView[] }
-      | { ok: false; error?: { message?: string } }
-      | undefined
-    if (body === undefined) return { refs: [], error: response.statusText || '上传失败' }
-    if (body.ok === true && Array.isArray(body.refs)) return { refs: body.refs }
-    const message = 'error' in body && typeof body.error?.message === 'string' ? body.error.message : '上传失败'
-    return { refs: [], error: message }
-  } catch (error) {
-    return { refs: [], error: error instanceof Error ? error.message : '网络错误' }
-  }
 }

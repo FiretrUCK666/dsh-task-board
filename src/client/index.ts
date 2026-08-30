@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController, type HostImageRef, type PermissionOptionShape, type ReferenceRemoteFace, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
+import { BoardController, type PromptImage, type PermissionOptionShape, type ReferenceRemoteFace, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
 import { UNTITLED_SESSION_KEY } from '../core/session-list.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
@@ -356,21 +356,29 @@ export function apply(ctx: ClientContext): void {
     // the currently staged one, so a client binding is not guaranteed). The
     // same channel serves the linked-session panel's direct composer
     // (sessionMessage) — "typing in the native conversation" is exactly
-    // this call, shared by both callers. Durable attachment refs (admitted
-    // through the host attachment bridge) ride the content as native image
-    // blocks — the same parts the native composer produces.
+    // this call, shared by both callers. Images ride the content as the
+    // OFFICIAL temporary-bytes part (`{type:'image', mediaType, data, name}`)
+    // — the host performs the durable admission itself, exactly like the
+    // native composer does. There is deliberately no board-side attachment
+    // bridge: the wire only accepts this shape.
     const sendComment = async (
       sessionId: string,
       text: string,
-      images?: readonly HostImageRef[] | undefined,
+      images?: readonly PromptImage[] | undefined,
       mode: 'queue' | 'steer' = 'queue',
     ): Promise<{ ok: true } | { ok: false; error: string }> => {
-      const content: Array<{ type: string; text?: string; attachment?: unknown }> = text.trim() !== ''
-        ? [{ type: 'text', text }]
-        : []
+      const content: Array<{ type: string; text?: string; mediaType?: string; data?: string; name?: string }> =
+        text.trim() !== ''
+          ? [{ type: 'text', text }]
+          : []
       if (images !== undefined) {
         for (const image of images) {
-          content.push({ type: 'image', attachment: { attachmentId: image.attachmentId, mediaType: image.mediaType } })
+          content.push({
+            type: 'image',
+            mediaType: image.mediaType,
+            data: image.data,
+            ...image.name !== undefined ? { name: image.name } : {},
+          })
         }
       }
       if (content.length === 0) return { ok: false as const, error: 'empty message' }
@@ -528,6 +536,34 @@ export function apply(ctx: ClientContext): void {
         return () => clearTimeout(timer)
       },
     })
+    // Durable message images read back through the OFFICIAL attachment RPC
+    // (the host proves the session references the id). Attachments are
+    // immutable, so the same freshness layer runs with a long TTL — one
+    // fetch per image however many rows/surfaces show it, and a hung read
+    // still cannot spin forever.
+    const imageReader = createTranscriptReader<{ data: string; mediaType: string }>({
+      read: async key => {
+        const split = key.indexOf('|')
+        const sessionId = key.slice(0, split)
+        const attachmentId = key.slice(split + 1)
+        try {
+          const response = await connection.api.sessions.attachment({
+            sessionId: sessionId as SessionId,
+            attachmentId: attachmentId as never,
+          })
+          if (!response.result.ok) return undefined
+          return { data: response.result.value.data, mediaType: response.result.value.attachment.mediaType }
+        } catch (error) {
+          console.error('[dsh-task-board] attachment read failed', error)
+          return undefined
+        }
+      },
+      defer: (fn, ms) => {
+        const timer = setTimeout(fn, ms)
+        return () => clearTimeout(timer)
+      },
+      ttlMs: 10 * 60_000,
+    })
 
     // Slash-menu sources (see listSlashCandidates): each fetches one native
     // catalog and degrades to [] on any failure, with the reason logged.
@@ -679,6 +715,8 @@ export function apply(ctx: ClientContext): void {
         : localCruise,
       // Review-page transcripts: recent history of an execution session.
       transcript: transcriptLoader,
+      // Durable message images (official attachment read, cached/deduped).
+      loadImage: (sessionId, attachmentId) => imageReader(`${sessionId}|${attachmentId}`),
       // Review-page session panel: the live model directory + selection of
       // the execution session, straight from the native models/selectModel
       // APIs (the same sources the native model selector reads), and the

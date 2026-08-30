@@ -377,6 +377,10 @@ export interface ControllerDeps {
   runPresetStore?: import('./run-presets.ts').RunPresetStore
   /** Reads a session's recent history events (review-page transcript); absent = the page shows a hint. */
   transcript?: (sessionId: string) => Promise<TranscriptLoadResult | undefined>
+  /** Reads one durable image back as base64 (the official `sessions.attachment`
+   *  read — the host proves the session references the id). Absent = message
+   *  images render as quiet placeholders. */
+  loadImage?: (sessionId: string, attachmentId: string) => Promise<{ data: string; mediaType: string } | undefined>
   /** Session-config surface (review-page model/permission panel); absent = the panel degrades gracefully. */
   sessionConfig?: SessionConfigFace
   /** Sends one plain message directly to any native session (linked-session
@@ -389,7 +393,7 @@ export interface ControllerDeps {
    *  `mode` is the OFFICIAL prompt disposition: 'queue' (in order) or
    *  'steer' (interrupt the current turn now) — a 插话 is only a 插话 when
    *  the wire says so. */
-  sessionMessage?: (sessionId: string, text: string, images?: readonly HostImageRef[] | undefined, mode?: 'queue' | 'steer') => Promise<{ ok: true } | { ok: false; error: string }>
+  sessionMessage?: (sessionId: string, text: string, images?: readonly PromptImage[] | undefined, mode?: 'queue' | 'steer') => Promise<{ ok: true } | { ok: false; error: string }>
   /** Executes one slash-command line against any native session through the
    *  host command registry (matched = recognized; unmatched = the caller
    *  falls back to sending the line as plain text). Absent = slash lines
@@ -413,14 +417,14 @@ export interface ControllerDeps {
   requestLaunch?: (taskId: string, trigger: RunTrigger) => void
 }
 
-/** A durable attachment ref returned by the host attachment bridge (the
- *  mirror of the wire refs the review page attaches to a message). */
-export interface HostImageRef {
-  attachmentId: string
+/** One image attached to a native prompt — the OFFICIAL `PromptContentPart`
+ *  image shape: the browser submits temporary base64 bytes and the HOST
+ *  performs the durable admission (promoting them to attachment refs). The
+ *  board never admits images by itself; there is no second mechanism. */
+export interface PromptImage {
   mediaType: string
-  bytes?: number
-  width?: number
-  height?: number
+  /** Canonical base64 of the image bytes (no data-URL prefix). */
+  data: string
   name?: string
 }
 
@@ -674,6 +678,12 @@ export class BoardController {
    */
   loadTranscript(sessionId: string): Promise<TranscriptLoadResult | undefined> {
     return this.deps.transcript?.(sessionId) ?? Promise.resolve(undefined)
+  }
+
+  /** Read one durable message image back as base64 (official attachment read,
+   *  cached + deduped by the wiring); undefined when unavailable. */
+  loadImage(sessionId: string, attachmentId: string): Promise<{ data: string; mediaType: string } | undefined> {
+    return this.deps.loadImage?.(sessionId, attachmentId) ?? Promise.resolve(undefined)
   }
 
   /** The session-config face (review page's model/permission panel), or undefined. */
@@ -1863,7 +1873,7 @@ export class BoardController {
     taskId: string,
     sessionId: string,
     text: string,
-    images: readonly HostImageRef[] | undefined,
+    images: readonly PromptImage[] | undefined,
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     const trimmed = text.trim()
     if (trimmed === '' && (images === undefined || images.length === 0)) {
@@ -2094,7 +2104,7 @@ export class BoardController {
   /** The raw host send for a direct line (slash-aware, no recording).
    *  `images` are durable attachment refs appended to the message content;
    *  `mode` is the official prompt disposition (queue / steer). */
-  private sendRawMessage(sessionId: string, text: string, images?: readonly HostImageRef[], mode: 'queue' | 'steer' = 'queue'): Promise<{ ok: true } | { ok: false; error: string }> {
+  private sendRawMessage(sessionId: string, text: string, images?: readonly PromptImage[], mode: 'queue' | 'steer' = 'queue'): Promise<{ ok: true } | { ok: false; error: string }> {
     const direct = this.deps.sessionMessage
     if (text.startsWith('/')) {
       const command = this.deps.sessionCommand

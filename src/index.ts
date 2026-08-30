@@ -18,7 +18,6 @@ import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-sett
 import z from 'schemastery'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { registerPermissionRoute } from './host/permission-route.ts'
-import { registerAttachRoute } from './host/attachment-route.ts'
 import { registerSessionStateRoute } from './host/session-state-route.ts'
 import { registerSettingsRoute } from './host/settings-route.ts'
 import { registerBoardRoute } from './host/board-route.ts'
@@ -118,13 +117,11 @@ export function apply(ctx: Context, config?: Config): void {
     'dsh-task-board: session-state route',
   )
 
-  // Admit browser-attached images to the durable attachment service so the
-  // board's composer can send `{ type: 'image', attachment }` prompt parts —
-  // the exact shape the native composer produces.
-  ctx.effect(
-    () => registerAttachRoute(ctx),
-    'dsh-task-board: attachments route',
-  )
+  // Images need NO board-side route: the browser submits the official
+  // temporary-bytes prompt part (`{type:'image', mediaType, data}`) and the
+  // host admits it durably as part of taking the prompt. Display reads back
+  // through the official `sessions.attachment` RPC. There is exactly one
+  // image mechanism, and it is the native one.
 
   // Serve the host-owned board document (the synced truth every replica —
   // desktop or phone, any origin — reads, commits and watches), plus the
