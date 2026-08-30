@@ -2922,6 +2922,42 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect(controller.liveStateOf(task.id)).toBe('running')
   })
 
+  it('deleting a session while a workspace bind stays does NOT keep driving the card (removed gate)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    const wss = new FakeWorkspaces()
+    wss.items = [{ id: 'w-a', title: '工作区A', sessionIds: ['s-x'] }]
+    sessions.setRunning('s-x', true)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, workspaces: wss, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    // The user's scenario: the whole workspace folder is bound, AND a session
+    // inside it is explicitly bound (so it shows as a row and rides live state).
+    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: '' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-x' })
+    await flush()
+    await flush()
+    expect(controller.liveStateOf(task.id)).toBe('running')
+    // Delete the session from the card (hidden-tray 删除). The workspace bind
+    // keeps the session bind from being unbound — but removedSessions is now
+    // the authoritative gate, so the running session must NOT move the card.
+    expect(controller.removeTaskSession(task.id, 's-x')).toBe(true)
+    await flush()
+    await flush()
+    expect(controller.liveStateOf(task.id)).toBe('idle')
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(row).map(r => r.sessionId)).not.toContain('s-x')
+    // No external round is recorded for the deleted session.
+    expect(row.executions.filter(round => round.sessionId === 's-x')).toHaveLength(0)
+    // The deleted session leaves the related set → it is re-offerable in the
+    // add-session picker (删除 = 可再拖回/再选回).
+    expect(controller.relatedSessionIdSet(row).has('s-x')).toBe(false)
+  })
+
   it('createTaskSession creates a fresh session through the exec service and binds it (新建会话)', async () => {
     const stub = new StubExec() as StubExec & {
       createSession?: (config: unknown) => Promise<{ ok: true; sessionId: string } | { ok: false; error: string }>

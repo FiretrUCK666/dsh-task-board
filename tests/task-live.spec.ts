@@ -68,6 +68,21 @@ describe('relatedSessionIdsOf', () => {
     ])
   })
 
+  it('subtracts removedSessions from EVERY source (the deleted-session gate)', () => {
+    // A removed session that still lingers as a session bind (a workspace bind
+    // keeps it from being unbound) must NOT be related — otherwise chatting in
+    // it drives the card while the row is gone (the reported bug).
+    const task = {
+      ...taskWith([{ sessionId: 'run' }], 'refine'),
+      binds: [{ kind: 'session' as const, sessionId: 'bound' }, { kind: 'workspace' as const, workspaceId: 'w' }],
+      removedSessions: ['bound', 'refine', 'link-1'],
+    }
+    expect(relatedSessionIdsOf(task, ['link-1', 'link-2'])).toEqual([
+      { sessionId: 'run', refine: false },
+      { sessionId: 'link-2', refine: false },
+    ])
+  })
+
   it('appends the injected linked ids (workspace members) after the rounds, de-duplicated', () => {
     const task = taskWith([{ sessionId: 'run' }])
     expect(relatedSessionIdsOf(task, ['link-1', 'run', 'link-2'])).toEqual([
@@ -107,6 +122,17 @@ describe('taskLiveStateOf (任务运行态唯一推导)', () => {
   it('is waiting when a linked session waits on the user', () => {
     const task = taskWith([])
     expect(taskLiveStateOf(task, runningOf({}), waitingOf({ link: 'plan-review' }), ['link'])).toBe('waiting')
+  })
+
+  it('a REMOVED running session never drives the card (deleted-session gate)', () => {
+    // The session lingers as a bind (workspace bind keeps it from unbinding)
+    // but is in removedSessions — chatting in it must NOT move the card.
+    const task = {
+      ...taskWith([]),
+      binds: [{ kind: 'session' as const, sessionId: 'gone' }],
+      removedSessions: ['gone'],
+    }
+    expect(taskLiveStateOf(task, runningOf({ gone: true }), waitingOf({ gone: 'question' }))).toBe('idle')
   })
 })
 

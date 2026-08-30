@@ -46,15 +46,24 @@ export interface RelatedSessionFact {
  *   workspace snapshots (`linkedSessionIdsOf`) — bound workspaces surface
  *   their CURRENT members, so a workspace member counts without ever having
  *   carried a board round.
+ *
+ * `removedSessions` is the authoritative NOT-related gate and is subtracted
+ * from EVERY source here — the same set the display rows already filter on, so
+ * a session the user deleted from the card (hidden-tray 删除) can never drive
+ * the card's live state or an external round, even while its session bind
+ * lingers (the bind survives when a workspace bind is also present). The
+ * corollary the add-session picker relies on: a removed session leaves this
+ * set, so it becomes re-offerable again (删除 = 可再拖回/再选回).
  * @param task - the task owning the sessions.
  * @param linkedSessionIds - the task's live linked-session ids (the
  *   controller derives them from the workspaces face; undefined = skip).
  */
 export function relatedSessionIdsOf(task: TaskRecord, linkedSessionIds?: readonly string[]): RelatedSessionFact[] {
+  const removed = new Set(task.removedSessions ?? [])
   const seen = new Set<string>()
   const out: RelatedSessionFact[] = []
   const push = (sessionId: string | undefined, refine: boolean): void => {
-    if (sessionId === undefined || sessionId === '' || seen.has(sessionId)) return
+    if (sessionId === undefined || sessionId === '' || seen.has(sessionId) || removed.has(sessionId)) return
     seen.add(sessionId)
     out.push({ sessionId, refine })
   }
