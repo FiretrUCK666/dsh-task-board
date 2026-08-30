@@ -2601,6 +2601,19 @@ textarea.input {
   gap: 8px;
 }
 
+/* Row-action label / glyph pair: on a wide board the WORDS carry the action
+   (the glyph is hidden); on a narrow board the words collapse and the glyph
+   takes over (the tooltip always keeps the full wording). One pair of
+   elements, swapped by the container — never a second set of buttons. */
+.rowActionIcon {
+  display: none;
+}
+.sessionRowActions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 /* Prominent "处理" button when session is waiting for user action — SAME
    geometry as the row's other sm affordances (24px pill); only the fill is
    the warn tone, so switching waiting/idle never shifts the row's geometry. */
@@ -3564,6 +3577,37 @@ textarea.input {
   border-bottom: var(--dsh-tb-separator);
 }
 
+/* The head's own collapse row (same disclosure grammar as every foldable
+   module): the meter + config is the tallest, least-acted-on block in the
+   rail, and on a stacked phone panel it used to push the comments and the
+   composer off the first screen. Collapsed it is one quiet row. */
+.sessionRailHeadToggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 0;
+  background: none;
+  border: none;
+  color: var(--dsh-tb-text-2);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sessionRailHeadToggle:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.sessionRailHeadTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The rail's scrollable middle — one scroll pattern for every session panel:
    the linked-session rail's head content, or the review page's comment
    list, scrolls inside its own region while the composer stays pinned at
@@ -4189,7 +4233,10 @@ textarea.input {
   min-width: 0;
   max-height: min(320px, 40vh);
   overflow: hidden;
-  padding: 10px 12px;
+  /* VERTICAL padding only: the scroll body owns its own horizontal inset, so
+     its scrollbar lands flush on the card's inner edge (the transcript's
+     grammar) instead of floating 12px inside, hugging the text. */
+  padding: 10px 0 12px;
   margin: 0 14px 2px;
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l2);
@@ -4197,7 +4244,9 @@ textarea.input {
 }
 
 /* The card's own scroll slot: the text/options/input part scrolls inside
-   the capped card; the action row stays outside it, always visible. */
+   the capped card; the action row stays outside it, always visible. The
+   12px side inset lives HERE (on the scroller) so the bar renders at the
+   card edge, never beside the text. */
 .interactionCardBody {
   display: flex;
   flex-direction: column;
@@ -4205,6 +4254,7 @@ textarea.input {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  padding: 0 12px;
 }
 .interactionCard[data-plan='true'] {
   border-color: color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent);
@@ -4250,6 +4300,10 @@ textarea.input {
      (question row: 下一题/上一题/跳过本题/放弃整组; plan row: 确认/拒绝/讨论). */
   flex-wrap: wrap;
   gap: 8px;
+  /* The card carries no horizontal padding (the scroll body owns its inset so
+     its bar lands on the card edge); the pinned action row takes the same
+     12px inset itself. */
+  padding: 0 12px;
 }
 .interactionAmend {
   display: flex;
@@ -4360,12 +4414,15 @@ textarea.input {
   max-width: 320px;
   padding: 0;
 }
+/* The header's context head spans its own column; its expanded panel drops
+   BELOW the head and spans exactly the head's box (left:0/right:0), so it can
+   never be clipped by the panel's overflow:hidden the way a right-anchored
+   fixed-width card was (the "展开后左边全部看不了" bug) and never needs a
+   viewport unit either. */
 .reviewHeaderContext .sessionContextPanel {
-  left: auto;
+  left: 0;
   right: 0;
-  /* Board-box relative (never vw — the panel floats inside the review, so it
-     is sized against the board box, not the window). */
-  width: min(360px, 88cqw);
+  width: auto;
 }
 
 .sessionContextHead {
@@ -4594,21 +4651,28 @@ textarea.input {
   }
 
   .reviewMain {
-    /* Flow as a normal block — the transcript no longer scrolls on its own
-       (the body does), so a long conversation can never be clipped. */
+    /* LAST, and capped: the conversation tail is secondary on a phone — the
+       thing a hand reaches for is the comment thread and the composer. The
+       transcript keeps its OWN scroll (the follow logic resolves whatever
+       element actually scrolls, so pinning/jump still work here), which stops
+       a 30-message tail from pushing the send box forty screens down. */
+    order: 2;
     flex: none;
     min-height: 0;
-    overflow: visible;
+    max-height: 45cqh;
+    overflow-y: auto;
     padding: 14px;
+    border-top: 1px solid var(--dsw-alias-separator-primary);
   }
 
   .reviewRail {
+    /* FIRST: state row, (collapsible) context/config, comments, composer —
+       everything needed to act fits the opening screen. */
+    order: 1;
     width: 100%;
     flex: none;
     min-height: 0;
     overflow: visible;
-    border-left: none;
-    border-top: 1px solid var(--dsw-alias-separator-primary);
   }
 
   /* The header wraps: title + actions keep line one, the context head drops to
@@ -4616,6 +4680,19 @@ textarea.input {
      squeezed beside the title on a ~340px panel). */
   .reviewHeader {
     flex-wrap: wrap;
+    padding: 12px 14px;
+  }
+
+  /* The title is the panel's identity — on a narrow board it WRAPS and reads
+     in full instead of ellipsizing to three characters beside a crowded
+     action row (a clipped title is worse than a second line). */
+  .reviewTitle {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
 
   .reviewHeaderContext {
@@ -4818,10 +4895,13 @@ textarea.input {
     display: none;
   }
 
-  /* The filter field drops to its own full-width line so the action pills
-     (整理/自动化/新建) never squeeze it below usability. */
+  /* The filter field shares the tool row with 整理/自动化 (it flexes, they
+     are fixed pills): a 100% basis pushed the actions onto their own THIRD
+     row, the "板头随便堆着" the compact design has to avoid. The row now
+     reads: [筛选任务… (flex) ] [整理] [自动化]. */
   .search {
-    flex: 1 1 100%;
+    flex: 1 1 0;
+    min-width: 0;
     max-width: none;
   }
 
@@ -4852,11 +4932,43 @@ textarea.input {
     flex: 0 0 clamp(200px, 46cqw, 320px);
   }
 
-  /* The compact column navigator: one tap jumps a status column into view
-     (revealed only in this block — hidden by the base rule on desktop,
+  /* The compact column navigator: FIVE EQUAL cells, one tap jumps that status
+     column into view. Content-width pills overflowed a phone board (the tab
+     strip itself needed a horizontal swipe — a navigator you cannot see is no
+     navigator); an equal grid always fits all five, names ellipsize, counts
+     stay readable. Revealed only here (the base rule hides it on desktop,
      where all five columns already share the screen). */
   .columnTabs {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+    padding: 1px 0 4px;
+    overflow-x: visible;
+  }
+
+  .columnTab {
+    /* Each cell centers its pill content; the label ellipsizes instead of
+       pushing neighbours out. */
+    justify-content: center;
+    min-width: 0;
+    padding: 0 6px;
+    border-radius: var(--dsh-tb-radius-md);
+  }
+
+  .columnTab > span {
+    min-width: 0;
+  }
+
+  .columnTab .statusDot,
+  .columnTab .columnTabCount {
+    flex: none;
+  }
+
+  /* The label is the ellipsis slot (the dot and the count never shrink). */
+  .columnTabLabel {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .columnHeader {
@@ -4881,11 +4993,27 @@ textarea.input {
      right-aligned column spanning both. Still structural (never content-
      driven), so the phone row reads as a clean block (the 「排版很乱」 fix). */
   .sessionRowTop {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(60%, 1fr) auto;
     grid-template-areas:
       "lead act"
       "chip act";
     row-gap: 6px;
+  }
+
+  /* The action cluster pays the identity slot no fixed tax: labels collapse
+     to glyphs (≥36px touch targets stay via the ergonomics block), so the
+     title keeps its 60% floor instead of being squeezed to three characters
+     by a 156px "查看会话 / 隐藏" text row. */
+  .sessionRowActions .rowActionText {
+    display: none;
+  }
+
+  .sessionRowActions .rowActionIcon {
+    display: inline-flex;
+  }
+
+  .sessionRowActions {
+    gap: 4px;
   }
 
   .sessionRowActions {

@@ -100,15 +100,22 @@ describe('stacked review CSS contract (one scroll body below the two-column floo
     expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow-y: auto/)
   })
 
-  it('main and rail flow as blocks (flex: none, overflow visible) — no half-height scrollers', () => {
+  it('the RAIL comes first and the transcript is a capped tail (composer reachable on the opening screen)', () => {
     const block = stackedBlock()
-    expect(block).toMatch(/\.reviewMain\s*\{[^}]*flex: none/)
-    expect(block).toMatch(/\.reviewMain\s*\{[^}]*overflow: visible/)
-    expect(block).toMatch(/\.reviewRail\s*\{[^}]*flex: none/)
+    // The thing a hand reaches for on a phone is the comment thread + send
+    // box; a 30-message transcript rendered BEFORE them pushed the composer
+    // ten-to-forty screens down (「要一路拉到底」). Order is the fix.
+    expect(block).toMatch(/\.reviewRail\s*\{[^}]*order: 1/)
+    expect(block).toMatch(/\.reviewMain\s*\{[^}]*order: 2/)
+    // The transcript keeps its OWN capped scroll (the follow logic resolves
+    // whatever element actually scrolls, so pinning/jump still work); the
+    // rail flows into the single body.
+    expect(block).toMatch(/\.reviewMain\s*\{[^}]*max-height: \d+cqh/)
+    expect(block).toMatch(/\.reviewMain\s*\{[^}]*overflow-y: auto/)
     expect(block).toMatch(/\.reviewRail\s*\{[^}]*overflow: visible/)
-    // The old model (each half scrolling) must never return.
+    // The old model (each half scrolling at a fixed fraction) never returns.
     expect(block).not.toContain('1 1 50%')
-    // Inner scroll regions are switched off in stacked mode (the body owns it).
+    // Inner transcript/rail regions do not double-scroll.
     expect(block).toMatch(/\.reviewTranscriptScroll\s*\{[^}]*overflow: visible/)
     expect(block).toMatch(/\.sessionRailScroll\s*\{[^}]*overflow: visible/)
   })

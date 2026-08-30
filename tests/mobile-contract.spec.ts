@@ -21,7 +21,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { activeColumnIndexAt } from '../src/client/board/column-tabs.ts'
+import { activeColumnIndexAt, scrollLeftForColumn } from '../src/client/board/column-tabs.ts'
 import { keyboardOverlapPx } from '../src/client/board/keyboard-inset.ts'
 
 const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
@@ -156,11 +156,15 @@ describe('compact columns + panel geometry', () => {
     expect(compact).toMatch(/\.sessionRowTop\s*\{[\s\S]*?grid-template-areas:[\s\S]*?"lead act"[\s\S]*?"chip act"/)
   })
 
-  it('a column navigator strip exists, hidden by default and revealed compact', () => {
+  it('a column navigator strip exists, hidden by default, and is FIVE EQUAL cells compact', () => {
     // Desktop: all five columns share the screen, no tabs needed (base hides).
     expect(ruleOf('columnTabs')).toMatch(/display:\s*none/)
-    // Compact: the tabs ride above the swipeable track.
-    expect(compact).toMatch(/\.columnTabs\s*\{\s*\n?\s*display:\s*flex/)
+    // Compact: an equal five-cell grid — content-width pills overflowed a
+    // phone board, so the navigator itself needed a swipe (a navigator you
+    // cannot see is no navigator). All five always fit; names ellipsize.
+    expect(compact).toMatch(/\.columnTabs\s*\{\s*\n?\s*display:\s*grid/)
+    expect(compact).toMatch(/grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/)
+    expect(compact).toMatch(/\.columnTabLabel\s*\{[^}]*text-overflow:\s*ellipsis/)
     // A column is capped well under full width — roughly two columns plus the
     // next column's edge share a phone board (「一列占满整屏」 fix).
     const column = compact.slice(compact.indexOf('.column {'))
@@ -209,6 +213,54 @@ describe('drag reorder machinery survives (the user gesture)', () => {
   })
 })
 
+describe('alignment grammar (the OCD contract)', () => {
+  const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
+  const stacked = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*600px\)/.test(line))
+
+  it('a scroll region owns its inner padding, so its bar lands on the surface edge', () => {
+    // The single scrollbar grammar: the SCROLLER carries the horizontal inset
+    // (bar flush to the card edge, text inset). A padded parent with an
+    // unpadded scroller floats the bar beside the text — the「滚动条贴着文字」
+    // complaint on the interaction (question/plan) card.
+    const card = ruleOf('interactionCard')
+    expect(card).toMatch(/padding:\s*10px 0 12px/)
+    expect(ruleOf('interactionCardBody')).toMatch(/overflow-y:\s*auto[\s\S]*?padding:\s*0 12px/)
+    expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
+  })
+
+  it('the compact board header stays a two-line grid (search never steals a row)', () => {
+    // A 100% flex basis forced the action pills onto their own third line —
+    // the「板头随便堆着」look. Search flexes INSIDE the tool row instead.
+    expect(compact).toMatch(/\.search\s*\{\s*\n?\s*flex:\s*1 1 0/)
+    expect(compact).not.toMatch(/\.search\s*\{\s*\n?\s*flex:\s*1 1 100%/)
+  })
+
+  it('row actions collapse to glyphs compact so the title keeps its quota', () => {
+    // The text cluster ("查看会话 → / 隐藏") was a ~156px fixed tax that left
+    // the title three characters. Labels fold, glyphs take over, and the
+    // identity slot has a hard 60% floor.
+    expect(compact).toMatch(/\.sessionRowActions \.rowActionText\s*\{\s*\n?\s*display:\s*none/)
+    expect(compact).toMatch(/\.sessionRowActions \.rowActionIcon\s*\{\s*\n?\s*display:\s*inline-flex/)
+    const top = compact.slice(compact.indexOf('.sessionRowTop {'))
+    expect(top).toMatch(/grid-template-columns:\s*minmax\(60%,\s*1fr\) auto/)
+  })
+
+  it('the header context panel spans its head (never right-anchored and clipped)', () => {
+    // A right-anchored fixed-width card overflowed the panel's overflow:hidden
+    // on the LEFT ("展开后左边全部看不了"); spanning the head is width-safe at
+    // every size and needs no viewport unit.
+    const panel = source.slice(source.indexOf('.reviewHeaderContext .sessionContextPanel {'))
+    expect(panel).toMatch(/left:\s*0;\s*\n?\s*right:\s*0;\s*\n?\s*width:\s*auto/)
+    expect(panel).not.toMatch(/88cqw/)
+  })
+
+  it('the review title wraps instead of clipping on a narrow panel', () => {
+    const title = stacked.slice(stacked.indexOf('.reviewTitle {'))
+    expect(title).toMatch(/white-space:\s*normal/)
+    expect(title).toMatch(/-webkit-line-clamp:\s*2/)
+  })
+})
+
 describe('session row overlap fix', () => {
   it('the workspace chip shrinks + ellipsizes (never pushes actions over the title)', () => {
     const ws = ruleOf('sessionRowWorkspace')
@@ -247,6 +299,17 @@ describe('column tab math', () => {
     expect(activeColumnIndexAt(601, [0, 240, 480, 720, 960])).toBe(3)
     // Overscroll at either end clamps to the first/last column.
     expect(activeColumnIndexAt(5000, [0, 240, 480])).toBe(2)
+  })
+
+  it('the inverse aims at the left edge of a column and stays inside the track', () => {
+    // Column identity is the truth; the pixel value is always derived — tab
+    // jumps and container-resize re-anchoring share this one function, so the
+    // board cannot "shift right a little" per sidebar toggle anymore.
+    expect(scrollLeftForColumn(2, [0, 240, 480, 720, 960], 500, 1400)).toBe(480)
+    // Clamped to the scrollable range (the last columns can never overscroll).
+    expect(scrollLeftForColumn(4, [0, 240, 480, 720, 960], 500, 1400)).toBe(900)
+    expect(scrollLeftForColumn(-1, [0, 240], 500, 1400)).toBe(0)
+    expect(scrollLeftForColumn(0, [], 500, 1400)).toBe(0)
   })
 })
 

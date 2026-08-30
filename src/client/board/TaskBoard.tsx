@@ -22,7 +22,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { useNarrow } from './use-narrow.ts'
-import { activeColumnIndexAt } from './column-tabs.ts'
+import { activeColumnIndexAt, scrollLeftForColumn } from './column-tabs.ts'
 import { Dialog } from './Dialog.tsx'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
@@ -258,6 +258,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // base CSS — this state simply rides along).
   const columnsRef = useRef<HTMLDivElement | null>(null)
   const [activeColumn, setActiveColumn] = useState<TaskStatus>(COLUMNS[0].status)
+  /** The track's column left-edges (identity order = COLUMNS order). */
+  const columnLefts = (root: HTMLElement): number[] =>
+    Array.from(root.querySelectorAll<HTMLElement>('section[data-status]')).map(section => section.offsetLeft)
+  const columnIndex = (status: TaskStatus): number =>
+    COLUMNS.findIndex(column => column.status === status)
   const syncActiveColumn = useCallback((): void => {
     const root = columnsRef.current
     if (root === null) return
@@ -268,10 +273,29 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     if (status !== undefined) setActiveColumn(status)
   }, [])
   const jumpToColumn = (status: TaskStatus): void => {
-    columnsRef.current
-      ?.querySelector<HTMLElement>(`section[data-status="${status}"]`)
-      ?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+    const root = columnsRef.current
+    if (root === null) return
+    root.scrollLeft = scrollLeftForColumn(columnIndex(status), columnLefts(root), root.clientWidth, root.scrollWidth)
   }
+  // Column-identity anchoring: whenever the board box changes width (the
+  // shell sidebar opening/closing, a rotation, a split-screen drag), the track
+  // is re-aimed at the SAME COLUMN's left edge. Pixels are never the truth,
+  // so the board can no longer "shift a little to the right" once per toggle —
+  // the cumulative drift class is closed by one observer (with its disposer).
+  useEffect(() => {
+    const root = columnsRef.current
+    if (root === null) return
+    let lastWidth = root.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (root.clientWidth === lastWidth) return
+      lastWidth = root.clientWidth
+      root.scrollLeft = scrollLeftForColumn(
+        columnIndex(activeColumn), columnLefts(root), root.clientWidth, root.scrollWidth,
+      )
+    })
+    observer.observe(root)
+    return () => { observer.disconnect() }
+  }, [activeColumn])
   // The column currently accepting an external sidebar drag (session/workspace
   // dragged in from the sidebar): a distinct highlight from the board's own
   // card-reorder affordances. The latch refs below make the highlight stable:
@@ -783,7 +807,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               onClick={() => { jumpToColumn(column.status) }}
             >
               <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
-              {t(STATUS_KEY[column.status])}
+              <span className={css.columnTabLabel}>{t(STATUS_KEY[column.status])}</span>
               <span className={css.columnTabCount}>{String(count)}</span>
             </button>
           )

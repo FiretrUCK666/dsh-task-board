@@ -135,7 +135,8 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
               onClick={event => { event.stopPropagation(); onOpenSession() }}
               title={sessionId}
             >
-              {handle} →
+              <span className={css.rowActionText}>{handle}</span>
+              <Icon name="arrowRight" />
             </button>
           ) : sessionId !== undefined && (
             <Button
@@ -143,7 +144,8 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
               onClick={event => { event.stopPropagation(); onOpenSession() }}
               title={sessionId}
             >
-              {t('detail.viewSession')} →
+              <span className={css.rowActionText}>{t('detail.viewSession')}</span>
+              <Icon name="arrowRight" />
             </Button>
           )}
           {onRename !== undefined && sessionId !== undefined && !renaming && (
@@ -162,7 +164,8 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
             onClick={event => { event.stopPropagation(); onHide() }}
             title={hideTitle}
           >
-            {t('detail.hide')}
+            <span className={css.rowActionText}>{t('detail.hide')}</span>
+            <Icon name="eyeOff" className={css.rowActionIcon} />
           </button>
         </span>
       </div>

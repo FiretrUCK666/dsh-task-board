@@ -21,3 +21,19 @@ export function activeColumnIndexAt(scrollLeft: number, lefts: readonly number[]
   }
   return best
 }
+
+/**
+ * The scroll offset that puts column `index` at the track's left edge — the
+ * inverse of `activeColumnIndexAt`, clamped into the scrollable range. Tab
+ * jumps, resize re-anchoring and the FLIP cross-column scroll all aim with
+ * THIS one function, so the track's persistent state is the COLUMN IDENTITY
+ * and the pixel value is always derived. (Scroll-snap stored pixels and
+ * re-anchored to them on every container resize — that is what made the
+ * board "shift a little" each time the shell sidebar opened or closed.)
+ */
+export function scrollLeftForColumn(index: number, lefts: readonly number[], clientWidth: number, scrollWidth: number): number {
+  if (lefts.length === 0) return 0
+  const clamped = Math.min(Math.max(index, 0), lefts.length - 1)
+  const max = Math.max(0, scrollWidth - clientWidth)
+  return Math.min(Math.max(lefts[clamped] ?? 0, 0), max)
+}

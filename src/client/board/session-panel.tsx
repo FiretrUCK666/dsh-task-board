@@ -29,7 +29,7 @@ import { AttachmentStrip } from './AttachmentStrip.tsx'
 import { type DraftImage } from './attach.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
-import { Button, Notice, SendModeToggle } from './ui.tsx'
+import { Button, Icon, Notice, SendModeToggle } from './ui.tsx'
 import { workspaceLabelOf } from '../../core/linked-sessions.ts'
 import { waitingKeyOf } from './session-chip.ts'
 
@@ -628,6 +628,7 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // and 滑到最新 works on both without a single mode branch.
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const [threadAtBottom, setThreadAtBottom] = useState(true)
+  const [headOpen, setHeadOpen] = useState(true)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
   const { measure: onThreadScroll, jumpToBottom: jumpThread } = useFollowScroll(
     threadScrollRef, threadAtBottom, setThreadAtBottom, threadFingerprint,
@@ -645,15 +646,31 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
           <span className={css.sessionFactTime}>{t('detail.sessionUpdated')} {updatedAt}</span>
         </div>
       )}
+      {/* The rail head (context meter + live run config) folds. It is the
+          tallest block in the rail and the least-acted-on; on a phone stacked
+          panel it used to push the comment thread and the composer a full
+          screen+ down. Same grammar as every other foldable module, default
+          open, one tap to collapse on any width. */}
       <div className={css.sessionRailHead}>
-        <SessionRailHead
-          sessionId={sessionId}
-          controller={controller}
-          projections={projections}
-          lines={lines}
-          onChanged={onChanged}
-          reloadKey={reloadKey}
-        />
+        <button
+          type="button"
+          className={css.sessionRailHeadToggle}
+          aria-expanded={headOpen}
+          onClick={() => { setHeadOpen(!headOpen) }}
+        >
+          <Icon name="chevronDown" className={css.detailChevron} />
+          <span className={css.sessionRailHeadTitle}>{t('review.railHeadTitle')}</span>
+        </button>
+        {headOpen && (
+          <SessionRailHead
+            sessionId={sessionId}
+            controller={controller}
+            projections={projections}
+            lines={lines}
+            onChanged={onChanged}
+            reloadKey={reloadKey}
+          />
+        )}
       </div>
       <div className={css.reviewThreadHeader}>
         <h4 className={css.reviewThreadTitle}>

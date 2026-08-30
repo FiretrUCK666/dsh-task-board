@@ -160,7 +160,7 @@ export function AttentionDot({ title }: { title?: string }) {
  * glyph can ever balloon to the SVG default 300x150 box). Every board icon
  * route goes through this component.
  */
-export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'calendar' | 'copy' | 'check' | 'checklist'
+export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff'
 
 const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5',
   chevronDown: 'M3 6 8 11 13 6',
@@ -173,6 +173,9 @@ const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5
   copy: 'M7 4h5a2 2 0 0 1 2 2v5M5 6h5a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z',
   check: 'M3.5 8.5 6.5 11.5 12.5 5',
   checklist: 'M2.5 4h.5M2.5 8h.5M2.5 12h.5M5.5 4h8M5.5 8h8M5.5 12h8',
+  // An eye with a slash: the quiet "hide this row" affordance (its label
+  // collapses to this glyph on a narrow board; the tooltip keeps the words).
+  eyeOff: 'M2.5 8s2.2-3.2 5.5-3.2S13.5 8 13.5 8s-2.2 3.2-5.5 3.2S2.5 8 2.5 8zM2.5 13.5 13.5 2.5',
 }
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {
