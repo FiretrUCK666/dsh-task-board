@@ -59,16 +59,23 @@ describe('deriveLinkedSessions', () => {
     expect(rows[0].pendingInteraction).toBe('question')
   })
 
-  it('title falls back to the cwd basename, never to a raw id dressed up', () => {
+  it('the title slot never carries the folder name — an unnamed row keeps the id for the 未命名 grammar', () => {
     const byId: Record<string, LinkedSessionSource> = {
       's-a': session({ title: '', cwd: '/work/alpha' }),
       's-b': session({ title: undefined, cwd: '/work/alpha' }),
+      // The host's deterministic auto-name == the project basename: also not
+      // a name (this is what made a fresh session "show the workspace name").
+      's-c': session({ title: 'alpha', cwd: '/work/alpha' }),
     }
-    const rows = deriveLinkedSessions({ kind: 'session', sessionId: 's-a' }, { byId, hidden: [] })
-    expect(rows[0].title).toBe('alpha')
-    const rowsB = deriveLinkedSessions({ kind: 'session', sessionId: 's-b' }, { byId, hidden: [] })
-    expect(rowsB[0].title).toBe('alpha')
-    expect(rowsB[0].workspaceLabel).toBe('alpha')
+    for (const id of ['s-a', 's-b', 's-c']) {
+      const rows = deriveLinkedSessions({ kind: 'session', sessionId: id }, { byId, hidden: [] })
+      expect(rows[0].title).toBe(id)
+      // The folder still has its OWN slot (never stolen by the title).
+      expect(rows[0].workspaceLabel).toBe('alpha')
+    }
+    // A real name survives untouched.
+    byId['s-d'] = session({ title: '黄道十二宫', cwd: '/work/alpha' })
+    expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-d' }, { byId, hidden: [] })[0].title).toBe('黄道十二宫')
   })
 
   it('a missing single session yields no row; an explicitly bound blank one still shows', () => {

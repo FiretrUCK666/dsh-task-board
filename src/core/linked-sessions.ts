@@ -60,6 +60,21 @@ export function workspaceLabelOf(cwd: string): string {
   return segment !== undefined && segment !== '' ? segment : cwd
 }
 
+/**
+ * The session's REAL name, or undefined. A durable title that is exactly the
+ * workspace (project) BASENAME is the host's DETERMINISTIC auto-name — the
+ * fallback it projects after the first message when nothing named the
+ * session — NOT a name a human chose. Every title surface (run rows, linked
+ * rows, panel headers) reads through here, so a fresh session never presents
+ * its folder as its title. A user who deliberately names a session after its
+ * own folder is the accepted, genuinely-ambiguous edge.
+ */
+export function realTitleOf(title: string | undefined, cwd: string | undefined): string | undefined {
+  if (title === undefined || title === '') return undefined
+  if (cwd !== undefined && cwd !== '' && title === workspaceLabelOf(cwd)) return undefined
+  return title
+}
+
 /** The default title of a freshly dragged-in binding (from its native source). */
 export function boundSourceTitle(
   bind: NonNullable<TaskRecord['bind']>,
@@ -90,12 +105,17 @@ export function resolveExternalKind(
   return undefined
 }
 
-/** One derived row from a native session source (title fallbacks + cwd label). */
+/** One derived row from a native session source (real title + cwd label).
+ *  The TITLE slot carries only a REAL name: the workspace folder has its own
+ *  `workspaceLabel` slot, and the host's deterministic auto-name (== the
+ *  folder basename) is not a name — an unnamed row keeps the id and the
+ *  single 未命名 grammar (`sessionRowTitleOf`) renders it. */
 function rowOf(sessionId: string, source: LinkedSessionSource): LinkedSessionRow {
   const workspaceLabel = source.cwd !== undefined ? workspaceLabelOf(source.cwd) : undefined
+  const real = realTitleOf(source.title, source.cwd)
   return {
     sessionId,
-    title: source.title !== undefined && source.title !== '' ? source.title : (workspaceLabel ?? sessionId),
+    title: real ?? sessionId,
     ...workspaceLabel !== undefined ? { workspaceLabel } : {},
     running: source.running,
     pendingInteraction: source.pendingInteraction,

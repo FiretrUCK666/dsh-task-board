@@ -19,6 +19,7 @@ import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
 import { toPromptImage } from './attach.ts'
 import { sessionStateChip } from './session-chip.ts'
+import { sessionRowTitleOf } from '../../core/session-list.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { Button } from './ui.tsx'
 import { useSessionContext, useWireQuestion } from './use-interaction.ts'
@@ -100,7 +101,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
 
   return (
     <SessionFrame
-      title={row?.title ?? sessionId}
+      title={sessionRowTitleOf(controller.sessionTitle(sessionId), t('detail.sessionUntitled'))}
       badge={t('detail.sessionCountBadge', { n: String(controller.sessionsOf(task).length) })}
       ariaLabel={t('detail.sessionPanel')}
       context={context}

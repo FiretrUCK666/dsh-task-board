@@ -17,7 +17,7 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import { nextSessionRuleAt, withSessionRules } from './automation.ts'
 import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
-import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
+import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
 import { DIRECT_FALLBACK_STATUS, isDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
@@ -477,18 +477,6 @@ function currentOf(sessions: SessionsControllerFace): string | undefined {
   return sessions.list.getSnapshot().current
 }
 
-/** The last path segment of a cwd (the workspace/project basename the host
- *  uses as a session's deterministic auto-name). Handles both separators and a
- *  trailing slash; undefined when there is no usable segment. */
-function basenameOfPath(cwd: string | undefined): string | undefined {
-  if (cwd === undefined) return undefined
-  const trimmed = cwd.replace(/[\\/]+$/, '')
-  if (trimmed === '') return undefined
-  const index = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
-  const base = index >= 0 ? trimmed.slice(index + 1) : trimmed
-  return base === '' ? undefined : base
-}
-
 /**
  * Board controller (see module doc). All mutations bump the snapshot and
  * persist through the store; UI and DOM mounts subscribe and re-render.
@@ -754,22 +742,15 @@ export class BoardController {
   /** The session's display title (native list summary), or undefined when the
    *  session is gone/unknown. Drives the execution row's identity slot.
    *
-   *  A durable title that is exactly the workspace (project) BASENAME is the
-   *  host's DETERMINISTIC auto-name — the fallback it projects after the first
-   *  message when nothing has named the session — NOT a real name. Reporting
-   *  it as undefined lets the single 未命名 grammar (`sessionRowTitleOf`) show
-   *  「未命名」 until a provider-generated or user-pinned title arrives, so a
-   *  fresh session never reads as its folder (the 「不填标题却显示工作区名」
-   *  bug that kept recurring). A user who deliberately names a session the
-   *  same as its folder is the accepted, genuinely-ambiguous edge. */
+   *  A durable title equal to the workspace (project) BASENAME is the host's
+   *  deterministic auto-name, not a real name — reported as undefined so the
+   *  single 未命名 grammar shows 「未命名」 until a provider-generated or
+   *  user-pinned title arrives (the recurring "不填标题却显示工作区名" bug).
+   *  One judgment with the linked rows: both call `realTitleOf`. */
   sessionTitle(sessionId: string | undefined): string | undefined {
     if (sessionId === undefined) return undefined
     const row = this.deps.sessions.list.getSnapshot().byId[sessionId]
-    const title = row?.title
-    if (title === undefined || title === '') return undefined
-    const folder = basenameOfPath(row?.cwd)
-    if (folder !== undefined && title === folder) return undefined
-    return title
+    return realTitleOf(row?.title, row?.cwd)
   }
 
   /** The localized 未命名 placeholder the session rows show for a session
