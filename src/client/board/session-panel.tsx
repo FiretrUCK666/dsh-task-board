@@ -21,6 +21,7 @@ import { contextOccupancy, contextSegments, formatTokens } from './context-meter
 import { Markdown } from './Markdown.tsx'
 import { sumUsage, type TranscriptImage, type TranscriptLine } from './review-transcript.ts'
 import { JumpToLatest, useFollowScroll } from './use-transcript.tsx'
+import { useNarrow } from './use-narrow.ts'
 import { Chip, type ChipKind } from './Chip.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import type { CommentView } from './comment-thread.ts'
@@ -628,7 +629,14 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // and 滑到最新 works on both without a single mode branch.
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const [threadAtBottom, setThreadAtBottom] = useState(true)
-  const [headOpen, setHeadOpen] = useState(true)
+  // The context meter + run config head is the tallest, least-acted-on block
+  // in the rail (≈480px stacked). A wide rail absorbs it (two-column config
+  // grid, tall panel); a phone has no such margin — it must start folded so
+  // the comments and the composer own the opening screen. Behavior/structure
+  // switches read the ONE sanctioned signal (`useNarrow`), never a CSS guess;
+  // the fold itself stays available at every width.
+  const narrowBoard = useNarrow()
+  const [headOpen, setHeadOpen] = useState(!narrowBoard)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
   const { measure: onThreadScroll, jumpToBottom: jumpThread } = useFollowScroll(
     threadScrollRef, threadAtBottom, setThreadAtBottom, threadFingerprint,
@@ -684,16 +692,26 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
       <p className={`${css.detailHint} ${css.sessionRailHint}`}>{hint ?? t('detail.sessionDriveHint')}</p>
       {/* The rail's ONE scroll region: comments + the pending interaction
           card. The comment auto-follow pins the zone bottom, so a card that
-          just appeared is immediately visible; the composer stays pinned
-          below the zone no matter how long either gets. */}
+          just appeared is immediately visible. */}
       <div className={css.sessionRailScroll} ref={threadScrollRef} onScroll={onThreadScroll}>
         <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
         {interaction !== undefined && sessionId !== undefined && (
           <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
         )}
-        <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
       </div>
-      {composer}
+      {/* THE PINNED BOTTOM GROUP (composer + its "跳到最新" escape) — one
+          family, one anchor. A sticky/absolute control inside the SCROLL
+          REGION is clamped by its own containing block (the thread's content
+          box), so on a stacked panel — where the body, not the region,
+          scrolls — it could only ever land at the end of the comments, i.e.
+          floating in mid-screen. Anything that must sit at the bottom of the
+          VISIBLE area therefore lives in the pinned group (the same box the
+          composer occupies, which is the one element guaranteed to be at the
+          bottom in both layouts) and floats above it. */}
+      <div className={css.sessionRailPinned}>
+        <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
+        {composer}
+      </div>
     </>
   )
 }

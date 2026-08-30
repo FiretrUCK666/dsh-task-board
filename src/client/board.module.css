@@ -2327,6 +2327,14 @@ textarea.input {
   gap: 10px;
 }
 
+/* An empty content field reads as one quiet line — never a sunken box around
+   a lone dash (height spent to say nothing). */
+.detailEmptyField {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+}
+
 .sessionToolbar .detailHint {
   min-width: 0;
   overflow: hidden;
@@ -3630,6 +3638,31 @@ textarea.input {
   padding: 0 14px 10px;
 }
 
+/* THE pinned bottom group: composer + its escape hatch. It is the one rail
+   box that is guaranteed to sit at the bottom of the visible area in BOTH
+   layouts (flex-none at the rail foot when the rail scrolls, sticky to the
+   panel body when the whole panel scrolls), so every control that must be
+   reachable "at the bottom" belongs here rather than inside a scroll region —
+   where the box model clamps sticky/absolute to the scroll CONTENT, not to
+   the viewport. */
+.sessionRailPinned {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+}
+
+/* The escape floats above the pinned group instead of inside it, so showing
+   or hiding it never shifts the composer (a control that moves the send box
+   is a control that makes the target move under the finger). */
+.sessionRailPinned > .reviewJumpLatest {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 14px;
+  margin: 0;
+}
+
 /* The conversation region scrolls on its own — a long transcript never
    pushes the comment thread out of view.
    GRID note (the review page's ONE alignment grammar): every column's
@@ -4651,16 +4684,19 @@ textarea.input {
   }
 
   .reviewMain {
-    /* LAST, and capped: the conversation tail is secondary on a phone — the
-       thing a hand reaches for is the comment thread and the composer. The
-       transcript keeps its OWN scroll (the follow logic resolves whatever
-       element actually scrolls, so pinning/jump still work here), which stops
-       a 30-message tail from pushing the send box forty screens down. */
+    /* LAST and flowing: the conversation tail is secondary on a phone, and
+       because the rail is ordered FIRST, a long transcript can no longer stand
+       between the user and their comments/send box — so it needs no cap and no
+       scroll of its own. Capping it with its own scroller was my own
+       regression: the board box declares `container-type: inline-size`, so a
+       block-axis container unit silently resolves against the VIEWPORT (one
+       this file bans), and the extra scroller brought nested touch capture and
+       clamped the sticky jump pill inside the thread. ONE scroll root: the
+       body. */
     order: 2;
     flex: none;
     min-height: 0;
-    max-height: 45cqh;
-    overflow-y: auto;
+    overflow: visible;
     padding: 14px;
     border-top: 1px solid var(--dsw-alias-separator-primary);
   }
@@ -4684,21 +4720,36 @@ textarea.input {
   }
 
   /* The title is the panel's identity — on a narrow board it WRAPS and reads
-     in full instead of ellipsizing to three characters beside a crowded
-     action row (a clipped title is worse than a second line). */
+     in full instead of ellipsizing to three characters beside a crowded action
+     row. ONE grammar only: a wrapping title is an in-flow box whose height
+     grows with its text. (A `-webkit-line-clamp` here was a self-inflicted
+     wound — clamping belongs to the truncating grammar and needs
+     `overflow: hidden`; combining it with `overflow: visible` reserved a
+     two-line box while painting five lines OUTSIDE it, so the title drew on
+     top of the comments below. The board never lets text paint outside its
+     own box — the same law the cards obey.) */
   .reviewTitle {
     white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    overflow-wrap: anywhere;
   }
 
   .reviewHeaderContext {
     flex: 1 1 100%;
     max-width: none;
     order: 5;
+  }
+
+  /* A context block anchored IN A HEADER expands in flow, never as a floating
+     card: an absolute panel anchored below the header bites into the header's
+     own padding band (its `top: 100% + 6px` is smaller than that padding) and
+     takes no space, so it paints over whatever sits across the border. The
+     floating form only makes sense where there is a scrollable content region
+     beneath the anchor to hover over — a header has none. One rule, every
+     panel that moves this block into its header. */
+  .reviewHeaderContext .sessionContextPanel {
+    position: static;
+    max-height: none;
+    margin-top: 6px;
   }
 
   /* Inner scroll regions stop scrolling in stacked mode (the body owns the
@@ -4713,12 +4764,20 @@ textarea.input {
     min-height: 0;
   }
 
-  /* The composer pins to the bottom of the scroll viewport (sticky), so
-     发送评论 is reachable at the end of the flow AND visible while scrolled. */
-  .reviewComposer {
+  /* The PINNED GROUP is the sticky unit (composer + its escape hatch), not
+     the composer alone: the escape must ride the same guaranteed-bottom box.
+     Inside it the composer returns to plain flow. */
+  .sessionRailPinned {
     position: sticky;
     bottom: 0;
+    z-index: 4;
     background: var(--dsh-tb-surface-float);
+    border-top: var(--dsh-tb-separator);
+  }
+
+  .sessionRailPinned .reviewComposer {
+    position: static;
+    background: none;
   }
 }
 
@@ -4998,6 +5057,34 @@ textarea.input {
       "lead act"
       "chip act";
     row-gap: 6px;
+  }
+
+  /* The title gets its OWN line: the workspace pill drops to a second line
+     inside the lead slot instead of sharing the first and squeezing the name
+     to five characters. Letting it wrap (rather than shrinking both) is the
+     "give way, never crush" rule — both texts end up fully readable. */
+  .sessionRowLead {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .sessionRowLead .sessionRowWorkspace {
+    flex: 0 0 auto;
+    max-width: 100%;
+  }
+
+  /* The session toolbar's explanation never competes with the two buttons:
+     actions on their line, the hint on its own full-width line below. */
+  .sessionToolbar {
+    flex-wrap: wrap;
+  }
+
+  .sessionToolbar .detailHint {
+    flex: 1 1 100%;
+    order: 2;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
   }
 
   /* The action cluster pays the identity slot no fixed tax: labels collapse

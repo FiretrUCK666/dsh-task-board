@@ -95,33 +95,52 @@ describe('stacked review CSS contract (one scroll body below the two-column floo
     throw new Error('unbalanced stacked block')
   }
 
+  /** One rule's OWN text inside a scope (up to its closing brace). */
+  function ruleIn(scope: string, selector: string): string {
+    const at = scope.indexOf(`${selector} {`)
+    if (at < 0) return ''
+    const end = scope.indexOf('}', at)
+    return scope.slice(at, end < 0 ? undefined : end)
+  }
+
   it('the whole panel becomes ONE scroll body (the .reviewBody scrolls)', () => {
     const block = stackedBlock()
     expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow-y: auto/)
   })
 
-  it('the RAIL comes first and the transcript is a capped tail (composer reachable on the opening screen)', () => {
+  it('the RAIL comes first and the panel keeps ONE scroll root', () => {
     const block = stackedBlock()
     // The thing a hand reaches for on a phone is the comment thread + send
     // box; a 30-message transcript rendered BEFORE them pushed the composer
     // ten-to-forty screens down (「要一路拉到底」). Order is the fix.
     expect(block).toMatch(/\.reviewRail\s*\{[^}]*order: 1/)
     expect(block).toMatch(/\.reviewMain\s*\{[^}]*order: 2/)
-    // The transcript keeps its OWN capped scroll (the follow logic resolves
-    // whatever element actually scrolls, so pinning/jump still work); the
-    // rail flows into the single body.
-    expect(block).toMatch(/\.reviewMain\s*\{[^}]*max-height: \d+cqh/)
-    expect(block).toMatch(/\.reviewMain\s*\{[^}]*overflow-y: auto/)
-    expect(block).toMatch(/\.reviewRail\s*\{[^}]*overflow: visible/)
-    // The old model (each half scrolling at a fixed fraction) never returns.
+    // ONE scroll root (the body). Capping the transcript with its own scroller
+    // was a regression: the board box declares `container-type: inline-size`,
+    // so a block-axis container unit silently resolves to the VIEWPORT (a
+    // banned unit) and created a second scroll root with nested touch capture.
+    expect(ruleIn(block, '.reviewMain')).toMatch(/overflow: visible/)
+    expect(ruleIn(block, '.reviewMain')).not.toMatch(/max-height/)
+    expect(ruleIn(block, '.reviewRail')).toMatch(/overflow: visible/)
     expect(block).not.toContain('1 1 50%')
     // Inner transcript/rail regions do not double-scroll.
     expect(block).toMatch(/\.reviewTranscriptScroll\s*\{[^}]*overflow: visible/)
     expect(block).toMatch(/\.sessionRailScroll\s*\{[^}]*overflow: visible/)
   })
 
-  it('the composer is sticky so 发送评论 stays reachable at the end of the flow', () => {
-    expect(stackedBlock()).toMatch(/\.reviewComposer\s*\{[^}]*position: sticky/)
+  it('the PINNED GROUP (composer + its escape hatch) is the sticky unit', () => {
+    const block = stackedBlock()
+    // Sticky/absolute controls clamp to their CONTAINING BLOCK, so a "jump to
+    // latest" pill living inside a scroll region could only ever land at the
+    // end of that region's content (mid-screen). The composer and its escape
+    // therefore form one pinned box, and only that box sticks.
+    expect(ruleIn(block, '.sessionRailPinned')).toMatch(/position: sticky/)
+    expect(ruleIn(block, '.sessionRailPinned .reviewComposer')).toMatch(/position: static/)
+    // The escape floats ABOVE the pinned box, so showing it never shifts the
+    // send button out from under the finger.
+    const pinned = ruleIn(cssSource, '.sessionRailPinned > .reviewJumpLatest')
+    expect(pinned).toMatch(/position: absolute/)
+    expect(pinned).toMatch(/bottom: calc\(100% \+ 6px\)/)
   })
 
   it('the header wraps (context head drops to its own line, no title overlap)', () => {

@@ -64,6 +64,16 @@ function ruleOf(name: string): string {
   return blockFrom(line => line.trim() === `.${name} {`)
 }
 
+/** One rule's OWN text inside a scope (up to its closing brace) — never the
+ *  slice to the end of the block, which would swallow later rules and make
+ *  "must not contain" assertions meaningless. */
+function ruleIn(scope: string, selector: string): string {
+  const at = scope.indexOf(`${selector} {`)
+  if (at < 0) return ''
+  const end = scope.indexOf('}', at)
+  return scope.slice(at, end < 0 ? undefined : end)
+}
+
 describe('responsive container mechanism', () => {
   it('the board view root is a named size container', () => {
     const root = blockWith(/container-type:\s*inline-size/)
@@ -241,7 +251,7 @@ describe('alignment grammar (the OCD contract)', () => {
     // identity slot has a hard 60% floor.
     expect(compact).toMatch(/\.sessionRowActions \.rowActionText\s*\{\s*\n?\s*display:\s*none/)
     expect(compact).toMatch(/\.sessionRowActions \.rowActionIcon\s*\{\s*\n?\s*display:\s*inline-flex/)
-    const top = compact.slice(compact.indexOf('.sessionRowTop {'))
+    const top = ruleIn(compact, '.sessionRowTop')
     expect(top).toMatch(/grid-template-columns:\s*minmax\(60%,\s*1fr\) auto/)
   })
 
@@ -254,10 +264,23 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(panel).not.toMatch(/88cqw/)
   })
 
-  it('the review title wraps instead of clipping on a narrow panel', () => {
-    const title = stacked.slice(stacked.indexOf('.reviewTitle {'))
+  it('the review title wraps in flow — never a clamp that paints outside its box', () => {
+    const title = ruleIn(stacked, '.reviewTitle')
     expect(title).toMatch(/white-space:\s*normal/)
-    expect(title).toMatch(/-webkit-line-clamp:\s*2/)
+    expect(title).toMatch(/overflow-wrap:\s*anywhere/)
+    // `-webkit-line-clamp` belongs to the TRUNCATING grammar and needs
+    // `overflow: hidden`; paired with `overflow: visible` it reserves a 2-line
+    // box while painting 5 lines OUTSIDE it — the title drew over the
+    // comments below. A wrapping title must simply grow its box.
+    expect(title).not.toMatch(/line-clamp/)
+    expect(title).not.toMatch(/overflow:\s*visible/)
+  })
+
+  it('a context block anchored in a header expands IN FLOW, not as a floating card', () => {
+    // An absolute panel anchored below a header bites into the header's own
+    // padding band (its offset is smaller than that padding) and takes no
+    // space, so it paints across the border instead of pushing the body down.
+    expect(ruleIn(stacked, '.reviewHeaderContext .sessionContextPanel')).toMatch(/position:\s*static/)
   })
 })
 

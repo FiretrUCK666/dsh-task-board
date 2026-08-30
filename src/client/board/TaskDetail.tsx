@@ -570,19 +570,26 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
           ) : (
             <>
               <Section title={t('detail.description')}>
-                <div className={css.contentBlock}>{current.description !== '' ? current.description : '—'}</div>
+                {/* An empty field is a LINE, not a BOX: a sunken block holding
+                    a single dash costs a screen of height and says no more
+                    than four quiet characters would. */}
+                {current.description !== ''
+                  ? <div className={css.contentBlock}>{current.description}</div>
+                  : <p className={css.detailEmptyField}>{t('detail.emptyField')}</p>}
               </Section>
 
               <Section title={t('detail.prompt')}>
-                {/* An empty run prompt is nothing — the same em dash as the
+                {/* An empty run prompt is nothing — the same quiet line as the
                     description. It never shows the title as if it were a
                     prompt (the title only serves as the execution fallback).
                     The copy action floats INSIDE the block's top-right
                     corner (hover/focus revealed, check-mark feedback), so it
                     reads as part of the block instead of a loose row below. */}
-                <div className={css.promptBlock}>
-                  <pre className={css.promptBlockText}>{current.prompt !== '' ? current.prompt : '—'}</pre>
-                  {current.prompt !== '' && (
+                {current.prompt === '' ? (
+                  <p className={css.detailEmptyField}>{t('detail.emptyField')}</p>
+                ) : (
+                  <div className={css.promptBlock}>
+                    <pre className={css.promptBlockText}>{current.prompt}</pre>
                     <button
                       type="button"
                       className={css.promptCopy}
@@ -592,8 +599,8 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                     >
                       <Icon name={promptCopied ? 'check' : 'copy'} />
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </Section>
 
               <Disclosure
