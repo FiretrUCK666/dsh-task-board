@@ -74,7 +74,7 @@ export interface BoardRouteDeps {
   available(): boolean
   doc(): BoardDoc
   commit(commit: BoardCommit): Promise<BoardDoc>
-  acquireLease(clientId: string, ttlMs?: number): LeaseState
+  acquireLease(clientId: string, ttlMs?: number, active?: boolean): LeaseState
   releaseLease(clientId: string): LeaseState
   noteActivity(clientId: string | undefined): void
   noteStreamOpen(clientId: string | undefined): void
@@ -132,8 +132,10 @@ export function parseBoardCommit(body: unknown): BoardCommit | undefined {
   }
 }
 
-/** Parse the POST body of the lease endpoint. */
-function parseLeaseBody(body: unknown): { clientId: string; ttlMs?: number; release: boolean } | undefined {
+/** Parse the POST body of the lease endpoint. `active` (the tab is visible)
+ *  drives the host's visibility preemption; absent = visible (a client that
+ *  predates the flag never loses ground it would have kept). */
+function parseLeaseBody(body: unknown): { clientId: string; ttlMs?: number; release: boolean; active: boolean } | undefined {
   if (typeof body !== 'object' || body === null) return undefined
   const row = body as Record<string, unknown>
   if (typeof row.clientId !== 'string' || row.clientId === '' || row.clientId.length > 64) return undefined
@@ -141,6 +143,7 @@ function parseLeaseBody(body: unknown): { clientId: string; ttlMs?: number; rele
     clientId: row.clientId,
     ...typeof row.ttlMs === 'number' && Number.isFinite(row.ttlMs) ? { ttlMs: row.ttlMs } : {},
     release: row.release === true,
+    active: row.active !== false,
   }
 }
 
@@ -234,7 +237,7 @@ export function createBoardHandler(
         json(res, MALFORMED)
         return
       }
-      const lease = parsed.release ? deps.releaseLease(parsed.clientId) : deps.acquireLease(parsed.clientId, parsed.ttlMs)
+      const lease = parsed.release ? deps.releaseLease(parsed.clientId) : deps.acquireLease(parsed.clientId, parsed.ttlMs, parsed.active)
       json(res, { ok: true as const, value: { available: deps.available(), revision: deps.doc().revision, lease } satisfies BoardRouteView })
       return
     }
@@ -319,7 +322,7 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
     available: () => service.available,
     doc: () => service.getDoc(),
     commit: commit => service.commit(commit),
-    acquireLease: (clientId, ttlMs) => service.acquireLease(clientId, ttlMs),
+    acquireLease: (clientId, ttlMs, active) => service.acquireLease(clientId, ttlMs, active),
     releaseLease: clientId => service.releaseLease(clientId),
     noteActivity: clientId => service.noteActivity(clientId),
     noteStreamOpen: clientId => service.noteStreamOpen(clientId),

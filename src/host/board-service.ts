@@ -77,7 +77,7 @@ export interface BoardServiceDeps {
 export class BoardDataService {
   private doc: BoardDoc = emptyBoardDoc(0)
   private unit: KvUnitLike | undefined
-  private lease: { clientId: string; expiresAt: number; ttl: number } | undefined
+  private lease: { clientId: string; expiresAt: number; ttl: number; active: boolean } | undefined
   /** Live SSE connections per clientId. An open stream is the holder's
    *  liveness proof: unlike client timers it survives background-tab timer
    *  throttling, so the engine lease never flaps while its stream is up. */
@@ -175,17 +175,36 @@ export class BoardDataService {
    * Acquire or renew the engine lease. Liveness is the leaseState view (an
    * open SSE stream or any board API call keeps the holder alive); a free or
    * expired lease is granted to the caller.
+   *
+   * VISIBILITY PREEMPTION: every request carries `active` (the tab is
+   * visible). A VISIBLE requester takes the seat from an INACTIVE holder —
+   * the engine must sit where the user is looking, or native-turn recording
+   * and dispatch stall on a frozen background tab (the "手机点开始没反应、
+   * 电脑端才动" class). Two visible replicas never flip-flop: first-held
+   * keeps the seat while it renews; an all-hidden fleet keeps the last holder
+   * (scheduled automation survives nobody-looking).
    */
-  acquireLease(clientId: string, ttlMs?: number): LeaseState {
+  acquireLease(clientId: string, ttlMs?: number, active = true): LeaseState {
     const now = this.now()
     const ttl = clampLeaseTtl(ttlMs)
     const current = this.leaseState(now)
     if (current.held && current.holder !== clientId) {
-      // Held (live stream or unexpired) by someone else: the caller is NOT the engine.
-      return { held: false, holder: current.holder, expiresAt: current.expiresAt }
+      const holderLease = this.lease
+      const holderActive = holderLease !== undefined && holderLease.clientId === current.holder
+        ? holderLease.active
+        : true
+      if (!(active && holderActive === false)) {
+        // Held (live stream or unexpired) by someone else: the caller is NOT the engine.
+        return { held: false, holder: current.holder, expiresAt: current.expiresAt }
+      }
+      // Preemption: a visible device takes the seat from a hidden holder.
+      this.lease = { clientId, expiresAt: now + ttl, ttl, active }
+      this.broadcast({ type: 'lease', holder: clientId, expiresAt: this.lease.expiresAt })
+      this.drainPendingCommands()
+      return this.leaseState(this.now())
     }
     const renewing = current.held && current.holder === clientId
-    this.lease = { clientId, expiresAt: now + ttl, ttl }
+    this.lease = { clientId, expiresAt: now + ttl, ttl, active }
     if (!renewing) this.broadcast({ type: 'lease', holder: clientId, expiresAt: this.lease.expiresAt })
     this.drainPendingCommands()
     return this.leaseState(this.now())

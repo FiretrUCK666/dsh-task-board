@@ -307,6 +307,18 @@ export function apply(ctx: ClientContext): void {
         const timer = setTimeout(fn, ms)
         return () => clearTimeout(timer)
       },
+      // Tab visibility drives the engine-lease active flag + foreground wake:
+      // the engine must sit where the user is looking.
+      visibility: {
+        is: () => document.visibilityState === 'visible',
+        onVisible: cb => {
+          const listener = () => {
+            if (document.visibilityState === 'visible') cb()
+          }
+          document.addEventListener('visibilitychange', listener)
+          return () => document.removeEventListener('visibilitychange', listener)
+        },
+      },
     })
     // A diverging local ledger is parked under a dedicated key before the
     // host truth overwrites the mirror (nothing is ever silently dropped).

@@ -52,7 +52,7 @@ export interface SyncFetchResult {
 export interface BoardSyncTransport {
   fetch(clientId: string, since: number | undefined): Promise<SyncFetchResult | undefined>
   commit(commit: BoardCommit): Promise<SyncFetchResult | undefined>
-  lease(clientId: string, options: { ttlMs?: number; release?: boolean }): Promise<LeaseState | undefined>
+  lease(clientId: string, options: { ttlMs?: number; release?: boolean; active?: boolean }): Promise<LeaseState | undefined>
   command(clientId: string, command: BoardCommand): Promise<void>
   /** Open the SSE change stream for this replica; the returned disposer closes it. */
   openStream(clientId: string, handlers: {
@@ -79,6 +79,15 @@ export interface BoardSyncDeps {
   pollMs?: number
   /** Remote-change coalescing before a resync fetch. */
   resyncCoalesceMs?: number
+  /** Tab visibility (the browser wiring): drives the engine-lease `active`
+   *  flag and an immediate resync/lease-take when the tab returns to the
+   *  foreground (a woken viewer becomes the engine at once, a woken engine
+   *  catches up on turns recorded while it was frozen). Absent = always
+   *  visible (tests, non-browser hosts). */
+  visibility?: {
+    is(): boolean
+    onVisible(cb: () => void): () => void
+  }
   log?: (message: string, error?: unknown) => void
 }
 
@@ -219,6 +228,16 @@ export class BoardSyncClient {
     }))
     this.loopCancels.push(this.every(this.leaseRenewMs, () => this.renewLease()))
     this.loopCancels.push(this.every(this.pollMs, () => this.poll()))
+    // Returning to the foreground: take/keep the seat and catch up NOW — the
+    // heartbeat/poll cadences would otherwise leave a woken tab staring at a
+    // stale board for seconds (the "点了没反应，刷新才好" stall).
+    if (this.deps.visibility !== undefined) {
+      const visibility = this.deps.visibility
+      this.loopCancels.push(visibility.onVisible(() => {
+        void this.renewLease()
+        void this.poll()
+      }))
+    }
     // The first lease probe is part of starting: by the time the wiring is
     // told "synced", the engine state of this tab is already known.
     await this.renewLease()
@@ -452,10 +471,14 @@ export class BoardSyncClient {
     this.adopt(result.doc)
   }
 
-  /** Renew (or take) the engine lease; publish engine-state changes. */
+  /** Renew (or take) the engine lease; publish engine-state changes. The
+   *  request carries this tab's VISIBILITY — the host lets a visible replica
+   *  preempt a hidden holder, so the engine always sits where the user is. */
   async renewLease(): Promise<void> {
     if (this.mode !== 'synced' || this.disposed) return
-    const state = await this.deps.transport.lease(this.clientId, { ttlMs: this.leaseTtlMs }).catch(() => undefined)
+    const state = await this.deps.transport
+      .lease(this.clientId, { ttlMs: this.leaseTtlMs, active: this.deps.visibility?.is() ?? true })
+      .catch(() => undefined)
     if (state === undefined) return
     this.setEngine(state.held)
   }

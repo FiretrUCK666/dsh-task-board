@@ -56,7 +56,11 @@ export function createBoardTransport(): BoardSyncTransport {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(options.release
             ? { clientId, release: true }
-            : { clientId, ...options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {} }),
+            : {
+                clientId,
+                ...options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {},
+                ...options.active === false ? { active: false } : {},
+              }),
         })
         const envelope = await response.json() as BoardEnvelope
         return envelope.ok ? envelope.value?.lease : undefined

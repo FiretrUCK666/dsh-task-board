@@ -223,6 +223,39 @@ describe('BoardDataService lease', () => {
     service.releaseLease('a')
     expect(service.acquireLease('b').held).toBe(true)
   })
+
+  it('a VISIBLE replica preempts a hidden holder; two visible replicas never flip-flop', async () => {
+    const { service } = makeService(new FakeUnit())
+    await service.init()
+    // Phone opens first (visible) and takes the seat, then goes hidden.
+    expect(service.acquireLease('phone', 20_000, true).held).toBe(true)
+    service.acquireLease('phone', 20_000, false) // phone hides (renews inactive)
+    // PC (the user is chatting here) is visible: it preempts the hidden phone.
+    const pc = service.acquireLease('pc', 20_000, true)
+    expect(pc.held).toBe(true)
+    expect(pc.holder).toBe('pc')
+    // The hidden phone can no longer take it back from the visible PC.
+    expect(service.acquireLease('phone', 20_000, false).holder).toBe('pc')
+    // A SECOND visible replica does NOT steal from a visible holder (no flap).
+    expect(service.acquireLease('other', 20_000, true).holder).toBe('pc')
+    // An all-hidden fleet keeps the last holder: an inactive request does not preempt.
+    service.acquireLease('pc', 20_000, false)
+    expect(service.acquireLease('other', 20_000, false).holder).toBe('pc')
+  })
+
+  it('preemption broadcasts the lease change (the old holder learns it lost the seat)', async () => {
+    const { service } = makeService(new FakeUnit())
+    await service.init()
+    service.acquireLease('phone', 20_000, false)
+    const seen: BoardEvent[] = []
+    const off = service.subscribe(event => {
+      if (event.type === 'lease') seen.push(event)
+    })
+    service.acquireLease('pc', 20_000, true)
+    off()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ type: 'lease', holder: 'pc' })
+  })
 })
 
 describe('BoardDataService command relay', () => {
