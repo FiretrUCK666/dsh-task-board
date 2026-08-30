@@ -16,6 +16,7 @@ import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
+import { newSessionDraftKey, draftStore } from './drafts.ts'
 import { RunConfigFields } from './RunConfigFields.tsx'
 import { Button } from './ui.tsx'
 
@@ -31,6 +32,29 @@ function taskConfigOf(task: TaskRecord): RunConfigPresetConfig {
   }
 }
 
+/** The persisted draft of this dialog (title + the picked config). */
+interface NewSessionDraft {
+  title: string
+  config: RunConfigPresetConfig
+}
+
+/** Read back a previous draft (a half-typed name and a picked model must
+ *  survive closing the dialog); anything malformed falls back to the task's
+ *  own config — the draft is a convenience, never a source of truth. */
+function readDraft(task: TaskRecord): NewSessionDraft {
+  const raw = draftStore.get(newSessionDraftKey(task.id))
+  if (raw === undefined) return { title: '', config: taskConfigOf(task) }
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return { title: '', config: taskConfigOf(task) }
+    const row = parsed as Record<string, unknown>
+    const config = typeof row.config === 'object' && row.config !== null ? row.config as RunConfigPresetConfig : taskConfigOf(task)
+    return { title: typeof row.title === 'string' ? row.title : '', config }
+  } catch {
+    return { title: '', config: taskConfigOf(task) }
+  }
+}
+
 /** The "create a configured session for this task" dialog (see module doc). */
 export function NewSessionModal({ controller, task, onClose, onCreated }: {
   controller: BoardController
@@ -39,12 +63,14 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
   /** The session joined the task (the section flashes its bind feedback). */
   onCreated: (sessionId: string) => void
 }) {
-  const [config, setConfig] = useState<RunConfigPresetConfig>(() => taskConfigOf(task))
+  const key = newSessionDraftKey(task.id)
+  const seeded = useState(() => readDraft(task))[0]
+  const [config, setConfig] = useState<RunConfigPresetConfig>(seeded.config)
   // Optional title: blank = leave the naming to the host (it names the
   // session automatically from the first real message — fallback + provider
   // cadence). A filled title goes through the OFFICIAL user rename, which
   // pins it against automatic regeneration — the two paths never fight.
-  const [title, setTitle] = useState('')
+  const [title, setTitle] = useState(seeded.title)
   const [busy, setBusy] = useState(false)
   // Inline feedback: a creation failure keeps the dialog open; a config or
   // rename failure after the session exists is surfaced as a partial
@@ -52,6 +78,12 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
   // happened).
   const [error, setError] = useState<string | undefined>(undefined)
   const [partial, setPartial] = useState<string | undefined>(undefined)
+
+  /** Keep the draft in step with the fields (an empty form clears the slot). */
+  const stash = (nextTitle: string, nextConfig: RunConfigPresetConfig): void => {
+    if (nextTitle === '' && Object.keys(nextConfig).length === 0) draftStore.clear(key)
+    else draftStore.set(key, JSON.stringify({ title: nextTitle, config: nextConfig }))
+  }
 
   const submit = (): void => {
     if (busy) return
@@ -64,6 +96,8 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
         setError(result.error)
         return
       }
+      // The form was consumed: the draft is gone either way from here.
+      draftStore.clear(key)
       if (result.titleError !== undefined) {
         // The session was created and bound; only its title did not stick.
         // Keep the dialog open on the partial note (a retry would create a
@@ -95,11 +129,15 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
               className={css.input}
               value={title}
               placeholder={t('detail.sessionNewTitlePlaceholder')}
-              onChange={event => { setTitle(event.target.value) }}
+              onChange={event => { setTitle(event.target.value); stash(event.target.value, config) }}
             />
             <span className={css.fieldHint}>{t('detail.sessionNewTitleHint')}</span>
           </label>
-          <RunConfigFields value={config} onChange={setConfig} controller={controller} />
+          <RunConfigFields
+            value={config}
+            onChange={next => { setConfig(next); stash(title, next) }}
+            controller={controller}
+          />
         </div>
 
         <footer className={css.modalFooter}>

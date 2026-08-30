@@ -34,6 +34,18 @@ export function refineDraftKey(taskId: string): string {
 /** New-task modal draft key (one global slot — no task id exists yet). */
 export const NEW_TASK_DRAFT_KEY = 'new'
 
+/** New-session modal draft key for one task (title + run config, JSON). The
+ *  half-typed name and the picked model/permission must survive closing the
+ *  dialog — the same promise every other input surface keeps. */
+export function newSessionDraftKey(taskId: string): string {
+  return `newsession:${taskId}`
+}
+
+/** Session-rule form draft key (the instruction text) for one task + rule. */
+export function ruleDraftKey(taskId: string, ruleId: string): string {
+  return `rule:${taskId}:${ruleId}`
+}
+
 /** Persistence seam for drafts (framework-free, testable). */
 export interface DraftStore {
   /** Read a draft slot (undefined when never written or already cleared). */

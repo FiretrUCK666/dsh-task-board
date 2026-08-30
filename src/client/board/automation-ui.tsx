@@ -32,6 +32,7 @@ import {
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { cronHumanLabel } from './cron-label.ts'
+import { draftStore, ruleDraftKey } from './drafts.ts'
 import { formatDateTime } from './format-time.ts'
 import { mergedPresets, presetIsDefault, PresetManager } from './PresetManager.tsx'
 import { STATUS_KEY, PAUSED_REASON_KEY } from './status.ts'
@@ -243,8 +244,13 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
   const existing = ruleId !== undefined
     ? (task.rules ?? []).find(rule => rule.id === ruleId)
     : undefined
+  // A half-written instruction survives closing the editor (the same promise
+  // the comment composer and the task form keep). Only ADD mode carries a
+  // draft — an existing rule's saved instruction is the truth, never a draft.
+  const draftKey = ruleDraftKey(task.id, ruleId ?? 'new')
+  const draftInstruction = ruleId === undefined ? (draftStore.get(draftKey) ?? '') : ''
   const [sessionId, setSessionId] = useState(existing?.sessionId ?? labels[0]?.sessionId ?? '')
-  const [instruction, setInstruction] = useState(existing?.instruction ?? '')
+  const [instruction, setInstruction] = useState(draftInstruction !== '' ? draftInstruction : (existing?.instruction ?? ''))
   // The SAME trigger choice as the task-level driving mode (按时间表 /
   // 任务完成后) — one segmented grammar; cron rules carry an expression,
   // on-complete rules carry none (the settle is the appointment).
@@ -308,6 +314,8 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
       setError('save')
       return
     }
+    // The form was consumed: the add-mode draft is gone with it.
+    draftStore.clear(draftKey)
     onClose()
   }
 
@@ -366,7 +374,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
               <span className={css.autoFieldLabel}>{t('auto.form.instruction')}</span>
               <PromptInput
                 value={instruction}
-                onChange={next => { setInstruction(next); setError(undefined) }}
+                onChange={next => { setInstruction(next); setError(undefined); draftStore.set(draftKey, next) }}
                 placeholder={t('auto.form.instructionPlaceholder')}
                 rows={3}
                 controller={controller}

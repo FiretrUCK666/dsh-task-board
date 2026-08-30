@@ -8,6 +8,8 @@ import {
   DRAFT_STORAGE_KEY,
   commentDraftKey,
   editDraftKey,
+  newSessionDraftKey,
+  ruleDraftKey,
   NEW_TASK_DRAFT_KEY,
   refineDraftKey,
   InMemoryDraftStore,
@@ -34,6 +36,11 @@ describe('draft key construction', () => {
     expect(editDraftKey('t-1')).toBe('edit:t-1')
     expect(refineDraftKey('t-1')).toBe('refine:t-1')
     expect(NEW_TASK_DRAFT_KEY).toBe('new')
+    // The surfaces added late: the new-session dialog (title + config) and the
+    // add-mode rule form. An existing rule NEVER has a draft slot in play —
+    // its saved instruction is the truth (hence the literal 'new' key usage).
+    expect(newSessionDraftKey('t-1')).toBe('newsession:t-1')
+    expect(ruleDraftKey('t-1', 'new')).toBe('rule:t-1:new')
     expect(DRAFT_STORAGE_KEY).toBe('dsh.taskBoard.drafts.v1')
   })
 })
