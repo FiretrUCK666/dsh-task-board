@@ -114,6 +114,12 @@ export interface TaskSessionContext {
    *  round is settled at birth, so without this the row stays dark while the
    *  agent is genuinely working). */
   nativeRunningOf?(sessionId: string): boolean
+  /** Whether the session is ARCHIVED natively (the registry's archive set).
+   *  An archived conversation is put away: its row leaves the card on every
+   *  replica the instant the native state moves (derived, never ledger — zero
+   *  sync delay by construction); the rounds stay in the ledger, so
+   *  un-archiving brings the row back with its full history. */
+  archivedOf?(sessionId: string): boolean
   /** The localized 未命名 placeholder (native title absent → row shows it). */
   untitledLabel?: string
 }
@@ -135,6 +141,9 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
   // Permanently removed sessions never show — even from a bound workspace
   // (the hidden set is reversible; removed is not).
   const removed = task.removedSessions ?? []
+  // Natively archived conversations are put away — their rows leave the card
+  // (the ledger rounds survive; un-archiving restores the row).
+  const isArchived = (sessionId: string): boolean => ctx.archivedOf?.(sessionId) === true
 
   // Run candidates, one per session (the latest plain run of that session is
   // the representative — comments sharing the session never add a row).
@@ -142,7 +151,7 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
   for (const execution of plainRunsOf(task)) {
     if (execution.sessionId === undefined) continue
     const sessionId = execution.sessionId
-    if (removed.includes(sessionId)) continue
+    if (removed.includes(sessionId) || isArchived(sessionId)) continue
     runBySession.set(sessionId, {
       sessionId,
       title: sessionRowTitleOf(ctx.titleOf(sessionId), ctx.untitledLabel ?? task.title),
@@ -163,7 +172,8 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
   // already shown as a run (the run carries the execution identity) or one
   // permanently removed (the delete was irreversible).
   for (const linked of ctx.linked) {
-    if (hidden.has(linked.sessionId) || removed.includes(linked.sessionId) || runBySession.has(linked.sessionId)) continue
+    if (hidden.has(linked.sessionId) || removed.includes(linked.sessionId)
+      || isArchived(linked.sessionId) || runBySession.has(linked.sessionId)) continue
     // The linked row's own title derivation falls back through the cwd
     // label and finally the id; an id-named row (no durable title, no cwd)
     // reads 未命名 like every other title-less session.

@@ -636,14 +636,16 @@ export function apply(ctx: ClientContext): void {
         open: id => sessions.open(id as SessionId),
       },
       workspaces: {
-        // Source labels, the run-config picker and drag classification —
-        // workspace MEMBERSHIP is deliberately not read (a bound workspace
-        // never surfaces its sessions into a task card).
+        // Source labels, the run-config picker, drag classification AND the
+        // registry-global ARCHIVE set (archived conversations leave the card's
+        // session rows). Workspace MEMBERSHIP is deliberately not read (a
+        // bound workspace never surfaces its sessions into a task card).
         list: {
           getSnapshot: () => {
             const snap = workspaces.list.getSnapshot()
             return {
               items: snap.items.map(item => ({ id: item.workspaceId, title: item.title })),
+              archivedSessionIds: snap.archivedSessionIds,
             }
           },
           subscribe: fn => workspaces.list.subscribe(fn),

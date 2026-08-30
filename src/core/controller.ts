@@ -74,12 +74,15 @@ export interface SessionsControllerFace {
  * The workspaces face the controller needs: the registry's workspace rows
  * (id + title) for source labels, the run-config picker and drag
  * classification. Workspace MEMBERSHIP is deliberately not read — a bound
- * workspace never surfaces its sessions (see linked-sessions.ts).
+ * workspace never surfaces its sessions (see linked-sessions.ts). The
+ * registry-global ARCHIVE set is read (archived conversations leave the
+ * card's session rows — see taskSessionsOf).
  */
 export interface WorkspacesControllerFace {
   list: {
     getSnapshot(): {
       items: readonly { id: string; title: string }[]
+      archivedSessionIds: readonly string[]
     }
     subscribe(fn: () => void): () => void
   }
@@ -914,6 +917,13 @@ export class BoardController {
     return this.tasks.find(candidate => candidate.id === task.id) ?? task
   }
 
+  /** Whether a session is natively archived (registry-global archive set).
+   *  Absent workspaces face = nothing is known archived (degrade open). */
+  private archivedOf(sessionId: string): boolean {
+    const snap = this.deps.workspaces?.list.getSnapshot()
+    return snap?.archivedSessionIds.includes(sessionId) === true
+  }
+
   /**
    * The live linked-session rows of a task (pure derivation over the native
    * session snapshot; see linked-sessions.ts). ONLY explicit session binds
@@ -936,7 +946,7 @@ export class BoardController {
         byId: byId as unknown as Readonly<Record<string, LinkedSessionSource>>,
         hidden: task.hidden?.sessions ?? [],
       })) {
-        if (seen.has(row.sessionId) || removed.includes(row.sessionId)) continue
+        if (seen.has(row.sessionId) || removed.includes(row.sessionId) || this.archivedOf(row.sessionId)) continue
         seen.add(row.sessionId)
         rows.push(row)
       }
@@ -989,6 +999,7 @@ export class BoardController {
       titleOf: sessionId => this.sessionTitle(sessionId),
       pendingInteractionOf: sessionId => this.pendingInteractionOf(sessionId),
       nativeRunningOf: sessionId => this.nativeRunningOf(sessionId),
+      archivedOf: sessionId => this.archivedOf(sessionId),
       untitledLabel: this.untitledSessionLabel,
     })
   }
@@ -1009,6 +1020,7 @@ export class BoardController {
         linked: this.linkedOf(task),
         titleOf: sid => this.sessionTitle(sid),
         pendingInteractionOf: sid => this.pendingInteractionOf(sid),
+        archivedOf: sid => this.archivedOf(sid),
         untitledLabel: this.untitledSessionLabel,
       }).map(row => row.sessionId)
       if (!ids.includes(sessionId)) return task

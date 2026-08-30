@@ -1663,6 +1663,66 @@ class FakeWorkspaces {
 describe('linked sessions & bind', () => {
   const workspaces = (): FakeWorkspaces => new FakeWorkspaces()
 
+  it('a natively ARCHIVED bound session leaves the card rows; un-archive restores it', async () => {
+    const wss = workspaces()
+    wss.items = [{ id: 'w-a', title: '项目A', sessionIds: [] }]
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    const controller = new BoardController({
+      store: new InMemoryTaskStore(),
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions,
+      workspaces: wss,
+      now: () => NOW,
+      uuid,
+      reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    await flush()
+    const current = () => controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(current()).map(row => row.sessionId)).toEqual(['s-1'])
+    // Native archive (the registry set flips + notifies): the row leaves the
+    // card on this replica immediately — derived, never ledger, zero sync lag.
+    wss.archivedSessionIds = ['s-1']
+    wss.notify()
+    await flush()
+    expect(controller.sessionsOf(current())).toHaveLength(0)
+    expect(controller.linkedOf(current())).toHaveLength(0)
+    // Un-archive restores the row (the bind and its history were never touched).
+    wss.archivedSessionIds = []
+    wss.notify()
+    await flush()
+    expect(controller.sessionsOf(current()).map(row => row.sessionId)).toEqual(['s-1'])
+  })
+
+  it('an archived session with a run round hides the row but keeps the ledger round', async () => {
+    const wss = workspaces()
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'succeeded', error: undefined }],
+    }])
+    const controller = new BoardController({
+      store, exec: new StubExec() as unknown as ExecutionService,
+      sessions, workspaces: wss, now: () => NOW, uuid,
+    })
+    controller.start()
+    const task = () => controller.getSnapshot().tasks[0]
+    expect(controller.sessionsOf(task()).map(row => row.sessionId)).toEqual(['s-1'])
+    wss.archivedSessionIds = ['s-1']
+    wss.notify()
+    expect(controller.sessionsOf(task())).toHaveLength(0)
+    // The execution record itself is untouched (un-archive restores the row
+    // with its full history).
+    expect(task().executions).toHaveLength(1)
+  })
+
   it('createBoundTask creates a bound task, persists it, and lands in the chosen column', () => {
     const { controller, store } = makeController()
     const created = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
