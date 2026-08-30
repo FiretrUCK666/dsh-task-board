@@ -5,6 +5,13 @@
  * escape when they scroll up. Used by the review page, the refinement
  * panel, and anywhere else a live session tail is shown, so every surface
  * behaves identically.
+ *
+ * EVERY follow/anchor/jump action runs against the RESOLVED scroller (see
+ * `resolveScroller`), never against the content region by assumption: a wide
+ * panel scrolls its inner region, a narrow stacked panel scrolls the whole
+ * body, and the same code must work on both. Hard-coding "the region is the
+ * scroller" is what made mobile open a transcript at the TOP, hide the jump
+ * pill forever, and force a manual drag through dozens of screens.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController, TranscriptEventShape, TranscriptProjectionsShape } from '../../core/controller.ts'
@@ -15,6 +22,24 @@ import { Icon } from './ui.tsx'
 
 /** How close to the bottom a scroll position counts as "at the latest". */
 export const NEAR_BOTTOM_PX = 24
+
+/**
+ * The element that ACTUALLY scrolls for a piece of content: walk up from the
+ * content region to the nearest ancestor that overflows vertically and has
+ * overflow-y auto/scroll; fall back to the region itself. Pure DOM truth, so
+ * a container-query width change (which moves the scroll from the inner
+ * region to the panel body) needs no JS mode switch to follow.
+ */
+export function resolveScroller(element: HTMLElement | null): HTMLElement | null {
+  let node: HTMLElement | null = element
+  while (node !== null) {
+    const style = getComputedStyle(node)
+    const scrolls = style.overflowY === 'auto' || style.overflowY === 'scroll'
+    if (scrolls && node.scrollHeight > node.clientHeight + 1) return node
+    node = node.parentElement
+  }
+  return element
+}
 
 /** The watermark of a loaded result (tail seq; 0 when empty). */
 function watermarkOf(result: { events: readonly TranscriptEventShape[] }): number {
@@ -28,7 +53,9 @@ function watermarkOf(result: { events: readonly TranscriptEventShape[] }): numbe
  * bottom while the user is at the bottom. This also fires once on
  * registration, so a surface opened before its layout settles (e.g. the
  * review page's right rail grows as its async context meter / config load,
- * shrinking the comment thread) still lands on the latest. Content-driven
+ * shrinking the comment thread) still lands on the latest. The observer
+ * watches BOTH the content region and its resolved scroller, so a width
+ * change that moves the scroll elsewhere is still covered. Content-driven
  * re-scrolls stay with the caller's follow effects; this only covers layout.
  */
 export function useResizeFollow(
@@ -36,14 +63,62 @@ export function useResizeFollow(
   atBottomRef: React.MutableRefObject<boolean>,
 ): void {
   useEffect(() => {
-    const element = scrollRef.current
-    if (element === null) return
-    const observer = new ResizeObserver(() => {
-      if (atBottomRef.current) element.scrollTop = element.scrollHeight
-    })
-    observer.observe(element)
+    const content = scrollRef.current
+    if (content === null) return
+    const apply = (): void => {
+      const root = resolveScroller(content)
+      if (root !== null && atBottomRef.current) root.scrollTop = root.scrollHeight
+    }
+    const observer = new ResizeObserver(apply)
+    observer.observe(content)
+    const root = resolveScroller(content)
+    if (root !== null && root !== content) observer.observe(root)
+    apply()
     return () => { observer.disconnect() }
   }, [scrollRef])
+}
+
+/**
+ * One FOLLOW mechanism, shared by every live list (transcript tail, comment
+ * thread): measure and pin against the RESOLVED scroller, and see its scroll
+ * events through a window-level capture listener (scroll does not bubble, but
+ * it does run the capture phase from the window down). A surface therefore
+ * keeps following, reporting and jumping correctly whether its own region
+ * scrolls (wide panel) or an ancestor does (stacked narrow panel) — no
+ * per-mode code, no mobile fork.
+ */
+export function useFollowScroll(
+  scrollRef: React.RefObject<HTMLDivElement>,
+  atBottom: boolean,
+  setAtBottom: (value: boolean) => void,
+  changedKey: unknown,
+): { measure: () => void; jumpToBottom: () => void } {
+  const atBottomRef = useRef(atBottom)
+  useEffect(() => { atBottomRef.current = atBottom })
+  useResizeFollow(scrollRef, atBottomRef)
+  const measure = useCallback((): void => {
+    const root = resolveScroller(scrollRef.current)
+    if (root === null) return
+    setAtBottom(root.scrollHeight - root.scrollTop - root.clientHeight < NEAR_BOTTOM_PX)
+  }, [scrollRef, setAtBottom])
+  useEffect(() => {
+    const handler = (): void => measure()
+    document.addEventListener('scroll', handler, true)
+    return () => document.removeEventListener('scroll', handler, true)
+  }, [measure])
+  // Follow the latest content while at the bottom.
+  useEffect(() => {
+    const root = resolveScroller(scrollRef.current)
+    if (root === null || !atBottom) return
+    root.scrollTop = root.scrollHeight
+  }, [scrollRef, changedKey, atBottom])
+  const jumpToBottom = useCallback((): void => {
+    const root = resolveScroller(scrollRef.current)
+    if (root === null) return
+    root.scrollTop = root.scrollHeight
+    setAtBottom(true)
+  }, [scrollRef, setAtBottom])
+  return { measure, jumpToBottom }
 }
 
 /**
@@ -75,7 +150,7 @@ interface TranscriptTailState {
   error: boolean
   /** Whether the user is at (or near) the bottom of the scroll region. */
   atBottom: boolean
-  /** Ref to attach to the scroll container. */
+  /** Ref to attach to the content region (the scroller is resolved from it). */
   scrollRef: React.RefObject<HTMLDivElement>
   /** The scroll handler to attach to the container (updates `atBottom`). */
   onScroll: () => void
@@ -105,19 +180,14 @@ export function useTranscriptTail(
   const [atBottom, setAtBottom] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const watermarkRef = useRef<number | undefined>(undefined)
-  // The latest `atBottom`, mirrored for the resize follower (the observer
-  // callback reads it outside renders).
-  const atBottomRef = useRef(true)
-  useEffect(() => { atBottomRef.current = atBottom })
-  // The latest onResult identity, kept in a ref so `reload`/the poll stay
+  // The latest `onResult` identity, kept in a ref so `reload`/the poll stay
   // stable even when a consumer passes an inline callback (an unstable
   // callback must never re-trigger the load effect every render — that
   // would loop reloads and fight the user's scroll position).
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
-  // Layout-driven following: size changes (or the initial settle) re-pin the
-  // region to the latest while the user is at the bottom.
-  useResizeFollow(scrollRef, atBottomRef)
+  // One follow mechanism (resolved scroller + capture listener + pinning).
+  const { measure, jumpToBottom } = useFollowScroll(scrollRef, atBottom, setAtBottom, lines)
 
   /** Full reload: re-read the tail and reset the watermark. */
   const reload = useCallback((): void => {
@@ -159,25 +229,8 @@ export function useTranscriptTail(
     }
   }, [controller, sessionId])
 
-  // Follow the latest output while the user is at the bottom.
-  useEffect(() => {
-    const element = scrollRef.current
-    if (element === null || !atBottom) return
-    element.scrollTop = element.scrollHeight
-  }, [lines, atBottom])
+  // Scroll measurement, bottom-following and the jump all live in
+  // `useFollowScroll` above — one mechanism for every live list.
 
-  const onScroll = (): void => {
-    const element = scrollRef.current
-    if (element === null) return
-    setAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM_PX)
-  }
-
-  const jumpToBottom = (): void => {
-    const element = scrollRef.current
-    if (element === null) return
-    element.scrollTop = element.scrollHeight
-    setAtBottom(true)
-  }
-
-  return { lines, error, atBottom, scrollRef, onScroll, jumpToBottom, reload }
+  return { lines, error, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload }
 }

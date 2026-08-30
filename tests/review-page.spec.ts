@@ -131,6 +131,28 @@ describe('stacked review CSS contract (one scroll body below the two-column floo
   })
 })
 
+describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
+  const tsxPath = fileURLToPath(new URL('../src/client/board/use-transcript.tsx', import.meta.url))
+  const followSource = readFileSync(tsxPath, 'utf8')
+  const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+  const panelSource = readFileSync(panelPath, 'utf8')
+
+  it('the tail resolves the real scroller and listens in the capture phase', () => {
+    // The stacked panel scrolls its BODY, not the inner region: following must
+    // follow the resolved scroller, and scroll events (which do not bubble)
+    // are seen through a window-level capture listener.
+    expect(followSource).toMatch(/export function resolveScroller/)
+    expect(followSource).toMatch(/addEventListener\('scroll', handler, true\)/)
+    expect(followSource).toMatch(/export function useFollowScroll/)
+  })
+
+  it('the comment thread reuses the same hook instead of re-rolling it', () => {
+    expect(panelSource).toMatch(/useFollowScroll\(/)
+    // No hand-rolled scrollTop pinning left in the panel (one mechanism).
+    expect(panelSource).not.toMatch(/scrollTop = \w+\.scrollHeight/)
+  })
+})
+
 describe('foldTranscript', () => {
   const base = { seq: 1, time: 1000 }
 

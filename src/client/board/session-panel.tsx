@@ -20,7 +20,7 @@ import css from '../board.module.css'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
 import { Markdown } from './Markdown.tsx'
 import { sumUsage, type TranscriptImage, type TranscriptLine } from './review-transcript.ts'
-import { JumpToLatest, NEAR_BOTTOM_PX, useResizeFollow } from './use-transcript.tsx'
+import { JumpToLatest, useFollowScroll } from './use-transcript.tsx'
 import { Chip, type ChipKind } from './Chip.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import type { CommentView } from './comment-thread.ts'
@@ -622,33 +622,16 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   /** The pinned composer (the panel's send semantics stay in the caller). */
   composer: ReactNode
 }) {
-  // The comment thread auto-follows its latest round (fingerprint-gated) and
-  // scrolls in its OWN region: the rail head and the thread header stay
-  // fixed, the list scrolls, and 滑到最新 jumps to the newest comment. One
-  // mechanism for every panel — the region's size also depends on the async
-  // rail head, so a resize follower re-pins while at the bottom.
+  // The comment thread follows its latest round through the SAME mechanism as
+  // the transcript (resolved scroller + capture listener + pinning): a wide
+  // panel scrolls the thread region, a stacked panel scrolls the whole body,
+  // and 滑到最新 works on both without a single mode branch.
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const [threadAtBottom, setThreadAtBottom] = useState(true)
-  const threadAtBottomRef = useRef(true)
-  useEffect(() => { threadAtBottomRef.current = threadAtBottom })
-  useResizeFollow(threadScrollRef, threadAtBottomRef)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
-  useEffect(() => {
-    const element = threadScrollRef.current
-    if (element === null || !threadAtBottom) return
-    element.scrollTop = element.scrollHeight
-  }, [threadFingerprint, threadAtBottom])
-  const onThreadScroll = (): void => {
-    const element = threadScrollRef.current
-    if (element === null) return
-    setThreadAtBottom(element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM_PX)
-  }
-  const jumpThread = (): void => {
-    const element = threadScrollRef.current
-    if (element === null) return
-    element.scrollTop = element.scrollHeight
-    setThreadAtBottom(true)
-  }
+  const { measure: onThreadScroll, jumpToBottom: jumpThread } = useFollowScroll(
+    threadScrollRef, threadAtBottom, setThreadAtBottom, threadFingerprint,
+  )
   return (
     <>
       {stateChip !== undefined && updatedAt !== undefined && (
