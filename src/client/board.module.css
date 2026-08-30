@@ -3471,7 +3471,12 @@ textarea.input {
   flex-direction: column;
   gap: 12px;
   flex: none;
-  width: 344px;
+  /* Flexible rail: it shrinks with the board box (never a rigid 344px that
+     forces the two-column layout to collapse far too early). At a 600px board
+     box the rail is ~276px and the conversation still has ~300px — both
+     readable, so the stacked fallback only triggers below the honest
+     two-column floor. */
+  width: min(344px, 46cqw);
   min-width: 0;
   min-height: 0;
   /* Hard clip: nothing inside the rail — head, comments, interaction card,
@@ -3582,6 +3587,11 @@ textarea.input {
 
 .reviewMessageText {
   display: block;
+  /* A flex child of .reviewMessage: without min-width:0 it refuses to shrink
+     below its longest unbreakable token and the whole message overflows the
+     column (the transcript "冲出右边缘" bug). */
+  min-width: 0;
+  max-width: 100%;
   font-size: 16px;
   line-height: 28px;
   color: var(--dsw-alias-label-primary);
@@ -3911,6 +3921,11 @@ textarea.input {
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 4px;
   padding: 0 4px;
+  /* A long inline token (a path, a slug) must break, not push the whole
+     transcript wider than its column (the "转写冲出右边缘" bug — the card
+     never-pierce contract extended to the review conversation). */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .mdCodeBlock {
@@ -4242,7 +4257,9 @@ textarea.input {
 .reviewHeaderContext .sessionContextPanel {
   left: auto;
   right: 0;
-  width: min(360px, 56vw);
+  /* Board-box relative (never vw — the panel floats inside the review, so it
+     is sized against the board box, not the window). */
+  width: min(360px, 88cqw);
 }
 
 .sessionContextHead {
@@ -4445,47 +4462,80 @@ textarea.input {
 }
 
 /* Narrow board boxes: the two-column review falls back to a stacked layout —
-   conversation on top (its own scroll), rail below (full width). Nothing is
-   dropped; only the geometry changes. Container-scoped (the board box), so it
-   is correct under a collapsed sidebar / split-screen, not just a narrow
-   window — the same reference every compact rule uses. */
-@container dsh-tb (max-width: 719px) {
+   conversation flows on top, rail (context meter, config, comments, composer)
+   flows below, and the WHOLE panel is ONE scroll body (the .modalScroll
+   contract: exactly one scroll region, never two half-height scrollers that
+   squeeze each other's fixed content out of reach — the old model clipped the
+   composer + config so they "disappeared" and could not be scrolled to).
+   Container-scoped (the board box), so it is correct under a collapsed
+   sidebar / split-screen, not just a narrow window. The threshold is the
+   honest two-column floor: rail(min ~240) + conversation(min ~240) + gutters
+   ≈ 600px — above it the flexible rail keeps two columns usable (the "desktop
+   mode + sidebar open = one giant column" complaint), below it a single column
+   genuinely reads better on a phone. */
+@container dsh-tb (max-width: 600px) {
   .review {
-    /* Board-box relative (never vw/vh): the review fills the backdrop, so a
-       mobile dynamic toolbar or a split-screen cannot push its composer off. */
+    /* Board-box relative (never vw/vh). NOT a fixed height: short content
+       shrinks, tall content caps at the box and the body scrolls. */
     width: calc(100% - 16px);
-    height: calc(100% - 16px);
     max-height: calc(100% - 16px);
   }
 
   .reviewBody {
+    /* THE single scroll body of the stacked review. */
     flex-direction: column;
+    overflow-y: auto;
   }
 
   .reviewMain {
-    /* Share the stacked height with the rail; each scrolls on its own. */
-    max-height: none;
-    flex: 1 1 50%;
+    /* Flow as a normal block — the transcript no longer scrolls on its own
+       (the body does), so a long conversation can never be clipped. */
+    flex: none;
     min-height: 0;
+    overflow: visible;
+    padding: 14px;
   }
 
   .reviewRail {
     width: 100%;
-    flex: 1 1 50%;
+    flex: none;
     min-height: 0;
+    overflow: visible;
     border-left: none;
     border-top: 1px solid var(--dsw-alias-separator-primary);
   }
 
-  .sessionRailHead {
-    max-height: none;
-    overflow-y: auto;
+  /* The header wraps: title + actions keep line one, the context head drops to
+     its own full-width line (the "会話会話上下文" overlap — a 320px context head
+     squeezed beside the title on a ~340px panel). */
+  .reviewHeader {
+    flex-wrap: wrap;
   }
 
-  /* The linked-session panel wraps its head in a scroll region: the cap
-     moves to the wrapper so there is exactly one scrollbar, never two. */
+  .reviewHeaderContext {
+    flex: 1 1 100%;
+    max-width: none;
+    order: 5;
+  }
+
+  /* Inner scroll regions stop scrolling in stacked mode (the body owns the
+     single scroll); their content flows to full height. */
+  .reviewTranscriptScroll {
+    overflow: visible;
+    min-height: 0;
+  }
+
   .sessionRailScroll {
-    max-height: none;
+    overflow: visible;
+    min-height: 0;
+  }
+
+  /* The composer pins to the bottom of the scroll viewport (sticky), so
+     发送评论 is reachable at the end of the flow AND visible while scrolled. */
+  .reviewComposer {
+    position: sticky;
+    bottom: 0;
+    background: var(--dsh-tb-surface-float);
   }
 }
 

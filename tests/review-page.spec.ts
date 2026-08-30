@@ -12,31 +12,33 @@ import { contextOccupancy, contextSegments, formatTokens } from '../src/client/b
 import { shouldFlipMenuUp } from '../src/client/board/menu-direction.ts'
 import { contextWorthOf, isOpenTodo, latestSessionTodos } from '../src/client/board/interaction.ts'
 
-describe('rail layout CSS contract (interaction card never bursts the rail)', () => {
-  const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
-  const source = readFileSync(cssPath, 'utf8')
+const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
+const cssSource = readFileSync(cssPath, 'utf8')
 
-  function ruleOf(name: string): string {
-    const lines = source.split('\n')
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].trim() !== `.${name} {`) continue
-      let depth = 0
-      const chunks: string[] = []
-      for (let j = i; j < lines.length; j++) {
-        const line = lines[j]
-        chunks.push(line)
-        for (const ch of line) {
-          if (ch === '{') depth++
-          else if (ch === '}') {
-            depth--
-            if (depth === 0) return chunks.join('\n')
-          }
+/** The first top-level `.name { … }` rule body (line-start match, trim-tolerant
+ *  so indented @container rules are also findable). */
+function ruleOf(name: string): string {
+  const lines = cssSource.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() !== `.${name} {`) continue
+    let depth = 0
+    const chunks: string[] = []
+    for (let j = i; j < lines.length; j++) {
+      const line = lines[j]
+      chunks.push(line)
+      for (const ch of line) {
+        if (ch === '{') depth++
+        else if (ch === '}') {
+          depth--
+          if (depth === 0) return chunks.join('\n')
         }
       }
     }
-    throw new Error(`rule ".${name}" not found in board.module.css`)
   }
+  throw new Error(`rule ".${name}" not found in board.module.css`)
+}
 
+describe('rail layout CSS contract (interaction card never bursts the rail)', () => {
   it('the interaction card is shrinkable and sits on the rail 14px box', () => {
     const card = ruleOf('interactionCard')
     expect(card).toContain('min-width: 0')
@@ -68,6 +70,64 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     // The rail owns ONE 12px vertical rhythm; each segment keeps only its
     // own 14px content box (the composer's bottom breathing stays its own).
     expect(ruleOf('reviewComposer')).toContain('padding: 0 14px 12px')
+  })
+
+  it('the transcript text shrinks and inline code breaks (never pierces the column)', () => {
+    expect(ruleOf('reviewMessageText')).toContain('min-width: 0')
+    expect(ruleOf('mdCode')).toContain('overflow-wrap: anywhere')
+  })
+})
+
+describe('stacked review CSS contract (one scroll body below the two-column floor)', () => {
+  // The stacked block: everything inside the review's @container floor.
+  function stackedBlock(): string {
+    const marker = '@container dsh-tb (max-width: 600px) {'
+    const open = cssSource.indexOf(marker)
+    if (open < 0) throw new Error('the review stacked block (max-width: 600px) is missing')
+    let depth = 0
+    for (let i = open + marker.length - 1; i < cssSource.length; i++) {
+      if (cssSource[i] === '{') depth++
+      else if (cssSource[i] === '}') {
+        depth--
+        if (depth === 0) return cssSource.slice(open, i + 1)
+      }
+    }
+    throw new Error('unbalanced stacked block')
+  }
+
+  it('the whole panel becomes ONE scroll body (the .reviewBody scrolls)', () => {
+    const block = stackedBlock()
+    expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow-y: auto/)
+  })
+
+  it('main and rail flow as blocks (flex: none, overflow visible) — no half-height scrollers', () => {
+    const block = stackedBlock()
+    expect(block).toMatch(/\.reviewMain\s*\{[^}]*flex: none/)
+    expect(block).toMatch(/\.reviewMain\s*\{[^}]*overflow: visible/)
+    expect(block).toMatch(/\.reviewRail\s*\{[^}]*flex: none/)
+    expect(block).toMatch(/\.reviewRail\s*\{[^}]*overflow: visible/)
+    // The old model (each half scrolling) must never return.
+    expect(block).not.toContain('1 1 50%')
+    // Inner scroll regions are switched off in stacked mode (the body owns it).
+    expect(block).toMatch(/\.reviewTranscriptScroll\s*\{[^}]*overflow: visible/)
+    expect(block).toMatch(/\.sessionRailScroll\s*\{[^}]*overflow: visible/)
+  })
+
+  it('the composer is sticky so 发送评论 stays reachable at the end of the flow', () => {
+    expect(stackedBlock()).toMatch(/\.reviewComposer\s*\{[^}]*position: sticky/)
+  })
+
+  it('the header wraps (context head drops to its own line, no title overlap)', () => {
+    const block = stackedBlock()
+    expect(block).toMatch(/\.reviewHeader\s*\{[^}]*flex-wrap: wrap/)
+    expect(block).toMatch(/\.reviewHeaderContext\s*\{[^}]*flex: 1 1 100%/)
+  })
+
+  it('the rail is flexible in the base layout (two columns survive down to the floor)', () => {
+    // A rigid 344px rail forced the stacked fallback far too early; the base
+    // width must be a container-query clamp, not a fixed px.
+    const rail = ruleOf('reviewRail')
+    expect(rail).toContain('width: min(344px, 46cqw)')
   })
 })
 
