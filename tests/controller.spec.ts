@@ -700,6 +700,64 @@ describe('run loop', () => {
     await flush()
     expect(store.load()[0].status).toBe('running')
   })
+
+  it('the delivery watchdog releases an open round whose session never produced evidence', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    stub.reconcileResult = undefined // no turn evidence, ever
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false // the session is idle
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run', status: 'running' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => clock, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    // Past the watchdog deadline with an idle session: the round is released
+    // (cancelled) instead of holding the slot and swallowing future turns.
+    clock = NOW + 4 * 60_000
+    sessions.setRunning('s-1', false)
+    await flush()
+    await flush()
+    const settled = store.load()[0]
+    expect(settled.executions[0].endedAt).toBeDefined()
+    expect(settled.executions[0].result).toBe('cancelled')
+    // A still-running session is NEVER judged (a long run is not a zombie).
+    const still = store.load()[0]
+    expect(still.status).not.toBe('running')
+  })
+
+  it('a parked card with an open round is swept by the watchdog too (the orphan case)', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    stub.reconcileResult = undefined
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    const store = new InMemoryTaskStore()
+    // A legacy/orphaned row: open round, card parked in backlog (pre-fix drag).
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run', status: 'backlog' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => clock, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    clock = NOW + 4 * 60_000
+    sessions.setRunning('s-1', false)
+    await flush()
+    await flush()
+    // The zombie no longer exists → the session's next native turn can drive
+    // the card again (the "行亮着、卡片永远不动" permanent state is gone).
+    expect(store.load()[0].executions[0].endedAt).toBeDefined()
+  })
 })
 
 describe('scheduling', () => {

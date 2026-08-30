@@ -338,6 +338,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
+/* The honest warning variant (stale host / work waiting on another device):
+   same quiet line, attention tint — never a toast, never a modal. */
+.boardStatus[data-warn='true'] {
+  color: var(--dsh-tb-attention);
+}
+.boardStatus[data-warn='true'] .boardStatusDot {
+  background: var(--dsh-tb-attention);
+  box-shadow: 0 0 4px var(--dsh-tb-attention);
+}
+
 .boardStatusDot {
   width: 6px;
   height: 6px;

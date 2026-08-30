@@ -339,6 +339,40 @@ describe('applyCommit: authorship claims (clock-proof sync)', () => {
     expect(removed.tombstones['t-1']).toBeDefined()
   })
 
+  it('a READ-STATE-only commit never clobbers newer content (opening a card is not editing it)', () => {
+    // The engine recorded an external round (content moved, updatedAt bumped).
+    const base = createTask({ title: 'A', description: '', prompt: 'p' }, T0, 't-1')
+    const withDoc = applyCommit(doc, commitOf({ tasks: [base] }), T0 + 1)
+    const engine = {
+      ...base,
+      updatedAt: T0 + 500,
+      executions: [{ id: 'e-ext', sessionId: 's-1', startedAt: T0 + 400, endedAt: undefined, result: undefined, error: undefined, external: true }],
+    }
+    const recorded = applyCommit(withDoc, commitOf({ tasks: [engine], changed: ['t-1'] }), T0 + 500)
+    // A viewer whose baseline predates that round merely OPENED the card:
+    // its commit carries the old executions plus a viewedAt flip, unclaimed.
+    const viewer = { ...recorded.tasks[0]!, executions: [], viewedAt: T0 + 600 }
+    const after = applyCommit(recorded, commitOf({ tasks: [viewer] }), T0 + 700)
+    // The engine's round survives.
+    expect(after.tasks[0].executions.map(round => round.id)).toEqual(['e-ext'])
+  })
+
+  it('read state still PROPAGATES as a monotone join (viewedAt moves forward, never back)', () => {
+    const base = createTask({ title: 'A', description: '', prompt: 'p' }, T0, 't-1')
+    const withDoc = applyCommit(doc, commitOf({ tasks: [{ ...base, viewedAt: T0 + 40 }] }), T0 + 1)
+    // An older viewedAt (or none) never rewinds the newer one.
+    expect(applyCommit(withDoc, commitOf({ tasks: [{ ...base, viewedAt: T0 + 10 }] }), T0 + 2).tasks[0].viewedAt).toBe(T0 + 40)
+    expect(applyCommit(withDoc, commitOf({ tasks: [base] }), T0 + 2).tasks[0].viewedAt).toBe(T0 + 40)
+    // A newer viewedAt lands even without a claim and without bumping updatedAt.
+    const seen = applyCommit(withDoc, commitOf({ tasks: [{ ...base, viewedAt: T0 + 90 }] }), T0 + 3)
+    expect(seen.tasks[0].viewedAt).toBe(T0 + 90)
+    // Round-level read state joins per round id too.
+    const round = { id: 'e1', sessionId: 's-1', startedAt: T0, endedAt: T0 + 1, result: 'succeeded' as const, error: undefined, viewedAt: T0 + 40 }
+    const withRound = applyCommit(doc, commitOf({ tasks: [{ ...base, executions: [round] }] }), T0 + 5)
+    const older = { ...base, executions: [{ ...round, viewedAt: T0 + 5 }] }
+    expect(applyCommit(withRound, commitOf({ tasks: [older] }), T0 + 6).tasks[0].executions[0].viewedAt).toBe(T0 + 40)
+  })
+
   it('normalizeBoardDoc keeps sane stamps and drops corrupt ones', () => {
     const doc2 = normalizeBoardDoc({ stamps: { 't-a': T0, 't-b': 'x', 't-c': -1 } })
     expect(doc2.stamps).toEqual({ 't-a': T0 })
@@ -362,5 +396,16 @@ describe('changedIdsOf', () => {
     const a = createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')
     const b = createTask({ title: 'B', description: '', prompt: '' }, T0, 't-b')
     expect(changedIdsOf([a, b], [b, a])).toEqual([])
+  })
+
+  it('read-state flips (task/round viewedAt) are NOT authorship', () => {
+    const round = { id: 'e1', sessionId: 's-1', startedAt: T0, endedAt: T0 + 1, result: 'succeeded' as const, error: undefined }
+    const a = createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')
+    const withRound = { ...a, executions: [round] }
+    // Opening the card + reading the round: no claim either way.
+    expect(changedIdsOf([withRound], [{ ...withRound, viewedAt: T0 + 9 }])).toEqual([])
+    expect(changedIdsOf([withRound], [{ ...withRound, executions: [{ ...round, viewedAt: T0 + 9 }] }])).toEqual([])
+    // A real content move still claims.
+    expect(changedIdsOf([withRound], [{ ...withRound, executions: [{ ...round, endedAt: T0 + 2 }] }])).toEqual(['t-a'])
   })
 })

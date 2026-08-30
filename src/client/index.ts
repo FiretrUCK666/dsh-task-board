@@ -310,12 +310,20 @@ export function apply(ctx: ClientContext): void {
         return () => clearTimeout(timer)
       },
       // Tab visibility drives the engine-lease active flag + foreground wake:
-      // the engine must sit where the user is looking.
+      // the engine must sit where the user is looking (and must LEAVE the
+      // moment the user stops looking — a frozen tab cannot renew).
       visibility: {
         is: () => document.visibilityState === 'visible',
         onVisible: cb => {
           const listener = () => {
             if (document.visibilityState === 'visible') cb()
+          }
+          document.addEventListener('visibilitychange', listener)
+          return () => document.removeEventListener('visibilitychange', listener)
+        },
+        onHidden: cb => {
+          const listener = () => {
+            if (document.visibilityState === 'hidden') cb()
           }
           document.addEventListener('visibilitychange', listener)
           return () => document.removeEventListener('visibilitychange', listener)
@@ -868,7 +876,11 @@ export function apply(ctx: ClientContext): void {
     // cruise is on) a dispatch, both seat-gated — a viewer must never pump on
     // boot alongside the real engine (that would double-launch). sync.start
     // already awaited the first lease probe, so isEngine() is authoritative.
-    if (synced) controller.setEngine(sync.isEngine())
+    if (synced) {
+      controller.syncActive = true
+      controller.hostProto = sync.hostProtoVersion()
+      controller.setEngine(sync.isEngine())
+    }
     controller.start()
     // The PRIMARY native-turn channel: every live `user/message` frame the
     // mux stream carries goes straight to the controller (engine-only inside,
@@ -891,7 +903,10 @@ export function apply(ctx: ClientContext): void {
         controller.applyRemote(view)
         writeMirror(view)
       })
-      sync.onEngine(held => { controller.setEngine(held) })
+      sync.onEngine(held => {
+        controller.hostProto = sync.hostProtoVersion()
+        controller.setEngine(held)
+      })
       sync.onCommand(command => { void controller.runTask(command.taskId, command.trigger) })
     }
 

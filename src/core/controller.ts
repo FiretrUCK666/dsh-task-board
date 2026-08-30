@@ -439,6 +439,12 @@ export interface ControllerSnapshot {
    *  sessions are running right now, and how many auto launches are queued
    *  for a freed slot. Both zero → the status line hides itself. */
   stats: { running: number; queued: number }
+  /** Engine-seat facts for the board's quiet honesty: whether THIS device is
+   *  the engine, whether the board runs in synced mode at all, and the host's
+   *  lease protocol (1 = predates visibility preemption → a queued card may
+   *  wait on a frozen device and nothing can be done from here; the board
+   *  says so instead of leaving the user guessing). */
+  engine: { held: boolean; synced: boolean; hostProto: number }
 }
 
 /** The selected task (resolved from the ledger), or undefined. */
@@ -587,8 +593,17 @@ export class BoardController {
       selectedTaskId: this.selectedTaskId,
       cruise: { ...this.cruiseState },
       stats: { running: this.inFlightCount(), queued: this.queuedLaunches.length },
+      engine: { held: this.engine, synced: this.syncActive, hostProto: this.hostProto },
     }
   }
+
+  /** Whether multi-device sync is live (the wiring reports it once at boot);
+   *  in fallback mode this device is always the engine and the lease story
+   *  does not apply. */
+  syncActive = false
+  /** The host's engine-lease protocol version (the wiring mirrors it from the
+   *  sync client after the first lease). 1 = pre-visibility host. */
+  hostProto = 2
 
   /** Set (or clear, with undefined) a task's accent color. */
   setTaskColor(taskId: string, color: string | undefined): void {
@@ -2686,6 +2701,31 @@ export class BoardController {
   /** How old an execution must be before list reconciliation may settle it. */
   private static readonly ACTIVE_RECONCILE_GRACE_MS = 10_000
 
+  /** The delivery watchdog deadline: an OPEN round whose session has produced
+   *  no turn evidence and has sat idle this long is a round that never
+   *  reached the agent (a lost inject, a session that vanished mid-flight).
+   *  Left open it would hold a concurrency slot AND swallow every future
+   *  native turn of that session (hasOpenRoundOn gates external recording),
+   *  which is why 「行亮进行中、卡片永远不动」 used to recur forever. The
+   *  watchdog releases it as cancelled, and external detection re-arms. */
+  private static readonly OPEN_ROUND_WATCHDOG_MS = 3 * 60_000
+
+  /**
+   * The watchdog verdict for one open round: a synthetic `cancelled` settle
+   * when the round is past the deadline and its session is NOT running (or
+   * gone), undefined while any evidence could still arrive (still connecting,
+   * session still working, deadline not reached). Never judges a round whose
+   * session is actively working — a long run is not a zombie.
+   */
+  private zombieRoundEvent(task: TaskRecord, execution: ExecutionRecord): Extract<ExecutionEvent, { kind: 'settled' }> | undefined {
+    if (execution.sessionId === undefined) return undefined
+    if (this.now() - execution.startedAt <= BoardController.OPEN_ROUND_WATCHDOG_MS) return undefined
+    const summary = this.deps.sessions.list.getSnapshot().byId[execution.sessionId]
+    if (summary?.running === true) return undefined
+    if (summary !== undefined && summary.pendingInteraction !== undefined) return undefined // waiting on a human is evidence
+    return { kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'cancelled', error: 'no turn evidence' }
+  }
+
   /** Settle tasks left 'running' whose sessions already finished. */
   private async reconcileRunningTasks(): Promise<void> {
     if (this.disposed || this.reconcileInFlight || !this.engine) return
@@ -2710,12 +2750,23 @@ export class BoardController {
       // Stage 1 — reconcile every task with an open round worth settling:
       // running tasks (plain runs, comment rounds, external rounds) plus any
       // task with an open refinement round (refinement keeps its column).
+      // An open round is ALSO swept wherever its card now sits: a manual drag
+      // out of 进行中 must never orphan it — a zombie round holds a
+      // concurrency slot and (via hasOpenRoundOn) swallows every FUTURE
+      // native turn of its session, the exact "行亮着、卡片永远不动" machine.
       type Settled = Extract<ExecutionEvent, { kind: 'settled' }>
       const events: Array<{ taskId: string; round: ExecutionRecord | undefined; event: Settled; externalText: string | undefined }> = []
       for (const task of this.tasks) {
         const execution = task.executions[task.executions.length - 1]
         if (execution === undefined || execution.endedAt !== undefined) continue
-        if (task.status !== 'running' && execution.refine !== true) continue
+        const drivable = task.status === 'running' || execution.refine === true
+        if (!drivable) {
+          // Parked card with an open round: no history read (nothing is
+          // expected to produce evidence), only the watchdog decides.
+          const zombie = this.zombieRoundEvent(task, execution)
+          if (zombie !== undefined) events.push({ taskId: task.id, round: execution, event: zombie, externalText: undefined })
+          continue
+        }
         // Runs launched on this page settle through their live watch (turn
         // boundary / host-list flip); reconciliation exists for
         // background/leftover runs. The watch can still be defeated when the
@@ -2744,6 +2795,12 @@ export class BoardController {
           const externalText = await this.externalTextIfNeeded(task, event.executionId)
           events.push({ taskId: task.id, round: execution, event, externalText })
           this.activeExecutionIds.delete(event.executionId)
+        } else {
+          // No turn evidence at all: the delivery watchdog releases the round
+          // once its session has sat idle past the deadline (a message that
+          // never reached the agent must not hold the queue hostage forever).
+          const zombie = this.zombieRoundEvent(task, execution)
+          if (zombie !== undefined) events.push({ taskId: task.id, round: execution, event: zombie, externalText: undefined })
         }
       }
 

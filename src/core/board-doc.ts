@@ -83,6 +83,10 @@ export interface LeaseState {
   held: boolean
   holder: string | undefined
   expiresAt: number | undefined
+  /** The host's lease protocol version (2 = visibility preemption). Absent =
+   *  a host older than the flag — replicas can then TELL the user the seat
+   *  may be stuck on a background device instead of leaving it mysterious. */
+  proto?: number
 }
 
 /** One tombstone: the logical stamp a newer edit must beat, plus the host
@@ -247,20 +251,65 @@ export function diffDeletions(
  * baseline the replica synced and the view it now commits. An untouched
  * copy of a host row (same content, same serialization) is never claimed,
  * so the claim can only vouch for edits this replica genuinely made —
- * reorders, title changes, new tasks, read-state flips all count; a stale
- * copy the replica never touched does not.
+ * reorders, title changes, new tasks all count; a stale copy the replica
+ * never touched does not.
+ *
+ * READ STATE IS NOT AUTHORSHIP: `viewedAt` (on the task and on its rounds)
+ * is a pure "has the human seen this" bookkeeping field — opening a card is
+ * not editing it. It is stripped before the comparison, so a viewedAt-only
+ * flip never claims the row. Without this, a viewer whose commit rode a
+ * baseline from BEFORE the engine recorded an external round would claim
+ * authorship of the whole row and (claims win unconditionally, last-write-
+ * wins by arrival) silently delete the engine's round and revert the card's
+ * column — the exact "I opened the card and its 进行中 disappeared" machine.
+ * Read-state writes still propagate: they simply merge under plain LWW.
  */
 export function changedIdsOf(
   baseline: readonly TaskRecord[],
   next: readonly TaskRecord[],
 ): string[] {
-  const before = new Map(baseline.map(task => [task.id, JSON.stringify(task)]))
+  const before = new Map(baseline.map(task => [task.id, authorshipKey(task)]))
   const changed: string[] = []
   for (const task of next) {
     const previous = before.get(task.id)
-    if (previous === undefined || previous !== JSON.stringify(task)) changed.push(task.id)
+    if (previous === undefined || previous !== authorshipKey(task)) changed.push(task.id)
   }
   return changed
+}
+
+/** One row's authorship fingerprint: its JSON minus every read-state field. */
+function authorshipKey(task: TaskRecord): string {
+  const { viewedAt: _taskViewed, ...rest } = task
+  return JSON.stringify({
+    ...rest,
+    executions: task.executions.map(({ viewedAt: _roundViewed, ...round }) => round),
+  })
+}
+
+/** The larger of two optional read stamps (undefined = never seen). */
+function maxSeen(a: number | undefined, b: number | undefined): number | undefined {
+  if (a === undefined) return b
+  if (b === undefined) return a
+  return a >= b ? a : b
+}
+
+/**
+ * Fold the incoming row's READ STATE into the content winner: task.viewedAt
+ * and each execution's viewedAt move forward only (matched by round id; a
+ * round the winner lacks keeps whatever the winner has). Returns the same
+ * object when nothing moved (no churn, no broadcast).
+ */
+function mergeReadState(winner: TaskRecord, incoming: TaskRecord): TaskRecord {
+  const viewedAt = maxSeen(winner.viewedAt, incoming.viewedAt)
+  const rounds = winner.executions.map(round => {
+    const seen = incoming.executions.find(candidate => candidate.id === round.id)
+    const roundViewed = maxSeen(round.viewedAt, seen?.viewedAt)
+    return roundViewed === round.viewedAt ? round : { ...round, viewedAt: roundViewed }
+  })
+  const viewMoved = viewedAt !== winner.viewedAt
+  const roundsMoved = rounds.some((round, index) => round !== winner.executions[index])
+  if (!viewMoved && !roundsMoved) return winner
+  return { ...winner, viewedAt, executions: rounds }
 }
 
 /** Structural equality of two documents (the "did anything move" test that
@@ -308,17 +357,27 @@ export function applyCommit(doc: BoardDoc, commit: BoardCommit, now: number): Bo
       delete tombstones[incoming.id]
       result.set(incoming.id, incoming)
       stamps[incoming.id] = now
-    } else if (claimed.has(incoming.id)) {
+      continue
+    }
+    let winner: TaskRecord | undefined
+    if (claimed.has(incoming.id)) {
       // The replica vouches for this content: accepted unconditionally
       // (host-serialized last-write-wins — the phone-clock class of bugs
       // cannot flip it). A content-equal claim is a no-op.
-      if (JSON.stringify(host) !== JSON.stringify(incoming)) {
-        result.set(incoming.id, incoming)
-        stamps[incoming.id] = now
-      }
+      if (authorshipKey(host) !== authorshipKey(incoming)) winner = incoming
     } else if (incoming.updatedAt > host.updatedAt) {
-      result.set(incoming.id, incoming)
+      winner = incoming
+    }
+    // READ STATE IS A MONOTONE JOIN, never a register: whichever row wins the
+    // CONTENT, "has the human seen it" only ever moves forward — so a viewer
+    // that merely opened a card propagates its viewedAt without ever being
+    // able to clobber another replica's newer content.
+    const merged = mergeReadState(winner ?? host, incoming)
+    if (winner !== undefined) {
+      result.set(incoming.id, merged)
       stamps[incoming.id] = now
+    } else if (merged !== host) {
+      result.set(incoming.id, merged)
     }
   }
 

@@ -87,6 +87,7 @@ export interface BoardSyncDeps {
   visibility?: {
     is(): boolean
     onVisible(cb: () => void): () => void
+    onHidden(cb: () => void): () => void
   }
   log?: (message: string, error?: unknown) => void
 }
@@ -128,6 +129,7 @@ export class BoardSyncClient {
   /** Authorship claims accrued since the last fully-acked commit (see setTasks). */
   private readonly claims = new Set<string>()
   private refire = false
+  private hostLeaseProto = 1
   private engine = false
   private disposed = false
   private commitCancel: (() => void) | undefined
@@ -228,14 +230,22 @@ export class BoardSyncClient {
     }))
     this.loopCancels.push(this.every(this.leaseRenewMs, () => this.renewLease()))
     this.loopCancels.push(this.every(this.pollMs, () => this.poll()))
-    // Returning to the foreground: take/keep the seat and catch up NOW — the
-    // heartbeat/poll cadences would otherwise leave a woken tab staring at a
-    // stale board for seconds (the "点了没反应，刷新才好" stall).
+    // Foreground/background transitions act IMMEDIATELY in both directions:
+    // - visible: take/keep the seat and catch up NOW (the heartbeat/poll
+    //   cadences would otherwise leave a woken tab staring at a stale board —
+    //   the "点了没反应，刷新才好" stall);
+    // - hidden: hand the active flag over at once. A frozen tab cannot renew
+    //   anything, so without this the host keeps a last-known-active:true
+    //   holder that no visible replica may preempt — the "行亮着、卡片永远不
+    //   动、排队永远不发" zombie-seat machine.
     if (this.deps.visibility !== undefined) {
       const visibility = this.deps.visibility
       this.loopCancels.push(visibility.onVisible(() => {
         void this.renewLease()
         void this.poll()
+      }))
+      this.loopCancels.push(visibility.onHidden(() => {
+        void this.deps.transport.lease(this.clientId, { ttlMs: this.leaseTtlMs, active: false }).catch(() => undefined)
       }))
     }
     // The first lease probe is part of starting: by the time the wiring is
@@ -480,7 +490,17 @@ export class BoardSyncClient {
       .lease(this.clientId, { ttlMs: this.leaseTtlMs, active: this.deps.visibility?.is() ?? true })
       .catch(() => undefined)
     if (state === undefined) return
+    // A host without the lease protocol version predates visibility
+    // preemption: the seat can be stuck on a frozen device and NO client can
+    // take it. Remember that so the board can say so out loud instead of
+    // leaving the user to guess why queued work never moves.
+    this.hostLeaseProto = typeof state.proto === 'number' ? state.proto : 1
     this.setEngine(state.held)
+  }
+
+  /** The host's engine-lease protocol (1 = pre-visibility, 2 = preemption). */
+  hostProtoVersion(): number {
+    return this.hostLeaseProto
   }
 
   private setEngine(held: boolean): void {

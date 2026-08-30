@@ -7,7 +7,6 @@
 import { describe, expect, it } from 'vitest'
 import { BoardSyncClient, type BoardSyncTransport, type SyncFetchResult } from '../src/core/host-sync.ts'
 import { emptyBoardDoc, applyCommit, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView } from '../src/core/board-doc.ts'
-import type { LeaseState } from '../src/core/board-doc.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 import { BoardDataService } from '../src/host/board-service.ts'
 
@@ -62,11 +61,18 @@ function fakeTimers() {
 
 /** A controllable fake transport: tests queue responses and read calls. */
 function fakeTransport() {
-  const calls = { fetch: 0, commit: [] as BoardCommit[], lease: [] as Array<{ id: string; ttl?: number; release?: boolean }>, command: [] as string[], releases: 0 }
+  const calls = {
+    fetch: 0,
+    commit: [] as BoardCommit[],
+    lease: [] as Array<{ id: string; ttl?: number; release?: boolean; active?: boolean }>,
+    command: [] as string[],
+    releases: 0,
+  }
   let doc: BoardDoc = emptyBoardDoc(T0)
   let available = true
   let commitFails = false
   let leaseHeld = false
+  let leaseProto: number | undefined = 2
   let streamHandler: { onEvent(e: BoardEvent): void; onOpen(): void } | undefined
   const transport: BoardSyncTransport = {
     fetch: async (_clientId, since) => {
@@ -82,11 +88,11 @@ function fakeTransport() {
       return { available: true, revision: doc.revision, doc }
     },
     lease: async (clientId, options) => {
-      calls.lease.push({ id: clientId, ttl: options.ttlMs, release: options.release })
-      const state: LeaseState = options.release
+      calls.lease.push({ id: clientId, ttl: options.ttlMs, release: options.release, active: options.active })
+      const base = options.release
         ? { held: false, holder: undefined, expiresAt: undefined }
         : leaseHeld ? { held: false, holder: 'other', expiresAt: T0 + 99999 } : { held: true, holder: clientId, expiresAt: T0 + 99999 }
-      return state
+      return { ...base, ...(leaseProto !== undefined ? { proto: leaseProto } : {}) }
     },
     command: async (_clientId, command) => { calls.command.push(command.taskId) },
     openStream: (_clientId, handlers) => {
@@ -102,15 +108,20 @@ function fakeTransport() {
     setAvailable: (v: boolean) => { available = v },
     setCommitFails: (v: boolean) => { commitFails = v },
     setLeaseHeld: (v: boolean) => { leaseHeld = v },
+    /** undefined = a host that predates the lease protocol version. */
+    setLeaseProto: (v: number | undefined) => { leaseProto = v },
     emit: (event: BoardEvent) => streamHandler?.onEvent(event),
     open: () => streamHandler?.onOpen(),
   }
 }
 
-function makeClient(over: { leaseHeldByOther?: boolean } = {}) {
+function makeClient(over: { leaseHeldByOther?: boolean; visibility?: boolean } = {}) {
   const timers = fakeTimers()
   const t = fakeTransport()
   const logs: string[] = []
+  let visible = over.visibility !== false
+  const visibleCbs: Array<() => void> = []
+  const hiddenCbs: Array<() => void> = []
   const client = new BoardSyncClient({
     transport: t.transport,
     defer: timers.defer,
@@ -121,9 +132,22 @@ function makeClient(over: { leaseHeldByOther?: boolean } = {}) {
     pollMs: 30_000,
     resyncCoalesceMs: 120,
     log: msg => logs.push(msg),
+    visibility: {
+      is: () => visible,
+      onVisible: cb => { visibleCbs.push(cb); return () => { visibleCbs.splice(visibleCbs.indexOf(cb), 1) } },
+      onHidden: cb => { hiddenCbs.push(cb); return () => { hiddenCbs.splice(hiddenCbs.indexOf(cb), 1) } },
+    },
   })
   if (over.leaseHeldByOther) t.setLeaseHeld(true)
-  return { client, timers, t, logs }
+  const setHidden = (): void => {
+    visible = false
+    for (const cb of [...hiddenCbs]) cb()
+  }
+  const setVisible = (): void => {
+    visible = true
+    for (const cb of [...visibleCbs]) cb()
+  }
+  return { client, timers, t, logs, setHidden, setVisible }
 }
 
 const task = (id: string, updatedAt = T0): TaskRecord => createTask({ title: id, description: '', prompt: 'p' }, updatedAt, id)
@@ -342,6 +366,31 @@ describe('BoardSyncClient lease loop', () => {
     const { client } = makeClient({ leaseHeldByOther: true })
     await client.start()
     expect(client.isEngine()).toBe(false)
+  })
+
+  it('heartbeats carry visibility, and going HIDDEN hands the flag over immediately', async () => {
+    const { client, t, setHidden, setVisible } = makeClient()
+    await client.start()
+    expect(t.calls.lease.at(-1)?.active).toBe(true)
+    // Backgrounded: an immediate active:false write, so a visible device may
+    // preempt at once (a frozen tab can never renew anything itself).
+    setHidden()
+    await Promise.resolve()
+    expect(t.calls.lease.at(-1)?.active).toBe(false)
+    // Foreground again: renew active:true immediately (no heartbeat wait).
+    setVisible()
+    await Promise.resolve()
+    expect(t.calls.lease.at(-1)?.active).toBe(true)
+  })
+
+  it('a host without the lease protocol version reads as stale (proto 1)', async () => {
+    const { client, t } = makeClient()
+    t.setLeaseProto(undefined) // a pre-visibility host answers no version
+    await client.start()
+    expect(client.hostProtoVersion()).toBe(1)
+    t.setLeaseProto(2)
+    await client.renewLease()
+    expect(client.hostProtoVersion()).toBe(2)
   })
 })
 

@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
-import { COLUMNS, landingStatusOf, latestExecutionOf, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { COLUMNS, landingStatusOf, latestExecutionOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -484,6 +484,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     }
   }
 
+  // The viewer hint only matters while something is actually waiting on the
+  // engine (queued comments or launches) — an idle board never nags.
+  const engineWaitVisible = snapshot.stats.queued > 0
+    || snapshot.tasks.some(task => pendingCommentCount(task) > 0)
+
   return (
     <div
       ref={boardRef}
@@ -535,6 +540,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               {t('board.statusQueued', { n: String(snapshot.stats.queued) })}
             </span>
           )}
+          {/* 引擎席位诚实指示（只在同步模式且真的"不在本机/服务端过旧"时出现）：
+              排队的工作在等谁、为什么不动——用户看得见，就不用猜、不用刷。 */}
+          {snapshot.engine.synced && (snapshot.engine.hostProto < 2
+            ? (
+              <span className={css.boardStatus} data-warn="true" title={t('board.engineStaleHint')}>
+                <span className={css.boardStatusDot} aria-hidden="true" />
+                {t('board.engineStale')}
+              </span>
+            )
+            : !snapshot.engine.held && engineWaitVisible ? (
+              <span className={css.boardStatus} title={t('board.engineViewerHint')}>
+                <span className={css.boardStatusDot} aria-hidden="true" />
+                {t('board.engineViewer')}
+              </span>
+            ) : null)}
           {/* 自动巡航：一颗安静的胶囊（开关 + 设置 ▾），点击展开定时设置弹层。 */}
           <div className={css.cruiseWrap} ref={cruiseWrapRef}>
             <div className={css.cruisePill}>

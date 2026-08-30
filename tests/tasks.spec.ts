@@ -411,11 +411,22 @@ describe('resolveCardDrop', () => {
     expect(resolveCardDrop(task, 'running')).toEqual({ kind: 'none' })
   })
 
-  it('refuses done/review while an execution is open, but allows backlog/todo', () => {
+  it('refuses EVERY column while an execution is open (a dragged-away card would orphan the round)', () => {
     const { task } = startExecution(sampleTask(), NOW, 'e1')
     expect(resolveCardDrop(task, 'done')).toEqual({ kind: 'reject', reason: 'busy' })
     expect(resolveCardDrop(task, 'review')).toEqual({ kind: 'reject', reason: 'busy' })
-    expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'move', status: 'backlog' })
+    // Leaving 进行中 to backlog/todo used to be allowed — it silently orphaned
+    // the open round (no surface settles a parked card's plain run), which
+    // then held a slot and swallowed the session's future native turns.
+    expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'reject', reason: 'busy' })
+    expect(resolveCardDrop(task, 'todo')).toEqual({ kind: 'reject', reason: 'busy' })
+  })
+
+  it('a saved (never-started) comment round still allows free movement', () => {
+    // Only an OPEN round on a RUNNING card is the orphan case; a parked card
+    // with a queued comment is not busy at all.
+    const queued = withStatus({ ...sampleTask(), executions: [{ id: 'c1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined, comment: 'hi', sessionId: 's-1' }] }, 'backlog', NOW)
+    expect(resolveCardDrop(queued, 'todo')).toEqual({ kind: 'move', status: 'todo' })
   })
 
   it('moves a free task to any non-running column', () => {

@@ -52,6 +52,16 @@ export const LEASE_DEFAULT_TTL_MS = 20_000
 export const LEASE_MIN_TTL_MS = 10_000
 export const LEASE_MAX_TTL_MS = 60_000
 export const LEASE_DISCONNECT_GRACE_MS = 5_000
+/** How long an open SSE stream alone may keep a holder alive WITHOUT any API
+ *  touch. A frozen/hibernating tab's socket stays half-open, so stream liveness
+ *  is bounded by real HTTP touches — otherwise a zombie holder can never be
+ *  preempted and the whole fleet starves (nobody pumps, nobody records turns). */
+export const STREAM_ALIVE_MAX_MS = 4 * LEASE_DEFAULT_TTL_MS
+/** The engine-lease protocol version. A client that predates the visibility
+ *  flag never sends `active`; a client that sees NO version in the response
+ *  knows the host is stale (pre-preemption) and can say so on the board —
+ *  the "修了但没生效" mystery made visible. */
+export const LEASE_PROTOCOL_ACTIVE = 2
 
 /** The cap on parked launch commands (newest-per-task dedup keeps this small). */
 export const PENDING_COMMAND_LIMIT = 20
@@ -77,7 +87,7 @@ export interface BoardServiceDeps {
 export class BoardDataService {
   private doc: BoardDoc = emptyBoardDoc(0)
   private unit: KvUnitLike | undefined
-  private lease: { clientId: string; expiresAt: number; ttl: number; active: boolean } | undefined
+  private lease: { clientId: string; expiresAt: number; ttl: number; active: boolean; lastTouchAt: number } | undefined
   /** Live SSE connections per clientId. An open stream is the holder's
    *  liveness proof: unlike client timers it survives background-tab timer
    *  throttling, so the engine lease never flaps while its stream is up. */
@@ -198,13 +208,13 @@ export class BoardDataService {
         return { held: false, holder: current.holder, expiresAt: current.expiresAt }
       }
       // Preemption: a visible device takes the seat from a hidden holder.
-      this.lease = { clientId, expiresAt: now + ttl, ttl, active }
+      this.lease = { clientId, expiresAt: now + ttl, ttl, active, lastTouchAt: now }
       this.broadcast({ type: 'lease', holder: clientId, expiresAt: this.lease.expiresAt })
       this.drainPendingCommands()
       return this.leaseState(this.now())
     }
     const renewing = current.held && current.holder === clientId
-    this.lease = { clientId, expiresAt: now + ttl, ttl, active }
+    this.lease = { clientId, expiresAt: now + ttl, ttl, active, lastTouchAt: now }
     if (!renewing) this.broadcast({ type: 'lease', holder: clientId, expiresAt: this.lease.expiresAt })
     this.drainPendingCommands()
     return this.leaseState(this.now())
@@ -223,7 +233,8 @@ export class BoardDataService {
    *  (throttle-proof: every commit/get/lease call refreshes the seat). */
   noteActivity(clientId: string | undefined): void {
     if (clientId === undefined || this.lease === undefined || this.lease.clientId !== clientId) return
-    this.lease = { ...this.lease, expiresAt: this.now() + this.lease.ttl }
+    const now = this.now()
+    this.lease = { ...this.lease, expiresAt: now + this.lease.ttl, lastTouchAt: now }
   }
 
   /** An SSE connection dropped: retire its count; when the holder's last
@@ -246,20 +257,26 @@ export class BoardDataService {
    *  through noteDisconnect); an expired lease reads as free, holderless. */
   leaseState(now = this.now()): LeaseState {
     if (this.lease === undefined) {
-      return { held: false, holder: undefined, expiresAt: undefined }
+      return { held: false, holder: undefined, expiresAt: undefined, proto: LEASE_PROTOCOL_ACTIVE }
     }
-    if ((this.streams.get(this.lease.clientId) ?? 0) > 0) {
+    // Stream-alive renewal keeps a THROTTLED background tab (whose timers
+    // crawl but whose JS still runs) in the seat it legitimately holds — but
+    // only while it still TOUCHES the API. A half-open socket from a frozen
+    // or hibernating tab proves nothing about the tab being alive; without
+    // this bound a zombie holder could never be preempted by anyone.
+    if ((this.streams.get(this.lease.clientId) ?? 0) > 0
+      && this.lease.lastTouchAt + STREAM_ALIVE_MAX_MS > now) {
       // Stream-alive renewal: push the deadline out so a throttled background
       // tab keeps the seat it legitimately holds.
       if (this.lease.expiresAt < now + this.lease.ttl) {
         this.lease = { ...this.lease, expiresAt: now + this.lease.ttl }
       }
-      return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt }
+      return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE }
     }
     if (this.lease.expiresAt <= now) {
-      return { held: false, holder: undefined, expiresAt: undefined }
+      return { held: false, holder: undefined, expiresAt: undefined, proto: LEASE_PROTOCOL_ACTIVE }
     }
-    return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt }
+    return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE }
   }
 
   /** An SSE connection for `clientId` opened (route layer, stream accepted). */
