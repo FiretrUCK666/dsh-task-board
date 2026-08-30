@@ -577,6 +577,32 @@ export function apply(ctx: ClientContext): void {
     // the same respond wire call the native composer uses — the only path
     // that can settle a suspended ask_user_question.
     const questionTracker = new QuestionTracker(connection.api)
+    // The localStorage cruise face: the fallback-mode truth AND the synced-mode
+    // offline mirror (one implementation, two roles — no drift).
+    const localCruise = {
+      read: () => {
+        try {
+          const raw = localStorage.getItem(CRUISE_STORAGE_KEY)
+          if (raw === null) return undefined
+          const parsed = JSON.parse(raw) as { enabled?: boolean; manual?: boolean; limit?: number }
+          return {
+            enabled: parsed.enabled === true,
+            ...(parsed.manual === true || parsed.manual === false ? { manual: parsed.manual } : {}),
+            limit: parsed.limit,
+          }
+        } catch (error) {
+          console.error('[dsh-task-board] cruise state read failed', error)
+          return undefined
+        }
+      },
+      write: (state: { enabled: boolean; manual?: boolean; limit: number }) => {
+        try {
+          localStorage.setItem(CRUISE_STORAGE_KEY, JSON.stringify(state))
+        } catch (error) {
+          console.error('[dsh-task-board] cruise state write failed (persistence skipped)', error)
+        }
+      },
+    }
     const controller = new BoardController({
       store,
       exec,
@@ -618,33 +644,11 @@ export function apply(ctx: ClientContext): void {
       reference: referenceBridge,
       // Auto-cruise state persists across reloads (toggle + concurrency). In
       // synced mode it rides the shared document section (every replica sees
-      // the same switch/limit/windows); in fallback mode it stays local.
+      // the same switch/limit/windows) with the localStorage face kept as
+      // the offline mirror; in fallback mode localStorage IS the truth.
       cruiseStorage: synced
-        ? new SyncedCruiseStore(sync)
-        : {
-            read: () => {
-              try {
-                const raw = localStorage.getItem(CRUISE_STORAGE_KEY)
-                if (raw === null) return undefined
-                const parsed = JSON.parse(raw) as { enabled?: boolean; manual?: boolean; limit?: number }
-                return {
-                  enabled: parsed.enabled === true,
-                  ...(parsed.manual === true || parsed.manual === false ? { manual: parsed.manual } : {}),
-                  limit: parsed.limit,
-                }
-              } catch (error) {
-                console.error('[dsh-task-board] cruise state read failed', error)
-                return undefined
-              }
-            },
-            write: state => {
-              try {
-                localStorage.setItem(CRUISE_STORAGE_KEY, JSON.stringify(state))
-              } catch (error) {
-                console.error('[dsh-task-board] cruise state write failed (persistence skipped)', error)
-              }
-            },
-          },
+        ? new SyncedCruiseStore(sync, localCruise)
+        : localCruise,
       // Review-page transcripts: recent history of an execution session.
       transcript: transcriptLoader,
       // Review-page session panel: the live model directory + selection of

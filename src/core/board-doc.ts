@@ -112,15 +112,24 @@ export interface BoardDoc {
   bornAt: number
 }
 
+/** The three synced sections a commit can claim authorship of. */
+export type BoardSectionKey = 'cruise' | 'schedulePresets' | 'runPresets'
+
 /** What a client sends per commit: its full view, the ids its own edits
- *  moved since the last synced baseline (authorship claims), and the
- *  deletions it observed. */
+ *  moved since the last synced baseline (authorship claims), the sections it
+ *  edited, and the deletions it observed. */
 export interface BoardCommit {
   clientId: string
   tasks: readonly TaskRecord[]
   /** The records THIS replica changed against its baseline — the host takes
    *  these unconditionally (clock-independent); absence = untouched copy. */
   changed?: readonly string[]
+  /** Sections THIS replica edited — accepted unconditionally and re-stamped
+   *  with the host clock. An ABSENT array (a pre-claim client) falls back to
+   *  section LWW; an empty array (a claim-protocol client) means "nothing to
+   *  say about the sections" and skips them entirely — a stale baseline copy
+   *  riding every commit can then never clobber a newer section write. */
+  sectionClaims?: readonly BoardSectionKey[]
   deleted: readonly BoardDelete[]
   cruise: BoardSection<CruiseValue>
   schedulePresets: BoardSection<SchedulePreset[]>
@@ -352,9 +361,9 @@ export function applyCommit(doc: BoardDoc, commit: BoardCommit, now: number): Bo
   const next: BoardDoc = {
     revision: doc.revision + 1,
     tasks,
-    cruise: mergeSection(doc.cruise, commit.cruise, normalizeCruiseValue),
-    schedulePresets: mergeSection(doc.schedulePresets, commit.schedulePresets, parsePresetsRaw),
-    runPresets: mergeSection(doc.runPresets, commit.runPresets, normalizeRunPresetDocument),
+    cruise: mergeSection(doc.cruise, commit.cruise, normalizeCruiseValue, 'cruise', now, commit.sectionClaims),
+    schedulePresets: mergeSection(doc.schedulePresets, commit.schedulePresets, parsePresetsRaw, 'schedulePresets', now, commit.sectionClaims),
+    runPresets: mergeSection(doc.runPresets, commit.runPresets, normalizeRunPresetDocument, 'runPresets', now, commit.sectionClaims),
     tombstones,
     stamps,
     bornAt: doc.bornAt,
@@ -362,9 +371,25 @@ export function applyCommit(doc: BoardDoc, commit: BoardCommit, now: number): Bo
   return sameBoardDocs(doc, next) ? doc : { ...next, revision: doc.revision + 1 }
 }
 
-/** Section LWW: the incoming write wins on >= (host-serialized arrival order
- *  decides equal stamps, so the later commit converges every replica). */
-function mergeSection<T>(stored: BoardSection<T>, incoming: BoardSection<T>, clean: (raw: unknown) => T): BoardSection<T> {
+/**
+ * Section merge. CLAIM protocol (a commit carrying `sectionClaims`): only a
+ * claimed section is taken — unconditionally, re-stamped with the host clock
+ * (client clocks never decide a section) — and an unclaimed section is
+ * SKIPPED, so the baseline copy every commit rides can never clobber a newer
+ * write. LEGACY (no `sectionClaims` field at all — a pre-claim client):
+ * plain LWW on the client stamp, exactly as before.
+ */
+function mergeSection<T>(
+  stored: BoardSection<T>,
+  incoming: BoardSection<T>,
+  clean: (raw: unknown) => T,
+  key: BoardSectionKey,
+  now: number,
+  sectionClaims: readonly BoardSectionKey[] | undefined,
+): BoardSection<T> {
+  if (sectionClaims !== undefined) {
+    return sectionClaims.includes(key) ? { value: clean(incoming.value), at: now } : stored
+  }
   const at = typeof incoming.at === 'number' && Number.isFinite(incoming.at) ? incoming.at : 0
   if (at < stored.at) return stored
   return { value: clean(incoming.value), at }

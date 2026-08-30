@@ -871,7 +871,11 @@ export function applyCardOrder(
       return { ...task, status: targetStatus, order: ordered.findIndex(row => row.id === task.id), updatedAt: now }
     }
     if (task.status === targetStatus) {
-      return { ...task, order: ordered.findIndex(row => row.id === task.id) }
+      // A shifted sibling is a moved record: its order CONTENT changed, so it
+      // carries the stamp too (an un-stamped order write loses the sync
+      // merge — the two-device order-drift class, closed on the pushed side).
+      const order = ordered.findIndex(row => row.id === task.id)
+      return order === task.order ? task : { ...task, order, updatedAt: now }
     }
     return task
   })
@@ -902,7 +906,10 @@ export function promoteToColumnTop(
       return { ...task, status: targetStatus, order: 0, updatedAt: now }
     }
     if (task.status === targetStatus) {
-      return { ...task, order: others.findIndex(row => row.id === task.id) + 1 }
+      // Shifted siblings carry the stamp too (see applyCardOrder's rule: an
+      // order change IS a record change).
+      const order = others.findIndex(row => row.id === task.id) + 1
+      return order === task.order ? task : { ...task, order, updatedAt: now }
     }
     return task
   })

@@ -949,12 +949,9 @@ export class BoardController {
    *  session-list.ts reads either, so a run session and a linked view of the
    *  same session stay hidden together). Non-destructive; numbering stays. */
   hideTaskSession(taskId: string, sessionId: string): void {
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId) return task
+    this.userEdit(taskId, task => {
       const sessions = task.hidden?.sessions ?? []
       if (sessions.includes(sessionId)) return task
-      changed = true
       // A run session also records the runs that used it, so legacy
       // execution-family consumers and the derived set both see it.
       const runIds = task.executions
@@ -969,20 +966,16 @@ export class BoardController {
         },
       }
     })
-    if (changed) this.persistAndNotify()
   }
 
   /** Restore every hidden session (the "恢复全部已隐藏" action). */
   unhideTaskSessions(taskId: string): void {
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId || task.hidden === undefined) return task
-      changed = true
+    this.userEdit(taskId, task => {
+      if (task.hidden === undefined) return task
       const rest = { ...task }
       delete rest.hidden
       return rest
     })
-    if (changed) this.persistAndNotify()
   }
 
   /**
@@ -1011,9 +1004,7 @@ export class BoardController {
    * order changed.
    */
   reorderTaskSession(taskId: string, sessionId: string, beforeId: string | undefined): boolean {
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId) return task
+    return this.userEdit(taskId, task => {
       const ids = taskSessionsOf(task, {
         linked: this.linkedOf(task),
         titleOf: sid => this.sessionTitle(sid),
@@ -1026,11 +1017,8 @@ export class BoardController {
       if (at < 0) at = rest.length
       const next = [...rest.slice(0, at), sessionId, ...rest.slice(at)]
       if (next.join() === ids.join()) return task
-      changed = true
-      return { ...task, sessionsOrder: next, updatedAt: this.now() }
+      return { ...task, sessionsOrder: next }
     })
-    if (changed) this.persistAndNotify()
-    return changed
   }
 
   /**
@@ -1130,36 +1118,33 @@ export class BoardController {
    * for a pure no-op / unknown task.
    */
   addTaskSource(taskId: string, bind: TaskBind): boolean {
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId) return task
+    const changed = this.userEdit(taskId, task => {
       const current = taskBindsOf(task)
       const isSame = current.some(existing => sameBind(existing, bind))
       const removed = task.removedSessions
-      let next = task
+      let next: TaskRecord = task
+      let restored = false
       if (removed !== undefined && removed.length > 0) {
         const carried = this.sourceMemberIdsOf(bind)
         const kept = carried.length > 0
           ? removed.filter(id => !carried.includes(id))
           : removed
         if (kept.length !== removed.length) {
-          changed = true
+          restored = true
+          next = { ...next }
           if (kept.length > 0) {
-            next = { ...task, removedSessions: kept }
+            next.removedSessions = kept
           } else {
-            next = { ...task }
             delete next.removedSessions
           }
         }
       }
       if (!isSame) {
-        next = { ...next, binds: [...current, bind], updatedAt: this.now() }
-        changed = true
+        next = { ...next, binds: [...taskBindsOf(next), bind] }
       }
-      return next
+      return restored || !isSame ? next : task
     })
     if (changed) {
-      this.persistAndNotify()
       // A newly added / restored source's state joins the card instantly.
       void this.reconcileBoundTask(taskId)
     }
@@ -1182,17 +1167,13 @@ export class BoardController {
    *  session remain.
    *  @returns true when anything was removed. */
   removeTaskSession(taskId: string, sessionId: string): boolean {
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId) return task
+    return this.userEdit(taskId, task => {
       const kept = task.executions.filter(round => round.sessionId !== sessionId)
       const wasHidden = task.hidden?.sessions?.includes(sessionId) === true
       if (kept.length === task.executions.length && !wasHidden) return task
-      changed = true
       const removed = task.removedSessions ?? []
       const next: TaskRecord = {
         ...task,
-        updatedAt: this.now(),
         executions: kept,
         ...!removed.includes(sessionId) ? { removedSessions: [...removed, sessionId] } : {},
       }
@@ -1229,24 +1210,22 @@ export class BoardController {
       }
       return next
     })
-    if (changed) this.persistAndNotify()
-    return changed
   }
 
   /** Restore ONE hidden session (single-item restore; the bulk "恢复全部"
    *  stays available too — a folder's many hidden rows can be brought back
    *  one by one without restoring everything). */
   unhideTaskSession(taskId: string, sessionId: string): void {
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId || task.hidden === undefined) return task
+    this.userEdit(taskId, task => {
+      if (task.hidden === undefined) return task
       const sessions = (task.hidden.sessions ?? []).filter(id => id !== sessionId)
       const executions = (task.hidden.executions ?? []).filter(executionId =>
         task.executions.find(round => round.id === executionId)?.sessionId !== sessionId)
+      if (sessions.length === (task.hidden.sessions?.length ?? 0)
+        && executions.length === (task.hidden.executions?.length ?? 0)) return task
       const hidden: NonNullable<TaskRecord['hidden']> = {}
       if (sessions.length > 0) hidden.sessions = sessions
       if (executions.length > 0) hidden.executions = executions
-      changed = true
       if (Object.keys(hidden).length === 0) {
         const rest = { ...task }
         delete rest.hidden
@@ -1254,7 +1233,6 @@ export class BoardController {
       }
       return { ...task, hidden }
     })
-    if (changed) this.persistAndNotify()
   }
 
   /** Default title for a freshly dragged-in binding (from its native source). */
@@ -1919,17 +1897,11 @@ export class BoardController {
       enabled: true,
       ...nextAt !== undefined ? { nextAt } : {},
     }
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId) return task
-      changed = true
+    const created = this.userEdit(taskId, task => {
+      if (task.rules?.some(candidate => candidate.sessionId === input.sessionId) === true) return task
       return withSessionRules(task, [...(task.rules ?? []), rule])
     })
-    if (changed) {
-      this.persistAndNotify()
-      return rule
-    }
-    return undefined
+    return created ? rule : undefined
   }
 
   /**
@@ -1951,9 +1923,9 @@ export class BoardController {
     send?: 'queue' | 'steer'
   }): boolean {
     const now = this.now()
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId || task.rules === undefined) return task
+    return this.userEdit(taskId, task => {
+      if (task.rules === undefined) return task
+      let touched = false
       const rules = task.rules.map(rule => {
         if (rule.id !== ruleId) return rule
         const usePrompt = patch.usePrompt === true
@@ -1981,38 +1953,32 @@ export class BoardController {
         if (updated.sessionId === rule.sessionId && updated.instruction === rule.instruction
           && updated.trigger === rule.trigger && updated.usePrompt === rule.usePrompt
           && updated.cron === rule.cron && updated.send === rule.send && updated.nextAt === rule.nextAt) return rule
-        changed = true
+        touched = true
         return updated
       })
-      return withSessionRules(task, rules)
+      return touched ? withSessionRules(task, rules) : task
     })
-    if (changed) this.persistAndNotify()
-    return changed
   }
 
   /** Toggle a session rule's enabled state (the row's live switch). */
   toggleSessionRule(taskId: string, ruleId: string, enabled: boolean): void {
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId || task.rules === undefined) return task
+    this.userEdit(taskId, task => {
+      if (task.rules === undefined) return task
       const current = task.rules
       const rules = current.map(rule => rule.id === ruleId ? { ...rule, enabled } : rule)
-      if (rules.some((rule, index) => rule !== current[index])) changed = true
+      if (!rules.some((rule, index) => rule !== current[index])) return task
       return withSessionRules(task, rules)
     })
-    if (changed) this.persistAndNotify()
   }
 
   /** Remove a session rule. */
   deleteSessionRule(taskId: string, ruleId: string): void {
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId || task.rules === undefined) return task
+    this.userEdit(taskId, task => {
+      if (task.rules === undefined) return task
       const rules = task.rules.filter(rule => rule.id !== ruleId)
-      if (rules.length !== task.rules.length) changed = true
+      if (rules.length === task.rules.length) return task
       return withSessionRules(task, rules)
     })
-    if (changed) this.persistAndNotify()
   }
 
   /**
@@ -3072,6 +3038,29 @@ export class BoardController {
         changed = true
       }
     }
+    return changed
+  }
+
+  /**
+   * THE funnel for USER-INTENT ledger edits: a mutation returning a new
+   * record always carries a fresh `updatedAt` — the sync merge ranks edits by
+   * that stamp and the card shows it as 更新于, so forgetting a bump becomes
+   * structurally impossible (the class of bug where hide / rule edits were
+   * silently swallowed on other replicas dies here). Engine-derived writes
+   * (settle, external rounds, nextAt ticks) and read-state writes (viewedAt)
+   * deliberately do NOT route through this funnel — they own their own
+   * freshness semantics. @returns whether the ledger moved.
+   */
+  private userEdit(taskId: string, mutate: (task: TaskRecord) => TaskRecord): boolean {
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId) return task
+      const next = mutate(task)
+      if (next === task) return task
+      changed = true
+      return { ...next, updatedAt: this.now() }
+    })
+    if (changed) this.persistAndNotify()
     return changed
   }
 

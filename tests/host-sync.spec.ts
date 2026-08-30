@@ -481,6 +481,24 @@ describe('two replicas over one host service', () => {
     expect(b.view().cruise.limit).toBe(3)
   })
 
+  it('section edits ride claims and converge both ways', async () => {
+    const { timers, a, b } = await twoNodes()
+    a.setCruise({ enabled: true, limit: 3, schedule: [] })
+    await settle(timers)
+    // B (fresh on A's flip) writes the section back — claimed, accepted, and
+    // A converges on B's value.
+    b.setCruise({ enabled: false, limit: 9, schedule: [] })
+    await settle(timers)
+    expect(a.view().cruise.enabled).toBe(false)
+    expect(a.view().cruise.limit).toBe(9)
+    // A task-only commit from B carries its baseline cruise copy UNCLAIMED —
+    // the section must not move.
+    b.setTasks([createTask({ title: 'T', description: '', prompt: 'p' }, timers.now(), 't-x')])
+    await settle(timers)
+    expect(a.view().cruise.limit).toBe(9)
+    expect(a.view().tasks.map(task => task.id)).toEqual(['t-x'])
+  })
+
   it('a clock-skewed reorder on B still lands (authorship claim, not timestamp)', async () => {
     const { timers, a, b } = await twoNodes()
     // A establishes a two-session task on the shared row (A's clock is ahead).

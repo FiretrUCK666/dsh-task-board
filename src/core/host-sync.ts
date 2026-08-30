@@ -382,6 +382,14 @@ export class BoardSyncClient {
       // unconditionally (its serial order decides — client clocks are
       // irrelevant); everything else in the array merges under LWW.
       changed: [...this.claims],
+      // Section authorship: only the sections this replica edited ride the
+      // commit as claims (host-clock accepted); the baseline copies carried
+      // below are then SKIPPED by the merge, never clobber a newer write.
+      sectionClaims: [
+        ...this.dirty.cruise !== undefined ? ['cruise' as const] : [],
+        ...this.dirty.schedulePresets !== undefined ? ['schedulePresets' as const] : [],
+        ...this.dirty.runPresets !== undefined ? ['runPresets' as const] : [],
+      ],
       deleted: diffDeletions(this.baseline.tasks, tasks),
       cruise: this.dirty.cruise ?? this.baseline.cruise,
       schedulePresets: this.dirty.schedulePresets ?? this.baseline.schedulePresets,
@@ -570,15 +578,21 @@ export class SyncedRunPresetStore implements RunPresetStore {
 /**
  * A cruise-state store over the synced cruise section (the controller's
  * CruiseStorageFace: read returns the current value, write marks it dirty).
+ * The offline mirror (write-only, same discipline as the other synced
+ * stores) keeps the local cruise key fresh for fallback-mode first paint.
  */
 export class SyncedCruiseStore {
-  constructor(private readonly sync: SyncLedger) {}
+  constructor(
+    private readonly sync: SyncLedger,
+    private readonly mirror?: { write(state: CruiseValue): void },
+  ) {}
 
   read(): CruiseValue | undefined {
     return this.sync.view().cruise
   }
 
   write(state: CruiseValue): void {
+    this.mirror?.write(state)
     this.sync.setCruise(state)
   }
 }

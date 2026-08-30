@@ -112,10 +112,19 @@ export function parseBoardCommit(body: unknown): BoardCommit | undefined {
   const changed = Array.isArray(row.changed)
     ? row.changed.filter((id): id is string => typeof id === 'string' && id !== '')
     : []
+  // Section claims: PRESENT (even empty) = the claim protocol; ABSENT =
+  // legacy LWW. Only the three known keys survive the filter.
+  const sectionClaims = Array.isArray(row.sectionClaims)
+    ? row.sectionClaims.filter(
+      (key): key is 'cruise' | 'schedulePresets' | 'runPresets' =>
+        key === 'cruise' || key === 'schedulePresets' || key === 'runPresets',
+    )
+    : undefined
   return {
     clientId: row.clientId,
     tasks: Array.isArray(row.tasks) ? row.tasks as BoardCommit['tasks'] : [],
     changed,
+    sectionClaims,
     deleted,
     cruise: section(row.cruise) as BoardCommit['cruise'],
     schedulePresets: section(row.schedulePresets) as BoardCommit['schedulePresets'],

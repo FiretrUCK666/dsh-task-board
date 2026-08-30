@@ -2532,6 +2532,124 @@ describe('card accent color', () => {
   })
 })
 
+describe('user-intent writes carry freshness (userEdit funnel)', () => {
+  function funnelHarness() {
+    let clock = NOW
+    const store = new InMemoryTaskStore()
+    seedTask(store)
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    sessions.runningById['s-2'] = false
+    const controller = new BoardController({
+      store,
+      exec: new StubExec() as unknown as ExecutionService,
+      sessions,
+      now: () => clock,
+      uuid,
+    })
+    controller.start()
+    return {
+      controller,
+      stamp: () => controller.getSnapshot().tasks[0].updatedAt,
+      advance: () => { clock += 1000 },
+    }
+  }
+
+  it('hide / unhide-one / unhide-all each advance updatedAt', () => {
+    const { controller, stamp, advance } = funnelHarness()
+    advance()
+    const t0 = stamp()
+    controller.hideTaskSession('task-a', 's-1')
+    expect(stamp()).toBeGreaterThan(t0)
+    advance()
+    const t1 = stamp()
+    controller.unhideTaskSession('task-a', 's-1')
+    expect(stamp()).toBeGreaterThan(t1)
+    controller.hideTaskSession('task-a', 's-2')
+    advance()
+    const t2 = stamp()
+    controller.unhideTaskSessions('task-a')
+    expect(stamp()).toBeGreaterThan(t2)
+  })
+
+  it('hiding an already-hidden session is a no-op (no stamp churn)', () => {
+    const { controller, stamp } = funnelHarness()
+    controller.hideTaskSession('task-a', 's-1')
+    const before = stamp()
+    controller.hideTaskSession('task-a', 's-1')
+    expect(stamp()).toBe(before)
+  })
+
+  it('binding a source and RESTORING a removed one both advance updatedAt (the swallowed-restore bug)', () => {
+    const { controller, stamp, advance } = funnelHarness()
+    advance()
+    controller.addTaskSource('task-a', { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSource('task-a', { kind: 'session', sessionId: 's-2' })
+    // The real removal path: hide, then 删除 from the hidden tray — the bind
+    // stays (two binds), s-1 lands in removedSessions.
+    controller.hideTaskSession('task-a', 's-1')
+    expect(controller.removeTaskSession('task-a', 's-1')).toBe(true)
+    advance()
+    const before = stamp()
+    // Re-dragging s-1 hits the RESTORE branch (the bind is still there): the
+    // old code cleared removedSessions without a stamp — sync swallowed it.
+    expect(controller.addTaskSource('task-a', { kind: 'session', sessionId: 's-1' })).toBe(true)
+    expect(stamp()).toBeGreaterThan(before)
+    expect(controller.getSnapshot().tasks[0].removedSessions ?? []).not.toContain('s-1')
+  })
+
+  it('session-rule CRUD all advance updatedAt (the "toggled off but still runs" class)', () => {
+    const { controller, stamp, advance } = funnelHarness()
+    advance()
+    const t0 = stamp()
+    const rule = controller.createSessionRule('task-a', { sessionId: 's-1', instruction: '继续', cron: '0 * * * *', send: 'queue' })
+    expect(rule).toBeDefined()
+    expect(stamp()).toBeGreaterThan(t0)
+    advance()
+    const t1 = stamp()
+    expect(controller.updateSessionRule('task-a', rule!.id, { instruction: '改成这个' })).toBe(true)
+    expect(stamp()).toBeGreaterThan(t1)
+    advance()
+    const t2 = stamp()
+    controller.toggleSessionRule('task-a', rule!.id, false)
+    expect(stamp()).toBeGreaterThan(t2)
+    expect(controller.getSnapshot().tasks[0].rules?.[0].enabled).toBe(false)
+    advance()
+    const t3 = stamp()
+    controller.deleteSessionRule('task-a', rule!.id)
+    expect(stamp()).toBeGreaterThan(t3)
+  })
+
+  it('read-state writes do NOT advance updatedAt (viewedAt is not an edit)', () => {
+    const { controller, advance } = funnelHarness()
+    advance()
+    controller.openTask('task-a')
+    const task = controller.getSnapshot().tasks.find(candidate => candidate.id === 'task-a')!
+    expect(task.viewedAt).toBe(NOW + 1000)
+    expect(task.updatedAt).toBe(NOW)
+  })
+
+  it('a shifted sibling carries the freshness stamp too (order-drift class)', () => {
+    let clock = NOW
+    const store = new InMemoryTaskStore()
+    const a = createTask({ title: 'A', description: '', prompt: 'p', status: 'todo' }, NOW, 't-a')
+    const b = createTask({ title: 'B', description: '', prompt: 'p', status: 'todo' }, NOW, 't-b')
+    store.save([{ ...a, order: 0 }, { ...b, order: 1 }])
+    const controller = new BoardController({
+      store, exec: new StubExec() as unknown as ExecutionService,
+      sessions: new FakeSessions(), now: () => clock, uuid,
+    })
+    controller.start()
+    clock = NOW + 1000
+    // b moves before a: a's order shifts — the shifted sibling must be stamped
+    // too, or its new position loses every merge on every other replica.
+    controller.moveTask('t-b', 'todo', 't-a')
+    const tasks = controller.getSnapshot().tasks
+    expect(tasks.find(candidate => candidate.id === 't-b')!.updatedAt).toBe(NOW + 1000)
+    expect(tasks.find(candidate => candidate.id === 't-a')!.updatedAt).toBe(NOW + 1000)
+  })
+})
+
 describe('bound-session instant sync (拖入瞬间全同步)', () => {
   it('dragging in a RUNNING session instantly marks the card running + external round + unviewed + threaded', async () => {
     const stub = new StubExec()

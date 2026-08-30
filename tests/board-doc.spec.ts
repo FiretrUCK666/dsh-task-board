@@ -228,6 +228,46 @@ describe('applyCommit: sections', () => {
     expect(withPresets.runPresets.value.presets[0].config).toEqual({ model: 'm' })
     expect(boardViewOf(withPresets).runPresets.defaultId).toBe('r1')
   })
+
+  it('CLAIM protocol: a claimed section is accepted regardless of clocks and re-stamped by the host', () => {
+    const on = applyCommit(doc, commitOf({
+      cruise: { value: { enabled: true, limit: 3, schedule: [] }, at: T0 + 5 },
+      sectionClaims: ['cruise'],
+    }), T0 + 5)
+    // A phone whose clock runs behind claims a cruise edit: it wins (host
+    // arrival order decides), and the stored stamp is the HOST clock.
+    const late = applyCommit(on, commitOf({
+      cruise: { value: { enabled: false, limit: 8, schedule: [] }, at: 10 },
+      sectionClaims: ['cruise'],
+    }), T0 + 500)
+    expect(late.cruise.value.limit).toBe(8)
+    expect(late.cruise.at).toBe(T0 + 500)
+  })
+
+  it('CLAIM protocol: an UNCLAIMED baseline copy is skipped (can never clobber)', () => {
+    const on = applyCommit(doc, commitOf({
+      cruise: { value: { enabled: true, limit: 3, schedule: [] }, at: T0 + 5 },
+      sectionClaims: ['cruise'],
+    }), T0 + 5)
+    // A second replica commits ONLY tasks, riding its stale cruise baseline
+    // copy with an at that (client-clock) could outrank the host stamp —
+    // under the claim protocol the section is skipped outright.
+    const tasksOnly = applyCommit(on, commitOf({
+      tasks: [createTask({ title: 'A', description: '', prompt: 'p' }, T0, 't-1')],
+      cruise: { value: { enabled: false, limit: 99, schedule: [] }, at: T0 + 9_999 },
+      sectionClaims: [],
+    }), T0 + 6)
+    expect(tasksOnly.cruise.value.limit).toBe(3)
+    expect(tasksOnly.tasks).toHaveLength(1)
+  })
+
+  it('LEGACY protocol (no sectionClaims field): plain client-stamp LWW still applies', () => {
+    const on = applyCommit(doc, commitOf({ cruise: { value: { enabled: true, limit: 3, schedule: [] }, at: T0 + 5 } }), T0 + 5)
+    const stale = applyCommit(on, commitOf({ cruise: { value: { enabled: false, limit: 9, schedule: [] }, at: T0 + 1 } }), T0 + 6)
+    expect(stale).toBe(on)
+    const newer = applyCommit(on, commitOf({ cruise: { value: { enabled: false, limit: 9, schedule: [] }, at: T0 + 6 } }), T0 + 7)
+    expect(newer.cruise.value.limit).toBe(9)
+  })
 })
 
 describe('applyCommit: ordering', () => {
