@@ -30,11 +30,13 @@ class FakeSessions {
   waitingById: Record<string, 'approval' | 'plan-review' | 'question'> = {}
   /** Host-list workspace facts per session. */
   infoById: Record<string, { cwd?: string; agentPreset?: string }> = {}
+  /** Host-list durable title per session (absent = the host has not named it). */
+  titleById: Record<string, string> = {}
   private listeners = new Set<() => void>()
   list = {
     getSnapshot: (): {
       current: string | undefined
-      byId: Record<string, { running: boolean; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; agentPreset?: string }>
+      byId: Record<string, { running: boolean; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; agentPreset?: string; title?: string }>
     } => ({
       current: this.current,
       byId: Object.fromEntries(
@@ -42,6 +44,7 @@ class FakeSessions {
           running,
           ...this.waitingById[id] !== undefined ? { pendingInteraction: this.waitingById[id] } : {},
           ...this.infoById[id] !== undefined ? this.infoById[id] : {},
+          ...this.titleById[id] !== undefined ? { title: this.titleById[id] } : {},
         }]),
       ),
     }),
@@ -77,6 +80,13 @@ class FakeSessions {
   setInfo(id: string, info: { cwd?: string; agentPreset?: string }): void {
     this.runningById[id] ??= false
     this.infoById[id] = info
+    for (const fn of [...this.listeners]) fn()
+  }
+  /** Set a session's durable title and notify (list change). */
+  setTitle(id: string, title: string | undefined): void {
+    this.runningById[id] ??= false
+    if (title === undefined) delete this.titleById[id]
+    else this.titleById[id] = title
     for (const fn of [...this.listeners]) fn()
   }
 }
@@ -237,6 +247,25 @@ describe('task mutations', () => {
     expect(controller.sessionInfo('s-1')).toBeUndefined()
     sessions.setInfo('s-1', { cwd: 'C:\\work\\proj', agentPreset: 'butler' })
     expect(controller.sessionInfo('s-1')).toEqual({ cwd: 'C:\\work\\proj', agentPreset: 'butler' })
+  })
+
+  it('a durable title equal to the workspace basename is the host auto-name, not a real name (→ 未命名)', () => {
+    const { controller, sessions } = makeController()
+    sessions.setInfo('s-1', { cwd: '/home/me/deepseek' })
+    // No durable title yet → undefined (the row shows 未命名).
+    expect(controller.sessionTitle('s-1')).toBeUndefined()
+    // The host projects its DETERMINISTIC fallback = the project basename: still
+    // not a real name, so sessionTitle reports undefined (the recurring
+    // "不填标题却显示工作区名" bug — closed at the single title derivation).
+    sessions.setTitle('s-1', 'deepseek')
+    expect(controller.sessionTitle('s-1')).toBeUndefined()
+    // A provider-generated or user-pinned name is a real title.
+    sessions.setTitle('s-1', '黄道十二宫绘画')
+    expect(controller.sessionTitle('s-1')).toBe('黄道十二宫绘画')
+    // Windows separator + trailing slash basename still matches.
+    sessions.setInfo('s-2', { cwd: 'C:\\work\\proj\\' })
+    sessions.setTitle('s-2', 'proj')
+    expect(controller.sessionTitle('s-2')).toBeUndefined()
   })
 
   it('notifies subscribers when the session list changes (wait states surface live)', () => {

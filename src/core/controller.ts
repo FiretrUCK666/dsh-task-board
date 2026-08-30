@@ -467,6 +467,18 @@ function currentOf(sessions: SessionsControllerFace): string | undefined {
   return sessions.list.getSnapshot().current
 }
 
+/** The last path segment of a cwd (the workspace/project basename the host
+ *  uses as a session's deterministic auto-name). Handles both separators and a
+ *  trailing slash; undefined when there is no usable segment. */
+function basenameOfPath(cwd: string | undefined): string | undefined {
+  if (cwd === undefined) return undefined
+  const trimmed = cwd.replace(/[\\/]+$/, '')
+  if (trimmed === '') return undefined
+  const index = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'))
+  const base = index >= 0 ? trimmed.slice(index + 1) : trimmed
+  return base === '' ? undefined : base
+}
+
 /**
  * Board controller (see module doc). All mutations bump the snapshot and
  * persist through the store; UI and DOM mounts subscribe and re-render.
@@ -715,10 +727,24 @@ export class BoardController {
   }
 
   /** The session's display title (native list summary), or undefined when the
-   *  session is gone/unknown. Drives the execution row's identity slot. */
+   *  session is gone/unknown. Drives the execution row's identity slot.
+   *
+   *  A durable title that is exactly the workspace (project) BASENAME is the
+   *  host's DETERMINISTIC auto-name — the fallback it projects after the first
+   *  message when nothing has named the session — NOT a real name. Reporting
+   *  it as undefined lets the single 未命名 grammar (`sessionRowTitleOf`) show
+   *  「未命名」 until a provider-generated or user-pinned title arrives, so a
+   *  fresh session never reads as its folder (the 「不填标题却显示工作区名」
+   *  bug that kept recurring). A user who deliberately names a session the
+   *  same as its folder is the accepted, genuinely-ambiguous edge. */
   sessionTitle(sessionId: string | undefined): string | undefined {
     if (sessionId === undefined) return undefined
-    return this.deps.sessions.list.getSnapshot().byId[sessionId]?.title
+    const row = this.deps.sessions.list.getSnapshot().byId[sessionId]
+    const title = row?.title
+    if (title === undefined || title === '') return undefined
+    const folder = basenameOfPath(row?.cwd)
+    if (folder !== undefined && title === folder) return undefined
+    return title
   }
 
   /** The localized 未命名 placeholder the session rows show for a session
