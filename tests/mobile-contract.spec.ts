@@ -223,6 +223,53 @@ describe('drag reorder machinery survives (the user gesture)', () => {
   })
 })
 
+describe('form-row grammar (give way, never crush)', () => {
+  const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
+
+  it('every track that can hold an input declares a zero floor', () => {
+    // A bare `1fr` track has an MINIMUM of `auto`, so one nowrap button in the
+    // row blows the track past the container and the input — the only
+    // flexible member — collapses to its padding (the "Cron 框只剩一个小圆角").
+    expect(ruleOf('scheduleGrid')).toMatch(/minmax\(0,\s*1fr\)/)
+    expect(ruleOf('presetNew')).toMatch(/minmax\(\d+ch,\s*1fr\)/)
+    expect(ruleOf('presetRow')).toMatch(/minmax\(\d+ch,\s*1fr\)/)
+  })
+
+  it('the flexible input carries a real width floor and the row wraps', () => {
+    expect(ruleOf('scheduleInput')).toMatch(/flex:\s*1 1 \d+px/)
+    expect(ruleOf('scheduleCronRow')).toMatch(/flex-wrap:\s*wrap/)
+  })
+
+  it('the select arrow inset comes from ONE token (text can never slide under it)', () => {
+    const wrap = ruleOf('selectWrap')
+    expect(wrap).toMatch(/--dsh-tb-select-arrow-inset:/)
+    expect(ruleOf('selectWrap select')).toMatch(/padding-right:\s*var\(--dsh-tb-select-arrow-inset\)/)
+    expect(ruleOf('selectWrap select')).toMatch(/text-overflow:\s*ellipsis/)
+    // The dead `flex: none` on the inner select (the flex item is the WRAPPER)
+    // must not come back — it "fixed" nothing and hid the real cause.
+    expect(source).not.toMatch(/\.schedulePreset\s*\{[^}]*flex:\s*none/)
+  })
+
+  it('hierarchy is expressed by grid AREAS, not by auto margins + wrap', () => {
+    // `margin-left:auto` + `border-left` "right-aligns" the FIRST item of
+    // whichever line it lands on — so a narrow panel scattered 删除 right and
+    // 创建于 left with a floating hairline between them.
+    const footer = ruleOf('detailFooter')
+    expect(footer).toMatch(/display:\s*grid/)
+    expect(footer).toMatch(/grid-template-areas:\s*"actions meta danger"/)
+    expect(source).not.toMatch(/\.detailFooterDanger\s*\{[^}]*margin-left:\s*auto/)
+    // …and the compact form re-STACKS rows (never re-adds a flex-wrap).
+    expect(compact).toMatch(/\.detailFooter\s*\{[^}]*grid-template-areas:/)
+    expect(compact).not.toMatch(/\.detailFooter\s*,[^}]*flex-wrap/)
+  })
+
+  it('secondary dialog actions live in the action row, not on a row of their own', () => {
+    // A full-width flex-end toolbar above an empty list is the "big blank top
+    // with one stray button" look.
+    expect(source).not.toMatch(/\.presetToolbar/)
+  })
+})
+
 describe('alignment grammar (the OCD contract)', () => {
   const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
   const stacked = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*600px\)/.test(line))

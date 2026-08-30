@@ -124,12 +124,6 @@ export function PresetManager({ store, onClose }: {
       {/* The ONE scroll region of the dialog: the preset list scrolls, the
           footer stays pinned (see .modal / .modalScroll). */}
       <div className={css.modalScroll}>
-        <div className={css.presetToolbar}>
-          <Button onClick={() => { setConfirmRestore(true) }}>
-            {t('detail.schedule.presets.restore')}
-          </Button>
-        </div>
-
         <ul className={css.presetList}>
           {custom.length === 0 && <li className={css.presetEmpty}>{t('detail.schedule.presets.empty')}</li>}
           {custom.map(preset => (
@@ -167,7 +161,14 @@ export function PresetManager({ store, onClose }: {
         {newHint !== '' && <p className={css.scheduleMeta}>{newHint}</p>}
       </div>
 
+      {/* Secondary actions live in the dialog's action row with 取消 — never a
+          whole row of their own floating above an empty list (that is what
+          made the phone dialog read as "a big blank top with one stray
+          button"). */}
       <footer className={css.modalFooter}>
+        <Button onClick={() => { setConfirmRestore(true) }}>
+          {t('detail.schedule.presets.restore')}
+        </Button>
         <Button onClick={onClose}>
           {t('detail.cancel')}
         </Button>

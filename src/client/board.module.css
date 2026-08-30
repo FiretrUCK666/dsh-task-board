@@ -1649,16 +1649,30 @@ textarea.input {
 
 /* Hosts a custom chevron so every dropdown arrow sits a uniform 12px from
    the right edge (the native arrow cannot be positioned with CSS). */
+/* Select affordance — ONE grammar, one owner of the arrow inset. The chevron
+   is a painted overlay (it costs no layout), so the text must be given an
+   explicit right inset or a truncated label slides UNDER the arrow (the
+   "预设… 与箭头重叠" bug). Both numbers come from one token, so they can
+   never drift apart again. */
 .selectWrap {
+  --dsh-tb-select-arrow-inset: 30px;
   position: relative;
   display: block;
+  /* As a flex/grid item it must be able to give way to its row (never push a
+     sibling out); the label floor below keeps it readable while doing so. */
+  min-width: 0;
 }
 
 .selectWrap select {
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
-  padding-right: 32px;
+  min-width: 0;
+  padding-right: var(--dsh-tb-select-arrow-inset);
+  /* The box may be narrower than its text: ellipsize, do not overlap. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -1666,7 +1680,7 @@ textarea.input {
   content: '';
   position: absolute;
   top: 50%;
-  right: 12px;
+  right: calc(var(--dsh-tb-select-arrow-inset) / 2 - 3px);
   width: 7px;
   height: 7px;
   transform: translateY(-70%) rotate(45deg);
@@ -1936,9 +1950,16 @@ textarea.input {
 
 /* Label/value grid mirrors the run-config grid so every detail row shares
    one aligned label column (same column/row rhythm as .configGrid). */
+/* THE form-row grammar (one mechanism for every labeled control row: cron,
+   run budget, preset add/edit, session toolbar). A `1fr` track has an MINIMUM
+   of `auto`, so a fixed-size sibling (a nowrap button) blows the track past
+   the container and the shrinkable input — the only flexible member — is
+   crushed to its padding (the "Cron 输入框只剩一个小圆角" bug). Every track
+   that can hold an input is therefore `minmax(0, …)`, and every input carries
+   a real width floor instead of `flex: 1 1 0`. */
 .scheduleGrid {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 6px 18px;
   align-items: center;
 }
@@ -1951,6 +1972,7 @@ textarea.input {
 
 .scheduleCronRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -1958,13 +1980,17 @@ textarea.input {
 
 .scheduleMaxRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
 .scheduleInput {
-  flex: 1;
+  /* `1 1 <floor>`: it takes the slack AND refuses to be squeezed below a
+     readable expression; when the row cannot hold everyone it wraps instead
+     of crushing the one field the user has to read. */
+  flex: 1 1 140px;
   min-width: 0;
   font-family: var(--dsw-font-markdown-code-block-small);
   font-size: 13px;
@@ -1986,8 +2012,16 @@ textarea.input {
   border-color: var(--dsw-alias-state-error-primary);
 }
 
+/* The preset picker's slot in the cron row. (`flex: none` written on the
+   SELECT was dead code — the flex item is the WRAPPER, so the intent never
+   applied and the box got crushed anyway; the floor lives on the item now.) */
+.scheduleCronRow > .selectWrap,
+.scheduleMaxRow > .selectWrap {
+  flex: 0 1 auto;
+  min-width: max(96px, 8ch);
+}
+
 .schedulePreset {
-  flex: none;
   height: 34px;
   padding: 0 12px;
   font-size: 13px;
@@ -1996,7 +2030,6 @@ textarea.input {
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   outline: none;
-  -webkit-appearance: none;
   transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
@@ -2079,11 +2112,6 @@ textarea.input {
   display: contents;
 }
 
-.presetToolbar {
-  display: flex;
-  justify-content: flex-end;
-}
-
 /* The run-preset manager's pinned hint footer: the note bar is left-aligned
    (modalFooter's right-aligned grammar is for button rows) and never scrolls
    away with the list/form. */
@@ -2107,7 +2135,9 @@ textarea.input {
 
 .presetRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  /* Same floors as the add row: one grammar for both, so the edit row can no
+     longer read as a different (crushable) thing. */
+  grid-template-columns: minmax(9ch, 1fr) minmax(11ch, 1.2fr) auto auto;
   gap: 8px;
   align-items: center;
   padding: 6px 4px;
@@ -2119,6 +2149,7 @@ textarea.input {
 }
 
 .presetName {
+  width: 100%;
   min-width: 0;
 }
 
@@ -2182,9 +2213,13 @@ textarea.input {
   border-radius: 999px;
 }
 
+/* The add-preset row obeys the SAME form-row grammar as every other control
+   row: both inputs get a real floor (a `minmax(0,1fr)` track next to a nowrap
+   button lets the button win and the cron text lose its last character), and
+   the row stacks when the panel cannot hold all three. */
 .presetNew {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(9ch, 1fr) minmax(11ch, 1.2fr) auto;
   gap: 8px;
   align-items: center;
 }
@@ -3210,8 +3245,15 @@ textarea.input {
   flex-wrap: wrap;
 }
 
+/* The footer's hierarchy is SPOTS, not shrink behaviour: a named grid says
+   where each weight lives, so a narrow panel re-stacks the ROWS instead of
+   letting content widths decide who shares a line (the "删除孤在右、创建于孤
+   在左下、还拖着一条悬空竖线"断裂). Wide: actions left, meta + danger right on
+   the same line. */
 .detailFooter {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "actions meta danger";
   align-items: center;
   gap: 12px;
   padding: 12px 18px;
@@ -3219,21 +3261,28 @@ textarea.input {
   flex: none;
 }
 
-/* Group rhythm: 8px inside a group, the danger group separated by a hairline
-   and its own 14px inset — the footer reads 主操作 → ‖ 删除 → created. */
+/* Group rhythm: 8px inside a group; the group wraps WITHIN its own slot, never
+   the whole footer (a footer-level wrap is what scattered the buttons). */
 .detailFooterGroup {
-  display: inline-flex;
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .detailFooterDanger {
+  grid-area: danger;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
-  padding-left: 14px;
-  border-left: 1px solid var(--dsh-tb-separator);
+  flex: none;
+}
+
+.detailFooter > .detailMeta {
+  grid-area: meta;
+  justify-self: end;
 }
 
 .detailMeta {
@@ -5042,9 +5091,44 @@ textarea.input {
 
   /* Action rows wrap rather than overflow off the panel edge. */
   .modalFooter,
-  .detailFooter,
   .reviewComposerRow {
     flex-wrap: wrap;
+  }
+
+  /* The footer re-STACKS ITS ROWS (it is a named grid now — a flex-wrap here
+     is exactly the content-driven scattering that broke it before): actions
+     take the first line at full width, the created-time and the row-level
+     danger action share the second. */
+  .detailFooter {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "actions actions"
+      "meta danger";
+    row-gap: 10px;
+  }
+
+  .detailFooter > .detailMeta {
+    justify-self: start;
+  }
+
+  /* Labeled control rows give up the side-by-side label column FIRST: the
+     label takes its own line and the control row gets the full width, so a
+     cron expression never has to fight a 90px label for the same 210px. */
+  .scheduleGrid {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  /* The preset rows stack into one control per line (the same floors as the
+     wide row, just fewer columns) — an input that keeps a whole line cannot
+     have its text clipped by a button anymore. */
+  .presetNew,
+  .presetRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .presetRow .presetActions {
+    justify-self: start;
   }
 
   /* Session rows: the named grid drops to a two-row template — identity on the

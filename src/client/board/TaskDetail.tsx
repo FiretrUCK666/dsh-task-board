@@ -844,10 +844,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               {t('detail.duplicate')}
             </Button>
           </span>
-          {/* Danger group: destructive actions sit apart (hairline separation),
-              so the footer reads 主操作 → 复制 → ‖ 删除 → created. */}
+          {/* Destructive actions are ROW-LEVEL danger (ghost + small), never a
+              filled red block competing with the primary action one row over —
+              the filled danger grammar belongs to the confirm dialog that
+              actually asks twice. */}
           <span className={css.detailFooterDanger}>
-            <Button variant="danger" onClick={() => { setConfirmDelete(true) }}>
+            <Button variant="dangerGhost" size="sm" onClick={() => { setConfirmDelete(true) }}>
               {t('detail.delete')}
             </Button>
           </span>
