@@ -68,6 +68,11 @@
   --dsh-tb-focus-color: var(--dsw-alias-state-business-primary);
   --dsh-tb-motion: 160ms ease;
   --dsh-tb-breath: 2.6s ease-in-out;
+  /* Breathing amplitude tokens (the pulse itself is a state message, so under
+     `prefers-reduced-motion` these slow down and shrink — they are never set
+     to zero, which would turn "live" into "frozen"). */
+  --dsh-tb-breath-spread: 3px;
+  --dsh-tb-breath-halo: 14px;
 }
 
 /* --- shared attention motion ------------------------------------------------
@@ -76,14 +81,19 @@
  * card flashes as an outer ring, the execution row as a soft inner halo — no
  * per-row border, no flat tint — so every surface reads as the same light.
  */
+/* The breathing ring/halo sizes are TOKENS so the reduced-motion treatment can
+   SOFTEN the pulse instead of killing it: the ring is a functional state
+   indicator (it IS the message "this is live / this is unread"), and a static
+   ring reads as "stuck" — the opposite of the truth, and indistinguishable
+   from a finished-and-unread card. Same law the spinner already follows. */
 @keyframes dshTbBreathRing {
   0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50% { box-shadow: 0 0 0 3px var(--dsh-tb-attention-alpha); }
+  50% { box-shadow: 0 0 0 var(--dsh-tb-breath-spread) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha)); }
 }
 
 @keyframes dshTbBreathHalo {
   0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
-  50% { box-shadow: inset 0 0 14px var(--dsh-tb-attention-alpha-soft); }
+  50% { box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)); }
 }
 
 /* --- center-column takeover (global rules, attribute-scoped) ----------------- */
@@ -3484,19 +3494,15 @@ textarea.input {
     animation: none;
   }
 
-  .card[data-unviewed],
-  .card[data-active] {
-    animation: none;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--dsh-tb-attention) 35%, transparent);
-  }
-
-  .sessionRow::after {
-    transition: none;
-    animation: none;
-  }
-
-  .sessionRow[data-glow='attention']::after {
-    box-shadow: inset 0 0 0 1px var(--dsh-tb-attention-alpha-soft);
+  /* FUNCTIONAL STATE PULSE — EXEMPT, not deleted. The breathing ring says
+     "this is running" / "this is unread"; a still ring reads as "stuck" (the
+     opposite of the truth) and cannot be told apart from a finished card, so
+     the pulse survives reduced-motion the same way the spinner's does: the
+     same animation, slower and gentler. */
+  [data-dsh-taskboard-view] {
+    --dsh-tb-breath: 5s ease-in-out;
+    --dsh-tb-breath-spread: 2px;
+    --dsh-tb-breath-halo: 8px;
   }
 
   .dropIndicator {

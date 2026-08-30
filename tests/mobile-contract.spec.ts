@@ -464,6 +464,19 @@ describe('reduced-motion functional exemption', () => {
     expect(reduced).not.toMatch(/\.spinner\s*\{\s*\n?\s*animation:\s*none/)
   })
 
+  it('the breathing RING also survives — it is a state message, not decoration', () => {
+    // A still ring reads as "stuck" (the opposite of "running") and cannot be
+    // told apart from a finished-and-unread card, so the ring joins the
+    // spinner's exemption: slower and gentler, never `animation: none`.
+    expect(reduced).not.toMatch(/\.card\[data-(unviewed|active)\][\s\S]{0,80}animation:\s*none/)
+    expect(reduced).not.toMatch(/\.sessionRow::after\s*\{\s*\n?\s*animation:\s*none/)
+    // The amplitude lives in tokens, which is how the pulse is softened
+    // instead of deleted.
+    expect(reduced).toMatch(/--dsh-tb-breath:\s*[\d.]+s/)
+    expect(reduced).toMatch(/--dsh-tb-breath-spread:/)
+    expect(source).toMatch(/@keyframes dshTbBreathRing\s*\{[\s\S]*?var\(--dsh-tb-breath-spread\)/)
+  })
+
   it('decorative entrance motion is still suppressed', () => {
     expect(reduced).toMatch(/\.modalBackdrop[\s\S]*?animation:\s*none/)
   })
