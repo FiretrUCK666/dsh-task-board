@@ -3104,8 +3104,13 @@ textarea.input {
    framed surfaces around it, so every surrounding border stays in sync. */
 .waitingNotice {
   display: flex;
-  align-items: center;
+  /* Same row grammar as .sessionContextRow: the warn badge rides the FIRST
+     line (never floats mid-block), the badge never shrinks, and the text takes
+     the remaining width and wraps — so a long notice never squeezes the chip to
+     "等…" (the bare-span-no-min-width fork between the two row grammars). */
+  align-items: flex-start;
   gap: 8px;
+  min-width: 0;
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.5;
@@ -3113,6 +3118,13 @@ textarea.input {
   background: var(--dsh-tb-bg-raised);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-sm);
+}
+.waitingNotice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.waitingNotice .chip {
+  flex: none;
 }
 
 /* The refine conversation tail */

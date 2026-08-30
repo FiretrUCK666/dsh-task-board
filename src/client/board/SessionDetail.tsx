@@ -100,7 +100,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   return (
     <SessionFrame
       title={row?.title ?? sessionId}
-      badge={t('detail.sessionCountBadge', { n: String(controller.linkedOf(task).length) })}
+      badge={t('detail.sessionCountBadge', { n: String(controller.sessionsOf(task).length) })}
       ariaLabel={t('detail.sessionPanel')}
       context={context}
       actions={
