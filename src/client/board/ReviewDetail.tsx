@@ -157,8 +157,12 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               onRetry={reloadTranscript}
               before={
                 <div className={css.reviewOutcome}>
-                  <Chip kind={execution.result === 'failed' ? 'error' : execution.result === 'succeeded' ? 'success' : 'muted'}>
-                    {execution.result === undefined ? t('detail.result.running') : t(`detail.result.${execution.result}` as 'detail.result.succeeded')}
+                  <Chip
+                    kind={stateChip.kind}
+                    title={stateChip.title}
+                    icon={stateChip.spinner === true ? <span className={css.spinner} aria-hidden="true" /> : undefined}
+                  >
+                    {stateChip.label}
                   </Chip>
                   <span className={css.reviewOutcomeMeta}>
                     {t('detail.executionEnded')} {execution.endedAt !== undefined ? formatDateTime(execution.endedAt) : '—'}

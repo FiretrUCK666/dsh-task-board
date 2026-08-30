@@ -20,7 +20,7 @@ import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource }
 import { boundSourceTitle, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
-import { DIRECT_FALLBACK_STATUS, isDirectLike, latestRoundOf, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
+import { DIRECT_FALLBACK_STATUS, isDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
 import { normalizeCruiseValue } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
@@ -29,7 +29,7 @@ import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -2807,7 +2807,7 @@ export class BoardController {
       linked?.find(entry => entry.task.id === taskId)?.ids
     let changed = false
     for (const task of this.tasks) {
-      const latest = latestRoundOf(task)
+      const latest = latestExecutionOf(task)
       if (!isDirectLike(latest)) continue
       const live = taskLiveStateOf(
         task,
@@ -2867,6 +2867,15 @@ export class BoardController {
    */
   private relatedSessionsOf(task: TaskRecord): Array<{ sessionId: string; refine: boolean }> {
     return relatedSessionIdsOf(task, this.linkedOf(task).map(row => row.sessionId))
+  }
+
+  /** The ids of every session already RELATED to a task (binds, execution
+   *  rounds, the refine session, live linked members) — the single source for
+   *  "do not offer this session again". The add-session picker filters on this,
+   *  so a refine session (which the old hand-rolled bind+execution set missed)
+   *  never shows as a re-bindable candidate. */
+  relatedSessionIdSet(task: TaskRecord): Set<string> {
+    return new Set(this.relatedSessionsOf(task).map(row => row.sessionId))
   }
 
   /**

@@ -11,7 +11,6 @@
 import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { taskBindsOf } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
@@ -23,15 +22,12 @@ export function AddSessionModal({ controller, task, onClose }: {
   onClose: () => void
 }) {
   const [query, setQuery] = useState('')
-  // Already-bound session ids (and this task's own execution sessions) never
-  // show as candidates — binding a second time is a no-op the list should not
-  // offer.
-  const bound = new Set<string>(taskBindsOf(task)
-    .filter(bind => bind.kind === 'session')
-    .map(bind => (bind as { sessionId: string }).sessionId))
-  for (const execution of task.executions) {
-    if (execution.sessionId !== undefined) bound.add(execution.sessionId)
-  }
+  // Every session already RELATED to the task (binds, execution rounds, the
+  // refine session, live linked members) never shows as a candidate — binding a
+  // second time is a no-op the list should not offer. One derivation (the
+  // controller's related set), not a hand-rolled subset that missed the refine
+  // session and offered to re-bind it.
+  const bound = controller.relatedSessionIdSet(task)
   const needle = query.trim().toLowerCase()
   const rows = controller.referenceSessionCatalog()
     .filter(row => !bound.has(row.sessionId))

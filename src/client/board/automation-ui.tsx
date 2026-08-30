@@ -32,6 +32,7 @@ import {
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { cronHumanLabel } from './cron-label.ts'
+import { formatDateTime } from './format-time.ts'
 import { mergedPresets, presetIsDefault, PresetManager } from './PresetManager.tsx'
 import { STATUS_KEY, PAUSED_REASON_KEY } from './status.ts'
 import { PromptInput } from './PromptInput.tsx'
@@ -133,7 +134,7 @@ export function scheduleSummary(task: TaskRecord, pausedFailed = false): string 
     ? t('detail.schedule.notScheduled')
     : next <= Date.now()
       ? t('detail.schedule.dueSoon')
-      : new Date(next).toLocaleString()
+      : formatDateTime(next)
   return `${t('detail.schedule.mode.cron')} · ${cronHumanLabel(schedule.cron ?? '')} · ${nextLabel}`
 }
 
@@ -193,7 +194,7 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           <>
             {t('auto.cron')} {cronHumanLabel(row.cron)}
             {row.nextAt !== undefined && row.nextAt > Date.now()
-              && ` · ${t('auto.rule.next', { time: new Date(row.nextAt).toLocaleString() })}`}
+              && ` · ${t('auto.rule.next', { time: formatDateTime(row.nextAt) })}`}
           </>
         ) : (
           t('auto.rule.onComplete')
@@ -637,8 +638,8 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
     ? t('detail.schedule.notScheduled')
     : nextRunAt <= Date.now()
       ? t('detail.schedule.dueSoon')
-      : new Date(nextRunAt).toLocaleString()
-  const lastLabel = lastTriggeredAt === undefined ? '—' : new Date(lastTriggeredAt).toLocaleString()
+      : formatDateTime(nextRunAt)
+  const lastLabel = lastTriggeredAt === undefined ? '—' : formatDateTime(lastTriggeredAt)
   // Cron skip is offered only when a future due instant actually exists.
   const canSkip = enabled && mode === 'cron' && readiness.kind === 'active'
     && nextRunAt !== undefined && nextRunAt > Date.now()

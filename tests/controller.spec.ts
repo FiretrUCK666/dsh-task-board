@@ -268,6 +268,24 @@ describe('task mutations', () => {
     expect(controller.sessionTitle('s-2')).toBeUndefined()
   })
 
+  it('relatedSessionIdSet covers binds, execution rounds AND the refine session', () => {
+    const { controller, sessions } = makeController()
+    sessions.runningById['s-refine'] = false
+    sessions.runningById['s-run'] = false
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-bind' })
+    // Give the task a refine session + an execution round (pure task shape).
+    const withExtras: TaskRecord = {
+      ...controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!,
+      refineSessionId: 's-refine',
+      executions: [{ id: 'e1', sessionId: 's-run', startedAt: NOW, endedAt: NOW, result: 'succeeded', error: undefined }],
+    }
+    // The refine session is IN the related set — the old hand-rolled bind+
+    // execution set missed it and let the add-session picker offer to re-bind it.
+    const set = controller.relatedSessionIdSet(withExtras)
+    expect([...set].sort()).toEqual(['s-bind', 's-refine', 's-run'])
+  })
+
   it('notifies subscribers when the session list changes (wait states surface live)', () => {
     const { controller, sessions } = makeController()
     controller.openBoard()

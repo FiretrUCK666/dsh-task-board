@@ -23,6 +23,7 @@ import {
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Button } from './ui.tsx'
+import { Chip } from './Chip.tsx'
 import { PromptInput } from './PromptInput.tsx'
 
 /** Whether a draft carries an answer (an option picked, custom text, or an
@@ -154,7 +155,7 @@ export function InteractionCard({ question, sessionId, controller }: {
       <div className={css.interactionCardBody}>
         {planQuestion !== undefined ? (
           <>
-            <span className={css.chip} data-kind="warn">{t('review.planAwaiting')}</span>
+            <Chip kind="warn" title={t('review.planAwaiting')}>{t('review.planAwaiting')}</Chip>
             <span className={css.interactionQuestion}>{planQuestion.question}</span>
             {planQuestion.detail !== undefined && <span className={css.interactionDetail}>{planQuestion.detail}</span>}
             <span className={css.interactionAmend}>
@@ -171,7 +172,7 @@ export function InteractionCard({ question, sessionId, controller }: {
           </>
         ) : current !== undefined ? (
           <>
-            <span className={css.chip} data-kind="warn">{t('review.questionIndex', { n: String(current.index + 1), total: String(question.questions.length) })}</span>
+            <Chip kind="warn" title={t('review.questionIndex', { n: String(current.index + 1), total: String(question.questions.length) })}>{t('review.questionIndex', { n: String(current.index + 1), total: String(question.questions.length) })}</Chip>
             <span className={css.interactionQuestion}>{current.item.question}</span>
             {current.item.detail !== undefined && <span className={css.interactionDetail}>{current.item.detail}</span>}
             {options.length > 0 && (

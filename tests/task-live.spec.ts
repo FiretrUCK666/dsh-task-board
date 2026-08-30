@@ -5,9 +5,9 @@
  * can never again read a different source than the rows.
  */
 import { describe, expect, it } from 'vitest'
-import type { TaskRecord } from '../src/core/tasks.ts'
+import { latestExecutionOf, type TaskRecord } from '../src/core/tasks.ts'
 import {
-  DIRECT_FALLBACK_STATUS, isDirectLike, latestRoundOf, relatedSessionIdsOf, taskLiveStateOf,
+  DIRECT_FALLBACK_STATUS, isDirectLike, relatedSessionIdsOf, taskLiveStateOf,
   type TaskLiveState,
 } from '../src/core/task-live.ts'
 
@@ -113,12 +113,12 @@ describe('taskLiveStateOf (任务运行态唯一推导)', () => {
 describe('direct-round fallback (无事件路径)', () => {
   it('recognizes a settled direct steer round as direct-like', () => {
     const task = taskWith([{ sessionId: 'a', direct: true, endedAt: 5 }])
-    expect(isDirectLike(latestRoundOf(task))).toBe(true)
+    expect(isDirectLike(latestExecutionOf(task))).toBe(true)
   })
 
   it('never treats an open board round as direct-like', () => {
     const task = taskWith([{ sessionId: 'a' }])
-    expect(isDirectLike(latestRoundOf(task))).toBe(false)
+    expect(isDirectLike(latestExecutionOf(task))).toBe(false)
   })
 
   it('falls back to the review column (a steer that ran to completion is a human gate)', () => {

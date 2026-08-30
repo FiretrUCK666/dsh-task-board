@@ -93,11 +93,6 @@ export function taskLiveStateOf(
   return 'idle'
 }
 
-/** The latest board round of a task (executions are append-only). */
-export function latestRoundOf(task: TaskRecord): ExecutionRecord | undefined {
-  return task.executions[task.executions.length - 1]
-}
-
 /**
  * Whether a round is "direct-like": a direct steer round is settled at birth
  * and has NO host turn/end settle event — its completion is only visible as
