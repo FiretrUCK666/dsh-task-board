@@ -29,7 +29,7 @@ import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
 import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
-import { STATUS_KEY } from './status.ts'
+import { STATUS_KEY, STATUS_SHORT_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
@@ -113,6 +113,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [showAutomation, setShowAutomation] = useState(false)
   // 多选（Ctrl/Cmd+点击即选，整理模式整选；板头横栏批量换色/删除/全选清选）。
   const [organizing, setOrganizing] = useState(false)
+  // The engine-seat note the header chip opens (touch has no hover, so the
+  // explanation must be a real, reachable surface — not a `title`).
+  const [engineNote, setEngineNote] = useState<'stale' | 'viewer' | undefined>(undefined)
   const [selectedCards, setSelectedCards] = useState<string[]>([])
   const toggleCard = (id: string): void => {
     setSelectedCards(current => current.includes(id) ? current.filter(cardId => cardId !== id) : [...current, id])
@@ -296,8 +299,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     observer.observe(root)
     return () => { observer.disconnect() }
   }, [activeColumn])
-  // The column currently accepting an external sidebar drag (session/workspace
-  // dragged in from the sidebar): a distinct highlight from the board's own
+  // The column currently accepting an external sidebar drag (session/workspace  // dragged in from the sidebar): a distinct highlight from the board's own
   // card-reorder affordances. The latch refs below make the highlight stable:
   // dragover cannot read the drag payload (protected data store), so the
   // external identity is latched once from the advertised types on entry and
@@ -541,8 +543,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       }}
     >
       <header className={css.boardHeader}>
-        {/* 命令栏（第一行）：返回对话 + 板名 …… 状态 + 自动巡航 + 新建任务。
-            唯一强调是「+ 新建任务」，其余安静 —— 用留白与层级分组，不堆边框。 */}
+        {/* 板头两行，语义分区：第一行 = 导航 + 状态 + 模式动作（整理/自动化），
+            第二行 = 新建 + 筛选 + 自动巡航。手机板盒约 316px 装不下「新建 +
+            搜索 + 整理 + 自动化」四件，硬塞的结果是搜索被挤成一个「筛」字——
+            所以一行只放三件，且标签一律保留（藏掉「自动巡航」文字只剩一个开关
+            比多一行更糟：用户不知道那颗开关是什么）。 */}
         <div className={css.boardRow}>
           <button
             type="button"
@@ -559,26 +564,74 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           {snapshot.stats.running + snapshot.stats.queued > 0 && (
             <span className={css.boardStatus}>
               <span className={css.boardStatusDot} aria-hidden="true" />
-              {t('board.statusRunning', { n: String(snapshot.stats.running) })}
-              {' · '}
-              {t('board.statusQueued', { n: String(snapshot.stats.queued) })}
+              <span className={css.boardStatusText}>
+                {t('board.statusRunning', { n: String(snapshot.stats.running) })}
+                {' · '}
+                {t('board.statusQueued', { n: String(snapshot.stats.queued) })}
+              </span>
             </span>
           )}
           {/* 引擎席位诚实指示（只在同步模式且真的"不在本机/服务端过旧"时出现）：
-              排队的工作在等谁、为什么不动——用户看得见，就不用猜、不用刷。 */}
+              排队的工作在等谁、为什么不动——用户看得见，就不用猜、不用刷。它是
+              一个真按钮：说明必须能点开（触屏没有 hover，写着「点此了解」却点不动
+              是假 affordance，比不写更糟）。 */}
           {snapshot.engine.synced && (snapshot.engine.hostProto < 2
             ? (
-              <span className={css.boardStatus} data-warn="true" title={t('board.engineStaleHint')}>
+              <button
+                type="button"
+                className={css.boardStatusButton}
+                data-warn="true"
+                onClick={() => { setEngineNote('stale') }}
+              >
                 <span className={css.boardStatusDot} aria-hidden="true" />
-                {t('board.engineStale')}
-              </span>
+                <span className={css.boardStatusText}>{t('board.engineStale')}</span>
+              </button>
             )
             : !snapshot.engine.held && engineWaitVisible ? (
-              <span className={css.boardStatus} title={t('board.engineViewerHint')}>
+              <button
+                type="button"
+                className={css.boardStatusButton}
+                onClick={() => { setEngineNote('viewer') }}
+              >
                 <span className={css.boardStatusDot} aria-hidden="true" />
-                {t('board.engineViewer')}
-              </span>
+                <span className={css.boardStatusText}>{t('board.engineViewer')}</span>
+              </button>
             ) : null)}
+          {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
+              never the brand fill, so the bar reads quiet until there is a
+              real selection to manage. */}
+          <Button
+            variant="ghost"
+            pressed={organizing}
+            onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
+          >
+            {t('board.organize')}
+          </Button>
+          <Button
+            variant="ghost"
+            title={t('board.automationTitle')}
+            onClick={() => { setShowAutomation(true) }}
+          >
+            {t('board.automation')}
+          </Button>
+        </div>
+
+        {/* 第二行：唯一的强调是「+ 新建任务」，其余安静。 */}
+        <div className={css.boardRow}>
+          <Button
+            variant="primary"
+            onClick={() => { setShowNew(true) }}
+          >
+            + {t('board.new')}
+          </Button>
+          <input
+            className={css.search}
+            type="search"
+            placeholder={t('board.search')}
+            value={filter}
+            onChange={event => { setFilter(event.target.value) }}
+            aria-label={t('board.search')}
+          />
           {/* 自动巡航：一颗安静的胶囊（开关 + 设置 ▾），点击展开定时设置弹层。 */}
           <div className={css.cruiseWrap} ref={cruiseWrapRef}>
             <div className={css.cruisePill}>
@@ -697,41 +750,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               </CruiseSettingsHost>
             )}
           </div>
-          <Button
-            variant="primary"
-            onClick={() => { setShowNew(true) }}
-          >
-            + {t('board.new')}
-          </Button>
-        </div>
-
-        {/* 工具行（第二行）：筛选搜索，弹性宽度，安静胶囊。 */}
-        <div className={css.boardRow}>
-          <input
-            className={css.search}
-            type="search"
-            placeholder={t('board.search')}
-            value={filter}
-            onChange={event => { setFilter(event.target.value) }}
-            aria-label={t('board.search')}
-          />
-          {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
-              never the brand fill, so the bar reads quiet until there is a
-              real selection to manage. */}
-          <Button
-            variant="ghost"
-            pressed={organizing}
-            onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
-          >
-            {t('board.organize')}
-          </Button>
-          <Button
-            variant="ghost"
-            title={t('board.automationTitle')}
-            onClick={() => { setShowAutomation(true) }}
-          >
-            {t('board.automation')}
-          </Button>
         </div>
 
         {/* 多选横栏（整理模式或已有选中时出现）：先点卡片（Ctrl/Cmd+点击或整理
@@ -788,6 +806,25 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             onCancel={() => { setConfirmDeleteSelected(false) }}
           />
         )}
+        {/* 引擎席位的说明必须可点（触屏没有 hover，写着「点此了解」却点不动是
+            假 affordance，比不写更糟）。 */}
+        {engineNote !== undefined && (
+          <Dialog
+            label={t(engineNote === 'stale' ? 'board.engineStale' : 'board.engineViewer')}
+            title={t(engineNote === 'stale' ? 'board.engineStale' : 'board.engineViewer')}
+            onClose={() => { setEngineNote(undefined) }}
+            portal
+          >
+            <p className={css.detailText}>
+              {t(engineNote === 'stale' ? 'board.engineStaleHint' : 'board.engineViewerHint')}
+            </p>
+            <footer className={css.modalFooter}>
+              <Button variant="primary" onClick={() => { setEngineNote(undefined) }}>
+                {t('board.engineNoteOk')}
+              </Button>
+            </footer>
+          </Dialog>
+        )}
 
       </header>
 
@@ -803,11 +840,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               role="tab"
               className={css.columnTab}
               aria-selected={activeColumn === column.status}
+              aria-label={t(STATUS_KEY[column.status])}
               data-active={activeColumn === column.status ? 'true' : undefined}
               onClick={() => { jumpToColumn(column.status) }}
             >
               <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
-              <span className={css.columnTabLabel}>{t(STATUS_KEY[column.status])}</span>
+              <span className={css.columnTabLabel}>{t(STATUS_SHORT_KEY[column.status])}</span>
               <span className={css.columnTabCount}>{String(count)}</span>
             </button>
           )

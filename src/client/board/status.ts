@@ -16,6 +16,22 @@ export const STATUS_KEY: Record<TaskStatus, TaskBoardKey> = {
 }
 
 /**
+ * Status → SHORT locale key, read by the compact column navigator. Five equal
+ * cells on a phone leave roughly one-and-a-half Chinese characters per label,
+ * so the full names all collapse to 「待…」「进…」「已…」 and the navigator
+ * stops naming anything at all. The short forms are ordinary locale data (never
+ * a hardcoded string, never a truncation rule), and the full name stays on the
+ * tab as its accessible name.
+ */
+export const STATUS_SHORT_KEY: Record<TaskStatus, TaskBoardKey> = {
+  backlog: 'board.statusShort.backlog',
+  todo: 'board.statusShort.todo',
+  running: 'board.statusShort.running',
+  review: 'board.statusShort.review',
+  done: 'board.statusShort.done',
+}
+
+/**
  * Paused-rule explanation keyed by the pausing status: ONE map read by both
  * automation surfaces (the detail editor and the overview row derive the same
  * readiness reason, so the reason copy can never drift).

@@ -103,44 +103,52 @@ describe('stacked review CSS contract (one scroll body below the two-column floo
     return scope.slice(at, end < 0 ? undefined : end)
   }
 
-  it('the whole panel becomes ONE scroll body (the .reviewBody scrolls)', () => {
+  it('the panel does not scroll as one page (regions keep their own scroll)', () => {
     const block = stackedBlock()
-    expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow-y: auto/)
+    expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow: hidden/)
+    expect(block).not.toMatch(/\.reviewBody\s*\{[^}]*overflow-y: auto/)
   })
 
-  it('the RAIL comes first and the panel keeps ONE scroll root', () => {
+  it('the RAIL comes first and the transcript is the shorter share', () => {
     const block = stackedBlock()
     // The thing a hand reaches for on a phone is the comment thread + send
     // box; a 30-message transcript rendered BEFORE them pushed the composer
     // ten-to-forty screens down (「要一路拉到底」). Order is the fix.
     expect(block).toMatch(/\.reviewRail\s*\{[^}]*order: 1/)
     expect(block).toMatch(/\.reviewMain\s*\{[^}]*order: 2/)
-    // ONE scroll root (the body). Capping the transcript with its own scroller
-    // was a regression: the board box declares `container-type: inline-size`,
-    // so a block-axis container unit silently resolves to the VIEWPORT (a
-    // banned unit) and created a second scroll root with nested touch capture.
-    expect(ruleIn(block, '.reviewMain')).toMatch(/overflow: visible/)
-    expect(ruleIn(block, '.reviewMain')).not.toMatch(/max-height/)
-    expect(ruleIn(block, '.reviewRail')).toMatch(/overflow: visible/)
     expect(block).not.toContain('1 1 50%')
-    // Inner transcript/rail regions do not double-scroll.
-    expect(block).toMatch(/\.reviewTranscriptScroll\s*\{[^}]*overflow: visible/)
-    expect(block).toMatch(/\.sessionRailScroll\s*\{[^}]*overflow: visible/)
   })
 
-  it('the PINNED GROUP (composer + its escape hatch) is the sticky unit', () => {
+  it('the stacked panel keeps TWO OWN scroll regions (the desktop grammar)', () => {
     const block = stackedBlock()
-    // Sticky/absolute controls clamp to their CONTAINING BLOCK, so a "jump to
-    // latest" pill living inside a scroll region could only ever land at the
-    // end of that region's content (mid-screen). The composer and its escape
-    // therefore form one pinned box, and only that box sticks.
-    expect(ruleIn(block, '.sessionRailPinned')).toMatch(/position: sticky/)
-    expect(ruleIn(block, '.sessionRailPinned .reviewComposer')).toMatch(/position: static/)
-    // The escape floats ABOVE the pinned box, so showing it never shifts the
-    // send button out from under the finger.
-    const pinned = ruleIn(cssSource, '.sessionRailPinned > .reviewJumpLatest')
-    expect(pinned).toMatch(/position: absolute/)
-    expect(pinned).toMatch(/bottom: calc\(100% \+ 6px\)/)
+    // The user asked for parity, not a second design: on a phone the comments
+    // scroll in their box and the conversation in its own, sharing the panel
+    // height vertically. The page itself never scrolls, so the send box is
+    // always on screen and 「跳到最新」 sits where it sits on a desktop.
+    expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow: hidden/)
+    expect(ruleIn(block, '.reviewRail')).toMatch(/overflow: hidden/)
+    expect(ruleIn(block, '.reviewMain')).toMatch(/overflow: hidden/)
+    expect(ruleIn(block, '.sessionRailScroll')).toMatch(/overflow-y: auto/)
+    expect(ruleIn(block, '.reviewTranscriptScroll')).toMatch(/overflow-y: auto/)
+    // Each region gets a definite share of the panel (no container/viewport
+    // unit: the board box declares `container-type: inline-size`, so a
+    // block-axis container unit silently resolves against the viewport).
+    expect(ruleIn(block, '.reviewRail')).toMatch(/flex: 1 1 \d+%/)
+    expect(ruleIn(block, '.reviewMain')).toMatch(/flex: 1 1 \d+%/)
+    // No container/viewport unit for the height share (the board box is
+    // inline-size only, so a block container unit would silently become one).
+    expect(block).not.toMatch(/(max-height|flex-basis|height):\s*[\d.]+(cqh|cqb|vh|dvh)/)
+    // Rail first: the thing a hand reaches for is the thread + send box.
+    expect(block).toMatch(/\.reviewRail\s*\{[^}]*order: 1/)
+    expect(block).toMatch(/\.reviewMain\s*\{[^}]*order: 2/)
+  })
+
+  it('the comment header gives the TITLE a line of its own', () => {
+    const block = stackedBlock()
+    // Sharing one line with 刷新 / 查看会话 / × left the name ~90px wide, which
+    // stacked a seven-character title into seven lines.
+    expect(ruleIn(block, '.reviewTitleWrap')).toMatch(/flex: 1 1 100%/)
+    expect(block).toMatch(/\.reviewHeader\s*\{[^}]*flex-wrap: wrap/)
   })
 
   it('the header wraps (context head drops to its own line, no title overlap)', () => {

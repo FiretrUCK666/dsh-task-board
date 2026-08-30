@@ -327,15 +327,56 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  /* Shrinkable + clipped: a long live-status text never pushes the action
-     buttons out of the header row (nowrap stays, the overflow hides). */
+  /* Shrinkable, but the CLIPPING belongs to the text slot: a container that
+     hides its own overflow also cuts the dot's glow (the dot is a child, and
+     its box-shadow reaches past the container's 12px line box) — which is
+     what made the warning dot read as "chopped in half". Same law as the
+     chip's `.chipBody`. */
   flex: 0 1 auto;
   min-width: 0;
-  overflow: hidden;
   font-size: 12px;
   line-height: 1;
   color: var(--dsh-tb-text-3);
+}
+
+.boardStatusText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The engine note is a REAL button (same quiet line as the status text): on a
+   touch device a `title=` explanation can never be reached, so anything that
+   says "tap to learn" must actually respond to a tap. */
+.boardStatusButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--dsh-tb-text-3);
+  cursor: pointer;
+}
+
+.boardStatusButton:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.boardStatusButton[data-warn='true'] {
+  color: var(--dsh-tb-attention);
+}
+
+.boardStatusButton[data-warn='true'] .boardStatusDot {
+  background: var(--dsh-tb-attention);
+  box-shadow: 0 0 4px var(--dsh-tb-attention);
 }
 
 /* The honest warning variant (stale host / work waiting on another device):
@@ -3283,6 +3324,10 @@ textarea.input {
 .detailFooter > .detailMeta {
   grid-area: meta;
   justify-self: end;
+  /* Same optical line as the button beside it: an 11px label in a row with a
+     28px button needs the row's own centering, not a baseline. */
+  align-self: center;
+  line-height: 28px;
 }
 
 .detailMeta {
@@ -3685,31 +3730,6 @@ textarea.input {
   min-height: 0;
   overflow-y: auto;
   padding: 0 14px 10px;
-}
-
-/* THE pinned bottom group: composer + its escape hatch. It is the one rail
-   box that is guaranteed to sit at the bottom of the visible area in BOTH
-   layouts (flex-none at the rail foot when the rail scrolls, sticky to the
-   panel body when the whole panel scrolls), so every control that must be
-   reachable "at the bottom" belongs here rather than inside a scroll region —
-   where the box model clamps sticky/absolute to the scroll CONTENT, not to
-   the viewport. */
-.sessionRailPinned {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: none;
-  min-width: 0;
-}
-
-/* The escape floats above the pinned group instead of inside it, so showing
-   or hiding it never shifts the composer (a control that moves the send box
-   is a control that makes the target move under the finger). */
-.sessionRailPinned > .reviewJumpLatest {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  right: 14px;
-  margin: 0;
 }
 
 /* The conversation region scrolls on its own — a long transcript never
@@ -4727,45 +4747,59 @@ textarea.input {
   }
 
   .reviewBody {
-    /* THE single scroll body of the stacked review. */
+    /* Stacked, but NOT one page scroll: the two regions keep their own
+       scroll (the desktop grammar), they just share the panel height
+       vertically instead of horizontally. A phone reader then never drags the
+       whole page — comments scroll in their box, the conversation in its own,
+       and the send box is always on screen. */
     flex-direction: column;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   .reviewMain {
-    /* LAST and flowing: the conversation tail is secondary on a phone, and
-       because the rail is ordered FIRST, a long transcript can no longer stand
-       between the user and their comments/send box — so it needs no cap and no
-       scroll of its own. Capping it with its own scroller was my own
-       regression: the board box declares `container-type: inline-size`, so a
-       block-axis container unit silently resolves against the VIEWPORT (one
-       this file bans), and the extra scroller brought nested touch capture and
-       clamped the sticky jump pill inside the thread. ONE scroll root: the
-       body. */
+    /* LAST and shorter: the conversation tail is secondary on a phone, and it
+       keeps its OWN scroller (the follow logic resolves whatever element
+       actually scrolls, so auto-follow and 「跳到最新」 work unchanged). No
+       container/viewport unit here — a share of the panel, which has a
+       definite height. */
     order: 2;
-    flex: none;
+    flex: 1 1 38%;
     min-height: 0;
-    overflow: visible;
+    overflow: hidden;
     padding: 14px;
     border-top: 1px solid var(--dsw-alias-separator-primary);
   }
 
   .reviewRail {
-    /* FIRST: state row, (collapsible) context/config, comments, composer —
-       everything needed to act fits the opening screen. */
+    /* FIRST and taller: state row, (collapsible) context/config, comments,
+       composer — everything needed to act fits the opening screen. */
     order: 1;
+    flex: 1 1 62%;
     width: 100%;
-    flex: none;
     min-height: 0;
-    overflow: visible;
+    overflow: hidden;
   }
 
   /* The header wraps: title + actions keep line one, the context head drops to
      its own full-width line (the "会話会話上下文" overlap — a 320px context head
      squeezed beside the title on a ~340px panel). */
+  /* The header splits into two lines: the TITLE gets a line to itself (it was
+     sharing one with 刷新 / 查看会话 / × and being squeezed to ~90px, which
+     turned a seven-character name into a seven-line stack), and the action
+     cluster takes the next line at its natural size. */
   .reviewHeader {
     flex-wrap: wrap;
     padding: 12px 14px;
+    row-gap: 8px;
+  }
+
+  .reviewTitleWrap {
+    flex: 1 1 100%;
+  }
+
+  .reviewActions {
+    flex: 1 1 auto;
+    justify-content: flex-end;
   }
 
   /* The title is the panel's identity — on a narrow board it WRAPS and reads
@@ -4801,32 +4835,17 @@ textarea.input {
     margin-top: 6px;
   }
 
-  /* Inner scroll regions stop scrolling in stacked mode (the body owns the
-     single scroll); their content flows to full height. */
+  /* The two regions keep their own scrollbars (the desktop grammar) — each is
+     its own scroll root, so the follow logic, the escape pill and the
+     auto-pin-to-latest all behave identically at every width. */
   .reviewTranscriptScroll {
-    overflow: visible;
+    overflow-y: auto;
     min-height: 0;
   }
 
   .sessionRailScroll {
-    overflow: visible;
+    overflow-y: auto;
     min-height: 0;
-  }
-
-  /* The PINNED GROUP is the sticky unit (composer + its escape hatch), not
-     the composer alone: the escape must ride the same guaranteed-bottom box.
-     Inside it the composer returns to plain flow. */
-  .sessionRailPinned {
-    position: sticky;
-    bottom: 0;
-    z-index: 4;
-    background: var(--dsh-tb-surface-float);
-    border-top: var(--dsh-tb-separator);
-  }
-
-  .sessionRailPinned .reviewComposer {
-    position: static;
-    background: none;
   }
 }
 
@@ -4994,22 +5013,17 @@ textarea.input {
     gap: 8px;
   }
 
-  /* The cruise pill keeps only its SWITCH TRACK (the "自动巡航" text label is
-     redundant with the pill's own tooltip + the switch position), so the
-     command row — back · title · status · cruise · 新建 — fits ONE line on a
-     phone instead of the 5-row pile. The label stays in the DOM (aria/title),
-     just visually dropped here. */
-  .cruisePill .switchLabel {
-    display: none;
-  }
+  /* The cruise pill keeps its WORDS. Hiding 「自动巡航」 to save 48px was the
+     wrong trade: a bare switch with no label makes the user guess what it
+     switches, and the header still ended up on three rows anyway. The header
+     instead splits by MEANING (nav+modes / create+filter+cruise), three items
+     a line, so nothing has to lose its name. */
 
-  /* The filter field shares the tool row with 整理/自动化 (it flexes, they
-     are fixed pills): a 100% basis pushed the actions onto their own THIRD
-     row, the "板头随便堆着" the compact design has to avoid. The row now
-     reads: [筛选任务… (flex) ] [整理] [自动化]. */
+  /* The filter field shares the tool row and carries a real floor: with three
+     buttons on the line it was being crushed to one glyph ("筛"). */
   .search {
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 1 1 10ch;
+    min-width: 10ch;
     max-width: none;
   }
 
@@ -5070,6 +5084,14 @@ textarea.input {
   .columnTab .statusDot,
   .columnTab .columnTabCount {
     flex: none;
+  }
+
+  /* The dot repeats identity the cell has no room for: the column header right
+     below already carries the same dot + name, and every cent here buys a
+     readable label. (Short names alone fit; this is the second layer of the
+     same "give way, never crush" rule.) */
+  .columnTab .statusDot {
+    display: none;
   }
 
   /* The label is the ellipsis slot (the dot and the count never shrink). */
@@ -5143,17 +5165,21 @@ textarea.input {
     row-gap: 6px;
   }
 
-  /* The title gets its OWN line: the workspace pill drops to a second line
-     inside the lead slot instead of sharing the first and squeezing the name
-     to five characters. Letting it wrap (rather than shrinking both) is the
-     "give way, never crush" rule — both texts end up fully readable. */
-  .sessionRowLead {
+  /* The title gets the WHOLE first line: the workspace pill moves to a line of
+     its own (flex-basis 100%) instead of sharing the name's line and forcing
+     both to ellipsize ("任务看板…" + "dsh-task-board" — neither readable).
+     The icon stays on the name's line. */
+  .sessionRowLeading {
     flex-wrap: wrap;
     row-gap: 4px;
   }
 
-  .sessionRowLead .sessionRowWorkspace {
-    flex: 0 0 auto;
+  .sessionRowLeading .sessionRowName {
+    flex: 1 1 0;
+  }
+
+  .sessionRowLeading .sessionRowWorkspace {
+    flex: 0 0 100%;
     max-width: 100%;
   }
 

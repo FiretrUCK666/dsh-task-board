@@ -690,28 +690,22 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
           blocking reason (done task / gone session) in the exceptional
           case — never a stack of texts, never inside the send row. */}
       <p className={`${css.detailHint} ${css.sessionRailHint}`}>{hint ?? t('detail.sessionDriveHint')}</p>
-      {/* The rail's ONE scroll region: comments + the pending interaction
-          card. The comment auto-follow pins the zone bottom, so a card that
-          just appeared is immediately visible. */}
+      {/* The rail's ONE scroll region: comments + the pending interaction card
+          + the "跳到最新" escape. This is the DESKTOP grammar, and the phone now
+          uses it unchanged: the stacked panel gives the rail its own share of
+          the height, so this region really is the scroll root and the sticky
+          escape rests at its bottom edge — the same place it holds on a wide
+          screen. (Routing the whole panel through one scroll body instead left
+          the escape clamped to the end of the comment content, floating in the
+          middle of the screen — "位置不对、和电脑端不一样".) */}
       <div className={css.sessionRailScroll} ref={threadScrollRef} onScroll={onThreadScroll}>
         <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
         {interaction !== undefined && sessionId !== undefined && (
           <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
         )}
-      </div>
-      {/* THE PINNED BOTTOM GROUP (composer + its "跳到最新" escape) — one
-          family, one anchor. A sticky/absolute control inside the SCROLL
-          REGION is clamped by its own containing block (the thread's content
-          box), so on a stacked panel — where the body, not the region,
-          scrolls — it could only ever land at the end of the comments, i.e.
-          floating in mid-screen. Anything that must sit at the bottom of the
-          VISIBLE area therefore lives in the pinned group (the same box the
-          composer occupies, which is the one element guaranteed to be at the
-          bottom in both layouts) and floats above it. */}
-      <div className={css.sessionRailPinned}>
         <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
-        {composer}
       </div>
+      {composer}
     </>
   )
 }

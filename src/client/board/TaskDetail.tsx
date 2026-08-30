@@ -844,12 +844,13 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               {t('detail.duplicate')}
             </Button>
           </span>
-          {/* Destructive actions are ROW-LEVEL danger (ghost + small), never a
-              filled red block competing with the primary action one row over —
-              the filled danger grammar belongs to the confirm dialog that
-              actually asks twice. */}
+          {/* Destructive actions are ROW-LEVEL danger (ghost, no fill), never a
+              filled red block competing with the primary action — the filled
+              danger grammar belongs to the confirm dialog that asks twice. The
+              HEIGHT stays the same as its siblings: a smaller button on the
+              same line as full-size ones is what read as "格格不入". */}
           <span className={css.detailFooterDanger}>
-            <Button variant="dangerGhost" size="sm" onClick={() => { setConfirmDelete(true) }}>
+            <Button variant="dangerGhost" onClick={() => { setConfirmDelete(true) }}>
               {t('detail.delete')}
             </Button>
           </span>

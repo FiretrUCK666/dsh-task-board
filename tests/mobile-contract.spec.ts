@@ -270,6 +270,57 @@ describe('form-row grammar (give way, never crush)', () => {
   })
 })
 
+describe('board header and navigator legibility', () => {
+  const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
+
+  it('the compact column navigator shows SHORT names and drops the redundant dot', () => {
+    // Five equal cells on a phone leave ~1.6 Chinese characters: full names all
+    // ellipsize to 「待…」「进…」 and the navigator stops naming anything.
+    // Short labels are locale data (one source), the dot gives way (the column
+    // header below already carries it), and the full name survives as the
+    // tab's accessible name.
+    expect(compact).toMatch(/\.columnTab \.statusDot\s*\{\s*\n?\s*display:\s*none/)
+    expect(source).toMatch(/\.columnTabLabel\s*\{[^}]*text-overflow:\s*ellipsis/)
+    const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    const board = readFileSync(tsxPath, 'utf8')
+    expect(board).toMatch(/t\(STATUS_SHORT_KEY\[column\.status\]\)/)
+    expect(board).toMatch(/aria-label=\{t\(STATUS_KEY\[column\.status\]\)\}/)
+    const statusPath = fileURLToPath(new URL('../src/client/board/status.ts', import.meta.url))
+    const statusSource = readFileSync(statusPath, 'utf8')
+    for (const key of ['backlog', 'todo', 'running', 'review', 'done']) {
+      expect(statusSource).toContain(`board.statusShort.${key}`)
+    }
+  })
+
+  it('the live-status row clips its TEXT, never the dot glow', () => {
+    // `overflow: hidden` on the container also cut the 4px box-shadow of the
+    // child dot (and its 12px line box was shorter than dot + glow), so the
+    // warning indicator read as chopped in half.
+    const status = ruleOf('boardStatus')
+    expect(status).not.toMatch(/overflow:\s*hidden/)
+    expect(ruleOf('boardStatusText')).toMatch(/overflow:\s*hidden/)
+    expect(ruleOf('boardStatusText')).toMatch(/text-overflow:\s*ellipsis/)
+  })
+
+  it('the compact board header is a two-line split (nav+modes / create+filter+cruise)', () => {
+    // Three buttons + a search field cannot share one 316px line: the field
+    // was being crushed to a single glyph ("筛"). And hiding the 「自动巡航」
+    // words to make room was worse — a bare switch makes the user guess.
+    const search = ruleIn(compact, '.search')
+    expect(search).toMatch(/flex:\s*1 1 \d+ch/)
+    expect(search).toMatch(/min-width:\s*\d+ch/)
+    expect(search).not.toMatch(/flex:\s*1 1 0/)
+    expect(search).not.toMatch(/flex:\s*1 1 100%/)
+    // The cruise label stays visible at every width.
+    expect(compact).not.toMatch(/\.cruisePill \.switchLabel\s*\{\s*\n?\s*display:\s*none/)
+    // The engine note is a real button (touch has no hover to reveal a `title`).
+    const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    const board = readFileSync(tsxPath, 'utf8')
+    expect(board).toContain('css.boardStatusButton')
+    expect(board).toMatch(/onClick=\{\(\) => \{ setEngineNote\('stale'\) \}\}/)
+  })
+})
+
 describe('alignment grammar (the OCD contract)', () => {
   const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
   const stacked = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*600px\)/.test(line))
@@ -285,10 +336,10 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
   })
 
-  it('the compact board header stays a two-line grid (search never steals a row)', () => {
-    // A 100% flex basis forced the action pills onto their own third line —
-    // the「板头随便堆着」look. Search flexes INSIDE the tool row instead.
-    expect(compact).toMatch(/\.search\s*\{\s*\n?\s*flex:\s*1 1 0/)
+  it('the compact board header keeps its action row readable (see legibility suite)', () => {
+    // The search floor, the cruise label and the tappable engine note are all
+    // pinned in `board header and navigator legibility` above; this stays as a
+    // pointer so the old "search steals a whole row" shape cannot return.
     expect(compact).not.toMatch(/\.search\s*\{\s*\n?\s*flex:\s*1 1 100%/)
   })
 
