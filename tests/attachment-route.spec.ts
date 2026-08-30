@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   admitImages, createAttachHandler, normalizeWireImage, type AttachImagesRequest, type AttachmentsFace,
 } from '../src/host/attachment-route.ts'
+import { admitDraftImages, type DraftImage } from '../src/client/board/attach.ts'
 
 function makeResponse(): {
   writeHead: ReturnType<typeof vi.fn>
@@ -46,7 +47,7 @@ describe('admitImages', () => {
   it('degrades when the service is absent', async () => {
     const outcome = await admitImages(undefined, { images: [{ mediaType: 'image/png', data: 'a' }] })
     expect(outcome.refs).toEqual([])
-    expect(outcome.error).toBe('attachments unavailable')
+    expect(outcome.error).toContain('图片服务')
   })
 })
 
@@ -81,6 +82,21 @@ describe('createAttachHandler', () => {
     expect(res.writeHead).toHaveBeenCalledWith(400, expect.anything())
   })
 
+  it('returns 413 (not 400) when the body exceeds the cap — the oversized picture is told apart from a broken request', async () => {
+    // A tiny injected cap so the test need not send 128 MB.
+    const handler = createAttachHandler(() => undefined, async () => ({ refs: [] }), 8)
+    const res = makeResponse()
+    const req = {
+      [Symbol.asyncIterator]: async function* () {
+        yield Buffer.from(JSON.stringify({ images: [{ mediaType: 'image/png', data: 'AAAAAAAA' }] }))
+      },
+    } as never
+    await handler(req, res as never)
+    expect(res.writeHead).toHaveBeenCalledWith(413, expect.anything())
+    const parsed = JSON.parse(res.end.mock.calls[0][0] as string)
+    expect(parsed.error.code).toBe('too_large')
+  })
+
   it('resolves the attachments service per request (mount after register still serves)', async () => {
     // The route is registered before the attachments service exists; the
     // handler must answer through the service present AT REQUEST time.
@@ -101,5 +117,40 @@ describe('createAttachHandler', () => {
     const parsed = JSON.parse(res.end.mock.calls[0][0] as string)
     expect(parsed.ok).toBe(true)
     expect(parsed.refs[0].attachmentId).toBe('att-x')
+  })
+})
+
+describe('admitDraftImages (browser admission surfaces the reason)', () => {
+  const draft: DraftImage = { id: 'i1', data: 'aGk=', mediaType: 'image/png', name: 'a.png' }
+
+  it('returns refs on success', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true, refs: [{ attachmentId: 'att-1', mediaType: 'image/png' }] }),
+    })))
+    const outcome = await admitDraftImages([draft])
+    expect(outcome.error).toBeUndefined()
+    expect(outcome.refs[0].attachmentId).toBe('att-1')
+    vi.unstubAllGlobals()
+  })
+
+  it('surfaces the bridge error message (never a silent empty list)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      statusText: '',
+      json: async () => ({ ok: false, error: { message: '图片过大，超出上传限制' } }),
+    })))
+    const outcome = await admitDraftImages([draft])
+    expect(outcome.refs).toEqual([])
+    expect(outcome.error).toBe('图片过大，超出上传限制')
+    vi.unstubAllGlobals()
+  })
+
+  it('surfaces a network failure with a reason', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
+    const outcome = await admitDraftImages([draft])
+    expect(outcome.refs).toEqual([])
+    expect(outcome.error).toBe('offline')
+    vi.unstubAllGlobals()
   })
 })

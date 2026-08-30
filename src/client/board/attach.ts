@@ -67,9 +67,19 @@ export function encodeImageFile(file: File): Promise<DraftImage | undefined> {
 /** The attachment-bridge endpoint the browser half POSTs to. */
 export const ATTACH_URL = '/api/dsh-task-board/attachments'
 
-/** Admit draft images to durable refs through the host bridge ([] on failure). */
-export async function admitDraftImages(images: readonly DraftImage[]): Promise<HostImageRefView[]> {
-  if (images.length === 0) return []
+/** Outcome of admitting drafts: durable refs, or a human reason for failure
+ *  (never a silent empty list — the composer must be able to tell the user
+ *  WHY their picture did not send). */
+export interface AdmitOutcome {
+  refs: HostImageRefView[]
+  error?: string
+}
+
+/** Admit draft images to durable refs through the host bridge. A failure
+ *  (bridge down, oversized, service error) carries a message; success never
+ *  does. The caller restores the draft AND shows the reason. */
+export async function admitDraftImages(images: readonly DraftImage[]): Promise<AdmitOutcome> {
+  if (images.length === 0) return { refs: [] }
   try {
     const response = await fetch(ATTACH_URL, {
       method: 'POST',
@@ -78,11 +88,15 @@ export async function admitDraftImages(images: readonly DraftImage[]): Promise<H
         images: images.map(image => ({ mediaType: image.mediaType, data: image.data, name: image.name })),
       }),
     })
-    if (!response.ok) return []
-    const body = await response.json() as { ok: boolean; refs?: HostImageRefView[] }
-    if (body.ok !== true || !Array.isArray(body.refs)) return []
-    return body.refs
-  } catch {
-    return []
+    const body = await response.json().catch(() => undefined) as
+      | { ok: true; refs?: HostImageRefView[] }
+      | { ok: false; error?: { message?: string } }
+      | undefined
+    if (body === undefined) return { refs: [], error: response.statusText || '上传失败' }
+    if (body.ok === true && Array.isArray(body.refs)) return { refs: body.refs }
+    const message = 'error' in body && typeof body.error?.message === 'string' ? body.error.message : '上传失败'
+    return { refs: [], error: message }
+  } catch (error) {
+    return { refs: [], error: error instanceof Error ? error.message : '网络错误' }
   }
 }

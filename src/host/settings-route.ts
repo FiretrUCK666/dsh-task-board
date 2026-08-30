@@ -65,20 +65,32 @@ const BAD_REQUEST: RouteFail = { ok: false, error: { code: 'internal', message: 
  * @returns the parsed body, or null.
  */
 export async function readJsonBody(req: IncomingMessage, maxBytes: number = 1 << 20): Promise<unknown> {
+  const outcome = await readJsonBodyDetailed(req, maxBytes)
+  return outcome.ok ? outcome.value : null
+}
+
+/** A JSON body read that DISTINGUISHES why it failed — oversized (the caller
+ *  should answer 413) vs malformed/empty (400). The board's attachment bridge
+ *  needs the difference so a too-large picture is never reported as a broken
+ *  request. */
+export async function readJsonBodyDetailed(
+  req: IncomingMessage,
+  maxBytes: number,
+): Promise<{ ok: true; value: unknown } | { ok: false; reason: 'oversize' | 'malformed' | 'empty' }> {
   const chunks: Buffer[] = []
   let total = 0
   for await (const chunk of req) {
     const buffer = chunk as Buffer
     chunks.push(buffer)
     total += buffer.length
-    if (total > maxBytes) return null
+    if (total > maxBytes) return { ok: false, reason: 'oversize' }
   }
   const text = Buffer.concat(chunks).toString('utf8')
-  if (text === '') return null
+  if (text === '') return { ok: false, reason: 'empty' }
   try {
-    return JSON.parse(text) as unknown
+    return { ok: true, value: JSON.parse(text) as unknown }
   } catch {
-    return null
+    return { ok: false, reason: 'malformed' }
   }
 }
 

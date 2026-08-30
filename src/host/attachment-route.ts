@@ -8,7 +8,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { readJsonBody } from './settings-route.ts'
+import { readJsonBodyDetailed } from './settings-route.ts'
 
 /** One accepted image wire entry from the browser. */
 export interface AttachmentWireImage {
@@ -92,17 +92,17 @@ export async function admitImages(
   attachments: AttachmentsFace | undefined,
   request: AttachImagesRequest | undefined,
 ): Promise<{ refs: AttachImageRefView[]; error?: string }> {
-  if (attachments === undefined) return { refs: [], error: 'attachments unavailable' }
+  if (attachments === undefined) return { refs: [], error: '图片服务未就绪，暂不能上传' }
   const raw = request?.images
   if (!Array.isArray(raw) || raw.length === 0) return { refs: [] }
   const inputs = raw.map(normalizeWireImage).filter((input): input is NonNullable<typeof input> => input !== undefined)
-  if (inputs.length === 0) return { refs: [], error: 'no valid images' }
+  if (inputs.length === 0) return { refs: [], error: '没有可用的图片（仅支持 png/jpeg/webp/gif）' }
   try {
     const saved = (await attachments.saveImages(inputs)) as unknown[]
     const refs = saved.map(refViewOf).filter((ref): ref is AttachImageRefView => ref !== undefined)
     return { refs }
   } catch (error) {
-    return { refs: [], error: error instanceof Error ? error.message : 'save failed' }
+    return { refs: [], error: error instanceof Error ? error.message : '图片保存失败' }
   }
 }
 
@@ -118,6 +118,14 @@ function writeResponse(res: ServerResponse, envelope: AttachEnvelope, status = 2
   res.end(JSON.stringify(envelope))
 }
 
+/** The request body cap for the bridge: the native attachment bridge admits
+ *  an aggregate of ~100 MiB of images (base64-expanded), so the route must
+ *  not reject a legitimate multi-image composer send before the durable
+ *  service gets to apply its OWN per-image limits (the "选图后点发送毫无反应"
+ *  bug was this route's inherited 1 MiB default swallowing the whole POST as
+ *  an unparseable body). */
+export const ATTACH_BODY_LIMIT_BYTES = 128 * 1024 * 1024
+
 /** HTTP handler: POST /api/dsh-task-board/attachments (body: admitted images).
  *  The attachments service is resolved PER REQUEST through `resolveAttachments`
  *  — never captured — so a service that mounts after the route (or remounts
@@ -125,9 +133,22 @@ function writeResponse(res: ServerResponse, envelope: AttachEnvelope, status = 2
 export function createAttachHandler(
   resolveAttachments: () => AttachmentsFace | undefined,
   admit: (attachments: AttachmentsFace | undefined, request: AttachImagesRequest | undefined) => Promise<{ refs: AttachImageRefView[]; error?: string }> = admitImages,
+  bodyLimitBytes: number = ATTACH_BODY_LIMIT_BYTES,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   return async (req, res) => {
-    const body = await readJsonBody(req)
+    // A distinct oversized signal (not the shared "invalid body"): the client
+    // can then tell the user WHY the send failed instead of silently dropping
+    // the draft.
+    const read = await readJsonBodyDetailed(req, bodyLimitBytes)
+    if (!read.ok) {
+      if (read.reason === 'oversize') {
+        writeResponse(res, { ok: false, error: { code: 'too_large', message: '图片过大，超出上传限制' } }, 413)
+      } else {
+        writeResponse(res, { ok: false, error: { code: 'internal', message: 'invalid body' } }, 400)
+      }
+      return
+    }
+    const body = read.value
     const request = isPlainObject(body) && Array.isArray(body.images)
       ? { images: body.images as unknown[] }
       : undefined

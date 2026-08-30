@@ -6,6 +6,7 @@
  * is a single shared component, so both composers behave identically.
  */
 import { useRef, useState } from 'react'
+import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { encodeImageFile, IMAGE_MEDIA_TYPES, type DraftImage } from './attach.ts'
 import { Icon } from './ui.tsx'
@@ -45,6 +46,8 @@ export function AttachmentStrip({ images, onChange }: {
       <button
         type="button"
         className={css.attachAdd}
+        aria-label={t('review.attachImage')}
+        title={t('review.attachImage')}
         onClick={() => { fileRef.current?.click() }}
       >
         <Icon name="link" />

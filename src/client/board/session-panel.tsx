@@ -664,9 +664,13 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   const [draft, setDraft] = useState<string>(() => (storeKey !== undefined ? draftStore.get(storeKey) ?? '' : ''))
   const [steer, setSteer] = useState(false)
   const [attachedImages, setAttachedImages] = useState<readonly DraftImage[]>([])
+  // A failed image admission is surfaced right under the composer (never a
+  // silent drop — the user must know why their picture did not send).
+  const [attachError, setAttachError] = useState<string | undefined>(undefined)
   const clear = (): void => {
     setDraft('')
     setAttachedImages([])
+    setAttachError(undefined)
     if (storeKey !== undefined) draftStore.clear(storeKey)
   }
   const submit = (): void => {
@@ -686,12 +690,13 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     if (attachedImages.length > 0) {
       // Images go out immediately through the steer path — a picture belongs
       // to the current exchange, not a queue.
-      void admitDraftImages(attachedImages).then(refs => {
-        if (refs.length === 0) {
+      void admitDraftImages(attachedImages).then(outcome => {
+        if (outcome.refs.length === 0) {
           restore()
+          setAttachError(outcome.error ?? '图片上传失败')
           return
         }
-        void onSteerImages(text, refs).then(ok => { if (!ok) restore() })
+        void onSteerImages(text, outcome.refs).then(ok => { if (!ok) { restore(); setAttachError('发送失败，请重试') } })
       })
       return
     }
@@ -718,8 +723,13 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
         controller={controller}
         sessionId={sessionId}
       />
+      {/* The attachment strip is its OWN row between the input and the action
+          row: chips wrap there and can never grow the action row, so the send
+          button stays visible + tappable no matter how many pictures are
+          picked (the "选图后发送按钮被挤没" bug). */}
+      <AttachmentStrip images={attachedImages} onChange={next => { setAttachedImages(next); setAttachError(undefined) }} />
+      {attachError !== undefined && <p className={css.formError}>{attachError}</p>}
       <div className={css.reviewComposerRow}>
-        <AttachmentStrip images={attachedImages} onChange={setAttachedImages} />
         <SendModeToggle steer={steer} onChange={setSteer} />
         <Button
           variant="primary"
