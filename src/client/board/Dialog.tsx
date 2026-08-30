@@ -6,15 +6,18 @@
  * review page keeps its custom header (badge + session jump) but uses the
  * same backdrop/panel rules via its own classes.
  *
- * NESTED dialogs (an overlay opened from inside another overlay — the run-
- * preset manager inside the new-task dialog, a confirm inside any dialog)
- * MUST pass `portal`: the inner panel then renders into the board box
- * (`[data-dsh-taskboard-view]`), the same layer every board dialog anchors
- * to. Without it the inner backdrop (position:absolute, inset:0) anchors to
- * the outer panel (`position:relative`) and is clipped by its
- * `overflow:hidden` — the "modal is size-limited and cut off" regression.
+ * PORTAL IS THE DEFAULT: every board dialog anchors to the board box
+ * (`[data-dsh-taskboard-view]`) — the one layer whose geometry is the honest
+ * board-box reference. A dialog left in its DOM position instead anchors its
+ * backdrop to the nearest positioned ancestor (a board header, an open panel)
+ * and is clipped by its `overflow:hidden` — the "new-task run-config is dead /
+ * size-limited / cut off" regression. A caller opts OUT only with an explicit
+ * `portal={false}` when it is already a top-level board overlay (none today);
+ * forgetting `portal` can no longer reintroduce the bug.
+ *
+ * ESC closes the dialog (the whole family gains it from this one place).
  */
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -27,7 +30,7 @@ export function boardBox(): Element {
 }
 
 /** One centered modal panel (see module doc). */
-export function Dialog({ title, label, onClose, className, children, portal = false }: {
+export function Dialog({ title, label, onClose, className, children, portal = true }: {
   /** Optional header title; when absent the header (and its close button) are omitted. */
   title?: string
   /** aria-label for the dialog role. */
@@ -35,11 +38,18 @@ export function Dialog({ title, label, onClose, className, children, portal = fa
   onClose: () => void
   /** Extra panel class (width overrides, e.g. the preset modal). */
   className?: string
-  /** Render into the board box instead of the current DOM position — REQUIRED
-   *  for a dialog nested inside another dialog (see module doc). */
+  /** Render into the board box (the default; see module doc). */
   portal?: boolean
   children: ReactNode
 }) {
+  // Escape closes — registered once here so every dialog in the family has it.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') { event.stopPropagation(); onClose() }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
   const panel = (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div

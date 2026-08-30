@@ -69,7 +69,7 @@ const TranscriptRow = memo(function TranscriptRow(props:
  * is pure rendering, so every live session surface looks and behaves
  * identically.
  */
-export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, before }: {
+export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, before, onRetry }: {
   lines: readonly TranscriptLine[] | undefined
   error: boolean
   atBottom: boolean
@@ -79,6 +79,9 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
   maxLines?: number
   /** Optional header content inside the region (the review page's outcome banner). */
   before?: ReactNode
+  /** Re-read the tail (the error state's retry — a timeout/unavailable read
+   *  must never be a dead end; the caller wires this to the hook's reload). */
+  onRetry?: () => void
 }) {
   const shown = lines === undefined ? undefined : maxLines === undefined ? lines : lines.slice(-maxLines)
   return (
@@ -86,7 +89,12 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
       {before}
       <SessionWaitingNotice waiting={waiting} />
       {error ? (
-        <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
+        <div className={css.transcriptErrorRow}>
+          <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
+          {onRetry !== undefined && (
+            <Button size="sm" onClick={onRetry}>{t('review.retry')}</Button>
+          )}
+        </div>
       ) : shown === undefined ? (
         <p className={css.detailText}>{t('review.loading')}</p>
       ) : shown.length === 0 ? (

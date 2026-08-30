@@ -52,7 +52,7 @@ export function RefineSection({ controller, task }: {
 
   // The live conversation: shared transcript-tail state (auto-follow +
   // 滑到最新), same mechanism as the review page.
-  const { lines, error, atBottom, scrollRef, onScroll, jumpToBottom } = useTranscriptTail(
+  const { lines, error, atBottom, scrollRef, onScroll, jumpToBottom, reload } = useTranscriptTail(
     controller,
     sessionId,
     rounds.length,
@@ -141,6 +141,7 @@ export function RefineSection({ controller, task }: {
                 atBottom={atBottom}
                 jumpToBottom={jumpToBottom}
                 maxLines={12}
+                onRetry={reload}
               />
             </div>
           </div>

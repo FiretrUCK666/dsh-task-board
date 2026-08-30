@@ -3641,6 +3641,16 @@ textarea.input {
   overflow-wrap: break-word;
 }
 
+/* The transcript read failed (timeout / unavailable): the honest message plus
+   a retry — never a dead end (the loader caches nothing on failure, so this
+   re-reads live). */
+.transcriptErrorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 /* User messages are right-aligned bubbles, native look (deepseek-50 fill,
    22px radius, 10/16 padding, capped width). */
 .reviewMessage[data-role='user'] .reviewMessageText {

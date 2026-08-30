@@ -154,6 +154,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               atBottom={transcriptAtBottom}
               jumpToBottom={jumpTranscript}
               waiting={waiting}
+              onRetry={reloadTranscript}
               before={
                 <div className={css.reviewOutcome}>
                   <Chip kind={execution.result === 'failed' ? 'error' : execution.result === 'succeeded' ? 'success' : 'muted'}>

@@ -124,6 +124,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               atBottom={atBottom}
               jumpToBottom={jumpToBottom}
               waiting={waiting}
+              onRetry={reload}
             />
           </div>
         )

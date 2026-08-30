@@ -22,6 +22,7 @@ import { LocalStorageTaskStore } from '../core/store.ts'
 import { LocalStoragePresetStore } from '../core/presets.ts'
 import { LocalStorageRunPresetStore } from '../core/run-presets.ts'
 import { BoardSyncClient, SyncedCruiseStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore } from '../core/host-sync.ts'
+import { createTranscriptReader } from './transcript-cache.ts'
 import { nativeTurnOf } from '../core/session-activity.ts'
 import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
@@ -491,29 +492,41 @@ export function apply(ctx: ClientContext): void {
     // the native projection baseline (context pressure / breakdown) that the
     // history tail page carries — the same values the native context meter
     // reads, so the board's usage strip is always the real occupancy figure.
-    const transcriptLoader = async (sessionId: string): Promise<TranscriptLoadResult | undefined> => {
-      try {
-        const response = await connection.api.sessions.history({
-          sessionId: sessionId as SessionId,
-          maxMessages: 30,
-        })
-        if (!response.result.ok) return undefined
-        const value = response.result.value
-        // The projection values ride the history tail page as a
-        // `Partial<SessionProjectionMap>` — a merge table whose keys exist
-        // only when the domain packages are type-imported. Read the two
-        // fields we consume structurally (never a dependency on a domain
-        // package), dropping any value that fails the shape guard.
-        const projections = value.projections?.values as Record<string, unknown> | undefined
-        return {
-          events: value.events.map(entry => entry.event),
-          ...pickProjections(projections),
-        }
-      } catch (error) {
-        console.error('[dsh-task-board] transcript read failed', error)
-        return undefined
+    // The raw read is wrapped in the shared freshness layer (single-flight +
+    // short TTL + timeout) so every surface that shows a session tail shares
+    // ONE fetch and a hung RPC can never spin forever (「加载很久/加载不出来」).
+    const readTranscriptRaw = async (sessionId: string): Promise<TranscriptLoadResult | undefined> => {
+      const response = await connection.api.sessions.history({
+        sessionId: sessionId as SessionId,
+        maxMessages: 30,
+      })
+      if (!response.result.ok) return undefined
+      const value = response.result.value
+      // The projection values ride the history tail page as a
+      // `Partial<SessionProjectionMap>` — a merge table whose keys exist
+      // only when the domain packages are type-imported. Read the two
+      // fields we consume structurally (never a dependency on a domain
+      // package), dropping any value that fails the shape guard.
+      const projections = value.projections?.values as Record<string, unknown> | undefined
+      return {
+        events: value.events.map(entry => entry.event),
+        ...pickProjections(projections),
       }
     }
+    const transcriptLoader = createTranscriptReader<TranscriptLoadResult>({
+      read: async sessionId => {
+        try {
+          return await readTranscriptRaw(sessionId)
+        } catch (error) {
+          console.error('[dsh-task-board] transcript read failed', error)
+          return undefined
+        }
+      },
+      defer: (fn, ms) => {
+        const timer = setTimeout(fn, ms)
+        return () => clearTimeout(timer)
+      },
+    })
 
     // Slash-menu sources (see listSlashCandidates): each fetches one native
     // catalog and degrades to [] on any failure, with the reason logged.
