@@ -3211,11 +3211,16 @@ textarea.input {
 .primaryButton:focus-visible,
 .ghostButton:focus-visible,
 .dangerButton:focus-visible,
+.dangerGhostButton:focus-visible,
 .iconButton:focus-visible,
 .slashMenuRow:focus-visible,
 .search:focus-visible,
 .input:focus-visible,
-.schedulePreset:focus-visible {
+.schedulePreset:focus-visible,
+.attachAdd:focus-visible,
+.reviewJumpLatest:focus-visible,
+.interactionOption:focus-visible,
+.tagSwatch:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
 }
@@ -4730,6 +4735,16 @@ textarea.input {
   /* Command rows breathe by wrapping instead of overflowing. */
   .boardRow {
     flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* The cruise pill keeps only its SWITCH TRACK (the "自动巡航" text label is
+     redundant with the pill's own tooltip + the switch position), so the
+     command row — back · title · status · cruise · 新建 — fits ONE line on a
+     phone instead of the 5-row pile. The label stays in the DOM (aria/title),
+     just visually dropped here. */
+  .cruisePill .switchLabel {
+    display: none;
   }
 
   /* The filter field drops to its own full-width line so the action pills
