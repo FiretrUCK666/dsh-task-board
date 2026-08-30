@@ -107,16 +107,25 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
       onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onActivate() } }}
     >
       <div className={css.sessionRowTop}>
-        {unviewed === true && <AttentionDot title={unviewedTitle ?? ''} />}
-        {leading}
+        {/* Named grid slots (lead / chip / act): the columns are STRUCTURAL, so
+            the chip and actions sit at the SAME x on every row regardless of
+            title length — the content-driven flex-wrap that made the cluster
+            "跳来跳去、没对齐" is gone. The attention dot rides inside the lead
+            slot (no reserved column, so titles never shift right). */}
+        <span className={css.sessionRowLead}>
+          {unviewed === true && <AttentionDot title={unviewedTitle ?? ''} />}
+          {leading}
+        </span>
         {chip !== undefined && (
-          <Chip
-            kind={chip.kind}
-            title={chip.title}
-            icon={chip.spinner === true ? <span className={css.spinner} aria-hidden="true" /> : undefined}
-          >
-            {chip.label}
-          </Chip>
+          <span className={css.sessionRowChip}>
+            <Chip
+              kind={chip.kind}
+              title={chip.title}
+              icon={chip.spinner === true ? <span className={css.spinner} aria-hidden="true" /> : undefined}
+            >
+              {chip.label}
+            </Chip>
+          </span>
         )}
         <span className={css.sessionRowActions}>
           {handle !== undefined ? (

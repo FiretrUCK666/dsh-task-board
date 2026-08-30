@@ -106,14 +106,18 @@ describe('compact columns + panel geometry', () => {
   })
 
   it('floating panels size to the board box at EVERY width, never vh/vw', () => {
-    // The geometry is now width-invariant base law (the compact block only
-    // tightens gutters): % of the board box + margin-auto centering, so a
-    // phone in DESktop mode gets the same honest geometry.
-    const modal = ruleOf('modal')
-    expect(modal).toMatch(/width:\s*min\(\d+px,\s*100%\)/)
-    expect(modal).toMatch(/max-height:\s*100%/)
-    expect(modal).toMatch(/margin:\s*auto/)
-    for (const panel of ['detail', 'review', 'presetModal', 'autoModal', 'modal']) {
+    // The overlay chrome (margin:auto + max-height + opaque float) is ONE
+    // shared rule for the whole family; each panel adds only its own width.
+    const chrome = blockFrom(line => line.trim() === '.modal, .detail, .review {')
+    expect(chrome).toMatch(/max-height:\s*100%/)
+    expect(chrome).toMatch(/margin:\s*auto/)
+    expect(chrome).toMatch(/overflow:\s*hidden/)
+    // Every panel owns a board-box width (min(Npx, 100%)) — never a viewport unit.
+    for (const panel of ['modal', 'detail', 'review']) {
+      expect(ruleOf(panel)).toMatch(/width:\s*min\(\d+px,\s*100%/)
+      expect(ruleOf(panel)).not.toMatch(/\d+(vh|vw)\b/)
+    }
+    for (const panel of ['presetModal', 'autoModal']) {
       expect(ruleOf(panel)).not.toMatch(/\d+(vh|vw)\b/)
     }
     // …and the compact block carries no viewport units either.
@@ -123,19 +127,30 @@ describe('compact columns + panel geometry', () => {
 
   it('the backdrop scrolls, pads by the keyboard inset, and contains itself', () => {
     const backdrop = ruleOf('modalBackdrop')
-    expect(backdrop).toMatch(/overflow:\s*auto/)
+    // The stage scrolls vertically (its bar is hidden — the grammar lives in
+    // the panel body), never horizontally.
+    expect(backdrop).toMatch(/overflow-y:\s*auto/)
+    expect(backdrop).toMatch(/overflow-x:\s*hidden/)
     // One CSS variable feeds every overlay: the soft keyboard shrinks the
     // stage instead of burying panel headers (「添加已有会话」标题被遮 root fix).
     expect(backdrop).toMatch(/var\(--dsh-tb-kb,\s*0px\)/)
     expect(backdrop).toMatch(/overscroll-behavior:\s*contain/)
   })
 
-  it('action rows and the session row wrap instead of overflowing', () => {
+  it('the session row is a NAMED GRID (structural slots, never content-driven wrap)', () => {
     expect(compact).toMatch(/\.modalFooter[\s\S]*?flex-wrap:\s*wrap/)
-    expect(compact).toMatch(/\.sessionRowTop[\s\S]*?flex-wrap:\s*wrap/)
-    // Session rows stack to a clean block: the action cluster takes its own
-    // right-aligned line on a narrow panel (the 「排版很乱」 fix).
-    expect(compact).toMatch(/\.sessionRowActions\s*\{[\s\S]*?flex-basis:\s*100%/)
+    // Base: one row, three structural columns (lead flexes, chip + act hug
+    // their tracks) — so the chip/actions land at the SAME x on every row no
+    // matter the title length (the 「没对齐」 class, closed structurally).
+    const row = ruleOf('sessionRowTop')
+    expect(row).toMatch(/display:\s*grid/)
+    expect(row).toMatch(/grid-template-areas:\s*"lead chip act"/)
+    expect(ruleOf('sessionRowLead')).toMatch(/grid-area:\s*lead/)
+    expect(ruleOf('sessionRowChip')).toMatch(/grid-area:\s*chip/)
+    expect(ruleOf('sessionRowActions')).toMatch(/grid-area:\s*act/)
+    // Compact: the grid re-templates to two rows (chip under lead, act spans
+    // the right) — still structural, never a content-driven wrap.
+    expect(compact).toMatch(/\.sessionRowTop\s*\{[\s\S]*?grid-template-areas:[\s\S]*?"lead act"[\s\S]*?"chip act"/)
   })
 
   it('a column navigator strip exists, hidden by default and revealed compact', () => {

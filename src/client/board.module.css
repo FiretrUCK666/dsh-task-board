@@ -1446,13 +1446,37 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   inset: 0;
   z-index: 40;
   display: flex;
-  overflow: auto;
+  /* The STAGE scrolls (a tall panel must reach its top/bottom) but never
+     SHOWS a bar — the dimmed area is not a surface; the one visible bar of a
+     dialog belongs to its own scroll body (.modalScroll), flush to the panel
+     edge (the single scrollbar grammar). */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
   padding: 24px 24px calc(24px + var(--dsh-tb-kb, 0px));
   overscroll-behavior: contain;
   /* A touch stronger than the native mask-1 so the column lines behind the
      glassy board no longer glimmer through the dialog edges. */
   background: var(--dsh-tb-mask);
   animation: dshTbFadeIn 140ms ease;
+}
+.modalBackdrop::-webkit-scrollbar {
+  display: none;
+}
+
+/* THE single scrollbar grammar for every panel scroll body: a THIN bar that
+   sits flush against the surface edge (each of these owns its region's full
+   height, so the bar never floats in a gutter). One list, one rule — adding a
+   scroll region means adding its selector here, never re-inventing a width. */
+.modalScroll,
+.detailBody,
+.sessionRailScroll,
+.reviewTranscriptScroll,
+.interactionCardBody,
+.slashMenu,
+.sessionContextPanel,
+.refineTranscriptArea {
+  scrollbar-width: thin;
 }
 
 @keyframes dshTbFadeIn {
@@ -1470,30 +1494,34 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   to { opacity: 1; transform: translateY(0); }
 }
 
-.modal {
+/* THE overlay-panel chrome — one declaration for the whole family (.modal
+   forms, .detail edit panel, .review page): the same board-relative
+   margin:auto centering, opaque float surface, border, radius-xl, shadow-3 and
+   entrance animation. A panel adds ONLY its own width / max-height; the chrome
+   is never re-typed (the family once drifted — .detail had no entrance). */
+.modal, .detail, .review {
   display: flex;
   flex-direction: column;
   position: relative;
-  /* Board-box relative at EVERY width (% of the backdrop content box, never
-     vw/vh — the mobile dynamic toolbar and the sidebar rail make viewport
-     units lie). margin:auto centers inside the scrollable backdrop. */
   margin: auto;
-  width: min(520px, 100%);
   max-height: 100%;
-  /* The panel never scrolls as a whole: the header and the footer stay
-     pinned, only the middle body region (modalScroll) scrolls — a long form
-     never drags its actions out of reach (the review rail's "composer
-     pinned" discipline; this is the EDIT panel's .detail grammar, so the
-     native scrollbar renders in the body region between the pinned edges,
-     exactly where the edit panel's does). NO panel padding and NO panel gap:
-     header / body / footer own their insets. */
   overflow: hidden;
   background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-xl);
   box-shadow: var(--dsh-tb-shadow-3);
   color: var(--dsh-tb-text-1);
-  animation: dshTbDialogIn 140ms ease;
+  animation: dshTbDialogIn var(--dsh-tb-motion);
+}
+
+.modal {
+  /* Board-box relative at EVERY width (% of the backdrop content box, never
+     vw/vh — the mobile dynamic toolbar and the sidebar rail make viewport
+     units lie). margin:auto centers inside the scrollable backdrop. The panel
+     never scrolls as a whole: the header and the footer stay pinned, only the
+     middle body region (modalScroll) scrolls. NO panel padding and NO panel
+     gap: header / body / footer own their insets. */
+  width: min(520px, 100%);
 }
 
 /* The dialog's ONE scroll region: the same insets as the edit panel's
@@ -1740,21 +1768,9 @@ textarea.input {
 /* --- detail ------------------------------------------------------------------- */
 
 .detail {
-  display: flex;
-  flex-direction: column;
-  /* Board-relative (see .modal): % of the backdrop content box, never vw/vh. */
-  position: relative;
-  margin: auto;
+  /* Board-relative (see the shared overlay chrome): % of the backdrop content
+     box, never vw/vh. */
   width: min(640px, 100%);
-  max-height: 100%;
-  /* An inner floating surface: opaque for readability, exactly like the
-     shell's own dialogs under a glass skin. */
-  background: var(--dsh-tb-surface-float);
-  border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-xl);
-  box-shadow: var(--dsh-tb-shadow-3);
-  color: var(--dsh-tb-text-1);
-  overflow: hidden;
 }
 
 .detailHeader {
@@ -1785,6 +1801,10 @@ textarea.input {
      内容/运行配置/自动化/会话/状态 each read as a distinct block. */
   gap: 18px;
   flex: 1;
+  /* Shrink below content so the pinned footer stays reachable (the .modalScroll
+     contract; without it a long detail body pushes the actions out of the
+     overflow:hidden panel — the "底部动作被截" class). */
+  min-height: 0;
 }
 
 .detailSection {
@@ -2160,7 +2180,10 @@ textarea.input {
 }
 
 /* Framed read-only content block (description); the prompt keeps the same
-   frame with monospace type. */
+   frame with monospace type. NO own max-height/overflow: the detail page owns
+   exactly ONE scroll body (.detailBody), so a long description/prompt flows to
+   full height and the page scrolls once (a nested bar here was one of the
+   "三条滚动条不对齐" offenders). */
 .contentBlock {
   margin: 0;
   padding: 10px 12px;
@@ -2172,8 +2195,6 @@ textarea.input {
   border-radius: var(--dsh-tb-radius-md);
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  max-height: 240px;
-  overflow-y: auto;
 }
 
 /* The prompt block with its inline copy action: the copy button floats in
@@ -2197,8 +2218,6 @@ textarea.input {
   border-radius: var(--dsh-tb-radius-md);
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  max-height: 240px;
-  overflow-y: auto;
 }
 
 .promptCopy {
@@ -2460,9 +2479,32 @@ textarea.input {
 }
 
 .sessionRowTop {
-  display: flex;
+  /* THE session-row top line — a named grid, not a wrapping flex. The columns
+     are structural (lead flexes, chip + act hug their own tracks), so the
+     status chip and the action cluster land at the SAME place on every row no
+     matter how long the title is (the content-driven flex-wrap that made rows
+     "跳来跳去、没对齐" is structurally impossible now). */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "lead chip act";
   align-items: center;
   gap: 10px;
+  min-width: 0;
+}
+
+/* The identity slot (attention dot + leading) — one flex run inside its grid
+   cell; the dot rides inline so rows without one never shift right. */
+.sessionRowLead {
+  grid-area: lead;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sessionRowChip {
+  grid-area: chip;
+  display: inline-flex;
   min-width: 0;
 }
 
@@ -2542,10 +2584,10 @@ textarea.input {
    one place the row's actions sit; the shared ghost button inside matches
    every other session surface. */
 .sessionRowActions {
-  flex: none;
-  margin-left: auto;
+  grid-area: act;
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -3361,21 +3403,11 @@ textarea.input {
 /* --- review page (execution comments) ------------------------------------------ */
 
 .review {
-  display: flex;
-  flex-direction: column;
-  /* Board-relative at every width (see .modal): % of the backdrop content
-     box, never vw/vh — this panel is the portaled SessionFrame, and on a
-     phone the viewport units buried its header under the keyboard. */
-  position: relative;
-  margin: auto;
+  /* Board-relative at every width (see the shared overlay chrome): this panel
+     is the portaled SessionFrame, and on a phone the viewport units buried its
+     header under the keyboard. */
   width: min(880px, 100%);
   max-height: min(100%, 860px);
-  background: var(--dsh-tb-surface-float);
-  border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-xl);
-  box-shadow: var(--dsh-tb-shadow-3);
-  overflow: hidden;
-  animation: dshTbDialogIn var(--dsh-tb-motion);
 }
 
 .reviewHeader {
@@ -3519,7 +3551,6 @@ textarea.input {
   min-height: 0;
   overflow-y: auto;
   padding: 0 14px 10px;
-  scrollbar-width: thin;
 }
 
 /* The conversation region scrolls on its own — a long transcript never
@@ -3541,7 +3572,6 @@ textarea.input {
   flex: 1;
   overflow-y: auto;
   padding-right: 14px;
-  scrollbar-width: thin;
 }
 
 /* The run's outcome banner: what the agent came back with. */
@@ -4764,16 +4794,20 @@ textarea.input {
     flex-wrap: wrap;
   }
 
-  /* Session rows go to a clean stacked block: identity + chip on the first
-     line, the action cluster on its own right-aligned line — the desktop row
-     squeezed all three into one unreadable wrap (the 「排版很乱」 report). */
+  /* Session rows: the named grid drops to a two-row template — identity on the
+     first line, the status chip under it, the action cluster on its own
+     right-aligned column spanning both. Still structural (never content-
+     driven), so the phone row reads as a clean block (the 「排版很乱」 fix). */
   .sessionRowTop {
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "lead act"
+      "chip act";
+    row-gap: 6px;
   }
 
   .sessionRowActions {
-    flex-basis: 100%;
-    justify-content: flex-end;
+    align-self: center;
   }
 
   /* Preset rows go from a four-column grid to a stacked block (name over
