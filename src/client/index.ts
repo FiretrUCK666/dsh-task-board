@@ -16,6 +16,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 // LocaleNamespaceMap merge table.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { BoardController, type HostImageRef, type PermissionOptionShape, type ReferenceRemoteFace, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
+import { UNTITLED_SESSION_KEY } from '../core/session-list.ts'
 import { ExecutionService } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
@@ -842,7 +843,7 @@ export function apply(ctx: ClientContext): void {
     // The localized 未命名 placeholder the session rows show for a session
     // the host has not titled yet (the host names it automatically from the
     // first real message).
-    controller.untitledSessionLabel = t('detail.sessionUntitled')
+    controller.untitledSessionLabel = t(UNTITLED_SESSION_KEY)
 
     // Sync wiring (only meaningful in synced mode): every remote document lands
     // in the controller + refreshes the offline mirror; the seat and relayed
