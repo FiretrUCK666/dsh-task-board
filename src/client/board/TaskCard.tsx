@@ -13,7 +13,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
 import { Chip } from './Chip.tsx'
-import { waitingKeyOf } from './session-chip.ts'
+import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { ColorSwatches, Icon } from './ui.tsx'
 import { formatDateTime, formatTime } from './format-time.ts'
 
@@ -283,7 +283,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
               </Chip>
             ) : latest !== undefined && (
               <Chip
-                kind={latest.result === 'failed' ? 'error' : latest.result === 'succeeded' ? 'success' : 'muted'}
+                kind={resultChipKind(latest.result)}
                 fill={false}
               >
                 {settledChipLabel(runs.length)}

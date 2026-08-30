@@ -28,6 +28,17 @@ export function waitingKeyOf(kind: PendingInteractionKind): TaskBoardKey {
 }
 
 /**
+ * The result → chip COLOR mapping — the one place that decides an execution
+ * result's tint (failed red, succeeded green, cancelled/unknown muted). A
+ * surface that carries its OWN settled label (the card's "N 次执行", the
+ * refine summary's result word) still takes its color from here, so the tint
+ * can never drift from the state chip's.
+ */
+export function resultChipKind(result: 'succeeded' | 'failed' | 'cancelled' | undefined): ChipKind {
+  return result === 'failed' ? 'error' : result === 'succeeded' ? 'success' : 'muted'
+}
+
+/**
  * The one chip derivation: waiting/running are live (warn + spinner, the
  * waiting label names the interaction kind); succeeded/failed/cancelled are
  * settled and take the caller's label pair (`settled` for succeeded — the

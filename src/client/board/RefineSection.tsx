@@ -19,6 +19,7 @@ import { refining, refineRoundsOf, type TaskRecord } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
+import { resultChipKind } from './session-chip.ts'
 import { refineDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { useSessionContext, useWireQuestion } from './use-interaction.ts'
@@ -110,7 +111,7 @@ export function RefineSection({ controller, task }: {
                    neutral state — never a guessed "成功". */
                 <Chip kind="muted">{t('detail.refine.noResult')}</Chip>
               ) : (
-                <Chip kind={lastRound.result === 'failed' ? 'error' : 'success'}>
+                <Chip kind={resultChipKind(lastRound.result)}>
                   {lastRound.result === 'failed' ? t('detail.result.failed') : t('detail.result.succeeded')}
                 </Chip>
               )}

@@ -830,7 +830,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                   void controller.rerunTask(current.id)
                 }}
               >
-                {current.executions.length === 0 ? t('detail.run') : t('detail.rerun')}
+                {plainRunsOf(current).length === 0 ? t('detail.run') : t('detail.rerun')}
               </Button>
             )}
             <Button title={t('detail.duplicateTitle')} onClick={duplicateTask}>
