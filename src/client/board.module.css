@@ -3047,9 +3047,13 @@ textarea.input {
 }
 
 /* Session rules block. */
+/* Two-level rhythm (the "太密" fix): 16px BETWEEN groups, 8px INSIDE one.
+   The whole automation tree used a flat 6-8px everywhere while the page's own
+   top-level rhythm is 18px, so every field read as the same weight and the
+   editor looked like one endless list. */
 .autoRules {
   padding: 0;
-  gap: 6px;
+  gap: 16px;
 }
 
 .autoRuleList {
@@ -3146,11 +3150,18 @@ textarea.input {
   align-self: flex-start;
 }
 
+/* The rule editor is a SURFACE, not a bare field column: without a container
+   the editing form merged into the read-only rule rows above it and the whole
+   automation block read as one flat list (「太密、太多」). Same sunken box
+   grammar as every other inner surface. */
 .autoForm {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 2px;
+  gap: 12px;
+  padding: 12px;
+  background: var(--dsh-tb-surface-sunken);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
 }
 
 .autoField {
