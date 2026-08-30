@@ -590,8 +590,20 @@ export class BoardController {
    *  does not apply. */
   syncActive = false
   /** The host's engine-lease protocol version (the wiring mirrors it from the
-   *  sync client after the first lease). 1 = pre-visibility host. */
+   *  sync client on every seat announcement). 1 = pre-visibility host. The
+   *  default is CURRENT on purpose: a replica that has not read a lease yet
+   *  makes no claim, so a boot race can never flash a false stale banner. */
   hostProto = 2
+
+  /** Mirror the host's lease protocol into the snapshot (change → notify).
+   *  A host restart moves the protocol WITHOUT moving the seat — the wiring
+   *  calls this from the seat listener, so the stale-host banner clears live
+   *  instead of surviving until the next manual refresh. */
+  setHostProto(proto: number): void {
+    if (this.hostProto === proto) return
+    this.hostProto = proto
+    this.notify()
+  }
 
   /** Set (or clear, with undefined) a task's accent color. */
   setTaskColor(taskId: string, color: string | undefined): void {

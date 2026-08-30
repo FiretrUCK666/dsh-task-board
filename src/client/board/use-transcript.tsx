@@ -180,6 +180,10 @@ export function useTranscriptTail(
   const [atBottom, setAtBottom] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const watermarkRef = useRef<number | undefined>(undefined)
+  // Alive guard: a late `.then` must never repaint a dead surface (the panel
+  // can close while a read is still in flight).
+  const aliveRef = useRef(true)
+  useEffect(() => () => { aliveRef.current = false }, [])
   // The latest `onResult` identity, kept in a ref so `reload`/the poll stay
   // stable even when a consumer passes an inline callback (an unstable
   // callback must never re-trigger the load effect every render — that
@@ -189,35 +193,44 @@ export function useTranscriptTail(
   // One follow mechanism (resolved scroller + capture listener + pinning).
   const { measure, jumpToBottom } = useFollowScroll(scrollRef, atBottom, setAtBottom, lines)
 
-  /** Full reload: re-read the tail and reset the watermark. */
+  /** Fold + publish a successful tail read (the reload AND the poll share
+   *  it — one settlement grammar). */
+  const settle = useCallback((result: { events: readonly TranscriptEventShape[]; projections?: TranscriptProjectionsShape }): void => {
+    setError(false)
+    const next = watermarkOf(result)
+    if (watermarkRef.current === next) return
+    watermarkRef.current = next
+    setLines(foldTranscript(result.events))
+    onResultRef.current?.(result)
+  }, [])
+
+  /** Full reload: re-read the tail. A transient failure is not a dead end —
+   *  the light poll keeps re-reading every 3s and ANY success clears the
+   *  error (self-healing without a second retry mechanism). */
   const reload = useCallback((): void => {
     if (sessionId === undefined) return
     void controller.loadTranscript(sessionId).then(result => {
+      if (!aliveRef.current) return
       if (result === undefined) {
         setError(true)
         return
       }
-      setError(false)
-      watermarkRef.current = watermarkOf(result)
-      setLines(foldTranscript(result.events))
-      onResultRef.current?.(result)
+      settle(result)
     })
-  }, [controller, sessionId])
+  }, [controller, sessionId, settle])
 
   // Load on open + whenever the reload key changes.
   useEffect(() => { reload() }, [reload, reloadKey])
 
   // Light poll at 3s while mounted; paused while the tab is hidden (the
-  // native rhythm), with an immediate catch-up on return.
+  // native rhythm), with an immediate catch-up on return. ANY success also
+  // clears a previous error — this is the tail's self-healing retry.
   useEffect(() => {
     if (sessionId === undefined) return
     const poll = (): void => {
       void controller.loadTranscript(sessionId).then(result => {
-        if (result === undefined || watermarkRef.current === watermarkOf(result)) return
-        watermarkRef.current = watermarkOf(result)
-        setError(false)
-        setLines(foldTranscript(result.events))
-        onResultRef.current?.(result)
+        if (!aliveRef.current || result === undefined) return
+        settle(result)
       })
     }
     const timer = setInterval(poll, 3_000)
@@ -227,7 +240,7 @@ export function useTranscriptTail(
       clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [controller, sessionId])
+  }, [controller, sessionId, settle])
 
   // Scroll measurement, bottom-following and the jump all live in
   // `useFollowScroll` above — one mechanism for every live list.

@@ -30,7 +30,7 @@ import { AttachmentStrip } from './AttachmentStrip.tsx'
 import { type DraftImage } from './attach.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
-import { Button, Icon, Notice, SendModeToggle } from './ui.tsx'
+import { Button, Disclosure, Notice, SendModeToggle } from './ui.tsx'
 import { workspaceLabelOf } from '../../core/linked-sessions.ts'
 import { waitingKeyOf } from './session-chip.ts'
 
@@ -328,7 +328,10 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
 }) {
   const sessionConfig = controller.sessionConfig()
   const [sessionModels, setSessionModels] = useState<{ current: SessionModelChoice; groups: readonly SessionModelGroup[] } | undefined>(undefined)
-  const [configUnavailable, setConfigUnavailable] = useState(false)
+  // THREE states, never two: "still loading" and "the read failed" are
+  // different facts, and showing the first as the red error line is how a
+  // slow phone link read as a broken session (「会话经常加载不了」).
+  const [configFailed, setConfigFailed] = useState(false)
   const [configBusy, setConfigBusy] = useState(false)
   const [configMessage, setConfigMessage] = useState<string | undefined>(undefined)
   const [permissionRows, setPermissionRows] = useState<readonly { id: string; name?: string; description?: string }[] | undefined>(undefined)
@@ -373,16 +376,39 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
     if (sessionConfig === undefined) return
     void sessionConfig.readModels(sessionId).then(result => {
       if (!aliveRef.current) return
-      if (result === undefined) setConfigUnavailable(true)
+      if (result === undefined) setConfigFailed(true)
       else {
-        setConfigUnavailable(false)
+        setConfigFailed(false)
         setSessionModels(result)
       }
     })
   }, [sessionConfig, sessionId])
 
-  // Load on open + whenever the caller forces a re-read.
-  useEffect(() => { reloadPanel() }, [reloadPanel, reloadKey])
+  // Load on open + whenever the caller forces a re-read (+ the retry nonce).
+  const [retryNonce, setRetryNonce] = useState(0)
+  useEffect(() => { reloadPanel() }, [reloadPanel, reloadKey, retryNonce])
+
+  // SELF-HEALING failure: a transient read failure (flaky phone link, the
+  // host mid-restart) retries once after a beat on its own, and again when
+  // the tab returns to the foreground — a failure is never a dead end the
+  // user must discover and punch through manually. One retry in flight.
+  const pendingRetryRef = useRef(false)
+  const failedRef = useRef(false)
+  failedRef.current = configFailed
+  const scheduleRetry = useCallback((): void => {
+    if (pendingRetryRef.current) return
+    pendingRetryRef.current = true
+    setTimeout(() => {
+      pendingRetryRef.current = false
+      if (aliveRef.current) setRetryNonce(value => value + 1)
+    }, 2_000)
+  }, [])
+  useEffect(() => {
+    const onVisibility = (): void => { if (!document.hidden && failedRef.current) scheduleRetry() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { document.removeEventListener('visibilitychange', onVisibility) }
+  }, [scheduleRetry])
+  useEffect(() => { if (configFailed) scheduleRetry() }, [configFailed, scheduleRetry])
 
   /** Apply a new model selection to the session. */
   const applyModel = (key: string): void => {
@@ -460,8 +486,17 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
   return (
     <section className={css.reviewConfig}>
       <span className={css.reviewConfigTitle}>{t('review.config')}</span>
-      {configUnavailable || sessionModels === undefined ? (
-        <span className={css.reviewConfigUnavailable}>{t('review.configUnavailable')}</span>
+      {sessionModels === undefined ? (
+        configFailed ? (
+          // Failed, and the automatic retry did not land: say so honestly and
+          // hand the user the retry — never a red line on a still-loading read.
+          <span className={css.reviewConfigFailed}>
+            <span className={css.reviewConfigUnavailable}>{t('review.configUnavailable')}</span>
+            <Button size="sm" onClick={scheduleRetry}>{t('review.retry')}</Button>
+          </span>
+        ) : (
+          <span className={css.reviewConfigLoading}>{t('review.configLoading')}</span>
+        )
       ) : (
         <div className={css.reviewConfigGrid}>
           {/* The session's real composition first, matching the task detail's
@@ -547,12 +582,13 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
 }
 
 /**
- * The shared rail head: context meter + live config editor + session facts,
- * composed in the order every session panel shows them. Callers wrap it in
- * their rail layout (the fixed `.sessionRailHead` block) and pass what they
- * read from their transcript hook (projections via onResult, folded lines).
- * The permission switcher's projection mapping is derived HERE — one source
- * for every panel (a caller-level mapping is how the linked panel lost it).
+ * The rail head BODY: context meter + live config editor + session facts,
+ * composed in the order every session panel shows them. SessionRail renders
+ * it inside the shared Disclosure (the fold + chevron grammar) within the
+ * rail's single scroll body; callers pass what they read from their
+ * transcript hook (projections via onResult, folded lines). The permission
+ * switcher's projection mapping is derived HERE — one source for every panel
+ * (a caller-level mapping is how the linked panel lost it).
  */
 export function SessionRailHead({ sessionId, controller, projections, lines, onChanged, reloadKey }: {
   sessionId: string | undefined
@@ -593,13 +629,24 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
 
 /**
  * THE session rail — the one composition every session panel renders (the
- * execution review page and the linked-session panel share it verbatim):
- * session context block → live state row (chip + updated time; absent hides
- * the row) → the fixed rail head (context meter + live config + session
- * facts, own padding/separation) → fixed thread header → one quiet hint line
- * → the comment thread in its OWN scroll region (auto-follow + 滑到最新) →
- * the pending interaction card → the caller's pinned composer. Callers pass
- * data and their send semantics; the grammar, the follow mechanics and the
+ * execution review page and the linked-session panel share it verbatim), and
+ * THE height contract that ends the squeeze-and-clip family of bugs:
+ *
+ *   rail = [ ONE scroll body: live state row → collapsible head (context
+ *   meter + live config) → thread header → hint line → comment thread →
+ *   pending interaction card → 滑到最新 ] + [ the caller's pinned composer,
+ *   OUTSIDE the scroll body ].
+ *
+ * The composer is the ONLY pinned element, so it stays visible and tappable
+ * at ANY rail height; everything else lives in the ONE scroll region, so no
+ * expansion (head, context, a long thread) can push, clip or shrink another
+ * part of the rail — expanding adds scrollable height, nothing else. This is
+ * the SAME structure on desktop and on a phone: container queries change
+ * geometry (width, stacking, fold defaults), never the scroll model. The
+ * follow mechanics need no mode branch — `useFollowScroll` resolves whatever
+ * element actually scrolls.
+ *
+ * Callers pass data and their send semantics; the grammar, the fold and the
  * hint line live here exactly once — no panel can drift again.
  */
 export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, hint, task, thread, onCancelComment, interaction, composer }: {
@@ -624,81 +671,72 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   composer: ReactNode
 }) {
   // The comment thread follows its latest round through the SAME mechanism as
-  // the transcript (resolved scroller + capture listener + pinning): a wide
-  // panel scrolls the thread region, a stacked panel scrolls the whole body,
-  // and 滑到最新 works on both without a single mode branch.
+  // the transcript (resolved scroller + capture listener + pinning): the rail
+  // scroll body is the root on every surface and width, so auto-follow and
+  // 滑到最新 behave identically everywhere.
   const threadScrollRef = useRef<HTMLDivElement | null>(null)
   const [threadAtBottom, setThreadAtBottom] = useState(true)
   // The context meter + run config head is the tallest, least-acted-on block
-  // in the rail (≈480px stacked). A wide rail absorbs it (two-column config
-  // grid, tall panel); a phone has no such margin — it must start folded so
-  // the comments and the composer own the opening screen. Behavior/structure
-  // switches read the ONE sanctioned signal (`useNarrow`), never a CSS guess;
-  // the fold itself stays available at every width.
+  // in the rail. A wide rail absorbs it (two-column config grid); a phone has
+  // no such margin — it must start folded so the comments and the composer
+  // own the opening screen. Behavior/structure switches read the ONE
+  // sanctioned signal (`useNarrow`), never a CSS guess; the fold itself
+  // stays available at every width.
   const narrowBoard = useNarrow()
   const [headOpen, setHeadOpen] = useState(!narrowBoard)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
   const { measure: onThreadScroll, jumpToBottom: jumpThread } = useFollowScroll(
     threadScrollRef, threadAtBottom, setThreadAtBottom, threadFingerprint,
   )
+  // The collapsed head still says something: the live context occupancy
+  // rides the disclosure summary (zero-omission quietness, same as every
+  // other summary — no projection, no line).
+  const occupancy = contextOccupancy(projections?.contextPressure)
   return (
     <>
-      {stateChip !== undefined && updatedAt !== undefined && (
-        <div className={css.sessionFacts}>
-          <Chip
-            kind={stateChip.kind}
-            icon={stateChip.spinner === true ? <span className={css.spinner} aria-hidden="true" /> : undefined}
-          >
-            {stateChip.label}
-          </Chip>
-          <span className={css.sessionFactTime}>{t('detail.sessionUpdated')} {updatedAt}</span>
-        </div>
-      )}
-      {/* The rail head (context meter + live run config) folds. It is the
-          tallest block in the rail and the least-acted-on; on a phone stacked
-          panel it used to push the comment thread and the composer a full
-          screen+ down. Same grammar as every other foldable module, default
-          open, one tap to collapse on any width. */}
-      <div className={css.sessionRailHead}>
-        <button
-          type="button"
-          className={css.sessionRailHeadToggle}
-          aria-expanded={headOpen}
-          onClick={() => { setHeadOpen(!headOpen) }}
-        >
-          <Icon name="chevronDown" className={css.detailChevron} />
-          <span className={css.sessionRailHeadTitle}>{t('review.railHeadTitle')}</span>
-        </button>
-        {headOpen && (
-          <SessionRailHead
-            sessionId={sessionId}
-            controller={controller}
-            projections={projections}
-            lines={lines}
-            onChanged={onChanged}
-            reloadKey={reloadKey}
-          />
-        )}
-      </div>
-      <div className={css.reviewThreadHeader}>
-        <h4 className={css.reviewThreadTitle}>
-          {t('review.comments')}
-          <span className={css.reviewThreadCount}>{thread.length}</span>
-        </h4>
-      </div>
-      {/* One quiet line: the drive explanation in the normal case, the
-          blocking reason (done task / gone session) in the exceptional
-          case — never a stack of texts, never inside the send row. */}
-      <p className={`${css.detailHint} ${css.sessionRailHint}`}>{hint ?? t('detail.sessionDriveHint')}</p>
-      {/* The rail's ONE scroll region: comments + the pending interaction card
-          + the "跳到最新" escape. This is the DESKTOP grammar, and the phone now
-          uses it unchanged: the stacked panel gives the rail its own share of
-          the height, so this region really is the scroll root and the sticky
-          escape rests at its bottom edge — the same place it holds on a wide
-          screen. (Routing the whole panel through one scroll body instead left
-          the escape clamped to the end of the comment content, floating in the
-          middle of the screen — "位置不对、和电脑端不一样".) */}
       <div className={css.sessionRailScroll} ref={threadScrollRef} onScroll={onThreadScroll}>
+        {stateChip !== undefined && updatedAt !== undefined && (
+          <div className={css.sessionFacts}>
+            <Chip
+              kind={stateChip.kind}
+              icon={stateChip.spinner === true ? <span className={css.spinner} aria-hidden="true" /> : undefined}
+            >
+              {stateChip.label}
+            </Chip>
+            <span className={css.sessionFactTime}>{t('detail.sessionUpdated')} {updatedAt}</span>
+          </div>
+        )}
+        {/* The rail head (context meter + live run config) folds — the ONE
+            shared Disclosure grammar (chevron + title + live summary), so the
+            fold reads and behaves exactly like every other fold on the board
+            (the chevron turns; the summary keeps the state visible). */}
+        <div className={css.sessionRailHead}>
+          <Disclosure
+            title={t('review.railHeadTitle')}
+            summary={occupancy !== undefined ? `${occupancy.percent}%` : undefined}
+            open={headOpen}
+            onToggle={() => { setHeadOpen(!headOpen) }}
+          >
+            <SessionRailHead
+              sessionId={sessionId}
+              controller={controller}
+              projections={projections}
+              lines={lines}
+              onChanged={onChanged}
+              reloadKey={reloadKey}
+            />
+          </Disclosure>
+        </div>
+        <div className={css.reviewThreadHeader}>
+          <h4 className={css.reviewThreadTitle}>
+            {t('review.comments')}
+            <span className={css.reviewThreadCount}>{thread.length}</span>
+          </h4>
+        </div>
+        {/* One quiet line: the drive explanation in the normal case, the
+            blocking reason (done task / gone session) in the exceptional
+            case — never a stack of texts, never inside the send row. */}
+        <p className={css.detailHint}>{hint ?? t('detail.sessionDriveHint')}</p>
         <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
         {interaction !== undefined && sessionId !== undefined && (
           <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />

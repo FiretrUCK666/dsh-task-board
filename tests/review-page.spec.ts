@@ -78,12 +78,11 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
   })
 })
 
-describe('stacked review CSS contract (one scroll body below the two-column floor)', () => {
-  // The stacked block: everything inside the review's @container floor.
-  function stackedBlock(): string {
-    const marker = '@container dsh-tb (max-width: 600px) {'
+describe('review rail scroll contract (ONE scroll body + pinned composer, every width)', () => {
+  /** A whole `@container … { … }` block, brace-balanced from its marker. */
+  function containerBlock(marker: string): string {
     const open = cssSource.indexOf(marker)
-    if (open < 0) throw new Error('the review stacked block (max-width: 600px) is missing')
+    if (open < 0) throw new Error(`container block "${marker}" is missing`)
     let depth = 0
     for (let i = open + marker.length - 1; i < cssSource.length; i++) {
       if (cssSource[i] === '{') depth++
@@ -92,7 +91,7 @@ describe('stacked review CSS contract (one scroll body below the two-column floo
         if (depth === 0) return cssSource.slice(open, i + 1)
       }
     }
-    throw new Error('unbalanced stacked block')
+    throw new Error('unbalanced container block')
   }
 
   /** One rule's OWN text inside a scope (up to its closing brace). */
@@ -103,58 +102,134 @@ describe('stacked review CSS contract (one scroll body below the two-column floo
     return scope.slice(at, end < 0 ? undefined : end)
   }
 
-  it('the panel does not scroll as one page (regions keep their own scroll)', () => {
-    const block = stackedBlock()
-    expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow: hidden/)
-    expect(block).not.toMatch(/\.reviewBody\s*\{[^}]*overflow-y: auto/)
+  const stacked = (): string => containerBlock('@container dsh-tb-panel (max-width: 600px) {')
+
+  it('the rail owns ONE scroll body; the composer is its only pinned element', () => {
+    // The height contract that ends the whole squeeze-and-clip family: the
+    // composer is visible at ANY rail height because it is the only fixed
+    // segment, and everything else is reachable because it scrolls in ONE
+    // body. Expansion can only ever add scrollable height.
+    const scroll = ruleOf('sessionRailScroll')
+    expect(scroll).toMatch(/flex:\s*1/)
+    expect(scroll).toMatch(/min-height:\s*0/)
+    expect(scroll).toMatch(/overflow-y:\s*auto/)
+    expect(ruleOf('reviewComposer')).toMatch(/flex:\s*none/)
+    // The scroll body owns the rail's 14px inset (the single-scrollbar
+    // grammar); segments inside it must NOT add a second horizontal inset.
+    expect(scroll).toMatch(/padding:\s*12px 14px 10px/)
+    expect(ruleOf('sessionFacts')).not.toMatch(/padding:\s*0 14px/)
+    expect(ruleOf('reviewThreadHeader')).not.toMatch(/padding:\s*0 14px/)
+    // Inside the rail the interaction card drops its margin for the same law.
+    expect(cssSource).toMatch(/\.sessionRailScroll \.interactionCard\s*\{[^}]*margin:\s*0 0 2px/)
+    // The rail itself clips nothing away from reach: its only children are
+    // the scroll body and the composer.
+    expect(ruleOf('reviewRail')).toContain('overflow: hidden')
   })
 
-  it('the RAIL comes first and the transcript is the shorter share', () => {
-    const block = stackedBlock()
-    // The thing a hand reaches for on a phone is the comment thread + send
-    // box; a 30-message transcript rendered BEFORE them pushed the composer
-    // ten-to-forty screens down (「要一路拉到底」). Order is the fix.
+  it('the stacked layout never re-declares the scroll model (one model, two geometries)', () => {
+    const block = stacked()
+    // The base rail IS the scroll grammar — a stacked-mode re-fork of it is
+    // exactly the per-mode drift this contract forbids.
+    expect(block).not.toMatch(/\.sessionRailScroll\s*\{/)
+    // The two regions share the panel height vertically; the page itself
+    // never scrolls as one.
+    expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow: hidden/)
     expect(block).toMatch(/\.reviewRail\s*\{[^}]*order: 1/)
     expect(block).toMatch(/\.reviewMain\s*\{[^}]*order: 2/)
-    expect(block).not.toContain('1 1 50%')
-  })
-
-  it('the stacked panel keeps TWO OWN scroll regions (the desktop grammar)', () => {
-    const block = stackedBlock()
-    // The user asked for parity, not a second design: on a phone the comments
-    // scroll in their box and the conversation in its own, sharing the panel
-    // height vertically. The page itself never scrolls, so the send box is
-    // always on screen and 「跳到最新」 sits where it sits on a desktop.
-    expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow: hidden/)
-    expect(ruleIn(block, '.reviewRail')).toMatch(/overflow: hidden/)
-    expect(ruleIn(block, '.reviewMain')).toMatch(/overflow: hidden/)
-    expect(ruleIn(block, '.sessionRailScroll')).toMatch(/overflow-y: auto/)
-    expect(ruleIn(block, '.reviewTranscriptScroll')).toMatch(/overflow-y: auto/)
-    // Each region gets a definite share of the panel (no container/viewport
-    // unit: the board box declares `container-type: inline-size`, so a
-    // block-axis container unit silently resolves against the viewport).
     expect(ruleIn(block, '.reviewRail')).toMatch(/flex: 1 1 \d+%/)
     expect(ruleIn(block, '.reviewMain')).toMatch(/flex: 1 1 \d+%/)
     // No container/viewport unit for the height share (the board box is
     // inline-size only, so a block container unit would silently become one).
     expect(block).not.toMatch(/(max-height|flex-basis|height):\s*[\d.]+(cqh|cqb|vh|dvh)/)
-    // Rail first: the thing a hand reaches for is the thread + send box.
-    expect(block).toMatch(/\.reviewRail\s*\{[^}]*order: 1/)
-    expect(block).toMatch(/\.reviewMain\s*\{[^}]*order: 2/)
+    // The conversation keeps its own scroller in the stacked form too.
+    expect(ruleIn(block, '.reviewTranscriptScroll')).toMatch(/overflow-y:\s*auto/)
   })
 
-  it('the comment header gives the TITLE a line of its own', () => {
-    const block = stackedBlock()
-    // Sharing one line with 刷新 / 查看会话 / × left the name ~90px wide, which
-    // stacked a seven-character title into seven lines.
+  it('the review family queries its OWN panel width, declared on .review', () => {
+    // A wide board with a capped 880px panel no longer keeps a cramped
+    // one-row header, and split screens stack honestly: the geometry
+    // reference is the surface that must fit, not the window.
+    const review = ruleOf('review')
+    expect(review).toMatch(/container-type:\s*inline-size/)
+    expect(review).toMatch(/container-name:\s*dsh-tb-panel/)
+    expect(stacked()).not.toBe('')
+    // The panel cannot query itself: its own width inset rides the board
+    // container (panel = board − 48 backdrop padding → a 600px panel floor
+    // is a 648px board floor).
+    const boardSized = containerBlock('@container dsh-tb (max-width: 648px) {')
+    expect(boardSized).toMatch(/\.review\s*\{[^}]*width:\s*calc\(100% - 16px\)/)
+    // The old board-anchored 600px review block is gone.
+    expect(cssSource).not.toMatch(/@container dsh-tb \(max-width: 600px\) \{/)
+  })
+
+  it('the header splits into a title line + ONE tools line (context left, actions right)', () => {
+    const block = stacked()
+    // The title owns line one (it was sharing it with the action cluster and
+    // stacking a seven-character name into seven lines).
     expect(ruleIn(block, '.reviewTitleWrap')).toMatch(/flex: 1 1 100%/)
     expect(block).toMatch(/\.reviewHeader\s*\{[^}]*flex-wrap: wrap/)
+    // Line two is ONE tools line: the context head takes the remaining width
+    // (its summary ellipsizes), the action cluster sits right at natural
+    // size — no orphaned close row, no order gymnastics.
+    expect(ruleIn(block, '.reviewHeaderContext')).toMatch(/flex: 1 1 auto/)
+    expect(ruleIn(block, '.reviewActions')).toMatch(/flex: none/)
+    expect(ruleIn(block, '.reviewHeaderContext')).not.toMatch(/order:/)
   })
 
-  it('the header wraps (context head drops to its own line, no title overlap)', () => {
-    const block = stackedBlock()
-    expect(block).toMatch(/\.reviewHeader\s*\{[^}]*flex-wrap: wrap/)
-    expect(block).toMatch(/\.reviewHeaderContext\s*\{[^}]*flex: 1 1 100%/)
+  it('the review title wraps in flow — never a clamp that paints outside its box', () => {
+    const title = ruleIn(stacked(), '.reviewTitle')
+    expect(title).toMatch(/white-space:\s*normal/)
+    expect(title).toMatch(/overflow-wrap:\s*anywhere/)
+    // `-webkit-line-clamp` belongs to the TRUNCATING grammar and needs
+    // `overflow: hidden`; paired with `overflow: visible` it reserves a 2-line
+    // box while painting 5 lines OUTSIDE it — the title drew over the
+    // comments below. A wrapping title must simply grow its box.
+    expect(title).not.toMatch(/line-clamp/)
+    expect(title).not.toMatch(/overflow:\s*visible/)
+  })
+
+  it('a context block anchored in a header expands IN FLOW, not as a floating card', () => {
+    // An absolute panel anchored below a header bites into the header's own
+    // padding band (its offset is smaller than that padding) and takes no
+    // space, so it paints across the border instead of pushing the body down.
+    expect(ruleIn(stacked(), '.reviewHeaderContext .sessionContextPanel')).toMatch(/position:\s*static/)
+  })
+
+  it('the header action cluster is same-height (24px pills + 24px close)', () => {
+    // 「同一排控件同级高」: a 30px circle beside 24px pills is the misalignment
+    // the eye reads as sloppiness.
+    expect(cssSource).toMatch(/\.reviewHeader \.iconButton\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px/)
+  })
+
+  it('the rail head folds through the SHARED Disclosure (turning chevron, no hand-rolled twin)', () => {
+    // The hand-rolled toggle row was a Disclosure copy that forgot the
+    // rotation — "the symbol never changes" was duplication, not taste.
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    const panelSource = readFileSync(panelPath, 'utf8')
+    expect(panelSource).toMatch(/<Disclosure/)
+    expect(cssSource).not.toMatch(/sessionRailHeadToggle/)
+    expect(cssSource).not.toMatch(/sessionRailHeadTitle/)
+    // The fold grammar turns: collapsed points right, expanded points down.
+    expect(cssSource).toMatch(/\.detailDisclosure\[aria-expanded='false'\] \.detailChevron\s*\{[^}]*rotate\(-90deg\)/)
+    expect(cssSource).toMatch(/\.sessionContextHead\[aria-expanded='false'\] \.sessionContextChevron\s*\{[^}]*rotate\(-90deg\)/)
+    expect(cssSource).not.toMatch(/sessionContextChevronOpen/)
+  })
+
+  it('the engine-note dialog body rides the shared .modalScroll (no flush text)', () => {
+    // Every other Dialog wraps its children in .modalScroll; the one call
+    // site that skipped it printed the explanation flush against the panel.
+    const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    const board = readFileSync(tsxPath, 'utf8')
+    const at = board.indexOf('engineNote !== undefined')
+    expect(at).toBeGreaterThan(-1)
+    const dialog = board.slice(at, at + 1500)
+    expect(dialog).toContain('css.modalScroll')
+  })
+
+  it('the context popover caps in px, never a viewport unit', () => {
+    const panel = ruleOf('sessionContextPanel')
+    expect(panel).toMatch(/max-height:\s*320px/)
+    expect(panel).not.toMatch(/\dvh/)
   })
 
   it('the rail is flexible in the base layout (two columns survive down to the floor)', () => {

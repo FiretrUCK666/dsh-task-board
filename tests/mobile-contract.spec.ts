@@ -302,28 +302,40 @@ describe('board header and navigator legibility', () => {
     expect(ruleOf('boardStatusText')).toMatch(/text-overflow:\s*ellipsis/)
   })
 
-  it('the compact board header is a two-line split (nav+modes / create+filter+cruise)', () => {
-    // Three buttons + a search field cannot share one 316px line: the field
-    // was being crushed to a single glyph ("筛"). And hiding the 「自动巡航」
-    // words to make room was worse — a bare switch makes the user guess.
-    const search = ruleIn(compact, '.search')
-    expect(search).toMatch(/flex:\s*1 1 \d+ch/)
-    expect(search).toMatch(/min-width:\s*\d+ch/)
-    expect(search).not.toMatch(/flex:\s*1 1 0/)
-    expect(search).not.toMatch(/flex:\s*1 1 100%/)
-    // The cruise label stays visible at every width.
+  it('the compact board header is a DETERMINISTIC two-line split (never a wrap soup)', () => {
+    // The old shape was one flex-wrap row soup: the engine banner appearing
+    // pushed 整理/自动化 to a second line and 自动巡航 to a fourth (the user's
+    // screenshot). Compact now fixes the SHAPE: nav line = back + title +
+    // modes group, and the state group (status + engine) owns its own second
+    // line — only when it has content. Groups keep members together.
+    const nav = ruleIn(compact, '.boardRowNav')
+    expect(nav).toMatch(/flex-wrap:\s*wrap/)
+    expect(compact).toMatch(/\.boardRowNav \.boardSpacer\s*\{\s*\n?\s*display:\s*none/)
+    expect(compact).toMatch(/\.boardRowNav \.boardTitle\s*\{[^}]*flex:\s*1 1 auto/)
+    const state = ruleIn(compact, '.boardRowNav .boardState')
+    expect(state).toMatch(/flex:\s*1 1 100%/)
+    expect(state).toMatch(/order:/)
+    // The mode buttons and the state cluster are semantic GROUPS (they move
+    // as one, never scatter across lines).
+    expect(ruleOf('boardModes')).toMatch(/display:\s*inline-flex/)
+    expect(ruleOf('boardState')).toMatch(/display:\s*inline-flex/)
+    // The cruise label stays visible at every width (hiding words to buy
+    // pixels is the forbidden trade).
     expect(compact).not.toMatch(/\.cruisePill \.switchLabel\s*\{\s*\n?\s*display:\s*none/)
     // The engine note is a real button (touch has no hover to reveal a `title`).
     const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
     const board = readFileSync(tsxPath, 'utf8')
     expect(board).toContain('css.boardStatusButton')
     expect(board).toMatch(/onClick=\{\(\) => \{ setEngineNote\('stale'\) \}\}/)
+    // The status line omits zero segments (「排队 0」 is noise — the same
+    // quietness grammar as the context meter's legend).
+    expect(board).toMatch(/snapshot\.stats\.running > 0 \? \[t\('board\.statusRunning'/)
+    expect(board).toMatch(/snapshot\.stats\.queued > 0 \? \[t\('board\.statusQueued'/)
   })
 })
 
 describe('alignment grammar (the OCD contract)', () => {
   const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
-  const stacked = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*600px\)/.test(line))
 
   it('a scroll region owns its inner padding, so its bar lands on the surface edge', () => {
     // The single scrollbar grammar: the SCROLLER carries the horizontal inset
@@ -336,11 +348,18 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
   })
 
-  it('the compact board header keeps its action row readable (see legibility suite)', () => {
-    // The search floor, the cruise label and the tappable engine note are all
-    // pinned in `board header and navigator legibility` above; this stays as a
-    // pointer so the old "search steals a whole row" shape cannot return.
-    expect(compact).not.toMatch(/\.search\s*\{\s*\n?\s*flex:\s*1 1 100%/)
+  it('the compact tool row is deterministic: actions line + full-width search', () => {
+    // The filter field used to share the tool row and get crushed to one
+    // glyph ("筛"); a width floor only hides the structure problem. Compact
+    // now fixes the SHAPE: 新建 + 巡航 on one line (space-between), the
+    // search on its own full-width line — the placeholder always reads whole.
+    const tools = ruleIn(compact, '.boardRowTools')
+    expect(tools).toMatch(/flex-wrap:\s*wrap/)
+    expect(tools).toMatch(/justify-content:\s*space-between/)
+    const search = ruleIn(compact, '.boardRowTools .search')
+    expect(search).toMatch(/flex:\s*1 1 100%/)
+    expect(search).toMatch(/order:/)
+    expect(search).toMatch(/max-width:\s*none/)
   })
 
   it('row actions collapse to glyphs compact so the title keeps its quota', () => {
@@ -362,24 +381,9 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(panel).not.toMatch(/88cqw/)
   })
 
-  it('the review title wraps in flow — never a clamp that paints outside its box', () => {
-    const title = ruleIn(stacked, '.reviewTitle')
-    expect(title).toMatch(/white-space:\s*normal/)
-    expect(title).toMatch(/overflow-wrap:\s*anywhere/)
-    // `-webkit-line-clamp` belongs to the TRUNCATING grammar and needs
-    // `overflow: hidden`; paired with `overflow: visible` it reserves a 2-line
-    // box while painting 5 lines OUTSIDE it — the title drew over the
-    // comments below. A wrapping title must simply grow its box.
-    expect(title).not.toMatch(/line-clamp/)
-    expect(title).not.toMatch(/overflow:\s*visible/)
-  })
-
-  it('a context block anchored in a header expands IN FLOW, not as a floating card', () => {
-    // An absolute panel anchored below a header bites into the header's own
-    // padding band (its offset is smaller than that padding) and takes no
-    // space, so it paints across the border instead of pushing the body down.
-    expect(ruleIn(stacked, '.reviewHeaderContext .sessionContextPanel')).toMatch(/position:\s*static/)
-  })
+  // (The review-family contracts — title wrap-in-flow, header-anchored
+  // expansion, the ONE scroll body and the panel-anchored breakpoints —
+  // live in review-page.spec.ts, the owner of the review surface.)
 })
 
 describe('session row overlap fix', () => {

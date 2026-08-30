@@ -129,7 +129,10 @@ export class BoardSyncClient {
   /** Authorship claims accrued since the last fully-acked commit (see setTasks). */
   private readonly claims = new Set<string>()
   private refire = false
-  private hostLeaseProto = 1
+  /** The host's lease protocol version. undefined = this replica has NEVER
+   *  read a lease — "no evidence yet" must never be reported as "old host"
+   *  (a failed first probe would otherwise flash a false stale banner). */
+  private hostLeaseProto: number | undefined = undefined
   private engine = false
   private disposed = false
   private commitCancel: (() => void) | undefined
@@ -348,6 +351,10 @@ export class BoardSyncClient {
     this.remoteListener = listener
   }
 
+  /** Fires whenever the SEAT changes — either half of it: which replica
+   *  holds the engine, or the host's lease protocol version (a host restart
+   *  flips the protocol without flipping the seat; the listener re-reads
+   *  `hostProtoVersion()` alongside the held flag). */
   onEngine(listener: (held: boolean) => void): void {
     this.engineListener = listener
   }
@@ -481,7 +488,8 @@ export class BoardSyncClient {
     this.adopt(result.doc)
   }
 
-  /** Renew (or take) the engine lease; publish engine-state changes. The
+  /** Renew (or take) the engine lease; publish SEAT changes (held AND the
+   *  host's protocol version — a host restart changes only the latter). The
    *  request carries this tab's VISIBILITY — the host lets a visible replica
    *  preempt a hidden holder, so the engine always sits where the user is. */
   async renewLease(): Promise<void> {
@@ -494,15 +502,24 @@ export class BoardSyncClient {
     // preemption: the seat can be stuck on a frozen device and NO client can
     // take it. Remember that so the board can say so out loud instead of
     // leaving the user to guess why queued work never moves.
-    this.hostLeaseProto = typeof state.proto === 'number' ? state.proto : 1
-    this.setEngine(state.held)
+    const proto = typeof state.proto === 'number' ? state.proto : 1
+    // Announce on EITHER half of the seat moving. Notifying only on a held
+    // change is how a restarted host stayed "stale" on every viewer until a
+    // manual refresh — the protocol moved, nobody was told.
+    const changed = this.engine !== state.held || this.hostLeaseProto !== proto
+    this.hostLeaseProto = proto
+    this.engine = state.held
+    if (changed) this.engineListener?.(state.held)
   }
 
-  /** The host's engine-lease protocol (1 = pre-visibility, 2 = preemption). */
-  hostProtoVersion(): number {
+  /** The host's engine-lease protocol (1 = pre-visibility, 2 = preemption);
+   *  undefined until the first lease read — "not yet known" is not "old". */
+  hostProtoVersion(): number | undefined {
     return this.hostLeaseProto
   }
 
+  /** Yield the seat on a lease frame (the protocol cannot change there —
+   *  only the held flag is announced). */
   private setEngine(held: boolean): void {
     if (this.engine === held) return
     this.engine = held

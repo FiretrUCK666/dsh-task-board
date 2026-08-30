@@ -331,6 +331,24 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-width: 12px;
 }
 
+/* 状态槽（巡航状态 + 引擎指示）与模式槽（整理 + 自动化）是两个语义组：
+   宽档同贴行右，compact 档各自成确定的一行——组内永远同进同退，
+   不会再被挤散成"内容驱动的折行汤"。 */
+.boardState {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.boardModes {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
 /* 安静的行内巡航状态：一个状态色圆点 + 12px 次级文字；仅在有内容时渲染，
    且永远不做成 0/0 的空状态。 */
 .boardStatus {
@@ -2889,15 +2907,14 @@ textarea.input {
 
 /* --- linked-session detail panel (SessionDetail) --------------------------- */
 
-/* Live status row of the panel rail: chip + updated time on one line. */
+/* Live status row of the panel rail: chip + updated time on one line. It
+   lives INSIDE the rail's scroll body, whose 14px inset it shares. */
 .sessionFacts {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   min-width: 0;
-  /* The rail's 14px content box (like the context block / head / thread). */
-  padding: 0 14px;
 }
 
 .sessionFactTime {
@@ -2926,13 +2943,6 @@ textarea.input {
   font-size: 12px;
   line-height: 1.5;
   color: var(--dsw-alias-label-tertiary);
-}
-
-/* The rail's hint line sits on the UNPADDED review rail — this variant adds
-   the same 14px content box as the thread header / scroll region / composer,
-   so the text never starts a column left of everything else. */
-.sessionRailHint {
-  padding: 0 14px;
 }
 
 /* --- automation overview panel (board header "自动化") ----------------------
@@ -3573,6 +3583,12 @@ textarea.input {
      header under the keyboard. */
   width: min(880px, 100%);
   max-height: min(100%, 860px);
+  /* THE review family's own responsive reference: the PANEL (not the board
+     box) is what its header and columns actually fit inside — a wide board
+     with a capped 880px panel still needs its header to give way. Geometry
+     decisions for everything below live in `@container dsh-tb-panel`. */
+  container-type: inline-size;
+  container-name: dsh-tb-panel;
 }
 
 .reviewHeader {
@@ -3586,6 +3602,14 @@ textarea.input {
   padding: 14px 20px;
   border-bottom: var(--dsh-tb-separator);
   flex: none;
+}
+
+/* 同一排控件同级高: the close glyph rides the SAME 24px box as the small
+   pill actions beside it (a 30px circle next to 24px pills is the "没对齐"
+   the eye reads as sloppiness). */
+.reviewHeader .iconButton {
+  width: 24px;
+  height: 24px;
 }
 
 /* Title + run-sequence badge share one flex row that grows (the title
@@ -3655,18 +3679,16 @@ textarea.input {
   overflow: hidden;
 }
 
-/* Right rail: context meter, session config, comments and the composer.
-   One column that scrolls on its own; the composer stays pinned at the
-   rail's bottom (see .reviewComposer).
-   VERTICAL GRAMMAR: the rail owns ONE 12px rhythm between every segment
-   (facts → head → thread header → hint → scroll → composer) — a segment's
-   own vertical padding is ZERO so no gap can ever read wider than another
-   ("状态行 与 上下文已用 之间的空隙比别处宽"的根因: the meter's internal
-   border+10px stacked on the segment gaps). */
+/* Right rail: the ONE scroll body (state row, collapsible head, thread
+   header, hint, comments, interaction card) with the composer pinned below
+   it OUTSIDE the scroll. The rail's height is whatever the panel gives it —
+   nothing inside can clip or squeeze anything else, because everything
+   scrollable scrolls in the single region and the composer is its only
+   sibling. (Vertical rhythm: the scroll region owns a 12px gap between its
+   segments; the composer keeps its own top border + bottom breathing.) */
 .reviewRail {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   flex: none;
   /* Flexible rail: it shrinks with the board box (never a rigid 344px that
      forces the two-column layout to collapse far too early). At a 600px board
@@ -3684,60 +3706,34 @@ textarea.input {
   background: var(--dsh-tb-surface-float);
 }
 
-/* The rail head — context meter, session config, session facts: fixed and
-   always visible, so a long comment thread can never push them away. The
-   vertical rhythm comes from the rail's own 12px gap (see .reviewRail). */
+/* The rail head (context meter + live run config): the foldable block INSIDE
+   the rail's scroll body. It renders through the shared Disclosure, so the
+   fold grammar (and the turning chevron) is the board's ONE; the hairline
+   below separates "the session's machinery" from "the conversation". */
 .sessionRailHead {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   flex: none;
-  padding: 0 14px;
+  min-width: 0;
+  padding-bottom: 12px;
   border-bottom: var(--dsh-tb-separator);
 }
 
-/* The head's own collapse row (same disclosure grammar as every foldable
-   module): the meter + config is the tallest, least-acted-on block in the
-   rail, and on a stacked phone panel it used to push the comments and the
-   composer off the first screen. Collapsed it is one quiet row. */
-.sessionRailHeadToggle {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  min-width: 0;
+/* The rail head's fold row gets the tap height the old hand-rolled toggle
+   had (the shared Disclosure is a bare row elsewhere; this one sits at the
+   top of a phone screen where a 16px line is too small a target). */
+.sessionRailHead .detailDisclosure {
   padding: 8px 0;
-  background: none;
-  border: none;
-  color: var(--dsh-tb-text-2);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
 }
 
-.sessionRailHeadToggle:hover {
-  color: var(--dsh-tb-text-1);
-}
-
-.sessionRailHeadTitle {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The rail's scrollable middle — one scroll pattern for every session panel:
-   the linked-session rail's head content, or the review page's comment
-   list, scrolls inside its own region while the composer stays pinned at
-   the bottom (flex: none) — a taller head can never squeeze the send button
-   out. The composer's own top border separates the regions.
-   GRID note: the rail's content box is 14px everywhere (head / hint / thread
-   header / composer); the scroll region keeps the same 14px — a THIN bar
-   fits inside it with breathing, so the comments never hug the thumb and
-   read on the same 14px line as every other rail element. The vertical
-   rhythm comes from the rail's own 12px gap (see .reviewRail); the region
-   keeps only its own bottom breathing before the composer. */
+/* THE rail's single scroll body — every segment above the composer (state
+   row, collapsible head, thread header, hint, comments, interaction card,
+   the 滑到最新 escape) scrolls here, on EVERY width. The composer is the
+   rail's only pinned element, so it can never be squeezed or clipped.
+   GRID note: the scroll body owns the rail's 14px horizontal content box
+   (the single-scrollbar grammar: the bar lands flush on the rail edge, the
+   text keeps the 14px inset); its children add NO horizontal padding of
+   their own — a second inset would double-shift them off the line. */
 .sessionRailScroll {
   display: flex;
   flex-direction: column;
@@ -3746,7 +3742,7 @@ textarea.input {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 14px 10px;
+  padding: 12px 14px 10px;
 }
 
 /* The conversation region scrolls on its own — a long transcript never
@@ -4072,6 +4068,23 @@ textarea.input {
   color: var(--dsw-alias-state-error-primary);
 }
 
+/* The honest third state: the read is IN FLIGHT, not broken. Quiet text,
+   never the error red (「会话经常加载不了」 was this row mislabeled). */
+.reviewConfigLoading {
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+}
+
+/* Failed AND the automatic retry did not land: the honest error line plus
+   the hand-back (a retry button), on one row that gives way when narrow. */
+.reviewConfigFailed {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
 /* The session's real workspace + composed Agent: read-only value rows inside
    the live config grid. Same box geometry as the selects (height / padding /
    border / radius) so the row grammar is one; the meaning "read-only" is the
@@ -4091,15 +4104,14 @@ textarea.input {
   white-space: nowrap;
 }
 
-/* The fixed thread header — title + count stay visible no matter how long
-   the comment list below grows; the list alone scrolls. The vertical rhythm
-   comes from the rail's own 12px gap (see .reviewRail). */
+/* The fixed thread header — title + count. It scrolls inside the rail's ONE
+   scroll body (the composer, not the header, is the rail's only pinned
+   element — pinning more than that is what re-created the squeeze). */
 .reviewThreadHeader {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: none;
-  padding: 0 14px;
 }
 
 .reviewThreadTitle {
@@ -4378,6 +4390,14 @@ textarea.input {
 .interactionCard[data-plan='true'] {
   border-color: color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent);
 }
+
+/* Inside the rail's scroll body the 14px inset belongs to the SCROLLER (the
+   single-scrollbar grammar) — the card adds no margin there, or it would sit
+   28px from the rail edge while the comments sit 14px. On the refinement
+   surface (an unpadded stack) the base 14px margin still owns the box. */
+.sessionRailScroll .interactionCard {
+  margin: 0 0 2px;
+}
 .interactionQuestion {
   font-size: 13px;
   line-height: 1.5;
@@ -4593,8 +4613,12 @@ textarea.input {
   transition: transform var(--dsh-tb-motion);
 }
 
-.sessionContextChevronOpen {
-  transform: rotate(180deg);
+/* THE one disclosure grammar (identical law to .detailDisclosure): the icon
+   is drawn pointing DOWN (expanded); collapsed it turns to point RIGHT.
+   A fold that never turns reads as a dead button — the "没有展开的感觉"
+   complaint this rule family exists to end. */
+.sessionContextHead[aria-expanded='false'] .sessionContextChevron {
+  transform: rotate(-90deg);
 }
 
 .sessionContextPanel {
@@ -4610,7 +4634,10 @@ textarea.input {
   flex-direction: column;
   gap: 6px;
   padding: 10px 12px;
-  max-height: 45vh;
+  /* Capped like every menu surface (the slash menu's grammar) — a viewport
+     unit here would size against the phone window, not the panel, and the
+     family bans vh for panel geometry. */
+  max-height: 320px;
   overflow-y: auto;
   background: var(--dsh-tb-surface-menu);
   border: var(--dsh-tb-border);
@@ -4743,26 +4770,30 @@ textarea.input {
   gap: 10px;
 }
 
-/* Narrow board boxes: the two-column review falls back to a stacked layout —
-   conversation flows on top, rail (context meter, config, comments, composer)
-   flows below, and the WHOLE panel is ONE scroll body (the .modalScroll
-   contract: exactly one scroll region, never two half-height scrollers that
-   squeeze each other's fixed content out of reach — the old model clipped the
-   composer + config so they "disappeared" and could not be scrolled to).
-   Container-scoped (the board box), so it is correct under a collapsed
-   sidebar / split-screen, not just a narrow window. The threshold is the
-   honest two-column floor: rail(min ~240) + conversation(min ~240) + gutters
-   ≈ 600px — above it the flexible rail keeps two columns usable (the "desktop
-   mode + sidebar open = one giant column" complaint), below it a single column
-   genuinely reads better on a phone. */
-@container dsh-tb (max-width: 600px) {
+/* The review family reflows to a STACKED layout below the honest two-column
+   floor: rail FIRST (comments + composer are what a hand reaches for), the
+   conversation LAST and shorter. The rail keeps the SAME structure as on a
+   desktop — one scroll body + pinned composer — so nothing here touches the
+   scroll model; only the shares and the header rows change.
+   TWO containers, each queried where its geometry lives:
+   - the PANEL's own width drives everything below (`@container dsh-tb-panel`;
+     `.review` declares the container). A wide board with a capped panel no
+     longer keeps a cramped one-row header, and a narrow panel with a wide
+     board (split screen) stacks honestly. The floor: rail(min ~240) +
+     conversation(min ~240) + gutters ≈ 600px of PANEL.
+   - the panel's own box cannot query itself, so its width/max-height inset
+     rides the board container (panel = board − 48 backdrop padding, so the
+     600px panel floor is a 648px board floor). */
+@container dsh-tb (max-width: 648px) {
   .review {
     /* Board-box relative (never vw/vh). NOT a fixed height: short content
        shrinks, tall content caps at the box and the body scrolls. */
     width: calc(100% - 16px);
     max-height: calc(100% - 16px);
   }
+}
 
+@container dsh-tb-panel (max-width: 600px) {
   .reviewBody {
     /* Stacked, but NOT one page scroll: the two regions keep their own
        scroll (the desktop grammar), they just share the panel height
@@ -4788,8 +4819,10 @@ textarea.input {
   }
 
   .reviewRail {
-    /* FIRST and taller: state row, (collapsible) context/config, comments,
-       composer — everything needed to act fits the opening screen. */
+    /* FIRST and taller: the rail's ONE scroll body (state row, collapsible
+       context/config head, comments) plus the pinned composer — everything
+       needed to act fits the opening screen, and expanding the head can only
+       ever add scrollable height inside that body. */
     order: 1;
     flex: 1 1 62%;
     width: 100%;
@@ -4797,13 +4830,12 @@ textarea.input {
     overflow: hidden;
   }
 
-  /* The header wraps: title + actions keep line one, the context head drops to
-     its own full-width line (the "会話会話上下文" overlap — a 320px context head
-     squeezed beside the title on a ~340px panel). */
-  /* The header splits into two lines: the TITLE gets a line to itself (it was
-     sharing one with 刷新 / 查看会话 / × and being squeezed to ~90px, which
-     turned a seven-character name into a seven-line stack), and the action
-     cluster takes the next line at its natural size. */
+  /* The header splits into TWO deterministic lines:
+     1. the TITLE alone (a seven-character name sharing a line with the
+        action cluster used to stack into seven lines);
+     2. ONE tools line: the context head left (it belongs to the
+        conversation, and it is information), 刷新 / 查看会话 / × right —
+        same 24px height, one baseline, no orphaned close glyph. */
   .reviewHeader {
     flex-wrap: wrap;
     padding: 12px 14px;
@@ -4814,12 +4846,17 @@ textarea.input {
     flex: 1 1 100%;
   }
 
-  .reviewActions {
+  .reviewHeaderContext {
     flex: 1 1 auto;
-    justify-content: flex-end;
+    min-width: 0;
+    max-width: none;
   }
 
-  /* The title is the panel's identity — on a narrow board it WRAPS and reads
+  .reviewActions {
+    flex: none;
+  }
+
+  /* The title is the panel's identity — on a narrow panel it WRAPS and reads
      in full instead of ellipsizing to three characters beside a crowded action
      row. ONE grammar only: a wrapping title is an in-flow box whose height
      grows with its text. (A `-webkit-line-clamp` here was a self-inflicted
@@ -4831,12 +4868,6 @@ textarea.input {
   .reviewTitle {
     white-space: normal;
     overflow-wrap: anywhere;
-  }
-
-  .reviewHeaderContext {
-    flex: 1 1 100%;
-    max-width: none;
-    order: 5;
   }
 
   /* A context block anchored IN A HEADER expands in flow, never as a floating
@@ -4852,15 +4883,10 @@ textarea.input {
     margin-top: 6px;
   }
 
-  /* The two regions keep their own scrollbars (the desktop grammar) — each is
-     its own scroll root, so the follow logic, the escape pill and the
-     auto-pin-to-latest all behave identically at every width. */
+  /* The conversation keeps its own scroller (the rail's scroll body is a base
+     rule now — the stacked layout does not re-declare the scroll model, and
+     that is the whole point: one model, two geometries). */
   .reviewTranscriptScroll {
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  .sessionRailScroll {
     overflow-y: auto;
     min-height: 0;
   }
@@ -5026,21 +5052,42 @@ textarea.input {
 
   /* Command rows breathe by wrapping instead of overflowing. */
   .boardRow {
-    flex-wrap: wrap;
     gap: 8px;
   }
 
-  /* The cruise pill keeps its WORDS. Hiding 「自动巡航」 to save 48px was the
-     wrong trade: a bare switch with no label makes the user guess what it
-     switches, and the header still ended up on three rows anyway. The header
-     instead splits by MEANING (nav+modes / create+filter+cruise), three items
-     a line, so nothing has to lose its name. */
+  /* 导航行 = 确定的两行：标题行（返回 + 板名 + 模式组）与状态行（巡航状态
+     + 引擎指示，仅有内容时渲染）。此前它是 flex-wrap 的折行汤：引擎横幅一
+     出现就把整理/自动化挤到第二行、巡航掉到第四行（用户截图的乱局）。组
+     （boardState/boardModes）保证成员同进同退，行数恒定。 */
+  .boardRowNav {
+    flex-wrap: wrap;
+  }
 
-  /* The filter field shares the tool row and carries a real floor: with three
-     buttons on the line it was being crushed to one glyph ("筛"). */
-  .search {
-    flex: 1 1 10ch;
-    min-width: 10ch;
+  .boardRowNav .boardSpacer {
+    display: none;
+  }
+
+  .boardRowNav .boardTitle {
+    flex: 1 1 auto;
+  }
+
+  .boardRowNav .boardState {
+    flex: 1 1 100%;
+    order: 5;
+  }
+
+  /* 工具行 = 确定的两行：新建 + 自动巡航两端对齐一行，筛选独占整行。搜索
+     框拿到整幅宽度，占位符完整可读（「筛选被截断」的根解——宽度地板治不了
+     结构问题，让位才是答案）；巡航的文字标签永远保留。 */
+  .boardRowTools {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .boardRowTools .search {
+    flex: 1 1 100%;
+    order: 5;
+    min-width: 0;
     max-width: none;
   }
 

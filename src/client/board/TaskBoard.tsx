@@ -543,12 +543,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       }}
     >
       <header className={css.boardHeader}>
-        {/* 板头两行，语义分区：第一行 = 导航 + 状态 + 模式动作（整理/自动化），
-            第二行 = 新建 + 筛选 + 自动巡航。手机板盒约 316px 装不下「新建 +
-            搜索 + 整理 + 自动化」四件，硬塞的结果是搜索被挤成一个「筛」字——
-            所以一行只放三件，且标签一律保留（藏掉「自动巡航」文字只剩一个开关
-            比多一行更糟：用户不知道那颗开关是什么）。 */}
-        <div className={css.boardRow}>
+        {/* 板头两行，语义分区（compact 档行结构确定，不靠内容驱动折行）：
+            导航行 = 返回 + 板名 + 模式组（整理/自动化），状态组（巡航状态 +
+            引擎指示）有内容才出现且独占第二行；工具行 = 新建 + 自动巡航两端
+            对齐，筛选独占一行（占位符永远完整）。标签一律保留（藏掉文字换宽度
+            是错误取舍：用户不知道那颗开关是什么）。 */}
+        <div className={`${css.boardRow} ${css.boardRowNav}`}>
           <button
             type="button"
             className={css.boardBack}
@@ -560,64 +560,79 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           </button>
           <h2 className={css.boardTitle}>{t('board.title')}</h2>
           <span className={css.boardSpacer} />
-          {/* 安静的行内巡航状态：仅在确实有东西在跑/排队时出现，否则整条隐藏。 */}
-          {snapshot.stats.running + snapshot.stats.queued > 0 && (
-            <span className={css.boardStatus}>
-              <span className={css.boardStatusDot} aria-hidden="true" />
-              <span className={css.boardStatusText}>
-                {t('board.statusRunning', { n: String(snapshot.stats.running) })}
-                {' · '}
-                {t('board.statusQueued', { n: String(snapshot.stats.queued) })}
+          {/* 状态槽：巡航状态 + 引擎指示，一个语义单元，只在有内容时渲染。
+              零段省略（「排队 0」是噪音，与上下文计量同一文法）。compact 档
+              它独占第二行（grid area），永远不再把模式按钮挤到折行上。 */}
+          {(() => {
+            const stateParts = [
+              ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
+              ...snapshot.stats.queued > 0 ? [t('board.statusQueued', { n: String(snapshot.stats.queued) })] : [],
+            ]
+            // 引擎席位的诚实指示（只在同步模式且真的"不在本机/服务端过旧"时
+            // 出现）：排队的工作在等谁、为什么不动——用户看得见，就不用猜、
+            // 不用刷。它是真按钮：说明必须能点开（触屏没有 hover，写着
+            // 「点此了解」却点不动是假 affordance，比不写更糟）。
+            const engineStale = snapshot.engine.synced && snapshot.engine.hostProto < 2
+            const engineViewer = snapshot.engine.synced && !engineStale && !snapshot.engine.held && engineWaitVisible
+            if (stateParts.length === 0 && !engineStale && !engineViewer) return null
+            return (
+              <span className={css.boardState}>
+                {stateParts.length > 0 && (
+                  <span className={css.boardStatus}>
+                    <span className={css.boardStatusDot} aria-hidden="true" />
+                    <span className={css.boardStatusText}>{stateParts.join(' · ')}</span>
+                  </span>
+                )}
+                {engineStale && (
+                  <button
+                    type="button"
+                    className={css.boardStatusButton}
+                    data-warn="true"
+                    onClick={() => { setEngineNote('stale') }}
+                  >
+                    <span className={css.boardStatusDot} aria-hidden="true" />
+                    <span className={css.boardStatusText}>{t('board.engineStale')}</span>
+                  </button>
+                )}
+                {engineViewer && (
+                  <button
+                    type="button"
+                    className={css.boardStatusButton}
+                    onClick={() => { setEngineNote('viewer') }}
+                  >
+                    <span className={css.boardStatusDot} aria-hidden="true" />
+                    <span className={css.boardStatusText}>{t('board.engineViewer')}</span>
+                  </button>
+                )}
               </span>
-            </span>
-          )}
-          {/* 引擎席位诚实指示（只在同步模式且真的"不在本机/服务端过旧"时出现）：
-              排队的工作在等谁、为什么不动——用户看得见，就不用猜、不用刷。它是
-              一个真按钮：说明必须能点开（触屏没有 hover，写着「点此了解」却点不动
-              是假 affordance，比不写更糟）。 */}
-          {snapshot.engine.synced && (snapshot.engine.hostProto < 2
-            ? (
-              <button
-                type="button"
-                className={css.boardStatusButton}
-                data-warn="true"
-                onClick={() => { setEngineNote('stale') }}
-              >
-                <span className={css.boardStatusDot} aria-hidden="true" />
-                <span className={css.boardStatusText}>{t('board.engineStale')}</span>
-              </button>
             )
-            : !snapshot.engine.held && engineWaitVisible ? (
-              <button
-                type="button"
-                className={css.boardStatusButton}
-                onClick={() => { setEngineNote('viewer') }}
-              >
-                <span className={css.boardStatusDot} aria-hidden="true" />
-                <span className={css.boardStatusText}>{t('board.engineViewer')}</span>
-              </button>
-            ) : null)}
-          {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
-              never the brand fill, so the bar reads quiet until there is a
-              real selection to manage. */}
-          <Button
-            variant="ghost"
-            pressed={organizing}
-            onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
-          >
-            {t('board.organize')}
-          </Button>
-          <Button
-            variant="ghost"
-            title={t('board.automationTitle')}
-            onClick={() => { setShowAutomation(true) }}
-          >
-            {t('board.automation')}
-          </Button>
+          })()}
+          {/* 模式按钮（整理/自动化）是一个语义组：宽档贴右成簇，compact 档
+              整组留在标题行——它们永远同进同退，不会被状态挤散。 */}
+          <span className={css.boardModes}>
+            {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
+                never the brand fill, so the bar reads quiet until there is a
+                real selection to manage. */}
+            <Button
+              variant="ghost"
+              pressed={organizing}
+              onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
+            >
+              {t('board.organize')}
+            </Button>
+            <Button
+              variant="ghost"
+              title={t('board.automationTitle')}
+              onClick={() => { setShowAutomation(true) }}
+            >
+              {t('board.automation')}
+            </Button>
+          </span>
         </div>
 
-        {/* 第二行：唯一的强调是「+ 新建任务」，其余安静。 */}
-        <div className={css.boardRow}>
+        {/* 工具行：唯一的强调是「+ 新建任务」，其余安静。compact 档它是确定的
+            两行（新建 + 巡航一行、筛选独占一行），不再内容驱动折行。 */}
+        <div className={`${css.boardRow} ${css.boardRowTools}`}>
           <Button
             variant="primary"
             onClick={() => { setShowNew(true) }}
@@ -807,7 +822,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           />
         )}
         {/* 引擎席位的说明必须可点（触屏没有 hover，写着「点此了解」却点不动是
-            假 affordance，比不写更糟）。 */}
+            假 affordance，比不写更糟）。正文走 .modalScroll——弹窗家族唯一
+            的正文区文法（内衬/滚动归它），裸贴面板边是上一轮的排版事故。 */}
         {engineNote !== undefined && (
           <Dialog
             label={t(engineNote === 'stale' ? 'board.engineStale' : 'board.engineViewer')}
@@ -815,9 +831,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             onClose={() => { setEngineNote(undefined) }}
             portal
           >
-            <p className={css.detailText}>
-              {t(engineNote === 'stale' ? 'board.engineStaleHint' : 'board.engineViewerHint')}
-            </p>
+            <div className={css.modalScroll}>
+              <p className={css.detailText}>
+                {t(engineNote === 'stale' ? 'board.engineStaleHint' : 'board.engineViewerHint')}
+              </p>
+            </div>
             <footer className={css.modalFooter}>
               <Button variant="primary" onClick={() => { setEngineNote(undefined) }}>
                 {t('board.engineNoteOk')}

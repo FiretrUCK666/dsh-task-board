@@ -876,9 +876,12 @@ export function apply(ctx: ClientContext): void {
     // cruise is on) a dispatch, both seat-gated — a viewer must never pump on
     // boot alongside the real engine (that would double-launch). sync.start
     // already awaited the first lease probe, so isEngine() is authoritative.
+    // The protocol is adopted only when the first lease actually answered —
+    // "no evidence yet" must never read as "old host" (a false stale banner).
     if (synced) {
       controller.syncActive = true
-      controller.hostProto = sync.hostProtoVersion()
+      const proto = sync.hostProtoVersion()
+      if (proto !== undefined) controller.setHostProto(proto)
       controller.setEngine(sync.isEngine())
     }
     controller.start()
@@ -903,8 +906,13 @@ export function apply(ctx: ClientContext): void {
         controller.applyRemote(view)
         writeMirror(view)
       })
+      // The seat announcement carries BOTH halves: which replica holds the
+      // engine, and the host's protocol version (a restart moves the
+      // protocol without moving the seat — this is what clears the stale
+      // banner live on every device, no manual refresh needed).
       sync.onEngine(held => {
-        controller.hostProto = sync.hostProtoVersion()
+        const proto = sync.hostProtoVersion()
+        if (proto !== undefined) controller.setHostProto(proto)
         controller.setEngine(held)
       })
       sync.onCommand(command => { void controller.runTask(command.taskId, command.trigger) })

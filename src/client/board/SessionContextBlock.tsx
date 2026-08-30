@@ -91,7 +91,10 @@ export function SessionContextBlock({ context, className }: { context: SessionCo
         <Icon name="checklist" className={css.sessionContextLead} />
         <span className={css.sessionContextTitle}>{t('review.sessionContext')}</span>
         <span className={css.sessionContextSummary} title={summary}>{summary}</span>
-        <Icon name="chevronDown" className={`${css.sessionContextChevron}${open ? ` ${css.sessionContextChevronOpen}` : ''}`} />
+        {/* THE shared chevron grammar (same law as every Disclosure): the
+            icon is drawn pointing DOWN (expanded); collapsed it turns to
+            point RIGHT — the fold always reads as a fold. */}
+        <Icon name="chevronDown" className={css.sessionContextChevron} />
       </button>
       {open && (
         <div className={css.sessionContextPanel}>

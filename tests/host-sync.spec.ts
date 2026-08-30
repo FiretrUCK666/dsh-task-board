@@ -392,6 +392,32 @@ describe('BoardSyncClient lease loop', () => {
     await client.renewLease()
     expect(client.hostProtoVersion()).toBe(2)
   })
+
+  it('the protocol is UNKNOWN (not "stale") until the first lease answers', async () => {
+    // "No evidence yet" must never read as "old host" — a failed first probe
+    // used to flash a false 「服务端未重启」 banner.
+    const { client } = makeClient()
+    expect(client.hostProtoVersion()).toBeUndefined()
+  })
+
+  it('a PROTOCOL-ONLY change fires the seat listener (the stale-banner clear)', async () => {
+    // The exact bug: a host restart moves the protocol WITHOUT moving the
+    // seat. Notifying only on held changes left every viewer staring at the
+    // stale banner until a manual refresh.
+    const { client, t } = makeClient({ leaseHeldByOther: true })
+    t.setLeaseProto(1)
+    await client.start()
+    const seats: boolean[] = []
+    client.onEngine(held => seats.push(held))
+    t.setLeaseProto(2) // the host restarted; this replica stays a viewer
+    await client.renewLease()
+    expect(client.isEngine()).toBe(false)
+    expect(seats).toEqual([false])
+    expect(client.hostProtoVersion()).toBe(2)
+    // A heartbeat with nothing moved fires nothing (no notify storms).
+    await client.renewLease()
+    expect(seats).toHaveLength(1)
+  })
 })
 
 describe('BoardSyncClient requestLaunch + dispose', () => {

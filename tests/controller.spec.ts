@@ -3709,6 +3709,27 @@ describe('BoardController engine seat + remote apply', () => {
     expect(controller.getSnapshot().tasks[0].color).toBe('#ff0000')
     expect(stub.runCalls).toHaveLength(0)
   })
+
+  it('setHostProto mirrors the seat announcement into the snapshot (change → notify)', () => {
+    // The stale-host banner reads snapshot.engine.hostProto. A host restart
+    // changes the protocol WITHOUT changing the seat — the wiring's seat
+    // listener calls this, so the banner clears live on every device.
+    const store = new InMemoryTaskStore()
+    const controller = new BoardController({ store, exec: new StubExec() as unknown as ExecutionService, sessions: new FakeSessions(), now: () => NOW, uuid })
+    controller.start()
+    // The default is CURRENT: no lease read = no claim, never a false alarm.
+    expect(controller.getSnapshot().engine.hostProto).toBe(2)
+    let notified = 0
+    controller.subscribe(() => { notified += 1 })
+    controller.setHostProto(1) // an old host answers the first lease
+    expect(controller.getSnapshot().engine.hostProto).toBe(1)
+    expect(notified).toBe(1)
+    controller.setHostProto(1) // a heartbeat changes nothing → no notify
+    expect(notified).toBe(1)
+    controller.setHostProto(2) // the host restarts while the seat stays put
+    expect(controller.getSnapshot().engine.hostProto).toBe(2)
+    expect(notified).toBe(2)
+  })
 })
 
 /** Build a task with a bind (test helper). */
