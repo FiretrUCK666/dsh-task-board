@@ -78,10 +78,8 @@ function snapshotRegion(container: HTMLElement): {
  * (the target column is not the one under the eye), so the animation —
  * though it plays — is never seen: 「移动没有动效」. Before playing, the
  * moved card's TARGET column is brought into view (instant scroll: a smooth
- * one would fight the rects the animation is computed from), and the track's
- * scroll-snap is pinned off while the flights run — snapping mid-animation
- * would yank the stage under the moving card. Desktop (no horizontal scroll)
- * never touches either.
+ * one would fight the rects the animation is computed from). Desktop (no
+ * horizontal scroll) never touches it.
  */
 export function useFlipRegion(containerRef: RefObject<HTMLElement | null>, disabled: boolean): void {
   const previousStructures = useRef<ReadonlyMap<string, CardStructure>>(new Map())
@@ -102,9 +100,11 @@ export function useFlipRegion(containerRef: RefObject<HTMLElement | null>, disab
           if (targetColumn !== null && targetColumn !== undefined) {
             targetColumn.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' })
           }
-          track.dataset.flipActive = ''
         }
-        const flights: Array<Promise<void>> = []
+        // WAAPI animations are fire-and-forget: the browser owns each object
+        // (auto-cancel on unmount, no inline style left behind, no
+        // transitionend), and with snap gone there is nothing to pin during the
+        // flight — so nothing here needs to await completion.
         for (const id of candidates) {
           const before = previousRects.current.get(id)
           if (before === undefined) continue
@@ -117,16 +117,10 @@ export function useFlipRegion(containerRef: RefObject<HTMLElement | null>, disab
           const dx = before.left - live.left
           const dy = before.top - live.top
           if (dx === 0 && dy === 0) continue
-          // WAAPI: the animation object is owned by the browser (auto-cancel on
-          // unmount, no inline style left behind); no transitionend needed.
-          const animation = element.animate(
+          element.animate(
             [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
             { duration: FLIP_MS, easing: FLIP_EASING },
           )
-          flights.push(animation.finished.then(() => undefined).catch(() => undefined))
-        }
-        if (track !== null && scrollsSideways && flights.length > 0) {
-          void Promise.all(flights).then(() => { delete track.dataset.flipActive })
         }
       }
     }

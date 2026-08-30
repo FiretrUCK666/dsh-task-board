@@ -90,19 +90,22 @@ describe('responsive container mechanism', () => {
 describe('compact columns + panel geometry', () => {
   const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
 
-  it('columns become a horizontal scroll-snap track', () => {
+  it('columns become a free horizontal swipe track (NO snap — resize-stable)', () => {
     // The .columns override inside the compact block.
     const columns = compact.slice(compact.indexOf('.columns'))
     expect(columns).toMatch(/overflow-x:\s*auto/)
-    expect(columns).toMatch(/scroll-snap-type:\s*x/)
     expect(columns).toMatch(/display:\s*flex/)
+    // Snap is deliberately GONE: it re-anchored by pixel scrollLeft on every
+    // container resize, so opening/closing the shell sidebar shifted the whole
+    // board a little each time (cumulative drift). The tab strip jumps columns.
+    expect(columns).not.toMatch(/scroll-snap-type/)
   })
 
-  it('each compact column is wide enough to read + snaps', () => {
+  it('each compact column is wide enough to read (no snap-align)', () => {
     const column = compact.slice(compact.indexOf('.column {'))
     expect(column).toMatch(/flex:\s*0 0/)
     expect(column).toMatch(/cqw/)
-    expect(column).toMatch(/scroll-snap-align/)
+    expect(column).not.toMatch(/scroll-snap-align/)
   })
 
   it('floating panels size to the board box at EVERY width, never vh/vw', () => {
@@ -162,8 +165,6 @@ describe('compact columns + panel geometry', () => {
     // next column's edge share a phone board (「一列占满整屏」 fix).
     const column = compact.slice(compact.indexOf('.column {'))
     expect(column).toMatch(/flex:\s*0 0 clamp\(\d+px,\s*\d+cqw,\s*3\d\dpx\)/)
-    // FLIP flights pin the snap off so it cannot yank the animating card.
-    expect(compact).toMatch(/\.columns\[data-flip-active\][\s\S]*?scroll-snap-type:\s*none/)
   })
 })
 
@@ -256,5 +257,30 @@ describe('keyboard inset math', () => {
     expect(keyboardOverlapPx(800, 800, 0)).toBe(0)   // nothing open
     expect(keyboardOverlapPx(800, 650, 60)).toBe(0)  // 90px below the floor: toolbar noise, not a keyboard
     expect(keyboardOverlapPx(800, 460, 40)).toBe(300) // keyboard below a hidden toolbar
+  })
+})
+
+describe('reduced-motion functional exemption', () => {
+  // There are several reduced-motion blocks; the LAST one carries the spinner
+  // + entrance rules. Grab it by brace-balancing from its @media line.
+  const reduced = (() => {
+    const marker = '@media (prefers-reduced-motion: reduce) {'
+    const start = source.lastIndexOf(marker)
+    if (start < 0) return ''
+    let depth = 0
+    for (let i = start + marker.length - 1; i < source.length; i++) {
+      if (source[i] === '{') depth++
+      else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1) }
+    }
+    return ''
+  })()
+
+  it('the spinner keeps animating (only calmer) under reduced motion', () => {
+    expect(reduced).toMatch(/\.spinner\s*\{\s*\n?\s*animation-duration:\s*[\d.]+s/)
+    expect(reduced).not.toMatch(/\.spinner\s*\{\s*\n?\s*animation:\s*none/)
+  })
+
+  it('decorative entrance motion is still suppressed', () => {
+    expect(reduced).toMatch(/\.modalBackdrop[\s\S]*?animation:\s*none/)
   })
 })

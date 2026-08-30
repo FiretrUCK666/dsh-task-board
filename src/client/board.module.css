@@ -3383,8 +3383,14 @@ textarea.input {
     box-shadow: inset 0 0 0 1px var(--dsh-tb-danger);
   }
 
+  /* The SPINNER is a functional state indicator, not decoration: a frozen
+     spinner reads as "stuck / not working" — the exact opposite of the truth
+     (the run IS progressing). So it is EXEMPT from the reduced-motion kill and
+     keeps rotating (only calmer). Entrance / hover / FLIP motion above stay
+     suppressed — the distinction is: motion that IS the information survives,
+     motion that only pleases is dropped. */
   .spinner {
-    animation: none;
+    animation-duration: 1.4s;
   }
 }
 
@@ -4757,7 +4763,11 @@ textarea.input {
   /* Five equal columns → a swipeable track. A column stays wide enough to
      read a card while roughly two columns (plus the next column's edge)
      share the screen — a full-width column made "see every status" a slog.
-     The track snaps column-to-column; the tab strip above jumps directly. */
+     NO scroll-snap: the tab strip above jumps a column into view directly, and
+     snap re-anchored the track by pixel scrollLeft on every container resize —
+     opening/closing the shell sidebar made the whole board "shift a little"
+     each time (the cumulative-drift bug). A free-swipe track is the honest
+     desktop-parity model (desktop has no snap either). */
   .columns {
     display: flex;
     flex-direction: row;
@@ -4765,7 +4775,6 @@ textarea.input {
     gap: 10px;
     overflow-x: auto;
     overflow-y: hidden;
-    scroll-snap-type: x proximity;
     scrollbar-width: none;
     /* A little bottom room so the horizontal bar never sits under a card. */
     padding-bottom: 2px;
@@ -4774,15 +4783,8 @@ textarea.input {
     display: none;
   }
 
-  /* While a FLIP flight runs (use-flip sets the attribute), snap must not
-     yank the track under the animating card — restored on completion. */
-  .columns[data-flip-active] {
-    scroll-snap-type: none;
-  }
-
   .column {
     flex: 0 0 clamp(200px, 46cqw, 320px);
-    scroll-snap-align: center;
   }
 
   /* The compact column navigator: one tap jumps a status column into view
