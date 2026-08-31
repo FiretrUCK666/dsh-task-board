@@ -673,12 +673,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               同一会话看到的是同一条评论线程。行文法统一（SessionRow）。
               本区同时是绑定落点：把侧栏的会话/工作区拖进来 = 绑定为新增来源
               （多源可叠加、同源幂等，绝不刷新替代；与「拖到列上 = 新建绑定卡」互补）。
-              「添加会话 / 新建会话」住在区块标题行的 action 槽（与「会话 N」同一
-              行右端，双端同构），说明行紧随标题——按钮绝不插在标题与说明之间；
-              空列表也常驻，空任务从此有明确入口。 */}
-          <Section
-            title={`${t('detail.sessions')} ${sessions.length}`}
-            action={
+              「添加会话 / 新建会话」与说明行同排（说明左、按钮右，同一水平面——
+              用户：按钮要和"状态为该次执行自身的结果"对平），双端同构——按钮
+              绝不插在标题与说明之间。空列表也常驻，空任务从此有明确入口。 */}
+          <Section title={`${t('detail.sessions')} ${sessions.length}`}>
+            <p className={css.sessionHintRow}>
+              <span className={`${css.detailHint} ${css.sessionHintText}`}>{t('detail.executionHint')}</span>
               <span className={css.sessionToolbarActions}>
                 <Button
                   size="sm"
@@ -696,9 +696,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
                   + {t('detail.sessionNew')}
                 </Button>
               </span>
-            }
-          >
-            <p className={css.detailHint}>{t('detail.executionHint')}</p>
+            </p>
             <div
               className={css.sessionDropZone}
               data-bindactive={bindDropActive ? '' : undefined}

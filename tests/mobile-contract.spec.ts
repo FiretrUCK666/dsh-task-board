@@ -373,12 +373,17 @@ describe('alignment grammar (the OCD contract)', () => {
 
   it('row actions collapse to glyphs compact so the title keeps its quota', () => {
     // The text cluster ("查看会话 → / 隐藏") was a ~156px fixed tax that left
-    // the title three characters. Labels fold, glyphs take over, and the
-    // identity slot has a hard 60% floor.
+    // the title three characters. Labels fold, glyphs take over — and the
+    // compact row-top grid gives the lead the whole leftover track (minmax(0,
+    // 1fr)) with one 4px rhythm; the status chip reads at the identity grid's
+    // own x (12px icon + 7px gutter = 19px inset, the 「未运行/工作区各搞各的」
+    // fix).
     expect(compact).toMatch(/\.sessionRowActions \.rowActionText\s*\{\s*\n?\s*display:\s*none/)
     expect(compact).toMatch(/\.sessionRowActions \.rowActionIcon\s*\{\s*\n?\s*display:\s*inline-flex/)
     const top = ruleIn(compact, '.sessionRowTop')
-    expect(top).toMatch(/grid-template-columns:\s*minmax\(60%,\s*1fr\) auto/)
+    expect(top).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\) auto/)
+    expect(top).toMatch(/row-gap:\s*4px/)
+    expect(compact).toMatch(/\.sessionRowTop \.sessionRowChip\s*\{[^}]*padding-left:\s*19px/)
   })
 
   // (The review-family contracts — the two-dropdown comment panel, the
@@ -429,14 +434,17 @@ describe('button geometry (one base for every variant)', () => {
   })
 })
 
-describe('section entry buttons (title-row action slot, both widths)', () => {
-  it('the session area and the rules section put their add buttons in the Section action slot', () => {
-    // Buttons belong on the section TITLE row (right), never wedged between
-    // a title and its own explanation (the 「添加会话插在中间」 complaint).
+describe('section entry buttons (hint row for the session area, action slot for the rules)', () => {
+  it('the session area buttons ride the HINT row; the rules section keeps the Section action slot', () => {
+    // The session area: 「添加会话 / 新建会话」 sit on the HINT row's right —
+    // ONE horizontal plane with "状态为该次执行自身的结果" (the user's ask) —
+    // never wedged between a title and its own explanation.
     const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url))
     const detail = readFileSync(detailPath, 'utf8')
-    expect(detail).toMatch(/action=\{[\s\S]*?sessionToolbarActions/)
+    expect(detail).toMatch(/sessionHintRow[\s\S]*?sessionToolbarActions/)
+    expect(detail).not.toMatch(/action=\{[\s\S]*?sessionToolbarActions/)
     expect(detail).not.toMatch(/className=\{css\.sessionToolbar\}/)
+    // The rules section keeps its add button in the Section action slot.
     const autoPath = fileURLToPath(new URL('../src/client/board/automation-ui.tsx', import.meta.url))
     const auto = readFileSync(autoPath, 'utf8')
     expect(auto).toMatch(/<Section[\s\S]*?action=\{formKey === undefined/)

@@ -2683,13 +2683,28 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 
-/* The session area's action pair (添加会话 ‖ 新建会话) lives in the Section
-   title row's action slot (same grammar as every section head, both widths);
-   the slot's grid already places it right, so no margin-left:auto here. */
+/* The session area's action pair (添加会话 ‖ 新建会话) lives on the HINT row
+   (hint left, buttons right — ONE horizontal plane, the user's
+   「按钮要和状态说明对平」 fix), never between the section title and the hint. */
 .sessionToolbarActions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: none;
+}
+
+/* The session section's hint row: explanation left (wraps), actions right —
+   one baseline, both ends (the section title stays alone above). */
+.sessionHintRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sessionHintText {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* The add-existing-session picker list (one row per candidate session). */
@@ -5400,16 +5415,26 @@ textarea.input {
      same pairing the desktop has — never vertically centered down beside the
      workspace pill (the 「按钮没和标题同步」 misread). */
   .sessionRowTop {
-    grid-template-columns: minmax(60%, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       "lead act"
       "chip act";
     align-items: start;
-    row-gap: 6px;
+    /* ONE 4px vertical rhythm inside the row (title → workspace → chip). */
+    row-gap: 4px;
   }
 
   .sessionRowTop .sessionRowActions {
     align-self: start;
+  }
+
+  /* The status chip reads at the SAME x as the title/workspace — its row
+     starts under the identity grid's first track, whose width is the icon
+     column: 12px icon + 7px gutter = 19px (never a magic number: it is the
+     identity grid's own track + gap, pinned by the contract test). */
+  .sessionRowTop .sessionRowChip {
+    justify-self: start;
+    padding-left: 19px;
   }
 
   /* The identity slot is a NAMED GRID, not a wrapping flex: line 1 = icon +
