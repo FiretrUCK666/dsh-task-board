@@ -267,7 +267,9 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
       open={open}
       onToggle={() => { setOpen(!open) }}
     >
-      <AutomationEditor controller={controller} task={task} />
+      {/* embedded: the disclosure IS the「任务自动化」header — the inner
+          section head would repeat it (the 「自动化/任务自动化 双标题」 noise). */}
+      <AutomationEditor controller={controller} task={task} embedded />
     </Disclosure>
   )
 }

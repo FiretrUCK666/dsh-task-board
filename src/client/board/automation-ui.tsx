@@ -495,7 +495,7 @@ export function SessionRulesSection({ controller, task }: {
  * stopping an unlimited chain) live here so both surfaces share the same
  * gate (chainUnlimited).
  */
-export function AutomationEditor({ controller, task }: { controller: BoardController; task: TaskRecord }) {
+export function AutomationEditor({ controller, task, embedded = false }: { controller: BoardController; task: TaskRecord; /** Rendered inside the detail automation disclosure — the disclosure IS "任务自动化"; the inner head would repeat it (the 「自动化/任务自动化 双标题」 noise). */ embedded?: boolean }) {
   const schedule = task.schedule
   // `||` (not `??`) falls back to the default even for an empty stored
   // expression, so switching modes can never leave the editor with a blank
@@ -645,12 +645,11 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
   const readiness = ruleReadiness(task)
   const chainRuns = schedule?.runCount ?? 0
   const chainBudget = schedule?.maxRuns
-  const nextLabel = !enabled || mode !== 'cron' || nextRunAt === undefined
-    ? t('detail.schedule.notScheduled')
-    : nextRunAt <= Date.now()
-      ? t('detail.schedule.dueSoon')
-      : formatDateTime(nextRunAt)
   const lastLabel = lastTriggeredAt === undefined ? '—' : formatDateTime(lastTriggeredAt)
+  // The ONE summary grammar (shared with the board card + the detail fold):
+  // what IS armed, in one quiet line.
+  const summary = scheduleSummary(task, readiness.kind === 'paused'
+    && readiness.status === 'review' && latestExecutionOf(task)?.result === 'failed')
   // Cron skip is offered only when a future due instant actually exists.
   const canSkip = enabled && mode === 'cron' && readiness.kind === 'active'
     && nextRunAt !== undefined && nextRunAt > Date.now()
@@ -670,13 +669,20 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
   return (
     <>
       {/* Task-level automation and session rules are the TWO halves of the
-          same editor; each gets its own paired section header so the two
-          systems never blur into one unlabeled block. */}
-      <Section title={t('auto.taskSchedule')} className={css.autoRules}>
-      {/* The task-schedule control family is ONE group: the section's 16px
+          same editor. On the board overview each half keeps its own section
+          header; EMBEDDED (inside the detail's automation disclosure) the
+          disclosure itself is「任务自动化」, so the schedule half renders as a
+          plain group — never a repeated header (the 「自动化/任务自动化」 noise). */}
+      {/* Task-level automation and session rules are the TWO halves of the
+          same editor. On the board overview each half keeps its own section
+          header; EMBEDDED (inside the detail's automation disclosure) the
+          disclosure itself is「任务自动化」, so the schedule half renders with
+          no repeated header (the 「自动化/任务自动化 双标题」 noise).
+          The task-schedule control family is ONE group: the section's 16px
           governs head→group and group→group, the 8px inside binds each label
           to its own control (两级节奏 — otherwise every field reads at the same
           weight and the block looks like an undifferentiated list). */}
+      <Section title={embedded ? '' : t('auto.taskSchedule')} className={css.autoRules}>
       <div className={css.autoGroup}>
       <Switch
         checked={enabled}
@@ -784,21 +790,19 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
       </p>}
       {mode === 'cron' && (
         <>
+          {/* THE one summary grammar (same as the board card): 按时间表 · 每 1
+              小时 · 下次… (or 已暂停…) — never a jammed triple sentence. The
+               skip affordance rides the same row, right. */}
           <div className={css.scheduleActionRow}>
-            <span className={css.scheduleMeta}>
-              {cronHumanLabel(cron)}
-              {' · '}
-              {readiness.kind === 'active'
-                ? `${t('detail.schedule.nextRun')} ${nextLabel}`
-                : t('detail.schedule.paused')}
-              {' · '}{t('detail.schedule.lastTriggered')} {lastLabel}
-            </span>
+            <span className={css.scheduleMeta}>{summary}</span>
             {canSkip && (
               <Button size="sm" variant="ghost" onClick={skipNext}>
                 {t('detail.schedule.skip')}
               </Button>
             )}
           </div>
+          {/* The one extra fact the summary omits: the last trigger time. */}
+          <p className={css.scheduleMeta}>{t('detail.schedule.lastTriggered')} {lastLabel}</p>
           {stoppedReason !== undefined && (
             <p className={css.scheduleMeta}>
               {stoppedReason.extraFailed && <>{t('detail.schedule.pausedFailed')} </>}

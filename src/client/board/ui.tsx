@@ -87,7 +87,10 @@ export function Switch({ checked, onChange, label, title, disabled }: {
 /** A titled detail section: one shared title style for every detail module.
  *  `action` is an optional right-aligned affordance on the title row (the
  *  section's own "+ 新建" style button) — the head is a flex row, the title
- *  never shrinks, the action hugs the right edge. */
+ *  never shrinks, the action hugs the right edge. An EMPTY title suppresses
+ *  the head entirely (an embedding surface supplies its own header — the
+ *  automation editor's embedded use, where the wrapping disclosure IS the
+ *  section). */
 export function Section({ title, action, children, className }: {
   title: string
   /** Optional right-aligned affordance rendered on the title row. */
@@ -97,10 +100,12 @@ export function Section({ title, action, children, className }: {
 }) {
   return (
     <section className={`${css.detailSection}${className !== undefined ? ` ${className}` : ''}`}>
-      <div className={css.sectionHead}>
-        <h4>{title}</h4>
-        {action !== undefined && <span className={css.sectionAction}>{action}</span>}
-      </div>
+      {(title !== '' || action !== undefined) && (
+        <div className={css.sectionHead}>
+          <h4>{title}</h4>
+          {action !== undefined && <span className={css.sectionAction}>{action}</span>}
+        </div>
+      )}
       {children}
     </section>
   )
