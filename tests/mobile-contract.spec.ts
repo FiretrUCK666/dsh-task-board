@@ -394,9 +394,49 @@ describe('session row overlap fix', () => {
     expect(ws).toMatch(/text-overflow:\s*ellipsis/)
   })
 
+  it('compact session rows: actions ride the TITLE line, the pill is content-width', () => {
+    // The action cluster aligns to the TOP of its spanning cell so the
+    // buttons sit ON the title's line (the 「按钮没和标题同步」 fix), and the
+    // workspace pill is CONTENT-WIDTH on its own line — a stretched 100% bar
+    // running under the buttons is what read as "按钮叠在白条上".
+    const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
+    expect(ruleIn(compact, '.sessionRowTop')).toMatch(/align-items:\s*start/)
+    expect(compact).toMatch(/\.sessionRowTop \.sessionRowActions\s*\{[^}]*align-self:\s*start/)
+    expect(ruleIn(compact, '.sessionRowLeading .sessionRowName')).toMatch(/flex:\s*1 1 100%/)
+    const ws = ruleIn(compact, '.sessionRowLeading .sessionRowWorkspace')
+    expect(ws).toMatch(/flex:\s*0 1 auto/)
+    expect(ws).not.toMatch(/flex:\s*0 0 100%/)
+  })
+
   it('the detail title and board title are shrinkable', () => {
     expect(ruleOf('detailTitle')).toMatch(/min-width:\s*0/)
     expect(ruleOf('boardTitle')).toMatch(/min-width:\s*0/)
+  })
+})
+
+describe('button geometry (one base for every variant)', () => {
+  it('the danger-ghost variant rides the SHARED button base (pill + row height)', () => {
+    // The square, off-height 「删除」 was this variant missing from the base
+    // rule (browser-default geometry). Every variant now shares height,
+    // padding, radius and the flex row.
+    const base = blockFrom(line => line.trim() === '.primaryButton,')
+    expect(base).toMatch(/\.dangerGhostButton\s*\{/)
+    expect(base).toMatch(/height:\s*var\(--dsh-tb-button-h\)/)
+    expect(base).toMatch(/border-radius:\s*var\(--dsh-tb-button-radius\)/)
+  })
+})
+
+describe('section entry buttons (title-row action slot, both widths)', () => {
+  it('the session area and the rules section put their add buttons in the Section action slot', () => {
+    // Buttons belong on the section TITLE row (right), never wedged between
+    // a title and its own explanation (the 「添加会话插在中间」 complaint).
+    const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url))
+    const detail = readFileSync(detailPath, 'utf8')
+    expect(detail).toMatch(/action=\{[\s\S]*?sessionToolbarActions/)
+    expect(detail).not.toMatch(/className=\{css\.sessionToolbar\}/)
+    const autoPath = fileURLToPath(new URL('../src/client/board/automation-ui.tsx', import.meta.url))
+    const auto = readFileSync(autoPath, 'utf8')
+    expect(auto).toMatch(/<Section[\s\S]*?action=\{formKey === undefined/)
   })
 })
 

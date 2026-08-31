@@ -2,7 +2,16 @@
  * Shared detail-panel shell for every session surface on the board — the
  * execution review page (ReviewDetail) and the linked-session view
  * (SessionDetail): one backdrop + container + header (title + type badge +
- * action slots) + two-column body (left conversation, right rail).
+ * context readout + actions + close) + two-column body (left conversation,
+ * right rail).
+ *
+ * THE header grammar (both widths, one DOM):
+ * - wide: one line — title | context head | actions | × (rightmost);
+ * - narrow: TWO deterministic lines — line 1 = title + × (the close always
+ *   sits at the panel's top-right corner, where a finger looks for it),
+ *   line 2 = context head (left, ellipsizes) + actions (right). The action
+ *   cluster owns the leftover line width, so it stays right-aligned even
+ *   when the context block is absent (no orphaned left-parked buttons).
  *
  * The shell is PURE LAYOUT: business content — the review page's context
  * meter, live config, comment thread and composer, or the linked view's
@@ -36,11 +45,11 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
   badge?: string
   /** Dialog aria-label. */
   ariaLabel: string
-  /** Header actions (refresh / view session; the close button is built in). */
+  /** Header actions (refresh / view session). */
   actions: ReactNode
   /** The session's live context readout (todos/goal/subagents): docks at the
-   *  conversation pane's top-right — the context belongs to the conversation,
-   *  never squeezed into the rail head (the cramped + uneven-gaps look). */
+   *  header — the context belongs to the conversation, never squeezed into
+   *  the rail head (the cramped + uneven-gaps look). */
   context?: SessionContext
   /** Left column: the conversation region (caller owns its scroll region). */
   main: ReactNode
@@ -59,17 +68,15 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
           {context !== undefined && (
             <SessionContextBlock context={context} className={css.reviewHeaderContext} />
           )}
-          <div className={css.reviewActions}>
-            {actions}
-            <button
-              type="button"
-              className={css.iconButton}
-              aria-label={t('detail.close')}
-              onClick={onClose}
-            >
-              <Icon name="close" />
-            </button>
-          </div>
+          <div className={css.reviewActions}>{actions}</div>
+          <button
+            type="button"
+            className={css.iconButton}
+            aria-label={t('detail.close')}
+            onClick={onClose}
+          >
+            <Icon name="close" />
+          </button>
         </header>
         <div className={css.reviewBody}>
           <div className={css.reviewMain}>{main}</div>

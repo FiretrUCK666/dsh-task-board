@@ -447,7 +447,17 @@ export function SessionRulesSection({ controller, task }: {
     .filter((row): row is Extract<AutomationRow, { kind: 'session-rule' }> => row.kind === 'session-rule')
   const editable = controller.sessionLabelsOf(task.id).length > 0
   return (
-    <Section title={t('auto.rules')} className={css.autoRules}>
+    // 「新增会话规则」住在区块标题行的 action 槽（与会话区同一文法）：
+    // 按钮永远贴着它要创建的列表的标题，不再孤悬在列表尾部没人看见。
+    <Section
+      title={t('auto.rules')}
+      className={css.autoRules}
+      action={formKey === undefined ? (
+        <Button size="sm" disabled={!editable} onClick={() => { setFormKey('new') }}>
+          {t('auto.form.new')}
+        </Button>
+      ) : undefined}
+    >
       {rows.length > 0 && (
         <ul className={css.autoRuleList}>
           {rows.map(row => (
@@ -461,19 +471,13 @@ export function SessionRulesSection({ controller, task }: {
           ))}
         </ul>
       )}
-      {formKey !== undefined ? (
+      {formKey !== undefined && (
         <SessionRuleForm
           task={task}
           controller={controller}
           ruleId={formKey === 'new' ? undefined : formKey}
           onClose={() => { setFormKey(undefined) }}
         />
-      ) : (
-        <span className={css.autoAddAction}>
-          <Button size="sm" disabled={!editable} onClick={() => { setFormKey('new') }}>
-            {t('auto.form.new')}
-          </Button>
-        </span>
       )}
     </Section>
   )

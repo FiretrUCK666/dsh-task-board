@@ -162,18 +162,34 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(cssSource).not.toMatch(/@container dsh-tb \(max-width: 600px\) \{/)
   })
 
-  it('the header splits into a title line + ONE tools line (context left, actions right)', () => {
+  it('the header splits into a title line + ONE tools line, close at the top-right corner', () => {
     const block = stacked()
-    // The title owns line one (it was sharing it with the action cluster and
-    // stacking a seven-character name into seven lines).
+    // Line 1: the title alone. The × rides the panel's TOP-RIGHT CORNER as an
+    // absolutely-positioned element (where a finger looks for it) and the
+    // title reserves its gutter, so the close stays on line one no matter how
+    // many lines the title wraps into.
     expect(ruleIn(block, '.reviewTitleWrap')).toMatch(/flex: 1 1 100%/)
-    expect(block).toMatch(/\.reviewHeader\s*\{[^}]*flex-wrap: wrap/)
-    // Line two is ONE tools line: the context head takes the remaining width
-    // (its summary ellipsizes), the action cluster sits right at natural
-    // size — no orphaned close row, no order gymnastics.
+    expect(ruleIn(block, '.reviewTitleWrap')).toMatch(/padding-right:\s*32px/)
+    expect(block).toMatch(/\.reviewHeader\s*\{[^}]*flex-wrap:\s*wrap/)
+    expect(block).toMatch(/\.reviewHeader\s*\{[^}]*position:\s*relative/)
+    const close = ruleIn(block, '.reviewHeader > .iconButton')
+    expect(close).toMatch(/position:\s*absolute/)
+    expect(close).toMatch(/right:\s*14px/)
+    // Line 2: context head left (information about the conversation), actions
+    // right. The cluster takes the leftover line width and right-aligns its
+    // content, so it sits at the same x with or without the context block.
     expect(ruleIn(block, '.reviewHeaderContext')).toMatch(/flex: 1 1 auto/)
-    expect(ruleIn(block, '.reviewActions')).toMatch(/flex: none/)
-    expect(ruleIn(block, '.reviewHeaderContext')).not.toMatch(/order:/)
+    expect(ruleIn(block, '.reviewActions')).toMatch(/flex: 1 1 auto/)
+    expect(ruleIn(block, '.reviewActions')).toMatch(/justify-content:\s*flex-end/)
+  })
+
+  it('a header-anchored context expansion is CAPPED and scrolls (never eats the screen)', () => {
+    // An in-flow header expansion without a cap grew past the whole screen
+    // and pushed every function out of reach (「上下文占满屏幕把上面的挤掉」).
+    const panel = ruleIn(stacked(), '.reviewHeaderContext .sessionContextPanel')
+    expect(panel).toMatch(/position:\s*static/)
+    expect(panel).toMatch(/max-height:\s*240px/)
+    expect(panel).toMatch(/overflow-y:\s*auto/)
   })
 
   it('the review title wraps in flow — never a clamp that paints outside its box', () => {
@@ -186,13 +202,6 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // comments below. A wrapping title must simply grow its box.
     expect(title).not.toMatch(/line-clamp/)
     expect(title).not.toMatch(/overflow:\s*visible/)
-  })
-
-  it('a context block anchored in a header expands IN FLOW, not as a floating card', () => {
-    // An absolute panel anchored below a header bites into the header's own
-    // padding band (its offset is smaller than that padding) and takes no
-    // space, so it paints across the border instead of pushing the body down.
-    expect(ruleIn(stacked(), '.reviewHeaderContext .sessionContextPanel')).toMatch(/position:\s*static/)
   })
 
   it('the header action cluster is same-height (24px pills + 24px close)', () => {
@@ -230,6 +239,22 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     const panel = ruleOf('sessionContextPanel')
     expect(panel).toMatch(/max-height:\s*320px/)
     expect(panel).not.toMatch(/\dvh/)
+  })
+
+  it('the rail head is STICKY with a capped, internally-scrolling body', () => {
+    // The desktop reads as "config pinned on top, comments scroll beneath"
+    // WITHOUT a second scroll root; the cap is what makes sticky safe — a
+    // pinned block taller than its scrollport would cover everything.
+    const head = ruleOf('sessionRailHead')
+    expect(head).toMatch(/position:\s*sticky/)
+    expect(head).toMatch(/top:\s*0/)
+    expect(head).toMatch(/max-height:\s*60%/)
+    expect(head).toMatch(/background:\s*var\(--dsh-tb-surface-float\)/)
+    const body = ruleOf('sessionRailHeadBody')
+    expect(body).toMatch(/overflow-y:\s*auto/)
+    expect(body).toMatch(/min-height:\s*0/)
+    // The fold row itself never scrolls away (the body absorbs overflow).
+    expect(cssSource).toMatch(/\.sessionRailHead > \.detailSection\s*\{[^}]*min-height:\s*0/)
   })
 
   it('the rail is flexible in the base layout (two columns survive down to the floor)', () => {

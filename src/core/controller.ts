@@ -415,6 +415,11 @@ export interface ControllerDeps {
    * (the single-browser/localStorage mode).
    */
   requestLaunch?: (taskId: string, trigger: RunTrigger) => void
+  /** Force one seat re-read from the host (the engine-note dialog's
+   *  「重新检查」): the wiring calls the sync client's lease renewal, whose
+   *  seat announcement then flows back through setHostProto/setEngine.
+   *  Absent = the button hides (fallback mode has no host to re-read). */
+  seatRecheck?: () => Promise<void>
 }
 
 /** One image attached to a native prompt — the OFFICIAL `PromptContentPart`
@@ -603,6 +608,22 @@ export class BoardController {
     if (this.hostProto === proto) return
     this.hostProto = proto
     this.notify()
+  }
+
+  /** Whether a live seat re-read is available (drives the dialog's
+   *  「重新检查」 button — it hides in fallback mode, where there is no host
+   *  to re-read). */
+  canRecheckSeat(): boolean {
+    return this.deps.seatRecheck !== undefined
+  }
+
+  /** Force one seat re-read from the host (the engine-note dialog's
+   *  「重新检查」): the sync client renews the lease and its seat announcement
+   *  flows back through setHostProto/setEngine, so a stale banner clears in
+   *  the same tap once the host has actually restarted. A no-op when the
+   *  wiring provides no re-read face. */
+  recheckSeat(): Promise<void> {
+    return this.deps.seatRecheck !== undefined ? this.deps.seatRecheck() : Promise.resolve()
   }
 
   /** Set (or clear, with undefined) a task's accent color. */

@@ -632,10 +632,10 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
  * execution review page and the linked-session panel share it verbatim), and
  * THE height contract that ends the squeeze-and-clip family of bugs:
  *
- *   rail = [ ONE scroll body: live state row → collapsible head (context
- *   meter + live config) → thread header → hint line → comment thread →
- *   pending interaction card → 滑到最新 ] + [ the caller's pinned composer,
- *   OUTSIDE the scroll body ].
+ *   rail = [ ONE scroll body: live state row → STICKY collapsible head
+ *   (context meter + live config, capped + internally scrollable) → thread
+ *   header → hint line → comment thread → pending interaction card →
+ *   滑到最新 ] + [ the caller's pinned composer, OUTSIDE the scroll body ].
  *
  * The composer is the ONLY pinned element, so it stays visible and tappable
  * at ANY rail height; everything else lives in the ONE scroll region, so no
@@ -709,7 +709,11 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
         {/* The rail head (context meter + live run config) folds — the ONE
             shared Disclosure grammar (chevron + title + live summary), so the
             fold reads and behaves exactly like every other fold on the board
-            (the chevron turns; the summary keeps the state visible). */}
+            (the chevron turns; the summary keeps the state visible). STICKY
+            at the rail's top edge: the comments scroll beneath the pinned
+            head (the desktop's "config fixed, comments scroll on their own"
+            without a second scroll root); the expanded body is capped and
+            scrolls internally, so the head can never cover the rail. */}
         <div className={css.sessionRailHead}>
           <Disclosure
             title={t('review.railHeadTitle')}
@@ -717,14 +721,16 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             open={headOpen}
             onToggle={() => { setHeadOpen(!headOpen) }}
           >
-            <SessionRailHead
-              sessionId={sessionId}
-              controller={controller}
-              projections={projections}
-              lines={lines}
-              onChanged={onChanged}
-              reloadKey={reloadKey}
-            />
+            <div className={css.sessionRailHeadBody}>
+              <SessionRailHead
+                sessionId={sessionId}
+                controller={controller}
+                projections={projections}
+                lines={lines}
+                onChanged={onChanged}
+                reloadKey={reloadKey}
+              />
+            </div>
           </Disclosure>
         </div>
         <div className={css.reviewThreadHeader}>

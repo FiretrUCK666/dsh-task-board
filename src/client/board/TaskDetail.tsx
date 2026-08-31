@@ -659,9 +659,32 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               同一会话看到的是同一条评论线程。行文法统一（SessionRow）。
               本区同时是绑定落点：把侧栏的会话/工作区拖进来 = 绑定为新增来源
               （多源可叠加、同源幂等，绝不刷新替代；与「拖到列上 = 新建绑定卡」互补）。
-              「新建会话」住在列表正上方的动作行（与列表首个内容同宽对齐，
-              不悬在区块标题旁），空列表也常驻——空任务从此有明确入口。 */}
-          <Section title={`${t('detail.sessions')} ${sessions.length}`}>
+              「添加会话 / 新建会话」住在区块标题行的 action 槽（与「会话 N」同一
+              行右端，双端同构），说明行紧随标题——按钮绝不插在标题与说明之间；
+              空列表也常驻，空任务从此有明确入口。 */}
+          <Section
+            title={`${t('detail.sessions')} ${sessions.length}`}
+            action={
+              <span className={css.sessionToolbarActions}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title={t('detail.addSessionTitle')}
+                  onClick={() => { setShowAddSession(true) }}
+                >
+                  {t('detail.addSession')}
+                </Button>
+                <Button
+                  size="sm"
+                  title={t('detail.sessionNewTitle')}
+                  onClick={() => { setShowNewSession(true) }}
+                >
+                  + {t('detail.sessionNew')}
+                </Button>
+              </span>
+            }
+          >
+            <p className={css.detailHint}>{t('detail.executionHint')}</p>
             <div
               className={css.sessionDropZone}
               data-bindactive={bindDropActive ? '' : undefined}
@@ -670,26 +693,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               onDragOver={onZoneDragOver}
               onDrop={onZoneDrop}
             >
-              <div className={css.sessionToolbar}>
-                <p className={css.detailHint}>{t('detail.executionHint')}</p>
-                <span className={css.sessionToolbarActions}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    title={t('detail.addSessionTitle')}
-                    onClick={() => { setShowAddSession(true) }}
-                  >
-                    {t('detail.addSession')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    title={t('detail.sessionNewTitle')}
-                    onClick={() => { setShowNewSession(true) }}
-                  >
-                    + {t('detail.sessionNew')}
-                  </Button>
-                </span>
-              </div>
               {sessions.length === 0 ? (
                 <p className={css.detailText}>
                   {plainRunsOf(current).length > 0
@@ -844,13 +847,14 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               {t('detail.duplicate')}
             </Button>
           </span>
-          {/* Destructive actions are ROW-LEVEL danger (ghost, no fill), never a
-              filled red block competing with the primary action — the filled
-              danger grammar belongs to the confirm dialog that asks twice. The
-              HEIGHT stays the same as its siblings: a smaller button on the
-              same line as full-size ones is what read as "格格不入". */}
+          {/* Destructive action rides the SAME geometry as its siblings (the
+              shared Button, default size): same height, same pill, only the
+              fill is the danger red — 「和『执行』相同的组件和观感，但颜色是红」.
+              It opens a confirm dialog (the double gate), so the filled
+              danger is honest here; the outline dangerGhost stays reserved
+              for dense row-level lists (hidden tray). */}
           <span className={css.detailFooterDanger}>
-            <Button variant="dangerGhost" onClick={() => { setConfirmDelete(true) }}>
+            <Button variant="danger" onClick={() => { setConfirmDelete(true) }}>
               {t('detail.delete')}
             </Button>
           </span>

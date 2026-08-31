@@ -116,6 +116,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // The engine-seat note the header chip opens (touch has no hover, so the
   // explanation must be a real, reachable surface — not a `title`).
   const [engineNote, setEngineNote] = useState<'stale' | 'viewer' | undefined>(undefined)
+  // The stale note resolves itself: once a seat re-read reports a current
+  // protocol (or sync drops), the dialog closes WITH its banner — no stale
+  // explanation lingering over a healthy state.
+  useEffect(() => {
+    if (engineNote === 'stale' && !(snapshot.engine.synced && snapshot.engine.hostProto < 2)) {
+      setEngineNote(undefined)
+    }
+  }, [engineNote, snapshot.engine.synced, snapshot.engine.hostProto])
   const [selectedCards, setSelectedCards] = useState<string[]>([])
   const toggleCard = (id: string): void => {
     setSelectedCards(current => current.includes(id) ? current.filter(cardId => cardId !== id) : [...current, id])
@@ -823,7 +831,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         )}
         {/* 引擎席位的说明必须可点（触屏没有 hover，写着「点此了解」却点不动是
             假 affordance，比不写更糟）。正文走 .modalScroll——弹窗家族唯一
-            的正文区文法（内衬/滚动归它），裸贴面板边是上一轮的排版事故。 */}
+            的正文区文法（内衬/滚动归它），裸贴面板边是上一轮的排版事故。
+            过旧时给出可自查的证据：当前连接服务端的协议读数（实时随快照更新）
+            + 多实例提示（「我明明重启了」多半是地址连着另一个未重启的进程）
+            + 「重新检查」（立刻续租一次，重启确认后当场清除）。 */}
         {engineNote !== undefined && (
           <Dialog
             label={t(engineNote === 'stale' ? 'board.engineStale' : 'board.engineViewer')}
@@ -835,8 +846,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               <p className={css.detailText}>
                 {t(engineNote === 'stale' ? 'board.engineStaleHint' : 'board.engineViewerHint')}
               </p>
+              {engineNote === 'stale' && (
+                <>
+                  <p className={css.detailHint}>
+                    {t('board.engineNoteProto', { n: String(snapshot.engine.hostProto), min: '2' })}
+                  </p>
+                  <p className={css.detailHint}>{t('board.engineNoteStaleMulti')}</p>
+                </>
+              )}
             </div>
             <footer className={css.modalFooter}>
+              {controller.canRecheckSeat() && (
+                <Button onClick={() => { void controller.recheckSeat() }}>
+                  {t('board.engineNoteRecheck')}
+                </Button>
+              )}
               <Button variant="primary" onClick={() => { setEngineNote(undefined) }}>
                 {t('board.engineNoteOk')}
               </Button>

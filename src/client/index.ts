@@ -688,6 +688,13 @@ export function apply(ctx: ClientContext): void {
       requestLaunch: synced
         ? (taskId, trigger) => { sync.requestLaunch(taskId, trigger) }
         : undefined,
+      // The engine-note dialog's 「重新检查」: renew the lease NOW (the sync
+      // client's seat announcement then re-mirrors hostProto into the
+      // controller), so a user who just restarted the host sees the banner
+      // clear on the spot instead of waiting for the next heartbeat.
+      seatRecheck: synced
+        ? async () => { await sync.renewLease() }
+        : undefined,
       sessions: {
         list: sessions.list,
         exists: id => sessions.list.getSnapshot().byId[id as SessionId] !== undefined,

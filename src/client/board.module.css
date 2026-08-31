@@ -1295,7 +1295,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    fills come straight from the native button tokens. */
 .primaryButton,
 .ghostButton,
-.dangerButton {
+.dangerButton,
+.dangerGhostButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2420,16 +2421,10 @@ textarea.input {
   border-radius: var(--dsh-tb-radius-md);
 }
 
-/* The session area's action row: the quiet hint line left, the「+ 新建会话」
-   button right — sits directly above the list (never floating beside the
-   section title), so the entry point reads as part of the list it creates
-   into and stays reachable with zero list items. */
-.sessionToolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
+/* The session area's action pair (添加会话 ‖ 新建会话) lives in the Section
+   title row's action slot (same grammar as every section head, both widths);
+   the hint is its own quiet line under the title — never wedged between the
+   title and its explanation. */
 
 /* An empty content field reads as one quiet line — never a sunken box around
    a lone dash (height spent to say nothing). */
@@ -2437,13 +2432,6 @@ textarea.input {
   margin: 0;
   font-size: 12px;
   color: var(--dsh-tb-text-3);
-}
-
-.sessionToolbar .detailHint {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The row's inline rename editor: rides where the meta line sits (one row,
@@ -3706,17 +3694,46 @@ textarea.input {
   background: var(--dsh-tb-surface-float);
 }
 
-/* The rail head (context meter + live run config): the foldable block INSIDE
-   the rail's scroll body. It renders through the shared Disclosure, so the
-   fold grammar (and the turning chevron) is the board's ONE; the hairline
-   below separates "the session's machinery" from "the conversation". */
+/* The rail head (context meter + live run config): STICKY at the rail's top
+   edge INSIDE the scroll body — the comments scroll beneath it, so the
+   desktop reads as "配置常驻、评论自己有一块上下滚的区域" without ever
+   creating a second scroll root (two half-height scrollers squeezing each
+   other is the model this family retired).
+   SAFETY: a sticky block taller than its scrollport would pin and cover
+   everything (the 「展开后占满屏幕、上面全用不了」 failure), so the head is
+   CAPPED at 60% of the rail's scroll region and its expanded BODY scrolls
+   internally — the fold row stays visible at any height. Collapsed it is
+   one quiet row; the hairline below separates "the session's machinery"
+   from "the conversation". */
 .sessionRailHead {
   display: flex;
   flex-direction: column;
   flex: none;
   min-width: 0;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  max-height: 60%;
+  /* Opaque: scrolled content must never show through the pinned head. */
+  background: var(--dsh-tb-surface-float);
   padding-bottom: 12px;
   border-bottom: var(--dsh-tb-separator);
+}
+
+/* The flex chain that lets the BODY (never the fold row) absorb overflow:
+   head (capped) > Disclosure section > body (scrolls). */
+.sessionRailHead > .detailSection {
+  flex: 1;
+  min-height: 0;
+}
+
+.sessionRailHeadBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* The rail head's fold row gets the tap height the old hand-rolled toggle
@@ -4834,16 +4851,29 @@ textarea.input {
      1. the TITLE alone (a seven-character name sharing a line with the
         action cluster used to stack into seven lines);
      2. ONE tools line: the context head left (it belongs to the
-        conversation, and it is information), 刷新 / 查看会话 / × right —
-        same 24px height, one baseline, no orphaned close glyph. */
+        conversation, and it is information), 刷新 / 查看会话 right —
+        same 24px height, one baseline.
+     The × rides the panel's TOP-RIGHT CORNER (where a finger looks for it)
+     as an absolutely-positioned element: it stays on line one's right no
+     matter how many lines the title wraps into, and the title reserves its
+     gutter so a long name ellipsizes/wraps beside it, never under it. */
   .reviewHeader {
     flex-wrap: wrap;
+    position: relative;
     padding: 12px 14px;
     row-gap: 8px;
   }
 
+  .reviewHeader > .iconButton {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+  }
+
   .reviewTitleWrap {
     flex: 1 1 100%;
+    /* 24px close + 8px breathing = the gutter the title never paints into. */
+    padding-right: 32px;
   }
 
   .reviewHeaderContext {
@@ -4852,8 +4882,12 @@ textarea.input {
     max-width: none;
   }
 
+  /* The action cluster takes the leftover line width and right-aligns its
+     content, so it sits at the same x whether or not the context block is
+     present (no orphaned left-parked buttons when there is no context). */
   .reviewActions {
-    flex: none;
+    flex: 1 1 auto;
+    justify-content: flex-end;
   }
 
   /* The title is the panel's identity — on a narrow panel it WRAPS and reads
@@ -4876,10 +4910,14 @@ textarea.input {
      takes no space, so it paints over whatever sits across the border. The
      floating form only makes sense where there is a scrollable content region
      beneath the anchor to hover over — a header has none. One rule, every
-     panel that moves this block into its header. */
+     panel that moves this block into its header.
+     HEIGHT CAP: an in-flow header expansion is CAPPED and scrolls internally
+     (a long to-do list used to grow the header past the whole screen and
+     push every function out of reach — 「上下文占满屏幕把上面的挤掉」). */
   .reviewHeaderContext .sessionContextPanel {
     position: static;
-    max-height: none;
+    max-height: 240px;
+    overflow-y: auto;
     margin-top: 6px;
   }
 
@@ -5219,46 +5257,40 @@ textarea.input {
 
   /* Session rows: the named grid drops to a two-row template — identity on the
      first line, the status chip under it, the action cluster on its own
-     right-aligned column spanning both. Still structural (never content-
-     driven), so the phone row reads as a clean block (the 「排版很乱」 fix). */
+     right-aligned column spanning both. The cluster rides the TOP of its
+     area (align-self: start), so the buttons sit ON the title's line — the
+     same pairing the desktop has — never vertically centered down beside the
+     workspace pill (the 「按钮没和标题同步」 misread). */
   .sessionRowTop {
     grid-template-columns: minmax(60%, 1fr) auto;
     grid-template-areas:
       "lead act"
       "chip act";
+    align-items: start;
     row-gap: 6px;
   }
 
-  /* The title gets the WHOLE first line: the workspace pill moves to a line of
-     its own (flex-basis 100%) instead of sharing the name's line and forcing
-     both to ellipsize ("任务看板…" + "dsh-task-board" — neither readable).
-     The icon stays on the name's line. */
+  .sessionRowTop .sessionRowActions {
+    align-self: start;
+  }
+
+  /* The title gets the WHOLE first line (flex-basis 100%), so the workspace
+     pill always moves to a line of its own instead of squeezing the name.
+     The pill is CONTENT-WIDTH (never a stretched 100% bar): a full-width
+     white strip running under the action buttons is what read as "按钮叠在
+     白条上". Truncation still lives in the pill's own text slot. */
   .sessionRowLeading {
     flex-wrap: wrap;
     row-gap: 4px;
   }
 
   .sessionRowLeading .sessionRowName {
-    flex: 1 1 0;
+    flex: 1 1 100%;
   }
 
   .sessionRowLeading .sessionRowWorkspace {
-    flex: 0 0 100%;
+    flex: 0 1 auto;
     max-width: 100%;
-  }
-
-  /* The session toolbar's explanation never competes with the two buttons:
-     actions on their line, the hint on its own full-width line below. */
-  .sessionToolbar {
-    flex-wrap: wrap;
-  }
-
-  .sessionToolbar .detailHint {
-    flex: 1 1 100%;
-    order: 2;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
   }
 
   /* The action cluster pays the identity slot no fixed tax: labels collapse
