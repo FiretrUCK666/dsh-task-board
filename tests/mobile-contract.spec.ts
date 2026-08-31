@@ -372,18 +372,10 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(top).toMatch(/grid-template-columns:\s*minmax\(60%,\s*1fr\) auto/)
   })
 
-  it('the header context panel spans its head (never right-anchored and clipped)', () => {
-    // A right-anchored fixed-width card overflowed the panel's overflow:hidden
-    // on the LEFT ("展开后左边全部看不了"); spanning the head is width-safe at
-    // every size and needs no viewport unit.
-    const panel = source.slice(source.indexOf('.reviewHeaderContext .sessionContextPanel {'))
-    expect(panel).toMatch(/left:\s*0;\s*\n?\s*right:\s*0;\s*\n?\s*width:\s*auto/)
-    expect(panel).not.toMatch(/88cqw/)
-  })
-
-  // (The review-family contracts — title wrap-in-flow, header-anchored
-  // expansion, the ONE scroll body and the panel-anchored breakpoints —
-  // live in review-page.spec.ts, the owner of the review surface.)
+  // (The review-family contracts — the two-dropdown comment panel, the
+  // context dock above the composer, the ONE scroll body and the
+  // panel-anchored breakpoints — live in review-page.spec.ts, the owner of
+  // the review surface.)
 })
 
 describe('session row overlap fix', () => {
@@ -397,15 +389,17 @@ describe('session row overlap fix', () => {
   it('compact session rows: actions ride the TITLE line, the pill is content-width', () => {
     // The action cluster aligns to the TOP of its spanning cell so the
     // buttons sit ON the title's line (the 「按钮没和标题同步」 fix), and the
-    // workspace pill is CONTENT-WIDTH on its own line — a stretched 100% bar
-    // running under the buttons is what read as "按钮叠在白条上".
+    // identity slot is a NAMED GRID — icon + title share line 1 (the icon is
+    // never stranded alone above the name), the workspace pill takes line 2
+    // at CONTENT width (a stretched 100% bar under the buttons read as
+    // "按钮叠在白条上").
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(ruleIn(compact, '.sessionRowTop')).toMatch(/align-items:\s*start/)
     expect(compact).toMatch(/\.sessionRowTop \.sessionRowActions\s*\{[^}]*align-self:\s*start/)
-    expect(ruleIn(compact, '.sessionRowLeading .sessionRowName')).toMatch(/flex:\s*1 1 100%/)
-    const ws = ruleIn(compact, '.sessionRowLeading .sessionRowWorkspace')
-    expect(ws).toMatch(/flex:\s*0 1 auto/)
-    expect(ws).not.toMatch(/flex:\s*0 0 100%/)
+    const leading = ruleIn(compact, '.sessionRowLeading')
+    expect(leading).toMatch(/display:\s*grid/)
+    expect(leading).toMatch(/grid-template-areas:[\s\S]*"icon name"/)
+    expect(compact).not.toMatch(/\.sessionRowLeading \.sessionRowName\s*\{[^}]*flex:\s*1 1 100%/)
   })
 
   it('the detail title and board title are shrinkable', () => {

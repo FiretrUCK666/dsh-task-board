@@ -32,6 +32,8 @@ import { useComposerImages } from './composer-images.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Disclosure, Notice, SendModeToggle } from './ui.tsx'
+import { SessionContextBlock } from './SessionContextBlock.tsx'
+import type { SessionContext } from './use-interaction.ts'
 import { workspaceLabelOf } from '../../core/linked-sessions.ts'
 import { waitingKeyOf } from './session-chip.ts'
 
@@ -633,24 +635,25 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
  * execution review page and the linked-session panel share it verbatim), and
  * THE height contract that ends the squeeze-and-clip family of bugs:
  *
- *   rail = [ ONE scroll body: live state row → STICKY collapsible head
- *   (context meter + live config, capped + internally scrollable) → thread
- *   header → hint line → comment thread → pending interaction card →
- *   滑到最新 ] + [ the caller's pinned composer, OUTSIDE the scroll body ].
+ *   rail = [ ONE scroll body: live state row → collapsible head (context
+ *   meter + live config) → collapsible COMMENTS (thread + interaction card +
+ *   滑到最新) ] + [ the session-context dock → the caller's pinned composer,
+ *   both OUTSIDE the scroll body ].
  *
- * The composer is the ONLY pinned element, so it stays visible and tappable
- * at ANY rail height; everything else lives in the ONE scroll region, so no
- * expansion (head, context, a long thread) can push, clip or shrink another
- * part of the rail — expanding adds scrollable height, nothing else. This is
- * the SAME structure on desktop and on a phone: container queries change
- * geometry (width, stacking, fold defaults), never the scroll model. The
- * follow mechanics need no mode branch — `useFollowScroll` resolves whatever
- * element actually scrolls.
+ * Every big block is a DROPDOWN (the shared Disclosure): on a phone the
+ * opening screen shows the collapsed rows + context + composer, and nothing
+ * expanded can push, clip or shrink anything else — expansion adds scrollable
+ * height inside the ONE scroll region. The composer (and the context dock
+ * above it, the user's live session state) are the only pinned elements, so
+ * they stay visible at ANY rail height. This is the SAME structure on desktop
+ * and on a phone: container queries change geometry (width, stacking, fold
+ * defaults), never the scroll model. The follow mechanics need no mode branch
+ * — `useFollowScroll` resolves whatever element actually scrolls.
  *
- * Callers pass data and their send semantics; the grammar, the fold and the
+ * Callers pass data and their send semantics; the grammar, the folds and the
  * hint line live here exactly once — no panel can drift again.
  */
-export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, hint, task, thread, onCancelComment, interaction, composer }: {
+export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, hint, task, thread, onCancelComment, interaction, context, composer }: {
   /** The live state row (chip + updated time); absent hides the whole row. */
   stateChip?: { kind: ChipKind; label: string; spinner?: boolean }
   updatedAt?: string
@@ -668,6 +671,9 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   onCancelComment: (roundId: string) => boolean
   /** The pending native question (plan confirm / ask); absent hides the card. */
   interaction: WireQuestion | undefined
+  /** The session's live context readout (todos/goal/subagents), docked right
+   *  above the composer (the user asked for it there, not in the header). */
+  context: SessionContext
   /** The pinned composer (the panel's send semantics stay in the caller). */
   composer: ReactNode
 }) {
@@ -685,6 +691,9 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // stays available at every width.
   const narrowBoard = useNarrow()
   const [headOpen, setHeadOpen] = useState(!narrowBoard)
+  // The comments fold is the PRIMARY content — open at every width (it only
+  // collapses to hand the screen back to the composer / other folds).
+  const [commentsOpen, setCommentsOpen] = useState(true)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
   const { measure: onThreadScroll, jumpToBottom: jumpThread } = useFollowScroll(
     threadScrollRef, threadAtBottom, setThreadAtBottom, threadFingerprint,
@@ -707,14 +716,9 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             <span className={css.sessionFactTime}>{t('detail.sessionUpdated')} {updatedAt}</span>
           </div>
         )}
-        {/* The rail head (context meter + live run config) folds — the ONE
-            shared Disclosure grammar (chevron + title + live summary), so the
-            fold reads and behaves exactly like every other fold on the board
-            (the chevron turns; the summary keeps the state visible). STICKY
-            at the rail's top edge: the comments scroll beneath the pinned
-            head (the desktop's "config fixed, comments scroll on their own"
-            without a second scroll root); the expanded body is capped and
-            scrolls internally, so the head can never cover the rail. */}
+        {/* Dropdown ① — the context meter + live run config, the ONE shared
+            Disclosure grammar (chevron turns; summary keeps the state). On a
+            phone it starts folded so the composer owns the opening screen. */}
         <div className={css.sessionRailHead}>
           <Disclosure
             title={t('review.railHeadTitle')}
@@ -734,21 +738,34 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             </div>
           </Disclosure>
         </div>
-        <div className={css.reviewThreadHeader}>
-          <h4 className={css.reviewThreadTitle}>
-            {t('review.comments')}
-            <span className={css.reviewThreadCount}>{thread.length}</span>
-          </h4>
+        {/* Dropdown ② — the comment records. Same Disclosure grammar, open by
+            default (it is the surface's primary content); collapsing it hands
+            the screen back to the composer. The hint names what the thread
+            does (or the blocking reason). */}
+        <div className={css.sessionRailComments}>
+          <Disclosure
+            title={t('review.comments')}
+            summary={String(thread.length)}
+            open={commentsOpen}
+            onToggle={() => { setCommentsOpen(!commentsOpen) }}
+          >
+            {/* One quiet line: the drive explanation in the normal case, the
+                blocking reason (done task / gone session) in the exceptional
+                case — never a stack of texts, never inside the send row. */}
+            <p className={css.detailHint}>{hint ?? t('detail.sessionDriveHint')}</p>
+            <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
+            {interaction !== undefined && sessionId !== undefined && (
+              <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
+            )}
+            <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
+          </Disclosure>
         </div>
-        {/* One quiet line: the drive explanation in the normal case, the
-            blocking reason (done task / gone session) in the exceptional
-            case — never a stack of texts, never inside the send row. */}
-        <p className={css.detailHint}>{hint ?? t('detail.sessionDriveHint')}</p>
-        <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
-        {interaction !== undefined && sessionId !== undefined && (
-          <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
-        )}
-        <JumpToLatest atBottom={threadAtBottom} onJump={jumpThread} />
+      </div>
+      {/* The session-context dock — todos/goal/subagents, right above the
+          composer (the user's ask). It is the session's live state while you
+          type; it hides entirely when nothing is unfinished (contextWorthOf). */}
+      <div className={css.sessionContextDock}>
+        <SessionContextBlock context={context} className={css.sessionContextDockBlock} />
       </div>
       {composer}
     </>

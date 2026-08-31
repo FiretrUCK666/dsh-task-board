@@ -104,7 +104,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       title={sessionRowTitleOf(controller.sessionTitle(sessionId), t('detail.sessionUntitled'))}
       badge={t('detail.sessionCountBadge', { n: String(controller.sessionsOf(task).length) })}
       ariaLabel={t('detail.sessionPanel')}
-      context={context}
       actions={
         <>
           <Button size="sm" onClick={reload} title={t('review.refresh')}>
@@ -147,6 +146,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
           thread={thread}
           onCancelComment={id => controller.cancelComment(id)}
           interaction={pendingInteraction}
+          context={context}
           composer={
             <SessionComposer
               controller={controller}

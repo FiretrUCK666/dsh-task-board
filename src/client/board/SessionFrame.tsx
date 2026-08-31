@@ -6,12 +6,14 @@
  * right rail).
  *
  * THE header grammar (both widths, one DOM):
- * - wide: one line — title | context head | actions | × (rightmost);
- * - narrow: TWO deterministic lines — line 1 = title + × (the close always
- *   sits at the panel's top-right corner, where a finger looks for it),
- *   line 2 = context head (left, ellipsizes) + actions (right). The action
- *   cluster owns the leftover line width, so it stays right-aligned even
- *   when the context block is absent (no orphaned left-parked buttons).
+ * - wide: one line — title | actions | × (rightmost);
+ * - narrow: TWO deterministic lines — line 1 = title + badge + × on ONE
+ *   horizontal plane (the close at the top-right corner, the title
+ *   single-line ellipsis so the three never drift onto different baselines),
+ *   line 2 = the action cluster right-aligned.
+ *
+ * The session context readout is NOT in the header — it belongs beside the
+ * composer (see SessionRail), so the header stays a clean identity bar.
  *
  * The shell is PURE LAYOUT: business content — the review page's context
  * meter, live config, comment thread and composer, or the linked view's
@@ -33,13 +35,11 @@ import type { ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
-import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { boardBox } from './Dialog.tsx'
 import { useEscapeStack } from './escape-stack.ts'
-import type { SessionContext } from './use-interaction.ts'
 
 /** The shared panel frame (see module doc). */
-export function SessionFrame({ title, badge, ariaLabel, actions, context, main, rail, onClose }: {
+export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onClose }: {
   /** Panel title (the task title on both surfaces). */
   title: string
   /** Optional type badge text — its family identity; absent hides the badge. */
@@ -48,10 +48,6 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
   ariaLabel: string
   /** Header actions (refresh / view session). */
   actions: ReactNode
-  /** The session's live context readout (todos/goal/subagents): docks at the
-   *  header — the context belongs to the conversation, never squeezed into
-   *  the rail head (the cramped + uneven-gaps look). */
-  context?: SessionContext
   /** Left column: the conversation region (caller owns its scroll region). */
   main: ReactNode
   /** Right column: the rail (caller owns its content). */
@@ -70,9 +66,6 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
             <h2 className={css.reviewTitle}>{title}</h2>
             {badge !== undefined && <span className={css.reviewBadge}>{badge}</span>}
           </div>
-          {context !== undefined && (
-            <SessionContextBlock context={context} className={css.reviewHeaderContext} />
-          )}
           <div className={css.reviewActions}>{actions}</div>
           <button
             type="button"

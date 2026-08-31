@@ -3724,53 +3724,87 @@ textarea.input {
   background: var(--dsh-tb-surface-float);
 }
 
-/* The rail head (context meter + live run config): STICKY at the rail's top
-   edge INSIDE the scroll body — the comments scroll beneath it, so the
-   desktop reads as "配置常驻、评论自己有一块上下滚的区域" without ever
-   creating a second scroll root (two half-height scrollers squeezing each
-   other is the model this family retired).
-   SAFETY: a sticky block taller than its scrollport would pin and cover
-   everything (the 「展开后占满屏幕、上面全用不了」 failure), so the head is
-   CAPPED at 60% of the rail's scroll region and its expanded BODY scrolls
-   internally — the fold row stays visible at any height. Collapsed it is
-   one quiet row; the hairline below separates "the session's machinery"
-   from "the conversation". */
+/* Dropdown ① — the rail head (context meter + live run config): a plain
+   collapsible block inside the scroll body (the shared Disclosure grammar).
+   Its EXPANDED BODY is capped and scrolls internally so a long config never
+   makes the block itself dominate the rail; collapsed it is one quiet row.
+   The hairline below separates "the session's machinery" from the comments. */
 .sessionRailHead {
   display: flex;
   flex-direction: column;
   flex: none;
   min-width: 0;
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  max-height: 60%;
-  /* Opaque: scrolled content must never show through the pinned head. */
-  background: var(--dsh-tb-surface-float);
   padding-bottom: 12px;
   border-bottom: var(--dsh-tb-separator);
 }
 
 /* The flex chain that lets the BODY (never the fold row) absorb overflow:
-   head (capped) > Disclosure section > body (scrolls). */
+   head > Disclosure section > body (capped, scrolls). */
 .sessionRailHead > .detailSection {
-  flex: 1;
-  min-height: 0;
+  min-width: 0;
 }
 
 .sessionRailHeadBody {
-  flex: 1 1 auto;
   min-height: 0;
+  max-height: min(45%, 360px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-/* The rail head's fold row gets the tap height the old hand-rolled toggle
-   had (the shared Disclosure is a bare row elsewhere; this one sits at the
-   top of a phone screen where a 16px line is too small a target). */
-.sessionRailHead .detailDisclosure {
+/* Dropdown ② — the comment records (thread + interaction card + escape). A
+   plain collapsible block, open by default; the hairline above is the head's
+   own bottom border, so the two dropdowns read as two stacked sections. */
+.sessionRailComments {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+}
+
+.sessionRailComments > .detailSection {
+  min-width: 0;
+}
+
+/* The rail head's fold row gets a comfortable tap height (this one sits at
+   the top of a phone screen where a 16px line is too small a target). */
+.sessionRailHead .detailDisclosure,
+.sessionRailComments .detailDisclosure {
   padding: 8px 0;
+}
+
+/* The session-context dock — the live todos/goal/subagents readout pinned
+   right above the composer (the user's ask: context beside the box you type
+   in, not in the header). It is a fixed segment of the rail (outside the
+   scroll body); its own expansion is capped + internally scrollable, and it
+   hides entirely when nothing is unfinished (contextWorthOf), so the common
+   case costs zero height. */
+.sessionContextDock {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: var(--dsh-tb-separator);
+}
+
+/* Nothing unfinished → SessionContextBlock renders null → the dock is empty
+   and must cost zero height (no stray hairline above the composer). */
+.sessionContextDock:empty {
+  display: none;
+}
+
+/* In the dock the context panel is IN-FLOW (not the header popover) and
+   capped, so expanding it can never eat the composer. */
+.sessionContextDockBlock .sessionContextPanel {
+  position: static;
+  left: auto;
+  right: auto;
+  width: auto;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 6px;
 }
 
 /* THE rail's single scroll body — every segment above the composer (state
@@ -4605,29 +4639,6 @@ textarea.input {
   padding: 0 14px;
 }
 
-/* The header placement (the ONE horizontal line of the page): the context
-   readout sits between the title and the action cluster — same baseline as
-   视频文案 / 刷新 / 查看会话 — never stealing height from either column,
-   never squeezed into the rail. The head row is content-sized (the summary
-   caps and ellipsizes); the popover anchors under its right edge and drops
-   over the body (the two-pane content, never covering the header itself). */
-.reviewHeaderContext {
-  flex: none;
-  min-width: 0;
-  max-width: 320px;
-  padding: 0;
-}
-/* The header's context head spans its own column; its expanded panel drops
-   BELOW the head and spans exactly the head's box (left:0/right:0), so it can
-   never be clipped by the panel's overflow:hidden the way a right-anchored
-   fixed-width card was (the "展开后左边全部看不了" bug) and never needs a
-   viewport unit either. */
-.reviewHeaderContext .sessionContextPanel {
-  left: 0;
-  right: 0;
-  width: auto;
-}
-
 .sessionContextHead {
   display: inline-flex;
   align-items: center;
@@ -4869,103 +4880,56 @@ textarea.input {
   }
 
   .reviewMain {
-    /* LAST and shorter: the conversation tail is secondary on a phone, and it
-       keeps its OWN scroller (the follow logic resolves whatever element
-       actually scrolls, so auto-follow and 「跳到最新」 work unchanged). No
-       container/viewport unit here — a share of the panel, which has a
-       definite height. */
-    order: 2;
-    flex: 1 1 38%;
+    /* FIRST (top): the conversation reads first; it keeps its OWN scroller
+       (the follow logic resolves whatever element actually scrolls). */
+    order: 1;
+    flex: 1 1 40%;
     min-height: 0;
     overflow: hidden;
     padding: 14px;
-    border-top: 1px solid var(--dsw-alias-separator-primary);
+    border-bottom: 1px solid var(--dsw-alias-separator-primary);
   }
 
   .reviewRail {
-    /* FIRST and taller: the rail's ONE scroll body (state row, collapsible
-       context/config head, comments) plus the pinned composer — everything
-       needed to act fits the opening screen, and expanding the head can only
-       ever add scrollable height inside that body. */
-    order: 1;
-    flex: 1 1 62%;
+    /* LAST (bottom): the rail's ONE scroll body (state row, the two dropdowns)
+       then the pinned context dock + composer — so the composer lands at the
+       panel's BOTTOM edge (where the thumb is), never floating mid-screen
+       with the transcript stranded beneath it. */
+    order: 2;
+    flex: 1 1 60%;
     width: 100%;
     min-height: 0;
     overflow: hidden;
   }
 
   /* The header splits into TWO deterministic lines:
-     1. the TITLE alone (a seven-character name sharing a line with the
-        action cluster used to stack into seven lines);
-     2. ONE tools line: the context head left (it belongs to the
-        conversation, and it is information), 刷新 / 查看会话 right —
-        same 24px height, one baseline.
-     The × rides the panel's TOP-RIGHT CORNER (where a finger looks for it)
-     as an absolutely-positioned element: it stays on line one's right no
-     matter how many lines the title wraps into, and the title reserves its
-     gutter so a long name ellipsizes/wraps beside it, never under it. */
+     1. TITLE + badge + × on ONE horizontal plane — the close at the top-right
+        corner, the title single-line ellipsis (a wrapping title would push ×
+        off the baseline; the full name lives in the tooltip). This is the
+        "标题、徽标、叉叉 不在同一水平面" fix.
+     2. ONE tools line: 刷新 / 查看会话 right-aligned. */
   .reviewHeader {
     flex-wrap: wrap;
-    position: relative;
     padding: 12px 14px;
     row-gap: 8px;
   }
 
-  .reviewHeader > .iconButton {
-    position: absolute;
-    top: 12px;
-    right: 14px;
-  }
-
   .reviewTitleWrap {
-    flex: 1 1 100%;
-    /* 24px close + 8px breathing = the gutter the title never paints into. */
-    padding-right: 32px;
-  }
-
-  .reviewHeaderContext {
     flex: 1 1 auto;
-    min-width: 0;
-    max-width: none;
   }
 
-  /* The action cluster takes the leftover line width and right-aligns its
-     content, so it sits at the same x whether or not the context block is
-     present (no orphaned left-parked buttons when there is no context). */
+  .reviewHeader > .iconButton {
+    /* Inline on line 1, far right, vertically centered with the title. */
+    flex: none;
+    order: 2;
+  }
+
+  /* The action cluster takes the whole second line and right-aligns its
+     content, so 刷新/查看会话 sit at the same x on every panel. */
   .reviewActions {
-    flex: 1 1 auto;
+    flex: 1 1 100%;
+    order: 3;
     justify-content: flex-end;
-  }
-
-  /* The title is the panel's identity — on a narrow panel it WRAPS and reads
-     in full instead of ellipsizing to three characters beside a crowded action
-     row. ONE grammar only: a wrapping title is an in-flow box whose height
-     grows with its text. (A `-webkit-line-clamp` here was a self-inflicted
-     wound — clamping belongs to the truncating grammar and needs
-     `overflow: hidden`; combining it with `overflow: visible` reserved a
-     two-line box while painting five lines OUTSIDE it, so the title drew on
-     top of the comments below. The board never lets text paint outside its
-     own box — the same law the cards obey.) */
-  .reviewTitle {
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-
-  /* A context block anchored IN A HEADER expands in flow, never as a floating
-     card: an absolute panel anchored below the header bites into the header's
-     own padding band (its `top: 100% + 6px` is smaller than that padding) and
-     takes no space, so it paints over whatever sits across the border. The
-     floating form only makes sense where there is a scrollable content region
-     beneath the anchor to hover over — a header has none. One rule, every
-     panel that moves this block into its header.
-     HEIGHT CAP: an in-flow header expansion is CAPPED and scrolls internally
-     (a long to-do list used to grow the header past the whole screen and
-     push every function out of reach — 「上下文占满屏幕把上面的挤掉」). */
-  .reviewHeaderContext .sessionContextPanel {
-    position: static;
-    max-height: 240px;
-    overflow-y: auto;
-    margin-top: 6px;
   }
 
   /* The conversation keeps its own scroller (the rail's scroll body is a base
@@ -5398,22 +5362,35 @@ textarea.input {
     align-self: start;
   }
 
-  /* The title gets the WHOLE first line (flex-basis 100%), so the workspace
-     pill always moves to a line of its own instead of squeezing the name.
-     The pill is CONTENT-WIDTH (never a stretched 100% bar): a full-width
-     white strip running under the action buttons is what read as "按钮叠在
-     白条上". Truncation still lives in the pill's own text slot. */
+  /* The identity slot is a NAMED GRID, not a wrapping flex: line 1 = icon +
+     title (the icon must sit ON the title's line, never alone above it), line
+     2 = the workspace pill (content-width, aligned under the title). The
+     action cluster (act column, align-self: start) then lands on line 1 — the
+     icon, the title and the three right buttons are ONE horizontal plane. */
   .sessionRowLeading {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "icon name"
+      ". workspace";
+    column-gap: 7px;
     row-gap: 4px;
+    align-items: center;
+  }
+
+  .sessionRowLeading .sessionRowIcon {
+    grid-area: icon;
   }
 
   .sessionRowLeading .sessionRowName {
-    flex: 1 1 100%;
+    grid-area: name;
+    min-width: 0;
   }
 
   .sessionRowLeading .sessionRowWorkspace {
-    flex: 0 1 auto;
+    grid-area: workspace;
+    justify-self: start;
+    flex: none;
     max-width: 100%;
   }
 
