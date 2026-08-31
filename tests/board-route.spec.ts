@@ -62,7 +62,16 @@ function fakeReq(method: string, url: string, body?: unknown, contentType = 'app
 /** A fake service face backed by a live document + lease + listener set. */
 function fakeDeps() {
   let doc: BoardDoc = emptyBoardDoc(T0)
-  let lease: LeaseState = { held: false, holder: undefined, expiresAt: undefined }
+  // A complete LeaseState: the type requires `proto` + `bootedAt` precisely so
+  // a fake (or a real branch) cannot quietly answer without them.
+  const leaseOf = (held: boolean, holder?: string): LeaseState => ({
+    held,
+    holder: held ? holder : undefined,
+    expiresAt: held ? T0 + 20_000 : undefined,
+    proto: 2,
+    bootedAt: T0,
+  })
+  let lease: LeaseState = leaseOf(false)
   let available = true
   const listeners = new Set<(event: BoardEvent) => void>()
   const commands: BoardCommand[] = []
@@ -76,12 +85,12 @@ function fakeDeps() {
       doc = applyCommit(doc, commit, T0 + 1)
       return doc
     },
-    acquireLease: (clientId, ttlMs) => {
-      lease = { held: true, holder: clientId, expiresAt: T0 + (ttlMs ?? 20_000) }
+    acquireLease: clientId => {
+      lease = leaseOf(true, clientId)
       return lease
     },
     releaseLease: () => {
-      lease = { held: false, holder: undefined, expiresAt: undefined }
+      lease = leaseOf(false)
       return lease
     },
     noteActivity: clientId => activities.push(clientId),

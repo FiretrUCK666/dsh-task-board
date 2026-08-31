@@ -3,6 +3,8 @@
  * commit serialization + broadcast, lease acquire/renew/disconnect-grace/
  * takeover, and the command relay (live-engine broadcast vs parked replay).
  */
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { applyCommit, emptyBoardDoc, type BoardCommit, type BoardDoc } from '../src/core/board-doc.ts'
 import { createTask } from '../src/core/tasks.ts'
@@ -11,6 +13,7 @@ import {
   clampLeaseTtl,
   LEASE_DEFAULT_TTL_MS,
   LEASE_DISCONNECT_GRACE_MS,
+  LEASE_PROTOCOL_ACTIVE,
   STREAM_ALIVE_MAX_MS,
   LEASE_MAX_TTL_MS,
   LEASE_MIN_TTL_MS,
@@ -169,6 +172,43 @@ describe('BoardDataService lease', () => {
     const takeover = service.acquireLease('b', 20_000)
     expect(takeover.held).toBe(true)
     expect(takeover.holder).toBe('b')
+  })
+
+  it('every lease answer — granted, renewing, REJECTED, released — carries proto and bootedAt', async () => {
+    // The whole stale-host confusion came from ONE branch that hand-built its
+    // own `{ held, holder, expiresAt }` and forgot the evidence fields: every
+    // non-engine device read "old server" from a current server. The type now
+    // requires both fields, and this pins the behaviour across all branches.
+    const { service, clock } = makeService(new FakeUnit())
+    await service.init()
+    const granted = service.acquireLease('a', 20_000)
+    const rejected = service.acquireLease('b', 20_000)
+    clock.t += 10_000
+    const renewing = service.acquireLease('a', 20_000)
+    const released = service.releaseLease('a')
+    for (const answer of [granted, rejected, renewing, released, service.leaseState()]) {
+      expect(answer.proto).toBe(LEASE_PROTOCOL_ACTIVE)
+      expect(answer.bootedAt).toBe(service.bootedAt)
+      expect(Number.isFinite(answer.bootedAt)).toBe(true)
+    }
+    // The rejected answer is the SAME authoritative view with only the
+    // caller-relative flag flipped (holder/expiresAt still name the engine).
+    expect(rejected.held).toBe(false)
+    expect(rejected.holder).toBe(granted.holder)
+    expect(rejected.expiresAt).toBe(granted.expiresAt)
+  })
+
+  it('leaseState is the ONLY place a LeaseState literal is built (one construction site)', () => {
+    // A second construction site is how the bug was born; the ban is mechanical
+    // so nobody can re-introduce a partial seat answer "just this once".
+    const source = readFileSync(fileURLToPath(new URL('../src/host/board-service.ts', import.meta.url)), 'utf8')
+    const bodies = source.match(/\{\s*held:/g) ?? []
+    const spreads = source.match(/\{\s*\.\.\.current/g) ?? []
+    expect(bodies).toHaveLength(4)
+    // The one rejection branch is a spread of the authoritative view, never a
+    // re-typed literal.
+    expect(spreads.length).toBeGreaterThan(0)
+    expect(source).not.toMatch(/\{\s*held:\s*false,\s*holder:\s*current\.holder/)
   })
 
   it('noteActivity renews the holder only', async () => {

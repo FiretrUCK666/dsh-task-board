@@ -163,20 +163,34 @@ describe('board route over a real HTTP server', () => {
     await reopened.close()
   })
 
-  it('arbitrates the engine lease over the wire', async () => {
-    const first = await (await fetch(`${origin}${BASE}/lease`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: 'a', ttlMs: 15_000 }),
-    })).json() as { value: { lease: { held: boolean; holder: string } } }
-    expect(first.value.lease.held).toBe(true)
-    expect(first.value.lease.holder).toBe('a')
-    const second = await (await fetch(`${origin}${BASE}/lease`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: 'b' }),
-    })).json() as { value: { lease: { held: boolean } } }
-    expect(second.value.lease.held).toBe(false)
-    const release = await (await fetch(`${origin}${BASE}/lease`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: 'a', release: true }),
-    })).json() as { value: { lease: { held: boolean } } }
-    expect(release.value.lease.held).toBe(false)
+  it('arbitrates the engine lease over the wire (and EVERY answer carries proto + bootedAt)', async () => {
+    const leasePost = async (body: unknown): Promise<Record<string, unknown>> => {
+      const response = await fetch(`${origin}${BASE}/lease`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      })
+      const envelope = await response.json() as { value: { lease: Record<string, unknown> } }
+      return envelope.value.lease
+    }
+    const first = await leasePost({ clientId: 'a', ttlMs: 15_000 })
+    expect(first.held).toBe(true)
+    expect(first.holder).toBe('a')
+    // The GRANTED answer is the one every implementation remembered to fill…
+    expect(first.proto).toBe(2)
+    expect(typeof first.bootedAt).toBe('number')
+    // …and the REJECTED answer is the one that used to be hand-built as
+    // `{ held, holder, expiresAt }`, silently dropping `proto`. Every
+    // non-engine device then read "host is old" from a CURRENT host and the
+    // 「服务端未重启」 banner stood forever, restart or not. The rejected
+    // answer must carry the exact same evidence as the granted one.
+    const second = await leasePost({ clientId: 'b' })
+    expect(second.held).toBe(false)
+    expect(second.proto).toBe(2)
+    expect(typeof second.bootedAt).toBe('number')
+    expect(second.bootedAt).toBe(first.bootedAt)
+    const release = await leasePost({ clientId: 'a', release: true })
+    expect(release.held).toBe(false)
+    expect(release.proto).toBe(2)
+    expect(typeof release.bootedAt).toBe('number')
   })
 
   it('relays a launch command to the live engine stream', async () => {

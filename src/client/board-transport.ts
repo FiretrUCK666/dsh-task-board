@@ -6,15 +6,17 @@
  * never take the board down — the poll + EventSource auto-reconnect recover.
  */
 import type { BoardSyncTransport, SyncFetchResult } from '../core/host-sync.ts'
-import type { BoardCommit, BoardCommand, BoardEvent, LeaseState } from '../core/board-doc.ts'
+import type { BoardCommit, BoardCommand, BoardEvent, LeaseWire } from '../core/board-doc.ts'
 
 /** The board route base path (the naming matrix's `/api/dsh-task-board/*`). */
 const ROUTE = '/api/dsh-task-board/board'
 
-/** The route envelope the board handler answers with. */
+/** The route envelope the board handler answers with. The lease is the WIRE
+ *  shape (an older host may answer without `proto`/`bootedAt` — that absence
+ *  IS the stale-host evidence, so it must survive to the sync client). */
 interface BoardEnvelope {
   ok: boolean
-  value?: SyncFetchResult & { lease?: LeaseState }
+  value?: SyncFetchResult & { lease?: LeaseWire }
 }
 
 /**

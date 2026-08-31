@@ -851,6 +851,16 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   <p className={css.detailHint}>
                     {t('board.engineNoteProto', { n: String(snapshot.engine.hostProto), min: '2' })}
                   </p>
+                  {/* The evidence that ends the argument: a real clock reading
+                      from the process answering THIS device. "我明明重启了"
+                      has two answers (this really is the old process, or the
+                      address lands on a second instance) and only one of them
+                      is a guess without a time to look at. */}
+                  <p className={css.detailHint}>
+                    {snapshot.engine.bootedAt === undefined
+                      ? t('board.engineNoteBootUnknown')
+                      : t('board.engineNoteBoot', { time: formatDateTime(snapshot.engine.bootedAt) })}
+                  </p>
                   <p className={css.detailHint}>{t('board.engineNoteStaleMulti')}</p>
                 </>
               )}

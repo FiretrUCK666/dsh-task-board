@@ -78,16 +78,29 @@ export type BoardEvent =
   | { type: 'lease'; holder: string | undefined; expiresAt: number | undefined }
   | { type: 'command'; command: BoardCommand }
 
-/** The engine-lease state every board API call answers with. */
+/** The engine-lease state every board API call answers with. THE host's own
+ *  production: `proto` and `bootedAt` are REQUIRED so no construction branch
+ *  can ever ship a seat view that forgets them (the one hand-built literal
+ *  that did is what made the "服务端未重启" banner lie forever). An answer
+ *  arriving over the wire is the `LeaseWire` shape below instead. */
 export interface LeaseState {
   held: boolean
   holder: string | undefined
   expiresAt: number | undefined
-  /** The host's lease protocol version (2 = visibility preemption). Absent =
-   *  a host older than the flag — replicas can then TELL the user the seat
-   *  may be stuck on a background device instead of leaving it mysterious. */
-  proto?: number
+  /** The host's lease protocol version (2 = visibility preemption). Absent on
+   *  the WIRE = a host older than the flag — replicas can then TELL the user
+   *  the seat may be stuck on a background device instead of leaving it
+   *  mysterious. */
+  proto: number
+  /** When the answering host process started serving the board. The stale-host
+   *  dialog shows it, so "我明明重启了" is answered by a clock reading rather
+   *  than by a guess (old process vs. a different instance behind the URL). */
+  bootedAt: number
 }
+
+/** A lease answer from an untrusted host: only `held` is guaranteed (any
+ *  field may be absent on an older deployment). */
+export type LeaseWire = Partial<Omit<LeaseState, 'held'>> & Pick<LeaseState, 'held'>
 
 /** One tombstone: the logical stamp a newer edit must beat, plus the host
  *  wall time it was written (pruning key). */

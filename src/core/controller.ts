@@ -445,11 +445,13 @@ export interface ControllerSnapshot {
    *  for a freed slot. Both zero → the status line hides itself. */
   stats: { running: number; queued: number }
   /** Engine-seat facts for the board's quiet honesty: whether THIS device is
-   *  the engine, whether the board runs in synced mode at all, and the host's
+   *  the engine, whether the board runs in synced mode at all, the host's
    *  lease protocol (1 = predates visibility preemption → a queued card may
    *  wait on a frozen device and nothing can be done from here; the board
-   *  says so instead of leaving the user guessing). */
-  engine: { held: boolean; synced: boolean; hostProto: number }
+   *  says so instead of leaving the user guessing), and when that host
+   *  process booted (undefined = never read a lease) so the stale-host dialog
+   *  can answer "我明明重启了" with a clock reading. */
+  engine: { held: boolean; synced: boolean; hostProto: number; bootedAt: number | undefined }
 }
 
 /** The selected task (resolved from the ledger), or undefined. */
@@ -586,7 +588,7 @@ export class BoardController {
       selectedTaskId: this.selectedTaskId,
       cruise: { ...this.cruiseState },
       stats: { running: this.inFlightCount(), queued: this.queuedLaunches.length },
-      engine: { held: this.engine, synced: this.syncActive, hostProto: this.hostProto },
+      engine: { held: this.engine, synced: this.syncActive, hostProto: this.hostProto, bootedAt: this.hostBootedAt },
     }
   }
 
@@ -599,6 +601,18 @@ export class BoardController {
    *  default is CURRENT on purpose: a replica that has not read a lease yet
    *  makes no claim, so a boot race can never flash a false stale banner. */
   hostProto = 2
+  /** Which host process is answering (undefined = no lease read yet). The
+   *  stale-host dialog shows it as a real time, so a user who DID restart the
+   *  harness can tell at a glance whether this connection lands on that
+   *  process or on a second, un-restarted instance behind the same URL. */
+  hostBootedAt: number | undefined = undefined
+
+  /** Mirror the host's boot instant into the snapshot (change → notify). */
+  setHostBoot(bootedAt: number | undefined): void {
+    if (this.hostBootedAt === bootedAt) return
+    this.hostBootedAt = bootedAt
+    this.notify()
+  }
 
   /** Mirror the host's lease protocol into the snapshot (change → notify).
    *  A host restart moves the protocol WITHOUT moving the seat — the wiring

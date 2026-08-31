@@ -104,10 +104,17 @@ export class BoardDataService {
 
   private readonly now: () => number
   private readonly log: (message: string, error?: unknown) => void
+  /** When THIS host process started serving the board (carried on every lease
+   *  answer). The board's stale-host dialog shows it: "我明明重启了它还这么
+   * 显示" has exactly two answers — this process really is the old one, or the
+   *  address is talking to a different instance — and a real clock reading
+   *  settles it on the spot instead of leaving the user to guess. */
+  readonly bootedAt: number
 
   constructor(private readonly deps: BoardServiceDeps = {}) {
     this.now = deps.now ?? (() => Date.now())
     this.log = deps.log ?? ((message, error) => (error === undefined ? console.error(message) : console.error(message, error)))
+    this.bootedAt = this.now()
   }
 
   /**
@@ -204,8 +211,11 @@ export class BoardDataService {
         ? holderLease.active
         : true
       if (!(active && holderActive === false)) {
-        // Held (live stream or unexpired) by someone else: the caller is NOT the engine.
-        return { held: false, holder: current.holder, expiresAt: current.expiresAt }
+        // Held (live stream or unexpired) by someone else: the caller is NOT
+        // the engine. The SAME authoritative view with only the caller-relative
+        // `held` flag flipped — never a re-typed object literal (that is how
+        // `proto` went missing and the stale-host banner started lying).
+        return { ...current, held: false }
       }
       // Preemption: a visible device takes the seat from a hidden holder.
       this.lease = { clientId, expiresAt: now + ttl, ttl, active, lastTouchAt: now }
@@ -254,10 +264,18 @@ export class BoardDataService {
 
   /** The current lease state. A holder with a live SSE stream never expires
    *  (the stream is refreshed by the keep-alive writes; a dead one surfaces
-   *  through noteDisconnect); an expired lease reads as free, holderless. */
+   *  through noteDisconnect); an expired lease reads as free, holderless.
+   *
+   *  THE one construction site of a LeaseState: every lease answer the route
+   *  can ever send (granted / renewing / rejected / released) is derived from
+   *  this object, so no branch can ship a seat view that forgets `proto` or
+   *  `bootedAt`. A missing `proto` read as "old host", which made the
+   *  "服务端未重启" banner stand forever on every non-engine device — the
+   *  rejected branch used to hand-build `{ held, holder, expiresAt }` and
+   *  nothing else. */
   leaseState(now = this.now()): LeaseState {
     if (this.lease === undefined) {
-      return { held: false, holder: undefined, expiresAt: undefined, proto: LEASE_PROTOCOL_ACTIVE }
+      return { held: false, holder: undefined, expiresAt: undefined, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt }
     }
     // Stream-alive renewal keeps a THROTTLED background tab (whose timers
     // crawl but whose JS still runs) in the seat it legitimately holds — but
@@ -271,12 +289,12 @@ export class BoardDataService {
       if (this.lease.expiresAt < now + this.lease.ttl) {
         this.lease = { ...this.lease, expiresAt: now + this.lease.ttl }
       }
-      return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE }
+      return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt }
     }
     if (this.lease.expiresAt <= now) {
-      return { held: false, holder: undefined, expiresAt: undefined, proto: LEASE_PROTOCOL_ACTIVE }
+      return { held: false, holder: undefined, expiresAt: undefined, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt }
     }
-    return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE }
+    return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt }
   }
 
   /** An SSE connection for `clientId` opened (route layer, stream accepted). */

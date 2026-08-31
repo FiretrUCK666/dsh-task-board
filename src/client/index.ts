@@ -889,6 +889,7 @@ export function apply(ctx: ClientContext): void {
       controller.syncActive = true
       const proto = sync.hostProtoVersion()
       if (proto !== undefined) controller.setHostProto(proto)
+      controller.setHostBoot(sync.hostBootTime())
       controller.setEngine(sync.isEngine())
     }
     controller.start()
@@ -916,10 +917,13 @@ export function apply(ctx: ClientContext): void {
       // The seat announcement carries BOTH halves: which replica holds the
       // engine, and the host's protocol version (a restart moves the
       // protocol without moving the seat — this is what clears the stale
-      // banner live on every device, no manual refresh needed).
+      // banner live on every device, no manual refresh needed). The host's
+      // boot instant rides the same read: it is what the dialog shows as
+      // evidence when a user insists they already restarted.
       sync.onEngine(held => {
         const proto = sync.hostProtoVersion()
         if (proto !== undefined) controller.setHostProto(proto)
+        controller.setHostBoot(sync.hostBootTime())
         controller.setEngine(held)
       })
       sync.onCommand(command => { void controller.runTask(command.taskId, command.trigger) })

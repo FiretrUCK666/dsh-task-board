@@ -33,7 +33,7 @@ import type {
   BoardEvent,
   BoardSection,
   CruiseValue,
-  LeaseState,
+  LeaseWire,
 } from './board-doc.ts'
 import type { RunPresetStore, RunPresetsDocument } from './run-presets.ts'
 import type { PresetStore, SchedulePreset } from './presets.ts'
@@ -52,7 +52,7 @@ export interface SyncFetchResult {
 export interface BoardSyncTransport {
   fetch(clientId: string, since: number | undefined): Promise<SyncFetchResult | undefined>
   commit(commit: BoardCommit): Promise<SyncFetchResult | undefined>
-  lease(clientId: string, options: { ttlMs?: number; release?: boolean; active?: boolean }): Promise<LeaseState | undefined>
+  lease(clientId: string, options: { ttlMs?: number; release?: boolean; active?: boolean }): Promise<LeaseWire | undefined>
   command(clientId: string, command: BoardCommand): Promise<void>
   /** Open the SSE change stream for this replica; the returned disposer closes it. */
   openStream(clientId: string, handlers: {
@@ -133,6 +133,8 @@ export class BoardSyncClient {
    *  read a lease — "no evidence yet" must never be reported as "old host"
    *  (a failed first probe would otherwise flash a false stale banner). */
   private hostLeaseProto: number | undefined = undefined
+  /** When the answering host process booted (undefined = never read). */
+  private hostBoot: number | undefined = undefined
   private engine = false
   private disposed = false
   private commitCancel: (() => void) | undefined
@@ -503,11 +505,14 @@ export class BoardSyncClient {
     // take it. Remember that so the board can say so out loud instead of
     // leaving the user to guess why queued work never moves.
     const proto = typeof state.proto === 'number' ? state.proto : 1
-    // Announce on EITHER half of the seat moving. Notifying only on a held
+    const bootedAt = typeof state.bootedAt === 'number' && Number.isFinite(state.bootedAt) ? state.bootedAt : undefined
+    // Announce on ANY half of the seat moving: who holds it, the host's
+    // protocol, or which host process is answering. Notifying only on a held
     // change is how a restarted host stayed "stale" on every viewer until a
     // manual refresh — the protocol moved, nobody was told.
-    const changed = this.engine !== state.held || this.hostLeaseProto !== proto
+    const changed = this.engine !== state.held || this.hostLeaseProto !== proto || this.hostBoot !== bootedAt
     this.hostLeaseProto = proto
+    this.hostBoot = bootedAt
     this.engine = state.held
     if (changed) this.engineListener?.(state.held)
   }
@@ -516,6 +521,13 @@ export class BoardSyncClient {
    *  undefined until the first lease read — "not yet known" is not "old". */
   hostProtoVersion(): number | undefined {
     return this.hostLeaseProto
+  }
+
+  /** When the answering host process booted; undefined until the first lease
+   *  read. The stale-host dialog shows it so "我明明重启了" is settled by a
+   *  clock reading (old process vs. a different instance behind the URL). */
+  hostBootTime(): number | undefined {
+    return this.hostBoot
   }
 
   /** Yield the seat on a lease frame (the protocol cannot change there —
