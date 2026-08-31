@@ -552,10 +552,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     >
       <header className={css.boardHeader}>
         {/* 板头两行，语义分区（compact 档行结构确定，不靠内容驱动折行）：
-            导航行 = 返回 + 板名 + 模式组（整理/自动化），状态组（巡航状态 +
-            引擎指示）有内容才出现且独占第二行；工具行 = 新建 + 自动巡航两端
-            对齐，筛选独占一行（占位符永远完整）。标签一律保留（藏掉文字换宽度
-            是错误取舍：用户不知道那颗开关是什么）。 */}
+            导航行 = 返回 + 板名 + 模式组（整理/自动化）+ 自动巡航开关，状态组（巡航
+            状态 + 引擎指示）有内容才出现且独占第二行；工具行 = 筛选左（与返回对齐）
+            + 新建任务右（与自动化同列）。标签一律保留。 */}
         <div className={`${css.boardRow} ${css.boardRowNav}`}>
           <button
             type="button"
@@ -636,25 +635,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               {t('board.automation')}
             </Button>
           </span>
-        </div>
-
-        {/* 工具行：唯一的强调是「+ 新建任务」，其余安静。compact 档它是确定的
-            两行（新建 + 巡航一行、筛选独占一行），不再内容驱动折行。 */}
-        <div className={`${css.boardRow} ${css.boardRowTools}`}>
-          <Button
-            variant="primary"
-            onClick={() => { setShowNew(true) }}
-          >
-            + {t('board.new')}
-          </Button>
-          <input
-            className={css.search}
-            type="search"
-            placeholder={t('board.search')}
-            value={filter}
-            onChange={event => { setFilter(event.target.value) }}
-            aria-label={t('board.search')}
-          />
           {/* 自动巡航：一颗安静的胶囊（开关 + 设置 ▾），点击展开定时设置弹层。 */}
           <div className={css.cruiseWrap} ref={cruiseWrapRef}>
             <div className={css.cruisePill}>
@@ -773,6 +753,26 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               </CruiseSettingsHost>
             )}
           </div>
+        </div>
+
+        {/* 工具行：筛选左（与返回/板名对齐）+ 新建任务右（与自动化同列对齐）。标签一律保留。 */}
+        <div className={`${css.boardRow} ${css.boardRowTools}`}>
+          <input
+            className={css.search}
+            type="search"
+            placeholder={t('board.search')}
+            value={filter}
+            onChange={event => { setFilter(event.target.value) }}
+            aria-label={t('board.search')}
+          />
+          <Button
+            variant="primary"
+            className={css.boardNewTask}
+            onClick={() => { setShowNew(true) }}
+          >
+            + {t('board.new')}
+          </Button>
+
         </div>
 
         {/* 多选横栏（整理模式或已有选中时出现）：先点卡片（Ctrl/Cmd+点击或整理
