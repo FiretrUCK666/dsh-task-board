@@ -551,10 +551,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       }}
     >
       <header className={css.boardHeader}>
-        {/* 板头两行，语义分区（compact 档行结构确定，不靠内容驱动折行）：
-            导航行 = 返回 + 板名 + 模式组（整理/自动化）+ 自动巡航开关，状态组（巡航
-            状态 + 引擎指示）有内容才出现且独占第二行；工具行 = 筛选左（与返回对齐）
-            + 新建任务右（与自动化同列）。标签一律保留。 */}
+        {/* 板头两行，语义分区（紧凑档行结构确定，不靠内容驱动折行）：
+            导航行 = 返回 + 板名 + 状态组（左，紧跟板名）+ 空位 + 自动巡航 +
+            新建任务（右端主行动）；工具行 = 筛选（左，与返回/板名同一条 x）+
+            空位 + 模式组（整理/自动化，右）。紧凑档各自再确定性地换行：
+            导航第二行 = 状态（有内容才出现），工具第二行 = 模式组右对齐，
+            筛选永远独占一条整幅白长条。标签一律保留。 */}
         <div className={`${css.boardRow} ${css.boardRowNav}`}>
           <button
             type="button"
@@ -566,10 +568,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             <Icon name="arrowLeft" />
           </button>
           <h2 className={css.boardTitle}>{t('board.title')}</h2>
-          <span className={css.boardSpacer} />
-          {/* 状态槽：巡航状态 + 引擎指示，一个语义单元，只在有内容时渲染。
-              零段省略（「排队 0」是噪音，与上下文计量同一文法）。compact 档
-              它独占第二行（grid area），永远不再把模式按钮挤到折行上。 */}
+          {/* 状态槽：运行/排队 + 引擎指示，一个语义单元，只在有内容时渲染。
+              零段省略（「排队 0」是噪音，与上下文计量同一文法）。紧凑档它独占
+              导航行的第二行，永远不再把主行动挤到折行上。 */}
           {(() => {
             const stateParts = [
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
@@ -614,28 +615,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               </span>
             )
           })()}
-          {/* 模式按钮（整理/自动化）是一个语义组：宽档贴右成簇，compact 档
-              整组留在标题行——它们永远同进同退，不会被状态挤散。 */}
-          <span className={css.boardModes}>
-            {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
-                never the brand fill, so the bar reads quiet until there is a
-                real selection to manage. */}
-            <Button
-              variant="ghost"
-              pressed={organizing}
-              onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
-            >
-              {t('board.organize')}
-            </Button>
-            <Button
-              variant="ghost"
-              title={t('board.automationTitle')}
-              onClick={() => { setShowAutomation(true) }}
-            >
-              {t('board.automation')}
-            </Button>
-          </span>
-          {/* 自动巡航：一颗安静的胶囊（开关 + 设置 ▾），点击展开定时设置弹层。 */}
+          {/* The one spacer of the row: everything after it rides the right
+              end. `margin-left:auto` is the forbidden spelling of "靠右" — it
+              right-aligns whichever item happens to START a wrapped line. */}
+          <span className={css.boardSpacer} />
+          {/* 自动巡航：一颗安静的胶囊（开关 + 设置 ▾），点击展开定时设置弹层。
+              它坐在主行动（新建任务）的左边：右端两个成员一左一右，巡航是常态
+              开关、新建是一次性动作，动作永远在最右。 */}
           <div className={css.cruiseWrap} ref={cruiseWrapRef}>
             <div className={css.cruisePill}>
               <Switch
@@ -753,9 +739,20 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               </CruiseSettingsHost>
             )}
           </div>
+          {/* 新建任务：板上唯一的主行动（primary），永远坐在导航行的最右端——
+              它从筛选行搬来，那一行因此只剩「筛选任务」一条整幅白长条（用户
+              原话），不再是一条行里塞一个孤零零的按钮。 */}
+          <Button
+            variant="primary"
+            className={css.boardNewTask}
+            onClick={() => { setShowNew(true) }}
+          >
+            + {t('board.new')}
+          </Button>
         </div>
 
-        {/* 工具行：筛选左（与返回/板名对齐）+ 新建任务右（与自动化同列对齐）。标签一律保留。 */}
+        {/* 工具行：筛选左（与返回/板名同一条 x）+ 模式组右（整理/自动化）。
+            紧凑档筛选独占整行、模式组独占一行且右对齐——换行，不压扁。 */}
         <div className={`${css.boardRow} ${css.boardRowTools}`}>
           <input
             className={css.search}
@@ -765,14 +762,27 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             onChange={event => { setFilter(event.target.value) }}
             aria-label={t('board.search')}
           />
-          <Button
-            variant="primary"
-            className={css.boardNewTask}
-            onClick={() => { setShowNew(true) }}
-          >
-            + {t('board.new')}
-          </Button>
-
+          {/* 模式按钮（整理/自动化）是一个语义组：宽档贴右成簇，紧凑档整组
+              换到自己的一行右对齐——它们永远同进同退，不会被挤散。 */}
+          <span className={css.boardModes}>
+            {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
+                never the brand fill, so the bar reads quiet until there is a
+                real selection to manage. */}
+            <Button
+              variant="ghost"
+              pressed={organizing}
+              onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
+            >
+              {t('board.organize')}
+            </Button>
+            <Button
+              variant="ghost"
+              title={t('board.automationTitle')}
+              onClick={() => { setShowAutomation(true) }}
+            >
+              {t('board.automation')}
+            </Button>
+          </span>
         </div>
 
         {/* 多选横栏（整理模式或已有选中时出现）：先点卡片（Ctrl/Cmd+点击或整理

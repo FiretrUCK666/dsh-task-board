@@ -337,27 +337,26 @@ describe('board header and navigator legibility', () => {
   it('the compact board header is a DETERMINISTIC split (never a wrap soup)', () => {
     // The old shape was one flex-wrap row soup: the engine banner appearing
     // pushed 整理/自动化 to a second line and 自动巡航 to a fourth. Compact
-    // fixes the SHAPE: nav line = back + title + modes group; the second line
-    // = 自动巡航开关 (right) + 状态组 (status + engine, left, only when it has
-    // content). Groups keep members together; the cruise switch rides beside
-    // its live status.
+    // fixes the SHAPE: nav line 1 = back + title + 自动巡航 + 新建任务 (the
+    // title's flex:1 pushes the right cluster — NO auto margins), nav line 2 =
+    // the status group on its own full-width line (only when it has content).
     const nav = ruleIn(compact, '.boardRowNav')
     expect(nav).toMatch(/flex-wrap:\s*wrap/)
     expect(compact).toMatch(/\.boardRowNav \.boardSpacer\s*\{\s*\n?\s*display:\s*none/)
     expect(compact).toMatch(/\.boardRowNav \.boardTitle\s*\{[^}]*flex:\s*1 1 auto/)
     const state = ruleIn(compact, '.boardRowNav .boardState')
-    expect(state).toMatch(/flex:\s*1 1 auto/)
+    // flex-basis 100% = the line is DETERMINED (it always wraps), not content-
+    // driven (a long banner used to shove the buttons onto a new line).
+    expect(state).toMatch(/flex:\s*1 1 100%/)
     expect(state).toMatch(/order:/)
-    // The cruise switch joins the status line, right-aligned (margin auto).
-    const cruise = ruleIn(compact, '.boardRowNav .cruiseWrap')
-    expect(cruise).toMatch(/order:\s*6/)
-    expect(cruise).toMatch(/margin-left:\s*auto/)
-    // The mode buttons and the state cluster are semantic GROUPS (they move
-    // as one, never scatter across lines).
+    // The right cluster is pushed by the flexible title, never by an auto
+    // margin (the board's own ⑨: auto margin right-aligns whichever item
+    // happens to START a wrapped line, so a wrap scatters the row).
+    expect(compact).not.toMatch(/margin-left:\s*auto/)
+    // Groups keep members together; the cruise label survives at every width
+    // (hiding words to buy pixels is the forbidden trade).
     expect(ruleOf('boardModes')).toMatch(/display:\s*inline-flex/)
     expect(ruleOf('boardState')).toMatch(/display:\s*inline-flex/)
-    // The cruise label stays visible at every width (hiding words to buy
-    // pixels is the forbidden trade).
     expect(compact).not.toMatch(/\.cruisePill \.switchLabel\s*\{\s*\n?\s*display:\s*none/)
     // The engine note is a real button (touch has no hover to reveal a `title`).
     const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
@@ -368,6 +367,24 @@ describe('board header and navigator legibility', () => {
     // quietness grammar as the context meter's legend).
     expect(board).toMatch(/snapshot\.stats\.running > 0 \? \[t\('board\.statusRunning'/)
     expect(board).toMatch(/snapshot\.stats\.queued > 0 \? \[t\('board\.statusQueued'/)
+  })
+
+  it('the header rows carry the agreed MEMBERS at both widths', () => {
+    // Desktop AND compact share one DOM: nav row = back, title, state, spacer,
+    // cruise, NEW TASK; tools row = search, MODES. The user's re-flow: 整理/
+    // 自动化 move next to the filter, 新建任务 swaps places with 自动巡航 and
+    // the statuses read on the left.
+    const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    const board = readFileSync(tsxPath, 'utf8')
+    const navRow = board.slice(board.indexOf('css.boardRowNav'), board.indexOf('css.boardRowTools'))
+    const toolsRow = board.slice(board.indexOf('css.boardRowTools'), board.indexOf('organizeBar'))
+    expect(navRow).toMatch(/boardNewTask[\s\S]*<\/div>/)
+    expect(navRow.indexOf('cruiseWrap')).toBeLessThan(navRow.indexOf('boardNewTask'))
+    expect(navRow.indexOf('boardState')).toBeLessThan(navRow.indexOf('cruiseWrap'))
+    expect(navRow).not.toContain('boardModes')
+    expect(toolsRow).toMatch(/className=\{css\.search\}/)
+    expect(toolsRow).toContain('boardModes')
+    expect(toolsRow).not.toContain('boardNewTask')
   })
 })
 
@@ -385,22 +402,22 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
   })
 
-  it('the compact tool row is deterministic: full-width search + new-task right', () => {
+  it('the compact tool row is deterministic: the filter owns a whole line', () => {
     // The filter field used to share the tool row and get crushed to one
     // glyph ("筛"); a width floor only hides the structure problem. Compact
-    // fixes the SHAPE: search owns its full-width line (the placeholder always
-    // reads whole), the + 新建任务 button takes the next line RIGHT (the same
-    // "筛选左 + 新建右" semantics as the desktop, just two lines instead of one).
+    // fixes the SHAPE: the search takes a full-width line on its own (the
+    // placeholder always reads whole — 「那一行只保留筛选任务这条白长条」), and
+    // the mode group takes the next line right-aligned. 新建任务 no longer
+    // lives here at all (it moved to the nav row's right end).
     const tools = ruleIn(compact, '.boardRowTools')
     expect(tools).toMatch(/flex-wrap:\s*wrap/)
-    expect(tools).toMatch(/justify-content:\s*flex-end/)
     const search = ruleIn(compact, '.boardRowTools .search')
     expect(search).toMatch(/flex:\s*1 1 100%/)
-    expect(search).toMatch(/order:/)
     expect(search).toMatch(/max-width:\s*none/)
-    const newTask = ruleIn(compact, '.boardRowTools .boardNewTask')
-    expect(newTask).toMatch(/order:\s*6/)
-    expect(newTask).toMatch(/flex:\s*none/)
+    const modes = ruleIn(compact, '.boardRowTools .boardModes')
+    expect(modes).toMatch(/flex:\s*1 1 100%/)
+    expect(modes).toMatch(/justify-content:\s*flex-end/)
+    expect(compact).not.toMatch(/\.boardRowTools \.boardNewTask/)
   })
 
   it('row actions collapse to glyphs compact so the title keeps its quota', () => {

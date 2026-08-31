@@ -301,9 +301,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-family: var(--dsw-font-family);
 }
 
-/* 板头：两行命令栏。第一行 = 返回对话 + 板名 …… 状态 + 自动巡航 + 新建任务
-   （唯一强调是 primary 新建，其余安静）；第二行 = 筛选搜索（弹性胶囊）。
-   层级靠留白与分组表达，不堆边框。 */
+/* 板头两行命令栏。导航行 = 返回 + 板名 + 状态组（左）…… 自动巡航 + 新建任务
+   （右端，动作永远在最右）；工具行 = 筛选（左）…… 整理 + 自动化（右）。
+   层级靠留白与分组表达，不堆边框、不用 auto margin。 */
 .boardHeader {
   display: flex;
   flex-direction: column;
@@ -384,9 +384,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
 }
 
-/* 工具行 = 筛选任务（左，与返回/板名对齐）+ 新建任务（右，与自动化同列对齐）：
-   search grows until its cap, the leftover space belongs to the row, so the
-   two never fight and the primary action lands flush right. */
+/* 工具行 = 筛选任务（左，与返回/板名同一条 x）+ 模式组（整理/自动化，右）：
+    space-between 让两端各自贴边，中间的空位属于行，两个成员永不互抢。 */
 .boardRowTools {
   justify-content: space-between;
 }
@@ -5273,10 +5272,10 @@ textarea.input {
     gap: 8px;
   }
 
-  /* 导航行 = 确定的两行：标题行（返回 + 板名 + 模式组）与 第二行 = 自动巡航开关
-     （右）+ 状态组（巡航状态/引擎指示，左，仅有内容时渲染）。此前它是 flex-wrap
-     的折行汤：引擎横幅一出现就把整理/自动化挤到第二行、巡航掉到第四行（用户截图
-     的乱局）。巡航开关与其状态并排（开关右、状态左），模式组与标题同进同退。 */
+  /* 导航行 = 确定的两行：第 1 行 返回 + 板名 + 自动巡航 + 新建任务（板名
+     flex:1 把右端两件推到头，不需要任何 auto margin）；第 2 行 = 状态组
+     （flex-basis 100% 必定独占一行，有内容才渲染）。此前它是 flex-wrap 的
+     折行汤：引擎横幅一出现就把按钮挤散、巡航掉到第四行。 */
   .boardRowNav {
     flex-wrap: wrap;
   }
@@ -5289,33 +5288,28 @@ textarea.input {
     flex: 1 1 auto;
   }
 
+  /* 状态组换到自己的整行（order 让它排在右端两件之后）。 */
   .boardRowNav .boardState {
-    flex: 1 1 auto;
+    flex: 1 1 100%;
     order: 5;
   }
 
-  .boardRowNav .cruiseWrap {
-    order: 6;
-    /* Flex auto margin: the switch rides the RIGHT of the status line (and
-       stays right when there is no status to sit beside). */
-    margin-left: auto;
-  }
-
-  /* 工具行 = 确定的两行：新建 + 自动巡航两端对齐一行，筛选独占整行。搜索
-     框拿到整幅宽度，占位符完整可读（「筛选被截断」的根解——宽度地板治不了
-     结构问题，让位才是答案）；巡航的文字标签永远保留。 */
+  /* 工具行 = 确定的两行：筛选独占一整条白长条（占位符永远完整——宽度地板
+     治不了结构问题，让位才是答案），模式组再独占一行右对齐。新建任务已经
+     搬去导航行最右端，这一行不再有一个孤零零的按钮。 */
   .boardRowTools {
     flex-wrap: wrap;
-    /* The wrapped lines: search owns a full line (order 5), the new-task
-       button takes the next line RIGHT (order 6, flex-end) — the same
-       "筛选左 + 新建右" semantics as the desktop, just two lines instead of
-       one (the filter keeps its complete placeholder). */
-    justify-content: flex-end;
   }
 
-  .boardRowTools .boardNewTask {
-    order: 6;
-    flex: none;
+  .boardRowTools .search {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .boardRowTools .boardModes {
+    flex: 1 1 100%;
+    justify-content: flex-end;
   }
 
   /* The organize bar re-stacks (colors own a line, count + actions share the
@@ -5325,13 +5319,6 @@ textarea.input {
     grid-template-areas:
       "colors colors"
       "count actions";
-  }
-
-  .boardRowTools .search {
-    flex: 1 1 100%;
-    order: 5;
-    min-width: 0;
-    max-width: none;
   }
 
   /* Five equal columns → a swipeable track. A column stays wide enough to
