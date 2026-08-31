@@ -63,12 +63,16 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(body).toContain('min-height: 0')
   })
 
-  it('the rail clips horizontally and scrolls as ONE only as the last resort', () => {
-    // Horizontal: nothing spills past and covers other UI. Vertical: auto —
-    // the honest fallback when the head renders its config fully and even the
-    // comments floor cannot absorb it (never a clipped box).
-    expect(ruleOf('reviewRail')).toContain('overflow-x: hidden')
-    expect(ruleOf('reviewRail')).toContain('overflow-y: auto')
+  it('the rail clips horizontally; the FOLDS block owns the only scroll', () => {
+    // Horizontal: nothing spills past and covers other UI. Vertical: the rail
+    // does NOT scroll — a scrollport that contains the composer is exactly how
+    // the send box used to be pushed out of reach, and a `display: contents`
+    // rail cannot scroll at all (a declared-but-dead scroller is a lie the
+    // follow logic could walk into). The folds block owns the last resort.
+    expect(ruleOf('reviewRail')).toContain('overflow: hidden')
+    expect(ruleOf('reviewRail')).not.toMatch(/overflow-y:\s*auto/)
+    expect(ruleOf('sessionRailFolds')).toMatch(/overflow-y:\s*auto/)
+    expect(ruleOf('sessionRailFolds')).toMatch(/min-height:\s*0/)
   })
 
   it('action rows wrap instead of bursting the card right edge', () => {
@@ -141,9 +145,10 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(ruleOf('sessionFacts')).toMatch(/padding-inline:\s*var\(--dsh-tb-rail-inset\)/)
     // Inside the comments region the interaction card drops its margin.
     expect(cssSource).toMatch(/\.commentsScroll \.interactionCard\s*\{[^}]*margin:\s*0 0 2px/)
-    // The rail clips horizontally; vertical auto is the last-resort whole-rail
-    // scroll (check the rail layout contract).
-    expect(ruleOf('reviewRail')).toContain('overflow-x: hidden')
+    // The rail clips on both axes; the folds block is the only scroller
+    // (check the rail layout contract — a scrolling rail could push the
+    // composer out of reach again).
+    expect(ruleOf('reviewRail')).toContain('overflow: hidden')
     // No trace of the retired single-scroll-body / dock grammars.
     expect(cssSource).not.toMatch(/\.sessionRailScroll\s*\{/)
     expect(cssSource).not.toMatch(/\.sessionContextDock\s*\{/)
@@ -159,7 +164,13 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     const block = stacked()
     const body = ruleIn(block, '.reviewBody')
     expect(body).toMatch(/display:\s*grid/)
-    expect(body).toMatch(/grid-template-rows:\s*minmax\(0,\s*45%\) minmax\(0,\s*1fr\) auto/)
+    // `minmax(0, auto)` on BOTH content rows, not a fixed percentage: a fixed
+    // `45%` track reserves 45% of the panel even with both folds collapsed (a
+    // dead band above the conversation), and an unshrinkable `auto` composer
+    // row gets clipped by `overflow: hidden` when a tall composer meets a short
+    // panel (soft keyboard). min 0 + own scroll = always reachable; max auto =
+    // never reserves space it does not need.
+    expect(body).toMatch(/grid-template-rows:\s*minmax\(0,\s*auto\)\s+minmax\(0,\s*1fr\)\s+minmax\(0,\s*auto\)/)
     expect(body).toMatch(/grid-template-areas:[\s\S]*"folds"[\s\S]*"transcript"[\s\S]*"composer"/)
     expect(body).toMatch(/overflow:\s*hidden/)
     // The rail stops being a BOX so its segments can join the panel grid.
@@ -168,10 +179,16 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // conversation scrolls, the composer never does; the comments box hands
     // its scroll to the folds block (no scroller inside a scroller).
     expect(ruleIn(block, '.sessionRailFolds')).toMatch(/grid-area:\s*folds/)
-    expect(ruleIn(block, '.sessionRailFolds')).toMatch(/overflow-y:\s*auto/)
+    expect(ruleIn(block, '.sessionRailFolds')).toMatch(/min-height:\s*0/)
     expect(ruleIn(block, '.commentsScroll')).toMatch(/overflow-y:\s*visible/)
     expect(ruleIn(block, '.reviewMain')).toMatch(/grid-area:\s*transcript/)
     expect(ruleIn(block, '.reviewComposer')).toMatch(/grid-area:\s*composer/)
+    // The one case a non-shrinkable row cannot solve — a tall composer (long
+    // draft, attached pictures) on a short panel (soft keyboard on a small
+    // phone) — must degrade to a scrolling composer, never to a send button
+    // cut off OUTSIDE every scrollport by the panel's own overflow:hidden.
+    expect(ruleIn(block, '.reviewComposer')).toMatch(/min-height:\s*0/)
+    expect(ruleIn(block, '.reviewComposer')).toMatch(/overflow-y:\s*auto/)
     // Placement is by NAMED AREA, never by `order` (an order on an item of a
     // contents parent reads against the wrong container).
     expect(block).not.toMatch(/\.reviewMain\s*\{[^}]*order:/)

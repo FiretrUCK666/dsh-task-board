@@ -702,6 +702,15 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
        the 滑到最新 button — the review caught it). */
     commentsOpen || interaction !== undefined,
   )
+  // A pending question is the ONE thing in this panel the user must answer for
+  // the session to move at all — so arriving must bring it into view even when
+  // the reader had scrolled up (the follow-while-at-bottom rule deliberately
+  // does not fire for them). The force-opened fold alone is not enough on a
+  // phone: the card can still sit below the capped region's viewport with its
+  // 确认/拒绝 buttons off-screen and no hint that anything is waiting.
+  useEffect(() => {
+    if (interaction !== undefined) jumpComments()
+  }, [interaction?.rpcId, jumpComments])
   // The collapsed head still says something: the live context occupancy
   // rides the disclosure summary (zero-omission quietness, same as every
   // other summary — no projection, no line).
@@ -754,7 +763,12 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             title={t('review.comments')}
             summary={interaction !== undefined ? t('review.waiting') : String(thread.length)}
             open={commentsOpen || interaction !== undefined}
-            onToggle={() => { setCommentsOpen(!commentsOpen) }}
+            /* While the card forces the fold open, the row is INERT: flipping
+               the hidden flag anyway made the tap look dead (aria-expanded
+               stayed true) and then silently collapsed the thread the moment
+               the question was answered — a state that contradicts what the
+               user just saw. */
+            onToggle={() => { if (interaction === undefined) setCommentsOpen(!commentsOpen) }}
           >
             <div className={css.commentsScroll} ref={commentsScrollRef} onScroll={onCommentsScroll}>
               <CommentsThread task={task} views={thread} onCancel={onCancelComment} />

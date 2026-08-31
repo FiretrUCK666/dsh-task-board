@@ -337,22 +337,25 @@ describe('board header and navigator legibility', () => {
   it('the compact board header is a DETERMINISTIC split (never a wrap soup)', () => {
     // The old shape was one flex-wrap row soup: the engine banner appearing
     // pushed 整理/自动化 to a second line and 自动巡航 to a fourth. Compact
-    // fixes the SHAPE: nav line 1 = back + title + 自动巡航 + 新建任务 (the
-    // title's flex:1 pushes the right cluster — NO auto margins), nav line 2 =
-    // the status group on its own full-width line (only when it has content).
+    // fixes the SHAPE with a named grid: line 1 = back + title + 新建任务,
+    // line 2 = 状态 (spanning, left) + 自动巡航 (right).
+    // Why the cruise switch is NOT beside the new-task button on a phone: the
+    // fixed members of that line would be back 28 + cruise pill ~132 + primary
+    // ~96 + gaps 24 = 280 of a 320px phone's 296 — the board title would
+    // ellipsize to a stub, i.e. "labels survive" broken by arithmetic.
     const nav = ruleIn(compact, '.boardRowNav')
-    expect(nav).toMatch(/flex-wrap:\s*wrap/)
+    expect(nav).toMatch(/display:\s*grid/)
+    expect(nav).toMatch(/grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/)
+    expect(nav).toMatch(/grid-template-areas:[\s\S]*"back title new"[\s\S]*"state state cruise"/)
     expect(compact).toMatch(/\.boardRowNav \.boardSpacer\s*\{\s*\n?\s*display:\s*none/)
-    expect(compact).toMatch(/\.boardRowNav \.boardTitle\s*\{[^}]*flex:\s*1 1 auto/)
-    const state = ruleIn(compact, '.boardRowNav .boardState')
-    // flex-basis 100% = the line is DETERMINED (it always wraps), not content-
-    // driven (a long banner used to shove the buttons onto a new line).
-    expect(state).toMatch(/flex:\s*1 1 100%/)
-    expect(state).toMatch(/order:/)
-    // The right cluster is pushed by the flexible title, never by an auto
-    // margin (the board's own ⑨: auto margin right-aligns whichever item
-    // happens to START a wrapped line, so a wrap scatters the row).
+    expect(compact).toMatch(/\.boardRowNav \.boardTitle\s*\{[^}]*grid-area:\s*title/)
+    expect(compact).toMatch(/\.boardRowNav \.boardState\s*\{[^}]*grid-area:\s*state/)
+    expect(compact).toMatch(/\.boardRowNav \.cruiseWrap\s*\{[^}]*grid-area:\s*cruise/)
+    expect(compact).toMatch(/\.boardRowNav \.boardNewTask\s*\{[^}]*grid-area:\s*new/)
+    // Hierarchy is AREAS, never `order` + auto margins (auto margin right-aligns
+    // whichever item happens to START a wrapped line, so a wrap scatters it).
     expect(compact).not.toMatch(/margin-left:\s*auto/)
+    expect(compact).not.toMatch(/\.boardRowNav[^{]*\{[^}]*order:/)
     // Groups keep members together; the cruise label survives at every width
     // (hiding words to buy pixels is the forbidden trade).
     expect(ruleOf('boardModes')).toMatch(/display:\s*inline-flex/)
@@ -408,15 +411,16 @@ describe('alignment grammar (the OCD contract)', () => {
     // fixes the SHAPE: the search takes a full-width line on its own (the
     // placeholder always reads whole — 「那一行只保留筛选任务这条白长条」), and
     // the mode group takes the next line right-aligned. 新建任务 no longer
-    // lives here at all (it moved to the nav row's right end).
+    // lives here at all (it moved to the nav row).
     const tools = ruleIn(compact, '.boardRowTools')
-    expect(tools).toMatch(/flex-wrap:\s*wrap/)
+    expect(tools).toMatch(/display:\s*grid/)
+    expect(tools).toMatch(/grid-template-areas:[\s\S]*"search"[\s\S]*"modes"/)
     const search = ruleIn(compact, '.boardRowTools .search')
-    expect(search).toMatch(/flex:\s*1 1 100%/)
+    expect(search).toMatch(/grid-area:\s*search/)
     expect(search).toMatch(/max-width:\s*none/)
     const modes = ruleIn(compact, '.boardRowTools .boardModes')
-    expect(modes).toMatch(/flex:\s*1 1 100%/)
-    expect(modes).toMatch(/justify-content:\s*flex-end/)
+    expect(modes).toMatch(/grid-area:\s*modes/)
+    expect(modes).toMatch(/justify-self:\s*end/)
     expect(compact).not.toMatch(/\.boardRowTools \.boardNewTask/)
   })
 

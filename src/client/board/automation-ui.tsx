@@ -794,10 +794,15 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
               already the disclosure's live one-liner (and the overview row's),
               so repeating it here is the孤零零 second 「未启用」 the user
               pointed at — a fact stated twice reads as a fact about two
-              different things. What the fold cannot carry is the when: the
-              next trigger, the last one, and the skip affordance for the next.
+              different things. What the fold cannot carry is the WHEN.
+              Gated on the SAME readiness the fold's summary uses: a rule
+              paused by its COLUMN (moving a card to 待审核 never calls
+              setSchedule) keeps a stored nextRunAt that the engine only rolls
+              forward, so an ungated line would promise 「下次运行 18:00」 /
+              「即将运行」 right under a fold that says 「已暂停 (待审核)」.
               Zero segments, zero row (「排队 0」 is noise — the meter's law). */}
           {(() => {
+            if (readiness.kind === 'paused' || readiness.kind === 'blocked') return null
             const when: string[] = []
             if (nextRunAt !== undefined) {
               when.push(nextRunAt > Date.now()

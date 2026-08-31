@@ -3867,6 +3867,15 @@ textarea.input {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+  /* THE region's own scroll, declared at BOTH tiers. On a wide rail it is the
+     last resort (a fully-rendered config that even a zero-height comments
+     region cannot absorb); on a phone it is the folds block's normal scroll.
+     The rail itself no longer scrolls (see `.reviewRail`): a scrollport that
+     contains the composer is how the send box used to be pushed out of reach,
+     and a `display: contents` rail cannot scroll at all — a declared-but-dead
+     scroller is a lie `resolveScroller` could walk into. */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Right rail (the wide form): TWO children — the folds block (flex 1 1 auto,
@@ -3886,15 +3895,12 @@ textarea.input {
   width: min(344px, 46cqw);
   min-width: 0;
   min-height: 0;
-  /* Hard clip + LAST-RESORT scroll: nothing inside the rail — head, comments,
-     composer — can ever spill past its borders and cover other UI. When the
-     head renders its config FULLY and even the comments floor 0 cannot absorb
-     it (a phone with the config expanded + keyboard up), the rail itself
-     scrolls as ONE with the SAME thin bar — the honest alternative to clipping
-     the config (the forbidden「文字画在盒外」). In every normal case the flex
-     layout makes the contents fit exactly, so the bar never appears. */
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* Hard clip, never a scroll of its own: the folds block is the region that
+     scrolls (it owns the last-resort bar at both widths), and the composer is
+     the rail's only other child — a scrolling rail would therefore be able to
+     push the send box out of reach again, which is the exact bug this whole
+     contract exists to end. */
+  overflow: hidden;
   border-left: var(--dsh-tb-separator);
   /* An inner floating surface; the separator alone marks the rail. */
   background: var(--dsh-tb-surface-float);
@@ -3903,10 +3909,10 @@ textarea.input {
 /* The rail head (context meter + live run config): ONE Disclosure fold.
    OPENED = rendered FULLY — no max-height cap, no internal scrollbar (a config
    cut at the model row with its own slider is exactly the 「配置显示不全」 the
-   user hit). flex NONE: it renders at its natural height and never clips; if
-   it outgrows the rail, the rail itself scrolls as ONE (the honest last
-   resort, never a cut box). The hairline below separates "the session's
-   machinery" from the comments. */
+   user hit). flex NONE: it renders at its natural height; when the whole folds
+   block outgrows its share, THE BLOCK scrolls as one (never this head, never a
+   cut box). The hairline below separates "the session's machinery" from the
+   comments. */
 .sessionRailHead {
   display: flex;
   flex-direction: column;
@@ -5012,21 +5018,28 @@ textarea.input {
 
 @container dsh-tb-panel (max-width: 600px) {
   /* The narrow panel is a THREE-ROW GRID, not a flex chain fighting over one
-     box. Rows: the folds block (capped, the area's only scroller) → the
-     conversation (the flexible middle) → the composer (its own row, so it is
-     always on screen). This is the structural end of 「上下文一多就把评论和
-     留言按钮全部截断」 and 「点开一个折叠把另一个盖掉」:
-     - a capped top row means an expanded config can never eat the screen;
-     - the composer is a grid ROW, not the last item in someone else's scroll
-       content (which is exactly how it used to land below the fold);
-     - 45% + 1fr + auto can never sum past the panel, so nothing is clipped.
-     `minmax(0, …)` on both flexible rows: a bare track has an automatic
-     minimum of `auto`, i.e. one long unbreakable line would push the row past
-     its share (让位不压扁, the same law as every form-row track). */
+     box: [folds] → [conversation] → [composer]. This is the structural end of
+     「上下文一多就把评论和留言按钮全部截断」 and 「点开一个折叠把另一个盖掉」.
+
+     Track shape, and why: `minmax(0, auto)` on the two content rows.
+     - a FIXED min of 0 makes the track's base size 0, so a row can always give
+       its space back;
+     - an `auto` MAX means the growth limit is that row's own content height —
+       the folds block grows ONLY as far as its content (a fixed `45%` track
+       would reserve 45% of the panel even with both folds collapsed and leave
+       a dead band above the conversation);
+     - and when the panel IS short (soft keyboard up + a long draft), the rows
+       shrink toward 0 with each one's own `overflow-y: auto` keeping its
+       content reachable — instead of the composer being pushed outside every
+       scrollport and cut off by the panel's own `overflow: hidden`.
+     The conversation row is `minmax(0, 1fr)`: it absorbs what the other two do
+     not need and can reach 0 without clipping anything. Nothing in this panel
+     can be "clipped and unreachable": every row either shrinks-and-scrolls or
+     is the flexible middle. */
   .reviewBody {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 45%) minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
     grid-template-areas:
       "folds"
       "transcript"
@@ -5044,10 +5057,9 @@ textarea.input {
 
   .sessionRailFolds {
     grid-area: folds;
-    /* The area's ONE scroller. The fold bodies inside it still render FULLY
-       (no nested scrollbar) — one bar per region is the whole point. */
-    overflow-y: auto;
-    overflow-x: hidden;
+    /* The area's ONE scroller (the base rule already declares it; `min-height:
+       0` lets the row give its space back). The fold bodies inside it still
+       render FULLY — one bar per region is the whole point. */
     min-height: 0;
     padding: 10px 0;
     border-bottom: var(--dsh-tb-separator);
@@ -5063,11 +5075,21 @@ textarea.input {
     padding: 14px;
   }
 
-  /* The composer is now a panel row at the bottom edge (where the thumb is),
-     so it must clear the home-indicator safe area (same law as the compact
-     board). */
+  /* The composer is its OWN panel row at the bottom edge (where the thumb
+     is), so it must clear the home-indicator safe area (same law as the
+     compact board).
+     `min-height: 0` + its own scroll is the answer to the one case a
+     non-shrinking `auto` row cannot solve: a tall composer (long draft,
+     attached pictures) on a short panel (soft keyboard up on a small phone).
+     Without it the row keeps its full height, the grid sums past the panel,
+     and `.reviewBody { overflow: hidden }` cuts the SEND BUTTON off outside
+     every scrollport — unreachable, the very bug this layout exists to end.
+     With it the row shrinks and the composer scrolls: the input stays
+     editable, the send row stays one flick away. */
   .reviewComposer {
     grid-area: composer;
+    min-height: 0;
+    overflow-y: auto;
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
@@ -5313,44 +5335,66 @@ textarea.input {
     gap: 8px;
   }
 
-  /* 导航行 = 确定的两行：第 1 行 返回 + 板名 + 自动巡航 + 新建任务（板名
-     flex:1 把右端两件推到头，不需要任何 auto margin）；第 2 行 = 状态组
-     （flex-basis 100% 必定独占一行，有内容才渲染）。此前它是 flex-wrap 的
-     折行汤：引擎横幅一出现就把按钮挤散、巡航掉到第四行。 */
+  /* 导航行 = 确定的两行，用具名区域表达（⑨：层级由 AREAS 说，不由 order +
+     auto-margin 说）。第 1 行 返回 + 板名 + 新建任务；第 2 行 状态（左，跨
+     两轨）+ 自动巡航（右）。为什么巡航不与新建任务并排在第 1 行：320px 手机
+     上第 1 行的固定成员已是 返回28 + 巡航132 + 新建96 + 间隙24 = 280，板名
+     只剩 16px——「标签一律保留」当场失效。分行后板名拿到 ~156px。
+     行结构由模板固定，与内容长度无关（状态缺席时第二行仍在，巡航守右）。 */
   .boardRowNav {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "back title new"
+      "state state cruise";
+  }
+
+  .boardRowNav .boardBack {
+    grid-area: back;
+  }
+
+  .boardRowNav .boardTitle {
+    grid-area: title;
   }
 
   .boardRowNav .boardSpacer {
     display: none;
   }
 
-  .boardRowNav .boardTitle {
-    flex: 1 1 auto;
+  .boardRowNav .boardState {
+    grid-area: state;
   }
 
-  /* 状态组换到自己的整行（order 让它排在右端两件之后）。 */
-  .boardRowNav .boardState {
-    flex: 1 1 100%;
-    order: 5;
+  .boardRowNav .cruiseWrap {
+    grid-area: cruise;
+    justify-self: end;
+  }
+
+  .boardRowNav .boardNewTask {
+    grid-area: new;
+    justify-self: end;
   }
 
   /* 工具行 = 确定的两行：筛选独占一整条白长条（占位符永远完整——宽度地板
      治不了结构问题，让位才是答案），模式组再独占一行右对齐。新建任务已经
-     搬去导航行最右端，这一行不再有一个孤零零的按钮。 */
+     搬去导航行，这一行不再有一个孤零零的按钮。 */
   .boardRowTools {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "search"
+      "modes";
   }
 
   .boardRowTools .search {
-    flex: 1 1 100%;
+    grid-area: search;
     min-width: 0;
     max-width: none;
   }
 
   .boardRowTools .boardModes {
-    flex: 1 1 100%;
-    justify-content: flex-end;
+    grid-area: modes;
+    justify-self: end;
   }
 
   /* The organize bar re-stacks (colors own a line, count + actions share the
