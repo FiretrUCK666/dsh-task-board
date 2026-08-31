@@ -6,14 +6,18 @@
  * right rail).
  *
  * THE header grammar (both widths, one DOM):
- * - wide: one line — title | actions | × (rightmost);
+ * - wide: ONE line — title + badge | context readout | actions | ×. Every
+ *   element rides the same `align-items: center` baseline, so the badge,
+ *   「刷新」,「查看会话」 and the close are all on the title's horizontal
+ *   plane (the 「标题栏不在同一水平面」 fix).
  * - narrow: TWO deterministic lines — line 1 = title + badge + × on ONE
  *   horizontal plane (the close at the top-right corner, the title
- *   single-line ellipsis so the three never drift onto different baselines),
- *   line 2 = the action cluster right-aligned.
+ *   single-line ellipsis so the three never drift onto different baselines);
+ *   line 2 = the context readout LEFT + the action cluster RIGHT (the
+ *   context sits at 刷新's left, one baseline).
  *
- * The session context readout is NOT in the header — it belongs beside the
- * composer (see SessionRail), so the header stays a clean identity bar.
+ * The session context readout lives IN the header (its one home — the user
+ * asked for it "at 刷新's left, one horizontal plane"), NOT in the rail.
  *
  * The shell is PURE LAYOUT: business content — the review page's context
  * meter, live config, comment thread and composer, or the linked view's
@@ -35,11 +39,13 @@ import type { ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
+import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { boardBox } from './Dialog.tsx'
 import { useEscapeStack } from './escape-stack.ts'
+import type { SessionContext } from './use-interaction.ts'
 
 /** The shared panel frame (see module doc). */
-export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onClose }: {
+export function SessionFrame({ title, badge, ariaLabel, actions, context, main, rail, onClose }: {
   /** Panel title (the task title on both surfaces). */
   title: string
   /** Optional type badge text — its family identity; absent hides the badge. */
@@ -48,6 +54,11 @@ export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onC
   ariaLabel: string
   /** Header actions (refresh / view session). */
   actions: ReactNode
+  /** The session's live context readout (todos/goal/subagents): lives in the
+   *  header, one horizontal plane beside 刷新 (the user's ask). Wide = inline
+   *  popover placed between the title and the actions; narrow = the second
+   *  header line's left member. */
+  context?: SessionContext
   /** Left column: the conversation region (caller owns its scroll region). */
   main: ReactNode
   /** Right column: the rail (caller owns its content). */
@@ -63,12 +74,15 @@ export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onC
       <div className={css.review} role="dialog" aria-label={ariaLabel}>
         <header className={css.reviewHeader}>
           <div className={css.reviewTitleWrap}>
-            {/* The title is single-line ellipsis on a phone (so it stays on the
-                same plane as the badge + close); the full name is reachable via
-                the tooltip + the dialog's aria-label. */}
+            {/* The title is single-line (a wrapping title would push the badge
+                and close off the plane); the full name is reachable via the
+                tooltip + the dialog's aria-label. */}
             <h2 className={css.reviewTitle} title={title}>{title}</h2>
             {badge !== undefined && <span className={css.reviewBadge}>{badge}</span>}
           </div>
+          {context !== undefined && (
+            <SessionContextBlock context={context} className={css.reviewHeaderContext} />
+          )}
           <div className={css.reviewActions}>{actions}</div>
           <button
             type="button"

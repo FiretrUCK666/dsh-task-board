@@ -129,6 +129,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     <SessionFrame
       title={current.title}
       ariaLabel={`${t('review.title')} · ${current.title}`}
+      context={context}
       actions={
         <>
           <Button size="sm" onClick={reload} title={t('review.refresh')}>
@@ -191,7 +192,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           thread={comments}
           onCancelComment={id => controller.cancelComment(id)}
           interaction={pendingInteraction}
-          context={context}
           composer={
             <SessionComposer
               controller={controller}

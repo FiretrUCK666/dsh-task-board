@@ -56,8 +56,12 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(body).toContain('min-height: 0')
   })
 
-  it('the rail clips its own box — nothing can spill past and cover other UI', () => {
-    expect(ruleOf('reviewRail')).toContain('overflow: hidden')
+  it('the rail clips horizontally and scrolls as ONE only as the last resort', () => {
+    // Horizontal: nothing spills past and covers other UI. Vertical: auto —
+    // the honest fallback when the head renders its config fully and even the
+    // comments floor cannot absorb it (never a clipped box).
+    expect(ruleOf('reviewRail')).toContain('overflow-x: hidden')
+    expect(ruleOf('reviewRail')).toContain('overflow-y: auto')
   })
 
   it('action rows wrap instead of bursting the card right edge', () => {
@@ -65,8 +69,10 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(actions).toContain('flex-wrap: wrap')
   })
 
-  it('the scroll region and the composer stay inside the rail content box', () => {
-    expect(ruleOf('sessionRailScroll')).toContain('min-width: 0')
+  it('the comments region and the composer stay inside the rail content box', () => {
+    expect(ruleOf('commentsScroll')).toContain('min-width: 0')
+    // The comments region is the rail's ONLY scroller (one bar per surface).
+    expect(ruleOf('commentsScroll')).toContain('overflow-y: auto')
     // The rail owns ONE 12px vertical rhythm; each segment keeps only its
     // own 14px content box (the composer's bottom breathing stays its own).
     expect(ruleOf('reviewComposer')).toContain('padding: 0 14px 12px')
@@ -104,27 +110,36 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
 
   const stacked = (): string => containerBlock('@container dsh-tb-panel (max-width: 600px) {')
 
-  it('the rail is a scroll body + a shrinkable context dock + a pinned composer', () => {
-    // The height contract: the composer is ALWAYS visible because the dock
-    // (the only other fixed segment) is allowed to SHRINK, so a short rail
-    // can never clip the send button (the 「dock 展开把发送框挤出 overflow:hidden」
-    // failure the review caught). Everything else scrolls in ONE body.
-    const scroll = ruleOf('sessionRailScroll')
-    expect(scroll).toMatch(/flex:\s*1/)
-    expect(scroll).toMatch(/min-height:\s*0/)
-    expect(scroll).toMatch(/overflow-y:\s*auto/)
+  it('the rail is [state] + [head, full render no scrollbar] + [comments own scroll] + [pinned composer]', () => {
+    // The height contract the user restored: the head renders its config
+    // FULLY (no internal scrollbar — a config cut at the model row with its
+    // own slider is the 「显示不全」 failure), the comments own the rail's ONE
+    // scroll region, and the composer is ALWAYS visible (flex none).
     expect(ruleOf('reviewComposer')).toMatch(/flex:\s*none/)
-    // The dock shrinks (flex 0 1 auto + min-height 0), never a fixed floor.
-    const dock = ruleOf('sessionContextDock')
-    expect(dock).toMatch(/flex:\s*0 1 auto/)
-    expect(dock).toMatch(/min-height:\s*0/)
-    // The scroll body owns the rail's 14px inset; segments inside add none.
-    expect(scroll).toMatch(/padding:\s*12px 14px 10px/)
+    // The head renders at its NATURAL height (flex none — it never shrinks a
+    // config into a clipped box) and never caps or scrolls its own config.
+    const head = ruleOf('sessionRailHead')
+    expect(head).toMatch(/flex:\s*none/)
+    expect(ruleOf('sessionRailHead > .detailSection')).not.toMatch(/max-height/)
+    expect(ruleOf('sessionRailHead > .detailSection')).not.toMatch(/overflow-y/)
+    // The comments region absorbs the leftover height and owns the scroller.
+    expect(ruleOf('sessionRailComments[data-open=\'true\']')).toMatch(/flex:\s*1 1 auto/)
+    expect(ruleOf('sessionRailComments[data-open=\'true\']')).toMatch(/min-height:\s*0/)
+    const comments = ruleOf('commentsScroll')
+    expect(comments).toMatch(/flex:\s*1 1 auto/)
+    expect(comments).toMatch(/overflow-y:\s*auto/)
+    expect(comments).toMatch(/min-height:\s*0/)
+    // The scroll region owns the rail's 14px inset; segments inside add none.
+    expect(comments).toMatch(/padding:\s*10px 14px/)
     expect(ruleOf('sessionFacts')).not.toMatch(/padding:\s*0 14px/)
-    // Inside the rail the interaction card drops its margin for the same law.
-    expect(cssSource).toMatch(/\.sessionRailScroll \.interactionCard\s*\{[^}]*margin:\s*0 0 2px/)
-    // The rail clips its own box.
-    expect(ruleOf('reviewRail')).toContain('overflow: hidden')
+    // Inside the comments region the interaction card drops its margin.
+    expect(cssSource).toMatch(/\.commentsScroll \.interactionCard\s*\{[^}]*margin:\s*0 0 2px/)
+    // The rail clips horizontally; vertical auto is the last-resort whole-rail
+    // scroll (check the rail layout contract).
+    expect(ruleOf('reviewRail')).toContain('overflow-x: hidden')
+    // No trace of the retired single-scroll-body / dock grammars.
+    expect(cssSource).not.toMatch(/\.sessionRailScroll\s*\{/)
+    expect(cssSource).not.toMatch(/\.sessionContextDock\s*\{/)
   })
 
   it('the stacked layout never re-declares the scroll model (one model, two geometries)', () => {
@@ -166,7 +181,7 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(cssSource).not.toMatch(/@container dsh-tb \(max-width: 600px\) \{/)
   })
 
-  it('the header is a single-line identity bar (title+badge+× one plane) + a tools line', () => {
+  it('the narrow header is title+badge+× one plane, then context LEFT + actions RIGHT', () => {
     const block = stacked()
     // Line 1: title + badge + × on ONE horizontal plane. The title is
     // single-line (flex 1 1 auto, ellipsis) and the close is an INLINE flex
@@ -177,21 +192,26 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     const close = ruleIn(block, '.reviewHeader > .iconButton')
     expect(close).toMatch(/flex:\s*none/)
     expect(close).not.toMatch(/position:\s*absolute/)
-    // Line 2: the action cluster takes the whole width and right-aligns.
-    expect(ruleIn(block, '.reviewActions')).toMatch(/flex: 1 1 100%/)
+    // Line 2: the context readout LEFT (at 刷新's left, one baseline) and the
+    // action cluster RIGHT — both grow, neither fights.
+    expect(ruleIn(block, '.reviewHeaderContext')).toMatch(/flex: 1 1 auto/)
+    expect(ruleIn(block, '.reviewHeaderContext')).toMatch(/order: 3/)
+    expect(ruleIn(block, '.reviewActions')).toMatch(/flex: 1 1 auto/)
     expect(ruleIn(block, '.reviewActions')).toMatch(/justify-content:\s*flex-end/)
+    // WIDE: everything on ONE line — context between the title and actions,
+    // capped, same center baseline (the 「标题栏不在同一水平面」 fix).
+    const wideContext = ruleOf('reviewHeaderContext')
+    expect(wideContext).toMatch(/flex:\s*none/)
+    expect(wideContext).toMatch(/max-width:\s*320px/)
   })
 
-  it('the session context is a DOCK above the composer, capped + scrollable', () => {
-    // The context readout moved out of the header to just above the composer
-    // (the user's ask); in the dock it is IN-FLOW and capped, so expanding it
-    // can never eat the composer (「上下文占满屏幕把上面的挤掉」).
-    const dockPanel = cssSource.slice(cssSource.indexOf('.sessionContextDockBlock .sessionContextPanel'))
-    expect(dockPanel).toMatch(/position:\s*static/)
-    expect(dockPanel).toMatch(/max-height:\s*180px/)
-    expect(dockPanel).toMatch(/overflow-y:\s*auto/)
-    // The dock collapses to zero height when there is no live context.
-    expect(cssSource).toMatch(/\.sessionContextDock:empty\s*\{[^}]*display:\s*none/)
+  it('the header context expansion is capped + in-flow on a phone (never eats the screen)', () => {
+    // A header-anchored in-flow expansion without a cap grew past the whole
+    // screen and pushed every function out of reach (「上下文占满屏幕」).
+    const panel = ruleIn(stacked(), '.reviewHeaderContext .sessionContextPanel')
+    expect(panel).toMatch(/position:\s*static/)
+    expect(panel).toMatch(/max-height:\s*240px/)
+    expect(panel).toMatch(/overflow-y:\s*auto/)
   })
 
   it('the review title is single-line ellipsis on a phone (header stays one plane)', () => {
@@ -240,32 +260,33 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(panel).not.toMatch(/\dvh/)
   })
 
-  it('the rail is TWO dropdowns + a context dock + the pinned composer', () => {
-    // The mobile comment panel is now: scroll body = [config dropdown] +
-    // [comments dropdown], then the context dock, then the composer. Both
-    // big blocks are collapsible (the user's ask); the head body is capped so
-    // an expanded config never dominates the rail.
+  it('the rail is TWO folds: head renders FULLY, comments own the region', () => {
+    // The user's model: the head (config) renders completely — no internal
+    // scrollbar; the comments are the rail's ONE scroll region and stay
+    // foldable. Both are Disclosures (one fold grammar).
     const head = ruleOf('sessionRailHead')
     expect(head).not.toMatch(/position:\s*sticky/)
-    const body = ruleOf('sessionRailHeadBody')
-    expect(body).toMatch(/overflow-y:\s*auto/)
-    // A DEFINITE px cap — a % max-height would resolve against the auto-height
-    // ancestor chain and silently degrade to none (the review caught this).
-    expect(body).toMatch(/max-height:\s*\d+px/)
-    // The comments dropdown exists as its own block.
+    // No capped internal body — the config shows 100%.
+    expect(cssSource).not.toMatch(/sessionRailHeadBody/)
+    // The comments region exists and scrolls (checked in the rail contract).
     expect(cssSource).toMatch(/\.sessionRailComments\s*\{/)
-    // session-panel renders TWO Disclosure dropdowns (config + comments) and
-    // the context dock above the composer.
+    expect(cssSource).toMatch(/\.commentsScroll\s*\{/)
+    // session-panel renders TWO Disclosure folds (config + comments); the
+    // comments scroll box drives the follow; NO context dock (it is in the
+    // header now).
     const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
     const panelSource = readFileSync(panelPath, 'utf8')
     const disclosures = panelSource.match(/<Disclosure/g) ?? []
     expect(disclosures.length).toBeGreaterThanOrEqual(2)
-    expect(panelSource).toMatch(/sessionContextDock/)
-    expect(panelSource).toMatch(/sessionRailComments/)
-    // A pending interaction must FORCE the comments dropdown open — the
+    expect(panelSource).toMatch(/commentsScroll/)
+    expect(panelSource).not.toMatch(/sessionContextDock/)
+    expect(panelSource).not.toMatch(/context=\{context\}/)
+    // A pending interaction must FORCE the comments fold open — the
     // InteractionCard is the only path that settles a suspended call, so a
-    // collapsed dropdown can never hide the answer affordance.
+    // collapsed fold can never hide the answer affordance.
     expect(panelSource).toMatch(/open=\{commentsOpen \|\| interaction !== undefined\}/)
+    // 滑到最新 binds ONLY the comments scroller (the 「跳转范围错误」 fix).
+    expect(panelSource).toMatch(/onCommentsScroll/)
   })
 
   it('the rail is flexible in the base layout (two columns survive down to the floor)', () => {
