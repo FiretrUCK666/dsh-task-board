@@ -61,6 +61,7 @@ function watermarkOf(result: { events: readonly TranscriptEventShape[] }): numbe
 export function useResizeFollow(
   scrollRef: React.RefObject<HTMLDivElement>,
   atBottomRef: React.MutableRefObject<boolean>,
+  remountKey?: unknown,
 ): void {
   useEffect(() => {
     const content = scrollRef.current
@@ -75,7 +76,7 @@ export function useResizeFollow(
     if (root !== null && root !== content) observer.observe(root)
     apply()
     return () => { observer.disconnect() }
-  }, [scrollRef])
+  }, [scrollRef, remountKey])
 }
 
 /**
@@ -92,10 +93,15 @@ export function useFollowScroll(
   atBottom: boolean,
   setAtBottom: (value: boolean) => void,
   changedKey: unknown,
+  /** When the scroll region itself UNMOUNTS and REMOUNTS (a fold that hides
+   *  its children — the comments Disclosure), the observer + follow effects
+   *  must re-bind to the NEW element; passing a value that changes with the
+   *  fold (its open state) does that. */
+  remountKey?: unknown,
 ): { measure: () => void; jumpToBottom: () => void } {
   const atBottomRef = useRef(atBottom)
   useEffect(() => { atBottomRef.current = atBottom })
-  useResizeFollow(scrollRef, atBottomRef)
+  useResizeFollow(scrollRef, atBottomRef, remountKey)
   const measure = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return
@@ -111,7 +117,7 @@ export function useFollowScroll(
     const root = resolveScroller(scrollRef.current)
     if (root === null || !atBottom) return
     root.scrollTop = root.scrollHeight
-  }, [scrollRef, changedKey, atBottom])
+  }, [scrollRef, changedKey, atBottom, remountKey])
   const jumpToBottom = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return

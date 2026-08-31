@@ -801,8 +801,12 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
               </Button>
             )}
           </div>
-          {/* The one extra fact the summary omits: the last trigger time. */}
-          <p className={css.scheduleMeta}>{t('detail.schedule.lastTriggered')} {lastLabel}</p>
+          {/* The one extra fact the summary omits: the last trigger time —
+              zero-omission: a never-triggered schedule shows nothing (「上次
+              触发 —」 is noise). */}
+          {lastTriggeredAt !== undefined && (
+            <p className={css.scheduleMeta}>{t('detail.schedule.lastTriggered')} {lastLabel}</p>
+          )}
           {stoppedReason !== undefined && (
             <p className={css.scheduleMeta}>
               {stoppedReason.extraFailed && <>{t('detail.schedule.pausedFailed')} </>}

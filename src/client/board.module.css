@@ -2694,12 +2694,21 @@ textarea.input {
 }
 
 /* The session section's hint row: explanation left (wraps), actions right —
-   one baseline, both ends (the section title stays alone above). */
+   one baseline, both ends (the section title stays alone above). The actions
+   align to the FIRST line of the hint (a multi-line hint on a narrow panel
+   must not vertical-center the buttons against the whole paragraph — the
+   「按钮浮在多行中间」 review finding). */
 .sessionHintRow {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   min-width: 0;
+}
+
+/* 3px = (24px sm button − 18px first hint line) ÷ 2: the button's center rides
+   the first line's center, so it reads on the SAME horizontal plane. */
+.sessionHintRow .sessionToolbarActions {
+  margin-top: 3px;
 }
 
 .sessionHintText {
@@ -4910,15 +4919,19 @@ textarea.input {
   }
 
   .reviewRail {
-    /* LAST (bottom): the rail's ONE scroll body (state row, the two dropdowns)
-       then the pinned context dock + composer — so the composer lands at the
-       panel's BOTTOM edge (where the thumb is), never floating mid-screen
-       with the transcript stranded beneath it. */
+    /* LAST (bottom): the rail (state row → config head → comments region →
+       pinned composer) — so the composer lands at the panel's BOTTOM edge
+       (where the thumb is), never floating mid-screen with the transcript
+       stranded beneath it. overflow-y:auto (NOT hidden): the base last-resort
+       whole-rail scroll must survive the stacked geometry — a hidden rail
+       would clip the composer when the fully-rendered config outgrows the
+       panel (the review caught it). */
     order: 2;
     flex: 1 1 60%;
     width: 100%;
     min-height: 0;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     /* The two regions now split HORIZONTALLY (transcript over rail); the
        vertical border-left is meaningless here and only overlaps the panel
        frame — the transcript's border-bottom is the divider now. */
@@ -5441,7 +5454,24 @@ textarea.input {
      title (the icon must sit ON the title's line, never alone above it), line
      2 = the workspace pill (content-width, aligned under the title). The
      action cluster (act column, align-self: start) then lands on line 1 — the
-     icon, the title and the three right buttons are ONE horizontal plane. */
+     icon, the title and the three right buttons are ONE horizontal plane.
+     The unread dot rides a FIXED 12px track (centered) INSIDE the identity
+     grid, NOT as a flex sibling before it — the 12px track is the icon width,
+     so the title/workspace/chip all read at the SAME 19px x whether or not
+     the dot is present (a 6px dot + 7px gap pushed the whole grid 13px right
+     and stranded the 19px-inset chip — the review caught it). */
+  .sessionRowLead {
+    display: grid;
+    grid-template-columns: 12px minmax(0, 1fr);
+    column-gap: 7px;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .sessionRowLead .attentionDot {
+    justify-self: center;
+  }
+
   .sessionRowLeading {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -5451,6 +5481,7 @@ textarea.input {
     column-gap: 7px;
     row-gap: 4px;
     align-items: center;
+    min-width: 0;
   }
 
   .sessionRowLeading .sessionRowIcon {

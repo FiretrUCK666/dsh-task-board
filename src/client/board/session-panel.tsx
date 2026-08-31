@@ -641,10 +641,9 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
  *
  * Four flex segments, one pinned:
  *   - state row: flex none (one quiet line);
- *   - head: flex 0 1 auto — it can SHRINK (a long config never pushes the
- *     composer out through the rail's overflow), and when opened it renders
- *     its config COMPLETELY (a config cut at the model row with its own
- *     slider is exactly the "显示不全" the user hit);
+ *   - head: flex NONE — it renders at its natural height and never clips a
+ *     config into a shrunk box; if it outgrows the rail, the rail itself
+ *     scrolls as ONE (the honest last resort, never a cut box);
  *   - comments: flex 1 1 auto + min-height 0 — absorbs the leftover height,
  *     its content scrolls in ONE region of its own;
  *   - composer: flex none, the ONLY segment that can never lose space.
@@ -698,6 +697,11 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
   const { measure: onCommentsScroll, jumpToBottom: jumpComments } = useFollowScroll(
     commentsScrollRef, commentsAtBottom, setCommentsAtBottom, threadFingerprint,
+    /* Remount signal: folding the comments unmounts .commentsScroll; the fold
+       state flips back on re-expand, so the observer + follow effects re-bind
+       to the NEW element (a fold→expand loop used to lose bottom-follow and
+       the 滑到最新 button — the review caught it). */
+    commentsOpen || interaction !== undefined,
   )
   // The collapsed head still says something: the live context occupancy
   // rides the disclosure summary (zero-omission quietness, same as every

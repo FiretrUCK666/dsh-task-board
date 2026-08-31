@@ -384,6 +384,15 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(top).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\) auto/)
     expect(top).toMatch(/row-gap:\s*4px/)
     expect(compact).toMatch(/\.sessionRowTop \.sessionRowChip\s*\{[^}]*padding-left:\s*19px/)
+    // The unread dot rides a FIXED 12px grid track (the icon width) inside the
+    // lead — NOT a flex sibling that pushes the identity grid 13px right and
+    // strands the chip (the alignment-review finding): title/workspace/chip
+    // read at the same x with or without the dot.
+    const lead = ruleIn(compact, '.sessionRowLead')
+    expect(lead).toMatch(/display:\s*grid/)
+    expect(lead).toMatch(/grid-template-columns:\s*12px minmax\(0,\s*1fr\)/)
+    expect(lead).toMatch(/column-gap:\s*7px/)
+    expect(compact).toMatch(/\.sessionRowLead \.attentionDot\s*\{[^}]*justify-self:\s*center/)
   })
 
   // (The review-family contracts — the two-dropdown comment panel, the
