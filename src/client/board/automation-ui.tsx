@@ -646,10 +646,10 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
   const chainRuns = schedule?.runCount ?? 0
   const chainBudget = schedule?.maxRuns
   const lastLabel = lastTriggeredAt === undefined ? '—' : formatDateTime(lastTriggeredAt)
-  // The ONE summary grammar (shared with the board card + the detail fold):
-  // what IS armed, in one quiet line.
-  const summary = scheduleSummary(task, readiness.kind === 'paused'
-    && readiness.status === 'review' && latestExecutionOf(task)?.result === 'failed')
+  // NOTE: no `summary` here on purpose. scheduleSummary is the FOLD's one-liner
+  // (the detail disclosure and the overview row both show it); repeating it
+  // inside the expanded body stated the same fact twice — the lone second
+  // 「未启用」 line. The body carries only the when (below) and the why-stopped.
   // Cron skip is offered only when a future due instant actually exists.
   const canSkip = enabled && mode === 'cron' && readiness.kind === 'active'
     && nextRunAt !== undefined && nextRunAt > Date.now()
@@ -790,23 +790,35 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
       </p>}
       {mode === 'cron' && (
         <>
-          {/* THE one summary grammar (same as the board card): 按时间表 · 每 1
-              小时 · 下次… (or 已暂停…) — never a jammed triple sentence. The
-               skip affordance rides the same row, right. */}
-          <div className={css.scheduleActionRow}>
-            <span className={css.scheduleMeta}>{summary}</span>
-            {canSkip && (
-              <Button size="sm" variant="ghost" onClick={skipNext}>
-                {t('detail.schedule.skip')}
-              </Button>
-            )}
-          </div>
-          {/* The one extra fact the summary omits: the last trigger time —
-              zero-omission: a never-triggered schedule shows nothing (「上次
-              触发 —」 is noise). */}
-          {lastTriggeredAt !== undefined && (
-            <p className={css.scheduleMeta}>{t('detail.schedule.lastTriggered')} {lastLabel}</p>
-          )}
+          {/* The body says ONLY what the fold row does not. `summary` is
+              already the disclosure's live one-liner (and the overview row's),
+              so repeating it here is the孤零零 second 「未启用」 the user
+              pointed at — a fact stated twice reads as a fact about two
+              different things. What the fold cannot carry is the when: the
+              next trigger, the last one, and the skip affordance for the next.
+              Zero segments, zero row (「排队 0」 is noise — the meter's law). */}
+          {(() => {
+            const when: string[] = []
+            if (nextRunAt !== undefined) {
+              when.push(nextRunAt > Date.now()
+                ? `${t('detail.schedule.nextRun')} ${formatDateTime(nextRunAt)}`
+                : t('detail.schedule.dueSoon'))
+            }
+            if (lastTriggeredAt !== undefined) {
+              when.push(`${t('detail.schedule.lastTriggered')} ${lastLabel}`)
+            }
+            if (when.length === 0 && !canSkip) return null
+            return (
+              <div className={css.scheduleActionRow}>
+                {when.length > 0 && <span className={css.scheduleMeta}>{when.join(' · ')}</span>}
+                {canSkip && (
+                  <Button size="sm" variant="ghost" onClick={skipNext}>
+                    {t('detail.schedule.skip')}
+                  </Button>
+                )}
+              </div>
+            )
+          })()}
           {stoppedReason !== undefined && (
             <p className={css.scheduleMeta}>
               {stoppedReason.extraFailed && <>{t('detail.schedule.pausedFailed')} </>}

@@ -268,6 +268,38 @@ describe('form-row grammar (give way, never crush)', () => {
     // with one stray button" look.
     expect(source).not.toMatch(/\.presetToolbar/)
   })
+
+  it('a section head keeps its action cluster on the SAME line at every width', () => {
+    // 「会话规则和新增会话规则在电脑端一条水平线，手机端不是」: the compact
+    // template stacked title over action, "solving" a squeeze that cannot
+    // happen — the title track is minmax(0,1fr) and ellipsizes, so the row
+    // gives way by shortening the LABEL, never by breaking the pair.
+    expect(ruleOf('sectionHead')).toMatch(/grid-template-areas:\s*"title action"/)
+    expect(compact).not.toMatch(/\.sectionHead\s*\{[^}]*grid-template-areas:\s*"title"\s*"action"/)
+    // The give-way member is the text slot (truncation never lives in a
+    // container that hides its children).
+    expect(ruleOf('sectionHead h4')).toMatch(/text-overflow:\s*ellipsis/)
+  })
+
+  it('row hierarchy is a named grid, never margin-left:auto (automation rows)', () => {
+    // The auto-margin spelling right-aligns whichever item happens to start
+    // the line, so a wrapped line scatters the pair.
+    expect(source).not.toMatch(/\.autoRuleButtons\s*\{[^}]*margin-left:\s*auto/)
+    expect(ruleOf('autoRuleActions')).toMatch(/grid-template-areas:\s*"switch buttons"/)
+    // …and no off-grid 2px/3px leftovers in the rule row's own rhythm.
+    expect(ruleOf('autoRuleRow')).toMatch(/gap:\s*4px/)
+  })
+
+  it('the automation body never repeats the fold row summary', () => {
+    // scheduleSummary is the disclosure's (and the overview row's) one-liner;
+    // rendering it again inside the expanded body is the lone second
+    // 「未启用」 line the user pointed at.
+    const autoPath = fileURLToPath(new URL('../src/client/board/automation-ui.tsx', import.meta.url))
+    const auto = readFileSync(autoPath, 'utf8')
+    const editor = auto.slice(auto.indexOf('export function AutomationEditor'))
+    expect(editor).not.toMatch(/scheduleMeta">\{summary\}/)
+    expect(editor).toMatch(/scheduleSummary is the FOLD/)
+  })
 })
 
 describe('board header and navigator legibility', () => {

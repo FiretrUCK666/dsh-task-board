@@ -2045,6 +2045,12 @@ textarea.input {
 .sectionHead h4 {
   grid-area: title;
   min-width: 0;
+  /* The give-way member is the LABEL (truncation lives in a text slot, never
+     in a container that hides its children): a section head keeps its action
+     cluster on the same line at every width. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sectionAction {
@@ -3210,7 +3216,10 @@ textarea.input {
 .autoRuleRow {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  /* 4px grid: the row's own lines (identity → instruction → trigger →
+     actions) are one rhythm. It used to be 3px with a 2px add-on below, two
+     off-grid values that read as "these gaps are all slightly different". */
+  gap: 4px;
   padding: 8px 10px;
   background: var(--dsh-tb-surface-float);
   border-radius: var(--dsh-tb-radius-sm);
@@ -3264,20 +3273,32 @@ textarea.input {
   color: var(--dsh-tb-text-3);
 }
 
+/* The rule row's LAST line is a named two-slot grid: the switch leads on the
+   left, the text actions group flush right. `margin-left:auto` on the button
+   cluster (the retired spelling) is the auto-margin hierarchy the board
+   forbids — it right-aligns whichever item happens to start the line, so a
+   wrapped line scatters the pair. */
 .autoRuleActions {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "switch buttons";
   align-items: center;
   gap: 8px;
-  margin-top: 2px;
 }
 
-/* The row's text actions (编辑 + 删除) group on the right — the switch leads
-   the row, the pair never spreads into a middle-stranded 编辑. */
+.autoRuleActions > .switch {
+  grid-area: switch;
+  justify-self: start;
+}
+
+/* The row's text actions (编辑 + 删除): the switch leads the row, the pair
+   never spreads into a middle-stranded 编辑. */
 .autoRuleButtons {
+  grid-area: buttons;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
+  justify-self: end;
 }
 
 /* New-session-rule form (one at a time, per task). */
@@ -5476,17 +5497,12 @@ textarea.input {
     justify-self: end;
   }
 
-  /* A section title row with an action cluster gives the cluster its own
-     line FIRST (the title keeps the full width) — the two never fight, and
-     nothing is clipped by the panel edge. */
-  .sectionHead {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "title"
-      "action";
-    row-gap: 6px;
-  }
-
+  /* A section title row keeps its action cluster ON THE SAME LINE at every
+     width (「会话规则和新增会话规则在电脑端是一条水平线，手机端不是」). The
+     previous compact template stacked title over action — which "solved" a
+     squeeze that cannot happen: the title track is minmax(0,1fr) and
+     ellipsizes, so the row gives way by shortening the LABEL, never by
+     dropping the button to its own line and breaking the pair. */
   .sectionAction {
     justify-self: end;
   }
