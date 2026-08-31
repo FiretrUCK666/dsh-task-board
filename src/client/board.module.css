@@ -3859,7 +3859,11 @@ textarea.input {
 .sessionRailFolds {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  /* NO gap: the segments already carry their own rhythm (the fold rows have
+     8px of vertical padding, the head 12px below its border). Adding a gap
+     here would silently re-space the DESKTOP rail, which this refactor must
+     not do — the wrapper exists to be cappable on a phone, not to restyle. */
+  gap: 0;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
