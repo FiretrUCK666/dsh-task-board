@@ -61,15 +61,20 @@ function PresetRow({ preset, onSave, onDelete }: {
           onChange={event => { setCron(event.target.value) }}
         />
       </span>
-      <Button
-        disabled={!dirty || !valid}
-        onClick={() => { onSave({ ...preset, label: label.trim(), cron: cron.trim() }) }}
-      >
-        {t('detail.schedule.presets.save')}
-      </Button>
-      <Button onClick={onDelete}>
-        {t('detail.schedule.presets.delete')}
-      </Button>
+      {/* The action pair is ONE cluster (the compact CSS aligns this slot, and
+          the buttons carry the same 34px bump as their input row siblings). */}
+      <span className={css.presetActions}>
+        <Button
+          className={css.presetRowAction}
+          disabled={!dirty || !valid}
+          onClick={() => { onSave({ ...preset, label: label.trim(), cron: cron.trim() }) }}
+        >
+          {t('detail.schedule.presets.save')}
+        </Button>
+        <Button className={css.presetRowAction} onClick={onDelete}>
+          {t('detail.schedule.presets.delete')}
+        </Button>
+      </span>
       {hint !== '' && <span className={css.presetHint}>{hint}</span>}
     </li>
   )
@@ -153,7 +158,7 @@ export function PresetManager({ store, onClose }: {
             onChange={event => { setNewCron(event.target.value); setNewError(undefined) }}
             onKeyDown={event => { if (event.key === 'Enter') add() }}
           />
-          <Button variant="primary" onClick={add}>
+          <Button variant="primary" className={css.presetRowAction} onClick={add}>
             {t('detail.schedule.presets.add')}
           </Button>
         </div>

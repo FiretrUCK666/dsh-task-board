@@ -35,6 +35,7 @@ import css from '../board.module.css'
 import { Icon } from './ui.tsx'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { boardBox } from './Dialog.tsx'
+import { useEscapeStack } from './escape-stack.ts'
 import type { SessionContext } from './use-interaction.ts'
 
 /** The shared panel frame (see module doc). */
@@ -57,6 +58,10 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
   rail: ReactNode
   onClose: () => void
 }) {
+  // Escape closes the frame through the family's ONE stack — a dialog opened
+  // OVER this panel (a future confirm) closes first, the panel never pops
+  // together with what sits on top of it.
+  useEscapeStack(onClose)
   return createPortal(
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div className={css.review} role="dialog" aria-label={ariaLabel}>

@@ -461,7 +461,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 2px 4px 2px 6px;
+  /* 同一排控件同级高: the pill rides the 28px button row beside 新建任务 and
+     the search field (its 22px switch is centered inside the 28px frame). */
+  height: var(--dsh-tb-button-h);
+  box-sizing: border-box;
+  padding: 0 4px 0 6px;
   border-radius: 999px;
   transition: background var(--dsh-tb-motion);
 }
@@ -1876,6 +1880,14 @@ textarea.input {
   flex: none;
 }
 
+/* 同一排控件同级高: the header row's siblings are 28px Buttons (编辑), so the
+   close glyph rides the same 28px box (the review header does the same for
+   its 24px pills — each row picks its height tier, never mixes two). */
+.detailHeader .iconButton {
+  width: 28px;
+  height: 28px;
+}
+
 .detailTitle {
   margin: 0;
   flex: 1;
@@ -1960,23 +1972,29 @@ textarea.input {
   text-transform: none;
 }
 
-/* The section title row: title left, optional action right (the section's
-   own "+ 新建" affordance). The title never shrinks; the action hugs the
-   right edge and keeps the quiet small-button scale of row actions. */
+/* The section title row: a named grid (title | action), NOT flex +
+   margin-left:auto. The title track is `minmax(0,1fr)` so it can shrink and
+   the action cluster keeps its natural width at the right — and on a narrow
+   panel the cluster wraps to its own line (让位不压扁) instead of being
+   clipped by the panel's overflow:hidden. */
 .sectionHead {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title action";
   align-items: center;
   gap: 8px;
 }
 
 .sectionHead h4 {
-  flex: none;
+  grid-area: title;
+  min-width: 0;
 }
 
 .sectionAction {
-  margin-left: auto;
+  grid-area: action;
   display: flex;
   align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -1989,10 +2007,12 @@ textarea.input {
   overflow-wrap: break-word;
 }
 
-/* Run-configuration definition grid: aligned label / value columns. */
+/* Run-configuration definition grid: aligned label / value columns. The value
+   track carries a zero floor (a bare `1fr` has an auto minimum, so one long
+   no-space path would push it past the panel and get clipped — 让位不压扁). */
 .configGrid {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 6px 18px;
   margin: 0;
 }
@@ -2013,7 +2033,10 @@ textarea.input {
   font-size: 12px;
   line-height: 1.6;
   color: var(--dsw-alias-label-primary);
-  overflow-wrap: break-word;
+  /* `anywhere` (not `break-word`) actually lowers the min-content contribution
+     so a long path wraps inside the track instead of overflowing it. */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 /* --- scheduled runs ---------------------------------------------------------- */
@@ -2182,18 +2205,6 @@ textarea.input {
   display: contents;
 }
 
-/* The run-preset manager's pinned hint footer: the note bar is left-aligned
-   (modalFooter's right-aligned grammar is for button rows) and never scrolls
-   away with the list/form. */
-.presetFooter {
-  display: flex;
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 12px 18px;
-  border-top: var(--dsh-tb-separator);
-  flex: none;
-}
-
 .presetList {
   list-style: none;
   margin: 0;
@@ -2207,11 +2218,24 @@ textarea.input {
   display: grid;
   /* Same floors as the add row: one grammar for both, so the edit row can no
      longer read as a different (crushable) thing. */
-  grid-template-columns: minmax(9ch, 1fr) minmax(11ch, 1.2fr) auto auto;
+  grid-template-columns: minmax(9ch, 1fr) minmax(11ch, 1.2fr) auto;
   gap: 8px;
   align-items: center;
   padding: 6px 4px;
   border-radius: 8px;
+}
+
+/* The edit row's action cluster (one grid cell) + the row buttons' 34px bump:
+   同一排控件同级高 — a 28px button beside a 34px input reads as a misaligned
+   row (the .scheduleManageButton precedent). */
+.presetActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.presetRowAction {
+  height: 34px;
 }
 
 .presetRow:hover {
@@ -2248,10 +2272,11 @@ textarea.input {
 
 /* Run-config preset manager rows: name | note | actions (right cluster) —
    one row grammar for the manager; the add/edit form below reuses the
-   automation form classes. */
+   automation form classes. The name track carries a floor (a bare 1fr would
+   let the nowrap note + three action buttons crush it to nothing). */
 .runPresetRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(8ch, 1fr) auto auto;
   gap: 8px;
   align-items: center;
   padding: 6px 4px;
@@ -2435,18 +2460,23 @@ textarea.input {
 }
 
 /* The row's inline rename editor: rides where the meta line sits (one row,
-   no modal, no layout jump), controls on one baseline, input flexible. */
+   no modal, no layout jump), controls on one baseline, input flexible.
+   同一排控件同级高 + 让位不压扁: the input rides the 24px buttonSm tier of
+   its two siblings, carries a real width floor, and the row wraps — on a
+   narrow panel the confirm pair drops to its own line instead of crushing
+   the input to its padding (the 「Cron 框塌成小圆角」 family). */
 .sessionRenameRow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
 }
 
 .sessionRenameInput {
-  flex: 1;
+  flex: 1 1 140px;
   min-width: 0;
-  height: 28px;
+  height: 24px;
   font-size: 13px;
 }
 
@@ -2631,11 +2661,10 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 
-/* The session toolbar's action cluster (添加会话 ‖ 新建会话): the hint stays
-   left, the pair hugs the right and wraps under it on a narrow panel. */
+/* The session area's action pair (添加会话 ‖ 新建会话) lives in the Section
+   title row's action slot (same grammar as every section head, both widths);
+   the slot's grid already places it right, so no margin-left:auto here. */
 .sessionToolbarActions {
-  flex: none;
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2953,7 +2982,7 @@ textarea.input {
 .autoList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 }
 
 /* One automated task: a floating inner surface holding the card identity,
@@ -2986,15 +3015,6 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 
-.autoTaskStatus {
-  flex: none;
-  padding: 1px 8px;
-  font-size: 11px;
-  color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-surface-float);
-  border-radius: 999px;
-}
-
 /* One expandable summary row per automated task: the LIVE schedule summary
    (the one grammar — scheduleSummary) on a quiet expand affordance. Expanded
    shows the shared AutomationEditor inline (the same component as the task
@@ -3025,8 +3045,12 @@ textarea.input {
   transition: transform var(--dsh-tb-motion);
 }
 
-.autoTaskChevronOpen {
-  transform: rotate(180deg);
+/* THE one disclosure law (identical to .detailDisclosure / the context head):
+   the icon is drawn pointing DOWN (expanded); collapsed it turns to point
+   RIGHT. The old rotate(180deg)-when-open was the reversed direction the
+   whole board had retired. */
+.autoTaskExpand[aria-expanded='false'] .autoTaskChevron {
+  transform: rotate(-90deg);
 }
 
 .autoTaskSummary {
@@ -3052,6 +3076,17 @@ textarea.input {
 .autoRules {
   padding: 0;
   gap: 16px;
+}
+
+/* The task-schedule control family is ONE group: 8px inside (each label bound
+   to its own control), while the section's 16px separates head→group and this
+   group from the session-rules group. Without it every field sat 16px apart
+   and the block read as one undifferentiated list. */
+.autoGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
 
 .autoRuleList {
@@ -3098,31 +3133,25 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 
-.autoRuleSend {
-  flex: none;
-  padding: 1px 8px;
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-surface-sunken);
-  border-radius: 999px;
-}
-
+/* The rule's instruction is USER-authored content — it never ellipsizes to a
+   title tooltip (touch has no hover, and the whole point of the row is to let
+   the user read what will be sent). It wraps; the row grows. */
 .autoRuleInstruction {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: 12px;
   line-height: 1.5;
   color: var(--dsh-tb-text-2);
 }
 
+/* The cron gloss + next-trigger time: necessary meta, so it wraps rather
+   than dropping the tail (the next trigger must stay reachable — ⑩). */
 .autoRuleMeta {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 12px;
   color: var(--dsh-tb-text-3);
 }
 
@@ -3176,8 +3205,12 @@ textarea.input {
   color: var(--dsh-tb-text-3);
 }
 
-.autoSelect {
-  padding-right: 32px;
+/* The preset manager's name field: a free-text name rides its field's full
+   width (the 96px .scheduleMaxInput belongs to numeric budget/cron cells —
+   a name squeezed to 96px is unreadable, especially at the 16px touch tier). */
+.autoNameInput {
+  width: 100%;
+  min-width: 0;
 }
 
 .autoFormActions {
@@ -3203,19 +3236,15 @@ textarea.input {
   align-items: flex-start;
 }
 
+/* The refine panel's status row (chip + round count). The「查看会话」action
+   lives in the Section title row's action slot, so this is a plain status
+   line — NOT a second fake title row (no space-between, no border competing
+   with the section head above it). */
 .refineHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 8px 0;
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
-}
-
-.refineHeaderLeft {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .refineRounds {
@@ -3369,6 +3398,7 @@ textarea.input {
 .dangerButton:focus-visible,
 .dangerGhostButton:focus-visible,
 .iconButton:focus-visible,
+.boardStatusButton:focus-visible,
 .slashMenuRow:focus-visible,
 .search:focus-visible,
 .input:focus-visible,
@@ -5045,18 +5075,27 @@ textarea.input {
 
 /* --- organize (tidy) mode bar: the board header strip for bulk tagging and
        recoloring — same chip/swatch grammar reused, nothing hand-rolled --- */
+/* The organize bar is a NAMED GRID (colors | count | actions), not a flex row
+   with margin-left:auto — the auto-margin only right-aligns the FIRST item of
+   whichever wrapped line it lands on, so a narrow board scattered 删除 across
+   the bar (the detailFooter lesson, applied here). The bar fills the row so
+   the actions cluster truly reaches the right edge on every width. */
 .organizeBar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "colors count actions";
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px 12px;
+  width: 100%;
 }
 
 .organizeGroup {
+  grid-area: colors;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .organizeLabel {
@@ -5067,6 +5106,7 @@ textarea.input {
 }
 
 .organizeCount {
+  grid-area: count;
   flex: none;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -5075,10 +5115,12 @@ textarea.input {
 }
 
 .organizeActions {
-  margin-left: auto;
+  grid-area: actions;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* The danger group sits INSIDE the actions cluster right after 完成, with the
@@ -5137,6 +5179,15 @@ textarea.input {
   .boardRowTools {
     flex-wrap: wrap;
     justify-content: space-between;
+  }
+
+  /* The organize bar re-stacks (colors own a line, count + actions share the
+     next) — the grid AREAS re-flow, the members never scatter. */
+  .organizeBar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "colors colors"
+      "count actions";
   }
 
   .boardRowTools .search {
@@ -5260,12 +5311,68 @@ textarea.input {
     row-gap: 4px;
   }
 
+  /* The run-config grid follows the same give-way law: the label/value two
+     columns collapse to one so a long workspace path wraps in-flow instead of
+     pushing the value track past the panel edge. */
+  .configGrid {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  /* Segmented tracks give way too: an English two/three-label row cannot fit a
+     244px panel, so it wraps (a clipped nowrap track painting past the modal
+     edge is the forbidden 「文字画在盒外」). */
+  .segmentedRow {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
   /* The preset rows stack into one control per line (the same floors as the
      wide row, just fewer columns) — an input that keeps a whole line cannot
      have its text clipped by a button anymore. */
   .presetNew,
   .presetRow {
     grid-template-columns: minmax(0, 1fr);
+    row-gap: 6px;
+  }
+
+  /* The run-preset row re-stacks the same way: name over note + actions. */
+  .runPresetRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name name"
+      "note actions";
+    row-gap: 4px;
+  }
+
+  .runPresetRow .runPresetName {
+    grid-area: name;
+  }
+
+  .runPresetRow .detailHint {
+    grid-area: note;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .runPresetRow .autoRuleActions {
+    grid-area: actions;
+    justify-self: end;
+  }
+
+  /* A section title row with an action cluster gives the cluster its own
+     line FIRST (the title keeps the full width) — the two never fight, and
+     nothing is clipped by the panel edge. */
+  .sectionHead {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "title"
+      "action";
+    row-gap: 6px;
+  }
+
+  .sectionAction {
+    justify-self: end;
   }
 
   .presetRow .presetActions {
@@ -5325,17 +5432,6 @@ textarea.input {
   .sessionRowActions {
     gap: 4px;
   }
-
-  .sessionRowActions {
-    align-self: center;
-  }
-
-  /* Preset rows go from a four-column grid to a stacked block (name over
-     cron), so the cron input stays readable. */
-  .presetRow {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -5367,6 +5463,7 @@ textarea.input {
   .attachAdd,
   .attachRemove,
   .reviewCommentCancel,
+  .promptCopy,
   .timeFieldCalendar {
     position: relative;
   }
@@ -5381,6 +5478,7 @@ textarea.input {
   .attachAdd::before,
   .attachRemove::before,
   .reviewCommentCancel::before,
+  .promptCopy::before,
   .timeFieldCalendar::before {
     content: '';
     position: absolute;

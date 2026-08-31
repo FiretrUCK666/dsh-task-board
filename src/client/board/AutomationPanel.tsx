@@ -18,6 +18,7 @@ import { automationTasksOf } from '../../core/automation.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { Chip } from './Chip.tsx'
 import { Dialog } from './Dialog.tsx'
 import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
 import { Button, Icon } from './ui.tsx'
@@ -43,7 +44,7 @@ function AutomationTaskCard({ controller, task, onClose }: {
     <section className={css.autoTask}>
       <header className={css.autoTaskHead}>
         <span className={css.autoTaskTitle} title={task.title}>{task.title}</span>
-        <span className={css.autoTaskStatus}>{t(STATUS_KEY[task.status])}</span>
+        <Chip kind="muted">{t(STATUS_KEY[task.status])}</Chip>
         <Button
           size="sm"
           title={t('auto.openDetail')}
@@ -53,9 +54,9 @@ function AutomationTaskCard({ controller, task, onClose }: {
         </Button>
       </header>
 
-      {/* ONE expand row: chevron + live summary (the detail's disclosure
-          header grammar) — the editor's enable switch stays in the body, so
-          the card never carries a second copy of the same control. */}
+      {/* ONE expand row: chevron + live summary — the SHARED disclosure chevron
+          law (collapsed points right, expanded points down, driven by
+          aria-expanded — never a second rotation grammar that reverses it). */}
       <button
         type="button"
         className={css.autoTaskExpand}
@@ -63,7 +64,7 @@ function AutomationTaskCard({ controller, task, onClose }: {
         title={t('auto.editAutomation')}
         onClick={() => { setExpanded(value => !value) }}
       >
-        <Icon name="chevronDown" className={`${css.autoTaskChevron}${expanded ? ` ${css.autoTaskChevronOpen}` : ''}`} />
+        <Icon name="chevronDown" className={css.autoTaskChevron} />
         <span className={css.autoTaskSummary} title={summary}>{summary}</span>
       </button>
       {expanded && <AutomationEditor controller={controller} task={task} />}

@@ -156,13 +156,12 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           <span className={css.autoRuleSessionTitle} title={title}>{title}</span>
         </span>
         {/* 排队/插话 labels the SEND MODE, never a queueing state — the row
-            carries a real readiness glyph below; the tooltip says it plainly. */}
-        <span
-          className={css.autoRuleSend}
-          title={t(row.send === 'queue' ? 'review.sendQueueTitle' : 'review.sendSteerTitle')}
-        >
+            carries a real readiness glyph below; the tooltip says it plainly.
+            Renders through the shared Chip (the board's ONE badge grammar) —
+            a hand-rolled pill here would drift from every other badge. */}
+        <Chip kind="muted" title={t(row.send === 'queue' ? 'review.sendQueueTitle' : 'review.sendSteerTitle')}>
           {t(row.send === 'queue' ? 'review.sendQueue' : 'review.sendSteer')}
-        </span>
+        </Chip>
         {/* An armed on-complete rule has NOTHING queued yet: it waits for the
             NEXT completion (驱动一次/留言一次). The chip names the REAL state
             so the row never reads as "已经在跑" — 只有暂停/关闭/阻断才有旧 chips。 */}
@@ -329,7 +328,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
             <span className={css.autoFieldLabel}>{t('auto.form.session')}</span>
             <span className={css.selectWrap}>
               <select
-                className={`${css.input} ${css.autoSelect}${error === 'session' ? ` ${css.inputInvalid}` : ''}`}
+                className={`${css.input}${error === 'session' ? ` ${css.inputInvalid}` : ''}`}
                 value={sessionId}
                 disabled={existing !== undefined}
                 aria-label={t('auto.form.session')}
@@ -674,6 +673,11 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
           same editor; each gets its own paired section header so the two
           systems never blur into one unlabeled block. */}
       <Section title={t('auto.taskSchedule')} className={css.autoRules}>
+      {/* The task-schedule control family is ONE group: the section's 16px
+          governs head→group and group→group, the 8px inside binds each label
+          to its own control (两级节奏 — otherwise every field reads at the same
+          weight and the block looks like an undifferentiated list). */}
+      <div className={css.autoGroup}>
       <Switch
         checked={enabled}
         onChange={toggleEnabled}
@@ -803,6 +807,7 @@ export function AutomationEditor({ controller, task }: { controller: BoardContro
           )}
         </>
       )}
+      </div>
 
       {/* Session-level rules: the shared module of the automation overview —
           one grammar on both surfaces, always complete. */}

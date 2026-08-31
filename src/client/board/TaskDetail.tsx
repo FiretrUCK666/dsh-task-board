@@ -13,6 +13,7 @@ import { permissionLabel } from '../permission-label.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { useEscapeStack } from './escape-stack.ts'
 import { Chip, type ChipKind } from './Chip.tsx'
 import { formatDateTime, formatDuration, formatTime } from './format-time.ts'
 import { TaskForm } from './TaskForm.tsx'
@@ -176,6 +177,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
   const window = sessionWindowOf(task, sessionId)
   return (
     <SessionRow
+      state={row.display.state}
       chip={chip}
       leading={
         <span className={css.sessionRowLeading}>
@@ -205,6 +207,9 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
       footer={
         <CommentSummary task={task} sessionId={sessionId} cruiseOn={cruiseOn} />
       }
+      // The waiting handle rides the SAME grammar as a run row (the light-rule
+      // table has no exceptions: waiting → the row breathes AND offers 处理).
+      handle={row.display.state === 'waiting' ? t('detail.handle') : undefined}
       sessionId={sessionId}
       draggable={draggable}
       onDragStart={onDragStart}
@@ -278,6 +283,11 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
    *  drags (both advertise `text/plain`). */
   dragSourceRef: { readonly current: boolean }
 }) {
+  // Escape closes the detail through the family's ONE stack: a confirm dialog
+  // or nested modal opened OVER the detail closes first (one press, one
+  // layer), and the detail's own backdrop click / close button stay the
+  // mouse path. The edit draft is safe on close — it lives in draftStore.
+  useEscapeStack(() => { controller.closeTask() })
   const [confirmDelete, setConfirmDelete] = useState(false)
   // Red-flag per-session removal (hidden-tray only): the session's rounds
   // and hide history are permanently removed after confirmation.

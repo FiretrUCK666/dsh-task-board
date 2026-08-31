@@ -118,9 +118,11 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
             </span>
             <span className={css.detailHint}>{t('runPreset.deployDefaultNote')}</span>
             {doc.defaultId !== undefined && (
-              <Button size="sm" onClick={() => { setDefault(DEPLOY_DEFAULT_PRESET_ID) }}>
-                {t('runPreset.setDefault')}
-              </Button>
+              <span className={css.autoRuleActions}>
+                <Button size="sm" onClick={() => { setDefault(DEPLOY_DEFAULT_PRESET_ID) }}>
+                  {t('runPreset.setDefault')}
+                </Button>
+              </span>
             )}
           </div>
           {doc.presets.map(preset => (
@@ -158,7 +160,7 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
             <label className={css.autoField}>
               <span className={css.autoFieldLabel}>{t('runPreset.name')}</span>
               <input
-                className={`${css.input} ${css.scheduleMaxInput}`}
+                className={`${css.input} ${css.autoNameInput}`}
                 value={name}
                 autoFocus
                 placeholder={t('runPreset.namePlaceholder')}
@@ -170,21 +172,26 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
             <p className={css.detailHint}>{t('runPreset.formHint')}</p>
             {error !== undefined && <p className={css.formError}>{error}</p>}
             <RunConfigEditor value={config} onChange={setConfig} controller={controller} />
-            <span className={css.autoFormActions}>
-              <Button size="sm" variant="primary" onClick={save}>
-                {t('runPreset.save')}
-              </Button>
-              <Button size="sm" onClick={() => { setFormKey(undefined); setName(''); setError(undefined) }}>
-                {t('detail.cancel')}
-              </Button>
-            </span>
           </div>
         )}
+        {/* The standing explanation belongs to the scroll body's tail; the
+            pinned footer is reserved for ACTIONS (弹窗次级动作归底部动作行). */}
+        <p className={css.detailHint}>{t('runPreset.hint')}</p>
       </div>
 
-      <footer className={css.presetFooter}>
-        <span className={css.detailHint}>{t('runPreset.hint')}</span>
-      </footer>
+      {/* Save/cancel live in the pinned dialog footer while the form is open —
+          a tall RunConfigEditor must never push them below the fold (the
+          PresetManager grammar, applied here). */}
+      {formKey !== undefined && (
+        <footer className={css.modalFooter}>
+          <Button size="sm" onClick={() => { setFormKey(undefined); setName(''); setError(undefined) }}>
+            {t('detail.cancel')}
+          </Button>
+          <Button size="sm" variant="primary" onClick={save}>
+            {t('runPreset.save')}
+          </Button>
+        </footer>
+      )}
     </Dialog>
   )
 }

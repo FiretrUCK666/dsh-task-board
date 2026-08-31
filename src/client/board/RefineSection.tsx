@@ -97,7 +97,17 @@ export function RefineSection({ controller, task }: {
   const idle = sessionId === undefined && !active
 
   return (
-    <Section title={t('detail.refine')} className={css.refineSection}>
+    // 「查看会话」住在区块标题行的 action 槽（与会话区/会话规则区同一文法），
+    // 不再另起一条假标题行与 Section 头并列。
+    <Section
+      title={t('detail.refine')}
+      className={css.refineSection}
+      action={sessionId !== undefined ? (
+        <Button size="sm" onClick={() => { controller.openSession(sessionId) }}>
+          {t('detail.viewSession')} →
+        </Button>
+      ) : undefined}
+    >
 
       {idle ? (
         <div className={css.refineIdle}>
@@ -108,29 +118,22 @@ export function RefineSection({ controller, task }: {
         </div>
       ) : (
         <>
-          {/* 头部信息：状态徽章 + 轮次数 + 查看会话按钮 */}
+          {/* 状态行：状态徽章 + 轮次数（区块动作已上提标题行） */}
           <div className={css.refineHeader}>
-            <div className={css.refineHeaderLeft}>
-              {active ? (
-                <Chip kind="warn">
-                  {waiting !== undefined ? t('review.waiting') : t('detail.result.running')}
-                </Chip>
-              ) : lastRound === undefined ? (
-                /* A bound refine session with no settled round yet: its own
-                   neutral state — never a guessed "成功". */
-                <Chip kind="muted">{t('detail.refine.noResult')}</Chip>
-              ) : (
-                <Chip kind={resultChipKind(lastRound.result)}>
-                  {lastRound.result === 'failed' ? t('detail.result.failed') : t('detail.result.succeeded')}
-                </Chip>
-              )}
-              <span className={css.refineRounds}>{t('detail.refine.rounds', { n: String(rounds.length) })}</span>
-            </div>
-            {sessionId !== undefined && (
-              <Button size="sm" onClick={() => { controller.openSession(sessionId) }}>
-                {t('detail.viewSession')} →
-              </Button>
+            {active ? (
+              <Chip kind="warn">
+                {waiting !== undefined ? t('review.waiting') : t('detail.result.running')}
+              </Chip>
+            ) : lastRound === undefined ? (
+              /* A bound refine session with no settled round yet: its own
+                 neutral state — never a guessed "成功". */
+              <Chip kind="muted">{t('detail.refine.noResult')}</Chip>
+            ) : (
+              <Chip kind={resultChipKind(lastRound.result)}>
+                {lastRound.result === 'failed' ? t('detail.result.failed') : t('detail.result.succeeded')}
+              </Chip>
             )}
+            <span className={css.refineRounds}>{t('detail.refine.rounds', { n: String(rounds.length) })}</span>
           </div>
 
           {/* 错误提示 */}

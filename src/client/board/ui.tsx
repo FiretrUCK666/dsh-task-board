@@ -162,7 +162,7 @@ export function AttentionDot({ title }: { title?: string }) {
  * glyph can ever balloon to the SVG default 300x150 box). Every board icon
  * route goes through this component.
  */
-export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff'
+export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff' | 'pencil'
 
 const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5',
   chevronDown: 'M3 6 8 11 13 6',
@@ -178,6 +178,9 @@ const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5
   // An eye with a slash: the quiet "hide this row" affordance (its label
   // collapses to this glyph on a narrow board; the tooltip keeps the words).
   eyeOff: 'M2.5 8s2.2-3.2 5.5-3.2S13.5 8 13.5 8s-2.2 3.2-5.5 3.2S2.5 8 2.5 8zM2.5 13.5 13.5 2.5',
+  // A pencil: the "rename this row" affordance (never the copy glyph — a
+  // copy icon that renames is a lie the tooltip cannot fully fix).
+  pencil: 'M2.5 13.5l1-3L11 3l2 2-7.5 7.5-3 1zM9.5 4.5l2 2',
 }
 
 export function Icon({ name, className }: { name: IconName; className?: string }) {

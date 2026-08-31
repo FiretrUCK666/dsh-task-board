@@ -136,7 +136,7 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
               title={sessionId}
             >
               <span className={css.rowActionText}>{handle}</span>
-              <Icon name="arrowRight" />
+              <Icon name="arrowRight" className={css.rowActionIcon} />
             </button>
           ) : sessionId !== undefined && (
             <Button
@@ -145,9 +145,14 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
               title={sessionId}
             >
               <span className={css.rowActionText}>{t('detail.viewSession')}</span>
-              <Icon name="arrowRight" />
+              <Icon name="arrowRight" className={css.rowActionIcon} />
             </Button>
           )}
+          {/* Every row action is the SAME text/glyph pair: wide shows the
+              word, narrow shows the glyph (the tooltip always keeps the
+              words). The rename glyph is a PENCIL — the copy icon that
+              renamed was a lie, and a bare glyph with only a `title` is
+              unreachable on touch. */}
           {onRename !== undefined && sessionId !== undefined && !renaming && (
             <button
               type="button"
@@ -155,7 +160,8 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
               title={renameTitle}
               onClick={event => { event.stopPropagation(); startRename() }}
             >
-              <Icon name="copy" />
+              <span className={css.rowActionText}>{t('detail.rename')}</span>
+              <Icon name="pencil" className={css.rowActionIcon} />
             </button>
           )}
           <button

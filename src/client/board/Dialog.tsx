@@ -15,13 +15,17 @@
  * `portal={false}` when it is already a top-level board overlay (none today);
  * forgetting `portal` can no longer reintroduce the bug.
  *
- * ESC closes the dialog (the whole family gains it from this one place).
+ * ESC closes the dialog — through the SHARED Escape stack (escape-stack.ts),
+ * so a nested overlay (a confirm over a manager) closes ONE layer per press,
+ * never the whole stack at once. TaskDetail and SessionFrame register through
+ * the same hook; the whole family shares one grammar.
  */
-import { useEffect, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
+import { useEscapeStack } from './escape-stack.ts'
 
 /** The board box: the anchor every board dialog's backdrop covers. Exported
  *  for overlay shells that portal directly (SessionFrame). */
@@ -42,14 +46,8 @@ export function Dialog({ title, label, onClose, className, children, portal = tr
   portal?: boolean
   children: ReactNode
 }) {
-  // Escape closes — registered once here so every dialog in the family has it.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') { event.stopPropagation(); onClose() }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  // Escape closes — through the family's ONE stack (top layer only).
+  useEscapeStack(onClose)
   const panel = (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div
