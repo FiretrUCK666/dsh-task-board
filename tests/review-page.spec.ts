@@ -149,26 +149,58 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(cssSource).not.toMatch(/\.sessionContextDock\s*\{/)
   })
 
-  it('the stacked layout never re-declares the scroll model (one model, two geometries)', () => {
+  it('the narrow panel is a THREE-ROW grid: capped folds / conversation / composer', () => {
+    // The structural end of the截断 family. The old stacked form was a flex
+    // chain sharing a height: the config head was `flex: none` (it never
+    // yields), the comments collapsed toward zero to absorb the pressure, and
+    // the composer — the LAST item in the rail's scroll content — ended up
+    // below the fold, unreachable. A grid with a capped top row and the
+    // composer as its OWN row makes that outcome unrepresentable.
     const block = stacked()
-    // The base rail IS the scroll grammar — a stacked-mode re-fork of it is
-    // exactly the per-mode drift this contract forbids.
-    expect(block).not.toMatch(/\.sessionRailScroll\s*\{/)
-    // The two regions share the panel height vertically; the page itself
-    // never scrolls as one.
-    expect(block).toMatch(/\.reviewBody\s*\{[^}]*overflow: hidden/)
-    // TRANSCRIPT FIRST (top), RAIL LAST (bottom) — so the rail's pinned
-    // composer lands at the panel's bottom edge, never mid-screen with the
-    // transcript stranded beneath it (the 「发送框卡在中间」 fix).
-    expect(block).toMatch(/\.reviewMain\s*\{[^}]*order: 1/)
-    expect(block).toMatch(/\.reviewRail\s*\{[^}]*order: 2/)
-    expect(ruleIn(block, '.reviewRail')).toMatch(/flex: 1 1 \d+%/)
-    expect(ruleIn(block, '.reviewMain')).toMatch(/flex: 1 1 \d+%/)
-    // No container/viewport unit for the height share (the board box is
+    const body = ruleIn(block, '.reviewBody')
+    expect(body).toMatch(/display:\s*grid/)
+    expect(body).toMatch(/grid-template-rows:\s*minmax\(0,\s*45%\) minmax\(0,\s*1fr\) auto/)
+    expect(body).toMatch(/grid-template-areas:[\s\S]*"folds"[\s\S]*"transcript"[\s\S]*"composer"/)
+    expect(body).toMatch(/overflow:\s*hidden/)
+    // The rail stops being a BOX so its segments can join the panel grid.
+    expect(ruleIn(block, '.reviewRail')).toMatch(/display:\s*contents/)
+    // Each region owns ONE scroll: the capped folds block scrolls, the
+    // conversation scrolls, the composer never does; the comments box hands
+    // its scroll to the folds block (no scroller inside a scroller).
+    expect(ruleIn(block, '.sessionRailFolds')).toMatch(/grid-area:\s*folds/)
+    expect(ruleIn(block, '.sessionRailFolds')).toMatch(/overflow-y:\s*auto/)
+    expect(ruleIn(block, '.commentsScroll')).toMatch(/overflow-y:\s*visible/)
+    expect(ruleIn(block, '.reviewMain')).toMatch(/grid-area:\s*transcript/)
+    expect(ruleIn(block, '.reviewComposer')).toMatch(/grid-area:\s*composer/)
+    // Placement is by NAMED AREA, never by `order` (an order on an item of a
+    // contents parent reads against the wrong container).
+    expect(block).not.toMatch(/\.reviewMain\s*\{[^}]*order:/)
+    expect(block).not.toMatch(/\.reviewRail\s*\{[^}]*order:/)
+    // No container/viewport unit for a height share (the board box is
     // inline-size only, so a block container unit would silently become one).
     expect(block).not.toMatch(/(max-height|flex-basis|height):\s*[\d.]+(cqh|cqb|vh|dvh)/)
     // The conversation keeps its own scroller in the stacked form too.
     expect(ruleIn(block, '.reviewTranscriptScroll')).toMatch(/overflow-y:\s*auto/)
+  })
+
+  it('the rail is TWO blocks at every width: folds (flexes) + composer (pinned)', () => {
+    // The wide form is unchanged in GEOMETRY — the four segments simply live
+    // in one wrapper now, which is what the narrow grid can cap.
+    const folds = ruleOf('sessionRailFolds')
+    expect(folds).toMatch(/flex:\s*1 1 auto/)
+    expect(folds).toMatch(/min-height:\s*0/)
+    expect(folds).toMatch(/display:\s*flex/)
+    expect(ruleOf('reviewComposer')).toMatch(/flex:\s*none/)
+    // The composer explains itself (a fold that starts collapsed on a phone
+    // must not hide the send-mode / blocking-reason line behind a hover).
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    const panelSource = readFileSync(panelPath, 'utf8')
+    const composer = panelSource.slice(panelSource.indexOf('export function SessionComposer'))
+    expect(composer).toMatch(/hint\?: string/)
+    expect(composer).toMatch(/\{hint \?\? t\('detail\.sessionDriveHint'\)\}/)
+    // …and the rail no longer takes it.
+    const rail = panelSource.slice(panelSource.indexOf('export function SessionRail'), panelSource.indexOf('export function SessionComposer'))
+    expect(rail).not.toMatch(/hint\?: string/)
   })
 
   it('the review family queries its OWN panel width, declared on .review', () => {

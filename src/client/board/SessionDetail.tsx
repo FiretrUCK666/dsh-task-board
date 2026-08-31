@@ -142,7 +142,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
           projections={projections}
           lines={lines}
           onChanged={reload}
-          hint={hint}
           task={task}
           thread={thread}
           onCancelComment={id => controller.cancelComment(id)}
@@ -154,6 +153,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               sessionId={sessionId}
               placeholder={t('detail.sessionDrivePlaceholder')}
               disabled={liveGone}
+              hint={hint}
               onDrive={text => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/')) !== undefined}
               onSteer={text => controller.steerComment(task.id, sessionId, text).then(result => result.ok)}
               onSteerImages={(text, images) => controller.steerCommentWithImages(task.id, sessionId, text, images.map(toPromptImage)).then(result => result.ok)}

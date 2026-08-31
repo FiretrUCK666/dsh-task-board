@@ -24,18 +24,24 @@ import { Icon } from './ui.tsx'
 export const NEAR_BOTTOM_PX = 24
 
 /**
- * The element that ACTUALLY scrolls for a piece of content: walk up from the
- * content region to the nearest ancestor that overflows vertically and has
- * overflow-y auto/scroll; fall back to the region itself. Pure DOM truth, so
- * a container-query width change (which moves the scroll from the inner
- * region to the panel body) needs no JS mode switch to follow.
+ * The element that OWNS the scroll for a piece of content: the nearest
+ * self-or-ancestor that DECLARES itself a scroll container (`overflow-y:
+ * auto|scroll`), falling back to the region itself.
+ *
+ * Declared, not "currently scrollable": measuring `scrollHeight > clientHeight`
+ * to decide makes the answer depend on how much text happens to be loaded, so
+ * a short region escalated to an ANCESTOR and its "滑到最新" scrolled the whole
+ * panel — the wrong range, and invisible until content grew. Ownership is a
+ * layout fact (who was built to scroll), so a container-query width change
+ * still needs no JS mode switch: the wide rail declares the comments box a
+ * scroller, the narrow folds block does instead, and the same code finds the
+ * right one in both.
  */
 export function resolveScroller(element: HTMLElement | null): HTMLElement | null {
   let node: HTMLElement | null = element
   while (node !== null) {
     const style = getComputedStyle(node)
-    const scrolls = style.overflowY === 'auto' || style.overflowY === 'scroll'
-    if (scrolls && node.scrollHeight > node.clientHeight + 1) return node
+    if (style.overflowY === 'auto' || style.overflowY === 'scroll') return node
     node = node.parentElement
   }
   return element

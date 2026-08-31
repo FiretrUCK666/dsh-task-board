@@ -631,32 +631,35 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
 /**
  * THE session rail — the one composition every session panel renders (the
  * execution review page and the linked-session panel share it verbatim), and
- * THE height contract that ends the squeeze-and-clip family of bugs:
+ * THE height contract that ends the squeeze-and-clip family of bugs.
  *
- *   rail = [ live state row ] → [ collapsible head: context meter + live run
- *   config — opened it renders FULLY, no internal scrollbar ] → [ collapsible
- *   COMMENTS: its own scroll region (.commentsScroll: own scrollbar, 滑到最新
- *   drives only it, interaction card inside) ] → [ the caller's pinned
- *   composer ].
+ * It hands its caller TWO blocks, never four:
  *
- * Four flex segments, one pinned:
- *   - state row: flex none (one quiet line);
- *   - head: flex NONE — it renders at its natural height and never clips a
- *     config into a shrunk box; if it outgrows the rail, the rail itself
- *     scrolls as ONE (the honest last resort, never a cut box);
- *   - comments: flex 1 1 auto + min-height 0 — absorbs the leftover height,
- *     its content scrolls in ONE region of its own;
- *   - composer: flex none, the ONLY segment that can never lose space.
- * The comments region owns the rail's scroll GRAMMAR (thin bar flush on the
- * rail edge); the head carries no scrollbar of its own (one bar per surface).
- * On a phone the head starts folded so the comments + composer own the
- * opening screen; expanding it squeezes the comments region, never the
- * composer, and never a clipped box.
+ *   [ folds: live state row → collapsible CONFIG head → collapsible COMMENTS ]
+ *   [ the caller's pinned composer                                           ]
+ *
+ * Desktop geometry: the rail is a flex column — the folds block absorbs the
+ * height (its comments region owns the one scroll box inside it) and the
+ * composer is `flex: none` below, so nothing can push the send box away.
+ *
+ * Narrow geometry (the panel's own container query): the rail box steps aside
+ * (`display: contents`) and the panel becomes a THREE-ROW grid —
+ * `folds / transcript / composer`. That is the whole fix for 「上下文一多就把
+ * 评论和留言按钮全部截断」:
+ *   - the folds block is capped (a fraction of the panel) and is the ONLY
+ *     scroller of that area, so an expanded config can never eat the screen;
+ *   - the transcript owns the flexible middle row and always keeps room;
+ *   - the composer is its own grid row at the panel's bottom edge — not the
+ *     last item in someone else's scroll content (which is exactly how it used
+ *     to end up below the fold, unreachable).
+ * Because each fold renders its body FULLY inside the capped block (no nested
+ * scrollbar), opening one never reflows the other, and 滑到最新 drives the
+ * block that actually holds the comments.
  *
  * Callers pass data and their send semantics; the grammar, the folds and the
  * hint line live here exactly once — no panel can drift again.
  */
-export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, hint, task, thread, onCancelComment, interaction, composer }: {
+export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, task, thread, onCancelComment, interaction, composer }: {
   /** The live state row (chip + updated time); absent hides the whole row. */
   stateChip?: { kind: ChipKind; label: string; spinner?: boolean }
   updatedAt?: string
@@ -666,9 +669,6 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   lines: readonly TranscriptLine[] | undefined
   onChanged?: () => void
   reloadKey?: unknown
-  /** The quiet line under the thread header: a blocking reason, or the drive
-   *  explanation (the default when absent). */
-  hint?: string
   task: TaskRecord
   thread: readonly CommentView[]
   onCancelComment: (roundId: string) => boolean
@@ -678,22 +678,21 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   composer: ReactNode
 }) {
   // The comment thread follows its latest round through the SAME mechanism as
-  // the transcript (resolved scroller + capture listener + pinning), but the
-  // ROOT here is the comments region ONLY — 滑到最新 drives the comments alone,
-  // never the head or the composer (the user's 「跳转范围错误」 fix).
+  // the transcript (resolved scroller + capture listener + pinning). On a wide
+  // rail the ROOT is the comments box itself; on a phone the comments box does
+  // not scroll (the capped folds block does) and `resolveScroller` finds that
+  // one — 滑到最新 always drives the region that actually holds the comments.
   const commentsScrollRef = useRef<HTMLDivElement | null>(null)
   const [commentsAtBottom, setCommentsAtBottom] = useState(true)
-  // The context meter + run config head is the tallest, least-acted-on block
-  // in the rail. A wide rail absorbs it (two-column config grid); a phone has
-  // no such margin — it must start folded so the comments and the composer
-  // own the opening screen. Behavior/structure switches read the ONE
-  // sanctioned signal (`useNarrow`), never a CSS guess; the fold itself
-  // stays available at every width.
+  // Both folds start FOLDED on a phone: the conversation and the send box are
+  // what a hand reaches for, and an unfolded config used to own the whole
+  // screen. A wide rail absorbs the config (two-column config grid), so it
+  // starts open there. Behavior/structure switches read the ONE sanctioned
+  // signal (`useNarrow`), never a CSS guess; the folds stay available at
+  // every width.
   const narrowBoard = useNarrow()
   const [headOpen, setHeadOpen] = useState(!narrowBoard)
-  // The comments fold is the PRIMARY content — open at every width (it only
-  // collapses to hand the screen back to the composer / the head).
-  const [commentsOpen, setCommentsOpen] = useState(true)
+  const [commentsOpen, setCommentsOpen] = useState(!narrowBoard)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
   const { measure: onCommentsScroll, jumpToBottom: jumpComments } = useFollowScroll(
     commentsScrollRef, commentsAtBottom, setCommentsAtBottom, threadFingerprint,
@@ -709,68 +708,63 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   const occupancy = contextOccupancy(projections?.contextPressure)
   return (
     <>
-      {stateChip !== undefined && updatedAt !== undefined && (
-        <div className={css.sessionFacts}>
-          <Chip
-            kind={stateChip.kind}
-            icon={stateChip.spinner === true ? <span className={css.spinner} aria-hidden="true" /> : undefined}
-          >
-            {stateChip.label}
-          </Chip>
-          <span className={css.sessionFactTime}>{t('detail.sessionUpdated')} {updatedAt}</span>
-        </div>
-      )}
-      {/* The head (context meter + live run config): ONE Disclosure fold.
-          OPENED = rendered FULLY — no max-height, no internal scrollbar (the
-          user's 「上下文与运行配置要完整显示」). flex 0 1 auto lets it shrink
-          first, so the composer below is never pushed out; the comments
-          region absorbs the leftover height. */}
-      <div className={css.sessionRailHead}>
-        <Disclosure
-          title={t('review.railHeadTitle')}
-          summary={occupancy !== undefined ? `${occupancy.percent}%` : undefined}
-          open={headOpen}
-          onToggle={() => { setHeadOpen(!headOpen) }}
-        >
-          <SessionRailHead
-            sessionId={sessionId}
-            controller={controller}
-            projections={projections}
-            lines={lines}
-            onChanged={onChanged}
-            reloadKey={reloadKey}
-          />
-        </Disclosure>
-      </div>
-      {/* The comments: ONE Disclosure fold. OPENED = the region's own scroll
-          box (.commentsScroll) — the shared thin bar, 滑到最新 pinned inside
-          driving ONLY this box, interaction card in the same region. The hint
-          names what the thread does (or the blocking reason). */}
-      <div className={css.sessionRailComments} data-open={commentsOpen || interaction !== undefined}>
-        <Disclosure
-          title={t('review.comments')}
-          /* The summary names a PENDING interaction too — a collapsed
-             dropdown must never hide the fact that the session is waiting
-             for an answer (the InteractionCard is the ONLY path that settles
-             a suspended call). */
-          summary={interaction !== undefined ? t('review.waiting') : String(thread.length)}
-          /* Force-open while an interaction is pending: the answer affordance
-             can never be collapsed off-screen. */
-          open={commentsOpen || interaction !== undefined}
-          onToggle={() => { setCommentsOpen(!commentsOpen) }}
-        >
-          <div className={css.commentsScroll} ref={commentsScrollRef} onScroll={onCommentsScroll}>
-            {/* One quiet line: the drive explanation in the normal case, the
-                blocking reason (done task / gone session) in the exceptional
-                case — never a stack of texts, never inside the send row. */}
-            <p className={css.detailHint}>{hint ?? t('detail.sessionDriveHint')}</p>
-            <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
-            {interaction !== undefined && sessionId !== undefined && (
-              <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
-            )}
-            <JumpToLatest atBottom={commentsAtBottom} onJump={jumpComments} />
+      <div className={css.sessionRailFolds}>
+        {stateChip !== undefined && updatedAt !== undefined && (
+          <div className={css.sessionFacts}>
+            <Chip
+              kind={stateChip.kind}
+              icon={stateChip.spinner === true ? <span className={css.spinner} aria-hidden="true" /> : undefined}
+            >
+              {stateChip.label}
+            </Chip>
+            <span className={css.sessionFactTime}>{t('detail.sessionUpdated')} {updatedAt}</span>
           </div>
-        </Disclosure>
+        )}
+        {/* The head (context meter + live run config): ONE Disclosure fold.
+            OPENED = rendered FULLY — the body carries no scrollbar of its own
+            (a config cut at the model row WITH its own slider is exactly the
+            「显示不全」 disease). On a phone the FOLDS BLOCK is the scroller,
+            so a fully-rendered config stays reachable without stealing the
+            transcript's or the composer's room. */}
+        <div className={css.sessionRailHead}>
+          <Disclosure
+            title={t('review.railHeadTitle')}
+            summary={occupancy !== undefined ? `${occupancy.percent}%` : undefined}
+            open={headOpen}
+            onToggle={() => { setHeadOpen(!headOpen) }}
+          >
+            <SessionRailHead
+              sessionId={sessionId}
+              controller={controller}
+              projections={projections}
+              lines={lines}
+              onChanged={onChanged}
+              reloadKey={reloadKey}
+            />
+          </Disclosure>
+        </div>
+        {/* The comments: ONE Disclosure fold. OPENED = the thread box (its own
+            scroll on a wide rail; in-flow inside the capped folds block on a
+            phone). A pending interaction FORCE-opens it — the InteractionCard
+            is the only path that settles a suspended call, so a collapsed
+            fold can never hide the answer affordance; the summary names that
+            wait too. */}
+        <div className={css.sessionRailComments} data-open={commentsOpen || interaction !== undefined}>
+          <Disclosure
+            title={t('review.comments')}
+            summary={interaction !== undefined ? t('review.waiting') : String(thread.length)}
+            open={commentsOpen || interaction !== undefined}
+            onToggle={() => { setCommentsOpen(!commentsOpen) }}
+          >
+            <div className={css.commentsScroll} ref={commentsScrollRef} onScroll={onCommentsScroll}>
+              <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
+              {interaction !== undefined && sessionId !== undefined && (
+                <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
+              )}
+              <JumpToLatest atBottom={commentsAtBottom} onJump={jumpComments} />
+            </div>
+          </Disclosure>
+        </div>
       </div>
       {composer}
     </>
@@ -780,22 +774,30 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
 /**
  * The pinned composer of the rail — one grammar for every session panel:
  * prompt input (slash autocomplete) + attachment strip + send-mode switch
- * (排队/插话) + the primary send button. Draft / steer mode / attached
- * images live here (the per-session draft slot, shared across panels); the
- * caller supplies only the send semantics:
+ * (排队/插话) + the primary send button + ONE quiet line under it.
+ *
+ * The explanation line belongs to the COMPOSER, not to the comment thread:
+ * what 排队/插话 do, and why sending is refused (a finished task, a gone
+ * session), is information a touch user must be able to reach — a fold that
+ * starts collapsed on a phone would otherwise hide it behind a hover-only
+ * tooltip. Draft / steer mode / attached images live here (the per-session
+ * draft slot, shared across panels); the caller supplies only the send
+ * semantics:
  *   - onDrive(text) schedules a session-anchored comment round (true = saved,
  *     the draft clears) — / commands route through the native registry;
  *   - onSteer(text) delivers the comment straight to the session now;
  *   - onSteerImages(text, refs) delivers text + admitted image refs at once
  *     (images always go immediately — they belong to the current exchange).
  */
-export function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, onDrive, onSteer, onSteerImages }: {
+export function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, hint, onDrive, onSteer, onSteerImages }: {
   controller: BoardController
   taskId: string
   sessionId: string | undefined
   placeholder: string
   /** Extra rejection state (done task / gone session): blocks the send. */
   disabled?: boolean
+  /** The composer's own explanation (blocking reason, or the drive hint). */
+  hint?: string
   onDrive: (text: string) => boolean
   onSteer: (text: string) => Promise<boolean>
   onSteerImages: (text: string, images: readonly DraftImage[]) => Promise<boolean>
@@ -886,6 +888,11 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
           {t('review.commentSend')}
         </Button>
       </div>
+      {/* One quiet line, owned by the composer: what the two send modes do, or
+          the reason sending is refused. It lives HERE (not inside the comment
+          fold) because the fold starts collapsed on a phone and a touch user
+          has no hover to discover the explanation with. */}
+      <p className={css.detailHint}>{hint ?? t('detail.sessionDriveHint')}</p>
     </div>
   )
 }

@@ -1599,23 +1599,23 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    adding a scroll region means adding its selector here, never re-inventing a
    width or color (the 「滚动条颜色粗细不一套」 fix: every bar on the board
    reads the same). */
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea) {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea) {
   scrollbar-width: thin;
   scrollbar-color: var(--dsw-alias-border-l3) transparent;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-thumb {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-track {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-track {
   background: transparent;
 }
 
@@ -3847,13 +3847,29 @@ textarea.input {
   overflow: hidden;
 }
 
-/* Right rail: the ONE scroll body (state row, collapsible head, thread
-   header, hint, comments, interaction card) with the composer pinned below
-   it OUTSIDE the scroll. The rail's height is whatever the panel gives it —
-   nothing inside can clip or squeeze anything else, because everything
-   scrollable scrolls in the single region and the composer is its only
-   sibling. (Vertical rhythm: the scroll region owns a 12px gap between its
-   segments; the composer keeps its own top border + bottom breathing.) */
+/* The rail's THREE fold segments as ONE block (state row, config head,
+   comments). Two reasons it is a real element and not a fragment:
+   - on a wide rail it is the flexible part of [folds → composer], so the
+     composer can never be pushed out;
+   - on a phone it becomes the panel's TOP grid row, where it is CAPPED and is
+     the only scroller of that area. Without the wrapper there is nothing to
+     cap: an expanded config grew until it pushed the send box below the
+     fold (the reported 「评论和留言按钮全部截断」).
+   The vertical rhythm between segments is the block's own gap. */
+.sessionRailFolds {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Right rail (the wide form): TWO children — the folds block (flex 1 1 auto,
+    it absorbs every expansion) and the composer (flex none, the one segment
+    that can never lose space). Nothing inside can clip or squeeze anything
+    else because the scrollable content scrolls inside its own region and the
+    composer is the folds block's only sibling. */
 .reviewRail {
   display: flex;
   flex-direction: column;
@@ -4991,51 +5007,72 @@ textarea.input {
 }
 
 @container dsh-tb-panel (max-width: 600px) {
+  /* The narrow panel is a THREE-ROW GRID, not a flex chain fighting over one
+     box. Rows: the folds block (capped, the area's only scroller) → the
+     conversation (the flexible middle) → the composer (its own row, so it is
+     always on screen). This is the structural end of 「上下文一多就把评论和
+     留言按钮全部截断」 and 「点开一个折叠把另一个盖掉」:
+     - a capped top row means an expanded config can never eat the screen;
+     - the composer is a grid ROW, not the last item in someone else's scroll
+       content (which is exactly how it used to land below the fold);
+     - 45% + 1fr + auto can never sum past the panel, so nothing is clipped.
+     `minmax(0, …)` on both flexible rows: a bare track has an automatic
+     minimum of `auto`, i.e. one long unbreakable line would push the row past
+     its share (让位不压扁, the same law as every form-row track). */
   .reviewBody {
-    /* Stacked, but NOT one page scroll: the two regions keep their own
-       scroll (the desktop grammar), they just share the panel height
-       vertically instead of horizontally. A phone reader then never drags the
-       whole page — comments scroll in their box, the conversation in its own,
-       and the send box is always on screen. */
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 45%) minmax(0, 1fr) auto;
+    grid-template-areas:
+      "folds"
+      "transcript"
+      "composer";
     overflow: hidden;
+  }
+
+  /* The rail steps aside as a BOX (its border-left / floating background
+     belong to the two-column form only); its two children join the panel grid
+     BY NAME. Placement is by area, never by `order` — an `order` on an item
+     of a `display: contents` parent reads against the wrong container. */
+  .reviewRail {
+    display: contents;
+  }
+
+  .sessionRailFolds {
+    grid-area: folds;
+    /* The area's ONE scroller. The fold bodies inside it still render FULLY
+       (no nested scrollbar) — one bar per region is the whole point. */
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+    padding: 10px 0;
+    border-bottom: var(--dsh-tb-separator);
   }
 
   .reviewMain {
-    /* FIRST (top): the conversation reads first; it keeps its OWN scroller
-       (the follow logic resolves whatever element actually scrolls). */
-    order: 1;
-    flex: 1 1 40%;
+    /* The conversation is NOT a fold: it is the panel's main body and keeps
+       its own scroller (the follow logic resolves whatever element actually
+       scrolls). */
+    grid-area: transcript;
     min-height: 0;
     overflow: hidden;
     padding: 14px;
-    border-bottom: 1px solid var(--dsw-alias-separator-primary);
   }
 
-  .reviewRail {
-    /* LAST (bottom): the rail (state row → config head → comments region →
-       pinned composer) — so the composer lands at the panel's BOTTOM edge
-       (where the thumb is), never floating mid-screen with the transcript
-       stranded beneath it. overflow-y:auto (NOT hidden): the base last-resort
-       whole-rail scroll must survive the stacked geometry — a hidden rail
-       would clip the composer when the fully-rendered config outgrows the
-       panel (the review caught it). */
-    order: 2;
-    flex: 1 1 60%;
-    width: 100%;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    /* The two regions now split HORIZONTALLY (transcript over rail); the
-       vertical border-left is meaningless here and only overlaps the panel
-       frame — the transcript's border-bottom is the divider now. */
-    border-left: none;
-  }
-
-  /* The composer is now at the panel's bottom edge (the thumb), so it must
-     clear the home-indicator safe area (same law as the compact board). */
+  /* The composer is now a panel row at the bottom edge (where the thumb is),
+     so it must clear the home-indicator safe area (same law as the compact
+     board). */
   .reviewComposer {
+    grid-area: composer;
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  /* The comments box hands its scroll to the folds block: on a phone the
+     region that scrolls IS the capped block containing it, so 滑到最新 drives
+     that one (the follow hook resolves the real scroller). A scroller inside
+     a scroller is the double-bar confusion this avoids. */
+  .commentsScroll {
+    overflow-y: visible;
   }
 
   /* The header splits into TWO deterministic lines:

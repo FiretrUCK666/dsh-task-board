@@ -2,8 +2,16 @@
  * Shared detail-panel shell for every session surface on the board — the
  * execution review page (ReviewDetail) and the linked-session view
  * (SessionDetail): one backdrop + container + header (title + type badge +
- * context readout + actions + close) + two-column body (left conversation,
- * right rail).
+ * context readout + actions + close) + body.
+ *
+ * The body is ONE DOM with TWO geometries, keyed on the PANEL's own width:
+ * - wide: two columns — the conversation owns the left height, the rail owns
+ *   the right ([folds block] → [composer]).
+ * - narrow: three stacked rows — [folds (capped, its own scroller)] →
+ *   [conversation] → [composer]. The conversation and the send box are what a
+ *   phone user sees first; the config and the comment thread are folds at the
+ *   top of the panel, and neither can ever push the other (or the composer)
+ *   out of reach.
  *
  * THE header grammar (both widths, one DOM):
  * - wide: ONE line — title + badge | context readout | actions | ×. Every
