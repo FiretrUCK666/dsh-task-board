@@ -16,7 +16,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Chip, type ChipKind } from './Chip.tsx'
 import { formatDateTime, formatDuration, formatTime } from './format-time.ts'
 import { TaskForm } from './TaskForm.tsx'
-import { draftFromTask, draftToUpdatePatch, type TaskDraft } from './task-draft.ts'
+import { draftFromTask, draftToUpdatePatch, normalizeDraft, type TaskDraft } from './task-draft.ts'
 import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
 import { sessionStateChip, waitingKeyOf } from './session-chip.ts'
 import { indicatorTopOf, insertionGapOf } from './drop-position.ts'
@@ -320,8 +320,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     const stored = draftStore.get(editDraftKey(task.id))
     if (stored !== undefined) {
       try {
-        setDraft(JSON.parse(stored) as TaskDraft)
-        setDraftRestored(true)
+        // Normalize: a stored draft may predate a field (promptImages).
+        const parsed = normalizeDraft(JSON.parse(stored) as Partial<TaskDraft>)
+        if (parsed !== undefined) {
+          setDraft(parsed)
+          setDraftRestored(true)
+        }
       } catch {
         draftStore.clear(editDraftKey(task.id))
       }

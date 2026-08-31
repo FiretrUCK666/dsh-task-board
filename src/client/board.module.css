@@ -4476,10 +4476,16 @@ textarea.input {
   flex-wrap: wrap;
   min-height: 24px;
 }
-.attachStripOver {
-  outline: 1px dashed var(--dsh-tb-accent);
-  outline-offset: 2px;
-  border-radius: 8px;
+
+/* Drop-anywhere affordance: the composer CONTAINER carries
+   [data-dsh-tb-dndover] while a FILES drag is over it (the shared
+   useComposerImages hook), so a desktop user can drop a picture anywhere on
+   the composer, not just the thin strip. The ring is the accent dashed line —
+   the same "you may drop here" language as the board's bind zone. */
+[data-dsh-tb-dndover=''] {
+  outline: 2px dashed var(--dsh-tb-accent);
+  outline-offset: -2px;
+  border-radius: var(--dsh-tb-radius-md);
 }
 .attachAdd {
   display: inline-flex;
@@ -4540,6 +4546,17 @@ textarea.input {
 .attachHint {
   font-size: 12px;
   color: var(--dsh-tb-text-3);
+}
+
+/* A rejected file is named OUT LOUD (the silent-drop that read as 「电脑端
+   发不了图」). One quiet error line under the strip, same tone as every
+   inline form error. */
+.attachError {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-state-error-primary);
+  overflow-wrap: anywhere;
 }
 
 /* The deterministic session-context readout — HARNESS-ISOMORPHIC todo grammar

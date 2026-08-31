@@ -209,7 +209,7 @@ export interface ReferenceRemoteFace {
 
 /** The editable slice of a task (content + run configuration). */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
-  'title' | 'description' | 'prompt' | 'workspaceId' | 'provider' | 'model'
+  'title' | 'description' | 'prompt' | 'promptImages' | 'workspaceId' | 'provider' | 'model'
   | 'reasoningEffort' | 'agentPreset' | 'permission'
 >>
 
@@ -963,14 +963,18 @@ export class BoardController {
           : undefined,
       }, now)
     }
-    // The template keeps the card's SHAPE: the accent color rides along, but
-    // session rules do NOT — they are bound to the source's own sessions
-    // ("给这个绘画会话定时发指令"), and the template is a new card without
-    // them; copying them would silently automate sessions the template does
-    // not own.
+    // The template keeps the card's SHAPE: the accent color and the prompt's
+    // attached images ride along (both are part of how this card looks and
+    // what its prompt says), but session rules do NOT — they are bound to the
+    // source's own sessions ("给这个绘画会话定时发指令"), and the template is a
+    // new card without them; copying them would silently automate sessions the
+    // template does not own.
     task = {
       ...task,
       ...source.color !== undefined ? { color: source.color } : {},
+      ...source.promptImages !== undefined && source.promptImages.length > 0
+        ? { promptImages: source.promptImages.map(image => ({ ...image })) }
+        : {},
     }
     // A template is a NEW card: it lands at the top of its landing column
     // (待规划) exactly like a manually created task — a copied card reads as
@@ -1359,6 +1363,13 @@ export class BoardController {
     if (patch.title !== undefined) applied.title = title
     if (patch.description !== undefined) applied.description = patch.description.trim()
     if (patch.prompt !== undefined) applied.prompt = patch.prompt.trim()
+    // Prompt images: a present key sets/clears the whole set (the form owns
+    // the cap; an empty array clears the task's prompt images).
+    if ('promptImages' in patch) {
+      applied.promptImages = patch.promptImages !== undefined && patch.promptImages.length > 0
+        ? patch.promptImages.map(image => ({ ...image }))
+        : undefined
+    }
     // Run-config fields: a present key with '' or undefined clears the field
     // (execution falls back to defaults); a value sets it.
     for (const key of ['workspaceId', 'provider', 'model', 'reasoningEffort', 'agentPreset', 'permission'] as const) {
@@ -2362,7 +2373,7 @@ export class BoardController {
    * @param text - the answer text.
    * @returns true when the answer was launched.
    */
-  answerRefine(taskId: string, text: string): boolean {
+  answerRefine(taskId: string, text: string, images?: readonly PromptImage[]): boolean {
     const trimmed = text.trim()
     if (trimmed === '') return false
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -2385,6 +2396,9 @@ export class BoardController {
     if (launchTask === undefined) return true
     void this.deps.exec.run(launchTask, round, (event) => { this.handleExecutionEvent(event) }, {
       prompt: trimmed,
+      // Freshly-attached answer images ride THIS round's prompt (the refine
+      // session's own prompt images belong to the original instruction).
+      ...(images !== undefined && images.length > 0 ? { images } : {}),
       sessionId: task.refineSessionId,
       fresh: false,
       renameTo: `${task.title} · 完善需求`,

@@ -12,7 +12,7 @@ import css from '../board.module.css'
 import { Dialog } from './Dialog.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { NEW_TASK_DRAFT_KEY, draftStore } from './drafts.ts'
-import { draftToNewInput, type TaskDraft } from './task-draft.ts'
+import { draftToNewInput, normalizeDraft, type TaskDraft } from './task-draft.ts'
 import { Button } from './ui.tsx'
 
 /** The fresh draft shape ('' = default / not set; landing column 待规划). */
@@ -21,6 +21,7 @@ function freshDraft(): TaskDraft {
     title: '',
     description: '',
     prompt: '',
+    promptImages: [],
     status: 'backlog',
     agentPreset: '',
     workspaceId: '',
@@ -58,8 +59,10 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     const stored = draftStore.get(NEW_TASK_DRAFT_KEY)
     if (stored !== undefined) {
       try {
-        const parsed = JSON.parse(stored) as TaskDraft
-        if (typeof parsed.title === 'string' && typeof parsed.prompt === 'string') return parsed
+        // A stored draft may predate a field (promptImages) — normalize fills
+        // the gaps rather than crash on a missing array.
+        const parsed = normalizeDraft(JSON.parse(stored) as Partial<TaskDraft>)
+        if (parsed !== undefined) return parsed
       } catch {
         // A corrupt draft falls through to a fresh form.
       }

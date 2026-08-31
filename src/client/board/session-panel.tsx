@@ -27,7 +27,8 @@ import { CommentsThread } from './CommentsThread.tsx'
 import type { CommentView } from './comment-thread.ts'
 import { InteractionCard } from './InteractionCard.tsx'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
-import { type DraftImage } from './attach.ts'
+import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, type DraftImage } from './attach.ts'
+import { useComposerImages } from './composer-images.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Disclosure, Notice, SendModeToggle } from './ui.tsx'
@@ -780,14 +781,20 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   const storeKey = sessionId === undefined ? undefined : commentDraftKey(taskId, sessionId)
   const [draft, setDraft] = useState<string>(() => (storeKey !== undefined ? draftStore.get(storeKey) ?? '' : ''))
   const [steer, setSteer] = useState(false)
-  const [attachedImages, setAttachedImages] = useState<readonly DraftImage[]>([])
-  // A failed image send is surfaced right under the composer (never a silent
-  // drop — the user must know why their picture did not go out).
-  const [attachError, setAttachError] = useState<string | undefined>(undefined)
+  // The image ledger is the SHARED hook: pick / drop-anywhere / paste,
+  // compression, count cap and every rejection said out loud. The composer
+  // container carries the drop/paste props so a desktop user can drop a
+  // file or paste a screenshot anywhere on it, not just on the thin strip.
+  const attachments = useComposerImages(COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES)
+  const { images: attachedImages, setImages, addFiles, dropProps } = attachments
+  // A failed SEND is distinct from a failed INTAKE; surface it right under
+  // the composer (never a silent drop — the user must know their words and
+  // pictures did not go out).
+  const [sendError, setSendError] = useState<string | undefined>(undefined)
   const clear = (): void => {
     setDraft('')
-    setAttachedImages([])
-    setAttachError(undefined)
+    setImages([])
+    setSendError(undefined)
     if (storeKey !== undefined) draftStore.clear(storeKey)
   }
   const submit = (): void => {
@@ -800,7 +807,7 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     // the user keeps their words to retry.
     const restore = (): void => {
       setDraft(text)
-      setAttachedImages(attachedImages)
+      setImages(attachedImages)
       if (storeKey !== undefined) draftStore.set(storeKey, text)
     }
     clear()
@@ -809,7 +816,7 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
       // to the current exchange, not a queue. The drafts carry their base64
       // bytes; the host admits them durably as part of taking the prompt.
       void onSteerImages(text, attachedImages).then(ok => {
-        if (!ok) { restore(); setAttachError('发送失败，请重试') }
+        if (!ok) { restore(); setSendError(t('review.sendFailed')) }
       })
       return
     }
@@ -824,7 +831,7 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     if (!onDrive(text)) restore()
   }
   return (
-    <div className={css.reviewComposer}>
+    <div className={css.reviewComposer} {...dropProps}>
       <PromptInput
         value={draft}
         onChange={next => {
@@ -840,8 +847,13 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
           row: chips wrap there and can never grow the action row, so the send
           button stays visible + tappable no matter how many pictures are
           picked (the "选图后发送按钮被挤没" bug). */}
-      <AttachmentStrip images={attachedImages} onChange={next => { setAttachedImages(next); setAttachError(undefined) }} />
-      {attachError !== undefined && <p className={css.formError}>{attachError}</p>}
+      <AttachmentStrip
+        images={attachedImages}
+        onAdd={addFiles}
+        onRemove={id => { setImages(attachedImages.filter(image => image.id !== id)) }}
+        busy={attachments.busy}
+        error={attachments.error ?? sendError}
+      />
       <div className={css.reviewComposerRow}>
         <SendModeToggle steer={steer} onChange={setSteer} />
         <Button

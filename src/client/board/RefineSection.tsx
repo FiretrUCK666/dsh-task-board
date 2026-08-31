@@ -21,6 +21,9 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { resultChipKind } from './session-chip.ts'
 import { refineDraftKey, draftStore } from './drafts.ts'
+import { AttachmentStrip } from './AttachmentStrip.tsx'
+import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, toPromptImage } from './attach.ts'
+import { useComposerImages } from './composer-images.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { useSessionContext, useWireQuestion } from './use-interaction.ts'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
@@ -70,12 +73,18 @@ export function RefineSection({ controller, task }: {
     return undefined
   }, [lines])
 
+  // The answer bar's image ledger (shared composer hook): pick / drop /
+  // paste; images ride the answer into the refine session.
+  const attachments = useComposerImages(COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES)
+
   const send = (): void => {
     const text = draft.trim()
     if (text === '') return
-    if (controller.answerRefine(task.id, text)) {
+    const images = attachments.images
+    if (controller.answerRefine(task.id, text, images.length > 0 ? images.map(toPromptImage) : undefined)) {
       setDraft('')
       draftStore.clear(refineDraftKey(task.id))
+      attachments.setImages([])
       setApplied(false)
     }
   }
@@ -153,8 +162,9 @@ export function RefineSection({ controller, task }: {
           {active && <SessionWaitingNotice waiting={waiting} />}
 
           {/* 输入区域：与评论/会话面板完全同一套 composer（PromptInput：斜杠补全、
-              自动增高、草稿记忆），发送按钮保持。 */}
-          <div className={css.refineInputArea}>
+              自动增高、草稿记忆），同一套图片 ledger（选/拖/粘 + 就近拒绝原因），
+              发送按钮保持。 */}
+          <div className={css.refineInputArea} {...attachments.dropProps}>
             {pendingInteraction !== undefined && sessionId !== undefined && (
               <InteractionCard
                 key={pendingInteraction.rpcId}
@@ -176,6 +186,13 @@ export function RefineSection({ controller, task }: {
               rows={3}
               controller={controller}
               sessionId={sessionId}
+            />
+            <AttachmentStrip
+              images={attachments.images}
+              onAdd={attachments.addFiles}
+              onRemove={id => { attachments.setImages(attachments.images.filter(image => image.id !== id)) }}
+              busy={attachments.busy}
+              error={attachments.error}
             />
             <Button variant="primary" disabled={draft.trim() === ''} onClick={send}>
               {t('detail.refine.send')}

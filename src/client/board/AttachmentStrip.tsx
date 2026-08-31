@@ -1,48 +1,33 @@
 /**
- * Composer attachment strip: the image-drag/pick entrance of the review page
- * and session-panel composers. A plus button (or dropping files on the strip)
- * encodes browser images into the native base64 wire form and holds them as
- * removable chips until the comment sends. One grammar everywhere — the strip
- * is a single shared component, so both composers behave identically.
+ * Composer attachment strip: the image-drag/pick entrance of every composer
+ * that attaches images (review page, session panel, refinement, task prompt).
+ * It is PRESENTATION + the picker affordance; the ledger state, intake
+ * (encode/compress) and the drop/paste wiring live in the shared
+ * `useComposerImages` hook, which the composer spreads onto its container so
+ * a drop anywhere on the composer (not just this strip) works. A plus button
+ * opens the picker; encoded images show as removable chips; a busy row names
+ * the in-flight compression and a rejection line names the failed file —
+ * nothing is ever silently dropped. One grammar everywhere.
  */
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { encodeImageFile, IMAGE_MEDIA_TYPES, type DraftImage } from './attach.ts'
 import { Icon } from './ui.tsx'
+import type { DraftImage } from './attach.ts'
 
-export function AttachmentStrip({ images, onChange }: {
+export function AttachmentStrip({ images, onAdd, onRemove, busy, error }: {
   images: readonly DraftImage[]
-  onChange: (images: DraftImage[]) => void
+  /** Intake picked files (the hook encodes + validates). */
+  onAdd: (files: FileList | File[]) => void
+  onRemove: (id: string) => void
+  /** An image is decoding/compressing right now (phone photos take a beat). */
+  busy?: boolean
+  /** The last rejection, said out loud (never a silent drop). */
+  error?: string
 }) {
-  const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
-
-  const addFiles = async (files: FileList | File[]): Promise<void> => {
-    // Appends to the current selection: picking a second batch must never
-    // drop the first (the strip is the composer's one image ledger).
-    const added: DraftImage[] = []
-    for (const file of Array.from(files)) {
-      if (!IMAGE_MEDIA_TYPES.includes(file.type as (typeof IMAGE_MEDIA_TYPES)[number])) continue
-      const draft = await encodeImageFile(file)
-      if (draft !== undefined) added.push(draft)
-    }
-    if (added.length > 0) onChange([...images, ...added])
-  }
-
-  const onDrop = (event: React.DragEvent<HTMLDivElement>): void => {
-    event.preventDefault()
-    setDragOver(false)
-    void addFiles(event.dataTransfer.files)
-  }
-
   return (
-    <div
-      className={`${css.attachStrip}${dragOver ? ` ${css.attachStripOver}` : ''}`}
-      onDragOver={event => { event.preventDefault(); setDragOver(true) }}
-      onDragLeave={() => { setDragOver(false) }}
-      onDrop={onDrop}
-    >
+    <div className={css.attachStrip}>
       <button
         type="button"
         className={css.attachAdd}
@@ -55,11 +40,11 @@ export function AttachmentStrip({ images, onChange }: {
       <input
         ref={fileRef}
         type="file"
-        accept={IMAGE_MEDIA_TYPES.join(',')}
+        accept="image/*"
         multiple
         hidden
         onChange={event => {
-          if (event.currentTarget.files !== null) void addFiles(event.currentTarget.files)
+          if (event.currentTarget.files !== null) onAdd(event.currentTarget.files)
           event.currentTarget.value = ''
         }}
       />
@@ -74,13 +59,14 @@ export function AttachmentStrip({ images, onChange }: {
             type="button"
             className={css.attachRemove}
             aria-label={image.name}
-            onClick={() => { onChange(images.filter(candidate => candidate.id !== image.id)) }}
+            onClick={() => { onRemove(image.id) }}
           >
             <Icon name="close" />
           </button>
         </span>
       ))}
-      {images.length === 0 && dragOver && <span className={css.attachHint}>拖放图片到此处</span>}
+      {busy === true && <span className={css.attachHint}>{t('review.attachBusy')}</span>}
+      {error !== undefined && error !== '' && <span className={css.attachError}>{error}</span>}
     </div>
   )
 }

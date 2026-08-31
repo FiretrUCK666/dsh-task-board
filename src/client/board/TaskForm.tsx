@@ -5,11 +5,19 @@
  * new-session dialog, so a task and a session configure the same things in
  * the same order. Used by the new-task modal and the detail edit mode so
  * both surfaces stay identical. Fully controlled: the parent owns the draft.
+ *
+ * The execution prompt carries an image ledger (the shared composer hook,
+ * controlled by the draft): pick / drop / paste anywhere on the prompt field,
+ * browser-compressed before it is stored, capped in count — and every run
+ * path (manual / cron / cruise / chain) sends the same picture with the text.
  */
 import type { BoardController } from '../../core/controller.ts'
 import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { AttachmentStrip } from './AttachmentStrip.tsx'
+import { MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
+import { useComposerImages } from './composer-images.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { RunConfigFields } from './RunConfigFields.tsx'
 import type { TaskDraft } from './task-draft.ts'
@@ -49,6 +57,13 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
     })
   }
 
+  // The prompt's image ledger, CONTROLLED by the draft (it round-trips
+  // through save/restore and persists onto the task).
+  const attachments = useComposerImages(TASK_IMAGE_BUDGET, MAX_TASK_IMAGES, {
+    images: draft.promptImages,
+    onChange: next => { onChange({ ...draft, promptImages: [...next] }) },
+  })
+
   return (
     <>
       <label className={css.field}>
@@ -72,7 +87,10 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         />
       </label>
 
-      <label className={css.field}>
+      {/* Prompt field: the text plus its image ledger (pick / drop / paste
+          anywhere on the field). A <div>, not a <label> — the strip holds
+          buttons, and a label would route their clicks to the input. */}
+      <div className={css.field} {...attachments.dropProps}>
         <span className={css.fieldLabel}>{t('new.prompt')}</span>
         <PromptInput
           value={draft.prompt}
@@ -82,7 +100,15 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
           controller={controller}
           sessionId={sessionId}
         />
-      </label>
+        <AttachmentStrip
+          images={draft.promptImages}
+          onAdd={attachments.addFiles}
+          onRemove={id => { onChange({ ...draft, promptImages: draft.promptImages.filter(image => image.id !== id) }) }}
+          busy={attachments.busy}
+          error={attachments.error}
+        />
+        <span className={css.fieldHint}>{t('new.promptImagesHint', { max: String(MAX_TASK_IMAGES) })}</span>
+      </div>
 
       {/* Landing-column selector: new-task modal only. Choosing a column is
           about where the task rests until it is started; auto rules never

@@ -134,8 +134,46 @@ describe('ExecutionService.run', () => {
     expect(events).toEqual(['started', 'settled'])
   })
 
-  it('falls back to the task title when the prompt is blank', async () => {
+  it('sends the task prompt WITH its persisted prompt images on every run', async () => {
     const { env, drivers } = makeEnv()
+    const service = new ExecutionService(env)
+    const task = {
+      ...sampleTask(),
+      promptImages: [{ mediaType: 'image/webp', data: 'QUJD', name: '参考.webp' }],
+    }
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    await service.run(task, execution, () => { /* no events under test */ })
+    // The OFFICIAL parts order: text first, then the image part (temporary
+    // bytes the host admits). A plain run takes the TASK's own images — this
+    // is what makes scheduled/cruise/chain runs send the same picture.
+    expect(drivers.get('s-1')?.promptCalls).toEqual([[
+      { type: 'text', text: '写一个 bash 脚本，打印 hello' },
+      { type: 'image', mediaType: 'image/webp', data: 'QUJD', name: '参考.webp' },
+    ]])
+  })
+
+  it('a run-options image override replaces the task prompt images (refine answers)', async () => {
+    const { env, drivers } = makeEnv()
+    drivers.set('s-refine', new FakeDriver())
+    const service = new ExecutionService(env)
+    const task = {
+      ...sampleTask(),
+      promptImages: [{ mediaType: 'image/png', data: 'RkZG' }],
+    }
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    await service.run(task, execution, () => { /* ignore */ }, {
+      prompt: '回答文本',
+      sessionId: 's-refine',
+      fresh: false,
+      images: [{ mediaType: 'image/jpeg', data: 'QUJD' }],
+    })
+    expect(drivers.get('s-refine')?.promptCalls).toEqual([[
+      { type: 'text', text: '回答文本' },
+      { type: 'image', mediaType: 'image/jpeg', data: 'QUJD' },
+    ]])
+  })
+
+  it('falls back to the task title when the prompt is blank', async () => {    const { env, drivers } = makeEnv()
     const service = new ExecutionService(env)
     const task = createTask({ title: '只是标题', description: '', prompt: '  ' }, NOW, 'task-2')
     const { execution } = startExecution(task, NOW, 'exec-1')

@@ -205,6 +205,16 @@ export interface ScheduleRule {
 }
 
 /** One task on the board. */
+/** One image attached to a task's execution prompt — the same base64 shape
+ *  the native `PromptContentPart` image variant carries (the host admits the
+ *  bytes durably when it takes the prompt). */
+export interface TaskImage {
+  mediaType: string
+  /** Canonical base64 (no data-URL prefix). */
+  data: string
+  name?: string
+}
+
 export interface TaskRecord {
   /** Stable task id (uuid). */
   id: string
@@ -214,6 +224,16 @@ export interface TaskRecord {
   description: string
   /** The prompt sent to dsh when this task is executed. */
   prompt: string
+  /**
+   * Images attached to the execution prompt — the OFFICIAL temporary-bytes
+   * image shape (base64 + media type), PERSISTED with the task so EVERY run
+   * path (manual / scheduled / cruise / chain / rerun) sends the same
+   * picture-text prompt. Deliberately tiny by contract: the browser
+   * compresses each image hard before it lands here and the form caps the
+   * count (this rides the shared board document to every device). Absent =
+   * a text-only prompt (the overwhelming majority of tasks).
+   */
+  promptImages?: TaskImage[]
   /** Current column. */
   status: TaskStatus
   /** Column sort key (ascending; legacy rows are normalized on load). */
@@ -301,6 +321,9 @@ export interface NewTaskInput {
   title: string
   description: string
   prompt: string
+  /** Images attached to the execution prompt (already compressed by the
+   *  browser intake; capped in count by the form). */
+  promptImages?: TaskImage[]
   /** Landing column; defaults to 'todo'. Any column is legal — an external
    *  sidebar drop lands in exactly the column it was dropped into. */
   status?: TaskStatus
@@ -484,6 +507,9 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
     updatedAt: now,
     viewedAt: now,
     executions: [],
+    ...input.promptImages !== undefined && input.promptImages.length > 0
+      ? { promptImages: input.promptImages.map(image => ({ ...image })) }
+      : {},
     ...input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {},
     ...input.provider !== undefined ? { provider: input.provider } : {},
     ...input.model !== undefined ? { model: input.model } : {},

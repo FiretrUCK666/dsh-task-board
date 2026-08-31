@@ -242,6 +242,12 @@ export interface RunOptions {
    * true (plain runs always start a fresh session).
    */
   fresh?: boolean
+  /**
+   * Images to send with the prompt (the official temporary-bytes parts).
+   * A plain run omits this and takes the TASK's own persisted prompt images;
+   * a refine answer passes its freshly-attached images instead.
+   */
+  images?: readonly { mediaType: string; data: string; name?: string }[]
 }
 
 /**
@@ -423,7 +429,7 @@ export class ExecutionService {
       // completes while prompt is in flight must still advance past this
       // baseline, or the watch below would never observe it settle.
       const baseline = driver.getSnapshot().turnEnds.size
-      const accepted = await this.sendPrompt(driver, task, options?.prompt)
+      const accepted = await this.sendPrompt(driver, task, options?.prompt, options?.images)
       if (!accepted.ok) {
         onEvent({
           kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
@@ -726,12 +732,28 @@ export class ExecutionService {
     driver: SessionDriver,
     task: TaskRecord,
     promptOverride: string | undefined,
+    images?: readonly { mediaType: string; data: string; name?: string }[],
   ): Promise<{ ok: true } | { ok: false; error: unknown }> {
     const text = (promptOverride ?? task.prompt).trim() !== ''
       ? (promptOverride ?? task.prompt)
       : task.title
+    // The prompt's images: an explicit override (a refine answer's fresh
+    // attachments) wins; otherwise the TASK's persisted prompt images ride
+    // EVERY run path (manual / scheduled / cruise / chain / rerun) — one
+    // prompt, one picture, wherever it fires from. The parts are the OFFICIAL
+    // image shape (temporary bytes the host admits durably).
+    const attached = images ?? task.promptImages ?? []
+    const parts: readonly unknown[] = [
+      ...(text === '' ? [] : [{ type: 'text', text }]),
+      ...attached.map(image => ({
+        type: 'image',
+        mediaType: image.mediaType,
+        data: image.data,
+        ...(image.name !== undefined ? { name: image.name } : {}),
+      })),
+    ]
     try {
-      const result = await driver.prompt([{ type: 'text', text }], 'queue')
+      const result = await driver.prompt(parts, 'queue')
       return result
     } catch (error) {
       return { ok: false, error }

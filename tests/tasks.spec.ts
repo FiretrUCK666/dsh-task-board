@@ -37,8 +37,19 @@ describe('createTask', () => {
     expect(task.prompt).toBe('')
   })
 
-  it('maps run-configuration fields (agent preset / workspace / model) onto the task', () => {
-    const task = createTask(
+  it('persists prompt images (copied, not aliased) and omits an empty set', () => {
+    const withImages = createTask(
+      { title: 'x', description: '', prompt: 'p', promptImages: [{ mediaType: 'image/webp', data: 'QUJD', name: 'a.webp' }] },
+      NOW,
+      'task-img',
+    )
+    expect(withImages.promptImages).toEqual([{ mediaType: 'image/webp', data: 'QUJD', name: 'a.webp' }])
+    // An empty set is stored as ABSENT (a plain task never carries the key).
+    const empty = createTask({ title: 'x', description: '', prompt: 'p', promptImages: [] }, NOW, 'task-none')
+    expect(empty.promptImages).toBeUndefined()
+  })
+
+  it('maps run-configuration fields (agent preset / workspace / model) onto the task', () => {    const task = createTask(
       { title: 'x', description: '', prompt: '', agentPreset: 'butler', workspaceId: 'ws-9', provider: 'opencode-go', model: 'deepseek-v4-flash', reasoningEffort: 'high', permission: 'read-only' },
       NOW,
       'task-3',

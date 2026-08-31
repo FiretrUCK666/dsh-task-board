@@ -2031,6 +2031,34 @@ describe('linked sessions & bind', () => {
     expect(copy!.schedule).toMatchObject({ enabled: true, mode: 'chain', maxRuns: 7, runCount: 0 })
   })
 
+  it('copyTask carries the prompt images (they are part of the card\'s prompt)', () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const source = controller.createTask({
+      title: '源', description: '', prompt: 'run',
+      promptImages: [{ mediaType: 'image/webp', data: 'QUJD', name: 'a.webp' }],
+    })!
+    const copy = controller.copyTask(source.id)
+    expect(copy!.promptImages).toEqual([{ mediaType: 'image/webp', data: 'QUJD', name: 'a.webp' }])
+    // Copied, not aliased: the template is an independent record.
+    expect(copy!.promptImages![0]).not.toBe(source.promptImages![0])
+  })
+
+  it('updateTask writes and clears the prompt image set as one whole', () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.updateTask(task.id, { promptImages: [{ mediaType: 'image/png', data: 'RkZG' }] })
+    expect(store.load()[0].promptImages).toEqual([{ mediaType: 'image/png', data: 'RkZG' }])
+    // An empty set CLEARS the key (the form removed every image).
+    controller.updateTask(task.id, { promptImages: [] })
+    expect(store.load()[0].promptImages).toBeUndefined()
+    // An ABSENT key never touches the stored set.
+    controller.updateTask(task.id, { promptImages: [{ mediaType: 'image/png', data: 'RkZG' }] })
+    controller.updateTask(task.id, { title: '改名' })
+    expect(store.load()[0].promptImages).toEqual([{ mediaType: 'image/png', data: 'RkZG' }])
+  })
+
   it('cruise windows v4: the switch is sovereign — boundaries flip it, edits never do', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub, { now: () => NOW })
