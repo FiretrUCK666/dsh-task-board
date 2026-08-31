@@ -3746,7 +3746,9 @@ textarea.input {
 
 .sessionRailHeadBody {
   min-height: 0;
-  max-height: min(45%, 360px);
+  /* A DEFINITE px cap (a % would resolve against the auto-height ancestor
+     chain and silently degrade to none — the review caught this). */
+  max-height: 260px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -3783,9 +3785,15 @@ textarea.input {
 .sessionContextDock {
   display: flex;
   flex-direction: column;
-  flex: none;
+  /* SHRINKABLE: the dock is the only fixed segment allowed to compress, so a
+     short rail (phone stacked + keyboard) can never push the composer's send
+     row out through the rail's overflow:hidden — the composer (flex:none, the
+     last child) always wins the space. */
+  flex: 0 1 auto;
+  min-height: 0;
   min-width: 0;
-  padding-top: 10px;
+  overflow: hidden;
+  padding: 10px 0;
   border-top: var(--dsh-tb-separator);
 }
 
@@ -3805,6 +3813,13 @@ textarea.input {
   max-height: 180px;
   overflow-y: auto;
   margin-top: 6px;
+}
+
+/* The dock's fold row is the only way to open the context on a phone — give
+   it the same ≥ tap floor the two dropdown rows got (a bare 16px text line is
+   too small a target at the bottom of the screen). */
+.sessionContextDock .sessionContextHead {
+  padding: 8px 0;
 }
 
 /* THE rail's single scroll body — every segment above the composer (state
@@ -4183,32 +4198,6 @@ textarea.input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* The fixed thread header — title + count. It scrolls inside the rail's ONE
-   scroll body (the composer, not the header, is the rail's only pinned
-   element — pinning more than that is what re-created the squeeze). */
-.reviewThreadHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-}
-
-.reviewThreadTitle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.reviewThreadCount {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-tertiary);
-  font-variant-numeric: tabular-nums;
 }
 
 .reviewComments {
@@ -4900,6 +4889,16 @@ textarea.input {
     width: 100%;
     min-height: 0;
     overflow: hidden;
+    /* The two regions now split HORIZONTALLY (transcript over rail); the
+       vertical border-left is meaningless here and only overlaps the panel
+       frame — the transcript's border-bottom is the divider now. */
+    border-left: none;
+  }
+
+  /* The composer is now at the panel's bottom edge (the thumb), so it must
+     clear the home-indicator safe area (same law as the compact board). */
+  .reviewComposer {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   /* The header splits into TWO deterministic lines:

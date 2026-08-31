@@ -745,8 +745,14 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
         <div className={css.sessionRailComments}>
           <Disclosure
             title={t('review.comments')}
-            summary={String(thread.length)}
-            open={commentsOpen}
+            /* The summary names a PENDING interaction too — a collapsed
+               dropdown must never hide the fact that the session is waiting
+               for an answer (the InteractionCard is the ONLY path that settles
+               a suspended call). */
+            summary={interaction !== undefined ? t('review.waiting') : String(thread.length)}
+            /* Force-open while an interaction is pending: the answer affordance
+               can never be collapsed off-screen. */
+            open={commentsOpen || interaction !== undefined}
             onToggle={() => { setCommentsOpen(!commentsOpen) }}
           >
             {/* One quiet line: the drive explanation in the normal case, the

@@ -104,25 +104,26 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
 
   const stacked = (): string => containerBlock('@container dsh-tb-panel (max-width: 600px) {')
 
-  it('the rail owns ONE scroll body; the composer is its only pinned element', () => {
-    // The height contract that ends the whole squeeze-and-clip family: the
-    // composer is visible at ANY rail height because it is the only fixed
-    // segment, and everything else is reachable because it scrolls in ONE
-    // body. Expansion can only ever add scrollable height.
+  it('the rail is a scroll body + a shrinkable context dock + a pinned composer', () => {
+    // The height contract: the composer is ALWAYS visible because the dock
+    // (the only other fixed segment) is allowed to SHRINK, so a short rail
+    // can never clip the send button (the 「dock 展开把发送框挤出 overflow:hidden」
+    // failure the review caught). Everything else scrolls in ONE body.
     const scroll = ruleOf('sessionRailScroll')
     expect(scroll).toMatch(/flex:\s*1/)
     expect(scroll).toMatch(/min-height:\s*0/)
     expect(scroll).toMatch(/overflow-y:\s*auto/)
     expect(ruleOf('reviewComposer')).toMatch(/flex:\s*none/)
-    // The scroll body owns the rail's 14px inset (the single-scrollbar
-    // grammar); segments inside it must NOT add a second horizontal inset.
+    // The dock shrinks (flex 0 1 auto + min-height 0), never a fixed floor.
+    const dock = ruleOf('sessionContextDock')
+    expect(dock).toMatch(/flex:\s*0 1 auto/)
+    expect(dock).toMatch(/min-height:\s*0/)
+    // The scroll body owns the rail's 14px inset; segments inside add none.
     expect(scroll).toMatch(/padding:\s*12px 14px 10px/)
     expect(ruleOf('sessionFacts')).not.toMatch(/padding:\s*0 14px/)
-    expect(ruleOf('reviewThreadHeader')).not.toMatch(/padding:\s*0 14px/)
     // Inside the rail the interaction card drops its margin for the same law.
     expect(cssSource).toMatch(/\.sessionRailScroll \.interactionCard\s*\{[^}]*margin:\s*0 0 2px/)
-    // The rail itself clips nothing away from reach: its only children are
-    // the scroll body and the composer.
+    // The rail clips its own box.
     expect(ruleOf('reviewRail')).toContain('overflow: hidden')
   })
 
@@ -248,7 +249,9 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(head).not.toMatch(/position:\s*sticky/)
     const body = ruleOf('sessionRailHeadBody')
     expect(body).toMatch(/overflow-y:\s*auto/)
-    expect(body).toMatch(/max-height:\s*min\(/)
+    // A DEFINITE px cap — a % max-height would resolve against the auto-height
+    // ancestor chain and silently degrade to none (the review caught this).
+    expect(body).toMatch(/max-height:\s*\d+px/)
     // The comments dropdown exists as its own block.
     expect(cssSource).toMatch(/\.sessionRailComments\s*\{/)
     // session-panel renders TWO Disclosure dropdowns (config + comments) and
@@ -259,6 +262,10 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(disclosures.length).toBeGreaterThanOrEqual(2)
     expect(panelSource).toMatch(/sessionContextDock/)
     expect(panelSource).toMatch(/sessionRailComments/)
+    // A pending interaction must FORCE the comments dropdown open — the
+    // InteractionCard is the only path that settles a suspended call, so a
+    // collapsed dropdown can never hide the answer affordance.
+    expect(panelSource).toMatch(/open=\{commentsOpen \|\| interaction !== undefined\}/)
   })
 
   it('the rail is flexible in the base layout (two columns survive down to the floor)', () => {

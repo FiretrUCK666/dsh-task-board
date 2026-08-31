@@ -10,9 +10,11 @@
  * execution session is blocked on the user (approval / plan review /
  * question), a waiting banner explains it and points at "查看会话". The
  * layout is two columns: the conversation owns the full left height; the
- * right rail is THE shared SessionRail — live state row, fixed head (meter,
- * config, session facts), fixed thread header, hint line, independently
- * scrolling comment list, pending interaction card and the pinned composer.
+ * right rail is THE shared SessionRail — live state row, the collapsible
+ * config head, the collapsible comment thread (with the pending interaction
+ * card), the session-context dock and the pinned composer. On a phone the two
+ * columns stack (transcript on top, rail below) so the composer lands at the
+ * panel's bottom edge.
  * The thread shows only the comments of the execution being reviewed — each
  * execution's page shows its own, the injection queue stays task-level. Both
  * the transcript and the comment list auto-follow the latest output while at
@@ -126,7 +128,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   return (
     <SessionFrame
       title={current.title}
-      ariaLabel={t('review.title')}
+      ariaLabel={`${t('review.title')} · ${current.title}`}
       actions={
         <>
           <Button size="sm" onClick={reload} title={t('review.refresh')}>

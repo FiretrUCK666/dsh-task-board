@@ -11,12 +11,17 @@
  * posture — so a harness upgrade flows in automatically and the board never
  * displays a second, drifting grammar.
  *
- * LAYOUT: one quiet header row (icon + title + progress summary + chevron) in
- * the rail head, and the expanded list is a POPOVER anchored under it —
- * absolute inside the rail, opaque menu surface, its own 45vh scroll region.
- * Expanding/modifying it can never push the context meter / session config /
- * comment thread away, and nothing clips it (the rail head's own scroll cap
- * cannot cut a floating panel).
+ * LAYOUT: one quiet header row (icon + title + progress summary + chevron).
+ * The expanded list has two placements, chosen by the host surface via the
+ * `className` prop:
+ *  - DEFAULT (refine panel): a POPOVER anchored under the head — absolute,
+ *    opaque menu surface, its own capped scroll region — so expanding never
+ *    pushes the surrounding blocks.
+ *  - DOCK (review / session panel, `.sessionContextDockBlock`): the panel is
+ *    forced IN-FLOW and height-capped (position:static), because it sits in
+ *    the context dock right above the composer where a floating popover would
+ *    clip against the panel edge.
+ * Either way expanding can never eat the composer or push siblings away.
  */
 import { useEffect, useRef, useState } from 'react'
 import { t } from '../locales.ts'
@@ -37,9 +42,10 @@ function TodoGlyph({ status }: { status: 'pending' | 'in_progress' | 'completed'
 
 /** The deterministic context readout (see module doc): self-contained — the
  *  collapsed/expanded state and the outside-click dismissal live here.
- *  `className` lets a surface place the block (the review pane docks its
- *  head at the conversation's top-right; the rail/refine surfaces keep the
- *  default in-flow slot). */
+ *  `className` lets a surface switch the expanded panel from its DEFAULT
+ *  popover to an IN-FLOW capped panel: the review/session dock passes
+ *  `.sessionContextDockBlock` (in-flow above the composer); the refine panel
+ *  keeps the default popover. */
 export function SessionContextBlock({ context, className }: { context: SessionContext; className?: string }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)

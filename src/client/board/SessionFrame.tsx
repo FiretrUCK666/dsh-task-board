@@ -63,7 +63,10 @@ export function SessionFrame({ title, badge, ariaLabel, actions, main, rail, onC
       <div className={css.review} role="dialog" aria-label={ariaLabel}>
         <header className={css.reviewHeader}>
           <div className={css.reviewTitleWrap}>
-            <h2 className={css.reviewTitle}>{title}</h2>
+            {/* The title is single-line ellipsis on a phone (so it stays on the
+                same plane as the badge + close); the full name is reachable via
+                the tooltip + the dialog's aria-label. */}
+            <h2 className={css.reviewTitle} title={title}>{title}</h2>
             {badge !== undefined && <span className={css.reviewBadge}>{badge}</span>}
           </div>
           <div className={css.reviewActions}>{actions}</div>
