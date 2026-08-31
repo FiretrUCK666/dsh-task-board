@@ -375,24 +375,54 @@ describe('alignment grammar (the OCD contract)', () => {
     // The text cluster ("查看会话 → / 隐藏") was a ~156px fixed tax that left
     // the title three characters. Labels fold, glyphs take over — and the
     // compact row-top grid gives the lead the whole leftover track (minmax(0,
-    // 1fr)) with one 4px rhythm; the status chip reads at the identity grid's
-    // own x (12px icon + 7px gutter = 19px inset, the 「未运行/工作区各搞各的」
-    // fix).
+    // 1fr)) with one 4px rhythm.
     expect(compact).toMatch(/\.sessionRowActions \.rowActionText\s*\{\s*\n?\s*display:\s*none/)
     expect(compact).toMatch(/\.sessionRowActions \.rowActionIcon\s*\{\s*\n?\s*display:\s*inline-flex/)
     const top = ruleIn(compact, '.sessionRowTop')
     expect(top).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\) auto/)
     expect(top).toMatch(/row-gap:\s*4px/)
-    expect(compact).toMatch(/\.sessionRowTop \.sessionRowChip\s*\{[^}]*padding-left:\s*19px/)
-    // The unread dot rides a FIXED 12px grid track (the icon width) inside the
-    // lead — NOT a flex sibling that pushes the identity grid 13px right and
-    // strands the chip (the alignment-review finding): title/workspace/chip
-    // read at the same x with or without the dot.
+    expect(compact).toMatch(/\.sessionRowTop \.sessionRowChip\s*\{[^}]*padding-left:\s*0/)
+    // The identity slot is a NAMED GRID whose flexible track is declared, and
+    // the identity block is placed BY NAME. Auto-placement into a fixed track
+    // is the bug that ate the title on a phone (a row without an unread marker
+    // landed in the marker's 12px column → a 0px name, a vanished workspace).
     const lead = ruleIn(compact, '.sessionRowLead')
     expect(lead).toMatch(/display:\s*grid/)
-    expect(lead).toMatch(/grid-template-columns:\s*12px minmax\(0,\s*1fr\)/)
-    expect(lead).toMatch(/column-gap:\s*7px/)
-    expect(compact).toMatch(/\.sessionRowLead \.attentionDot\s*\{[^}]*justify-self:\s*center/)
+    expect(lead).toMatch(/grid-template-areas:\s*"identity"/)
+    expect(lead).not.toMatch(/grid-template-columns:\s*12px/)
+    const leading = ruleIn(compact, '.sessionRowLeading')
+    expect(leading).toMatch(/grid-area:\s*identity/)
+    expect(leading).toMatch(/column-gap:\s*var\(--dsh-tb-lead-gap\)/)
+  })
+
+  it('ONE rail/content line per surface comes from a token, never a re-typed number', () => {
+    // The 「上下文与运行配置往右移了一点」 class: each rail member wrote its
+    // own 14px, and the head wrote it TWICE (section padding + button margin)
+    // while the state row wrote it ZERO. One token, consumed once per member.
+    expect(source).toMatch(/--dsh-tb-rail-inset:\s*14px/)
+    for (const member of ['sessionFacts', 'sessionRailHead > \\.detailSection', 'commentsScroll', 'reviewComposer']) {
+      expect(source).toMatch(new RegExp(`\\.${member}[^}]*var\\(--dsh-tb-rail-inset\\)`))
+    }
+    // The head's fold row must NOT add a second inset (that was the 28px).
+    expect(source).not.toMatch(/\.sessionRailHead \.detailDisclosure\s*\{[^}]*margin/)
+    // The session row's identity column is one derived x, not a magic 19px.
+    expect(source).toMatch(/--dsh-tb-lead-x:\s*calc\(/)
+  })
+
+  it('paragraphs carry no inherited spacing inside the board', () => {
+    // A `<p>` used as a LAYOUT row kept the UA's 1em margin (an invisible 16px
+    // above and below) — the whole 「会话 3 下面一大片空」 gap. Rhythm here is
+    // always declared, never inherited.
+    expect(source).toMatch(/\[data-dsh-taskboard-view\] p\s*\{\s*\n?\s*margin:\s*0/)
+  })
+
+  it('a control beside a text line is centered by a DERIVED offset, not a hand-tuned px', () => {
+    // The session toolbar used to carry `margin-top: 3px` — the magnitude of
+    // the right formula with the WRONG sign, leaving the 24px pill 6px below
+    // the 18px line's center.
+    const row = ruleOf('sessionHintRow')
+    expect(row).toMatch(/margin:\s*0/)
+    expect(source).toMatch(/\.sessionHintRow \.sessionToolbarActions\s*\{[^}]*margin-top:\s*calc\(\(var\(--dsh-tb-hint-line\)\s*-\s*var\(--dsh-tb-button-h-sm\)\)\s*\/\s*2\)/)
   })
 
   // (The review-family contracts — the two-dropdown comment panel, the
@@ -413,16 +443,34 @@ describe('session row overlap fix', () => {
     // The action cluster aligns to the TOP of its spanning cell so the
     // buttons sit ON the title's line (the 「按钮没和标题同步」 fix), and the
     // identity slot is a NAMED GRID — icon + title share line 1 (the icon is
-    // never stranded alone above the name), the workspace pill takes line 2
-    // at CONTENT width (a stretched 100% bar under the buttons read as
-    // "按钮叠在白条上").
+    // never stranded above the name), the workspace pill takes line 2 at
+    // CONTENT width starting on the row's content edge (under the MARK, so
+    // mark / pill / chip / meta are one x — a stretched 100% bar under the
+    // buttons read as "按钮叠在白条上").
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(ruleIn(compact, '.sessionRowTop')).toMatch(/align-items:\s*start/)
     expect(compact).toMatch(/\.sessionRowTop \.sessionRowActions\s*\{[^}]*align-self:\s*start/)
     const leading = ruleIn(compact, '.sessionRowLeading')
     expect(leading).toMatch(/display:\s*grid/)
     expect(leading).toMatch(/grid-template-areas:[\s\S]*"icon name"/)
+    expect(leading).toMatch(/"workspace workspace"/)
+    expect(compact).toMatch(/\.sessionRowLeading \.sessionRowWorkspace\s*\{[^}]*justify-self:\s*start/)
     expect(compact).not.toMatch(/\.sessionRowLeading \.sessionRowName\s*\{[^}]*flex:\s*1 1 100%/)
+  })
+
+  it('the unread marker is an overlay badge, so no row pays a column for it', () => {
+    // An in-flow optional member gives a list two geometries (and the compact
+    // grid auto-placed a marker-less row's identity into the marker's fixed
+    // track — the phone title collapse). The badge rides the mark's corner.
+    const dot = ruleOf('attentionDot')
+    expect(dot).toMatch(/position:\s*absolute/)
+    expect(dot).toMatch(/left:\s*calc\(/)
+    expect(dot).toMatch(/top:\s*calc\(/)
+    // Its offsets derive from the declared row line box, never a magic px on
+    // an inherited `normal` line height.
+    expect(source).toMatch(/--dsh-tb-row-line:/)
+    expect(ruleOf('sessionRowLeading')).toMatch(/line-height:\s*var\(--dsh-tb-row-line\)/)
+    expect(ruleOf('sessionRowLead')).toMatch(/position:\s*relative/)
   })
 
   it('the detail title and board title are shrinkable', () => {

@@ -39,15 +39,22 @@ function ruleOf(name: string): string {
 }
 
 describe('rail layout CSS contract (interaction card never bursts the rail)', () => {
-  it('the interaction card is shrinkable and sits on the rail 14px box', () => {
+  it('the interaction card is shrinkable and sits on the rail content line', () => {
     const card = ruleOf('interactionCard')
     expect(card).toContain('min-width: 0')
-    expect(card).toContain('margin: 0 14px 2px')
+    // The rail's ONE content line comes from the token (a member that re-types
+    // 14px is how the rail grew a 28px row beside a 0px one).
+    expect(card).toMatch(/margin:\s*0 var\(--dsh-tb-rail-inset\) 2px/)
   })
 
   it('HEIGHT CONTRACT: the interaction card is capped, its body scrolls, its actions stay pinned', () => {
     const card = ruleOf('interactionCard')
-    expect(card).toContain('max-height: min(320px, 40vh)')
+    // A px cap, never a viewport unit: the card lives inside a panel that is
+    // itself sized against the BOARD box, so `40vh` measured a different box
+    // than the one that has to hold it (and the mobile contract bans viewport
+    // units board-wide — the two tests used to disagree about this line).
+    expect(card).toMatch(/max-height:\s*320px/)
+    expect(card).not.toMatch(/\d+(vh|dvh|vw)\b/)
     expect(card).toContain('overflow: hidden')
     // The body is the scroll slot (never the card itself): long plan/question
     // text scrolls inside while the action row remains visible at the bottom.
@@ -75,7 +82,7 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(ruleOf('commentsScroll')).toContain('overflow-y: auto')
     // The rail owns ONE 12px vertical rhythm; each segment keeps only its
     // own 14px content box (the composer's bottom breathing stays its own).
-    expect(ruleOf('reviewComposer')).toContain('padding: 0 14px 12px')
+    expect(ruleOf('reviewComposer')).toMatch(/padding:\s*0 var\(--dsh-tb-rail-inset\) 12px/)
   })
 
   it('the transcript text shrinks and inline code breaks (never pierces the column)', () => {
@@ -129,9 +136,9 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(comments).toMatch(/flex:\s*1 1 auto/)
     expect(comments).toMatch(/overflow-y:\s*auto/)
     expect(comments).toMatch(/min-height:\s*0/)
-    // The scroll region owns the rail's 14px inset; segments inside add none.
-    expect(comments).toMatch(/padding:\s*10px 14px/)
-    expect(ruleOf('sessionFacts')).not.toMatch(/padding:\s*0 14px/)
+    // The scroll region owns the rail's content line; segments inside add none.
+    expect(comments).toMatch(/padding:\s*10px var\(--dsh-tb-rail-inset\)/)
+    expect(ruleOf('sessionFacts')).toMatch(/padding-inline:\s*var\(--dsh-tb-rail-inset\)/)
     // Inside the comments region the interaction card drops its margin.
     expect(cssSource).toMatch(/\.commentsScroll \.interactionCard\s*\{[^}]*margin:\s*0 0 2px/)
     // The rail clips horizontally; vertical auto is the last-resort whole-rail

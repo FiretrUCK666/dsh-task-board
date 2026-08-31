@@ -42,6 +42,30 @@
      never by being taller), so 执行/保存/取消/删除 in one row are aligned */
   --dsh-tb-button-radius: 18px;
   --dsh-tb-button-h: 28px;
+  /* The in-list tier. A quiet row action and the text beside it are aligned by
+     a DERIVED offset, never by a hand-tuned ±3px (which silently breaks the
+     moment either size changes — see .sessionHintRow). */
+  --dsh-tb-button-h-sm: 24px;
+
+  /* ONE content line per surface, declared once and consumed by every member
+     of that surface. Rail segments used to each write their own 14px, and one
+     of them wrote it TWICE (the 「上下文与运行配置」 row sat 28px while the
+     comments sat 14px — the misalignment the user pointed at). A member may
+     reference the token, never re-type the number. */
+  --dsh-tb-rail-inset: 14px;
+  /* The session row's identity column: a 12px mark + a 7px gutter. The title,
+     the workspace pill, the status chip and the meta line all read against
+     this ONE derived x (the 「工作区/未运行 各搞各的」 family). */
+  --dsh-tb-lead-icon: 12px;
+  --dsh-tb-lead-gap: 7px;
+  --dsh-tb-lead-x: calc(var(--dsh-tb-lead-icon) + var(--dsh-tb-lead-gap));
+  /* The session row's declared first-line box (never `normal`, which differs
+     per font/skin and would move any offset measured against it). */
+  --dsh-tb-row-line: 20px;
+  --dsh-tb-dot: 6px;
+  /* The quiet meta line's line box — the optical center every small control
+     beside it is measured against. */
+  --dsh-tb-hint-line: 18px;
 
   /* depth */
   --dsh-tb-shadow-1: var(--dsw-shadow-lv1);
@@ -128,6 +152,17 @@
 
 html[data-dsh-taskboard-active] [data-dsh-taskboard-view] {
   display: block;
+}
+
+/* Paragraphs carry NO inherited spacing inside the board. The UA's `1em`
+   margin-block is the invisible half of every 「这块间距和别处不一样」 report:
+   a hint written as `<p class="detailHint">` zeroes it, but a `<p>` used as a
+   LAYOUT row (the session hint row is the case in point) kept a surprise 16px
+   top and bottom that no rule accounted for. Rhythm here is always declared
+   (gap / margin), never inherited from the medium — so one reset closes the
+   whole class instead of patching the next `<p>` someone forgets. */
+[data-dsh-taskboard-view] p {
+  margin: 0;
 }
 
 /* While the board is active, the conversation content underneath is hidden
@@ -1431,7 +1466,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    every secondary affordance on a row/header — view-session, refresh, row
    actions — so a full-size button never sits inside a row. */
 .buttonSm {
-  height: 24px;
+  height: var(--dsh-tb-button-h-sm);
   padding: 0 10px;
   font-size: 12px;
   border-radius: 999px;
@@ -2654,13 +2689,17 @@ textarea.input {
   min-width: 0;
 }
 
-/* The identity slot (attention dot + leading) — one flex run inside its grid
-   cell; the dot rides inline so rows without one never shift right. */
+/* The identity slot. The unread marker rides as an OVERLAY badge on the row's
+   leading mark, never as a track: an in-flow optional member means every row
+   has two different geometries (and the compact grid used to auto-place the
+   whole identity into the marker's fixed 12px track when no marker was
+   present — titles collapsed to one character, workspace pills vanished).
+   With the badge out of the flow, one row reads exactly like the next. */
 .sessionRowLead {
   grid-area: lead;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 7px;
   min-width: 0;
 }
 
@@ -2672,12 +2711,17 @@ textarea.input {
 
 /* The row's identity slot — ONE typography for every session family
    (execution rows and linked rows share this exact leading grammar: 14px/500
-   main identity, quiet meta note, ellipsis on the inner name). */
+   main identity, quiet meta note, ellipsis on the inner name).
+   The line box is DECLARED (`--dsh-tb-row-line`), not `normal`: the unread
+   badge and the compact 2-line template both measure against it, and an
+   inherited `normal` differs per font/skin — a magic offset on a moving line
+   box is exactly how "the dot sits too high on my phone" is born. */
 .sessionRowLeading {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--dsh-tb-lead-gap);
   min-width: 0;
+  line-height: var(--dsh-tb-row-line);
   font-size: 14px;
   font-weight: 500;
   color: var(--dsh-tb-text-1);
@@ -2697,18 +2741,25 @@ textarea.input {
    one baseline, both ends (the section title stays alone above). The actions
    align to the FIRST line of the hint (a multi-line hint on a narrow panel
    must not vertical-center the buttons against the whole paragraph — the
-   「按钮浮在多行中间」 review finding). */
+   「按钮浮在多行中间」 review finding).
+   NO margin of its own: this is a LAYOUT row, and the UA's 1em paragraph
+   margin used to add an invisible 16px above AND below it — that is the whole
+   「会话 3 下面一大片空、按钮不贴着会话列表」 gap (22px + 29px of dead air). */
 .sessionHintRow {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   min-width: 0;
+  margin: 0;
 }
 
-/* 3px = (24px sm button − 18px first hint line) ÷ 2: the button's center rides
-   the first line's center, so it reads on the SAME horizontal plane. */
+/* Optical centering, DERIVED: the button's center must land on the hint's
+   first-line center, so the offset is (line box − button height) ÷ 2 —
+   negative, because the taller member has to climb. It used to be a hand-typed
+   +3px (the magnitude of that same formula with the wrong sign), which put
+   the 24px pill 6px BELOW the 18px line's center instead of on it. */
 .sessionHintRow .sessionToolbarActions {
-  margin-top: 3px;
+  margin-top: calc((var(--dsh-tb-hint-line) - var(--dsh-tb-button-h-sm)) / 2);
 }
 
 .sessionHintText {
@@ -2896,10 +2947,19 @@ textarea.input {
    static glow (the row's attention breathes via the shared halo above) — no
    per-row animation on the dot itself, so a long list never competes with
    many moving dots. Cleared by opening the row's review page. */
+/* The unread marker of the attention system: a small warn dot with a soft
+   static glow. It is an OVERLAY badge on the row's leading mark (see
+   `.sessionRowLead`), so an unread row occupies exactly the same columns as a
+   read one — the signal never costs the title a pixel and never shifts a
+   neighbouring line off the shared x. Cleared by opening the row's page. */
 .attentionDot {
-  flex: none;
-  width: 6px;
-  height: 6px;
+  position: absolute;
+  /* The mark's top-right corner: centered on the declared line box, nudged up
+     so it reads as a badge on the glyph rather than a second glyph. */
+  left: calc(var(--dsh-tb-lead-icon) - var(--dsh-tb-dot) + 2px);
+  top: calc((var(--dsh-tb-row-line) - var(--dsh-tb-dot)) / 2 - 3px);
+  width: var(--dsh-tb-dot);
+  height: var(--dsh-tb-dot);
   border-radius: 50%;
   background: var(--dsh-tb-attention);
   box-shadow: 0 0 4px var(--dsh-tb-attention);
@@ -2970,14 +3030,17 @@ textarea.input {
 
 /* --- linked-session detail panel (SessionDetail) --------------------------- */
 
-/* Live status row of the panel rail: chip + updated time on one line. It
-   lives INSIDE the rail's scroll body, whose 14px inset it shares. */
+/* Live status row of the panel rail: chip + updated time on one line. It rides
+   the rail's ONE content line (the token) — the rail itself carries no
+   padding (its comments scroller owns the inset so the bar stays flush), so a
+   member that forgets the inset silently drifts to x=0. */
 .sessionFacts {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   min-width: 0;
+  padding-inline: var(--dsh-tb-rail-inset);
 }
 
 .sessionFactTime {
@@ -3815,9 +3878,11 @@ textarea.input {
 
 .sessionRailHead > .detailSection {
   min-width: 0;
-  /* The head's own 14px inset (the rail's content line) — the config body
-     carries no padding of its own (the old scroll body used to provide it). */
-  padding: 0 14px;
+  /* The head's ONE inset (the rail's content line). The fold row and the
+     config body are both inside it, so neither may add another — the head row
+     used to carry this 14px AND a 14px margin on the button, landing 28px in
+     while the comments sat at 14px (「上下文与运行配置往右移了一点」). */
+  padding-inline: var(--dsh-tb-rail-inset);
 }
 
 /* The comments: ONE Disclosure fold, and the rail's ONLY scroll region.
@@ -3862,7 +3927,7 @@ textarea.input {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px 14px 10px;
+  padding: 10px var(--dsh-tb-rail-inset) 10px;
 }
 
 /* The fold rows get a comfortable tap height (they sit at the top of a phone
@@ -3872,11 +3937,14 @@ textarea.input {
   padding: 8px 0;
 }
 
-/* The two fold rows keep their own horizontal inset — the scroll region owns
-   the 14px line, and the rows must read on the same x as the comments' text. */
-.sessionRailHead .detailDisclosure,
+/* ONE rail line, one inset each: the COMMENTS fold row carries the inset
+   itself because its section must stay unpadded (the .commentsScroll inside
+   it owns the inset so the scrollbar lands flush on the rail edge — the
+   single-scrollbar grammar). The HEAD fold row gets its inset from the section
+   padding above, so it takes none here; a second inset on that row is exactly
+   the 28px drift the user pointed at. */
 .sessionRailComments .detailDisclosure {
-  margin: 0 14px;
+  margin-inline: var(--dsh-tb-rail-inset);
 }
 
 /* The conversation region scrolls on its own — a long transcript never
@@ -4447,10 +4515,14 @@ textarea.input {
   flex-direction: column;
   gap: 8px;
   flex: none;
-  /* The rail's 14px content box on the sides (the thread/hint/head all sit
-     there too). */
-  padding: 0 14px 12px;
-  border-top: 1px solid var(--dsw-alias-separator-primary);
+  /* The rail's ONE content line on the sides (the state row, both fold rows,
+     the thread and the composer all read on this x). */
+  padding: 0 var(--dsh-tb-rail-inset) 12px;
+  border-top: var(--dsh-tb-separator);
+  /* An opaque bottom band: the comments above it end at its edge, so a
+     translucent or unpainted composer lets the thread bleed through the seam
+     (the 「输入框和评论叠在一起」 read). */
+  background: var(--dsh-tb-surface-float);
 }
 
 /* The pending native-interaction card, pinned just above the composer (or
@@ -4470,13 +4542,15 @@ textarea.input {
   gap: 8px;
   flex: none;
   min-width: 0;
-  max-height: min(320px, 40vh);
+  /* A px cap: the card sits in a panel sized against the BOARD box, so a
+     viewport unit would measure a different box than the one holding it. */
+  max-height: 320px;
   overflow: hidden;
   /* VERTICAL padding only: the scroll body owns its own horizontal inset, so
      its scrollbar lands flush on the card's inner edge (the transcript's
      grammar) instead of floating 12px inside, hugging the text. */
   padding: 10px 0 12px;
-  margin: 0 14px 2px;
+  margin: 0 var(--dsh-tb-rail-inset) 2px;
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
@@ -5441,51 +5515,54 @@ textarea.input {
     align-self: start;
   }
 
-  /* The status chip reads at the SAME x as the title/workspace — its row
-     starts under the identity grid's first track, whose width is the icon
-     column: 12px icon + 7px gutter = 19px (never a magic number: it is the
-     identity grid's own track + gap, pinned by the contract test). */
+  /* The status chip reads on the ROW'S content edge — the same x as the
+     leading mark, the workspace pill and the meta line (「工作区和未运行要和
+     标题左边那个符号对齐」). It used to carry a 19px indent that aligned it
+     with the TITLE, which left three different left edges in one row. */
   .sessionRowTop .sessionRowChip {
     justify-self: start;
-    padding-left: 19px;
+    padding-left: 0;
   }
 
-  /* The identity slot is a NAMED GRID, not a wrapping flex: line 1 = icon +
-     title (the icon must sit ON the title's line, never alone above it), line
-     2 = the workspace pill (content-width, aligned under the title). The
-     action cluster (act column, align-self: start) then lands on line 1 — the
-     icon, the title and the three right buttons are ONE horizontal plane.
-     The unread dot rides a FIXED 12px track (centered) INSIDE the identity
-     grid, NOT as a flex sibling before it — the 12px track is the icon width,
-     so the title/workspace/chip all read at the SAME 19px x whether or not
-     the dot is present (a 6px dot + 7px gap pushed the whole grid 13px right
-     and stranded the 19px-inset chip — the review caught it). */
+  /* The identity slot is a NAMED GRID whose single flexible track is declared
+     (`identity`), so the block can never land anywhere else. The compact grid
+     used to be `12px minmax(0,1fr)` with AUTO-PLACED children: a row without
+     an unread marker had the identity as its only child, which auto-placed
+     into the FIXED 12px marker track — a 0px name column, a title of one
+     character and a workspace pill of zero width (the reported
+     「标题、工作区都直接不显示」). The marker is an overlay badge now, so the
+     lead has exactly one track and one name. */
   .sessionRowLead {
     display: grid;
-    grid-template-columns: 12px minmax(0, 1fr);
-    column-gap: 7px;
-    align-items: center;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "identity";
+    align-items: start;
     min-width: 0;
   }
 
-  .sessionRowLead .attentionDot {
-    justify-self: center;
-  }
-
   .sessionRowLeading {
+    /* …and the SAME element is a grid ITEM of the lead: it is placed BY NAME.
+       Never by auto-placement — that is what let it land in a fixed track. */
+    grid-area: identity;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: var(--dsh-tb-lead-icon) minmax(0, 1fr);
     grid-template-areas:
       "icon name"
-      ". workspace";
-    column-gap: 7px;
+      "workspace workspace";
+    column-gap: var(--dsh-tb-lead-gap);
     row-gap: 4px;
-    align-items: center;
+    align-items: start;
     min-width: 0;
   }
 
   .sessionRowLeading .sessionRowIcon {
     grid-area: icon;
+    /* The mark rides the title's line (the row line box is declared, so this
+       centering is exact at every font/skin). */
+    align-self: center;
+    height: var(--dsh-tb-row-line);
+    display: inline-flex;
+    align-items: center;
   }
 
   .sessionRowLeading .sessionRowName {
@@ -5493,6 +5570,11 @@ textarea.input {
     min-width: 0;
   }
 
+  /* The workspace pill takes the identity's SECOND line at content width,
+     starting on the row's content edge (it spans both tracks, so it reads
+     under the MARK, not under the title) — one x for mark, pill, chip and
+     meta. It used to sit in the title's column, which is why the row looked
+     like a staircase. */
   .sessionRowLeading .sessionRowWorkspace {
     grid-area: workspace;
     justify-self: start;
