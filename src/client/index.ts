@@ -450,14 +450,21 @@ export function apply(ctx: ClientContext): void {
       workspaces: {
         // alpha.3's workspace list snapshot carries no `recentWorkspaceId`;
         // the execution service reads it as an optional creation hint, so the
-        // adapter supplies the absent shape.
+        // adapter supplies the absent shape. The workspace view's official
+        // `path` / `sessionIds` ride through structurally (shape-guarded).
         list: {
           getSnapshot: () => ({
-            items: workspaces.list.getSnapshot().items,
+            items: workspaces.list.getSnapshot().items.map(item => {
+              const raw = item as unknown as Record<string, unknown>
+              return {
+                workspaceId: item.workspaceId,
+                ...typeof raw.path === 'string' ? { path: raw.path } : {},
+                ...Array.isArray(raw.sessionIds) ? { sessionIds: raw.sessionIds as readonly string[] } : {},
+              }
+            }),
             recentWorkspaceId: undefined,
           }),
         },
-        connectWorkspace: id => workspaces.connectWorkspace(id as WorkspaceId),
       },
       // The detail page's "新建会话": a guaranteed-FRESH host session —
       // never the workspace blank-reuse entry. The concrete runtime's

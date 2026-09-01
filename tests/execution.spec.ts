@@ -56,7 +56,7 @@ class FakeDriver implements SessionDriver {
 /** Fake env: workspace list, session creation, and one driver per session id. */
 function makeEnv(overrides: {
   recentWorkspaceId?: string | undefined
-  items?: Array<{ workspaceId: string }>
+  items?: Array<{ workspaceId: string; sessionIds?: readonly string[] }>
   promptResult?: { ok: true } | { ok: false; error: unknown }
   commandResult?: { ok: true; value: { matched: boolean } } | { ok: false; error: unknown }
   sendCommand?: ExecutionEnvironment['sendCommand']
@@ -65,7 +65,19 @@ function makeEnv(overrides: {
   const drivers = new Map<string, FakeDriver>()
   const summaries = new Map<string, { running: boolean }>()
   const listListeners = new Set<() => void>()
-  const connectCalls: string[] = []
+  const createSessionCalls: string[] = []
+  const makeDriver = (): FakeDriver => {
+    const driver = new FakeDriver()
+    if (overrides.promptResult !== undefined) driver.promptResult = overrides.promptResult
+    if (overrides.commandResult !== undefined) driver.commandResult = overrides.commandResult
+    return driver
+  }
+  // The default workspace owns its session (official sessionIds): the reuse
+  // path hands the SAME driver back on every run, mirroring the real runtime
+  // where the bound Session object is stable per host session. The host-list
+  // summary is NOT pre-registered: "session vanished" cases depend on the id
+  // being absent from the list.
+  drivers.set('s-1', makeDriver())
   const env: ExecutionEnvironment = {
     ...overrides.commandGraceMs !== undefined ? { commandGraceMs: overrides.commandGraceMs } : {},
     sessions: {
@@ -84,19 +96,17 @@ function makeEnv(overrides: {
     workspaces: {
       list: {
         getSnapshot: () => ({
-          items: overrides.items ?? [{ workspaceId: 'ws-1' }],
+          items: overrides.items ?? [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }],
           recentWorkspaceId: overrides.recentWorkspaceId,
         }),
       },
-      connectWorkspace: async (id: string) => {
-        connectCalls.push(id)
-        const driver = new FakeDriver()
-        if (overrides.promptResult !== undefined) driver.promptResult = overrides.promptResult
-        if (overrides.commandResult !== undefined) driver.commandResult = overrides.commandResult
-        drivers.set('s-1', driver)
-        summaries.set('s-1', { running: false })
-        return 's-1'
-      },
+    },
+    createSession: async (workspaceId: string | undefined) => {
+      createSessionCalls.push(workspaceId ?? '')
+      const driver = makeDriver()
+      drivers.set('s-1', driver)
+      summaries.set('s-1', { running: false })
+      return 's-1'
     },
     ...overrides.sendCommand !== undefined ? { sendCommand: overrides.sendCommand } : {},
   }
@@ -105,7 +115,7 @@ function makeEnv(overrides: {
     summaries.set(id, { running })
     for (const fn of [...listListeners]) fn()
   }
-  return { env, drivers, summaries, connectCalls, setSummary }
+  return { env, drivers, summaries, createSessionCalls, setSummary }
 }
 
 function sampleTask() {
@@ -114,7 +124,7 @@ function sampleTask() {
 
 describe('ExecutionService.run', () => {
   it('creates a session in the recent workspace, sends the task prompt, and settles succeeded on turn completion', async () => {
-    const { env, drivers, connectCalls } = makeEnv({ recentWorkspaceId: 'ws-recent' })
+    const { env, drivers, createSessionCalls } = makeEnv({ recentWorkspaceId: 'ws-recent' })
     const service = new ExecutionService(env)
     const task = sampleTask()
     const { execution } = startExecution(task, NOW, 'exec-1')
@@ -122,7 +132,7 @@ describe('ExecutionService.run', () => {
     const promise = service.run(task, execution, event => { events.push(event.kind) })
 
     await promise
-    expect(connectCalls).toEqual(['ws-recent'])
+    expect(createSessionCalls).toEqual(['ws-recent'])
     expect(drivers.get('s-1')?.renameCalls).toEqual(['写个脚本'])
     expect(drivers.get('s-1')?.promptCalls).toEqual([[{ type: 'text', text: '写一个 bash 脚本，打印 hello' }]])
     expect(events).toEqual(['started'])
@@ -316,8 +326,7 @@ describe('ExecutionService.run', () => {
         binding: () => ({ session: connected }),
       },
       workspaces: {
-        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1' }], recentWorkspaceId: undefined }) },
-        connectWorkspace: async () => 's-1',
+        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
       },
     }
     connected.prompt = async () => {
@@ -351,8 +360,7 @@ describe('ExecutionService.run', () => {
         binding: () => undefined,
       },
       workspaces: {
-        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1' }], recentWorkspaceId: undefined }) },
-        connectWorkspace: async () => 's-1',
+        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
       },
     }
     const service = new ExecutionService(env)
@@ -367,8 +375,7 @@ describe('ExecutionService.run', () => {
     const env: ExecutionEnvironment = {
       sessions: { list: { getSnapshot: () => ({ phase: 'ready', byId: {} }), subscribe: () => () => {} }, binding: () => undefined },
       workspaces: {
-        list: { getSnapshot: () => ({ items: [], recentWorkspaceId: undefined }) },
-        connectWorkspace: async () => { throw new Error('boom') },
+        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: [] }], recentWorkspaceId: undefined }) },
       },
     }
     const service = new ExecutionService(env)
@@ -399,8 +406,7 @@ describe('ExecutionService.run', () => {
         binding: () => ({ session: connected }),
       },
       workspaces: {
-        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1' }], recentWorkspaceId: undefined }) },
-        connectWorkspace: async () => 's-1',
+        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
       },
       history: {
         loadTail: async () => ({
@@ -439,8 +445,7 @@ describe('ExecutionService.run', () => {
         binding: () => ({ session: connected }),
       },
       workspaces: {
-        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1' }], recentWorkspaceId: undefined }) },
-        connectWorkspace: async () => 's-1',
+        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
       },
       history: {
         loadTail: async () => ({
@@ -476,8 +481,7 @@ describe('ExecutionService.run', () => {
         binding: () => ({ session: connected }),
       },
       workspaces: {
-        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1' }], recentWorkspaceId: undefined }) },
-        connectWorkspace: async () => 's-1',
+        list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
       },
       history: {
         loadTail: async () => ({ events: [{ type: 'user/message' }] }),
@@ -501,7 +505,7 @@ describe('ExecutionService.run', () => {
 
 describe('ExecutionService.createSession (新建会话)', () => {
   it('creates a FRESH session via the createSession face (never blank-reuse) and applies no config when none given', async () => {
-    const { env, drivers, connectCalls } = makeEnv()
+    const { env, drivers, createSessionCalls } = makeEnv()
     const createdWorkspaces: Array<string | undefined> = []
     const service = new ExecutionService({
       ...env,
@@ -514,7 +518,7 @@ describe('ExecutionService.createSession (新建会话)', () => {
     const result = await service.createSession({ workspaceId: 'ws-9' })
     expect(result).toEqual({ ok: true, sessionId: 's-new' })
     expect(createdWorkspaces).toEqual(['ws-9'])
-    expect(connectCalls).toEqual([])
+    expect(createSessionCalls).toEqual([])
   })
 
   it('applies the model route, agent preset and permission in order to the new session', async () => {
@@ -570,12 +574,12 @@ describe('ExecutionService.createSession (新建会话)', () => {
     expect(result.ok === false && result.error).toContain('workspace')
   })
 
-  it('degrades to the workspace blank-reuse entry when no createSession face is wired', async () => {
-    const { env, connectCalls } = makeEnv()
-    const service = new ExecutionService(env)
+  it('falls back to the workspace session when no createSession face is wired', async () => {
+    const { env, createSessionCalls } = makeEnv()
+    const service = new ExecutionService({ ...env, createSession: undefined })
     const result = await service.createSession({ workspaceId: 'ws-1' })
     expect(result).toMatchObject({ ok: true, sessionId: 's-1' })
-    expect(connectCalls).toEqual(['ws-1'])
+    expect(createSessionCalls).toEqual([])
   })
 })
 
@@ -1043,7 +1047,7 @@ describe('ExecutionService.run slash prompts (native command registry path)', ()
 
 describe('ExecutionService.run options (requirement-refinement rounds)', () => {
   it('reuses the provided session, renames it, and sends the prompt override', async () => {
-    const { env, drivers, connectCalls } = makeEnv({ recentWorkspaceId: 'ws-recent' })
+    const { env, drivers, createSessionCalls } = makeEnv({ recentWorkspaceId: 'ws-recent' })
     const driver = new FakeDriver()
     drivers.set('s-refine', driver)
     const service = new ExecutionService(env)
@@ -1057,7 +1061,7 @@ describe('ExecutionService.run options (requirement-refinement rounds)', () => {
       renameTo: '写个脚本 · 完善需求',
     })
     // The session is reused: no workspace connect happens.
-    expect(connectCalls).toEqual([])
+    expect(createSessionCalls).toEqual([])
     expect(driver.renameCalls).toEqual(['写个脚本 · 完善需求'])
     expect(driver.promptCalls).toEqual([[{ type: 'text', text: '完善指令文本' }]])
     expect(events).toEqual(['started'])

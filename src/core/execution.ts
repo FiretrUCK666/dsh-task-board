@@ -34,21 +34,23 @@ export interface SessionsExecutionFace {
 export interface WorkspacesExecutionFace {
   list: {
     getSnapshot(): {
-      items: readonly { workspaceId: string }[]
+      items: readonly {
+        workspaceId: string
+        /** The workspace's own working directory (alpha.3 official `path`). */
+        path?: string
+        /** Sessions the workspace owns (alpha.3 official `sessionIds`). */
+        sessionIds?: readonly string[]
+      }[]
       recentWorkspaceId: string | undefined
     }
   }
-  connectWorkspace(workspaceId: string): Promise<string>
 }
 
 /**
  * Optional host session-creation face: resolves a guaranteed-FRESH session
- * (never a reused blank placeholder — `sessions.create` on the client
- * runtime). Absent = session creation degrades to {@link WorkspacesExecutionFace.connectWorkspace}
- * (the workspace's blank-reuse entry; a "new session" may then reuse the
- * workspace's existing blank one, matching the native New Session flow).
- * The creation guarantee is the runtime's own: by resolution the session is
- * in the list store and addressable.
+ * (`sessions.create` on the client runtime; the host guarantees the session
+ * lands in the list store and is addressable by resolution). Absent, a
+ * workspace with no sessions cannot start a run (see {@link ExecutionService.connectSession}).
  */
 export interface SessionCreateFace {
   (workspaceId: string | undefined): Promise<string>
@@ -727,7 +729,16 @@ export class ExecutionService {
     if (resolved === undefined) {
       throw new Error('no workspace available to run the task in')
     }
-    return this.env.workspaces.connectWorkspace(resolved)
+    // alpha.3: a workspace owns its sessions (the official `sessionIds` on
+    // the workspace view). Reuse its first session; a workspace with none
+    // falls back to the createSession face (host `sessions.create`).
+    const row = workspace.items.find(item => item.workspaceId === resolved)
+    const existing = row?.sessionIds?.[0]
+    if (existing !== undefined) return existing
+    if (this.env.createSession !== undefined) {
+      return this.env.createSession(resolved)
+    }
+    throw new Error('no session available to run the task in: the workspace has none and session creation is unavailable')
   }
 
   private driverOf(sessionId: string): SessionDriver | undefined {

@@ -328,6 +328,10 @@ export interface ISessionsFace {
 export interface WorkspaceListRow {
   workspaceId: WorkspaceId
   title: string
+  /** The workspace's own working directory (alpha.3 official `path`). */
+  path?: string
+  /** Sessions the workspace owns (alpha.3 official `sessionIds`). */
+  sessionIds?: readonly string[]
 }
 
 /** The workspace-list snapshot `ctx.workspaces.list` exposes. */
@@ -340,7 +344,6 @@ export interface WorkspaceListState {
 /** The narrow `ctx.workspaces` service face this plugin reads. */
 export interface IWorkspacesFace {
   list: ObservableSnapshot<WorkspaceListState>
-  connectWorkspace(workspaceId: WorkspaceId): Promise<WorkspaceId>
 }
 
 /**
