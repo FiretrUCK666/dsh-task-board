@@ -230,39 +230,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   max-width: 200px;
 }
 
-/* Off-canvas fallback: a floating corner button shown only when the shell
-   sidebar never mounts (a mobile shell that hides it). Fixed bottom-right,
-   clear of the safe-area inset, sized for a thumb. It rides the same tokens
-   as the row (elevated fill, accent ring when the board is open). */
-.entryFallback {
-  position: fixed;
-  right: 16px;
-  bottom: calc(16px + env(safe-area-inset-bottom));
-  z-index: 250;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  padding: 0;
-  background: var(--dsw-alias-button-elevated-fill);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  color: var(--dsw-alias-label-primary);
-  box-shadow: var(--dsh-tb-shadow-2);
-  cursor: pointer;
-}
-
-.entryFallback[data-active] {
-  border-color: var(--dsw-alias-border-l3);
-  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha), var(--dsh-tb-shadow-2);
-}
-
-.entryFallback svg {
-  width: 22px;
-  height: 22px;
-}
-
 /* Collapsed rail: icon-only 36px box, transparent, matching the shell's
    collapsed 新会话 button (18px icon). */
 [data-dsh-frame][data-sidebar-collapsed] .entry {

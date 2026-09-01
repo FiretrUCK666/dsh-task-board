@@ -15,15 +15,10 @@
  */
 import type { BoardController } from '../core/controller.ts'
 import { t } from './locales.ts'
-import { entryVisible } from './entry-policy.ts'
 import css from './board.module.css'
 
-/** The inline icon (shared by the sidebar row and the off-canvas fallback). */
+/** The inline icon (the sidebar entry row). */
 const ICON = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M2 6.5h12M6.5 6.5v7"/></svg>`
-
-/** How long to wait for the shell sidebar before offering the floating
- *  fallback (a settled boot mounts the sidebar well inside this). */
-const FALLBACK_AFTER_MS = 4_000
 
 /** Find the sidebar shell root element, or undefined while not yet mounted. */
 function sidebarRoot(): HTMLElement | undefined {
@@ -107,40 +102,20 @@ function syncEntrySurface(entry: HTMLButtonElement, root: HTMLElement): void {
   entry.style.setProperty('--dsh-tb-entry-color', native.color)
 }
 
-/** Build the off-canvas fallback button (a floating corner affordance shown
- *  only when the shell sidebar never mounts — e.g. a mobile shell that hides
- *  it entirely — so the board is always reachable). */
-function createFallback(controller: BoardController): HTMLButtonElement {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.dataset.dshTaskboardFallback = ''
-  button.className = css.entryFallback
-  button.setAttribute('aria-label', t('entry.label'))
-  button.innerHTML = `<span class="${css.entryIcon}">${ICON}</span>`
-  button.addEventListener('click', () => { controller.toggleBoard() })
-  return button
-}
-
 /**
- * Mount the sidebar entry, waiting for the shell to render and self-healing
- * on later React re-renders. If the sidebar never appears within the boot
- * settle window (an off-canvas / hidden mobile sidebar), a floating corner
- * button takes over; if the sidebar later mounts, the row wins and the
- * fallback retires — one entry, whichever shell shape is live.
+ * Mount the sidebar entry row: wait for the shell sidebar to render, insert
+ * the row once it appears, and self-heal on later React re-renders (the
+ * sidebar root is re-queried on EVERY pass — never frozen — so a remounted
+ * sidebar in a brand-new subtree is re-adopted instead of silently losing its
+ * entry). There is deliberately NO floating corner fallback: the entry IS the
+ * sidebar row; the board stays reachable through the shell's own sidebar on
+ * every screen.
  * @param controller - the board controller the entry toggles.
- * @returns disposer removing the entry and its observers.
+ * @returns disposer removing the entry and its observer.
  */
 export function mountSidebarEntry(controller: BoardController): () => void {
   const entry = createEntry(controller)
-  let fallback: HTMLButtonElement | undefined
   let disposed = false
-  const mountedAt = Date.now()
-
-  const removeFallback = (): void => {
-    if (fallback === undefined) return
-    fallback.remove()
-    fallback = undefined
-  }
 
   const syncSurface = (): void => {
     const root = entry.parentElement ?? sidebarRoot()
@@ -148,79 +123,38 @@ export function mountSidebarEntry(controller: BoardController): () => void {
     syncEntrySurface(entry, root)
   }
 
-  /**
-   * One placement pass. The sidebar root is re-queried on EVERY pass (never
-   * frozen): the shell may re-mount its sidebar in a brand-new subtree while
-   * the old one was detached — placing into a stale root would "succeed"
-   * invisibly. A placement counts only when the entry is actually visible.
-   * @returns whether the row is the live entry after the pass.
-   */
-  const placeIfVisible = (): boolean => {
-    if (disposed) return false
-    if (entryVisible(entry)) {
-      removeFallback()
+  /** One placement pass. Re-queries the sidebar root (never frozen) and
+   *  re-inserts the row if a React re-render displaced it. */
+  const place = (): void => {
+    if (disposed) return
+    if (entry.isConnected && entry.parentElement !== null) {
+      // Already placed in a live sidebar root — just re-sync the surface (the
+      // shell may have collapsed/expanded).
       syncSurface()
-      return true
+      return
     }
     const root = sidebarRoot()
-    if (root === undefined) return false
-    const placed = placeEntry(root, entry) && entryVisible(entry)
-    if (placed) {
-      removeFallback()
-      syncSurface()
-    }
-    return placed
+    if (root === undefined) return
+    if (placeEntry(root, entry)) syncSurface()
   }
 
-  /** Show the corner fallback while the row is not visible (never placed,
-   *  hidden off-canvas, or detached). Every later pass lets the row win. */
-  const ensureFallback = (): void => {
-    if (disposed || fallback !== undefined) return
-    if (entryVisible(entry)) return
-    fallback = createFallback(controller)
-    fallback.dataset.active = controller.getSnapshot().boardOpen ? 'true' : undefined
-    document.body.appendChild(fallback)
-  }
-
-  // The shell re-renders its own way (boot settlement, pending UI swaps):
-  // one body-level observer for structural changes AND class/attribute flips
-  // (a mobile drawer opening/closing toggles classes without a DOM insert —
-  // the entry's visibility must be re-tested the moment that happens), plus a
-  // light heartbeat for any visibility-only shift. The pair converges
-  // monotonically to the invariant "row visible XOR fallback present".
-  const waitObserver = new MutationObserver(() => { placeIfVisible() })
-  waitObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'style', 'aria-hidden', 'hidden', 'inert'],
-  })
-
-  const settleTimer = setTimeout(() => { ensureFallback() }, FALLBACK_AFTER_MS)
-  const heartbeat = window.setInterval(() => {
-    if (disposed) return
-    if (fallback === undefined && Date.now() - mountedAt < FALLBACK_AFTER_MS) return
-    placeIfVisible()
-    ensureFallback()
-  }, 1_000)
+  // The shell re-renders its own way (boot settlement, pending UI swaps): one
+  // body-level observer re-inserts the row whenever the sidebar tree changes.
+  const waitObserver = new MutationObserver(() => { place() })
+  waitObserver.observe(document.body, { childList: true, subtree: true })
 
   // Reflect the board's open state on the row (active highlight).
   const unsubscribe = controller.subscribe(() => {
-    const active = controller.getSnapshot().boardOpen
-    entry.dataset.active = active ? 'true' : undefined
-    if (fallback !== undefined) fallback.dataset.active = active ? 'true' : undefined
+    entry.dataset.active = controller.getSnapshot().boardOpen ? 'true' : undefined
   })
   entry.dataset.active = controller.getSnapshot().boardOpen ? 'true' : undefined
 
-  placeIfVisible()
+  place()
 
   return () => {
     disposed = true
-    clearTimeout(settleTimer)
-    window.clearInterval(heartbeat)
     waitObserver.disconnect()
     unsubscribe()
-    removeFallback()
     entry.remove()
   }
 }

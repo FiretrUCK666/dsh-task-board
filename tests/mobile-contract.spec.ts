@@ -567,14 +567,6 @@ describe('section entry buttons (hint row for the session area, action slot for 
   })
 })
 
-describe('off-canvas entry fallback', () => {
-  it('the fallback button is fixed + safe-area aware', () => {
-    const fb = ruleOf('entryFallback')
-    expect(fb).toMatch(/position:\s*fixed/)
-    expect(fb).toMatch(/env\(safe-area-inset-bottom\)/)
-  })
-})
-
 describe('no raw color literals leak in (design-system rule)', () => {
   it('the whole sheet stays token-fed: no hex/rgb color literals', () => {
     // The board's hard rule: colors ride --dsw-*/--dsh-tb-* tokens only.
