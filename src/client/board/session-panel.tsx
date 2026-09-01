@@ -21,7 +21,7 @@ import { contextOccupancy, contextSegments, formatTokens } from './context-meter
 import { Markdown } from './Markdown.tsx'
 import { sumUsage, type TranscriptImage, type TranscriptLine } from './review-transcript.ts'
 import { JumpToLatest, useFollowScroll } from './use-transcript.tsx'
-import { useNarrow } from './use-narrow.ts'
+import { useSurfaceNarrow } from './use-narrow.ts'
 import { Chip, type ChipKind } from './Chip.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import type { CommentView } from './comment-thread.ts'
@@ -685,14 +685,15 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   const commentsScrollRef = useRef<HTMLDivElement | null>(null)
   const [commentsAtBottom, setCommentsAtBottom] = useState(true)
   // Both folds start FOLDED on a phone: the conversation and the send box are
-  // what a hand reaches for, and an unfolded config used to own the whole
-  // screen. A wide rail absorbs the config (two-column config grid), so it
-  // starts open there. Behavior/structure switches read the ONE sanctioned
-  // signal (`useNarrow`), never a CSS guess; the folds stay available at
-  // every width.
-  const narrowBoard = useNarrow()
-  const [headOpen, setHeadOpen] = useState(!narrowBoard)
-  const [commentsOpen, setCommentsOpen] = useState(!narrowBoard)
+  // the first screen. A wide rail absorbs the config (two-column config grid),
+  // so it starts open there. The signal is the PANEL's own width (the same
+  // surface the CSS container query measures, via `useSurfaceNarrow`) — NOT the
+  // viewport: a mid-size window with the shell sidebar open already renders the
+  // stacked panel while the viewport still says "wide", and a default that
+  // followed the viewport would disagree with what the user is looking at.
+  const [narrowPanel, foldsRef] = useSurfaceNarrow('[data-dsh-taskboard-panel]', 600)
+  const [headOpen, setHeadOpen] = useState(!narrowPanel)
+  const [commentsOpen, setCommentsOpen] = useState(!narrowPanel)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
   const { measure: onCommentsScroll, jumpToBottom: jumpComments } = useFollowScroll(
     commentsScrollRef, commentsAtBottom, setCommentsAtBottom, threadFingerprint,
@@ -717,7 +718,7 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   const occupancy = contextOccupancy(projections?.contextPressure)
   return (
     <>
-      <div className={css.sessionRailFolds}>
+      <div className={css.sessionRailFolds} ref={foldsRef}>
         {stateChip !== undefined && updatedAt !== undefined && (
           <div className={css.sessionFacts}>
             <Chip

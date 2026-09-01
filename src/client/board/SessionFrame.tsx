@@ -79,7 +79,7 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
   useEscapeStack(onClose)
   return createPortal(
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <div className={css.review} role="dialog" aria-label={ariaLabel}>
+      <div className={css.review} role="dialog" aria-label={ariaLabel} data-dsh-taskboard-panel="">
         <header className={css.reviewHeader}>
           <div className={css.reviewTitleWrap}>
             {/* The title is single-line (a wrapping title would push the badge

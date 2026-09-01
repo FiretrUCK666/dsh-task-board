@@ -285,6 +285,25 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(cssSource).toMatch(/\.reviewHeader \.iconButton\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px/)
   })
 
+  it('the fold defaults follow the PANEL width, not the viewport', () => {
+    // A mid-size window with the shell sidebar open already renders the
+    // stacked panel (the container query) while `matchMedia` still says
+    // "wide" — a default that followed the viewport would disagree with the
+    // geometry the user is looking at. The hook measures the same surface the
+    // CSS queries, and the panel is stamped for it.
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    const panelSource = readFileSync(panelPath, 'utf8')
+    expect(panelSource).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-panel\]', 600\)/)
+    expect(panelSource).toMatch(/useState\(!narrowPanel\)/)
+    const framePath = fileURLToPath(new URL('../src/client/board/SessionFrame.tsx', import.meta.url))
+    expect(readFileSync(framePath, 'utf8')).toContain('data-dsh-taskboard-panel=""')
+    const hookPath = fileURLToPath(new URL('../src/client/board/use-narrow.ts', import.meta.url))
+    const hook = readFileSync(hookPath, 'utf8')
+    expect(hook).toMatch(/new ResizeObserver\(measure\)/)
+    // Every observer is disposed (lifecycle rule 6).
+    expect(hook).toMatch(/return \(\) => \{ observer\.disconnect\(\) \}/)
+  })
+
   it('the rail head folds through the SHARED Disclosure (turning chevron, no hand-rolled twin)', () => {
     // The hand-rolled toggle row was a Disclosure copy that forgot the
     // rotation — "the symbol never changes" was duplication, not taste.
