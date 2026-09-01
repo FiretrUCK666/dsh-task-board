@@ -644,11 +644,17 @@ export class ExecutionService {
    *    error reason proves failure;
    * 4. otherwise a finished session counts as succeeded.
    *
-   * @param task - a task whose latest execution has no endedAt.
+   * @param task - a task with an open round.
+   * @param executionId - WHICH open round to judge. A card may run several
+   *   sessions at once, so "the last record" is not "the running one"; the
+   *   caller sweeps every open round and names the one it is asking about.
+   *   Absent = the latest round (the legacy single-lane call).
    * @returns a settled event when the session state proves completion, else undefined.
    */
-  async reconcile(task: TaskRecord): Promise<ExecutionEvent | undefined> {
-    const execution = task.executions[task.executions.length - 1]
+  async reconcile(task: TaskRecord, executionId?: string): Promise<ExecutionEvent | undefined> {
+    const execution = executionId === undefined
+      ? task.executions[task.executions.length - 1]
+      : task.executions.find(candidate => candidate.id === executionId)
     if (execution === undefined || execution.sessionId === undefined || execution.endedAt !== undefined) return undefined
     const list = this.env.sessions.list.getSnapshot()
     // The host list baseline has not arrived yet (page load): a session "not

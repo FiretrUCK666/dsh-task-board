@@ -3,8 +3,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, supplementLaunchFields, taskExecutable,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
+  type TaskRecord,
 } from '../src/core/tasks.ts'
 import { taskUnviewed } from '../src/core/session-display.ts'
 
@@ -512,9 +513,37 @@ describe('hasOpenRun', () => {
     }
     expect(withPending.status).toBe('review')
     expect(hasOpenRun(withPending)).toBe(false)
-    // Injected: the task is running again → open run.
-    const injected = { ...withPending, status: 'running' as const }
+    // Injected (the real marker `launchComment` writes, not a hand-flipped
+    // column) → the card is working again.
+    const injected = {
+      ...withPending,
+      status: 'running' as const,
+      executions: withPending.executions.map(round => round.id === 'c1' ? { ...round, injectedAt: NOW + 3 } : round),
+    }
     expect(hasOpenRun(injected)).toBe(true)
+  })
+
+  it('sees an open round that is NOT the last record (a card runs several sessions)', () => {
+    // The lane is the session: a card can have one conversation still working
+    // while a newer record (another session) already settled. "the latest
+    // execution" must never be the only thing the budget/drop-guard checks —
+    // a round behind it would hold its slot forever.
+    const { task } = startExecution(sampleTask(), NOW, 'e1')
+    const withTwo: TaskRecord = {
+      ...task,
+      executions: [
+        { ...task.executions[0], sessionId: 's-1' },
+        {
+          id: 'e2', sessionId: 's-2', startedAt: NOW + 1, endedAt: NOW + 5,
+          result: 'succeeded' as const, error: undefined,
+        },
+      ],
+    }
+    expect(withTwo.executions[withTwo.executions.length - 1].endedAt).toBeDefined()
+    expect(hasOpenRun(withTwo)).toBe(true)
+    expect(openRoundsOf(withTwo).map(round => round.id)).toEqual(['e1'])
+    expect(sessionIsBusy(withTwo, 's-1')).toBe(true)
+    expect(sessionIsBusy(withTwo, 's-2')).toBe(false)
   })
 })
 

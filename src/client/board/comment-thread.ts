@@ -67,18 +67,25 @@ export function sessionCommentsOf(task: TaskRecord, sessionId: string, cruiseOn:
 }
 
 /**
- * The 1-based queue position of a pending round among the task's pending
- * comment rounds (saved/queued/running, submission order) — the position a
- * "排队中 · 第 N 位" chip shows. The queue is task-level: the dispatcher
- * injects a task's comments in submission order regardless of which session
- * they target, so the position is computed over the whole task. Returns 0
- * when the round is not in the pending set (it is settled, or not a comment
- * round at all).
+ * The 1-based queue position of a pending round within ITS OWN SESSION'S
+ * lane (saved comments for that session, submission order) — what a
+ * 「排队中 · 第 N 位」 chip shows.
+ *
+ * The lane is the session, not the card: comments waiting for a DIFFERENT
+ * conversation are not ahead of this one, and would otherwise read as
+ * 「第 3 位」 while their own session is idle and about to take them. Returns
+ * 0 when the round is not in the pending set (settled, injected, or not a
+ * comment round at all).
  */
 export function queuePositionOf(task: TaskRecord, roundId: string): number {
+  const target = task.executions.find(round => round.id === roundId)
+  if (target === undefined) return 0
+  const lane = target.sessionId ?? target.sessionAnchor
   const pending = task.executions
     // External rounds are never queued (they run out-of-band) — exclude them.
     .filter(round => round.comment !== undefined && round.endedAt === undefined && round.external !== true)
+    // The lane: only the rounds that target the SAME session stand in front.
+    .filter(round => (round.sessionId ?? round.sessionAnchor) === lane)
     .sort((a, b) => a.startedAt - b.startedAt)
   const index = pending.findIndex(round => round.id === roundId)
   return index < 0 ? 0 : index + 1

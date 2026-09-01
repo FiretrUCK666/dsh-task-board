@@ -173,11 +173,30 @@ describe('queuePositionOf', () => {
     }
   }
 
-  it('numbers positions across the whole task, not per execution', () => {
+  it('numbers positions within one session lane (all three target s-1 here)', () => {
     const task = withPending()
     expect(queuePositionOf(task, 'c1')).toBe(1)
     expect(queuePositionOf(task, 'c2')).toBe(2)
     expect(queuePositionOf(task, 'c3')).toBe(3)
+  })
+
+  it('a comment on ANOTHER session is not ahead of this lane (第 1 位，不是第 3 位)', () => {
+    // The chip must describe the queue this comment is actually standing in.
+    // Counting the whole card made a comment that could start immediately
+    // announce itself as 「第 3 位」 behind two rounds of unrelated
+    // conversations — the exact confusion the user hit.
+    const task = {
+      ...withPending(),
+      executions: [
+        ...withPending().executions,
+        commentRound({ id: 'x1', sessionId: 's-2', parentExecutionId: 'e2', startedAt: NOW + 13 }),
+        commentRound({ id: 'x2', sessionId: 's-2', parentExecutionId: 'e2', startedAt: NOW + 14 }),
+      ],
+    }
+    expect(queuePositionOf(task, 'x1')).toBe(1)
+    expect(queuePositionOf(task, 'x2')).toBe(2)
+    // …and the s-1 lane keeps counting only its own rounds.
+    expect(queuePositionOf(task, 'c1')).toBe(1)
   })
 
   it('counts an injected (running) round as occupying the queue head', () => {

@@ -740,27 +740,71 @@ export function settleExecution(
     && schedule.mode === 'cron'
     && schedule.maxRuns !== undefined
     && schedule.runCount < schedule.maxRuns
-  const status: TaskStatus = outcome === 'cancelled'
-    ? task.status === 'running' ? 'todo' : task.status
-    : chainIncomplete || batchIncomplete ? 'running'
-      : 'review'
+  // ANOTHER of this card's sessions still working? The card stays 进行中:
+  // settling one lane must not yank it into 待审核/待办 while a second
+  // conversation it owns is running (the column aggregates its sessions, it
+  // is not a record of the last round to finish).
+  const othersOpen = openRoundsOf({ ...task, executions }).length > 0
+  const status: TaskStatus = othersOpen ? 'running'
+    : outcome === 'cancelled'
+      ? task.status === 'running' ? 'todo' : task.status
+      : chainIncomplete || batchIncomplete ? 'running'
+        : 'review'
   return { ...task, status, updatedAt: now, executions }
 }
 
 /**
- * Whether the task is genuinely executing right now: its status is
- * 'running' AND its latest round has not settled. A pending comment round
- * (saved while the cruise is off, the task not running) is NOT an open run
- * — it must never show a spinner on the card, block a rerun, or block a
- * drag. An open requirement-refinement round IS an open run: the task's
- * session is working, so a plain run must not start on top of it. One
- * shared judgment for the card, the drop rules and the run guard.
+ * Whether ONE round is genuinely in flight (someone is working on it right
+ * now), as opposed to saved-and-waiting or already settled. The single
+ * structural judgment behind `openRoundsOf` — derived from the round itself,
+ * never from the card's column, so a card parked mid-flight still reports the
+ * work that is really running.
+ *
+ * Enumerated by KIND (each category is real, and a comment body does NOT mean
+ * "queued" — an observed native turn carries its user text too):
+ * - a plain run: in flight from creation until it settles;
+ * - a refinement round: in flight while open (its session is working);
+ * - an EXTERNAL round (a native turn the board observed): in flight while
+ *   open — it is already happening, it is never queued or injected, and its
+ *   `comment` is only the thread body;
+ * - a comment round: in flight only ONCE INJECTED. A saved comment is queued
+ *   — it must never show a spinner, block a rerun, hold a slot or mark its
+ *   session busy.
+ */
+export function isOpenRound(round: ExecutionRecord): boolean {
+  if (round.endedAt !== undefined) return false
+  if (round.external === true) return true
+  if (round.refine === true) return true
+  if (round.comment !== undefined) return round.injectedAt !== undefined
+  return true
+}
+
+/** Every in-flight round of a task, in submission order. THE truth the
+ *  dispatcher, the budget and the column state machine all read — a card may
+ *  legitimately run several sessions at once (one lane per session), so
+ *  "the task's latest execution" is no longer the only thing that can be
+ *  running. */
+export function openRoundsOf(task: TaskRecord): ExecutionRecord[] {
+  return task.executions.filter(isOpenRound)
+}
+
+/** Whether a given session of the task is busy (an in-flight round anchored
+ *  to it). A comment may only inject into a session that is idle, and a
+ *  session's own comments always go in order — the lane is the session. */
+export function sessionIsBusy(task: TaskRecord, sessionId: string): boolean {
+  return task.executions.some(round => isOpenRound(round) && round.sessionId === sessionId)
+}
+
+/**
+ * Whether the task is genuinely executing right now: ANY of its rounds is in
+ * flight. A pending comment round (saved while the cruise is off, the task
+ * not running) is NOT an open run — it must never show a spinner on the card,
+ * block a rerun, or block a drag. An open requirement-refinement round IS:
+ * the task's session is working, so a plain run must not start on top of it.
+ * One shared judgment for the card, the drop rules and the run guard.
  */
 export function hasOpenRun(task: TaskRecord): boolean {
-  if (task.executions.some(round => round.refine === true && round.endedAt === undefined)) return true
-  if (task.status !== 'running') return false
-  const latest = task.executions[task.executions.length - 1]
-  return latest !== undefined && latest.endedAt === undefined
+  return openRoundsOf(task).length > 0
 }
 
 /**

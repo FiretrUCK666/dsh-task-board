@@ -29,7 +29,7 @@ import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, promoteToColumnTop, ruleReadiness, sameBind, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, promoteToColumnTop, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -1511,12 +1511,14 @@ export class BoardController {
    */
   private queuedLaunches: Array<{ taskId: string }> = []
 
-  /** How many rounds are genuinely open right now (the concurrency truth). */
+  /** How many rounds are genuinely open right now (the concurrency truth).
+   *  ROUNDS, not cards: the budget bounds how many conversations run at once,
+   *  and one card may legitimately own several of them at the same time (its
+   *  own run plus a comment injected into a second bound session). Counting
+   *  cards made 「并行数 3」 silently mean 「三张卡，每卡一条」. */
   private inFlightCount(): number {
     let count = 0
-    for (const task of this.tasks) {
-      if (hasOpenRun(task)) count += 1
-    }
+    for (const task of this.tasks) count += openRoundsOf(task).length
     return count
   }
 
@@ -1613,39 +1615,55 @@ export class BoardController {
     | { kind: 'comment'; task: TaskRecord; round: ExecutionRecord }
     | { kind: 'task'; task: TaskRecord }
     | undefined {
+    // THE LANE IS THE SESSION. A card may own several independent
+    // conversations; a queued comment waits for ITS OWN session (and for the
+    // comments submitted to that session before it), never for another
+    // session's turn. Blocking on the card's column made a comment on an idle
+    // second session wait until a completely unrelated conversation finished
+    // — with the budget half empty and the cruise on.
+    const head = (task: TaskRecord, rule: boolean): ExecutionRecord | undefined => {
+      // One candidate per LANE: the earliest saved-but-un-injected round of
+      // each session. A busy lane contributes nothing — but it must never
+      // silence the card's OTHER lanes (returning early here is how an idle
+      // session's comment stayed queued behind an unrelated conversation).
+      let best: ExecutionRecord | undefined
+      const laneTaken = new Set<string>()
+      for (const round of task.executions) {
+        if (round.comment === undefined || round.sessionId === undefined) continue
+        if (round.injectedAt !== undefined || round.endedAt !== undefined) continue
+        if (round.external === true) continue
+        if ((round.ruleId !== undefined) !== rule) continue
+        if (laneTaken.has(round.sessionId)) continue
+        laneTaken.add(round.sessionId)
+        // A session that is mid-turn takes its next comment only after that
+        // turn settles — one conversation at a time, in submission order.
+        if (sessionIsBusy(task, round.sessionId)) continue
+        if (best === undefined || round.startedAt < best.startedAt) best = round
+      }
+      return best
+    }
+    const scan = (rule: boolean): { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined => {
+      let best: { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined
+      for (const task of this.tasks) {
+        if (task.status === 'done') continue
+        const round = head(task, rule)
+        if (round !== undefined && (best === undefined || round.startedAt < best.round.startedAt)) {
+          best = { kind: 'comment', task, round }
+        }
+      }
+      return best
+    }
     // 规则轮走自己的车道（自动化车道）：cron 排队轮与 on-complete 循环轮都是
     // ruleId 标记的可观察轮——自动化的回合永不等待板级巡航（用户手写评论仍是
     // 巡航门控的普通留言，见下面的 cruise 分支）。车道内严格按提交时间 FIFO +
     // 全局预算：同一瞬间到点的很多规则只会一个个按序注入（插话规则由
     // fireOnCompleteRules 先入队——完成时刻插话先发，之后不再跳队——绝不
     // 饿死排队规则，也绝无瞬时齐发）。
-    let ruleRound: { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined
-    for (const task of this.tasks) {
-      if (task.status === 'running' || task.status === 'done') continue
-      const round = task.executions.find(candidate =>
-        candidate.comment !== undefined && candidate.ruleId !== undefined
-        && candidate.sessionId !== undefined
-        && candidate.injectedAt === undefined && candidate.endedAt === undefined
-        && candidate.external !== true)
-      if (round !== undefined && (ruleRound === undefined || round.startedAt < ruleRound.round.startedAt)) {
-        ruleRound = { kind: 'comment', task, round }
-      }
-    }
+    const ruleRound = scan(true)
     if (!this.cruiseState.enabled) return ruleRound
-    let best = ruleRound
-    for (const task of this.tasks) {
-      // Comment continuations may inject on any non-busy, non-completed task
-      // (backlog included — a user's comment keeps its session conversation
-      // alive; fresh cruise runs stay todo-only via the pickup below).
-      if (task.status === 'running' || task.status === 'done') continue
-      const round = task.executions.find(candidate =>
-        candidate.comment !== undefined && candidate.sessionId !== undefined
-        && candidate.injectedAt === undefined && candidate.endedAt === undefined
-        && candidate.external !== true)
-      if (round !== undefined && (best === undefined || round.startedAt < best.round.startedAt)) {
-        best = { kind: 'comment', task, round }
-      }
-    }
+    // Comments and pickups only flow while the cruise is on; without it,
+    // comments stay saved and todo tasks stay idle.
+    const best = ruleRound ?? scan(false)
     if (best !== undefined) return best
     const todo = this.tasks.find(task => {
       if (task.status !== 'todo' || hasOpenRun(task)) return false
@@ -2799,50 +2817,53 @@ export class BoardController {
       type Settled = Extract<ExecutionEvent, { kind: 'settled' }>
       const events: Array<{ taskId: string; round: ExecutionRecord | undefined; event: Settled; externalText: string | undefined }> = []
       for (const task of this.tasks) {
-        const execution = task.executions[task.executions.length - 1]
-        if (execution === undefined || execution.endedAt !== undefined) continue
-        const drivable = task.status === 'running' || execution.refine === true
-        if (!drivable) {
-          // Parked card with an open round: no history read (nothing is
-          // expected to produce evidence), only the watchdog decides.
-          const zombie = this.zombieRoundEvent(task, execution)
-          if (zombie !== undefined) events.push({ taskId: task.id, round: execution, event: zombie, externalText: undefined })
-          continue
-        }
-        // Runs launched on this page settle through their live watch (turn
-        // boundary / host-list flip); reconciliation exists for
-        // background/leftover runs. The watch can still be defeated when the
-        // execution session stays cold and its list signal is missed, so as
-        // a fallback an active run whose session the host reports finished
-        // AND that has lived well past the queue window is handed to
-        // reconcile (which requires real turn evidence) and released.
-        if (task.status === 'running' && this.activeExecutionIds.has(execution.id)) {
-          const sessionId = execution.sessionId
-          if (sessionId === undefined) continue // still connecting; never judge
-          const list = this.deps.sessions.list.getSnapshot()
-          const summary = list.byId[sessionId]
-          const finished = summary !== undefined && !summary.running
-          const pastGrace = this.now() - execution.startedAt > BoardController.ACTIVE_RECONCILE_GRACE_MS
-          if (!(finished && pastGrace)) continue
-        }
-        const event = await this.deps.exec.reconcile(task)
-        // A dispose may land while the history read is in flight — a dead
-        // controller must never keep settling into a dropped ledger.
-        if (this.disposed) return
-        if (event !== undefined && event.kind === 'settled') {
-          // Only the backfill TEXT is read here; it lands on the CURRENT
-          // record in Stage 2 (a remote apply may have rewritten the row
-          // while these reads were in flight — a stale snapshot is never
-          // written over a newer one, the reconcileBoundTask discipline).
-          const externalText = await this.externalTextIfNeeded(task, event.executionId)
-          events.push({ taskId: task.id, round: execution, event, externalText })
-          this.activeExecutionIds.delete(event.executionId)
-        } else {
+        // EVERY open round, not just the newest one: a card can have several
+        // sessions in flight, and a round that is not the last record would
+        // otherwise never be swept — it would hold its slot forever.
+        for (const execution of openRoundsOf(task)) {
+          const drivable = task.status === 'running' || execution.refine === true
+          if (!drivable) {
+            // Parked card with an open round: no history read (nothing is
+            // expected to produce evidence), only the watchdog decides.
+            const zombie = this.zombieRoundEvent(task, execution)
+            if (zombie !== undefined) events.push({ taskId: task.id, round: execution, event: zombie, externalText: undefined })
+            continue
+          }
+          // Runs launched on this page settle through their live watch (turn
+          // boundary / host-list flip); reconciliation exists for
+          // background/leftover runs. The watch can still be defeated when the
+          // execution session stays cold and its list signal is missed, so as
+          // a fallback an active run whose session the host reports finished
+          // AND that has lived well past the queue window is handed to
+          // reconcile (which requires real turn evidence) and released.
+          if (task.status === 'running' && this.activeExecutionIds.has(execution.id)) {
+            const sessionId = execution.sessionId
+            if (sessionId === undefined) continue // still connecting; never judge
+            const list = this.deps.sessions.list.getSnapshot()
+            const summary = list.byId[sessionId]
+            const finished = summary !== undefined && !summary.running
+            const pastGrace = this.now() - execution.startedAt > BoardController.ACTIVE_RECONCILE_GRACE_MS
+            if (!(finished && pastGrace)) continue
+          }
+          const event = await this.deps.exec.reconcile(task, execution.id)
+          // A dispose may land while the history read is in flight — a dead
+          // controller must never keep settling into a dropped ledger.
+          if (this.disposed) return
+          if (event !== undefined && event.kind === 'settled') {
+            // Only the backfill TEXT is read here; it lands on the CURRENT
+            // record in Stage 2 (a remote apply may have rewritten the row
+            // while these reads were in flight — a stale snapshot is never
+            // written over a newer one, the reconcileBoundTask discipline).
+            const externalText = await this.externalTextIfNeeded(task, event.executionId)
+            events.push({ taskId: task.id, round: execution, event, externalText })
+            this.activeExecutionIds.delete(event.executionId)
+          } else {
           // No turn evidence at all: the delivery watchdog releases the round
           // once its session has sat idle past the deadline (a message that
           // never reached the agent must not hold the queue hostage forever).
           const zombie = this.zombieRoundEvent(task, execution)
           if (zombie !== undefined) events.push({ taskId: task.id, round: execution, event: zombie, externalText: undefined })
+        }
         }
       }
 
@@ -3005,8 +3026,7 @@ export class BoardController {
       taskId: task.id,
       candidate: {
         sessions: this.relatedSessionsOf(task),
-        hasOpenRoundOn: (sessionId: string): boolean =>
-          task.executions.some(round => round.sessionId === sessionId && round.endedAt === undefined),
+        hasOpenRoundOn: (sessionId: string): boolean => sessionIsBusy(task, sessionId),
         inBoardTurnOn: (sessionId: string): boolean => this.inBoardTurnOn(task, sessionId, now),
       },
     }))
@@ -3050,7 +3070,12 @@ export class BoardController {
       if (task.id !== taskId) return task
       // Re-check every guard on the CURRENT record (the transcript read and
       // the mux frame both await; another channel may have recorded meanwhile).
-      if (task.executions.some(round => round.sessionId === sessionId && round.endedAt === undefined)) return task
+      // "Busy" here is the SAME lane judgment the dispatcher uses: a round is
+      // in the way only when it is actually WORKING. A comment that is merely
+      // saved-and-queued must never swallow a native turn — the user chatting
+      // in the workspace is real activity that belongs in the thread, and the
+      // queued comment then waits for it (one session, in order).
+      if (sessionIsBusy(task, sessionId)) return task
       if (msg?.anchor !== undefined && task.executions.some(round => round.sessionId === sessionId && round.anchor === msg.anchor)) return task
       if (this.inBoardTurnOn(task, sessionId, now)) return task
       changed = true

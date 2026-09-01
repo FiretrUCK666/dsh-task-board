@@ -1166,35 +1166,43 @@ describe('comments', () => {
     expect(exec.commentCalls[0].text).toBe('/plan 继续干')
   })
 
-  it('keeps a comment pending while the task is running', async () => {
+  it('keeps a comment pending while ITS OWN session is busy, and injects it into an idle one', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     controller.setCruiseEnabled(true)
-    const { taskId, executionId } = await settledReviewTask(stub, controller)
-    // A second run puts the task back to running; a comment then stays
-    // pending (the session is busy) instead of injecting.
-    await controller.runTask(taskId)
-    expect(store.load()[0].status).toBe('running')
-    const round = controller.submitComment(taskId, executionId, '先存着')
-    expect(round).toBeDefined()
-    expect(exec.commentCalls).toHaveLength(0)
-    expect(round?.endedAt).toBeUndefined()
-  })
-
-  it('injects a pending comment when the run settles back (cruise on)', async () => {
-    const stub = new StubExec()
-    const { controller, store, stub: exec } = makeController(stub)
-    controller.setCruiseEnabled(true)
-    const { taskId, executionId } = await settledReviewTask(stub, controller)
-    // The task runs again; a comment saved while running stays pending.
+    const { taskId } = await settledReviewTask(stub, controller)
+    // A second run puts the card back to 进行中 on a NEW session (s-2).
     await controller.runTask(taskId)
     const run = stub.runCalls[stub.runCalls.length - 1]
-    controller.submitComment(taskId, executionId, '等结算后注入')
+    run.fire({ kind: 'started', taskId, executionId: run.executionId, sessionId: 's-2' })
+    expect(store.load()[0].status).toBe('running')
+    // A comment for the BUSY session waits: one conversation takes one turn.
+    const busy = controller.submitSessionComment(taskId, 's-2', '先存着')
+    expect(busy).toBeDefined()
     expect(exec.commentCalls).toHaveLength(0)
-    // The run settles → the task is drivable again → the pending comment
-    // injects automatically.
+    expect(busy?.endedAt).toBeUndefined()
+    // A comment for the card's OTHER, idle session (s-1) does NOT wait for it:
+    // the lane is the session, not the card (the reported 「排队等另一个会话」).
+    controller.submitSessionComment(taskId, 's-1', '另一条会话现在就能发')
+    expect(exec.commentCalls.map(call => call.sessionId)).toEqual(['s-1'])
+  })
+
+  it('injects a pending comment when its own session settles back (cruise on)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const { taskId } = await settledReviewTask(stub, controller)
+    // The card runs again on s-2; a comment for THAT session stays pending.
+    await controller.runTask(taskId)
+    const run = stub.runCalls[stub.runCalls.length - 1]
+    run.fire({ kind: 'started', taskId, executionId: run.executionId, sessionId: 's-2' })
+    controller.submitSessionComment(taskId, 's-2', '等这条会话结算后注入')
+    expect(exec.commentCalls).toHaveLength(0)
+    // The session's round settles → the lane is free → the pending comment
+    // injects automatically (and the card goes back to 进行中 to run it).
     run.fire({ kind: 'settled', taskId, executionId: run.executionId, outcome: 'succeeded' })
     expect(exec.commentCalls).toHaveLength(1)
+    expect(exec.commentCalls[0].sessionId).toBe('s-2')
     expect(store.load()[0].status).toBe('running')
   })
 
@@ -1291,24 +1299,74 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
     expect(store.load()[0].executions[0].result).toBe('succeeded')
   })
 
-  it('queues a session-anchored comment behind an execution-anchored one (per-task FIFO)', async () => {
+  it('comments on two DIFFERENT sessions both inject at once (the budget is the only gate)', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     const { taskId, executionId } = await settledReviewTask(stub, controller)
-    // First an execution-anchored comment (cruise off, stays saved)…
+    // First an execution-anchored comment…
     controller.submitComment(taskId, executionId, '先从执行')
-    // …then a session-anchored one into a linked session.
+    // …then a session-anchored one into a DIFFERENT session.
     controller.submitSessionComment(taskId, 'linked-7', '再驱动')
     expect(store.load()[0].executions.filter(round => round.comment !== undefined)).toHaveLength(2)
-    // Cruise on → the earliest round injects first (FIFO).
+    // Cruise on: two idle sessions are two lanes — with budget room both go,
+    // in submission order. Serializing them behind each other was the bug.
+    controller.setCruiseEnabled(true)
+    expect(exec.commentCalls.map(call => call.sessionId)).toEqual(['s-1', 'linked-7'])
+    expect(store.load()[0].status).toBe('running')
+  })
+
+  it('the concurrency budget still throttles them: limit 1 = one lane at a time', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    controller.submitComment(taskId, executionId, '第一条')
+    controller.submitSessionComment(taskId, 'linked-7', '第二条')
+    // The budget is set BEFORE the cruise opens: with one slot, the two idle
+    // lanes do not both start — the second waits for the first to settle.
+    controller.setCruiseLimit(1)
     controller.setCruiseEnabled(true)
     expect(exec.commentCalls).toHaveLength(1)
-    expect(exec.commentCalls[0].sessionId).toBe('s-1')
-    // It settles → the next pending round injects into the linked session.
     exec.commentCalls[0].fire({ kind: 'settled', taskId, executionId: exec.commentCalls[0].executionId, outcome: 'succeeded' })
     expect(exec.commentCalls).toHaveLength(2)
-    expect(exec.commentCalls[1].sessionId).toBe('linked-7')
-    expect(store.load()[0].status).toBe('running')
+  })
+
+  it('a queued comment on an IDLE session of a busy card injects at once (per-session lanes)', async () => {
+    // The user's report: one session of the card is running, they leave a
+    // QUEUED comment on ANOTHER session of the same card, and it sits at
+    // 「排队第 1 位」 until the first conversation finishes — while auto cruise
+    // is on with a concurrency limit of 3 and nothing else running. Two
+    // sessions are two conversations: the lane is the SESSION, the card is
+    // only where their state aggregates.
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const task = controller.createTask({ title: '两路会话', description: '', prompt: 'run' })!
+    controller.setCruiseEnabled(true)
+    controller.setCruiseLimit(3)
+    // A plain run occupies the card's own session (the card is 进行中).
+    await controller.runTask(task.id)
+    expect(stub.runCalls).toHaveLength(1)
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+    // A comment on a DIFFERENT, idle session must not wait for it.
+    controller.submitSessionComment(task.id, 's-idle', '另一条会话的话')
+    expect(stub.commentCalls.map(call => call.sessionId)).toEqual(['s-idle'])
+    // Both are in flight now: the card stays 进行中 until the LAST one settles.
+    stub.commentCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.commentCalls[0].executionId, outcome: 'succeeded' })
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+    stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(controller.getSnapshot().tasks[0].status).toBe('review')
+  })
+
+  it('two comments on the SAME session stay strictly ordered (a session takes one turn at a time)', async () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const task = controller.createTask({ title: '同一条会话', description: '', prompt: 'run' })!
+    controller.setCruiseEnabled(true)
+    controller.setCruiseLimit(3)
+    const first = controller.submitSessionComment(task.id, 's-x', '第一句')!
+    const second = controller.submitSessionComment(task.id, 's-x', '第二句')!
+    expect(stub.commentCalls.map(call => call.executionId)).toEqual([first.id])
+    stub.commentCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: first.id, outcome: 'succeeded' })
+    expect(stub.commentCalls.map(call => call.executionId)).toEqual([first.id, second.id])
   })
 
   it('cancels a pending session-anchored comment but never an injected one', async () => {
@@ -2654,6 +2712,36 @@ describe('recordNativeTurn (live mux channel)', () => {
     expect(task.executions.filter(run => run.external === true)).toHaveLength(1)
   })
 
+  it('a native chat is still recorded while a comment for that session is merely QUEUED, and the comment then waits for it', async () => {
+    // The user's question: "我在工作区直接发消息，它也会同步到评论区，那时候
+    // 它就是在运行了" — that live turn must never be swallowed by a comment
+    // that is only sitting in the queue (a saved comment is not a running
+    // turn), and once the native turn IS running, the queued comment waits
+    // its turn in that same lane. One judgment, one order, no lost activity.
+    const { controller, sessions, stub } = await boundHarness()
+    const task = controller.getSnapshot().tasks[0]
+    const queued = controller.submitSessionComment(task.id, 's-1', '排队里的那句')!
+    expect(queued).toBeDefined()
+    expect(stub.commentCalls).toHaveLength(0) // cruise off: saved, nothing injected
+    // The user chats in the native UI while the comment is still queued.
+    controller.recordNativeTurn('s-1', { text: '工作区里直接说的话', hasImage: false, anchor: 11 })
+    const running = controller.getSnapshot().tasks[0]
+    const ext = running.executions[running.executions.length - 1]
+    expect(ext.external).toBe(true)
+    expect(ext.comment).toBe('工作区里直接说的话')
+    expect(running.status).toBe('running')
+    // Cruise on: the queued comment must NOT jump ahead of the live turn.
+    controller.setCruiseEnabled(true)
+    expect(stub.commentCalls).toHaveLength(0)
+    // The native turn finishes (the host list flips) → the lane is free → the
+    // comment goes out, in order, after the turn it waited behind.
+    stub.reconcileResult = { kind: 'settled', taskId: task.id, executionId: ext.id, outcome: 'succeeded' }
+    sessions.setRunning('s-1', false)
+    await flush()
+    await flush()
+    expect(stub.commentCalls.map(call => call.text)).toEqual(['排队里的那句'])
+  })
+
   it('a turn on a session with an open board round is the board\'s own — not recorded, period consumed', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
@@ -3474,27 +3562,42 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(row.rules?.[0].lastAt).toBe(NOW)
   })
 
-  it('many rules due at the same completion: steer injects immediately, queue rules FIFO (never a burst)', async () => {
+  it('many rules due at the same completion: each session is its own lane, the budget is the throttle', async () => {
     const { controller, stub } = ruleHarness(['s-a', 's-b', 's-c'], {})
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'aa', cron: '', trigger: 'on-complete', send: 'queue' })!
     controller.createSessionRule(task.id, { sessionId: 's-b', instruction: 'bb', cron: '', trigger: 'on-complete', send: 'queue' })!
-    const ccRule = controller.createSessionRule(task.id, { sessionId: 's-c', instruction: 'cc', cron: '', trigger: 'on-complete', send: 'steer' })!
+    controller.createSessionRule(task.id, { sessionId: 's-c', instruction: 'cc', cron: '', trigger: 'on-complete', send: 'steer' })!
     await controller.runTask(task.id)
     stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
     await flush()
-    // THREE rules due at once — ONE round injected: the steer rule goes out
-    // immediately (a real 插话), the queue rules wait their FIFO turn.
-    expect(stub.commentCalls.map(call => call.text)).toEqual(['cc'])
-    // Isolate the FIFO lane from the on-complete loop: closing the steer rule
-    // before its round settles means no 续轮 — only the queued aa follows.
-    controller.toggleSessionRule(task.id, ccRule.id, false)
-    stub.commentCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.commentCalls[0].executionId, outcome: 'succeeded' })
-    await flush()
-    expect(stub.commentCalls.map(call => call.text)).toEqual(['cc', 'aa'])
-    stub.commentCalls[1].fire({ kind: 'settled', taskId: task.id, executionId: stub.commentCalls[1].executionId, outcome: 'succeeded' })
-    await flush()
+    // THREE rules due at once, on THREE sessions: the steer rule goes out
+    // immediately (a real 插话) and the two queue rules go with it — different
+    // conversations, and the budget (default 5) has room. Serializing them
+    // behind one another was the same per-card lane the user rejected for
+    // manual comments; the throttle is the number the user set, not the card.
     expect(stub.commentCalls.map(call => call.text)).toEqual(['cc', 'aa', 'bb'])
+  })
+
+  it('a budget of 1 serializes the rule lane again (the number IS the throttle)', async () => {
+    const { controller, stub } = ruleHarness(['s-a', 's-b'], {})
+    controller.setCruiseLimit(1)
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'dd', cron: '', trigger: 'on-complete', send: 'queue' })!
+    controller.createSessionRule(task.id, { sessionId: 's-b', instruction: 'ee', cron: '', trigger: 'on-complete', send: 'queue' })!
+    await controller.runTask(task.id)
+    const run = stub.runCalls[0]
+    run.fire({ kind: 'settled', taskId: task.id, executionId: run.executionId, outcome: 'succeeded' })
+    await flush()
+    // Both rules are due; one slot → one round in flight, the next follows
+    // when it settles (never a burst, exactly as the limit promises).
+    const fired = () => stub.commentCalls.filter(call => call.text === 'dd' || call.text === 'ee')
+    expect(fired().map(call => call.text)).toEqual(['dd'])
+    fired()[0].fire({ kind: 'settled', taskId: task.id, executionId: fired()[0].executionId, outcome: 'cancelled' })
+    await flush()
+    // Cancelled does not re-fire its own loop rule; the other rule still gets
+    // its turn once the slot frees.
+    expect(fired().map(call => call.text)).toEqual(['dd', 'ee'])
   })
 
   it('a direct steer sends with the OFFICIAL steer mode and drives the card running → review (插话状态根治)', async () => {
