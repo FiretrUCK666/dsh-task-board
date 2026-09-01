@@ -20,7 +20,7 @@ import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource }
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
-import { DIRECT_FALLBACK_STATUS, isDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
+import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
 import { normalizeCruiseValue } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
@@ -29,7 +29,7 @@ import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, promoteToColumnTop, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -1564,8 +1564,12 @@ export class BoardController {
     this.dispatchQueued = false
     try {
       // 1. Queued schedule/chain launches (they were accepted while the
-      // budget was full; their eligibility is re-checked on drain).
-      while (this.inFlightCount() < this.cruiseState.limit) {
+      // budget was full; their eligibility is re-checked on drain). The
+      // attempt budget is the queue length at entry: an entry that must keep
+      // waiting rotates to the back, and without this bound a rotation could
+      // spin forever while the budget still has room.
+      let attempts = this.queuedLaunches.length
+      while (attempts-- > 0 && this.inFlightCount() < this.cruiseState.limit) {
         if (!this.drainQueuedLaunch()) break
       }
       // 2+3. Comment continuations then cruise pickups fill remaining slots.
@@ -1596,7 +1600,18 @@ export class BoardController {
     // queued auto run (the same "skip when busy" semantics as a direct hit).
     // A task with no executable content is dropped too — automation never
     // starts a blank-prompt card (the new-task default).
-    if (task === undefined || hasOpenRun(task) || ruleReadiness(task).kind !== 'active' || !taskExecutable(task)) return true
+    if (task === undefined || ruleReadiness(task).kind !== 'active' || !taskExecutable(task)) return true
+    if (hasOpenRun(task)) {
+      // A CHAIN link is different in kind from a cron fire: it is not "an
+      // attempt that can be missed", it is the next link of a sequence the
+      // user armed, and its run was already counted at the hand-off. With
+      // per-session lanes a sibling conversation being busy is ordinary, so
+      // dropping here would silently end the chain (and a counted-but-unrun
+      // link can never come back after a reload). Keep it waiting — rotated to
+      // the back so a card that stays busy cannot starve the others.
+      if (task.schedule?.mode === 'chain') this.queuedLaunches.push(queued)
+      return true
+    }
     this.launchTask(task)
     return true
   }
@@ -1633,18 +1648,27 @@ export class BoardController {
       // each session. A busy lane contributes nothing — but it must never
       // silence the card's OTHER lanes (returning early here is how an idle
       // session's comment stayed queued behind an unrelated conversation).
-      let best: ExecutionRecord | undefined
-      const laneTaken = new Set<string>()
+      // ONE ordered queue per lane, whatever wrote the round: the lane's
+      // earliest saved round decides what runs next. Filtering by kind BEFORE
+      // looking at the lane let a rule instruction saved later jump a user
+      // comment already waiting on that same conversation — two queues on one
+      // session, which is exactly the ordering this model is meant to keep.
+      const laneHead = new Map<string, ExecutionRecord>()
       for (const round of task.executions) {
         if (round.comment === undefined || round.sessionId === undefined) continue
         if (round.injectedAt !== undefined || round.endedAt !== undefined) continue
         if (round.external === true) continue
+        const ahead = laneHead.get(round.sessionId)
+        if (ahead === undefined || round.startedAt < ahead.startedAt) laneHead.set(round.sessionId, round)
+      }
+      let best: ExecutionRecord | undefined
+      for (const [sessionId, round] of laneHead) {
+        // The other lane's turn: this session's next word belongs to the other
+        // kind (comments and rule instructions share one queue per session).
         if ((round.ruleId !== undefined) !== rule) continue
-        if (laneTaken.has(round.sessionId)) continue
-        laneTaken.add(round.sessionId)
         // A session that is mid-turn takes its next comment only after that
         // turn settles — one conversation at a time, in submission order.
-        if (sessionIsBusy(task, round.sessionId)) continue
+        if (sessionIsBusy(task, sessionId)) continue
         if (best === undefined || round.startedAt < best.startedAt) best = round
       }
       return best
@@ -1780,23 +1804,42 @@ export class BoardController {
   }
 
   /**
-   * Continue an armed chain schedule after a settled run: persist the
-   * incremented counter (disarming after the final budgeted run) and start
-   * the next run through the shared dispatcher (which queues it when the
-   * in-flight budget is full). No-op unless the chain is armed, its latest
-   * execution has settled, and a further run is within budget. Runs
-   * synchronously after a settle, so the scheduler's recovery tick can never
-   * interleave a duplicate launch.
+   * Continue an armed chain schedule after a settle: persist the incremented
+   * counter (disarming after the final budgeted run) and start the next run.
+   * The judgment is the CARD's own plain runs, not "the last row" — under
+   * per-session lanes a comment or a native turn can be the newest record
+   * while the card's execution finished earlier.
+   *
+   * Every attempt is guarded three ways: the card must be quiet (no lane in
+   * flight), its last PLAIN run must have SUCCEEDED (失败不续), and the global
+   * budget must have a free slot. Any of those failing defers the hand-off
+   * without consuming a run — and because the derivation is re-read from the
+   * ledger, the next settle or the scheduler's recovery tick picks it up again
+   * instead of losing the link.
    */
   private maybeContinueChain(id: string): void {
     const task = this.tasks.find(candidate => candidate.id === id)
     const schedule = task?.schedule
     if (schedule === undefined || !schedule.enabled || schedule.mode !== 'chain') return
-    const latest = task?.executions[task.executions.length - 1]
-    // Only a succeeded plain run hands off; a refine round settling must
-    // never start a chain (refinement is preparation, not execution).
-    if (latest === undefined || latest.endedAt === undefined || latest.result !== 'succeeded' || latest.refine === true) return
+    if (task === undefined) return
+    // WAIT while any lane of this card is still working. A chain link is the
+    // card's own next run — it must not stack on a sibling conversation (the
+    // per-session lanes make that possible now, and the runTask busy guard
+    // would simply drop the link, silently losing one iteration). Every settle
+    // and the scheduler's recovery tick re-attempt, so a deferred hand-off is
+    // never lost: once the card goes quiet, the last PLAIN run decides.
+    if (hasOpenRun(task)) return
+    const runs = plainRunsOf(task)
+    const latest = runs[runs.length - 1]
+    // Only a succeeded plain run hands off; refinement (preparation) and
+    // comment/native rounds are not the card's own execution completing.
+    if (latest === undefined || latest.endedAt === undefined || latest.result !== 'succeeded') return
     if (schedule.maxRuns !== undefined && schedule.runCount >= schedule.maxRuns) return
+    // A hand-off already waiting for a slot IS this link: counting again (and
+    // queueing again, which the dedup below swallows) would burn budget runs
+    // on a card whose sibling lanes keep settling. The pending entry is the
+    // record that this succeeded run has already been handed off.
+    if (this.queuedLaunches.some(candidate => candidate.taskId === id)) return
     const finalRun = schedule.maxRuns !== undefined && schedule.runCount + 1 >= schedule.maxRuns
     this.applyScheduleNextRun(id, undefined, this.now(), schedule.runCount + 1, finalRun)
     if (finalRun) return
@@ -2140,6 +2183,21 @@ export class BoardController {
         // prompt is empty (blocked); a custom rule's content is its own.
         const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
         if (text === '') continue
+        // ONE due instant, ONE round. A queue-mode rule instruction that is
+        // still waiting (its session is busy — the common case now that a lane
+        // can be held by a long conversation) already honours this due slot;
+        // appending another copy every minute would stack identical
+        // instructions onto the same session. Roll the schedule forward
+        // instead — the same one-in-flight discipline the on-complete loop
+        // enforces in `fireRuleRound`.
+        if (task.executions.some(round => round.ruleId === rule.id && round.endedAt === undefined)) {
+          const rolled = nextSessionRuleAt(rule)
+          rule.lastAt = now
+          rule.nextAt = rolled ?? rule.nextAt
+          rule.enabled = rolled === undefined ? false : rule.enabled
+          taskChanged = true
+          continue
+        }
         // Fire, send-mode consistent with the comment SendModeToggle grammar:
         // queue = the instruction becomes a rule-marked round that rides the
         // AUTOMATION lane (not cruise-gated: a scheduled rule must fire on
@@ -2207,14 +2265,16 @@ export class BoardController {
   /**
    * Save a comment continuation against a settled execution: a new comment
    * round is appended (same session, not yet injected) and the task stays in
-   * place. Comments are a per-task FIFO queue: any number may be saved, and
-   * the shared dispatcher injects them one at a time — a task can run only
-   * one round at a time, and the in-flight budget bounds how many sessions
-   * run across the board. Injection only happens while the auto-cruise is
-   * on; without it the comments stay saved (and cancellable) until the
-   * cruise drives the board. A completed task cannot be commented (its work
-   * is done); every other state can — a running task's comment queues for
-   * when its current round settles.
+   * place. Comments are a per-SESSION FIFO queue — the lane is the
+   * conversation: any number may be saved, and the shared dispatcher injects
+   * them one at a time into THAT session (a session takes its next comment
+   * only after its current round settles), while other sessions of the same
+   * card keep running independently. The in-flight budget bounds how many
+   * sessions run across the board. Injection only happens while the
+   * auto-cruise is on; without it the comments stay saved (and cancellable)
+   * until the cruise drives the board. A completed task cannot be commented
+   * (its work is done); every other state can — a comment for a session that
+   * is busy queues for when that session settles.
    *
    * A round with `command` set is a slash command, not a turn: the line is
    * executed through the native command registry when injected (unknown
@@ -2722,6 +2782,10 @@ export class BoardController {
   /** Execution ids launched on this page; they settle via their live watch, never list reconciliation. */
   private readonly activeExecutionIds = new Set<string>()
 
+  /** One entry per card (the steer round whose completion was already
+   *  reported), replaced on the next steer — bounded by the card count. */
+  private readonly directFallbackRounds = new Map<string, string>()
+
   /** Debounce timer for {@link reconcileRunningTasks}. */
   private reconcileTimer: ReturnType<typeof setTimeout> | undefined = undefined
 
@@ -2785,8 +2849,23 @@ export class BoardController {
    * session is actively working — a long run is not a zombie.
    */
   private zombieRoundEvent(task: TaskRecord, execution: ExecutionRecord): Extract<ExecutionEvent, { kind: 'settled' }> | undefined {
-    if (execution.sessionId === undefined) return undefined
-    if (this.now() - execution.startedAt <= BoardController.OPEN_ROUND_WATCHDOG_MS) return undefined
+    // Age the round from when its WORK began, not from when it was written
+    // down: a saved comment has legitimately waited (a long same-session
+    // conversation ahead of it is normal on a lane model), and timing the
+    // deadline from the save would cancel it seconds after a real injection,
+    // before the session's `running` flip ever reached the list snapshot.
+    const since = execution.injectedAt ?? execution.startedAt
+    if (this.now() - since <= BoardController.OPEN_ROUND_WATCHDOG_MS) return undefined
+    if (execution.sessionId === undefined) {
+      // A round that NEVER GOT A SESSION (the page died between launching the
+      // run and its `started` event) is the one case with nothing to wait on:
+      // no session can be running, no turn evidence can arrive, and the
+      // delivery watch is gone with the previous page. Under per-session
+      // lanes an unbound round behind the newest row would otherwise wedge the
+      // card forever — 进行中, holding a budget slot, refusing every drop and
+      // re-run, with no sweeper that could see it.
+      return { kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'cancelled', error: 'run never reached a session' }
+    }
     const summary = this.deps.sessions.list.getSnapshot().byId[execution.sessionId]
     if (summary?.running === true) return undefined
     if (summary !== undefined && summary.pendingInteraction !== undefined) return undefined // waiting on a human is evidence
@@ -2899,7 +2978,16 @@ export class BoardController {
       // A reconciled settle hands off to the next chained run like a live one
       // (the chain request precedes the persist so the freed slot is
       // booked before any comment/cruise work competes for it).
-      for (const id of continued) this.maybeContinueChain(id)
+      //
+      // ENGINE-ONLY, re-checked HERE: the reads above await, and the seat can
+      // move to another device while they run (the lease follows visibility).
+      // Applying a settle we have evidence for stays (idempotent — the new
+      // engine's pass no-ops on an ended round), but a dethroned replica must
+      // never LAUNCH: that is how one completion becomes two runs once several
+      // lanes can be in flight on the same card.
+      if (this.engine) {
+        for (const id of continued) this.maybeContinueChain(id)
+      }
 
       // Stage 3 — cancel external rounds whose session finished with no turn
       // evidence past the grace (a spurious flip must not strand the card).
@@ -2912,6 +3000,9 @@ export class BoardController {
       // as if the live watch had seen it.
       for (const { round, event } of applied) {
         if (this.disposed) return
+        // Same rule as the chain hand-off above: automation fires on ONE
+        // engine, never on a replica that lost the seat mid-pass.
+        if (!this.engine) return
         this.settledFollowUp(round, event.taskId, event.outcome)
       }
     } finally {
@@ -2944,8 +3035,14 @@ export class BoardController {
       linked?.find(entry => entry.task.id === taskId)?.ids
     let changed = false
     for (const task of this.tasks) {
-      const latest = latestExecutionOf(task)
-      if (!isDirectLike(latest)) continue
+      // The newest direct-like round, WHEREVER it sits: a steer round is
+      // settled at birth, so any later row (a saved comment on another lane,
+      // an observed native turn) pushes it off the end of the array. Reading
+      // only the last record stranded the card in 「进行中」 with nothing
+      // running once lanes could interleave rows — and its completion (the
+      // on-complete appointment below) vanished with it.
+      const latest = newestDirectLike(task)
+      if (latest === undefined) continue
       const live = taskLiveStateOf(
         task,
         sessionId => byId[sessionId]?.running === true,
@@ -2963,7 +3060,19 @@ export class BoardController {
           )
           changed = true
         }
-      } else if (live === 'idle' && task.status === 'running') {
+      } else if (live === 'idle' && task.status === 'running' && !hasOpenRun(task)) {
+        // Demote only when NOTHING of this card is in flight any more: with
+        // per-session lanes the steered conversation can finish while another
+        // session of the same card is still working, and yanking the card out
+        // of 进行中 then would lie about the lanes that remain.
+        //
+        // One completion per steer round, ever. `newestDirectLike` searches the
+        // whole history, so a stale steer could otherwise re-fire the
+        // on-complete appointment on a later running→idle edge (an automation
+        // firing for a completion that already completed). The column check
+        // above makes this an edge, not a level; this makes it idempotent.
+        if (this.directFallbackRounds.get(task.id) === latest.id) continue
+        this.directFallbackRounds.set(task.id, latest.id)
         const next = withStatus(task, DIRECT_FALLBACK_STATUS, now)
         this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
         changed = true
@@ -3183,7 +3292,13 @@ export class BoardController {
       this.activityBook.running.set(session.sessionId, current)
       if (current) this.activityBook.recorded.add(session.sessionId)
       if (runningSessionId === undefined && current
-        && !task.executions.some(round => round.sessionId === session.sessionId && round.endedAt === undefined)
+        // THE lane judgment, shared with the dispatcher and the external
+        // recorder: a merely-SAVED comment on this session is not a round in
+        // flight, so it must never veto the instant sync of a turn the user is
+        // running right now (the round is recorded below, and the period is
+        // consumed here — vetoing it silently dropped that native turn: no
+        // thread entry, card never jumped to 「进行中」).
+        && !sessionIsBusy(task, session.sessionId)
         && !this.inBoardTurnOn(task, session.sessionId, now)) {
         runningSessionId = session.sessionId
         runningRefine = session.refine
@@ -3214,16 +3329,22 @@ export class BoardController {
     const byId = this.deps.sessions.list.getSnapshot().byId
     let changed = false
     for (const task of this.tasks) {
-      const latest = task.executions[task.executions.length - 1]
-      const sessionId = latest?.sessionId
-      if (latest === undefined || latest.external !== true || latest.endedAt !== undefined || sessionId === undefined) continue
-      const summary = byId[sessionId]
-      const since = this.activityBook.externalSince.get(sessionId) ?? latest.startedAt
-      if (summary?.running === true || now - since <= EXTERNAL_SETTLE_GRACE_MS) continue
-      const next = this.settleRound(task, latest.id, 'cancelled', undefined)
-      if (next !== task) {
-        this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
-        changed = true
+      // EVERY open external round: with per-session lanes a later row (a
+      // steer, a second conversation's round) used to hide a noisy first one,
+      // leaving the card stranded or letting the history sweep settle it
+      // optimistically on some OLDER turn's `turn/end` — a false completion
+      // that then fired the on-complete appointment.
+      for (const latest of openRoundsOf(task)) {
+        const sessionId = latest.sessionId
+        if (latest.external !== true || sessionId === undefined) continue
+        const summary = byId[sessionId]
+        const since = this.activityBook.externalSince.get(sessionId) ?? latest.startedAt
+        if (summary?.running === true || now - since <= EXTERNAL_SETTLE_GRACE_MS) continue
+        const next = this.settleRound(task, latest.id, 'cancelled', undefined)
+        if (next !== task) {
+          this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
+          changed = true
+        }
       }
     }
     return changed

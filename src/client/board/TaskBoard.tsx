@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
-import { COLUMNS, landingStatusOf, latestExecutionOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -1035,11 +1035,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   // question) across every execution + the refine session —
                   // read live so cards reflect the moment a session starts
                   // waiting (the controller notifies on session-list changes).
-                  const latest = latestExecutionOf(task)
                   const pending = taskPendingCount(task, sessionId => controller.pendingInteractionOf(sessionId))
-                  const waiting = latest?.sessionId !== undefined
-                    ? controller.pendingInteractionOf(latest.sessionId)
-                    : undefined
+                  // ANY session of the card can be the one blocked on a human
+                  // now (per-session lanes), so the chip reads the card's
+                  // pending set — not the newest record's session, which is
+                  // routinely a different conversation.
+                  const waiting = pending.items[0]?.waitingKind
                   const pendingTitle = pending.items.length === 0
                     ? ''
                     : pending.items.map(item => {

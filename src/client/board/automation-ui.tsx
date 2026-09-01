@@ -27,7 +27,7 @@ import {
 } from '../../core/automation.ts'
 import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import {
-  chainUnlimited, latestExecutionOf, ruleReadiness, type ScheduleMode, type TaskRecord,
+  chainUnlimited, lastPlainResult, ruleReadiness, type ScheduleMode, type TaskRecord,
 } from '../../core/tasks.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
@@ -659,7 +659,7 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
   const stoppedReason = readiness.kind === 'paused'
     ? {
         extraFailed: readiness.status === 'review'
-          && latestExecutionOf(task)?.result === 'failed',
+          && lastPlainResult(task) === 'failed',
         key: PAUSED_REASON_KEY[readiness.status],
       }
     : readiness.kind === 'blocked'

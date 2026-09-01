@@ -13,7 +13,7 @@
  * (structural faces), so tests drive ticks directly without timers.
  */
 import { nextRunAtMs } from './schedule.ts'
-import { ruleReadiness, type TaskRecord } from './tasks.ts'
+import { hasOpenRun, plainRunsOf, ruleReadiness, type TaskRecord } from './tasks.ts'
 
 /** Everything the scheduler needs from its host (the board controller). */
 export interface SchedulerDeps {
@@ -122,9 +122,19 @@ export class SchedulerService {
       // settle-then-count style check would over-run the budget by one).
       if (schedule.mode === 'chain') {
         if (task.status === 'done') continue // completed = disarmed already
-        const latest = task.executions[task.executions.length - 1]
-        const open = latest !== undefined && latest.endedAt === undefined
-        if (open) continue
+        // THE SAME derivation the live hand-off uses, read from the shared
+        // predicates rather than "the last row": a card can have several
+        // sessions in flight, and its newest record is routinely a comment or
+        // a native turn that says nothing about the card's own execution.
+        //   · any lane still working → nothing to recover yet (re-attempt next
+        //     tick; a merely-SAVED comment must never block recovery forever);
+        //   · the card's last PLAIN run failed/cancelled → 失败不续 (reading
+        //     the last row used to relaunch a failed chain every minute, and
+        //     an open-but-not-newest round used to slip through).
+        if (hasOpenRun(task)) continue
+        const runs = plainRunsOf(task)
+        const lastRun = runs[runs.length - 1]
+        if (runs.length > 0 && lastRun?.result !== 'succeeded') continue
         if (schedule.maxRuns !== undefined && schedule.runCount + 1 >= schedule.maxRuns) continue
         await this.deps.runTask(task.id)
         continue

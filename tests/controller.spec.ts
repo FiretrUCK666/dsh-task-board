@@ -2778,6 +2778,48 @@ describe('recordNativeTurn (live mux channel)', () => {
     expect(stub.commentCalls.map(call => call.text)).toEqual(['排队里的那句'])
   })
 
+  it('a round left without a session by a page death is released, not wedged forever', async () => {
+    // Reload window: the run was launched but its `started` never landed.
+    // Under per-session lanes an unbound round BEHIND the newest row is
+    // invisible to the history sweep (no session to probe), so without a
+    // verdict it would hold a budget slot, keep the card 进行中 and refuse
+    // every re-run and drop — permanently.
+    let clock = NOW
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      status: 'running',
+      executions: [
+        { id: 'u1', sessionId: undefined, startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
+        { id: 'e2', sessionId: 's-2', startedAt: NOW + 1, endedAt: NOW + 2, result: 'succeeded' as const, error: undefined },
+      ],
+    }])
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-2', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService, sessions,
+      now: () => clock, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    // Still inside the deadline: untouched (a slow connect is not a zombie).
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+    clock = NOW + 4 * 60_000
+    sessions.setRunning('s-2', false) // any list change drives a reconcile pass
+    await flush()
+    await flush()
+    const after = controller.getSnapshot().tasks[0]
+    const released = after.executions.find(round => round.id === 'u1')
+    expect(released?.endedAt).toBeDefined()
+    expect(released?.result).toBe('cancelled')
+    expect(after.status).not.toBe('running')
+    // The card can run again: the slot came back.
+    await controller.runTask('task-a')
+    expect(stub.runCalls).toHaveLength(1)
+  })
+
   it('a turn on a session with an open board round is the board\'s own — not recorded, period consumed', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
@@ -3634,6 +3676,96 @@ describe('session automation rules (给会话定时发指令)', () => {
     // Cancelled does not re-fire its own loop rule; the other rule still gets
     // its turn once the slot frees.
     expect(fired().map(call => call.text)).toEqual(['dd', 'ee'])
+  })
+
+  it('a finished steer never pulls the card out of 进行中 while another lane is still working', async () => {
+    // The steer round is settled at birth and lives anywhere in the history,
+    // so once lanes can interleave rows a stale steer must not decide the
+    // column: the column is the aggregate of the card's sessions.
+    const { controller, sessions, stub } = ruleHarness(['s-a', 's-b'], {
+      sessionMessage: async () => ({ ok: true as const }),
+    })
+    controller.setCruiseEnabled(true)
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    // Cruise on a todo card = the board also starts a plain run for it; bind
+    // and finish that lane so this test sees only the two conversations it is
+    // about (an unbound round legitimately freezes admission for the card, see
+    // the test above about it).
+    for (const call of [...stub.runCalls]) {
+      call.fire({ kind: 'started', taskId: task.id, executionId: call.executionId, sessionId: 's-run' })
+      call.fire({ kind: 'settled', taskId: task.id, executionId: call.executionId, outcome: 'succeeded' })
+    }
+    await controller.steerComment(task.id, 's-a', '插话一条')
+    await flush()
+    sessions.setRunning('s-a', true)
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+    // A second conversation of the same card starts working (its round opens).
+    controller.submitSessionComment(task.id, 's-b', '另一条会话在跑')
+    expect(stub.commentCalls).toHaveLength(1)
+    // The steered session finishes FIRST: the card stays 进行中 (row badge and
+    // column agree — the iron law), because a lane is still in flight.
+    sessions.setRunning('s-a', false)
+    await flush()
+    await flush()
+    const mid = controller.getSnapshot().tasks[0]
+    expect(mid.status).toBe('running')
+    // Only when the last lane settles does the card land in 待审核.
+    const call = stub.commentCalls[0]
+    call.fire({ kind: 'settled', taskId: task.id, executionId: call.executionId, outcome: 'succeeded' })
+    expect(controller.getSnapshot().tasks[0].status).toBe('review')
+  })
+
+  it('a queued cron rule instruction is not stacked while its lane is busy (one due instant, one round)', async () => {
+    const { controller } = ruleHarness(['s-a'], {})
+    controller.setCruiseEnabled(true)
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    // Occupy the rule's session with a comment round that is still running.
+    controller.submitSessionComment(task.id, 's-a', '占住这条会话')
+    expect(controller.getSnapshot().tasks[0].executions.filter(round => round.comment !== undefined)).toHaveLength(1)
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'nightly', cron: '* * * * *', send: 'queue' })!
+    await controller.tickSessionRules(NOW + 120_000)
+    const afterFirst = controller.getSnapshot().tasks[0]
+    const ruleRounds = (row: typeof afterFirst) => row.executions.filter(round => round.ruleId !== undefined).length
+    expect(ruleRounds(afterFirst)).toBe(1)
+    expect(afterFirst.rules?.[0].lastAt).toBe(NOW + 120_000)
+    // The next due instant arrives while that instruction is still waiting for
+    // its lane: the slot rolls forward, no second copy piles up behind it.
+    const rolled = afterFirst.rules![0].nextAt!
+    await controller.tickSessionRules(rolled)
+    const afterSecond = controller.getSnapshot().tasks[0]
+    expect(ruleRounds(afterSecond)).toBe(1)
+    expect(afterSecond.rules![0].nextAt).toBeGreaterThan(rolled)
+  })
+
+  it('a noise external round that is NOT the last record is cancelled on the short grace', async () => {
+    // The 90s noise cancel used to look only at the last row; with lanes, a
+    // later saved/comment row hides the noisy external round and the card
+    // stayed 进行中 until the 3-minute delivery watchdog.
+    const stub = new StubExec()
+    stub.reconcileResult = undefined // no turn evidence
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      status: 'running',
+      executions: [
+        { id: 'x1', sessionId: 's-1', startedAt: NOW - 100_000, endedAt: undefined, result: undefined, error: undefined, external: true, comment: '占位' },
+        { id: 'c2', sessionId: 's-2', startedAt: NOW, endedAt: NOW + 1, result: 'succeeded' as const, error: undefined, comment: '后来的行' },
+      ],
+    }])
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-1', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService, sessions,
+      now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    const row = controller.getSnapshot().tasks[0]
+    expect(row.executions.find(round => round.id === 'x1')?.endedAt).toBeDefined()
+    expect(row.status).not.toBe('running')
   })
 
   it('a direct steer sends with the OFFICIAL steer mode and drives the card running → review (插话状态根治)', async () => {

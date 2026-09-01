@@ -7,7 +7,7 @@
  * Pure functions — no side effects, fully unit-testable.
  */
 import type { PendingInteractionKind } from './controller.ts'
-import type { TaskRecord, ExecutionRecord } from './tasks.ts'
+import { isOpenRound, type TaskRecord, type ExecutionRecord } from './tasks.ts'
 
 /**
  * The live state of an execution's session (aggregating all rounds that share
@@ -82,8 +82,7 @@ export function sessionDisplay(
   // turn itself, never a queued comment): its comment field is a thread body,
   // not a queue marker. The displayed activity is the most recently opened
   // round's start.
-  const open = rounds.filter(r =>
-    r.endedAt === undefined && (r.injectedAt !== undefined || r.comment === undefined || r.external === true))
+  const open = rounds.filter(r => isOpenRound(r))
   if (open.length > 0) {
     const openRound = open.reduce((latest, r) => (r.startedAt > latest.startedAt ? r : latest))
     // Session is live.
@@ -140,7 +139,11 @@ export function sessionTimes(task: TaskRecord, execution: ExecutionRecord): {
   }
 
   const startedAt = Math.min(...rounds.map(r => r.startedAt))
-  const anyOpen = rounds.some(r => r.endedAt === undefined)
+  // THE open-round judgment (shared with the dispatcher): a round that is
+  // merely saved-and-queued is not work in progress, and a round that has
+  // settled is finished — reading `endedAt` alone here would re-derive the
+  // same rule a second time and drift from it.
+  const anyOpen = rounds.some(r => isOpenRound(r))
   const endedAt = anyOpen
     ? undefined
     : Math.max(...rounds.map(r => r.endedAt ?? 0).filter(t => t > 0))

@@ -81,9 +81,10 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // single numbering source shared with the detail list and review badge.
   const runs = plainRunsOf(task)
   const lastPlain = runs[runs.length - 1]
-  // Only a genuinely open run shows the in-progress indicator: the card's
-  // status must be 'running' AND its latest round unsettled. A pending
-  // comment round (task sitting in review) must never spin.
+  // Only a genuinely open round shows the in-progress indicator, and "open"
+  // is the shared judgment: ANY of this card's sessions in flight (a card can
+  // run several at once), never "the last row is unsettled". A pending comment
+  // round (task sitting in review) must never spin.
   const running = hasOpenRun(task)
   // Comments saved but not yet injected (the task's queue): a quiet warn
   // badge so a card waiting for the dispatcher is never mistaken for idle.
@@ -281,9 +282,9 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                 icon={<span className={css.spinner} aria-hidden="true" />}>
                 {runningStateLabel(waiting)}
               </Chip>
-            ) : latest !== undefined && (
+            ) : lastPlain !== undefined && (
               <Chip
-                kind={resultChipKind(latest.result)}
+                kind={resultChipKind(lastPlain.result)}
                 fill={false}
               >
                 {settledChipLabel(runs.length)}

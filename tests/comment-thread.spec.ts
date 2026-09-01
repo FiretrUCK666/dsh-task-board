@@ -199,15 +199,18 @@ describe('queuePositionOf', () => {
     expect(queuePositionOf(task, 'c1')).toBe(1)
   })
 
-  it('counts an injected (running) round as occupying the queue head', () => {
+  it('an injected (running) head round is not a position in the queue', () => {
     const task = {
       ...withPending(),
       executions: withPending().executions.map(round =>
         round.id === 'c1' ? { ...round, injectedAt: NOW + 13 } : round),
     }
-    // c1 is running (injected, unsettled): c2 and c3 follow it.
-    expect(queuePositionOf(task, 'c2')).toBe(2)
-    expect(queuePositionOf(task, 'c3')).toBe(3)
+    // c1 is RUNNING (its own chip says 进行中), so the waiting rounds are
+    // 第 1 位 and 第 2 位 — numbering the running one would show 「第 2 位」
+    // with no visible 第 1 位 standing in front of it.
+    expect(queuePositionOf(task, 'c1')).toBe(0)
+    expect(queuePositionOf(task, 'c2')).toBe(1)
+    expect(queuePositionOf(task, 'c3')).toBe(2)
   })
 
   it('returns 0 for settled rounds and plain runs', () => {

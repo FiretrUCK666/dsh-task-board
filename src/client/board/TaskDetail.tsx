@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
-import { MANUAL_STATUSES, hasOpenRun, latestExecutionOf, plainRunsOf, ruleReadiness, taskBindsOf, taskExecutable, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, hasOpenRun, lastPlainResult, plainRunsOf, ruleReadiness, taskBindsOf, taskExecutable, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
@@ -243,7 +243,7 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
   const stoppedReason = readiness.kind === 'paused'
     ? {
         extraFailed: readiness.status === 'review'
-          && latestExecutionOf(task)?.result === 'failed',
+          && lastPlainResult(task) === 'failed',
         key: PAUSED_REASON_KEY[readiness.status],
       }
     : readiness.kind === 'blocked'

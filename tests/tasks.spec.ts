@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, newCommentRound, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, supplementLaunchFields, taskExecutable,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -566,6 +566,26 @@ describe('hasOpenRun', () => {
     expect(openRoundsOf(withTwo).map(round => round.id)).toEqual(['e1'])
     expect(sessionIsBusy(withTwo, 's-1')).toBe(true)
     expect(sessionIsBusy(withTwo, 's-2')).toBe(false)
+  })
+
+  it('lastPlainResult answers "how did this task run" regardless of which row is newest', () => {
+    const { task } = startExecution(sampleTask(), NOW, 'e1')
+    const ran = settleExecution(task, 'e1', 'failed', NOW + 1, 'boom')
+    // A later comment round that succeeded, and a later comment still SAVED
+    // (no result at all): neither may change the answer about the card's own
+    // execution — that split is what made one surface read 失败 and another
+    // 成功 for the same card.
+    const withLanes: TaskRecord = {
+      ...ran,
+      executions: [
+        ...ran.executions,
+        { id: 'c1', sessionId: 's-2', startedAt: NOW + 2, endedAt: NOW + 3, result: 'succeeded' as const, error: undefined, comment: '留言跑通了' },
+        { id: 'c2', sessionId: 's-3', startedAt: NOW + 4, endedAt: undefined, result: undefined, error: undefined, comment: '挂着' },
+      ],
+    }
+    expect(lastPlainResult(withLanes)).toBe('failed')
+    expect(latestExecutionOf(withLanes)?.result).toBeUndefined()
+    expect(lastPlainResult(sampleTask())).toBeUndefined()
   })
 })
 

@@ -117,3 +117,20 @@ export function isDirectLike(round: ExecutionRecord | undefined): boolean {
 /** The fallback column for a finished direct-like round: a steer that ran to
  *  completion lands in 待审核 (a human gate, exactly like a successful run). */
 export const DIRECT_FALLBACK_STATUS = 'review' as const
+
+/**
+ * The task's newest direct-like round, or undefined. A direct round is
+ * settled at birth, so it is never "the last row" for long — under
+ * per-session lanes any later append (a saved comment on another conversation,
+ * an observed native turn) slips past a `latestExecutionOf` check and the
+ * steer's completion would never be seen. Searching from the end keeps the
+ * judgment about ONE round (the newest steer) while making its position in the
+ * array irrelevant.
+ */
+export function newestDirectLike(task: TaskRecord): ExecutionRecord | undefined {
+  for (let index = task.executions.length - 1; index >= 0; index -= 1) {
+    const round = task.executions[index]
+    if (round !== undefined && isDirectLike(round)) return round
+  }
+  return undefined
+}

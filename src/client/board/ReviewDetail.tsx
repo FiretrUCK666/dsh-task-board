@@ -16,7 +16,8 @@
  * columns stack (transcript on top, rail below) so the composer lands at the
  * panel's bottom edge.
  * The thread shows only the comments of the execution being reviewed — each
- * execution's page shows its own, the injection queue stays task-level. Both
+ * execution's page shows its own, the injection queue is per session (the
+ * lane is the conversation, not the card). Both
  * the transcript and the comment list auto-follow the latest output while at
  * the bottom, with a "滑到最新" button when scrolled up. A comment whose
  * first character is '/' is a slash command executed through the native

@@ -12,9 +12,10 @@
  * execution review page and the linked-session panel — read the SAME
  * sessionCommentsOf, so a comment typed on one surface is instantly visible
  * on the other for the same session. The comment *queue* that drives
- * injection stays task-level (the unified dispatcher injects a task's
- * comments in submission order, one at a time), so a round's queue position
- * is computed over the whole task, not the filtered view subset.
+ * injection is per SESSION (the lane is the conversation): a round waits for
+ * the rounds saved earlier in ITS OWN session, never for another
+ * conversation's work, so a round's queue position is computed within its
+ * lane — not over the whole task.
  */
 import type { ExecutionRecord, TaskRecord } from '../../core/tasks.ts'
 
@@ -83,7 +84,13 @@ export function queuePositionOf(task: TaskRecord, roundId: string): number {
   const lane = target.sessionId ?? target.sessionAnchor
   const pending = task.executions
     // External rounds are never queued (they run out-of-band) — exclude them.
-    .filter(round => round.comment !== undefined && round.endedAt === undefined && round.external !== true)
+    // An ALREADY-INJECTED round is running, not waiting: counting it would
+    // make the first genuinely queued comment read 「第 2 位」 with no visible
+    // 第 1 位 in front of it (its own chip says 进行中).
+    .filter(round => round.comment !== undefined
+      && round.endedAt === undefined
+      && round.injectedAt === undefined
+      && round.external !== true)
     // The lane: only the rounds that target the SAME session stand in front.
     .filter(round => (round.sessionId ?? round.sessionAnchor) === lane)
     .sort((a, b) => a.startedAt - b.startedAt)

@@ -484,6 +484,22 @@ export function latestExecutionOf(task: TaskRecord): ExecutionRecord | undefined
 }
 
 /**
+ * The outcome of the card's OWN most recent plain run — the answer to "how did
+ * this task's last execution end?", used by every surface that tints, labels
+ * or explains a card's result.
+ *
+ * It is deliberately NOT `latestExecutionOf(task)?.result`: with per-session
+ * lanes the newest record is routinely something else (a comment round, an
+ * observed native turn, or a comment still SAVED with no result at all), which
+ * made the same card read as failed on one surface and succeeded on another,
+ * and once tinted the 「N 次执行」 chip red while every run had succeeded.
+ */
+export function lastPlainResult(task: TaskRecord): ExecutionRecord['result'] {
+  const runs = plainRunsOf(task)
+  return runs[runs.length - 1]?.result
+}
+
+/**
  * Whether arming a chain rule needs the one-shot "endless loop" confirmation:
  * an unlimited chain (no run budget) keeps firing real agent sessions until a
  * run fails or the user stops it. One guard, shared by every surface that can
@@ -692,9 +708,11 @@ export function newDirectRound(options: {
 }
 
 /**
- * Settle a running execution: record the outcome and move the task into the
- * matching column. No-op (returns the input task) when the execution is not
- * the task's latest or is already settled.
+ * Settle a running execution: record the outcome on the NAMED round (any
+ * round of the card can be the one finishing — a card may run several
+ * sessions at once) and move the card into the column its whole set of
+ * sessions adds up to. No-op (returns the input task) when the round is
+ * unknown or already settled.
  *
  * A settled run always lands in 'review' — the human gate between execution
  * and completion: succeeded runs await human confirmation, failed runs await

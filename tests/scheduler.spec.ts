@@ -271,6 +271,67 @@ describe('SchedulerService lifecycle', () => {
     expect(h.runs).toEqual(['t-c'])
   })
 
+  it('a SAVED comment row does not block chain recovery, and an open lane on another session does', async () => {
+    const h = makeHarness()
+    const base = withSchedule(
+      createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c'),
+      { enabled: true, mode: 'chain', cron: '', primed: true },
+      at(2026, 1, 1, 0, 0),
+    )
+    const { task: ran } = startExecution(base, at(2026, 1, 1, 10, 0, 0), 'e1')
+    const settled = settleExecution(ran, 'e1', 'succeeded', at(2026, 1, 1, 10, 0, 31), undefined)
+    // A comment saved afterwards (cruise off — never injected) is the LAST row
+    // and has no endedAt. The retired last-row check read it as "still
+    // running" and stalled the chain forever.
+    const withSavedComment: typeof settled = {
+      ...settled,
+      executions: [...settled.executions, {
+        id: 'c1', sessionId: 's-2', startedAt: at(2026, 1, 1, 11, 0, 0), endedAt: undefined,
+        result: undefined, error: undefined, comment: '挂着的一条',
+      }],
+    }
+    h.setTasks([withSavedComment])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual(['t-c'])
+    // But a lane that is genuinely IN FLIGHT (an injected round on another
+    // session) must hold the next link back — recovery must not stack a run on
+    // top of a conversation the card is still working.
+    h.runs.length = 0
+    const withLiveLane: typeof settled = {
+      ...settled,
+      executions: [...settled.executions, {
+        id: 'c2', sessionId: 's-2', startedAt: at(2026, 1, 1, 11, 0, 0), endedAt: undefined,
+        result: undefined, error: undefined, comment: '正在跑的一条', injectedAt: at(2026, 1, 1, 11, 0, 1),
+      }],
+    }
+    h.setTasks([withLiveLane])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+  })
+
+  it('never restarts a chain whose last PLAIN run failed (失败不续)', async () => {
+    const h = makeHarness()
+    const base = withSchedule(
+      createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c'),
+      { enabled: true, mode: 'chain', cron: '', primed: true },
+      at(2026, 1, 1, 0, 0),
+    )
+    const { task: ran } = startExecution(base, at(2026, 1, 1, 10, 0, 0), 'e1')
+    const failed = settleExecution(ran, 'e1', 'failed', at(2026, 1, 1, 10, 0, 31), 'boom')
+    // A comment round settling afterwards must not make the failed run look
+    // like a success (the retired last-row read did exactly that).
+    const withGoodComment: typeof failed = {
+      ...failed,
+      executions: [...failed.executions, {
+        id: 'c1', sessionId: 's-2', startedAt: at(2026, 1, 1, 11, 0, 0), endedAt: at(2026, 1, 1, 11, 0, 5),
+        result: 'succeeded', error: undefined, comment: '后来跑通的留言',
+      }],
+    }
+    h.setTasks([withGoodComment])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+  })
+
   it('restarts a stalled chain FROM ANY SETTLED COLUMN — 完成后接续 never waits for a manual re-run', async () => {
     const h = makeHarness()
     const task = createTask({ title: 'c', description: '', prompt: '' }, at(2026, 1, 1, 0, 0), 't-c')
