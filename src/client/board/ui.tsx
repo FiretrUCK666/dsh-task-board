@@ -1,7 +1,7 @@
 /**
- * Shared UI primitives for the board: Button, Section, Notice, AttentionDot,
+ * Shared UI primitives for the board: Button, Section, Notice,
  * Icon. One source for button variants, section titles, the waiting notice
- * and the unread-dot system — every surface consumes these instead of
+ * and the icon set — every surface consumes these instead of
  * hand-rolled markup, so the whole board speaks one design language and
  * follows the native --dsw-* tokens (light/dark + any skin plugin) without
  * any per-surface styling drift.
@@ -151,15 +151,6 @@ export function Notice({ chip, children }: { chip: ReactNode; children: ReactNod
       <span>{children}</span>
     </div>
   )
-}
-
-/**
- * The unread-dot of the attention system: a small warn dot with a soft static
- * glow. The row it sits on breathes via the shared attention halo; the dot
- * itself stays still so a long list never competes with many moving dots.
- */
-export function AttentionDot({ title }: { title?: string }) {
-  return <span className={css.attentionDot} title={title} aria-label={title} />
 }
 
 /**

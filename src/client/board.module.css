@@ -2641,11 +2641,13 @@ textarea.input {
 
 /* Row-level attention: ONE state-bound glow — a soft inner halo (no per-row
    border, no flat tint) painted by the row's ::after layer, gated by the
-   STABLE data-glow attribute: waiting / running / settled-unread rows (glow =
-   attention) breathe; viewed / idle rows are quiet (the AttentionDot keeps
-   the unread signal). The animation is paused (not cancelled) whenever the
-   row is not glowing — the halo's opacity fades smoothly on state change and
-   no frame of a running pulse is ever torn out, so a row cannot flicker. */
+   STABLE data-glow attribute: waiting / running rows (glow = attention)
+   breathe; settled-unread and idle rows are quiet — the unread signal lives
+   on the board card only (a per-row second marker next to the card's own
+   breathing read as duplication). The animation is paused (not cancelled)
+   whenever the row is not glowing — the halo's opacity fades smoothly on
+   state change and no frame of a running pulse is ever torn out, so a row
+   cannot flicker. */
 .sessionRow::after {
   content: '';
   position: absolute;
@@ -2946,28 +2948,6 @@ textarea.input {
   flex: none;
   color: var(--dsw-alias-label-tertiary);
   white-space: nowrap;
-}
-
-/* The unread reminder of one execution row: a small warn dot with a soft
-   static glow (the row's attention breathes via the shared halo above) — no
-   per-row animation on the dot itself, so a long list never competes with
-   many moving dots. Cleared by opening the row's review page. */
-/* The unread marker of the attention system: a small warn dot with a soft
-   static glow. It is an OVERLAY badge on the row's leading mark (see
-   `.sessionRowLead`), so an unread row occupies exactly the same columns as a
-   read one — the signal never costs the title a pixel and never shifts a
-   neighbouring line off the shared x. Cleared by opening the row's page. */
-.attentionDot {
-  position: absolute;
-  /* The mark's top-right corner: centered on the declared line box, nudged up
-     so it reads as a badge on the glyph rather than a second glyph. */
-  left: calc(var(--dsh-tb-lead-icon) - var(--dsh-tb-dot) + 2px);
-  top: calc((var(--dsh-tb-row-line) - var(--dsh-tb-dot)) / 2 - 3px);
-  width: var(--dsh-tb-dot);
-  height: var(--dsh-tb-dot);
-  border-radius: 50%;
-  background: var(--dsh-tb-attention);
-  box-shadow: 0 0 4px var(--dsh-tb-attention);
 }
 
 /* Inline icon glyphs (Icon component): tiny, currentColor, non-shrinking. */

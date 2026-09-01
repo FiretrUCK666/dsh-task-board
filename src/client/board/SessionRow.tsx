@@ -16,10 +16,10 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import type { SessionChipShape, SessionRowState } from './session-chip.ts'
-import { AttentionDot, Button, Icon } from './ui.tsx'
+import { Button, Icon } from './ui.tsx'
 
 /** The unified session row (one grammar for every session of a task). */
-export function SessionRow({ state, chip, leading, meta, footer, unviewed, unviewedTitle, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle }: {
+export function SessionRow({ state, chip, leading, meta, footer, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle }: {
   /** Live session state (execution kind): rendered as data-state/data-waiting. */
   state?: SessionRowState
   /** Status chip on the top line (undefined = no chip). */
@@ -55,10 +55,12 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
   /** Tooltip of the rename affordance. */
   renameTitle?: string
 }) {
-  // ONE state-bound glow: waiting / running / settled-unread rows breathe
-  // attention; viewed / idle rows are quiet — the halo never toggles with the
-  // per-render unviewed boolean, so no row can flicker.
-  const glow = state === 'waiting' || state === 'running' || unviewed === true ? 'attention' : 'none'
+  // ONE state-bound glow: waiting / running rows breathe attention; everything
+  // else is quiet. Settled-unread rows deliberately carry NO per-row indicator
+  // (neither dot nor halo): the board card's own unread breathing already
+  // covers that state, and a second marker right next to the card reads as
+  // duplication.
+  const glow = state === 'waiting' || state === 'running' ? 'attention' : 'none'
   // Inline rename state: idle → editing → (saving). The pencil flips the
   // identity slot into a small input prefilled with the current title; the
   // input lives ON the row (no modal), Enter commits, Escape cancels.
@@ -113,7 +115,6 @@ export function SessionRow({ state, chip, leading, meta, footer, unviewed, unvie
             "跳来跳去、没对齐" is gone. The attention dot rides inside the lead
             slot (no reserved column, so titles never shift right). */}
         <span className={css.sessionRowLead}>
-          {unviewed === true && <AttentionDot title={unviewedTitle ?? ''} />}
           {leading}
         </span>
         {chip !== undefined && (
