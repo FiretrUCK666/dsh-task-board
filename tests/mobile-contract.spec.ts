@@ -567,6 +567,27 @@ describe('section entry buttons (hint row for the session area, action slot for 
   })
 })
 
+describe('composer under the soft keyboard (no row overlap)', () => {
+  it('no composer child shrinks below its content', () => {
+    // The composer is a height-constrained flex column when the keyboard
+    // shrinks the panel. A shrinking child is the overlap: the attachment
+    // strip collapsed to its 24px floor while its wrapped second line
+    // overflowed onto the send row (「排队/插话 和图片重叠」). flex:none on
+    // every child makes rows keep their real height and stack, never collide.
+    const guard = blockFrom(line => line.trim() === '.reviewComposer > * {')
+    expect(guard).toMatch(/flex:\s*none/)
+  })
+  it('the attachment strip is one scrollable line, never a wrapping block', () => {
+    const strip = ruleOf('attachStrip')
+    expect(strip).toMatch(/flex-wrap:\s*nowrap/)
+    expect(strip).toMatch(/overflow-x:\s*auto/)
+  })
+  it('attachment chips keep their width so the strip scrolls instead of squeezing', () => {
+    expect(ruleOf('attachChip')).toMatch(/flex:\s*none/)
+    expect(ruleOf('attachAdd')).toMatch(/flex:\s*none/)
+  })
+})
+
 describe('no raw color literals leak in (design-system rule)', () => {
   it('the whole sheet stays token-fed: no hex/rgb color literals', () => {
     // The board's hard rule: colors ride --dsw-*/--dsh-tb-* tokens only.

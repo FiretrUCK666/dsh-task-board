@@ -4547,6 +4547,16 @@ textarea.input {
   background: var(--dsh-tb-surface-float);
 }
 
+/* No composer child may shrink below its content. The composer is a
+   height-constrained flex column (the soft keyboard shrinks the panel); with
+   the default flex-shrink the attachment strip collapsed to its 24px floor
+   while its wrapped second line overflowed the box and painted OVER the send
+   row — the reported 「排队/插话 和图片重叠」. flex:none makes every row keep
+   its real height, so rows stack and never collide. */
+.reviewComposer > * {
+  flex: none;
+}
+
 /* The pending native-interaction card, pinned just above the composer (or
    inside the rail's scroll zone — same grammar everywhere): a plan awaiting
    confirmation or an ask_user_question. Surfaces live with the real tool
@@ -4661,7 +4671,12 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  /* ONE line that scrolls sideways, never wraps: a wrapped second line is what
+     used to collide with the send row under the keyboard. One line keeps the
+     composer compact so the send row stays visible; every chip (and its remove
+     button) stays reachable by scrolling. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
   min-height: 24px;
 }
 
@@ -4679,6 +4694,7 @@ textarea.input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   width: 24px;
   height: 24px;
   color: var(--dsh-tb-text-2);
@@ -4695,6 +4711,7 @@ textarea.input {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex: none;
   max-width: 180px;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
