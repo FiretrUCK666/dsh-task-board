@@ -203,7 +203,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                  is the user's own words, never gated by the task's execution
                  prompt (that gate belongs to task execution only). */
               disabled={sessionId === undefined}
-              onDrive={text => controller.submitComment(current.id, execution.id, text, text.startsWith('/')) !== undefined}
+              onDrive={(text, images) => controller.submitComment(current.id, execution.id, text, text.startsWith('/'), images.map(toPromptImage)) !== undefined}
               onSteer={text => sessionId === undefined
                 ? Promise.resolve(false)
                 : controller.steerComment(current.id, sessionId, text).then(result => result.ok)}

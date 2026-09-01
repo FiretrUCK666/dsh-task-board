@@ -2290,7 +2290,7 @@ export class BoardController {
    * @returns the queued comment round, or undefined when rejected (unknown
    *   task/execution, execution not settled).
    */
-  submitComment(taskId: string, executionId: string, text: string, command = false): ExecutionRecord | undefined {
+  submitComment(taskId: string, executionId: string, text: string, command = false, images?: readonly PromptImage[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -2313,6 +2313,7 @@ export class BoardController {
       command,
       sessionId: execution.sessionId,
       parentExecutionId: execution.id,
+      ...(images !== undefined && images.length > 0 ? { images } : {}),
     })
     this.tasks = this.tasks.map(candidate => candidate.id === taskId
       ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
@@ -2349,13 +2350,13 @@ export class BoardController {
    * @returns the queued comment round, or undefined when rejected (unknown
    *   task).
    */
-  submitSessionComment(taskId: string, sessionId: string, text: string, command = false): ExecutionRecord | undefined {
+  submitSessionComment(taskId: string, sessionId: string, text: string, command = false, images?: readonly PromptImage[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
-    return this.queueRuleComment(taskId, sessionId, trimmed, command)
+    return this.queueRuleComment(taskId, sessionId, trimmed, command, undefined, undefined, images)
   }
 
   /**
@@ -2371,7 +2372,7 @@ export class BoardController {
    * its on-complete rule (完成后续跑 loop); a user comment carries none and
    * never loops.
    */
-  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string, injectedAt?: number): ExecutionRecord | undefined {
+  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string, injectedAt?: number, images?: readonly PromptImage[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -2386,6 +2387,7 @@ export class BoardController {
         sessionId,
         sessionAnchor: sessionId,
         ...ruleId !== undefined ? { ruleId } : {},
+        ...(images !== undefined && images.length > 0 ? { images } : {}),
       }),
       // A STEER rule round is born already-injected: it is handed to the
       // session immediately, so the dispatcher must NEVER see it as a fresh

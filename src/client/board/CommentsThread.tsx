@@ -38,6 +38,11 @@ export function CommentsThread({ task, views, onCancel }: {
                   never stale text from an older message. */}
               {view.round.comment !== undefined && view.round.comment !== '' && <Markdown text={view.round.comment} />}
               {view.round.imageOnly === true && <span className={css.reviewCommentImage}>{t('review.commentImage')}</span>}
+              {/* A queued comment that carries pictures says so (the images
+                  ride the round and go out with it when the lane frees). */}
+              {view.round.promptImages !== undefined && view.round.promptImages.length > 0 && (
+                <span className={css.reviewCommentImage}>{t('review.commentImages', { n: String(view.round.promptImages.length) })}</span>
+              )}
             </span>
             <span className={css.reviewCommentMeta}>
               {/* 来源不再分家：直发/驱动/原生会话已并轨为一种「会话活动」，

@@ -154,7 +154,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               placeholder={t('detail.sessionDrivePlaceholder')}
               disabled={liveGone}
               hint={hint}
-              onDrive={text => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/')) !== undefined}
+              onDrive={(text, images) => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/'), images.map(toPromptImage)) !== undefined}
               onSteer={text => controller.steerComment(task.id, sessionId, text).then(result => result.ok)}
               onSteerImages={(text, images) => controller.steerCommentWithImages(task.id, sessionId, text, images.map(toPromptImage)).then(result => result.ok)}
             />

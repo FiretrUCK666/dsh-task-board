@@ -508,7 +508,7 @@ export function apply(ctx: ClientContext): void {
           ? { ok: true as const }
           : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
       },
-      sendComment: (sessionId, text, mode) => sendComment(sessionId, text, undefined, mode),
+      sendComment: (sessionId, text, mode, images) => sendComment(sessionId, text, images, mode),
       sendCommand,
       // Session rename: the OFFICIAL user-title write (host-level rename RPC
       // — works for any session id, not just bound/staged ones). The native

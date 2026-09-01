@@ -1298,6 +1298,16 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
     expect(store.load()[0].status).toBe('todo')
   })
 
+  it('a queued comment carries its images on the round (the send mode is the toggle, never the pictures)', async () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    const round = controller.submitSessionComment(task.id, 'linked-7', '看图', false, [{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
+    expect(round?.promptImages).toEqual([{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
+    // Persisted on the shared doc so every device sees the queued picture.
+    expect(store.load()[0].executions[0].promptImages).toEqual([{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
+  })
+
   it('rejects blank text and unknown tasks; a completed task is revived by its comment', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)

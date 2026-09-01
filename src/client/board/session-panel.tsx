@@ -798,11 +798,13 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
  * tooltip. Draft / steer mode / attached images live here (the per-session
  * draft slot, shared across panels); the caller supplies only the send
  * semantics:
- *   - onDrive(text) schedules a session-anchored comment round (true = saved,
- *     the draft clears) — / commands route through the native registry;
+ *   - onDrive(text, images) schedules a session-anchored comment round (true =
+ *     saved, the draft clears) — / commands route through the native registry;
+ *     any images ride the round and go out WITH it when the lane frees (排队
+ *     means wait, with or without pictures);
  *   - onSteer(text) delivers the comment straight to the session now;
- *   - onSteerImages(text, refs) delivers text + admitted image refs at once
- *     (images always go immediately — they belong to the current exchange).
+ *   - onSteerImages(text, images) delivers text + images at once (插话 with a
+ *     picture). The send mode is the user's toggle — images never force steer.
  */
 export function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, hint, onDrive, onSteer, onSteerImages }: {
   controller: BoardController
@@ -813,7 +815,7 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   disabled?: boolean
   /** The composer's own explanation (blocking reason, or the drive hint). */
   hint?: string
-  onDrive: (text: string) => boolean
+  onDrive: (text: string, images: readonly DraftImage[]) => boolean
   onSteer: (text: string) => Promise<boolean>
   onSteerImages: (text: string, images: readonly DraftImage[]) => Promise<boolean>
 }) {
@@ -850,24 +852,17 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
       if (storeKey !== undefined) draftStore.set(storeKey, text)
     }
     clear()
-    if (attachedImages.length > 0) {
-      // Images go out immediately through the steer path — a picture belongs
-      // to the current exchange, not a queue. The drafts carry their base64
-      // bytes; the host admits them durably as part of taking the prompt.
-      void onSteerImages(text, attachedImages).then(ok => {
-        if (!ok) { restore(); setSendError(t('review.sendFailed')) }
-      })
-      return
-    }
-    // Send mode: 排队 = the dispatcher injects a session-anchored message
-    // round (same queue as every comment); 插话 = deliver straight to the
-    // native session now, bypassing queue/budget/cruise. One message, two
-    // send modes, one grammar everywhere.
+    // The send mode is the user's toggle — NEVER overridden by the presence of
+    // images (that was the bug: a queued picture jumped the queue and sent
+    // immediately while the session was still running).
     if (steer) {
-      void onSteer(text).then(ok => { if (!ok) restore() })
+      const sent = attachedImages.length > 0 ? onSteerImages(text, attachedImages) : onSteer(text)
+      void sent.then(ok => { if (!ok) restore() })
       return
     }
-    if (!onDrive(text)) restore()
+    // 排队: the dispatcher injects this round (text + any pictures) when the
+    // session's lane is free — it waits behind the running turn, never jumps it.
+    if (!onDrive(text, attachedImages)) restore()
   }
   return (
     <div className={css.reviewComposer} {...dropProps}>

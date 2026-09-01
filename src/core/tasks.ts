@@ -33,6 +33,14 @@ export interface ExecutionRecord {
   /** The comment text when this round is a comment continuation (absent = a plain run). */
   comment?: string
   /**
+   * Images attached to a comment round (the same base64 wire shape as a task
+   * prompt image). A QUEUED comment carries its pictures on the round so the
+   * dispatcher sends text + images together when the lane frees — the send
+   * mode (排队 vs 插话) is the user's choice and is NEVER overridden by the
+   * mere presence of images.
+   */
+  promptImages?: TaskImage[]
+  /**
    * When the user last opened this execution's review page (ms epoch),
    * clearing its unread reminder. Absent on legacy rows — the display layer
    * falls back to the run's own latest activity, so old content never lights
@@ -664,6 +672,8 @@ export function newCommentRound(options: {
   sessionAnchor?: string
   /** The session automation rule that created this round (loop marker). */
   ruleId?: string
+  /** Images carried by the comment (queued sends deliver them with the text). */
+  images?: readonly TaskImage[]
 }): ExecutionRecord {
   return {
     id: options.id,
@@ -674,6 +684,9 @@ export function newCommentRound(options: {
     error: undefined,
     comment: options.text,
     ...(options.command === true ? { command: true } : {}),
+    ...(options.images !== undefined && options.images.length > 0
+      ? { promptImages: options.images.map(image => ({ ...image })) }
+      : {}),
     ...(options.parentExecutionId !== undefined ? { parentExecutionId: options.parentExecutionId } : {}),
     ...(options.sessionAnchor !== undefined ? { sessionAnchor: options.sessionAnchor } : {}),
     ...(options.ruleId !== undefined ? { ruleId: options.ruleId } : {}),

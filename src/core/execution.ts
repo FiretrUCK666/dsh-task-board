@@ -15,7 +15,7 @@
  * (a narrow slice of the real `ctx.sessions` / `ctx.workspaces` contracts)
  * so tests drive it with plain fakes.
  */
-import type { ExecutionRecord, TaskRecord } from './tasks.ts'
+import type { ExecutionRecord, TaskImage, TaskRecord } from './tasks.ts'
 
 /** The narrow sessions face the service needs. */
 export interface SessionsExecutionFace {
@@ -108,7 +108,7 @@ export interface AgentPresetSelectFace {
  * so an immediate rule message is genuinely immediate.
  */
 export interface CommentSendFace {
-  (sessionId: string, text: string, mode?: 'queue' | 'steer'): Promise<{ ok: true } | { ok: false; error: string }>
+  (sessionId: string, text: string, mode?: 'queue' | 'steer', images?: readonly TaskImage[]): Promise<{ ok: true } | { ok: false; error: string }>
 }
 
 /**
@@ -488,12 +488,20 @@ export class ExecutionService {
       }
       const driver = this.driverOf(sessionId)
       const send = this.env.sendComment
-        ?? (async (id, content) => {
+        ?? (async (id, content, m = 'queue' as const, imgs?: readonly TaskImage[]) => {
           const bound = this.driverOf(id)
           if (bound === undefined) return { ok: false as const, error: 'comment session is not ready' }
-          return bound.prompt([{ type: 'text', text: content }], mode)
+          const parts: unknown[] = []
+          if (content.trim() !== '') parts.push({ type: 'text', text: content })
+          for (const image of imgs ?? []) {
+            parts.push({ type: 'image', mediaType: image.mediaType, data: image.data, ...image.name !== undefined ? { name: image.name } : {} })
+          }
+          return bound.prompt(parts, m)
         })
-      const result = await send(sessionId, text, mode)
+      // A queued comment carries its pictures on the round: text + images go
+      // out together when the dispatcher injects it (the send mode is the
+      // user's choice, never forced to steer just because images are present).
+      const result = await send(sessionId, text, mode, execution.promptImages)
       if (!result.ok) {
         onEvent({
           kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',

@@ -785,6 +785,30 @@ describe('ExecutionService.commentRun', () => {
     ])
   })
 
+  it('a queued comment round delivers its text AND its images together through the comment face', async () => {
+    const { env } = makeEnv({ blankSummary: false })
+    const seen: Array<{ text: string; images?: readonly unknown[] }> = []
+    env.sendComment = async (_id, text, _mode, images) => {
+      seen.push({ text, images })
+      return { ok: true }
+    }
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = {
+      ...running.executions[0],
+      sessionId: 's-1',
+      comment: '看图',
+      promptImages: [{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }],
+    }
+    await service.commentRun(running, round, 's-1', '看图', () => {})
+    // The pictures ride the round and go out with the text when the lane frees
+    // — the send mode is the toggle, never forced to steer by having images.
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.text).toBe('看图')
+    expect(seen[0]?.images).toEqual([{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
+  })
+
   it('settles a rejected comment send as failed', async () => {
     const { env } = makeEnv()
     env.sendComment = async () => ({ ok: false, error: 'prompt rejected' })
