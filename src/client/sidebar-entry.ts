@@ -183,12 +183,18 @@ export function mountSidebarEntry(controller: BoardController): () => void {
   }
 
   // The shell re-renders its own way (boot settlement, pending UI swaps):
-  // one body-level observer for structural changes plus a light heartbeat
-  // for visibility-only shifts (a sidebar that renders but stays hidden
-  // never mutates the tree again). The pair converges monotonically to the
-  // invariant "row visible XOR fallback present".
+  // one body-level observer for structural changes AND class/attribute flips
+  // (a mobile drawer opening/closing toggles classes without a DOM insert —
+  // the entry's visibility must be re-tested the moment that happens), plus a
+  // light heartbeat for any visibility-only shift. The pair converges
+  // monotonically to the invariant "row visible XOR fallback present".
   const waitObserver = new MutationObserver(() => { placeIfVisible() })
-  waitObserver.observe(document.body, { childList: true, subtree: true })
+  waitObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'style', 'aria-hidden', 'hidden', 'inert'],
+  })
 
   const settleTimer = setTimeout(() => { ensureFallback() }, FALLBACK_AFTER_MS)
   const heartbeat = window.setInterval(() => {

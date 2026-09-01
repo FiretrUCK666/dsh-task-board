@@ -15,13 +15,20 @@
 
 /**
  * Whether a mounted entry is actually visible to the user. Requires the
- * element to be connected to the document AND to have laid-out boxes
- * (0 rects = hidden by CSS, off-viewport, or rendered inside a detached
- * tree — a row in any of those states is not an entry).
+ * element to be connected, to have laid-out boxes, AND to intersect the
+ * viewport — the last condition is what keeps an off-canvas mobile sidebar
+ * (its drawer slides the entry out of the viewport while the element keeps
+ * its layout rects) from ever counting as "visible". A row in any other
+ * state — hidden by CSS, off-viewport, or detached — is not an entry.
  */
 export function entryVisible(element: HTMLElement | undefined): boolean {
   if (element === undefined) return false
-  return element.isConnected && element.getClientRects().length > 0
+  if (!element.isConnected) return false
+  const rect = element.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return false
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+  return rect.right > 0 && rect.bottom > 0 && rect.left < viewportWidth && rect.top < viewportHeight
 }
 
 /**
