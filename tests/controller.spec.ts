@@ -1187,6 +1187,39 @@ describe('comments', () => {
     expect(exec.commentCalls.map(call => call.sessionId)).toEqual(['s-1'])
   })
 
+  it('a run whose session is not bound yet holds the card: no comment slips into a lane being acquired', async () => {
+    // `connectSession` resolves asynchronously and can hand back a session the
+    // card already has work in. Admitting a comment during that window would
+    // put two rounds on one session — so an UNBOUND in-flight round blocks
+    // admission for the whole card until `started` names its lane.
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    await controller.runTask(task.id)
+    expect(stub.runCalls).toHaveLength(1) // 'started' deliberately NOT fired yet
+    controller.submitSessionComment(task.id, 's-1', '别插进来')
+    expect(exec.commentCalls).toHaveLength(0)
+    // The lane binds to a DIFFERENT session → s-1 is provably idle → it goes.
+    const run = stub.runCalls[0]
+    run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-9' })
+    expect(exec.commentCalls.map(call => call.sessionId)).toEqual(['s-1'])
+  })
+
+  it('a run that binds to the very session a comment waits for keeps that comment queued', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    controller.setCruiseEnabled(true)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    await controller.runTask(task.id)
+    const run = stub.runCalls[0]
+    controller.submitSessionComment(task.id, 's-1', '等这条会话')
+    run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-1' })
+    expect(exec.commentCalls).toHaveLength(0)
+    run.fire({ kind: 'settled', taskId: task.id, executionId: run.executionId, outcome: 'succeeded' })
+    expect(exec.commentCalls.map(call => call.sessionId)).toEqual(['s-1'])
+  })
+
   it('injects a pending comment when its own session settles back (cruise on)', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
@@ -1344,7 +1377,8 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
     controller.setCruiseLimit(3)
     // A plain run occupies the card's own session (the card is 进行中).
     await controller.runTask(task.id)
-    expect(stub.runCalls).toHaveLength(1)
+    const run = stub.runCalls[0]
+    run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-busy' })
     expect(controller.getSnapshot().tasks[0].status).toBe('running')
     // A comment on a DIFFERENT, idle session must not wait for it.
     controller.submitSessionComment(task.id, 's-idle', '另一条会话的话')
@@ -1352,21 +1386,23 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
     // Both are in flight now: the card stays 进行中 until the LAST one settles.
     stub.commentCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.commentCalls[0].executionId, outcome: 'succeeded' })
     expect(controller.getSnapshot().tasks[0].status).toBe('running')
-    stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: stub.runCalls[0].executionId, outcome: 'succeeded' })
+    run.fire({ kind: 'settled', taskId: task.id, executionId: run.executionId, outcome: 'succeeded' })
     expect(controller.getSnapshot().tasks[0].status).toBe('review')
   })
 
   it('two comments on the SAME session stay strictly ordered (a session takes one turn at a time)', async () => {
     const stub = new StubExec()
-    const { controller } = makeController(stub)
-    const task = controller.createTask({ title: '同一条会话', description: '', prompt: 'run' })!
+    const { controller, stub: exec } = makeController(stub)
     controller.setCruiseEnabled(true)
     controller.setCruiseLimit(3)
-    const first = controller.submitSessionComment(task.id, 's-x', '第一句')!
-    const second = controller.submitSessionComment(task.id, 's-x', '第二句')!
-    expect(stub.commentCalls.map(call => call.executionId)).toEqual([first.id])
-    stub.commentCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: first.id, outcome: 'succeeded' })
-    expect(stub.commentCalls.map(call => call.executionId)).toEqual([first.id, second.id])
+    // A settled card (not a todo one: a todo card would also be cruise-picked
+    // up, and that run's lane is the subject of another test below).
+    const { taskId } = await settledReviewTask(stub, controller)
+    const first = controller.submitSessionComment(taskId, 's-1', '第一句')!
+    const second = controller.submitSessionComment(taskId, 's-1', '第二句')!
+    expect(exec.commentCalls.map(call => call.executionId)).toEqual([first.id])
+    exec.commentCalls[0].fire({ kind: 'settled', taskId, executionId: first.id, outcome: 'succeeded' })
+    expect(exec.commentCalls.map(call => call.executionId)).toEqual([first.id, second.id])
   })
 
   it('cancels a pending session-anchored comment but never an injected one', async () => {
