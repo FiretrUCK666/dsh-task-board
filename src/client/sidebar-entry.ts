@@ -6,8 +6,12 @@
  * taken), so — following the established DOM-extension approach — the
  * entry row is injected between the shell's New Session button and the
  * workspace browser. The injection self-heals: a MutationObserver watches the
- * sidebar root and re-inserts the row whenever a React re-render displaces it
- * (re-insertion happens in the same frame, before paint, so no flicker).
+ * body (structure + drawer/rail classes) and re-adopts + re-paints the row
+ * whenever the sidebar mounts, is wiped by a React re-render, or toggles
+ * (re-insertion happens in the same frame, before paint, so no flicker). The
+ * row's geometry is pure CSS (a full-width sidebar row), never mirrored from
+ * the native button — a JS pixel mirror reads 0 while the drawer is closed and
+ * leaves the row invisible (the flaky "button won't show" this design avoids).
  *
  * The row is plain DOM (no React tree) so it can never disturb the shell's
  * reconciliation; the board view it toggles is a separate React root mounted
@@ -73,30 +77,25 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
 }
 
 /**
- * Mirror the shell's New Session button onto the entry row — geometry
- * (width, right-aligned) plus the visual surface (fill + text color, exposed
- * as CSS custom properties consumed by .entry). The fill is mirrored as a
- * CSS variable so the stylesheet keeps control of hover/active states while
- * the actual fill always matches the native button: under a glass skin the
- * native button stays solid, and copying its computed fill is exactly what
- * keeps the entry from turning translucent. Every mirrored value resets on
- * the collapsed rail (icon-only, transparent like the shell).
+ * Mirror the shell's New Session button's VISUAL SURFACE onto the entry row —
+ * the fill + text color, exposed as CSS custom properties consumed by .entry.
+ * Geometry is NOT mirrored (it is pure CSS: a full-width row) — reading the
+ * native button's pixel width is exactly what broke when the drawer was closed
+ * (offsetWidth 0 → an invisible 0px row that only fixed itself on some later
+ * re-render). The fill is mirrored as a variable so the stylesheet keeps
+ * hover/active control while the actual fill matches the native button under
+ * any skin. On the collapsed rail the vars are cleared so the CSS icon-only
+ * rule (transparent) applies.
  */
 function syncEntrySurface(entry: HTMLButtonElement, root: HTMLElement): void {
   const collapsed = root.closest('[data-sidebar-collapsed]') !== null
   if (collapsed) {
-    entry.style.width = ''
-    entry.style.marginLeft = ''
-    entry.style.marginRight = ''
     entry.style.removeProperty('--dsh-tb-entry-fill')
     entry.style.removeProperty('--dsh-tb-entry-color')
     return
   }
   const button = newSessionButton(root)
   if (button === undefined) return
-  entry.style.width = `${button.offsetWidth}px`
-  entry.style.marginLeft = 'auto'
-  entry.style.marginRight = '2px'
   const native = getComputedStyle(button)
   entry.style.setProperty('--dsh-tb-entry-fill', native.backgroundColor)
   entry.style.setProperty('--dsh-tb-entry-color', native.color)
@@ -117,31 +116,27 @@ export function mountSidebarEntry(controller: BoardController): () => void {
   const entry = createEntry(controller)
   let disposed = false
 
-  const syncSurface = (): void => {
-    const root = entry.parentElement ?? sidebarRoot()
-    if (root === undefined) return
-    syncEntrySurface(entry, root)
-  }
-
-  /** One placement pass. Re-queries the sidebar root (never frozen) and
-   *  re-inserts the row if a React re-render displaced it. */
+  /** One idempotent placement pass: adopt the CURRENT sidebar root (re-queried,
+   *  never frozen — a remounted sidebar in a new subtree is re-adopted) and
+   *  re-paint the surface. Cheap to call on every mutation. */
   const place = (): void => {
     if (disposed) return
-    if (entry.isConnected && entry.parentElement !== null) {
-      // Already placed in a live sidebar root — just re-sync the surface (the
-      // shell may have collapsed/expanded).
-      syncSurface()
-      return
-    }
     const root = sidebarRoot()
     if (root === undefined) return
-    if (placeEntry(root, entry)) syncSurface()
+    if (placeEntry(root, entry)) syncEntrySurface(entry, root)
   }
 
-  // The shell re-renders its own way (boot settlement, pending UI swaps): one
-  // body-level observer re-inserts the row whenever the sidebar tree changes.
-  const waitObserver = new MutationObserver(() => { place() })
-  waitObserver.observe(document.body, { childList: true, subtree: true })
+  // The shell re-renders its own way (boot settlement, pending UI swaps) and
+  // toggles the drawer / rail via classes: watch structural changes (mount /
+  // wipe of the row) AND attribute flips (collapse, drawer open/close) so the
+  // row is re-adopted and re-painted the moment anything relevant moves.
+  const observer = new MutationObserver(() => { place() })
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'style', 'aria-hidden', 'hidden', 'data-sidebar-collapsed'],
+  })
 
   // Reflect the board's open state on the row (active highlight).
   const unsubscribe = controller.subscribe(() => {
@@ -153,7 +148,7 @@ export function mountSidebarEntry(controller: BoardController): () => void {
 
   return () => {
     disposed = true
-    waitObserver.disconnect()
+    observer.disconnect()
     unsubscribe()
     entry.remove()
   }

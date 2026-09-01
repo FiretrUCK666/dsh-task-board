@@ -175,10 +175,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* --- sidebar entry row ------------------------------------------------------- */
 
-/* The entry mirrors the shell's 新会话 button exactly: same geometry, same
-   icon glyph, same typography — it reads as a sibling action in the logo
-   row area. Width is mirrored at runtime (syncEntrySurface). */
+/* The entry is a self-contained full-width sidebar row: its geometry is pure
+   CSS (never mirrored from the native button in JS — a JS pixel mirror reads
+   0 while the drawer is closed and leaves the row invisible until some later
+   re-render, the exact flaky "button won't show" this avoids). Only the fill /
+   text COLOR is mirrored at runtime (syncEntrySurface), and even that has a
+   token fallback so the row looks right before the shell mounts. */
 .entry {
+  box-sizing: border-box;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
