@@ -440,12 +440,17 @@ export function buildApi(ctx: ClientContext): ApiFace {
     result: { ok: false as const, error: { code: 'remote/unavailable', message: `the live host does not serve ${label}` } },
   })
 
+  /** Log one named endpoint failure so a board surface's 「暂不可用」is diagnosable from the console. */
+  const warnFailure = (label: string, error: { readonly code: string; readonly message: string }): void => {
+    console.warn(`[dsh-task-board] ${label} failed -> ${error.code}: ${error.message}`)
+  }
+
   /** Map a remote call result into the domain face's envelope. */
-  const asResult = async <T>(call: Promise<RemoteResult<unknown>>): Promise<{ result: RemoteResult<T> }> => {
+  const asResult = async <T>(label: string, call: Promise<RemoteResult<unknown>>): Promise<{ result: RemoteResult<T> }> => {
     const result = await call
-    return result.ok
-      ? { result: { ok: true as const, value: result.value as T } }
-      : { result: { ok: false as const, error: result.error } }
+    if (result.ok) return { result: { ok: true as const, value: result.value as T } }
+    warnFailure(label, result.error)
+    return { result: { ok: false as const, error: result.error } }
   }
 
   return {
@@ -453,7 +458,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
       prompt: async request => {
         const call = methodOf('session', 'prompt', remote.session.prompt)
         if (call === undefined) return unavailable('session.prompt')
-        const result = await asResult<{ accepted: true }>(call({
+        const result = await asResult('session.prompt', call({
           requestId: `tb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
           sessionId: request.sessionId,
           mode: request.mode,
@@ -466,7 +471,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
       selectModel: request => {
         const call = methodOf('session', 'selectModel', remote.session.selectModel)
         if (call === undefined) return unavailable('session.selectModel')
-        return asResult<{ selected: ModelSelection }>(call({
+        return asResult<{ selected: ModelSelection }>('session.selectModel', call({
           sessionId: request.sessionId,
           provider: request.provider,
           model: request.model,
@@ -512,13 +517,15 @@ export function buildApi(ctx: ClientContext): ApiFace {
           }
         } catch (error) {
           const failure = error as Partial<RemoteFailure>
+          const failureBody = {
+            code: typeof failure.code === 'string' ? failure.code : 'follow/stream-failed',
+            message: typeof failure.message === 'string' ? failure.message : String(error),
+          }
+          warnFailure('session.follow', failureBody)
           return {
             result: {
               ok: false as const,
-              error: {
-                code: typeof failure.code === 'string' ? failure.code : 'follow/stream-failed',
-                message: typeof failure.message === 'string' ? failure.message : String(error),
-              },
+              error: failureBody,
             },
           }
         }
@@ -526,14 +533,14 @@ export function buildApi(ctx: ClientContext): ApiFace {
       rename: request => {
         const call = methodOf('session', 'rename', remote.session.rename)
         if (call === undefined) return unavailable('session.rename')
-        return asResult<{ title: string; seq: number }>(
+        return asResult<{ title: string; seq: number }>('session.rename',
           call({ sessionId: request.sessionId, title: request.title }),
         )
       },
       attachment: request => {
         const call = methodOf('session', 'attachment', remote.session.attachment)
         if (call === undefined) return unavailable('session.attachment')
-        return asResult<{ attachment: { mediaType: string }; data: string }>(
+        return asResult<{ attachment: { mediaType: string }; data: string }>('session.attachment',
           call({ sessionId: request.sessionId, attachmentId: request.attachmentId as never }),
         )
       },
@@ -545,7 +552,10 @@ export function buildApi(ctx: ClientContext): ApiFace {
         const call = methodOf('session', 'modelCatalog', remote.session.modelCatalog)
         if (call === undefined) return unavailable('session.modelCatalog')
         const result = await call()
-        if (!result.ok) return { result: { ok: false as const, error: result.error } }
+        if (!result.ok) {
+          warnFailure('session.modelCatalog', result.error)
+          return { result: { ok: false as const, error: result.error } }
+        }
         const catalog = result.value as {
           default?: { provider?: string; model?: string; reasoningEffort?: string }
           groups?: readonly ModelProviderGroup[]
@@ -571,7 +581,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
       list: request => {
         const call = methodOf('skills', 'list', remote.skills.list)
         if (call === undefined) return unavailable('skills.list')
-        return asResult<{ skills: readonly SkillEntry[] }>(
+        return asResult<{ skills: readonly SkillEntry[] }>('skills.list',
           call({ sessionId: request.sessionId }),
         )
       },
@@ -580,12 +590,12 @@ export function buildApi(ctx: ClientContext): ApiFace {
       list: () => {
         const call = methodOf('agentPresets', 'list', remote.agentPresets.list)
         if (call === undefined) return unavailable('agentPresets.list')
-        return asResult<{ presets: readonly AgentPresetEntry[] }>(call())
+        return asResult<{ presets: readonly AgentPresetEntry[] }>('agentPresets.list', call())
       },
       select: request => {
         const call = methodOf('agentPresets', 'select', remote.agentPresets.select)
         if (call === undefined) return unavailable('agentPresets.select')
-        return asResult<unknown>(call(request.sessionId, request.agentPreset))
+        return asResult<unknown>('agentPresets.select', call(request.sessionId, request.agentPreset))
       },
     },
     events: {

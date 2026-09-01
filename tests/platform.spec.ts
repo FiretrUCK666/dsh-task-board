@@ -217,6 +217,22 @@ describe('buildApi endpoint wiring', () => {
     error.mockRestore()
   })
 
+  it('warns the named endpoint when a remote call returns a failure', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { api } = fakeApi({
+      'session.modelCatalog': {
+        ok: false,
+        error: { code: 'gateway/invocation-unavailable', message: 'no active Remote method exports this endpoint' },
+      },
+    })
+    const response = await api.sessions.models({})
+    expect(response.result.ok).toBe(false)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('session.modelCatalog failed -> gateway/invocation-unavailable'),
+    )
+    warn.mockRestore()
+  })
+
   it('respond is a degraded stub: warns and never accepts', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { api } = fakeApi()
