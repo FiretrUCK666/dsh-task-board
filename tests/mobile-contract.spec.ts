@@ -263,6 +263,16 @@ describe('form-row grammar (give way, never crush)', () => {
     expect(compact).not.toMatch(/\.detailFooter\s*,[^}]*flex-wrap/)
   })
 
+  it('no auto-margin is used to right-align anything, anywhere on the board', () => {
+    // The rule is general: `margin-left:auto` right-aligns whichever item
+    // happens to START the line it lands on, so every one of them is a
+    // wrap-away-from-becoming-a-mess waiting to happen. The whole sheet is
+    // swept (code declarations only — prose in comments is matched by the
+    // `;` requirement), so a new one fails the build instead of review.
+    const declarations = source.match(/margin-(left|right):\s*auto\s*;/g) ?? []
+    expect(declarations).toEqual([])
+  })
+
   it('secondary dialog actions live in the action row, not on a row of their own', () => {
     // A full-width flex-end toolbar above an empty list is the "big blank top
     // with one stray button" look.

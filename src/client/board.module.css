@@ -4158,20 +4158,29 @@ textarea.input {
   flex: none;
 }
 
+/* The meter head is a named grid (reading | percent | figures), not a flex
+   row with an auto margin: the auto-margin spelling is the hierarchy form the
+   board bans, and it breaks the moment anyone adds `flex-wrap`. The figures
+   track is the ellipsis slot (a token-heavy reading must never push the
+   numbers out of the box). */
 .reviewMeterHead {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-areas: "reading percent figures";
   align-items: baseline;
   gap: 8px;
   min-width: 0;
 }
 
 .reviewMeterReading {
+  grid-area: reading;
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
 }
 
 .reviewMeterPercent {
+  grid-area: percent;
   font-size: 12px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
@@ -4190,7 +4199,7 @@ textarea.input {
 }
 
 .reviewMeterFigures {
-  margin-left: auto;
+  grid-area: figures;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4489,14 +4498,35 @@ textarea.input {
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* A comment's meta line is a named grid (chip | time | cancel): the cancel
+   action sits at the line's end by AREA, not by an auto margin (the banned
+   「靠右」 spelling, which right-aligns whichever item happens to start a
+   wrapped line). Every member is placed by name — an auto-placed child of a
+   named grid would fall into an implicit row and break the line. */
 .reviewCommentMeta {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "chip time cancel";
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.reviewCommentMeta > .chip {
+  grid-area: chip;
+}
+
+.reviewCommentTime {
+  grid-area: time;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
 .reviewCommentCancel {
-  margin-left: auto;
+  grid-area: cancel;
+  justify-self: end;
   flex: none;
   padding: 0;
   font-size: 12px;
@@ -4510,12 +4540,6 @@ textarea.input {
 
 .reviewCommentCancel:hover {
   color: var(--dsw-alias-state-error-primary);
-}
-
-.reviewCommentTime {
-  font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
-  font-variant-numeric: tabular-nums;
 }
 
 /* The sticky "Latest" affordance inside a scroll region: shown only while
