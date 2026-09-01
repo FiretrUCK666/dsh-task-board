@@ -46,7 +46,10 @@ export function mountBoard(controller: BoardController): () => void {
     column.appendChild(container)
     // One inset variable for every floating panel: the soft keyboard shrinks
     // the dialog stage instead of burying its header (see keyboard-inset.ts).
-    detachKeyboardInset = watchKeyboardInset(container)
+    // Written at the ROOT — a panel portal lands in the board box (or, before
+    // the column arrives, on body), so the variable must ride an ancestor of
+    // EVERY possible portal target, not just the board container.
+    detachKeyboardInset = watchKeyboardInset(document.documentElement)
     root = createRoot(container)
     root.render(<TaskBoard controller={controller} />)
   }
