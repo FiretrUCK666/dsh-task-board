@@ -908,13 +908,15 @@ export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropD
   }
   if (task.status === target) return { kind: 'none' }
   if (busy && (target === 'review' || target === 'done')) return { kind: 'reject', reason: 'busy' }
-  // Leaving 进行中 while its own round is still open would ORPHAN that round:
-  // no surface settles a parked card's plain run, so the zombie would hold a
-  // concurrency slot and (through the open-round gate on external recording)
-  // swallow every future native turn of its session — one drag used to be
-  // enough to break the card permanently. The runner settles; then it moves.
-  const latest = task.executions[task.executions.length - 1]
-  if (task.status === 'running' && latest !== undefined && latest.endedAt === undefined) {
+  // Leaving 进行中 while ANY of its rounds is still open would ORPHAN that
+  // round: no surface settles a parked card's plain run, so the zombie would
+  // hold a concurrency slot and (through the open-round gate on external
+  // recording) swallow every future native turn of its session — one drag used
+  // to be enough to break the card permanently. The runner settles; then it
+  // moves. (The judgment is `busy`, i.e. "any round in flight" — testing the
+  // LAST record here was the single-lane assumption: with several sessions
+  // running, the open one is often not the newest row.)
+  if (task.status === 'running' && busy) {
     return { kind: 'reject', reason: 'busy' }
   }
   return { kind: 'move', status: target }

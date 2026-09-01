@@ -434,6 +434,28 @@ describe('resolveCardDrop', () => {
     expect(resolveCardDrop(task, 'todo')).toEqual({ kind: 'reject', reason: 'busy' })
   })
 
+  it('refuses the move when the open round is NOT the last record (several sessions on one card)', () => {
+    // The single-lane assumption lived here: the guard tested the LAST row.
+    // With per-session lanes the newest row is often a conversation that
+    // already finished while an older one still runs — dragging then orphaned
+    // the live round (it held a slot and swallowed its session's native turns
+    // until the watchdog released it three minutes later).
+    const { task } = startExecution(sampleTask(), NOW, 'e1')
+    const withLaterSettled: TaskRecord = {
+      ...task,
+      executions: [
+        { ...task.executions[0], sessionId: 's-1' },
+        {
+          id: 'e2', sessionId: 's-2', startedAt: NOW + 1, endedAt: NOW + 5,
+          result: 'succeeded' as const, error: undefined,
+        },
+      ],
+    }
+    expect(withLaterSettled.executions[withLaterSettled.executions.length - 1].endedAt).toBeDefined()
+    expect(resolveCardDrop(withLaterSettled, 'todo')).toEqual({ kind: 'reject', reason: 'busy' })
+    expect(resolveCardDrop(withLaterSettled, 'backlog')).toEqual({ kind: 'reject', reason: 'busy' })
+  })
+
   it('a saved (never-started) comment round still allows free movement', () => {
     // Only an OPEN round on a RUNNING card is the orphan case; a parked card
     // with a queued comment is not busy at all.
