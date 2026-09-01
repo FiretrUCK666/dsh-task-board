@@ -269,6 +269,8 @@ export interface SessionListSummary {
   cwd?: string
   running: boolean
   completed?: boolean
+  /** Host "never started" flag: only a blank session may be reused for a run. */
+  blank?: boolean
 }
 
 /** The session-list snapshot `ctx.sessions.list` exposes. */

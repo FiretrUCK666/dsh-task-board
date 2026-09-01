@@ -61,9 +61,12 @@ function makeEnv(overrides: {
   commandResult?: { ok: true; value: { matched: boolean } } | { ok: false; error: unknown }
   sendCommand?: ExecutionEnvironment['sendCommand']
   commandGraceMs?: number
+  /** Pre-register the workspace session as host-blank (reusable). "Session
+   *  vanished" cases pass false so the id stays absent from the list. */
+  blankSummary?: boolean
 } = {}) {
   const drivers = new Map<string, FakeDriver>()
-  const summaries = new Map<string, { running: boolean }>()
+  const summaries = new Map<string, { running: boolean; blank?: boolean }>()
   const listListeners = new Set<() => void>()
   const createSessionCalls: string[] = []
   const makeDriver = (): FakeDriver => {
@@ -74,10 +77,11 @@ function makeEnv(overrides: {
   }
   // The default workspace owns its session (official sessionIds): the reuse
   // path hands the SAME driver back on every run, mirroring the real runtime
-  // where the bound Session object is stable per host session. The host-list
-  // summary is NOT pre-registered: "session vanished" cases depend on the id
-  // being absent from the list.
+  // where the bound Session object is stable per host session. Reuse only
+  // ever happens for a host-BLANK session, so the default summary carries
+  // blank:true; a "session vanished" case opts out (blankSummary:false).
   drivers.set('s-1', makeDriver())
+  if (overrides.blankSummary !== false) summaries.set('s-1', { running: false, blank: true })
   const env: ExecutionEnvironment = {
     ...overrides.commandGraceMs !== undefined ? { commandGraceMs: overrides.commandGraceMs } : {},
     sessions: {
@@ -105,7 +109,7 @@ function makeEnv(overrides: {
       createSessionCalls.push(workspaceId ?? '')
       const driver = makeDriver()
       drivers.set('s-1', driver)
-      summaries.set('s-1', { running: false })
+      summaries.set('s-1', { running: false, blank: true })
       return 's-1'
     },
     ...overrides.sendCommand !== undefined ? { sendCommand: overrides.sendCommand } : {},
@@ -322,7 +326,7 @@ describe('ExecutionService.run', () => {
     const connected = new FakeDriver()
     const env: ExecutionEnvironment = {
       sessions: {
-        list: { getSnapshot: () => ({ phase: 'ready', byId: {} }), subscribe: () => () => {} },
+        list: { getSnapshot: () => ({ phase: 'ready', byId: { 's-1': { running: false, blank: true } } }), subscribe: () => () => {} },
         binding: () => ({ session: connected }),
       },
       workspaces: {
@@ -356,7 +360,7 @@ describe('ExecutionService.run', () => {
   it('settles failed when the execution session never becomes ready', async () => {
     const env: ExecutionEnvironment = {
       sessions: {
-        list: { getSnapshot: () => ({ phase: 'ready', byId: {} }), subscribe: () => () => {} },
+        list: { getSnapshot: () => ({ phase: 'ready', byId: { 's-1': { running: false, blank: true } } }), subscribe: () => () => {} },
         binding: () => undefined,
       },
       workspaces: {
@@ -391,8 +395,8 @@ describe('ExecutionService.run', () => {
     // snapshot (turnEnds stays at baseline). The host list flip is the
     // completion signal; the raw history tail proves the turn ran.
     const connected = new FakeDriver()
-    const summaries = new Map<string, { running: boolean }>()
-    summaries.set('s-1', { running: true })
+    const summaries = new Map<string, { running: boolean; blank?: boolean }>()
+    summaries.set('s-1', { running: true, blank: true })
     const listeners = new Set<() => void>()
     const env: ExecutionEnvironment = {
       sessions: {
@@ -426,7 +430,7 @@ describe('ExecutionService.run', () => {
     expect(events.map(e => e.kind)).toEqual(['started'])
 
     // The host flips the session to finished → the watch settles.
-    summaries.set('s-1', { running: false })
+    summaries.set('s-1', { running: false, blank: true })
     for (const fn of [...listeners]) fn()
     await new Promise(resolve => { setTimeout(resolve, 0) })
     expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'succeeded' })
@@ -434,8 +438,8 @@ describe('ExecutionService.run', () => {
 
   it('settles a cold execution session as failed from an error turn in the history tail', async () => {
     const connected = new FakeDriver()
-    const summaries = new Map<string, { running: boolean }>()
-    summaries.set('s-1', { running: false })
+    const summaries = new Map<string, { running: boolean; blank?: boolean }>()
+    summaries.set('s-1', { running: false, blank: true })
     const env: ExecutionEnvironment = {
       sessions: {
         list: {
@@ -466,8 +470,8 @@ describe('ExecutionService.run', () => {
     // The list reports not-running, but the history tail has no turn/end:
     // the prompt may still be queued, so the watch must stay pending.
     const connected = new FakeDriver()
-    const summaries = new Map<string, { running: boolean }>()
-    summaries.set('s-1', { running: false })
+    const summaries = new Map<string, { running: boolean; blank?: boolean }>()
+    summaries.set('s-1', { running: false, blank: true })
     const listeners = new Set<() => void>()
     const env: ExecutionEnvironment = {
       sessions: {
@@ -495,7 +499,7 @@ describe('ExecutionService.run', () => {
     await promise
     expect(events.map(e => e.kind)).toEqual(['started'])
 
-    summaries.set('s-1', { running: false })
+    summaries.set('s-1', { running: false, blank: true })
     for (const fn of [...listeners]) fn()
     await new Promise(resolve => { setTimeout(resolve, 0) })
     // Still no turn evidence → no settle.
@@ -641,7 +645,7 @@ describe('ExecutionService.reconcile', () => {
   it('settles a finished session by its agent error (warm snapshot)', async () => {
     const { env, drivers, summaries } = makeEnv()
     drivers.set('s-1', new FakeDriver())
-    summaries.set('s-1', { running: false })
+    summaries.set('s-1', { running: false, blank: true })
     drivers.get('s-1')!.setSnapshot({ running: false, lastAgentError: 'x', turns: 1 })
     const service = new ExecutionService(env)
     const task = sampleTask()
@@ -655,7 +659,7 @@ describe('ExecutionService.reconcile', () => {
 
   it('settles a finished cold session as succeeded via the list summary', async () => {
     const { env, summaries } = makeEnv()
-    summaries.set('s-1', { running: false })
+    summaries.set('s-1', { running: false, blank: true })
     const service = new ExecutionService(env)
     const task = sampleTask()
     const { task: running } = startExecution(task, NOW, 'exec-1')
@@ -665,7 +669,7 @@ describe('ExecutionService.reconcile', () => {
 
   it('detects failure of a cold session from the raw history tail', async () => {
     const { env, summaries } = makeEnv()
-    summaries.set('s-1', { running: false })
+    summaries.set('s-1', { running: false, blank: true })
     const service = new ExecutionService({
       ...env,
       history: {
@@ -685,7 +689,7 @@ describe('ExecutionService.reconcile', () => {
 
   it('falls back to succeeded when the history tail has no error turn', async () => {
     const { env, summaries } = makeEnv()
-    summaries.set('s-1', { running: false })
+    summaries.set('s-1', { running: false, blank: true })
     const service = new ExecutionService({
       ...env,
       history: {
@@ -706,7 +710,7 @@ describe('ExecutionService.reconcile', () => {
   it('stays pending while the session is still running', async () => {
     const { env, drivers, summaries } = makeEnv()
     drivers.set('s-1', new FakeDriver())
-    summaries.set('s-1', { running: true })
+    summaries.set('s-1', { running: true, blank: true })
     drivers.get('s-1')!.setSnapshot({ running: true, turns: 1 })
     const service = new ExecutionService(env)
     const task = sampleTask()
@@ -732,7 +736,7 @@ describe('ExecutionService.reconcile', () => {
     expect(await service.reconcile(withSession)).toBeUndefined()
 
     // Once ready with the session present, the finished session settles.
-    summaries.set('s-1', { running: false })
+    summaries.set('s-1', { running: false, blank: true })
     const readyService = new ExecutionService(env)
     expect(await readyService.reconcile(withSession)).toMatchObject({ kind: 'settled', outcome: 'succeeded' })
 
@@ -762,7 +766,7 @@ describe('ExecutionService.reconcile', () => {
 
 describe('ExecutionService.commentRun', () => {
   it('sends the comment and settles as cancelled when the session vanishes', async () => {
-    const { env } = makeEnv()
+    const { env } = makeEnv({ blankSummary: false })
     env.sendComment = async () => ({ ok: true })
     const service = new ExecutionService(env)
     const task = sampleTask()
@@ -915,7 +919,7 @@ describe('ExecutionService.commentRun', () => {
   })
 
   it('falls back to plain text for an unmatched command line (native default-sink)', async () => {
-    const { env } = makeEnv()
+    const { env } = makeEnv({ blankSummary: false })
     env.sendCommand = async () => ({ ok: true, matched: false })
     env.sendComment = async () => ({ ok: true })
     const service = new ExecutionService(env)
@@ -932,7 +936,7 @@ describe('ExecutionService.commentRun', () => {
   })
 
   it('falls back to plain text when no command face is wired', async () => {
-    const { env } = makeEnv()
+    const { env } = makeEnv({ blankSummary: false })
     env.sendComment = async () => ({ ok: true })
     const service = new ExecutionService(env)
     const task = sampleTask()

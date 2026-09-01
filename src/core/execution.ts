@@ -23,7 +23,7 @@ export interface SessionsExecutionFace {
     getSnapshot(): {
       /** Baseline arrival lifecycle — 'pending' until the host list has loaded. */
       phase: 'pending' | 'ready'
-      byId: Record<string, { running: boolean; completed?: boolean }>
+      byId: Record<string, { running: boolean; completed?: boolean; blank?: boolean }>
     }
     subscribe(fn: () => void): () => void
   }
@@ -729,16 +729,21 @@ export class ExecutionService {
     if (resolved === undefined) {
       throw new Error('no workspace available to run the task in')
     }
-    // alpha.3: a workspace owns its sessions (the official `sessionIds` on
-    // the workspace view). Reuse its first session; a workspace with none
-    // falls back to the createSession face (host `sessions.create`).
+    // alpha.3: a workspace owns its sessions (official `sessionIds`). Only a
+    // session the host declares BLANK may be reused — it never ran, so its
+    // title and agent preset are free to take (a session that has started
+    // locks its preset and belongs to the user: adopting it would rename and
+    // reconfigure work in progress). No blank candidate → create fresh via
+    // the createSession face (host `sessions.create`).
     const row = workspace.items.find(item => item.workspaceId === resolved)
-    const existing = row?.sessionIds?.[0]
-    if (existing !== undefined) return existing
+    const candidates = row?.sessionIds ?? []
+    const summaries = this.env.sessions.list.getSnapshot().byId
+    const reusable = candidates.find(id => summaries[id]?.blank === true)
+    if (reusable !== undefined) return reusable
     if (this.env.createSession !== undefined) {
       return this.env.createSession(resolved)
     }
-    throw new Error('no session available to run the task in: the workspace has none and session creation is unavailable')
+    throw new Error('no session available to run the task in: the workspace has no blank session and session creation is unavailable')
   }
 
   private driverOf(sessionId: string): SessionDriver | undefined {
