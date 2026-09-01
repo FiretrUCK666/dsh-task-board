@@ -521,19 +521,15 @@ describe('session row overlap fix', () => {
     expect(compact).not.toMatch(/\.sessionRowLeading \.sessionRowName\s*\{[^}]*flex:\s*1 1 100%/)
   })
 
-  it('the unread marker is an overlay badge, so no row pays a column for it', () => {
-    // An in-flow optional member gives a list two geometries (and the compact
-    // grid auto-placed a marker-less row's identity into the marker's fixed
-    // track — the phone title collapse). The badge rides the mark's corner.
-    const dot = ruleOf('attentionDot')
-    expect(dot).toMatch(/position:\s*absolute/)
-    expect(dot).toMatch(/left:\s*calc\(/)
-    expect(dot).toMatch(/top:\s*calc\(/)
-    // Its offsets derive from the declared row line box, never a magic px on
-    // an inherited `normal` line height.
+  it('no row-level unread badge — the marker machinery is gone (unread breaths on the card only)', () => {
+    // The per-row unread marker (overlay dot + halo) was removed: a row next
+    // to an unread card must not repeat the signal; the card is the ONLY
+    // unread surface. The marker class is gone from the sheet, and the row
+    // geometry still derives from the declared line box (no magic px on an
+    // inherited `normal` line height).
+    expect(source).not.toMatch(/\.attentionDot\s*\{/)
     expect(source).toMatch(/--dsh-tb-row-line:/)
     expect(ruleOf('sessionRowLeading')).toMatch(/line-height:\s*var\(--dsh-tb-row-line\)/)
-    expect(ruleOf('sessionRowLead')).toMatch(/position:\s*relative/)
   })
 
   it('the detail title and board title are shrinkable', () => {
