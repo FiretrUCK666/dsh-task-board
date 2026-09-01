@@ -77,28 +77,21 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
 }
 
 /**
- * Mirror the shell's New Session button's VISUAL SURFACE onto the entry row —
- * the fill + text color, exposed as CSS custom properties consumed by .entry.
- * Geometry is NOT mirrored (it is pure CSS: a full-width row) — reading the
- * native button's pixel width is exactly what broke when the drawer was closed
- * (offsetWidth 0 → an invisible 0px row that only fixed itself on some later
- * re-render). The fill is mirrored as a variable so the stylesheet keeps
- * hover/active control while the actual fill matches the native button under
- * any skin. On the collapsed rail the vars are cleared so the CSS icon-only
- * rule (transparent) applies.
+ * Make the entry row the native New Session button's twin: adopt the native
+ * button's OWN class list so the entry is styled by the exact same rules —
+ * size, border, radius, background and every skin variable. A hand-copied
+ * subset (a guessed height, a computed backgroundColor) is what made the row
+ * a hair taller than the native button and blind to skin gradients (which
+ * live in background-image, not background-color); copying the class removes
+ * the guesswork — one source of truth, and it follows any skin automatically.
+ * `css.entry` stays appended for the board-open ring and the inner icon/label
+ * layout; the collapsed-rail CSS keeps the icon-only form.
  */
 function syncEntrySurface(entry: HTMLButtonElement, root: HTMLElement): void {
-  const collapsed = root.closest('[data-sidebar-collapsed]') !== null
-  if (collapsed) {
-    entry.style.removeProperty('--dsh-tb-entry-fill')
-    entry.style.removeProperty('--dsh-tb-entry-color')
-    return
-  }
   const button = newSessionButton(root)
   if (button === undefined) return
-  const native = getComputedStyle(button)
-  entry.style.setProperty('--dsh-tb-entry-fill', native.backgroundColor)
-  entry.style.setProperty('--dsh-tb-entry-color', native.color)
+  const native = button.className.trim()
+  entry.className = native === '' ? css.entry : `${native} ${css.entry}`
 }
 
 /**

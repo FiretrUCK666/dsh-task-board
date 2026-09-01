@@ -175,12 +175,14 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* --- sidebar entry row ------------------------------------------------------- */
 
-/* The entry is a self-contained full-width sidebar row: its geometry is pure
-   CSS (never mirrored from the native button in JS — a JS pixel mirror reads
-   0 while the drawer is closed and leaves the row invisible until some later
-   re-render, the exact flaky "button won't show" this avoids). Only the fill /
-   text COLOR is mirrored at runtime (syncEntrySurface), and even that has a
-   token fallback so the row looks right before the shell mounts. */
+/* The entry adopts the native New Session button's OWN classes at runtime
+   (syncEntrySurface), so its box — size, border, radius, background, text and
+   every skin variable — comes from the SAME rules as the native button and
+   follows any skin automatically (including gradient backgrounds a computed
+   background-color copy would miss). What stays here is only what the native
+   button is NOT: the full-width row layout for our icon+label, and the
+   board-open accent ring. No hardcoded height/padding/color — that guess is
+   what made the row a hair taller than the native button and blind to skins. */
 .entry {
   box-sizing: border-box;
   width: 100%;
@@ -188,37 +190,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 38px;
-  padding: 8px 16px;
-  /* The fill mirrors the native New Session button at runtime
-     (--dsh-tb-entry-fill, set by sidebar-entry.ts); the token is the stable
-     fallback before the shell mounts. Mirroring guarantees the entry matches
-     the native button under every theme/skin — in particular it never turns
-     translucent under a glass skin while the native button stays solid. */
-  background: var(--dsh-tb-entry-fill, var(--dsw-alias-button-elevated-fill));
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  color: var(--dsh-tb-entry-color, var(--dsw-alias-label-primary));
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 22px;
   white-space: nowrap;
 }
 
-.entry:hover {
-  /* Slight brighten + border lift instead of re-tinting the fill: the fill is
-     a runtime mirror (possibly a gradient/skin value), so a token re-color
-     cannot know it — brightness keeps the hover feedback in any theme. */
-  border-color: var(--dsw-alias-border-l3);
-  filter: brightness(1.06);
-  color: var(--dsh-tb-entry-color, var(--dsw-alias-label-primary));
-}
-
-/* The board-open active state: the entry reads as "this view is on" —
-   an accent ring plus border lift, keeping the mirrored fill. */
+/* The board-open active state: an accent ring layered on the native button's
+   own look (the native button has no such state — this is board-only). */
 .entry[data-active] {
-  border-color: var(--dsw-alias-border-l3);
   box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha);
 }
 
