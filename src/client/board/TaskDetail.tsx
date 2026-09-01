@@ -708,13 +708,21 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
               onDrop={onZoneDrop}
             >
               {sessions.length === 0 ? (
-                <p className={css.detailText}>
-                  {plainRunsOf(current).length > 0
-                    ? t('detail.executionHiddenAll')
-                    : taskBindsOf(current).length > 0
-                      ? t('detail.noExecutionLinked')
-                      : t('detail.noExecution')}
-                </p>
+                // Empty list, three shapes:
+                // - plainRuns/binds exist but NO session row is visible (the
+                //   rows were hidden, or the host archived their sessions):
+                //   render NOTHING — no "已全部隐藏" note, which mislabels the
+                //   user's own action and misleads about restore (archived
+                //   sessions restore in the native workspace, not here). The
+                //   card keeps the run state; the list is simply clean.
+                // - genuinely never executed: the honest "尚未执行" line.
+                plainRunsOf(current).length > 0 || taskBindsOf(current).length > 0
+                  ? null
+                  : (
+                    <p className={css.detailText}>
+                      {t('detail.noExecution')}
+                    </p>
+                  )
               ) : (
                 <ul
                   className={css.sessionList}
