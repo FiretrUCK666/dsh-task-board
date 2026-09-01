@@ -8,8 +8,8 @@
  * answering on one surface is instantly reflected everywhere, and the card
  * disappears when the host resolves the call (question/resolved frame).
  */
-import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client'
-import type { ClientResponse, RpcError, RpcId } from '@deepseek-ai/dsh-client-connection/client'
+import type { IApiClient } from '../platform.ts'
+import type { ClientResponse, RpcError, RpcId } from '../platform.ts'
 import {
   pendingQuestionOf,
   reduceQuestionFrames,

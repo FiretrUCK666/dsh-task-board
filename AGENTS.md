@@ -1,4 +1,4 @@
-﻿# dsh-task-board — 项目说明（会话自动注入）
+# dsh-task-board — 项目说明（会话自动注入）
 
 本文件在每次会话开始时自动注入上下文。它是本项目与 AI 之间的接口契约，是项目的
 唯一权威约定；任何修改必须遵守本文，并以「构建 + 测试 + 自检」全绿为完成标准。
@@ -232,7 +232,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### client 半区（浏览器）
 
-- `src/client/index.ts`：`inject = ['slots','sessions','workspaces','connection','locale']`；设置卡 + `RouteSettingsScope` 快照（失败降级不抛）。挂载流程：`await sync.start()`（迁移探测 + 首次租约）→ 按模式选存储（同步态 `Synced*Store` over host，回退态 `LocalStorage*Store`）→ 接线 `BoardController` + `ExecutionService` + `SchedulerService`；`sync.onRemote → controller.applyRemote + writeMirror`、`onEngine(held) → controller.setHostProto(hostProtoVersion()?)/setHostBoot(hostBootTime()?)/setEngine(held)`（席位 = (held, proto, bootedAt) 元组，见「多端同步」）、`onCommand → controller.runTask`；调度器 `ready()` 并联 `sync.isEngine()`。
+- `src/client/index.ts`：`inject = ['slots','sessions','workspaces','connection','locale','remote']`；设置卡 + `RouteSettingsScope` 快照（失败降级不抛）。挂载流程：`await sync.start()`（迁移探测 + 首次租约）→ 按模式选存储（同步态 `Synced*Store` over host，回退态 `LocalStorage*Store`）→ 接线 `BoardController` + `ExecutionService` + `SchedulerService`；`sync.onRemote → controller.applyRemote + writeMirror`、`onEngine(held) → controller.setHostProto(hostProtoVersion()?)/setHostBoot(hostBootTime()?)/setEngine(held)`（席位 = (held, proto, bootedAt) 元组，见「多端同步」）、`onCommand → controller.runTask`；调度器 `ready()` 并联 `sync.isEngine()`。执行/结算的宿主面全部经 `platform.ts`：`buildApi` 把每个域方法钉到宿主真实注册的 Remote 端点（`tests/platform.spec.ts` 契约测试钉死，宿主升级改端点会先在测试里爆）；`sessionDriverOf` 把 `sessions.binding` 的 Session 适配为 `SessionDriver`（turnEnds 只由空白会话首轮边界推导，其余轮次经 host 会话列表 + history 面结算）。
 - `src/client/board-transport.ts`：`BoardSyncTransport` 浏览器实现（fetch 四调 + EventSource；EventSource 缺席降级纯轮询，仍收敛）。
 - `src/client/board-mount.tsx`：板视图 DOM 级挂进中列（`[data-dsh-taskboard-view]` 容器 + 键盘内缩 watcher；`html[data-dsh-taskboard-active]` 显隐，对话子树保持挂载）。侧栏在启动稳定窗内始终不出现时挂**浮动角落入口**（`.entryFallback`，侧栏稍后出现则自动让位）。
 

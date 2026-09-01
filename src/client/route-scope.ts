@@ -11,7 +11,7 @@
  * @module dsh-task-board/client/route-scope
  */
 
-import type { SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScopeSnapshot } from './platform.ts'
 
 /** The JSON view the host settings route returns. */
 export interface SettingsRouteView {

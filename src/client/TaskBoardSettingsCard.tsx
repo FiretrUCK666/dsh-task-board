@@ -5,8 +5,8 @@
  * namespace.
  */
 
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { InjectFace, PropsLocale, SnapshotSelector } from './platform.ts'
+import type { SnapshotStore } from './platform.ts'
 import { PluginSettingsCard, BooleanField } from './PluginSettingsCard.tsx'
 import { CardForm, booleanField, type CardActions, type CardShell, type FieldState as CardFieldState, type SettingsScopeLike } from './settings-form.ts'
 
@@ -67,8 +67,8 @@ export class TaskBoardSettingsCardController {
 
 /** Props the renderer binds for the task-board card. */
 type TaskBoardSettingsCardProps =
-  PropsRuntime<'settings.plugin.item'>
-  & PropsLocale<'dsh-task-board'>
+  { useTaskBoardSettingsCard: SnapshotSelector<TaskBoardSettingsCardState> }
+  & PropsLocale
   & InjectFace<TaskBoardSettingsCardFace>
 
 /**

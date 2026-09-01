@@ -8,16 +8,12 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
-import type { ClientContext, SessionId, WorkspaceId } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import type { ApiFace, BoundSessionFace, ClientContext, SessionId, WorkspaceId } from './platform.ts'
+import { buildApi, sessionDriverOf } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
-import type {} from '@deepseek-ai/dsh-client-ui-slots'
-// Type-only: pulls the locale plugin's Context merge (ctx.locale) and its
-// LocaleNamespaceMap merge table.
-import type {} from '@deepseek-ai/dsh-client-locale/client'
-import { BoardController, type PromptImage, type PermissionOptionShape, type ReferenceRemoteFace, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
+import { BoardController, type PermissionOptionShape, type PromptImage, type ReferenceRemoteFace, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
 import { UNTITLED_SESSION_KEY } from '../core/session-list.ts'
-import { ExecutionService } from '../core/execution.ts'
+import { ExecutionService, type ExecutionHistoryEvent, type SessionDriver } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
 import { LocalStoragePresetStore } from '../core/presets.ts'
@@ -31,7 +27,7 @@ import { mountBoard } from './board-mount.tsx'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { RouteSettingsScope } from './route-scope.ts'
 import { TaskBoardSettingsCard, TaskBoardSettingsCardController, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
-import { en, t, zh, type TaskBoardKey } from './locales.ts'
+import { en, t, zh } from './locales.ts'
 
 /** Locale namespace this plugin owns. */
 const NS = 'dsh-task-board'
@@ -83,27 +79,11 @@ function writeMirror(view: BoardView): void {
   }
 }
 
-declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap {
-    /** Task-board surface copy. */
-    'dsh-task-board': TaskBoardKey
-  }
-
-  interface SlotMap {
-    /**
-     * The plugin-configuration section's list slot. Spelled here with the same
-     * shape so this standalone package can register its card into it without
-     * depending on a sibling settings UI package.
-     */
-    'settings.plugin.item': { kind: 'keyed'; scope: 'root'; owner: SettingsPluginItemOwnerProps }
-  }
-}
-
-/** Owner share of a plugin card (the section supplies nothing). */
-interface SettingsPluginItemOwnerProps {
-  /** Marker field: card owner props are intentionally empty. */
-  children?: never
-}
+/**
+ * The task-board surface copy key map. Locale merge tables are host
+ * declarations; this plugin's copy keys are declared locally (see
+ * `./locales.ts`), so no platform package type is imported.
+ */
 
 /**
  * Structural face of the client remote bridge (the web shell's `remote`
@@ -149,11 +129,11 @@ function commandsOf(ctx: ClientContext): RemoteCommandsFace | undefined {
  *  run config's model route and the session panel's model selector submit
  *  the same wire call, so the mapping exists once. */
 async function selectModelOf(
-  connection: ConnectionHandle,
+  api: ApiFace,
   sessionId: string,
   selection: { provider: string; model: string; reasoningEffort?: string },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const response = await connection.api.sessions.selectModel({
+  const response = await api.sessions.selectModel({
     sessionId: sessionId as SessionId,
     provider: selection.provider,
     model: selection.model,
@@ -169,13 +149,15 @@ async function selectModelOf(
  *
  * `slots` is listed here as a hard service dependency even though it is not
  * declared in `dsh.client.inject` in package.json: the `slots` service is
- * seeded by the web shell itself (@deepseek-ai/dsh-client-ui-slots, served via
- * the platform seed table in web-platform.ts's PLATFORM_MODULES), so it is not
- * a package this plugin needs the loader to bring up. The other four names
- * (sessions/workspaces, connection, locale) correspond one-to-one with the
- * three SDK packages listed in `dsh.client.inject`.
+ * seeded by the web shell itself (the platform seed table in
+ * web-platform.ts's PLATFORM_MODULES), so it is not a package this plugin
+ * needs the loader to bring up. `sessions` / `workspaces` are the client
+ * object-layer services (dsh-api-session-controller / workspace-controller),
+ * `connection` the wire carrier, `locale` the copy service, and `remote` the
+ * Typert-generated Host API namespaces — all real alpha.3 services, with the
+ * package-name edges declared in `dsh.client.inject`.
  */
-export const inject = ['slots', 'sessions', 'workspaces', 'connection', 'locale']
+export const inject = ['slots', 'sessions', 'workspaces', 'connection', 'locale', 'remote']
 
 /**
  * Structural pick of the two context projections the review page reads from
@@ -297,7 +279,7 @@ export function apply(ctx: ClientContext): void {
     if (uiDisposer !== undefined) return
     const sessions = ctx.sessions
     const workspaces = ctx.workspaces
-    const connection = ctx.get('connection') as ConnectionHandle
+    const api = buildApi(ctx)
 
     // ── sync client: this tab becomes a replica of the host board document ──
     // The client boots BEFORE the controller so the first ledger the board
@@ -390,7 +372,7 @@ export function apply(ctx: ClientContext): void {
         }
       }
       if (content.length === 0) return { ok: false as const, error: 'empty message' }
-      const response = await connection.api.sessions.prompt({
+      const response = await api.sessions.prompt({
         sessionId: sessionId as SessionId,
         // The OFFICIAL prompt disposition: queue injects in order; steer
         // interrupts the current turn now (the composer's 插话 — a steer is
@@ -437,13 +419,44 @@ export function apply(ctx: ClientContext): void {
         return { ok: false as const, error: String(error) }
       }
     }
+    // One driver adapter per bound session object: alpha.3's sessions service
+    // exposes session bindings (`sessions.binding(id)` — lazily minted,
+    // scope-addressed) and `sessionDriverOf` maps the bound Session onto the
+    // core SessionDriver face. Adapters are cached per session object and
+    // disposed with this fiber.
+    const driverEntries = new Map<BoundSessionFace, { driver: SessionDriver; dispose: () => void }>()
+    ctx.effect(() => () => {
+      for (const { dispose } of driverEntries.values()) dispose()
+      driverEntries.clear()
+    })
+    const sessionDriverEntry = (id: SessionId): { driver: SessionDriver; dispose: () => void } | undefined => {
+      const bound = sessions.binding(id)
+      if (bound === undefined) return undefined
+      let entry = driverEntries.get(bound.session)
+      if (entry === undefined) {
+        entry = sessionDriverOf(bound.session)
+        driverEntries.set(bound.session, entry)
+      }
+      return entry
+    }
     const exec = new ExecutionService({
       sessions: {
         list: sessions.list,
-        binding: id => sessions.binding(id as SessionId),
+        binding: id => {
+          const entry = sessionDriverEntry(id as SessionId)
+          return entry === undefined ? undefined : { session: entry.driver }
+        },
       },
       workspaces: {
-        list: workspaces.list,
+        // alpha.3's workspace list snapshot carries no `recentWorkspaceId`;
+        // the execution service reads it as an optional creation hint, so the
+        // adapter supplies the absent shape.
+        list: {
+          getSnapshot: () => ({
+            items: workspaces.list.getSnapshot().items,
+            recentWorkspaceId: undefined,
+          }),
+        },
         connectWorkspace: id => workspaces.connectWorkspace(id as WorkspaceId),
       },
       // The detail page's "新建会话": a guaranteed-FRESH host session —
@@ -461,7 +474,7 @@ export function apply(ctx: ClientContext): void {
         if (runtime.create !== undefined) {
           return runtime.create({ workspaceId: target })
         }
-        const response = await connection.api.sessions.create({ workspaceId: target })
+        const response = await api.sessions.create({ workspaceId: target })
         if (!response.result.ok) {
           throw new Error(`${response.result.error.code}: ${response.result.error.message}`)
         }
@@ -469,18 +482,18 @@ export function apply(ctx: ClientContext): void {
       },
       history: {
         loadTail: async sessionId => {
-          const response = await connection.api.sessions.history({
+          const response = await api.sessions.history({
             sessionId: sessionId as SessionId,
             maxMessages: 20,
           })
           return response.result.ok
-            ? { events: response.result.value.events.map(entry => entry.event) }
+            ? { events: response.result.value.events.map(entry => entry.event as ExecutionHistoryEvent) }
             : undefined
         },
       },
-      selectModel: (sessionId, selection) => selectModelOf(connection, sessionId, selection),
+      selectModel: (sessionId, selection) => selectModelOf(api, sessionId, selection),
       selectAgentPreset: async (sessionId, agentPreset) => {
-        const response = await connection.api.agentPresets.select({
+        const response = await api.agentPresets.select({
           sessionId: sessionId as SessionId,
           agentPreset,
         })
@@ -495,7 +508,7 @@ export function apply(ctx: ClientContext): void {
       // semantics own the conflict story: an accepted title pins against
       // automatic regeneration; the wire error text is surfaced verbatim.
       renameSession: async (sessionId, title) => {
-        const response = await connection.api.sessions.rename({
+        const response = await api.sessions.rename({
           sessionId: sessionId as SessionId,
           title,
         })
@@ -513,7 +526,7 @@ export function apply(ctx: ClientContext): void {
     // short TTL + timeout) so every surface that shows a session tail shares
     // ONE fetch and a hung RPC can never spin forever (「加载很久/加载不出来」).
     const readTranscriptRaw = async (sessionId: string): Promise<TranscriptLoadResult | undefined> => {
-      const response = await connection.api.sessions.history({
+      const response = await api.sessions.history({
         sessionId: sessionId as SessionId,
         maxMessages: 30,
       })
@@ -526,7 +539,7 @@ export function apply(ctx: ClientContext): void {
       // package), dropping any value that fails the shape guard.
       const projections = value.projections?.values as Record<string, unknown> | undefined
       return {
-        events: value.events.map(entry => entry.event),
+        events: value.events.map(entry => entry.event as TranscriptEventShape),
         ...pickProjections(projections),
       }
     }
@@ -555,7 +568,7 @@ export function apply(ctx: ClientContext): void {
         const sessionId = key.slice(0, split)
         const attachmentId = key.slice(split + 1)
         try {
-          const response = await connection.api.sessions.attachment({
+          const response = await api.sessions.attachment({
             sessionId: sessionId as SessionId,
             attachmentId: attachmentId as never,
           })
@@ -602,7 +615,7 @@ export function apply(ctx: ClientContext): void {
       // The skill catalog (native `skill.list`), one candidate per skill
       // name; user-only skills are marked like the native composer does.
       try {
-        const response = await connection.api.skills.list({ sessionId: sessionId as SessionId })
+        const response = await api.skills.list({ sessionId: sessionId as SessionId })
         if (!response.result.ok) {
           console.warn('[dsh-task-board] slash skills unavailable:', response.result.error.code, response.result.error.message)
           return []
@@ -646,7 +659,7 @@ export function apply(ctx: ClientContext): void {
     // replays every still-pending frame on open, and answers flow through
     // the same respond wire call the native composer uses — the only path
     // that can settle a suspended ask_user_question.
-    const questionTracker = new QuestionTracker(connection.api)
+    const questionTracker = new QuestionTracker(api)
     // The localStorage cruise face: the fallback-mode truth AND the synced-mode
     // offline mirror (one implementation, two roles — no drift).
     const localCruise = {
@@ -739,7 +752,7 @@ export function apply(ctx: ClientContext): void {
       sessionConfig: {
         readModels: async sessionId => {
           try {
-            const response = await connection.api.sessions.models({ sessionId: sessionId as SessionId })
+            const response = await api.sessions.models({ sessionId: sessionId as SessionId })
             if (!response.result.ok) return undefined
             const value = response.result.value
             return {
@@ -769,7 +782,7 @@ export function apply(ctx: ClientContext): void {
             return undefined
           }
         },
-        selectModel: (sessionId, selection) => selectModelOf(connection, sessionId, selection),
+        selectModel: (sessionId, selection) => selectModelOf(api, sessionId, selection),
         setPermission: async (sessionId, permission) => {
           // The native write path for per-session permission switches: the
           // `/permission` command through the host command registry (the
@@ -811,7 +824,11 @@ export function apply(ctx: ClientContext): void {
           title: (item as { title?: string }).title ?? item.workspaceId,
         })),
         listModelGroups: async () => {
-          const response = await connection.api.llm.models({})
+          // The live model directory is `session/modelCatalog` in alpha.3
+          // (the same catalog the native model picker reads), served through
+          // the sessions.models face — no session id is needed for the
+          // catalog, so the face's request stays empty here.
+          const response = await api.sessions.models({})
           if (!response.result.ok) return []
           return response.result.value.groups.map(group => ({
             provider: group.id,
@@ -826,7 +843,7 @@ export function apply(ctx: ClientContext): void {
           }))
         },
         listAgentPresets: async () => {
-          const response = await connection.api.agentPresets.list({})
+          const response = await api.agentPresets.list({})
           if (!response.result.ok) return []
           return response.result.value.presets.map(preset => ({
             id: preset.id,

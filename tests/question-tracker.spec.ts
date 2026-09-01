@@ -6,7 +6,7 @@
  * (queue + failure switch + stream counter), no real network.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client'
+import type { IApiClient } from '../src/client/platform.ts'
 import { QuestionTracker } from '../src/client/board/question-tracker.ts'
 
 interface Envelope {

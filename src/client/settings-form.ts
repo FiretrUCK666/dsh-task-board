@@ -7,8 +7,8 @@
  * package must not depend on a sibling UI package.
  */
 
-import type { SettingsScopeSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScopeSnapshot, SnapshotStore } from './platform.ts'
+import { createSnapshotStore } from './platform.ts'
 
 /**
  * The minimal settings-scope face the card form needs. A route-backed scope
