@@ -828,19 +828,24 @@ export function apply(ctx: ClientContext): void {
           // (the same catalog the native model picker reads), served through
           // the sessions.models face — no session id is needed for the
           // catalog, so the face's request stays empty here.
-          const response = await api.sessions.models({})
-          if (!response.result.ok) return []
-          return response.result.value.groups.map(group => ({
-            provider: group.id,
-            models: group.models.map(model => ({
-              id: model.id,
-              name: model.name,
-              efforts: (model.reasoning?.efforts ?? []).map(effort => ({
-                id: effort.id,
-                name: effort.name,
+          try {
+            const response = await api.sessions.models({})
+            if (!response.result.ok) return []
+            return response.result.value.groups.map(group => ({
+              provider: group.id,
+              models: group.models.map(model => ({
+                id: model.id,
+                name: model.name,
+                efforts: (model.reasoning?.efforts ?? []).map(effort => ({
+                  id: effort.id,
+                  name: effort.name,
+                })),
               })),
-            })),
-          }))
+            }))
+          } catch (error) {
+            console.error('[dsh-task-board] model catalog read failed', error)
+            return []
+          }
         },
         listAgentPresets: async () => {
           const response = await api.agentPresets.list({})

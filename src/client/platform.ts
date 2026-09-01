@@ -421,6 +421,25 @@ export function buildApi(ctx: ClientContext): ApiFace {
   const remote = ctx.remote
   const sessionsService = ctx.sessions
 
+  // Missing-face guard: a host upgrade that renames or drops an endpoint must
+  // surface as a NAMED diagnostic (once) here, not as a silent 「暂不可用」 at
+  // five consumers. The consumers keep their honest degrade paths; the guard
+  // only makes the failure diagnosable from the browser console.
+  const warnedMissing = new Set<string>()
+  const methodOf = <T>(ns: string, method: string, value: T | undefined): T | undefined => {
+    if (value === undefined) {
+      const label = `${ns}.${method}`
+      if (!warnedMissing.has(label)) {
+        warnedMissing.add(label)
+        console.error(`[dsh-task-board] remote method missing on the live host: ${label} — a host upgrade may have renamed it`)
+      }
+    }
+    return value
+  }
+  const unavailable = async <T>(label: string): Promise<{ result: RemoteResult<T> }> => ({
+    result: { ok: false as const, error: { code: 'remote/unavailable', message: `the live host does not serve ${label}` } },
+  })
+
   /** Map a remote call result into the domain face's envelope. */
   const asResult = async <T>(call: Promise<RemoteResult<unknown>>): Promise<{ result: RemoteResult<T> }> => {
     const result = await call
@@ -432,7 +451,9 @@ export function buildApi(ctx: ClientContext): ApiFace {
   return {
     sessions: {
       prompt: async request => {
-        const result = await asResult<{ accepted: true }>(remote.session.prompt({
+        const call = methodOf('session', 'prompt', remote.session.prompt)
+        if (call === undefined) return unavailable('session.prompt')
+        const result = await asResult<{ accepted: true }>(call({
           requestId: `tb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
           sessionId: request.sessionId,
           mode: request.mode,
@@ -442,14 +463,16 @@ export function buildApi(ctx: ClientContext): ApiFace {
           ? { result: { ok: true as const, value: { accepted: true } } }
           : { result: result.result }
       },
-      selectModel: request => asResult<{ selected: ModelSelection }>(
-        remote.session.selectModel({
+      selectModel: request => {
+        const call = methodOf('session', 'selectModel', remote.session.selectModel)
+        if (call === undefined) return unavailable('session.selectModel')
+        return asResult<{ selected: ModelSelection }>(call({
           sessionId: request.sessionId,
           provider: request.provider,
           model: request.model,
           ...request.reasoningEffort !== undefined ? { reasoningEffort: request.reasoningEffort } : {},
-        }),
-      ),
+        }))
+      },
       create: async request => {
         const sessionId = await sessionsService.create({ workspaceId: request.workspaceId })
         return { result: { ok: true as const, value: { sessionId } } }
@@ -461,9 +484,11 @@ export function buildApi(ctx: ClientContext): ApiFace {
         // single round trip — the closest equivalent of the rc.7 tail page.
         // The board consumes the snapshot and closes the stream (the break
         // returns the iterator, which aborts the underlying source).
+        const follow = methodOf('session', 'follow', remote.session.follow)
+        if (follow === undefined) return unavailable('session.follow')
         try {
           const controller = new AbortController()
-          const stream = remote.session.follow({
+          const stream = follow({
             address: { kind: 'session', sessionId: request.sessionId },
             ...request.maxMessages !== undefined ? { maxMessages: request.maxMessages } : {},
           }, controller.signal)
@@ -498,18 +523,28 @@ export function buildApi(ctx: ClientContext): ApiFace {
           }
         }
       },
-      rename: request => asResult<{ title: string; seq: number }>(
-        remote.session.rename({ sessionId: request.sessionId, title: request.title }),
-      ),
-      attachment: request => asResult<{ attachment: { mediaType: string }; data: string }>(
-        remote.session.attachment({ sessionId: request.sessionId, attachmentId: request.attachmentId as never }),
-      ),
+      rename: request => {
+        const call = methodOf('session', 'rename', remote.session.rename)
+        if (call === undefined) return unavailable('session.rename')
+        return asResult<{ title: string; seq: number }>(
+          call({ sessionId: request.sessionId, title: request.title }),
+        )
+      },
+      attachment: request => {
+        const call = methodOf('session', 'attachment', remote.session.attachment)
+        if (call === undefined) return unavailable('session.attachment')
+        return asResult<{ attachment: { mediaType: string }; data: string }>(
+          call({ sessionId: request.sessionId, attachmentId: request.attachmentId as never }),
+        )
+      },
       models: async () => {
         // The per-session model read became the GLOBAL catalog in alpha.3
         // (`session/modelCatalog`; `default` is the deployment's current
         // selection). The face keeps the rc.7 `{current, groups}` envelope so
         // call sites stay unchanged; `sessionId` is ignored by the wire.
-        const result = await remote.session.modelCatalog()
+        const call = methodOf('session', 'modelCatalog', remote.session.modelCatalog)
+        if (call === undefined) return unavailable('session.modelCatalog')
+        const result = await call()
         if (!result.ok) return { result: { ok: false as const, error: result.error } }
         const catalog = result.value as {
           default?: { provider?: string; model?: string; reasoningEffort?: string }
@@ -533,15 +568,25 @@ export function buildApi(ctx: ClientContext): ApiFace {
       },
     },
     skills: {
-      list: request => asResult<{ skills: readonly SkillEntry[] }>(
-        remote.skills.list({ sessionId: request.sessionId }),
-      ),
+      list: request => {
+        const call = methodOf('skills', 'list', remote.skills.list)
+        if (call === undefined) return unavailable('skills.list')
+        return asResult<{ skills: readonly SkillEntry[] }>(
+          call({ sessionId: request.sessionId }),
+        )
+      },
     },
     agentPresets: {
-      list: () => asResult<{ presets: readonly AgentPresetEntry[] }>(remote.agentPresets.list()),
-      select: request => asResult<unknown>(
-        remote.agentPresets.select(request.sessionId, request.agentPreset),
-      ),
+      list: () => {
+        const call = methodOf('agentPresets', 'list', remote.agentPresets.list)
+        if (call === undefined) return unavailable('agentPresets.list')
+        return asResult<{ presets: readonly AgentPresetEntry[] }>(call())
+      },
+      select: request => {
+        const call = methodOf('agentPresets', 'select', remote.agentPresets.select)
+        if (call === undefined) return unavailable('agentPresets.select')
+        return asResult<unknown>(call(request.sessionId, request.agentPreset))
+      },
     },
     events: {
       mux: () => ({

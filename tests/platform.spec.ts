@@ -197,6 +197,26 @@ describe('buildApi endpoint wiring', () => {
     expect(calls[0].args).toEqual(['s1', 'deploy-default'])
   })
 
+  it('reports a missing remote method as a named unavailable result, not a crash', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const api = buildApi({
+      ...fakeApi().ctx,
+      remote: {
+        session: {},
+        skills: {},
+        agentPresets: {},
+      },
+    } as unknown as ClientContext)
+    const response = await api.sessions.models({})
+    expect(response.result.ok).toBe(false)
+    if (response.result.ok) return
+    expect(response.result.error.code).toBe('remote/unavailable')
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('session.modelCatalog'),
+    )
+    error.mockRestore()
+  })
+
   it('respond is a degraded stub: warns and never accepts', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { api } = fakeApi()
