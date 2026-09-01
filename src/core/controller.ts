@@ -1638,11 +1638,12 @@ export class BoardController {
     // — with the budget half empty and the cruise on.
     const head = (task: TaskRecord, rule: boolean): ExecutionRecord | undefined => {
       // A round that is in flight but has no session yet is a LANE BEING
-      // ACQUIRED: a plain run resolves its session asynchronously
-      // (`connectWorkspace` may hand back a session that already has work in
-      // it). Until it is bound we cannot prove any lane is idle, so the card
-      // admits no comment — an unknown lane is not a free lane. This lasts
-      // milliseconds and the dispatcher re-pumps on the `started` event.
+      // ACQUIRED: a plain run resolves its session asynchronously (the
+      // workspace's own session or a fresh one — see ExecutionService
+      // connectSession). Until it is bound we cannot prove any lane is idle,
+      // so the card admits no comment — an unknown lane is not a free lane.
+      // This lasts milliseconds and the dispatcher re-pumps on the `started`
+      // event.
       if (openRoundsOf(task).some(round => round.sessionId === undefined)) return undefined
       // One candidate per LANE: the earliest saved-but-un-injected round of
       // each session. A busy lane contributes nothing — but it must never

@@ -157,7 +157,7 @@ async function selectModelOf(
  * Typert-generated Host API namespaces — all real alpha.3 services, with the
  * package-name edges declared in `dsh.client.inject`.
  */
-export const inject = ['slots', 'sessions', 'workspaces', 'connection', 'locale', 'remote']
+export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote']
 
 /**
  * Structural pick of the two context projections the review page reads from

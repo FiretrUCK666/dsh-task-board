@@ -398,12 +398,6 @@ export interface ClientContext {
       select(agent: SessionId, agentPreset: string, signal?: AbortSignal): Promise<RemoteResult<unknown>>
     }
   }
-  /** Connection service: generic logical RPC channel (fallback transport). */
-  connection: {
-    rpc: {
-      call(channel: string, endpoint: string, payload: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
-    }
-  }
 }
 
 // ─── API adapter (alpha.3 mapping) ──────────────────────────────────────────
