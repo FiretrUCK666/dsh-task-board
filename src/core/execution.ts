@@ -138,7 +138,7 @@ export interface ExecutionEnvironment {
   workspaces: WorkspacesExecutionFace
   /** Raw-history reader for failure detection of never-opened sessions. */
   history?: HistoryExecutionFace
-  /** Guaranteed-fresh session creation (never blank-reuse); absent = degrade to connectWorkspace. */
+  /** Guaranteed-fresh session creation (`sessions.create`); absent = reuse the workspace's own session only. */
   createSession?: SessionCreateFace
   /** Official user-title write (pins against auto naming); absent = degrade to the binding driver. */
   renameSession?: SessionRenameFace
