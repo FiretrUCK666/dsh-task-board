@@ -47,6 +47,8 @@ function fakeApi(stubs: StubTable = {}): { ctx: ClientContext; api: ApiFace; cal
     modelCatalog: named('session')('modelCatalog'),
     follow: named('session')('follow'),
   }
+  const skills = { list: named('skills')('list') }
+  const agentPresets = { list: named('agentPresets')('list'), select: named('agentPresets')('select') }
   const sessions = {
     list: { getSnapshot: () => ({ ids: [], byId: {}, current: undefined, phase: 'pending' as const }), subscribe: () => () => {} },
     create: vi.fn(async () => 'sess-fresh'),
@@ -55,7 +57,12 @@ function fakeApi(stubs: StubTable = {}): { ctx: ClientContext; api: ApiFace; cal
   }
   const ctx = {
     effect: () => {},
-    get: () => undefined,
+    get: (name: string) => {
+      if (name === 'remote.session') return session
+      if (name === 'remote.skills') return skills
+      if (name === 'remote.agentPresets') return agentPresets
+      return undefined
+    },
     locale: { register: () => {} },
     slots: { inject: () => () => {}, register: () => {} },
     sessions,
@@ -63,7 +70,6 @@ function fakeApi(stubs: StubTable = {}): { ctx: ClientContext; api: ApiFace; cal
       list: { getSnapshot: () => ({ items: [], archivedSessionIds: [], recentWorkspaceId: undefined }), subscribe: () => () => {} },
       connectWorkspace: vi.fn(),
     },
-    remote: { session, skills: { list: named('skills')('list') }, agentPresets: { list: named('agentPresets')('list'), select: named('agentPresets')('select') } },
     connection: { rpc: { call: named('connection')('call') } },
   } as unknown as ClientContext
   return { ctx, api: buildApi(ctx), calls }
@@ -199,13 +205,10 @@ describe('buildApi endpoint wiring', () => {
 
   it('reports a missing remote method as a named unavailable result, not a crash', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // A context whose get() resolves no namespace: every method degrades.
     const api = buildApi({
       ...fakeApi().ctx,
-      remote: {
-        session: {},
-        skills: {},
-        agentPresets: {},
-      },
+      get: () => undefined,
     } as unknown as ClientContext)
     const response = await api.sessions.models({})
     expect(response.result.ok).toBe(false)

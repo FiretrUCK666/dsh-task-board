@@ -418,7 +418,17 @@ export interface ClientContext {
  * @returns the API face.
  */
 export function buildApi(ctx: ClientContext): ApiFace {
-  const remote = ctx.remote
+  // Remote NAMESPACES are cordis sub-services whose keys carry the dot
+  // (`remote.session`, `remote.skills`, `remote.agentPresets`): a property
+  // read on the parent service (`ctx.remote.session`) raises
+  // "cannot get property ... without inject" unless the sub-service name is
+  // in `inject`. Like `remote.commands` in index.ts, read them through
+  // `ctx.get` — a missing namespace degrades to the guard below instead of
+  // throwing (a plugin must never take the shell down by accessing a
+  // namespace the deployment does not mount).
+  const remoteSession = ctx.get<ClientContext['remote']['session']>('remote.session')
+  const remoteSkills = ctx.get<ClientContext['remote']['skills']>('remote.skills')
+  const remoteAgentPresets = ctx.get<ClientContext['remote']['agentPresets']>('remote.agentPresets')
   const sessionsService = ctx.sessions
 
   // Missing-face guard: a host upgrade that renames or drops an endpoint must
@@ -456,7 +466,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
   return {
     sessions: {
       prompt: async request => {
-        const call = methodOf('session', 'prompt', remote.session.prompt)
+        const call = methodOf('session', 'prompt', remoteSession?.prompt)
         if (call === undefined) return unavailable('session.prompt')
         const result = await asResult('session.prompt', call({
           requestId: `tb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
@@ -469,7 +479,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
           : { result: result.result }
       },
       selectModel: request => {
-        const call = methodOf('session', 'selectModel', remote.session.selectModel)
+        const call = methodOf('session', 'selectModel', remoteSession?.selectModel)
         if (call === undefined) return unavailable('session.selectModel')
         return asResult<{ selected: ModelSelection }>('session.selectModel', call({
           sessionId: request.sessionId,
@@ -489,7 +499,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
         // single round trip — the closest equivalent of the rc.7 tail page.
         // The board consumes the snapshot and closes the stream (the break
         // returns the iterator, which aborts the underlying source).
-        const follow = methodOf('session', 'follow', remote.session.follow)
+        const follow = methodOf('session', 'follow', remoteSession?.follow)
         if (follow === undefined) return unavailable('session.follow')
         try {
           const controller = new AbortController()
@@ -531,14 +541,14 @@ export function buildApi(ctx: ClientContext): ApiFace {
         }
       },
       rename: request => {
-        const call = methodOf('session', 'rename', remote.session.rename)
+        const call = methodOf('session', 'rename', remoteSession?.rename)
         if (call === undefined) return unavailable('session.rename')
         return asResult<{ title: string; seq: number }>('session.rename',
           call({ sessionId: request.sessionId, title: request.title }),
         )
       },
       attachment: request => {
-        const call = methodOf('session', 'attachment', remote.session.attachment)
+        const call = methodOf('session', 'attachment', remoteSession?.attachment)
         if (call === undefined) return unavailable('session.attachment')
         return asResult<{ attachment: { mediaType: string }; data: string }>('session.attachment',
           call({ sessionId: request.sessionId, attachmentId: request.attachmentId as never }),
@@ -549,7 +559,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
         // (`session/modelCatalog`; `default` is the deployment's current
         // selection). The face keeps the rc.7 `{current, groups}` envelope so
         // call sites stay unchanged; `sessionId` is ignored by the wire.
-        const call = methodOf('session', 'modelCatalog', remote.session.modelCatalog)
+        const call = methodOf('session', 'modelCatalog', remoteSession?.modelCatalog)
         if (call === undefined) return unavailable('session.modelCatalog')
         const result = await call()
         if (!result.ok) {
@@ -579,7 +589,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
     },
     skills: {
       list: request => {
-        const call = methodOf('skills', 'list', remote.skills.list)
+        const call = methodOf('skills', 'list', remoteSkills?.list)
         if (call === undefined) return unavailable('skills.list')
         return asResult<{ skills: readonly SkillEntry[] }>('skills.list',
           call({ sessionId: request.sessionId }),
@@ -588,12 +598,12 @@ export function buildApi(ctx: ClientContext): ApiFace {
     },
     agentPresets: {
       list: () => {
-        const call = methodOf('agentPresets', 'list', remote.agentPresets.list)
+        const call = methodOf('agentPresets', 'list', remoteAgentPresets?.list)
         if (call === undefined) return unavailable('agentPresets.list')
         return asResult<{ presets: readonly AgentPresetEntry[] }>('agentPresets.list', call())
       },
       select: request => {
-        const call = methodOf('agentPresets', 'select', remote.agentPresets.select)
+        const call = methodOf('agentPresets', 'select', remoteAgentPresets?.select)
         if (call === undefined) return unavailable('agentPresets.select')
         return asResult<unknown>('agentPresets.select', call(request.sessionId, request.agentPreset))
       },
