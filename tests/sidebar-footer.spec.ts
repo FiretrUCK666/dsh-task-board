@@ -63,13 +63,24 @@ describe('SidebarFooter (shell slot component)', () => {
     expect(rail).not.toContain('sidebarFooterLabel')
   })
 
-  it('marks the row active while the board is open', () => {
-    const footer = new SidebarFooterController()
-    const face = footer.inject()
-    footer.bindBoard(() => true, () => {})
-    const use = (sel: (s: unknown) => unknown): unknown => sel(face.hooks.sidebarFooter.getSnapshot())
-    const html = renderToStaticMarkup(createElement(SidebarFooter as never, { wide: true, useSidebarFooter: use, toggle: () => {} } as never))
-    expect(html).toContain('data-active="true"')
+  it('keeps the SAME look whether the board is open or not (no active tint)', () => {
+    // User decision: the entry never turns blue/active — open or closed it is
+    // identical. The old data-active accent ring was removed entirely.
+    const closed = new SidebarFooterController()
+    const closedFace = closed.inject()
+    closedFace.toggle() // no-op (not bound)
+    const useClosed = (sel: (s: unknown) => unknown): unknown => sel(closedFace.hooks.sidebarFooter.getSnapshot())
+    const markupClosed = renderToStaticMarkup(createElement(SidebarFooter as never, { wide: true, useSidebarFooter: useClosed, toggle: () => {} } as never))
+
+    const open = new SidebarFooterController()
+    const openFace = open.inject()
+    open.bindBoard(() => true, () => {})
+    const useOpen = (sel: (s: unknown) => unknown): unknown => sel(openFace.hooks.sidebarFooter.getSnapshot())
+    const markupOpen = renderToStaticMarkup(createElement(SidebarFooter as never, { wide: true, useSidebarFooter: useOpen, toggle: () => {} } as never))
+
+    // No data-active attribute appears in either state.
+    expect(markupClosed).not.toContain('data-active')
+    expect(markupOpen).not.toContain('data-active')
   })
 
   it('shows the pending treatment while a click is queued', () => {

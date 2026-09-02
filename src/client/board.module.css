@@ -176,51 +176,38 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 /* --- sidebar footer action (official slot, SidebarFooter.tsx) -------------- */
 
 /* The board entry rendered into the shell's `sidebar.footer.action` slot
-   (list hole beside Settings). It must read EXACTLY like the native footer
-   triggers (settings-general's SettingsRoot: the 设置/用量/余额 rows) — same
-   box, same 42px height, same primary label color, same hover. The rules
-   below are a verbatim mirror of the shell's trigger geometry (height 42,
-   radius 12, padding 0 10px 0 8px, flex 1, gap 8, 14px/22px); only the icon
-   size is ours. */
+   (list hole beside Settings). It must read EXACTLY like its sibling entries
+   in that list — the alignment benchmark is the DSH Usage plugin's 用量/余额
+   row (`usg_badge`): same 49px height, same padding (0 8px 0 6px), same
+   width:100%, same primary label color, same hover-solid. The rules below are
+   a verbatim mirror of `usg_badge`. */
 .sidebarFooterAction {
-  box-sizing: border-box;
-  cursor: pointer;
-  width: auto;
-  min-width: 0;
-  height: 42px;
+  width: 100%;
+  height: 49px;
   color: var(--dsw-alias-label-primary);
+  cursor: pointer;
   background: none;
   border: none;
   border-radius: 12px;
-  flex: 1;
   align-items: center;
   gap: 8px;
-  margin: 0;
-  padding: 0 10px 0 8px;
+  padding: 0 8px 0 6px;
   font-family: inherit;
   font-size: 14px;
-  line-height: 22px;
-  display: flex;
+  display: inline-flex;
   overflow: hidden;
 }
 
 .sidebarFooterAction:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-/* The board-open active state: the only thing the native triggers lack (the
-   shell owns no such state) — an accent ring keeps "the view is on" legible
-   without touching the geometry. */
-.sidebarFooterAction[data-active] {
-  color: var(--dsw-alias-state-business-primary);
-  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha);
+  background: var(--dsw-alias-interactive-bg-hover-solid);
 }
 
 /* A queued click (the board is still syncing on a slow network): the entry
-   reads as acknowledged — the icon pulses, the row keeps its native geometry
-   (the "点了没反应" was the click being dropped while the board was not bound). */
+   reads as acknowledged — the label pulses gently, the row keeps its native
+   geometry (the "点了没反应" was the click being dropped while the board was
+   not bound). */
 .sidebarFooterAction[data-pending] {
-  color: var(--dsw-alias-state-business-primary);
+  opacity: 0.7;
   animation: dshTbFooterPending 1.4s ease-in-out infinite;
 }
 
@@ -238,10 +225,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   height: 18px;
 }
 
-.sidebarFooterIcon svg {
-  width: 16px;
-  height: 16px;
-}
+/* The svg size is set by the component (14 wide / 18 rail — the same law as
+   the DSH Usage badge); the icon box centers it. */
 
 .sidebarFooterLabel {
   white-space: nowrap;

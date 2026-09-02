@@ -132,14 +132,15 @@ export function SidebarFooter(props: SidebarFooterProps) {
     <button
       type="button"
       className={css.sidebarFooterAction}
-      data-active={state.boardOpen ? 'true' : undefined}
       data-pending={state.pendingOpen ? 'true' : undefined}
       aria-label={state.pendingOpen ? t('entry.opening') : label}
       title={label}
       onClick={props.toggle}
     >
       <span className={css.sidebarFooterIcon} aria-hidden="true">
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+        {/* Same glyph geometry + same size switch as the DSH Usage badge:
+            14px in the wide column, 18px on the rail (usg_badge's own law). */}
+        <svg viewBox="0 0 16 16" width={props.wide ? 14 : 18} height={props.wide ? 14 : 18} fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
           <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
           <path d="M2 6.5h12M6.5 6.5v7" />
         </svg>
