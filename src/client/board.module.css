@@ -173,67 +173,54 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: none !important;
 }
 
-/* --- sidebar entry row ------------------------------------------------------- */
+/* --- sidebar footer action (official slot, SidebarFooter.tsx) -------------- */
 
-/* The entry adopts the native New Session button's OWN classes at runtime
-   (syncEntrySurface), so its box — size, border, radius, background, text and
-   every skin variable — comes from the SAME rules as the native button and
-   follows any skin automatically (including gradient backgrounds a computed
-   background-color copy would miss). What stays here is only what the native
-   button is NOT: the full-width row layout for our icon+label, and the
-   board-open accent ring. No hardcoded height/padding/color — that guess is
-   what made the row a hair taller than the native button and blind to skins. */
-.entry {
-  box-sizing: border-box;
-  width: 100%;
+/* The board entry rendered into the shell's `sidebar.footer.action` slot
+   (list hole beside Settings). The shell supplies the column presentation
+   via the `wide` owner prop; here we only size the button against the
+   shell's footer trigger tokens so it reads as a sibling of Settings under
+   every skin. The rail form is icon-only (the component drops the label). */
+.sidebarFooterAction {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 36px;
+  width: 100%;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
+  font-size: 14px;
   white-space: nowrap;
 }
 
-/* The board-open active state: an accent ring layered on the native button's
-   own look (the native button has no such state — this is board-only). */
-.entry[data-active] {
+.sidebarFooterAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The board-open active state: an accent ring keeps the "view is on" read
+   separate from hover (the native footer triggers have no such state). */
+.sidebarFooterAction[data-active] {
+  color: var(--dsw-alias-state-business-primary);
   box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha);
 }
 
-.entryIcon {
+.sidebarFooterIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
+  width: 20px;
+  height: 20px;
 }
 
-.entryLabel {
+.sidebarFooterLabel {
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
-}
-
-/* Collapsed rail: icon-only 36px box, transparent, matching the shell's
-   collapsed 新会话 button (18px icon). */
-[data-dsh-frame][data-sidebar-collapsed] .entry {
-  padding: 0;
-  width: 36px;
-  height: 36px;
-  background: transparent;
-  border-color: transparent;
-}
-
-[data-dsh-frame][data-sidebar-collapsed] .entry:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-[data-dsh-frame][data-sidebar-collapsed] .entryLabel {
-  display: none;
-}
-
-[data-dsh-frame][data-sidebar-collapsed] .entryIcon svg {
-  width: 18px;
-  height: 18px;
 }
 
 /* --- board frame -------------------------------------------------------------- */
@@ -3450,7 +3437,7 @@ textarea.input {
  * --------------------------------------------------------------------------- */
 
 /* --- one themed focus-visible ring (approx 2px, 2px offset) --- */
-.entry:focus-visible,
+.sidebarFooterAction:focus-visible,
 .card:focus-visible,
 .primaryButton:focus-visible,
 .ghostButton:focus-visible,
@@ -3471,7 +3458,7 @@ textarea.input {
 }
 
 /* --- unified 120ms motion across the board's interactive controls --- */
-.entry,
+.sidebarFooterAction,
 .primaryButton,
 .ghostButton,
 .dangerButton,
@@ -3535,7 +3522,7 @@ textarea.input {
   border-color: var(--dsw-alias-state-business-primary);
 }
 
-.entry:active,
+.sidebarFooterAction:active,
 .primaryButton:active:not(:disabled),
 .ghostButton:active:not(:disabled),
 .dangerButton:active:not(:disabled),
@@ -3564,7 +3551,7 @@ textarea.input {
 
 /* --- reduced motion: strip transitions, stop the decorative animations --- */
 @media (prefers-reduced-motion: reduce) {
-  .entry,
+  .sidebarFooterAction,
   .card,
   .primaryButton,
   .ghostButton,

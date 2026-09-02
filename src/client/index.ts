@@ -24,7 +24,7 @@ import { nativeTurnOf } from '../core/session-activity.ts'
 import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
 import { mountBoard } from './board-mount.tsx'
-import { mountSidebarEntry } from './sidebar-entry.ts'
+import { SidebarFooter, SidebarFooterController } from './SidebarFooter.tsx'
 import { RouteSettingsScope } from './route-scope.ts'
 import { TaskBoardSettingsCard, TaskBoardSettingsCardController, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
 import { en, t, zh } from './locales.ts'
@@ -235,11 +235,20 @@ function pickProjections(values: Record<string, unknown> | undefined): Pick<Tran
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-task-board: dictionaries')
-
-  // Plugin configuration card: a route-backed scope over the `dsh-task-board`
-  // settings namespace, contributed to the plugin-configuration list slot. The
-  // scope and its card ride the plugin fiber: the scope's fetch fires at
-  // creation and the effect disposer tears everything down on unload.
+  // Official sidebar seat: register the board entry into the shell's
+  // `sidebar.footer.action` slot (list hole beside Settings). The shell
+  // renders it in every presentation (wide column / collapsed rail / mobile
+  // overlaid drawer — one React tree), which is the structural end of the old
+  // DOM-injection row that only landed in the column's inner subtree (the
+  // "按钮时隐时现" root). The controller is created here (the slot needs a
+  // registration at apply time); mountUiBody binds the real board later.
+  const footer = new SidebarFooterController()
+  ctx.effect(() => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
+    name: 'sidebar.footer.action',
+    key: 'dsh-task-board',
+    locale: NS,
+    inject: () => footer.inject(),
+  }, SidebarFooter)), 'dsh-task-board: sidebar footer action')
   const scope = new RouteSettingsScope<TaskBoardSettings>(TASK_BOARD_NS)
   ctx.effect(() => {
     const settingsCard = new TaskBoardSettingsCardController(scope)
@@ -331,6 +340,7 @@ export function apply(ctx: ClientContext): void {
       return
     }
     const synced = mode === 'synced'
+    // sync settled
     if (synced) {
       // Warm the offline mirror with the host truth so a later reload (or a
       // dropped connection) first-paints the real board, not a stale copy.
@@ -914,6 +924,7 @@ export function apply(ctx: ClientContext): void {
     // already awaited the first lease probe, so isEngine() is authoritative.
     // The protocol is adopted only when the first lease actually answered —
     // "no evidence yet" must never read as "old host" (a false stale banner).
+    // sync settled
     if (synced) {
       controller.syncActive = true
       const proto = sync.hostProtoVersion()
@@ -938,6 +949,7 @@ export function apply(ctx: ClientContext): void {
     // Sync wiring (only meaningful in synced mode): every remote document lands
     // in the controller + refreshes the offline mirror; the seat and relayed
     // launches follow the host's lease/command frames.
+    // sync settled
     if (synced) {
       sync.onRemote(view => {
         controller.applyRemote(view)
@@ -989,13 +1001,21 @@ export function apply(ctx: ClientContext): void {
 
     const disposers: Array<() => void> = []
     try {
-      disposers.push(mountSidebarEntry(controller))
+      // Bind the official footer entry to the live board (toggle + open
+      // highlight); it was registered at apply time and is inert until now.
+      footer.bindBoard(
+        () => controller.getSnapshot().boardOpen,
+        () => controller.toggleBoard(),
+      )
+      const unsubscribeFooter = controller.subscribe(() => {
+        footer.setOpen(controller.getSnapshot().boardOpen)
+      })
+      disposers.push(() => { unsubscribeFooter(); footer.dispose() })
       disposers.push(mountBoard(controller))
     } catch (error) {
       // DOM failures degrade the board, never the GUI.
       console.error('[dsh-task-board] mount failed:', error)
     }
-
     uiDisposer = () => {
       for (const dispose of disposers.splice(0)) dispose()
       detachTurnWatcher()
