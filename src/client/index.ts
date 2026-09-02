@@ -246,6 +246,12 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
     key: 'dsh-task-board',
+    // LIST-kind slot: id/order/label are the mandatory list shape (a missing
+    // id throws at load-time validation — which how the entry silently failed
+    // to appear while the old injection path still worked).
+    id: 'dsh-task-board',
+    order: 110,
+    label: () => t('entry.label'),
     locale: NS,
     inject: () => footer.inject(),
   }, SidebarFooter)), 'dsh-task-board: sidebar footer action')
