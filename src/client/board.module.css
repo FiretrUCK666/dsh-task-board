@@ -176,37 +176,57 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 /* --- sidebar footer action (official slot, SidebarFooter.tsx) -------------- */
 
 /* The board entry rendered into the shell's `sidebar.footer.action` slot
-   (list hole beside Settings). The shell supplies the column presentation
-   via the `wide` owner prop; here we only size the button against the
-   shell's footer trigger tokens so it reads as a sibling of Settings under
-   every skin. The rail form is icon-only (the component drops the label). */
+   (list hole beside Settings). It must read EXACTLY like the native footer
+   triggers (settings-general's SettingsRoot: the 设置/用量/余额 rows) — same
+   box, same 42px height, same primary label color, same hover. The rules
+   below are a verbatim mirror of the shell's trigger geometry (height 42,
+   radius 12, padding 0 10px 0 8px, flex 1, gap 8, 14px/22px); only the icon
+   size is ours. */
 .sidebarFooterAction {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  min-height: 36px;
-  width: 100%;
-  padding: 0 12px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  box-sizing: border-box;
   cursor: pointer;
+  width: auto;
+  min-width: 0;
+  height: 42px;
+  color: var(--dsw-alias-label-primary);
+  background: none;
+  border: none;
+  border-radius: 12px;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 10px 0 8px;
+  font-family: inherit;
   font-size: 14px;
-  white-space: nowrap;
+  line-height: 22px;
+  display: flex;
+  overflow: hidden;
 }
 
 .sidebarFooterAction:hover {
   background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
 }
 
-/* The board-open active state: an accent ring keeps the "view is on" read
-   separate from hover (the native footer triggers have no such state). */
+/* The board-open active state: the only thing the native triggers lack (the
+   shell owns no such state) — an accent ring keeps "the view is on" legible
+   without touching the geometry. */
 .sidebarFooterAction[data-active] {
   color: var(--dsw-alias-state-business-primary);
   box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary-alpha);
+}
+
+/* A queued click (the board is still syncing on a slow network): the entry
+   reads as acknowledged — the icon pulses, the row keeps its native geometry
+   (the "点了没反应" was the click being dropped while the board was not bound). */
+.sidebarFooterAction[data-pending] {
+  color: var(--dsw-alias-state-business-primary);
+  animation: dshTbFooterPending 1.4s ease-in-out infinite;
+}
+
+@keyframes dshTbFooterPending {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 .sidebarFooterIcon {
@@ -214,13 +234,18 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+}
+
+.sidebarFooterIcon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .sidebarFooterLabel {
+  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* --- board frame -------------------------------------------------------------- */
@@ -3512,6 +3537,11 @@ textarea.input {
   .card.selectedCard {
     animation: none;
     transform: none;
+  }
+  /* The pending-ack pulse is a FUNCTIONAL indicator (the click is queued) —
+     it survives reduced motion, just slower so it reads as calm, not busy. */
+  .sidebarFooterAction[data-pending] {
+    animation-duration: 4s;
   }
 }
 

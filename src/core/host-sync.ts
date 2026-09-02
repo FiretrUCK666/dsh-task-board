@@ -187,9 +187,9 @@ export class BoardSyncClient {
       }
       if (attempt < 2) await new Promise<void>(resolve => this.defer(resolve, 400))
     }
+    // fetch settled: the mode this client settled into
     if (this.mode !== 'synced') return 'unavailable'
     if (this.disposed) return this.mode
-
     const legacyView = legacy?.()
     if (legacyView !== undefined && hasLegacyContent(legacyView)) {
       // One-time migration of a pre-sync local ledger into the shared truth.
@@ -225,7 +225,6 @@ export class BoardSyncClient {
         await this.flush()
       }
     }
-
     this.loopCancels.push(this.deps.transport.openStream(this.clientId, {
       onEvent: event => this.onStreamEvent(event),
       onOpen: () => {
