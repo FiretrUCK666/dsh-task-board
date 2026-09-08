@@ -8,9 +8,10 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
-import type { ApiFace, BoundSessionFace, ClientContext, SessionId, WorkspaceId } from './platform.ts'
+import type { ApiFace, BoundSessionFace, ClientContext, IUiSessionFace, SessionId, WorkspaceId } from './platform.ts'
 import { buildApi, sessionDriverOf } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
+import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
 import { BoardController, type PermissionOptionShape, type PromptImage, type ReferenceRemoteFace, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
 import { UNTITLED_SESSION_KEY } from '../core/session-list.ts'
 import { ExecutionService, type ExecutionHistoryEvent, type SessionDriver } from '../core/execution.ts'
@@ -20,6 +21,7 @@ import { LocalStoragePresetStore } from '../core/presets.ts'
 import { LocalStorageRunPresetStore } from '../core/run-presets.ts'
 import { BoardSyncClient, SyncedCruiseStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore } from '../core/host-sync.ts'
 import { createTranscriptReader } from './transcript-cache.ts'
+import { watchSessionActivity } from './board/activity-wake.ts'
 import { nativeTurnOf } from '../core/session-activity.ts'
 import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
@@ -155,9 +157,12 @@ async function selectModelOf(
  * object-layer services (dsh-api-session-controller / workspace-controller),
  * `connection` the wire carrier, `locale` the copy service, and `remote` the
  * Typert-generated Host API namespaces — all real alpha.3 services, with the
- * package-name edges declared in `dsh.client.inject`.
+ * package-name edges declared in `dsh.client.inject`. `uiSession` is the
+ * session-UI adapter (dsh-client-ui-session): the board only subscribes to
+ * its official `pendingInteractions` snapshot (read-only — answering stays
+ * in the native session), never registering a waterfall listener of its own.
  */
-export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote']
+export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'uiSession']
 
 /**
  * Structural pick of the two context projections the review page reads from
@@ -678,10 +683,22 @@ export function apply(ctx: ClientContext): void {
       }
     })()
 
-    // Pending native questions ride the board's own mux stream: the host
-    // replays every still-pending frame on open, and answers flow through
-    // the same respond wire call the native composer uses — the only path
-    // that can settle a suspended ask_user_question.
+    // Pending native questions: the official read-only mirror over the
+    // host's pendingInteractions snapshot (the same source the native
+    // sidebar and composer read). The board never registers its own
+    // waterfall listener — the waterfall is a claim chain (first answer
+    // wins), so listening would race the native composer for the answer.
+    // Rendering reads questions/kind/sessionId/key structurally (never
+    // instanceof across the plugin boundary); answering stays in the native
+    // session (the card navigates there via sessions.open). The legacy mux
+    // tracker stays as the fallback while no uiSession face is served.
+    const uiSession = ctx.get<IUiSessionFace>('uiSession')
+    const mirror = uiSession !== undefined
+      ? new PendingMirror(uiSession as unknown as UiSessionMirrorFace)
+      : undefined
+    if (mirror === undefined) {
+      console.warn('[dsh-task-board] question mirror unavailable: no uiSession bridge (navigate-to-answer degraded)')
+    }
     const questionTracker = new QuestionTracker(api)
     // The localStorage cruise face: the fallback-mode truth AND the synced-mode
     // offline mirror (one implementation, two roles — no drift).
@@ -712,7 +729,7 @@ export function apply(ctx: ClientContext): void {
     const controller = new BoardController({
       store,
       exec,
-      questionRpc: questionTracker,
+      questionRpc: mirror ?? questionTracker,
       // Presets ride the shared document in synced mode (edits propagate to
       // every replica), the local keys otherwise. The localStorage instance
       // stays as the offline mirror behind the synced one.
@@ -939,13 +956,23 @@ export function apply(ctx: ClientContext): void {
       controller.setEngine(sync.isEngine())
     }
     controller.start()
-    // The PRIMARY native-turn channel: every live `user/message` frame the
-    // mux stream carries goes straight to the controller (engine-only inside,
-    // anchor-deduped against the reconcile backstop). A chat that starts AND
-    // finishes between two reconcile passes can never be missed again.
+    // The legacy mux turn fan-out: on hosts that still serve it, every live
+    // `user/message` frame goes straight to the controller (engine-only
+    // inside, anchor-deduped against the reconcile backstop). On 0.1.5 the
+    // mux is gone (the stub hangs silently) and the activity watcher below
+    // is the live channel; this listener then simply never fires.
     const detachTurnWatcher = questionTracker.addSessionListener((sessionId, event) => {
       const turn = nativeTurnOf(event)
       if (turn !== undefined) controller.recordNativeTurn(sessionId, turn)
+    })
+    // The 0.1.5 native-activity wake channel: the host emits
+    // `api-session/activity(sessionId, updatedAt)` for every durable user
+    // message, which the session list projects onto the row's `updatedAt`.
+    // A row whose stamp advances while its running flag stays put is a turn
+    // the status edge would miss — wake the reconcile (engine-only inside,
+    // anchor-deduped at the write) so it is recorded with its text.
+    const detachActivityWake = watchSessionActivity(ctx, (sessionId, stamp) => {
+      controller.recordActivityWake(sessionId, stamp)
     })
     // The localized 未命名 placeholder the session rows show for a session
     // the host has not titled yet (the host names it automatically from the
@@ -1025,6 +1052,7 @@ export function apply(ctx: ClientContext): void {
     uiDisposer = () => {
       for (const dispose of disposers.splice(0)) dispose()
       detachTurnWatcher()
+      detachActivityWake()
       scheduler.dispose()
       sync.dispose()
       controller.dispose()

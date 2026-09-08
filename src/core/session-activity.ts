@@ -1,11 +1,15 @@
 /**
  * Native-side activity detection — the "两端同步" contract. When a user chats
  * in the native conversation UI (not through the board), the board learns of
- * the turn through two complementary channels:
- * - the PRIMARY one: the live mux stream's `user/message` frame (parsed by
- *   `nativeTurnOf`), which the engine records the instant it arrives — no
- *   sampling, so a turn that starts AND finishes between two reconcile passes
- *   can never be missed;
+ * the turn through complementary channels:
+ * - the WAKE channel (0.1.5): the host's `api-session/activity` event (or
+ *   the equivalent list `updatedAt` advance) fires per durable user message;
+ *   the controller records its stamp and the scan below re-checks the
+ *   session even when the running flag did not move — so a turn that starts
+ *   AND finishes between two reconcile passes can never be missed;
+ * - the legacy live frame (pre-0.5 `user/message` stream events, parsed by
+ *   `nativeTurnOf`), which the engine records the instant it arrives — kept
+ *   as the fast path on hosts that still serve it;
  * - the CATCH-UP backstop here: a STATE rule on every reconcile pass — a
  *   related session that is running RIGHT NOW with no board-owned round for
  *   this run period fires an external round. "Running now" covers the cases
@@ -77,15 +81,16 @@ export function latestUserMessage(events: readonly unknown[]): LatestUserMessage
 
 /**
  * Parse ONE native event into the turn facts the board records: a
- * `user/message` from the user source (the mux stream's `session/event`
- * payload carries exactly this shape). undefined for anything else — the
- * caller ignores assistant chatter, tool events and system frames.
+ * `user/message` from the user source (the legacy live stream's
+ * `session/event` payload carries exactly this shape). undefined for
+ * anything else — the caller ignores assistant chatter, tool events and
+ * system frames.
  */
 export function nativeTurnOf(event: unknown): LatestUserMessage | undefined {
   return turnOfMessageEvent(event)
 }
 
-/** The one reader of the user-message wire shape (transcript tail + mux). */
+/** The one reader of the user-message wire shape (transcript tail + live frame). */
 function turnOfMessageEvent(event: unknown): LatestUserMessage | undefined {
   const entry = event as UserMessageEventShape | null
   if (typeof entry !== 'object' || entry === null || entry.type !== 'user/message') return undefined
@@ -160,7 +165,8 @@ export interface ActivityCandidate {
  * the direct-send grace, a direct round of this run) consume the period
  * WITHOUT firing — the turn is already in the ledger. A session reading idle
  * re-arms its period, so every new native turn fires exactly once and past
- * completed turns never re-fire.
+ * completed turns never re-fire. (Turns that finished before the pass are
+ * covered by the controller's wake-evidence pass, not here.)
  */
 export function detectExternalTurns(
   candidates: ReadonlyArray<{ taskId: string; candidate: ActivityCandidate }>,

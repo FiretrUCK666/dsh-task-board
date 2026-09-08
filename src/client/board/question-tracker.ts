@@ -1,12 +1,15 @@
 /**
- * Live mux tracker for pending native questions: opens one `events.mux`
- * stream (the host replays every still-pending question frame on a new
- * stream, then pushes live frames), reduces them into the pure pending map,
- * and answers/cancels through the same `respond` wire call the native
- * composer uses. One instance per board mount — every surface (review page,
- * session panel, refine panel) reads the same projection by session id, so
- * answering on one surface is instantly reflected everywhere, and the card
- * disappears when the host resolves the call (question/resolved frame).
+ * Legacy live tracker for pending native questions: opens one live stream
+ * (pre-0.5 hosts replay every still-pending question frame on a new stream,
+ * then push live frames), reduces them into the pure pending map, and
+ * answers/cancels through the same `respond` wire call the native composer
+ * uses. On 0.1.5 the stream is gone and the board renders from the official
+ * read-only mirror (`pending-mirror.ts`) instead; this tracker stays as the
+ * fallback while no uiSession face is served. One instance per board mount —
+ * every surface (review page, session panel, refine panel) reads the same
+ * projection by session id, so answering on one surface is instantly
+ * reflected everywhere, and the card disappears when the host resolves the
+ * call (question/resolved frame).
  */
 import type { IApiClient } from '../platform.ts'
 import type { ClientResponse, RpcError, RpcId } from '../platform.ts'
@@ -22,8 +25,8 @@ import {
 export class QuestionTracker implements QuestionRpcFace {
   private pending: ReadonlyMap<string, WireQuestion> = new Map()
   private readonly listeners = new Set<() => void>()
-  /** Raw session-event fan-out (the mux stream's `session/event` frames):
-   *  the board's PRIMARY native-turn channel (see controller.recordNativeTurn). */
+  /** Raw session-event fan-out (the legacy stream's `session/event` frames):
+   *  the board's legacy native-turn channel (see controller.recordNativeTurn). */
   private readonly sessionListeners = new Set<(sessionId: string, event: unknown) => void>()
   private controller: AbortController | undefined
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined
@@ -41,7 +44,7 @@ export class QuestionTracker implements QuestionRpcFace {
     return () => { this.sessionListeners.delete(listener) }
   }
 
-  /** Start the mux stream once (idempotent); aborts on teardown. */
+  /** Start the live stream once (idempotent); aborts on teardown. */
   start(): void {
     if (this.controller !== undefined || this.reconnectTimer !== undefined) return
     const controller = new AbortController()
@@ -83,7 +86,7 @@ export class QuestionTracker implements QuestionRpcFace {
     } catch {
       // Transient stream failure — the reconnect below repairs it.
     }
-    // Self-healing stream: a dead mux (host restart, network blip, error
+    // Self-healing stream: a dead stream (host restart, network blip, error
     // frame, plain close) must never wedge the tracker, because a subscribed
     // reader would show a stale question card forever. Release the slot and
     // reopen shortly — the host replays every still-pending frame on a new

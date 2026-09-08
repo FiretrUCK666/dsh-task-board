@@ -64,9 +64,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     : []
 
   // The open native interaction (plan confirm / question): the card over the
-  // composer answers it in place through the mux channel (the only path that
-  // settles the suspended call). Plus the live session context (to-do / goal
-  // / subagents) for the readout above the composer.
+  // composer mirrors it read-only (answering stays in the native session).
+  // Plus the live session context (to-do / goal / subagents) for the readout
+  // above the composer.
   const context = useSessionContext(controller, sessionId)
   const pendingInteraction = useWireQuestion(controller, sessionId)
 

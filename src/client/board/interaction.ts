@@ -2,7 +2,7 @@
  * Session live to-do readout: the native `todo/write` log event carries the
  * whole list, and the newest event wins (last-write-wins). Pure and
  * framework-free so the rules unit-test in isolation. Pending native
- * questions moved to the core wire model (question-rpc.ts) — the mux frame
+ * questions moved to the core wire model (question-rpc.ts) — the live frame
  * is the answerable source, not transcript events.
  */
 import type { TranscriptEventShape } from '../../core/controller.ts'

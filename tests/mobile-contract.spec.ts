@@ -410,9 +410,16 @@ describe('alignment grammar (the OCD contract)', () => {
     // unpadded scroller floats the bar beside the text — the「滚动条贴着文字」
     // complaint on the interaction (question/plan) card.
     const card = ruleOf('interactionCard')
-    expect(card).toMatch(/padding:\s*10px 0 12px/)
+    expect(card).toMatch(/max-height:\s*320px/)
     expect(ruleOf('interactionCardBody')).toMatch(/overflow-y:\s*auto[\s\S]*?padding:\s*0 12px/)
     expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
+    // The 0.1.5 read-only mirror options share the chip geometry but are
+    // spans, never buttons: no pointer cursor, no hover lift, no focus ring.
+    // (The interactive grammar stays on button.interactionOption only.)
+    expect(source).toMatch(/span\.interactionOption/)
+    expect(source).toMatch(/button\.interactionOption:hover/)
+    expect(source).not.toMatch(/[^.:\w]interactionOption:hover/)
+    expect(source).not.toMatch(/[^\w.]interactionOption:focus-visible/)
   })
 
   it('the compact tool row is deterministic: modes above, the filter owns the line below it (贴状态列)', () => {

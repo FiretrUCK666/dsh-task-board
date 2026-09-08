@@ -271,6 +271,9 @@ export interface SessionListSummary {
   completed?: boolean
   /** Host "never started" flag: only a blank session may be reused for a run. */
   blank?: boolean
+  /** List-activity stamp: advances on every durable user message (the 0.1.5
+   *  `api-session/activity` projection — the wake channel's list face). */
+  updatedAt?: number
 }
 
 /** The session-list snapshot `ctx.sessions.list` exposes. */
@@ -348,6 +351,19 @@ export interface IWorkspacesFace {
   list: ObservableSnapshot<WorkspaceListState>
 }
 
+/** The narrow `ctx.uiSession` service face this plugin reads. The board only
+ *  SUBSCRIBES to the official `pendingInteractions` snapshot (the same
+ *  source the native sidebar and composer read) — it never registers its
+ *  own waterfall listener and never publishes an interaction (publishing
+ *  would race the native composer for the answer). Absent = the question
+ *  card degrades to the waiting banner. */
+export interface IUiSessionFace {
+  readonly pendingInteractions: {
+    getSnapshot(): ReadonlyMap<string, unknown>
+    subscribe(listener: () => void): () => void
+  }
+}
+
 /**
  * The client root context this plugin's `apply` receives. Structural face of
  * the alpha.3 web shell: services arrive through cordis `inject` (slots,
@@ -371,6 +387,8 @@ export interface ClientContext {
   sessions: ISessionsFace
   /** Workspace object layer. */
   workspaces: IWorkspacesFace
+  /** Session UI layer (the official pending-interaction projection). */
+  uiSession?: IUiSessionFace
   /**
    * Typert-generated Host Remote namespaces. The alpha.3 host registers
    * exactly these methods per namespace (verified against the shipped
@@ -610,18 +628,18 @@ export function buildApi(ctx: ClientContext): ApiFace {
     events: {
       mux: () => ({
         async *[Symbol.asyncIterator]() {
-          // The host question channel moved off the rc.7 `events.mux` stream
-          // in alpha.3; the plugin's question tracker falls back to the
+          // The host question channel moved off the legacy live stream in
+          // 0.1.5; the plugin's question tracker falls back to the
           // controller-level pending map. The iterator HANGS instead of
           // ending so the tracker's reconnect loop never spins (a closed
           // stream would be read as a dead carrier and retried every second).
-          console.warn('[dsh-task-board] events.mux unavailable on dsh alpha.3: question live-stream disabled')
+          console.warn('[dsh-task-board] live question stream unavailable on dsh 0.1.5: question live-stream disabled')
           await new Promise<void>(() => {})
         },
       }),
     },
     respond: async () => {
-      console.warn('[dsh-task-board] api.respond unavailable on dsh alpha.3: question answers route through the host bridge')
+      console.warn('[dsh-task-board] question answer path unavailable on dsh 0.1.5: answers go through the native session')
       return { accepted: false }
     },
   }

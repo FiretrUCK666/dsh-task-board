@@ -143,7 +143,7 @@ describe('latestUserMessage', () => {
 })
 
 describe('nativeTurnOf', () => {
-  it('parses a live mux user/message frame into the turn facts (with anchor)', () => {
+  it('parses a live user/message frame into the turn facts (with anchor)', () => {
     expect(nativeTurnOf({ type: 'user/message', seq: 12, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '直接对话' }] } }))
       .toEqual({ text: '直接对话', hasImage: false, anchor: 12 })
   })

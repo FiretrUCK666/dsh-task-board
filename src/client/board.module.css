@@ -3469,7 +3469,7 @@ textarea.input {
 .schedulePreset:focus-visible,
 .attachAdd:focus-visible,
 .reviewJumpLatest:focus-visible,
-.interactionOption:focus-visible,
+button.interactionOption:focus-visible,
 .tagSwatch:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
@@ -4625,9 +4625,17 @@ textarea.input {
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsh-tb-radius-sm);
   padding: 4px 10px;
+}
+/* Read-only mirror options (0.1.5 navigate-to-answer card): the same chip
+   geometry, never clickable — no pointer cursor, no hover lift, no selected
+   state. The interactive grammar stays on the button element only. */
+span.interactionOption {
+  cursor: default;
+}
+button.interactionOption {
   cursor: pointer;
 }
-.interactionOption:hover {
+button.interactionOption:hover {
   background: var(--dsh-tb-hover);
 }
 .interactionOptionOn {

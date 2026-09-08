@@ -1,8 +1,9 @@
 /**
- * Pending question wire model: frame normalization, the per-rpcId projection
- * over the mux frames, answer-batch assembly and the plan-review grammar.
- * Pins the wire contract so the interaction card answers through the native
- * respond path with exactly the shape the host validates.
+ * Pending question wire model (legacy live stream): frame normalization, the
+ * per-rpcId projection over the live frames, answer-batch assembly and the
+ * plan-review grammar. Pins the wire contract so the interaction card
+ * answers through the native respond path with exactly the shape the host
+ * validates (pre-0.1.5 hosts; on 0.1.5 the board mirrors read-only instead).
  */
 import { describe, expect, it } from 'vitest'
 import {

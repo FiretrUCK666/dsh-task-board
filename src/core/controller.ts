@@ -402,10 +402,11 @@ export interface ControllerDeps {
     | { ok: true; matched: boolean; outcome?: { kind: 'success' | 'error'; text?: string } }
     | { ok: false; error: string }
   >
-  /** The live pending-question tracker (native mux channel): the only path
-   *  that can settle a suspended `ask_user_question` — a plain message never
-   *  does. Absent = the interaction card degrades (the native side still
-   *  answers it). */
+  /** The live pending-question tracker (the official uiSession mirror face):
+ *  a read-only projection of the host's pending interactions — answering
+ *  stays in the native session (the board navigates there). Absent = the
+ *  interaction card degrades to the waiting banner (the native side still
+ *  answers it). */
   questionRpc?: QuestionRpcFace
   /**
    * Relay one user-initiated launch to the engine (a non-engine replica's
@@ -752,10 +753,10 @@ export class BoardController {
     return this.deps.sessions.list.getSnapshot().byId[sessionId]?.pendingInteraction
   }
 
-  // --- pending native questions (mux channel) -----------------------------------
+  // --- pending native questions (official mirror) -----------------------------
 
   /** The open ask_user_question batch for a session (the interaction card's
-   *  source of truth — frames carry the rpcId an answer must echo). */
+   *  read-only source — answering stays in the native session). */
   questionPendingOf(sessionId: string | undefined): WireQuestion | undefined {
     return this.deps.questionRpc?.pendingOf(sessionId)
   }
@@ -763,6 +764,14 @@ export class BoardController {
   /** Subscribe to pending-question changes across sessions. */
   subscribeQuestions(listener: () => void): () => void {
     return this.deps.questionRpc?.subscribe(listener) ?? (() => {})
+  }
+
+  /** Whether the board can answer a pending question in place. Always false
+   *  on 0.1.5: the waterfall is a claim chain (first answer wins), so the
+   *  board never registers its own answerer — the card navigates to the
+   *  native session instead. Kept so callers degrade structurally. */
+  get questionAnswerInPlace(): boolean {
+    return this.deps.questionRpc?.answerInPlace ?? false
   }
 
   /** Deliver one answer batch to the suspended ask (true = accepted). */
@@ -2806,6 +2815,10 @@ export class BoardController {
    *  running baselines per session, when external rounds were created, and
    *  which sessions' CURRENT run periods are already consumed. */
   private readonly activityBook: ActivityBook = { running: new Map(), externalSince: new Map(), recorded: new Set() }
+  /** Latest wake stamp per session (see recordActivityWake): a stamp advance
+   *  is a turn the status edge may have missed — the next reconcile pass
+   *  re-checks the session even when its running flag did not move. */
+  private readonly activityWake = new Map<string, number>()
   /** Sessions whose current turn the board itself recorded (a direct-send):
    *  they must not re-trigger external detection while in grace. */
   private readonly directGraceUntil = new Map<string, number>()
@@ -3134,13 +3147,21 @@ export class BoardController {
    * column but turns `refining` on. The round body is the user's native
    * message text captured at observation (so the thread shows what was said)
    * and the round carries the message's seq as its TURN ANCHOR — the dedup
-   * key shared with the live mux channel (recordNativeTurn), so the same
+   * key shared with the live frame channel (recordNativeTurn), so the same
    * native turn can never be recorded twice, by either channel, on either
    * device. Returns whether anything changed.
    */
   private async scanExternalActivity(): Promise<boolean> {
     const byId = this.deps.sessions.list.getSnapshot().byId
     const now = this.now()
+    // Wake stamps consume on read — one wake schedules one re-check, and a
+    // restart re-primes from the live list instead of replaying.
+    const woken = new Set<string>()
+    for (const sessionId of this.activityWake.keys()) {
+      this.activityWake.delete(sessionId)
+      if (byId[sessionId] === undefined) continue
+      woken.add(sessionId)
+    }
     const candidates = this.tasks.map(task => ({
       taskId: task.id,
       candidate: {
@@ -3150,12 +3171,31 @@ export class BoardController {
       },
     }))
     const turns = detectExternalTurns(candidates, this.activityBook, byId)
-    if (turns.length === 0) return false
     let changed = false
     for (const turn of turns) {
       const msg = await this.userMessageOf(turn.sessionId)
       if (this.disposed) return changed
       if (this.recordExternalRound(turn.taskId, turn.sessionId, turn.refine, msg)) changed = true
+    }
+    // Wake evidence: a woken session re-checks through the transcript tail
+    // even when the running flag did not move — a turn that started AND
+    // finished between two passes (or arrived while the flag already read
+    // running) is invisible to the state rule above. The write path is the
+    // same anchor-deduped one, so a turn the state rule already recorded is
+    // never doubled; board-owned turns stay suppressed by the same guards.
+    for (const sessionId of woken) {
+      if (turns.some(turn => turn.sessionId === sessionId)) continue
+      const related: Array<{ taskId: string; refine: boolean }> = []
+      for (const task of this.tasks) {
+        const candidate = this.relatedSessionsOf(task).find(entry => entry.sessionId === sessionId)
+        if (candidate !== undefined) related.push({ taskId: task.id, refine: candidate.refine })
+      }
+      if (related.length === 0) continue
+      const msg = await this.userMessageOf(sessionId)
+      if (this.disposed) return changed
+      for (const { taskId, refine } of related) {
+        if (this.recordExternalRound(taskId, sessionId, refine, msg)) changed = true
+      }
     }
     return changed
   }
@@ -3188,7 +3228,7 @@ export class BoardController {
     this.tasks = this.tasks.map(task => {
       if (task.id !== taskId) return task
       // Re-check every guard on the CURRENT record (the transcript read and
-      // the mux frame both await; another channel may have recorded meanwhile).
+      // the live frame both await; another channel may have recorded meanwhile).
       // "Busy" here is the SAME lane judgment the dispatcher uses: a round is
       // in the way only when it is actually WORKING. A comment that is merely
       // saved-and-queued must never swallow a native turn — the user chatting
@@ -3221,12 +3261,14 @@ export class BoardController {
   }
 
   /**
-   * THE PRIMARY external-turn channel: the live mux frame of a native
-   * `user/message` (wired by the client). A turn that starts AND finishes
-   * between two reconcile passes can no longer be missed — the frame arrives
-   * the instant the user chats. Engine-only (one recorder; replicas get the
-   * round through the synced ledger) and idempotent against the state
-   * backstop via the persisted turn anchor.
+   * The legacy live-turn channel: the live frame of a native `user/message`
+   * (wired by the client on hosts that still serve it). A turn that starts
+   * AND finishes between two reconcile passes can no longer be missed — the
+   * frame arrives the instant the user chats. Engine-only (one recorder;
+   * replicas get the round through the synced ledger) and idempotent
+   * against the state backstop via the persisted turn anchor. On 0.1.5 the
+   * legacy stream is gone and `recordActivityWake` is the live channel; both
+   * land on the same write path.
    */
   recordNativeTurn(sessionId: string, turn: LatestUserMessage): void {
     if (this.disposed || !this.engine) return
@@ -3235,12 +3277,32 @@ export class BoardController {
       const candidate = this.relatedSessionsOf(task).find(entry => entry.sessionId === sessionId)
       if (candidate === undefined) continue
       related = true
-      // The mux frame IS the turn: consume the session's run period (the
+      // The live frame IS the turn: consume the session's run period (the
       // state backstop must not fire for it again) and baseline it running.
       this.activityBook.recorded.add(sessionId)
       this.recordExternalRound(task.id, sessionId, candidate.refine, turn)
     }
     if (related) this.activityBook.running.set(sessionId, true)
+  }
+
+  /**
+   * The 0.1.5 wake channel: the host's `api-session/activity` event (or the
+   * equivalent list `updatedAt` advance) fired for a durable user message.
+   * The wake carries no text and no anchor — it only records the stamp and
+   * schedules a reconcile pass, which reads the transcript tail for the
+   * facts and lands on the same anchor-deduped write path. Engine-only like
+   * the legacy frame channel (a viewer never schedules engine work — the
+   * lease holder's pass reads the synced ledger); a stale (non-advancing)
+   * stamp never re-schedules. Consumed stamps clear when read so a restart
+   * re-primes from the live list instead of replaying history.
+   */
+  recordActivityWake(sessionId: string, stamp: number): void {
+    if (this.disposed || !this.engine) return
+    if (!Number.isFinite(stamp)) return
+    const previous = this.activityWake.get(sessionId)
+    if (previous !== undefined && stamp <= previous) return
+    this.activityWake.set(sessionId, stamp)
+    this.scheduleReconcile()
   }
 
   /** The newest native user message of a session (the line that started the

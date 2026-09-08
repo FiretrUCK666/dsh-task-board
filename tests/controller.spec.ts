@@ -2715,7 +2715,7 @@ describe('native-activity sync (两端同步)', () => {
   })
 })
 
-describe('recordNativeTurn (live mux channel)', () => {
+describe('recordNativeTurn (live turn channel)', () => {
   /** A controller with one bound session, seeded idle. */
   async function boundHarness() {
     const stub = new StubExec()
@@ -2745,7 +2745,7 @@ describe('recordNativeTurn (live mux channel)', () => {
     expect(task.status).toBe('running')
   })
 
-  it('the same anchor never records twice (mux frame + reconcile backstop)', async () => {
+  it('the same anchor never records twice (live frame + reconcile backstop)', async () => {
     const { controller, sessions } = await boundHarness()
     controller.recordNativeTurn('s-1', { text: '同一轮', hasImage: false, anchor: 7 })
     // The backstop now sees the session running (the frame baselined it) —
@@ -2852,7 +2852,7 @@ describe('recordNativeTurn (live mux channel)', () => {
     // The state backstop sees the session running but the board round is open
     // — nothing to record.
     expect(controller.getSnapshot().tasks[0].executions.some(run => run.external === true)).toBe(false)
-    // The mux echo of the board's OWN injection must not add an external round.
+    // The live echo of the board's OWN injection must not add an external round.
     controller.recordNativeTurn('s-1', { text: '驱动一下', hasImage: false, anchor: 99 })
     const after = controller.getSnapshot().tasks[0]
     expect(after.executions.some(run => run.external === true)).toBe(false)
@@ -2901,6 +2901,105 @@ describe('recordNativeTurn (live mux channel)', () => {
     const tasks = controller.getSnapshot().tasks
     expect(tasks.every(task => task.executions.some(run => run.external === true && run.anchor === 11))).toBe(true)
     expect(tasks.every(task => task.status === 'running')).toBe(true)
+  })
+
+  it('an activity wake records a turn the status edge cannot see (started AND finished between passes)', async () => {
+    // The 0.1.5 wake channel: the host fires per user message; the wake
+    // carries no text, so the reconcile reads the tail for it. The session
+    // NEVER reads running here — the wake alone must record the turn.
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-1', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+      transcript: async () => ({
+        events: [{ type: 'user/message', seq: 31, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '原生里说的话' }] } }],
+      }) as never,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    await flush()
+    // A stale (non-advancing) wake never re-schedules, never records.
+    controller.recordActivityWake('s-1', 100)
+    controller.recordActivityWake('s-1', 100)
+    await flush()
+    await flush()
+    const after = controller.getSnapshot().tasks[0]
+    const ext = after.executions.filter(run => run.external === true)
+    expect(ext).toHaveLength(1)
+    expect(ext[0].comment).toBe('原生里说的话')
+    expect(ext[0].anchor).toBe(31)
+    expect(after.status).toBe('running')
+  })
+
+  it('a wake never doubles a turn the state rule already recorded (anchor dedup)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-1', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+      transcript: async () => ({
+        events: [{ type: 'user/message', seq: 31, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '同一轮' }] } }],
+      }) as never,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    await flush()
+    controller.recordActivityWake('s-1', 100)
+    sessions.setRunning('s-1', true)
+    await flush()
+    await flush()
+    const after = controller.getSnapshot().tasks[0]
+    expect(after.executions.filter(run => run.external === true)).toHaveLength(1)
+  })
+
+  it('a wake on an unrelated session records nothing', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-1', false)
+    sessions.setRunning('s-stranger', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    await flush()
+    controller.recordActivityWake('s-stranger', 300)
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].executions.some(run => run.external === true)).toBe(false)
+  })
+
+  it('a wake on a non-engine replica records nothing', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-1', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    await flush()
+    controller.setEngine(false)
+    controller.recordActivityWake('s-1', 200)
+    const after = controller.getSnapshot().tasks[0]
+    expect(after.executions.some(run => run.external === true)).toBe(false)
   })
 })
 

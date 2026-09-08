@@ -355,9 +355,20 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(panelSource).not.toMatch(/sessionContextDock/)
     expect(panelSource).not.toMatch(/context=\{context\}/)
     // A pending interaction must FORCE the comments fold open — the
-    // InteractionCard is the only path that settles a suspended call, so a
-    // collapsed fold can never hide the answer affordance.
+    // InteractionCard carries the answer affordance (in place on legacy
+    // hosts, navigate-to-answer on 0.1.5), so a collapsed fold can never
+    // hide it.
     expect(panelSource).toMatch(/open=\{commentsOpen \|\| interaction !== undefined\}/)
+    // The 0.1.5 mirror card is read-only: the mirror branch renders options
+    // as spans (never buttons), one navigate action, no submit path that
+    // could race the native answerer. (The legacy in-place branch keeps its
+    // button grammar for pre-0.1.5 hosts.)
+    const cardPath = fileURLToPath(new URL('../src/client/board/InteractionCard.tsx', import.meta.url))
+    const cardSource = readFileSync(cardPath, 'utf8')
+    expect(cardSource).toMatch(/function MirrorQuestionCard/)
+    expect(cardSource).toMatch(/review\.interactionGoAnswer/)
+    const mirrorBranch = cardSource.slice(cardSource.indexOf('function MirrorQuestionCard'))
+    expect(mirrorBranch).not.toMatch(/<button/)
     // 滑到最新 binds ONLY the comments scroller (the 「跳转范围错误」 fix).
     expect(panelSource).toMatch(/onCommentsScroll/)
   })

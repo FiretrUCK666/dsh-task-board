@@ -5,11 +5,12 @@
  * ask_user_question), alongside the session's live to-do / goal / subagent
  * readout.
  *
- * The pending QUESTION comes from the controller's mux tracker
- * (questionPendingOf / subscribeQuestions) — the mux frame is the only
- * answerable source (it carries the rpcId an answer must echo), so the card
- * appears/disappears with the real tool lifecycle and answers really settle
- * the suspended call. The to-do list still rides the transcript tail
+ * The pending QUESTION comes from the controller's question face
+ * (questionPendingOf / subscribeQuestions) — on 0.1.5 a read-only mirror of
+ * the official pending snapshot (answering stays in the native session), on
+ * older hosts the live tracker whose frame settles the suspended call. The
+ * card appears/disappears with the real tool lifecycle either way. The to-do
+ * list still rides the transcript tail
  * (last-write-wins `todo/write` snapshot); goal + subagents come from the
  * narrow session-state bridge when the host registered it.
  */
@@ -106,7 +107,7 @@ export function useSessionContext(controller: BoardController, sessionId: string
   return context
 }
 
-/** The pending wire question for one session (mux-driven, reactive). */
+/** The pending wire question for one session (mirror-driven, reactive). */
 export function useWireQuestion(controller: BoardController, sessionId: string | undefined): WireQuestion | undefined {
   const [question, setQuestion] = useState<WireQuestion | undefined>(() => controller.questionPendingOf(sessionId))
   useEffect(() => {

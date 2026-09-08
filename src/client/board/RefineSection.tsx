@@ -5,9 +5,10 @@
  * task's refine session (created lazily through the same session machinery
  * as executions and inheriting the task's run configuration — nothing extra
  * to configure). The AI researches with its own tools, asks the user
- * anything unclear (the board surfaces the wait and the user answers right
- * here), and finally delivers a ready-to-run execution prompt that the user
- * applies onto the task with one button — nothing is applied automatically.
+ * anything unclear (the board surfaces the wait read-only — answering stays
+ * in the native session), and finally delivers a ready-to-run execution
+ * prompt that the user applies onto the task with one button — nothing is
+ * applied automatically.
  *
  * Layout: header (title + live status + view-session escape) above the
  * shared transcript tail (auto-follow + 滑到最新), then the answer bar

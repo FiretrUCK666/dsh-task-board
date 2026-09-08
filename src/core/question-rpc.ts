@@ -1,13 +1,16 @@
 /**
- * Pending `ask_user_question` answers over the native mux channel.
+ * Pending `ask_user_question` answers over the official mirror.
  *
- * The native question flow is a host-suspended tool call; only a client
- * response through the mux `respond` path can settle it — a plain session
- * message never resolves the pending call. This module is the pure wire
- * model: frame normalization, the per-rpcId pending projection, answer
- * assembly and the plan-review grammar. Framework-free and DOM-free, so the
- * rules unit-test in isolation. The live stream and the wire calls live in
- * the client tracker; the controller exposes a thin `QuestionRpcFace`.
+ * On dsh 0.1.5 the waterfall is a CLAIM chain (first answer wins, never a
+ * broadcast), so the board never registers its own answerer — answering stays
+ * in the native session and the board only mirrors the official
+ * `pendingInteractions` snapshot (see question-mirror.ts). This module keeps
+ * the historical wire model (frame normalization, the per-rpcId pending
+ * projection, answer assembly and the plan-review grammar) for the legacy
+ * tracker path; the mirror path renders from `MirrorQuestion` instead.
+ * Framework-free and DOM-free, so the rules unit-test in isolation. The live
+ * stream and the wire calls live in the client tracker; the controller
+ * exposes a thin `QuestionRpcFace`.
  *
  * Frame identity: the host mints one rpcId per open `ask()` and replays it
  * verbatim on reconnects (refresh-recovery baseline), so the answer echoes
@@ -59,7 +62,7 @@ export interface QuestionAnswerEntry {
   custom?: string
 }
 
-/** The mux frames this model consumes (narrowed structural slices). */
+/** The legacy frames this model consumes (narrowed structural slices). */
 export type QuestionFrameIn =
   | { type: 'question/requested'; rpcId: string; sessionId: string; questions: unknown }
   | { type: 'question/resolved'; questionRpcId: string }
@@ -67,13 +70,17 @@ export type QuestionFrameIn =
 /** Plan-review decision a UI can send (see planDecisionAnswers). */
 export type PlanDecision = 'approve' | 'decline'
 
-/** The controller's thin question surface (implemented by the live tracker;
- *  absent when the host wire is unavailable — surfaces then hide the card). */
+/** The controller's thin question surface (implemented by the live tracker
+ *  or the official mirror; absent when the host wire is unavailable —
+ *  surfaces then hide the card). On 0.1.5 the mirror never answers in place
+ *  (`answerInPlace` is false): the card navigates to the native session. */
 export interface QuestionRpcFace {
   /** The pending wire question for one session (newest wins), if any. */
   pendingOf(sessionId: string | undefined): WireQuestion | undefined
   /** React to pending-question changes (requested/resolved frames). */
   subscribe(listener: () => void): () => void
+  /** Whether the board answers in place (false = navigate to answer). */
+  readonly answerInPlace?: boolean
   /** Deliver the whole answer batch; false = the host rejected it. */
   answer(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>
   /** Reject the whole ask (the host resolves the tool call as cancelled). */
@@ -125,7 +132,7 @@ export function wireQuestionsOf(value: unknown): WireQuestionItem[] | undefined 
   return questions.length > 0 ? questions : undefined
 }
 
-/** Immutable application of one mux frame onto the pending map (same map on no-op). */
+/** Immutable application of one legacy frame onto the pending map (same map on no-op). */
 export function reduceQuestionFrames(
   pending: ReadonlyMap<string, WireQuestion>,
   frame: QuestionFrameIn,

@@ -1,9 +1,12 @@
 /**
- * QuestionTracker wire contract: one mux stream, replay-on-reconnect, and the
- * self-healing rule — a stream that fails or closes must never wedge the live
- * pending map, because a subscribed surface (an interaction card) would keep
- * showing a stale question. Tests drive the wire with a hand-controlled fake
- * (queue + failure switch + stream counter), no real network.
+ * QuestionTracker wire contract (legacy live stream): one stream,
+ * replay-on-reconnect, and the self-healing rule — a stream that fails or
+ * closes must never wedge the live pending map, because a subscribed surface
+ * (an interaction card) would keep showing a stale question. Tests drive the
+ * wire with a hand-controlled fake (queue + failure switch + stream
+ * counter), no real network. On 0.1.5 the board renders from the official
+ * read-only mirror instead (see pending-mirror.spec.ts); this tracker stays
+ * as the fallback while no uiSession face is served.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IApiClient } from '../src/client/platform.ts'
@@ -76,7 +79,7 @@ describe('QuestionTracker', () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
-  it('reconnects the mux stream after a transient failure', async () => {
+  it('reconnects the live stream after a transient failure', async () => {
     const api = new FakeApi()
     const tracker = new QuestionTracker(api as unknown as IApiClient)
     api.failNextStream = true

@@ -761,9 +761,9 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
         {/* The comments: ONE Disclosure fold. OPENED = the thread box (its own
             scroll on a wide rail; in-flow inside the capped folds block on a
             phone). A pending interaction FORCE-opens it — the InteractionCard
-            is the only path that settles a suspended call, so a collapsed
-            fold can never hide the answer affordance; the summary names that
-            wait too. */}
+            carries the answer affordance (in place on legacy hosts,
+            navigate-to-answer on 0.1.5), so a collapsed fold can never hide
+            it; the summary names that wait too. */}
         <div className={css.sessionRailComments} data-open={commentsOpen || interaction !== undefined}>
           <Disclosure
             title={t('review.comments')}

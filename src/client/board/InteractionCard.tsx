@@ -2,14 +2,16 @@
  * Pending native-interaction card: the plan/question the session's agent is
  * waiting on, rendered over the composer so the user answers in place.
  *
- * The card is driven by the mux tracker (WireQuestion) — answers flow through
- * the same `respond` wire call the native composer uses, so submitting really
- * settles the suspended ask_user_question (a plain comment never resolves
- * it). The grammar mirrors the native flow: an ask walks its questions with
- * 上一题/下一题/跳过本题/提交/放弃整组; a plan review shows the plan with
- * 确认执行/拒绝 (amendments = a revise-with-feedback custom answer)/
- * 去聊天里说 (= cancel). The card disappears when the host resolves the
- * call (question/resolved frame).
+ * On 0.1.5 the board is a READ-ONLY mirror of the official pending snapshot:
+ * answering stays in the native session (the waterfall is a claim chain, so
+ * a board-side answer would race the native composer). The card therefore
+ * shows the full batch read-only with a single navigate affordance
+ * ("去会话回答" → sessions.open). The legacy in-place grammar (per-question
+ * walk/skip/submit) only runs when the controller's face reports
+ * `questionAnswerInPlace` (pre-0.1.5 hosts with a live `respond` path);
+ * the plan-review grammar degrades the same way (confirm/decline hidden,
+ * discuss becomes the navigate action). The card disappears when the host
+ * resolves the call (the mirror snapshot drops it).
  */
 import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
@@ -45,6 +47,15 @@ export function InteractionCard({ question, sessionId, controller }: {
   const [amend, setAmend] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
+
+  // 0.1.5 mirror mode: the board never answers — the card is read-only with
+  // a navigate affordance. The legacy in-place grammar below only runs on
+  // hosts whose face still settles the call (questionAnswerInPlace).
+  if (!controller.questionAnswerInPlace) {
+    return (
+      <MirrorQuestionCard question={question} sessionId={sessionId} controller={controller} />
+    )
+  }
 
   // Plan review shows the plan question itself; an ask flow walks its list.
   const planQuestion = question.isPlanReview ? planQuestionOf(question) : undefined
@@ -219,6 +230,71 @@ export function InteractionCard({ question, sessionId, controller }: {
         </span>
       ) : null}
       {error !== undefined && <span className={css.detailHint}>{error}</span>}
+    </div>
+  )
+}
+
+/**
+ * The 0.1.5 read-only mirror card: the full batch (every question, its
+ * detail and its options as plain text — never as clickable answers) with
+ * ONE action: navigate to the native session, where the official composer
+ * settles the call. No draft state, no submit path, nothing that could race
+ * the native answerer. Same chrome (card body + pinned action row) so the
+ * rail geometry never diverges between hosts.
+ */
+function MirrorQuestionCard({ question, sessionId, controller }: {
+  question: WireQuestion
+  sessionId: string
+  controller: BoardController
+}) {
+  const planQuestion = question.isPlanReview ? planQuestionOf(question) : undefined
+  const goAnswer = (): void => {
+    controller.openSession(sessionId)
+  }
+  return (
+    <div className={css.interactionCard} data-plan={planQuestion !== undefined ? 'true' : undefined}>
+      <div className={css.interactionCardBody}>
+        {planQuestion !== undefined ? (
+          <>
+            <Chip kind="warn" title={t('review.planAwaiting')}>{t('review.planAwaiting')}</Chip>
+            <span className={css.interactionQuestion}>{planQuestion.question}</span>
+            {planQuestion.detail !== undefined && <span className={css.interactionDetail}>{planQuestion.detail}</span>}
+          </>
+        ) : (
+          <>
+            {question.questions.map((item, index) => (
+              <span key={item.id} className={css.interactionQuestion}>
+                <span className={css.interactionQuestion}>
+                  <Chip
+                    kind="warn"
+                    title={t('review.questionIndex', { n: String(index + 1), total: String(question.questions.length) })}
+                  >
+                    {t('review.questionIndex', { n: String(index + 1), total: String(question.questions.length) })}
+                  </Chip>
+                  {' '}{item.question}
+                </span>
+                {item.detail !== undefined && <span className={css.interactionDetail}>{item.detail}</span>}
+                {(item.options ?? []).length > 0 && (
+                  <span className={css.interactionOptions}>
+                    {(item.options ?? []).map(option => (
+                      <span
+                        key={option.label}
+                        className={css.interactionOption}
+                        title={option.description}
+                      >
+                        {option.label}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </span>
+            ))}
+          </>
+        )}
+      </div>
+      <span className={css.interactionActions}>
+        <Button variant="primary" onClick={goAnswer}>{t('review.interactionGoAnswer')}</Button>
+      </span>
     </div>
   )
 }
