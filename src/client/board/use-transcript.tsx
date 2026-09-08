@@ -68,6 +68,7 @@ export function useResizeFollow(
   scrollRef: React.RefObject<HTMLDivElement>,
   atBottomRef: React.MutableRefObject<boolean>,
   remountKey?: unknown,
+  initialToBottom = true,
 ): void {
   useEffect(() => {
     const content = scrollRef.current
@@ -80,9 +81,15 @@ export function useResizeFollow(
     observer.observe(content)
     const root = resolveScroller(content)
     if (root !== null && root !== content) observer.observe(root)
+    // The initial pin is opt-out: a NARROW panel's comment fold re-mounts
+    // when the user OPENS it, and the immediate scroll-to-bottom pushed the
+    // fold HEAD off-screen (「一点开评论直接拉到底，要滑上去才能折叠」). A manual
+    // open keeps the reader's position (initialToBottom: false); a forced open
+    // (pending question) and every wide-panel surface keep the default pin.
+    if (!initialToBottom) atBottomRef.current = false
     apply()
     return () => { observer.disconnect() }
-  }, [scrollRef, remountKey])
+  }, [scrollRef, remountKey, initialToBottom])
 }
 
 /**
@@ -104,10 +111,14 @@ export function useFollowScroll(
    *  must re-bind to the NEW element; passing a value that changes with the
    *  fold (its open state) does that. */
   remountKey?: unknown,
+  /** Whether a remount should pin to the bottom. A MANUAL open of the narrow
+   *  comment fold passes false — the reader stays where they were (the head
+   *  stays visible); a forced open (pending question) keeps true. */
+  initialToBottom = true,
 ): { measure: () => void; jumpToBottom: () => void } {
   const atBottomRef = useRef(atBottom)
   useEffect(() => { atBottomRef.current = atBottom })
-  useResizeFollow(scrollRef, atBottomRef, remountKey)
+  useResizeFollow(scrollRef, atBottomRef, remountKey, initialToBottom)
   const measure = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return

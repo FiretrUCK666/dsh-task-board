@@ -702,6 +702,11 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
        to the NEW element (a fold→expand loop used to lose bottom-follow and
        the 滑到最新 button — the review caught it). */
     commentsOpen || interaction !== undefined,
+    /* A MANUAL open must NOT pin to the bottom: the immediate scroll pushed
+       the fold head off-screen and the reader had to drag back up to re-fold
+       (「评论一点开直接拉到底」). A pending question keeps the pin (it must be
+       seen — jumpComments below also forces it). */
+    interaction !== undefined,
   )
   // A pending question is the ONE thing in this panel the user must answer for
   // the session to move at all — so arriving must bring it into view even when

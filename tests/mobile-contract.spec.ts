@@ -415,16 +415,16 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
   })
 
-  it('the compact tool row is deterministic: the filter owns a whole line', () => {
+  it('the compact tool row is deterministic: modes above, the filter owns the line below it (贴状态列)', () => {
     // The filter field used to share the tool row and get crushed to one
     // glyph ("筛"); a width floor only hides the structure problem. Compact
-    // fixes the SHAPE: the search takes a full-width line on its own (the
-    // placeholder always reads whole — 「那一行只保留筛选任务这条白长条」), and
-    // the mode group takes the next line right-aligned. 新建任务 no longer
-    // lives here at all (it moved to the nav row).
+    // fixes the SHAPE by REORDERING the two lines (user decision): 整理/自动化
+    // take the FIRST line right-aligned, the search takes a full-width line
+    // BELOW it — so the long filter strip sits directly above the five status
+    // columns. 新建任务 no longer lives here at all (it moved to the nav row).
     const tools = ruleIn(compact, '.boardRowTools')
     expect(tools).toMatch(/display:\s*grid/)
-    expect(tools).toMatch(/grid-template-areas:[\s\S]*"search"[\s\S]*"modes"/)
+    expect(tools).toMatch(/grid-template-areas:[\s\S]*"modes"[\s\S]*"search"/)
     const search = ruleIn(compact, '.boardRowTools .search')
     expect(search).toMatch(/grid-area:\s*search/)
     expect(search).toMatch(/max-width:\s*none/)

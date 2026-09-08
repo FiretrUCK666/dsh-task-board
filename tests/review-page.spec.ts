@@ -237,23 +237,21 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(cssSource).not.toMatch(/@container dsh-tb \(max-width: 600px\) \{/)
   })
 
-  it('the narrow header is title+badge+× one plane, then context LEFT + actions RIGHT', () => {
+  it('the narrow header is a deterministic grid: title+× one plane (× ALWAYS top-right), then context LEFT + actions RIGHT', () => {
     const block = stacked()
-    // Line 1: title + badge + × on ONE horizontal plane. The title is
-    // single-line (flex 1 1 auto, ellipsis) and the close is an INLINE flex
-    // item at the far right — never absolutely positioned (that let × and the
-    // title drift onto different baselines).
-    expect(block).toMatch(/\.reviewHeader\s*\{[^}]*flex-wrap:\s*wrap/)
-    expect(ruleIn(block, '.reviewTitleWrap')).toMatch(/flex: 1 1 auto/)
-    const close = ruleIn(block, '.reviewHeader > .iconButton')
-    expect(close).toMatch(/flex:\s*none/)
-    expect(close).not.toMatch(/position:\s*absolute/)
-    // Line 2: the context readout LEFT (at 刷新's left, one baseline) and the
-    // action cluster RIGHT — both grow, neither fights.
-    expect(ruleIn(block, '.reviewHeaderContext')).toMatch(/flex: 1 1 auto/)
-    expect(ruleIn(block, '.reviewHeaderContext')).toMatch(/order: 3/)
-    expect(ruleIn(block, '.reviewActions')).toMatch(/flex: 1 1 auto/)
-    expect(ruleIn(block, '.reviewActions')).toMatch(/justify-content:\s*flex-end/)
+    // The header is a NAMED GRID, not flex-wrap + order (which drifted the
+    // layout with content — × sometimes fell to line 2's left, 刷新/查看会话
+    // sometimes squeezed onto line 1). Areas fix every member: line 1 =
+    // title | close (× always top-right, same 14px top/right inset, centered
+    // with the title); line 2 = context | actions. The title stays single-line.
+    expect(block).toMatch(/\.reviewHeader\s*\{[^}]*display:\s*grid/)
+    expect(ruleIn(block, '.reviewHeader')).toMatch(/grid-template-areas:[\s\S]*"title title close"[\s\S]*"context actions actions"/)
+    expect(ruleIn(block, '.reviewHeaderContext')).toMatch(/grid-area:\s*context/)
+    expect(ruleIn(block, '.reviewActions')).toMatch(/grid-area:\s*actions/)
+    expect(ruleIn(block, '.reviewHeader > .iconButton')).toMatch(/grid-area:\s*close/)
+    // The close stays INLINE (never absolutely positioned — that let × and the
+    // title drift onto different baselines) and is pinned to the top-right cell.
+    expect(ruleIn(block, '.reviewHeader > .iconButton')).not.toMatch(/position:\s*absolute/)
     // WIDE: everything on ONE line — context between the title and actions,
     // capped, same center baseline (the 「标题栏不在同一水平面」 fix).
     const wideContext = ruleOf('reviewHeaderContext')
