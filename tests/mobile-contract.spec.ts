@@ -429,7 +429,7 @@ describe('board header and navigator legibility', () => {
     expect(board).toContain('setShowNotify(true)')
     // Batch run rides the organize bar as its apex action (primary): only
     // prompt-ready cards fire, through the single launch point.
-    expect(board).toContain("t('board.organizeRun')")
+    expect(board).toContain("t('board.organizeRun', {")
     expect(board).toContain('runnableIds(snapshot.tasks, selectedCards)')
     expect(board).toContain("controller.runTask(id, 'manual')")
     // The destructive confirm restates its blast radius (count + object —

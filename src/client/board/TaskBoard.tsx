@@ -1229,7 +1229,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       }
                     }}
                   >
-                    {t('board.organizeRun')}
+                    {t('board.organizeRun', {
+                      m: String(runnableIds(snapshot.tasks, selectedCards).length),
+                      n: String(selectedCards.length),
+                    })}
                   </Button>
                 )}
                 <Button size="sm" onClick={() => { setSelectedCards(visible.map(task => task.id)) }}>

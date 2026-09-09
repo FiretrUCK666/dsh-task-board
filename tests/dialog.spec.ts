@@ -40,3 +40,22 @@ describe('Dialog focus loop (one implementation, all callers)', () => {
     expect(dialog).not.toContain("addEventListener('keydown'")
   })
 })
+
+describe('ConfirmDialog destructive grammar (same overlay family)', () => {
+  const confirmPath = fileURLToPath(new URL('../src/client/board/ConfirmDialog.tsx', import.meta.url))
+  const confirm = readFileSync(confirmPath, 'utf8')
+
+  it('renders cancel first (safe default focus) and the danger action last', () => {
+    // The Dialog focus loop lands on the FIRST control — cancel must own it,
+    // so Enter never fires the destructive action by accident.
+    const cancelAt = confirm.indexOf('onClick={onCancel}')
+    const confirmAt = confirm.indexOf('onClick={onConfirm}')
+    expect(cancelAt).toBeGreaterThanOrEqual(0)
+    expect(confirmAt).toBeGreaterThan(cancelAt)
+    expect(confirm).toContain("variant={danger ? 'danger' : 'primary'}")
+  })
+
+  it('rides the shared Dialog (backdrop-cancel, Escape, focus loop inherited)', () => {
+    expect(confirm).toContain('<Dialog title={title} label={title} onClose={onCancel} portal>')
+  })
+})
