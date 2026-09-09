@@ -14,6 +14,7 @@ import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { useEscapeStack } from './escape-stack.ts'
+import { useDialogFocus } from './dialog-focus.ts'
 import { Chip, type ChipKind } from './Chip.tsx'
 import { formatDateTime, formatDueLabel, formatDuration, formatTime } from './format-time.ts'
 import { TaskForm } from './TaskForm.tsx'
@@ -279,7 +280,11 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   // or nested modal opened OVER the detail closes first (one press, one
   // layer), and the detail's own backdrop click / close button stay the
   // mouse path. The edit draft is safe on close — it lives in draftStore.
+  // Focus loops through the shared hook (initial / trap / return), like
+  // every Dialog and the session frame.
   useEscapeStack(() => { controller.closeTask() })
+  const detailPanelRef = useRef<HTMLDivElement | null>(null)
+  const { onKeyDown: onDetailKeyDown } = useDialogFocus(detailPanelRef)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // Red-flag per-session removal (hidden-tray only): the session's rounds
   // and hide history are permanently removed after confirmation.
@@ -556,7 +561,15 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
 
   return (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) controller.closeTask() }}>
-      <div className={css.detail} role="dialog" aria-label={t('detail.title')}>
+      <div
+        ref={detailPanelRef}
+        tabIndex={-1}
+        className={css.detail}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('detail.title')}
+        onKeyDown={onDetailKeyDown}
+      >
         <header className={css.detailHeader}>
           <h2 className={css.detailTitle}>{current.title}</h2>
           <Chip kind={STATUS_CHIP[current.status]}>{t(STATUS_KEY[current.status])}</Chip>

@@ -43,13 +43,14 @@
  * board box on every surface, exactly like the shared Dialog.
  */
 import { createPortal } from 'react-dom'
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { boardBox } from './Dialog.tsx'
 import { useEscapeStack } from './escape-stack.ts'
+import { useDialogFocus } from './dialog-focus.ts'
 import type { BoardController } from '../../core/controller.ts'
 import type { SessionContext } from './use-interaction.ts'
 
@@ -80,11 +81,23 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, contex
 }) {
   // Escape closes the frame through the family's ONE stack — a dialog opened
   // OVER this panel (a future confirm) closes first, the panel never pops
-  // together with what sits on top of it.
+  // together with what sits on top of it. Focus loops through the shared
+  // hook (initial / trap / return), like every Dialog.
   useEscapeStack(onClose)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const { onKeyDown } = useDialogFocus(panelRef)
   return createPortal(
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-      <div className={css.review} role="dialog" aria-label={ariaLabel} data-dsh-taskboard-panel="">
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className={css.review}
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel}
+        data-dsh-taskboard-panel=""
+        onKeyDown={onKeyDown}
+      >
         <header className={css.reviewHeader}>
           <div className={css.reviewTitleWrap}>
             {/* The title is single-line (a wrapping title would push the badge
