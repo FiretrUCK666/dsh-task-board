@@ -278,6 +278,7 @@ export class BoardSyncClient {
         this.log(`[dsh-task-board] stream open #${this.streamOpens}`)
         this.scheduleResync()
         void this.renewLease()
+        this.probeParked()
       },
     }))
     this.loopCancels.push(this.every(this.leaseRenewMs, () => this.renewLease()))
@@ -295,6 +296,7 @@ export class BoardSyncClient {
       this.loopCancels.push(visibility.onVisible(() => {
         void this.renewLease()
         void this.poll()
+        this.probeParked()
       }))
       this.loopCancels.push(visibility.onHidden(() => {
         void this.deps.transport.lease(this.clientId, { ttlMs: this.leaseTtlMs, active: false }).catch(() => undefined)
@@ -402,13 +404,17 @@ export class BoardSyncClient {
     const stamps = new Map(this.baseline.tasks.map(task => [task.id, task.updatedAt]))
     const accrued = new Map(this.deleted.map(entry => [entry.id, entry.baseUpdatedAt]))
     for (const row of previous) {
-      if (kept.has(row.id)) {
-        accrued.delete(row.id)
-        continue
-      }
+      if (kept.has(row.id)) continue
       if (accrued.has(row.id)) continue
       const stamp = stamps.get(row.id)
       if (stamp !== undefined) accrued.set(row.id, stamp)
+    }
+    // Present rows never carry a tombstone — a delete resurrected before its
+    // ack (undo, re-add) must not be eaten by its own accrued grave, even
+    // when the resurrection bypassed the previous view (the row was already
+    // hidden from it).
+    for (const id of accrued.keys()) {
+      if (kept.has(id)) accrued.delete(id)
     }
     this.deleted = [...accrued].map(([id, baseUpdatedAt]) => ({ id, baseUpdatedAt }))
     this.dirty.tasks = tasks
@@ -495,6 +501,11 @@ export class BoardSyncClient {
 
   private scheduleCommit(): void {
     if (this.mode !== 'synced' || this.disposed) return
+    // A fresh local write reopens the retry budget (counter only — the
+    // backoff timer lane is never touched here, so an in-flight backoff
+    // keeps its cadence while the budget restarts; the two are orthogonal by
+    // design). The user is watching, so a fresh cycle is correct, not spam.
+    this.commitAttempts = 0
     // Fresh writes reschedule the debounce lane only — a pending backoff
     // retry keeps its own timer and reads the latest dirty state when it
     // fires (two lanes, two timers, never one overwriting the other).
@@ -632,6 +643,20 @@ export class BoardSyncClient {
     }, this.resyncCoalesceMs)
   }
 
+  /** Self-heal a parked writer: when a read proves the host reachable again
+   *  (successful poll, reopened stream, foreground return) and dirty state
+   *  waits with no timer driving it, probe once through the single funnel.
+   *  A failed probe falls straight back into backoff — reads gate retries,
+   *  never timers, so an idle tab never spams a dead host. */
+  private probeParked(): void {
+    if (this.mode !== 'synced' || this.disposed || this.inFlight !== undefined) return
+    if (this.commitAttempts <= MAX_COMMIT_ATTEMPTS) return
+    if (this.commitCancel !== undefined || this.backoffCancel !== undefined) return
+    if (this.dirty.tasks === undefined && this.dirty.cruise === undefined
+      && this.dirty.schedulePresets === undefined && this.dirty.runPresets === undefined) return
+    this.scheduleCommit()
+  }
+
   /** Fetch only when the host revision moved past the baseline. */
   async poll(): Promise<void> {
     if (this.mode !== 'synced' || this.disposed) return
@@ -650,6 +675,10 @@ export class BoardSyncClient {
     }
     if (!result.available || result.unchanged || result.doc === undefined) return
     this.adopt(result.doc)
+    // A new remote truth proves reachability AND moves the merge base: a
+    // parked writer probes once here (routine unchanged polls stay silent —
+    // the park promise is quiet idling, not a 30s retry drip).
+    this.probeParked()
   }
 
   /** Renew (or take) the engine lease; publish SEAT changes (held AND the

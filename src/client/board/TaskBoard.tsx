@@ -67,6 +67,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
 import { activityGroupKeyOf, activityOf, clusterOf, freezeFeed, groupActivityByObjectDay, remainderKeyOf, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
+import { flowSummaryOf } from '../../core/flow-metrics.ts'
 import { deleteView, loadViews, MAX_SAVED_VIEWS, saveView, type SavedView } from './saved-views.ts'
 import { Chip } from './Chip.tsx'
 
@@ -942,10 +943,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             // folds to ONE sentence (running wins over global) in the existing
             // status slot — never a new row, never a block on drags.
             const wipSentence = wipSentenceKeyOf(wipCounts, snapshot.cruise.wip)
+            // Flow pulse (one sentence, samples-gated): cycle p85 + weekly
+            // throughput from the column-move ledger. Zero samples = zero
+            // sentence (never a pseudo-number before real history exists).
+            const flow = flowSummaryOf(snapshot.tasks, Date.now())
             const stateParts = [
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
               ...snapshot.stats.queued > 0 ? [t('board.statusQueued', { n: String(snapshot.stats.queued) })] : [],
               ...wipSentence !== undefined ? [t(wipSentence.key, wipSentence.params)] : [],
+              ...flow.samples > 0 && flow.p85Days !== undefined
+                ? [t('board.flowStats', { p85: String(Math.round(flow.p85Days)), n: String(Math.round(flow.perWeek * 10) / 10) })]
+                : [],
               // Forbid-policy skip ledger: cumulative and read-only, shown only
               // while nonzero (the same quiet discipline as running/queued) —
               // "why didn't it run" stays answerable without a new row.

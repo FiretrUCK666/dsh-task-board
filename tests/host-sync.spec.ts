@@ -329,6 +329,29 @@ describe('BoardSyncClient commit', () => {
     expect(t.calls.commit).toHaveLength(7)
   })
 
+  it('a parked writer probes once when a new remote truth arrives', async () => {
+    const { client, t, timers } = makeClient()
+    await client.start()
+    t.setCommitFails(true)
+    client.setTasks([task('a')])
+    await timers.advance(300)
+    await timers.advance(2_100)
+    await timers.advance(4_100)
+    await timers.advance(8_100)
+    await timers.advance(16_100)
+    await timers.advance(30_100)
+    expect(t.calls.commit).toHaveLength(6) // parked
+    // The host recovers AND a remote row lands: the poll adopts it and the
+    // parked writer probes once without any user write.
+    t.setCommitFails(false)
+    const remote = applyCommit(t.getDoc(), commitOf({ clientId: 'other', tasks: [task('b', T0 + 10)] }), T0 + 10)
+    t.setDoc(remote)
+    await timers.advance(30_100) // the poll beat adopts + probes…
+    await timers.advance(300) // …and the probe's debounce flush lands
+    expect(t.calls.commit).toHaveLength(7)
+    expect(client.view().tasks.map(entry => entry.id).sort()).toEqual(['a', 'b'])
+  })
+
   it('a parked replica keeps reading remote arrivals (never a phantom delete)', async () => {
     const { client, t, timers } = makeClient()
     await client.start()
