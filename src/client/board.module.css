@@ -5601,10 +5601,11 @@ button.interactionOption:hover {
    ══════════════════════════════════════════════════════════════════════════ */
 @container dsh-tb (max-width: 680px) {
   .board {
-    /* Top air matches desktop (14px): the compact cut to 10px pressed the
-       title against the shell edge (标题贴边、像被挤压） — density is for
-       rows, never for the outer frame. Sides stay 12px (thumb reach). */
-    padding: 14px 12px calc(12px + env(safe-area-inset-bottom));
+    /* Top air EXCEEDS desktop on purpose (16px vs 14px): the shell column
+       gives zero (the board container is absolute inset:0), and on a phone
+       the same 14px reads pressed against the heavy shell header above.
+       Density is for rows, never for the outer frame. Sides stay 12px. */
+    padding: 16px 12px calc(12px + env(safe-area-inset-bottom));
     gap: 10px;
   }
 
