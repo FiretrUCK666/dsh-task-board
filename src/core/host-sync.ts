@@ -105,6 +105,15 @@ function emptyBaseline(now: number): BoardDoc {
   return emptyBoardDoc(now)
 }
 
+/** Commit retry budget: five attempts (2s → 4s → 8s → 16s → 30s), then the
+ *  dirty state parks until the next local write retries it. An unbounded 2s
+ *  loop would spin forever against a dead host (battery/log spam for zero
+ *  convergence); the poll/SSE backstop keeps reads converging while parked,
+ *  and the next write reopens the cycle because the user is watching then. */
+const MAX_COMMIT_ATTEMPTS = 5
+const COMMIT_RETRY_BASE_MS = 2_000
+const COMMIT_RETRY_CAP_MS = 30_000
+
 /** Whether a legacy view carries anything worth migrating (defaults alone do not).
  *  WIP rides the same normalization as reads, so a meaningless empty object
  *  never counts as content (no phantom bootstrap). The cruise default rides
@@ -142,6 +151,9 @@ export class BoardSyncClient {
   private engine = false
   private disposed = false
   private commitCancel: (() => void) | undefined
+  /** Consecutive un-acked commits (reset on ack and on every fresh local
+   *  write — a user acting reopens the cycle because they are watching). */
+  private commitAttempts = 0
   private resyncCancel: (() => void) | undefined
   private readonly loopCancels: Array<() => void> = []
   private remoteListener: ((view: BoardView, revision: number) => void) | undefined
@@ -433,6 +445,9 @@ export class BoardSyncClient {
 
   private scheduleCommit(): void {
     if (this.mode !== 'synced' || this.disposed) return
+    // A fresh local write reopens the retry cycle (reset the budget — the
+    // user is watching, so spinning again is correct, not spam).
+    this.commitAttempts = 0
     this.commitCancel?.()
     this.commitCancel = this.defer(() => {
       this.commitCancel = undefined
@@ -497,15 +512,25 @@ export class BoardSyncClient {
     })
     this.inFlight = undefined
     if (result === undefined || !result.available || result.doc === undefined) {
-      this.log('[dsh-task-board] commit not acked (keeping dirty state, one retry scheduled)')
-      // Keep the dirty state; retry once after a beat (the poll/SSE are the
-      // backstop, so a lost retry only delays convergence).
+      this.commitAttempts += 1
+      if (this.commitAttempts > MAX_COMMIT_ATTEMPTS) {
+        // Budget spent: park the dirty state (reads keep converging through
+        // poll/SSE; the next local write reopens the cycle with a fresh
+        // budget because the user is watching then). No more timers.
+        this.log('[dsh-task-board] commit retry budget spent (keeping dirty state parked until the next local write)')
+        return
+      }
+      // Backoff retry (2s → 4s → … capped): the failure keeps its log line,
+      // it just stops being silent AND stops spinning at full rate.
+      const delay = Math.min(COMMIT_RETRY_BASE_MS * 2 ** (this.commitAttempts - 1), COMMIT_RETRY_CAP_MS)
+      this.log(`[dsh-task-board] commit not acked (keeping dirty state, retry ${this.commitAttempts}/${MAX_COMMIT_ATTEMPTS} in ${delay}ms)`)
       this.commitCancel = this.defer(() => {
         this.commitCancel = undefined
         void this.flush()
-      }, 2_000)
+      }, delay)
       return
     }
+    this.commitAttempts = 0
     this.log(`[dsh-task-board] commit acked revision=${result.doc.revision}`)
     this.adopt(result.doc)
     if (snapshot.tasks !== undefined && this.dirty.tasks === snapshot.tasks) delete this.dirty.tasks

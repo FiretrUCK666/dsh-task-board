@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Task templates (core/task-templates.ts + controller library methods):
  * snapshot strips instance state, instantiation stamps a fresh backlog card,
  * names dedupe, unknown ids are no-ops.
@@ -48,6 +48,35 @@ describe('templateToNewInput', () => {
     expect(input.status).toBe('backlog')
     expect(input.title).toBe('Source')
     expect(input.prompt).toBe('do it')
+  })
+
+  it('carries the inert shape (due/priority/labels/color ride, armed never)', () => {
+    const task = {
+      ...sourceTask(),
+      dueAt: 1_700_000_000_000,
+      priority: 1 as const,
+      labels: ['a', 'b'],
+      color: '#fff',
+    }
+    const template = templateFromTask(task, 't-1', 'T')
+    expect(template.dueAt).toBe(1_700_000_000_000)
+    expect(template.priority).toBe(1)
+    expect(template.labels).toEqual(['a', 'b'])
+    expect(template.color).toBe('#fff')
+    const input = templateToNewInput(template)
+    expect(input.dueAt).toBe(1_700_000_000_000)
+    expect(input.priority).toBe(1)
+    expect(input.labels).toEqual(['a', 'b'])
+  })
+
+  it('normalizes junk inert fields to absent (legacy templates stay valid)', () => {
+    const rows = normalizeTemplates([
+      { id: 'a', name: 'A', title: 'x', dueAt: 'soon', priority: 9, labels: 'urgent', color: '' },
+    ])
+    expect(rows[0]?.dueAt).toBeUndefined()
+    expect(rows[0]?.priority).toBeUndefined()
+    expect(rows[0]?.labels).toBeUndefined()
+    expect(rows[0]?.color).toBeUndefined()
   })
 })
 

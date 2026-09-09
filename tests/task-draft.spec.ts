@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   draftFromTask,
+  draftFromTemplate,
   draftToNewInput,
   draftToUpdatePatch,
   normalizeDraft,
@@ -92,10 +93,25 @@ describe('draft due-date converters', () => {
 
   it('labels ride the draft as free text, normalized on write', () => {
     expect(draftToNewInput({ ...draft(), labels: '等车, 电话,等车' }).labels).toEqual(['等车', '电话'])
+    expect(draftToNewInput({ ...draft(), labels: '等车，电话；短信|邮件' }).labels).toEqual(['等车', '电话', '短信', '邮件'])
     expect(draftToNewInput(draft()).labels).toBeUndefined()
     expect(draftToUpdatePatch({ ...draft(), labels: 'A、B C' }).labels).toEqual(['a', 'b', 'c'])
     expect(draftToUpdatePatch(draft()).labels).toBeUndefined()
     expect(draftFromTask(createTask({ title: 't', description: '', prompt: 'p', labels: ['x', 'y'] }, NOW, 'a')).labels).toBe('x, y')
     expect(normalizeDraft({ ...draft(), labels: 'x' })?.labels).toBe('x')
+  })
+
+  it('draftFromTemplate carries the template inert shape', () => {
+    const stamped = draftFromTemplate({
+      id: 't', name: 'T', title: 'x', description: '', prompt: 'p',
+      dueAt: parseDueDateInput('2025-01-08'), priority: 2, labels: ['a'],
+    })
+    expect(stamped.dueDate).toBe('2025-01-08')
+    expect(stamped.priority).toBe('2')
+    expect(stamped.labels).toBe('a')
+    const bare = draftFromTemplate({ id: 't', name: 'T', title: 'x', description: '', prompt: 'p' })
+    expect(bare.dueDate).toBe('')
+    expect(bare.priority).toBe('')
+    expect(bare.labels).toBe('')
   })
 })

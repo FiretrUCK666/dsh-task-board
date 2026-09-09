@@ -55,18 +55,20 @@ export interface BoardQueryFacets {
   isUnviewed?: boolean
 }
 
-/** One parsed `key:value` qualifier (`has:auto`, `has:color`, `is:unread`,
- *  `is:read`, `ws:<text>`). Anything else stays a literal search term — an
- *  unknown qualifier narrows like ordinary text instead of failing. */
+/** One parsed `key:value` qualifier (see QUALIFIER_KEYS for the key set).
+ *  Anything else stays a literal search term — an unknown qualifier narrows
+ *  like ordinary text instead of failing. */
 export interface BoardQualifier {
   key: string
   value: string
 }
 
 /**
- * Split a raw query into plain terms plus recognized qualifiers. Matching is
- * case-insensitive; `has:` accepts `auto`/`color`/`priority`, `is:` accepts
- * `unread`/`read`, `ws:` takes any text, `label:` takes a label name —
+ * Split a raw query into plain terms plus recognized qualifiers (see
+ * QUALIFIER_KEYS/QUALIFIER_VALUES for the key set and enumerated values).
+ * Matching is case-insensitive; `has:` accepts `auto`/`color`/`priority`,
+ * `is:` accepts `unread`/`read`, `ws:` takes any text, `label:` takes a
+ * label name —
  * quoted (`ws:"a b"`) when the name holds a space, first word otherwise.
  * Anything unrecognized stays a literal search term: an unknown qualifier
  * narrows like ordinary text instead of failing.
@@ -191,6 +193,9 @@ const QUALIFIER_VALUES: Readonly<Record<string, readonly string[]>> = {
   'is:': ['is:unread', 'is:read'],
 }
 
+/** All enumerated values (every `key:value` the completion can offer). */
+const ENUMERATED_VALUES: readonly string[] = Object.values(QUALIFIER_VALUES).flat()
+
 /** Completion candidates for the token being typed (at most 8, key-first):
  *  a key prefix offers keys (`h` → `has:`), a bare key offers its values
  *  (`has:` → its three), a value prefix narrows them (`has:a` → `has:auto`).
@@ -207,7 +212,19 @@ export function completeBoardQuery(query: string): string[] {
   const values = QUALIFIER_VALUES[key]
   if (values === undefined) return []
   const prefix = token.slice(separator + 1)
+  // A complete enumerated value offers nothing more (already done — same as
+  // the trailing-space case, never self-suggest).
+  if (ENUMERATED_VALUES.includes(token)) return []
   return values.filter(value => value.startsWith(`${key}${prefix}`)).slice(0, 8)
+}
+
+/** Assemble a full query from a completion candidate: the last token is
+ *  replaced in place (earlier tokens, their case and the separating spaces
+ *  survive — a native datalist swaps the WHOLE value, so candidates must
+ *  arrive as whole queries, never bare tokens). */
+export function applyCompletion(query: string, candidate: string): string {
+  const cut = Math.max(query.lastIndexOf(' '), query.lastIndexOf('\t'), query.lastIndexOf('\n'))
+  return cut < 0 ? candidate : `${query.slice(0, cut + 1)}${candidate}`
 }
 
 /** One cheatsheet row: the key plus its current-language description. */

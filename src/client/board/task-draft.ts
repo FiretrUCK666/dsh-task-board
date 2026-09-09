@@ -60,9 +60,10 @@ export function parseDueDateInput(value: string): number | undefined {
   return Number.isFinite(time) ? time : undefined
 }
 
-/** Split free-typed label text (commas, Chinese commas, whitespace runs). */
+/** Split free-typed label text (half/full-width commas and semicolons,
+ *  ideographic commas, whitespace runs — the IME default must just work). */
 export function splitLabelText(value: string): string[] {
-  return value.split(/[,、\s]+/).map(part => part.trim()).filter(part => part !== '')
+  return value.split(/[,，、；;|\s]+/).map(part => part.trim()).filter(part => part !== '')
 }
 
 /** ms epoch → `YYYY-MM-DD` local (the date-input shape). */
@@ -146,12 +147,11 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
     model: template.model ?? '',
     reasoningEffort: template.reasoningEffort ?? '',
     permission: template.permission ?? '',
-    // Templates never carry a due date (a stamped task starts undated).
-    dueDate: '',
-    // Templates never carry a priority either (a stamped task starts unranked).
-    priority: '',
-    // Templates never carry labels either (context belongs to the source card).
-    labels: '',
+    // Templates carry the inert shape (due/priority/labels ride along, like
+    // copies — stamping a dated, ranked, labeled card keeps its shape).
+    dueDate: template.dueAt !== undefined ? toDueDateInput(template.dueAt) : '',
+    priority: template.priority === undefined ? '' : String(template.priority),
+    labels: template.labels === undefined ? '' : template.labels.join(', '),
   }
 }
 

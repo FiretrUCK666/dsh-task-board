@@ -1,10 +1,14 @@
 /**
  * Task templates: named, reusable task blueprints. A template is the task's
- * CONTENT (title/description/prompt + images + run configuration + schedule)
- * with everything instance-specific stripped (bindings, executions, hidden
- * state, sessions order, viewed baselines). Instantiating a template creates
- * a fresh backlog card — the same outcome as "复制为模板" (controller
- * copyTask), but addressable by name and reusable any number of times.
+ * CONTENT + its inert shape (title/description/prompt + images + run
+ * configuration + due date + priority + labels + accent color — the same
+ * inert set controller copyTask carries) with everything instance-specific
+ * stripped (bindings, executions, hidden state, sessions order, viewed
+ * baselines) and everything ARMED stripped (schedule enable-state, session
+ * rules — a template must never surprise-fire). Instantiating a template
+ * creates a fresh backlog card — the same outcome as "复制为模板"
+ * (controller copyTask), but addressable by name and reusable any number
+ * of times.
  *
  * Templates live in a device-local localStorage key (like drafts): they are
  * personal starters, not board truth — the shared document is untouched, so
@@ -12,6 +16,7 @@
  * a storage seam, so everything unit-tests in isolation.
  */
 import type { NewTaskInput, TaskImage, TaskRecord } from './tasks.ts'
+import { normalizeLabels, normalizePriority } from './tasks.ts'
 
 /** The localStorage key for the user's template library (never renamed). */
 export const TEMPLATE_STORAGE_KEY = 'dsh.taskBoard.templates.v1'
@@ -32,6 +37,12 @@ export interface TaskTemplate {
   reasoningEffort?: string
   agentPreset?: string
   permission?: string
+  /** Inert shape (absent on legacy templates): due instant, priority,
+   *  labels, accent color — carried, never armed. */
+  dueAt?: number
+  priority?: 1 | 2 | 3
+  labels?: string[]
+  color?: string
 }
 
 /** Persistence seam for the template library. */
@@ -41,11 +52,12 @@ export interface TemplateStore {
 }
 
 /**
- * Snapshot a task as a template: content + run configuration come along,
- * instance state never does. Images ride along (the user attached them to
- * the prompt deliberately — dropping them silently would violate the
- * no-silent-drop law); schedule/rules stay behind (a template must never
- * surprise-fire — arming is an explicit act on the stamped card).
+ * Snapshot a task as a template: content + run configuration + the inert
+ * shape (due/priority/labels/color) come along, instance state never does.
+ * Images ride along (the user attached them to the prompt deliberately —
+ * dropping them silently would violate the no-silent-drop law);
+ * schedule/rules stay behind (a template must never surprise-fire — arming
+ * is an explicit act on the stamped card).
  */
 export function templateFromTask(task: TaskRecord, id: string, name: string): TaskTemplate {
   const trimmed = name.trim()
@@ -64,11 +76,17 @@ export function templateFromTask(task: TaskRecord, id: string, name: string): Ta
     ...task.reasoningEffort !== undefined ? { reasoningEffort: task.reasoningEffort } : {},
     ...task.agentPreset !== undefined ? { agentPreset: task.agentPreset } : {},
     ...task.permission !== undefined ? { permission: task.permission } : {},
+    ...task.dueAt !== undefined ? { dueAt: task.dueAt } : {},
+    ...task.priority !== undefined ? { priority: task.priority } : {},
+    ...task.labels !== undefined ? { labels: [...task.labels] } : {},
+    ...task.color !== undefined ? { color: task.color } : {},
   }
 }
 
 /** Stamp a fresh backlog input from a template (the card lands in 待规划). */
 export function templateToNewInput(template: TaskTemplate): NewTaskInput {
+  const priority = normalizePriority(template.priority)
+  const labels = normalizeLabels(template.labels)
   return {
     title: template.title,
     description: template.description,
@@ -83,6 +101,12 @@ export function templateToNewInput(template: TaskTemplate): NewTaskInput {
     ...template.reasoningEffort !== undefined ? { reasoningEffort: template.reasoningEffort } : {},
     ...template.agentPreset !== undefined ? { agentPreset: template.agentPreset } : {},
     ...template.permission !== undefined ? { permission: template.permission } : {},
+    ...template.dueAt !== undefined && Number.isFinite(template.dueAt) && template.dueAt > 0
+      ? { dueAt: Math.floor(template.dueAt) }
+      : {},
+    ...priority !== undefined ? { priority } : {},
+    ...labels !== undefined ? { labels } : {},
+    ...template.color !== undefined ? { color: template.color } : {},
   }
 }
 
@@ -102,6 +126,8 @@ export function normalizeTemplates(raw: unknown): TaskTemplate[] {
   for (const row of raw) {
     if (!isTemplateRow(row) || seen.has(row.id)) continue
     seen.add(row.id)
+    const priority = normalizePriority(row.priority)
+    const labels = normalizeLabels(row.labels)
     out.push({
       id: row.id,
       name: row.name,
@@ -115,6 +141,12 @@ export function normalizeTemplates(raw: unknown): TaskTemplate[] {
       ...typeof row.reasoningEffort === 'string' ? { reasoningEffort: row.reasoningEffort } : {},
       ...typeof row.agentPreset === 'string' ? { agentPreset: row.agentPreset } : {},
       ...typeof row.permission === 'string' ? { permission: row.permission } : {},
+      ...typeof row.dueAt === 'number' && Number.isFinite(row.dueAt) && row.dueAt > 0
+        ? { dueAt: Math.floor(row.dueAt) }
+        : {},
+      ...priority !== undefined ? { priority } : {},
+      ...labels !== undefined ? { labels } : {},
+      ...typeof row.color === 'string' && row.color !== '' ? { color: row.color } : {},
     })
   }
   return out

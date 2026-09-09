@@ -299,6 +299,36 @@ describe('BoardSyncClient commit', () => {
     expect(t.calls.commit).toHaveLength(2)
   })
 
+  it('backs off exponentially and parks after the retry budget', async () => {
+    const { client, t, timers } = makeClient()
+    await client.start()
+    t.setCommitFails(true)
+    client.setTasks([task('a')])
+    await timers.advance(300)
+    expect(t.calls.commit).toHaveLength(1)
+    // 2s → 4s → 8s → 16s → 30s(cap): five retries, then silence.
+    await timers.advance(2_100)
+    expect(t.calls.commit).toHaveLength(2)
+    await timers.advance(4_100)
+    expect(t.calls.commit).toHaveLength(3)
+    await timers.advance(8_100)
+    expect(t.calls.commit).toHaveLength(4)
+    await timers.advance(16_100)
+    expect(t.calls.commit).toHaveLength(5)
+    await timers.advance(30_100)
+    expect(t.calls.commit).toHaveLength(6)
+    // Budget spent: no more timers spin against the dead host…
+    await timers.advance(120_000)
+    expect(t.calls.commit).toHaveLength(6)
+    // …but the dirty state is kept: the view still serves the local edit…
+    expect(client.view().tasks.map(entry => entry.id)).toEqual(['a'])
+    // …and the next local write reopens the cycle with a fresh budget.
+    t.setCommitFails(false)
+    client.setTasks([task('a'), task('b')])
+    await timers.advance(300)
+    expect(t.calls.commit).toHaveLength(7)
+  })
+
   it('computes deletions against the baseline', async () => {
     const { client, t, timers } = makeClient()
     t.setDoc(applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [task('a'), task('b')] }), T0))

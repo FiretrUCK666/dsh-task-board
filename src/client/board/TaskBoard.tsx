@@ -43,7 +43,7 @@ import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
-import { boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, type CheatRow } from './task-search.ts'
+import { applyCompletion, boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, type CheatRow } from './task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
 import { foldNotesByTask, noteKeyOf, notificationsExOf, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
@@ -381,8 +381,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // Read-freeze: while the drawer stays open, new arrivals queue behind a
   // pill instead of shoving the rows being read (top-insertion never steals
   // scroll). The freeze is a LENGTH, not a snapshot: the live list keeps
-  // growing underneath, the view shows the oldest `feedBase` of it.
-  const [feedBase, setFeedBase] = useState(0)
+  // growing underneath, the view shows the oldest `feedBase` of it. A
+  // negative base means "unfrozen" (first frame, filter mid-typing): the
+  // whole live list shows, so the freeze engaging a beat later through the
+  // effect below changes nothing visible (no empty/pill/truncation flash).
+  const [feedBase, setFeedBase] = useState(-1)
   useEffect(() => {
     if (showActivity) setFeedBase(activityFeed.length)
   }, [showActivity, activityKind, activityQuery, activityUnviewed])
@@ -718,10 +721,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   }
   // Board-wide search: title/description/prompt/comments plus linked-session
   // titles (the same derivation the rows render — a session renamed natively
-  // stays findable under its live name), plus facet qualifiers (`has:auto`,
-  // `has:color`, `is:unread`/`is:read`, `ws:<text>`) resolved from the same
-  // live faces the rows render. `has:auto` reads THE automation membership
-  // (schedule enabled OR any enabled session rule), never a second judgment.
+  // stays findable under its live name), plus facet qualifiers (see
+  // QUALIFIER_KEYS in task-search.ts — the one key set) resolved from the
+  // same live faces the rows render. `has:auto` reads THE automation
+  // membership (schedule enabled OR any enabled session rule), never a
+  // second judgment.
   const visible = snapshot.tasks.filter(task =>
     matchTask(task, filter, controller.linkedOf(task).map(row => row.title), {
       ...(task.workspaceId !== undefined
@@ -1175,10 +1179,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           />
           {/* Qualifier suggestions (native datalist: zero chrome, zero keys,
               mobile degrades to a plain input — the cheatsheet stays the
-              learning surface, this only shortens typing). */}
+              learning surface, this only shortens typing). Candidates arrive
+              as WHOLE queries (the datalist swaps the entire value — a bare
+              token would eat earlier terms). */}
           <datalist id="dsh-tb-qualifiers">
             {completeBoardQuery(filter).map(candidate => (
-              <option key={candidate} value={candidate} />
+              <option key={candidate} value={applyCompletion(filter, candidate)} />
             ))}
           </datalist>
           {/* 模式按钮（整理/自动化/通知）是一个语义组：宽档贴右成簇，紧凑档整组
@@ -1208,7 +1214,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               variant="ghost"
               className={css.modeDynamic}
               title={t('board.activityTitle')}
-              onClick={() => { setShowActivity(true) }}
+              onClick={() => { setFeedBase(-1); setShowActivity(true) }}
             >
               {t('board.activity')}
             </Button>
@@ -1895,7 +1901,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     className={css.feedFilter}
                     data-active={activityKind === kind ? '' : undefined}
                     aria-pressed={activityKind === kind}
-                    onClick={() => { setActivityKind(kind) }}
+                    onClick={() => { setFeedBase(-1); setActivityKind(kind) }}
                   >
                     {t(`board.activityFilter.${kind}`)}
                   </button>
@@ -1906,7 +1912,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 className={css.feedFilter}
                 data-active={activityUnviewed ? '' : undefined}
                 aria-pressed={activityUnviewed}
-                onClick={() => { setActivityUnviewed(current => !current) }}
+                onClick={() => { setFeedBase(-1); setActivityUnviewed(current => !current) }}
               >
                 {t('board.activityUnviewed')}
               </button>
@@ -1915,7 +1921,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 type="search"
                 placeholder={t('board.activitySearch')}
                 value={activityQuery}
-                onChange={event => { setActivityQuery(event.target.value) }}
+                onChange={event => { setFeedBase(-1); setActivityQuery(event.target.value) }}
                 aria-label={t('board.activitySearch')}
               />
             </div>
@@ -2220,7 +2226,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         <Button
           variant="ghost"
           title={t('board.activityTitle')}
-          onClick={() => { setShowActivity(true) }}
+          onClick={() => { setFeedBase(-1); setShowActivity(true) }}
         >
           {t('board.activity')}
         </Button>
