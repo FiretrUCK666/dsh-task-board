@@ -111,22 +111,45 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
 }
 
 /** Whether one qualifier holds (unknown facets read absent = no match). */
+type QualifierTest = (
+  task: { color?: string; priority?: number; labels?: readonly string[] },
+  facets: BoardQueryFacets,
+  value: string,
+) => boolean
+
+/** Enumerated `key:value` semantics — keyed by the FULL pair, so the matcher
+ *  can never drift from the parser's tables: a pair the parser accepts but
+ *  this table lacks reads false (loud) instead of half-matching, and the
+ *  spec locks "every enumerated value has an entry here". */
+const ENUM_TESTS: Readonly<Record<string, QualifierTest>> = {
+  'has:auto': (_task, facets) => facets.hasAutomation === true,
+  'has:color': task => task.color !== undefined,
+  'has:priority': task => task.priority !== undefined,
+  'is:unread': (_task, facets) => facets.isUnviewed === true,
+  'is:read': (_task, facets) => facets.isUnviewed === false,
+}
+
+/** Free-text key semantics (keys with no enumerated values take any text —
+ *  the parser gates these through FREE_TEXT_KEYS, derived from the same key
+ *  tables as completion). */
+const TEXT_TESTS: Readonly<Record<string, QualifierTest>> = {
+  ws: (_task, facets, value) => (facets.workspaceTitle ?? '').toLowerCase().includes(value),
+  label: (task, _facets, value) => task.labels !== undefined && task.labels.includes(value),
+}
+
 function matchQualifier(
   task: { color?: string; priority?: number; labels?: readonly string[] },
   qualifier: BoardQualifier,
   facets: BoardQueryFacets,
 ): boolean {
-  if (qualifier.key === 'has' && qualifier.value === 'auto') return facets.hasAutomation === true
-  if (qualifier.key === 'has' && qualifier.value === 'color') return task.color !== undefined
-  if (qualifier.key === 'has' && qualifier.value === 'priority') return task.priority !== undefined
-  if (qualifier.key === 'label') {
-    return task.labels !== undefined && task.labels.includes(qualifier.value)
+  const full = `${qualifier.key}:${qualifier.value}`
+  if (ENUM_VALUE_SET.has(full)) {
+    const test = ENUM_TESTS[full]
+    return test !== undefined ? test(task, facets, qualifier.value) : false
   }
-  if (qualifier.key === 'is' && qualifier.value === 'unread') return facets.isUnviewed === true
-  if (qualifier.key === 'is' && qualifier.value === 'read') return facets.isUnviewed === false
-  if (qualifier.key === 'ws') {
-    const title = facets.workspaceTitle ?? ''
-    return title.toLowerCase().includes(qualifier.value)
+  const free = TEXT_TESTS[qualifier.key]
+  if (free !== undefined && FREE_TEXT_KEYS.has(qualifier.key)) {
+    return free(task, facets, qualifier.value)
   }
   return false
 }

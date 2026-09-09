@@ -228,6 +228,32 @@ describe('completeBoardQuery (qualifier key completion)', () => {
   })
 })
 
+describe('qualifier single source (parse + complete + match agree)', () => {
+  it('every enumerated pair parses, completes and matches', () => {
+    // has:auto (facet-gated).
+    expect(parseBoardQuery('has:auto')).toEqual({ terms: [], qualifiers: [{ key: 'has', value: 'auto' }] })
+    expect(completeBoardQuery('has:a')).toContain('has:auto')
+    expect(matchTask(task, 'has:auto', [], { hasAutomation: true })).toBe(true)
+    expect(matchTask(task, 'has:auto', [], { hasAutomation: false })).toBe(false)
+    // has:color / has:priority (task-field-gated).
+    expect(matchTask({ ...task, color: '#fff' }, 'has:color')).toBe(true)
+    expect(matchTask(task, 'has:color')).toBe(false)
+    expect(matchTask({ ...task, priority: 3 }, 'has:priority')).toBe(true)
+    expect(matchTask(task, 'has:priority')).toBe(false)
+    // is:unread / is:read (facet-gated).
+    expect(matchTask(task, 'is:unread', [], { isUnviewed: true })).toBe(true)
+    expect(matchTask(task, 'is:read', [], { isUnviewed: false })).toBe(true)
+  })
+
+  it('free-text keys parse and match without completion', () => {
+    expect(parseBoardQuery('ws:深夜').qualifiers).toEqual([{ key: 'ws', value: '深夜' }])
+    expect(completeBoardQuery('ws:')).toEqual([])
+    expect(matchTask(task, 'ws:深夜', [], { workspaceTitle: '深夜食堂' })).toBe(true)
+    expect(parseBoardQuery('label:a').qualifiers).toEqual([{ key: 'label', value: 'a' }])
+    expect(completeBoardQuery('label:')).toEqual([])
+  })
+})
+
 describe('applyCompletion (whole-query assembly)', () => {
   it('replaces the last token in place, preserving the head verbatim', () => {
     expect(applyCompletion('h', 'has:')).toBe('has:')
