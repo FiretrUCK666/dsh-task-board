@@ -1119,6 +1119,22 @@ describe('scheduling', () => {
     expect(revived.schedule).toMatchObject({ enabled: false, runCount: 0, maxRuns: 1 })
   })
 
+  it('a manual drag out of done resets the spent budget too (one rebirth law)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 1 })
+    const e1 = exec.runCalls[0].executionId
+    exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
+    controller.moveTask(task.id, 'done')
+    expect(store.load()[0].schedule).toMatchObject({ enabled: false, runCount: 1 })
+    controller.moveTask(task.id, 'todo')
+    const revived = store.load()[0]
+    expect(revived.status).toBe('todo')
+    expect(revived.schedule).toMatchObject({ enabled: false, runCount: 0, maxRuns: 1 })
+  })
+
   it('chain mode: a failed run stops the chain', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
@@ -2557,6 +2573,17 @@ describe('linked sessions & bind', () => {
     const copy = controller.copyTask(source.id)
     expect(copy!.priority).toBe(1)
     expect(copy!.labels).toEqual(['a', 'b'])
+  })
+
+  it('copyTask supplements a blank head (births complete)', () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const source = controller.createTask({ title: 'x', description: '', prompt: '画一只猫\n并解释配色' })!
+    controller.updateTask(source.id, { title: '' }) // cleared on edit, stays blank
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === source.id)!.title).toBe('')
+    const copy = controller.copyTask(source.id)!
+    expect(copy.title).toBe('画一只猫')
+    expect(copy.description).toBe('画一只猫\n并解释配色')
   })
 
   it('copyTask carries the prompt images (they are part of the card\'s prompt)', () => {

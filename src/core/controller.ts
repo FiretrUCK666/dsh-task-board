@@ -1977,8 +1977,9 @@ export class BoardController {
    * Moving a card to 'done' is the completion hand-off: any armed schedule
    * rule is disarmed outright ({@link disarmSchedule}) and every session rule
    * switches off ({@link disarmSessionRules}) — a completed task's
-   * timer/chain must never fire again, and moving it back to a live column
-   * leaves the rules off until the user re-arms them.
+   * timer/chain must never fire again. Moving it back out of done (manual
+   * drag or comment revive — one law, whichever hand) resets the spent run
+   * budget but leaves the rules OFF until the user re-arms them.
    *
    * Automation never locks a card in place (see resolveCardDrop); leaving
    * the lane speaks its own language: a chain hand-off happens ONLY at a
@@ -1995,6 +1996,13 @@ export class BoardController {
       // survives, so re-arming from the detail editor resumes the schedule.
       // Session rules shut off with it (done = full terminal for automation).
       if (status === 'done') return disarmSessionRules(disarmSchedule(task, this.now()))
+      // Rebirth is a new life, whichever hand moves it (comment revive,
+      // manual drag, rerun): leaving done resets the spent run budget so
+      // re-arming resumes the same rule from zero. The rule itself stays
+      // disarmed — only the counter clears, never the config.
+      if (previous?.status === 'done' && task.schedule !== undefined) {
+        return { ...task, schedule: { ...task.schedule, runCount: 0 } }
+      }
       return task
     })
     // An armed-but-never-run chain leaving backlog for todo starts its first
@@ -2942,18 +2950,9 @@ export class BoardController {
   private reviveTaskIfDone(taskId: string): void {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined || task.status !== 'done') return
+    // The budget reset rides moveTask (leaving done = new life, whichever
+    // hand moves it) — one persist, no intermediate state, no second write.
     this.moveTask(taskId, 'todo')
-    // Revival is a new life: the run budget resets so re-arming resumes the
-    // same rule from zero (the rule itself stays disarmed — arming is still
-    // an explicit act; only the spent counter clears, never the config).
-    const schedule = this.tasks.find(candidate => candidate.id === taskId)?.schedule
-    if (schedule !== undefined) {
-      const cleared = { ...schedule, runCount: 0 }
-      this.tasks = this.tasks.map(candidate => candidate.id === taskId
-        ? { ...candidate, schedule: cleared, updatedAt: this.now() }
-        : candidate)
-      this.persistAndNotify()
-    }
   }
 
   /**
