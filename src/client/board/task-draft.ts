@@ -198,3 +198,32 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     labels: normalizeLabels(splitLabelText(draft.labels)),
   }
 }
+
+/** Whether a draft field counts as user-filled (a template must not cover
+ *  it): non-empty text, a non-default status, a non-empty image set. */
+function filledText(value: string): boolean {
+  return value !== ''
+}
+
+/** Stamp a template onto a draft by filling BLANKS only: every field the user
+ *  already touched keeps the user's value; the template supplies the rest.
+ *  One merge law for all fields (title/description/prompt/images/status/run
+ *  config/due/priority/labels) — never per-field preserve exceptions. */
+export function stampTemplate(draft: TaskDraft, stamped: TaskDraft): TaskDraft {
+  return {
+    title: filledText(draft.title) ? draft.title : stamped.title,
+    description: filledText(draft.description) ? draft.description : stamped.description,
+    prompt: filledText(draft.prompt) ? draft.prompt : stamped.prompt,
+    promptImages: draft.promptImages.length > 0 ? draft.promptImages : stamped.promptImages,
+    status: draft.status !== 'backlog' ? draft.status : stamped.status,
+    agentPreset: filledText(draft.agentPreset) ? draft.agentPreset : stamped.agentPreset,
+    workspaceId: filledText(draft.workspaceId) ? draft.workspaceId : stamped.workspaceId,
+    provider: filledText(draft.provider) ? draft.provider : stamped.provider,
+    model: filledText(draft.model) ? draft.model : stamped.model,
+    reasoningEffort: filledText(draft.reasoningEffort) ? draft.reasoningEffort : stamped.reasoningEffort,
+    permission: filledText(draft.permission) ? draft.permission : stamped.permission,
+    dueDate: filledText(draft.dueDate) ? draft.dueDate : stamped.dueDate,
+    priority: filledText(draft.priority) ? draft.priority : stamped.priority,
+    labels: filledText(draft.labels) ? draft.labels : stamped.labels,
+  }
+}

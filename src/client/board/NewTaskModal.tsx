@@ -13,7 +13,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Dialog } from './Dialog.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { NEW_TASK_DRAFT_KEY, draftStore } from './drafts.ts'
-import { draftFromTemplate, draftToNewInput, normalizeDraft, type TaskDraft } from './task-draft.ts'
+import { draftFromTemplate, draftToNewInput, normalizeDraft, stampTemplate, type TaskDraft } from './task-draft.ts'
 import { Button } from './ui.tsx'
 
 /** The fresh draft shape ('' = default / not set; landing column 待规划). */
@@ -90,17 +90,9 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     setPickedId(id)
     const template = templates.find(candidate => candidate.id === id)
     if (template === undefined) return
-    const stamped = draftFromTemplate(template)
-    // Templates carry neither due dates, priorities nor labels — but values
-    // the user already picked survive stamping (a template fills the form,
-    // it must not eat input). All three share the one preserve rule, never
-    // per-field exceptions.
-    changeDraft({
-      ...stamped,
-      ...(draft.dueDate !== '' ? { dueDate: draft.dueDate } : {}),
-      ...(draft.priority !== '' ? { priority: draft.priority } : {}),
-      ...(draft.labels !== '' ? { labels: draft.labels } : {}),
-    })
+    // Stamping fills blanks (the user's touched fields always win — one
+    // merge law, see stampTemplate; templates never eat form input).
+    changeDraft(stampTemplate(draft, draftFromTemplate(template)))
   }
   const removePicked = (): void => {
     if (pickedId !== '') controller.deleteTemplate(pickedId)

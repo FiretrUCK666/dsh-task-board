@@ -11,6 +11,8 @@ import {
   draftToUpdatePatch,
   normalizeDraft,
   parseDueDateInput,
+  splitLabelText,
+  stampTemplate,
   toDueDateInput,
 } from '../src/client/board/task-draft.ts'
 import { createTask } from '../src/core/tasks.ts'
@@ -113,5 +115,26 @@ describe('draft due-date converters', () => {
     expect(bare.dueDate).toBe('')
     expect(bare.priority).toBe('')
     expect(bare.labels).toBe('')
+  })
+
+  it('stampTemplate fills blanks only (touched fields always win)', () => {
+    const template = { ...draft(), title: 'T', description: 'D', prompt: 'P', priority: '1', labels: 'a' }
+    const empty = { ...draft(), title: '', description: '', prompt: '' }
+    // Empty draft takes everything.
+    expect(stampTemplate(empty, template)).toEqual(template)
+    // Touched fields survive; blanks fill from the template.
+    const filled = stampTemplate({ ...empty, title: 'mine', priority: '2' }, template)
+    expect(filled.title).toBe('mine')
+    expect(filled.priority).toBe('2')
+    expect(filled.description).toBe('D')
+    expect(filled.labels).toBe('a')
+    // A non-default status survives too.
+    const moved = stampTemplate({ ...empty, status: 'todo' as const }, template)
+    expect(moved.status).toBe('todo')
+  })
+
+  it('splitLabelText cuts on half/full-width separators', () => {
+    expect(splitLabelText('a,b、c d，e；f|g')).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
+    expect(splitLabelText('  ')).toEqual([])
   })
 })
