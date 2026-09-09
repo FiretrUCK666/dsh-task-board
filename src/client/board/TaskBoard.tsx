@@ -42,6 +42,7 @@ import { taskBindsOf } from '../../core/tasks.ts'
 
 import { matchTask } from './task-search.ts'
 import { notificationsOf } from './notifications.ts'
+import { runnableIds } from './batch-run.ts'
 import { buildCommands } from './commands.ts'
 import { CommandPalette } from './CommandPalette.tsx'
 import { Chip } from './Chip.tsx'
@@ -864,13 +865,32 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   between — the destructive action reads as part of the same
                   group instead of drifting across the bar). */}
               <span className={css.organizeActions}>
+                {/* Batch run FIRST (the bar's apex action — firing is why the
+                    selection exists; 完成 merely exits the mode, so it reads
+                    secondary). Only prompt-ready cards fire; the rest stay
+                    put visibly (the launch point owns lanes and budget). */}
+                {selectedCards.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    title={t('board.organizeRunTitle')}
+                    disabled={runnableIds(snapshot.tasks, selectedCards).length === 0}
+                    onClick={() => {
+                      for (const id of runnableIds(snapshot.tasks, selectedCards)) {
+                        void controller.runTask(id, 'manual')
+                      }
+                    }}
+                  >
+                    {t('board.organizeRun')}
+                  </Button>
+                )}
                 <Button size="sm" onClick={() => { setSelectedCards(visible.map(task => task.id)) }}>
                   {t('board.organizeSelectAll')}
                 </Button>
                 <Button size="sm" disabled={selectedCards.length === 0} onClick={clearSelection}>
                   {t('board.organizeClear')}
                 </Button>
-                <Button size="sm" variant="primary" onClick={exitOrganize}>
+                <Button size="sm" onClick={exitOrganize}>
                   {t('board.organizeDone')}
                 </Button>
                 {/* Danger group: delete the selected cards — only once there

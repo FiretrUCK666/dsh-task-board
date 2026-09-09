@@ -423,6 +423,11 @@ describe('board header and navigator legibility', () => {
     expect(board).toContain('INPUT')
     expect(board).toContain('TEXTAREA')
     expect(board).toContain('getSnapshot().boardOpen')
+    // Batch run rides the organize bar as its apex action (primary): only
+    // prompt-ready cards fire, through the single launch point.
+    expect(board).toContain("t('board.organizeRun')")
+    expect(board).toContain('runnableIds(snapshot.tasks, selectedCards)')
+    expect(board).toContain("controller.runTask(id, 'manual')")
   })
 })
 
