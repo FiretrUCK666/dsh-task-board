@@ -94,20 +94,10 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
       const value = raw.slice(separator + 1)
       // A quote inside a would-be facet value means an unclosed `ws:"..."` —
       // the token stays literal text (a facet value never contains quotes).
-      if (!value.includes('"') && value !== '' && (key === 'has' || key === 'is' || key === 'ws' || key === 'label')) {
-        if (key === 'has' && (value === 'auto' || value === 'color' || value === 'priority')) {
-          qualifiers.push({ key, value })
-          continue
-        }
-        if (key === 'is' && (value === 'unread' || value === 'read')) {
-          qualifiers.push({ key, value })
-          continue
-        }
-        if (key === 'ws') {
-          qualifiers.push({ key, value })
-          continue
-        }
-        if (key === 'label') {
+      // Keys and enumerated values read the derived tables (single source —
+      // adding a qualifier to the tables teaches the parser automatically).
+      if (!value.includes('"') && value !== '' && QUALIFIER_KEY_SET.has(key)) {
+        if (ENUM_VALUE_SET.has(`${key}:${value}`) || FREE_TEXT_KEYS.has(key)) {
           qualifiers.push({ key, value })
           continue
         }
@@ -195,6 +185,18 @@ export const QUALIFIER_KEYS: readonly string[] = [...Object.keys(QUALIFIER_VALUE
 
 /** All enumerated values (every `key:value` the completion can offer). */
 const ENUMERATED_VALUES: readonly string[] = Object.values(QUALIFIER_VALUES).flat()
+
+/** Parser key set, derived (no second hardcode: a key added to the tables
+ *  above parses, hints and completes at once). */
+const QUALIFIER_KEY_SET: ReadonlySet<string> = new Set(QUALIFIER_KEYS.map(key => key.slice(0, -1)))
+
+/** Enumerated `key:value` set, derived (the parser accepts exactly these). */
+const ENUM_VALUE_SET: ReadonlySet<string> = new Set(ENUMERATED_VALUES)
+
+/** Free-text keys, derived (keys with no enumerated values take any text). */
+const FREE_TEXT_KEYS: ReadonlySet<string> = new Set(
+  QUALIFIER_KEYS.filter(key => QUALIFIER_VALUES[key] === undefined).map(key => key.slice(0, -1)),
+)
 
 /** Completion candidates for the token being typed (at most 8, key-first):
  *  a key prefix offers keys (`h` → `has:`), a bare key offers its values

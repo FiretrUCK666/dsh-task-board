@@ -322,21 +322,6 @@ function parsePresetsRaw(raw: unknown): SchedulePreset[] {
   return parsePresets(JSON.stringify(raw))
 }
 
-/** The deletions between a synced baseline and the client's next array:
- *  ids the baseline had and the next view dropped (a locally created-then-
- *  deleted task never entered the baseline, so it produces no delete). */
-export function diffDeletions(
-  baseline: readonly TaskRecord[],
-  next: readonly TaskRecord[],
-): BoardDelete[] {
-  const kept = new Set(next.map(task => task.id))
-  const deleted: BoardDelete[] = []
-  for (const task of baseline) {
-    if (!kept.has(task.id)) deleted.push({ id: task.id, baseUpdatedAt: task.updatedAt })
-  }
-  return deleted
-}
-
 /**
  * The AUTHORSHIP set of a commit: ids whose CONTENT moved between the
  * baseline the replica synced and the view it now commits. An untouched

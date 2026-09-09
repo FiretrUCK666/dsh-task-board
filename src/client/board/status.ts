@@ -34,8 +34,10 @@ export const STATUS_SHORT_KEY: Record<TaskStatus, TaskBoardKey> = {
 }
 
 /** Status → pull-policy hint (one sentence per column: what may enter, what
- *  it means to sit here). Read by the column header tooltip — supplementary
- *  orientation, never the sole carrier of anything actionable. */
+ *  it means to sit here). Read by the column header tooltip (desktop
+ *  redundancy) AND the cheatsheet rows (the touch-reachable home — tappable,
+ *  searchable, never hover-only). Supplementary orientation, never the sole
+ *  carrier of anything actionable. */
 export const COLUMN_HINT_KEY: Record<TaskStatus, TaskBoardKey> = {
   backlog: 'board.columnHint.backlog',
   todo: 'board.columnHint.todo',

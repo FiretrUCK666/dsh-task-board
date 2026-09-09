@@ -2129,6 +2129,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               { key: '/', text: t('board.shortcutSearch') },
               { key: 'x', text: t('board.shortcutClear') },
               { key: '?', text: t('board.shortcutHelp') },
+              // Column pull policies live here too (the touch-reachable home
+              // for the header tooltip — tappable, searchable, no hover).
+              ...(['backlog', 'todo', 'running', 'review', 'done'] as const).map(status => ({
+                key: t(STATUS_SHORT_KEY[status]),
+                text: t(COLUMN_HINT_KEY[status]),
+              })),
             ] as CheatRow[]).filter(row => matchCheatRow(row, cheatQuery)).map(row => (
               <p key={row.key} className={css.detailText}>
                 <Chip kind="neutral" fill={false}>{row.key}</Chip> {row.text}

@@ -1,7 +1,8 @@
 /**
  * Board-document tests: the host merge grammar (per-record LWW, tombstones,
- * delete-vs-edit resolution, section LWW, no-op detection), document
- * normalization from the medium, and the client-side deletion diff.
+ * delete-vs-edit resolution, section LWW, no-op detection) and document
+ * normalization from the medium. Deletions ride the replica-accrued list
+ * (host-sync) — recomputing them at flush time is the retired grammar.
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -12,7 +13,6 @@ import {
   clampWipLimit,
   CRUISE_LIMIT_MAX,
   CRUISE_LIMIT_MIN,
-  diffDeletions,
   emptyBoardDoc,
   isWipOver,
   normalizeBoardDoc,
@@ -24,7 +24,7 @@ import {
   WIP_LIMIT_MIN,
   type BoardCommit,
 } from '../src/core/board-doc.ts'
-import { createTask, withStatus } from '../src/core/tasks.ts'
+import { createTask } from '../src/core/tasks.ts'
 
 /** A commit carrying only what changed: sections default to the baseline's. */
 function commitOf(overrides: Partial<BoardCommit> & { clientId?: string } = {}): BoardCommit {
@@ -132,16 +132,6 @@ describe('normalizeCruiseValue', () => {
     expect(isWipOver(5, undefined)).toBe(false)
     expect(isWipOver(3, 3)).toBe(false)
     expect(isWipOver(4, 3)).toBe(true)
-  })
-})
-
-describe('diffDeletions', () => {
-  it('reports only ids the next view dropped, with the baseline stamp', () => {
-    const a = createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')
-    const b = createTask({ title: 'B', description: '', prompt: '' }, T0, 't-b')
-    const editedB = withStatus(b, 'done', T0 + 50)
-    expect(diffDeletions([a, b], [editedB])).toEqual([{ id: 't-a', baseUpdatedAt: b.updatedAt }])
-    expect(diffDeletions([a, b], [a, b])).toEqual([])
   })
 })
 
