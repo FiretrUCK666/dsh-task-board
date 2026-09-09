@@ -432,6 +432,11 @@ describe('board header and navigator legibility', () => {
     expect(board).toContain("t('board.organizeRun')")
     expect(board).toContain('runnableIds(snapshot.tasks, selectedCards)')
     expect(board).toContain("controller.runTask(id, 'manual')")
+    // The destructive confirm restates its blast radius (count + object —
+    // a bare "Delete" trains click-through) and every `{n}` template in
+    // locales rides a call site that passes it (silent no-param renders leak
+    // the braces to users).
+    expect(board).toMatch(/deleteSelectedOk', \{ n:/)
     // Activity joins the modes cluster as a quiet ghost (read-only feed,
     // rows open the task — derived, never synced).
     expect(board).toContain("t('board.activity')")

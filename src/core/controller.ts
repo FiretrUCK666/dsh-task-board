@@ -1200,17 +1200,43 @@ export class BoardController {
 
   /**
    * Open a task FROM the notification center: the same navigation as
-   * `openTask`, but the whole related set reads viewed — the notification is
-   * its object's shadow, so consuming the object expires the shadow. ONE
-   * funnel (this method) for notification opens; pure card clicks keep
-   * `openTask` (the card ring clears while row dots wait for their review
-   * pages). Unknown ids are ignored.
+   * `openTask`, but the notification's shadow expires — the viewed session's
+   * rounds read viewed (other sessions' dots survive: looking at s-1 never
+   * clears s-2). ONE funnel for notification/feed opens; pure card clicks
+   * keep `openTask` (the card ring clears while row dots wait for their
+   * review pages). Unknown ids are ignored.
    */
-  openTaskFromNotification(id: string): void {
+  openTaskFromNotification(id: string, sessionId?: string): void {
     if (!this.tasks.some(task => task.id === id)) return
-    this.markTaskViewed(id)
+    if (sessionId !== undefined) this.markTaskSessionViewed(id, sessionId)
+    else this.markTaskViewed(id)
     this.selectedTaskId = id
     this.notify()
+  }
+
+  /**
+   * Mark ONE session's rounds viewed (plus the task baseline, so the card
+   * ring follows the view) — a notification row's session entering the
+   * detail. Same monotone read-state law as `markTaskViewed`, scoped to the
+   * session's rounds so sibling sessions keep their dots.
+   */
+  markTaskSessionViewed(taskId: string, sessionId: string): void {
+    const at = this.now()
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId) return task
+      const executions = task.executions.map(round => {
+        if (round.sessionId !== sessionId || round.viewedAt === at) return round
+        changed = true
+        return { ...round, viewedAt: at }
+      })
+      if (executions.every((round, index) => round === task.executions[index]) && (task.viewedAt ?? 0) >= at) {
+        return task
+      }
+      changed = true
+      return { ...task, executions, viewedAt: Math.max(task.viewedAt ?? 0, at) }
+    })
+    if (changed) this.persistAndNotify()
   }
 
   /**

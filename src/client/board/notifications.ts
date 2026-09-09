@@ -29,8 +29,18 @@ export interface NotificationItem {
   kind: 'waiting' | 'review'
   /** Review outcome (review rows only). */
   result?: 'succeeded' | 'failed' | 'cancelled'
-  /** Moment instant (waiting = task.updatedAt, review = latest settle). */
+  /** Moment instant: waiting rides the round's own activity clock
+   *  (started→ended), review rides its settle — never task.updatedAt, so
+   *  metadata writes (recolor, reorder, cruise toggles) cannot reorder the
+   *  bell, fake arrivals, or poison the unseen waterline. */
   at: number
+}
+
+/** THE row key (`task|session|kind`): snooze stamps, drawer keys and the
+ *  unseen set all derive from this one constructor — never a retyped
+ *  template, so the three can never disagree on identity. */
+export function noteKeyOf(note: Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>): string {
+  return `${note.taskId}|${note.sessionId}|${note.kind}`
 }
 
 /**
@@ -82,6 +92,9 @@ export function notificationsExOf(
     const key = `${task.id}|${sessionId}`
     if (seen.has(key)) return
     seen.add(key)
+    // The waiting moment is the round's own activity (started→ended): a
+    // session-less binding (no round yet) falls back to the task clock.
+    const round = task.executions.find(candidate => candidate.sessionId === sessionId)
     waiting.push({
       taskId: task.id,
       taskTitle: task.title,
@@ -89,14 +102,18 @@ export function notificationsExOf(
       sessionTitle: titleOf(sessionId),
       waitingKind,
       kind: 'waiting',
-      at: task.updatedAt,
+      at: round !== undefined ? (round.endedAt ?? round.startedAt) : task.updatedAt,
     })
   }
   for (const task of tasks) {
     for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task))) push(task, sessionId)
   }
-  const activity = new Map(tasks.map(task => [task.id, task.updatedAt]))
-  waiting.sort((a, b) => (activity.get(b.taskId) ?? 0) - (activity.get(a.taskId) ?? 0))
+  // Newest moment first (the rows carry their own clocks now — no task-clock
+  // lookup table, so metadata writes cannot reorder the bell). Ties break by
+  // task recency (stable, and the legacy newest-task-first when two waits
+  // start the same instant).
+  const recency = new Map(tasks.map(task => [task.id, task.updatedAt]))
+  waiting.sort((a, b) => b.at - a.at || (recency.get(b.taskId) ?? 0) - (recency.get(a.taskId) ?? 0))
 
   // Review tier: tasks sitting in review with unviewed content (the human
   // gate). Failed first (needs a decision), then succeeded. The session slot
@@ -137,13 +154,16 @@ export function notificationsExOf(
   return [...waiting, ...review]
 }
 
-/** One folded task entry: the head row plus how many rows share its task.
+/** One folded task entry: the head row plus every row sharing its task.
  *  The bell and the drawer read the same folded list, so the badge always
  *  equals the visible row count ("collapsed counts one" — a folded group of
  *  three reads 1, never 3). Order inherits the unfolded order. */
 export interface FoldedNotification {
   head: NotificationItem
-  /** Rows folded into this head (1 = unfolded, renders exactly as before). */
+  /** Every row in this head's task (head first). */
+  items: NotificationItem[]
+  /** Rows folded into this head (items.length — 1 is unfolded and renders
+   *  exactly as before). */
   count: number
 }
 
@@ -159,10 +179,11 @@ export function foldNotesByTask(notes: readonly NotificationItem[]): FoldedNotif
   for (const note of notes) {
     const existing = index.get(note.taskId)
     if (existing !== undefined) {
+      existing.items.push(note)
       existing.count += 1
       continue
     }
-    const entry: FoldedNotification = { head: note, count: 1 }
+    const entry: FoldedNotification = { head: note, items: [note], count: 1 }
     index.set(note.taskId, entry)
     folded.push(entry)
   }

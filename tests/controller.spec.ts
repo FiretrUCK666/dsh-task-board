@@ -627,6 +627,34 @@ describe('view state', () => {
     controller.openTaskFromNotification('unknown-id')
     expect(controller.getSnapshot().selectedTaskId).toBe(a.id)
   })
+
+  it('markTaskSessionViewed clears one session rounds, siblings keep their dots', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub, { now: () => clock })
+    const base = controller.createTask({ title: 'a', description: '', prompt: 'p' })!
+    // Two rounds on two sessions of the same task, both settled (both unread).
+    clock = NOW + 1_000
+    await controller.runTask(base.id)
+    const first = exec.runCalls[0]
+    first.fire({ kind: 'started', taskId: base.id, executionId: first.executionId, sessionId: 's-1' })
+    clock = NOW + 1_500
+    first.fire({ kind: 'settled', taskId: base.id, executionId: first.executionId, outcome: 'succeeded' })
+    clock = NOW + 2_000
+    await controller.runTask(base.id)
+    const second = exec.runCalls[1]
+    second.fire({ kind: 'started', taskId: base.id, executionId: second.executionId, sessionId: 's-2' })
+    clock = NOW + 2_500
+    second.fire({ kind: 'settled', taskId: base.id, executionId: second.executionId, outcome: 'succeeded' })
+    clock = NOW + 3_000
+    controller.markTaskSessionViewed(base.id, 's-1')
+    const rounds = controller.getSnapshot().tasks.find(task => task.id === base.id)!.executions
+    expect(rounds.find(round => round.id === first.executionId)!.viewedAt).toBe(NOW + 3_000)
+    expect(rounds.find(round => round.id === second.executionId)!.viewedAt).not.toBe(NOW + 3_000)
+    // Unknown task/session pairs are ignored.
+    controller.markTaskSessionViewed('unknown-id', 's-1')
+    controller.markTaskSessionViewed(base.id, 'unknown-session')
+  })
 })
 
 describe('run loop', () => {

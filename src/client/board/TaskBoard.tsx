@@ -44,7 +44,7 @@ import { taskBindsOf } from '../../core/tasks.ts'
 
 import { boardShortcutOf, isShortcutTyping, matchTask } from './task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
-import { foldNotesByTask, notificationsExOf } from './notifications.ts'
+import { foldNotesByTask, noteKeyOf, notificationsExOf, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
 import { cardNextActionOf, cardViewModelOf } from './card-view.ts'
 
@@ -179,6 +179,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // 通知中心弹层：等你处理的会话聚合 + 未读待审（行内 triage，点主区进详情）。
   const [showNotify, setShowNotify] = useState(false)
   const [notifyFilter, setNotifyFilter] = useState<'all' | 'waiting' | 'review'>('all')
+  // 通知折叠组展开（单开；关屉即清，与动态组同纪律）。
+  const [expandedFoldKey, setExpandedFoldKey] = useState<string | undefined>(undefined)
   // 稍后见（内存态）：key → snooze 时刻；新动静（note.at 推进）自然再浮起。
   const [snoozed, setSnoozed] = useState<Record<string, number>>({})
   const [failedSession, setFailedSession] = useState<string | undefined>(undefined)
@@ -191,6 +193,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       setSnoozed({})
       setFailedSession(undefined)
       setDrawerOpenedAt(undefined)
+      setExpandedFoldKey(undefined)
     }
   }, [showNotify])
   // 板级动态弹层：全板近况聚合（只读派生，点行展开预览再进详情/会话）。
@@ -228,15 +231,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const visibleNotes = useMemo(() => notes.filter(note => {
     if (notifyFilter === 'waiting' && note.kind !== 'waiting') return false
     if (notifyFilter === 'review' && note.kind !== 'review') return false
-    const key = `${note.taskId}|${note.sessionId}|${note.kind}`
     // Snoozed rows stay hidden until newer activity (note.at) outruns the
     // snooze stamp — "稍后即再浮起", no timers, no stored state.
-    if ((snoozed[key] ?? -1) >= note.at) return false
+    if ((snoozed[noteKeyOf(note)] ?? -1) >= note.at) return false
     return true
   }), [notes, notifyFilter, snoozed])
   // 折叠与未见（与上面同 memo 纪律）：铃数与屉表同读折叠后（collapsed 计 1），
   // 未见点只为水位之后的 at 而亮。开屉处理器两处铃共用（同一行为，两处 DOM）。
-  const foldedNotes = useMemo(() => foldNotesByTask(notes), [notes])
+  // 铃读“全局账减去稍后见”（与分组过滤正交）：snooze 藏起的行不再计数，
+  // 屉内分组只改变视图，不改变账。
+  const foldedNotes = useMemo(() => foldNotesByTask(notes.filter(note =>
+    (snoozed[noteKeyOf(note)] ?? -1) < note.at)), [notes, snoozed])
   const foldedVisible = useMemo(() => foldNotesByTask(visibleNotes), [visibleNotes])
   const unseenCount = useMemo(() => drawerOpenedAt === undefined
     ? 0
@@ -571,9 +576,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         ? { taskId, sessionId }
         : undefined,
     )
-    // Feed/drawer opens clear the whole related set (the notification's shadow
-    // expires with its object); pure card clicks keep openTask. ONE funnel.
-    controller.openTaskFromNotification(taskId)
+    // Feed/drawer opens clear the viewed session's rounds (unknown sessions
+    // fall back to the whole task); pure card clicks keep openTask. ONE funnel.
+    controller.openTaskFromNotification(taskId, sessionId)
   }
   // Resolve a workspace id to its display title through the run catalog
   // (live workspace list; falls back to the raw id when the workspace no
@@ -1210,7 +1215,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           <ConfirmDialog
             title={t('board.deleteSelectedTitle', { n: String(selectedCards.length) })}
             message={t('board.deleteSelectedConfirm')}
-            confirmLabel={t('board.deleteSelectedOk')}
+            confirmLabel={t('board.deleteSelectedOk', { n: String(selectedCards.length) })}
             danger
             onConfirm={() => { setConfirmDeleteSelected(false); deleteSelected() }}
             onCancel={() => { setConfirmDeleteSelected(false) }}
@@ -1596,7 +1601,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   {t('board.notifyMarkAll')}
                 </button>
               )}
-              {visibleNotes.length > 0 && (
+              {/* 组标已读只对 review 层有意义：waiting 行等的是人的动作，
+                  标读清不掉它——按钮在纯 waiting 视图下隐藏，而不是摆一个
+                  静默 no-op 让用户以为坏了。 */}
+              {visibleNotes.some(note => note.kind === 'review') && (
                 <button
                   type="button"
                   className={css.feedAction}
@@ -1611,82 +1619,145 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               <p className={css.detailText}>{t(notes.length === 0 ? 'board.notifyEmpty' : 'board.notifyFilterEmpty')}</p>
             ) : (
               <ul className={css.notifyList}>
-                {foldedVisible.map(entry => {
-                  // Folded heads render exactly like unfolded rows (same chips,
-                  // same actions, head session) plus a quiet count when folded.
-                  const note = entry.head
-                  const key = `${note.taskId}|${note.sessionId}|${note.kind}`
-                  const taskTitle = note.taskTitle.trim() === '' ? t('card.untitled') : note.taskTitle
-                  return (
-                    <li key={key}>
-                      <div className={css.notifyRow} data-kind={note.kind}>
-                        <button
-                          type="button"
-                          className={css.notifyMain}
-                          title={note.taskTitle}
-                          aria-label={taskTitle}
-                          onClick={() => { setShowNotify(false); openTaskAtSession(note.taskId, note.sessionId) }}
-                        >
-                          <span className={css.notifyTask}>{taskTitle}</span>
-                          {entry.count > 1 && (
+                {(() => {
+                  // ONE row grammar: heads and members render through this —
+                  // a folded group never restyles its members.
+                  const renderNotifyRow = (note: NotificationItem): ReactNode => {
+                    const key = noteKeyOf(note)
+                    const taskTitle = note.taskTitle.trim() === '' ? t('card.untitled') : note.taskTitle
+                    return (
+                      <li key={key}>
+                        <div className={css.notifyRow} data-kind={note.kind}>
+                          <button
+                            type="button"
+                            className={css.notifyMain}
+                            title={note.taskTitle}
+                            aria-label={taskTitle}
+                            onClick={() => { setShowNotify(false); openTaskAtSession(note.taskId, note.sessionId) }}
+                          >
+                            <span className={css.notifyTask}>{taskTitle}</span>
+                            {note.kind === 'waiting' && note.waitingKind !== undefined ? (
+                              <Chip kind="warn" fill={false}>{t(waitingKeyOf(note.waitingKind))}</Chip>
+                            ) : (
+                              <Chip kind={note.result === 'failed' ? 'error' : 'success'} fill={false}>
+                                {t(note.result === 'failed' ? 'board.notifyReviewFailed' : 'board.notifyReview')}
+                              </Chip>
+                            )}
+                            <span className={css.notifySession} title={note.sessionId}>{note.sessionTitle}</span>
+                          </button>
+                          <span className={css.notifyActions}>
+                            {note.kind === 'waiting' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className={css.feedAction}
+                                  onClick={() => {
+                                    if (!controller.openSession(note.sessionId)) setFailedSession(note.sessionId)
+                                  }}
+                                >
+                                  {t('board.notifyGoSession')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={css.feedAction}
+                                  onClick={() => { setSnoozed(current => ({ ...current, [key]: note.at })) }}
+                                  title={t('board.notifySnoozeTitle')}
+                                >
+                                  {t('board.notifySnooze')}
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className={css.feedAction}
+                                  onClick={() => { controller.moveTask(note.taskId, 'done') }}
+                                >
+                                  {t('board.notifyApprove')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={css.feedAction}
+                                  onClick={() => { controller.markTaskViewed(note.taskId) }}
+                                >
+                                  {t('board.notifyMarkOne')}
+                                </button>
+                              </>
+                            )}
+                          </span>
+                        </div>
+                        {failedSession === note.sessionId && (
+                          <p className={css.detailHint}>{t('detail.sessionUnavailable')}</p>
+                        )}
+                      </li>
+                    )
+                  }
+                  return foldedVisible.map(entry => {
+                    // Unfolded heads render exactly like before; folded groups
+                    // keep one primary head action (go/标已读) plus a chevron
+                    // toggle (same disclosure law as the feed groups) — full
+                    // triage (snooze/approve per session) lives one tap away
+                    // in members, so the N-1 buried sessions stay reachable
+                    // while the collapsed row stays quiet.
+                    if (entry.count === 1) return renderNotifyRow(entry.head)
+                    const headKey = noteKeyOf(entry.head)
+                    const foldedOpen = expandedFoldKey === headKey
+                    const head = entry.head
+                    const headTitle = head.taskTitle.trim() === '' ? t('card.untitled') : head.taskTitle
+                    return (
+                      <li key={headKey}>
+                        <div className={css.notifyRow} data-kind={head.kind}>
+                          <button
+                            type="button"
+                            className={css.feedAction}
+                            aria-expanded={foldedOpen}
+                            aria-label={headTitle}
+                            onClick={() => { setExpandedFoldKey(current => current === headKey ? undefined : headKey) }}
+                          >
+                            <Icon name="chevronDown" className={css.detailChevron} />
+                          </button>
+                          <button
+                            type="button"
+                            className={css.notifyMain}
+                            title={head.taskTitle}
+                            aria-label={headTitle}
+                            onClick={() => { setShowNotify(false); openTaskAtSession(head.taskId, head.sessionId) }}
+                          >
+                            <span className={css.notifyTask}>{headTitle}</span>
                             <Chip kind="neutral" fill={false}>{`×${entry.count}`}</Chip>
-                          )}
-                          {note.kind === 'waiting' && note.waitingKind !== undefined ? (
-                            <Chip kind="warn" fill={false}>{t(waitingKeyOf(note.waitingKind))}</Chip>
-                          ) : (
-                            <Chip kind={note.result === 'failed' ? 'error' : 'success'} fill={false}>
-                              {t(note.result === 'failed' ? 'board.notifyReviewFailed' : 'board.notifyReview')}
-                            </Chip>
-                          )}
-                          <span className={css.notifySession} title={note.sessionId}>{note.sessionTitle}</span>
-                        </button>
-                        <span className={css.notifyActions}>
-                          {note.kind === 'waiting' ? (
-                            <>
+                            <span className={css.notifySession} title={head.sessionId}>{head.sessionTitle}</span>
+                          </button>
+                          <span className={css.notifyActions}>
+                            {head.kind === 'waiting' ? (
                               <button
                                 type="button"
                                 className={css.feedAction}
                                 onClick={() => {
-                                  if (!controller.openSession(note.sessionId)) setFailedSession(note.sessionId)
+                                  if (!controller.openSession(head.sessionId)) setFailedSession(head.sessionId)
                                 }}
                               >
                                 {t('board.notifyGoSession')}
                               </button>
+                            ) : (
                               <button
                                 type="button"
                                 className={css.feedAction}
-                                onClick={() => { setSnoozed(current => ({ ...current, [key]: note.at })) }}
-                                title={t('board.notifySnoozeTitle')}
-                              >
-                                {t('board.notifySnooze')}
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className={css.feedAction}
-                                onClick={() => { controller.moveTask(note.taskId, 'done') }}
-                              >
-                                {t('board.notifyApprove')}
-                              </button>
-                              <button
-                                type="button"
-                                className={css.feedAction}
-                                onClick={() => { controller.markTaskViewed(note.taskId) }}
+                                onClick={() => { controller.markTaskViewed(head.taskId) }}
                               >
                                 {t('board.notifyMarkOne')}
                               </button>
-                            </>
-                          )}
-                        </span>
-                      </div>
-                      {failedSession === note.sessionId && (
-                        <p className={css.detailHint}>{t('detail.sessionUnavailable')}</p>
-                      )}
-                    </li>
-                  )
-                })}
+                            )}
+                          </span>
+                        </div>
+                        {foldedOpen && (
+                          <ul className={css.notifyList}>
+                            {entry.items.map(renderNotifyRow)}
+                          </ul>
+                        )}
+                      </li>
+                    )
+                  })
+                })()}
               </ul>
             )}
           </div>

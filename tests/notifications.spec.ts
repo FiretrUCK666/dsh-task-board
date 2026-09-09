@@ -4,7 +4,7 @@
  * never a notification.
  */
 import { describe, expect, it } from 'vitest'
-import { foldNotesByTask, notificationsExOf, notificationsOf } from '../src/client/board/notifications.ts'
+import { foldNotesByTask, noteKeyOf, notificationsExOf, notificationsOf } from '../src/client/board/notifications.ts'
 import { createTask, settleExecution, startExecution } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -123,5 +123,24 @@ describe('foldNotesByTask (one head per task, collapsed counts one)', () => {
 
   it('folds nothing on an empty list', () => {
     expect(foldNotesByTask([])).toEqual([])
+  })
+})
+
+describe('noteKeyOf (THE row identity)', () => {
+  it('builds task|session|kind for snooze keys, drawer keys and unseen sets', () => {
+    expect(noteKeyOf({ taskId: 'a', sessionId: 's', kind: 'waiting' })).toBe('a|s|waiting')
+  })
+})
+
+describe('waiting moment clock (round activity, never task.updatedAt)', () => {
+  it('a metadata bump after the wait started does not reorder or re-age the bell', () => {
+    const tasks = [task('a', NOW + 100, {
+      executions: [
+        { id: 'e1', sessionId: 's-1', startedAt: NOW + 5, endedAt: undefined, result: undefined, error: undefined },
+      ],
+    })]
+    const rows = notificationsOf(tasks, id => (id === 's-1' ? 'question' : undefined), id => id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].at).toBe(NOW + 5)
   })
 })
