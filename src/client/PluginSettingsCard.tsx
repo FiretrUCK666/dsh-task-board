@@ -22,8 +22,6 @@ interface PluginSettingsCardProps {
   descriptionKey: SettingsCardKey
   /** The card's form state: availability, writability, and what a save would do. */
   state: CardShell
-  /** Deployed bundle version shown beside the name (the "am I on latest?" answer). */
-  version?: string
   /** Write every staged edit. */
   onSave: () => void
   /** Drop every staged edit. */
@@ -54,12 +52,7 @@ export function PluginSettingsCard(props: PluginSettingsCardProps) {
           onClick={() => { setOpen(!open) }}
         >
           <span className={css.headText}>
-            <span className={css.name}>
-              {title}
-              {props.version !== undefined && props.version !== '' && (
-                <span className={css.version}>v{props.version}</span>
-              )}
-            </span>
+            <span className={css.name}>{title}</span>
             <span className={css.description}>{props.t(props.descriptionKey)}</span>
           </span>
           <span className={open ? css.chevronOpen : css.chevron}>▾</span>

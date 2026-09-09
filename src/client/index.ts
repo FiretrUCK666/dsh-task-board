@@ -28,6 +28,10 @@ import { nativeTurnOf } from '../core/session-activity.ts'
 import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
 import { mountBoard } from './board-mount.tsx'
+import packageJson from '../../package.json'
+
+/** Deployed bundle version (diagnostic only — never rendered in the UI). */
+const BOARD_VERSION = (packageJson as { version?: string }).version ?? 'unknown'
 import { SidebarFooter, SidebarFooterController } from './SidebarFooter.tsx'
 import { RouteSettingsScope } from './route-scope.ts'
 import { TaskBoardSettingsCard, TaskBoardSettingsCardController, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
@@ -1096,6 +1100,9 @@ export function apply(ctx: ClientContext): void {
     // adopted. A disabled plugin disposes instead of converging behind a
     // closed door; a failed start simply stays on the mirror (fallback).
     void sync.start(readLocalView).then(mode => {
+      // One permanent diagnostic line: every "didn't sync / didn't change"
+      // dispute ends here (version + sync mode + seat, no devtools spelunking).
+      console.info(`[dsh-task-board] boot v${BOARD_VERSION} sync=${mode} engine=${sync.isEngine()}`)
       if (!currentEnabled()) {
         sync.dispose()
         return

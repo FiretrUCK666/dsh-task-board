@@ -195,8 +195,8 @@
 - **修改后**：build/typecheck/test/verify 全绿后 `git add -A && git commit`，提交信息
   简短说明本次改动（中文或英文均可，禁止 emoji）。
 - **版号（硬性）**：用户可见改动（行为/UI/文案/修复）必须**同提交 bump `package.json` patch**，
-  `pnpm build` 后 grep `lib/client.js` 确认新版号已进包；回复用户只报版号（设置卡 `v{version}`，
-  链由 `tests/settings-card.spec.ts` 钉死）。纯重构/测试/文档提交不 bump。（与"文档不记版本号快照"
+  `pnpm build` 后 grep `lib/client.js` 确认新版号已进包；回复用户只报版号（用户在已安装插件列表看号，
+  板内任何位置不显示版本号）。纯重构/测试/文档提交不 bump。（与"文档不记版本号快照"
   不冲突：那条禁的是文档里写"某版修了某事"，这里管的是包版本号递进。）
 - **回滚**：用户要求「回到上一个版本 / 撤销改动」时——未提交的改动用
   `git checkout -- <file>` 丢弃；已提交的用 `git log --oneline` 定位存档点后
