@@ -43,7 +43,7 @@ import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
-import { matchTask } from './task-search.ts'
+import { boardShortcutOf, matchTask } from './task-search.ts'
 import { foldNotesByTask, notificationsExOf } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
 import { cardNextActionOf, cardViewModelOf } from './card-view.ts'
@@ -142,9 +142,34 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     [controller],
   )
   const [filter, setFilter] = useState('')
+  const searchRef = useRef<HTMLInputElement | null>(null)
   const [showNew, setShowNew] = useState(false)
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
   const [showAutomation, setShowAutomation] = useState(false)
+  // 快捷键速查表 + 单键快捷键（`/`聚焦筛选、`x`清空、`?`开关本表）：无修饰键，
+  // 输入中与弹窗内一律让路（触屏零损失，桌面键位零冲突），随 effect 释放监听。
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null
+      // Editable targets keep their keystrokes; open dialogs keep theirs
+      // (the cheatsheet toggles from the board surface only).
+      if (target !== null && target.closest !== undefined) {
+        if (target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]') !== null) return
+      }
+      const shortcut = boardShortcutOf(event, false)
+      if (shortcut === 'focus-search') {
+        event.preventDefault()
+        searchRef.current?.focus()
+      } else if (shortcut === 'clear-filter') {
+        setFilter('')
+      } else if (shortcut === 'toggle-help') {
+        setShowShortcuts(current => !current)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('keydown', onKey) }
+  }, [])
   // 通知中心弹层：等你处理的会话聚合 + 未读待审（行内 triage，点主区进详情）。
   const [showNotify, setShowNotify] = useState(false)
   const [notifyFilter, setNotifyFilter] = useState<'all' | 'waiting' | 'review'>('all')
@@ -1050,6 +1075,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             紧凑档筛选独占整行、模式组独占一行且右对齐——换行，不压扁。 */}
         <div className={`${css.boardRow} ${css.boardRowTools}`}>
           <input
+            ref={searchRef}
             className={css.search}
             type="search"
             placeholder={t('board.search')}
@@ -1518,6 +1544,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           controller={controller}
           onClose={() => { setShowAutomation(false) }}
         />
+      )}
+      {showShortcuts && (
+        <Dialog title={t('board.shortcuts')} label={t('board.shortcuts')} onClose={() => { setShowShortcuts(false) }} portal>
+          <div className={css.modalScroll}>
+            <p className={css.detailText}>
+              <Chip kind="neutral" fill={false}>/</Chip> {t('board.shortcutSearch')}
+            </p>
+            <p className={css.detailText}>
+              <Chip kind="neutral" fill={false}>x</Chip> {t('board.shortcutClear')}
+            </p>
+            <p className={css.detailText}>
+              <Chip kind="neutral" fill={false}>?</Chip> {t('board.shortcutHelp')}
+            </p>
+          </div>
+        </Dialog>
       )}
       {showNotify && (
         <Dialog title={t('board.notify')} label={t('board.notify')} onClose={() => { setShowNotify(false); setSnoozed({}) }} portal>

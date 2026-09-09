@@ -32,3 +32,25 @@ export function matchTask(
   const haystack = taskHaystack(task, sessionTitles).toLowerCase()
   return terms.every(term => haystack.includes(term))
 }
+
+/** Board keyboard shortcuts: OS-agnostic single keys (no modifiers, so touch
+ *  loses nothing and the OS/browser keep theirs). Discoverable through the
+ *  `?` cheatsheet, which lists exactly this set. */
+export type BoardShortcut = 'focus-search' | 'clear-filter' | 'toggle-help'
+
+/**
+ * Map one keydown onto a board shortcut (`/` focuses the filter, `x` clears
+ * it, `?` toggles the cheatsheet). Never fires while typing in an editable —
+ * inputs keep their keystrokes — nor with modifiers held.
+ */
+export function boardShortcutOf(
+  event: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean },
+  typing: boolean,
+): BoardShortcut | undefined {
+  if (typing) return undefined
+  if (event.ctrlKey === true || event.metaKey === true || event.altKey === true) return undefined
+  if (event.key === '/') return 'focus-search'
+  if (event.key === 'x' || event.key === 'X') return 'clear-filter'
+  if (event.key === '?') return 'toggle-help'
+  return undefined
+}

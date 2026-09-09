@@ -4,7 +4,7 @@
  * matches all.
  */
 import { describe, expect, it } from 'vitest'
-import { matchTask, taskHaystack } from '../src/client/board/task-search.ts'
+import { boardShortcutOf, matchTask, taskHaystack } from '../src/client/board/task-search.ts'
 
 const task = {
   title: '给猫画一幅画',
@@ -55,5 +55,29 @@ describe('taskHaystack', () => {
     expect(hay).toContain('给猫画一幅画')
     expect(hay).toContain('先从草稿开始')
     expect(hay).toContain('s1')
+  })
+})
+
+describe('boardShortcutOf (single keys, never while typing, never with modifiers)', () => {
+  it('maps the three board keys', () => {
+    expect(boardShortcutOf({ key: '/' }, false)).toBe('focus-search')
+    expect(boardShortcutOf({ key: 'x' }, false)).toBe('clear-filter')
+    expect(boardShortcutOf({ key: 'X' }, false)).toBe('clear-filter')
+    expect(boardShortcutOf({ key: '?' }, false)).toBe('toggle-help')
+  })
+
+  it('stays silent while typing or with modifiers held', () => {
+    expect(boardShortcutOf({ key: '/' }, true)).toBeUndefined()
+    expect(boardShortcutOf({ key: 'x' }, true)).toBeUndefined()
+    expect(boardShortcutOf({ key: '?' }, true)).toBeUndefined()
+    expect(boardShortcutOf({ key: '/', ctrlKey: true }, false)).toBeUndefined()
+    expect(boardShortcutOf({ key: '/', metaKey: true }, false)).toBeUndefined()
+    expect(boardShortcutOf({ key: 'x', altKey: true }, false)).toBeUndefined()
+  })
+
+  it('ignores every other key', () => {
+    expect(boardShortcutOf({ key: 'Enter' }, false)).toBeUndefined()
+    expect(boardShortcutOf({ key: 'a' }, false)).toBeUndefined()
+    expect(boardShortcutOf({ key: 'Escape' }, false)).toBeUndefined()
   })
 })
