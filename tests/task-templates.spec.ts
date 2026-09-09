@@ -67,6 +67,7 @@ describe('templateToNewInput', () => {
     expect(input.dueAt).toBe(1_700_000_000_000)
     expect(input.priority).toBe(1)
     expect(input.labels).toEqual(['a', 'b'])
+    expect(input.color).toBe('#fff')
   })
 
   it('normalizes junk inert fields to absent (legacy templates stay valid)', () => {

@@ -233,7 +233,7 @@ export interface ReferenceRemoteFace {
 /** The editable slice of a task (content + run configuration). */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   'title' | 'description' | 'prompt' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model'
-  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'dueAt' | 'priority' | 'labels'
+  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'dueAt' | 'priority' | 'labels' | 'color'
 >>
 
 /** The auto-cruise state: the current on/off truth, the last manual intent,
@@ -1949,6 +1949,10 @@ export class BoardController {
     // Labels: a present key normalizes (lowercase/dedupe/cap) or clears.
     if ('labels' in patch) {
       applied.labels = normalizeLabels(patch.labels)
+    }
+    // Accent color: a present key sets a non-empty string or clears it.
+    if ('color' in patch) {
+      applied.color = patch.color !== undefined && patch.color !== '' ? patch.color : undefined
     }
     this.tasks = this.tasks.map(candidate => candidate.id === id
       ? this.supplementedTask({ ...candidate, ...applied, updatedAt: this.now() })

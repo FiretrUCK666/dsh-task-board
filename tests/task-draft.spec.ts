@@ -35,6 +35,7 @@ function draft() {
     dueDate: '',
     priority: '',
     labels: '',
+    color: '',
   }
 }
 
@@ -106,15 +107,17 @@ describe('draft due-date converters', () => {
   it('draftFromTemplate carries the template inert shape', () => {
     const stamped = draftFromTemplate({
       id: 't', name: 'T', title: 'x', description: '', prompt: 'p',
-      dueAt: parseDueDateInput('2025-01-08'), priority: 2, labels: ['a'],
+      dueAt: parseDueDateInput('2025-01-08'), priority: 2, labels: ['a'], color: '#fff',
     })
     expect(stamped.dueDate).toBe('2025-01-08')
     expect(stamped.priority).toBe('2')
     expect(stamped.labels).toBe('a')
+    expect(stamped.color).toBe('#fff')
     const bare = draftFromTemplate({ id: 't', name: 'T', title: 'x', description: '', prompt: 'p' })
     expect(bare.dueDate).toBe('')
     expect(bare.priority).toBe('')
     expect(bare.labels).toBe('')
+    expect(bare.color).toBe('')
   })
 
   it('stampTemplate fills blanks only (touched fields always win)', () => {

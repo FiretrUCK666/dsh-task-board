@@ -32,7 +32,7 @@ import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, n
 import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime, formatTime } from './format-time.ts'
 import { dayBucketOf } from '../../core/board-events.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
-import { STATUS_KEY, STATUS_SHORT_KEY, wipCountsOf, wipSentenceKeyOf } from './status.ts'
+import { COLUMN_HINT_KEY, STATUS_KEY, STATUS_SHORT_KEY, wipCountsOf, wipSentenceKeyOf } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
@@ -1490,7 +1490,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             >
               <header className={css.columnHeader}>
                 <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
-                <h3 className={css.columnTitle}>{t(STATUS_KEY[column.status])}</h3>
+                <h3 className={css.columnTitle} title={t(COLUMN_HINT_KEY[column.status])}>{t(STATUS_KEY[column.status])}</h3>
                 {(() => {
                   // Soft WIP tint reuses the existing count slot — same pill,
                   // zero extra width (compact-safe). The over question is the

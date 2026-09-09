@@ -33,6 +33,7 @@ function freshDraft(): TaskDraft {
     dueDate: '',
     priority: '',
     labels: '',
+    color: '',
   }
 }
 

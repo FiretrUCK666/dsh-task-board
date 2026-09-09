@@ -33,6 +33,17 @@ export const STATUS_SHORT_KEY: Record<TaskStatus, TaskBoardKey> = {
   done: 'board.statusShort.done',
 }
 
+/** Status → pull-policy hint (one sentence per column: what may enter, what
+ *  it means to sit here). Read by the column header tooltip — supplementary
+ *  orientation, never the sole carrier of anything actionable. */
+export const COLUMN_HINT_KEY: Record<TaskStatus, TaskBoardKey> = {
+  backlog: 'board.columnHint.backlog',
+  todo: 'board.columnHint.todo',
+  running: 'board.columnHint.running',
+  review: 'board.columnHint.review',
+  done: 'board.columnHint.done',
+}
+
 /**
  * Paused-rule explanation keyed by the pausing status: ONE map read by both
  * automation surfaces (the detail editor and the overview row derive the same

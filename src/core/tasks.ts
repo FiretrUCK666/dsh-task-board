@@ -404,6 +404,8 @@ export interface NewTaskInput {
   /** Labels (multi-dimensional context: where/how/who — never priority,
    *  status or dates, which have their own fields). Absent/empty = none. */
   labels?: string[]
+  /** Accent color (hex string data, never CSS); absent = no accent. */
+  color?: string
 }
 
 /** The five kanban columns, in display order. */
@@ -641,6 +643,7 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
       : {},
     ...priority !== undefined ? { priority } : {},
     ...labels !== undefined ? { labels } : {},
+    ...input.color !== undefined && input.color !== '' ? { color: input.color } : {},
   }
 }
 

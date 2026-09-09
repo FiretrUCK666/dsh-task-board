@@ -40,6 +40,9 @@ export interface TaskDraft {
   /** Labels as free text (comma-separated in the form); '' = none. The
    *  converters split/normalize — the draft keeps the user's raw typing. */
   labels: string
+  /** Accent color (hex string); '' = none. No form editor — set through the
+   *  swatches; the draft only ferries template-stamped values through. */
+  color: string
 }
 
 /** `YYYY-MM-DD` → local-midnight ms epoch; undefined when malformed
@@ -98,6 +101,7 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
       return priority === undefined ? '' : String(priority)
     })(),
     labels: typeof parsed.labels === 'string' ? parsed.labels : '',
+    color: typeof parsed.color === 'string' ? parsed.color : '',
   }
 }
 
@@ -124,6 +128,7 @@ export function draftFromTask(task: TaskRecord): TaskDraft {  return {
     dueDate: task.dueAt !== undefined ? toDueDateInput(task.dueAt) : '',
     priority: task.priority === undefined ? '' : String(task.priority),
     labels: task.labels === undefined ? '' : task.labels.join(', '),
+    color: task.color ?? '',
   }
 }
 
@@ -152,6 +157,7 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
     dueDate: template.dueAt !== undefined ? toDueDateInput(template.dueAt) : '',
     priority: template.priority === undefined ? '' : String(template.priority),
     labels: template.labels === undefined ? '' : template.labels.join(', '),
+    color: template.color ?? '',
   }
 }
 
@@ -176,6 +182,7 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     ...dueAt !== undefined ? { dueAt } : {},
     ...priority !== undefined ? { priority } : {},
     ...labels !== undefined ? { labels } : {},
+    ...draft.color !== '' ? { color: draft.color } : {},
   }
 }
 
@@ -196,6 +203,7 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     dueAt: parseDueDateInput(draft.dueDate),
     priority: normalizePriority(Number(draft.priority)),
     labels: normalizeLabels(splitLabelText(draft.labels)),
+    color: draft.color !== '' ? draft.color : undefined,
   }
 }
 
@@ -208,7 +216,7 @@ function filledText(value: string): boolean {
 /** Stamp a template onto a draft by filling BLANKS only: every field the user
  *  already touched keeps the user's value; the template supplies the rest.
  *  One merge law for all fields (title/description/prompt/images/status/run
- *  config/due/priority/labels) — never per-field preserve exceptions. */
+ *  config/due/priority/labels/color) — never per-field preserve exceptions. */
 export function stampTemplate(draft: TaskDraft, stamped: TaskDraft): TaskDraft {
   return {
     title: filledText(draft.title) ? draft.title : stamped.title,
@@ -225,5 +233,6 @@ export function stampTemplate(draft: TaskDraft, stamped: TaskDraft): TaskDraft {
     dueDate: filledText(draft.dueDate) ? draft.dueDate : stamped.dueDate,
     priority: filledText(draft.priority) ? draft.priority : stamped.priority,
     labels: filledText(draft.labels) ? draft.labels : stamped.labels,
+    color: filledText(draft.color) ? draft.color : stamped.color,
   }
 }
