@@ -4,7 +4,7 @@
  * never a notification.
  */
 import { describe, expect, it } from 'vitest'
-import { notificationsExOf, notificationsOf } from '../src/client/board/notifications.ts'
+import { foldNotesByTask, notificationsExOf, notificationsOf } from '../src/client/board/notifications.ts'
 import { createTask, settleExecution, startExecution } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -88,5 +88,40 @@ describe('notificationsOf', () => {
     const rows = notificationsExOf([task], id => (id === 's-bound' ? 'approval' : undefined), id => `title-${id}`, () => false)
     expect(rows.map(row => row.sessionId)).toEqual(['s-bound'])
     expect(rows[0]).toMatchObject({ kind: 'waiting', waitingKind: 'approval' })
+  })
+})
+
+describe('foldNotesByTask (one head per task, collapsed counts one)', () => {
+  it('folds same-task rows under the first (waiting-first order kept)', () => {
+    const tasks = [task('a', NOW, {
+      executions: [
+        { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
+        { id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
+      ],
+    })]
+    const rows = notificationsOf(tasks, () => 'question' as const, id => id)
+    expect(rows).toHaveLength(2)
+    const folded = foldNotesByTask(rows)
+    expect(folded).toHaveLength(1)
+    expect(folded[0].head.sessionId).toBe('s-1')
+    expect(folded[0].count).toBe(2)
+  })
+
+  it('keeps different tasks apart and preserves order', () => {
+    const tasks = [
+      task('old', NOW, {
+        executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+      }),
+      task('new', NOW + 10, {
+        executions: [{ id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+      }),
+    ]
+    const folded = foldNotesByTask(notificationsOf(tasks, () => 'approval' as const, id => id))
+    expect(folded.map(entry => entry.head.taskId)).toEqual(['new', 'old'])
+    expect(folded.map(entry => entry.count)).toEqual([1, 1])
+  })
+
+  it('folds nothing on an empty list', () => {
+    expect(foldNotesByTask([])).toEqual([])
   })
 })

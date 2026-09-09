@@ -1199,6 +1199,21 @@ export class BoardController {
   }
 
   /**
+   * Open a task FROM the notification center: the same navigation as
+   * `openTask`, but the whole related set reads viewed — the notification is
+   * its object's shadow, so consuming the object expires the shadow. ONE
+   * funnel (this method) for notification opens; pure card clicks keep
+   * `openTask` (the card ring clears while row dots wait for their review
+   * pages). Unknown ids are ignored.
+   */
+  openTaskFromNotification(id: string): void {
+    if (!this.tasks.some(task => task.id === id)) return
+    this.markTaskViewed(id)
+    this.selectedTaskId = id
+    this.notify()
+  }
+
+  /**
    * Mark an explicit id set viewed (bulk triage of a filtered group). One
    * write, one persist; unknown ids are ignored.
    */

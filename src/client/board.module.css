@@ -373,6 +373,19 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
+/* Unseen arrival dot (the dual-state's "someone came" signal): static 8px,
+   top-left mirrored from the count badge, same attention tone — never
+   breathing (state breathing lives on cards only), never a second number. */
+.notifyDot {
+  position: absolute;
+  top: -2px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dsh-tb-attention);
+}
+
 /* 通知列表：一行一条（主区进任务详情 + 行内 triage 动作）。主区与动作区
    同行，窄屏换列为两行（主区上、动作下），控件数量不变、字号不变。 */
 .notifyList {

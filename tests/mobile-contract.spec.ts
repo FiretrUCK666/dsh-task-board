@@ -422,8 +422,10 @@ describe('board header and navigator legibility', () => {
     expect(toolsRow).toContain('boardModes')
     expect(toolsRow).not.toContain('boardNewTask')
     // The notification bell rides the modes cluster (never a third header
-    // row): one tap opens the waiting-sessions dialog.
-    expect(toolsRow).toContain('css.notifyBell')
+    // row): one shared helper renders both twins (header + thumb bar), so one
+    // tap opens the waiting-sessions dialog at either width.
+    expect(toolsRow).toContain('renderNotifyBell()')
+    expect(board).toContain('css.notifyBell')
     expect(board).toContain('setShowNotify(true)')
     // Batch run rides the organize bar as its apex action (primary): only
     // prompt-ready cards fire, through the single launch point.
@@ -700,6 +702,12 @@ describe('no raw color literals leak in (design-system rule)', () => {
     expect(base).toContain('border: 1px solid transparent')
     const tab = blockFrom(line => line.includes(".columnTabCount[data-over='true']"))
     expect(tab).toContain('--dsw-alias-state-warn-primary')
+  })
+
+  it('the unseen arrival dot is static and token-fed (no second breathing source)', () => {
+    const dot = ruleOf('notifyDot')
+    expect(dot).toContain('--dsh-tb-attention')
+    expect(dot).not.toMatch(/animation|transition/)
   })
 })
 

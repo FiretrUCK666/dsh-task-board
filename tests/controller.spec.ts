@@ -607,6 +607,26 @@ describe('view state', () => {
     expect(taskUnviewed(tasks.find(task => task.id === a.id)!)).toBe(false)
     expect(taskUnviewed(tasks.find(task => task.id === b.id)!)).toBe(true)
   })
+
+  it('openTaskFromNotification navigates AND clears the whole related set (one funnel)', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub, { now: () => clock })
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'p' })!
+    clock = NOW + 1_000
+    await controller.runTask(a.id)
+    clock = NOW + 1_500
+    exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(taskUnviewed(controller.getSnapshot().tasks.find(task => task.id === a.id)!)).toBe(true)
+    clock = NOW + 2_000
+    controller.openTaskFromNotification(a.id)
+    // Navigated like openTask, but the full related set reads viewed.
+    expect(controller.getSnapshot().selectedTaskId).toBe(a.id)
+    expect(taskUnviewed(controller.getSnapshot().tasks.find(task => task.id === a.id)!)).toBe(false)
+    // Unknown ids are ignored (no selection change, no throw).
+    controller.openTaskFromNotification('unknown-id')
+    expect(controller.getSnapshot().selectedTaskId).toBe(a.id)
+  })
 })
 
 describe('run loop', () => {

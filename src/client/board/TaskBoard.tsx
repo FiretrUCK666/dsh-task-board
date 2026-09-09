@@ -44,7 +44,7 @@ import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../side
 import { taskBindsOf } from '../../core/tasks.ts'
 
 import { matchTask } from './task-search.ts'
-import { notificationsExOf } from './notifications.ts'
+import { foldNotesByTask, notificationsExOf } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
 import { cardNextActionOf, cardViewModelOf } from './card-view.ts'
 
@@ -151,10 +151,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // 稍后见（内存态）：key → snooze 时刻；新动静（note.at 推进）自然再浮起。
   const [snoozed, setSnoozed] = useState<Record<string, number>>({})
   const [failedSession, setFailedSession] = useState<string | undefined>(undefined)
+  // 未见水位（内存态，不进同步）：上次开屉瞬间看到的最大时刻。开屉灭点留数 —
+  // 点只为开屉后新到的行而亮（到达感），数仍是全部未处理（待办量）。跨端不
+  // 同步是有意的：unseen 是本端"眼睛"，unread 是全局"账"。
+  const [drawerOpenedAt, setDrawerOpenedAt] = useState<number | undefined>(undefined)
   useEffect(() => {
     if (!showNotify) {
       setSnoozed({})
       setFailedSession(undefined)
+      setDrawerOpenedAt(undefined)
     }
   }, [showNotify])
   // 板级动态弹层：全板近况聚合（只读派生，点行展开预览再进详情/会话）。
@@ -198,6 +203,40 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     if ((snoozed[key] ?? -1) >= note.at) return false
     return true
   }), [notes, notifyFilter, snoozed])
+  // 折叠与未见（与上面同 memo 纪律）：铃数与屉表同读折叠后（collapsed 计 1），
+  // 未见点只为水位之后的 at 而亮。开屉处理器两处铃共用（同一行为，两处 DOM）。
+  const foldedNotes = useMemo(() => foldNotesByTask(notes), [notes])
+  const foldedVisible = useMemo(() => foldNotesByTask(visibleNotes), [visibleNotes])
+  const unseenCount = useMemo(() => drawerOpenedAt === undefined
+    ? 0
+    : notes.filter(note => note.at > drawerOpenedAt).length,
+  [notes, drawerOpenedAt])
+  const openNotify = (): void => {
+    const at = Date.now()
+    const maxAt = notes.reduce((max, note) => Math.max(max, note.at), at)
+    setDrawerOpenedAt(maxAt)
+    setShowNotify(true)
+  }
+  const renderNotifyBell = (): ReactNode => {
+    const total = foldedNotes.length
+    return (
+      <button
+        type="button"
+        className={`${css.iconButton} ${css.notifyBell}`}
+        aria-label={total > 0 ? t('board.notifyCount', { n: total > 99 ? '99+' : String(total) }) : t('board.notify')}
+        title={t('board.notify')}
+        onClick={openNotify}
+      >
+        <Icon name="bell" />
+        {unseenCount > 0 && <span className={css.notifyDot} aria-hidden="true" />}
+        {total > 0 && (
+          <span className={css.notifyBadge} aria-hidden="true">
+            {total > 99 ? '99+' : String(total)}
+          </span>
+        )}
+      </button>
+    )
+  }
   // Activity feed derivation (memoized for the same reason as notes): typing
   // in the search box or expanding one row must not re-walk the ledger.
   const activityFeed = useMemo(() => {
@@ -502,7 +541,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         ? { taskId, sessionId }
         : undefined,
     )
-    controller.openTask(taskId)
+    // Feed/drawer opens clear the whole related set (the notification's shadow
+    // expires with its object); pure card clicks keep openTask. ONE funnel.
+    controller.openTaskFromNotification(taskId)
   }
   // Board-wide search: title/description/prompt/comments plus linked-session
   // titles (the same derivation the rows render — a session renamed natively
@@ -1048,21 +1089,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               {t('board.activity')}
             </Button>
             {/* 通知：等你处理的会话聚合（只读列表 — 点行进任务详情，
-                会话操作归详情页）。有等待事项才亮数，无则安静。 */}
-            <button
-              type="button"
-              className={`${css.iconButton} ${css.notifyBell}`}
-              aria-label={t('board.notify')}
-              title={t('board.notify')}
-              onClick={() => { setShowNotify(true) }}
-            >
-              <Icon name="bell" />
-              {notes.length > 0 && (
-                <span className={css.notifyBadge} aria-hidden="true">
-                  {notes.length > 99 ? '99+' : String(notes.length)}
-                </span>
-              )}
-            </button>
+                会话操作归详情页）。有等待事项才亮数（折叠计 1），开屉后新到
+                才亮点，无则安静。 */}
+            {renderNotifyBell()}
           </span>
         </div>
 
@@ -1533,7 +1562,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               <p className={css.detailText}>{t(notes.length === 0 ? 'board.notifyEmpty' : 'board.notifyFilterEmpty')}</p>
             ) : (
               <ul className={css.notifyList}>
-                {visibleNotes.map(note => {
+                {foldedVisible.map(entry => {
+                  // Folded heads render exactly like unfolded rows (same chips,
+                  // same actions, head session) plus a quiet count when folded.
+                  const note = entry.head
                   const key = `${note.taskId}|${note.sessionId}|${note.kind}`
                   const taskTitle = note.taskTitle.trim() === '' ? t('card.untitled') : note.taskTitle
                   return (
@@ -1547,6 +1579,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                           onClick={() => { setShowNotify(false); openTaskAtSession(note.taskId, note.sessionId) }}
                         >
                           <span className={css.notifyTask}>{taskTitle}</span>
+                          {entry.count > 1 && (
+                            <Chip kind="neutral" fill={false}>{`×${entry.count}`}</Chip>
+                          )}
                           {note.kind === 'waiting' && note.waitingKind !== undefined ? (
                             <Chip kind="warn" fill={false}>{t(waitingKeyOf(note.waitingKind))}</Chip>
                           ) : (
@@ -1799,20 +1834,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             {t('board.new')}
           </Button>
         </span>
-        <button
-          type="button"
-          className={`${css.iconButton} ${css.notifyBell}`}
-          aria-label={t('board.notify')}
-          title={t('board.notify')}
-          onClick={() => { setShowNotify(true) }}
-        >
-          <Icon name="bell" />
-          {notes.length > 0 && (
-            <span className={css.notifyBadge} aria-hidden="true">
-              {notes.length > 99 ? '99+' : String(notes.length)}
-            </span>
-          )}
-        </button>
+        {renderNotifyBell()}
         <Button
           variant="ghost"
           title={t('board.activityTitle')}

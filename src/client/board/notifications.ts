@@ -136,3 +136,35 @@ export function notificationsExOf(
   })
   return [...waiting, ...review]
 }
+
+/** One folded task entry: the head row plus how many rows share its task.
+ *  The bell and the drawer read the same folded list, so the badge always
+ *  equals the visible row count ("collapsed counts one" — a folded group of
+ *  three reads 1, never 3). Order inherits the unfolded order. */
+export interface FoldedNotification {
+  head: NotificationItem
+  /** Rows folded into this head (1 = unfolded, renders exactly as before). */
+  count: number
+}
+
+/**
+ * Fold notification rows by task (same-task rows share one head — the first,
+ * which the waiting-first ordering already ranked loudest). Pure view-layer
+ * grouping: `notificationsExOf` keeps its signature so existing callers and
+ * tests never change; the bell badge and the drawer list fold the same way.
+ */
+export function foldNotesByTask(notes: readonly NotificationItem[]): FoldedNotification[] {
+  const folded: FoldedNotification[] = []
+  const index = new Map<string, FoldedNotification>()
+  for (const note of notes) {
+    const existing = index.get(note.taskId)
+    if (existing !== undefined) {
+      existing.count += 1
+      continue
+    }
+    const entry: FoldedNotification = { head: note, count: 1 }
+    index.set(note.taskId, entry)
+    folded.push(entry)
+  }
+  return folded
+}
