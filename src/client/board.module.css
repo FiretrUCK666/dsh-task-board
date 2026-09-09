@@ -5619,6 +5619,10 @@ button.interactionOption:hover {
   .boardRowNav {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
+    /* One baseline: back (28px) + title + cruise (28px pill) share a center
+       line. The grid default is stretch — without this the three members sit
+       on three different optical lines (「箭头和标题巡航没对齐」). */
+    align-items: center;
     /* Compact header, owned (not patched): line 1 = back + title + cruise
        (the always-on toggle fills the right end the relocated 新建 left);
        line 2 = the state announcement, full width, ONLY when it has

@@ -373,6 +373,7 @@ describe('board header and navigator legibility', () => {
     // 新建 moved to the thumb bar and cruise took line 1 right alone.
     const nav = ruleIn(compact, '.boardRowNav')
     expect(nav).toMatch(/display:\s*grid/)
+    expect(nav).toMatch(/align-items:\s*center/)
     expect(nav).toMatch(/grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/)
     expect(nav).toMatch(/grid-template-areas:[\s\S]*"back title cruise"[\s\S]*"state state state"/)
     expect(compact).toMatch(/\.boardRowNav:not\(:has\(\.boardState\)\)[\s\S]*?"back title cruise"/)
