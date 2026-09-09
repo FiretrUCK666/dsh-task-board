@@ -54,6 +54,21 @@ describe('activityOf', () => {
     expect(activityOf(tasks, { query: 'missing' })).toEqual([])
   })
 
+  it('filters to unviewed moments via the caller baseline', () => {
+    const base = createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'a')
+    const tasks = [{
+      ...base,
+      executions: [
+        { id: 'e1', sessionId: 's', startedAt: NOW + 1, endedAt: NOW + 5, result: 'succeeded' as const, error: undefined },
+        { id: 'e2', sessionId: 's', startedAt: NOW + 2, endedAt: NOW + 6, result: 'succeeded' as const, error: undefined, comment: 'hello world' },
+      ],
+    }]
+    // Baseline past everything: nothing unviewed.
+    expect(activityOf(tasks, { onlyUnviewed: true }, () => false)).toEqual([])
+    // Baseline before everything: all moments pass through.
+    expect(activityOf(tasks, { onlyUnviewed: true }, () => true)).toHaveLength(3)
+  })
+
   it('caps at the limit (a glance, not an archive)', () => {
     const tasks = [createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'a')]
     expect(ACTIVITY_LIMIT).toBe(50)

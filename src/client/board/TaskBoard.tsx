@@ -12,12 +12,12 @@
  * dragover, read at drop) so the drop always matches the preview; only the
  * indicator rendering goes through state.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
 import { COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskStatus } from '../../core/tasks.ts'
-import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
+import { taskPendingCount, taskUnviewed, taskUnviewedCount, taskViewedBaseline } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
@@ -65,6 +65,18 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
 }
 import { activityOf, type ActivityItem } from './activity.ts'
 import { Chip } from './Chip.tsx'
+
+/**
+ * Human day label for an activity group header: 今天 / 昨天, else the
+ * MM-DD slice of the YYYY-MM-DD bucket (year omitted — the feed is a
+ * glance, and the full instant lives in each row's preview). Pure.
+ */
+function dayLabelOf(day: string, today: string): string {
+  if (day === today) return t('board.dayToday')
+  const yesterday = dayBucketOf(Date.now() - 86_400_000)
+  if (day === yesterday) return t('board.dayYesterday')
+  return day.slice(5)
+}
 
 /**
  * The cruise settings in its two forms, one content: the anchored popover
@@ -129,14 +141,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   )
   const [filter, setFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
-  // 今日焦点（内存态）：只看需处理的卡（等待 / 未读 / 在跑），派生集合。
-  const [focusOnly, setFocusOnly] = useState(false)
-  // 命令面板（内存态）：任务 + 视图动作的唯一入口，索引现算。
-  const [showPalette, setShowPalette] = useState(false)
-  const [paletteQuery, setPaletteQuery] = useState('')
-  useEffect(() => {
-    if (showPalette) setPaletteQuery('')
-  }, [showPalette])
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
   const [showAutomation, setShowAutomation] = useState(false)
   // 通知中心弹层：等你处理的会话聚合 + 未读待审（行内 triage，点主区进详情）。
@@ -151,30 +155,35 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       setFailedSession(undefined)
     }
   }, [showNotify])
-  // 板级动态弹层：全板近况聚合（只读派生，点行进详情）。
+  // 板级动态弹层：全板近况聚合（只读派生，点行展开预览再进详情/会话）。
   const [showActivity, setShowActivity] = useState(false)
   const [activityKind, setActivityKind] = useState<'all' | 'run' | 'comment' | 'other'>('all')
   const [activityQuery, setActivityQuery] = useState('')
+  const [activityUnviewed, setActivityUnviewed] = useState(false)
   const [activityShown, setActivityShown] = useState(30)
   const [expandedActivityKey, setExpandedActivityKey] = useState<string | undefined>(undefined)
   useEffect(() => {
     if (showActivity) {
       setActivityShown(30)
       setExpandedActivityKey(undefined)
+    } else {
+      setFailedSession(undefined)
     }
-  }, [showActivity, activityKind, activityQuery])
+  }, [showActivity, activityKind, activityQuery, activityUnviewed])
   // Live aggregation over the snapshot (the controller notifies on every
   // session-list change, so a newly-waiting session lights the bell at once).
   // Linked ids ride along so a bound-but-never-run waiting session notifies
   // like the card breathes (same related set as the live state).
-  const notes = notificationsExOf(
+  // Memoized: derivation walks every round, so unrelated local state (typing
+  // in a filter box, expanding one row) must not re-walk the ledger.
+  const notes = useMemo(() => notificationsExOf(
     snapshot.tasks,
     sessionId => controller.pendingInteractionOf(sessionId),
     sessionId => controller.sessionTitle(sessionId) ?? sessionId,
     task => taskUnviewed(task),
     task => controller.linkedOf(task).map(row => row.sessionId),
-  )
-  const visibleNotes = notes.filter(note => {
+  ), [snapshot.tasks, snapshot, controller])
+  const visibleNotes = useMemo(() => notes.filter(note => {
     if (notifyFilter === 'waiting' && note.kind !== 'waiting') return false
     if (notifyFilter === 'review' && note.kind !== 'review') return false
     const key = `${note.taskId}|${note.sessionId}|${note.kind}`
@@ -182,7 +191,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     // snooze stamp — "稍后即再浮起", no timers, no stored state.
     if ((snoozed[key] ?? -1) >= note.at) return false
     return true
-  })
+  }), [notes, notifyFilter, snoozed])
+  // Activity feed derivation (memoized for the same reason as notes): typing
+  // in the search box or expanding one row must not re-walk the ledger.
+  const activityFeed = useMemo(() => {
+    if (!showActivity) return []
+    const kinds = activityKind === 'all' ? undefined
+      : activityKind === 'run' ? ['started', 'settled'] as const
+      : activityKind === 'comment' ? ['comment', 'queued', 'running'] as const
+      : ['created', 'refined', 'direct', 'external'] as const
+    return activityOf(snapshot.tasks, {
+      ...(kinds !== undefined ? { kinds: [...kinds] } : {}),
+      ...(activityQuery.trim() !== '' ? { query: activityQuery } : {}),
+      ...(activityUnviewed ? { onlyUnviewed: true as const } : {}),
+    }, (task, at) => at > taskViewedBaseline(task))
+  }, [showActivity, snapshot.tasks, activityKind, activityQuery, activityUnviewed])
   // 多选（Ctrl/Cmd+点击即选，整理模式整选；板头横栏批量换色/删除/全选清选）。
   const [organizing, setOrganizing] = useState(false)
   // The engine-seat note the header chip opens (touch has no hover, so the
@@ -457,18 +480,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // Board-wide search: title/description/prompt/comments plus linked-session
   // titles (the same derivation the rows render — a session renamed natively
   // stays findable under its live name).
-  // 今日焦点：等待 / 未读 / 在跑的并集（派生，不存）；开时搜索先过滤文本再交焦点集。
-  const focusIds = new Set(
-    snapshot.tasks
-      .filter(task =>
-        taskPendingCount(task, sessionId => controller.pendingInteractionOf(sessionId)).count > 0
-        || taskUnviewed(task)
-        || controller.liveStateOf(task.id) === 'running')
-      .map(task => task.id),
-  )
   const visible = snapshot.tasks.filter(task =>
-    matchTask(task, filter, controller.linkedOf(task).map(row => row.title))
-    && (!focusOnly || focusIds.has(task.id)))
+    matchTask(task, filter, controller.linkedOf(task).map(row => row.title)))
   // Clicking a card: a modifier click (Ctrl/Cmd) toggles multi-selection any
   // time; in organize mode every click toggles; otherwise it opens the detail.
   const cardClick = (id: string, event?: React.MouseEvent): void => {
@@ -628,12 +641,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       className={css.board}
       data-dsh-taskboard-board=""
       data-dragging={dragId !== undefined ? '' : undefined}
-      onKeyDown={event => {
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-          event.preventDefault()
-          setShowPalette(true)
-        }
-      }}
       onDragEnter={event => {
         // Latch an external sidebar drag once, on entry: dragover cannot
         // read the payload (protected data store), but the advertised types
@@ -897,21 +904,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             >
               {t('board.activity')}
             </Button>
-            <Button
-              variant="ghost"
-              pressed={focusOnly}
-              title={t('board.focusTitle')}
-              onClick={() => { setFocusOnly(current => !current) }}
-            >
-              {t('board.focus')}
-            </Button>
-            <Button
-              variant="ghost"
-              title={t('board.paletteTitle')}
-              onClick={() => { setShowPalette(true) }}
-            >
-              {t('board.palette')}
-            </Button>
             {/* 通知：等你处理的会话聚合（只读列表 — 点行进任务详情，
                 会话操作归详情页）。有等待事项才亮数，无则安静。 */}
             <button
@@ -933,18 +925,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
         {/* 多选横栏（整理模式或已有选中时出现）：先点卡片（Ctrl/Cmd+点击或整理
             模式下直接点）选中高亮，再在板头横栏批量换色 / 删除 / 全选清选。 */}
-        {/* 今日焦点条：有需处理卡才出现（等待 / 未读 / 在跑的分布说明 + 退出）。 */}
-        {focusOnly && (
-          <div className={css.boardRow}>
-            <span className={css.focusBar}>
-              <span className={css.focusCount}>{t('board.focusCount', { n: String(visible.length) })}</span>
-              <Button size="sm" variant="ghost" onClick={() => { setFocusOnly(false) }}>
-                {t('board.focusExit')}
-              </Button>
-            </span>
-          </div>
-        )}
-
         {(organizing || selectedCards.length > 0) && (
           <div className={css.boardRow}>
             <span className={css.organizeBar}>
@@ -1321,127 +1301,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           onClose={() => { setShowAutomation(false) }}
         />
       )}
-      {showPalette && (
-        <Dialog title={t('board.palette')} label={t('board.palette')} onClose={() => { setShowPalette(false) }} portal>
-          <div className={css.modalScroll}>
-            <input
-              className={css.feedSearch}
-              type="search"
-              autoFocus
-              placeholder={t('board.paletteSearch')}
-              value={paletteQuery}
-              onChange={event => { setPaletteQuery(event.target.value) }}
-              aria-label={t('board.paletteSearch')}
-              onKeyDown={event => {
-                if (event.key !== 'Enter') return
-                const query = paletteQuery.trim().toLowerCase()
-                const firstTask = snapshot.tasks.find(task =>
-                  query === '' || matchTask(task, paletteQuery, controller.linkedOf(task).map(row => row.title)))
-                if (firstTask !== undefined) {
-                  setShowPalette(false)
-                  controller.openTask(firstTask.id)
-                }
-              }}
-            />
-            {(() => {
-              const matchedTasks = snapshot.tasks
-                .filter(task => matchTask(task, paletteQuery, controller.linkedOf(task).map(row => row.title)))
-                .slice(0, 8)
-              const views = [
-                { id: 'focus', label: t('board.paletteFocus'), run: (): void => { setFocusOnly(true) } },
-                { id: 'notify', label: t('board.notify'), run: (): void => { setShowNotify(true) } },
-                { id: 'activity', label: t('board.activity'), run: (): void => { setShowActivity(true) } },
-                { id: 'markall', label: t('board.notifyMarkAll'), run: (): void => { controller.markAllViewed() } },
-              ].filter(view => paletteQuery.trim() === '' || view.label.toLowerCase().includes(paletteQuery.trim().toLowerCase()))
-              if (matchedTasks.length === 0 && views.length === 0) {
-                return <p className={css.detailText}>{t('board.paletteEmpty')}</p>
-              }
-              return (
-                <>
-                  {matchedTasks.length > 0 && (
-                    <>
-                      <h3 className={css.feedDay}>{t('board.paletteTasks')}</h3>
-                      <ul className={css.notifyList}>
-                        {matchedTasks.map(task => (
-                          <li key={task.id}>
-                            <div className={css.notifyRow}>
-                              <button
-                                type="button"
-                                className={css.notifyMain}
-                                onClick={() => { setShowPalette(false); controller.openTask(task.id) }}
-                              >
-                                <span className={css.notifyTask} title={task.title}>
-                                  {task.title.trim() === '' ? t('card.untitled') : task.title}
-                                </span>
-                                <Chip kind="neutral" fill={false}>{t(STATUS_KEY[task.status])}</Chip>
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                  {views.length > 0 && (
-                    <>
-                      <h3 className={css.feedDay}>{t('board.paletteViews')}</h3>
-                      <ul className={css.notifyList}>
-                        {views.map(view => (
-                          <li key={view.id}>
-                            <div className={css.notifyRow}>
-                              <button
-                                type="button"
-                                className={css.notifyMain}
-                                onClick={() => { setShowPalette(false); view.run() }}
-                              >
-                                <span className={css.notifyTask}>{view.label}</span>
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </>
-              )
-            })()}
-          </div>
-        </Dialog>
-      )}
       {showNotify && (
         <Dialog title={t('board.notify')} label={t('board.notify')} onClose={() => { setShowNotify(false); setSnoozed({}) }} portal>
           <div className={css.modalScroll}>
-            {(() => {
-              const today = dayBucketOf(Date.now())
-              const todayCount = snapshot.tasks.filter(task => dayBucketOf(task.updatedAt) === today).length
-              const waitingCount = notes.filter(note => note.kind === 'waiting').length
-              const reviewCount = notes.filter(note => note.kind === 'review').length
-              return (
-                <div className={css.digestCard} role="group" aria-label={t('board.digestTitle')}>
-                  <span className={css.digestRow}>
-                    <span>{t('board.digestWaiting', { n: String(waitingCount) })}</span>
-                    <button type="button" className={css.feedAction} onClick={() => { setNotifyFilter('waiting') }}>
-                      {t('board.digestView')}
-                    </button>
-                  </span>
-                  <span className={css.digestRow}>
-                    <span>{t('board.digestReview', { n: String(reviewCount) })}</span>
-                    <button type="button" className={css.feedAction} onClick={() => { setNotifyFilter('review') }}>
-                      {t('board.digestView')}
-                    </button>
-                  </span>
-                  <span className={css.digestRow}>
-                    <span>{t('board.digestToday', { n: String(todayCount) })}</span>
-                    <button
-                      type="button"
-                      className={css.feedAction}
-                      onClick={() => { setShowNotify(false); setFocusOnly(true) }}
-                    >
-                      {t('board.digestFocus')}
-                    </button>
-                  </span>
-                </div>
-              )
-            })()}
             <div className={css.feedTools} role="group" aria-label={t('board.notify')}>
               <span className={css.feedFilterGroup}>
                 {(['all', 'waiting', 'review'] as const).map(kind => (
@@ -1492,6 +1354,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                           type="button"
                           className={css.notifyMain}
                           title={note.taskTitle}
+                          aria-label={taskTitle}
                           onClick={() => { setShowNotify(false); controller.openTask(note.taskId) }}
                         >
                           <span className={css.notifyTask}>{taskTitle}</span>
@@ -1574,6 +1437,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   </button>
                 ))}
               </span>
+              <button
+                type="button"
+                className={css.feedFilter}
+                data-active={activityUnviewed ? '' : undefined}
+                aria-pressed={activityUnviewed}
+                onClick={() => { setActivityUnviewed(current => !current) }}
+              >
+                {t('board.activityUnviewed')}
+              </button>
               <input
                 className={css.feedSearch}
                 type="search"
@@ -1584,18 +1456,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               />
             </div>
             {(() => {
-              const kinds = activityKind === 'all' ? undefined
-                : activityKind === 'run' ? ['started', 'settled'] as const
-                : activityKind === 'comment' ? ['comment', 'queued', 'running'] as const
-                : ['created', 'refined', 'direct', 'external'] as const
-              const feed = activityOf(snapshot.tasks, {
-                ...(kinds !== undefined ? { kinds: [...kinds] } : {}),
-                ...(activityQuery.trim() !== '' ? { query: activityQuery } : {}),
-              })
+              const feed = activityFeed
               if (feed.length === 0) return <p className={css.detailText}>{t('board.activityEmpty')}</p>
               const shown = feed.slice(0, activityShown)
               // Day groups (data-driven buckets, no fixed windows): one header
               // per local calendar day, newest day first.
+              const todayBucket = dayBucketOf(Date.now())
               const groups = new Map<string, typeof shown>()
               for (const item of shown) {
                 const day = dayBucketOf(item.at)
@@ -1606,8 +1472,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               return (
                 <>
                   {[...groups.entries()].map(([day, items]) => (
-                    <section key={day} aria-label={day}>
-                      <h3 className={css.feedDay}>{day}</h3>
+                    <section key={day} aria-label={dayLabelOf(day, todayBucket)}>
+                      <h3 className={css.feedDay}>{dayLabelOf(day, todayBucket)}</h3>
                       <ul className={css.notifyList}>
                         {items.map(item => {
                           const chip = activityChipOf(item)
@@ -1620,6 +1486,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                                   type="button"
                                   className={css.notifyMain}
                                   title={item.taskTitle}
+                                  aria-label={title}
                                   aria-expanded={expanded}
                                   onClick={() => { setExpandedActivityKey(current => current === item.key ? undefined : item.key) }}
                                 >
