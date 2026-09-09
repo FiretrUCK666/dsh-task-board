@@ -21,14 +21,18 @@ export const THROUGHPUT_WINDOW_MS = 28 * 86_400_000
  *  done after it). Rework (running→done→running→done) measures once — the
  *  first delivery, never the rework tail (stated here, never re-debated per
  *  call). Elapsed calendar days, review included. Undefined when the trip is
- *  incomplete or unrecorded (legacy rows). */
-export function cycleDaysOf(task: Pick<TaskRecord, 'statusHistory'>): number | undefined {
+ *  incomplete, unrecorded (legacy rows), or reaches into the future (clock
+ *  skew is data dirt — the same law as throughput). */
+export function cycleDaysOf(
+  task: Pick<TaskRecord, 'statusHistory'>,
+  now: number = Date.now(),
+): number | undefined {
   const history = task.statusHistory
   if (history === undefined) return undefined
   const start = history.find(entry => entry.status === 'running')
-  if (start === undefined) return undefined
+  if (start === undefined || start.at > now) return undefined
   const end = history.find(entry => entry.status === 'done' && entry.at >= start.at)
-  if (end === undefined) return undefined
+  if (end === undefined || end.at > now) return undefined
   return Math.max(0, (end.at - start.at) / 86_400_000)
 }
 
@@ -41,12 +45,13 @@ export function percentileOf(sorted: readonly number[], p: number): number | und
 }
 
 /** Done task count per week over the trailing window. The atom is the
- *  COMPLETION EVENT (the last `done` entry in the ledger), never the current
+ *  COMPLETION EVENT (a `done` entry in the ledger), never the current
  *  column: a task revived for a follow-up comment keeps the completion it
- *  already earned (columns aggregate sessions, history records events). One
- *  task counts at most once per window (by its last completion) — rework
- *  within the window does not double-count. Future instants never count
- *  (clock skew is data dirt, not throughput). */
+ *  already earned (columns aggregate sessions, history records events). Count
+ *  caliber is PER TASK (at most one per window, by its last completion) —
+ *  rework within the window does not double-count; a double delivery reads
+ *  as one steady completion, never two. Future instants never count (clock
+ *  skew is data dirt, not throughput). */
 export function throughputPerWeek(
   tasks: readonly Pick<TaskRecord, 'status' | 'statusHistory'>[],
   now: number = Date.now(),
@@ -62,15 +67,18 @@ export function throughputPerWeek(
   return count / 4
 }
 
-/** The board's flow summary: samples (measurable cycles), the p85 cycle in
- *  days, and weekly throughput. Zero samples = no sentence (the status line
- *  stays quiet until real history exists — never a pseudo-number). */
+/** The board's flow summary: samples (measurable first trips), the p85
+ *  cycle in days, and weekly throughput. The two halves gate INDEPENDENTLY:
+ *  direct-to-done completions (no running leg) count for throughput but can
+ *  never form a cycle — throughput without a cycle still shows, a cycle
+ *  without recent completions still shows, zero of both stays quiet (never
+ *  a pseudo-number before real history exists). */
 export function flowSummaryOf(
   tasks: readonly Pick<TaskRecord, 'status' | 'statusHistory'>[],
   now: number = Date.now(),
 ): { samples: number; p85Days?: number; perWeek: number } {
   const cycles = tasks
-    .map(task => ({ task, days: cycleDaysOf(task) }))
+    .map(task => ({ task, days: cycleDaysOf(task, now) }))
     .filter((entry): entry is { task: Pick<TaskRecord, 'status' | 'statusHistory'>; days: number } =>
       entry.days !== undefined)
     .map(entry => entry.days)

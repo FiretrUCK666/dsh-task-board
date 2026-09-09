@@ -29,6 +29,17 @@ describe('cycleDaysOf (first running → first done after it)', () => {
     expect(cycleDaysOf({ statusHistory: history(['todo', NOW], ['done', NOW + DAY]) })).toBeUndefined()
     expect(cycleDaysOf({})).toBeUndefined()
   })
+
+  it('treats future instants as dirt (same law as throughput)', () => {
+    expect(cycleDaysOf(
+      { statusHistory: history(['running', NOW - 7 * DAY], ['done', NOW + DAY]) },
+      NOW,
+    )).toBeUndefined()
+    expect(cycleDaysOf(
+      { statusHistory: history(['running', NOW + DAY], ['done', NOW + 2 * DAY]) },
+      NOW,
+    )).toBeUndefined()
+  })
 })
 
 describe('percentileOf (nearest-rank, never zero-filled)', () => {
@@ -62,6 +73,13 @@ describe('throughputPerWeek (done tasks, trailing 28d)', () => {
       { status: 'done' as const, statusHistory: history(['running', NOW - 7 * DAY], ['done', NOW + DAY]) },
     ]
     expect(throughputPerWeek(tasks, NOW)).toBe(0)
+  })
+
+  it('counts a twice-completed task once (task caliber, last completion wins)', () => {
+    const tasks = [
+      { status: 'done' as const, statusHistory: history(['running', NOW - 20 * DAY], ['done', NOW - 20 * DAY], ['running', NOW - 6 * DAY], ['done', NOW - 6 * DAY]) },
+    ]
+    expect(throughputPerWeek(tasks, NOW)).toBe(0.25)
   })
 })
 

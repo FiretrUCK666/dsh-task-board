@@ -943,22 +943,22 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             // folds to ONE sentence (running wins over global) in the existing
             // status slot — never a new row, never a block on drags.
             const wipSentence = wipSentenceKeyOf(wipCounts, snapshot.cruise.wip)
-            // Flow pulse (one sentence, samples-gated): cycle p85 + weekly
-            // throughput from the column-move ledger. Zero samples = zero
-            // sentence (never a pseudo-number before real history exists).
+            // Flow pulse (one sentence, independently gated): cycle p85 and
+            // weekly throughput from the column-move ledger. Each half shows
+            // on its own evidence (a direct-to-done board has throughput but
+            // no cycles); both absent = silence, never a pseudo-number.
             const flow = flowSummaryOf(snapshot.tasks, Date.now())
+            const flowParts = [
+              ...flow.samples > 0 && flow.p85Days !== undefined
+                ? [flow.p85Days < 1 ? t('board.flowSubDay') : t('board.flowDays', { n: String(Math.round(flow.p85Days)) })]
+                : [],
+              ...flow.perWeek > 0 ? [t('board.flowThroughput', { n: String(Math.round(flow.perWeek * 10) / 10) })] : [],
+            ]
             const stateParts = [
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
               ...snapshot.stats.queued > 0 ? [t('board.statusQueued', { n: String(snapshot.stats.queued) })] : [],
               ...wipSentence !== undefined ? [t(wipSentence.key, wipSentence.params)] : [],
-              ...flow.samples > 0 && flow.p85Days !== undefined
-                ? [t('board.flowStats', {
-                    // Sub-day cycles never read "0天" (a pseudo-zero) — they
-                    // read "1天内" (honest: faster than the day grain).
-                    p85: flow.p85Days < 1 ? t('board.flowSubDay') : t('board.flowDays', { n: String(Math.round(flow.p85Days)) }),
-                    n: String(Math.round(flow.perWeek * 10) / 10),
-                  })]
-                : [],
+              ...flowParts.length > 0 ? [t('board.flowStats', { parts: flowParts.join(' · ') })] : [],
               // Forbid-policy skip ledger: cumulative and read-only, shown only
               // while nonzero (the same quiet discipline as running/queued) —
               // "why didn't it run" stays answerable without a new row.

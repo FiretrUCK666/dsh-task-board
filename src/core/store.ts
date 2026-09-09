@@ -351,7 +351,14 @@ export class InMemoryTaskStore implements TaskStore {
  *  cloning `executions` while aliasing `statusHistory` is exactly how a
  *  reader's push pollutes the store). One function, both directions. */
 function cloneRecord(task: TaskRecord): TaskRecord {
-  const next: TaskRecord = { ...task, executions: [...task.executions] }
+  const next: TaskRecord = {
+    ...task,
+    executions: task.executions.map(round => ({
+      ...round,
+      ...(round.promptImages !== undefined ? { promptImages: round.promptImages.map(image => ({ ...image })) } : {}),
+      ...(round.promptFiles !== undefined ? { promptFiles: round.promptFiles.map(file => ({ ...file })) } : {}),
+    })),
+  }
   if (task.statusHistory !== undefined) {
     next.statusHistory = task.statusHistory.map(entry => ({ ...entry }))
   }
@@ -364,6 +371,8 @@ function cloneRecord(task: TaskRecord): TaskRecord {
     next.promptFiles = task.promptFiles.map(file => ({ ...file }))
   }
   if (task.rules !== undefined) next.rules = task.rules.map(rule => ({ ...rule }))
+  if (task.schedule !== undefined) next.schedule = { ...task.schedule }
+  if (task.bind !== undefined) next.bind = { ...task.bind }
   if (task.hidden !== undefined) {
     next.hidden = {
       ...task.hidden,
