@@ -25,7 +25,7 @@ import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { useSurfaceNarrow } from './use-narrow.ts'
 import { activeColumnIndexAt, scrollLeftForColumn } from './column-tabs.ts'
-import { Dialog } from './Dialog.tsx'
+import { boardBox, Dialog } from './Dialog.tsx'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
@@ -43,7 +43,7 @@ import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
-import { boardShortcutOf, matchTask } from './task-search.ts'
+import { boardShortcutOf, isShortcutTyping, matchTask } from './task-search.ts'
 import { foldNotesByTask, notificationsExOf } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
 import { cardNextActionOf, cardViewModelOf } from './card-view.ts'
@@ -152,24 +152,28 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement | null
-      // Editable targets keep their keystrokes; open dialogs keep theirs
-      // (the cheatsheet toggles from the board surface only).
-      if (target !== null && target.closest !== undefined) {
-        if (target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]') !== null) return
-      }
-      const shortcut = boardShortcutOf(event, false)
+      // Outside the board box the board perceives nothing: native pages and
+      // other views never feel `/`, `x` or `?` (same anchor the Dialog portal
+      // uses, so board dialogs stay inside the fence).
+      if (target === null || !boardBox().contains(target)) return
+      // THE one typing judgment (editables + IME composing, single predicate).
+      const shortcut = boardShortcutOf(event, isShortcutTyping(target, event))
+      if (shortcut === undefined) return
+      // Dialogs keep their keys — except the cheatsheet toggle, which stays
+      // reachable wherever focus sits inside the board (orthogonal to Esc).
+      if (target.closest('[role="dialog"]') !== null && shortcut !== 'toggle-help') return
       if (shortcut === 'focus-search') {
         event.preventDefault()
         searchRef.current?.focus()
       } else if (shortcut === 'clear-filter') {
-        setFilter('')
+        if (filter !== '') setFilter('')
       } else if (shortcut === 'toggle-help') {
         setShowShortcuts(current => !current)
       }
     }
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('keydown', onKey) }
-  }, [])
+  }, [filter])
   // 通知中心弹层：等你处理的会话聚合 + 未读待审（行内 triage，点主区进详情）。
   const [showNotify, setShowNotify] = useState(false)
   const [notifyFilter, setNotifyFilter] = useState<'all' | 'waiting' | 'review'>('all')
@@ -570,11 +574,29 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     // expires with its object); pure card clicks keep openTask. ONE funnel.
     controller.openTaskFromNotification(taskId)
   }
+  // Resolve a workspace id to its display title through the run catalog
+  // (live workspace list; falls back to the raw id when the workspace no
+  // longer exists or no catalog is wired). Declared before the board filter:
+  // the filter's `ws:` facet resolves through it during the same render.
+  const workspaceTitleOf = (workspaceId: string): string => {
+    const row = controller.runCatalog()
+      ?.listWorkspaces()
+      .find(candidate => candidate.id === workspaceId)
+    return row?.title ?? workspaceId
+  }
   // Board-wide search: title/description/prompt/comments plus linked-session
   // titles (the same derivation the rows render — a session renamed natively
-  // stays findable under its live name).
+  // stays findable under its live name), plus facet qualifiers (`has:auto`,
+  // `has:color`, `is:unread`/`is:read`, `ws:<text>`) resolved from the same
+  // live faces the rows render.
   const visible = snapshot.tasks.filter(task =>
-    matchTask(task, filter, controller.linkedOf(task).map(row => row.title)))
+    matchTask(task, filter, controller.linkedOf(task).map(row => row.title), {
+      ...(task.workspaceId !== undefined
+        ? { workspaceTitle: workspaceTitleOf(task.workspaceId) }
+        : {}),
+      hasAutomation: task.schedule?.enabled === true,
+      isUnviewed: taskUnviewed(task),
+    }))
   // Clicking a card: a modifier click (Ctrl/Cmd) toggles multi-selection any
   // time; in organize mode every click toggles; otherwise it opens the detail.
   const cardClick = (id: string, event?: React.MouseEvent): void => {
@@ -650,16 +672,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       if (target !== null) applyGap(target.status, pointerY)
     }, [applyGap]),
   )
-
-  // Resolve a workspace id to its display title through the run catalog
-  // (live workspace list; falls back to the raw id when the workspace no
-  // longer exists or no catalog is wired).
-  const workspaceTitleOf = (workspaceId: string): string => {
-    const row = controller.runCatalog()
-      ?.listWorkspaces()
-      .find(candidate => candidate.id === workspaceId)
-    return row?.title ?? workspaceId
-  }
 
   /** Create a bound task from an external sidebar drag (session or workspace). */
   const createFromSidebar = (drag: SidebarDrag, dropStatus: TaskStatus): void => {
@@ -1118,6 +1130,16 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 会话操作归详情页）。有等待事项才亮数（折叠计 1），开屉后新到
                 才亮点，无则安静。 */}
             {renderNotifyBell()}
+            {/* 快捷键：与动态/通知同一收纳（窄屏下沉拇指栏，同一处理器）——
+                触屏没有 `?` 键，速查表必须可点可达。 */}
+            <Button
+              variant="ghost"
+              className={css.modeShortcuts}
+              title={t('board.shortcuts')}
+              onClick={() => { setShowShortcuts(true) }}
+            >
+              {t('board.shortcuts')}
+            </Button>
           </span>
         </div>
 
@@ -1557,6 +1579,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             <p className={css.detailText}>
               <Chip kind="neutral" fill={false}>?</Chip> {t('board.shortcutHelp')}
             </p>
+            <p className={css.detailHint}>{t('board.shortcutQuali')}</p>
           </div>
         </Dialog>
       )}
@@ -1886,6 +1909,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           </Button>
         </span>
         {renderNotifyBell()}
+        <Button
+          variant="ghost"
+          title={t('board.shortcuts')}
+          onClick={() => { setShowShortcuts(true) }}
+        >
+          {t('board.shortcuts')}
+        </Button>
         <Button
           variant="ghost"
           title={t('board.activityTitle')}

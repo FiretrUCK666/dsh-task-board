@@ -23,20 +23,118 @@ export function taskHaystack(
 
 /** Whether a task matches a raw query string (blank query = match). */
 export function matchTask(
-  task: { title: string; description: string; prompt: string; executions: readonly { comment?: string }[] },
+  task: {
+    title: string
+    description: string
+    prompt: string
+    executions: readonly { comment?: string }[]
+    /** Card accent color (for the `has:color` qualifier). */
+    color?: string
+  },
   query: string,
   sessionTitles: readonly string[] = [],
+  facets: BoardQueryFacets = {},
 ): boolean {
-  const terms = query.trim().toLowerCase().split(/\s+/).filter(term => term !== '')
-  if (terms.length === 0) return true
-  const haystack = taskHaystack(task, sessionTitles).toLowerCase()
-  return terms.every(term => haystack.includes(term))
+  const { terms, qualifiers } = parseBoardQuery(query)
+  if (terms.length > 0) {
+    const haystack = taskHaystack(task, sessionTitles).toLowerCase()
+    if (!terms.every(term => haystack.includes(term))) return false
+  }
+  return qualifiers.every(qualifier => matchQualifier(task, qualifier, facets))
+}
+
+/** Caller-resolved facets a qualifier can test (the board wires its live
+ *  resolvers; absent = the qualifier cannot match, never an error). */
+export interface BoardQueryFacets {
+  workspaceTitle?: string
+  hasAutomation?: boolean
+  isUnviewed?: boolean
+}
+
+/** One parsed `key:value` qualifier (`has:auto`, `has:color`, `is:unread`,
+ *  `is:read`, `ws:<text>`). Anything else stays a literal search term — an
+ *  unknown qualifier narrows like ordinary text instead of failing. */
+export interface BoardQualifier {
+  key: string
+  value: string
+}
+
+/**
+ * Split a raw query into plain terms plus recognized qualifiers. Matching is
+ * case-insensitive; `has:` accepts `auto`/`color` (with `no` negation:
+ * `has:noauto` reads awkwardly, so `has:auto` + free text covers it —
+ * negation stays out), `is:` accepts `unread`/`read`, `ws:` takes any text.
+ */
+export function parseBoardQuery(query: string): { terms: string[]; qualifiers: BoardQualifier[] } {
+  const terms: string[] = []
+  const qualifiers: BoardQualifier[] = []
+  for (const raw of query.trim().toLowerCase().split(/\s+/)) {
+    if (raw === '') continue
+    const separator = raw.indexOf(':')
+    if (separator > 0) {
+      const key = raw.slice(0, separator)
+      const value = raw.slice(separator + 1)
+      if (value !== '' && (key === 'has' || key === 'is' || key === 'ws')) {
+        if (key === 'has' && (value === 'auto' || value === 'color')) {
+          qualifiers.push({ key, value })
+          continue
+        }
+        if (key === 'is' && (value === 'unread' || value === 'read')) {
+          qualifiers.push({ key, value })
+          continue
+        }
+        if (key === 'ws') {
+          qualifiers.push({ key, value })
+          continue
+        }
+      }
+    }
+    terms.push(raw)
+  }
+  return { terms, qualifiers }
+}
+
+/** Whether one qualifier holds (unknown facets read absent = no match). */
+function matchQualifier(
+  task: { color?: string },
+  qualifier: BoardQualifier,
+  facets: BoardQueryFacets,
+): boolean {
+  if (qualifier.key === 'has' && qualifier.value === 'auto') return facets.hasAutomation === true
+  if (qualifier.key === 'has' && qualifier.value === 'color') return task.color !== undefined
+  if (qualifier.key === 'is' && qualifier.value === 'unread') return facets.isUnviewed === true
+  if (qualifier.key === 'is' && qualifier.value === 'read') return facets.isUnviewed === false
+  if (qualifier.key === 'ws') {
+    const title = facets.workspaceTitle ?? ''
+    return title.toLowerCase().includes(qualifier.value)
+  }
+  return false
 }
 
 /** Board keyboard shortcuts: OS-agnostic single keys (no modifiers, so touch
  *  loses nothing and the OS/browser keep theirs). Discoverable through the
  *  `?` cheatsheet, which lists exactly this set. */
 export type BoardShortcut = 'focus-search' | 'clear-filter' | 'toggle-help'
+
+/**
+ * Whether a keydown target is mid-typing: inside an editable, or composing
+ * text (CJK input method wedges `isComposing`/229 while the candidate window
+ * lives outside any input — without this guard a `/`, `x` or `?` meant as
+ * pinyin/标点 would yank focus, clear the filter or pop the cheatsheet).
+ * THE one typing judgment: callers pass its answer as `typing` instead of
+ * re-deriving it, so adding a key never forks the predicate.
+ */
+export function isShortcutTyping(
+  target: unknown,
+  event: { isComposing?: boolean; keyCode?: number },
+): boolean {
+  if (event.isComposing === true || event.keyCode === 229) return true
+  if (target === null || typeof target !== 'object') return false
+  const closest = (target as { closest?: unknown }).closest
+  if (typeof closest !== 'function') return false
+  return (closest as (selectors: string) => unknown)
+    .call(target, 'input, textarea, select, [contenteditable="true"]') !== null
+}
 
 /**
  * Map one keydown onto a board shortcut (`/` focuses the filter, `x` clears

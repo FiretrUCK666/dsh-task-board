@@ -5955,6 +5955,9 @@ button.interactionOption:hover {
   .boardModes .modeDynamic {
     display: none;
   }
+  .boardModes .modeShortcuts {
+    display: none;
+  }
   .thumbBar {
     position: absolute;
     left: 0;

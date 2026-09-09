@@ -454,6 +454,9 @@ describe('board header and navigator legibility', () => {
     expect(compact).toMatch(/\.boardNewTask\s*\{[^}]*display:\s*none/)
     expect(compact).toMatch(/\.boardModes \.notifyBell\s*\{[^}]*display:\s*none/)
     expect(compact).toMatch(/\.boardModes \.modeDynamic\s*\{[^}]*display:\s*none/)
+    // The shortcuts twin relocates the same way (header hides, thumb bar twin
+    // carries the same handler — touch reaches the cheatsheet by tap).
+    expect(compact).toMatch(/\.boardModes \.modeShortcuts\s*\{[^}]*display:\s*none/)
     expect(board).toContain('css.modeDynamic')
   })
 
