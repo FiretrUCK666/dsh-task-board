@@ -990,3 +990,19 @@ describe('normalizeLabels (lowercase/dedupe/cap or absent)', () => {
     expect(createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a').labels).toBeUndefined()
   })
 })
+
+describe('statusHistory (column-move ledger)', () => {
+  it('createTask seeds the birth column', () => {
+    expect(createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a').statusHistory)
+      .toEqual([{ status: 'todo', at: NOW }])
+  })
+
+  it('withStatus appends on moves and skips touches', () => {
+    const task = createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a')
+    const moved = withStatus(task, 'running', NOW + 1)
+    expect(moved.statusHistory).toEqual([{ status: 'todo', at: NOW }, { status: 'running', at: NOW + 1 }])
+    const touched = withStatus(moved, 'running', NOW + 2)
+    expect(touched.statusHistory).toEqual(moved.statusHistory)
+    expect(touched.updatedAt).toBe(NOW + 2)
+  })
+})

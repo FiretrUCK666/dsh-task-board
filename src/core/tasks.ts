@@ -278,6 +278,13 @@ export interface TaskRecord {
   promptFiles?: TaskFile[]
   /** Current column. */
   status: TaskStatus
+  /** Column-move history (newest last; the creation column is the first
+   *  entry): every real transition appends here through withStatus (the one
+   *  funnel — startExecution/settle/applyCardOrder all read it). Absent on
+   *  legacy rows (treated as "always this column"). Human-scale: moves are
+   *  manual acts, so no cap is needed — the array stays tiny.
+   */
+  statusHistory?: Array<{ status: TaskStatus; at: number }>
   /** Column sort key (ascending; legacy rows are normalized on load). */
   order: number
   /** Creation instant (ms epoch). */
@@ -618,16 +625,19 @@ export function normalizeLabels(value: unknown): string[] | undefined {
 export function createTask(input: NewTaskInput, now: number, id: string, order = 0): TaskRecord {
   const priority = normalizePriority(input.priority)
   const labels = normalizeLabels(input.labels)
+  const status = input.status ?? 'todo'
   return {
     id,
     title: input.title.trim(),
     description: input.description.trim(),
     prompt: input.prompt.trim(),
-    status: input.status ?? 'todo',
+    status,
     order,
     createdAt: now,
     updatedAt: now,
     viewedAt: now,
+    // The birth column opens the history (every duration derives from here).
+    statusHistory: [{ status, at: now }],
     executions: [],
     ...input.promptImages !== undefined && input.promptImages.length > 0
       ? { promptImages: input.promptImages.map(image => ({ ...image })) }
@@ -647,9 +657,18 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
   }
 }
 
-/** Clone a task with an updated status and a fresh updatedAt. */
+/** Clone a task with an updated status and a fresh updatedAt. A real column
+ *  move appends to the status history (cycle/streak/throughput derivations
+ *  read it — without it every duration is a guess); a same-status touch only
+ *  refreshes updatedAt. */
 export function withStatus(task: TaskRecord, status: TaskStatus, now: number): TaskRecord {
-  return { ...task, status, updatedAt: now }
+  if (task.status === status) return { ...task, updatedAt: now }
+  return {
+    ...task,
+    status,
+    updatedAt: now,
+    statusHistory: [...(task.statusHistory ?? []), { status, at: now }],
+  }
 }
 
 /**
@@ -711,7 +730,7 @@ export function startExecution(
     viewedAt: now,
   }
   return {
-    task: { ...task, status: 'running', updatedAt: now, executions: [...task.executions, execution] },
+    task: withStatus({ ...task, executions: [...task.executions, execution] }, 'running', now),
     execution,
   }
 }
@@ -936,7 +955,7 @@ export function settleExecution(
   // preparation keeps its own column and must not pin execution there.
   const othersOpen = openExecutionRoundsOf({ ...task, executions }).length > 0
   const status = settleColumnOf(task, outcome, othersOpen, chainIncomplete, batchIncomplete)
-  return { ...task, status, updatedAt: now, executions }
+  return withStatus({ ...task, executions }, status, now)
 }
 
 /**
@@ -1169,7 +1188,13 @@ export function applyCardOrder(
   const ordered = [...target.slice(0, position), moved, ...target.slice(position)]
   return tasks.map(task => {
     if (task.id === movedId) {
-      return { ...task, status: targetStatus, order: ordered.findIndex(row => row.id === task.id), updatedAt: now }
+      // Column moves funnel through withStatus (status history appends here —
+      // the one funnel for every hand that changes columns).
+      return withStatus(
+        { ...task, order: ordered.findIndex(row => row.id === task.id) },
+        targetStatus,
+        now,
+      )
     }
     if (task.status === targetStatus) {
       // A shifted sibling is a moved record: its order CONTENT changed, so it

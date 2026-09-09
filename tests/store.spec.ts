@@ -355,4 +355,20 @@ describe('schedule persistence', () => {
     expect(parsed[2].labels).toBeUndefined()
     expect(parsed[3].labels).toBeUndefined()
   })
+
+  it('round-trips the status history and drops malformed entries', () => {
+    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
+    const raw = [
+      { ...valid, id: 't-1', statusHistory: [{ status: 'todo', at: 1 }, { status: 'running', at: 2 }] },
+      { ...valid, id: 't-2', statusHistory: [{ status: 'nope', at: 1 }, { status: 'todo', at: 'x' }] },
+      { ...valid, id: 't-3', statusHistory: 'junk' },
+      { ...valid, id: 't-4' },
+    ]
+    const parsed = parseLedger(JSON.stringify(raw))
+    expect(parsed[0].statusHistory).toEqual([{ status: 'todo', at: 1 }, { status: 'running', at: 2 }])
+    expect(parsed[1].statusHistory).toBeUndefined()
+    expect(parsed[2].statusHistory).toBeUndefined()
+    // No history key at all: the seeded birth entry rides the row through.
+    expect(parsed[3].statusHistory).toEqual([{ status: 'todo', at: 1 }])
+  })
 })

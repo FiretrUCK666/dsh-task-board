@@ -244,6 +244,20 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     const priority = normalizePriority((row as Record<string, unknown>).priority)
     if (priority !== undefined) task.priority = priority
     else delete task.priority
+    // Status history: valid {status, at} entries survive in order (legacy
+    // rows simply start unrecorded — treated as "always this column").
+    const rawHistory = (row as Record<string, unknown>).statusHistory
+    if (Array.isArray(rawHistory)) {
+      const history = rawHistory
+        .filter((entry): entry is { status: TaskStatus; at: number } =>
+          typeof entry === 'object' && entry !== null
+          && isTaskStatus((entry as Record<string, unknown>).status)
+          && typeof (entry as Record<string, unknown>).at === 'number'
+          && Number.isFinite((entry as Record<string, unknown>).at))
+        .map(entry => ({ status: entry.status, at: entry.at }))
+      if (history.length > 0) task.statusHistory = history
+      else delete task.statusHistory
+    } else delete task.statusHistory
     // Labels: normalized (lowercase/dedupe/cap) or absent.
     const labels = normalizeLabels((row as Record<string, unknown>).labels)
     if (labels !== undefined) task.labels = labels
