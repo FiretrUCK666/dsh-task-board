@@ -3164,7 +3164,13 @@ export class BoardController {
   ): TaskRecord {
     const round = task.executions.find(candidate => candidate.id === executionId)
     if (round?.refine === true) return settleRefine(task, executionId, outcome, this.now(), error)
-    return settleExecution(task, executionId, outcome, this.now(), error)
+    const next = settleExecution(task, executionId, outcome, this.now(), error)
+    // Permanent settle diagnostic: every "finished but landed in the wrong
+    // column" dispute ends here (which round, what outcome, which column).
+    if (next !== task) {
+      console.info(`[dsh-task-board] settled task=${task.id} round=${executionId} outcome=${outcome} ${task.status}->${next.status}${error !== undefined ? ` error=${error}` : ''}`)
+    }
+    return next
   }
 
   // --- internals ---------------------------------------------------------------

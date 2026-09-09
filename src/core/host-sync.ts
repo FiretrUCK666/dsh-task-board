@@ -228,6 +228,9 @@ export class BoardSyncClient {
     this.loopCancels.push(this.deps.transport.openStream(this.clientId, {
       onEvent: event => this.onStreamEvent(event),
       onOpen: () => {
+        this.streamOpens += 1
+        this.lastFrameAt = this.now()
+        this.log(`[dsh-task-board] stream open #${this.streamOpens}`)
         this.scheduleResync()
         void this.renewLease()
       },
@@ -378,8 +381,20 @@ export class BoardSyncClient {
 
   // --- internals ------------------------------------------------------------
 
+  /** Stream health (diagnostic only): opens, remote frames, last frame time.
+   *  A stream that opened but never delivers is the classic tunnel/proxy kill
+   *  — the poll loop below calls it out instead of letting "no sync" stay a
+   *  mystery. */
+  private streamOpens = 0
+  private streamFrames = 0
+  private lastFrameAt = 0
+  private streamDeathNoted = false
+
   private onStreamEvent(event: BoardEvent): void {
     if (this.disposed) return
+    this.streamFrames += 1
+    this.lastFrameAt = this.now()
+    this.streamDeathNoted = false
     if (event.type === 'commit') {
       // Own commits arrive via the response; remote ones need a resync.
       if (event.clientId !== this.clientId) this.scheduleResync()
@@ -441,9 +456,30 @@ export class BoardSyncClient {
       runPresets: this.dirty.runPresets ?? this.baseline.runPresets,
     }
     this.inFlight = snapshot
-    const result = await this.deps.transport.commit(commit).catch(() => undefined)
+    // Named commit diagnostics (permanent): every "toggled but nothing
+    // happened / refresh reverted" dispute ends here — what rode the commit,
+    // how big it was, and whether the host acked. Failures keep the
+    // retry-once discipline below; they just stop being silent.
+    const sectionNames = [
+      ...snapshot.tasks !== undefined ? ['tasks'] : [],
+      ...snapshot.cruise !== undefined ? ['cruise'] : [],
+      ...snapshot.schedulePresets !== undefined ? ['schedulePresets'] : [],
+      ...snapshot.runPresets !== undefined ? ['runPresets'] : [],
+    ]
+    let commitBytes = 0
+    try {
+      commitBytes = JSON.stringify(commit).length
+    } catch {
+      commitBytes = -1
+    }
+    this.log(`[dsh-task-board] commit send sections=${sectionNames.join(',') || 'none'} bytes=${commitBytes}`)
+    const result = await this.deps.transport.commit(commit).catch((error: unknown) => {
+      this.log('[dsh-task-board] commit transport failed', error)
+      return undefined
+    })
     this.inFlight = undefined
     if (result === undefined || !result.available || result.doc === undefined) {
+      this.log('[dsh-task-board] commit not acked (keeping dirty state, one retry scheduled)')
       // Keep the dirty state; retry once after a beat (the poll/SSE are the
       // backstop, so a lost retry only delays convergence).
       this.commitCancel = this.defer(() => {
@@ -452,6 +488,7 @@ export class BoardSyncClient {
       }, 2_000)
       return
     }
+    this.log(`[dsh-task-board] commit acked revision=${result.doc.revision}`)
     this.adopt(result.doc)
     if (snapshot.tasks !== undefined && this.dirty.tasks === snapshot.tasks) delete this.dirty.tasks
     if (snapshot.cruise !== undefined && this.dirty.cruise === snapshot.cruise) delete this.dirty.cruise
@@ -488,6 +525,14 @@ export class BoardSyncClient {
   /** Fetch only when the host revision moved past the baseline. */
   async poll(): Promise<void> {
     if (this.mode !== 'synced' || this.disposed) return
+    // Stream-death witness: opened but silent far past the poll cadence means
+    // the live channel is dead and only this poll converges (note once per
+    // silence so the console stays readable; any frame re-arms).
+    if (this.streamOpens > 0 && !this.streamDeathNoted
+      && this.now() - this.lastFrameAt > Math.max(this.pollMs * 2, 30_000)) {
+      this.streamDeathNoted = true
+      this.log(`[dsh-task-board] stream suspected dead (opens=${this.streamOpens} frames=${this.streamFrames}, converging by poll)`)
+    }
     const result = await this.deps.transport.fetch(this.clientId, this.baseline.revision).catch(() => undefined)
     if (result === undefined) {
       this.log('[dsh-task-board] board resync failed (keeping the last known truth)')
