@@ -16,7 +16,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
-import { isWipOver } from '../../core/board-doc.ts'
 import { isHeartbeatStale } from '../../core/scheduler.ts'
 import { COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount, taskViewedBaseline } from '../../core/session-display.ts'
@@ -32,7 +31,7 @@ import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, n
 import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime, formatTime } from './format-time.ts'
 import { dayBucketOf } from '../../core/board-events.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
-import { STATUS_KEY, STATUS_SHORT_KEY } from './status.ts'
+import { STATUS_KEY, STATUS_SHORT_KEY, wipCountsOf, wipSentenceKeyOf } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
@@ -65,7 +64,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   if (item.kind === 'external') return { kind: 'neutral', label: t('board.activityExternal') }
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
-import { activityOf, groupActivityByObjectDay, splitGroupItems, type ActivityGroup, type ActivityItem } from './activity.ts'
+import { activityOf, groupActivityByObjectDay, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
 import { Chip } from './Chip.tsx'
 
 /**
@@ -270,10 +269,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // in the search box or expanding one row must not re-walk the ledger.
   const activityFeed = useMemo(() => {
     if (!showActivity) return []
+    // Kind thirds read THE cluster table (new row kinds land in one place).
     const kinds = activityKind === 'all' ? undefined
-      : activityKind === 'run' ? ['started', 'settled'] as const
-      : activityKind === 'comment' ? ['comment', 'queued', 'running'] as const
-      : ['created', 'refined', 'direct', 'external'] as const
+      : [...CLUSTER_KINDS[activityKind]] as const
     return activityOf(snapshot.tasks, {
       ...(kinds !== undefined ? { kinds: [...kinds] } : {}),
       ...(activityQuery.trim() !== '' ? { query: activityQuery } : {}),
@@ -597,6 +595,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       hasAutomation: task.schedule?.enabled === true,
       isUnviewed: taskUnviewed(task),
     }))
+  // WIP counts: THE one full-ledger computation — the status line, the
+  // compact tabs and the column headers all read this value, so the three
+  // surfaces can never disagree on denominators.
+  const wipCounts = useMemo(
+    () => wipCountsOf(snapshot.tasks.map(task => task.status)),
+    [snapshot.tasks],
+  )
   // Clicking a card: a modifier click (Ctrl/Cmd) toggles multi-selection any
   // time; in organize mode every click toggles; otherwise it opens the detail.
   const cardClick = (id: string, event?: React.MouseEvent): void => {
@@ -792,25 +797,16 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               与巡航同属右簇。零段省略（「排队 0」是噪音，与上下文计量同一文法）。
               紧凑档它独占导航第二行左段，巡航守右，永远不挤主行动。 */}
           {(() => {
-            // Soft WIP awareness (advisory only): counts derive from the FULL
-            // ledger (same denominator as stats.running/queued — never the
-            // search-filtered `visible`, so the sentence never mixes
-            // denominators). Over-limit folds to ONE sentence (running wins
-            // over global) in the existing status slot — never a new row,
-            // never a block on drags.
-            const runningCount = snapshot.tasks.filter(task => task.status === 'running').length
-            const inPlayCount = snapshot.tasks.filter(task => task.status === 'running' || task.status === 'review').length
-            const wipRunningOver = isWipOver(runningCount, snapshot.cruise.wip?.running)
-            const wipGlobalOver = isWipOver(inPlayCount, snapshot.cruise.wip?.global)
-            const wipSentence = wipRunningOver && snapshot.cruise.wip?.running !== undefined
-              ? t('board.wipRunningOver', { n: String(runningCount), limit: String(snapshot.cruise.wip.running) })
-              : wipGlobalOver && snapshot.cruise.wip?.global !== undefined
-                ? t('board.wipOver', { n: String(inPlayCount), limit: String(snapshot.cruise.wip.global) })
-                : undefined
+            // Soft WIP awareness (advisory only): counts come from THE shared
+            // full-ledger computation above (never the search-filtered
+            // `visible`, so the sentence never mixes denominators). Over-limit
+            // folds to ONE sentence (running wins over global) in the existing
+            // status slot — never a new row, never a block on drags.
+            const wipSentence = wipSentenceKeyOf(wipCounts, snapshot.cruise.wip)
             const stateParts = [
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
               ...snapshot.stats.queued > 0 ? [t('board.statusQueued', { n: String(snapshot.stats.queued) })] : [],
-              ...wipSentence !== undefined ? [wipSentence] : [],
+              ...wipSentence !== undefined ? [t(wipSentence.key, wipSentence.params)] : [],
               // Forbid-policy skip ledger: cumulative and read-only, shown only
               // while nonzero (the same quiet discipline as running/queued) —
               // "why didn't it run" stays answerable without a new row.
@@ -1273,13 +1269,16 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       <div className={css.columnTabs} role="tablist" aria-label={t('board.title')}>
         {COLUMNS.map(column => {
           const count = visible.filter(task => task.status === column.status).length
-          const fullCount = snapshot.tasks.filter(task => task.status === column.status).length
-          const fullInPlay = snapshot.tasks.filter(task => task.status === 'running' || task.status === 'review').length
-          const tabOver = column.status === 'running'
-            ? isWipOver(fullCount, snapshot.cruise.wip?.running)
+          // Over-limit tint shares the status line's counts AND its sentence
+          // question (masked per column), so tab, header and status can never
+          // disagree on what "over" means.
+          const columnWip = column.status === 'running'
+            ? { running: snapshot.cruise.wip?.running }
             : column.status === 'review'
-              ? isWipOver(fullInPlay, snapshot.cruise.wip?.global)
-              : false
+              ? { global: snapshot.cruise.wip?.global }
+              : undefined
+          const tabOver = columnWip !== undefined
+            && wipSentenceKeyOf(wipCounts, columnWip) !== undefined
           return (
             <button
               key={column.status}
@@ -1385,26 +1384,24 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 <h3 className={css.columnTitle}>{t(STATUS_KEY[column.status])}</h3>
                 {(() => {
                   // Soft WIP tint reuses the existing count slot — same pill,
-                  // zero extra width (compact-safe). Running reads the running
-                  // ceiling; review shares the global ceiling (same denominator
-                  // as the status line: the FULL ledger, never the filtered
-                  // view). An over-limit count is a real button into the
-                  // cruise/WIP settings (the unified board-level entry) with
-                  // an aria-label — touch and keyboard can reach the why,
-                  // never hover-only title.
-                  const fullRunning = snapshot.tasks.filter(task => task.status === 'running').length
-                  const fullInPlay = snapshot.tasks.filter(task => task.status === 'running' || task.status === 'review').length
-                  const runningOver = column.status === 'running' && isWipOver(fullRunning, snapshot.cruise.wip?.running)
-                  const reviewOver = column.status === 'review' && isWipOver(fullInPlay, snapshot.cruise.wip?.global)
-                  const over = runningOver || reviewOver
-                  const overLabel = runningOver && snapshot.cruise.wip?.running !== undefined
-                    ? t('board.wipRunningOver', { n: String(fullRunning), limit: String(snapshot.cruise.wip.running) })
-                    : reviewOver && snapshot.cruise.wip?.global !== undefined
-                      ? t('board.wipOver', { n: String(fullInPlay), limit: String(snapshot.cruise.wip.global) })
-                      : ''
-                  if (!over) {
+                  // zero extra width (compact-safe). The over question is the
+                  // status line's, masked to this column (running reads the
+                  // running ceiling, review the global one). An over-limit
+                  // count is a real button into the cruise/WIP settings (the
+                  // unified board-level entry) with an aria-label — touch and
+                  // keyboard can reach the why, never hover-only title.
+                  const columnWip = column.status === 'running'
+                    ? { running: snapshot.cruise.wip?.running }
+                    : column.status === 'review'
+                      ? { global: snapshot.cruise.wip?.global }
+                      : undefined
+                  const overSentence = columnWip === undefined
+                    ? undefined
+                    : wipSentenceKeyOf(wipCounts, columnWip)
+                  if (overSentence === undefined) {
                     return <span className={css.columnCount}>{tasks.length}</span>
                   }
+                  const overLabel = t(overSentence.key, overSentence.params)
                   return (
                     <button
                       type="button"

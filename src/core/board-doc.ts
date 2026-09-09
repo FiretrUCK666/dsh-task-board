@@ -174,13 +174,21 @@ export const TOMBSTONE_TTL_MS = 30 * 86_400_000
 export const DEFAULT_CRUISE_VALUE: CruiseValue = { enabled: false, limit: 5, schedule: [] }
 
 /** Concurrency budget bounds — THE one declaration (the controller clamps
- *  writes to the same pair; normalization clamps reads, so a remote commit
- *  can never inject an unbounded budget). */
+ *  writes through {@link clampCruiseLimit}; normalization clamps reads
+ *  through it too, so a remote commit can never inject an unbounded budget). */
 export const CRUISE_LIMIT_MIN = 1
 export const CRUISE_LIMIT_MAX = 20
 
-/** Soft WIP bounds — THE one declaration (same clamp-everywhere discipline as
- *  the cruise budget; undefined = unlimited, so old docs stay valid). */
+/** Clamp one concurrency budget to the shared bounds (THE one clamp: writes
+ *  floor + clamp through this, reads normalize through this — never two
+ *  grammars, mirroring {@link clampWipLimit}). */
+export function clampCruiseLimit(value: number): number {
+  return Math.min(CRUISE_LIMIT_MAX, Math.max(CRUISE_LIMIT_MIN, Math.floor(value)))
+}
+
+/** Soft WIP bounds — THE one declaration for WIP (same clamp-everywhere
+ *  discipline as the cruise budget via {@link clampCruiseLimit}; undefined =
+ *  unlimited, so old docs stay valid). */
 export const WIP_LIMIT_MIN = 1
 export const WIP_LIMIT_MAX = 20
 
@@ -209,8 +217,8 @@ export function emptyBoardDoc(now: number): BoardDoc {
 export function normalizeCruiseValue(value: unknown): CruiseValue {
   if (typeof value !== 'object' || value === null) return { ...DEFAULT_CRUISE_VALUE }
   const row = value as Record<string, unknown>
-  const raw = typeof row.limit === 'number' && Number.isInteger(row.limit) ? row.limit : DEFAULT_CRUISE_VALUE.limit
-  const limit = Math.min(CRUISE_LIMIT_MAX, Math.max(CRUISE_LIMIT_MIN, raw))
+  const raw = typeof row.limit === 'number' && Number.isFinite(row.limit) ? row.limit : DEFAULT_CRUISE_VALUE.limit
+  const limit = clampCruiseLimit(raw)
   const wip = normalizeWipLimits(row.wip)
   return {
     enabled: row.enabled === true,

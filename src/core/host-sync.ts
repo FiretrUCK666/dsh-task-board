@@ -26,7 +26,7 @@
  * tests drive every path without a browser or a server.
  */
 import type { BoardDoc, BoardView } from './board-doc.ts'
-import { boardViewOf, changedIdsOf, diffDeletions, emptyBoardDoc, normalizeWipLimits } from './board-doc.ts'
+import { boardViewOf, changedIdsOf, diffDeletions, emptyBoardDoc, normalizeWipLimits, DEFAULT_CRUISE_VALUE } from './board-doc.ts'
 import type {
   BoardCommit,
   BoardCommand,
@@ -107,13 +107,14 @@ function emptyBaseline(now: number): BoardDoc {
 
 /** Whether a legacy view carries anything worth migrating (defaults alone do not).
  *  WIP rides the same normalization as reads, so a meaningless empty object
- *  never counts as content (no phantom bootstrap). */
+ *  never counts as content (no phantom bootstrap). The cruise default rides
+ *  THE shared default value, never a retyped literal. */
 function hasLegacyContent(view: BoardView): boolean {
   return view.tasks.length > 0
     || view.cruise.enabled === true
     || view.cruise.manual !== undefined
     || view.cruise.schedule.length > 0
-    || view.cruise.limit !== 5
+    || view.cruise.limit !== DEFAULT_CRUISE_VALUE.limit
     || normalizeWipLimits(view.cruise.wip) !== undefined
     || view.schedulePresets.length > 0
     || view.runPresets.presets.length > 0

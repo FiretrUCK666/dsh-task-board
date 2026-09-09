@@ -49,10 +49,19 @@ export interface ActivityFilter {
  *  `run` drops whole comment/other groups instead of hollowing them out. */
 export type ActivityCluster = 'run' | 'comment' | 'other'
 
-/** Map one row kind onto its fold cluster (mirrors the Dialog's filter map). */
+/** The cluster partition, ONE table: `clusterOf` derives from it and the
+ *  Dialog's filter map reads it, so a new row kind changes exactly one place. */
+export const CLUSTER_KINDS: Record<ActivityCluster, readonly ActivityItem['kind'][]> = {
+  run: ['started', 'settled'],
+  comment: ['comment', 'queued', 'running'],
+  other: ['created', 'refined', 'direct', 'external'],
+}
+
+/** Map one row kind onto its fold cluster (derived from the single table). */
 export function clusterOf(kind: ActivityItem['kind']): ActivityCluster {
-  if (kind === 'started' || kind === 'settled') return 'run'
-  if (kind === 'comment' || kind === 'queued' || kind === 'running') return 'comment'
+  for (const cluster of Object.keys(CLUSTER_KINDS) as ActivityCluster[]) {
+    if (CLUSTER_KINDS[cluster].includes(kind)) return cluster
+  }
   return 'other'
 }
 

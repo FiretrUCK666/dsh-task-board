@@ -22,7 +22,7 @@ import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as ti
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
 import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
-import { normalizeCruiseValue, normalizeWipLimits, clampWipLimit, CRUISE_LIMIT_MAX, CRUISE_LIMIT_MIN } from './board-doc.ts'
+import { normalizeCruiseValue, normalizeWipLimits, clampCruiseLimit, clampWipLimit, CRUISE_LIMIT_MAX } from './board-doc.ts'
 import type { WipLimits } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
 import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents.ts'
@@ -3059,12 +3059,12 @@ export class BoardController {
   }
 
   /** Change the concurrency budget (persisted; the dispatcher re-pumps). The
-   *  one clamp: the floor/ceiling live in board-doc bounds — writes clamp,
-   *  reads normalize, one pair everywhere. Non-finite input is ignored (same
-   *  guard as the WIP ceilings — a NaN write must never clear the budget). */
+   *  one clamp lives in board-doc ({@link clampCruiseLimit}) — writes and
+   *  reads share it. Non-finite input is ignored (same guard as the WIP
+   *  ceilings — a NaN write must never clear the budget). */
   setCruiseLimit(limit: number): void {
     if (!Number.isFinite(limit)) return
-    const clamped = Math.min(MAX_CRUISE_LIMIT, Math.max(CRUISE_LIMIT_MIN, Math.floor(limit)))
+    const clamped = clampCruiseLimit(limit)
     if (this.cruiseState.limit === clamped) return
     this.cruiseState = { ...this.cruiseState, limit: clamped }
     this.deps.cruiseStorage?.write(this.cruiseState)
