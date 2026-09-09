@@ -352,6 +352,14 @@ export interface TaskRecord {
    */
   color?: string
   /**
+   * Due instant (ms epoch, day granularity: the form edits a calendar date).
+   * Set only for a REAL due (external consequence); absent = no due, never an
+   * implicit one. Defer/start ride the existing schedule (cron/nextRunAt),
+   * never a second date field. Rides the record like every scalar: authorship
+   * claims, LWW merge and tombstones need no new grammar.
+   */
+  dueAt?: number
+  /**
    * Session automation rules — scheduled "send a preset instruction to one
    * of this task's sessions" rules (see automation.ts). Absent = none.
    */
@@ -375,6 +383,8 @@ export interface NewTaskInput {
   reasoningEffort?: string
   agentPreset?: string
   permission?: string
+  /** Due instant (ms epoch); absent = no due. */
+  dueAt?: number
 }
 
 /** The five kanban columns, in display order. */
@@ -574,6 +584,9 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
     ...input.reasoningEffort !== undefined ? { reasoningEffort: input.reasoningEffort } : {},
     ...input.agentPreset !== undefined ? { agentPreset: input.agentPreset } : {},
     ...input.permission !== undefined ? { permission: input.permission } : {},
+    ...input.dueAt !== undefined && Number.isFinite(input.dueAt) && input.dueAt > 0
+      ? { dueAt: Math.floor(input.dueAt) }
+      : {},
   }
 }
 

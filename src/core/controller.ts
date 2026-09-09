@@ -233,7 +233,7 @@ export interface ReferenceRemoteFace {
 /** The editable slice of a task (content + run configuration). */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   'title' | 'description' | 'prompt' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model'
-  | 'reasoningEffort' | 'agentPreset' | 'permission'
+  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'dueAt'
 >>
 
 /** The auto-cruise state: the current on/off truth, the last manual intent,
@@ -1926,6 +1926,14 @@ export class BoardController {
         const value = patch[key]
         applied[key] = value === undefined || value === '' ? undefined : value
       }
+    }
+    // Due instant: a present key sets a finite positive instant or clears it
+    // (invalid values clear — the form only ever writes parsed dates).
+    if ('dueAt' in patch) {
+      const value = patch.dueAt
+      applied.dueAt = value !== undefined && Number.isFinite(value) && value > 0
+        ? Math.floor(value)
+        : undefined
     }
     this.tasks = this.tasks.map(candidate => candidate.id === id
       ? this.supplementedTask({ ...candidate, ...applied, updatedAt: this.now() })

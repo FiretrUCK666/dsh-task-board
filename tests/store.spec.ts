@@ -310,4 +310,19 @@ describe('schedule persistence', () => {
     expect(parsed[1].schedule).toBeUndefined() // not five fields
     expect(parsed[2].schedule).toBeUndefined() // values out of range
   })
+
+  it('round-trips a due instant and drops junk to absent (old data untouched)', () => {
+    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
+    const raw = [
+      { ...valid, id: 't-1', dueAt: 1_700_000_000_000 },
+      { ...valid, id: 't-2', dueAt: 'tomorrow' },
+      { ...valid, id: 't-3', dueAt: -5 },
+      { ...valid, id: 't-4' },
+    ]
+    const parsed = parseLedger(JSON.stringify(raw))
+    expect(parsed[0].dueAt).toBe(1_700_000_000_000)
+    expect(parsed[1].dueAt).toBeUndefined()
+    expect(parsed[2].dueAt).toBeUndefined()
+    expect(parsed[3].dueAt).toBeUndefined()
+  })
 })

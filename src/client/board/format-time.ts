@@ -34,6 +34,23 @@ export function formatDateTime(ms: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
+/** Start of the local calendar day containing `ms`. */
+function startOfLocalDay(ms: number): number {
+  const date = new Date(ms)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+/** Compact due-date label (day granularity): today reads 今天到期/Due today,
+ *  past days read 逾期 N 天/Nd overdue, future days read like cruise dates
+ *  (month/day, no clock — a due is a day, not an instant). Pure. */
+export function formatDueLabel(dueAt: number, now: number = Date.now()): string {
+  const days = Math.round((startOfLocalDay(dueAt) - startOfLocalDay(now)) / 86_400_000)
+  if (days === 0) return t('board.dueToday')
+  if (days < 0) return t('board.dueOverdue', { n: String(-days) })
+  return formatCruiseTime(dueAt, now)
+}
+
 /** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000))

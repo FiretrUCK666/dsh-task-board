@@ -235,6 +235,11 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     const rawColor = (row as Record<string, unknown>).color
     if (typeof rawColor === 'string' && rawColor !== '') task.color = rawColor
     else delete task.color
+    // Due instant: a finite positive instant survives, anything else reads
+    // absent (old data keeps working untouched).
+    const rawDue = (row as Record<string, unknown>).dueAt
+    if (typeof rawDue === 'number' && Number.isFinite(rawDue) && rawDue > 0) task.dueAt = Math.floor(rawDue)
+    else delete task.dueAt
     // Session automation rules: valid rows kept, malformed dropped (old data
     // keeps working untouched).
     const rules = normalizeSessionRules((row as Record<string, unknown>).rules)

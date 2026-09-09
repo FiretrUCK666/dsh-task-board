@@ -5,7 +5,7 @@
  * the same-day / same-year / cross-year verdicts are deterministic here.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cruiseWindowLabelOf, formatCruiseTime, isNextDay } from '../src/client/board/format-time.ts'
+import { cruiseWindowLabelOf, formatCruiseTime, formatDueLabel, isNextDay } from '../src/client/board/format-time.ts'
 
 function useLanguage(lang: string): void {
   vi.stubGlobal('document', { documentElement: { lang } })
@@ -109,5 +109,29 @@ describe('cruiseWindowLabelOf (one grammar line per window, both languages)', ()
   it('a same-day end keeps both clock times', () => {
     useLanguage('zh')
     expect(cruiseWindowLabelOf({ startAt: new Date(2025, 7, 23, 15, 25).getTime(), endAt: new Date(2025, 7, 23, 23, 0).getTime() }, NOW)).toBe('8月23日 15:25 → 23:00')
+  })
+})
+
+describe('formatDueLabel (day-granularity due chips)', () => {
+  it('today reads 今天到期 / Due today', () => {
+    useLanguage('zh')
+    expect(formatDueLabel(new Date(2025, 0, 5, 9, 0).getTime(), NOW)).toBe('今天到期')
+    useLanguage('en')
+    expect(formatDueLabel(new Date(2025, 0, 5, 9, 0).getTime(), NOW)).toBe('Due today')
+  })
+
+  it('past days read 逾期 N 天 / Nd overdue', () => {
+    useLanguage('zh')
+    expect(formatDueLabel(new Date(2025, 0, 4, 9, 0).getTime(), NOW)).toBe('逾期 1 天')
+    expect(formatDueLabel(new Date(2025, 0, 1, 9, 0).getTime(), NOW)).toBe('逾期 4 天')
+    useLanguage('en')
+    expect(formatDueLabel(new Date(2025, 0, 4, 9, 0).getTime(), NOW)).toBe('1d overdue')
+  })
+
+  it('future days read like cruise dates (no clock — a due is a day)', () => {
+    useLanguage('zh')
+    expect(formatDueLabel(new Date(2025, 0, 8, 0, 0).getTime(), NOW)).toBe('1月8日 00:00')
+    useLanguage('en')
+    expect(formatDueLabel(new Date(2025, 0, 8, 0, 0).getTime(), NOW)).toBe('1/8 00:00')
   })
 })

@@ -13,11 +13,11 @@ import { sessionRuleReadiness } from '../../core/automation.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
-import { cardNextActionOf, cardViewModelOf, type CardSessionDot } from './card-view.ts'
+import { cardNextActionOf, cardViewModelOf, dueStateOf, type CardSessionDot } from './card-view.ts'
 import { Chip } from './Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { ColorSwatches, Icon } from './ui.tsx'
-import { formatDateTime, formatTime } from './format-time.ts'
+import { formatDateTime, formatDueLabel, formatTime } from './format-time.ts'
 
 /** Tooltip for the schedule chip: THE one summary grammar (shared with the
  *  detail's disclosure and the overview) — honest about the rule's readiness:
@@ -269,8 +269,21 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
         {/* Row 2 only when there are badges; plain text badges keep the
             left edge flush with the title above, and wrap instead of
             overflowing. */}
-        {(task.schedule?.enabled === true || latest !== undefined) && (
+        {(task.schedule?.enabled === true || latest !== undefined || dueStateOf(task) !== undefined) && (
           <span className={css.cardBadges}>
+            {/* Due date (today/overdue only — future dates live in the
+                detail): warn tone for overdue, quiet neutral for today. Never
+                breathing, never error red (red belongs to blocked). */}
+            {dueStateOf(task) === 'overdue' && task.dueAt !== undefined && (
+              <Chip kind="warn" fill={false} title={formatDateTime(task.dueAt)}>
+                {formatDueLabel(task.dueAt)}
+              </Chip>
+            )}
+            {dueStateOf(task) === 'today' && task.dueAt !== undefined && (
+              <Chip kind="neutral" fill={false} title={formatDateTime(task.dueAt)}>
+                {formatDueLabel(task.dueAt)}
+              </Chip>
+            )}
             {task.schedule?.enabled === true && !blockedAutomation(task) && (
               <Chip
                 fill={false}

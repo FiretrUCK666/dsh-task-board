@@ -32,6 +32,33 @@ export interface TaskDraft {
   reasoningEffort: string
   /** Permission preset key; '' = session default. */
   permission: string
+  /** Due date as `YYYY-MM-DD` (the date-input shape); '' = no due. */
+  dueDate: string
+}
+
+/** `YYYY-MM-DD` → local-midnight ms epoch; undefined when malformed
+ *  (including impossible dates like month 13 — the Date constructor rolls
+ *  those over instead of failing, so the components are verified back). */
+export function parseDueDateInput(value: string): number | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim())
+  if (match === null) return undefined
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(year, month - 1, day)
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return undefined
+  }
+  date.setHours(0, 0, 0, 0)
+  const time = date.getTime()
+  return Number.isFinite(time) ? time : undefined
+}
+
+/** ms epoch → `YYYY-MM-DD` local (the date-input shape). */
+export function toDueDateInput(at: number): string {
+  const date = new Date(at)
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 /** Normalize a parsed draft (a stored draft may predate a field — e.g.
@@ -51,6 +78,9 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
     model: parsed.model ?? '',
     reasoningEffort: parsed.reasoningEffort ?? '',
     permission: parsed.permission ?? '',
+    dueDate: typeof parsed.dueDate === 'string' && parseDueDateInput(parsed.dueDate) !== undefined
+      ? parsed.dueDate.trim()
+      : '',
   }
 }
 
@@ -74,6 +104,7 @@ export function draftFromTask(task: TaskRecord): TaskDraft {  return {
     model: task.model ?? '',
     reasoningEffort: task.reasoningEffort ?? '',
     permission: task.permission ?? '',
+    dueDate: task.dueAt !== undefined ? toDueDateInput(task.dueAt) : '',
   }
 }
 
@@ -97,11 +128,14 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
     model: template.model ?? '',
     reasoningEffort: template.reasoningEffort ?? '',
     permission: template.permission ?? '',
+    // Templates never carry a due date (a stamped task starts undated).
+    dueDate: '',
   }
 }
 
 /** Draft → create input; empty fields are omitted (fall back to defaults). */
 export function draftToNewInput(draft: TaskDraft): NewTaskInput {
+  const dueAt = parseDueDateInput(draft.dueDate)
   return {
     title: draft.title,
     description: draft.description,
@@ -115,6 +149,7 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     ...draft.provider !== '' && draft.model !== '' ? { provider: draft.provider, model: draft.model } : {},
     ...draft.reasoningEffort !== '' ? { reasoningEffort: draft.reasoningEffort } : {},
     ...draft.permission !== '' ? { permission: draft.permission } : {},
+    ...dueAt !== undefined ? { dueAt } : {},
   }
 }
 
@@ -132,5 +167,6 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     model: draft.model !== '' ? draft.model : undefined,
     reasoningEffort: draft.reasoningEffort !== '' ? draft.reasoningEffort : undefined,
     permission: draft.permission !== '' ? draft.permission : undefined,
+    dueAt: parseDueDateInput(draft.dueDate),
   }
 }
