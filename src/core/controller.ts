@@ -2358,6 +2358,10 @@ export class BoardController {
     const schedule = task?.schedule
     if (schedule === undefined || !schedule.enabled || schedule.mode !== 'chain') return
     if (task === undefined) return
+    // Nothing to drive: an empty prompt pauses the chain WITHOUT consuming
+    // budget or disarming (the same gate as runTask and the queue drain — a
+    // cleared prompt holds the link, refilling it resumes where it waited).
+    if (!taskExecutable(task)) return
     // WAIT while any lane of this card is still working. A chain link is the
     // card's own next run — it must not stack on a sibling conversation (the
     // per-session lanes make that possible now, and the runTask busy guard
@@ -2718,8 +2722,18 @@ export class BoardController {
         if (rule.nextAt > now) continue
         // A usePrompt rule has nothing to send while the task's execution
         // prompt is empty (blocked); a custom rule's content is its own.
+        // Blocked rolls forward like every other hold (task-level blocked
+        // slots roll too) — filling the prompt later resumes from the future,
+        // never backfills the missed slot.
         const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
-        if (text === '') continue
+        if (text === '') {
+          const rolled = nextSessionRuleAt(rule)
+          rule.lastAt = now
+          rule.nextAt = rolled ?? rule.nextAt
+          rule.enabled = rolled === undefined ? false : rule.enabled
+          taskChanged = true
+          continue
+        }
         // ONE due instant, ONE round. A queue-mode rule instruction that is
         // still waiting (its session is busy — the common case now that a lane
         // can be held by a long conversation) already honours this due slot;

@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
-import { MANUAL_STATUSES, hasOpenRun, lastPlainResult, plainRunsOf, ruleReadiness, taskBindsOf, taskExecutable, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, taskBindsOf, taskExecutable, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
@@ -31,7 +31,7 @@ import { SessionRow } from './SessionRow.tsx'
 import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
 import { Button, Disclosure, Icon, Section } from './ui.tsx'
-import { STATUS_KEY, PAUSED_REASON_KEY } from './status.ts'
+import { STATUS_KEY } from './status.ts'
 import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
 
 /** Status → shared-chip color (detail badge). */
@@ -232,23 +232,6 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
  *  exactly ONE UI and the board CAN edit everything the detail can. */
 function AutomationSection({ controller, task }: { controller: BoardController; task: TaskRecord }) {
   const schedule = task.schedule
-  const readiness = ruleReadiness(task)
-  // A paused rule names its blocking status; a review pause caused by a
-  // failed run adds the "because it failed" reason word; a BLOCKED rule (an
-  // empty execution prompt) names the emptiness — plus the failure word when
-  // the last run failed (orthogonal causes, both named). One reason-line
-  // grammar (the one summary grammar is scheduleSummary; the detail only
-  // adds this word on top).
-  const stoppedReason = readiness.kind === 'paused'
-    ? {
-        extraFailed: readiness.status === 'review'
-          && lastPlainResult(task) === 'failed',
-        key: PAUSED_REASON_KEY[readiness.status],
-      }
-    : readiness.kind === 'blocked'
-      ? { extraFailed: lastPlainResult(task) === 'failed', key: 'detail.schedule.blocked' as TaskBoardKey }
-      : undefined
-
   // Collapsed by default UNLESS the rule is already enabled: an armed
   // automation opens expanded, so its live state is immediately visible —
   // "按过启用后，下次打开必自动展开" (the user asked for exactly this).
@@ -256,8 +239,9 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
   useEffect(() => {
     if (schedule?.enabled === true) setOpen(true)
   }, [task.id, schedule?.enabled])
-  // THE one summary grammar (shared with the overview and the card tooltip).
-  const summary = scheduleSummary(task, stoppedReason?.extraFailed === true)
+  // THE one summary grammar (shared with the overview and the card tooltip —
+  // cause and failure word derive inside, so the three can never disagree).
+  const summary = scheduleSummary(task)
 
   return (
     <Disclosure

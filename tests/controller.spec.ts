@@ -1045,6 +1045,29 @@ describe('scheduling', () => {
     expect(final.status).toBe('review')
   })
 
+  it('chain mode: an emptied prompt holds the link without burning budget', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
+    expect(exec.runCalls).toHaveLength(1)
+    const e1 = exec.runCalls[0].executionId
+    exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(2)
+    expect(store.load()[0].schedule?.runCount).toBe(1)
+    // The prompt is cleared before run 2 settles: the hand-off holds (same
+    // gate as runTask) — no new run, no counter bump, no disarm.
+    expect(controller.updateTask(task.id, { prompt: '' })).toBe(true)
+    const e2 = exec.runCalls[1].executionId
+    exec.runCalls[1].fire({ kind: 'started', taskId: task.id, executionId: e2, sessionId: 's-2' })
+    exec.runCalls[1].fire({ kind: 'settled', taskId: task.id, executionId: e2, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(2)
+    const held = store.load()[0]
+    expect(held.schedule?.runCount).toBe(1)
+    expect(held.schedule?.enabled).toBe(true)
+  })
+
   it('chain mode: a failed run stops the chain', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
@@ -3947,6 +3970,20 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(sent).toHaveLength(0) // disabled + missing-session both skipped
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.rules?.find(r => r.id === gone.id)?.nextAt).toBe(gone.nextAt)
+  })
+
+  it('a blocked usePrompt rule rolls its due slot forward (hold, not drop)', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '', usePrompt: true, cron: '* * * * *', send: 'steer' })!
+    const before = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].nextAt!
+    await controller.tickSessionRules(NOW + 120_000)
+    // Blocked: nothing sent, but the due slot advances like every other hold
+    // (filling the prompt later resumes from the future, never backfills).
+    expect(sent).toHaveLength(0)
+    const after = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].nextAt!
+    expect(after).toBeGreaterThan(before)
   })
 
   it('slash instructions route through the command registry (steer)', async () => {

@@ -23,7 +23,7 @@ import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { type SchedulePreset } from '../../core/presets.ts'
 import {
-  automationRowsOf, sessionRuleOf, sessionRuleReadiness, type AutomationRow,
+  automationRowsOf, blockedCauseOf, pausedFailedOf, sessionRuleOf, sessionRuleReadiness, type AutomationRow,
 } from '../../core/automation.ts'
 import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import {
@@ -108,25 +108,29 @@ function ruleSessionTitle(controller: BoardController, task: TaskRecord, session
   return label?.title ?? sessionId
 }
 
-/** THE one schedule-summary text (off / paused(reason) / chain runs / cron
- *  human label + next instant), read by the detail's disclosure header, the
- *  automation overview's row and the card's tooltip — one grammar, three
- *  surfaces, never three branch sets. `pausedFailed` opts into the detail's
- *  "failed pause" reason word (a review pause after a failed run). */
-export function scheduleSummary(task: TaskRecord, pausedFailed = false): string {
+/** THE one schedule-summary text (off / blocked-cause / paused(reason) /
+ *  chain runs / cron human label + next instant), read by the detail's
+ *  disclosure header, the automation overview's row and the card's tooltip —
+ *  one grammar, three surfaces, never three branch sets. The failure word and
+ *  the blocked cause derive inside (single derivation): callers pass the task
+ *  and nothing else, so the three surfaces can never disagree. */
+export function scheduleSummary(task: TaskRecord): string {
   const schedule = task.schedule
   if (schedule === undefined || !schedule.enabled) return t('detail.schedule.off')
-  const readiness = ruleReadiness(task)
-  if (readiness.kind === 'blocked') {
+  const failed = pausedFailedOf(task)
+  const cause = blockedCauseOf(task)
+  if (cause !== undefined) {
     // Empty prompt: the rule cannot drive anything — blocked, never "paused"
-    // (a chain never pauses; the card chip reads the same word). A failed
-    // last run is an orthogonal second cause: both are named, never one
-    // swallowing the other.
-    const reason = `${t('card.autoBlocked')} · ${t('detail.schedule.blocked')}`
-    return pausedFailed ? `${reason} · ${t('detail.schedule.pausedFailedShort')}` : reason
+    // (a chain never pauses). Session-only blocks name their own cause; the
+    // failure word rides along when the last run failed (orthogonal causes).
+    const reason = cause === 'session'
+      ? `${t('card.autoBlocked')} · ${t('detail.schedule.blockedSession')}`
+      : `${t('card.autoBlocked')} · ${t('detail.schedule.blocked')}`
+    return failed ? `${reason} · ${t('detail.schedule.pausedFailedShort')}` : reason
   }
+  const readiness = ruleReadiness(task)
   if (readiness.kind === 'paused') {
-    return pausedFailed
+    return failed
       ? `${t('detail.schedule.paused')} · ${t('detail.schedule.pausedFailedShort')}`
       : `${t('detail.schedule.paused')} (${t(STATUS_KEY[readiness.status])})`
   }

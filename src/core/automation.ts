@@ -13,7 +13,7 @@
  * Pure and unit-testable.
  */
 import type { TaskRecord } from './tasks.ts'
-import { taskColumnAllowsAutomation, taskExecutable } from './tasks.ts'
+import { lastPlainResult, ruleReadiness, taskColumnAllowsAutomation, taskExecutable } from './tasks.ts'
 import { nextRunAtMs } from './schedule.ts'
 
 /** A rule's trigger: cron (schedule) or on-complete (fires at run settle). */
@@ -241,4 +241,26 @@ export function automationTasksOf(tasks: readonly TaskRecord[]): TaskRecord[] {
 export function hasLiveAutomation(task: TaskRecord): boolean {
   return task.schedule?.enabled === true
     || (task.rules !== undefined && task.rules.some(rule => rule.enabled))
+}
+
+/** Which automation is blocked on the empty prompt (THE cause predicate —
+ *  card chips, tooltips, the detail disclosure and the overview row all read
+ *  this, so the explanation can never name a different cause than the badge).
+ *  `both` reads schedule-first (the task rule is the louder signal); session
+ *  rules keep their own cause word downstream. */
+export function blockedCauseOf(task: TaskRecord): 'schedule' | 'session' | 'both' | undefined {
+  const schedule = task.schedule?.enabled === true && ruleReadiness(task).kind === 'blocked'
+  const session = task.rules !== undefined
+    && task.rules.some(rule => sessionRuleReadiness(task, rule).kind === 'blocked')
+  if (schedule && session) return 'both'
+  if (schedule) return 'schedule'
+  if (session) return 'session'
+  return undefined
+}
+
+/** Whether the last plain run failed while its task waits in review (THE
+ *  failure word — card tooltip, detail disclosure and overview row read this
+ *  instead of each computing "failed?" their own way). */
+export function pausedFailedOf(task: TaskRecord): boolean {
+  return task.status === 'review' && lastPlainResult(task) === 'failed'
 }

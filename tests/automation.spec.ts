@@ -6,10 +6,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  automationRowsOf, automationTasksOf, hasLiveAutomation, isSessionRule, normalizeSessionRules, sessionRuleReadiness,
+  automationRowsOf, automationTasksOf, blockedCauseOf, hasLiveAutomation, isSessionRule, normalizeSessionRules, pausedFailedOf, sessionRuleReadiness,
   sessionRuleOf, withSessionRules, type SessionRule,
 } from '../src/core/automation.ts'
-import { createTask, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -84,6 +84,39 @@ describe('automationTasksOf (the overview membership)', () => {
     for (const task of [bare, armed, ruled, off]) {
       expect(automationTasksOf([task]).length).toBe(hasLiveAutomation(task) ? 1 : 0)
     }
+  })
+
+  it('blockedCauseOf names schedule vs session vs both (one cause predicate)', () => {
+    const usePromptBlocked = { ...rule(), id: 'r9', usePrompt: true, instruction: '' }
+    const emptyPrompt = { ...createTask({ title: 't', description: '', prompt: '' }, NOW, 'e') }
+    // Schedule-only blocked (armed schedule, empty prompt, no rules).
+    const scheduleOnly = { ...emptyPrompt, id: 's', schedule: scheduleOf('cron', true) }
+    expect(blockedCauseOf(scheduleOnly)).toBe('schedule')
+    // Session-only blocked (no schedule, enabled usePrompt rule, empty prompt).
+    const sessionOnly = withSessionRules({ ...emptyPrompt, id: 'r' }, [usePromptBlocked])
+    expect(blockedCauseOf(sessionOnly)).toBe('session')
+    // Both armed on an empty prompt.
+    const both = withSessionRules({ ...scheduleOnly, id: 'b' }, [usePromptBlocked])
+    expect(blockedCauseOf(both)).toBe('both')
+    // Ready prompt, armed schedule: no cause.
+    const ready = withSchedule(
+      createTask({ title: 't', description: '', prompt: 'run' }, NOW, 'r2'),
+      { enabled: true, cron: '* * * * *', nextRunAt: undefined }, NOW,
+    )
+    expect(blockedCauseOf(ready)).toBeUndefined()
+    expect(blockedCauseOf(bare)).toBeUndefined()
+  })
+
+  it('pausedFailedOf reads review-gate failure (single derivation)', () => {
+    expect(pausedFailedOf(bare)).toBe(false)
+    const failedReview: TaskRecord = {
+      ...createTask({ title: 't', description: '', prompt: 'run' }, NOW, 'f'),
+      status: 'review',
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed', error: 'boom' }],
+    }
+    expect(pausedFailedOf(failedReview)).toBe(true)
+    // Same failure outside review: not the gate's word.
+    expect(pausedFailedOf({ ...failedReview, status: 'todo' })).toBe(false)
   })
 })
 

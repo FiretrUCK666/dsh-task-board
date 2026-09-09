@@ -8,7 +8,7 @@ import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskLiveState } from '../../core/task-live.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { cardSourceLabel, latestExecutionOf, lastPlainResult, plainRunsOf, refining, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
+import { cardSourceLabel, latestExecutionOf, plainRunsOf, refining, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
 import { sessionRuleReadiness } from '../../core/automation.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -22,10 +22,10 @@ import { formatDateTime, formatTime } from './format-time.ts'
 /** Tooltip for the schedule chip: THE one summary grammar (shared with the
  *  detail's disclosure and the overview) — honest about the rule's readiness:
  *  chain reports its run budget, cron its next due instant, paused its
- *  blocking status, blocked its reason (plus the failure word when the last
+ *  blocking status, blocked its cause (plus the failure word when the last
  *  run failed — two orthogonal causes, both named). */
 function scheduleChipTitle(task: TaskRecord): string {
-  return scheduleSummary(task, lastPlainResult(task) === 'failed')
+  return scheduleSummary(task)
 }
 
 /** The open run's state text: either working ("进行中") or blocked on the
