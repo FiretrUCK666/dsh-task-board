@@ -269,9 +269,11 @@ const FREE_TEXT_KEYS: ReadonlySet<string> = new Set(
  *  a key prefix offers keys (`h` → `has:`), a bare key offers its values
  *  (`has:` → its three), a value prefix narrows them (`has:a` → `has:auto`).
  *  Free-text keys (`ws:`/`label:`) and complete tokens offer nothing — the
- *  native datalist narrows the offered set further as typing continues. */
+ *  native datalist narrows the offered set further as typing continues.
+ *  The token reads THE single scanner (a `ws:"..."` span is one token —
+ *  completion never fires from inside quotes). */
 export function completeBoardQuery(query: string): string[] {
-  const token = query.toLowerCase().split(/\s+/).pop() ?? ''
+  const token = splitFilterTokens(query).pop()?.toLowerCase() ?? ''
   if (token === '' || token.includes('"')) return []
   const separator = token.indexOf(':')
   if (separator < 0) {
@@ -291,11 +293,16 @@ export function completeBoardQuery(query: string): string[] {
  *  replaced in place (earlier tokens, their case and every separator survive
  *  — a native datalist swaps the WHOLE value, so candidates must arrive as
  *  whole queries, never bare tokens). A trailing separator means a fresh
- *  empty token: the candidate appends instead of replacing. */
+ *  empty token: the candidate appends instead of replacing. The boundary
+ *  reads THE single scanner (no trailing separator ⇒ the last token is the
+ *  string's suffix — a `ws:"..."` span can never be torn, even if a caller
+ *  passes a candidate for a quoted context). */
 export function applyCompletion(query: string, candidate: string): string {
   if (query === '' || /\s$/.test(query)) return `${query}${candidate}`
-  const cut = query.search(/\S+\s*$/)
-  return cut < 0 ? candidate : `${query.slice(0, cut)}${candidate}`
+  const tokens = splitFilterTokens(query)
+  const last = tokens[tokens.length - 1]
+  if (last === undefined) return candidate
+  return `${query.slice(0, query.length - last.length)}${candidate}`
 }
 
 /** One cheatsheet row: the key plus its current-language description. */

@@ -289,6 +289,12 @@ describe('applyCompletion (whole-query assembly)', () => {
     expect(applyCompletion('猫 ', 'has:')).toBe('猫 has:')
     expect(applyCompletion('a\rhas:a', 'has:auto')).toBe('a\rhas:auto')
   })
+
+  it('never tears a quoted span, even with a stray candidate', () => {
+    expect(applyCompletion('猫 ws:"深 夜"', 'has:')).toBe('猫 has:')
+    expect(applyCompletion('ws:"a b" has:a', 'has:auto')).toBe('ws:"a b" has:auto')
+    expect(completeBoardQuery('猫 ws:"深 夜"')).toEqual([])
+  })
 })
 
 describe('splitFilterTokens / removeFilterToken (overview chips)', () => {
