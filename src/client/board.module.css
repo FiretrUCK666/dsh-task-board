@@ -1294,6 +1294,103 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-width: 0;
 }
 
+/* Sessions strip: up to 3 live dots + overflow count. Dots reuse the
+   status-dot token family (no new color semantics); the strip wraps, never
+   overflows (card overflow hidden is the floor, min-width 0 the chain). */
+.cardSessions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.cardSessionDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dsw-alias-label-tertiary);
+}
+.cardSessionDot[data-state='running'] { background: var(--dsw-alias-state-warn-primary); }
+.cardSessionDot[data-state='waiting'] { background: var(--dsw-alias-state-warn-secondary); }
+.cardSessionMore {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Next-action sentence: one quiet line (secondary, ellipsis in its own
+   text slot). Never a second status system — it names the same primary the
+   chips show so scanning needs no chip archaeology. */
+.cardNext {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Feed tools: filter group + search + actions in one wrapping row. Labels
+   are never hidden to save space (narrow = wrap, not strip). */
+.feedTools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+.feedFilterGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.feedFilter {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: var(--dsh-tb-border-soft);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.feedFilter[data-active] {
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-state-business-primary);
+  border-color: transparent;
+}
+.feedSearch {
+  flex: 1;
+  min-width: 120px;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-surface-sunken);
+  border: var(--dsh-tb-border-soft);
+  border-radius: 999px;
+}
+.feedAction {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: var(--dsh-tb-border-soft);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.feedAction:hover {
+  background: var(--dsh-tb-hover);
+}
+
 /* The card is a PURE state summary: the meta line (source + updated) and the
    badges are the whole content — the run window and comment timeline were
    moved back to the detail pages where they belong. */

@@ -4,8 +4,8 @@
  * never a notification.
  */
 import { describe, expect, it } from 'vitest'
-import { notificationsOf } from '../src/client/board/notifications.ts'
-import { createTask } from '../src/core/tasks.ts'
+import { notificationsExOf, notificationsOf } from '../src/client/board/notifications.ts'
+import { createTask, settleExecution, startExecution } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -61,5 +61,24 @@ describe('notificationsOf', () => {
     ]
     const rows = notificationsOf(tasks, () => 'approval' as const, id => id)
     expect(rows.map(row => row.taskId)).toEqual(['new', 'old'])
+  })
+
+  it('review tier: unviewed review tasks notify after waiting (failed first)', () => {
+    const base = createTask({ title: 'R', description: '', prompt: 'p' }, NOW, 'r')
+    const running = startExecution(base, NOW + 1, 'e1')
+    const reviewed = settleExecution({ ...running.task, executions: running.task.executions.map(round => ({ ...round, sessionId: 's-1' })) }, 'e1', 'failed', NOW + 2, 'boom')
+    const rows = notificationsExOf([reviewed], () => undefined, id => id, () => true)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ taskId: 'r', kind: 'review', result: 'failed' })
+    // Viewed review tasks stay quiet.
+    expect(notificationsExOf([reviewed], () => undefined, id => id, () => false)).toEqual([])
+  })
+
+  it('a waiting row suppresses the same task review echo', () => {
+    const base = createTask({ title: 'R', description: '', prompt: 'p' }, NOW, 'r')
+    const running = startExecution(base, NOW + 1, 'e1')
+    const reviewed = settleExecution({ ...running.task, executions: running.task.executions.map(round => ({ ...round, sessionId: 's-1' })) }, 'e1', 'succeeded', NOW + 2, undefined)
+    const rows = notificationsExOf([reviewed], id => (id === 's-1' ? 'question' : undefined), id => id, () => true)
+    expect(rows.map(row => row.kind)).toEqual(['waiting'])
   })
 })

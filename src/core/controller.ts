@@ -1130,6 +1130,29 @@ export class BoardController {
     this.notify()
   }
 
+  /**
+   * Mark every task (and every round) viewed — the notification center's
+   * "全部标为已读". One write, one persist: read-state only moves forward
+   * (see board-doc authorship), so a bulk clear never clobbers content.
+   */
+  markAllViewed(): void {
+    const at = this.now()
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      const executions = task.executions.map(round => {
+        if (round.viewedAt === at) return round
+        changed = true
+        return { ...round, viewedAt: at }
+      })
+      if ((task.viewedAt ?? 0) >= at && executions.every((round, index) => round === task.executions[index])) {
+        return task
+      }
+      changed = true
+      return { ...task, viewedAt: Math.max(task.viewedAt ?? 0, at), executions }
+    })
+    if (changed) this.persistAndNotify()
+  }
+
   // --- task mutations ---------------------------------------------------------
 
   /**

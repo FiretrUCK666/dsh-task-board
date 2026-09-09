@@ -434,7 +434,7 @@ describe('board header and navigator legibility', () => {
     // rows open the task — derived, never synced).
     expect(board).toContain("t('board.activity')")
     expect(board).toContain('setShowActivity(true)')
-    expect(board).toContain('activityOf(snapshot.tasks)')
+    expect(board).toContain('activityOf(snapshot.tasks,')
     // Thumb bar: compact-only shortcuts reusing the header handlers (one
     // behavior, never a second implementation). Hidden at base, pinned to
     // the board box bottom in the compact tier, clearing the home indicator.

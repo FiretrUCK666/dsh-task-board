@@ -158,12 +158,16 @@ describe('card chip label composition', () => {
   })
 
   it('refining never reads as running: the chip uses display truth, the guard stays on hasOpenRun', () => {
-    // 一点完善整卡变进行中 — the spinner chip must ride `executing`
-    // (refine excluded) while quick-run blocking keeps `hasOpenRun`.
+    // 一点完善整卡变进行中 — the spinner chip must ride display truth
+    // (`executing`, refine excluded, now via card-view.ts) while quick-run
+    // blocking keeps the open-round gate (`hasOpenRun` via view.running).
     const cardPath = fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url))
     const card = readFileSync(cardPath, 'utf8')
+    const viewPath = fileURLToPath(new URL('../src/client/board/card-view.ts', import.meta.url))
+    const view = readFileSync(viewPath, 'utf8')
     expect(card).toMatch(/showingRunning \?/)
-    expect(card).toMatch(/executing\(task\)/)
+    expect(view).toMatch(/executing\(task\)/)
+    expect(view).toMatch(/hasOpenRun\(task\)/)
   })
 
   it('settled count label (zh / en)', () => {

@@ -41,8 +41,9 @@ import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../side
 import { taskBindsOf } from '../../core/tasks.ts'
 
 import { matchTask } from './task-search.ts'
-import { notificationsOf } from './notifications.ts'
+import { notificationsExOf } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
+import { cardNextActionOf, cardViewModelOf } from './card-view.ts'
 
 /** The activity feed's chip: success greens, failure reds, everything else quiet. */
 function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'error' | 'muted'; label: string } {
@@ -54,6 +55,11 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   }
   if (item.kind === 'comment') return { kind: 'neutral', label: t('board.activityComment') }
   if (item.kind === 'refined') return { kind: 'neutral', label: t('board.activityRefined') }
+  if (item.kind === 'started') return { kind: 'neutral', label: t('board.activityStarted') }
+  if (item.kind === 'queued') return { kind: 'neutral', label: t('board.activityQueued') }
+  if (item.kind === 'running') return { kind: 'neutral', label: t('board.activityRunning') }
+  if (item.kind === 'direct') return { kind: 'neutral', label: t('board.activityDirect') }
+  if (item.kind === 'external') return { kind: 'neutral', label: t('board.activityExternal') }
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
 import { activityOf, type ActivityItem } from './activity.ts'
@@ -124,17 +130,27 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [showNew, setShowNew] = useState(false)
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
   const [showAutomation, setShowAutomation] = useState(false)
-  // 通知中心弹层：等你处理的会话聚合（只读，点行进详情）。
+  // 通知中心弹层：等你处理的会话聚合 + 未读待审（只读，点行进详情）。
   const [showNotify, setShowNotify] = useState(false)
+  const [notifyFilter, setNotifyFilter] = useState<'all' | 'waiting' | 'review'>('all')
   // 板级动态弹层：全板近况聚合（只读派生，点行进详情）。
   const [showActivity, setShowActivity] = useState(false)
+  const [activityKind, setActivityKind] = useState<'all' | 'run' | 'comment' | 'other'>('all')
+  const [activityQuery, setActivityQuery] = useState('')
+  const [activityShown, setActivityShown] = useState(30)
+  useEffect(() => {
+    if (showActivity) setActivityShown(30)
+  }, [showActivity, activityKind, activityQuery])
   // Live aggregation over the snapshot (the controller notifies on every
   // session-list change, so a newly-waiting session lights the bell at once).
-  const notes = notificationsOf(
+  const notes = notificationsExOf(
     snapshot.tasks,
     sessionId => controller.pendingInteractionOf(sessionId),
     sessionId => controller.sessionTitle(sessionId) ?? sessionId,
+    task => taskUnviewed(task),
   )
+  const visibleNotes = notes.filter(note =>
+    notifyFilter === 'all' ? true : notifyFilter === 'waiting' ? note.kind === 'waiting' : note.kind === 'review')
   // 多选（Ctrl/Cmd+点击即选，整理模式整选；板头横栏批量换色/删除/全选清选）。
   const [organizing, setOrganizing] = useState(false)
   // The engine-seat note the header chip opens (touch has no hover, so the
@@ -1141,6 +1157,36 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                           kind: t(waitingKeyOf(item.waitingKind)),
                         })
                       }).join('；')
+                  // Session dots: related sessions (deduped, stable order) with
+                  // live waiting > running > idle. Max 3 rendered, +N overflow.
+                  const relatedIds = [...controller.relatedSessionIdSet(task)]
+                  const dotStateOf = (sessionId: string): 'waiting' | 'running' | 'idle' => {
+                    if (controller.pendingInteractionOf(sessionId) !== undefined) return 'waiting'
+                    if (controller.nativeRunningOf(sessionId)) return 'running'
+                    return 'idle'
+                  }
+                  const dots = relatedIds.slice(0, 3).map(sessionId => ({ sessionId, state: dotStateOf(sessionId) }))
+                  const overflowDots = Math.max(0, relatedIds.length - dots.length)
+                  // One quiet next-action sentence (same primary the chips show).
+                  const view = cardViewModelOf(task, {
+                    live: controller.liveStateOf(task.id),
+                    pendingCount: pending.count,
+                    ...(waiting !== undefined ? { waiting } : {}),
+                    unviewedCount: taskUnviewedCount(task),
+                  })
+                  const nextFact = cardNextActionOf(view, task)
+                  const nextAction = nextFact === undefined ? undefined : (() => {
+                    switch (nextFact.kind) {
+                      case 'waiting': return t('card.nextWaiting')
+                      case 'running': return t('card.nextRunning')
+                      case 'refining': return t('card.nextRefining')
+                      case 'queued': return t('card.nextQueued', { n: String(nextFact.count ?? 0) })
+                      case 'failed': return t('card.nextFailed')
+                      case 'review': return t('card.nextReview')
+                      case 'scheduled': return t('card.nextScheduled')
+                      case 'chain': return t('card.nextChain')
+                    }
+                  })()
                   return (
                     <TaskCard
                       key={task.id}
@@ -1160,6 +1206,16 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       onClick={event => { cardClick(task.id, event) }}
                       onQuickRun={taskExecutable(task) ? () => { void controller.rerunTask(task.id) } : undefined}
                       onColorPick={color => { controller.setTaskColor(task.id, color) }}
+                      dots={dots}
+                      overflowDots={overflowDots}
+                      nextAction={nextAction}
+                      dotTitleOf={sessionId => {
+                        const title = controller.sessionTitle(sessionId) ?? sessionId
+                        const state = dotStateOf(sessionId)
+                        return state === 'waiting'
+                          ? `${title} · ${t(waitingKeyOf(controller.pendingInteractionOf(sessionId)!))}`
+                          : state === 'running' ? `${title} · ${t('detail.result.running')}` : title
+                      }}
                     />
                   )
                 })}
@@ -1193,21 +1249,54 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       {showNotify && (
         <Dialog title={t('board.notify')} label={t('board.notify')} onClose={() => { setShowNotify(false) }} portal>
           <div className={css.modalScroll}>
-            {notes.length === 0 ? (
-              <p className={css.detailText}>{t('board.notifyEmpty')}</p>
+            <div className={css.feedTools} role="group" aria-label={t('board.notify')}>
+              <span className={css.feedFilterGroup}>
+                {(['all', 'waiting', 'review'] as const).map(kind => (
+                  <button
+                    key={kind}
+                    type="button"
+                    className={css.feedFilter}
+                    data-active={notifyFilter === kind ? '' : undefined}
+                    aria-pressed={notifyFilter === kind}
+                    onClick={() => { setNotifyFilter(kind) }}
+                  >
+                    {t(`board.notifyFilter.${kind}`)}
+                  </button>
+                ))}
+              </span>
+              {notes.length > 0 && (
+                <button
+                  type="button"
+                  className={css.feedAction}
+                  onClick={() => { controller.markAllViewed() }}
+                  title={t('board.notifyMarkAllTitle')}
+                >
+                  {t('board.notifyMarkAll')}
+                </button>
+              )}
+            </div>
+            {visibleNotes.length === 0 ? (
+              <p className={css.detailText}>{t(notes.length === 0 ? 'board.notifyEmpty' : 'board.notifyFilterEmpty')}</p>
             ) : (
               <ul className={css.notifyList}>
-                {notes.map(note => (
-                  <li key={`${note.taskId}|${note.sessionId}`}>
+                {visibleNotes.map(note => (
+                  <li key={`${note.taskId}|${note.sessionId}|${note.kind}`}>
                     <button
                       type="button"
                       className={css.notifyRow}
+                      data-kind={note.kind}
                       onClick={() => { setShowNotify(false); controller.openTask(note.taskId) }}
                     >
                       <span className={css.notifyTask} title={note.taskTitle}>
                         {note.taskTitle.trim() === '' ? t('card.untitled') : note.taskTitle}
                       </span>
-                      <Chip kind="warn" fill={false}>{t(waitingKeyOf(note.waitingKind))}</Chip>
+                      {note.kind === 'waiting' && note.waitingKind !== undefined ? (
+                        <Chip kind="warn" fill={false}>{t(waitingKeyOf(note.waitingKind))}</Chip>
+                      ) : (
+                        <Chip kind={note.result === 'failed' ? 'error' : 'success'} fill={false}>
+                          {t(note.result === 'failed' ? 'board.notifyReviewFailed' : 'board.notifyReview')}
+                        </Chip>
+                      )}
                       <span className={css.notifySession} title={note.sessionId}>{note.sessionTitle}</span>
                     </button>
                   </li>
@@ -1220,30 +1309,78 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       {showActivity && (
         <Dialog title={t('board.activity')} label={t('board.activity')} onClose={() => { setShowActivity(false) }} portal>
           <div className={css.modalScroll}>
+            <div className={css.feedTools} role="group" aria-label={t('board.activity')}>
+              <span className={css.feedFilterGroup}>
+                {(['all', 'run', 'comment', 'other'] as const).map(kind => (
+                  <button
+                    key={kind}
+                    type="button"
+                    className={css.feedFilter}
+                    data-active={activityKind === kind ? '' : undefined}
+                    aria-pressed={activityKind === kind}
+                    onClick={() => { setActivityKind(kind) }}
+                  >
+                    {t(`board.activityFilter.${kind}`)}
+                  </button>
+                ))}
+              </span>
+              <input
+                className={css.feedSearch}
+                type="search"
+                placeholder={t('board.activitySearch')}
+                value={activityQuery}
+                onChange={event => { setActivityQuery(event.target.value) }}
+                aria-label={t('board.activitySearch')}
+              />
+            </div>
             {(() => {
-              const feed = activityOf(snapshot.tasks)
+              const kinds = activityKind === 'all' ? undefined
+                : activityKind === 'run' ? ['started', 'settled'] as const
+                : activityKind === 'comment' ? ['comment', 'queued', 'running'] as const
+                : ['created', 'refined', 'direct', 'external'] as const
+              const feed = activityOf(snapshot.tasks, {
+                ...(kinds !== undefined ? { kinds: [...kinds] } : {}),
+                ...(activityQuery.trim() !== '' ? { query: activityQuery } : {}),
+              })
               if (feed.length === 0) return <p className={css.detailText}>{t('board.activityEmpty')}</p>
+              const shown = feed.slice(0, activityShown)
               return (
-                <ul className={css.notifyList}>
-                  {feed.map(item => {
-                    const chip = activityChipOf(item)
-                    return (
-                      <li key={item.key}>
-                        <button
-                          type="button"
-                          className={css.notifyRow}
-                          onClick={() => { setShowActivity(false); controller.openTask(item.taskId) }}
-                        >
-                          <span className={css.notifyTask} title={item.taskTitle}>
-                            {item.taskTitle.trim() === '' ? t('card.untitled') : item.taskTitle}
-                          </span>
-                          <Chip kind={chip.kind} fill={false}>{chip.label}</Chip>
-                          <span className={css.notifySession}>{formatTime(item.at)}</span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
+                <>
+                  <ul className={css.notifyList}>
+                    {shown.map(item => {
+                      const chip = activityChipOf(item)
+                      return (
+                        <li key={item.key}>
+                          <button
+                            type="button"
+                            className={css.notifyRow}
+                            data-kind={item.kind}
+                            onClick={() => { setShowActivity(false); controller.openTask(item.taskId) }}
+                          >
+                            <span className={css.notifyTask} title={item.taskTitle}>
+                              {item.taskTitle.trim() === '' ? t('card.untitled') : item.taskTitle}
+                            </span>
+                            <Chip kind={chip.kind} fill={false}>{chip.label}</Chip>
+                            <span className={css.notifySession} title={item.text ?? ''}>
+                              {item.text !== undefined && item.text.trim() !== ''
+                                ? item.text.slice(0, 24)
+                                : formatTime(item.at)}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  {feed.length > shown.length && (
+                    <button
+                      type="button"
+                      className={css.feedAction}
+                      onClick={() => { setActivityShown(current => current + 30) }}
+                    >
+                      {t('board.activityMore', { n: String(feed.length - shown.length) })}
+                    </button>
+                  )}
+                </>
               )
             })()}
           </div>

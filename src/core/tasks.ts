@@ -752,6 +752,51 @@ export function newDirectRound(options: {
 }
 
 /**
+ * Whether the card already holds completed work awaiting the human gate:
+ * any settled non-refine round with a succeeded/failed outcome (plain runs,
+ * comment continuations, externally-observed turns, direct sends — all are
+ * completions the user has not confirmed). Cancelled rounds never count:
+ * they are noise/abort, not work. Refine rounds never count: preparation
+ * keeps its column by contract (`settleRefine`).
+ * Used ONLY to decide where a `cancelled` settle lands (review vs todo) —
+ * success/failure always land in review (or stay running for incomplete
+ * batches/chains or sibling lanes).
+ */
+export function hasCompletedWork(task: TaskRecord): boolean {
+  return task.executions.some(round =>
+    round.endedAt !== undefined
+    && (round.result === 'succeeded' || round.result === 'failed')
+    && round.refine !== true)
+}
+
+/**
+ * THE one column decision for every non-refine settle (success/failure/
+ * cancel). Pure so the whole board — live watches, reconciles, watchdogs,
+ * spurious-external sweeps — lands in the same column for the same facts.
+ * Priority:
+ * 1. another lane still open → `running` (the column aggregates sessions);
+ * 2. succeeded/failed → `review` (chain/batch incomplete stays `running`);
+ * 3. cancelled → keep a parked column as-is; from `running`, return to
+ *    `review` when completed work exists (the human gate survives noise),
+ *    else `todo` (nothing completed — back to the queue).
+ */
+export function settleColumnOf(
+  task: TaskRecord,
+  outcome: 'succeeded' | 'failed' | 'cancelled',
+  othersOpen: boolean,
+  chainIncomplete: boolean,
+  batchIncomplete: boolean,
+): TaskStatus {
+  if (othersOpen) return 'running'
+  if (outcome === 'cancelled') {
+    if (task.status !== 'running') return task.status
+    return hasCompletedWork(task) ? 'review' : 'todo'
+  }
+  if (chainIncomplete || batchIncomplete) return 'running'
+  return 'review'
+}
+
+/**
  * Settle a running execution: record the outcome on the NAMED round (any
  * round of the card can be the one finishing — a card may run several
  * sessions at once) and move the card into the column its whole set of
@@ -769,7 +814,9 @@ export function newDirectRound(options: {
  * mode (`runCount + 1 < maxRuns`: the hand-off increments the counter when
  * it launches the NEXT run, while the armed first run is never counted, so
  * a just-settled run is one behind; unlimited chains always stay 'running').
- * A cancelled run returns to 'todo'.
+ * A cancelled run returns to 'todo' ONLY when the card holds no completed
+ * work; with prior success/failure it lands in 'review' (noise must never
+ * swallow the human gate — see `settleColumnOf`).
  */
 export function settleExecution(
   task: TaskRecord,
@@ -807,11 +854,7 @@ export function settleExecution(
   // conversation it owns is running (the column aggregates its sessions, it
   // is not a record of the last round to finish).
   const othersOpen = openRoundsOf({ ...task, executions }).length > 0
-  const status: TaskStatus = othersOpen ? 'running'
-    : outcome === 'cancelled'
-      ? task.status === 'running' ? 'todo' : task.status
-      : chainIncomplete || batchIncomplete ? 'running'
-        : 'review'
+  const status = settleColumnOf(task, outcome, othersOpen, chainIncomplete, batchIncomplete)
   return { ...task, status, updatedAt: now, executions }
 }
 

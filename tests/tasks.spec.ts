@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, supplementLaunchFields, taskExecutable,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -328,6 +328,49 @@ describe('settleExecution', () => {
     const { task: running } = startExecution(task, NOW + 1, 'e1')
     const settled = settleExecution(running, 'e1', 'failed', NOW + 2, 'boom')
     expect(settled.status).toBe('review')
+  })
+
+  it('a cancelled noise round with prior success lands in review (never swallows the gate)', () => {
+    let task = sampleTask()
+    const first = startExecution(task, NOW, 'e1')
+    task = { ...first.task, executions: first.task.executions.map(round => ({ ...round, sessionId: 's-1' })) }
+    task = settleExecution(task, 'e1', 'succeeded', NOW + 1, undefined)
+    expect(task.status).toBe('review')
+    // Native noise arrives later (external observation drives running).
+    const noisy: TaskRecord = {
+      ...task,
+      status: 'running',
+      executions: [...task.executions, newExternalRound({ id: 'ext-1', now: NOW + 2, sessionId: 's-1', text: 'hi' })],
+    }
+    const cancelled = settleExecution(noisy, 'ext-1', 'cancelled', NOW + 3, undefined)
+    expect(cancelled.status).toBe('review')
+  })
+
+  it('a cancelled noise round with prior failure lands in review too', () => {
+    let task = sampleTask()
+    const first = startExecution(task, NOW, 'e1')
+    task = settleExecution(first.task, 'e1', 'failed', NOW + 1, 'boom')
+    const noisy: TaskRecord = {
+      ...task,
+      status: 'running',
+      executions: [...task.executions, newExternalRound({ id: 'ext-1', now: NOW + 2, sessionId: 's-1' })],
+    }
+    expect(settleExecution(noisy, 'ext-1', 'cancelled', NOW + 3, undefined).status).toBe('review')
+  })
+
+  it('a cancelled first run with no history returns to todo', () => {
+    const { task } = startExecution(sampleTask(), NOW, 'e1')
+    expect(hasCompletedWork(task)).toBe(false)
+    expect(settleExecution(task, 'e1', 'cancelled', NOW + 1, undefined).status).toBe('todo')
+  })
+
+  it('settleColumnOf keeps a parked column on cancel (never yanks it)', () => {
+    const parked = withStatus(sampleTask(), 'backlog', NOW)
+    expect(settleColumnOf(parked, 'cancelled', false, false, false)).toBe('backlog')
+    const running = withStatus(sampleTask(), 'running', NOW)
+    expect(settleColumnOf(running, 'cancelled', false, false, false)).toBe('todo')
+    expect(settleColumnOf(running, 'succeeded', false, false, false)).toBe('review')
+    expect(settleColumnOf(running, 'succeeded', true, false, false)).toBe('running')
   })
 })
 

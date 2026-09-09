@@ -8,10 +8,11 @@ import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskLiveState } from '../../core/task-live.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { executing, hasOpenRun, latestExecutionOf, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf, cardSourceLabel } from '../../core/tasks.ts'
+import { cardSourceLabel, latestExecutionOf, plainRunsOf, refining, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
+import { cardNextActionOf, cardViewModelOf, type CardSessionDot } from './card-view.ts'
 import { Chip } from './Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { ColorSwatches, Icon } from './ui.tsx'
@@ -44,7 +45,7 @@ export function settledChipLabel(runs: number): string {
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onColorPick, live }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -74,9 +75,27 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
    *  steer, session rule, out-of-band chat). Absent = falls back to the
    *  status-based judgment (card used without a controller). */
   live?: TaskLiveState
+  /** Related-session dots (max 3 rendered, overflow counted separately). */
+  dots?: readonly CardSessionDot[]
+  /** Overflow session count beyond `dots` (+N). */
+  overflowDots?: number
+  /** One quiet next-action sentence (localized by the caller). */
+  nextAction?: string
+  /** Tooltip for a session dot (session title + state). */
+  dotTitleOf?: (sessionId: string) => string
 }) {
   const [dragging, setDragging] = useState(false)
   const latest = latestExecutionOf(task)
+  // Single derivation for the card's live summary (see card-view.ts) — the
+  // chips below still read the same fields so the view-model never drifts
+  // from the render.
+  const view = cardViewModelOf(task, {
+    live,
+    pendingCount,
+    ...(waiting !== undefined ? { waiting } : {}),
+    unviewedCount,
+  })
+  void cardNextActionOf
   // Plain-run count (comment continuation rounds are not executions): the
   // single numbering source shared with the detail list and review badge.
   const runs = plainRunsOf(task)
@@ -85,15 +104,15 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // is the shared judgment: ANY of this card's sessions in flight (a card can
   // run several at once), never "the last row is unsettled". A pending comment
   // round (task sitting in review) must never spin.
-  const running = hasOpenRun(task)
+  const running = view.running
   // Display truth splits from the gate above: a lone refinement round keeps
   // the card in its backlog column doing preparation — the chip must read
   // 完善中 (its own badge below), never 进行中. Quick-run blocking, budget
   // and drop rules stay on `running`.
-  const showingRunning = executing(task)
+  const showingRunning = view.showingRunning
   // Comments saved but not yet injected (the task's queue): a quiet warn
   // badge so a card waiting for the dispatcher is never mistaken for idle.
-  const queuedComments = pendingCommentCount(task)
+  const queuedComments = view.queued
   // The card's source line — one derivation for every card (see
   // cardSourceLabel): the bound session's title when it differs from the
   // task title, else the workspace label. Empty = no source line.
@@ -298,6 +317,28 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
           </span>
         )}
       </span>
+      {/* Sessions strip + next action: who is working + what happens next.
+          Both wrap (never overflow); dots reuse the status-dot tokens so no
+          new color semantics are invented. Empty = no strip, never a guessed
+          default. */}
+      {dots !== undefined && dots.length > 0 && (
+        <span className={css.cardSessions} aria-hidden="true">
+          {dots.map(dot => (
+            <span
+              key={dot.sessionId}
+              className={css.cardSessionDot}
+              data-state={dot.state}
+              title={dotTitleOf?.(dot.sessionId) ?? dot.sessionId}
+            />
+          ))}
+          {(overflowDots ?? 0) > 0 && (
+            <span className={css.cardSessionMore}>+{String(overflowDots)}</span>
+          )}
+        </span>
+      )}
+      {nextAction !== undefined && nextAction !== '' && (
+        <span className={css.cardNext}>{nextAction}</span>
+      )}
       {onColorPick !== undefined && (
         <span className={css.cardColorBar} data-ghost-hide="" onClick={event => { event.stopPropagation() }}>
           <ColorSwatches value={task.color} onChange={color => { onColorPick(color) }} />

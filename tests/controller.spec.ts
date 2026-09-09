@@ -2933,13 +2933,15 @@ describe('native-activity sync (两端同步)', () => {
     await flush()
     await flush()
     expect(controller.getSnapshot().tasks[0].status).toBe('running')
-    // Past the grace → the spurious round is cancelled (card back to todo).
+    // Past the grace → the spurious round is cancelled (card back to review:
+    // the prior failed run already awaits the human gate — noise must never
+    // swallow it back to todo; see settleColumnOf).
     clock = NOW + 100_000
     sessions.setRunning('s-1', false)
     await flush()
     await flush()
     const cancelled = controller.getSnapshot().tasks[0]
-    expect(cancelled.status).toBe('todo')
+    expect(cancelled.status).toBe('review')
     expect(cancelled.executions.find(run => run.id === extId)?.result).toBe('cancelled')
   })
 
