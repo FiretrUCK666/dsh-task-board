@@ -464,6 +464,10 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(emptyAt).toBeGreaterThan(-1)
     expect(pagingAt).toBeLessThan(emptyAt)
     expect(followSource).toMatch(/floorRef\.current \?\? eventsRef\.current/)
+    // The follow opening's log cut threads tail → hook → page request (the
+    // page grammar's other half — a cut-less call is rejected by the host).
+    expect(followSource).toMatch(/throughSeqRef/)
+    expect(followSource).toMatch(/loadTranscriptPage\(sessionId, floor, throughSeqRef\.current\)/)
   })
 
   it('a failed earlier-page read is SAID (the button stays — tapping retries)', () => {

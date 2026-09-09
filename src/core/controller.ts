@@ -382,6 +382,13 @@ export interface TranscriptLoadResult {
   hasMore: boolean
   /** The oldest event seq covered by this tail (undefined when empty). */
   floorSeq?: number
+  /**
+   * The follow opening's log cut (the page grammar's other half — every
+   * earlier-page request threads it back as `throughSeq`). Absent when the
+   * deployment's snapshot carries no cursor (then pages degrade to the
+   * historic cut-less call).
+   */
+  throughSeq?: number
   /** Native projection values riding the history tail page; absent when the deployment has no registry. */
   projections?: TranscriptProjectionsShape
 }
@@ -475,8 +482,9 @@ export interface ControllerDeps {
   /** Reads a session's recent history events (review-page transcript); absent = the page shows a hint. */
   transcript?: (sessionId: string) => Promise<TranscriptLoadResult | undefined>
   /** Reads one earlier history page backward from `beforeSeq` (the native
-   *  "load earlier" grammar); absent = the transcript shows the tail only. */
-  transcriptPage?: (sessionId: string, beforeSeq: number) => Promise<TranscriptPage | undefined>
+   *  "load earlier" grammar — the follow opening's `throughSeq` cut rides
+   *  along; absent = the transcript shows the tail only). */
+  transcriptPage?: (sessionId: string, beforeSeq: number, throughSeq?: number) => Promise<TranscriptPage | undefined>
   /** Reads one durable image back as base64 (the official `sessions.attachment`
    *  read — the host proves the session references the id). Absent = message
    *  images render as quiet placeholders. */
@@ -860,8 +868,8 @@ export class BoardController {
   }
 
   /** Read one earlier history page backward from `beforeSeq`. */
-  loadTranscriptPage(sessionId: string, beforeSeq: number): Promise<TranscriptPage | undefined> {
-    return this.deps.transcriptPage?.(sessionId, beforeSeq) ?? Promise.resolve(undefined)
+  loadTranscriptPage(sessionId: string, beforeSeq: number, throughSeq?: number): Promise<TranscriptPage | undefined> {
+    return this.deps.transcriptPage?.(sessionId, beforeSeq, throughSeq) ?? Promise.resolve(undefined)
   }
 
   /** Read one durable message image back as base64 (official attachment read,

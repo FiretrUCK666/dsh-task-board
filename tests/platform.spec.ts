@@ -173,6 +173,9 @@ describe('buildApi endpoint wiring', () => {
     expect(response.result.value.hasMore).toBe(true)
     expect(response.result.value.floorSeq).toBe(8)
     expect(response.result.value.projections?.values).toEqual({ contextPressure: { pressureTokens: 100 } })
+    // The follow opening's log cut rides the tail (the page grammar's
+    // other half — dropping it is the "翻页永远失败" root).
+    expect(response.result.value.throughSeq).toBe(9)
   })
 
   it('page routes to session/page with the backward window (beforeSeq + maxMessages)', async () => {    const { api, calls } = fakeApi({
@@ -195,6 +198,14 @@ describe('buildApi endpoint wiring', () => {
     if (!response.result.ok) return
     expect(response.result.value.hasMore).toBe(false)
     expect(response.result.value.floorSeq).toBe(3)
+  })
+
+  it('page threads the follow opening cut (throughSeq) into the call', async () => {
+    const { api, calls } = fakeApi({
+      'session.page': { ok: true, value: { records: [], hasMore: false } },
+    })
+    await api.sessions.page({ sessionId: 's1' as never, beforeSeq: 9, maxMessages: 50, throughSeq: 42 })
+    expect(calls[0].args[0]).toMatchObject({ throughSeq: 42 })
   })
 
   it('history reports a stream failure as a failed result, never a throw', async () => {

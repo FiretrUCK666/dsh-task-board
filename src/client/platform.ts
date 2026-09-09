@@ -209,6 +209,8 @@ export interface ApiFace {
         events: readonly { event: unknown }[]
         hasMore: boolean
         floorSeq?: number
+        /** The follow opening's log cut — the page grammar's other half. */
+        throughSeq?: number
         projections?: { values?: Record<string, unknown> }
       }>
     }>
@@ -216,6 +218,8 @@ export interface ApiFace {
       sessionId: SessionId
       beforeSeq: number
       maxMessages: number
+      /** The follow opening's log cut (required by the page grammar). */
+      throughSeq?: number
     }): Promise<{
       result: RemoteResult<{
         events: readonly { event: unknown }[]
@@ -580,7 +584,12 @@ export function buildApi(ctx: ClientContext): ApiFace {
         // values in a single round trip. The board consumes the snapshot and
         // closes the stream (the break returns the iterator, which aborts
         // the underlying source). `hasMore` + the tail floor drive the
-        // native "load earlier" grammar (see `page` below).
+        // native "load earlier" grammar (see `page` below) — AND the
+        // snapshot's `cursor` (the follow opening's log cut) is the page
+        // grammar's other half: `session.page` requires that cut as
+        // `throughSeq`, so it rides the tail result and the hook threads it
+        // into every page request. Dropping it is the "翻页永远失败" root:
+        // a cut-less page call is rejected by every host.
         const follow = methodOf('session', 'follow', remoteSession?.follow)
         if (follow === undefined) return unavailable('session.follow')
         try {
@@ -592,6 +601,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
           let events: readonly { event: unknown }[] = []
           let hasMore = false
           let floorSeq: number | undefined
+          let throughSeq: number | undefined
           let projections: { asOfSeq?: number; values?: Record<string, unknown> } | undefined
           try {
             for await (const frame of stream as AsyncIterable<FollowFrame>) {
@@ -599,6 +609,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
               events = (frame.records ?? []).map(record => ({ event: record.event }))
               hasMore = frame.hasMore === true
               floorSeq = floorSeqOf(events)
+              throughSeq = frame.cursor
               projections = frame.projections
               break
             }
@@ -612,6 +623,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
                 events,
                 hasMore,
                 ...floorSeq !== undefined ? { floorSeq } : {},
+                ...throughSeq !== undefined ? { throughSeq } : {},
                 ...projections !== undefined ? { projections } : {},
               },
             },
@@ -636,10 +648,14 @@ export function buildApi(ctx: ClientContext): ApiFace {
         // BACKWARD from `beforeSeq` (the window's first seq), returning the
         // earlier records plus its own `hasMore`. The hook accumulates pages
         // oldest-first; `follow`'s live tail then continues from the cursor.
+        // The opening log cut (`throughSeq`, captured from the follow
+        // snapshot by `history` above) rides along — the page grammar
+        // requires it, and a call without it is rejected by the host.
         const call = methodOf('session', 'page', remoteSession?.page)
         if (call === undefined) return unavailable('session.page')
         const result = await asResult<PageResult>('session.page', call({
           address: { kind: 'session', sessionId: request.sessionId },
+          ...request.throughSeq !== undefined ? { throughSeq: request.throughSeq } : {},
           beforeSeq: request.beforeSeq,
           maxMessages: request.maxMessages,
         }))

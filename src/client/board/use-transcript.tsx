@@ -243,6 +243,11 @@ export function useTranscriptTail(
   const floorRef = useRef<number | undefined>(undefined)
   const hasMoreRef = useRef(false)
   hasMoreRef.current = hasMore
+  // The follow opening's log cut (the page grammar's other half): captured
+  // from the tail result, threaded into every earlier-page request. A page
+  // without its cut is rejected by the host — that missing thread was the
+  // "翻页永远失败" root (the hook sent beforeSeq alone).
+  const throughSeqRef = useRef<number | undefined>(undefined)
   // A ref mirror of the window for the paging fallback below (refs, not
   // state — the callback must see the latest window without re-subscribing).
   const eventsRef = useRef<readonly TranscriptEventShape[] | undefined>(undefined)
@@ -264,13 +269,14 @@ export function useTranscriptTail(
 
   /** Fold + publish a successful tail read (the reload AND the poll share
    *  it — one settlement grammar). */
-  const settle = useCallback((result: { events: readonly TranscriptEventShape[]; hasMore: boolean; floorSeq?: number; projections?: TranscriptProjectionsShape }): void => {
+  const settle = useCallback((result: { events: readonly TranscriptEventShape[]; hasMore: boolean; floorSeq?: number; throughSeq?: number; projections?: TranscriptProjectionsShape }): void => {
     setError(false)
     const next = watermarkOf(result)
     setHasMore(result.hasMore === true)
     // A fresh tail REPLACES the window (reload / poll / session switch) —
     // earlier pages belong to the previous window and must not linger.
     floorRef.current = result.floorSeq
+    throughSeqRef.current = result.throughSeq
     watermarkRef.current = next
     setEvents([...result.events])
     onResultRef.current?.(result)
@@ -301,6 +307,7 @@ export function useTranscriptTail(
     setPageError(false)
     setPageUnsupported(false)
     floorRef.current = undefined
+    throughSeqRef.current = undefined
     watermarkRef.current = undefined
     reload()
   }, [reload, reloadKey, sessionId])
@@ -319,6 +326,7 @@ export function useTranscriptTail(
         setError(false)
         setHasMore(result.hasMore === true)
         if (result.floorSeq !== undefined) floorRef.current = result.floorSeq
+        if (result.throughSeq !== undefined) throughSeqRef.current = result.throughSeq
         const incoming = [...result.events]
         const watermark = incoming.length === 0 ? 0 : (incoming[incoming.length - 1]?.seq ?? incoming.length)
         setEvents(current => {
@@ -380,7 +388,7 @@ export function useTranscriptTail(
     const floor = floorRef.current ?? eventsRef.current?.[0]?.seq
     if (floor === undefined) return
     setLoadingEarlier(true)
-    void controller.loadTranscriptPage(sessionId, floor).then(page => {
+    void controller.loadTranscriptPage(sessionId, floor, throughSeqRef.current).then(page => {
       if (!aliveRef.current) return
       setLoadingEarlier(false)
       // A failed page is SAID, not swallowed: hasMore stays (the host still

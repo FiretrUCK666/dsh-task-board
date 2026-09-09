@@ -505,6 +505,7 @@ export function apply(ctx: ClientContext): void {
         events: value.events.map(entry => entry.event as TranscriptEventShape),
         hasMore: value.hasMore === true,
         ...value.floorSeq !== undefined ? { floorSeq: value.floorSeq } : {},
+        ...value.throughSeq !== undefined ? { throughSeq: value.throughSeq } : {},
         ...pickTranscriptProjections(projections),
       }
     }
@@ -512,12 +513,13 @@ export function apply(ctx: ClientContext): void {
     // the tail, paged backward from `beforeSeq` (the window's first seq).
     // Undefined when the host serves no page endpoint (old deployments) or
     // the read fails — the hook then simply hides the affordance.
-    const readTranscriptPage = async (sessionId: string, beforeSeq: number): Promise<TranscriptPage | undefined> => {
+    const readTranscriptPage = async (sessionId: string, beforeSeq: number, throughSeq?: number): Promise<TranscriptPage | undefined> => {
       try {
         const response = await api.sessions.page({
           sessionId: sessionId as SessionId,
           beforeSeq,
           maxMessages: 50,
+          ...throughSeq !== undefined ? { throughSeq } : {},
         })
         // A refused page (old host without the endpoint, a rejected cursor)
         // must name its code: the UI only says "retry", and this line is the
