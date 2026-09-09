@@ -1773,6 +1773,19 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-secondary);
 }
 
+/* Template picker row (new-task modal): the select flexes, the delete keeps
+   its width — one line, never a dangling lone button (让位不压扁：可伸缩成员
+   带 min-width:0 地板，动作簇定宽不断行）。 */
+.templateRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.templateRow .selectWrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Muted helper text under a field (e.g. the new-task status hint). */
 .fieldHint {
   font-size: 12px;

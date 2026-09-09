@@ -445,12 +445,25 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     const platformPath = fileURLToPath(new URL('../src/client/platform.ts', import.meta.url))
     const platformSource = readFileSync(platformPath, 'utf8')
     expect(platformSource).toMatch(/beforeSeq/)
-    // The "load earlier" row lives ABOVE the list (older lives above).
+    // The "load earlier" row lives ABOVE the list (older lives above), and
+    // renders whenever the host says there is more — even over an EMPTY
+    // window (a misaligned tail that folds to zero lines with hasMore must
+    // still offer the way back; empty text with no button is a dead end).
     expect(cssSource).toMatch(/\.transcriptEarlierRow/)
     const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
     const panelSource2 = readFileSync(panelPath, 'utf8')
     expect(panelSource2).toMatch(/transcriptEarlierRow/)
     expect(panelSource2).toMatch(/review\.loadEarlier/)
+    // The paging row is OUTSIDE the empty/list conditional (visible over an
+    // empty window), and the handler falls back to the window's first seq
+    // when the host sends hasMore without a floorSeq (a visible button that
+    // no-ops is the "点了没反应" bug).
+    const pagingAt = panelSource2.indexOf('transcriptEarlierRow')
+    const emptyAt = panelSource2.indexOf('review.transcriptEmpty')
+    expect(pagingAt).toBeGreaterThan(-1)
+    expect(emptyAt).toBeGreaterThan(-1)
+    expect(pagingAt).toBeLessThan(emptyAt)
+    expect(followSource).toMatch(/floorRef\.current \?\? eventsRef\.current/)
   })
 })
 

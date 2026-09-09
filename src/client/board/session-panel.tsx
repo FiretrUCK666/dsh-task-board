@@ -146,12 +146,22 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
   const shown = lines === undefined ? undefined : maxLines === undefined ? lines : lines.slice(-maxLines)
   // The native "load earlier" row belongs ABOVE the list (older messages
   // live above), capped to the uncapped surface — a capped refinement tail
-  // never pages (its window is a preview, not the log).
+  // never pages (its window is a preview, not the log). It renders whenever
+  // the host says there IS more — even over an empty window (a misaligned
+  // tail that folds to zero lines with hasMore must still offer the way
+  // back; an empty text with no button is a dead end that reads as "没有了").
   const paging = hasMore === true && maxLines === undefined && onLoadEarlier !== undefined
   return (
     <>
       {before}
       <SessionWaitingNotice waiting={waiting} />
+      {paging && (
+        <div className={css.transcriptEarlierRow}>
+          <Button size="sm" disabled={loadingEarlier === true} onClick={onLoadEarlier}>
+            {t(loadingEarlier === true ? 'review.loadingEarlierBusy' : 'review.loadEarlier')}
+          </Button>
+        </div>
+      )}
       {error ? (
         <div className={css.transcriptErrorRow}>
           <p className={css.detailText}>{t('review.transcriptUnavailable')}</p>
@@ -164,35 +174,26 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
       ) : shown.length === 0 ? (
         <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
       ) : (
-        <>
-          {paging && (
-            <div className={css.transcriptEarlierRow}>
-              <Button size="sm" disabled={loadingEarlier === true} onClick={onLoadEarlier}>
-                {t(loadingEarlier === true ? 'review.loadingEarlierBusy' : 'review.loadEarlier')}
-              </Button>
-            </div>
-          )}
-          <ul className={css.reviewTranscript}>
-            {shown.map(line => line.kind === 'context' ? (
-              <TranscriptRow
-                key={line.id}
-                kind="context"
-                plugin={line.plugin}
-                summary={line.summary}
-              />
-            ) : (
-              <TranscriptRow
-                key={line.id}
-                kind="message"
-                role={line.role}
-                text={line.text}
-                sessionId={sessionId}
-                controller={controller}
-                images={line.images}
-              />
-            ))}
-          </ul>
-        </>
+        <ul className={css.reviewTranscript}>
+          {shown.map(line => line.kind === 'context' ? (
+            <TranscriptRow
+              key={line.id}
+              kind="context"
+              plugin={line.plugin}
+              summary={line.summary}
+            />
+          ) : (
+            <TranscriptRow
+              key={line.id}
+              kind="message"
+              role={line.role}
+              text={line.text}
+              sessionId={sessionId}
+              controller={controller}
+              images={line.images}
+            />
+          ))}
+        </ul>
       )}
       <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />
     </>

@@ -27,7 +27,7 @@ import { Dialog } from './Dialog.tsx'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
-import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime } from './format-time.ts'
+import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime, formatTime } from './format-time.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { STATUS_KEY, STATUS_SHORT_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
@@ -44,6 +44,20 @@ import { matchTask } from './task-search.ts'
 import { notificationsOf } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
 import { buildCommands } from './commands.ts'
+
+/** The activity feed's chip: success greens, failure reds, everything else quiet. */
+function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'error' | 'muted'; label: string } {
+  if (item.kind === 'settled') {
+    if (item.result === 'succeeded') return { kind: 'success', label: t('board.activitySucceeded') }
+    if (item.result === 'failed') return { kind: 'error', label: t('board.activityFailed') }
+    if (item.result === 'cancelled') return { kind: 'muted', label: t('board.activityCancelled') }
+    return { kind: 'neutral', label: t('board.activitySettled') }
+  }
+  if (item.kind === 'comment') return { kind: 'neutral', label: t('board.activityComment') }
+  if (item.kind === 'refined') return { kind: 'neutral', label: t('board.activityRefined') }
+  return { kind: 'neutral', label: t('board.activityCreated') }
+}
+import { activityOf, type ActivityItem } from './activity.ts'
 import { CommandPalette } from './CommandPalette.tsx'
 import { Chip } from './Chip.tsx'
 
@@ -114,6 +128,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [showAutomation, setShowAutomation] = useState(false)
   // 通知中心弹层：等你处理的会话聚合（只读，点行进详情）。
   const [showNotify, setShowNotify] = useState(false)
+  // 板级动态弹层：全板近况聚合（只读派生，点行进详情）。
+  const [showActivity, setShowActivity] = useState(false)
   // 命令面板：Ctrl/Cmd+K 唤起的动作列表（新建/巡航/整理/自动化/通知/返回），
   // 每一项都复用既有入口——面板本身不新增任何行为。
   const [showPalette, setShowPalette] = useState(false)
@@ -826,6 +842,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             >
               {t('board.automation')}
             </Button>
+            {/* 动态：全板近况聚合（只读 — 点行进任务详情，派生自台账，不同步）。 */}
+            <Button
+              variant="ghost"
+              title={t('board.activityTitle')}
+              onClick={() => { setShowActivity(true) }}
+            >
+              {t('board.activity')}
+            </Button>
             {/* 通知：等你处理的会话聚合（只读列表 — 点行进任务详情，
                 会话操作归详情页）。有等待事项才亮数，无则安静。 */}
             <button
@@ -1225,6 +1249,38 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 ))}
               </ul>
             )}
+          </div>
+        </Dialog>
+      )}
+      {showActivity && (
+        <Dialog title={t('board.activity')} label={t('board.activity')} onClose={() => { setShowActivity(false) }} portal>
+          <div className={css.modalScroll}>
+            {(() => {
+              const feed = activityOf(snapshot.tasks)
+              if (feed.length === 0) return <p className={css.detailText}>{t('board.activityEmpty')}</p>
+              return (
+                <ul className={css.notifyList}>
+                  {feed.map(item => {
+                    const chip = activityChipOf(item)
+                    return (
+                      <li key={item.key}>
+                        <button
+                          type="button"
+                          className={css.notifyRow}
+                          onClick={() => { setShowActivity(false); controller.openTask(item.taskId) }}
+                        >
+                          <span className={css.notifyTask} title={item.taskTitle}>
+                            {item.taskTitle.trim() === '' ? t('card.untitled') : item.taskTitle}
+                          </span>
+                          <Chip kind={chip.kind} fill={false}>{chip.label}</Chip>
+                          <span className={css.notifySession}>{formatTime(item.at)}</span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )
+            })()}
           </div>
         </Dialog>
       )}

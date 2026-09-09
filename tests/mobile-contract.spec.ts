@@ -428,6 +428,11 @@ describe('board header and navigator legibility', () => {
     expect(board).toContain("t('board.organizeRun')")
     expect(board).toContain('runnableIds(snapshot.tasks, selectedCards)')
     expect(board).toContain("controller.runTask(id, 'manual')")
+    // Activity joins the modes cluster as a quiet ghost (read-only feed,
+    // rows open the task — derived, never synced).
+    expect(board).toContain("t('board.activity')")
+    expect(board).toContain('setShowActivity(true)')
+    expect(board).toContain('activityOf(snapshot.tasks)')
   })
 })
 

@@ -114,31 +114,36 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
             and the 创建/取消 footer stay pinned (see .modal / .modalScroll). */}
         <div className={css.modalScroll}>
           {templates.length > 0 && (
-            <div className={css.formRow}>
-              <label className={css.formLabel} htmlFor="dsh-tb-template-picker">
+            <div className={css.field}>
+              <label className={css.fieldLabel} htmlFor="dsh-tb-template-picker">
                 {t('new.fromTemplate')}
               </label>
-              <span className={css.selectWrap}>
-                <select
-                  id="dsh-tb-template-picker"
-                  className={css.input}
-                  value={pickedId}
-                  onChange={event => { applyTemplate(event.target.value) }}
+              {/* Picker + delete share one line: the select flexes, the danger
+                  action keeps its width (让位不压扁 — never a dangling lone
+                  button on the next line). */}
+              <div className={css.templateRow}>
+                <span className={css.selectWrap}>
+                  <select
+                    id="dsh-tb-template-picker"
+                    className={css.input}
+                    value={pickedId}
+                    onChange={event => { applyTemplate(event.target.value) }}
+                  >
+                    <option value="">{t('new.pickTemplate')}</option>
+                    {templates.map(template => (
+                      <option key={template.id} value={template.id}>{template.name}</option>
+                    ))}
+                  </select>
+                </span>
+                <Button
+                  variant="dangerGhost"
+                  title={t('new.deleteTemplateTitle')}
+                  disabled={pickedId === ''}
+                  onClick={() => { setConfirmDelete(true) }}
                 >
-                  <option value="">{t('new.pickTemplate')}</option>
-                  {templates.map(template => (
-                    <option key={template.id} value={template.id}>{template.name}</option>
-                  ))}
-                </select>
-              </span>
-              <Button
-                variant="dangerGhost"
-                title={t('new.deleteTemplateTitle')}
-                disabled={pickedId === ''}
-                onClick={() => { setConfirmDelete(true) }}
-              >
-                {t('new.deleteTemplate')}
-              </Button>
+                  {t('new.deleteTemplate')}
+                </Button>
+              </div>
               {confirmDelete && pickedId !== '' && (
                 <ConfirmDialog
                   title={t('new.deleteTemplate')}

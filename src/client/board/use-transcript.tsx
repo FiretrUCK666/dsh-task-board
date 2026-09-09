@@ -226,6 +226,10 @@ export function useTranscriptTail(
   const floorRef = useRef<number | undefined>(undefined)
   const hasMoreRef = useRef(false)
   hasMoreRef.current = hasMore
+  // A ref mirror of the window for the paging fallback below (refs, not
+  // state — the callback must see the latest window without re-subscribing).
+  const eventsRef = useRef<readonly TranscriptEventShape[] | undefined>(undefined)
+  eventsRef.current = events
   const watermarkRef = useRef<number | undefined>(undefined)
   // Alive guard: a late `.then` must never repaint a dead surface (the panel
   // can close while a read is still in flight).
@@ -339,11 +343,17 @@ export function useTranscriptTail(
   /** Prepend one earlier page above the window (the native "load earlier"
    *  grammar). Anchored: the scroller's offset from the BOTTOM is preserved
    *  (not scrollTop), so the reader stays on the same message instead of
-   *  jumping to the top. At the floor, or without a page reader, a no-op. */
+   *  jumping to the top. At the floor, or without a page reader, a no-op.
+   *
+   *  The floor is the host's `floorSeq` when it sends one; otherwise the
+   *  window's own first seq (a host that reports `hasMore` without a floor
+   *  must still page — a visible button that no-ops is the "点了没反应"
+   *  bug, never a silent guard again). */
   const loadEarlier = useCallback((): void => {
     if (sessionId === undefined || loadingEarlier) return
-    const floor = floorRef.current
-    if (floor === undefined || !hasMoreRef.current) return
+    if (!hasMoreRef.current) return
+    const floor = floorRef.current ?? eventsRef.current?.[0]?.seq
+    if (floor === undefined) return
     setLoadingEarlier(true)
     void controller.loadTranscriptPage(sessionId, floor).then(page => {
       if (!aliveRef.current) return
