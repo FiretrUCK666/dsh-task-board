@@ -10,8 +10,10 @@ import {
   changedIdsOf,
   diffDeletions,
   emptyBoardDoc,
+  isWipOver,
   normalizeBoardDoc,
   normalizeCruiseValue,
+  normalizeWipLimits,
   sameBoardDocs,
   TOMBSTONE_TTL_MS,
   type BoardCommit,
@@ -94,6 +96,20 @@ describe('normalizeCruiseValue', () => {
   it('clamps an oversized remote budget to the shared ceiling (never 999-way fan-out)', () => {
     expect(normalizeCruiseValue({ enabled: true, limit: 999, schedule: [] }).limit).toBe(20)
     expect(normalizeCruiseValue({ enabled: true, limit: 'many', schedule: [] }).limit).toBe(5)
+  })
+
+  it('keeps old docs unlimited and clamps WIP numbers (soft, never throws)', () => {
+    expect(normalizeCruiseValue({ enabled: false, limit: 5, schedule: [] }).wip).toBeUndefined()
+    expect(normalizeWipLimits(undefined)).toBeUndefined()
+    expect(normalizeWipLimits('junk')).toBeUndefined()
+    expect(normalizeCruiseValue({ enabled: false, limit: 5, schedule: [], wip: { global: 999, running: 0 } }).wip).toEqual({ global: 20, running: 1 })
+    expect(normalizeCruiseValue({ enabled: false, limit: 5, schedule: [], wip: { global: 'many' } }).wip).toBeUndefined()
+  })
+
+  it('judges over-limit advisory only (undefined = never over)', () => {
+    expect(isWipOver(5, undefined)).toBe(false)
+    expect(isWipOver(3, 3)).toBe(false)
+    expect(isWipOver(4, 3)).toBe(true)
   })
 })
 

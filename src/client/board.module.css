@@ -948,6 +948,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 1px 8px;
 }
 
+/* Soft WIP over-limit: same pill slot, zero extra width — only the tone
+   changes (warn token, never a hex), so compact columns never grow. */
+.columnCount[data-over='true'] {
+  color: var(--dsw-alias-state-warn-primary);
+  background: var(--dsh-tb-surface-sunken);
+  border: 1px solid var(--dsw-alias-state-warn-primary);
+  padding: 0 7px;
+}
+
 .statusDot {
   width: 8px;
   height: 8px;

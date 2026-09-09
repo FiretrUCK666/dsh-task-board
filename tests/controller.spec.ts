@@ -1596,6 +1596,18 @@ describe('auto-cruise', () => {
     expect(controller.getSnapshot().cruise.limit).toBe(1)
   })
 
+  it('stores soft WIP ceilings advisory-only (empty = unlimited, never pumps)', () => {
+    const { controller } = makeController()
+    expect(controller.getSnapshot().cruise.wip).toBeUndefined()
+    controller.setWipLimit('running', 3)
+    expect(controller.getSnapshot().cruise.wip).toEqual({ running: 3 })
+    controller.setWipLimit('global', 999)
+    expect(controller.getSnapshot().cruise.wip).toEqual({ running: 3, global: 20 })
+    controller.setWipLimit('running', undefined)
+    controller.setWipLimit('global', undefined)
+    expect(controller.getSnapshot().cruise.wip).toBeUndefined()
+  })
+
   it('restores a persisted enabled cruise on start and pumps the queue', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub, {

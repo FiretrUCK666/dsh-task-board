@@ -22,7 +22,8 @@ import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as ti
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
 import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
-import { normalizeCruiseValue, CRUISE_LIMIT_MAX, CRUISE_LIMIT_MIN } from './board-doc.ts'
+import { normalizeCruiseValue, normalizeWipLimits, CRUISE_LIMIT_MAX, CRUISE_LIMIT_MIN, WIP_LIMIT_MAX, WIP_LIMIT_MIN } from './board-doc.ts'
+import type { WipLimits } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
 import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents.ts'
 import { LocalStorageTemplateStore, templateFromTask, templateToNewInput } from './task-templates.ts'
@@ -238,7 +239,9 @@ export type TaskUpdatePatch = Partial<Pick<TaskRecord,
  *  concurrency, and the scheduled windows that flip it at their boundaries
  *  (see cruise.ts — `enabled` IS the truth: manual toggles set it directly
  *  and never touch the schedule; window start/end instants flip it and take
- *  over from the manual intent; expired windows prune). */
+ *  over from the manual intent; expired windows prune). `wip` is the soft
+ *  advisory WIP awareness (undefined = unlimited, never blocks) sharing the
+ *  cruise section, so no new sync section is needed. */
 export interface CruiseState {
   enabled: boolean
   /** Last explicit manual intent (true=手动开, false=手动关); undefined = none yet. */
@@ -246,6 +249,8 @@ export interface CruiseState {
   limit: number
   /** Scheduled windows `[startAt?, endAt?]`; empty = no auto schedule. */
   schedule: import('./cruise.ts').CruiseWindow[]
+  /** Soft WIP ceilings; absent = unlimited. */
+  wip?: WipLimits
 }
 
 /** Persistence seam for the cruise state (localStorage in the browser). */
@@ -3031,6 +3036,26 @@ export class BoardController {
     this.cruiseState = { ...this.cruiseState, limit: clamped }
     this.deps.cruiseStorage?.write(this.cruiseState)
     this.dispatch()
+    this.notify()
+  }
+
+  /** Set (or clear with undefined) one soft WIP ceiling (persisted, advisory
+   *  only — never blocks drags or dispatch). Shares the cruise section, so
+   *  the existing section claim carries it; reads re-normalize, so garbage
+   *  can never stick. */
+  setWipLimit(scope: 'global' | 'running', value: number | undefined): void {
+    const clean = value === undefined ? undefined
+      : Math.min(WIP_LIMIT_MAX, Math.max(WIP_LIMIT_MIN, Math.floor(value)))
+    const prev = this.cruiseState.wip?.[scope]
+    if (prev === clean) return
+    const next: WipLimits | undefined = normalizeWipLimits({
+      ...this.cruiseState.wip,
+      [scope]: clean,
+    })
+    this.cruiseState = next === undefined
+      ? (() => { const rest = { ...this.cruiseState }; delete rest.wip; return rest })()
+      : { ...this.cruiseState, wip: next }
+    this.deps.cruiseStorage?.write(this.cruiseState)
     this.notify()
   }
 

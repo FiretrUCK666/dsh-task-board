@@ -688,6 +688,12 @@ describe('no raw color literals leak in (design-system rule)', () => {
     expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     expect(source).not.toMatch(/rgba?\(\s*\d/)
   })
+
+  it('soft WIP over-limit reuses the count slot with a token tint (zero extra width)', () => {
+    const scope = blockFrom(line => line.includes(".columnCount[data-over='true']"))
+    expect(scope).toContain('--dsw-alias-state-warn-primary')
+    expect(scope).not.toMatch(/vw|vh/)
+  })
 })
 
 describe('column tab math', () => {

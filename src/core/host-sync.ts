@@ -112,6 +112,7 @@ function hasLegacyContent(view: BoardView): boolean {
     || view.cruise.manual !== undefined
     || view.cruise.schedule.length > 0
     || view.cruise.limit !== 5
+    || view.cruise.wip !== undefined
     || view.schedulePresets.length > 0
     || view.runPresets.presets.length > 0
     || view.runPresets.defaultId !== undefined

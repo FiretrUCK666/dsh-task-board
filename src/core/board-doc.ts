@@ -47,6 +47,19 @@ export interface CruiseValue {
   manual?: boolean
   limit: number
   schedule: CruiseWindow[]
+  /** Soft WIP awareness (advisory only, never blocks drags): absent = unlimited.
+   *  Lives in the cruise section so no new sync section/route is needed —
+   *  the existing section claim + LWW carries it, and old docs normalize to
+   *  unlimited without migration. */
+  wip?: WipLimits
+}
+
+/** Soft per-board WIP limits: each present number is an advisory ceiling. */
+export interface WipLimits {
+  /** Total cards in play (running + review); undefined = unlimited. */
+  global?: number
+  /** Cards in running; undefined = unlimited. */
+  running?: number
 }
 
 /** One synced section: the value plus the client write stamp (LWW key). */
@@ -166,6 +179,11 @@ export const DEFAULT_CRUISE_VALUE: CruiseValue = { enabled: false, limit: 5, sch
 export const CRUISE_LIMIT_MIN = 1
 export const CRUISE_LIMIT_MAX = 20
 
+/** Soft WIP bounds — THE one declaration (same clamp-everywhere discipline as
+ *  the cruise budget; undefined = unlimited, so old docs stay valid). */
+export const WIP_LIMIT_MIN = 1
+export const WIP_LIMIT_MAX = 20
+
 /** A fresh empty document (host first boot; revision 0 marks "never committed"). */
 export function emptyBoardDoc(now: number): BoardDoc {
   return {
@@ -187,6 +205,7 @@ export function normalizeCruiseValue(value: unknown): CruiseValue {
   const row = value as Record<string, unknown>
   const raw = typeof row.limit === 'number' && Number.isInteger(row.limit) ? row.limit : DEFAULT_CRUISE_VALUE.limit
   const limit = Math.min(CRUISE_LIMIT_MAX, Math.max(CRUISE_LIMIT_MIN, raw))
+  const wip = normalizeWipLimits(row.wip)
   return {
     enabled: row.enabled === true,
     ...(row.manual === true || row.manual === false ? { manual: row.manual } : {}),
@@ -194,7 +213,32 @@ export function normalizeCruiseValue(value: unknown): CruiseValue {
     schedule: Array.isArray(row.schedule)
       ? sortWindows((row.schedule as unknown[]).filter(isCruiseWindow).map(normalizeWindow))
       : [],
+    ...(wip !== undefined ? { wip } : {}),
   }
+}
+
+/** Normalize an unknown WIP value: undefined = unlimited (old docs); present
+ *  numbers clamp to the WIP bounds; garbage drops to undefined (never throws,
+ *  so a remote commit can never poison the section). */
+export function normalizeWipLimits(value: unknown): WipLimits | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const row = value as Record<string, unknown>
+  const cleanOne = (raw: unknown): number | undefined => {
+    if (typeof raw !== 'number' || !Number.isInteger(raw)) return undefined
+    return Math.min(WIP_LIMIT_MAX, Math.max(WIP_LIMIT_MIN, raw))
+  }
+  const global = cleanOne(row.global)
+  const running = cleanOne(row.running)
+  if (global === undefined && running === undefined) return undefined
+  return {
+    ...(global !== undefined ? { global } : {}),
+    ...(running !== undefined ? { running } : {}),
+  }
+}
+
+/** Whether a count exceeds an advisory limit (undefined limit = never over). */
+export function isWipOver(count: number, limit: number | undefined): boolean {
+  return limit !== undefined && count > limit
 }
 
 /** Normalize an unknown section carrying a value + write stamp. */
