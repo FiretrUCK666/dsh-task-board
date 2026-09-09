@@ -868,9 +868,8 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
  *
  * The explanation line belongs to the COMPOSER, not to the comment thread:
  * what 排队/插话 do, and why sending is refused (a finished task, a gone
- * session), is information a touch user must be able to reach — a fold that
- * starts collapsed on a phone would otherwise hide it behind a hover-only
- * tooltip. Draft / steer mode / attachments (images + staged files) live
+ * session), is information a touch user must be able to reach — it can never
+ * live only in a foldable explanation or a hover-only tooltip. Draft / steer
  * here (the per-session draft slot, shared across panels); the caller
  * supplies only the send semantics:
  *   - onDrive(text, images, files) schedules a session-anchored comment round
@@ -1000,9 +999,9 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
         </Button>
       </div>
       {/* One quiet line, owned by the composer: what the two send modes do, or
-          the reason sending is refused. It lives HERE (not inside the comment
-          fold) because the fold starts collapsed on a phone and a touch user
-          has no hover to discover the explanation with. */}
+          the reason sending is refused. It lives HERE (not inside any fold)
+          because a touch user has no hover to discover the explanation
+          with. */}
       <p className={css.detailHint}>{hint ?? t('detail.sessionDriveHint')}</p>
     </div>
   )

@@ -5,8 +5,9 @@
  * Geometry breakpoints live in CSS container queries (surface-relative); where
  * the DOM SHAPE or a default state must differ — the cruise settings ride a
  * compact anchored popover on a wide board but must become a full Dialog on a
- * phone; a review panel's folds start collapsed on a phone and open on a
- * desktop — this hook is the switch.
+ * phone; a review panel's config head starts collapsed on a phone and open on
+ * a desktop (the comments fold starts open at every width) — this hook is
+ * the switch.
  *
  * `useSurfaceNarrow` measures THE SURFACE itself (the floating panel the CSS
  * is querying), so JS and CSS can never disagree.
