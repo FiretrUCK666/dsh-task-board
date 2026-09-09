@@ -128,10 +128,12 @@ describe('formatDueLabel (day-granularity due chips)', () => {
     expect(formatDueLabel(new Date(2025, 0, 4, 9, 0).getTime(), NOW)).toBe('1d overdue')
   })
 
-  it('future days read like cruise dates (no clock — a due is a day)', () => {
+  it('future days read calendar dates (no clock — a due is a day)', () => {
     useLanguage('zh')
-    expect(formatDueLabel(new Date(2025, 0, 8, 0, 0).getTime(), NOW)).toBe('1月8日 00:00')
+    expect(formatDueLabel(new Date(2025, 0, 8, 0, 0).getTime(), NOW)).toBe('1月8日')
+    expect(formatDueLabel(new Date(2026, 2, 3, 0, 0).getTime(), NOW)).toBe('2026年3月3日')
     useLanguage('en')
-    expect(formatDueLabel(new Date(2025, 0, 8, 0, 0).getTime(), NOW)).toBe('1/8 00:00')
+    expect(formatDueLabel(new Date(2025, 0, 8, 0, 0).getTime(), NOW)).toBe('1/8')
+    expect(formatDueLabel(new Date(2026, 2, 3, 0, 0).getTime(), NOW)).toBe('2026/3/3')
   })
 })

@@ -41,14 +41,31 @@ function startOfLocalDay(ms: number): number {
   return date.getTime()
 }
 
+/** Compact calendar-date label (day only, never a clock): `M月D日` / `M/D`
+ *  same-year, year-prefixed across years. THE date half of the cruise
+ *  grammar, split out so due dates never inherit a meaningless 00:00.
+ */
+export function formatDayLabel(ms: number, now: number = Date.now()): string {
+  const date = new Date(ms)
+  const base = new Date(now)
+  if (date.getFullYear() === base.getFullYear()) {
+    return isEnglish()
+      ? `${date.getMonth() + 1}/${date.getDate()}`
+      : `${date.getMonth() + 1}月${date.getDate()}日`
+  }
+  return isEnglish()
+    ? `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
+    : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}
+
 /** Compact due-date label (day granularity): today reads 今天到期/Due today,
- *  past days read 逾期 N 天/Nd overdue, future days read like cruise dates
- *  (month/day, no clock — a due is a day, not an instant). Pure. */
+ *  past days read 逾期 N 天/Nd overdue, future days read the calendar date
+ *  (a due is a day, not an instant — no clock). Pure. */
 export function formatDueLabel(dueAt: number, now: number = Date.now()): string {
   const days = Math.round((startOfLocalDay(dueAt) - startOfLocalDay(now)) / 86_400_000)
   if (days === 0) return t('board.dueToday')
   if (days < 0) return t('board.dueOverdue', { n: String(-days) })
-  return formatCruiseTime(dueAt, now)
+  return formatDayLabel(dueAt, now)
 }
 
 /** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */

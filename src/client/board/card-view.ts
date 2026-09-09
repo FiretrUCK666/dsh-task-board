@@ -126,7 +126,9 @@ export function cardViewModelOf(
  * Due state of a card (day granularity, evaluated against `now`): `today`
  * when the due date is the current local day, `overdue` when it lies before
  * it. Only incomplete columns (backlog/todo/running) can be due — review and
- * done are someone else's gate now, not a debt. Absent due = undefined.
+ * done are someone else's gate now, not a debt (the debt stays readable in
+ * the detail's due row; the card goes quiet). Backlog keeps lighting: owed
+ * is owed, shelved or not. Absent due = undefined.
  * Never breathing, never primary: the chip is the signal, this is the fact.
  */
 export function dueStateOf(

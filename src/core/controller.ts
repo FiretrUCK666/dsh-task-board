@@ -14,7 +14,7 @@
  */
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
 import { isValidCron, nextRunAtMs } from './schedule.ts'
-import { nextSessionRuleAt, withSessionRules } from './automation.ts'
+import { disarmSessionRules, nextSessionRuleAt, withSessionRules } from './automation.ts'
 import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
@@ -1948,9 +1948,10 @@ export class BoardController {
    * keys are renumbered; a same-column move is reorder-only.
    *
    * Moving a card to 'done' is the completion hand-off: any armed schedule
-   * rule is disarmed outright ({@link disarmSchedule}) — a completed task's
+   * rule is disarmed outright ({@link disarmSchedule}) and every session rule
+   * switches off ({@link disarmSessionRules}) — a completed task's
    * timer/chain must never fire again, and moving it back to a live column
-   * leaves the rule off until the user re-arms it.
+   * leaves the rules off until the user re-arms them.
    *
    * Automation never locks a card in place (see resolveCardDrop); leaving
    * the lane speaks its own language: a chain hand-off happens ONLY at a
@@ -1965,7 +1966,8 @@ export class BoardController {
       if (task.id !== id) return task
       // Completion is a hard stop, not a pause. The rule's configuration
       // survives, so re-arming from the detail editor resumes the schedule.
-      if (status === 'done') return disarmSchedule(task, this.now())
+      // Session rules shut off with it (done = full terminal for automation).
+      if (status === 'done') return disarmSessionRules(disarmSchedule(task, this.now()))
       return task
     })
     // An armed-but-never-run chain leaving backlog for todo starts its first

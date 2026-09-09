@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  automationRowsOf, automationTasksOf, blockedCauseOf, hasLiveAutomation, isSessionRule, normalizeSessionRules, pausedFailedOf, sessionRuleReadiness,
+  automationRowsOf, automationTasksOf, blockedCauseOf, disarmSessionRules, hasLiveAutomation, isSessionRule, normalizeSessionRules, pausedFailedOf, sessionRuleReadiness,
   sessionRuleOf, withSessionRules, type SessionRule,
 } from '../src/core/automation.ts'
 import { createTask, withSchedule, type TaskRecord } from '../src/core/tasks.ts'
@@ -117,6 +117,15 @@ describe('automationTasksOf (the overview membership)', () => {
     expect(pausedFailedOf(failedReview)).toBe(true)
     // Same failure outside review: not the gate's word.
     expect(pausedFailedOf({ ...failedReview, status: 'todo' })).toBe(false)
+  })
+
+  it('disarmSessionRules switches every rule off and keeps the configuration', () => {
+    const ruled = withSessionRules({ ...bare, id: 'c' }, [rule(), { ...rule(), id: 'r2', enabled: false }])
+    const disarmed = disarmSessionRules(ruled)
+    expect(disarmed.rules?.every(candidate => !candidate.enabled)).toBe(true)
+    expect(disarmed.rules).toHaveLength(2)
+    expect(hasLiveAutomation(disarmed)).toBe(false)
+    expect(disarmSessionRules(bare).rules).toBeUndefined()
   })
 })
 

@@ -88,7 +88,10 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     setPickedId(id)
     const template = templates.find(candidate => candidate.id === id)
     if (template === undefined) return
-    changeDraft(draftFromTemplate(template))
+    const stamped = draftFromTemplate(template)
+    // Templates never carry a due date — but a date the user already picked
+    // survives stamping (a template fills the form, it must not eat input).
+    changeDraft(draft.dueDate !== '' ? { ...stamped, dueDate: draft.dueDate } : stamped)
   }
   const removePicked = (): void => {
     if (pickedId !== '') controller.deleteTemplate(pickedId)

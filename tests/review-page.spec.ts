@@ -1016,3 +1016,16 @@ describe('session context panel row grammar (badge never spills over the text)',
     expect(ruleOf('goalStripActions')).toContain('flex: none')
   })
 })
+
+describe('task detail due row (future dues live here, not on the card)', () => {
+  const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url))
+  const detail = readFileSync(detailPath, 'utf8')
+
+  it('renders a due row only when the task carries a due instant', () => {
+    // Future dues are quiet on the card by design — the detail is their
+    // one readable home (relative label in text, exact instant in title).
+    expect(detail).toContain('current.dueAt !== undefined')
+    expect(detail).toContain('formatDueLabel(current.dueAt)')
+    expect(detail).toContain('title={formatDateTime(current.dueAt)}')
+  })
+})

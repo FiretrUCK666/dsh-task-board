@@ -271,6 +271,19 @@ describe('task mutations', () => {
     expect(completed.schedule?.cron).toBe('0 9 * * *')
   })
 
+  it('moving to done switches every session rule off (done = full terminal)', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hi', cron: '* * * * *', send: 'queue' })!
+    expect(store.load()[0].rules?.[0].enabled).toBe(true)
+    controller.moveTask(task.id, 'done')
+    const completed = store.load()[0]
+    expect(completed.rules?.[0].enabled).toBe(false)
+    // Configuration survives (re-arming resumes the same rule).
+    expect(completed.rules?.[0].instruction).toBe('hi')
+    expect(completed.rules).toHaveLength(1)
+  })
+
   it('a done-disarmed rule stays off when the task moves back to a live column', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
@@ -4040,14 +4053,14 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(intact.instruction).toBe('nightly check')
   })
 
-  it('a rule on a non-drivable column stays paused: never fires, keeps its slot', async () => {
+  it('a rule on a shelved column stays paused: never fires, keeps its slot, resumes', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     const rule = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'steer' })!
-    controller.moveTask(task.id, 'done')
+    controller.moveTask(task.id, 'backlog')
     await controller.tickSessionRules(NOW + 120_000)
-    expect(sent).toHaveLength(0) // paused on done: the due slot is a hold, never a retry storm
+    expect(sent).toHaveLength(0) // paused on backlog: the due slot is a hold, never a retry storm
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.rules![0].enabled).toBe(true)
     expect(row.rules![0].nextAt).toBe(rule.nextAt)
@@ -4056,6 +4069,24 @@ describe('session automation rules (给会话定时发指令)', () => {
     controller.moveTask(task.id, 'todo')
     await controller.tickSessionRules(NOW + 120_000)
     expect(sent).toEqual([['s-a', 'hello']])
+  })
+
+  it('moving to done terminals session rules too: off, no auto-resume', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'steer' })!
+    controller.moveTask(task.id, 'done')
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toHaveLength(0)
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.rules![0].enabled).toBe(false)
+    // Moving back out is a manual re-open, never an auto resume (same as
+    // the task-level schedule disarm).
+    controller.moveTask(task.id, 'todo')
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(sent).toHaveLength(0)
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].enabled).toBe(false)
   })
 
   it('the task-level schedule and session rules are INDEPENDENT: turning the task schedule off never pauses session rules', async () => {

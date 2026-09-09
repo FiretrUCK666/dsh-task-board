@@ -243,6 +243,14 @@ export function hasLiveAutomation(task: TaskRecord): boolean {
     || (task.rules !== undefined && task.rules.some(rule => rule.enabled))
 }
 
+/** Switch every session rule of a task off (the done-column shut-off: a
+ *  completed task's rules must never fire again, exactly like its schedule
+ *  disarms — the configuration survives, so re-arming resumes each rule). */
+export function disarmSessionRules(task: TaskRecord): TaskRecord {
+  if (task.rules === undefined) return task
+  return withSessionRules(task, task.rules.map(rule => ({ ...rule, enabled: false })))
+}
+
 /** Which automation is blocked on the empty prompt (THE cause predicate —
  *  card chips, tooltips, the detail disclosure and the overview row all read
  *  this, so the explanation can never name a different cause than the badge).
