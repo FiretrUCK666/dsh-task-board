@@ -252,6 +252,28 @@ describe('qualifier single source (parse + complete + match agree)', () => {
     expect(parseBoardQuery('label:a').qualifiers).toEqual([{ key: 'label', value: 'a' }])
     expect(completeBoardQuery('label:')).toEqual([])
   })
+
+  it('due:today covers today plus overdue; due:overdue only the past', () => {
+    const now = Date.now()
+    const day = 86_400_000
+    const startOfToday = (() => {
+      const date = new Date(now)
+      date.setHours(0, 0, 0, 0)
+      return date.getTime()
+    })()
+    const todayTask = { ...task, status: 'todo', dueAt: startOfToday + day / 2 }
+    const overdueTask = { ...task, status: 'todo', dueAt: startOfToday - day }
+    const futureTask = { ...task, status: 'todo', dueAt: startOfToday + 2 * day }
+    const doneTask = { ...task, status: 'done', dueAt: startOfToday - day }
+    expect(parseBoardQuery('due:today').qualifiers).toEqual([{ key: 'due', value: 'today' }])
+    expect(completeBoardQuery('due:')).toEqual(['due:today', 'due:overdue'])
+    expect(matchTask(todayTask, 'due:today')).toBe(true)
+    expect(matchTask(overdueTask, 'due:today')).toBe(true)
+    expect(matchTask(futureTask, 'due:today')).toBe(false)
+    expect(matchTask(doneTask, 'due:today')).toBe(false)
+    expect(matchTask(overdueTask, 'due:overdue')).toBe(true)
+    expect(matchTask(todayTask, 'due:overdue')).toBe(false)
+  })
 })
 
 describe('applyCompletion (whole-query assembly)', () => {

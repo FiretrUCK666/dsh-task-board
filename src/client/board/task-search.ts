@@ -9,6 +9,8 @@
  * supplies the linked titles from its existing resolvers (no new data
  * plumbing — the haystack is assembled at the call site).
  */
+import { dueStateOf } from './card-view.ts'
+import { isTaskStatus } from '../../core/tasks.ts'
 
 /** All searchable text of one task (the caller appends session titles). */
 export function taskHaystack(
@@ -34,6 +36,10 @@ export function matchTask(
     priority?: number
     /** Card labels (for the `label:` qualifier, already lowercase). */
     labels?: readonly string[]
+    /** Card column (for the `due:` qualifiers — only live columns carry dues). */
+    status?: string
+    /** Due instant (for the `due:` qualifiers). */
+    dueAt?: number
   },
   query: string,
   sessionTitles: readonly string[] = [],
@@ -117,7 +123,13 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
  *  can never drift from parsing: whatever the parser accepts, this resolves
  *  through the same definition. */
 function matchQualifier(
-  task: { color?: string; priority?: number; labels?: readonly string[] },
+  task: {
+    color?: string
+    priority?: number
+    labels?: readonly string[]
+    status?: string
+    dueAt?: number
+  },
   qualifier: BoardQualifier,
   facets: BoardQueryFacets,
 ): boolean {
@@ -175,7 +187,13 @@ export function boardShortcutOf(
 
 /** One qualifier predicate: task fields + caller-resolved facets + the value. */
 type QualifierTest = (
-  task: { color?: string; priority?: number; labels?: readonly string[] },
+  task: {
+    color?: string
+    priority?: number
+    labels?: readonly string[]
+    status?: string
+    dueAt?: number
+  },
   facets: BoardQueryFacets,
   value: string,
 ) => boolean
@@ -195,6 +213,19 @@ const QUALIFIER_DEFS: Readonly<Record<string, QualifierDef>> = {
   'has:priority': { test: task => task.priority !== undefined },
   'is:unread': { test: (_task, facets) => facets.isUnviewed === true },
   'is:read': { test: (_task, facets) => facets.isUnviewed === false },
+  // Due qualifiers read the card's day state (the same fact the due chips
+  // render — never a second date judgment). `due:today` is the Today lens
+  // (today's dues PLUS overdue — an undone overdue is still today's work);
+  // `due:overdue` is the strictly-past subset. Both skip done/review
+  // columns with the chips (a finished card is never "due").
+  'due:today': {
+    test: task => task.status !== undefined && isTaskStatus(task.status)
+      && dueStateOf({ status: task.status, dueAt: task.dueAt }) !== undefined,
+  },
+  'due:overdue': {
+    test: task => task.status !== undefined && isTaskStatus(task.status)
+      && dueStateOf({ status: task.status, dueAt: task.dueAt }) === 'overdue',
+  },
   'ws:': {
     test: (_task, facets, value) => (facets.workspaceTitle ?? '').toLowerCase().includes(value),
     freeText: true,

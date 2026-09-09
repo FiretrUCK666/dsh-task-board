@@ -2229,6 +2229,30 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             {views.length >= MAX_SAVED_VIEWS && (
               <p className={css.detailHint}>{t('board.viewsFull', { n: String(MAX_SAVED_VIEWS) })}</p>
             )}
+            {/* Built-in lenses (pinned above personal views — they apply a
+                filter without consuming a shelf slot, and cannot be deleted:
+                Today = today's dues plus overdue, Overdue = strictly past). */}
+            <ul className={css.notifyList}>
+              {([
+                { name: t('board.viewToday'), filter: 'due:today' },
+                { name: t('board.viewOverdue'), filter: 'due:overdue' },
+              ]).map(preset => (
+                <li key={preset.filter}>
+                  <div className={css.notifyRow} data-kind="view">
+                    <button
+                      type="button"
+                      className={css.notifyMain}
+                      title={preset.filter}
+                      aria-label={preset.name}
+                      onClick={() => { setFilter(preset.filter); setShowViews(false) }}
+                    >
+                      <span className={css.notifyTask}>{preset.name}</span>
+                      <span className={css.notifySession} title={preset.filter}>{preset.filter}</span>
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
             {views.length === 0 ? (
               <p className={css.detailText}>{t('board.viewsEmpty')}</p>
             ) : (
