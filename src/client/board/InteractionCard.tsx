@@ -35,14 +35,19 @@ function draftAnswered(draft: QuestionDraft): boolean {
 }
 
 /** The interaction card (see module doc). Renders nothing while idle. */
-export function InteractionCard({ question, sessionId, controller }: {
-  question: WireQuestion
+export function InteractionCard({ question, shellWaiting, sessionId, controller }: {
+  /** Parsed wire content; absent with `shellWaiting` = proven wait, unknown body. */
+  question: WireQuestion | undefined
+  /** Honest fallback kind when the session list proves a wait but no content
+   *  parsed (carrier-shape drift, present or future host) — renders the shell
+   *  card instead of blank nothing. Absent with `question` = idle. */
+  shellWaiting?: 'plan-review' | 'question'
   sessionId: string
   controller: BoardController
 }) {
   const [questionIndex, setQuestionIndex] = useState(0)
   const [drafts, setDrafts] = useState<QuestionDraft[]>(() =>
-    question.questions.map(() => ({ selected: [] })),
+    (question?.questions ?? []).map(() => ({ selected: [] })),
   )
   const [amend, setAmend] = useState<string>('')
   const [busy, setBusy] = useState(false)
@@ -53,9 +58,10 @@ export function InteractionCard({ question, sessionId, controller }: {
   // hosts whose face still settles the call (questionAnswerInPlace).
   if (!controller.questionAnswerInPlace) {
     return (
-      <MirrorQuestionCard question={question} sessionId={sessionId} controller={controller} />
+      <MirrorQuestionCard question={question} shellWaiting={shellWaiting} sessionId={sessionId} controller={controller} />
     )
   }
+  if (question === undefined) return null
 
   // Plan review shows the plan question itself; an ask flow walks its list.
   const planQuestion = question.isPlanReview ? planQuestionOf(question) : undefined
@@ -241,15 +247,35 @@ export function InteractionCard({ question, sessionId, controller }: {
  * settles the call. No draft state, no submit path, nothing that could race
  * the native answerer. Same chrome (card body + pinned action row) so the
  * rail geometry never diverges between hosts.
+ *
+ * When the session list proves a plan/question wait but no content parsed
+ * (`shellWaiting`), it renders the honest shell — kind chip + one line
+ * saying the body could not be read + the same navigate action — instead of
+ * blank nothing. A proven wait never reaches the UI as silence again.
  */
-function MirrorQuestionCard({ question, sessionId, controller }: {
-  question: WireQuestion
+function MirrorQuestionCard({ question, shellWaiting, sessionId, controller }: {
+  question: WireQuestion | undefined
+  shellWaiting: 'plan-review' | 'question' | undefined
   sessionId: string
   controller: BoardController
 }) {
-  const planQuestion = question.isPlanReview ? planQuestionOf(question) : undefined
+  const planQuestion = question !== undefined && question.isPlanReview ? planQuestionOf(question) : undefined
   const goAnswer = (): void => {
     controller.openSession(sessionId)
+  }
+  if (question === undefined) {
+    if (shellWaiting === undefined) return null
+    return (
+      <div className={css.interactionCard} data-plan={shellWaiting === 'plan-review' ? 'true' : undefined}>
+        <div className={css.interactionCardBody}>
+          <Chip kind="warn" title={t('review.planAwaiting')}>{t('review.planAwaiting')}</Chip>
+          <span className={css.interactionQuestion}>{t('review.interactionBodyMissing')}</span>
+        </div>
+        <span className={css.interactionActions}>
+          <Button variant="primary" onClick={goAnswer}>{t('review.interactionGoAnswer')}</Button>
+        </span>
+      </div>
+    )
   }
   return (
     <div className={css.interactionCard} data-plan={planQuestion !== undefined ? 'true' : undefined}>

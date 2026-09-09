@@ -690,9 +690,16 @@ describe('no raw color literals leak in (design-system rule)', () => {
   })
 
   it('soft WIP over-limit reuses the count slot with a token tint (zero extra width)', () => {
-    const scope = blockFrom(line => line.includes(".columnCount[data-over='true']"))
+    const scope = blockFrom(line => line.trim().startsWith(".columnCount[data-over='true']"))
     expect(scope).toContain('--dsw-alias-state-warn-primary')
     expect(scope).not.toMatch(/vw|vh/)
+  })
+
+  it('soft WIP reserves the ring up front (transparent border, same box either way)', () => {
+    const base = ruleOf('columnCount')
+    expect(base).toContain('border: 1px solid transparent')
+    const tab = blockFrom(line => line.includes(".columnTabCount[data-over='true']"))
+    expect(tab).toContain('--dsw-alias-state-warn-primary')
   })
 })
 

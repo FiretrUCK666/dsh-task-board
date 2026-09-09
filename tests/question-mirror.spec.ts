@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  awaitingOf,
   isMirrorQuestionKind,
   mirrorQuestionOf,
   mirrorQuestionsOf,
@@ -34,6 +35,17 @@ describe('normalizeMirrorQuestion', () => {
 
   it('falls back to the question text as the id', () => {
     expect(normalizeMirrorQuestion({ question: '继续？' })?.id).toBe('继续？')
+  })
+
+  it('accepts a detail-carried plan without question text (official planReviewOf needs none)', () => {
+    const item = normalizeMirrorQuestion({
+      question: '', detail: '# 计划正文', intent: { kind: 'plan-review', approve: '好' },
+    })
+    expect(item?.detail).toBe('# 计划正文')
+    expect(item?.question).toBe('')
+    // Anything else text-less stays dropped.
+    expect(normalizeMirrorQuestion({ question: '', detail: 'x' })).toBeUndefined()
+    expect(mirrorQuestionsOf([{ question: '', detail: '# 计划正文', intent: { kind: 'plan-review', approve: '好' } }])).toHaveLength(1)
   })
 })
 
@@ -95,6 +107,18 @@ describe('pendingMirrorOf', () => {
     expect(pendingMirrorOf(snapshot, 's-9')).toBeUndefined()
     expect(pendingMirrorOf(undefined, 's-1')).toBeUndefined()
     expect(pendingMirrorOf(snapshot, undefined)).toBeUndefined()
+  })
+})
+
+describe('awaitingOf', () => {
+  const content = { key: 'question:1', sessionId: 's-1', questions: [], isPlanReview: false }
+  it('prefers parsed content, shells a proven wait, stays silent otherwise', () => {
+    expect(awaitingOf(content, 'plan-review')).toEqual({ type: 'content', question: content })
+    expect(awaitingOf(undefined, 'plan-review')).toEqual({ type: 'shell', waitingKind: 'plan-review' })
+    expect(awaitingOf(undefined, 'question')).toEqual({ type: 'shell', waitingKind: 'question' })
+    // Approvals belong to the native surface — never a board card.
+    expect(awaitingOf(undefined, 'approval')).toBeUndefined()
+    expect(awaitingOf(undefined, undefined)).toBeUndefined()
   })
 })
 

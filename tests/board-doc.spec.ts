@@ -102,8 +102,14 @@ describe('normalizeCruiseValue', () => {
     expect(normalizeCruiseValue({ enabled: false, limit: 5, schedule: [] }).wip).toBeUndefined()
     expect(normalizeWipLimits(undefined)).toBeUndefined()
     expect(normalizeWipLimits('junk')).toBeUndefined()
+    expect(normalizeWipLimits({})).toBeUndefined()
     expect(normalizeCruiseValue({ enabled: false, limit: 5, schedule: [], wip: { global: 999, running: 0 } }).wip).toEqual({ global: 20, running: 1 })
     expect(normalizeCruiseValue({ enabled: false, limit: 5, schedule: [], wip: { global: 'many' } }).wip).toBeUndefined()
+  })
+
+  it('floors handmade floats through the same clamp as writes (never flips to unlimited)', () => {
+    expect(normalizeWipLimits({ global: 2.7 })).toEqual({ global: 2 })
+    expect(normalizeWipLimits({ running: Number.NaN })).toBeUndefined()
   })
 
   it('judges over-limit advisory only (undefined = never over)', () => {

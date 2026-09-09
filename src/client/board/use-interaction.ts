@@ -16,6 +16,8 @@
  */
 import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
+import type { PendingInteractionKind } from '../../core/controller.ts'
+import { awaitingOf } from '../../core/question-mirror.ts'
 import type { WireQuestion } from '../../core/question-rpc.ts'
 import { latestSessionTodos, type SessionTodo } from './interaction.ts'
 
@@ -201,4 +203,35 @@ export function useWireQuestion(controller: BoardController, sessionId: string |
     })
   }, [controller, sessionId])
   return question
+}
+
+/**
+ * What the comment interface shows for a session's wait: parsed content, or —
+ * when the session list proves a plan/question wait but no content parsed —
+ * an honest shell (kind + navigate) instead of blank nothing. The shell is
+ * the backstop against carrier-shape drift on any present or future host:
+ * a proven wait can never again reach the UI as silence. Every surface with
+ * a comment composer reads this one hook (review page, session panel,
+ * refinement answers) — never useWireQuestion directly for display.
+ */
+export function useAwaitingCard(
+  controller: BoardController,
+  sessionId: string | undefined,
+): { question: WireQuestion | undefined; shell: 'plan-review' | 'question' | undefined } {
+  const question = useWireQuestion(controller, sessionId)
+  const [waiting, setWaiting] = useState<PendingInteractionKind | undefined>(() =>
+    controller.pendingInteractionOf(sessionId))
+  useEffect(() => {
+    if (sessionId === undefined) {
+      setWaiting(undefined)
+      return undefined
+    }
+    setWaiting(controller.pendingInteractionOf(sessionId))
+    return controller.subscribe(() => {
+      setWaiting(controller.pendingInteractionOf(sessionId))
+    })
+  }, [controller, sessionId])
+  const card = awaitingOf(question, waiting)
+  if (card?.type === 'shell') return { question: undefined, shell: card.waitingKind }
+  return { question, shell: undefined }
 }

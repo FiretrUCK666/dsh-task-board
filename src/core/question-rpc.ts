@@ -69,7 +69,6 @@ export type QuestionFrameIn =
 
 /** Plan-review decision a UI can send (see planDecisionAnswers). */
 export type PlanDecision = 'approve' | 'decline'
-
 /** The controller's thin question surface (implemented by the live tracker
  *  or the official mirror; absent when the host wire is unavailable —
  *  surfaces then hide the card). On 0.1.5 the mirror never answers in place
@@ -87,17 +86,38 @@ export interface QuestionRpcFace {
   cancel(rpcId: string): Promise<boolean>
 }
 
+/** Whether a raw item is a plan review whose body lives in `detail` alone:
+ *  intent-tagged plan-review + non-empty detail (mirrors the official
+ *  planReviewOf narrowing — question text is NOT required there). Shared by
+ *  the legacy wire normalizer below and the official-snapshot mirror, so a
+ *  detail-carried plan is never silently dropped on either path. */
+export function isDetailOnlyPlanItem(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const source = value as Record<string, unknown>
+  const intent = source.intent
+  if (typeof intent !== 'object' || intent === null) return false
+  if ((intent as Record<string, unknown>).kind !== 'plan-review') return false
+  return typeof source.detail === 'string' && source.detail.trim() !== ''
+}
+
 /** Normalize one wire question item; drop anything malformed. */
 export function normalizeWireQuestion(value: unknown): WireQuestionItem | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const source = value as Record<string, unknown>
   const questionText = typeof source.question === 'string' ? source.question : ''
-  if (questionText === '') return undefined
+  // THE plan-body law (mirrors the official planReviewOf narrowing): a plan
+  // review carries its plan as `detail` — the question line itself may be
+  // empty. Only that shape may pass without question text; a text-less ask
+  // item is still meaningless and stays dropped.
+  if (questionText === '' && !isDetailOnlyPlanItem(value)) return undefined
+  const detail = typeof source.detail === 'string' ? source.detail : undefined
   const item: WireQuestionItem = {
-    id: typeof source.id === 'string' && source.id !== '' ? source.id : questionText,
+    id: typeof source.id === 'string' && source.id !== '' ? source.id
+      : questionText !== '' ? questionText
+      : detail !== undefined ? detail.slice(0, 40) : 'plan',
     question: questionText,
   }
-  if (typeof source.detail === 'string') item.detail = source.detail
+  if (detail !== undefined) item.detail = detail
   if (typeof source.header === 'string') item.header = source.header
   if (Array.isArray(source.options)) {
     const options = source.options

@@ -400,8 +400,11 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // A pending interaction must FORCE the comments fold open — the
     // InteractionCard carries the answer affordance (in place on legacy
     // hosts, navigate-to-answer on 0.1.5), so a collapsed fold can never
-    // hide it.
-    expect(panelSource).toMatch(/open=\{commentsOpen \|\| interaction !== undefined\}/)
+    // hide it. The honest shell (proven wait without parsed content) owns
+    // the same force-open through the single `awaiting` boolean — one
+    // condition, never two parallel ones to drift apart.
+    expect(panelSource).toMatch(/open=\{commentsOpen \|\| awaiting\}/)
+    expect(panelSource).toMatch(/awaiting = interaction !== undefined \|\| shellWaiting !== undefined/)
     // The 0.1.5 mirror card is read-only: the mirror branch renders options
     // as spans (never buttons), one navigate action, no submit path that
     // could race the native answerer. (The legacy in-place branch keeps its

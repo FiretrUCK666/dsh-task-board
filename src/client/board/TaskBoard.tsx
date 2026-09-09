@@ -709,20 +709,25 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               与巡航同属右簇。零段省略（「排队 0」是噪音，与上下文计量同一文法）。
               紧凑档它独占导航第二行左段，巡航守右，永远不挤主行动。 */}
           {(() => {
-            // Soft WIP awareness (advisory only): counts derive from the same
-            // visible ledger the columns render, so desktop and compact agree.
-            // Over-limit adds ONE sentence to the existing status slot — never
-            // a new row, never a block on drags.
-            const runningCount = visible.filter(task => task.status === 'running').length
-            const inPlayCount = visible.filter(task => task.status === 'running' || task.status === 'review').length
+            // Soft WIP awareness (advisory only): counts derive from the FULL
+            // ledger (same denominator as stats.running/queued — never the
+            // search-filtered `visible`, so the sentence never mixes
+            // denominators). Over-limit folds to ONE sentence (running wins
+            // over global) in the existing status slot — never a new row,
+            // never a block on drags.
+            const runningCount = snapshot.tasks.filter(task => task.status === 'running').length
+            const inPlayCount = snapshot.tasks.filter(task => task.status === 'running' || task.status === 'review').length
             const wipRunningOver = isWipOver(runningCount, snapshot.cruise.wip?.running)
             const wipGlobalOver = isWipOver(inPlayCount, snapshot.cruise.wip?.global)
+            const wipSentence = wipRunningOver && snapshot.cruise.wip?.running !== undefined
+              ? t('board.wipRunningOver', { n: String(runningCount), limit: String(snapshot.cruise.wip.running) })
+              : wipGlobalOver && snapshot.cruise.wip?.global !== undefined
+                ? t('board.wipOver', { n: String(inPlayCount), limit: String(snapshot.cruise.wip.global) })
+                : undefined
             const stateParts = [
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
               ...snapshot.stats.queued > 0 ? [t('board.statusQueued', { n: String(snapshot.stats.queued) })] : [],
-              ...wipRunningOver && snapshot.cruise.wip?.running !== undefined ? [t('board.wipRunningOver', { n: String(runningCount), limit: String(snapshot.cruise.wip.running) })] : [],
-              ...wipGlobalOver && snapshot.cruise.wip?.global !== undefined && !wipRunningOver ? [t('board.wipOver', { n: String(inPlayCount), limit: String(snapshot.cruise.wip.global) })] : [],
-              ...wipGlobalOver && snapshot.cruise.wip?.global !== undefined && wipRunningOver ? [t('board.wipOver', { n: String(inPlayCount), limit: String(snapshot.cruise.wip.global) })] : [],
+              ...wipSentence !== undefined ? [wipSentence] : [],
             ]
             // 引擎席位的诚实指示（只在同步模式且真的"不在本机/服务端过旧"时
             // 出现）：排队的工作在等谁、为什么不动——用户看得见，就不用猜、
@@ -823,10 +828,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     弹层——不新增顶层入口、不新增按钮。空=不限；超限只着色解释。 */}
                 <div className={css.cruiseSchedule}>
                   <div className={css.cruiseScheduleHead}>
-                    <span className={css.cruiseScheduleTitle} title={t('board.wipTitle')}>{t('board.wipGlobal')}</span>
+                    <span className={css.cruiseScheduleTitle}>{t('board.wipSection')}</span>
                   </div>
                   <p className={css.detailHint}>{t('board.wipHint')}</p>
                   <div className={css.cruiseWindowAdd}>
+                    {/* Typing discipline (same as the cruise limit): valid
+                        integers commit on edit; clearing happens on blur/Enter
+                        only, so selecting-all to retype never flickers the
+                        persisted ceiling through an empty middle state. */}
                     <label className={css.cruisePopoverLimit}>
                       <span className={css.cruisePopoverLabel}>{t('board.wipGlobal')}</span>
                       <input
@@ -841,16 +850,23 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                         onChange={event => {
                           setWipGlobalText(event.target.value)
                           const raw = event.target.value.trim()
-                          if (raw === '') {
-                            controller.setWipLimit('global', undefined)
-                            return
-                          }
+                          if (raw === '') return
                           const value = Number(raw)
                           if (Number.isInteger(value) && value >= 1) {
                             controller.setWipLimit('global', value)
                           }
                         }}
-                        onBlur={() => { setWipGlobalText(snapshot.cruise.wip?.global === undefined ? '' : String(snapshot.cruise.wip.global)) }}
+                        onBlur={() => {
+                          if (wipGlobalText.trim() === '') {
+                            controller.setWipLimit('global', undefined)
+                          }
+                          setWipGlobalText(snapshot.cruise.wip?.global === undefined ? '' : String(snapshot.cruise.wip.global))
+                        }}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') {
+                            (event.currentTarget as HTMLInputElement).blur()
+                          }
+                        }}
                       />
                     </label>
                     <label className={css.cruisePopoverLimit}>
@@ -867,16 +883,23 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                         onChange={event => {
                           setWipRunningText(event.target.value)
                           const raw = event.target.value.trim()
-                          if (raw === '') {
-                            controller.setWipLimit('running', undefined)
-                            return
-                          }
+                          if (raw === '') return
                           const value = Number(raw)
                           if (Number.isInteger(value) && value >= 1) {
                             controller.setWipLimit('running', value)
                           }
                         }}
-                        onBlur={() => { setWipRunningText(snapshot.cruise.wip?.running === undefined ? '' : String(snapshot.cruise.wip.running)) }}
+                        onBlur={() => {
+                          if (wipRunningText.trim() === '') {
+                            controller.setWipLimit('running', undefined)
+                          }
+                          setWipRunningText(snapshot.cruise.wip?.running === undefined ? '' : String(snapshot.cruise.wip.running))
+                        }}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') {
+                            (event.currentTarget as HTMLInputElement).blur()
+                          }
+                        }}
                       />
                     </label>
                   </div>
@@ -1143,10 +1166,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       </header>
 
       {/* 紧凑列导航（仅 compact 档显示）：点按直达状态列，滚动位置回写高亮。
-          文法即列头——状态点 + 名称 + 计数，tab 就是它跳转的列。 */}
+          文法即列头——状态点 + 名称 + 计数，tab 就是它跳转的列。超限染色与列头
+          同源（全量口径），手机滑轨上同样可见。 */}
       <div className={css.columnTabs} role="tablist" aria-label={t('board.title')}>
         {COLUMNS.map(column => {
           const count = visible.filter(task => task.status === column.status).length
+          const fullCount = snapshot.tasks.filter(task => task.status === column.status).length
+          const fullInPlay = snapshot.tasks.filter(task => task.status === 'running' || task.status === 'review').length
+          const tabOver = column.status === 'running'
+            ? isWipOver(fullCount, snapshot.cruise.wip?.running)
+            : column.status === 'review'
+              ? isWipOver(fullInPlay, snapshot.cruise.wip?.global)
+              : false
           return (
             <button
               key={column.status}
@@ -1160,7 +1191,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             >
               <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
               <span className={css.columnTabLabel}>{t(STATUS_SHORT_KEY[column.status])}</span>
-              <span className={css.columnTabCount}>{String(count)}</span>
+              <span className={css.columnTabCount} {...tabOver ? { 'data-over': 'true' } : {}}>{String(count)}</span>
             </button>
           )
         })}
@@ -1251,19 +1282,38 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
                 <h3 className={css.columnTitle}>{t(STATUS_KEY[column.status])}</h3>
                 {(() => {
-                  // Soft WIP tint reuses the existing count slot — same DOM,
+                  // Soft WIP tint reuses the existing count slot — same pill,
                   // zero extra width (compact-safe). Running reads the running
-                  // ceiling; review+running share the global ceiling via the
-                  // status line (no second number here, to keep the header
-                  // quiet).
-                  const runningOver = column.status === 'running' && isWipOver(tasks.length, snapshot.cruise.wip?.running)
+                  // ceiling; review shares the global ceiling (same denominator
+                  // as the status line: the FULL ledger, never the filtered
+                  // view). An over-limit count is a real button into the
+                  // cruise/WIP settings (the unified board-level entry) with
+                  // an aria-label — touch and keyboard can reach the why,
+                  // never hover-only title.
+                  const fullRunning = snapshot.tasks.filter(task => task.status === 'running').length
+                  const fullInPlay = snapshot.tasks.filter(task => task.status === 'running' || task.status === 'review').length
+                  const runningOver = column.status === 'running' && isWipOver(fullRunning, snapshot.cruise.wip?.running)
+                  const reviewOver = column.status === 'review' && isWipOver(fullInPlay, snapshot.cruise.wip?.global)
+                  const over = runningOver || reviewOver
+                  const overLabel = runningOver && snapshot.cruise.wip?.running !== undefined
+                    ? t('board.wipRunningOver', { n: String(fullRunning), limit: String(snapshot.cruise.wip.running) })
+                    : reviewOver && snapshot.cruise.wip?.global !== undefined
+                      ? t('board.wipOver', { n: String(fullInPlay), limit: String(snapshot.cruise.wip.global) })
+                      : ''
+                  if (!over) {
+                    return <span className={css.columnCount}>{tasks.length}</span>
+                  }
                   return (
-                    <span
+                    <button
+                      type="button"
                       className={css.columnCount}
-                      {...runningOver ? { 'data-over': 'true', title: t('board.wipTitle') } : {}}
+                      data-over="true"
+                      aria-label={overLabel}
+                      title={overLabel}
+                      onClick={() => { setCruiseOpen(true) }}
                     >
                       {tasks.length}
-                    </span>
+                    </button>
                   )
                 })()}
               </header>

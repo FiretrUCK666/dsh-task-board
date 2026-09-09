@@ -184,6 +184,12 @@ export const CRUISE_LIMIT_MAX = 20
 export const WIP_LIMIT_MIN = 1
 export const WIP_LIMIT_MAX = 20
 
+/** Clamp one WIP number to the shared bounds (THE one clamp: writes floor +
+ *  clamp through this, reads normalize through this — never two grammars). */
+export function clampWipLimit(value: number): number {
+  return Math.min(WIP_LIMIT_MAX, Math.max(WIP_LIMIT_MIN, Math.floor(value)))
+}
+
 /** A fresh empty document (host first boot; revision 0 marks "never committed"). */
 export function emptyBoardDoc(now: number): BoardDoc {
   return {
@@ -218,14 +224,23 @@ export function normalizeCruiseValue(value: unknown): CruiseValue {
 }
 
 /** Normalize an unknown WIP value: undefined = unlimited (old docs); present
- *  numbers clamp to the WIP bounds; garbage drops to undefined (never throws,
- *  so a remote commit can never poison the section). */
+ *  numbers floor + clamp to the WIP bounds (same grammar as writes, so a
+ *  hand-made float commit floors instead of flipping to unlimited); garbage
+ *  drops to undefined (never throws, so a remote commit can never poison the
+ *  section).
+ *
+ *  Known contract (cruise-section LWW): the whole cruise value (enabled /
+ *  limit / schedule / wip.*) merges as ONE section — two replicas editing
+ *  different fields at once keep the later section, not both fields.
+ *  Field-level intent merge is the tracked follow-up; until then concurrent
+ *  different-field edits may drop one field (same discipline as the pre-WIP
+ *  limit/schedule sharing). */
 export function normalizeWipLimits(value: unknown): WipLimits | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const row = value as Record<string, unknown>
   const cleanOne = (raw: unknown): number | undefined => {
-    if (typeof raw !== 'number' || !Number.isInteger(raw)) return undefined
-    return Math.min(WIP_LIMIT_MAX, Math.max(WIP_LIMIT_MIN, raw))
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return undefined
+    return clampWipLimit(raw)
   }
   const global = cleanOne(row.global)
   const running = cleanOne(row.running)

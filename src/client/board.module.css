@@ -902,6 +902,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-3);
 }
 
+/* Compact navigator shares the column over-limit tone (text only, no ring —
+   the tab itself is already a button, so no extra affordance is needed). */
+.columnTabCount[data-over='true'] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
 .column {
   display: flex;
   flex-direction: column;
@@ -940,21 +946,31 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
   min-width: 0;
   font-size: 12px;
+  font-family: inherit;
+  line-height: inherit;
   color: var(--dsh-tb-text-3);
   /* Single-layer solid pill: an rgba pill on a translucent column would
-     wash out to a double fade. */
+     wash out to a double fade. The transparent border reserves the over
+     state's ring width up front, so toggling over never moves layout by
+     even a pixel (no hand-computed padding compensation). */
   background: var(--dsh-tb-surface-sunken);
+  border: 1px solid transparent;
   border-radius: 999px;
-  padding: 1px 8px;
+  padding: 0 7px;
+  cursor: inherit;
 }
 
-/* Soft WIP over-limit: same pill slot, zero extra width — only the tone
-   changes (warn token, never a hex), so compact columns never grow. */
+/* Soft WIP over-limit: same pill slot, same box — only the tone changes
+   (warn token, never a hex), so compact columns never grow. Renders as a
+   button when over (touch/keyboard reachable into the WIP settings). */
+button.columnCount[data-over='true'] {
+  cursor: pointer;
+}
+
 .columnCount[data-over='true'] {
   color: var(--dsw-alias-state-warn-primary);
   background: var(--dsh-tb-surface-sunken);
-  border: 1px solid var(--dsw-alias-state-warn-primary);
-  padding: 0 7px;
+  border-color: var(--dsw-alias-state-warn-primary);
 }
 
 .statusDot {

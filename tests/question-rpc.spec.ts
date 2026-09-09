@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  answerBatchOf, approveLabelOf, declineLabelOf, normalizeWireQuestion, pendingQuestionOf,
+  answerBatchOf, approveLabelOf, declineLabelOf, isDetailOnlyPlanItem, normalizeWireQuestion, pendingQuestionOf,
   planDecisionAnswers, planQuestionOf, reduceQuestionFrames, wireQuestionsOf,
   type WireQuestion,
 } from '../src/core/question-rpc.ts'
@@ -35,6 +35,19 @@ describe('normalizeWireQuestion', () => {
   it('recognises a plan-review intent with its approve label', () => {
     const item = normalizeWireQuestion({ id: 'p', question: 'P', detail: 'plan', intent: { kind: 'plan-review', approve: '批准' } })
     expect(item?.intent).toEqual({ kind: 'plan-review', approve: '批准' })
+  })
+
+  it('accepts a detail-carried plan without question text (the plan IS the detail)', () => {
+    // Mirrors the official planReviewOf narrowing: question text is NOT
+    // required there. Anything else text-less stays dropped.
+    expect(isDetailOnlyPlanItem({ question: '', detail: 'plan body', intent: { kind: 'plan-review', approve: '好' } })).toBe(true)
+    expect(isDetailOnlyPlanItem({ question: '', detail: '  ', intent: { kind: 'plan-review', approve: '好' } })).toBe(false)
+    expect(isDetailOnlyPlanItem({ question: '', detail: 'x' })).toBe(false)
+    expect(isDetailOnlyPlanItem({ question: '' })).toBe(false)
+    const item = normalizeWireQuestion({ question: '', detail: 'plan body', intent: { kind: 'plan-review', approve: '好' } })
+    expect(item?.detail).toBe('plan body')
+    expect(item?.question).toBe('')
+    expect(wireQuestionsOf([{ question: '', detail: 'plan body', intent: { kind: 'plan-review', approve: '好' } }])).toHaveLength(1)
   })
 })
 

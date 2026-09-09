@@ -22,7 +22,7 @@ import { sessionStateChip } from './session-chip.ts'
 import { sessionRowTitleOf } from '../../core/session-list.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { Button } from './ui.tsx'
-import { useSessionContext, useWireQuestion } from './use-interaction.ts'
+import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
 
 /** The linked-session panel (see module doc). */
 export function SessionDetail({ controller, task, sessionId, onClose }: {
@@ -76,7 +76,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   // The open native interaction (plan confirm / question) + live to-do/goal/
   // subagents of the session.
   const context = useSessionContext(controller, sessionId)
-  const pendingInteraction = useWireQuestion(controller, sessionId)
+  const pendingInteraction = useAwaitingCard(controller, sessionId)
 
   // Send gates: a gone session is the only disable — a comment is the user's
   // own words, never gated by the task's execution prompt (that gate belongs
@@ -157,7 +157,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
           task={task}
           thread={thread}
           onCancelComment={id => controller.cancelComment(id)}
-          interaction={pendingInteraction}
+          interaction={pendingInteraction.question}
+          shellWaiting={pendingInteraction.shell}
           composer={
             <SessionComposer
               controller={controller}

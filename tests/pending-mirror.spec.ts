@@ -52,6 +52,20 @@ describe('PendingMirror', () => {
     expect(mirror.pendingOf('s-1')).toBeUndefined()
   })
 
+  it('renders a detail-carried plan review (empty question line, plan in detail)', () => {
+    const ui = new FakeUiSession()
+    ui.snapshot = new Map([
+      ['question:9', {
+        key: 'question:9', kind: 'plan-review', sessionId: 's-1',
+        questions: [{ question: '', detail: '# 计划正文', intent: { kind: 'plan-review', approve: '好' } }],
+      }],
+    ])
+    const mirror = new PendingMirror(ui)
+    const pending = mirror.pendingOf('s-1')
+    expect(pending?.isPlanReview).toBe(true)
+    expect(pending?.questions[0]?.detail).toBe('# 计划正文')
+  })
+
   it('notifies subscribers when the official snapshot moves', () => {
     const ui = new FakeUiSession()
     const mirror = new PendingMirror(ui)

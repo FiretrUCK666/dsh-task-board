@@ -38,7 +38,7 @@ import { SessionComposer, SessionRail, SessionTranscript } from './session-panel
 import { toPromptFile, toPromptImage } from './attach.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { sessionStateChip } from './session-chip.ts'
-import { useSessionContext, useWireQuestion } from './use-interaction.ts'
+import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
 import { Button } from './ui.tsx'
 
 /** The review page (see module doc). */
@@ -68,7 +68,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // Plus the live session context (to-do / goal / subagents) for the readout
   // above the composer.
   const context = useSessionContext(controller, sessionId)
-  const pendingInteraction = useWireQuestion(controller, sessionId)
+  const pendingInteraction = useAwaitingCard(controller, sessionId)
 
   // Native projection baseline (context pressure / breakdown / permissions)
   // from the history tail page — the source of the context meter below and
@@ -204,7 +204,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           task={current}
           thread={comments}
           onCancelComment={id => controller.cancelComment(id)}
-          interaction={pendingInteraction}
+          interaction={pendingInteraction.question}
+          shellWaiting={pendingInteraction.shell}
           composer={
             <SessionComposer
               controller={controller}

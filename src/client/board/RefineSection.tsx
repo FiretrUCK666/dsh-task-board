@@ -27,7 +27,7 @@ import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, toPromptFile, toPromptImage }
 import { decodeCommentDraft, encodeCommentDraft, pickedHasFiles, useComposerImages } from './composer-images.ts'
 import { useFileStager } from './session-panel.tsx'
 import { PromptInput } from './PromptInput.tsx'
-import { useSessionContext, useWireQuestion } from './use-interaction.ts'
+import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { InteractionCard } from './InteractionCard.tsx'
 import { useTranscriptTail } from './use-transcript.tsx'
@@ -46,7 +46,7 @@ export function RefineSection({ controller, task }: {
   // The open native interaction (plan confirm / question) + live to-do/goal/
   // subagents of the refine session.
   const context = useSessionContext(controller, sessionId)
-  const pendingInteraction = useWireQuestion(controller, sessionId)
+  const pendingInteraction = useAwaitingCard(controller, sessionId)
 
   // 草稿记忆：回答框里打了一半的文字 + 已加的图，切走再回来仍保留（按任务
   // 各自保存）；发送成功即清除。切换任务时读对应任务的草稿。文件只留名
@@ -225,10 +225,11 @@ export function RefineSection({ controller, task }: {
               自动增高、草稿记忆），同一套图片 ledger（选/拖/粘 + 就近拒绝原因），
               发送按钮保持。 */}
           <div className={css.refineInputArea} {...attachments.dropProps}>
-            {pendingInteraction !== undefined && sessionId !== undefined && (
+            {(pendingInteraction.question !== undefined || pendingInteraction.shell !== undefined) && sessionId !== undefined && (
               <InteractionCard
-                key={pendingInteraction.rpcId}
-                question={pendingInteraction}
+                key={pendingInteraction.question !== undefined ? pendingInteraction.question.rpcId : `shell-${sessionId}`}
+                question={pendingInteraction.question}
+                shellWaiting={pendingInteraction.shell}
                 sessionId={sessionId}
                 controller={controller}
               />

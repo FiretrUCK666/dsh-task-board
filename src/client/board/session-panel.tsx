@@ -741,7 +741,7 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
  * Callers pass data and their send semantics; the grammar, the folds and the
  * hint line live here exactly once — no panel can drift again.
  */
-export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, task, thread, onCancelComment, interaction, composer }: {
+export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, task, thread, onCancelComment, interaction, shellWaiting, composer }: {
   /** The live state row (chip + updated time); absent hides the whole row. */
   stateChip?: { kind: ChipKind; label: string; spinner?: boolean }
   updatedAt?: string
@@ -756,6 +756,9 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   onCancelComment: (roundId: string) => boolean
   /** The pending native question (plan confirm / ask); absent hides the card. */
   interaction: WireQuestion | undefined
+  /** Proven wait without parsed content (carrier-shape backstop): renders the
+   *  honest shell card instead of blank nothing. Absent with `interaction`. */
+  shellWaiting?: 'plan-review' | 'question'
   /** The pinned composer (the panel's send semantics stay in the caller). */
   composer: ReactNode
 }) {
@@ -782,18 +785,22 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // conversation + context — the tap toggles either way, one grammar).
   const [commentsOpen, setCommentsOpen] = useState(!narrowPanel)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
+  // Content card OR honest shell: either one means the session is awaiting
+  // the user and owns every force-open/follow behavior below — one boolean,
+  // never two parallel conditions to drift apart.
+  const awaiting = interaction !== undefined || shellWaiting !== undefined
   const { measure: onCommentsScroll, jumpToBottom: jumpComments } = useFollowScroll(
     commentsScrollRef, commentsAtBottom, setCommentsAtBottom, threadFingerprint,
     /* Remount signal: folding the comments unmounts .commentsScroll; the fold
        state flips back on re-expand, so the observer + follow effects re-bind
        to the NEW element (a fold→expand loop used to lose bottom-follow and
        the 滑到最新 button — the review caught it). */
-    commentsOpen || interaction !== undefined,
+    commentsOpen || awaiting,
     /* A MANUAL open must NOT pin to the bottom: the immediate scroll pushed
        the fold head off-screen and the reader had to drag back up to re-fold
        (「评论一点开直接拉到底」). A pending question keeps the pin (it must be
        seen — jumpComments below also forces it). */
-    interaction !== undefined,
+    awaiting,
   )
   // A pending question is the ONE thing in this panel the user must answer for
   // the session to move at all — so arriving must bring it into view even when
@@ -802,8 +809,8 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // phone: the card can still sit below the capped region's viewport with its
   // 确认/拒绝 buttons off-screen and no hint that anything is waiting.
   useEffect(() => {
-    if (interaction !== undefined) jumpComments()
-  }, [interaction?.rpcId, jumpComments])
+    if (awaiting) jumpComments()
+  }, [awaiting, interaction?.rpcId, shellWaiting, jumpComments])
   // The collapsed head still says something: the live context occupancy
   // rides the disclosure summary (zero-omission quietness, same as every
   // other summary — no projection, no line).
@@ -854,22 +861,28 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             it — the InteractionCard carries the answer affordance (in place
             on legacy hosts, navigate-to-answer on 0.1.5), so a collapsed
             fold can never hide it; the summary names that wait too. */}
-        <div className={css.sessionRailComments} data-open={commentsOpen || interaction !== undefined}>
+        <div className={css.sessionRailComments} data-open={commentsOpen || awaiting}>
           <Disclosure
             title={t('review.comments')}
-            summary={interaction !== undefined ? t('review.waiting') : String(thread.length)}
-            open={commentsOpen || interaction !== undefined}
+            summary={awaiting ? t('review.waiting') : String(thread.length)}
+            open={commentsOpen || awaiting}
             /* While the card forces the fold open, the row is INERT: flipping
                the hidden flag anyway made the tap look dead (aria-expanded
                stayed true) and then silently collapsed the thread the moment
                the question was answered — a state that contradicts what the
                user just saw. */
-            onToggle={() => { if (interaction === undefined) setCommentsOpen(!commentsOpen) }}
+            onToggle={() => { if (!awaiting) setCommentsOpen(!commentsOpen) }}
           >
             <div className={css.commentsScroll} ref={commentsScrollRef} onScroll={onCommentsScroll}>
               <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
-              {interaction !== undefined && sessionId !== undefined && (
-                <InteractionCard key={interaction.rpcId} question={interaction} sessionId={sessionId} controller={controller} />
+              {awaiting && sessionId !== undefined && (
+                <InteractionCard
+                  key={interaction !== undefined ? interaction.rpcId : `shell-${sessionId}`}
+                  question={interaction}
+                  shellWaiting={interaction === undefined ? shellWaiting : undefined}
+                  sessionId={sessionId}
+                  controller={controller}
+                />
               )}
               <JumpToLatest atBottom={commentsAtBottom} onJump={jumpComments} />
             </div>

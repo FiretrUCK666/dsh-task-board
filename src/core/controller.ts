@@ -22,7 +22,7 @@ import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as ti
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
 import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
-import { normalizeCruiseValue, normalizeWipLimits, CRUISE_LIMIT_MAX, CRUISE_LIMIT_MIN, WIP_LIMIT_MAX, WIP_LIMIT_MIN } from './board-doc.ts'
+import { normalizeCruiseValue, normalizeWipLimits, clampWipLimit, CRUISE_LIMIT_MAX, CRUISE_LIMIT_MIN } from './board-doc.ts'
 import type { WipLimits } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
 import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents.ts'
@@ -3029,8 +3029,10 @@ export class BoardController {
 
   /** Change the concurrency budget (persisted; the dispatcher re-pumps). The
    *  one clamp: the floor/ceiling live in board-doc bounds — writes clamp,
-   *  reads normalize, one pair everywhere. */
+   *  reads normalize, one pair everywhere. Non-finite input is ignored (same
+   *  guard as the WIP ceilings — a NaN write must never clear the budget). */
   setCruiseLimit(limit: number): void {
+    if (!Number.isFinite(limit)) return
     const clamped = Math.min(MAX_CRUISE_LIMIT, Math.max(CRUISE_LIMIT_MIN, Math.floor(limit)))
     if (this.cruiseState.limit === clamped) return
     this.cruiseState = { ...this.cruiseState, limit: clamped }
@@ -3041,11 +3043,14 @@ export class BoardController {
 
   /** Set (or clear with undefined) one soft WIP ceiling (persisted, advisory
    *  only — never blocks drags or dispatch). Shares the cruise section, so
-   *  the existing section claim carries it; reads re-normalize, so garbage
-   *  can never stick. */
+   *  the existing section claim carries it; reads re-normalize through the
+   *  same clamp (floats floor, out-of-range clamps — the same discipline as
+   *  the cruise budget, and the same silent-clamp UX: the field re-renders
+   *  the clamped value on blur). Non-finite numbers are ignored (never clear
+   *  the ceiling on NaN). */
   setWipLimit(scope: 'global' | 'running', value: number | undefined): void {
-    const clean = value === undefined ? undefined
-      : Math.min(WIP_LIMIT_MAX, Math.max(WIP_LIMIT_MIN, Math.floor(value)))
+    if (value !== undefined && !Number.isFinite(value)) return
+    const clean = value === undefined ? undefined : clampWipLimit(value)
     const prev = this.cruiseState.wip?.[scope]
     if (prev === clean) return
     const next: WipLimits | undefined = normalizeWipLimits({

@@ -16,6 +16,8 @@
  * isolation (the live subscription lives in the client wiring).
  */
 
+import { isDetailOnlyPlanItem } from './question-rpc.ts'
+
 /** The three waiting kinds the native session rows surface. */
 export type MirrorWaitingKind = 'approval' | 'plan-review' | 'question'
 
@@ -47,6 +49,29 @@ export interface MirrorQuestion {
   isPlanReview: boolean
 }
 
+/**
+ * What the comment interface shows for a session's wait: parsed content, or
+ * — when the session list proves a plan/question wait but no content parsed —
+ * an honest shell (kind + navigate) instead of blank nothing. The shell is
+ * the backstop against any future carrier-shape drift: a proven wait can
+ * never again reach the UI as silence.
+ */
+export type AwaitingCard<T = MirrorQuestion> =
+  | { type: 'content'; question: T }
+  | { type: 'shell'; waitingKind: 'plan-review' | 'question' }
+
+/** Fold one session's wire content + waiting signal into its card (pure). */
+export function awaitingOf<T>(
+  question: T | undefined,
+  waitingKind: MirrorWaitingKind | undefined,
+): AwaitingCard<T> | undefined {
+  if (question !== undefined) return { type: 'content', question }
+  if (waitingKind === 'plan-review' || waitingKind === 'question') {
+    return { type: 'shell', waitingKind }
+  }
+  return undefined
+}
+
 /** The structural slice of an official interaction the mirror reads. */
 export interface MirrorInteractionLike {
   readonly key?: unknown
@@ -61,18 +86,22 @@ export type MirrorSnapshotLike = ReadonlyMap<string, MirrorInteractionLike>
 /**
  * Normalize one mirror question item; drop anything malformed. Same grammar
  * as the historical wire model (question-rpc.ts): the question text is
- * mandatory, everything else is optional.
+ * mandatory — EXCEPT a detail-carried plan review (see isDetailOnlyPlanItem),
+ * whose body lives in `detail` by official contract.
  */
 export function normalizeMirrorQuestion(value: unknown): MirrorQuestionItem | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const source = value as Record<string, unknown>
   const questionText = typeof source.question === 'string' ? source.question : ''
-  if (questionText === '') return undefined
+  if (questionText === '' && !isDetailOnlyPlanItem(value)) return undefined
+  const detail = typeof source.detail === 'string' ? source.detail : undefined
   const item: MirrorQuestionItem = {
-    id: typeof source.id === 'string' && source.id !== '' ? source.id : questionText,
+    id: typeof source.id === 'string' && source.id !== '' ? source.id
+      : questionText !== '' ? questionText
+      : detail !== undefined ? detail.slice(0, 40) : 'plan',
     question: questionText,
   }
-  if (typeof source.detail === 'string') item.detail = source.detail
+  if (detail !== undefined) item.detail = detail
   if (typeof source.header === 'string') item.header = source.header
   if (Array.isArray(source.options)) {
     const options = source.options
