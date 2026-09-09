@@ -67,6 +67,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
 import { activityOf, groupActivityByObjectDay, remainderKeyOf, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
+import { deleteView, loadViews, saveView, type SavedView } from './saved-views.ts'
 import { Chip } from './Chip.tsx'
 
 /**
@@ -214,6 +215,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // 输入中与弹窗内一律让路（触屏零损失，桌面键位零冲突），随 effect 释放监听。
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [cheatQuery, setCheatQuery] = useState('')
+  // 保存的视图（命名筛选快照，设备本地）：列表态常驻内存，读写直达存储。
+  const [showViews, setShowViews] = useState(false)
+  const [views, setViews] = useState<SavedView[]>(() => loadViews())
+  const [newViewName, setNewViewName] = useState('')
   useEffect(() => {
     if (showShortcuts) setCheatQuery('')
   }, [showShortcuts])
@@ -1175,6 +1180,16 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             >
               {t('board.shortcuts')}
             </Button>
+            {/* 保存的视图：命名筛选快照（设备本地个人视角，不同步）——同一
+                收纳纪律，窄屏下沉拇指栏。 */}
+            <Button
+              variant="ghost"
+              className={css.modeViews}
+              title={t('board.views')}
+              onClick={() => { setShowViews(true) }}
+            >
+              {t('board.views')}
+            </Button>
           </span>
         </div>
 
@@ -2045,6 +2060,65 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           </div>
         </Dialog>
       )}
+      {showViews && (
+        <Dialog title={t('board.views')} label={t('board.views')} onClose={() => { setShowViews(false) }} portal>
+          <div className={css.modalScroll}>
+            {/* Save the current filter under a name (empty name/filter keeps
+                the button off — the store backstops it anyway). */}
+            <div className={css.cruiseWindowAdd}>
+              <input
+                className={css.search}
+                type="text"
+                placeholder={t('board.viewName')}
+                value={newViewName}
+                onChange={event => { setNewViewName(event.target.value) }}
+                aria-label={t('board.viewName')}
+              />
+              <Button
+                size="sm"
+                disabled={newViewName.trim() === '' || filter.trim() === ''}
+                onClick={() => {
+                  setViews(saveView(newViewName, filter))
+                  setNewViewName('')
+                }}
+              >
+                {t('board.viewSave')}
+              </Button>
+            </div>
+            {views.length === 0 ? (
+              <p className={css.detailText}>{t('board.viewsEmpty')}</p>
+            ) : (
+              <ul className={css.notifyList}>
+                {views.map(view => (
+                  <li key={view.id}>
+                    <div className={css.notifyRow} data-kind="view">
+                      <button
+                        type="button"
+                        className={css.notifyMain}
+                        title={view.filter}
+                        aria-label={view.name}
+                        onClick={() => { setFilter(view.filter); setShowViews(false) }}
+                      >
+                        <span className={css.notifyTask}>{view.name}</span>
+                        <span className={css.notifySession} title={view.filter}>{view.filter}</span>
+                      </button>
+                      <span className={css.notifyActions}>
+                        <button
+                          type="button"
+                          className={css.feedAction}
+                          onClick={() => { setViews(deleteView(view.id)) }}
+                        >
+                          {t('board.organizeDelete')}
+                        </button>
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Dialog>
+      )}
       {/* Thumb bar (compact only — CSS gates visibility): the thumb-zone
           shortcuts. Every member reuses its header handler verbatim
           (setShowNew / notify / activity), so desktop and phone share one
@@ -2062,6 +2136,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           onClick={() => { setShowShortcuts(true) }}
         >
           {t('board.shortcuts')}
+        </Button>
+        <Button
+          variant="ghost"
+          title={t('board.views')}
+          onClick={() => { setShowViews(true) }}
+        >
+          {t('board.views')}
         </Button>
         <Button
           variant="ghost"

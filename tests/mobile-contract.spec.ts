@@ -462,6 +462,10 @@ describe('board header and navigator legibility', () => {
     // The shortcuts twin relocates the same way (header hides, thumb bar twin
     // carries the same handler — touch reaches the cheatsheet by tap).
     expect(compact).toMatch(/\.boardModes \.modeShortcuts\s*\{[^}]*display:\s*none/)
+    // The saved-views twin relocates the same way (one ghost button, two DOM
+    // nodes, never two on screen).
+    expect(compact).toMatch(/\.boardModes \.modeViews\s*\{[^}]*display:\s*none/)
+    expect(board).toContain('css.modeViews')
     expect(board).toContain('css.modeDynamic')
   })
 
