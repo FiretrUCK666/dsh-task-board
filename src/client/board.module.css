@@ -3779,6 +3779,10 @@ button.interactionOption:focus-visible,
      grows with content: fixed padding + one 24px control line, so the top
      gap stays constant while dragging the browser narrower. */
   display: grid;
+  /* Positioned: the context panel anchors to THIS box (left:0/right:0 =
+     the full head width), never to its narrow grid cell — anchoring to the
+     cell is exactly the "展开只占左半格" squeeze on phones. */
+  position: relative;
   grid-template-columns: minmax(0, 1fr) auto auto auto auto;
   grid-template-areas: "title badge context actions close";
   align-items: center;
@@ -4949,10 +4953,14 @@ button.interactionOption:hover {
 /* In the HEADER cell the wrap surrenders its own 14px (the cell already
    owns the column's padding): a second inset here would double-indent the
    head AND shrink the popover's anchor box, which is exactly how the head
-   text ended up painted under the actions on narrow panels. */
+   text ended up painted under the actions on narrow panels. It ALSO
+   surrenders positioning (static): the expanded panel anchors to the
+   HEADER box (see .reviewHeader), so it spans the full head width at every
+   width instead of squeezing into the cell that holds its head row. */
 .reviewHeaderContext .sessionContextWrap {
   padding: 0;
   min-width: 0;
+  position: static;
 }
 
 .sessionContextHead {
@@ -5378,19 +5386,16 @@ button.interactionOption:hover {
     isolation: isolate;
   }
 
-  /* A context block anchored in the narrow header expands IN FLOW, never as a
-     floating card (a header has no scrollable content region to hover over);
-     it is CAPPED and scrolls internally, so a long to-do list never grows the
-     header past the screen (「上下文占满屏幕」). */
+  /* The narrow panel keeps the WIDE popover grammar (absolute, anchored to
+     the header box, full head width — one geometry, both widths): an
+     in-flow expansion inside the context cell is exactly the "只占左半格"
+     squeeze. Capped + internally scrolled, so a long to-do list never grows
+     past the screen (「上下文占满屏幕」). It paints under the action row
+     (same isolation grammar as the wide popover — a long to-do list slides
+     beneath 刷新/查看会话, never over their labels). */
   .reviewHeaderContext .sessionContextPanel {
     max-height: 240px;
     overflow-y: auto;
-    margin-top: 6px;
-    /* In-flow still paints under the action row (same isolation grammar as
-       the wide popover — a long to-do list slides beneath 刷新/查看会话,
-       never over their labels). */
-    position: relative;
-    z-index: 1;
   }
 
   /* The action cluster takes line 2's right and right-aligns its content. */

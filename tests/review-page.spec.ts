@@ -260,15 +260,24 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(wideContext).toMatch(/max-width:\s*320px/)
   })
 
-  it('the header context expansion is capped + in-flow on a phone (never eats the screen)', () => {
+  it('the header context expansion is a capped popover at BOTH widths (never a squeezed cell)', () => {
     // A header-anchored in-flow expansion without a cap grew past the whole
-    // screen and pushed every function out of reach (「上下文占满屏幕」).
+    // screen and pushed every function out of reach (「上下文占满屏幕」) —
+    // and the in-flow form that fixed it squeezed the open list into the
+    // context cell's half column on phones (「左边一半右边一半」). The root
+    // is ONE popover grammar, both widths: absolute, anchored to the HEADER
+    // box (never the cell), capped + internally scrolled, painting under
+    // the actions. The narrow tier only tightens the cap.
     const panel = ruleIn(stacked(), '.reviewHeaderContext .sessionContextPanel')
-    // In-flow = NOT absolute (relative keeps it in the header's flow AND
-    // carries the isolation z-index; static cannot paint under the actions).
-    expect(panel).not.toMatch(/position:\s*absolute/)
+    // Narrow declares NO positioning of its own (any relative/static here
+    // re-squeezes it into the cell) — it inherits the shared absolute.
+    expect(panel).not.toMatch(/position:\s*(relative|static)/)
     expect(panel).toMatch(/max-height:\s*240px/)
     expect(panel).toMatch(/overflow-y:\s*auto/)
+    // The anchor chain: header positioned, cell wrap static (the wrap's own
+    // relative would re-trap the panel in the cell).
+    expect(ruleOf('reviewHeader')).toMatch(/position:\s*relative/)
+    expect(cssSource).toMatch(/\.reviewHeaderContext \.sessionContextWrap\s*\{[^}]*position:\s*static/)
   })
 
   it('the header context cell is isolated: its expansion paints UNDER the actions, never over them', () => {
