@@ -85,6 +85,13 @@ export function activityGroupKeyOf(taskId: string, day: string, cluster: Activit
   return `${taskId}|${day}|${cluster}`
 }
 
+/** THE remainder-row key for a folded group: `groupKey + '|rest'` — one
+ *  constructor beside the group key, so the two can never drift apart
+ *  (notification folds reuse it with their task-scoped key). */
+export function remainderKeyOf(groupKey: string): string {
+  return `${groupKey}|rest`
+}
+
 /**
  * Fold feed rows into object-day groups (GetStream-style aggregation keyed on
  * object × day, with the filter cluster as the third leg). Single-item groups

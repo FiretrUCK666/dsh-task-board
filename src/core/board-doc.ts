@@ -181,8 +181,10 @@ export const CRUISE_LIMIT_MAX = 20
 
 /** Clamp one concurrency budget to the shared bounds (THE one clamp: writes
  *  floor + clamp through this, reads normalize through this — never two
- *  grammars, mirroring {@link clampWipLimit}). */
+ *  grammars, mirroring {@link clampWipLimit}). NaN falls to MIN (self-guarding:
+ *  no caller memory required — infinities clamp naturally to their end). */
 export function clampCruiseLimit(value: number): number {
+  if (Number.isNaN(value)) return CRUISE_LIMIT_MIN
   return Math.min(CRUISE_LIMIT_MAX, Math.max(CRUISE_LIMIT_MIN, Math.floor(value)))
 }
 
@@ -193,8 +195,10 @@ export const WIP_LIMIT_MIN = 1
 export const WIP_LIMIT_MAX = 20
 
 /** Clamp one WIP number to the shared bounds (THE one clamp: writes floor +
- *  clamp through this, reads normalize through this — never two grammars). */
+ *  clamp through this, reads normalize through this — never two grammars).
+ *  NaN falls to MIN (self-guarding, same as the cruise clamp). */
 export function clampWipLimit(value: number): number {
+  if (Number.isNaN(value)) return WIP_LIMIT_MIN
   return Math.min(WIP_LIMIT_MAX, Math.max(WIP_LIMIT_MIN, Math.floor(value)))
 }
 

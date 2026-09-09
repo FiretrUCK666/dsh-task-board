@@ -234,7 +234,10 @@ export function automationTasksOf(tasks: readonly TaskRecord[]): TaskRecord[] {
 
 /** Whether ONE task carries live automation (THE membership predicate —
  *  the overview filter and the `has:auto` search facet both read this, so
- *  the two can never disagree on what "automated" means). */
+ *  the two can never disagree on what "automated" means). Armed = managed
+ *  here: an enabled rule on a paused column (backlog/review/done) still
+ *  counts — the heartbeat holds (not drops) its slot, and the overview is
+ *  where it is managed. Firing liveness is a ticker concern, not membership. */
 export function hasLiveAutomation(task: TaskRecord): boolean {
   return task.schedule?.enabled === true
     || (task.rules !== undefined && task.rules.some(rule => rule.enabled))

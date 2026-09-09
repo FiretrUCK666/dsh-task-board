@@ -66,7 +66,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   if (item.kind === 'external') return { kind: 'neutral', label: t('board.activityExternal') }
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
-import { activityOf, groupActivityByObjectDay, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
+import { activityOf, groupActivityByObjectDay, remainderKeyOf, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
 import { Chip } from './Chip.tsx'
 
 /**
@@ -1763,7 +1763,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                                 <>
                                   {split.shown.map(renderNotifyRow)}
                                   {split.rest > 0 && (
-                                    <li key={`${entry.head.taskId}|rest`}>
+                                    <li key={remainderKeyOf(entry.head.taskId)}>
                                       <p className={css.detailHint}>
                                         {t('board.activityGroupRest', { n: String(split.rest) })}
                                       </p>
@@ -1938,7 +1938,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       <ul className={css.notifyList}>
                         {split.shown.map(renderActivityRow)}
                         {split.rest > 0 && (
-                          <li key={`${group.key}|rest`}>
+                          <li key={remainderKeyOf(group.key)}>
                             <p className={css.detailHint}>
                               {t('board.activityGroupRest', { n: String(split.rest) })}
                             </p>

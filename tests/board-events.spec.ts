@@ -59,6 +59,15 @@ describe('boardEventsOf', () => {
     expect(boardEventsOf([task], { pendingOf: () => undefined }).some(event => event.kind === 'waiting')).toBe(false)
   })
 
+  it('waiting moments ride the round clock, never task.updatedAt', () => {
+    const base = createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'a')
+    const bumped = { ...base, updatedAt: NOW + 1_000_000 }
+    const task = { ...bumped, executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW + 5, endedAt: undefined, result: undefined, error: undefined }] }
+    const waiting = boardEventsOf([task], { pendingOf: id => (id === 's-1' ? 'question' : undefined) })
+      .find(event => event.kind === 'waiting')!
+    expect(waiting.at).toBe(NOW + 5)
+  })
+
   it('a bound-but-never-run waiting session still emits a waiting moment', () => {
     const base = createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'a')
     const task = { ...base, binds: [{ kind: 'session' as const, sessionId: 's-bound' }] }

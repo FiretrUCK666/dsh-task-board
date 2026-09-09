@@ -83,6 +83,14 @@ export function boardEventsOf(
   ctx: BoardEventContext = {},
 ): BoardEvent[] {
   const events: BoardEvent[] = []
+  // Waiting moments ride the round's own activity clock (started→ended),
+  // exactly like the notification rows: two derivations of "when is this
+  // wait from" must never disagree, even though no view consumes this branch
+  // today (activity skips waiting; notifications derive separately).
+  function waitingAt(task: TaskRecord, sessionId: string): number {
+    const round = task.executions.find(candidate => candidate.sessionId === sessionId)
+    return round !== undefined ? (round.endedAt ?? round.startedAt) : task.updatedAt
+  }
   for (const task of tasks) {
     const baseline = ctx.viewedBaselineOf?.(task)
     const isUnviewed = (at: number): boolean | undefined =>
@@ -200,7 +208,7 @@ export function boardEventsOf(
           taskTitle: task.title,
           kind: 'waiting',
           state: 'running',
-          at: task.updatedAt,
+          at: waitingAt(task, sessionId),
           sessionId,
           waitingKind,
           unviewed: true,

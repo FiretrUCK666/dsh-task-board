@@ -1,7 +1,7 @@
 {
   "name": "dsh-task-board",
   "description": "Task board plugin for the dsh web GUI: a sidebar entry plus a multi-column kanban view with local persistence, task details, and real execution through dsh sessions (session.prompt). Standalone plugin mounted via cordis.patch.yml + a profile node_modules symlink, no dsh source changes.",
-  "version": "0.2.28",
+  "version": "0.2.29",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

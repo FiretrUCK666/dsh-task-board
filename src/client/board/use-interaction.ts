@@ -189,8 +189,9 @@ export function useSessionContext(controller: BoardController, sessionId: string
   return context
 }
 
-/** The pending wire question for one session (mirror-driven, reactive). */
-export function useWireQuestion(controller: BoardController, sessionId: string | undefined): WireQuestion | undefined {
+/** The pending wire question for one session (mirror-driven, reactive).
+ *  Module-private: display surfaces read {@link useAwaitingCard}. */
+function useWireQuestion(controller: BoardController, sessionId: string | undefined): WireQuestion | undefined {
   const [question, setQuestion] = useState<WireQuestion | undefined>(() => controller.questionPendingOf(sessionId))
   useEffect(() => {
     if (sessionId === undefined) {

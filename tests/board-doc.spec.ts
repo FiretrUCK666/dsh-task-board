@@ -8,6 +8,10 @@ import {
   applyCommit,
   boardViewOf,
   changedIdsOf,
+  clampCruiseLimit,
+  clampWipLimit,
+  CRUISE_LIMIT_MAX,
+  CRUISE_LIMIT_MIN,
   diffDeletions,
   emptyBoardDoc,
   isWipOver,
@@ -16,6 +20,8 @@ import {
   normalizeWipLimits,
   sameBoardDocs,
   TOMBSTONE_TTL_MS,
+  WIP_LIMIT_MAX,
+  WIP_LIMIT_MIN,
   type BoardCommit,
 } from '../src/core/board-doc.ts'
 import { createTask, withStatus } from '../src/core/tasks.ts'
@@ -110,6 +116,16 @@ describe('normalizeCruiseValue', () => {
   it('floors handmade floats through the same clamp as writes (never flips to unlimited)', () => {
     expect(normalizeWipLimits({ global: 2.7 })).toEqual({ global: 2 })
     expect(normalizeWipLimits({ running: Number.NaN })).toBeUndefined()
+    expect(normalizeCruiseValue({ enabled: true, limit: 7.9, schedule: [] }).limit).toBe(7)
+  })
+
+  it('clamp functions self-guard NaN (no caller memory required)', () => {
+    expect(clampCruiseLimit(Number.NaN)).toBe(CRUISE_LIMIT_MIN)
+    expect(clampCruiseLimit(Number.POSITIVE_INFINITY)).toBe(CRUISE_LIMIT_MAX)
+    expect(clampCruiseLimit(-3)).toBe(CRUISE_LIMIT_MIN)
+    expect(clampWipLimit(Number.NaN)).toBe(WIP_LIMIT_MIN)
+    expect(clampWipLimit(Number.NEGATIVE_INFINITY)).toBe(WIP_LIMIT_MIN)
+    expect(clampWipLimit(999)).toBe(WIP_LIMIT_MAX)
   })
 
   it('judges over-limit advisory only (undefined = never over)', () => {

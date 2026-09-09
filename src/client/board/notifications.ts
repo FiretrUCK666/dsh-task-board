@@ -159,8 +159,9 @@ export function notificationsExOf(
     })
   }
   // Prove ordering from the shared event model (one derivation, not two):
-  // waiting rows ride task.updatedAt, review rows ride their settle — the
-  // sort below is newest-first with waiting outranking review on ties.
+  // waiting rows ride their round's activity clock, review rows ride their
+  // settle — the sort below is newest-first (then rank, then key) with
+  // waiting outranking review on ties.
   review.sort((a, b) => {
     const rank = (result: NotificationItem['result']): number =>
       result === 'failed' ? 0 : result === 'succeeded' ? 1 : 2
