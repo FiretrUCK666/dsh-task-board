@@ -5619,9 +5619,20 @@ button.interactionOption:hover {
   .boardRowNav {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
+    /* Compact header, owned (not patched): line 1 = back + title + cruise
+       (the always-on toggle fills the right end the relocated 新建 left);
+       line 2 = the state announcement, full width, ONLY when it has
+       content. A toggle beside a title fits 320px; toggle beside 新建 did
+       not (28+132+96+24=280 left the title 16px) — which is why 新建 moved
+       to the thumb bar instead of squeezing in here. */
     grid-template-areas:
-      "back title new"
-      "state state cruise";
+      "back title cruise"
+      "state state state";
+  }
+  /* Stateless: no announcement row at all (not an empty row + a dead gap —
+     the gap between tracks would still paint). */
+  .boardRowNav:not(:has(.boardState)) {
+    grid-template-areas: "back title cruise";
   }
 
   .boardRowNav .boardBack {
@@ -5670,7 +5681,10 @@ button.interactionOption:hover {
 
   .boardRowTools .boardModes {
     grid-area: modes;
-    justify-self: end;
+    /* Left-aligned: the cluster shrank to 整理/自动化 after the relocation
+       (twins live in the thumb bar) — right-aligning two pills leaves the
+       whole left two-thirds void. Left shares the x-line with 返回/筛选. */
+    justify-self: start;
   }
 
   /* The organize bar re-stacks to THREE deterministic rows (colors / count /
@@ -5712,6 +5726,14 @@ button.interactionOption:hover {
 
   .column {
     flex: 0 0 clamp(200px, 46cqw, 320px);
+  }
+
+  /* Empty columns don't stretch: a full-height void reads as "missing".
+     Header + a short quiet block is the whole empty column (non-empty
+     columns keep stretching). Desktop keeps stretching everywhere (its
+     drop-target surface stays large). */
+  .column[data-empty] {
+    align-self: flex-start;
   }
 
   /* The compact column navigator: FIVE EQUAL cells, one tap jumps that status

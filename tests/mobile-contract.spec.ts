@@ -362,16 +362,20 @@ describe('board header and navigator legibility', () => {
   it('the compact board header is a DETERMINISTIC split (never a wrap soup)', () => {
     // The old shape was one flex-wrap row soup: the engine banner appearing
     // pushed 整理/自动化 to a second line and 自动巡航 to a fourth. Compact
-    // fixes the SHAPE with a named grid: line 1 = back + title + 新建任务,
-    // line 2 = 状态 (spanning, left) + 自动巡航 (right).
+    // fixes the SHAPE with a named grid: line 1 = back + title + cruise
+    // (the always-on toggle fills the right end the relocated 新建 left);
+    // line 2 = the state announcement, full width, ONLY when it has
+    // content (stateless = single line, no dead band).
     // Why the cruise switch is NOT beside the new-task button on a phone: the
     // fixed members of that line would be back 28 + cruise pill ~132 + primary
     // ~96 + gaps 24 = 280 of a 320px phone's 296 — the board title would
-    // ellipsize to a stub, i.e. "labels survive" broken by arithmetic.
+    // ellipsize to a stub, i.e. "labels survive" broken by arithmetic. So
+    // 新建 moved to the thumb bar and cruise took line 1 right alone.
     const nav = ruleIn(compact, '.boardRowNav')
     expect(nav).toMatch(/display:\s*grid/)
     expect(nav).toMatch(/grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/)
-    expect(nav).toMatch(/grid-template-areas:[\s\S]*"back title new"[\s\S]*"state state cruise"/)
+    expect(nav).toMatch(/grid-template-areas:[\s\S]*"back title cruise"[\s\S]*"state state state"/)
+    expect(compact).toMatch(/\.boardRowNav:not\(:has\(\.boardState\)\)[\s\S]*?"back title cruise"/)
     expect(compact).toMatch(/\.boardRowNav \.boardSpacer\s*\{\s*\n?\s*display:\s*none/)
     expect(compact).toMatch(/\.boardRowNav \.boardTitle\s*\{[^}]*grid-area:\s*title/)
     expect(compact).toMatch(/\.boardRowNav \.boardState\s*\{[^}]*grid-area:\s*state/)
@@ -473,9 +477,11 @@ describe('alignment grammar (the OCD contract)', () => {
     // The filter field used to share the tool row and get crushed to one
     // glyph ("筛"); a width floor only hides the structure problem. Compact
     // fixes the SHAPE by REORDERING the two lines (user decision): 整理/自动化
-    // take the FIRST line right-aligned, the search takes a full-width line
-    // BELOW it — so the long filter strip sits directly above the five status
-    // columns. 新建任务 no longer lives here at all (it moved to the nav row).
+    // take the FIRST line left-aligned (the cluster shrank after the
+    // relocation — right-aligning two pills voids the left two-thirds), the
+    // search takes a full-width line BELOW it — so the long filter strip
+    // sits directly above the five status columns. 新建任务 no longer lives
+    // here at all (it moved to the nav row).
     const tools = ruleIn(compact, '.boardRowTools')
     expect(tools).toMatch(/display:\s*grid/)
     expect(tools).toMatch(/grid-template-areas:[\s\S]*"modes"[\s\S]*"search"/)
@@ -484,7 +490,7 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(search).toMatch(/max-width:\s*none/)
     const modes = ruleIn(compact, '.boardRowTools .boardModes')
     expect(modes).toMatch(/grid-area:\s*modes/)
-    expect(modes).toMatch(/justify-self:\s*end/)
+    expect(modes).toMatch(/justify-self:\s*start/)
     expect(compact).not.toMatch(/\.boardRowTools \.boardNewTask/)
   })
 
@@ -751,6 +757,18 @@ describe('template library wiring', () => {
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(ruleIn(compact, '.organizeBar')).toMatch(/grid-template-areas:[\s\S]*"colors"[\s\S]*"count"[\s\S]*"actions"/)
     expect(ruleIn(compact, '.organizeBar')).not.toMatch(/"count actions"/)
+  })
+
+  it('compact crowds nothing: modes share the left x, empty columns do not stretch', () => {
+    // After the relocation the modes cluster is two pills — right-aligning
+    // them leaves the left two-thirds void. Left shares the x-line with
+    // 返回/筛选. Empty columns collapse to header + quiet block instead of
+    // full-height voids (desktop keeps stretching its drop surface).
+    const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
+    expect(ruleIn(compact, '.boardRowTools .boardModes')).toMatch(/justify-self:\s*start/)
+    expect(ruleIn(compact, '.column[data-empty]')).toMatch(/align-self:\s*flex-start/)
+    const boardPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    expect(readFileSync(boardPath, 'utf8')).toContain("data-empty={tasks.length === 0 ? '' : undefined}")
   })
 
   it('the narrow rail keeps ONE rhythm (a single gap owns between)', () => {

@@ -1018,6 +1018,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               key={column.status}
               className={css.column}
               data-status={column.status}
+              data-empty={tasks.length === 0 ? '' : undefined}
               data-dragover={dragOver === column.status ? '' : undefined}
               data-dragreject={dragReject === column.status ? '' : undefined}
               data-dropaccept={dropAccept === column.status ? 'link' : undefined}
