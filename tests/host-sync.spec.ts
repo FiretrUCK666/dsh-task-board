@@ -5,7 +5,7 @@
  * transport/timer/clock seams are faked so every path is driven directly.
  */
 import { describe, expect, it } from 'vitest'
-import { BoardSyncClient, type BoardSyncTransport, type SyncFetchResult } from '../src/core/host-sync.ts'
+import { BoardSyncClient, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore, type BoardSyncTransport, type SyncFetchResult, type SyncLedger } from '../src/core/host-sync.ts'
 import { emptyBoardDoc, applyCommit, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView } from '../src/core/board-doc.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 import { BoardDataService } from '../src/host/board-service.ts'
@@ -609,9 +609,7 @@ describe('two replicas over one host service', () => {
 })
 
 // -- helpers ----------------------------------------------------------------
-
-function commitOf(overrides: Partial<BoardCommit> = {}): BoardCommit {
-  return {
+function commitOf(overrides: Partial<BoardCommit> = {}): BoardCommit {  return {
     clientId: 'c',
     tasks: [],
     deleted: [],
@@ -625,3 +623,75 @@ function commitOf(overrides: Partial<BoardCommit> = {}): BoardCommit {
 function boardView(doc: BoardDoc): BoardView {
   return { tasks: doc.tasks, cruise: doc.cruise.value, schedulePresets: doc.schedulePresets.value, runPresets: doc.runPresets.value }
 }
+
+describe('synced store seams (offline-first mount)', () => {
+  function task(id: string, title: string): TaskRecord {
+    return createTask({ title, description: '', prompt: 'p' }, T0, id)
+  }
+  function ledger(opts: { synced: boolean; tasks: TaskRecord[] }): SyncLedger & { pushed: TaskRecord[][] } {
+    const pushed: TaskRecord[][] = []
+    return {
+      pushed,
+      isSynced: () => opts.synced,
+      view: (): BoardView => ({
+        tasks: opts.tasks,
+        cruise: { enabled: false, limit: 5, schedule: [] },
+        schedulePresets: [],
+        runPresets: { presets: [] },
+      }),
+      setTasks: (tasks: readonly TaskRecord[]) => { pushed.push([...tasks]) },
+      setCruise: () => {},
+      setSchedulePresets: () => {},
+      setRunPresets: () => {},
+    }
+  }
+  function mirror(tasks: TaskRecord[]): { load(): TaskRecord[]; save(t: readonly TaskRecord[]): void; clear(): void; saved: TaskRecord[][] } {
+    let rows = [...tasks]
+    const saved: TaskRecord[][] = []
+    return {
+      saved,
+      load: () => [...rows],
+      save: (next: readonly TaskRecord[]) => { rows = [...next]; saved.push([...next]) },
+      clear: () => { rows = [] },
+    }
+  }
+
+  it('reads the mirror before adoption, the host truth after (first paint never waits)', () => {
+    const local = [task('local-1', 'Local')]
+    const remote = [task('host-1', 'Host')]
+    const unsynced = ledger({ synced: false, tasks: remote })
+    const store = new SyncedTaskStore(unsynced, mirror(local))
+    // Pre-sync: the entry opens on local data even though a host doc exists.
+    expect(store.load().map(t => t.id)).toEqual(['local-1'])
+    const synced = ledger({ synced: true, tasks: remote })
+    const adopted = new SyncedTaskStore(synced, mirror(local))
+    expect(adopted.load().map(t => t.id)).toEqual(['host-1'])
+  })
+
+  it('writes always warm the mirror AND mark the synced view (pre-sync writes ride migration)', () => {
+    const sync = ledger({ synced: false, tasks: [] })
+    const local = mirror([])
+    const store = new SyncedTaskStore(sync, local)
+    const rows = [task('fresh', 'Fresh')]
+    store.save(rows)
+    // The mirror has it (migration reads the mirror); the sync face got it too.
+    expect(local.saved).toEqual([rows])
+    expect(sync.pushed).toEqual([rows])
+  })
+
+  it('preset seams follow the same fallback (mirror before adoption, view after)', () => {
+    const unsynced = ledger({ synced: false, tasks: [] })
+    const presets = new SyncedPresetStore(unsynced, {
+      load: () => [{ id: 'local', label: 'Local', cron: '' }],
+      save: () => {},
+      clear: () => {},
+    })
+    expect(presets.load().map(p => p.id)).toEqual(['local'])
+    const runs = new SyncedRunPresetStore(unsynced, {
+      load: () => ({ presets: [{ id: 'r', name: 'R', config: {} }], defaultId: undefined }),
+      save: () => {},
+      clear: () => {},
+    })
+    expect(runs.load().presets.map(p => p.id)).toEqual(['r'])
+  })
+})

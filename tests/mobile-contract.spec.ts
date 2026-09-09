@@ -510,10 +510,10 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(source).toMatch(/\.sessionHintRow \.sessionToolbarActions\s*\{[^}]*margin-top:\s*calc\(\(var\(--dsh-tb-hint-line\)\s*-\s*var\(--dsh-tb-button-h-sm\)\)\s*\/\s*2\)/)
   })
 
-  // (The review-family contracts — the two-dropdown comment panel, the
-  // context dock above the composer, the ONE scroll body and the
-  // panel-anchored breakpoints — live in review-page.spec.ts, the owner of
-  // the review surface.)
+  // (The review-family contracts — the comments fold default-open at every
+  // width with its own capped scroll, the context dock above the composer,
+  // and the panel-anchored breakpoints — live in review-page.spec.ts, the
+  // owner of the review surface.)
 })
 
 describe('session row overlap fix', () => {

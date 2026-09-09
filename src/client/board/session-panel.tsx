@@ -709,15 +709,17 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
  * (`display: contents`) and the panel becomes a THREE-ROW grid —
  * `folds / transcript / composer`. That is the whole fix for 「上下文一多就把
  * 评论和留言按钮全部截断」:
- *   - the folds block is capped (a fraction of the panel) and is the ONLY
- *     scroller of that area, so an expanded config can never eat the screen;
+ *   - the folds block is capped (a fraction of the panel) and bounds a fully
+ *     rendered head, so an expanded config can never eat the screen;
+ *   - the comments box owns its capped scroll at every width (one grammar —
+ *     滑到最新 drives it, desktop and phone);
  *   - the transcript owns the flexible middle row and always keeps room;
  *   - the composer is its own grid row at the panel's bottom edge — not the
  *     last item in someone else's scroll content (which is exactly how it used
  *     to end up below the fold, unreachable).
- * Because each fold renders its body FULLY inside the capped block (no nested
- * scrollbar), opening one never reflows the other, and 滑到最新 drives the
- * block that actually holds the comments.
+ * Because the folds block is capped and the comments box scrolls inside
+ * its own cap, opening one fold never reflows the other, and 滑到最新
+ * drives the box that actually holds the comments — at every width.
  *
  * Callers pass data and their send semantics; the grammar, the folds and the
  * hint line live here exactly once — no panel can drift again.
@@ -741,22 +743,26 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   composer: ReactNode
 }) {
   // The comment thread follows its latest round through the SAME mechanism as
-  // the transcript (resolved scroller + capture listener + pinning). On a wide
-  // rail the ROOT is the comments box itself; on a phone the comments box does
-  // not scroll (the capped folds block does) and `resolveScroller` finds that
-  // one — 滑到最新 always drives the region that actually holds the comments.
+  // the transcript (resolved scroller + capture listener + pinning). The ROOT
+  // is the comments box itself at every width — 滑到最新 always drives the
+  // region that actually holds the comments.
   const commentsScrollRef = useRef<HTMLDivElement | null>(null)
   const [commentsAtBottom, setCommentsAtBottom] = useState(true)
-  // Both folds start FOLDED on a phone: the conversation and the send box are
-  // the first screen. A wide rail absorbs the config (two-column config grid),
-  // so it starts open there. The signal is the PANEL's own width (the same
+  // Both folds start with the config head FOLDED on a phone: the
+  // conversation and the send box are the first screen, while the comments
+  // fold starts OPEN at every width (one grammar — the thread is always the
+  // first screen, collapsible on tap). A wide rail absorbs the config
+  // (two-column config grid), so it starts open there. The signal is the PANEL's own width (the same
   // surface the CSS container query measures, via `useSurfaceNarrow`) — NOT the
   // viewport: a mid-size window with the shell sidebar open already renders the
   // stacked panel while the viewport still says "wide", and a default that
   // followed the viewport would disagree with what the user is looking at.
   const [narrowPanel, foldsRef] = useSurfaceNarrow('[data-dsh-taskboard-panel]', 600)
   const [headOpen, setHeadOpen] = useState(!narrowPanel)
-  const [commentsOpen, setCommentsOpen] = useState(!narrowPanel)
+  // The comments fold starts OPEN at every width (one grammar, desktop and
+  // phone): the thread is the first screen, and the Disclosure row collapses
+  // it on tap. Only the config head starts folded on a phone.
+  const [commentsOpen, setCommentsOpen] = useState(true)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
   const { measure: onCommentsScroll, jumpToBottom: jumpComments } = useFollowScroll(
     commentsScrollRef, commentsAtBottom, setCommentsAtBottom, threadFingerprint,
@@ -821,12 +827,13 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             />
           </Disclosure>
         </div>
-        {/* The comments: ONE Disclosure fold. OPENED = the thread box (its own
-            scroll on a wide rail; in-flow inside the capped folds block on a
-            phone). A pending interaction FORCE-opens it — the InteractionCard
-            carries the answer affordance (in place on legacy hosts,
-            navigate-to-answer on 0.1.5), so a collapsed fold can never hide
-            it; the summary names that wait too. */}
+        {/* The comments: ONE Disclosure fold, open at every width. OPENED =
+            the thread box with its own capped scroll (the desktop grammar,
+            both widths — 滑到最新 drives this box, the follow hook resolves
+            the real scroller). A pending interaction FORCE-opens it — the
+            InteractionCard carries the answer affordance (in place on legacy
+            hosts, navigate-to-answer on 0.1.5), so a collapsed fold can never
+            hide it; the summary names that wait too. */}
         <div className={css.sessionRailComments} data-open={commentsOpen || interaction !== undefined}>
           <Disclosure
             title={t('review.comments')}

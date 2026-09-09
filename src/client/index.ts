@@ -233,9 +233,10 @@ export function apply(ctx: ClientContext): void {
     const api = buildApi(ctx)
 
     // ── sync client: this tab becomes a replica of the host board document ──
-    // The client boots BEFORE the controller so the first ledger the board
-    // renders is already the host truth (or, if the host serves no synced
-    // board, the plain localStorage mode — today's behavior, unchanged).
+    // Offline-first: the controller mounts on the LOCAL mirror instantly (the
+    // entry binds below without awaiting the network) and the host truth
+    // converges in the background settle at the end of this function (or the
+    // board stays on the mirror when the host serves no synced board).
     const sync = new BoardSyncClient({
       transport: createBoardTransport(),
       defer: (fn, ms) => {
@@ -273,26 +274,11 @@ export function apply(ctx: ClientContext): void {
         console.error('[dsh-task-board] pre-sync backup failed', error)
       }
     })
-    const mode = await sync.start(readLocalView)
-    // The only long await in the mount path is also the window where the user
-    // can flip the plugin off in settings: re-check before committing to the
-    // mount, and never leave the sync loops running behind a closed door.
-    if (!currentEnabled()) {
-      sync.dispose()
-      return
-    }
-    const synced = mode === 'synced'
-    // sync settled
-    if (synced) {
-      // Warm the offline mirror with the host truth so a later reload (or a
-      // dropped connection) first-paints the real board, not a stale copy.
-      writeMirror(sync.view())
-    }
-
-    // Core wiring: real runtime faces into the framework-free services.
-    const store = synced
-      ? new SyncedTaskStore(sync, new LocalStorageTaskStore())
-      : new LocalStorageTaskStore()
+    // Offline-first mount: the board opens on the LOCAL mirror instantly (the
+    // entry binds below without awaiting the network); the host truth
+    // converges in the background and the stores flip to it on adoption.
+    // A hanging socket must never hold the entry hostage (mobile "点了没反应").
+    const store = new SyncedTaskStore(sync, new LocalStorageTaskStore())
     // Comment continuations go through the host-level session.prompt API:
     // it addresses any session id (the execution session is usually not
     // the currently staged one, so a client binding is not guaranteed). The
@@ -728,24 +714,22 @@ export function apply(ctx: ClientContext): void {
       store,
       exec,
       questionRpc: mirror ?? questionTracker,
-      // Presets ride the shared document in synced mode (edits propagate to
-      // every replica), the local keys otherwise. The localStorage instance
-      // stays as the offline mirror behind the synced one.
-      presetStore: synced ? new SyncedPresetStore(sync, new LocalStoragePresetStore()) : undefined,
-      runPresetStore: synced ? new SyncedRunPresetStore(sync, new LocalStorageRunPresetStore()) : undefined,
+      // Presets ride the shared document once adopted (edits propagate to
+      // every replica); before that the local keys serve (offline-first).
+      // The localStorage instance stays as the offline mirror behind the
+      // synced one either way.
+      presetStore: new SyncedPresetStore(sync, new LocalStoragePresetStore()),
+      runPresetStore: new SyncedRunPresetStore(sync, new LocalStorageRunPresetStore()),
       // A non-engine replica relays a user-initiated launch to the lease
-      // holder (the host forwards it over the SSE command frame). In fallback
-      // mode this replica is always the engine, so the relay is never used.
-      requestLaunch: synced
-        ? (taskId, trigger) => { sync.requestLaunch(taskId, trigger) }
-        : undefined,
+      // holder (the host forwards it over the SSE command frame). Pre-sync
+      // this replica is its own engine, so the relay is never used.
+      requestLaunch: (taskId, trigger) => { if (sync.isSynced()) sync.requestLaunch(taskId, trigger) },
       // The engine-note dialog's 「重新检查」: renew the lease NOW (the sync
       // client's seat announcement then re-mirrors hostProto into the
       // controller), so a user who just restarted the host sees the banner
       // clear on the spot instead of waiting for the next heartbeat.
-      seatRecheck: synced
-        ? async () => { await sync.renewLease() }
-        : undefined,
+      // Pre-sync there is no seat to re-check.
+      seatRecheck: async () => { if (sync.isSynced()) await sync.renewLease() },
       sessions: {
         list: sessions.list,
         exists: id => sessions.list.getSnapshot().byId[id as SessionId] !== undefined,
@@ -785,9 +769,7 @@ export function apply(ctx: ClientContext): void {
       // synced mode it rides the shared document section (every replica sees
       // the same switch/limit/windows) with the localStorage face kept as
       // the offline mirror; in fallback mode localStorage IS the truth.
-      cruiseStorage: synced
-        ? new SyncedCruiseStore(sync, localCruise)
-        : localCruise,
+      cruiseStorage: new SyncedCruiseStore(sync, localCruise),
       // Review-page transcripts: recent history of an execution session,
       // plus one earlier page at a time (the native "load earlier" grammar —
       // the tail window is message-aligned, so refresh reads the same tail
@@ -985,18 +967,13 @@ export function apply(ctx: ClientContext): void {
     })
     // Adopt the engine seat BEFORE start(): start() runs a reconcile and (when
     // cruise is on) a dispatch, both seat-gated — a viewer must never pump on
-    // boot alongside the real engine (that would double-launch). sync.start
-    // already awaited the first lease probe, so isEngine() is authoritative.
+    // boot alongside the real engine (that would double-launch). Pre-sync this
+    // replica is its own engine (fallback discipline); the background settle
+    // below adopts the real seat once the lease first answers — sync.start
+    // awaited that probe before, so isEngine() was authoritative there and is
+    // authoritative here right after adoption.
     // The protocol is adopted only when the first lease actually answered —
     // "no evidence yet" must never read as "old host" (a false stale banner).
-    // sync settled
-    if (synced) {
-      controller.syncActive = true
-      const proto = sync.hostProtoVersion()
-      if (proto !== undefined) controller.setHostProto(proto)
-      controller.setHostBoot(sync.hostBootTime())
-      controller.setEngine(sync.isEngine())
-    }
     controller.start()
     // The legacy mux turn fan-out: on hosts that still serve it, every live
     // `user/message` frame goes straight to the controller (engine-only
@@ -1021,29 +998,28 @@ export function apply(ctx: ClientContext): void {
     // first real message).
     controller.untitledSessionLabel = t(UNTITLED_SESSION_KEY)
 
-    // Sync wiring (only meaningful in synced mode): every remote document lands
-    // in the controller + refreshes the offline mirror; the seat and relayed
-    // launches follow the host's lease/command frames.
-    // sync settled
-    if (synced) {
-      sync.onRemote(view => {
-        controller.applyRemote(view)
-        writeMirror(view)
-      })
-      // The seat announcement carries BOTH halves: which replica holds the
-      // engine, and the host's protocol version (a restart moves the
-      // protocol without moving the seat — this is what clears the stale
-      // banner live on every device, no manual refresh needed). The host's
-      // boot instant rides the same read: it is what the dialog shows as
-      // evidence when a user insists they already restarted.
-      sync.onEngine(held => {
-        const proto = sync.hostProtoVersion()
-        if (proto !== undefined) controller.setHostProto(proto)
-        controller.setHostBoot(sync.hostBootTime())
-        controller.setEngine(held)
-      })
-      sync.onCommand(command => { void controller.runTask(command.taskId, command.trigger) })
-    }
+    // Sync wiring: every remote document lands in the controller + refreshes
+    // the offline mirror; the seat and relayed launches follow the host's
+    // lease/command frames. Registered upfront — nothing flows before the
+    // background settle adopts the seat, so pre-sync taps behave exactly
+    // like today's fallback mode.
+    sync.onRemote(view => {
+      controller.applyRemote(view)
+      writeMirror(view)
+    })
+    // The seat announcement carries BOTH halves: which replica holds the
+    // engine, and the host's protocol version (a restart moves the
+    // protocol without moving the seat — this is what clears the stale
+    // banner live on every device, no manual refresh needed). The host's
+    // boot instant rides the same read: it is what the dialog shows as
+    // evidence when a user insists they already restarted.
+    sync.onEngine(held => {
+      const proto = sync.hostProtoVersion()
+      if (proto !== undefined) controller.setHostProto(proto)
+      controller.setHostBoot(sync.hostBootTime())
+      controller.setEngine(held)
+    })
+    sync.onCommand(command => { void controller.runTask(command.taskId, command.trigger) })
 
     // Scheduled runs: a browser-side heartbeat that triggers due tasks through
     // the same run path as the manual Run button. The first tick is gated on
@@ -1060,7 +1036,7 @@ export function apply(ctx: ClientContext): void {
       runTask: id => controller.runTask(id, 'schedule'),
       applySchedule: (id, nextRunAt, lastTriggeredAt, runCount, disable) =>
         controller.applyScheduleNextRun(id, nextRunAt, lastTriggeredAt, runCount, disable),
-      ready: () => sessions.list.getSnapshot().phase === 'ready' && (!synced || sync.isEngine()),
+      ready: () => sessions.list.getSnapshot().phase === 'ready' && (!sync.isSynced() || sync.isEngine()),
       // Cruise scheduled windows flip on/off at their boundaries on the same
       // heartbeat as task schedules.
       cruiseTick: now => controller.tickCruise(now),
@@ -1091,6 +1067,30 @@ export function apply(ctx: ClientContext): void {
       // DOM failures degrade the board, never the GUI.
       console.error('[dsh-task-board] mount failed:', error)
     }
+    // Host-truth convergence runs in the BACKGROUND: the entry above is
+    // already live on the local mirror. When the line allows, the host doc
+    // (unioned with any pre-sync local writes by start's migration) replaces
+    // the mirror-loaded ledger — one notify, no echo — and the real seat is
+    // adopted. A disabled plugin disposes instead of converging behind a
+    // closed door; a failed start simply stays on the mirror (fallback).
+    void sync.start(readLocalView).then(mode => {
+      if (!currentEnabled()) {
+        sync.dispose()
+        return
+      }
+      if (mode !== 'synced') return
+      // Warm the offline mirror with the host truth so a later reload (or a
+      // dropped connection) first-paints the real board, not a stale copy.
+      writeMirror(sync.view())
+      controller.syncActive = true
+      const proto = sync.hostProtoVersion()
+      if (proto !== undefined) controller.setHostProto(proto)
+      controller.setHostBoot(sync.hostBootTime())
+      controller.setEngine(sync.isEngine())
+      controller.applyRemote(sync.view())
+    }).catch(error => {
+      console.error('[dsh-task-board] sync settle failed (staying on the local mirror):', error)
+    })
     uiDisposer = () => {
       for (const dispose of disposers.splice(0)) dispose()
       detachTurnWatcher()

@@ -5234,12 +5234,16 @@ button.interactionOption:hover {
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
-  /* The comments box hands its scroll to the folds block: on a phone the
-     region that scrolls IS the capped block containing it, so 滑到最新 drives
-     that one (the follow hook resolves the real scroller). A scroller inside
-     a scroller is the double-bar confusion this avoids. */
+  /* The comments box owns its scroll at EVERY width (the desktop grammar,
+     both tiers): capped so a long thread scrolls inside its box instead of
+     growing the folds area and pushing the transcript/composer off the
+     phone screen. The cap is a px ceiling against the board box, never a
+     container-height unit; the folds block keeps its own outer cap as the
+     bound for a fully rendered head. 滑到最新 drives this box on both
+     widths (the follow hook resolves the real scroller). */
   .commentsScroll {
-    overflow-y: visible;
+    overflow-y: auto;
+    max-height: 300px;
   }
 
   /* The header re-maps the SAME five names to two deterministic lines (no

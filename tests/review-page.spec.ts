@@ -175,12 +175,14 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(body).toMatch(/overflow:\s*hidden/)
     // The rail stops being a BOX so its segments can join the panel grid.
     expect(ruleIn(block, '.reviewRail')).toMatch(/display:\s*contents/)
-    // Each region owns ONE scroll: the capped folds block scrolls, the
-    // conversation scrolls, the composer never does; the comments box hands
-    // its scroll to the folds block (no scroller inside a scroller).
+    // Each region owns its scroll: the folds block is capped, the comments
+    // box owns its capped scroll at EVERY width (one grammar — 滑到最新
+    // drives it, desktop and phone), the conversation scrolls, the composer
+    // never does.
     expect(ruleIn(block, '.sessionRailFolds')).toMatch(/grid-area:\s*folds/)
     expect(ruleIn(block, '.sessionRailFolds')).toMatch(/min-height:\s*0/)
-    expect(ruleIn(block, '.commentsScroll')).toMatch(/overflow-y:\s*visible/)
+    expect(ruleIn(block, '.commentsScroll')).toMatch(/overflow-y:\s*auto/)
+    expect(ruleIn(block, '.commentsScroll')).toMatch(/max-height:\s*300px/)
     expect(ruleIn(block, '.reviewMain')).toMatch(/grid-area:\s*transcript/)
     expect(ruleIn(block, '.reviewComposer')).toMatch(/grid-area:\s*composer/)
     // The one case a non-shrinkable row cannot solve — a tall composer (long
@@ -308,6 +310,10 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
     const panelSource = readFileSync(panelPath, 'utf8')
     expect(panelSource).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-panel\]', 600\)/)
+    // The comments fold starts OPEN at every width (one grammar — the thread
+    // is the first screen, collapsible on tap); only the config head keeps
+    // the narrow-default-folded split.
+    expect(panelSource).toMatch(/useState\(true\)/)
     expect(panelSource).toMatch(/useState\(!narrowPanel\)/)
     const framePath = fileURLToPath(new URL('../src/client/board/SessionFrame.tsx', import.meta.url))
     expect(readFileSync(framePath, 'utf8')).toContain('data-dsh-taskboard-panel=""')

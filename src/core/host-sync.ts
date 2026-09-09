@@ -278,6 +278,14 @@ export class BoardSyncClient {
     return this.mode
   }
 
+  /** Whether the host truth is adopted (false before/during boot and in
+   *  fallback mode). Store seams read the offline mirror while false, so the
+   *  board mounts on local data instantly and converges when the line allows —
+   *  the entry never waits on the network. */
+  isSynced(): boolean {
+    return this.mode === 'synced'
+  }
+
   isEngine(): boolean {
     return this.engine
   }
@@ -570,6 +578,8 @@ export class BoardSyncClient {
 
 /** The slice of the sync client the adapters use (easy to fake in tests). */
 export interface SyncLedger {
+  /** Whether the host truth is adopted (see {@link BoardSyncClient.isSynced}). */
+  isSynced(): boolean
   view(): BoardView
   setTasks(tasks: readonly TaskRecord[]): void
   setCruise(value: CruiseValue): void
@@ -577,7 +587,10 @@ export interface SyncLedger {
   setRunPresets(value: RunPresetsDocument): void
 }
 
-/** TaskStore over the synced document (+ optional warm mirror). */
+/** TaskStore over the synced document (+ optional warm mirror). Reads take
+ *  the offline mirror until the host truth is adopted, so first paint never
+ *  waits on the network; writes always warm the mirror AND mark the synced
+ *  view dirty (a pre-sync write rides the boot migration via the mirror). */
 export class SyncedTaskStore implements TaskStore {
   constructor(
     private readonly sync: SyncLedger,
@@ -585,6 +598,7 @@ export class SyncedTaskStore implements TaskStore {
   ) {}
 
   load(): TaskRecord[] {
+    if (!this.sync.isSynced()) return this.mirror?.load() ?? this.sync.view().tasks
     return this.sync.view().tasks
   }
 
@@ -600,8 +614,8 @@ export class SyncedTaskStore implements TaskStore {
 }
 
 /** PresetStore over the synced schedule-presets section. The mirror is
- *  write-only (offline bootstrap for fallback mode); reads always take the
- *  synced view, which is the freshest truth in synced mode. */
+ *  write-only once synced (the synced view is the freshest truth); before
+ *  adoption it is the read source (same offline-first discipline as tasks). */
 export class SyncedPresetStore implements PresetStore {
   constructor(
     private readonly sync: SyncLedger,
@@ -609,6 +623,7 @@ export class SyncedPresetStore implements PresetStore {
   ) {}
 
   load(): SchedulePreset[] {
+    if (!this.sync.isSynced()) return this.mirror?.load() ?? this.sync.view().schedulePresets
     return this.sync.view().schedulePresets
   }
 
@@ -632,6 +647,7 @@ export class SyncedRunPresetStore implements RunPresetStore {
   ) {}
 
   load(): RunPresetsDocument {
+    if (!this.sync.isSynced()) return this.mirror?.load() ?? this.sync.view().runPresets
     return this.sync.view().runPresets
   }
 
