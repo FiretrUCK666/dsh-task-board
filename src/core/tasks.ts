@@ -852,8 +852,9 @@ export function settleExecution(
   // ANOTHER of this card's sessions still working? The card stays 进行中:
   // settling one lane must not yank it into 待审核/待办 while a second
   // conversation it owns is running (the column aggregates its sessions, it
-  // is not a record of the last round to finish).
-  const othersOpen = openRoundsOf({ ...task, executions }).length > 0
+  // is not a record of the last round to finish). Refinement never counts:
+  // preparation keeps its own column and must not pin execution there.
+  const othersOpen = openExecutionRoundsOf({ ...task, executions }).length > 0
   const status = settleColumnOf(task, outcome, othersOpen, chainIncomplete, batchIncomplete)
   return { ...task, status, updatedAt: now, executions }
 }
@@ -891,6 +892,17 @@ export function isOpenRound(round: ExecutionRecord): boolean {
  *  running. */
 export function openRoundsOf(task: TaskRecord): ExecutionRecord[] {
   return task.executions.filter(isOpenRound)
+}
+
+/**
+ * Every in-flight EXECUTION round (refinement excluded). Refinement is
+ * preparation inside its own column — it holds a budget slot while working
+ * but must never hold the card in 进行中 nor block a plain settle from
+ * landing in 待审核 (the display truth `executing` already excludes it;
+ * the column gate follows the same law here).
+ */
+export function openExecutionRoundsOf(task: TaskRecord): ExecutionRecord[] {
+  return task.executions.filter(round => round.refine !== true && isOpenRound(round))
 }
 
 /** Whether a given session of the task is busy (an in-flight round anchored

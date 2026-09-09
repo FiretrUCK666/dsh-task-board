@@ -58,6 +58,13 @@ describe('boardEventsOf', () => {
     expect(events.filter(event => event.kind === 'waiting')).toHaveLength(1)
     expect(boardEventsOf([task], { pendingOf: () => undefined }).some(event => event.kind === 'waiting')).toBe(false)
   })
+
+  it('a bound-but-never-run waiting session still emits a waiting moment', () => {
+    const base = createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'a')
+    const task = { ...base, binds: [{ kind: 'session' as const, sessionId: 's-bound' }] }
+    const events = boardEventsOf([task], { pendingOf: id => (id === 's-bound' ? 'approval' : undefined) })
+    expect(events.filter(event => event.kind === 'waiting').map(event => event.sessionId)).toEqual(['s-bound'])
+  })
 })
 
 describe('day grouping', () => {

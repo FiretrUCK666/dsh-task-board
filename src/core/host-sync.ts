@@ -203,8 +203,22 @@ export class BoardSyncClient {
       // it actually diverged.
       const at = this.now()
       const hostIds = new Map(this.baseline.tasks.map(task => [task.id, task]))
-      const identical = legacyView.tasks.length === this.baseline.tasks.length
+      const tasksIdentical = legacyView.tasks.length === this.baseline.tasks.length
         && legacyView.tasks.every(task => hostIds.get(task.id)?.updatedAt === task.updatedAt)
+      // Sections are single-valued: any local non-default that differs from
+      // the host is a divergence worth backing up (the old probe only looked
+      // at tasks, so a late device's edited cruise/presets vanished silently).
+      const hostView = boardViewOf(this.baseline)
+      const sectionsIdentical = JSON.stringify({
+        cruise: legacyView.cruise,
+        schedulePresets: legacyView.schedulePresets,
+        runPresets: legacyView.runPresets,
+      }) === JSON.stringify({
+        cruise: hostView.cruise,
+        schedulePresets: hostView.schedulePresets,
+        runPresets: hostView.runPresets,
+      })
+      const identical = tasksIdentical && sectionsIdentical
       if (!identical) {
         if (this.baseline.revision === 0) {
           this.dirty = {

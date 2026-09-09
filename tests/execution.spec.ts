@@ -187,13 +187,15 @@ describe('ExecutionService.run', () => {
     ]])
   })
 
-  it('falls back to the task title when the prompt is blank', async () => {    const { env, drivers } = makeEnv()
+  it('rejects a blank prompt without touching a session (no title fallback)', async () => {
+    const { env, drivers } = makeEnv()
     const service = new ExecutionService(env)
     const task = createTask({ title: '只是标题', description: '', prompt: '  ' }, NOW, 'task-2')
     const { execution } = startExecution(task, NOW, 'exec-1')
-    const promise = service.run(task, execution, () => {})
-    await promise
-    expect(drivers.get('s-1')?.promptCalls[0]).toEqual([{ type: 'text', text: '只是标题' }])
+    const events: Array<{ kind: string; outcome?: string; error?: string }> = []
+    await service.run(task, execution, event => { events.push(event as { kind: string; outcome?: string; error?: string }) })
+    expect(drivers.get('s-1')?.promptCalls ?? []).toHaveLength(0)
+    expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'failed' })
   })
 
   it('settles failed when the agent reports an error', async () => {
@@ -879,6 +881,27 @@ describe('ExecutionService.commentRun', () => {
     ])
   })
 
+  it('settles a no-driver no-history comment on the second consecutive idle pass (never wedges the lane)', async () => {
+    const { env, setSummary, drivers } = makeEnv()
+    // No client binding for the linked session, no history face wired.
+    drivers.delete('s-linked')
+    env.sendComment = async () => ({ ok: true })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-linked', comment: '继续' }
+    const events: ExecutionEvent[] = []
+    await service.commentRun(running, round, 's-linked', '继续', event => { events.push(event) }, 'queue')
+    // First idle pass: pre-turn blip, stays pending.
+    setSummary('s-linked', false)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events).toEqual([])
+    // Second consecutive idle: legacy optimistic fallback settles it.
+    setSummary('s-linked', false)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'succeeded' })
+  })
+
   it('settles a matched pure-configuration command right after the detection window', async () => {
     const { env } = makeEnv({ commandGraceMs: 0 })
     env.sendComment = async () => { throw new Error('plain path must not run for a command round') }
@@ -1120,7 +1143,7 @@ describe('ExecutionService.run slash prompts (native command registry path)', ()
     expect(drivers.get('s-1')?.promptCalls).toEqual([[{ type: 'text', text: '/plan 继续' }]])
   })
 
-  it('gives a task whose title fills in for a blank prompt the same slash routing', async () => {
+  it('rejects a blank prompt even when the title looks like a slash command (no title fallback)', async () => {
     const { env, drivers } = makeEnv({ commandGraceMs: 0 })
     const sent: string[] = []
     env.sendCommand = async (_sessionId, line) => {
@@ -1130,9 +1153,11 @@ describe('ExecutionService.run slash prompts (native command registry path)', ()
     const service = new ExecutionService(env)
     const task = createTask({ title: '/remind 午饭', description: '', prompt: '   ' }, NOW, 'task-1')
     const { execution } = startExecution(task, NOW, 'exec-1')
-    await service.run(task, execution, () => {})
-    expect(sent).toEqual(['/remind 午饭'])
-    expect(drivers.get('s-1')?.promptCalls).toHaveLength(0)
+    const events: Array<{ kind: string; outcome?: string }> = []
+    await service.run(task, execution, event => { events.push(event as { kind: string; outcome?: string }) })
+    expect(sent).toEqual([])
+    expect(drivers.get('s-1')?.promptCalls ?? []).toHaveLength(0)
+    expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'failed' })
   })
 })
 

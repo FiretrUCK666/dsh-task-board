@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -371,6 +371,21 @@ describe('settleExecution', () => {
     expect(settleColumnOf(running, 'cancelled', false, false, false)).toBe('todo')
     expect(settleColumnOf(running, 'succeeded', false, false, false)).toBe('review')
     expect(settleColumnOf(running, 'succeeded', true, false, false)).toBe('running')
+  })
+
+  it('an open refine round never pins a plain settle in running', () => {
+    let task = sampleTask()
+    const plain = startExecution(task, NOW, 'e-plain')
+    task = {
+      ...plain.task,
+      executions: [
+        ...plain.task.executions.map(round => ({ ...round, sessionId: 's-plain' })),
+        { id: 'ref-1', sessionId: 's-refine', startedAt: NOW + 1, endedAt: undefined, result: undefined, error: undefined, refine: true },
+      ],
+    }
+    expect(openExecutionRoundsOf(task).map(round => round.id)).toEqual(['e-plain'])
+    const settled = settleExecution(task, 'e-plain', 'succeeded', NOW + 2, undefined)
+    expect(settled.status).toBe('review')
   })
 })
 

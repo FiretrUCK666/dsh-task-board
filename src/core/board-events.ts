@@ -17,6 +17,7 @@
  * Pure and framework-free so every consumer unit-tests in isolation.
  */
 import type { PendingInteractionKind } from './controller.ts'
+import { relatedSessionIdsOf } from './task-live.ts'
 import { isOpenRound, type TaskRecord } from './tasks.ts'
 
 /** What happened. */
@@ -65,6 +66,9 @@ export interface BoardEventContext {
   viewedBaselineOf?: (task: TaskRecord) => number
   /** Resolve a session id to its display title (notifications only). */
   titleOf?: (sessionId: string) => string
+  /** Live linked-session ids per task (bound workspace members). When absent,
+   *  waiting falls back to refine + binds + execution rounds (legacy). */
+  linkedIdsOf?: (task: TaskRecord) => readonly string[]
 }
 
 /**
@@ -179,7 +183,10 @@ export function boardEventsOf(
         unviewed: isUnviewed(at),
       })
     }
-    // LIVE waiting moments (one per waiting related session, deduped).
+    // LIVE waiting moments (one per waiting RELATED session, deduped) — the
+    // same related set the live state reads (refine + binds + execution
+    // rounds + linked ids), so a bound-but-never-run waiting session still
+    // lights the bell instead of only breathing the card.
     if (ctx.pendingOf !== undefined) {
       const seen = new Set<string>()
       const pushWaiting = (sessionId: string | undefined): void => {
@@ -199,8 +206,7 @@ export function boardEventsOf(
           unviewed: true,
         })
       }
-      for (const round of task.executions) pushWaiting(round.sessionId)
-      pushWaiting(task.refineSessionId)
+      for (const { sessionId } of relatedSessionIdsOf(task, ctx.linkedIdsOf?.(task))) pushWaiting(sessionId)
     }
   }
   return events.sort((a, b) => b.at - a.at)

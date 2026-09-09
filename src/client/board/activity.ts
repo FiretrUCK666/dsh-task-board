@@ -55,11 +55,9 @@ export function activityOf(
   filter: ActivityFilter = {},
   isUnviewed?: (task: TaskRecord, at: number) => boolean,
 ): ActivityItem[] {
-  const events = boardEventsOf(tasks, {
-    ...(isUnviewed !== undefined
-      ? { viewedBaselineOf: undefined }
-      : {}),
-  })
+  // Upstream is already newest-first; filtering preserves order, so no
+  // re-sort here (one ordering, one place).
+  const events = boardEventsOf(tasks)
   const items: ActivityItem[] = []
   for (const event of events) {
     if (event.kind === 'waiting') continue
@@ -79,9 +77,7 @@ export function activityOf(
     }
     items.push(mapped)
   }
-  return items
-    .sort((a, b) => b.at - a.at)
-    .slice(0, ACTIVITY_LIMIT)
+  return items.slice(0, ACTIVITY_LIMIT)
 }
 
 /** Map one shared event onto the feed's row grammar. */

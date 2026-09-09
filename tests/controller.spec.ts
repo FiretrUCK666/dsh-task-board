@@ -567,6 +567,46 @@ describe('view state', () => {
     expect(opened).toBe(false)
     expect(sessions.openCalls).toEqual([]) // never navigated
   })
+
+  it('markTaskViewed clears one card without navigating', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub, { now: () => clock })
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'p' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: 'p' })!
+    clock = NOW + 1_000
+    await controller.runTask(a.id)
+    clock = NOW + 1_500
+    exec.runCalls[0].fire({ kind: 'settled', taskId: a.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    expect(taskUnviewed(controller.getSnapshot().tasks.find(task => task.id === a.id)!)).toBe(true)
+    clock = NOW + 2_000
+    controller.markTaskViewed(a.id)
+    expect(taskUnviewed(controller.getSnapshot().tasks.find(task => task.id === a.id)!)).toBe(false)
+    expect(store.load().find(task => task.id === a.id)!.viewedAt).toBe(NOW + 2_000)
+    // Untouched cards keep their baselines; selection never moves.
+    expect(controller.getSnapshot().selectedTaskId).toBeUndefined()
+    expect(b.viewedAt).toBe(NOW)
+  })
+
+  it('markTasksViewed clears an explicit id set in one write', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub, { now: () => clock })
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'p' })!
+    const b = controller.createTask({ title: 'b', description: '', prompt: 'p' })!
+    clock = NOW + 1_000
+    await controller.runTask(a.id)
+    await controller.runTask(b.id)
+    clock = NOW + 1_500
+    for (const call of exec.runCalls) {
+      call.fire({ kind: 'settled', taskId: call.taskId, executionId: call.executionId, outcome: 'succeeded' })
+    }
+    clock = NOW + 2_000
+    controller.markTasksViewed([a.id, 'unknown-id'])
+    const tasks = controller.getSnapshot().tasks
+    expect(taskUnviewed(tasks.find(task => task.id === a.id)!)).toBe(false)
+    expect(taskUnviewed(tasks.find(task => task.id === b.id)!)).toBe(true)
+  })
 })
 
 describe('run loop', () => {

@@ -240,6 +240,18 @@ describe('BoardSyncClient migration', () => {
     expect(backups).toHaveLength(0)
     expect(t.calls.commit).toHaveLength(0)
   })
+
+  it('backs up when tasks match but sections diverged (late-device cruise is never silently dropped)', async () => {
+    const { client, t } = makeClient()
+    const doc = applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [task('a')] }), T0)
+    t.setDoc(doc)
+    const backups: BoardView[] = []
+    client.onBackup(v => backups.push(v))
+    const local = boardView(doc)
+    await client.start(() => ({ ...local, cruise: { enabled: true, limit: 9, schedule: [] } }))
+    expect(backups).toHaveLength(1)
+    expect(backups[0].cruise.enabled).toBe(true)
+  })
 })
 
 describe('BoardSyncClient commit', () => {

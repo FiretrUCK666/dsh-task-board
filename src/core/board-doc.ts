@@ -160,6 +160,12 @@ export const TOMBSTONE_TTL_MS = 30 * 86_400_000
 /** The default cruise section value of a never-written board. */
 export const DEFAULT_CRUISE_VALUE: CruiseValue = { enabled: false, limit: 5, schedule: [] }
 
+/** Concurrency budget bounds — THE one declaration (the controller clamps
+ *  writes to the same pair; normalization clamps reads, so a remote commit
+ *  can never inject an unbounded budget). */
+export const CRUISE_LIMIT_MIN = 1
+export const CRUISE_LIMIT_MAX = 20
+
 /** A fresh empty document (host first boot; revision 0 marks "never committed"). */
 export function emptyBoardDoc(now: number): BoardDoc {
   return {
@@ -179,7 +185,8 @@ export function emptyBoardDoc(now: number): BoardDoc {
 export function normalizeCruiseValue(value: unknown): CruiseValue {
   if (typeof value !== 'object' || value === null) return { ...DEFAULT_CRUISE_VALUE }
   const row = value as Record<string, unknown>
-  const limit = typeof row.limit === 'number' && Number.isInteger(row.limit) && row.limit >= 1 ? row.limit : DEFAULT_CRUISE_VALUE.limit
+  const raw = typeof row.limit === 'number' && Number.isInteger(row.limit) ? row.limit : DEFAULT_CRUISE_VALUE.limit
+  const limit = Math.min(CRUISE_LIMIT_MAX, Math.max(CRUISE_LIMIT_MIN, raw))
   return {
     enabled: row.enabled === true,
     ...(row.manual === true || row.manual === false ? { manual: row.manual } : {}),

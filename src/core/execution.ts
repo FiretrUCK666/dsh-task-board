@@ -391,6 +391,19 @@ export class ExecutionService {
     options?: RunOptions,
   ): Promise<void> {
     try {
+      // Defense in depth behind the controller's `taskExecutable` gate: a run
+      // with no text and no attachments is rejected before a session is even
+      // created (never execute a title as a silent fallback).
+      const effectiveText = (options?.prompt ?? task.prompt).trim()
+      const effectiveImages = options?.images ?? task.promptImages ?? []
+      const effectiveFiles = options?.files ?? task.promptFiles ?? []
+      if (effectiveText === '' && effectiveImages.length === 0 && effectiveFiles.length === 0) {
+        onEvent({
+          kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
+          error: 'empty prompt: task has nothing executable',
+        })
+        return
+      }
       const sessionId = options?.sessionId ?? await this.connectSession(task.workspaceId)
       const fresh = options?.fresh ?? true
       onEvent({ kind: 'started', taskId: task.id, executionId: execution.id, sessionId })
@@ -669,12 +682,12 @@ export class ExecutionService {
 
   /**
    * The resolved delivery line of a run: the prompt override / task prompt,
-   * falling back to the task title when blank (mirrors {@link sendPrompt}).
+   * verbatim (no title fallback — `taskExecutable` is THE one execution
+   * gate in the controller; the service never guesses intent from the title.
+   * A blank line with no attachments fails fast in `run` below).
    */
   private promptLine(task: TaskRecord, promptOverride: string | undefined): string {
-    return (promptOverride ?? task.prompt).trim() !== ''
-      ? (promptOverride ?? task.prompt)
-      : task.title
+    return promptOverride ?? task.prompt
   }
 
   /**
@@ -811,9 +824,10 @@ export class ExecutionService {
     images?: readonly { mediaType: string; data: string; name?: string }[],
     files?: readonly { receiptId: string; name: string; bytes: number }[],
   ): Promise<{ ok: true } | { ok: false; error: unknown }> {
-    const text = (promptOverride ?? task.prompt).trim() !== ''
-      ? (promptOverride ?? task.prompt)
-      : task.title
+    // No title fallback: blank means blank (the controller's `taskExecutable`
+    // gate owns the "can this run" judgment; the service sends exactly what
+    // it was given so a bypass can never silently execute a title).
+    const text = promptOverride ?? task.prompt
     // The prompt's attachments: an explicit override (a refine answer's fresh
     // attachments) wins; otherwise the TASK's persisted attachments ride
     // EVERY run path (manual / scheduled / cruise / chain / rerun) — one
@@ -900,6 +914,11 @@ export class ExecutionService {
     // Consecutive passes that missed a known session (same two-pass rule as
     // reconcile above: one absent snapshot never cancels).
     let misses = 0
+    // Consecutive finished passes for a session with no driver and no history
+    // face (no turn evidence can ever arrive): the first idle pass may just be
+    // the pre-turn blip, the second consecutive idle settles optimistically —
+    // the same legacy fallback `reconcile` applies, so the lane never wedges.
+    let idleStreak = 0
     const settle = (outcome: 'succeeded' | 'failed' | 'cancelled', error?: string): void => {
       if (settled) return
       settled = true
@@ -933,13 +952,26 @@ export class ExecutionService {
         return
       }
       misses = 0
-      // Still running: keep watching.
-      if (summary.running) return
+      // Still running: keep watching (and reset the no-evidence streak — a
+      // turn in flight is evidence enough to wait).
+      if (summary.running) {
+        idleStreak = 0
+        return
+      }
       const snapshot = driver?.getSnapshot()
       if (snapshot !== undefined && snapshot.turnEnds.size > baseline) {
         settle(snapshot.lastAgentError !== null ? 'failed' : 'succeeded', snapshot.lastAgentError ?? undefined)
         return
       }
+      // No driver and no history face: turn evidence can never arrive. Settle
+      // optimistically on the SECOND consecutive finished pass (the first may
+      // be the pre-turn idle blip right after send).
+      if (driver === undefined && this.env.history === undefined) {
+        idleStreak += 1
+        if (idleStreak >= 2) settle('succeeded')
+        return
+      }
+      idleStreak = 0
       void this.historyTurnEndSignal(sessionId).then(signal => {
         if (signal !== undefined) {
           settle(signal, signal === 'failed' ? 'agent turn failed' : undefined)

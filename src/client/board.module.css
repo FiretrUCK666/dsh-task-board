@@ -373,8 +373,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
-/* 通知列表：一行一条等待会话（任务名 + 等待种 + 会话名），整行可点进
-   任务详情。行高跟随内容，名槽各自截断，徽标永不收缩。 */
+/* 通知列表：一行一条（主区进任务详情 + 行内 triage 动作）。主区与动作区
+   同行，窄屏换列为两行（主区上、动作下），控件数量不变、字号不变。 */
 .notifyList {
   display: flex;
   flex-direction: column;
@@ -388,6 +388,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   width: 100%;
   min-width: 0;
   padding: 8px 10px;
@@ -395,12 +396,32 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: none;
   border: none;
   border-radius: var(--dsh-tb-radius-sm);
-  cursor: pointer;
   text-align: left;
   font: inherit;
 }
 .notifyRow:hover {
   background: var(--dsh-tb-hover);
+}
+.notifyMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.notifyActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  flex-wrap: wrap;
 }
 .notifyTask {
   flex: 1;
@@ -1389,6 +1410,53 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 .feedAction:hover {
   background: var(--dsh-tb-hover);
+}
+
+/* Activity day groups + inline preview (the actionable timeline): headers
+   are quiet section labels, previews reuse the detail text grammar. Both
+   wrap, never overflow; single scroller discipline unchanged. */
+.feedDay {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+.feedPreview {
+  min-width: 0;
+  padding: 4px 10px 8px;
+}
+
+/* Focus bar + digest card + palette share the quiet group grammar (same row
+   rhythm as organizeBar/feedTools): labels never hidden, narrow wraps. */
+.focusBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.focusCount {
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.digestCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+}
+.digestRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
 }
 
 /* The card is a PURE state summary: the meta line (source + updated) and the

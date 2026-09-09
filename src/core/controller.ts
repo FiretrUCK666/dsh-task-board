@@ -22,7 +22,7 @@ import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as ti
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
 import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
-import { normalizeCruiseValue } from './board-doc.ts'
+import { normalizeCruiseValue, CRUISE_LIMIT_MAX, CRUISE_LIMIT_MIN } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
 import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents.ts'
 import { LocalStorageTemplateStore, templateFromTask, templateToNewInput } from './task-templates.ts'
@@ -39,10 +39,10 @@ import {
 /** Default auto-cruise concurrency when the user has not configured one. */
 export const DEFAULT_CRUISE_LIMIT = 5
 
-/** The concurrency budget's real ceiling — the same cap the board's number
- *  input advertises (max=20). The controller clamps, so the advertised bound
- *  is enforced at the single write point, never just decorated in the UI. */
-export const MAX_CRUISE_LIMIT = 20
+/** The concurrency budget's real ceiling — the shared board-doc bound (writes
+ *  clamp and reads normalize to one pair). Re-exported so board surfaces
+ *  keep importing it from the controller. */
+export const MAX_CRUISE_LIMIT = CRUISE_LIMIT_MAX
 
 /** The native session-list "waiting for the user" signal (sidebar amber dot). */
 export type PendingInteractionKind = 'approval' | 'plan-review' | 'question'
@@ -1139,6 +1139,55 @@ export class BoardController {
     const at = this.now()
     let changed = false
     this.tasks = this.tasks.map(task => {
+      const executions = task.executions.map(round => {
+        if (round.viewedAt === at) return round
+        changed = true
+        return { ...round, viewedAt: at }
+      })
+      if ((task.viewedAt ?? 0) >= at && executions.every((round, index) => round === task.executions[index])) {
+        return task
+      }
+      changed = true
+      return { ...task, viewedAt: Math.max(task.viewedAt ?? 0, at), executions }
+    })
+    if (changed) this.persistAndNotify()
+  }
+
+  /**
+   * Mark ONE task (and its rounds) viewed without navigating — a triage row's
+   * inline "标已读". Same monotone read-state law as `markAllViewed`, scoped
+   * to a single record so the board stays where it is.
+   */
+  markTaskViewed(taskId: string): void {
+    const at = this.now()
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== taskId) return task
+      const executions = task.executions.map(round => {
+        if (round.viewedAt === at) return round
+        changed = true
+        return { ...round, viewedAt: at }
+      })
+      if ((task.viewedAt ?? 0) >= at && executions.every((round, index) => round === task.executions[index])) {
+        return task
+      }
+      changed = true
+      return { ...task, viewedAt: Math.max(task.viewedAt ?? 0, at), executions }
+    })
+    if (changed) this.persistAndNotify()
+  }
+
+  /**
+   * Mark an explicit id set viewed (bulk triage of a filtered group). One
+   * write, one persist; unknown ids are ignored.
+   */
+  markTasksViewed(taskIds: readonly string[]): void {
+    if (taskIds.length === 0) return
+    const wanted = new Set(taskIds)
+    const at = this.now()
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (!wanted.has(task.id)) return task
       const executions = task.executions.map(round => {
         if (round.viewedAt === at) return round
         changed = true
@@ -2974,10 +3023,10 @@ export class BoardController {
   }
 
   /** Change the concurrency budget (persisted; the dispatcher re-pumps). The
-   *  one clamp: the floor is 1, the ceiling MAX_CRUISE_LIMIT — the same bound
-   *  the input advertises, enforced at the write point. */
+   *  one clamp: the floor/ceiling live in board-doc bounds — writes clamp,
+   *  reads normalize, one pair everywhere. */
   setCruiseLimit(limit: number): void {
-    const clamped = Math.min(MAX_CRUISE_LIMIT, Math.max(1, Math.floor(limit)))
+    const clamped = Math.min(MAX_CRUISE_LIMIT, Math.max(CRUISE_LIMIT_MIN, Math.floor(limit)))
     if (this.cruiseState.limit === clamped) return
     this.cruiseState = { ...this.cruiseState, limit: clamped }
     this.deps.cruiseStorage?.write(this.cruiseState)

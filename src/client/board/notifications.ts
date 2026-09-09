@@ -12,9 +12,9 @@
  * `notificationsOf` stays waiting-only (legacy callers/tests); the board
  * reads `notificationsExOf` for the full three-tier view.
  */
-import { boardEventsOf } from '../../core/board-events.ts'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import { taskUnviewed } from '../../core/session-display.ts'
+import { relatedSessionIdsOf } from '../../core/task-live.ts'
 import { lastPlainResult, plainRunsOf, type TaskRecord } from '../../core/tasks.ts'
 
 /** One notification row (waiting session or unviewed review task). */
@@ -62,13 +62,16 @@ export function notificationsOf(
  * Full three-tier view: waiting sessions first (newest task first), then
  * unviewed review tasks (failed before succeeded, newest settle first).
  * `isUnviewed` decides the review tier (the board passes `taskUnviewed`);
- * absent/false = waiting-only (legacy behavior).
+ * absent/false = waiting-only (legacy behavior). `linkedIdsOf` supplies live
+ * linked-session ids per task so a bound-but-never-run waiting session still
+ * notifies (same related set as the live state).
  */
 export function notificationsExOf(
   tasks: readonly TaskRecord[],
   pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
   titleOf: (sessionId: string) => string,
   isUnviewed: (task: TaskRecord) => boolean = taskUnviewed,
+  linkedIdsOf: (task: TaskRecord) => readonly string[] = () => [],
 ): NotificationItem[] {
   const waiting: NotificationItem[] = []
   const seen = new Set<string>()
@@ -90,8 +93,7 @@ export function notificationsExOf(
     })
   }
   for (const task of tasks) {
-    for (const round of task.executions) push(task, round.sessionId)
-    push(task, task.refineSessionId)
+    for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task))) push(task, sessionId)
   }
   const activity = new Map(tasks.map(task => [task.id, task.updatedAt]))
   waiting.sort((a, b) => (activity.get(b.taskId) ?? 0) - (activity.get(a.taskId) ?? 0))
@@ -126,7 +128,6 @@ export function notificationsExOf(
   // Prove ordering from the shared event model (one derivation, not two):
   // waiting rows ride task.updatedAt, review rows ride their settle — the
   // sort below is newest-first with waiting outranking review on ties.
-  void boardEventsOf
   review.sort((a, b) => {
     const rank = (result: NotificationItem['result']): number =>
       result === 'failed' ? 0 : result === 'succeeded' ? 1 : 2

@@ -126,11 +126,10 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   const readiness = ruleReadiness(task)
   const pausedFailed = readiness.kind === 'paused' && readiness.status === 'review'
     && lastPlain !== undefined && lastPlain.result === 'failed'
-  // ONE active-light rule: running / waiting (pending interaction) /
-  // refining cards breathe — state-bound, independent of the unread baseline,
-  // so a live card NEVER misses its pulse (the old ring was unread-only:
-  // "进行中有时不闪").
-  const active = (live ?? (task.status === 'running' ? 'running' : 'idle')) === 'running' || pendingCount > 0 || refining(task)
+  // Breathing is owned by the view-model (same priority as the primary chip):
+  // the component never re-derives it, so the light can never drift from the
+  // text it accompanies.
+  const active = view.active
   return (
     /* A card is a clickable REGION, never a <button>: the color swatches and
        the quick-run control inside are real interactive elements, and a

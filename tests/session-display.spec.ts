@@ -478,6 +478,17 @@ describe('taskPendingCount', () => {
     const result = taskPendingCount(task, pendingOf)
     expect(result.count).toBe(0)
   })
+
+  it('dedupes three executions on the same waiting session to one row', () => {
+    const task = taskWith([
+      round('exec-1', { startedAt: 100, sessionId: 's1' }),
+      round('exec-2', { startedAt: 200, sessionId: 's1' }),
+      round('exec-3', { startedAt: 300, sessionId: 's1' }),
+    ])
+    const result = taskPendingCount(task, () => 'question' as const)
+    expect(result.count).toBe(1)
+    expect(result.items).toEqual([{ executionId: 'exec-1', waitingKind: 'question' }])
+  })
 })
 
 describe('unviewed reminders', () => {

@@ -85,8 +85,15 @@ describe('normalizeCruiseValue', () => {
     })
     expect(value.enabled).toBe(false)
     expect(value.manual).toBeUndefined()
-    expect(value.limit).toBe(5)
+    // Out-of-range integers clamp to the shared bounds (0 -> min 1);
+    // non-integers fall back to the default 5 (see next case).
+    expect(value.limit).toBe(1)
     expect(value.schedule).toEqual([{ endAt: 500 }, { startAt: 100, endAt: 200 }])
+  })
+
+  it('clamps an oversized remote budget to the shared ceiling (never 999-way fan-out)', () => {
+    expect(normalizeCruiseValue({ enabled: true, limit: 999, schedule: [] }).limit).toBe(20)
+    expect(normalizeCruiseValue({ enabled: true, limit: 'many', schedule: [] }).limit).toBe(5)
   })
 })
 

@@ -155,27 +155,32 @@ export function sessionTimes(task: TaskRecord, execution: ExecutionRecord): {
 /**
  * Count how many sessions (executions + refine) are waiting on the user.
  * Used by the task card badge to show "N 待处理" when the task has pending
- * interactions across its sessions.
+ * interactions across its sessions. ONE row per waiting SESSION (deduped):
+ * three executions on the same waiting session wait once, not three times —
+ * the same session-keyed law the notification center already uses.
  */
 export function taskPendingCount(
   task: TaskRecord,
   pendingInteractionOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
 ): { count: number; items: Array<{ executionId?: string; waitingKind: PendingInteractionKind }> } {
   const items: Array<{ executionId?: string; waitingKind: PendingInteractionKind }> = []
+  const seen = new Set<string>()
 
-  // Check every execution's session.
+  // Check every execution's session (first waiting execution names the row).
   for (const execution of task.executions) {
-    if (execution.sessionId === undefined) continue
+    if (execution.sessionId === undefined || seen.has(execution.sessionId)) continue
     const waitingKind = pendingInteractionOf(execution.sessionId)
     if (waitingKind !== undefined) {
+      seen.add(execution.sessionId)
       items.push({ executionId: execution.id, waitingKind })
     }
   }
 
-  // Check the refine session (if any).
-  if (task.refineSessionId !== undefined) {
+  // Check the refine session (if any and not already counted).
+  if (task.refineSessionId !== undefined && !seen.has(task.refineSessionId)) {
     const waitingKind = pendingInteractionOf(task.refineSessionId)
     if (waitingKind !== undefined) {
+      seen.add(task.refineSessionId)
       items.push({ waitingKind })
     }
   }

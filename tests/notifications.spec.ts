@@ -81,4 +81,12 @@ describe('notificationsOf', () => {
     const rows = notificationsExOf([reviewed], id => (id === 's-1' ? 'question' : undefined), id => id, () => true)
     expect(rows.map(row => row.kind)).toEqual(['waiting'])
   })
+
+  it('a bound-but-never-run waiting session notifies (same related set as live)', () => {
+    const base = createTask({ title: 'B', description: '', prompt: 'p' }, NOW, 'b')
+    const task = { ...base, binds: [{ kind: 'session' as const, sessionId: 's-bound' }] }
+    const rows = notificationsExOf([task], id => (id === 's-bound' ? 'approval' : undefined), id => `title-${id}`, () => false)
+    expect(rows.map(row => row.sessionId)).toEqual(['s-bound'])
+    expect(rows[0]).toMatchObject({ kind: 'waiting', waitingKind: 'approval' })
+  })
 })
