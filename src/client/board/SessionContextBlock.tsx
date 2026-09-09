@@ -17,10 +17,14 @@
  *  - DEFAULT (refine panel): a POPOVER anchored under the head — absolute,
  *    opaque menu surface, its own capped scroll region — so expanding never
  *    pushes the surrounding blocks.
- *  - DOCK (review / session panel, `.sessionContextDockBlock`): the panel is
- *    forced IN-FLOW and height-capped (position:static), because it sits in
- *    the context dock right above the composer where a floating popover would
- *    clip against the panel edge.
+ *  - DOCK (review / session header, `.reviewHeaderContext`): the panel is an
+ *    IN-FLOW full-width row of the header grid (the wrap dissolves via
+ *    `display: contents` while open, head button keeps the context cell, the
+ *    panel takes the panel row), height-capped with its own scroll — expanding
+ *    pushes the body down instead of painting over it, so the readout can
+ *    never overlap the transcript, the run config or the comments at any
+ *    width. There is no third placement: no caller may invent another
+ *    positioning context for this panel.
  * Either way expanding can never eat the composer or push siblings away.
  */
 import { useEffect, useRef, useState } from 'react'
@@ -45,9 +49,10 @@ function TodoGlyph({ status }: { status: 'pending' | 'in_progress' | 'completed'
 /** The deterministic context readout (see module doc): self-contained — the
  *  collapsed/expanded state and the outside-click dismissal live here.
  *  `className` lets a surface switch the expanded panel from its DEFAULT
- *  popover to an IN-FLOW capped panel: the review/session dock passes
- *  `.sessionContextDockBlock` (in-flow above the composer); the refine panel
- *  keeps the default popover.
+ *  popover to the IN-FLOW dock row: the review/session header passes
+ *  `.reviewHeaderContext` (the open wrap dissolves so the panel joins the
+ *  header grid as its own full-width row); the refine panel keeps the default
+ *  popover.
  *  `sessionId` + `controller` switch the goal row from the read-only legacy
  *  text to the interactive goal strip (pause / resume / edit / clear through
  *  the official verbs); absent = read-only (old hosts without remote.goals). */
@@ -97,7 +102,11 @@ export function SessionContextBlock({ context, className, sessionId, controller 
   ].filter((part): part is string => part !== undefined).join(' · ')
 
   return (
-    <div className={`${css.sessionContextWrap}${className !== undefined ? ` ${className}` : ''}`} ref={wrapRef}>
+    <div
+      className={`${css.sessionContextWrap}${className !== undefined ? ` ${className}` : ''}`}
+      data-open={open ? '' : undefined}
+      ref={wrapRef}
+    >
       <button
         type="button"
         className={css.sessionContextHead}

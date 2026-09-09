@@ -3906,14 +3906,16 @@ button.interactionOption:focus-visible,
 .reviewHeader {
   /* One named grid at BOTH widths (never flex + auto-wrap): title grows,
      context/badge/actions/close each own a cell, so no content combination
-     can squeeze, drift or reflow the row. Wide = one line; the panel query
-     below re-maps the same names to two deterministic lines. The head never
-     grows with content: fixed padding + one 24px control line, so the top
-     gap stays constant while dragging the browser narrower. */
+     can squeeze, drift or reflow the row. Wide = one line (the docked context
+     panel auto-creates its own full-width row only while open — no empty row
+     and no dead gap when closed); the panel query below re-maps the same
+     names to deterministic lines. The head grows ONLY through the capped dock
+     row (320px + internal scroll) — never through wrapping controls — and the
+     flex column gives the growth back to the body, whose regions own their
+     scrollers. */
   display: grid;
-  /* Positioned: the context panel anchors to THIS box (left:0/right:0 =
-     the full head width), never to its narrow grid cell — anchoring to the
-     cell is exactly the "展开只占左半格" squeeze on phones. */
+  /* Kept as the positioning context for any future anchored layer inside the
+     header; the context panel itself is in-flow (see below), never anchored. */
   position: relative;
   grid-template-columns: minmax(0, 1fr) auto auto auto auto;
   grid-template-areas: "title badge context actions close";
@@ -3987,37 +3989,46 @@ button.interactionOption:focus-visible,
 
 /* The header context readout owns the context cell — ONE horizontal plane
    with 标题 / 会话·共N个 / 刷新 / 查看会话 / × (the 「标题栏不在同一水平面」
-   fix). The cell is ISOLATED (isolation:isolate + its own stacking context)
-   so the expanded popover below can NEVER paint over the actions/close
-   cells beside it (the 「上下文与刷新/查看会话重叠」 family on narrow
-   panels — the head row is content-sized and the popover is a sibling of
-   the clipped grid, not a child of it). */
+   fix). The compound selector below finally honors the no-double-inset
+   intent (the retired descendant selector never matched anything — the wrap
+   IS the cell — so the rail inset leaked into the header until now). */
 .reviewHeaderContext {
   grid-area: context;
   flex: none;
   min-width: 0;
   max-width: 320px;
   padding: 0;
-  isolation: isolate;
 }
-/* The header's context head spans its own column; its expanded panel drops
-   BELOW the head and spans exactly the head's box (left:0/right:0), so it can
-   never be clipped by the panel's overflow:hidden the way a right-anchored
-   fixed-width card was, and never needs a viewport unit either. The panel
-   paints UNDER the action cells (z-index:1 vs the header's own plane), so
-   even a tall to-do list slides beneath 刷新/查看会话/× instead of over
-   them. */
-.reviewHeaderContext .sessionContextPanel {
-  left: 0;
-  right: 0;
+.reviewHeaderContext.sessionContextWrap {
+  padding: 0;
+}
+/* Docked expansion (THE overlap fix — one geometry, both widths): while open
+   the wrap dissolves (display:contents) so its two children join the header
+   grid directly — the head button keeps the context cell, the panel lands on
+   an implicit full-width row BELOW the whole head row (grid-column: 1 / -1),
+   capped + internally scrolled. Expanding pushes the body down; nothing ever
+   paints over anything, so there is no z-index, no isolation and no anchor
+   math left here. Closed, the wrap is the context cell exactly as before. */
+.reviewHeaderContext[data-open] {
+  display: contents;
+}
+.reviewHeaderContext[data-open] > .sessionContextHead {
+  grid-area: context;
+  min-width: 0;
+  /* The dissolved wrap's 320px cap moves here while open — without it the
+     summary's max-content would size the auto track and squeeze the title. */
+  max-width: 320px;
+}
+.reviewHeaderContext[data-open] > .sessionContextPanel {
+  grid-column: 1 / -1;
+  position: static;
+  left: auto;
+  right: auto;
+  top: auto;
   width: auto;
-  z-index: 1;
-}
-.reviewHeaderContext .sessionContextHead,
-.reviewActions,
-.reviewHeader > .iconButton {
-  position: relative;
-  z-index: 2;
+  min-width: 0;
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .reviewBody {
@@ -5082,19 +5093,6 @@ button.interactionOption:hover {
   padding: 0 var(--dsh-tb-rail-inset);
 }
 
-/* In the HEADER cell the wrap surrenders its own 14px (the cell already
-   owns the column's padding): a second inset here would double-indent the
-   head AND shrink the popover's anchor box, which is exactly how the head
-   text ended up painted under the actions on narrow panels. It ALSO
-   surrenders positioning (static): the expanded panel anchors to the
-   HEADER box (see .reviewHeader), so it spans the full head width at every
-   width instead of squeezing into the cell that holds its head row. */
-.reviewHeaderContext .sessionContextWrap {
-  padding: 0;
-  min-width: 0;
-  position: static;
-}
-
 .sessionContextHead {
   display: inline-flex;
   align-items: center;
@@ -5154,11 +5152,10 @@ button.interactionOption:hover {
 
 .sessionContextPanel {
   top: calc(100% + 6px);
-  /* Absolute children anchor to the wrap's PADDING box, not its content box
-     — inset by the same 14px content box so the panel spans exactly the
-     meter/config/thread width. In the HEADER cell the wrap surrenders its
-     padding (see above), so the header override re-anchors to the head box
-     (left:0/right:0) — one anchor rule per surface, never two insets. */
+  /* The DEFAULT (refine) popover anchors to the wrap's PADDING box, not its
+     content box — inset by the same 14px content box so the panel spans
+     exactly the meter/config/thread width. The header dock variant below
+     replaces every line of this anchor math with grid placement. */
   left: 14px;
   right: 14px;
   z-index: 1;
@@ -5524,38 +5521,31 @@ button.interactionOption:hover {
   }
 
   /* The context readout takes line 2's LEFT (at 刷新's left, one baseline —
-     the user's ask); the action cluster takes line 2's RIGHT. The cell
-     keeps the isolation of the wide head (see above): the in-flow expansion
-     below can never paint over line 2's actions either. */
+     the user's ask); the action cluster takes line 2's RIGHT. While open the
+     panel lands on an implicit full-width row below (see the dock rule
+     above): full head width at every width, never the "只占左半格" squeeze,
+     never an overlay. */
   .reviewHeaderContext {
     min-width: 0;
     max-width: none;
     justify-self: stretch;
-    isolation: isolate;
+  }
+  /* On a phone the open head takes the whole first track (no 320px cap —
+     capping it here would squeeze the readout against the actions). */
+  .reviewHeaderContext[data-open] > .sessionContextHead {
+    max-width: none;
   }
 
-  /* The narrow panel keeps the WIDE popover grammar (absolute, anchored to
-     the header box, full head width — one geometry, both widths): an
-     in-flow expansion inside the context cell is exactly the "只占左半格"
-     squeeze. Capped + internally scrolled, so a long to-do list never grows
-     past the screen (「上下文占满屏幕」). It paints under the action row
-     (same isolation grammar as the wide popover — a long to-do list slides
-     beneath 刷新/查看会话, never over their labels). */
-  .reviewHeaderContext .sessionContextPanel {
+  /* The narrow tier only tightens the dock cap (240px): a long to-do list
+     never grows past the screen (「上下文占满屏幕」) — the positioning stays
+     exactly the wide in-flow grammar, one geometry both widths. */
+  .reviewHeaderContext[data-open] > .sessionContextPanel {
     max-height: 240px;
-    overflow-y: auto;
   }
 
   /* The action cluster takes line 2's right and right-aligns its content. */
   .reviewActions {
     justify-self: end;
-    position: relative;
-    z-index: 2;
-  }
-
-  .reviewHeader > .iconButton {
-    position: relative;
-    z-index: 2;
   }
 
   /* The conversation keeps its own scroller (the comments region owns the

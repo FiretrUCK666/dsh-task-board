@@ -260,39 +260,51 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(wideContext).toMatch(/max-width:\s*320px/)
   })
 
-  it('the header context expansion is a capped popover at BOTH widths (never a squeezed cell)', () => {
-    // A header-anchored in-flow expansion without a cap grew past the whole
-    // screen and pushed every function out of reach (「上下文占满屏幕」) —
-    // and the in-flow form that fixed it squeezed the open list into the
-    // context cell's half column on phones (「左边一半右边一半」). The root
-    // is ONE popover grammar, both widths: absolute, anchored to the HEADER
-    // box (never the cell), capped + internally scrolled, painting under
-    // the actions. The narrow tier only tightens the cap.
-    const panel = ruleIn(stacked(), '.reviewHeaderContext .sessionContextPanel')
-    // Narrow declares NO positioning of its own (any relative/static here
-    // re-squeezes it into the cell) — it inherits the shared absolute.
-    expect(panel).not.toMatch(/position:\s*(relative|static)/)
-    expect(panel).toMatch(/max-height:\s*240px/)
-    expect(panel).toMatch(/overflow-y:\s*auto/)
-    // The anchor chain: header positioned, cell wrap static (the wrap's own
-    // relative would re-trap the panel in the cell).
-    expect(ruleOf('reviewHeader')).toMatch(/position:\s*relative/)
-    expect(cssSource).toMatch(/\.reviewHeaderContext \.sessionContextWrap\s*\{[^}]*position:\s*static/)
+  it('the header context expansion is an in-flow dock row at BOTH widths (never an overlay)', () => {
+    // The 「会话上下文穿模」 root fix: the expanded panel used to be an
+    // absolutely anchored popover painting OVER the transcript, the run
+    // config and the comments on both widths. Now the open wrap dissolves
+    // (display:contents) and the panel joins the header grid as an implicit
+    // full-width row BELOW the whole head row — expanding pushes the body
+    // down, so overlap is unrepresentable. Capped + internally scrolled at
+    // both widths; the refine surface keeps its own popover grammar.
+    const blockPath = fileURLToPath(new URL('../src/client/board/SessionContextBlock.tsx', import.meta.url))
+    const blockSource = readFileSync(blockPath, 'utf8')
+    expect(blockSource).toMatch(/data-open=\{open \? '' : undefined\}/)
+    expect(cssSource).toMatch(/\.reviewHeaderContext\[data-open\]\s*\{[^}]*display:\s*contents/)
+    expect(cssSource).toMatch(/\.reviewHeaderContext\[data-open\] > \.sessionContextHead\s*\{[^}]*grid-area:\s*context/)
+    // The dissolved wrap's 320px cap moves onto the open head (wide); the
+    // narrow tier lifts it so the readout takes the whole track.
+    expect(cssSource).toMatch(/\.reviewHeaderContext\[data-open\] > \.sessionContextHead\s*\{[^}]*max-width:\s*320px/)
+    expect(ruleIn(stacked(), '.reviewHeaderContext[data-open] > .sessionContextHead')).toMatch(/max-width:\s*none/)
+    const dock = cssSource.slice(cssSource.indexOf('.reviewHeaderContext[data-open] > .sessionContextPanel'))
+    expect(dock).toMatch(/grid-column:\s*1 \/ -1/)
+    expect(dock).toMatch(/position:\s*static/)
+    expect(dock).toMatch(/max-height:\s*320px/)
+    expect(dock).toMatch(/overflow-y:\s*auto/)
+    // No overlay grammar left in the header context: no absolute panel, no
+    // head-box anchor, no paint-under z-index.
+    expect(cssSource).not.toMatch(/\.reviewHeaderContext \.sessionContextPanel\s*\{[^}]*position:\s*absolute/)
+    expect(cssSource).not.toMatch(/\.reviewHeaderContext \.sessionContextPanel\s*\{[^}]*left:\s*0/)
+    expect(cssSource).not.toMatch(/\.reviewHeaderContext \.sessionContextPanel\s*\{[^}]*z-index:\s*1/)
+    // The narrow tier only tightens the cap — same in-flow grammar, no
+    // positioning of its own (any relative/static/absolute here re-squeezes
+    // it into the cell or re-floats it over the body).
+    const narrowPanel = ruleIn(stacked(), '.reviewHeaderContext[data-open] > .sessionContextPanel')
+    expect(narrowPanel).toMatch(/max-height:\s*240px/)
+    expect(narrowPanel).not.toMatch(/position:/)
   })
 
-  it('the header context cell is isolated: its expansion paints UNDER the actions, never over them', () => {
-    // The 「上下文与刷新/查看会话重叠」 family: the context cell owns an
-    // isolation context; the expanded panel (wide popover AND narrow
-    // in-flow) sits at z-index 1 while the head row, the actions and the
-    // close sit at z-index 2. A long to-do list slides BENEATH the buttons.
+  it('the header keeps no overlay stacking for the context readout', () => {
+    // With the panel in-flow there is nothing to paint under anything: the
+    // isolation context and the head/actions/close z-index ladder retire, as
+    // does the descendant wrap selector that never matched (the wrap IS the
+    // cell). The no-double-inset intent now rides an honest compound rule.
     const context = ruleOf('reviewHeaderContext')
-    expect(context).toMatch(/isolation:\s*isolate/)
-    expect(cssSource).toMatch(/\.reviewHeaderContext \.sessionContextPanel\s*\{[^}]*z-index:\s*1/)
-    expect(cssSource).toMatch(/\.reviewActions,\s*\n\.reviewHeader > \.iconButton\s*\{[^}]*z-index:\s*2/)
-    // The header wrap surrenders its own 14px (the cell owns the column's
-    // padding — a second inset double-indents the head and shrinks the
-    // popover anchor, which painted head text under the actions).
-    expect(cssSource).toMatch(/\.reviewHeaderContext \.sessionContextWrap\s*\{[^}]*padding:\s*0/)
+    expect(context).not.toMatch(/isolation:\s*isolate/)
+    expect(cssSource).not.toMatch(/\.reviewHeaderContext \.sessionContextHead,/)
+    expect(cssSource).not.toMatch(/\.reviewHeaderContext \.sessionContextWrap\s*\{/)
+    expect(cssSource).toMatch(/\.reviewHeaderContext\.sessionContextWrap\s*\{[^}]*padding:\s*0/)
   })
 
   it('the review title is single-line ellipsis on a phone (header stays one plane)', () => {
