@@ -284,6 +284,18 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                 {formatDueLabel(task.dueAt)}
               </Chip>
             )}
+            {/* Priority flag (P1/P2 only — P3 and none stay quiet, like the
+                medium-tier silence; never breathing, never error red). */}
+            {task.priority === 1 && (
+              <Chip kind="warn" fill={false} title={t('new.priorityP1')}>
+                P1
+              </Chip>
+            )}
+            {task.priority === 2 && (
+              <Chip kind="neutral" fill={false} title={t('new.priorityP2')}>
+                P2
+              </Chip>
+            )}
             {task.schedule?.enabled === true && !blockedAutomation(task) && (
               <Chip
                 fill={false}

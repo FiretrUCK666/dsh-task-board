@@ -199,7 +199,10 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
             onChange={event => { setDraft(event.target.value) }}
             onKeyDown={event => {
               if (event.key === 'Enter') { event.preventDefault(); commitRename() }
-              if (event.key === 'Escape') { event.preventDefault(); setRenaming(false) }
+              // Editing owns Escape: cancel the rename WITHOUT closing the
+              // panel (the shared Escape stack must never hear it — one key,
+              // one owner, never two closers).
+              if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setRenaming(false) }
             }}
           />
           <Button size="sm" variant="primary" disabled={saving} onClick={commitRename}>

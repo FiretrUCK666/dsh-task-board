@@ -31,6 +31,7 @@ function freshDraft(): TaskDraft {
     reasoningEffort: '',
     permission: '',
     dueDate: '',
+    priority: '',
   }
 }
 

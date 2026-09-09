@@ -394,9 +394,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   }
   const clearSelection = (): void => { setSelectedCards([]) }
   // THE live selection (single funnel): raw ids intersected with the cards
-  // actually on the board. A card deleted elsewhere (sync, another tab) or
-  // hidden by the filter never inflates counts, confirmations or runs — every
-  // reader below takes this list, never the raw state.
+  // actually on the board. Selection survives filtering on purpose (a
+  // cross-filter batch keeps its members — clearing the filter shows them
+  // again); only cards deleted elsewhere (sync, another tab) drop out, so
+  // counts, confirmations and runs never fire at ghosts. Every reader below
+  // takes this list, never the raw state.
   const liveIds = useMemo(() => {
     const present = new Set(snapshot.tasks.map(task => task.id))
     return selectedCards.filter(id => present.has(id))
@@ -2089,6 +2091,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 type="text"
                 placeholder={t('board.viewName')}
                 value={newViewName}
+                data-autofocus
                 onChange={event => { setNewViewName(event.target.value) }}
                 aria-label={t('board.viewName')}
               />

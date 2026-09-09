@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, normalizePriority, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -949,5 +949,24 @@ describe('supplementLaunchFields (真执行自动补全 — 缺则补、填则�
     const long = '先行行' + 'x'.repeat(60)
     const task = { ...sampleTask(), prompt: `\n${long}\n第二行`, title: '', description: '' }
     expect(supplementLaunchFields(task)).toEqual({ title: long.slice(0, 40), description: `${long}\n第二行` })
+  })
+})
+
+describe('normalizePriority (1/2/3 or absent)', () => {
+  it('accepts 1, 2 and 3, rejects everything else', () => {
+    expect(normalizePriority(1)).toBe(1)
+    expect(normalizePriority(2)).toBe(2)
+    expect(normalizePriority(3)).toBe(3)
+    expect(normalizePriority(0)).toBeUndefined()
+    expect(normalizePriority(4)).toBeUndefined()
+    expect(normalizePriority('1')).toBeUndefined()
+    expect(normalizePriority(Number.NaN)).toBeUndefined()
+    expect(normalizePriority(undefined)).toBeUndefined()
+  })
+
+  it('createTask carries a valid priority and drops junk', () => {
+    expect(createTask({ title: 't', description: '', prompt: 'p', priority: 1 }, NOW, 'a').priority).toBe(1)
+    expect(createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a').priority).toBeUndefined()
+    expect(createTask({ title: 't', description: '', prompt: 'p', priority: 9 as unknown as 1 }, NOW, 'a').priority).toBeUndefined()
   })
 })

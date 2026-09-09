@@ -352,6 +352,13 @@ export interface TaskRecord {
    */
   color?: string
   /**
+   * Priority (1 = highest … 3 = lowest); absent = none (the default, zero
+   * visuals). Orthogonal to due date (欠 vs 重) and accent color: priority
+   * never breathes, never enters the card primary, never takes error red
+   * (red belongs to blocked). Rides the record like every scalar.
+   */
+  priority?: 1 | 2 | 3
+  /**
    * Due instant (ms epoch, day granularity: the form edits a calendar date).
    * Set only for a REAL due (external consequence); absent = no due, never an
    * implicit one. Defer/start ride the existing schedule (cron/nextRunAt),
@@ -385,6 +392,8 @@ export interface NewTaskInput {
   permission?: string
   /** Due instant (ms epoch); absent = no due. */
   dueAt?: number
+  /** Priority (1 highest … 3 lowest); absent = none. */
+  priority?: 1 | 2 | 3
 }
 
 /** The five kanban columns, in display order. */
@@ -562,8 +571,14 @@ export function chainUnlimited(mode: ScheduleMode | undefined, maxRuns: number |
   return mode === 'chain' && (maxRuns === undefined || maxRuns < 1)
 }
 
+/** Brand an unknown value as a priority (1, 2 or 3); undefined otherwise. */
+export function normalizePriority(value: unknown): 1 | 2 | 3 | undefined {
+  return value === 1 || value === 2 || value === 3 ? value : undefined
+}
+
 /** Create a task from user input. */
 export function createTask(input: NewTaskInput, now: number, id: string, order = 0): TaskRecord {
+  const priority = normalizePriority(input.priority)
   return {
     id,
     title: input.title.trim(),
@@ -587,6 +602,7 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
     ...input.dueAt !== undefined && Number.isFinite(input.dueAt) && input.dueAt > 0
       ? { dueAt: Math.floor(input.dueAt) }
       : {},
+    ...priority !== undefined ? { priority } : {},
   }
 }
 

@@ -5,6 +5,7 @@
  * omitted) or an update patch (empty keys cleared explicitly).
  */
 import type { TaskRecord } from '../../core/tasks.ts'
+import { normalizePriority } from '../../core/tasks.ts'
 import type { NewTaskInput } from '../../core/tasks.ts'
 import type { TaskTemplate } from '../../core/task-templates.ts'
 import type { TaskUpdatePatch } from '../../core/controller.ts'
@@ -34,6 +35,8 @@ export interface TaskDraft {
   permission: string
   /** Due date as `YYYY-MM-DD` (the date-input shape); '' = no due. */
   dueDate: string
+  /** Priority as '1' | '2' | '3'; '' = none (the default, zero visuals). */
+  priority: string
 }
 
 /** `YYYY-MM-DD` → local-midnight ms epoch; undefined when malformed
@@ -81,6 +84,10 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
     dueDate: typeof parsed.dueDate === 'string' && parseDueDateInput(parsed.dueDate) !== undefined
       ? parsed.dueDate.trim()
       : '',
+    priority: (() => {
+      const priority = normalizePriority(Number(parsed.priority))
+      return priority === undefined ? '' : String(priority)
+    })(),
   }
 }
 
@@ -105,6 +112,7 @@ export function draftFromTask(task: TaskRecord): TaskDraft {  return {
     reasoningEffort: task.reasoningEffort ?? '',
     permission: task.permission ?? '',
     dueDate: task.dueAt !== undefined ? toDueDateInput(task.dueAt) : '',
+    priority: task.priority === undefined ? '' : String(task.priority),
   }
 }
 
@@ -130,12 +138,15 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
     permission: template.permission ?? '',
     // Templates never carry a due date (a stamped task starts undated).
     dueDate: '',
+    // Templates never carry a priority either (a stamped task starts unranked).
+    priority: '',
   }
 }
 
 /** Draft → create input; empty fields are omitted (fall back to defaults). */
 export function draftToNewInput(draft: TaskDraft): NewTaskInput {
   const dueAt = parseDueDateInput(draft.dueDate)
+  const priority = normalizePriority(Number(draft.priority))
   return {
     title: draft.title,
     description: draft.description,
@@ -150,6 +161,7 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     ...draft.reasoningEffort !== '' ? { reasoningEffort: draft.reasoningEffort } : {},
     ...draft.permission !== '' ? { permission: draft.permission } : {},
     ...dueAt !== undefined ? { dueAt } : {},
+    ...priority !== undefined ? { priority } : {},
   }
 }
 
@@ -168,5 +180,6 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     reasoningEffort: draft.reasoningEffort !== '' ? draft.reasoningEffort : undefined,
     permission: draft.permission !== '' ? draft.permission : undefined,
     dueAt: parseDueDateInput(draft.dueDate),
+    priority: normalizePriority(Number(draft.priority)),
   }
 }

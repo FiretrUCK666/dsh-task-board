@@ -95,7 +95,9 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
           onChange={event => { setDraft(event.target.value) }}
           onKeyDown={event => {
             if (event.key === 'Enter') void handleEdit(verbs.edit)
-            if (event.key === 'Escape') setEditing(false)
+            // Editing owns Escape (same law as the session rename): cancel
+            // here, never bubble to the shared stack (one key, one owner).
+            if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setEditing(false) }
           }}
           disabled={pending}
           autoFocus

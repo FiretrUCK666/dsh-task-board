@@ -325,4 +325,19 @@ describe('schedule persistence', () => {
     expect(parsed[2].dueAt).toBeUndefined()
     expect(parsed[3].dueAt).toBeUndefined()
   })
+
+  it('round-trips a priority and drops junk to absent', () => {
+    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
+    const raw = [
+      { ...valid, id: 't-1', priority: 2 },
+      { ...valid, id: 't-2', priority: 9 },
+      { ...valid, id: 't-3', priority: 'high' },
+      { ...valid, id: 't-4' },
+    ]
+    const parsed = parseLedger(JSON.stringify(raw))
+    expect(parsed[0].priority).toBe(2)
+    expect(parsed[1].priority).toBeUndefined()
+    expect(parsed[2].priority).toBeUndefined()
+    expect(parsed[3].priority).toBeUndefined()
+  })
 })

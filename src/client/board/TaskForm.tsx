@@ -76,6 +76,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         <input
           className={css.input}
           value={draft.title}
+          data-autofocus
           placeholder={t('new.titlePlaceholder')}
           onChange={event => { onChange({ ...draft, title: event.target.value }) }}
         />
@@ -129,6 +130,25 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         />
         <span className={css.fieldHint}>{t('new.promptImagesHint', { max: String(MAX_TASK_IMAGES) })}</span>
       </div>
+
+      {/* Priority: P1/P2/P3 or none (the default, zero visuals). Orthogonal
+          to due date and accent color — a separate "how重" signal that never
+          breathes. Same select grammar as the landing column. */}
+      <label className={css.field}>
+        <span className={css.fieldLabel}>{t('new.priority')}</span>
+        <span className={css.selectWrap}>
+          <select
+            className={css.input}
+            value={draft.priority}
+            onChange={event => { onChange({ ...draft, priority: event.target.value }) }}
+          >
+            <option value="">{t('new.priorityNone')}</option>
+            <option value="1">{t('new.priorityP1')}</option>
+            <option value="2">{t('new.priorityP2')}</option>
+            <option value="3">{t('new.priorityP3')}</option>
+          </select>
+        </span>
+      </label>
 
       {/* Landing-column selector: new-task modal only. Choosing a column is
           about where the task rests until it is started; auto rules never

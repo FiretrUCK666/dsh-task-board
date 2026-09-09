@@ -30,6 +30,7 @@ function draft() {
     reasoningEffort: '',
     permission: '',
     dueDate: '',
+    priority: '',
   }
 }
 
@@ -75,5 +76,16 @@ describe('draft due-date converters', () => {
     expect(draftFromTask(createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a')).dueDate).toBe('')
     expect(normalizeDraft({ ...draft(), dueDate: 'junk' })?.dueDate).toBe('')
     expect(normalizeDraft({ ...draft(), dueDate: '2025-01-08' })?.dueDate).toBe('2025-01-08')
+  })
+
+  it('priority rides the draft as 1/2/3-or-empty (junk normalizes to empty)', () => {
+    expect(draftToNewInput({ ...draft(), priority: '1' }).priority).toBe(1)
+    expect(draftToNewInput(draft()).priority).toBeUndefined()
+    expect(draftToNewInput({ ...draft(), priority: '9' }).priority).toBeUndefined()
+    expect(draftToUpdatePatch({ ...draft(), priority: '2' }).priority).toBe(2)
+    expect(draftToUpdatePatch(draft()).priority).toBeUndefined()
+    expect(draftFromTask(createTask({ title: 't', description: '', prompt: 'p', priority: 3 }, NOW, 'a')).priority).toBe('3')
+    expect(normalizeDraft({ ...draft(), priority: 'x' })?.priority).toBe('')
+    expect(normalizeDraft({ ...draft(), priority: '2' })?.priority).toBe('2')
   })
 })

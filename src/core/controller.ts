@@ -34,7 +34,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, normalizePriority, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -233,7 +233,7 @@ export interface ReferenceRemoteFace {
 /** The editable slice of a task (content + run configuration). */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   'title' | 'description' | 'prompt' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model'
-  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'dueAt'
+  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'dueAt' | 'priority'
 >>
 
 /** The auto-cruise state: the current on/off truth, the last manual intent,
@@ -1939,6 +1939,10 @@ export class BoardController {
       applied.dueAt = value !== undefined && Number.isFinite(value) && value > 0
         ? Math.floor(value)
         : undefined
+    }
+    // Priority: a present key sets 1/2/3 or clears it (invalid values clear).
+    if ('priority' in patch) {
+      applied.priority = normalizePriority(patch.priority)
     }
     this.tasks = this.tasks.map(candidate => candidate.id === id
       ? this.supplementedTask({ ...candidate, ...applied, updatedAt: this.now() })

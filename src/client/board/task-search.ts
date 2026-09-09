@@ -30,6 +30,8 @@ export function matchTask(
     executions: readonly { comment?: string }[]
     /** Card accent color (for the `has:color` qualifier). */
     color?: string
+    /** Card priority (for the `has:priority` qualifier). */
+    priority?: number
   },
   query: string,
   sessionTitles: readonly string[] = [],
@@ -61,7 +63,7 @@ export interface BoardQualifier {
 
 /**
  * Split a raw query into plain terms plus recognized qualifiers. Matching is
- * case-insensitive; `has:` accepts `auto`/`color`, `is:` accepts
+ * case-insensitive; `has:` accepts `auto`/`color`/`priority`, `is:` accepts
  * `unread`/`read`, `ws:` takes any text — quoted (`ws:"a b"`) when the name
  * holds a space, first word otherwise. Anything unrecognized stays a literal
  * search term: an unknown qualifier narrows like ordinary text instead of
@@ -89,7 +91,7 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
       // A quote inside a would-be facet value means an unclosed `ws:"..."` —
       // the token stays literal text (a facet value never contains quotes).
       if (!value.includes('"') && value !== '' && (key === 'has' || key === 'is' || key === 'ws')) {
-        if (key === 'has' && (value === 'auto' || value === 'color')) {
+        if (key === 'has' && (value === 'auto' || value === 'color' || value === 'priority')) {
           qualifiers.push({ key, value })
           continue
         }
@@ -110,12 +112,13 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
 
 /** Whether one qualifier holds (unknown facets read absent = no match). */
 function matchQualifier(
-  task: { color?: string },
+  task: { color?: string; priority?: number },
   qualifier: BoardQualifier,
   facets: BoardQueryFacets,
 ): boolean {
   if (qualifier.key === 'has' && qualifier.value === 'auto') return facets.hasAutomation === true
   if (qualifier.key === 'has' && qualifier.value === 'color') return task.color !== undefined
+  if (qualifier.key === 'has' && qualifier.value === 'priority') return task.priority !== undefined
   if (qualifier.key === 'is' && qualifier.value === 'unread') return facets.isUnviewed === true
   if (qualifier.key === 'is' && qualifier.value === 'read') return facets.isUnviewed === false
   if (qualifier.key === 'ws') {

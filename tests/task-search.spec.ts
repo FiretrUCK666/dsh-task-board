@@ -165,6 +165,13 @@ describe('matchTask qualifiers', () => {
     expect(matchTask(task, 'has:color')).toBe(false)
   })
 
+  it('has:priority tests the card priority (any of P1/P2/P3)', () => {
+    expect(matchTask({ ...task, priority: 1 }, 'has:priority')).toBe(true)
+    expect(matchTask({ ...task, priority: 3 }, 'has:priority')).toBe(true)
+    expect(matchTask(task, 'has:priority')).toBe(false)
+    expect(parseBoardQuery('HAS:PRIORITY')).toEqual({ terms: [], qualifiers: [{ key: 'has', value: 'priority' }] })
+  })
+
   it('is:unread / is:read test the unviewed facet', () => {
     expect(matchTask(task, 'is:unread', [], { isUnviewed: true })).toBe(true)
     expect(matchTask(task, 'is:unread', [], { isUnviewed: false })).toBe(false)
