@@ -41,6 +41,8 @@ import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../side
 import { taskBindsOf } from '../../core/tasks.ts'
 
 import { matchTask } from './task-search.ts'
+import { notificationsOf } from './notifications.ts'
+import { Chip } from './Chip.tsx'
 
 /**
  * The cruise settings in its two forms, one content: the anchored popover
@@ -107,6 +109,15 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [showNew, setShowNew] = useState(false)
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
   const [showAutomation, setShowAutomation] = useState(false)
+  // 通知中心弹层：等你处理的会话聚合（只读，点行进详情）。
+  const [showNotify, setShowNotify] = useState(false)
+  // Live aggregation over the snapshot (the controller notifies on every
+  // session-list change, so a newly-waiting session lights the bell at once).
+  const notes = notificationsOf(
+    snapshot.tasks,
+    sessionId => controller.pendingInteractionOf(sessionId),
+    sessionId => controller.sessionTitle(sessionId) ?? sessionId,
+  )
   // 多选（Ctrl/Cmd+点击即选，整理模式整选；板头横栏批量换色/删除/全选清选）。
   const [organizing, setOrganizing] = useState(false)
   // The engine-seat note the header chip opens (touch has no hover, so the
@@ -774,7 +785,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             onChange={event => { setFilter(event.target.value) }}
             aria-label={t('board.search')}
           />
-          {/* 模式按钮（整理/自动化）是一个语义组：宽档贴右成簇，紧凑档整组
+          {/* 模式按钮（整理/自动化/通知）是一个语义组：宽档贴右成簇，紧凑档整组
               换到自己的一行右对齐——它们永远同进同退，不会被挤散。 */}
           <span className={css.boardModes}>
             {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
@@ -794,6 +805,22 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             >
               {t('board.automation')}
             </Button>
+            {/* 通知：等你处理的会话聚合（只读列表 — 点行进任务详情，
+                会话操作归详情页）。有等待事项才亮数，无则安静。 */}
+            <button
+              type="button"
+              className={`${css.iconButton} ${css.notifyBell}`}
+              aria-label={t('board.notify')}
+              title={t('board.notify')}
+              onClick={() => { setShowNotify(true) }}
+            >
+              <Icon name="bell" />
+              {notes.length > 0 && (
+                <span className={css.notifyBadge} aria-hidden="true">
+                  {notes.length > 99 ? '99+' : String(notes.length)}
+                </span>
+              )}
+            </button>
           </span>
         </div>
 
@@ -1115,6 +1142,33 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           controller={controller}
           onClose={() => { setShowAutomation(false) }}
         />
+      )}
+      {showNotify && (
+        <Dialog title={t('board.notify')} label={t('board.notify')} onClose={() => { setShowNotify(false) }} portal>
+          <div className={css.modalScroll}>
+            {notes.length === 0 ? (
+              <p className={css.detailText}>{t('board.notifyEmpty')}</p>
+            ) : (
+              <ul className={css.notifyList}>
+                {notes.map(note => (
+                  <li key={`${note.taskId}|${note.sessionId}`}>
+                    <button
+                      type="button"
+                      className={css.notifyRow}
+                      onClick={() => { setShowNotify(false); controller.openTask(note.taskId) }}
+                    >
+                      <span className={css.notifyTask} title={note.taskTitle}>
+                        {note.taskTitle.trim() === '' ? t('card.untitled') : note.taskTitle}
+                      </span>
+                      <Chip kind="warn" fill={false}>{t(waitingKeyOf(note.waitingKind))}</Chip>
+                      <span className={css.notifySession} title={note.sessionId}>{note.sessionTitle}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Dialog>
       )}
     </div>
   )

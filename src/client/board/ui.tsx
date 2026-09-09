@@ -158,7 +158,7 @@ export function Notice({ chip, children }: { chip: ReactNode; children: ReactNod
  * glyph can ever balloon to the SVG default 300x150 box). Every board icon
  * route goes through this component.
  */
-export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'pause' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff' | 'pencil'
+export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'pause' | 'bell' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff' | 'pencil'
 
 const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5',
   chevronDown: 'M3 6 8 11 13 6',
@@ -167,6 +167,8 @@ const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5
   arrowLeft: 'M12 8H4M7 4l-4 4 4 4',
   link: 'M6.4 9.6 9.6 6.4M6 10l-1.8 1.8a2.1 2.1 0 0 1-3-3L3.7 6.2a2.1 2.1 0 0 1 3 0M10 6l1.8-1.8a2.1 2.1 0 0 1 3 3L12.3 9.8a2.1 2.1 0 0 1-3 0',
   play: 'M5.5 3.5 12 8l-6.5 4.5z',
+  // A bell: the notification-center affordance (same 16-box stroke grammar).
+  bell: 'M8 2.5a4 4 0 0 1 4 4c0 2.8 1 3.8 1.5 4.5h-11C3 10.5 4 9.5 4 6.5a4 4 0 0 1 4-4zM6.5 13.5a1.5 1.5 0 0 0 3 0',
   // Two bars: the "pause this goal" affordance (the play twin — same 16-box
   // grammar, stroke-drawn like every board glyph).
   pause: 'M5.5 4v8M10.5 4v8',

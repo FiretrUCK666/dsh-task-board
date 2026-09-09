@@ -413,6 +413,10 @@ describe('board header and navigator legibility', () => {
     expect(toolsRow).toMatch(/className=\{css\.search\}/)
     expect(toolsRow).toContain('boardModes')
     expect(toolsRow).not.toContain('boardNewTask')
+    // The notification bell rides the modes cluster (never a third header
+    // row): one tap opens the waiting-sessions dialog.
+    expect(toolsRow).toContain('css.notifyBell')
+    expect(board).toContain('setShowNotify(true)')
   })
 })
 

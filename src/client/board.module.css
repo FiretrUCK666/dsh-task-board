@@ -328,7 +328,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-width: 12px;
 }
 
-/* 状态槽（巡航状态 + 引擎指示）与模式槽（整理 + 自动化）是两个语义组：
+/* 状态槽（巡航状态 + 引擎指示）与模式槽（整理 + 自动化 + 通知）是两个语义组：
    宽档同贴行右，compact 档各自成确定的一行——组内永远同进同退，
    不会再被挤散成"内容驱动的折行汤"。 */
 .boardState {
@@ -344,6 +344,80 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   gap: 10px;
   flex: none;
+}
+
+/* 通知铃：与模式组同高（28px 行盒）的图标键；计数徽标只在有等待事项时
+   出现（无事项 = 安静铃，无空徽标噪音）。徽标是计数本身，不是装饰。 */
+.notifyBell {
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+.notifyBadge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsh-tb-attention);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 通知列表：一行一条等待会话（任务名 + 等待种 + 会话名），整行可点进
+   任务详情。行高跟随内容，名槽各自截断，徽标永不收缩。 */
+.notifyList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.notifyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  color: var(--dsh-tb-text-1);
+  background: none;
+  border: none;
+  border-radius: var(--dsh-tb-radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.notifyRow:hover {
+  background: var(--dsh-tb-hover);
+}
+.notifyTask {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.notifySession {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
 }
 
 /* 工具行 = 筛选任务（左，与返回/板名同一条 x）+ 模式组（整理/自动化，右）：
