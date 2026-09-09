@@ -80,15 +80,18 @@ export interface SessionsControllerFace {
 /**
  * The workspaces face the controller needs: the registry's workspace rows
  * (id + title) for source labels, the run-config picker and drag
- * classification. Workspace MEMBERSHIP is deliberately not read — a bound
- * workspace never surfaces its sessions (see linked-sessions.ts). The
- * registry-global ARCHIVE set is read (archived conversations leave the
- * card's session rows — see taskSessionsOf).
+ * classification. A bound workspace still never surfaces sessions LIVE (see
+ * linked-sessions.ts) — but the folder-drop snapshot DOES read membership,
+ * once, at creation, from each row's `sessionIds`: the registry's OWN
+ * ownership account (display order), never cwd/title guessing; absent = an
+ * old host, fall back to the cwd scan. The registry-global ARCHIVE set is
+ * read (archived conversations leave the card's session rows — see
+ * taskSessionsOf).
  */
 export interface WorkspacesControllerFace {
   list: {
     getSnapshot(): {
-      items: readonly { id: string; title: string }[]
+      items: readonly { id: string; title: string; sessionIds?: readonly string[] }[]
       archivedSessionIds: readonly string[]
     }
     subscribe(fn: () => void): () => void
@@ -1102,26 +1105,66 @@ export class BoardController {
   }
 
   /**
-   * The workspace's CURRENT live session snapshot for a folder drop: every
-   * session the native list shows right now that is visible (listed),
-   * unarchived and non-blank — deduplicated, in native list order. Pure
-   * derivation over the two snapshots (no I/O), so tests drive it with
+   * The workspace's CURRENT live session snapshot for a folder drop.
+   * Membership comes from the registry's OWN ownership account (`sessionIds`
+   * on the workspace row, display order) — never cwd/title guessing across
+   * the whole list (same-named folders elsewhere are not this workspace).
+   * Only when the row carries no account (old host) does the legacy cwd scan
+   * apply. Either way each candidate must be listed RIGHT NOW, unarchived
+   * and non-blank; unknown ids (stale slots) are skipped, never guessed.
+   * Pure derivation over the two snapshots (no I/O), so tests drive it with
    * fakes. Later sessions never join (snapshot, not subscription).
    */
   private snapshotWorkspaceSessions(workspaceId: string): string[] {
     const state = this.deps.sessions.list.getSnapshot()
-    const archived = new Set(this.deps.workspaces?.list.getSnapshot().archivedSessionIds ?? [])
+    const workspaces = this.deps.workspaces?.list.getSnapshot()
+    const archived = new Set(workspaces?.archivedSessionIds ?? [])
+    const owned = workspaces?.items.find(item => item.id === workspaceId)?.sessionIds
     const seen = new Set<string>()
     const out: string[] = []
-    const order = state.ids ?? Object.keys(state.byId)
-    for (const id of order) {
+    let skippedArchived = 0
+    let skippedBlank = 0
+    let skippedUnknown = 0
+    const take = (id: string): void => {
       const row = state.byId[id]
-      if (row === undefined || archived.has(id) || row.blank === true) continue
-      if (!this.sessionInWorkspace(id, row, workspaceId)) continue
-      if (seen.has(id)) continue
+      if (row === undefined) {
+        skippedUnknown += 1
+        return
+      }
+      if (archived.has(id)) {
+        skippedArchived += 1
+        return
+      }
+      if (row.blank === true) {
+        skippedBlank += 1
+        return
+      }
+      if (seen.has(id)) return
       seen.add(id)
       out.push(id)
     }
+    if (owned !== undefined) {
+      for (const id of owned) take(id)
+    } else {
+      // Legacy host without the ownership account: scan by workspace signal.
+      const order = state.ids ?? Object.keys(state.byId)
+      for (const id of order) {
+        const row = state.byId[id]
+        if (row === undefined || !this.sessionInWorkspace(id, row, workspaceId)) {
+          skippedUnknown += 1
+          continue
+        }
+        take(id)
+      }
+    }
+    // One named line per drop (the no-silent-drop law covers the snapshot
+    // too — a "where did my sessions go / where did these come from" report
+    // is answerable from this single line).
+    console.info(
+      `[dsh-task-board] workspace snapshot ${workspaceId}: took ${out.length} ` +
+      `(archivedSet=${archived.size}, via=${owned !== undefined ? 'ownership' : 'cwd-scan'}, ` +
+      `skipped: archived=${skippedArchived} blank=${skippedBlank} unknown-or-unmatched=${skippedUnknown})`,
+    )
     return out
   }
 

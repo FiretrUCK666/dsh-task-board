@@ -23,64 +23,99 @@ interface BoardEnvelope {
  * Build the transport. `EventSource` is feature-detected: an environment
  * without it (an exotic WebView) still converges through the poll loop, just
  * with higher latency.
+ *
+ * Every request is time-bounded (`timeoutMs`, default 15s): a hanging socket
+ * (dead tunnel, half-open proxy) must resolve to `undefined` like any other
+ * failure — an unsettled boot fetch holds `sync.start()` forever, and the
+ * sidebar entry never binds, which is exactly the mobile "点了没反应、进不去".
+ * A timeout is a failure like any other: the sync client falls back and the
+ * poll/EventSource loop recovers when the line is back.
  */
-export function createBoardTransport(): BoardSyncTransport {
+export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyncTransport {
+  const timeoutMs = options?.timeoutMs ?? 15_000
+  // One choke point for every request below: race the fetch against a timer.
+  // The timer unrefs nothing (browser) and is always cleared — a resolved
+  // fetch never leaks a pending timeout, and an abort surfaces as a catch,
+  // which every caller already maps to `undefined`.
+  const bounded = async <T>(run: (signal: AbortSignal) => Promise<T | undefined>): Promise<T | undefined> => {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => { ctrl.abort() }, timeoutMs)
+    try {
+      return await run(ctrl.signal)
+    } catch {
+      return undefined
+    } finally {
+      clearTimeout(timer)
+    }
+  }
   return {
     async fetch(clientId, since) {
-      try {
-        const params = new URLSearchParams({ clientId })
-        if (since !== undefined) params.set('since', String(since))
-        const response = await fetch(`${ROUTE}?${params.toString()}`, { headers: { accept: 'application/json' } })
-        if (!response.ok) return undefined
-        const envelope = await response.json() as BoardEnvelope
-        return envelope.ok ? envelope.value : undefined
-      } catch {
-        return undefined
-      }
+      return bounded(async signal => {
+        try {
+          const params = new URLSearchParams({ clientId })
+          if (since !== undefined) params.set('since', String(since))
+          const response = await fetch(`${ROUTE}?${params.toString()}`, { headers: { accept: 'application/json' }, signal })
+          if (!response.ok) return undefined
+          const envelope = await response.json() as BoardEnvelope
+          return envelope.ok ? envelope.value : undefined
+        } catch {
+          return undefined
+        }
+      })
     },
     async commit(commit: BoardCommit) {
-      try {
-        const response = await fetch(ROUTE, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(commit),
-        })
-        const envelope = await response.json() as BoardEnvelope
-        return envelope.ok ? envelope.value : undefined
-      } catch {
-        return undefined
-      }
+      return bounded(async signal => {
+        try {
+          const response = await fetch(ROUTE, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(commit),
+            signal,
+          })
+          const envelope = await response.json() as BoardEnvelope
+          return envelope.ok ? envelope.value : undefined
+        } catch {
+          return undefined
+        }
+      })
     },
     async lease(clientId, options) {
-      try {
-        const response = await fetch(`${ROUTE}/lease`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(options.release
-            ? { clientId, release: true }
-            : {
-                clientId,
-                ...options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {},
-                ...options.active === false ? { active: false } : {},
-              }),
-        })
-        const envelope = await response.json() as BoardEnvelope
-        return envelope.ok ? envelope.value?.lease : undefined
-      } catch {
-        return undefined
-      }
+      return bounded(async signal => {
+        try {
+          const response = await fetch(`${ROUTE}/lease`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(options.release
+              ? { clientId, release: true }
+              : {
+                  clientId,
+                  ...options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {},
+                  ...options.active === false ? { active: false } : {},
+                }),
+            signal,
+          })
+          const envelope = await response.json() as BoardEnvelope
+          return envelope.ok ? envelope.value?.lease : undefined
+        } catch {
+          return undefined
+        }
+      })
     },
     async command(clientId, command: BoardCommand) {
-      try {
-        await fetch(`${ROUTE}/command`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ clientId, command }),
-        })
-      } catch {
-        // The relay is best-effort: a lost command is retried by the next
-        // user action, and the engine's own reconcile covers automation.
-      }
+      await bounded(async signal => {
+        try {
+          await fetch(`${ROUTE}/command`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ clientId, command }),
+            signal,
+          })
+        } catch {
+          // The relay is best-effort: a lost command is retried by the next
+          // user action, and the engine's own reconcile covers automation.
+        }
+        return undefined
+      })
     },
     openStream(clientId, handlers) {
       const Source = (globalThis as { EventSource?: new (url: string) => {

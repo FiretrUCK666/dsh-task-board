@@ -60,8 +60,11 @@ class FakeSessions {
     },
   }
   workspacesList = {
-    getSnapshot: (): { items: readonly { id: string; title: string }[]; archivedSessionIds: readonly string[] } => ({
-      items: [] as readonly { id: string; title: string }[],
+    getSnapshot: (): {
+      items: readonly { id: string; title: string; sessionIds?: readonly string[] }[]
+      archivedSessionIds: readonly string[]
+    } => ({
+      items: this.workspaceItems.map(item => ({ ...item })),
       archivedSessionIds: [...this.archivedIds] as readonly string[],
     }),
     subscribe: (fn: () => void): (() => void) => {
@@ -69,6 +72,8 @@ class FakeSessions {
       return () => { this.listeners.delete(fn) }
     },
   }
+  /** Registry workspace rows (the ownership account rides each row). */
+  workspaceItems: Array<{ id: string; title: string; sessionIds: string[] }> = []
   exists(id: string): boolean {
     return this.knownIds === undefined || this.knownIds.has(id)
   }
@@ -147,16 +152,28 @@ function makeController(stub = new StubExec(), extra: Partial<ControllerDeps> & 
 /** A controller whose sessions + workspaces fakes model one workspace's sidebar section. */
 function makeWorkspaceController(opts: {
   workspaceId: string
-  members: Array<{ id: string; blank?: boolean; archived?: boolean }>
+  title?: string
+  members: Array<{ id: string; blank?: boolean; archived?: boolean; cwd?: string; workspaceId?: string }>
   order?: string[]
 }): { controller: BoardController; sessions: FakeSessions; store: InMemoryTaskStore; stub: StubExec } {
   const sessions = new FakeSessions()
   sessions.order = opts.order ?? opts.members.map(member => member.id)
   for (const member of opts.members) {
     sessions.setRunning(member.id, false)
-    sessions.setInfo(member.id, { workspaceId: opts.workspaceId, ...member.blank === true ? { blank: true } : {} })
+    sessions.setInfo(member.id, {
+      ...member.workspaceId !== undefined ? { workspaceId: member.workspaceId } : { workspaceId: opts.workspaceId },
+      ...member.cwd !== undefined ? { cwd: member.cwd } : {},
+      ...member.blank === true ? { blank: true } : {},
+    })
     if (member.archived === true) sessions.archivedIds.add(member.id)
   }
+  // The registry's ownership account (display order = member order unless the
+  // test overrides the list order for the legacy scan path).
+  sessions.workspaceItems = [{
+    id: opts.workspaceId,
+    title: opts.title ?? opts.workspaceId,
+    sessionIds: opts.members.map(member => member.id),
+  }]
   const store = new InMemoryTaskStore()
   const stub = new StubExec()
   const controller = new BoardController({
@@ -2113,6 +2130,44 @@ describe('linked sessions & bind', () => {
     expect(rows).toEqual(['s-live-1'])
   })
 
+  it('workspace snapshot reads the ownership account, never cwd-title guessing', () => {
+    // Same-named folders elsewhere are NOT this workspace: a foreign session
+    // whose cwd basename collides with the workspace title must not join,
+    // while an owned session with a misleading cwd still does.
+    const harness = makeWorkspaceController({
+      workspaceId: 'w-a',
+      title: 'proj',
+      members: [{ id: 's-owned', cwd: '/elsewhere/other' }],
+    })
+    harness.sessions.setRunning('s-stranger', false)
+    harness.sessions.setInfo('s-stranger', { workspaceId: 'w-other', cwd: '/data/proj' })
+    const created = harness.controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+      title: 'w', description: '', prompt: 'run', status: 'todo',
+    })!
+    expect(created.binds).toEqual([
+      { kind: 'workspace', workspaceId: 'w-a' },
+      { kind: 'session', sessionId: 's-owned' },
+    ])
+  })
+
+  it('workspace snapshot skips stale ownership slots (unknown ids are never guessed)', () => {
+    const harness = makeWorkspaceController({
+      workspaceId: 'w-a',
+      members: [{ id: 's-live-1' }],
+    })
+    // The registry account still names a session that has since vanished.
+    harness.sessions.workspaceItems = [{
+      id: 'w-a', title: 'w-a', sessionIds: ['s-live-1', 's-gone'],
+    }]
+    const created = harness.controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+      title: 'w', description: '', prompt: 'run', status: 'todo',
+    })!
+    expect(created.binds).toEqual([
+      { kind: 'workspace', workspaceId: 'w-a' },
+      { kind: 'session', sessionId: 's-live-1' },
+    ])
+  })
+
   it('hideTaskSession / unhideTaskSessions manage a per-session hide set (persisted)', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
@@ -3416,7 +3471,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect(row.executions.filter(round => round.external === true)).toHaveLength(1)
   })
 
-  it('a workspace-member session running RIGHT NOW does NOT make the card live; an explicit bind does (运行态单一推导)', async () => {
+  it('a snapshotted workspace member rides the card live (snapshot binds are explicit); later births do not join', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
     const sessions = new FakeSessions()
@@ -3431,19 +3486,33 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     await flush()
     const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: '' })!
     await flush()
+    // The folder member joined as an explicit bind at creation (ownership
+    // snapshot) — idle member, idle card.
+    expect(task.binds).toEqual([
+      { kind: 'workspace', workspaceId: 'w-a' },
+      { kind: 'session', sessionId: 's-member' },
+    ])
     expect(controller.liveStateOf(task.id)).toBe('idle')
-    // The folder member starts chattering natively: the card does NOT follow
-    // (membership is not a relation; the flood stays sealed).
+    // The member starts chattering natively: the card follows (an explicit
+    // bind rides the native truth — this is the requested "带进卡片" semantics).
     sessions.setRunning('s-member', true)
     wss.notify()
     await flush()
     await flush()
-    expect(controller.liveStateOf(task.id)).toBe('idle')
-    // Bind the session explicitly and the live state rides the native truth.
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-member' })
-    await flush()
-    await flush()
     expect(controller.liveStateOf(task.id)).toBe('running')
+    // A session born AFTER the drop never joins on its own (the flood stays
+    // sealed for newcomers).
+    sessions.setRunning('s-late', false)
+    sessions.setInfo('s-late', { workspaceId: 'w-a' })
+    wss.notify()
+    await flush()
+    await flush()
+    expect(task.binds).toHaveLength(2)
+    // Detach the member again and the card goes quiet (binds are the truth).
+    controller.removeTaskSession(task.id, 's-member')
+    await flush()
+    await flush()
+    expect(controller.liveStateOf(task.id)).toBe('idle')
   })
 
   it('deleting a session while a workspace bind stays does NOT keep driving the card (removed gate)', async () => {

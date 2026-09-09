@@ -760,7 +760,16 @@ export function apply(ctx: ClientContext): void {
           getSnapshot: () => {
             const snap = workspaces.list.getSnapshot()
             return {
-              items: snap.items.map(item => ({ id: item.workspaceId, title: item.title })),
+              items: snap.items.map(item => {
+                const raw = item as unknown as Record<string, unknown>
+                return {
+                  id: item.workspaceId,
+                  title: item.title,
+                  // The registry's ownership account (folder-drop snapshot
+                  // reads membership from it — never cwd/title guessing).
+                  ...Array.isArray(raw.sessionIds) ? { sessionIds: raw.sessionIds as readonly string[] } : {},
+                }
+              }),
               archivedSessionIds: snap.archivedSessionIds,
             }
           },
