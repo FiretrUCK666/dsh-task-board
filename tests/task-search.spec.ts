@@ -4,7 +4,7 @@
  * matches all.
  */
 import { describe, expect, it } from 'vitest'
-import { boardShortcutOf, isShortcutTyping, matchTask, parseBoardQuery, taskHaystack } from '../src/client/board/task-search.ts'
+import { boardShortcutOf, isShortcutTyping, matchCheatRow, matchTask, parseBoardQuery, taskHaystack } from '../src/client/board/task-search.ts'
 
 const task = {
   title: '给猫画一幅画',
@@ -79,6 +79,20 @@ describe('boardShortcutOf (single keys, never while typing, never with modifiers
     expect(boardShortcutOf({ key: 'Enter' }, false)).toBeUndefined()
     expect(boardShortcutOf({ key: 'a' }, false)).toBeUndefined()
     expect(boardShortcutOf({ key: 'Escape' }, false)).toBeUndefined()
+  })
+})
+
+describe('matchCheatRow (cheatsheet filter sieve)', () => {
+  it('blank query keeps every row', () => {
+    expect(matchCheatRow({ key: '/', text: 'Focus' }, '')).toBe(true)
+    expect(matchCheatRow({ key: '/', text: 'Focus' }, '   ')).toBe(true)
+  })
+
+  it('matches key or description substring, case-insensitive', () => {
+    expect(matchCheatRow({ key: '/', text: '聚焦任务筛选' }, '/')).toBe(true)
+    expect(matchCheatRow({ key: 'x', text: '清空筛选' }, '清空')).toBe(true)
+    expect(matchCheatRow({ key: '?', text: 'Toggle this cheatsheet' }, 'toggle')).toBe(true)
+    expect(matchCheatRow({ key: '/', text: '聚焦任务筛选' }, '不存在')).toBe(false)
   })
 })
 

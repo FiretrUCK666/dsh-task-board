@@ -166,3 +166,17 @@ export function boardShortcutOf(
   if (event.key === '?') return 'toggle-help'
   return undefined
 }
+
+/** One cheatsheet row: the key plus its current-language description. */
+export interface CheatRow {
+  key: string
+  text: string
+}
+
+/** Whether a cheatsheet row survives the filter (blank = all; key or text
+ *  substring, case-insensitive — the same sieve spirit as the task filter). */
+export function matchCheatRow(row: CheatRow, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (q === '') return true
+  return row.key.toLowerCase().includes(q) || row.text.toLowerCase().includes(q)
+}

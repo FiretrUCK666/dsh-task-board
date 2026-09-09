@@ -43,7 +43,7 @@ import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
-import { boardShortcutOf, isShortcutTyping, matchTask } from './task-search.ts'
+import { boardShortcutOf, isShortcutTyping, matchCheatRow, matchTask, type CheatRow } from './task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
 import { foldNotesByTask, noteKeyOf, notificationsExOf, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
@@ -184,6 +184,20 @@ function WipLimitField({ label, title, text, committed, onText, onCommit }: {
   )
 }
 
+/** Device-local key for the single-key shortcuts master switch (never
+ *  renamed: input preference is per-device — syncing it would pollute another
+ *  device's desktop habits. Absent/other values read enabled). */
+const SHORTCUTS_STORAGE_KEY = 'dsh.taskBoard.shortcuts.v1'
+
+/** Read the persisted shortcuts preference (session default on any failure). */
+function readShortcutsEnabled(): boolean {
+  try {
+    return localStorage.getItem(SHORTCUTS_STORAGE_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
 /** Board component; subscribes to the controller snapshot. */
 export function TaskBoard({ controller }: { controller: BoardController }) {
   const [snapshot, setSnapshot] = useState(controller.getSnapshot())
@@ -199,6 +213,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // 快捷键速查表 + 单键快捷键（`/`聚焦筛选、`x`清空、`?`开关本表）：无修饰键，
   // 输入中与弹窗内一律让路（触屏零损失，桌面键位零冲突），随 effect 释放监听。
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [cheatQuery, setCheatQuery] = useState('')
+  useEffect(() => {
+    if (showShortcuts) setCheatQuery('')
+  }, [showShortcuts])
+  // 单键快捷键总开关（设备本地偏好：触屏设备本就无键盘，同步它只会污染他人
+  // 的桌面习惯——默认开，关后速查表仍可点达，永无死路）。
+  const [shortcutsEnabled, setShortcutsEnabled] = useState(readShortcutsEnabled)
+  const setShortcutsEnabledPersisted = (next: boolean): void => {
+    setShortcutsEnabled(next)
+    try {
+      localStorage.setItem(SHORTCUTS_STORAGE_KEY, next ? '1' : '0')
+    } catch {
+      // Private mode / quota: the toggle still works for the session.
+    }
+  }
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement | null
@@ -214,6 +243,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       // Dialogs keep their keys — except the cheatsheet toggle, which stays
       // reachable wherever focus sits inside the board (orthogonal to Esc).
       if (target.closest('[role="dialog"]') !== null && shortcut !== 'toggle-help') return
+      // Master switch off: single keys stay silent (the cheatsheet button
+      // remains, so there is never a dead end).
+      if (!shortcutsEnabled) return
       if (shortcut === 'focus-search') {
         event.preventDefault()
         searchRef.current?.focus()
@@ -225,7 +257,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     }
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('keydown', onKey) }
-  }, [filter])
+  }, [filter, shortcutsEnabled])
   // 通知中心弹层：等你处理的会话聚合 + 未读待审（行内 triage，点主区进详情）。
   const [showNotify, setShowNotify] = useState(false)
   const [notifyFilter, setNotifyFilter] = useState<'all' | 'waiting' | 'review'>('all')
@@ -1138,7 +1170,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             <Button
               variant="ghost"
               className={css.modeShortcuts}
-              title={t('board.shortcuts')}
+              title={`${t('board.shortcuts')} (?)`}
               onClick={() => { setShowShortcuts(true) }}
             >
               {t('board.shortcuts')}
@@ -1980,15 +2012,31 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       {showShortcuts && (
         <Dialog title={t('board.shortcuts')} label={t('board.shortcuts')} onClose={() => { setShowShortcuts(false) }} portal>
           <div className={css.modalScroll}>
-            <p className={css.detailText}>
-              <Chip kind="neutral" fill={false}>/</Chip> {t('board.shortcutSearch')}
-            </p>
-            <p className={css.detailText}>
-              <Chip kind="neutral" fill={false}>x</Chip> {t('board.shortcutClear')}
-            </p>
-            <p className={css.detailText}>
-              <Chip kind="neutral" fill={false}>?</Chip> {t('board.shortcutHelp')}
-            </p>
+            <label className={css.cruisePopoverLimit}>
+              <Switch
+                checked={shortcutsEnabled}
+                onChange={next => { setShortcutsEnabledPersisted(next) }}
+                label={t('board.shortcutsToggle')}
+                title={t('board.shortcutsToggle')}
+              />
+            </label>
+            <input
+              className={css.search}
+              type="search"
+              placeholder={t('board.shortcutFilter')}
+              value={cheatQuery}
+              onChange={event => { setCheatQuery(event.target.value) }}
+              aria-label={t('board.shortcutFilter')}
+            />
+            {([
+              { key: '/', text: t('board.shortcutSearch') },
+              { key: 'x', text: t('board.shortcutClear') },
+              { key: '?', text: t('board.shortcutHelp') },
+            ] as CheatRow[]).filter(row => matchCheatRow(row, cheatQuery)).map(row => (
+              <p key={row.key} className={css.detailText}>
+                <Chip kind="neutral" fill={false}>{row.key}</Chip> {row.text}
+              </p>
+            ))}
             <p className={css.detailHint}>{t('board.shortcutQuali')}</p>
           </div>
         </Dialog>
@@ -2006,7 +2054,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         {renderNotifyBell()}
         <Button
           variant="ghost"
-          title={t('board.shortcuts')}
+          title={`${t('board.shortcuts')} (?)`}
           onClick={() => { setShowShortcuts(true) }}
         >
           {t('board.shortcuts')}
