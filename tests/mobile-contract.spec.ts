@@ -766,9 +766,10 @@ describe('template library wiring', () => {
     // 返回/筛选.
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(ruleIn(compact, '.boardRowTools .boardModes')).toMatch(/justify-self:\s*start/)
-    // Outer frame keeps a VISIBLE step above desktop air (density is for
-    // rows, never the frame — the shell column gives zero above the board).
-    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*20px 12px/)
+    // The board meets the shell edge-to-edge: separation is a hairline, not
+    // air (padding alone never reads as separation against the shell head).
+    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*14px 12px/)
+    expect(ruleIn(compact, '.board')).toMatch(/border-top:\s*var\(--dsh-tb-separator\)/)
   })
 
   it('the narrow rail keeps ONE rhythm (a single gap owns between)', () => {

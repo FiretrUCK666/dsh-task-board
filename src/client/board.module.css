@@ -5601,11 +5601,12 @@ button.interactionOption:hover {
    ══════════════════════════════════════════════════════════════════════════ */
 @container dsh-tb (max-width: 680px) {
   .board {
-    /* Top air is a VISIBLE step above desktop (20px vs 14px): 14→16px proved
-       invisible in screenshots (a 2px non-fix). The shell column gives zero
-       above the board and the dark shell header sits right on top, so the
-       number has to carry the whole separation. Sides stay 12px. */
-    padding: 20px 12px calc(12px + env(safe-area-inset-bottom));
+    /* The board meets the shell header edge-to-edge (the container is
+       absolute inset:0), so air alone never reads as separation — the top
+       edge gets the same hairline the columns use. One line, both widths'
+       language; padding stays desktop-parity. */
+    border-top: var(--dsh-tb-separator);
+    padding: 14px 12px calc(12px + env(safe-area-inset-bottom));
     gap: 10px;
   }
 
