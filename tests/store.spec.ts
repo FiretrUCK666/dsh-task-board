@@ -236,6 +236,19 @@ describe('schedule persistence', () => {
     expect(parseLedger(raw)[0].schedule).toBeUndefined()
   })
 
+  it('defaults a missing missed-tolerance and floors junk to a positive integer', () => {
+    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
+    const raw = [
+      { ...valid, id: 't-1', schedule: { enabled: true, cron: '0 9 * * *', missedToleranceMs: 90.7 } },
+      { ...valid, id: 't-2', schedule: { enabled: true, cron: '0 9 * * *', missedToleranceMs: -5 } },
+      { ...valid, id: 't-3', schedule: { enabled: true, cron: '0 9 * * *' } },
+    ]
+    const parsed = parseLedger(JSON.stringify(raw))
+    expect(parsed[0].schedule?.missedToleranceMs).toBe(90)
+    expect(parsed[1].schedule?.missedToleranceMs).toBeUndefined()
+    expect(parsed[2].schedule?.missedToleranceMs).toBeUndefined()
+  })
+
   it('round-trips a primed chain rule and a column sort key', () => {
     const storage = new FakeStorage()
     const store = new LocalStorageTaskStore('k', storage)

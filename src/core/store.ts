@@ -97,6 +97,7 @@ function normalizeSchedule(schedule: unknown): ScheduleRule | undefined {
   // than treated as corrupt.
   const maxRuns = rule.maxRuns
   const runCount = rule.runCount
+  const missedToleranceMs = rule.missedToleranceMs
   return {
     enabled: rule.enabled === true,
     mode,
@@ -105,6 +106,12 @@ function normalizeSchedule(schedule: unknown): ScheduleRule | undefined {
     lastTriggeredAt: typeof rule.lastTriggeredAt === 'number' ? rule.lastTriggeredAt : undefined,
     maxRuns: typeof maxRuns === 'number' && Number.isInteger(maxRuns) && maxRuns > 0 ? maxRuns : undefined,
     runCount: typeof runCount === 'number' && Number.isInteger(runCount) && runCount >= 0 ? runCount : 0,
+    // Missed-slot tolerance is newer still: older persisted rules lack it and
+    // read it as undefined (one scheduler tick), same defaulting discipline
+    // as maxRuns/runCount above.
+    missedToleranceMs: typeof missedToleranceMs === 'number' && Number.isFinite(missedToleranceMs) && missedToleranceMs > 0
+      ? Math.floor(missedToleranceMs)
+      : undefined,
     // Legacy activation gate (see ScheduleRule.primed): automation is active
     // as soon as it is armed, so persisted rules always read primed — the
     // field is kept only so old documents parse losslessly.

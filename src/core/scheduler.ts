@@ -9,6 +9,15 @@
  * a task still running at its due instant is skipped by the controller's
  * runTask guard and simply waits for the next cron match.
  *
+ * Overlap policy is Forbid, explicit (K8s `concurrencyPolicy: Forbid`,
+ * node-cron `noOverlap`, shell `flock -n`: three names, one semantic) — a
+ * due instant that arrives while the task still runs is SKIPPED (never queued
+ * behind the run, never killing it) and counted, and a due instant that a
+ * newer grid point already superseded AND that is older than the missed-slot
+ * tolerance is skipped without catch-up (a slept tab never avalanches; a
+ * merely-late tick still fires). Skips are observable through
+ * {@link skipStats}; they never enter the retry path (a skip is not a failure).
+ *
  * Framework-free: all runtime access flows through the injected deps
  * (structural faces), so tests drive ticks directly without timers.
  */
@@ -70,9 +79,19 @@ export interface SchedulerDeps {
 export class SchedulerService {
   private timer: ReturnType<typeof setInterval> | undefined
   private disposed = false
+  /** Forbid-policy skip ledger (in-memory only — skips are telemetry, never
+   *  persisted, so a minute of overlap can never spam the synced document). */
+  private skippedOverlap = 0
+  private skippedMissed = 0
 
   /** @param deps - tasks/clock/trigger/apply faces (see {@link SchedulerDeps}). */
   constructor(private readonly deps: SchedulerDeps) {}
+
+  /** Forbid-policy telemetry: how many due slots were skipped while the task
+   *  still ran (`overlap`) vs. how many were too stale to catch up (`missed`). */
+  skipStats(): { overlap: number; missed: number } {
+    return { overlap: this.skippedOverlap, missed: this.skippedMissed }
+  }
 
   /** Start ticking: one immediate check (catch-up after reload) + the interval. */
   start(): void {
@@ -158,6 +177,31 @@ export class SchedulerService {
         continue
       }
       if (schedule.nextRunAt > now) continue
+      // Forbid, explicit: a due instant that arrives while the task still
+      // runs is skipped — not queued, not killing the live run. The schedule
+      // advances from the due instant (the cron grid stays aligned) with no
+      // trigger stamp and no run-count bump, and the skip is counted so
+      // "why didn't it run" stays answerable.
+      if (hasOpenRun(task)) {
+        const next = nextRunAtMs(schedule.cron, schedule.nextRunAt)
+        if (next !== undefined) this.deps.applySchedule(task.id, next, undefined)
+        this.skippedOverlap += 1
+        continue
+      }
+      // Missed-slot tolerance: a due instant that a NEWER grid point already
+      // superseded is stale (the tab slept, the clock jumped) — but only once
+      // it is also older than the tolerance window, so a merely-late tick
+      // still fires. Stale slots skip without catch-up (one jump to the next
+      // grid point from now, never a one-step crawl), and the skip is counted.
+      // Undefined tolerance = one scheduler tick.
+      const tolerance = schedule.missedToleranceMs ?? (this.deps.tickMs ?? 60_000)
+      const nextAfterDue = nextRunAtMs(schedule.cron, schedule.nextRunAt)
+      if (nextAfterDue !== undefined && nextAfterDue <= now && now - schedule.nextRunAt > tolerance) {
+        const next = nextRunAtMs(schedule.cron, now)
+        if (next !== undefined) this.deps.applySchedule(task.id, next, undefined)
+        this.skippedMissed += 1
+        continue
+      }
       // The final budgeted run disarms the schedule after firing; earlier
       // runs advance from the due instant (not this tick's wall-clock) and
       // only after the run is accepted — a rejected run keeps its due slot.

@@ -88,6 +88,54 @@ describe('SchedulerService.tick', () => {
     expect(h.applied[0].nextRunAt).toBe(at(2026, 1, 1, 10, 1, 0))
   })
 
+  it('skips (Forbid) a due task that is still running: rolls forward, counts, never queues', async () => {
+    const h = makeHarness()
+    h.setNow(at(2026, 1, 1, 10, 0, 30))
+    // Due at 10:00 and still running since 09:59: the live run is never
+    // queued behind nor killed — the slot is skipped, the grid advances from
+    // the due instant, and the skip is counted (not retried, not a failure).
+    const base = scheduledTask('a', '* * * * *', at(2026, 1, 1, 10, 0, 0))
+    const { task: running } = startExecution(base, at(2026, 1, 1, 9, 59, 0), 'e-1')
+    h.setTasks([running])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+    expect(h.applied).toEqual([{ id: 't-a', nextRunAt: at(2026, 1, 1, 10, 1, 0), lastTriggeredAt: undefined }])
+    expect(h.scheduler.skipStats()).toEqual({ overlap: 1, missed: 0 })
+  })
+
+  it('skips a long-superseded due slot without firing (no catch-up avalanche)', async () => {
+    const h = makeHarness()
+    h.setNow(at(2026, 1, 1, 10, 0, 30))
+    // Due at 09:00, an hour of grid points passed since: stale. One jump to
+    // the next grid point from now (10:01), never a one-step crawl.
+    h.setTasks([scheduledTask('a', '* * * * *', at(2026, 1, 1, 9, 0, 0))])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual([])
+    expect(h.applied).toEqual([{ id: 't-a', nextRunAt: at(2026, 1, 1, 10, 1, 0), lastTriggeredAt: undefined }])
+    expect(h.scheduler.skipStats()).toEqual({ overlap: 0, missed: 1 })
+  })
+
+  it('still fires a merely-late slot, and honours a per-rule tolerance', async () => {
+    // 90 seconds late with a 120-second tolerance: superseded but forgiven.
+    const h = makeHarness()
+    h.setNow(at(2026, 1, 1, 10, 0, 30))
+    const due = at(2026, 1, 1, 9, 59, 0)
+    const base = scheduledTask('a', '* * * * *', due)
+    const tolerant = withSchedule(base, { missedToleranceMs: 120_000 }, at(2026, 1, 1, 10, 0, 30))
+    expect(tolerant.schedule?.missedToleranceMs).toBe(120_000)
+    h.setTasks([tolerant])
+    await h.scheduler.tick()
+    expect(h.runs).toEqual(['t-a'])
+    expect(h.scheduler.skipStats()).toEqual({ overlap: 0, missed: 0 })
+    // Same lateness under the default one-tick tolerance: skipped.
+    const h2 = makeHarness()
+    h2.setNow(at(2026, 1, 1, 10, 0, 30))
+    h2.setTasks([scheduledTask('a', '* * * * *', due)])
+    await h2.scheduler.tick()
+    expect(h2.runs).toEqual([])
+    expect(h2.scheduler.skipStats()).toEqual({ overlap: 0, missed: 1 })
+  })
+
   it('rolls */5 schedules to the next 5-minute boundary', async () => {
     const h = makeHarness()
     h.setNow(at(2026, 1, 1, 10, 3, 0))

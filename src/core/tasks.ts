@@ -211,6 +211,14 @@ export interface ScheduleRule {
   /** How many scheduled runs have fired so far (monotone; automatic triggers only). */
   runCount: number
   /**
+   * Missed-slot tolerance (ms) for superseded due instants: when a newer cron
+   * grid point already passed AND the due instant is older than this, the slot
+   * is skipped without catch-up (a slept tab never avalanches). A merely-late
+   * tick still fires. Undefined = one scheduler tick. Old rules read it as
+   * undefined (same default), so no migration is needed.
+   */
+  missedToleranceMs?: number
+  /**
    * Legacy activation gate: automation now fires as soon as it is armed —
    * there is no "manual run first" step (see {@link ruleReadiness}). Kept on
    * the persisted shape so old data parses; every load/merge normalizes it
@@ -594,6 +602,7 @@ export function withSchedule(
     lastTriggeredAt: current?.lastTriggeredAt,
     maxRuns: current?.maxRuns,
     runCount: current?.runCount ?? 0,
+    missedToleranceMs: current?.missedToleranceMs,
     // Legacy activation gate: automation is active as soon as it is armed
     // (nothing awaits a manual first run), so any merged rule reads primed —
     // old data normalizes the same way in the store.
@@ -606,6 +615,7 @@ export function withSchedule(
   if ('lastTriggeredAt' in patch) schedule.lastTriggeredAt = patch.lastTriggeredAt
   if ('maxRuns' in patch) schedule.maxRuns = patch.maxRuns
   if ('runCount' in patch) schedule.runCount = patch.runCount ?? 0
+  if ('missedToleranceMs' in patch) schedule.missedToleranceMs = patch.missedToleranceMs
   return { ...task, updatedAt: now, schedule }
 }
 
