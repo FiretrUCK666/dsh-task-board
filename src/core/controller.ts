@@ -2346,9 +2346,11 @@ export class BoardController {
    * per-session lanes a comment or a native turn can be the newest record
    * while the card's execution finished earlier.
    *
-   * Every attempt is guarded three ways: the card must be quiet (no lane in
+   * Every attempt is guarded four ways: the card must be quiet (no lane in
    * flight), its last PLAIN run must have SUCCEEDED (失败不续), and the global
-   * budget must have a free slot. Any of those failing defers the hand-off
+   * budget must have a free slot, and the prompt must be non-empty. An
+   * emptied prompt holds the link without consuming budget (except the
+   * final run, which still disarms). Any of those failing defers the hand-off
    * without consuming a run — and because the derivation is re-read from the
    * ledger, the next settle or the scheduler's recovery tick picks it up again
    * instead of losing the link.
@@ -2358,10 +2360,6 @@ export class BoardController {
     const schedule = task?.schedule
     if (schedule === undefined || !schedule.enabled || schedule.mode !== 'chain') return
     if (task === undefined) return
-    // Nothing to drive: an empty prompt pauses the chain WITHOUT consuming
-    // budget or disarming (the same gate as runTask and the queue drain — a
-    // cleared prompt holds the link, refilling it resumes where it waited).
-    if (!taskExecutable(task)) return
     // WAIT while any lane of this card is still working. A chain link is the
     // card's own next run — it must not stack on a sibling conversation (the
     // per-session lanes make that possible now, and the runTask busy guard
@@ -2381,8 +2379,18 @@ export class BoardController {
     // record that this succeeded run has already been handed off.
     if (this.queuedLaunches.some(candidate => candidate.taskId === id)) return
     const finalRun = schedule.maxRuns !== undefined && schedule.runCount + 1 >= schedule.maxRuns
-    this.applyScheduleNextRun(id, undefined, this.now(), schedule.runCount + 1, finalRun)
-    if (finalRun) return
+    if (finalRun) {
+      // Budget exhausted by the settled run: disarm even on an empty prompt —
+      // bookkeeping is not launching, so a cleared final prompt can never
+      // wedge the rule armed forever (refilling later finds it cleanly shut).
+      this.applyScheduleNextRun(id, undefined, this.now(), schedule.runCount + 1, true)
+      return
+    }
+    // Nothing to drive: an empty prompt holds the link WITHOUT consuming
+    // budget or disarming (the same gate as runTask and the queue drain — a
+    // cleared prompt waits, refilling it resumes where it waited).
+    if (!taskExecutable(task)) return
+    this.applyScheduleNextRun(id, undefined, this.now(), schedule.runCount + 1, false)
     void this.runTask(id, 'chain')
   }
 

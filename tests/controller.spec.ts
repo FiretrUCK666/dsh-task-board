@@ -1049,15 +1049,15 @@ describe('scheduling', () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 2 })
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 3 })
     expect(exec.runCalls).toHaveLength(1)
     const e1 = exec.runCalls[0].executionId
     exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
     exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
     expect(exec.runCalls).toHaveLength(2)
     expect(store.load()[0].schedule?.runCount).toBe(1)
-    // The prompt is cleared before run 2 settles: the hand-off holds (same
-    // gate as runTask) — no new run, no counter bump, no disarm.
+    // The prompt is cleared before run 2 settles (not the final run):
+    // the link holds — no new run, no counter bump, no disarm.
     expect(controller.updateTask(task.id, { prompt: '' })).toBe(true)
     const e2 = exec.runCalls[1].executionId
     exec.runCalls[1].fire({ kind: 'started', taskId: task.id, executionId: e2, sessionId: 's-2' })
@@ -1066,6 +1066,24 @@ describe('scheduling', () => {
     const held = store.load()[0]
     expect(held.schedule?.runCount).toBe(1)
     expect(held.schedule?.enabled).toBe(true)
+  })
+
+  it('chain mode: the final settle disarms even on an empty prompt (bookkeeping, not launching)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 1 })
+    expect(exec.runCalls).toHaveLength(1)
+    // The prompt is cleared before the only run settles: no launch follows,
+    // but the exhausted budget still disarms (never wedged armed).
+    expect(controller.updateTask(task.id, { prompt: '' })).toBe(true)
+    const e1 = exec.runCalls[0].executionId
+    exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
+    expect(exec.runCalls).toHaveLength(1)
+    const final = store.load()[0]
+    expect(final.schedule?.runCount).toBe(1)
+    expect(final.schedule?.enabled).toBe(false)
   })
 
   it('chain mode: a failed run stops the chain', async () => {
