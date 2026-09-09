@@ -4,7 +4,7 @@
  * matches all.
  */
 import { describe, expect, it } from 'vitest'
-import { boardShortcutOf, isShortcutTyping, matchCheatRow, matchTask, parseBoardQuery, taskHaystack } from '../src/client/board/task-search.ts'
+import { boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, parseBoardQuery, taskHaystack } from '../src/client/board/task-search.ts'
 
 const task = {
   title: '给猫画一幅画',
@@ -196,5 +196,29 @@ describe('matchTask qualifiers', () => {
     expect(matchTask(colored, '猫 has:color', [], facets)).toBe(true)
     expect(matchTask(colored, '油画 has:color', [], facets)).toBe(false)
     expect(matchTask(colored, '猫 is:read', [], facets)).toBe(false)
+  })
+})
+
+describe('completeBoardQuery (qualifier key completion)', () => {
+  it('offers keys for key prefixes and nothing for blank input', () => {
+    expect(completeBoardQuery('')).toEqual([])
+    expect(completeBoardQuery('h')).toEqual(['has:'])
+    expect(completeBoardQuery('HAS')).toEqual(['has:'])
+    expect(completeBoardQuery('猫 h')).toEqual(['has:'])
+    expect(completeBoardQuery('xyz')).toEqual([])
+  })
+
+  it('offers values for bare keys and narrows by value prefix', () => {
+    expect(completeBoardQuery('has:')).toEqual(['has:auto', 'has:color', 'has:priority'])
+    expect(completeBoardQuery('has:a')).toEqual(['has:auto'])
+    expect(completeBoardQuery('is:')).toEqual(['is:unread', 'is:read'])
+    expect(completeBoardQuery('has:auto ')).toEqual([])
+  })
+
+  it('offers nothing for free-text keys and quoted fragments', () => {
+    expect(completeBoardQuery('ws:')).toEqual([])
+    expect(completeBoardQuery('label:')).toEqual([])
+    expect(completeBoardQuery('ws:"深')).toEqual([])
+    expect(completeBoardQuery('has:zzz')).toEqual([])
   })
 })

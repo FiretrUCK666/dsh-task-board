@@ -179,6 +179,37 @@ export function boardShortcutOf(
   return undefined
 }
 
+/** Qualifier keys the filter understands (the completion source of truth —
+ *  adding a qualifier here teaches the parser, the cheatsheet hint and the
+ *  suggestion list at once). */
+export const QUALIFIER_KEYS: readonly string[] = ['has:', 'is:', 'ws:', 'label:']
+
+/** Enumerated qualifier values (keys that take only these; `ws:`/`label:`
+ *  take free text and complete nothing). */
+const QUALIFIER_VALUES: Readonly<Record<string, readonly string[]>> = {
+  'has:': ['has:auto', 'has:color', 'has:priority'],
+  'is:': ['is:unread', 'is:read'],
+}
+
+/** Completion candidates for the token being typed (at most 8, key-first):
+ *  a key prefix offers keys (`h` → `has:`), a bare key offers its values
+ *  (`has:` → its three), a value prefix narrows them (`has:a` → `has:auto`).
+ *  Free-text keys (`ws:`/`label:`) and complete tokens offer nothing — the
+ *  native datalist narrows the offered set further as typing continues. */
+export function completeBoardQuery(query: string): string[] {
+  const token = query.toLowerCase().split(/\s+/).pop() ?? ''
+  if (token === '' || token.includes('"')) return []
+  const separator = token.indexOf(':')
+  if (separator < 0) {
+    return QUALIFIER_KEYS.filter(key => key.startsWith(token)).slice(0, 8)
+  }
+  const key = `${token.slice(0, separator)}:`
+  const values = QUALIFIER_VALUES[key]
+  if (values === undefined) return []
+  const prefix = token.slice(separator + 1)
+  return values.filter(value => value.startsWith(`${key}${prefix}`)).slice(0, 8)
+}
+
 /** One cheatsheet row: the key plus its current-language description. */
 export interface CheatRow {
   key: string

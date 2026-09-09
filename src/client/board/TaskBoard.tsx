@@ -43,7 +43,7 @@ import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
-import { boardShortcutOf, isShortcutTyping, matchCheatRow, matchTask, type CheatRow } from './task-search.ts'
+import { boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, type CheatRow } from './task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
 import { foldNotesByTask, noteKeyOf, notificationsExOf, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
@@ -1169,9 +1169,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             type="search"
             placeholder={t('board.search')}
             value={filter}
+            list="dsh-tb-qualifiers"
             onChange={event => { setFilter(event.target.value) }}
             aria-label={t('board.search')}
           />
+          {/* Qualifier suggestions (native datalist: zero chrome, zero keys,
+              mobile degrades to a plain input — the cheatsheet stays the
+              learning surface, this only shortens typing). */}
+          <datalist id="dsh-tb-qualifiers">
+            {completeBoardQuery(filter).map(candidate => (
+              <option key={candidate} value={candidate} />
+            ))}
+          </datalist>
           {/* 模式按钮（整理/自动化/通知）是一个语义组：宽档贴右成簇，紧凑档整组
               换到自己的一行右对齐——它们永远同进同退，不会被挤散。 */}
           <span className={css.boardModes}>
