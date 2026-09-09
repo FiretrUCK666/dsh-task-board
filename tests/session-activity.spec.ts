@@ -57,12 +57,16 @@ describe('detectExternalTurns', () => {
       .toEqual([{ taskId: TASK, sessionId: SESSION, refine: false }])
   })
 
-  it('a board-owned turn consumes the period WITHOUT firing (open round / direct send)', () => {
+  it('a lane veto does NOT consume (coverage) but a board turn does (identity)', () => {
+    // Open board round on the session (lane held): vetoed this pass, but
+    // the period stays UNCONSUMED — when the veto lifts with the session
+    // still running, the turn fires. Consuming here is the "card never
+    // lights" machine (the veto lifts on settle/cancel, no second edge).
     const b = book()
-    // Open board round on the session: the run is the board's own.
-    detectExternalTurns([candidate(false, true)], b, byId({ [SESSION]: true }))
-    expect(detectExternalTurns([candidate(false, false)], b, byId({ [SESSION]: true }))).toEqual([])
-    // Direct-send turn (inBoardTurnOn): consumed the same way.
+    expect(detectExternalTurns([candidate(false, true)], b, byId({ [SESSION]: true }))).toEqual([])
+    expect(detectExternalTurns([candidate(false, false)], b, byId({ [SESSION]: true })))
+      .toEqual([{ taskId: TASK, sessionId: SESSION, refine: false }])
+    // Direct-send turn (inBoardTurnOn): identity veto — consumed, never fires.
     const b2 = book()
     detectExternalTurns([candidate(false, false, true)], b2, byId({ [SESSION]: true }))
     expect(detectExternalTurns([candidate()], b2, byId({ [SESSION]: true }))).toEqual([])

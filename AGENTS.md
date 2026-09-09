@@ -283,7 +283,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   - **并发预算数轮不数卡**（`inFlightCount`）——「并行数 3」= 三个会话同时跑，也就是唯一的节流阀（旧的 per-card 齐发保护改由它承担；设 1 即严格串行）。
   - `nextEligible` 评论与规则两车道都**按会话取头**：忙车道绝不静默旁边空闲车道；**一条 lane 一个有序队列**（留言与规则指令在同一会话上互不插队）；**未绑定会话的在跑轮 = 车道未知，整卡暂不放行**（普通执行的会话由 `ExecutionService.connectSession` 异步解析——复用 workspace 自己的会话（官方 `sessionIds`）或经 `sessions.create` 新建；解析结果可能正交回卡上已在用的那条）。
   - **卡片只在再无在跑轮时离开进行中**：`settleExecution` / `driveLiveStates`（旧 steer 轮不得决定列，每卡只记一次完成边沿 `directFallbackRounds`）/ `resolveCardDrop` 三处同判据。
-  - **外源检测同一判据**（`recordExternalRound` / `hasOpenRoundOn` / `reconcileBoundTask` 走 `sessionIsBusy`）——否则"会话在排队"被误当"会话在跑"，**吞掉用户在原生工作区发的消息**；反向：留言绝不插到正在跑的原生轮之前。插话（steer）按定义越过车道与预算（轮出生即 `injectedAt`，同会话两轮并存是有意不是破口）。
+  - **外源检测同一判据**（`recordExternalRound` / `hasOpenRoundOn` / `reconcileBoundTask` 走 `sessionIsBusy`）——否则"会话在排队"被误当"会话在跑"，**吞掉用户在原生工作区发的消息**；反向：留言绝不插到正在跑的原生轮之前。插话（steer）按定义越过车道与预算（轮出生即 `injectedAt`，同会话两轮并存是有意不是破口）。**消费只认身份不认覆盖**：`inBoardTurnOn`（本板回合）veto 才消费运行期；`hasOpenRoundOn`（车道被占）veto 永不消费——占位会自己解除（结算/取消）而会话还在跑同一轮，先消费后解除=边被吃掉、卡片永不点亮（"刷新后进行中不亮"根因）；`reconcileBoundTask` 同理（一次只记一个，多余的进调度复检）。
   - **链的接续与恢复同源**（`maybeContinueChain` 与 `scheduler.ts` 都读「最后一条普通轮成功 + 卡片安静」，绝不看最后一行）：已排队就不重复计数；`cancelled/failed` 不续。
   - **清扫与年龄**：看门狗年龄锚 = `injectedAt ?? startedAt`（按保存时间算会误杀刚注入的轮）；未绑定轮超期判 cancelled（唯一清扫口，否则永久占槽）；`cancelSpuriousExternal` 扫**每一条**在跑外源轮。
   - **reconcile 的自动化副作用要二次确认 `this.engine`**（await 期间席位会因可见性迁移，被废黜的端绝不 launch）。

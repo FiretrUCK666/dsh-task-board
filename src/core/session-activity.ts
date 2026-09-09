@@ -161,12 +161,17 @@ export interface ActivityCandidate {
 /**
  * Scan all candidates for out-of-band turns — the STATE rule (see the module
  * doc): a related session running RIGHT NOW whose current run period is not
- * consumed yet fires one external round. Board-owned turns (an open round,
- * the direct-send grace, a direct round of this run) consume the period
- * WITHOUT firing — the turn is already in the ledger. A session reading idle
- * re-arms its period, so every new native turn fires exactly once and past
- * completed turns never re-fire. (Turns that finished before the pass are
- * covered by the controller's wake-evidence pass, not here.)
+ * consumed yet fires one external round. Board-owned turns (the direct-send
+ * grace, a direct round of this run) consume the period WITHOUT firing —
+ * the turn is already in the ledger, by identity, not by coverage. A lane
+ * veto (`hasOpenRoundOn`: another round is holding the lane) is COVERAGE,
+ * not identity: it must NOT consume — the veto can lift while the session
+ * is still running (a queued comment settles, a stale round clears), and a
+ * consumed-but-unfired period never re-arms until idle. Consuming on a
+ * transient veto is the "card never lights" machine: the one edge that
+ * could have fired is eaten, and a long native turn offers no second edge.
+ * (Turns that finished before the pass are covered by the controller's
+ * wake-evidence pass, not here.)
  */
 export function detectExternalTurns(
   candidates: ReadonlyArray<{ taskId: string; candidate: ActivityCandidate }>,
@@ -184,10 +189,17 @@ export function detectExternalTurns(
         continue
       }
       if (book.recorded.has(session.sessionId)) continue
-      // This running period is now consumed — whether the round fires here or
-      // a board-owned turn already covers it.
+      // Identity veto (this turn IS board-owned): consume, never fire.
+      if (candidate.inBoardTurnOn(session.sessionId)) {
+        book.recorded.add(session.sessionId)
+        continue
+      }
+      // Coverage veto (another round holds the lane right now): do NOT
+      // consume — the veto lifts on its own (settle/cancel) while the
+      // session may still be running, and the turn must fire then.
+      if (candidate.hasOpenRoundOn(session.sessionId)) continue
+      // This running period is now consumed by the round firing below.
       book.recorded.add(session.sessionId)
-      if (candidate.hasOpenRoundOn(session.sessionId) || candidate.inBoardTurnOn(session.sessionId)) continue
       found.push({ taskId, sessionId: session.sessionId, refine: session.refine })
     }
   }

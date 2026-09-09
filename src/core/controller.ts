@@ -54,6 +54,15 @@ export interface SessionsControllerFace {
       current: string | undefined
       /** Session ids in native list order (the workspace's own section order). */
       ids?: readonly string[]
+      /**
+       * List baseline readiness (the native face serves it; absent = an old
+       * wiring or a fake — treated as ready, i.e. today's behavior). The
+       * FIRST reconcile pass gates on it (see start): a pass against a
+       * still-loading list sees no running sessions while the user watches
+       * them run — the "刷新后进行中不点亮" race. Every later pass stays
+       * subscription-driven.
+       */
+      phase?: 'pending' | 'ready'
       /** Host session list rows; used to judge whether an execution session finished. */
       byId: Record<string, {
         running: boolean
@@ -651,7 +660,33 @@ export class BoardController {
   /** Load the persisted ledger and start the navigation/status subscriptions. */
   start(): void {
     this.tasks = this.deps.store.load()
-    void this.reconcileRunningTasks()
+    // The first pass waits for the list baseline (the SAME gate as the
+    // scheduler's first tick — one readiness discipline, not two): a pass
+    // against a still-loading list sees no running sessions while the user
+    // watches them run, and the miss is timing-shaped (sometimes the list
+    // wins the race, sometimes the pass does). Absent phase = an old wiring
+    // or a fake: treated as ready (exactly today's behavior, no stall).
+    if (this.sessionsReady()) {
+      void this.reconcileRunningTasks()
+    } else {
+      // One-shot: fire the first pass the moment the baseline lands, then
+      // detach (later passes stay subscription-driven via onSessionsChanged).
+      let fired = false
+      const unsub = this.deps.sessions.list.subscribe(() => {
+        if (this.disposed || fired) return
+        if (this.sessionsReady()) {
+          fired = true
+          unsub()
+          void this.reconcileRunningTasks()
+        }
+      })
+      this.disposers.push(() => {
+        if (!fired) {
+          fired = true
+          unsub()
+        }
+      })
+    }
     this.disposers.push(this.deps.sessions.list.subscribe(() => {
       this.onSessionsChanged()
     }))
@@ -699,6 +734,14 @@ export class BoardController {
   /** Whether this replica currently holds the engine seat. */
   isEngine(): boolean {
     return this.engine
+  }
+
+  /**
+   * Whether the native session list has served its baseline (absent phase =
+   * ready — old wirings and fakes predate the flag and must not stall).
+   */
+  private sessionsReady(): boolean {
+    return this.deps.sessions.list.getSnapshot().phase !== 'pending'
   }
 
   /**
@@ -3707,23 +3750,43 @@ export class BoardController {
     // The instant-sync facts captured before any await.
     let runningSessionId: string | undefined
     let runningRefine = false
+    // Running sessions the instant sync leaves behind (lane-busy, or past
+    // the one-record instant grant below): NOT consumed — the scheduled
+    // pass after this records them through the normal channel.
+    let leftover = false
     for (const session of this.relatedSessionsOf(task)) {
       const current = byId[session.sessionId]?.running ?? false
       this.activityBook.running.set(session.sessionId, current)
-      if (current) this.activityBook.recorded.add(session.sessionId)
-      if (runningSessionId === undefined && current
-        // THE lane judgment, shared with the dispatcher and the external
-        // recorder: a merely-SAVED comment on this session is not a round in
-        // flight, so it must never veto the instant sync of a turn the user is
-        // running right now (the round is recorded below, and the period is
-        // consumed here — vetoing it silently dropped that native turn: no
-        // thread entry, card never jumped to 「进行中」).
-        && !sessionIsBusy(task, session.sessionId)
-        && !this.inBoardTurnOn(task, session.sessionId, now)) {
-        runningSessionId = session.sessionId
-        runningRefine = session.refine
+      if (!current) {
+        this.activityBook.recorded.delete(session.sessionId)
+        continue
       }
+      // Identity veto (this turn IS board-owned): consume, never fire.
+      if (this.inBoardTurnOn(task, session.sessionId, now)) {
+        this.activityBook.recorded.add(session.sessionId)
+        continue
+      }
+      // Coverage veto (the lane is held right now) or the one-record
+      // instant grant already spent: leave the period UNCONSUMED — the turn
+      // must fire when the veto lifts, and a consumed-but-unfired period
+      // never re-arms until idle (the "card never lights" machine: THE lane
+      // judgment, shared with the dispatcher and the external recorder: a
+      // merely-SAVED comment on this session is not a round in flight, so it
+      // must never veto the instant sync of a turn the user is running right
+      // now — the round is recorded below, and the period is consumed here;
+      // vetoing it silently dropped that native turn: no thread entry, card
+      // never jumped to 「进行中」).
+      if (runningSessionId !== undefined || sessionIsBusy(task, session.sessionId)) {
+        leftover = true
+        continue
+      }
+      runningSessionId = session.sessionId
+      runningRefine = session.refine
+      this.activityBook.recorded.add(session.sessionId)
     }
+    // Leftover running turns re-enter through the scheduled pass (engine-gated
+    // no-op for viewers — the engine's own notifications drive its passes).
+    if (leftover) this.scheduleReconcile()
     if (runningSessionId === undefined) return
     const msg = await this.userMessageOf(runningSessionId)
     // A dispose may land while the transcript read is in flight — a dead

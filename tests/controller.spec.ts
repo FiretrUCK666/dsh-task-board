@@ -2837,6 +2837,55 @@ describe('native-activity sync (两端同步)', () => {
     expect(controller.getSnapshot().tasks[0].status).toBe('review')
   })
 
+  it('a lane veto that lifts mid-turn does not eat the running period (coverage never consumes)', async () => {
+    // The "card never lights" root: the detector used to consume the run
+    // period on a lane veto, so when the veto lifted (the blocking round
+    // settled) with the session STILL working the same turn, no second edge
+    // ever came. Coverage vetoes must not consume — only board-owned turns
+    // (identity) do.
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      status: 'running',
+      binds: [{ kind: 'session', sessionId: 's-1' }],
+      executions: [
+        { id: 'c1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined, comment: 'injected', injectedAt: NOW },
+      ],
+    }])
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-1', true)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    // Lane held by the injected comment: no external round yet (correct veto).
+    expect(controller.getSnapshot().tasks[0].executions.some(run => run.external === true)).toBe(false)
+    // The blocking round settles while the session keeps working the SAME
+    // native turn (no idle edge anywhere).
+    stub.reconcileResult = { kind: 'settled', taskId: 'task-a', executionId: 'c1', outcome: 'succeeded' }
+    sessions.setRunning('s-1', true)
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].executions.find(round => round.id === 'c1')?.endedAt).toBeDefined()
+    expect(controller.getSnapshot().tasks[0].executions.some(run => run.external === true)).toBe(false)
+    // Veto lifted mid-turn: the native turn fires now, exactly once.
+    sessions.setRunning('s-1', true)
+    await flush()
+    await flush()
+    const after = controller.getSnapshot().tasks[0]
+    const externals = after.executions.filter(run => run.external === true)
+    expect(externals).toHaveLength(1)
+    expect(externals[0]?.sessionId).toBe('s-1')
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].executions.filter(run => run.external === true)).toHaveLength(1)
+  })
+
   it('a board direct-send does not double-record its turn as an external round', async () => {
     const { controller, sessions } = harness({
       sessionMessage: async (): Promise<{ ok: true }> => ({ ok: true as const }),
