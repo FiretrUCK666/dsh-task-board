@@ -391,6 +391,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex-wrap: wrap;
   width: 100%;
   min-width: 0;
+  /* Border-box is load-bearing here, not cosmetic: width:100% + horizontal
+     padding under content-box would bleed 20px past the list's right edge
+     (the host shell guarantees no global reset), which reads as a highlight
+     bar "glued to the right margin". */
+  box-sizing: border-box;
   padding: 8px 10px;
   color: var(--dsh-tb-text-1);
   background: none;
@@ -399,8 +404,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   text-align: left;
   font: inherit;
 }
-.notifyRow:hover {
-  background: var(--dsh-tb-hover);
+/* Hover paint is hover-pointer-only: on touch a tap leaves :hover stuck on
+   the row, turning a transient glance into a persistent "selected" bar that
+   never clears (touch has no hover — hard rule). */
+@media (hover: hover) {
+  .notifyRow:hover {
+    background: var(--dsh-tb-hover);
+  }
 }
 .notifyMain {
   display: flex;

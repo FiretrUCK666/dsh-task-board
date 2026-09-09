@@ -273,7 +273,7 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
 }
 
 /** Task detail overlay. */
-export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }: {
+export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, requestSessionId, onRequestSessionConsumed }: {
   controller: BoardController
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
@@ -282,6 +282,13 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
    *  session-area drop zone can tell a sidebar drag from the board's own card
    *  drags (both advertise `text/plain`). */
   dragSourceRef: { readonly current: boolean }
+  /** One-shot deep link: open this session's panel (its comment thread) once
+   *  it becomes defined. The parent clears it via `onRequestSessionConsumed`,
+   *  so it fires exactly once per request and never reopens on later renders
+   *  or task switches. Absent = open no panel (existing behavior). */
+  requestSessionId?: string
+  /** Fired after a session request has been consumed (parent resets it). */
+  onRequestSessionConsumed?: () => void
 }) {
   // Escape closes the detail through the family's ONE stack: a confirm dialog
   // or nested modal opened OVER the detail closes first (one press, one
@@ -307,6 +314,14 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
   const [reviewExecution, setReviewExecution] = useState<ExecutionRecord | undefined>(undefined)
   // The linked session whose detail panel is open (undefined = none).
   const [linkedSession, setLinkedSession] = useState<string | undefined>(undefined)
+  // One-shot deep link into a session's panel (notification / activity rows
+  // land here): consumed exactly once, then the parent resets the request.
+  useEffect(() => {
+    if (requestSessionId !== undefined) {
+      setLinkedSession(requestSessionId)
+      onRequestSessionConsumed?.()
+    }
+  }, [requestSessionId, onRequestSessionConsumed])
   // The 新建会话 dialog (undefined = closed).
   const [showNewSession, setShowNewSession] = useState(false)
   const [showAddSession, setShowAddSession] = useState(false)

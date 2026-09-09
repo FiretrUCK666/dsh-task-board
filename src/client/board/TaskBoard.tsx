@@ -477,6 +477,21 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     id => controller.externalKindOf(id),
   )
   const selected = selectedTaskOf(snapshot)
+  // One-shot deep link into a task's session panel (notification / activity
+  // rows land on the session's comment thread, not just the task): the
+  // session half is honored only while the native side still knows it
+  // (sessionTitle undefined = gone/never-a-session, e.g. a review row's
+  // task-id fallback) — then it degrades to a plain task open, never a panel
+  // for a garbage id.
+  const [detailSessionRequest, setDetailSessionRequest] = useState<{ taskId: string; sessionId: string } | undefined>(undefined)
+  const openTaskAtSession = (taskId: string, sessionId: string | undefined): void => {
+    setDetailSessionRequest(
+      sessionId !== undefined && controller.sessionTitle(sessionId) !== undefined
+        ? { taskId, sessionId }
+        : undefined,
+    )
+    controller.openTask(taskId)
+  }
   // Board-wide search: title/description/prompt/comments plus linked-session
   // titles (the same derivation the rows render — a session renamed natively
   // stays findable under its live name).
@@ -1287,6 +1302,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           task={selected}
           workspaceTitleOf={workspaceTitleOf}
           dragSourceRef={dragSourceRef}
+          requestSessionId={detailSessionRequest !== undefined && detailSessionRequest.taskId === selected.id
+            ? detailSessionRequest.sessionId
+            : undefined}
+          onRequestSessionConsumed={() => { setDetailSessionRequest(undefined) }}
         />
       )}
       {showNew && (
@@ -1355,7 +1374,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                           className={css.notifyMain}
                           title={note.taskTitle}
                           aria-label={taskTitle}
-                          onClick={() => { setShowNotify(false); controller.openTask(note.taskId) }}
+                          onClick={() => { setShowNotify(false); openTaskAtSession(note.taskId, note.sessionId) }}
                         >
                           <span className={css.notifyTask}>{taskTitle}</span>
                           {note.kind === 'waiting' && note.waitingKind !== undefined ? (
@@ -1502,7 +1521,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                                   <button
                                     type="button"
                                     className={css.feedAction}
-                                    onClick={() => { setShowActivity(false); controller.openTask(item.taskId) }}
+                                    onClick={() => { setShowActivity(false); openTaskAtSession(item.taskId, item.sessionId) }}
                                   >
                                     {t('board.activityOpen')}
                                   </button>

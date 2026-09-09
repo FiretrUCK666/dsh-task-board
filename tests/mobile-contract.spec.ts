@@ -454,6 +454,36 @@ describe('board header and navigator legibility', () => {
     expect(compact).toMatch(/\.boardModes \.modeDynamic\s*\{[^}]*display:\s*none/)
     expect(board).toContain('css.modeDynamic')
   })
+
+  it('feed rows keep their box AND land on the session thread (no right-bleed, no stuck hover, no bare task open)', () => {
+    // Geometry: width:100% + horizontal padding with no box-sizing bleeds
+    // past the list's right edge under content-box (the host guarantees no
+    // global reset) — the highlight bar "glued to the right margin".
+    expect(ruleOf('notifyRow')).toMatch(/box-sizing:\s*border-box/)
+    // Touch has no hover: a tap leaves unconditional :hover paint stuck on
+    // the row, turning a transient glance into a persistent bar. Hover paint
+    // lives behind (hover:hover) only — no bare top-level rule survives.
+    const hoverMedia = blockFrom(line => line.trim() === '@media (hover: hover) {')
+    expect(hoverMedia).toContain('.notifyRow:hover')
+    expect(hoverMedia).toMatch(/background:\s*var\(--dsh-tb-hover\)/)
+    expect(source.replace(hoverMedia, '')).not.toContain('.notifyRow:hover')
+    // Deep link: both feed dialogs share one helper opening the task AT the
+    // row's session (its comment thread), gated on the native side still
+    // knowing the session — a review row's task-id fallback degrades to a
+    // plain open, never a panel for a garbage id.
+    const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    const board = readFileSync(tsxPath, 'utf8')
+    expect(board).toContain('openTaskAtSession(note.taskId, note.sessionId)')
+    expect(board).toContain('openTaskAtSession(item.taskId, item.sessionId)')
+    expect(board).toMatch(/controller\.sessionTitle\(sessionId\) !== undefined/)
+    expect(board).toContain('requestSessionId={detailSessionRequest')
+    // The detail consumes the request exactly once, then the parent resets.
+    const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url))
+    const detail = readFileSync(detailPath, 'utf8')
+    expect(detail).toContain('requestSessionId?: string')
+    expect(detail).toMatch(/setLinkedSession\(requestSessionId\)/)
+    expect(detail).toContain('onRequestSessionConsumed?.()')
+  })
 })
 
 describe('alignment grammar (the OCD contract)', () => {
