@@ -135,6 +135,21 @@ export function groupActivityByObjectDay(
 export const GROUP_ITEM_LIMIT = 10
 
 /**
+ * Split a live newest-first feed into the frozen window and the queued
+ * remainder: the view shows the oldest `base` rows (what was on screen when
+ * the drawer opened or the pill was last tapped); newer arrivals queue behind
+ * the pill instead of shoving the rows being read. Shrinking feeds (filter
+ * changes) clamp to the whole list with zero queued. Pure.
+ */
+export function freezeFeed<T>(
+  live: readonly T[],
+  base: number,
+): { frozen: T[]; fresh: number } {
+  const fresh = Math.max(0, live.length - base)
+  return { frozen: live.slice(Math.max(0, live.length - base)), fresh }
+}
+
+/**
  * Split a group's rows into the shown head and the folded remainder count.
  * Generic over the row shape (feed rows and notification rows share the cap
  * discipline, never a second copy): the header always counts the full group

@@ -66,7 +66,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   if (item.kind === 'external') return { kind: 'neutral', label: t('board.activityExternal') }
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
-import { activityOf, groupActivityByObjectDay, remainderKeyOf, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
+import { activityGroupKeyOf, activityOf, clusterOf, freezeFeed, groupActivityByObjectDay, remainderKeyOf, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
 import { deleteView, loadViews, MAX_SAVED_VIEWS, saveView, type SavedView } from './saved-views.ts'
 import { Chip } from './Chip.tsx'
 
@@ -294,7 +294,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [expandedActivityKey, setExpandedActivityKey] = useState<string | undefined>(undefined)
   // Folded object-day groups share the single-open discipline: one expanded
   // group at a time, cleared on the same filter/show resets as row expansion.
+  // The newest group opens WITH the drawer (最新默认展 — "what just happened"
+  // answers itself with zero clicks); collapsing it stays collapsed.
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | undefined>(undefined)
+  const groupInitRef = useRef(false)
   useEffect(() => {
     if (showActivity) {
       setActivityShown(30)
@@ -375,6 +378,25 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       ...(activityUnviewed ? { onlyUnviewed: true as const } : {}),
     }, (task, at) => at > taskViewedBaseline(task))
   }, [showActivity, snapshot.tasks, activityKind, activityQuery, activityUnviewed])
+  // Read-freeze: while the drawer stays open, new arrivals queue behind a
+  // pill instead of shoving the rows being read (top-insertion never steals
+  // scroll). The freeze is a LENGTH, not a snapshot: the live list keeps
+  // growing underneath, the view shows the oldest `feedBase` of it.
+  const [feedBase, setFeedBase] = useState(0)
+  useEffect(() => {
+    if (showActivity) setFeedBase(activityFeed.length)
+  }, [showActivity, activityKind, activityQuery, activityUnviewed])
+  // Newest-group auto-expansion (once per open; user collapses stick).
+  useEffect(() => {
+    if (!showActivity || groupInitRef.current) return
+    groupInitRef.current = true
+    const first = activityFeed[0]
+    if (first === undefined) return
+    setExpandedGroupKey(activityGroupKeyOf(first.taskId, dayBucketOf(first.at), clusterOf(first.kind)))
+  }, [showActivity, activityFeed])
+  useEffect(() => {
+    if (!showActivity) groupInitRef.current = false
+  }, [showActivity])
   // 多选（Ctrl/Cmd+点击即选，整理模式整选；板头横栏批量换色/删除/全选清选）。
   const [organizing, setOrganizing] = useState(false)
   // The engine-seat note the header chip opens (touch has no hover, so the
@@ -1889,7 +1911,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               />
             </div>
             {(() => {
-              const feed = activityFeed
+              const live = activityFeed
+              // Frozen window: the oldest `feedBase` rows stay put while new
+              // arrivals queue behind the pill (never a mid-read shove).
+              const { frozen: feed, fresh } = freezeFeed(live, feedBase)
               if (feed.length === 0) return <p className={css.detailText}>{t('board.activityEmpty')}</p>
               const shown = feed.slice(0, activityShown)
               // Day groups (data-driven buckets, no fixed windows): one header
@@ -2020,6 +2045,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               }
               return (
                 <>
+                  {/* Queued arrivals: one pill, never an insertion shove. Tapping
+                      it jumps to the live head (re-freezes at the newest). */}
+                  {fresh > 0 && (
+                    <button
+                      type="button"
+                      className={css.feedAction}
+                      onClick={() => { setFeedBase(live.length) }}
+                    >
+                      {t('board.activityNew', { n: String(fresh) })}
+                    </button>
+                  )}
                   {[...groups.entries()].map(([day, items]) => (
                     <section key={day} aria-label={dayLabelOf(day, todayBucket)}>
                       <h3 className={css.feedDay}>{dayLabelOf(day, todayBucket)}</h3>

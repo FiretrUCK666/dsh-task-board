@@ -1435,8 +1435,6 @@ export class BoardController {
       ...source.dueAt !== undefined ? { dueAt: source.dueAt } : {},
       ...source.priority !== undefined ? { priority: source.priority } : {},
       ...source.labels !== undefined ? { labels: [...source.labels] } : {},
-      ...source.priority !== undefined ? { priority: source.priority } : {},
-      ...source.labels !== undefined ? { labels: [...source.labels] } : {},
     }, now, this.uuid(), this.nextOrder())
     // The copy keeps the card's SHAPE AND its inert metadata (accent color,
     // prompt images, due date) — but NEVER an armed rule: like a stamped

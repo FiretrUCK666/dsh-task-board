@@ -91,14 +91,15 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     const template = templates.find(candidate => candidate.id === id)
     if (template === undefined) return
     const stamped = draftFromTemplate(template)
-    // Templates carry neither due dates nor priorities — but values the user
-    // already picked survive stamping (a template fills the form, it must
-    // not eat input). Both fields share the one preserve rule, never per-field
-    // exceptions.
+    // Templates carry neither due dates, priorities nor labels — but values
+    // the user already picked survive stamping (a template fills the form,
+    // it must not eat input). All three share the one preserve rule, never
+    // per-field exceptions.
     changeDraft({
       ...stamped,
       ...(draft.dueDate !== '' ? { dueDate: draft.dueDate } : {}),
       ...(draft.priority !== '' ? { priority: draft.priority } : {}),
+      ...(draft.labels !== '' ? { labels: draft.labels } : {}),
     })
   }
   const removePicked = (): void => {

@@ -678,6 +678,16 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                 </Section>
               )}
 
+              {/* Labels (the full set readable HERE — the card bounds to two
+                  plus a remainder). Absent/empty = no row. */}
+              {current.labels !== undefined && current.labels.length > 0 && (
+                <Section title={t('new.labels')}>
+                  <p className={css.detailText} title={current.labels.join(', ')}>
+                    {current.labels.join(', ')}
+                  </p>
+                </Section>
+              )}
+
               <Disclosure
                 title={t('detail.runConfig')}
                 summary={configSummary}

@@ -4,7 +4,7 @@
  * feed); empty comments stay (the row shows a placeholder).
  */
 import { describe, expect, it } from 'vitest'
-import { ACTIVITY_LIMIT, activityGroupKeyOf, activityOf, clusterOf, GROUP_ITEM_LIMIT, groupActivityByObjectDay, splitGroupItems } from '../src/client/board/activity.ts'
+import { ACTIVITY_LIMIT, activityGroupKeyOf, activityOf, clusterOf, freezeFeed, GROUP_ITEM_LIMIT, groupActivityByObjectDay, splitGroupItems } from '../src/client/board/activity.ts'
 import { createTask } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -172,5 +172,13 @@ describe('splitGroupItems (expanded-group cap)', () => {
     expect(splitGroupItems(items, Number.NaN)).toEqual({ shown: items, rest: 0 })
     // Fractions floor to whole rows.
     expect(splitGroupItems(items, 2.7).shown).toHaveLength(2)
+  })
+})
+
+describe('freezeFeed (read-freeze behind the pill)', () => {
+  it('shows the oldest base rows and queues the rest', () => {
+    expect(freezeFeed([1, 2, 3, 4, 5], 3)).toEqual({ frozen: [3, 4, 5], fresh: 2 })
+    expect(freezeFeed([1, 2], 5)).toEqual({ frozen: [1, 2], fresh: 0 })
+    expect(freezeFeed([], 0)).toEqual({ frozen: [], fresh: 0 })
   })
 })

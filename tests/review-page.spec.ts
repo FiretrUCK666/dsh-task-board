@@ -1028,4 +1028,10 @@ describe('task detail due row (future dues live here, not on the card)', () => {
     expect(detail).toContain('formatDueLabel(current.dueAt)')
     expect(detail).toContain('title={formatDateTime(current.dueAt)}')
   })
+
+  it('renders a labels row with the full set when the task carries labels', () => {
+    // The card bounds to two plus a remainder — the detail is the full-set home.
+    expect(detail).toContain('current.labels !== undefined && current.labels.length > 0')
+    expect(detail).toContain("title={current.labels.join(', ')}")
+  })
 })
