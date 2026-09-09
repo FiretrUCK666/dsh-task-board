@@ -5601,7 +5601,10 @@ button.interactionOption:hover {
    ══════════════════════════════════════════════════════════════════════════ */
 @container dsh-tb (max-width: 680px) {
   .board {
-    padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+    /* Top air matches desktop (14px): the compact cut to 10px pressed the
+       title against the shell edge (标题贴边、像被挤压） — density is for
+       rows, never for the outer frame. Sides stay 12px (thumb reach). */
+    padding: 14px 12px calc(12px + env(safe-area-inset-bottom));
     gap: 10px;
   }
 

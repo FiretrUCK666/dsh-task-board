@@ -766,6 +766,8 @@ describe('template library wiring', () => {
     // 返回/筛选.
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(ruleIn(compact, '.boardRowTools .boardModes')).toMatch(/justify-self:\s*start/)
+    // Outer frame keeps desktop air (density is for rows, never the frame).
+    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*14px 12px/)
   })
 
   it('the narrow rail keeps ONE rhythm (a single gap owns between)', () => {
