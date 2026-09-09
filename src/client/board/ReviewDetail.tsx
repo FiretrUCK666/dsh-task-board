@@ -95,6 +95,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     hasMore: transcriptHasMore,
     loadingEarlier: transcriptLoadingEarlier,
     pageError: transcriptPageError,
+    pageUnsupported: transcriptPageUnsupported,
     atBottom: transcriptAtBottom,
     scrollRef: transcriptScrollRef,
     onScroll: onTranscriptScroll,
@@ -167,6 +168,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               hasMore={transcriptHasMore}
               loadingEarlier={transcriptLoadingEarlier}
               pageError={transcriptPageError}
+              pageUnsupported={transcriptPageUnsupported}
               onLoadEarlier={loadEarlierTranscript}
               onRetry={reloadTranscript}
               sessionId={sessionId}

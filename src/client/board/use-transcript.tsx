@@ -186,12 +186,19 @@ interface TranscriptTailState {
   /** Whether an earlier page is being fetched right now. */
   loadingEarlier: boolean
   /**
-   * The last earlier-page read failed (stale host, no page endpoint, link
+   * The last earlier-page read failed (stale host, rejected cursor, link
    * down). The button STAYS (tapping retries — a failed page is never a
    * dead end), and the surface says so instead of spinning once and going
    * quiet (the "点加载更早没反应" report).
    */
   pageError: boolean
+  /**
+   * The deployment serves no page endpoint (the refused wire code was
+   * `remote/unavailable`). Terminal: the button goes AWAY and the line
+   * names the missing server capability — retrying a missing endpoint is
+   * the infinite dead loop, never an offered action.
+   */
+  pageUnsupported: boolean
   /** Whether the user is at (or near) the bottom of the scroll region. */
   atBottom: boolean
   /** Ref to attach to the content region (the scroller is resolved from it). */
@@ -226,6 +233,8 @@ export function useTranscriptTail(
   const [hasMore, setHasMore] = useState(false)
   const [loadingEarlier, setLoadingEarlier] = useState(false)
   const [pageError, setPageError] = useState(false)
+  /** The deployment serves no page endpoint (terminal — the button goes away). */
+  const [pageUnsupported, setPageUnsupported] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // The accumulated window, oldest-first: the tail, then every earlier page
@@ -290,6 +299,7 @@ export function useTranscriptTail(
     setHasMore(false)
     setLoadingEarlier(false)
     setPageError(false)
+    setPageUnsupported(false)
     floorRef.current = undefined
     watermarkRef.current = undefined
     reload()
@@ -357,7 +367,13 @@ export function useTranscriptTail(
    *  The floor is the host's `floorSeq` when it sends one; otherwise the
    *  window's own first seq (a host that reports `hasMore` without a floor
    *  must still page — a visible button that no-ops is the "点了没反应"
-   *  bug, never a silent guard again). */
+   *  bug, never a silent guard again).
+   *
+   *  Two failure classes, two sentences: a REFUSED page carries its wire
+   *  code — `remote/unavailable` (the deployment serves no page endpoint)
+   *  is terminal (the button goes away, the line says to update the
+   *  server — retrying a missing endpoint is the infinite dead loop);
+   *  anything else keeps the button and the retry line. */
   const loadEarlier = useCallback((): void => {
     if (sessionId === undefined || loadingEarlier) return
     if (!hasMoreRef.current) return
@@ -374,7 +390,13 @@ export function useTranscriptTail(
         setPageError(true)
         return
       }
+      if (page.refused !== undefined) {
+        if (page.refused === 'remote/unavailable') setPageUnsupported(true)
+        else setPageError(true)
+        return
+      }
       setPageError(false)
+      setPageUnsupported(false)
       const root = resolveScroller(scrollRef.current)
       const distance = root === null ? undefined : root.scrollHeight - root.scrollTop
       setEvents(current => {
@@ -411,5 +433,5 @@ export function useTranscriptTail(
   // Scroll measurement, bottom-following and the jump all live in
   // `useFollowScroll` above — one mechanism for every live list.
 
-  return { lines, error, hasMore, loadingEarlier, pageError, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload, loadEarlier }
+  return { lines, error, hasMore, loadingEarlier, pageError, pageUnsupported, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload, loadEarlier }
 }

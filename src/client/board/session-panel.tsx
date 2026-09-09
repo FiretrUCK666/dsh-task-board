@@ -119,7 +119,7 @@ const TranscriptRow = memo(function TranscriptRow(props:
  * hook; this is pure rendering, so every live session surface looks and
  * behaves identically.
  */
-export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, hasMore, loadingEarlier, pageError, onLoadEarlier, before, onRetry, sessionId, controller }: {
+export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, hasMore, loadingEarlier, pageError, pageUnsupported, onLoadEarlier, before, onRetry, sessionId, controller }: {
   lines: readonly TranscriptLine[] | undefined
   error: boolean
   atBottom: boolean
@@ -133,6 +133,8 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
   loadingEarlier?: boolean
   /** The last earlier-page read failed (the button stays — tapping retries). */
   pageError?: boolean
+  /** The deployment serves no page endpoint (the button goes away — retrying is pointless). */
+  pageUnsupported?: boolean
   /** Prepend one earlier page above the window (the native grammar). */
   onLoadEarlier?: () => void
   /** Optional header content inside the region (the review page's outcome banner). */
@@ -152,7 +154,11 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
   // the host says there IS more — even over an empty window (a misaligned
   // tail that folds to zero lines with hasMore must still offer the way
   // back; an empty text with no button is a dead end that reads as "没有了").
-  const paging = hasMore === true && maxLines === undefined && onLoadEarlier !== undefined
+  // Terminal case: the deployment serves no page endpoint — the button goes
+  // away (retrying a missing endpoint is the infinite dead loop) and the
+  // line names the missing server capability instead.
+  const paging = hasMore === true && maxLines === undefined && onLoadEarlier !== undefined && pageUnsupported !== true
+  const pagingDead = hasMore === true && maxLines === undefined && pageUnsupported === true
   return (
     <>
       {before}
@@ -165,6 +171,11 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
           {pageError === true && (
             <p className={css.detailHint}>{t('review.loadEarlierFailed')}</p>
           )}
+        </div>
+      )}
+      {pagingDead && (
+        <div className={css.transcriptEarlierRow}>
+          <p className={css.detailHint}>{t('review.loadEarlierUnsupported')}</p>
         </div>
       )}
       {error ? (

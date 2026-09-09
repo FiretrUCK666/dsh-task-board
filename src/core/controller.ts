@@ -265,6 +265,14 @@ export interface TranscriptPage {
   hasMore: boolean
   /** The oldest event seq covered by this page (undefined when empty). */
   floorSeq?: number
+  /**
+   * The host refused the page (no events): the wire error code (e.g.
+   * `remote/unavailable` when the deployment serves no page endpoint).
+   * Present = this page carries no data and must not move the window —
+   * the hook turns it into the honest terminal sentence, never a retry
+   * loop against an endpoint that does not exist.
+   */
+  refused?: string
 }
 
 /**

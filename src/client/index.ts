@@ -524,7 +524,7 @@ export function apply(ctx: ClientContext): void {
         // whole diagnosis of "明明还有更早的对话却加载不出来".
         if (!response.result.ok) {
           console.error('[dsh-task-board] transcript page refused', response.result.error.code, response.result.error.message)
-          return undefined
+          return { events: [], hasMore: true, refused: response.result.error.code }
         }
         return {
           events: response.result.value.events.map(entry => entry.event as TranscriptEventShape),
@@ -533,7 +533,7 @@ export function apply(ctx: ClientContext): void {
         }
       } catch (error) {
         console.error('[dsh-task-board] transcript page read failed', error)
-        return undefined
+        return { events: [], hasMore: true, refused: 'thrown' }
       }
     }
     const transcriptLoader = createTranscriptReader<TranscriptLoadResult>({

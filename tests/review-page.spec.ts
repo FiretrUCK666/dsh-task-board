@@ -479,6 +479,23 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(panelSource).toMatch(/review\.loadEarlierFailed/)
   })
 
+  it('a missing page endpoint is TERMINAL (no button, no retry loop)', () => {
+    // Retrying an endpoint that does not exist is the infinite dead loop:
+    // the refused wire code (`remote/unavailable`) flips pageUnsupported,
+    // the button goes away, and the line names the missing server
+    // capability. Any other refusal keeps the retry grammar above.
+    expect(followSource).toMatch(/pageUnsupported/)
+    expect(followSource).toMatch(/page\.refused === 'remote\/unavailable'/)
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    const panelSource = readFileSync(panelPath, 'utf8')
+    expect(panelSource).toMatch(/pageUnsupported/)
+    expect(panelSource).toMatch(/review\.loadEarlierUnsupported/)
+    // The refused page carries its code through the wiring (the console
+    // line is the whole remote diagnosis).
+    const wiringPath = fileURLToPath(new URL('../src/client/index.ts', import.meta.url))
+    expect(readFileSync(wiringPath, 'utf8')).toMatch(/refused: response\.result\.error\.code/)
+  })
+
   it('the attachment busy line names the in-flight intake, never the ledger', () => {
     // A staging file is not in the ledger yet: naming the busy line from
     // settled chips is exactly the "传文件却显示图片压缩中" lie. The hook
