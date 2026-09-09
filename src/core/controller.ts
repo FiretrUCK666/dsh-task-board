@@ -2696,7 +2696,10 @@ export class BoardController {
 
   /** Toggle a session rule's enabled state (the row's live switch). Switching
    *  a cron rule back on recomputes its due slot from now (a disarmed rule
-   *  carries no appointment — resuming from a stale slot would surprise-fire). */
+   *  carries no appointment — resuming from a stale slot would surprise-fire).
+   *  Switching off clears the slots too (one off-shape everywhere: done-disarm
+   *  and toggle-off persist identically, so no path can smuggle a stale slot
+   *  back to life). */
   toggleSessionRule(taskId: string, ruleId: string, enabled: boolean): void {
     const now = this.now()
     this.userEdit(taskId, task => {
@@ -2705,7 +2708,8 @@ export class BoardController {
       const rules = current.map(rule => {
         if (rule.id !== ruleId) return rule
         if (rule.enabled === enabled) return rule
-        if (!enabled || rule.trigger !== 'cron') return { ...rule, enabled }
+        if (!enabled) return { ...rule, enabled, nextAt: undefined, lastAt: undefined }
+        if (rule.trigger !== 'cron') return { ...rule, enabled }
         // Re-arming recomputes the appointment from now (a disarmed rule
         // carries no slot — resuming a stale one would surprise-fire). An
         // unparseable cron keeps the rule off (same law as creation).

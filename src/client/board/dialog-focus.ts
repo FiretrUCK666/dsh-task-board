@@ -25,12 +25,16 @@ export function focusablesOf(root: Element): HTMLElement[] {
 }
 
 /** Move focus to the declared/first control of a panel (or the panel itself
- *  when control-less). Shared by the mount effect and the refocus effect. */
+ *  when control-less). A declared target joins only through the visible set
+ *  (a hidden/disabled declaration falls back — declarations get no exemption
+ *  from visibility). Shared by the mount effect and the refocus effect. */
 function focusFirst(panel: HTMLElement | null): void {
   if (panel === null) return
+  const visible = focusablesOf(panel)
   const declared = panel.querySelector<HTMLElement>('[data-autofocus]')
-  const controls = focusablesOf(panel)
-  const target = declared ?? controls[0] ?? panel
+  const target = (declared !== null && visible.includes(declared) ? declared : undefined)
+    ?? visible[0]
+    ?? panel
   target.focus()
 }
 
@@ -39,8 +43,10 @@ function focusFirst(panel: HTMLElement | null): void {
  *  mount target is the first `[data-autofocus]` descendant when one exists
  *  (the caller's declared intent — e.g. a filter box over a master switch),
  *  else the first tabbable control, else the panel itself. Native `autoFocus`
- *  is banned inside Dialog subtrees (it races this effect); declare intent
- *  with `data-autofocus` instead.
+ *  is banned for MOUNT-time focus inside Dialog subtrees (it races this
+ *  effect — declare intent with `data-autofocus` instead); late-mounted
+ *  inline editors (row rename, goal edit) keep native `autoFocus`, which fires
+ *  after this effect ran and therefore never competes with it.
  *
  *  `focusKey` re-aims focus WITHOUT touching the return chain: pass a value
  *  that flips when the panel's first control changes identity (e.g. the

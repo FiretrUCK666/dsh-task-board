@@ -100,7 +100,15 @@ export function saveView(
   for (let suffix = 2; taken.has(finalName); suffix++) {
     finalName = `${name.trim()} ${suffix}`
   }
-  const next = [{ id, name: finalName, filter: filter.trim() }, ...views]
+  // An id collision (hand-edited storage, same-millisecond saves) regenerates
+  // instead of shadowing: load keeps first-wins, so a shadowed row would
+  // save "successfully" and vanish on the next read.
+  const takenIds = new Set(views.map(view => view.id))
+  let finalId = id
+  while (takenIds.has(finalId)) {
+    finalId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  }
+  const next = [{ id: finalId, name: finalName, filter: filter.trim() }, ...views]
   persist(store, next)
   return { views: next, saved: true as const }
 }

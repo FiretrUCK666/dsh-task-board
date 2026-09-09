@@ -4015,6 +4015,21 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(row.rules?.find(r => r.id === gone.id)?.nextAt).toBe(gone.nextAt)
   })
 
+  it('toggling a rule off clears its slots (one off-shape everywhere)', async () => {
+    const { controller } = ruleHarness(['s-a'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const created = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'steer' })!
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules?.[0].nextAt).toBeDefined()
+    controller.toggleSessionRule(task.id, created.id, false)
+    const off = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(off.rules?.[0].enabled).toBe(false)
+    expect(off.rules?.[0].nextAt).toBeUndefined()
+    expect(off.rules?.[0].lastAt).toBeUndefined()
+    // Configuration survives the switch-off.
+    expect(off.rules?.[0].cron).toBe('* * * * *')
+    expect(off.rules?.[0].instruction).toBe('hello')
+  })
+
   it('re-arming a disarmed cron rule recomputes its slot from now (never a stale fire)', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })

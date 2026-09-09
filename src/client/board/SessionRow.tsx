@@ -103,7 +103,19 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
       onClick={onActivate}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onActivate() } }}
+      onKeyDown={event => {
+        // Editable descendants own their keys: an input/textarea/select (or
+        // any nested control) inside the row must never trigger the row's
+        // Enter/Space activation (spaces must type, Enter must commit the
+        // edit — never both commit AND navigate). Buttons exempt themselves
+        // via stopPropagation at their own handlers; this is the backstop
+        // for editors that do not stop propagation themselves.
+        const target = event.target
+        if (target instanceof HTMLElement
+          && target.closest('input, textarea, select, [contenteditable="true"], button') !== null
+          && target !== event.currentTarget) return
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onActivate() }
+      }}
     >
       <div className={css.sessionRowTop}>
         {/* Named grid slots (lead / chip / act): the columns are STRUCTURAL, so

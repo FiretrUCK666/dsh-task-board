@@ -22,7 +22,7 @@ describe('useDialogFocus (one implementation, three surfaces)', () => {
   it('enters on the declared control, else the first control, else the panel', () => {
     expect(hook).toContain('[data-autofocus]')
     expect(hook).toContain('focusFirst(')
-    expect(hook).toContain('controls[0] ?? panel')
+    expect(hook).toContain('visible[0]')
   })
 
   it('returns to the opener, else falls back to the board box (never strands on body)', () => {
@@ -35,6 +35,10 @@ describe('useDialogFocus (one implementation, three surfaces)', () => {
     expect(hook).toContain("element.type === 'hidden'")
     expect(hook).toContain('aria-hidden="true"')
     expect(hook).toContain("style.display !== 'none'")
+  })
+
+  it('a declared target joins only through the visible set (no blind focus)', () => {
+    expect(hook).toContain('visible.includes(declared)')
   })
 
   it('re-aims on identity swaps without touching the return chain', () => {
