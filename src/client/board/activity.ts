@@ -106,6 +106,24 @@ export function groupActivityByObjectDay(
   return groups
 }
 
+/** Cap: an expanded group shows this many newest rows; the rest reads as one
+ *  quiet remainder line (navigation stays on the group header's 进详情 — the
+ *  remainder is information, never a second toggle). */
+export const GROUP_ITEM_LIMIT = 10
+
+/**
+ * Split a group's rows into the shown head and the folded remainder count.
+ * Pure so the cap unit-tests without rendering; the header always counts the
+ * full group (the count never lies about the cap).
+ */
+export function splitGroupItems(
+  items: readonly ActivityItem[],
+  limit: number = GROUP_ITEM_LIMIT,
+): { shown: ActivityItem[]; rest: number } {
+  if (items.length <= limit) return { shown: [...items], rest: 0 }
+  return { shown: items.slice(0, limit), rest: items.length - limit }
+}
+
 /**
  * Collect every notable moment of every task, newest first. Running rounds
  * ARE moments (their start/observation/injection lights the feed); an empty

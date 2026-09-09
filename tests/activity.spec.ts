@@ -4,7 +4,7 @@
  * feed); empty comments stay (the row shows a placeholder).
  */
 import { describe, expect, it } from 'vitest'
-import { ACTIVITY_LIMIT, activityOf, clusterOf, groupActivityByObjectDay } from '../src/client/board/activity.ts'
+import { ACTIVITY_LIMIT, activityOf, clusterOf, GROUP_ITEM_LIMIT, groupActivityByObjectDay, splitGroupItems } from '../src/client/board/activity.ts'
 import { createTask } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -134,5 +134,28 @@ describe('groupActivityByObjectDay (object-day folding)', () => {
     const single = groupActivityByObjectDay([row('a|1', 'a', 'created', 100)], dayOf)
     expect(single).toHaveLength(1)
     expect(single[0].items).toHaveLength(1)
+  })
+})
+
+describe('splitGroupItems (expanded-group cap)', () => {
+  it('passes short groups through untouched', () => {
+    const items = [row('a|1', 'a', 'comment', 100), row('a|2', 'a', 'comment', 200)]
+    expect(splitGroupItems(items)).toEqual({ shown: items, rest: 0 })
+  })
+
+  it('shows the newest GROUP_ITEM_LIMIT rows and counts the rest', () => {
+    expect(GROUP_ITEM_LIMIT).toBeGreaterThanOrEqual(5)
+    const items = Array.from({ length: GROUP_ITEM_LIMIT + 3 }, (_, index) =>
+      row(`a|${index}`, 'a', 'comment', 100 + index))
+    const split = splitGroupItems(items)
+    expect(split.shown).toHaveLength(GROUP_ITEM_LIMIT)
+    expect(split.shown[0].key).toBe('a|0')
+    expect(split.rest).toBe(3)
+  })
+
+  it('an exact-limit group has no remainder', () => {
+    const items = Array.from({ length: GROUP_ITEM_LIMIT }, (_, index) =>
+      row(`a|${index}`, 'a', 'comment', 100 + index))
+    expect(splitGroupItems(items).rest).toBe(0)
   })
 })

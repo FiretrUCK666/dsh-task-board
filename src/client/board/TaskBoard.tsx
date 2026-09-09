@@ -65,7 +65,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   if (item.kind === 'external') return { kind: 'neutral', label: t('board.activityExternal') }
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
-import { activityOf, groupActivityByObjectDay, type ActivityGroup, type ActivityItem } from './activity.ts'
+import { activityOf, groupActivityByObjectDay, splitGroupItems, type ActivityGroup, type ActivityItem } from './activity.ts'
 import { Chip } from './Chip.tsx'
 
 /**
@@ -1802,10 +1802,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               // like unfolded rows, so sparse feeds look byte-identical to
               // before. No unread signal here by contract — unread breathes on
               // the card only; the filter-level `onlyUnviewed` still applies.
+              // Expanded groups show the newest GROUP_ITEM_LIMIT rows plus one
+              // quiet remainder line (the header's 进详情 owns navigation).
               const renderObjectGroup = (group: ActivityGroup): ReactNode => {
                 if (group.items.length === 1) return renderActivityRow(group.items[0])
                 const groupExpanded = expandedGroupKey === group.key
                 const title = group.taskTitle.trim() === '' ? t('card.untitled') : group.taskTitle
+                const split = groupExpanded ? splitGroupItems(group.items) : { shown: [], rest: 0 }
                 return (
                   <li key={group.key}>
                     <div className={css.notifyRow} data-kind={group.items[0].kind}>
@@ -1834,7 +1837,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     </div>
                     {groupExpanded && (
                       <ul className={css.notifyList}>
-                        {group.items.map(renderActivityRow)}
+                        {split.shown.map(renderActivityRow)}
+                        {split.rest > 0 && (
+                          <li key={`${group.key}|rest`}>
+                            <p className={css.detailHint}>
+                              {t('board.activityGroupRest', { n: String(split.rest) })}
+                            </p>
+                          </li>
+                        )}
                       </ul>
                     )}
                   </li>
