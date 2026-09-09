@@ -297,8 +297,9 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
 
   it('the header action cluster is same-height (24px pills + 24px close)', () => {
     // 「同一排控件同级高」: a 30px circle beside 24px pills is the misalignment
-    // the eye reads as sloppiness.
-    expect(cssSource).toMatch(/\.reviewHeader \.iconButton\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px/)
+    // the eye reads as sloppiness. The size rides the sm token (or its equal
+    // literal) — the test pins the VALUE, never the spelling.
+    expect(cssSource).toMatch(/\.reviewHeader \.iconButton\s*\{[^}]*(width:\s*(24px|var\(--dsh-tb-button-h-sm\));[^}]*height:\s*(24px|var\(--dsh-tb-button-h-sm\))|height:\s*(24px|var\(--dsh-tb-button-h-sm\));[^}]*width:\s*(24px|var\(--dsh-tb-button-h-sm\)))/)
   })
 
   it('the fold defaults follow the PANEL width, not the viewport', () => {

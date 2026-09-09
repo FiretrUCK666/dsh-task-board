@@ -443,7 +443,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   min-width: 140px;
   /* 28px — the same row rhythm as the header action buttons (28px standard),
      so 搜索框 and 整理/自动化/新建任务 read as one control row. */
-  height: 28px;
+  height: var(--dsh-tb-button-h);
   padding: 0 12px;
   font-size: 13px;
   color: var(--dsh-tb-text-1);
@@ -1909,7 +1909,7 @@ textarea.input {
    its 24px pills — each row picks its height tier, never mixes two). */
 .detailHeader .iconButton {
   width: 28px;
-  height: 28px;
+  height: var(--dsh-tb-button-h);
 }
 
 .detailTitle {
@@ -2815,7 +2815,7 @@ textarea.input {
    the warn tone, so switching waiting/idle never shifts the row's geometry. */
 .sessionRowHandle {
   flex: none;
-  height: 24px;
+  height: var(--dsh-tb-button-h-sm);
   padding: 0 10px;
   font-size: 12px;
   font-weight: 500;
@@ -3699,10 +3699,11 @@ button.interactionOption:focus-visible,
 
 /* 同一排控件同级高: the close glyph rides the SAME 24px box as the small
    pill actions beside it (a 30px circle next to 24px pills is the "没对齐"
-   the eye reads as sloppiness). */
+   the eye reads as sloppiness). Size rides the sm token, never a re-typed
+   number. */
 .reviewHeader .iconButton {
-  width: 24px;
-  height: 24px;
+  width: var(--dsh-tb-button-h-sm);
+  height: var(--dsh-tb-button-h-sm);
 }
 
 /* Title + run-sequence badge: two cells of the header grid (title grows and
@@ -4841,7 +4842,7 @@ button.interactionOption:hover {
      head row AND the anchored popover both align with the surrounding
      content (the containers have no padding of their own, so a direct child
      would otherwise hug their edges). */
-  padding: 0 14px;
+  padding: 0 var(--dsh-tb-rail-inset);
 }
 
 /* In the HEADER cell the wrap surrenders its own 14px (the cell already
