@@ -402,6 +402,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .notifyRow:hover {
   background: var(--dsh-tb-hover);
 }
+/* Keyboard-selected palette row: the same wash as hover (one highlight
+   grammar — hover and arrows never disagree about where you are). */
+.notifyRow[data-active] {
+  background: var(--dsh-tb-hover);
+}
 .notifyTask {
   flex: 1;
   min-width: 0;

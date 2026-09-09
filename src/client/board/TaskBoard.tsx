@@ -42,6 +42,8 @@ import { taskBindsOf } from '../../core/tasks.ts'
 
 import { matchTask } from './task-search.ts'
 import { notificationsOf } from './notifications.ts'
+import { buildCommands } from './commands.ts'
+import { CommandPalette } from './CommandPalette.tsx'
 import { Chip } from './Chip.tsx'
 
 /**
@@ -111,6 +113,24 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [showAutomation, setShowAutomation] = useState(false)
   // 通知中心弹层：等你处理的会话聚合（只读，点行进详情）。
   const [showNotify, setShowNotify] = useState(false)
+  // 命令面板：Ctrl/Cmd+K 唤起的动作列表（新建/巡航/整理/自动化/通知/返回），
+  // 每一项都复用既有入口——面板本身不新增任何行为。
+  const [showPalette, setShowPalette] = useState(false)
+  useEffect(() => {
+    // Never hijack typing: an open input owns its keystrokes (Ctrl+K in a
+    // text field stays the field's).
+    const onKey = (event: KeyboardEvent): void => {
+      if ((event.ctrlKey !== true && event.metaKey !== true) || event.key.toLowerCase() !== 'k') return
+      const target = event.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable === true) return
+      if (!controller.getSnapshot().boardOpen) return
+      event.preventDefault()
+      setShowPalette(open => !open)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('keydown', onKey) }
+  }, [controller])
   // Live aggregation over the snapshot (the controller notifies on every
   // session-list change, so a newly-waiting session lights the bell at once).
   const notes = notificationsOf(
@@ -1141,6 +1161,24 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         <AutomationPanel
           controller={controller}
           onClose={() => { setShowAutomation(false) }}
+        />
+      )}
+      {showPalette && (
+        <CommandPalette
+          commands={buildCommands(t, {
+            cruiseEnabled: snapshot.cruise.enabled,
+            openNew: () => { setShowNew(true) },
+            toggleCruise: () => { controller.setCruiseEnabled(!snapshot.cruise.enabled) },
+            openOrganize: () => { setOrganizing(true) },
+            openAutomation: () => { setShowAutomation(true) },
+            openNotify: () => { setShowNotify(true) },
+            closeBoard: () => { controller.closeBoard() },
+          })}
+          onClose={() => { setShowPalette(false) }}
+          onRun={command => {
+            setShowPalette(false)
+            command.run()
+          }}
         />
       )}
       {showNotify && (
