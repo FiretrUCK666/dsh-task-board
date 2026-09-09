@@ -697,3 +697,27 @@ describe('reduced-motion functional exemption', () => {
     expect(reduced).toMatch(/\.modalBackdrop[\s\S]*?animation:\s*none/)
   })
 })
+
+describe('template library wiring', () => {
+  it('new-task modal stamps from the library; detail saves into it (one seam each)', () => {
+    // The modal fills its draft from the picked template (editable before
+    // creating) and deletes the picked one behind a confirm; the detail
+    // snapshots content without leaving the card.
+    const modalPath = fileURLToPath(new URL('../src/client/board/NewTaskModal.tsx', import.meta.url))
+    const modal = readFileSync(modalPath, 'utf8')
+    expect(modal).toContain('listTemplates()')
+    expect(modal).toContain('draftFromTemplate(template)')
+    expect(modal).toContain('deleteTemplate(pickedId)')
+    expect(modal).toContain('ConfirmDialog')
+    const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url))
+    const detail = readFileSync(detailPath, 'utf8')
+    expect(detail).toContain('saveTemplate(current.id)')
+    // Templates never carry automation: no schedule/rules field flows into
+    // the template shape or the stamped input (the words may appear in
+    // comments explaining the exclusion, never as data).
+    const corePath = fileURLToPath(new URL('../src/core/task-templates.ts', import.meta.url))
+    const core = readFileSync(corePath, 'utf8')
+    expect(core).not.toMatch(/schedule\??:/)
+    expect(core).not.toMatch(/rules\??:/)
+  })
+})

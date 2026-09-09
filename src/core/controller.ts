@@ -24,6 +24,7 @@ import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLive
 import { withTaskColor } from './colors.ts'
 import { normalizeCruiseValue } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
+import { LocalStorageTemplateStore, templateFromTask, templateToNewInput } from './task-templates.ts'
 import { LocalStorageRunPresetStore } from './run-presets.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
@@ -450,6 +451,11 @@ export interface ControllerDeps {
   presetStore?: import('./presets.ts').PresetStore
   /** Run-preset persistence; same synced/local split as {@link presetStore}. */
   runPresetStore?: import('./run-presets.ts').RunPresetStore
+  /**
+   * Template-library persistence (device-local like drafts — templates are
+   * personal starters, not board truth). Absent = the localStorage default.
+   */
+  templateStore?: import('./task-templates.ts').TemplateStore
   /** Reads a session's recent history events (review-page transcript); absent = the page shows a hint. */
   transcript?: (sessionId: string) => Promise<TranscriptLoadResult | undefined>
   /** Reads one earlier history page backward from `beforeSeq` (the native
@@ -1242,6 +1248,67 @@ export class BoardController {
     this.persistAndNotify()
     // Re-read the promoted row (createTask's contract): the copy the caller
     // sees IS the card on the board, never the pre-promotion object.
+    return this.tasks.find(candidate => candidate.id === task.id) ?? task
+  }
+
+  /**
+   * The template library (named, reusable blueprints — see task-templates.ts).
+   * Templates are device-local; the board document is untouched, so saving
+   * and stamping never sync and never need a migration.
+   */
+  listTemplates(): import('./task-templates.ts').TaskTemplate[] {
+    return (this.deps.templateStore ?? new LocalStorageTemplateStore()).load()
+  }
+
+  /**
+   * Snapshot a task as a named template ("存为模板"). The name defaults to
+   * the task's title (deduplicated with a numeric suffix); instance state
+   * never rides along.
+   * @param id - the source task.
+   * @param name - the template label (blank = the task's title).
+   * @returns the saved template, or undefined when the source is unknown.
+   */
+  saveTemplate(id: string, name?: string): import('./task-templates.ts').TaskTemplate | undefined {
+    const source = this.tasks.find(task => task.id === id)
+    if (source === undefined) return undefined
+    const store = this.deps.templateStore ?? new LocalStorageTemplateStore()
+    const taken = new Set(store.load().map(template => template.name))
+    let label = (name ?? '').trim() === '' ? source.title.trim() : (name ?? '').trim()
+    if (label === '') label = 'Untitled template'
+    let candidate = label
+    for (let n = 2; taken.has(candidate); n++) candidate = `${label} ${n}`
+    const template = templateFromTask(source, this.uuid(), candidate)
+    store.save([...store.load(), template])
+    this.notify()
+    return template
+  }
+
+  /** Delete one template by id (a no-op for unknown ids). */
+  deleteTemplate(id: string): boolean {
+    const store = this.deps.templateStore ?? new LocalStorageTemplateStore()
+    const next = store.load().filter(template => template.id !== id)
+    if (next.length === store.load().length) return false
+    store.save(next)
+    this.notify()
+    return true
+  }
+
+  /**
+   * Stamp a fresh 待规划 card from a template (content + run configuration;
+   * schedule/rules never ride — arming is explicit on the new card).
+   * @param id - the template id.
+   * @returns the new task, or undefined for an unknown template.
+   */
+  instantiateTemplate(id: string): TaskRecord | undefined {
+    const store = this.deps.templateStore ?? new LocalStorageTemplateStore()
+    const template = store.load().find(candidate => candidate.id === id)
+    if (template === undefined) return undefined
+    const task = createTask(
+      templateToNewInput(template),
+      this.now(), this.uuid(), this.nextOrder(),
+    )
+    this.tasks = promoteToColumnTop([...this.tasks, task], task.id, task.status, this.now())
+    this.persistAndNotify()
     return this.tasks.find(candidate => candidate.id === task.id) ?? task
   }
 

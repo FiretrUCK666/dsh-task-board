@@ -9,10 +9,11 @@ import {
 } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Dialog } from './Dialog.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { NEW_TASK_DRAFT_KEY, draftStore } from './drafts.ts'
-import { draftToNewInput, normalizeDraft, type TaskDraft } from './task-draft.ts'
+import { draftFromTemplate, draftToNewInput, normalizeDraft, type TaskDraft } from './task-draft.ts'
 import { Button } from './ui.tsx'
 
 /** The fresh draft shape ('' = default / not set; landing column 待规划). */
@@ -75,6 +76,25 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     draftStore.set(NEW_TASK_DRAFT_KEY, JSON.stringify(next))
   }
 
+  // Template library: picking a template fills the form (editable before
+  // creating — stamping is a start, not a commitment); the danger-ghost
+  // delete removes the PICKED template and confirms first (a template is
+  // user-authored content).
+  const templates = controller.listTemplates()
+  const [pickedId, setPickedId] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const applyTemplate = (id: string): void => {
+    setPickedId(id)
+    const template = templates.find(candidate => candidate.id === id)
+    if (template === undefined) return
+    changeDraft(draftFromTemplate(template))
+  }
+  const removePicked = (): void => {
+    if (pickedId !== '') controller.deleteTemplate(pickedId)
+    setPickedId('')
+    setConfirmDelete(false)
+  }
+
   const submit = (): void => {
     // Title/description/prompt are all optional: a blank prompt just makes
     // the task inert, and the first real run auto-supplements the rest.
@@ -93,6 +113,44 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
         {/* The ONE scroll region of the dialog: the fields scroll, the header
             and the 创建/取消 footer stay pinned (see .modal / .modalScroll). */}
         <div className={css.modalScroll}>
+          {templates.length > 0 && (
+            <div className={css.formRow}>
+              <label className={css.formLabel} htmlFor="dsh-tb-template-picker">
+                {t('new.fromTemplate')}
+              </label>
+              <span className={css.selectWrap}>
+                <select
+                  id="dsh-tb-template-picker"
+                  className={css.input}
+                  value={pickedId}
+                  onChange={event => { applyTemplate(event.target.value) }}
+                >
+                  <option value="">{t('new.pickTemplate')}</option>
+                  {templates.map(template => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </select>
+              </span>
+              <Button
+                variant="dangerGhost"
+                title={t('new.deleteTemplateTitle')}
+                disabled={pickedId === ''}
+                onClick={() => { setConfirmDelete(true) }}
+              >
+                {t('new.deleteTemplate')}
+              </Button>
+              {confirmDelete && pickedId !== '' && (
+                <ConfirmDialog
+                  title={t('new.deleteTemplate')}
+                  message={t('new.deleteTemplateConfirm')}
+                  confirmLabel={t('new.deleteTemplate')}
+                  danger
+                  onCancel={() => { setConfirmDelete(false) }}
+                  onConfirm={removePicked}
+                />
+              )}
+            </div>
+          )}
           <TaskForm
             draft={draft}
             onChange={changeDraft}

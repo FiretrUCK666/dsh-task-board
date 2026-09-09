@@ -506,6 +506,17 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
     if (copy !== undefined) controller.closeTask()
   }
 
+  /** Snapshot this task into the named template library ("存为模板"):
+   *  content + run config, no bindings/runs/schedule — the stamped card
+   *  never surprise-fires. The detail stays open (the source is untouched). */
+  const [templateSaved, setTemplateSaved] = useState(false)
+  const saveAsTemplate = (): void => {
+    if (controller.saveTemplate(current.id) === undefined) return
+    setTemplateSaved(true)
+    if (promptCopyTimer.current !== undefined) clearTimeout(promptCopyTimer.current)
+    promptCopyTimer.current = setTimeout(() => { setTemplateSaved(false) }, 2000)
+  }
+
   /** Copy the execution prompt to the clipboard (best-effort; no throw). */
   const copyPrompt = (): void => {
     if (current.prompt === '') return
@@ -865,6 +876,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef }
             )}
             <Button title={t('detail.duplicateTitle')} onClick={duplicateTask}>
               {t('detail.duplicate')}
+            </Button>
+            <Button title={t('detail.saveTemplateTitle')} onClick={saveAsTemplate}>
+              {templateSaved ? t('detail.savedTemplate') : t('detail.saveTemplate')}
             </Button>
           </span>
           {/* Destructive action rides the SAME geometry as its siblings (the

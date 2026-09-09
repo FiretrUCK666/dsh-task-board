@@ -6,6 +6,7 @@
  */
 import type { TaskRecord } from '../../core/tasks.ts'
 import type { NewTaskInput } from '../../core/tasks.ts'
+import type { TaskTemplate } from '../../core/task-templates.ts'
 import type { TaskUpdatePatch } from '../../core/controller.ts'
 import type { DraftImage } from './attach.ts'
 
@@ -54,8 +55,7 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
 }
 
 /** Build a draft from a task record. */
-export function draftFromTask(task: TaskRecord): TaskDraft {
-  return {
+export function draftFromTask(task: TaskRecord): TaskDraft {  return {
     title: task.title,
     description: task.description,
     prompt: task.prompt,
@@ -74,6 +74,29 @@ export function draftFromTask(task: TaskRecord): TaskDraft {
     model: task.model ?? '',
     reasoningEffort: task.reasoningEffort ?? '',
     permission: task.permission ?? '',
+  }
+}
+
+/** Build a draft from a saved template (stamp-out fills the new-task form). */
+export function draftFromTemplate(template: TaskTemplate): TaskDraft {
+  return {
+    title: template.title,
+    description: template.description,
+    prompt: template.prompt,
+    // Same round-trip as a persisted task's images (strip ids regenerate).
+    promptImages: (template.promptImages ?? []).map((image, index) => ({
+      id: `template-${index}-${image.data.slice(0, 8)}`,
+      data: image.data,
+      mediaType: image.mediaType as DraftImage['mediaType'],
+      name: image.name ?? '',
+    })),
+    status: 'backlog',
+    agentPreset: template.agentPreset ?? '',
+    workspaceId: template.workspaceId ?? '',
+    provider: template.provider ?? '',
+    model: template.model ?? '',
+    reasoningEffort: template.reasoningEffort ?? '',
+    permission: template.permission ?? '',
   }
 }
 
