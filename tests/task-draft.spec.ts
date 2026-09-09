@@ -137,6 +137,24 @@ describe('draft due-date converters', () => {
     expect(moved.status).toBe('todo')
   })
 
+  it('stampTemplate keeps run routes atomic (never a mixed provider/model)', () => {
+    const template = {
+      ...draft(), provider: 'ty', model: 'tm', reasoningEffort: 'te',
+    }
+    // A complete user pair wins whole (effort rides with its model).
+    const mine = stampTemplate(
+      { ...draft(), title: '', description: '', prompt: '', provider: 'my', model: 'mm', reasoningEffort: 'me' },
+      template,
+    )
+    expect([mine.provider, mine.model, mine.reasoningEffort]).toEqual(['my', 'mm', 'me'])
+    // A half-touched pair loses whole (no user-provider + template-model mix).
+    const half = stampTemplate(
+      { ...draft(), title: '', description: '', prompt: '', provider: 'my', model: '', reasoningEffort: '' },
+      template,
+    )
+    expect([half.provider, half.model, half.reasoningEffort]).toEqual(['ty', 'tm', 'te'])
+  })
+
   it('splitLabelText cuts on half/full-width separators', () => {
     expect(splitLabelText('a,b、c d，e；f|g')).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     expect(splitLabelText('  ')).toEqual([])

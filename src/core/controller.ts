@@ -2504,7 +2504,10 @@ export class BoardController {
       // trigger the armed-chain auto-run next to the manual run below.)
       this.moveTask(id, 'todo')
     } else if (task.status !== 'running') {
-      this.tasks = this.tasks.map(candidate => candidate.id === id ? withStatus(candidate, 'todo', this.now()) : candidate)
+      // Promote (never a bare withStatus): a rerun reads as the newest of
+      // its column like every other birth/arrival — sinking to the bottom
+      // would hide the run a user just asked for.
+      this.tasks = promoteToColumnTop(this.tasks, id, 'todo', this.now())
       this.persistAndNotify()
     }
     await this.runTask(id, 'manual')

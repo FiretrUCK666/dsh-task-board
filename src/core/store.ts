@@ -14,7 +14,7 @@
  */
 import { isValidCron } from './schedule.ts'
 import { normalizeSessionRules } from './automation.ts'
-import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
+import type { ScheduleRule, TaskFile, TaskImage, TaskRecord, TaskStatus } from './tasks.ts'
 import { isScheduleMode, isTaskStatus, normalizeLabels, normalizePriority, type TaskBind } from './tasks.ts'
 
 /** Persistence seam for the task ledger. */
@@ -240,6 +240,29 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     const rawDue = (row as Record<string, unknown>).dueAt
     if (typeof rawDue === 'number' && Number.isFinite(rawDue) && rawDue > 0) task.dueAt = Math.floor(rawDue)
     else delete task.dueAt
+    // Attachments: element-level firewall (the same law as template
+    // normalization — a single dirty element washes out, never the row, and
+    // never a crash downstream in draft converters or the send layer).
+    const rawImages = (row as Record<string, unknown>).promptImages
+    if (Array.isArray(rawImages)) {
+      const images = rawImages.filter((entry): entry is TaskImage =>
+        typeof entry === 'object' && entry !== null
+        && typeof (entry as Record<string, unknown>).data === 'string'
+        && (entry as Record<string, unknown>).data !== ''
+        && typeof (entry as Record<string, unknown>).mediaType === 'string')
+      if (images.length > 0) task.promptImages = images
+      else delete task.promptImages
+    } else delete task.promptImages
+    const rawFiles = (row as Record<string, unknown>).promptFiles
+    if (Array.isArray(rawFiles)) {
+      const files = rawFiles.filter((entry): entry is TaskFile =>
+        typeof entry === 'object' && entry !== null
+        && typeof (entry as Record<string, unknown>).receiptId === 'string'
+        && (entry as Record<string, unknown>).receiptId !== ''
+        && typeof (entry as Record<string, unknown>).name === 'string')
+      if (files.length > 0) task.promptFiles = files
+      else delete task.promptFiles
+    } else delete task.promptFiles
     // Priority: 1/2/3 survives, anything else reads absent.
     const priority = normalizePriority((row as Record<string, unknown>).priority)
     if (priority !== undefined) task.priority = priority

@@ -381,6 +381,24 @@ describe('schedule persistence', () => {
     expect(parsed[3].statusHistory).toEqual([{ status: 'todo', at: 1 }])
   })
 
+  it('washes dirty attachments element-wise (never the row, never a crash)', () => {
+    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
+    const raw = [
+      {
+        ...valid,
+        id: 't-1',
+        promptImages: [{ mediaType: 'image/png', data: 'QUJD', name: 'a.png' }, null, { data: '', mediaType: 'image/png' }],
+        promptFiles: [{ receiptId: 'r1', name: 'a.pdf', bytes: 10 }, { name: 'x' }, null],
+      },
+      { ...valid, id: 't-2', promptImages: 'junk', promptFiles: 42 },
+    ]
+    const parsed = parseLedger(JSON.stringify(raw))
+    expect(parsed[0].promptImages).toEqual([{ mediaType: 'image/png', data: 'QUJD', name: 'a.png' }])
+    expect(parsed[0].promptFiles).toEqual([{ receiptId: 'r1', name: 'a.pdf', bytes: 10 }])
+    expect(parsed[1].promptImages).toBeUndefined()
+    expect(parsed[1].promptFiles).toBeUndefined()
+  })
+
   it('aligns a diverged history tail to the row column', () => {
     const valid = createTask({ title: 'ok', description: '', prompt: '' }, 9, 't-1')
     const raw = [

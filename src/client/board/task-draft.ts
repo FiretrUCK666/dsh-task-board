@@ -242,8 +242,14 @@ function filledText(value: string): boolean {
 /** Stamp a template onto a draft by filling BLANKS only: every field the user
  *  already touched keeps the user's value; the template supplies the rest.
  *  One merge law for all fields (title/description/prompt/images/status/run
- *  config/due/priority/labels/color) — never per-field preserve exceptions. */
+ *  config/due/priority/labels/color) — never per-field preserve exceptions.
+ *  The one atomic group is provider/model/reasoningEffort (a run route):
+ *  mixing the user's provider with the template's model breeds invalid
+ *  combos, so the user's triple wins only when the pair is complete —
+ *  otherwise the template's whole triple rides (effort is tuned per model).
+ */
 export function stampTemplate(draft: TaskDraft, stamped: TaskDraft): TaskDraft {
+  const userRouteComplete = filledText(draft.provider) && filledText(draft.model)
   return {
     title: filledText(draft.title) ? draft.title : stamped.title,
     description: filledText(draft.description) ? draft.description : stamped.description,
@@ -253,9 +259,9 @@ export function stampTemplate(draft: TaskDraft, stamped: TaskDraft): TaskDraft {
     status: draft.status !== 'backlog' ? draft.status : stamped.status,
     agentPreset: filledText(draft.agentPreset) ? draft.agentPreset : stamped.agentPreset,
     workspaceId: filledText(draft.workspaceId) ? draft.workspaceId : stamped.workspaceId,
-    provider: filledText(draft.provider) ? draft.provider : stamped.provider,
-    model: filledText(draft.model) ? draft.model : stamped.model,
-    reasoningEffort: filledText(draft.reasoningEffort) ? draft.reasoningEffort : stamped.reasoningEffort,
+    provider: userRouteComplete ? draft.provider : stamped.provider,
+    model: userRouteComplete ? draft.model : stamped.model,
+    reasoningEffort: userRouteComplete ? draft.reasoningEffort : stamped.reasoningEffort,
     permission: filledText(draft.permission) ? draft.permission : stamped.permission,
     dueDate: filledText(draft.dueDate) ? draft.dueDate : stamped.dueDate,
     priority: filledText(draft.priority) ? draft.priority : stamped.priority,
