@@ -1622,6 +1622,15 @@ describe('auto-cruise', () => {
     expect(controller.getSnapshot().skips).toEqual({ overlap: 2, missed: 1 })
   })
 
+  it('mirrors the scheduler heartbeat stamp volatile-only (undefined until the first tick)', () => {
+    const { controller } = makeController()
+    expect(controller.getSnapshot().heartbeat).toEqual({ lastOkAt: undefined })
+    controller.setSchedulerHeartbeat(1_000_000)
+    expect(controller.getSnapshot().heartbeat).toEqual({ lastOkAt: 1_000_000 })
+    controller.setSchedulerHeartbeat(1_000_000)
+    expect(controller.getSnapshot().heartbeat).toEqual({ lastOkAt: 1_000_000 })
+  })
+
   it('restores a persisted enabled cruise on start and pumps the queue', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub, {

@@ -24,6 +24,22 @@
 import { nextRunAtMs } from './schedule.ts'
 import { hasOpenRun, plainRunsOf, ruleReadiness, type TaskRecord } from './tasks.ts'
 
+/**
+ * Heartbeat liveness (Healthchecks `Period + Grace`, single-machine edition):
+ * the scheduler is stale when no tick fully completed within one period plus
+ * one grace window. An absent stamp (no tick yet) reads alive — a fresh load
+ * must never flash red — as does a future stamp (a clock that stepped back).
+ */
+export function isHeartbeatStale(
+  lastOkAt: number | undefined,
+  now: number,
+  periodMs = 60_000,
+  graceMs = periodMs,
+): boolean {
+  if (lastOkAt === undefined || now <= lastOkAt) return false
+  return now - lastOkAt > periodMs + graceMs
+}
+
 /** Everything the scheduler needs from its host (the board controller). */
 export interface SchedulerDeps {
   /** Read the current task ledger (the controller snapshot). */
@@ -54,6 +70,12 @@ export interface SchedulerDeps {
    * counts stay readable through `skipStats` only (tests, headless hosts).
    */
   onSkips?: (stats: { overlap: number; missed: number }) => void
+  /**
+   * Heartbeat telemetry sink: invoked with the tick/ok stamps after every
+   * fully completed tick (at most once per tick). Absent = the stamps stay
+   * readable through `heartbeat` only (tests, headless hosts).
+   */
+  onHeartbeat?: (hb: { tickAt: number; okAt: number }) => void
   /**
    * Gate: while false the tick no-ops (e.g. the session list baseline has not
    * arrived on page load, so executions would fail). Defaults to always ready.
@@ -89,6 +111,10 @@ export class SchedulerService {
    *  persisted, so a minute of overlap can never spam the synced document). */
   private skippedOverlap = 0
   private skippedMissed = 0
+  /** Heartbeat stamps (in-memory only, same telemetry discipline as the skip
+   *  ledger): the last tick entry vs. the last fully completed tick. */
+  private lastTickAt: number | undefined = undefined
+  private lastOkAt: number | undefined = undefined
 
   /** @param deps - tasks/clock/trigger/apply faces (see {@link SchedulerDeps}). */
   constructor(private readonly deps: SchedulerDeps) {}
@@ -97,6 +123,11 @@ export class SchedulerService {
    *  still ran (`overlap`) vs. how many were too stale to catch up (`missed`). */
   skipStats(): { overlap: number; missed: number } {
     return { overlap: this.skippedOverlap, missed: this.skippedMissed }
+  }
+
+  /** Heartbeat stamps for liveness checks (read-only; undefined = no tick yet). */
+  heartbeat(): { lastTickAt: number | undefined; lastOkAt: number | undefined } {
+    return { lastTickAt: this.lastTickAt, lastOkAt: this.lastOkAt }
   }
 
   /** Start ticking: one immediate check (catch-up after reload) + the interval. */
@@ -127,6 +158,7 @@ export class SchedulerService {
     if (this.disposed) return
     if (this.deps.ready !== undefined && !this.deps.ready()) return
     const now = this.deps.now()
+    this.lastTickAt = now
     // Cruise windows flip on/off at their boundaries on this same heartbeat.
     this.deps.cruiseTick?.(now)
     for (const task of this.deps.tasks()) {
@@ -228,6 +260,10 @@ export class SchedulerService {
     // too — after the task-schedule loop so a synchronous tick() probes the
     // schedule loop first (tests drive both synchronously).
     await this.deps.sessionRulesTick?.(now)
+    // A tick that ran to completion (an exception above skips this line, so a
+    // wedged rules-tick never reports healthy).
+    this.lastOkAt = now
+    this.deps.onHeartbeat?.({ tickAt: this.lastTickAt ?? now, okAt: now })
   }
 
   private readonly onVisibility = (): void => { this.tick() }

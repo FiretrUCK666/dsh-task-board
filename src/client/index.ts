@@ -1066,6 +1066,9 @@ export function apply(ctx: ClientContext): void {
       // Forbid-policy skip telemetry surfaces on the board's status line
       // (the controller snapshot carries it; zero stays hidden).
       onSkips: stats => { controller.setSchedulerSkips(stats) },
+      // Heartbeat liveness surfaces the same way (volatile; undefined until
+      // the first completed tick).
+      onHeartbeat: hb => { controller.setSchedulerHeartbeat(hb.okAt) },
       // Cruise scheduled windows flip on/off at their boundaries on the same
       // heartbeat as task schedules.
       cruiseTick: now => controller.tickCruise(now),

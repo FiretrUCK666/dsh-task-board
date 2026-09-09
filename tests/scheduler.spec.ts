@@ -4,7 +4,7 @@
  * `tick` directly (no real timers).
  */
 import { describe, expect, it } from 'vitest'
-import { SchedulerService, type SchedulerDeps } from '../src/core/scheduler.ts'
+import { SchedulerService, isHeartbeatStale, type SchedulerDeps } from '../src/core/scheduler.ts'
 import { createTask, settleExecution, startExecution, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
 /** Local-time ms epoch helper. */
@@ -466,5 +466,69 @@ describe('SchedulerService lifecycle', () => {
     h.scheduler.dispose()
     expect(h.runs).toEqual(['t-a'])
     expect(listener).toBeUndefined() // listener unregistered on dispose
+  })
+})
+
+describe('isHeartbeatStale (Period + Grace liveness)', () => {
+  it('reads alive before the first tick and across a clock step-back', () => {
+    expect(isHeartbeatStale(undefined, 1_000)).toBe(false)
+    expect(isHeartbeatStale(2_000, 1_000)).toBe(false)
+  })
+
+  it('flips only past Period + Grace (default one tick + one grace)', () => {
+    const okAt = 1_000_000
+    expect(isHeartbeatStale(okAt, okAt + 119_999)).toBe(false)
+    expect(isHeartbeatStale(okAt, okAt + 120_000)).toBe(false)
+    expect(isHeartbeatStale(okAt, okAt + 120_001)).toBe(true)
+  })
+
+  it('scales with a custom tick cadence', () => {
+    const okAt = 1_000_000
+    expect(isHeartbeatStale(okAt, okAt + 9_999, 5_000)).toBe(false)
+    expect(isHeartbeatStale(okAt, okAt + 10_001, 5_000)).toBe(true)
+  })
+})
+
+describe('SchedulerService heartbeat stamps', () => {
+  it('advances lastOkAt on a completed tick and emits the sink', async () => {
+    const seen: Array<{ tickAt: number; okAt: number }> = []
+    const h = makeHarness({ onHeartbeat: hb => { seen.push(hb) } })
+    expect(h.scheduler.heartbeat()).toEqual({ lastTickAt: undefined, lastOkAt: undefined })
+    h.setNow(at(2026, 1, 1, 10, 0, 30))
+    await h.scheduler.tick()
+    expect(h.scheduler.heartbeat()).toEqual({
+      lastTickAt: at(2026, 1, 1, 10, 0, 30),
+      lastOkAt: at(2026, 1, 1, 10, 0, 30),
+    })
+    expect(seen).toEqual([{ tickAt: at(2026, 1, 1, 10, 0, 30), okAt: at(2026, 1, 1, 10, 0, 30) }])
+  })
+
+  it('records the tick entry but not completion when the rules-tick throws', async () => {
+    const h = makeHarness({
+      sessionRulesTick: async () => { throw new Error('rules wedged') },
+    })
+    h.setNow(at(2026, 1, 1, 10, 0, 30))
+    await expect(h.scheduler.tick()).rejects.toThrow('rules wedged')
+    // Entered (diagnosable as "tick started") but never healthy.
+    expect(h.scheduler.heartbeat()).toEqual({
+      lastTickAt: at(2026, 1, 1, 10, 0, 30),
+      lastOkAt: undefined,
+    })
+    expect(isHeartbeatStale(undefined, at(2026, 1, 1, 12, 0, 30))).toBe(false)
+  })
+
+  it('freezes both stamps while not ready or after dispose', async () => {
+    const h = makeHarness()
+    h.setReady(false)
+    await h.scheduler.tick()
+    expect(h.scheduler.heartbeat()).toEqual({ lastTickAt: undefined, lastOkAt: undefined })
+    h.setReady(true)
+    h.setNow(at(2026, 1, 1, 10, 0, 30))
+    await h.scheduler.tick()
+    expect(h.scheduler.heartbeat().lastOkAt).toBe(at(2026, 1, 1, 10, 0, 30))
+    h.scheduler.dispose()
+    h.setNow(at(2026, 1, 1, 10, 5, 30))
+    await h.scheduler.tick()
+    expect(h.scheduler.heartbeat().lastOkAt).toBe(at(2026, 1, 1, 10, 0, 30))
   })
 })

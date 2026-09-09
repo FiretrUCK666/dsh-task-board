@@ -600,6 +600,10 @@ export interface ControllerSnapshot {
    *  up. Read-only telemetry for the status line (zero → hidden, same quiet
    *  discipline as stats); skips never enter the retry path. */
   skips: { overlap: number; missed: number }
+  /** Scheduler heartbeat: the last fully completed tick (volatile, undefined
+   *  = no tick yet). The status line derives staleness from it; persistence
+   *  and sync never see it. */
+  heartbeat: { lastOkAt: number | undefined }
   /** Engine-seat facts for the board's quiet honesty: whether THIS device is
    *  the engine, whether the board runs in synced mode at all, the host's
    *  lease protocol (1 = predates visibility preemption → a queued card may
@@ -655,6 +659,9 @@ export class BoardController {
   private cruiseState: CruiseState
   /** Scheduler Forbid-policy skip ledger mirrored from the `onSkips` sink. */
   private schedulerSkips = { overlap: 0, missed: 0 }
+  /** Scheduler heartbeat stamp mirrored from the `onHeartbeat` sink: the last
+   *  fully completed tick (volatile — never persisted, never synced). */
+  private schedulerHeartbeatOkAt: number | undefined = undefined
 
   /** @param deps - store, execution service, and the sessions navigation face. */
   constructor(private readonly deps: ControllerDeps) {
@@ -781,6 +788,7 @@ export class BoardController {
       cruise: { ...this.cruiseState },
       stats: { running: this.inFlightCount(), queued: this.queuedLaunches.length },
       skips: { ...this.schedulerSkips },
+      heartbeat: { lastOkAt: this.schedulerHeartbeatOkAt },
       engine: { held: this.engine, synced: this.syncActive, hostProto: this.hostProto, bootedAt: this.hostBootedAt },
     }
   }
@@ -3078,6 +3086,15 @@ export class BoardController {
   setSchedulerSkips(stats: { overlap: number; missed: number }): void {
     if (this.schedulerSkips.overlap === stats.overlap && this.schedulerSkips.missed === stats.missed) return
     this.schedulerSkips = { overlap: stats.overlap, missed: stats.missed }
+    this.notify()
+  }
+
+  /** Mirror the scheduler heartbeat stamp into the snapshot (the wiring calls
+   *  this from the scheduler's `onHeartbeat` sink). Volatile telemetry only:
+   *  never persisted, never synced, never part of `applyRemote`. */
+  setSchedulerHeartbeat(okAt: number): void {
+    if (this.schedulerHeartbeatOkAt === okAt) return
+    this.schedulerHeartbeatOkAt = okAt
     this.notify()
   }
 

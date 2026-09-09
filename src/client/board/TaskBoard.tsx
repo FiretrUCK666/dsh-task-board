@@ -17,6 +17,7 @@ import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
 import { isWipOver } from '../../core/board-doc.ts'
+import { isHeartbeatStale } from '../../core/scheduler.ts'
 import { COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount, taskViewedBaseline } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
@@ -734,6 +735,20 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               ...snapshot.skips.overlap + snapshot.skips.missed > 0
                 ? [t('board.statusSkipped', { n: String(snapshot.skips.overlap + snapshot.skips.missed) })]
                 : [],
+              // Heartbeat liveness (read-only): one plain sentence in the same
+              // slot when no tick completed within Period + Grace. Suppressed
+              // while quiet (nothing armed needs the heartbeat) and on viewer
+              // replicas (their local stamp freezing is expected — the engine
+              // drives automation). No breathing change, no new entry.
+              ...(() => {
+                const armedSchedule = snapshot.tasks.some(task => task.schedule?.enabled === true)
+                const quiet = !snapshot.cruise.enabled && !armedSchedule
+                const viewer = snapshot.engine.synced && !snapshot.engine.held
+                const lastOkAt = snapshot.heartbeat.lastOkAt
+                return !quiet && !viewer && lastOkAt !== undefined && isHeartbeatStale(lastOkAt, Date.now())
+                  ? [t('board.heartbeatStale', { time: formatDateTime(lastOkAt) })]
+                  : []
+              })(),
             ]
             // 引擎席位的诚实指示（只在同步模式且真的"不在本机/服务端过旧"时
             // 出现）：排队的工作在等谁、为什么不动——用户看得见，就不用猜、
