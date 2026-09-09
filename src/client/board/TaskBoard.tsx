@@ -2047,6 +2047,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               type="search"
               placeholder={t('board.shortcutFilter')}
               value={cheatQuery}
+              data-autofocus
               onChange={event => { setCheatQuery(event.target.value) }}
               aria-label={t('board.shortcutFilter')}
             />
@@ -2082,8 +2083,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 size="sm"
                 disabled={newViewName.trim() === '' || filter.trim() === '' || views.length >= MAX_SAVED_VIEWS}
                 onClick={() => {
-                  setViews(saveView(newViewName, filter))
-                  setNewViewName('')
+                  // The store reports the outcome: the typed name survives a
+                  // failed save (full shelf behind a stale count) instead of
+                  // being eaten silently.
+                  const outcome = saveView(newViewName, filter)
+                  setViews(outcome.views)
+                  if (outcome.saved) setNewViewName('')
                 }}
               >
                 {t('board.viewSave')}

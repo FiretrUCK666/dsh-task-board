@@ -16,16 +16,22 @@ export function focusablesOf(root: Element): HTMLElement[] {
 }
 
 /** Own the focus loop for one panel: mount-focus + unmount-return + Tab trap.
- *  The caller spreads the returned `onKeyDown` onto the panel element. */
+ *  The caller spreads the returned `onKeyDown` onto the panel element. The
+ *  mount target is the first `[data-autofocus]` descendant when one exists
+ *  (the caller's declared intent — e.g. a filter box over a master switch),
+ *  else the first tabbable control, else the panel itself. Native `autoFocus`
+ *  is banned inside Dialog subtrees (it races this effect); declare intent
+ *  with `data-autofocus` instead. */
 export function useDialogFocus(
   ref: RefObject<HTMLElement | null>,
 ): { onKeyDown: (event: KeyboardEvent<HTMLElement>) => void } {
   useEffect(() => {
     const panel = ref.current
     const previous = document.activeElement
+    const declared = panel?.querySelector<HTMLElement>('[data-autofocus]')
     const controls = panel === null ? [] : focusablesOf(panel)
-    if (controls.length > 0) controls[0].focus()
-    else panel?.focus()
+    const target = declared ?? controls[0] ?? panel ?? undefined
+    target?.focus()
     return () => {
       if (previous instanceof HTMLElement && document.contains(previous)) {
         previous.focus({ preventScroll: true })

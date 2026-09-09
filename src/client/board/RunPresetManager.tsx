@@ -162,7 +162,7 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
               <input
                 className={`${css.input} ${css.autoNameInput}`}
                 value={name}
-                autoFocus
+                data-autofocus
                 placeholder={t('runPreset.namePlaceholder')}
                 spellCheck={false}
                 onChange={event => { setName(event.target.value); setError(undefined) }}

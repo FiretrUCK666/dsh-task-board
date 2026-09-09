@@ -19,9 +19,10 @@ const framePath = fileURLToPath(new URL('../src/client/board/SessionFrame.tsx', 
 const frame = readFileSync(framePath, 'utf8')
 
 describe('useDialogFocus (one implementation, three surfaces)', () => {
-  it('enters on the first control and falls back to the panel itself', () => {
-    expect(hook).toContain('controls[0].focus()')
-    expect(hook).toContain('panel?.focus()')
+  it('enters on the declared control, else the first control, else the panel', () => {
+    expect(hook).toContain('[data-autofocus]')
+    expect(hook).toContain('controls[0]')
+    expect(hook).toContain('target?.focus()')
   })
 
   it('cycles Tab inside the panel (both directions, control-less panels hold)', () => {
@@ -52,6 +53,17 @@ describe('useDialogFocus (one implementation, three surfaces)', () => {
     expect(dialog).toContain('aria-labelledby={title !== undefined ? titleId : undefined}')
     expect(dialog).toContain('<h2 id={titleId}')
     expect(dialog).toContain('useEscapeStack(onClose)')
+  })
+
+  it('initial focus is declared, never raced (no native autoFocus in Dialog subtrees)', () => {
+    expect(hook).toContain('[data-autofocus]')
+    const boardPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    const board = readFileSync(boardPath, 'utf8')
+    expect(board).toContain('data-autofocus')
+    const presetsPath = fileURLToPath(new URL('../src/client/board/RunPresetManager.tsx', import.meta.url))
+    const presets = readFileSync(presetsPath, 'utf8')
+    expect(presets).toContain('data-autofocus')
+    expect(presets).not.toContain('autoFocus')
   })
 })
 

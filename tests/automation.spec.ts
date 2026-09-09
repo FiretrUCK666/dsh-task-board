@@ -127,6 +127,21 @@ describe('automationTasksOf (the overview membership)', () => {
     expect(hasLiveAutomation(disarmed)).toBe(false)
     expect(disarmSessionRules(bare).rules).toBeUndefined()
   })
+
+  it('disarm clears due slots (a re-armed rule recomputes, never surprise-fires)', () => {
+    const ruled = withSessionRules({ ...bare, id: 'c' }, [{ ...rule(), nextAt: NOW + 60_000, lastAt: NOW }])
+    const disarmed = disarmSessionRules(ruled)
+    expect(disarmed.rules?.[0].nextAt).toBeUndefined()
+    expect(disarmed.rules?.[0].lastAt).toBeUndefined()
+    // Configuration survives the shut-off.
+    expect(disarmed.rules?.[0].cron).toBe(rule().cron)
+    expect(disarmed.rules?.[0].instruction).toBe(rule().instruction)
+  })
+
+  it('a switched-off cron rule without a slot still validates (configuration, not appointment)', () => {
+    expect(isSessionRule({ ...rule(), enabled: false, nextAt: undefined })).toBe(true)
+    expect(isSessionRule({ ...rule(), enabled: true, nextAt: undefined })).toBe(false)
+  })
 })
 
 describe('normalizeSessionRules', () => {

@@ -44,7 +44,10 @@ function isView(row: unknown): row is SavedView {
     && typeof candidate.filter === 'string' && candidate.filter.trim() !== ''
 }
 
-/** Load the saved views, newest first (malformed rows drop silently). */
+/** Load the saved views, newest first: malformed rows drop, duplicate ids
+ *  keep first-wins (template-library law), the shelf caps at the max. A load
+ *  that repairs anything writes the cleaned list back (read-repair: a dirty
+ *  shelf heals itself instead of rotting on disk). */
 export function loadViews(store: ViewStorage | undefined = deviceStorage()): SavedView[] {
   if (store === undefined) return []
   let parsed: unknown
@@ -56,7 +59,16 @@ export function loadViews(store: ViewStorage | undefined = deviceStorage()): Sav
     return []
   }
   if (!Array.isArray(parsed)) return []
-  return parsed.filter(isView).slice(0, MAX_SAVED_VIEWS)
+  const seen = new Set<string>()
+  const views: SavedView[] = []
+  for (const row of parsed) {
+    if (!isView(row) || seen.has(row.id)) continue
+    seen.add(row.id)
+    views.push({ id: row.id, name: row.name.trim(), filter: row.filter.trim() })
+  }
+  const capped = views.slice(0, MAX_SAVED_VIEWS)
+  if (capped.length !== parsed.length) persist(store, capped)
+  return capped
 }
 
 function persist(store: ViewStorage, views: SavedView[]): void {
@@ -68,21 +80,29 @@ function persist(store: ViewStorage, views: SavedView[]): void {
 }
 
 /** Save the current filter under a name (newest first). Blank names, blank
- *  filters and a full shelf leave the list untouched (the caller disables
- *  the button; this is the backstop, not the UX). Returns the new list. */
+ *  filters and a full shelf leave the list untouched and report unsaved (the
+ *  caller disables the button AND keeps the typed name — the store backstops
+ *  it anyway). Duplicate names take a numeric suffix (template-library law:
+ *  two rows never share a display name). Returns the outcome with the list. */
 export function saveView(
   name: string,
   filter: string,
   store: ViewStorage | undefined = deviceStorage(),
   id: string = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-): SavedView[] {
+): { views: SavedView[]; saved: boolean } {
   const views = loadViews(store)
-  if (store === undefined) return views
-  if (name.trim() === '' || filter.trim() === '') return views
-  if (views.length >= MAX_SAVED_VIEWS) return views
-  const next = [{ id, name: name.trim(), filter }, ...views]
+  const failed = { views, saved: false as const }
+  if (store === undefined) return failed
+  if (name.trim() === '' || filter.trim() === '') return failed
+  if (views.length >= MAX_SAVED_VIEWS) return failed
+  const taken = new Set(views.map(view => view.name))
+  let finalName = name.trim()
+  for (let suffix = 2; taken.has(finalName); suffix++) {
+    finalName = `${name.trim()} ${suffix}`
+  }
+  const next = [{ id, name: finalName, filter: filter.trim() }, ...views]
   persist(store, next)
-  return next
+  return { views: next, saved: true as const }
 }
 
 /** Delete one view by id (unknown ids are ignored). Returns the new list. */
@@ -92,6 +112,7 @@ export function deleteView(
 ): SavedView[] {
   const views = loadViews(store)
   if (store === undefined) return views
+  // Ids are unique after load (first-wins), so at most one row goes.
   const next = views.filter(view => view.id !== id)
   if (next.length !== views.length) persist(store, next)
   return next

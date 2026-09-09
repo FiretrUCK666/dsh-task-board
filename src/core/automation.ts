@@ -62,8 +62,11 @@ export function isSessionRule(value: unknown): value is SessionRule {
   if (typeof rule.enabled !== 'boolean') return false
   const trigger = rule.trigger === 'on-complete' ? 'on-complete' : 'cron'
   if (trigger === 'on-complete') return rule.nextAt === undefined
-  return typeof rule.cron === 'string' && rule.cron !== ''
-    && typeof rule.nextAt === 'number' && Number.isFinite(rule.nextAt)
+  if (typeof rule.cron !== 'string' || rule.cron === '') return false
+  // A switched-off rule carries no due slot (disarm clears it, re-arm
+  // recomputes it): the slot check applies to enabled cron rules only.
+  if (rule.enabled === false) return true
+  return typeof rule.nextAt === 'number' && Number.isFinite(rule.nextAt)
 }
 
 /** Parse + validate a persisted rule list (invalid rows dropped; legacy rows
@@ -245,10 +248,17 @@ export function hasLiveAutomation(task: TaskRecord): boolean {
 
 /** Switch every session rule of a task off (the done-column shut-off: a
  *  completed task's rules must never fire again, exactly like its schedule
- *  disarms — the configuration survives, so re-arming resumes each rule). */
+ *  disarms — the configuration survives, so re-arming resumes each rule).
+ *  Due slots clear with the switch (a re-armed rule recomputes from now —
+ *  a stale slot must never surprise-fire on resume, task-level disarm law). */
 export function disarmSessionRules(task: TaskRecord): TaskRecord {
   if (task.rules === undefined) return task
-  return withSessionRules(task, task.rules.map(rule => ({ ...rule, enabled: false })))
+  return withSessionRules(task, task.rules.map(rule => ({
+    ...rule,
+    enabled: false,
+    nextAt: undefined,
+    lastAt: undefined,
+  })))
 }
 
 /** Which automation is blocked on the empty prompt (THE cause predicate —

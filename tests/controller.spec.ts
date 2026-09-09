@@ -4015,6 +4015,29 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(row.rules?.find(r => r.id === gone.id)?.nextAt).toBe(gone.nextAt)
   })
 
+  it('re-arming a disarmed cron rule recomputes its slot from now (never a stale fire)', async () => {
+    const sent: Array<[string, string]> = []
+    const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const created = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'steer' })!
+    controller.moveTask(task.id, 'done')
+    const disarmed = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(disarmed.rules?.[0].enabled).toBe(false)
+    expect(disarmed.rules?.[0].nextAt).toBeUndefined()
+    // Back to a live column and re-armed: the appointment restarts from now
+    // (no backfill of the done-period slots), and the rule fires on schedule.
+    controller.moveTask(task.id, 'todo')
+    controller.toggleSessionRule(task.id, created.id, true)
+    const rearmed = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(rearmed.rules?.[0].enabled).toBe(true)
+    const slot = rearmed.rules?.[0].nextAt ?? NOW
+    expect(slot).toBeGreaterThan(NOW)
+    await controller.tickSessionRules(slot - 1000)
+    expect(sent).toHaveLength(0) // fresh slot, not yet due: no stale fire
+    await controller.tickSessionRules(slot + 1000)
+    expect(sent).toEqual([['s-a', 'hello']])
+  })
+
   it('a blocked usePrompt rule rolls its due slot forward (hold, not drop)', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })

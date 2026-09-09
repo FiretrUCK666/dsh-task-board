@@ -2694,12 +2694,25 @@ export class BoardController {
     })
   }
 
-  /** Toggle a session rule's enabled state (the row's live switch). */
+  /** Toggle a session rule's enabled state (the row's live switch). Switching
+   *  a cron rule back on recomputes its due slot from now (a disarmed rule
+   *  carries no appointment — resuming from a stale slot would surprise-fire). */
   toggleSessionRule(taskId: string, ruleId: string, enabled: boolean): void {
+    const now = this.now()
     this.userEdit(taskId, task => {
       if (task.rules === undefined) return task
       const current = task.rules
-      const rules = current.map(rule => rule.id === ruleId ? { ...rule, enabled } : rule)
+      const rules = current.map(rule => {
+        if (rule.id !== ruleId) return rule
+        if (rule.enabled === enabled) return rule
+        if (!enabled || rule.trigger !== 'cron') return { ...rule, enabled }
+        // Re-arming recomputes the appointment from now (a disarmed rule
+        // carries no slot — resuming a stale one would surprise-fire). An
+        // unparseable cron keeps the rule off (same law as creation).
+        const nextAt = nextRunAtMs(rule.cron, now)
+        if (nextAt === undefined) return rule
+        return { ...rule, enabled, nextAt, lastAt: undefined }
+      })
       if (!rules.some((rule, index) => rule !== current[index])) return task
       return withSessionRules(task, rules)
     })

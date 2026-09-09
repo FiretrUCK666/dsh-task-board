@@ -33,16 +33,19 @@ describe('loadViews', () => {
     expect(loadViews(undefined)).toEqual([])
   })
 
-  it('drops malformed rows and caps the shelf', () => {
+  it('drops malformed rows, dedupes ids first-wins and caps the shelf', () => {
     const rows = [
       view('a'),
       { id: '', name: 'blank-id', filter: 'x' },
       { id: 'b', name: '  ', filter: 'x' },
       { id: 'c', name: 'n', filter: '' },
+      { id: 'a', name: 'dupe-id', filter: 'y' },
       'junk',
     ]
     const store = fakeStore({ [VIEWS_STORAGE_KEY]: JSON.stringify(rows) })
     expect(loadViews(store)).toEqual([view('a')])
+    // Read-repair: the cleaned list is written back (the shelf heals).
+    expect(JSON.parse(store.data[VIEWS_STORAGE_KEY])).toEqual([view('a')])
   })
 
   it('survives unparseable payloads', () => {
@@ -54,23 +57,35 @@ describe('loadViews', () => {
 describe('saveView', () => {
   it('prepends newest-first and persists', () => {
     const store = fakeStore()
-    const after = saveView('mine', 'has:auto', store, 'id-1')
-    expect(after).toEqual([view('id-1', 'mine', 'has:auto')])
-    expect(loadViews(store)).toEqual(after)
+    const outcome = saveView('mine', 'has:auto', store, 'id-1')
+    expect(outcome.saved).toBe(true)
+    expect(outcome.views).toEqual([view('id-1', 'mine', 'has:auto')])
+    expect(loadViews(store)).toEqual(outcome.views)
   })
 
-  it('leaves the list untouched on blanks, full shelf or missing storage', () => {
+  it('trims the filter and suffixes duplicate names (template law)', () => {
     const store = fakeStore()
-    expect(saveView('', 'has:auto', store, 'x')).toEqual([])
-    expect(saveView('n', '  ', store, 'x')).toEqual([])
-    expect(saveView('n', 'has:auto', undefined, 'x')).toEqual([])
+    saveView('mine', '  has:auto  ', store, 'id-1')
+    const outcome = saveView('mine', 'x', store, 'id-2')
+    expect(outcome.saved).toBe(true)
+    expect(outcome.views.map(item => item.name)).toEqual(['mine 2', 'mine'])
+    expect(outcome.views[1].filter).toBe('has:auto')
+  })
+
+  it('reports unsaved on blanks, full shelf or missing storage', () => {
+    const store = fakeStore()
+    expect(saveView('', 'has:auto', store, 'x')).toEqual({ views: [], saved: false })
+    expect(saveView('n', '  ', store, 'x')).toEqual({ views: [], saved: false })
+    expect(saveView('n', 'has:auto', undefined, 'x')).toEqual({ views: [], saved: false })
     expect(loadViews(store)).toEqual([])
     const full = fakeStore({
       [VIEWS_STORAGE_KEY]: JSON.stringify(
         Array.from({ length: MAX_SAVED_VIEWS }, (_, index) => view(`v${index}`)),
       ),
     })
-    expect(saveView('one-more', 'x', full, 'new')).toHaveLength(MAX_SAVED_VIEWS)
+    const outcome = saveView('one-more', 'x', full, 'new')
+    expect(outcome.saved).toBe(false)
+    expect(outcome.views).toHaveLength(MAX_SAVED_VIEWS)
   })
 })
 
