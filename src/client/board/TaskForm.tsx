@@ -22,6 +22,7 @@ import { MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
 import { useComposerImages } from './composer-images.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { RunConfigFields } from './RunConfigFields.tsx'
+import { ColorSwatches } from './ui.tsx'
 import type { TaskDraft } from './task-draft.ts'
 
 /** The shared new/edit task form. */
@@ -119,6 +120,19 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
           onChange={event => { onChange({ ...draft, labels: event.target.value }) }}
         />
       </label>
+
+      {/* Accent color: THE one swatch row (the same grammar as the organize
+          bar and the card hover strip). A <div>, not a <label> — the row
+          holds buttons, and a label would route their clicks to nowhere
+          useful. What the draft carries is always visible here (template
+          stamps included) — never a ghost write. */}
+      <div className={css.field}>
+        <span className={css.fieldLabel}>{t('new.color')}</span>
+        <ColorSwatches
+          value={draft.color !== '' ? draft.color : undefined}
+          onChange={color => { onChange({ ...draft, color: color ?? '' }) }}
+        />
+      </div>
 
       {/* Prompt field: the text plus its image ledger (pick / drop / paste
           anywhere on the field). A <div>, not a <label> — the strip holds

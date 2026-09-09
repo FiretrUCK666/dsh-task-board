@@ -56,6 +56,13 @@ describe('throughputPerWeek (done tasks, trailing 28d)', () => {
     ]
     expect(throughputPerWeek(tasks, NOW)).toBe(0.25)
   })
+
+  it('ignores future completions (clock skew is dirt, not throughput)', () => {
+    const tasks = [
+      { status: 'done' as const, statusHistory: history(['running', NOW - 7 * DAY], ['done', NOW + DAY]) },
+    ]
+    expect(throughputPerWeek(tasks, NOW)).toBe(0)
+  })
 })
 
 describe('flowSummaryOf (samples-gated)', () => {

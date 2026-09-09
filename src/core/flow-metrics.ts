@@ -17,8 +17,11 @@ import type { TaskRecord } from './tasks.ts'
 /** Trailing window for throughput (28 days = 4 weeks). */
 export const THROUGHPUT_WINDOW_MS = 28 * 86_400_000
 
-/** Elapsed cycle days for one task (first running → first done after it),
- *  or undefined when the trip is incomplete or unrecorded (legacy rows). */
+/** Elapsed cycle days for one task: the FIRST trip (first running → first
+ *  done after it). Rework (running→done→running→done) measures once — the
+ *  first delivery, never the rework tail (stated here, never re-debated per
+ *  call). Elapsed calendar days, review included. Undefined when the trip is
+ *  incomplete or unrecorded (legacy rows). */
 export function cycleDaysOf(task: Pick<TaskRecord, 'statusHistory'>): number | undefined {
   const history = task.statusHistory
   if (history === undefined) return undefined
@@ -40,7 +43,10 @@ export function percentileOf(sorted: readonly number[], p: number): number | und
 /** Done task count per week over the trailing window. The atom is the
  *  COMPLETION EVENT (the last `done` entry in the ledger), never the current
  *  column: a task revived for a follow-up comment keeps the completion it
- *  already earned (columns aggregate sessions, history records events). */
+ *  already earned (columns aggregate sessions, history records events). One
+ *  task counts at most once per window (by its last completion) — rework
+ *  within the window does not double-count. Future instants never count
+ *  (clock skew is data dirt, not throughput). */
 export function throughputPerWeek(
   tasks: readonly Pick<TaskRecord, 'status' | 'statusHistory'>[],
   now: number = Date.now(),
@@ -51,7 +57,7 @@ export function throughputPerWeek(
     const history = task.statusHistory
     if (history === undefined) continue
     const doneAt = history.filter(entry => entry.status === 'done').map(entry => entry.at).pop()
-    if (doneAt !== undefined && doneAt >= floor) count++
+    if (doneAt !== undefined && doneAt >= floor && doneAt <= now) count++
   }
   return count / 4
 }

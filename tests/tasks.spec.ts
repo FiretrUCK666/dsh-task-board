@@ -1009,11 +1009,11 @@ describe('statusHistory (column-move ledger)', () => {
     expect(touched.updatedAt).toBe(NOW + 2)
   })
 
-  it('withStatus backfills the birth column for legacy rows (honest lower bound)', () => {
+  it('withStatus backfills the birth column for legacy rows (createdAt, one rule)', () => {
     const legacy = { ...createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a'), statusHistory: undefined, updatedAt: NOW + 5 }
     const moved = withStatus(legacy, 'running', NOW + 10)
     expect(moved.statusHistory).toEqual([
-      { status: 'todo', at: NOW + 5 },
+      { status: 'todo', at: NOW },
       { status: 'running', at: NOW + 10 },
     ])
   })

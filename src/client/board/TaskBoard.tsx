@@ -952,7 +952,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               ...snapshot.stats.queued > 0 ? [t('board.statusQueued', { n: String(snapshot.stats.queued) })] : [],
               ...wipSentence !== undefined ? [t(wipSentence.key, wipSentence.params)] : [],
               ...flow.samples > 0 && flow.p85Days !== undefined
-                ? [t('board.flowStats', { p85: String(Math.round(flow.p85Days)), n: String(Math.round(flow.perWeek * 10) / 10) })]
+                ? [t('board.flowStats', {
+                    // Sub-day cycles never read "0天" (a pseudo-zero) — they
+                    // read "1天内" (honest: faster than the day grain).
+                    p85: flow.p85Days < 1 ? t('board.flowSubDay') : t('board.flowDays', { n: String(Math.round(flow.p85Days)) }),
+                    n: String(Math.round(flow.perWeek * 10) / 10),
+                  })]
                 : [],
               // Forbid-policy skip ledger: cumulative and read-only, shown only
               // while nonzero (the same quiet discipline as running/queued) —

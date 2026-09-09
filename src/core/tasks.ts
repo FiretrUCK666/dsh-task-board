@@ -661,11 +661,12 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
  *  move appends to the status history (cycle/streak/throughput derivations
  *  read it — without it every duration is a guess); a same-status touch only
  *  refreshes updatedAt. A legacy row moving for the first time backfills its
- *  birth column from its own updatedAt (an honest lower bound — "at least
- *  here since then", never a fabricated instant). */
+ *  birth column from createdAt (the honest birth instant, same as the read
+ *  path — one birth rule, never two). */
 export function withStatus(task: TaskRecord, status: TaskStatus, now: number): TaskRecord {
   if (task.status === status) return { ...task, updatedAt: now }
-  const birth = task.statusHistory === undefined ? [{ status: task.status, at: task.updatedAt }] : []
+  const birthAt = Number.isFinite(task.createdAt) && task.createdAt > 0 ? task.createdAt : task.updatedAt
+  const birth = task.statusHistory === undefined ? [{ status: task.status, at: birthAt }] : []
   return {
     ...task,
     status,

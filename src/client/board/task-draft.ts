@@ -40,8 +40,9 @@ export interface TaskDraft {
   /** Labels as free text (comma-separated in the form); '' = none. The
    *  converters split/normalize — the draft keeps the user's raw typing. */
   labels: string
-  /** Accent color (hex string); '' = none. No form editor — set through the
-   *  swatches; the draft only ferries template-stamped values through. */
+  /** Accent color (hex string); '' = none. Edited through the form's swatch
+   *  row (the one shared grammar) — what the draft carries is always
+   *  visible, template stamps included. */
   color: string
 }
 
