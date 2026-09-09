@@ -465,6 +465,26 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(pagingAt).toBeLessThan(emptyAt)
     expect(followSource).toMatch(/floorRef\.current \?\? eventsRef\.current/)
   })
+
+  it('the Agent row reads served-truth first, the applied ledger second (never a ghost field)', () => {
+    // The host serves no preset read-back (no list field, no models-API
+    // field, no projection) — a row reading only the host field shows
+    // "部署默认" forever, however the session actually runs. The board
+    // records every successful switch into the ledger; the row prefers a
+    // served value when a future host serves one.
+    const corePath = fileURLToPath(new URL('../src/core/controller.ts', import.meta.url))
+    const core = readFileSync(corePath, 'utf8')
+    expect(core).toMatch(/summary\.agentPreset \?\? applied/)
+    const execPath = fileURLToPath(new URL('../src/core/execution.ts', import.meta.url))
+    const exec = readFileSync(execPath, 'utf8')
+    // Both apply sites report success (failures never fire — the session
+    // kept its previous preset; recording it would be a lie).
+    expect(exec.match(/onAgentApplied\?\.\(sessionId/g)?.length).toBe(2)
+    const wiringPath = fileURLToPath(new URL('../src/client/index.ts', import.meta.url))
+    const wiring = readFileSync(wiringPath, 'utf8')
+    expect(wiring).toContain('onAgentApplied: (sessionId, preset)')
+    expect(wiring).toContain('sessionAgentStore')
+  })
 })
 
 describe('foldTranscript', () => {

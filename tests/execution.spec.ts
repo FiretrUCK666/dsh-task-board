@@ -244,9 +244,11 @@ describe('ExecutionService.run', () => {
 
   it('settles failed when the agent preset switch is rejected', async () => {
     const { env, drivers } = makeEnv()
+    const reported: Array<{ sessionId: string; preset: string }> = []
     const service = new ExecutionService({
       ...env,
       selectAgentPreset: async () => ({ ok: false as const, error: 'session already started' }),
+      onAgentApplied: (sessionId, preset) => { reported.push({ sessionId, preset }) },
     })
     const task = { ...sampleTask(), agentPreset: 'butler' }
     const { execution } = startExecution(task, NOW, 'exec-1')
@@ -256,6 +258,27 @@ describe('ExecutionService.run', () => {
     expect(events.at(-1)?.error).toContain('preset')
     // No prompt was sent to the session.
     expect(drivers.get('s-1')?.promptCalls).toHaveLength(0)
+    // A rejected switch is never reported (the session kept its preset).
+    expect(reported).toEqual([])
+  })
+
+  it('reports a successful preset switch (both run paths feed the ledger)', async () => {
+    const { env } = makeEnv()
+    const reported: Array<{ sessionId: string; preset: string }> = []
+    const service = new ExecutionService({
+      ...env,
+      selectAgentPreset: async () => ({ ok: true as const }),
+      onAgentApplied: (sessionId, preset) => { reported.push({ sessionId, preset }) },
+    })
+    const task = { ...sampleTask(), agentPreset: 'butler' }
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    await service.run(task, execution, () => {})
+    expect(reported).toEqual([{ sessionId: 's-1', preset: 'butler' }])
+    // The createSession path reports the same way.
+    reported.length = 0
+    const created = await service.createSession({ agentPreset: 'butler' })
+    expect(created.ok).toBe(true)
+    if (created.ok) expect(reported).toEqual([{ sessionId: created.sessionId, preset: 'butler' }])
   })
 
   it('skips the preset switch when the task names no preset', async () => {
