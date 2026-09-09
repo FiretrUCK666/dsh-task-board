@@ -512,6 +512,9 @@ export function buildApi(ctx: ClientContext): ApiFace {
   // five consumers. The consumers keep their honest degrade paths; the guard
   // only makes the failure diagnosable from the browser console.
   const warnedMissing = new Set<string>()
+  // Separate from warnedMissing: a transient call failure must never suppress
+  // the missing-method error for the same label (or vice versa).
+  const warnedFailure = new Set<string>()
   const methodOf = <T>(ns: string, method: string, value: T | undefined): T | undefined => {
     if (value === undefined) {
       const label = `${ns}.${method}`
@@ -528,6 +531,8 @@ export function buildApi(ctx: ClientContext): ApiFace {
 
   /** Log one named endpoint failure so a board surface's 「暂不可用」is diagnosable from the console. */
   const warnFailure = (label: string, error: { readonly code: string; readonly message: string }): void => {
+    if (warnedFailure.has(label)) return
+    warnedFailure.add(label)
     console.warn(`[dsh-task-board] ${label} failed -> ${error.code}: ${error.message}`)
   }
 

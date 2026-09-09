@@ -17,6 +17,11 @@
  */
 import type { ExecutionRecord, TaskFile, TaskImage, TaskRecord } from './tasks.ts'
 
+/** Session ids whose history-probe failure already logged (reconcile loop hot
+ *  path: warn once per session). Plain Set with no eviction: ids are durable
+ *  workspace sessions with slow churn, so the set stays small. */
+const warnedHistoryProbe = new Set<string>()
+
 /** The narrow sessions face the service needs. */
 export interface SessionsExecutionFace {
   list: {
@@ -736,7 +741,10 @@ export class ExecutionService {
       }
       return undefined
     } catch (error) {
-      console.error('[dsh-task-board] history turn probe failed', error)
+      if (!warnedHistoryProbe.has(sessionId)) {
+        warnedHistoryProbe.add(sessionId)
+        console.error('[dsh-task-board] history turn probe failed', error)
+      }
       return undefined
     }
   }

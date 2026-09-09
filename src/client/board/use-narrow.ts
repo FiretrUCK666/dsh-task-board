@@ -15,24 +15,11 @@
  * the shell sidebar open has a viewport that says "wide" while the board or
  * panel is already stacked, and a default that follows the viewport then
  * disagrees with the geometry the user is looking at. All shape switches
- * must use `useSurfaceNarrow`; this export stays only so old callers fail
- * loudly in review, not silently in layout.
+ * must use `useSurfaceNarrow`; the viewport-proxy export was removed once
+ * zero importers remained — this note stays so future callers pick the
+ * surface signal instead of re-adding a viewport one.
  */
 import { useEffect, useRef, useState } from 'react'
-
-export function useNarrow(maxPx: number = 720): boolean {
-  const query = `(max-width: ${maxPx}px)`
-  const [narrow, setNarrow] = useState(() => globalThis.matchMedia?.(query).matches === true)
-  useEffect(() => {
-    const list = globalThis.matchMedia?.(query)
-    if (list === undefined) return
-    const onChange = (event: MediaQueryListEvent): void => { setNarrow(event.matches) }
-    setNarrow(list.matches)
-    list.addEventListener('change', onChange)
-    return () => { list.removeEventListener('change', onChange) }
-  }, [query])
-  return narrow
-}
 
 /**
  * Is the surface identified by `selector` (the nearest ancestor matching it,

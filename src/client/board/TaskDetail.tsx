@@ -148,8 +148,6 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
             )}
           </>
         }
-        unviewed={row.unviewed}
-        unviewedTitle={t('detail.unviewedTitle')}
         handle={session.state === 'waiting' && sessionId !== undefined ? t('detail.handle') : undefined}
         sessionId={sessionId}
         draggable={draggable}

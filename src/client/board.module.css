@@ -465,8 +465,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .cruisePill {
-  display: inline-flex;
-  align-items: center;
   gap: 2px;
   /* 同一排控件同级高: the pill rides the 28px button row beside 新建任务 and
      the search field (its 22px switch is centered inside the 28px frame). */
@@ -508,8 +506,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 /* 巡航设置弹层：不透明浮起表面，锚定在胶囊下方。 */
-.cruisePopover {
+/* Popover chrome (one rule, same values only): every anchored popover is an
+   absolutely positioned bordered surface. Background/radius/shadow stay per
+   panel — they differ by design (cruise = float/lg/shadow-3, menus =
+   menu/md) — so only the truly shared position + border live here. The
+   slashMenu literal border is the same computed value as --dsh-tb-border. */
+:is(.cruisePopover, .slashMenu, .sessionContextPanel) {
   position: absolute;
+  border: var(--dsh-tb-border);
+}
+.cruisePopover {
   top: calc(100% + 6px);
   right: 0;
   z-index: 30;
@@ -519,7 +525,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   width: 300px;
   padding: 14px;
   background: var(--dsh-tb-surface-float);
-  border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-lg);
   box-shadow: var(--dsh-tb-shadow-3);
   color: var(--dsh-tb-text-1);
@@ -716,6 +721,17 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* --- columns ------------------------------------------------------------------ */
 
+/* Hidden scrollbars (one rule): these surfaces scroll without ever painting a
+   bar (the board's quiet aesthetic). One :is() list covers every hidden-bar
+   surface — .columnTabs, .cards, .modalBackdrop and the compact .columns
+   track — so a new hidden-bar surface joins the list instead of re-typing. */
+:is(.columnTabs, .cards, .modalBackdrop, .columns) {
+  scrollbar-width: none;
+}
+:is(.columnTabs, .cards, .modalBackdrop, .columns)::-webkit-scrollbar {
+  display: none;
+}
+
 .columns {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -733,17 +749,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
   gap: 6px;
   overflow-x: auto;
-  scrollbar-width: none;
   padding: 1px 2px 4px;
 }
 
-.columnTabs::-webkit-scrollbar {
-  display: none;
-}
-
 .columnTab {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
   flex: none;
   height: 28px;
@@ -855,8 +864,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: 1;
   min-height: 0;
   /* Scrollbar-less scrolling: the list scrolls on any trackpad/wheel gesture
-     but never paints a visible scrollbar (the board's quiet aesthetic). */
-  scrollbar-width: none;
+     but never paints a visible scrollbar (see the shared hidden-bar rule). */
   /* Smooth wheel/trackpad movement — the list glides instead of snapping,
      one more native-feel detail; reduced-motion degrades to instant. */
   scroll-behavior: smooth;
@@ -865,9 +873,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   .cards {
     scroll-behavior: auto;
   }
-}
-.cards::-webkit-scrollbar {
-  display: none;
 }
 
 .columnEmpty {
@@ -1225,9 +1230,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    carries now or in the future — however long — can only ever shrink into
    an ellipsis inside its box, never push past the card edge. The card's
    overflow: hidden is the final floor. */
-.chip {
+/* Pill base (one rule): every pill/badge is an inline-flex centered row; only
+   the density (gap/padding) differs per pill, so the shared geometry lives
+   here once. .chipFill always rides with .chip, so listing it keeps the
+   family explicit without changing rendering. */
+:is(.chip, .chipFill, .cruisePill, .columnTab) {
   display: inline-flex;
   align-items: center;
+}
+.chip {
   gap: 5px;
   min-width: 0;
   max-width: 100%;
@@ -1540,19 +1551,15 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   /* The STAGE scrolls (a tall panel must reach its top/bottom) but never
      SHOWS a bar — the dimmed area is not a surface; the one visible bar of a
      dialog belongs to its own scroll body (.modalScroll), flush to the panel
-     edge (the single scrollbar grammar). */
+     edge (see the shared hidden-bar rule above). */
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: none;
   padding: 24px 24px calc(24px + var(--dsh-tb-kb, 0px));
   overscroll-behavior: contain;
   /* A touch stronger than the native mask-1 so the column lines behind the
      glassy board no longer glimmer through the dialog edges. */
   background: var(--dsh-tb-mask);
   animation: dshTbFadeIn 140ms ease;
-}
-.modalBackdrop::-webkit-scrollbar {
-  display: none;
 }
 
 /* THE single scrollbar grammar for every panel scroll body: a THIN bar that
@@ -1793,7 +1800,6 @@ textarea.input {
 }
 
 .slashMenu {
-  position: absolute;
   top: calc(100% + 4px);
   left: 0;
   right: 0;
@@ -1802,9 +1808,9 @@ textarea.input {
   overflow-y: auto;
   padding: 4px;
   /* The native menu surface (layer-3) — an opaque popup, like the shell's
-     own dropdowns under a glass skin. */
+     own dropdowns under a glass skin. Border rides the shared popover
+     chrome above (same computed value as --dsh-tb-border). */
   background: var(--dsh-tb-surface-menu);
-  border: 1px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsh-tb-radius-md);
   box-shadow: var(--dsw-shadow-lv3);
 }
@@ -2584,6 +2590,7 @@ textarea.input {
    its activation surface (review page / session panel), so it reads as a
    clickable surface. */
 .sessionRow {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2595,10 +2602,6 @@ textarea.input {
 
 .sessionRow + .sessionRow {
   border-top: var(--dsh-tb-separator);
-}
-
-.sessionRow {
-  position: relative;
 }
 
 /* Row-level attention: ONE state-bound glow — a soft inner halo (no per-row
@@ -2658,12 +2661,10 @@ textarea.input {
   min-width: 0;
 }
 
-/* The identity slot. The unread marker rides as an OVERLAY badge on the row's
-   leading mark, never as a track: an in-flow optional member means every row
-   has two different geometries (and the compact grid used to auto-place the
-   whole identity into the marker's fixed 12px track when no marker was
-   present — titles collapsed to one character, workspace pills vanished).
-   With the badge out of the flow, one row reads exactly like the next. */
+/* The identity slot. Rows carry NO unread marker: the unread signal lives on
+   the board card only (a per-row second marker next to the card's own
+   breathing read as duplication). The lead keeps position:relative as a
+   positioning context, never as a badge track — every row has one geometry. */
 .sessionRowLead {
   grid-area: lead;
   position: relative;
@@ -3456,7 +3457,8 @@ textarea.input {
 
 /* -----------------------------------------------------------------------------
  * Polish pass: complete interaction states (hover / active / focus-visible /
- * disabled), unified 120ms motion, and reduced-motion fallback.
+ * disabled) and reduced-motion fallback. Motion rides the --dsh-tb-motion
+ * token (160ms); no per-control ms override lives here.
  * Colors use the --dsw-alias-* design tokens, which adapt to light/dark/skins
  * automatically, so every rule below is dark-safe by construction.
  * --------------------------------------------------------------------------- */
@@ -3480,19 +3482,6 @@ button.interactionOption:focus-visible,
 .tagSwatch:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
-}
-
-/* --- unified 120ms motion across the board's interactive controls --- */
-.sidebarFooterAction,
-.primaryButton,
-.ghostButton,
-.dangerButton,
-.iconButton,
-.slashMenuRow,
-.search,
-.input,
-.schedulePreset {
-  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, outline-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
 /* --- press (active) feedback --- */
@@ -4922,7 +4911,6 @@ button.interactionOption:hover {
 }
 
 .sessionContextPanel {
-  position: absolute;
   top: calc(100% + 6px);
   /* Absolute children anchor to the wrap's PADDING box, not its content box
      — inset by the same 14px content box so the panel spans exactly the
@@ -4942,7 +4930,6 @@ button.interactionOption:hover {
   max-height: 320px;
   overflow-y: auto;
   background: var(--dsh-tb-surface-menu);
-  border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-md);
   box-shadow: var(--dsh-tb-shadow-2);
 }
@@ -5587,12 +5574,9 @@ button.interactionOption:hover {
     gap: 10px;
     overflow-x: auto;
     overflow-y: hidden;
-    scrollbar-width: none;
+    /* Hidden bar: covered by the shared :is() hidden-bar rule above. */
     /* A little bottom room so the horizontal bar never sits under a card. */
     padding-bottom: 2px;
-  }
-  .columns::-webkit-scrollbar {
-    display: none;
   }
 
   .column {

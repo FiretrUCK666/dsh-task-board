@@ -33,6 +33,9 @@ const MAX_ROWS = 8
  *  stretching the modal. */
 const TEXTAREA_MAX_HEIGHT = 160
 
+/** Degraded-@-menu reasons already warned about (hot path: warn once each). */
+const warnedDegraded = new Set<string>()
+
 /** The open menu: the triggering token span plus its filtered candidates. */
 interface TriggerMenuState {
   token: CommandToken
@@ -134,7 +137,11 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
         if (catalog.length > 0) nextRows = [...rows, ...catalog]
       }
       if (diag.files !== undefined || diag.sessions !== undefined) {
-        console.warn('[dsh-task-board] @ reference menu degraded:', JSON.stringify(diag))
+        const reason = JSON.stringify(diag)
+        if (!warnedDegraded.has(reason)) {
+          warnedDegraded.add(reason)
+          console.warn('[dsh-task-board] @ reference menu degraded:', reason)
+        }
       }
       setMenu(previous => previous !== undefined && previous.kind === 'mention' && sameMentionSpan(previous.token, mentionReq)
         ? { ...previous, rows: nextRows, diag, pending: false }

@@ -61,6 +61,16 @@ describe('automationTasksOf (the overview membership)', () => {
     expect(automationTasksOf([bare, ruled]).map(t => t.id)).toEqual(['c'])
     expect(automationTasksOf([bare])).toEqual([])
   })
+
+  it('excludes tasks whose session rules are all toggled off', () => {
+    const off = withSessionRules({ ...bare, id: 'd' }, [{ ...rule(), enabled: false }])
+    const mixed = withSessionRules({ ...bare, id: 'e' }, [
+      { ...rule(), id: 'r1', enabled: false },
+      { ...rule(), id: 'r2', enabled: true },
+    ])
+    expect(automationTasksOf([off])).toEqual([])
+    expect(automationTasksOf([off, mixed]).map(t => t.id)).toEqual(['e'])
+  })
 })
 
 describe('normalizeSessionRules', () => {

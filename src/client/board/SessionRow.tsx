@@ -30,9 +30,6 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
   meta: ReactNode
   /** Execution-only slots below the meta line (comments, dynamics, error). */
   footer?: ReactNode
-  /** Unread reminder (execution kind): attention dot + inner breathing halo. */
-  unviewed?: boolean
-  unviewedTitle?: string
   /** Waiting-state amber "处理" label; replaces the ghost "查看会话" button. */
   handle?: string
   /** The native session id; undefined suppresses the session affordances. */
