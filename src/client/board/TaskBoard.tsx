@@ -67,7 +67,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
 import { activityOf, groupActivityByObjectDay, remainderKeyOf, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
-import { deleteView, loadViews, saveView, type SavedView } from './saved-views.ts'
+import { deleteView, loadViews, MAX_SAVED_VIEWS, saveView, type SavedView } from './saved-views.ts'
 import { Chip } from './Chip.tsx'
 
 /**
@@ -2063,8 +2063,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       {showViews && (
         <Dialog title={t('board.views')} label={t('board.views')} onClose={() => { setShowViews(false) }} portal>
           <div className={css.modalScroll}>
-            {/* Save the current filter under a name (empty name/filter keeps
-                the button off — the store backstops it anyway). */}
+            {/* Save the current filter under a name (empty name/filter or a
+                full shelf keeps the button off — the store backstops it
+                anyway). */}
             <div className={css.cruiseWindowAdd}>
               <input
                 className={css.search}
@@ -2076,7 +2077,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               />
               <Button
                 size="sm"
-                disabled={newViewName.trim() === '' || filter.trim() === ''}
+                disabled={newViewName.trim() === '' || filter.trim() === '' || views.length >= MAX_SAVED_VIEWS}
                 onClick={() => {
                   setViews(saveView(newViewName, filter))
                   setNewViewName('')
@@ -2085,6 +2086,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 {t('board.viewSave')}
               </Button>
             </div>
+            {views.length >= MAX_SAVED_VIEWS && (
+              <p className={css.detailHint}>{t('board.viewsFull', { n: String(MAX_SAVED_VIEWS) })}</p>
+            )}
             {views.length === 0 ? (
               <p className={css.detailText}>{t('board.viewsEmpty')}</p>
             ) : (

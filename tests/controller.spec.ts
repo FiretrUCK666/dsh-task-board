@@ -2479,7 +2479,9 @@ describe('linked sessions & bind', () => {
     expect(copy!.status).toBe('backlog')
     expect(copy!.executions).toHaveLength(0)
     expect(copy!.bind).toBeUndefined()
-    expect(copy!.schedule).toMatchObject({ enabled: true, mode: 'chain', maxRuns: 3, runCount: 0 })
+    expect(copy!.schedule).toMatchObject({ enabled: false, mode: 'chain', maxRuns: 3, runCount: 0 })
+    // A copy never surprise-fires: the configuration rides along disarmed —
+    // arming is an explicit act on the new card (same law as templates).
     // The source task is untouched; the board now holds both.
     expect(controller.getSnapshot().tasks).toHaveLength(2)
     // A template lands at the TOP of its landing column (待规划) exactly like
@@ -2502,19 +2504,29 @@ describe('linked sessions & bind', () => {
     const copy = controller.copyTask(source.id)
     expect(copy).toBeDefined()
     expect(copy!.color).toBe('#4f46e5')
-    // The TASK-level schedule is the card's own shape — it comes along.
-    expect(copy!.schedule).toMatchObject({ enabled: true, mode: 'cron', cron: '0 9 * * *', runCount: 0 })
+    // The TASK-level schedule configuration comes along DISARMED (a copy must
+    // never surprise-fire); only session rules never copy at all.
+    expect(copy!.schedule).toMatchObject({ enabled: false, mode: 'cron', cron: '0 9 * * *', runCount: 0 })
     // Session rules automate the SOURCE's own sessions (the 绘画): the template
     // is a new card with none of them — copying would automate nothing real.
     expect(copy!.rules).toBeUndefined()
   })
-  it('copyTask copies an armed CHAIN schedule with its budget (runCount reset)', () => {
+  it('copyTask copies a CHAIN schedule disarmed with its budget (runCount reset)', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub)
     const source = controller.createTask({ title: '源', description: '', prompt: 'run' })!
     controller.setSchedule(source.id, { enabled: true, mode: 'chain', maxRuns: 7 })
     const copy = controller.copyTask(source.id)
-    expect(copy!.schedule).toMatchObject({ enabled: true, mode: 'chain', maxRuns: 7, runCount: 0 })
+    expect(copy!.schedule).toMatchObject({ enabled: false, mode: 'chain', maxRuns: 7, runCount: 0 })
+  })
+
+  it('copyTask carries the due date (inert metadata rides along)', () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const source = controller.createTask({ title: '源', description: '', prompt: 'run' })!
+    controller.updateTask(source.id, { dueAt: 1_700_000_000_000 })
+    const copy = controller.copyTask(source.id)
+    expect(copy!.dueAt).toBe(1_700_000_000_000)
   })
 
   it('copyTask carries the prompt images (they are part of the card\'s prompt)', () => {

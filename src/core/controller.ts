@@ -1407,9 +1407,10 @@ export class BoardController {
 
   /**
    * Copy a task as a fresh template ("复制为模板"): the same content, run
-   * configuration AND task-level automation rule (enable state, mode, cron,
-   * budget — runCount reset to 0, the cron next-run instant recomputed),
-   * landing in 待规划. Executions, hide state, live bindings and SESSION
+   * configuration, due date and task-level automation CONFIGURATION (mode,
+   * cron, budget — runCount reset to 0), landing in 待规划, DISARMED: like a
+   * stamped template, a copy must never surprise-fire (arming is an explicit
+   * act on the new card). Executions, hide state, live bindings and SESSION
    * RULES are never copied — a template has none of the source's sessions
    * (a session rule automates a SPECIFIC session of the source task; the
    * template is a new blank card, "绘画规则" would point at nothing).
@@ -1431,18 +1432,22 @@ export class BoardController {
       reasoningEffort: source.reasoningEffort,
       agentPreset: source.agentPreset,
       permission: source.permission,
+      ...source.dueAt !== undefined ? { dueAt: source.dueAt } : {},
     }, now, this.uuid(), this.nextOrder())
+    // The copy keeps the card's SHAPE AND its inert metadata (accent color,
+    // prompt images, due date) — but NEVER an armed rule: like a stamped
+    // template, a copy must not surprise-fire (arming is an explicit act on
+    // the new card). The schedule configuration rides along disarmed so
+    // re-arming resumes the same rule.
     const schedule = source.schedule
     if (schedule !== undefined) {
       task = withSchedule(task, {
-        enabled: schedule.enabled,
+        enabled: false,
         mode: schedule.mode,
         cron: schedule.cron,
         maxRuns: schedule.maxRuns,
         runCount: 0,
-        nextRunAt: schedule.enabled && schedule.mode === 'cron'
-          ? nextRunAtMs(schedule.cron, now)
-          : undefined,
+        nextRunAt: undefined,
       }, now)
     }
     // The template keeps the card's SHAPE: the accent color and the prompt's
