@@ -4,7 +4,7 @@
  * feed); empty comments stay (the row shows a placeholder).
  */
 import { describe, expect, it } from 'vitest'
-import { ACTIVITY_LIMIT, activityOf, clusterOf, GROUP_ITEM_LIMIT, groupActivityByObjectDay, splitGroupItems } from '../src/client/board/activity.ts'
+import { ACTIVITY_LIMIT, activityGroupKeyOf, activityOf, clusterOf, GROUP_ITEM_LIMIT, groupActivityByObjectDay, splitGroupItems } from '../src/client/board/activity.ts'
 import { createTask } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -97,6 +97,10 @@ describe('clusterOf (fold clusters mirror the filter map)', () => {
 
 describe('groupActivityByObjectDay (object-day folding)', () => {
   const dayOf = (at: number): string => `day${Math.floor(at / 100)}`
+
+  it('builds keys from THE one constructor (grouping, expansion and remainder agree)', () => {
+    expect(activityGroupKeyOf('a', 'day3', 'comment')).toBe('a|day3|comment')
+  })
 
   it('folds same task + same day + same cluster, and keys stably', () => {
     const groups = groupActivityByObjectDay([

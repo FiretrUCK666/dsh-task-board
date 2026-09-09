@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
+import { WIP_LIMIT_MAX } from '../../core/board-doc.ts'
 import { isHeartbeatStale } from '../../core/scheduler.ts'
 import { COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount, taskViewedBaseline } from '../../core/session-display.ts'
@@ -132,6 +133,55 @@ function cruiseWindowTitleOf(window: CruiseWindow): string {
   if (grammar.kind === 'range') return `${formatDateTime(grammar.startAt)} → ${formatDateTime(grammar.endAt)}`
   if (grammar.kind === 'from-start') return formatDateTime(grammar.startAt)
   return formatDateTime(grammar.endAt)
+}
+
+/** One soft-ceiling number field (THE typing discipline for WIP inputs, used
+ *  twice): valid integers commit on edit; clearing happens on blur/Enter
+ *  only, so selecting-all to retype never flickers the persisted ceiling
+ *  through an empty middle state. */
+function WipLimitField({ label, title, text, committed, onText, onCommit }: {
+  label: string
+  title: string
+  text: string
+  committed: number | undefined
+  onText: (text: string) => void
+  onCommit: (value: number | undefined) => void
+}): ReactNode {
+  return (
+    <label className={css.cruisePopoverLimit}>
+      <span className={css.cruisePopoverLabel}>{label}</span>
+      <input
+        className={css.cruiseLimit}
+        type="number"
+        min={1}
+        max={WIP_LIMIT_MAX}
+        value={text}
+        title={title}
+        aria-label={label}
+        placeholder=""
+        onChange={event => {
+          onText(event.target.value)
+          const raw = event.target.value.trim()
+          if (raw === '') return
+          const value = Number(raw)
+          if (Number.isInteger(value) && value >= 1) {
+            onCommit(value)
+          }
+        }}
+        onBlur={() => {
+          if (text.trim() === '') {
+            onCommit(undefined)
+          }
+          onText(committed === undefined ? '' : String(committed))
+        }}
+        onKeyDown={event => {
+          if (event.key === 'Enter') {
+            (event.currentTarget as HTMLInputElement).blur()
+          }
+        }}
+      />
+    </label>
+  )
 }
 
 /** Board component; subscribes to the controller snapshot. */
@@ -940,76 +990,22 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   </div>
                   <p className={css.detailHint}>{t('board.wipHint')}</p>
                   <div className={css.cruiseWindowAdd}>
-                    {/* Typing discipline (same as the cruise limit): valid
-                        integers commit on edit; clearing happens on blur/Enter
-                        only, so selecting-all to retype never flickers the
-                        persisted ceiling through an empty middle state. */}
-                    <label className={css.cruisePopoverLimit}>
-                      <span className={css.cruisePopoverLabel}>{t('board.wipGlobal')}</span>
-                      <input
-                        className={css.cruiseLimit}
-                        type="number"
-                        min={1}
-                        max={20}
-                        value={wipGlobalText}
-                        title={t('board.wipTitle')}
-                        aria-label={t('board.wipGlobal')}
-                        placeholder=""
-                        onChange={event => {
-                          setWipGlobalText(event.target.value)
-                          const raw = event.target.value.trim()
-                          if (raw === '') return
-                          const value = Number(raw)
-                          if (Number.isInteger(value) && value >= 1) {
-                            controller.setWipLimit('global', value)
-                          }
-                        }}
-                        onBlur={() => {
-                          if (wipGlobalText.trim() === '') {
-                            controller.setWipLimit('global', undefined)
-                          }
-                          setWipGlobalText(snapshot.cruise.wip?.global === undefined ? '' : String(snapshot.cruise.wip.global))
-                        }}
-                        onKeyDown={event => {
-                          if (event.key === 'Enter') {
-                            (event.currentTarget as HTMLInputElement).blur()
-                          }
-                        }}
-                      />
-                    </label>
-                    <label className={css.cruisePopoverLimit}>
-                      <span className={css.cruisePopoverLabel}>{t('board.wipRunning')}</span>
-                      <input
-                        className={css.cruiseLimit}
-                        type="number"
-                        min={1}
-                        max={20}
-                        value={wipRunningText}
-                        title={t('board.wipTitle')}
-                        aria-label={t('board.wipRunning')}
-                        placeholder=""
-                        onChange={event => {
-                          setWipRunningText(event.target.value)
-                          const raw = event.target.value.trim()
-                          if (raw === '') return
-                          const value = Number(raw)
-                          if (Number.isInteger(value) && value >= 1) {
-                            controller.setWipLimit('running', value)
-                          }
-                        }}
-                        onBlur={() => {
-                          if (wipRunningText.trim() === '') {
-                            controller.setWipLimit('running', undefined)
-                          }
-                          setWipRunningText(snapshot.cruise.wip?.running === undefined ? '' : String(snapshot.cruise.wip.running))
-                        }}
-                        onKeyDown={event => {
-                          if (event.key === 'Enter') {
-                            (event.currentTarget as HTMLInputElement).blur()
-                          }
-                        }}
-                      />
-                    </label>
+                    <WipLimitField
+                      label={t('board.wipGlobal')}
+                      title={t('board.wipTitle')}
+                      text={wipGlobalText}
+                      committed={snapshot.cruise.wip?.global}
+                      onText={setWipGlobalText}
+                      onCommit={value => { controller.setWipLimit('global', value) }}
+                    />
+                    <WipLimitField
+                      label={t('board.wipRunning')}
+                      title={t('board.wipTitle')}
+                      text={wipRunningText}
+                      committed={snapshot.cruise.wip?.running}
+                      onText={setWipRunningText}
+                      onCommit={value => { controller.setWipLimit('running', value) }}
+                    />
                   </div>
                 </div>
                 {/* 定时窗口：设定靠后的开启时刻与可选结束时刻（不设=一直保持）；

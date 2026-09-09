@@ -32,6 +32,7 @@ import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVerbs } from './goal-verbs.ts'
 import type { TaskStore } from './store.ts'
+import type { SkipLedger } from './scheduler.ts'
 import {
   applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
@@ -599,7 +600,7 @@ export interface ControllerSnapshot {
    *  due slots skipped while the task still ran vs. slots too stale to catch
    *  up. Read-only telemetry for the status line (zero → hidden, same quiet
    *  discipline as stats); skips never enter the retry path. */
-  skips: { overlap: number; missed: number }
+  skips: SkipLedger
   /** Scheduler heartbeat: the last fully completed tick (volatile, undefined
    *  = no tick yet). The status line derives staleness from it; persistence
    *  and sync never see it. */
@@ -3124,7 +3125,7 @@ export class BoardController {
   /** Mirror the scheduler's Forbid-policy skip ledger into the snapshot (the
    *  wiring calls this from the scheduler's `onSkips` sink). Cumulative and
    *  read-only: skips are telemetry, never persisted, never retried. */
-  setSchedulerSkips(stats: { overlap: number; missed: number }): void {
+  setSchedulerSkips(stats: SkipLedger): void {
     if (this.schedulerSkips.overlap === stats.overlap && this.schedulerSkips.missed === stats.missed) return
     this.schedulerSkips = { overlap: stats.overlap, missed: stats.missed }
     this.notify()

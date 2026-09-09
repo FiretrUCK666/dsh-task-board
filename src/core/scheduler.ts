@@ -33,11 +33,25 @@ import { hasOpenRun, plainRunsOf, ruleReadiness, type TaskRecord } from './tasks
 export function isHeartbeatStale(
   lastOkAt: number | undefined,
   now: number,
-  periodMs = 60_000,
+  periodMs = SCHEDULER_TICK_MS,
   graceMs = periodMs,
 ): boolean {
   if (lastOkAt === undefined || now <= lastOkAt) return false
   return now - lastOkAt > periodMs + graceMs
+}
+
+/** Tick cadence when the host wires none (one minute — the missed-tolerance
+ *  default and the heartbeat period both derive from the tick, so a custom
+ *  cadence retunes the whole scheduler by passing `tickMs`). */
+export const SCHEDULER_TICK_MS = 60_000
+
+/** Forbid-policy skip ledger: due slots skipped while the task still ran
+ *  (`overlap`) vs. slots too stale to catch up (`missed`). THE telemetry
+ *  shape — the sink, the accessor and the controller mirror all name it, so
+ *  a third counter lands in one place. In-memory only, never persisted. */
+export interface SkipLedger {
+  overlap: number
+  missed: number
 }
 
 /** Everything the scheduler needs from its host (the board controller). */
@@ -62,14 +76,14 @@ export interface SchedulerDeps {
     runCount?: number,
     disable?: boolean,
   ): void
-  /** Tick cadence; defaults to 60_000 ms. */
+  /** Tick cadence; defaults to SCHEDULER_TICK_MS. */
   tickMs?: number
   /**
    * Skip telemetry sink: invoked with the cumulative skip ledger whenever a
    * Forbid/missed skip lands (at most once per tick per task). Absent = the
    * counts stay readable through `skipStats` only (tests, headless hosts).
    */
-  onSkips?: (stats: { overlap: number; missed: number }) => void
+  onSkips?: (stats: SkipLedger) => void
   /**
    * Heartbeat telemetry sink: invoked with the tick/ok stamps after every
    * fully completed tick (at most once per tick). Absent = the stamps stay
@@ -121,7 +135,7 @@ export class SchedulerService {
 
   /** Forbid-policy telemetry: how many due slots were skipped while the task
    *  still ran (`overlap`) vs. how many were too stale to catch up (`missed`). */
-  skipStats(): { overlap: number; missed: number } {
+  skipStats(): SkipLedger {
     return { overlap: this.skippedOverlap, missed: this.skippedMissed }
   }
 
@@ -136,7 +150,7 @@ export class SchedulerService {
     // Immediate catch-up tick: schedules whose due instant passed while the
     // tab was closed are triggered as soon as the runtime is ready.
     this.tick()
-    this.timer = setInterval(() => { this.tick() }, this.deps.tickMs ?? 60_000)
+    this.timer = setInterval(() => { this.tick() }, this.deps.tickMs ?? SCHEDULER_TICK_MS)
     this.deps.environment?.addEventListener('visibilitychange', this.onVisibility)
   }
 
@@ -233,7 +247,7 @@ export class SchedulerService {
       // still fires. Stale slots skip without catch-up (one jump to the next
       // grid point from now, never a one-step crawl), and the skip is counted.
       // Undefined tolerance = one scheduler tick.
-      const tolerance = schedule.missedToleranceMs ?? (this.deps.tickMs ?? 60_000)
+      const tolerance = schedule.missedToleranceMs ?? (this.deps.tickMs ?? SCHEDULER_TICK_MS)
       const nextAfterDue = nextRunAtMs(schedule.cron, schedule.nextRunAt)
       if (nextAfterDue !== undefined && nextAfterDue <= now && now - schedule.nextRunAt > tolerance) {
         const next = nextRunAtMs(schedule.cron, now)

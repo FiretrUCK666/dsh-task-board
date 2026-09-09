@@ -69,13 +69,20 @@ export function clusterOf(kind: ActivityItem['kind']): ActivityCluster {
  *  Order inside and across groups inherits the feed order (newest first) —
  *  grouping never re-sorts, it only nests. */
 export interface ActivityGroup {
-  /** Stable group key (task + day + cluster). */
+  /** Stable group key (task + day + cluster, see {@link activityGroupKeyOf}). */
   key: string
   taskId: string
   taskTitle: string
   day: string
   cluster: ActivityCluster
   items: ActivityItem[]
+}
+
+/** THE group-key constructor (`task|day|cluster`): grouping, expansion state
+ *  and remainder keys all derive from this one function — never a retyped
+ *  template — so folded identity can never disagree with itself. */
+export function activityGroupKeyOf(taskId: string, day: string, cluster: ActivityCluster): string {
+  return `${taskId}|${day}|${cluster}`
 }
 
 /**
@@ -95,7 +102,7 @@ export function groupActivityByObjectDay(
   for (const item of items) {
     const day = dayOf(item.at)
     const cluster = clusterOf(item.kind)
-    const key = `${item.taskId}|${day}|${cluster}`
+    const key = activityGroupKeyOf(item.taskId, day, cluster)
     const existing = index.get(key)
     if (existing !== undefined) {
       existing.items.push(item)
