@@ -17,7 +17,9 @@
  *     `.chipLead` span that stays a real flex item of the chip, so its box
  *     geometry and the chip's gap apply and it is NEVER wrapped by — or
  *     ellipsized away inside — the text body.
- * The `title` attribute keeps the full text reachable on hover.
+ * The `title` attribute keeps the full text reachable on hover; `label`
+ *  carries the same explanation to assistive tech (touch has no hover — the
+ *  longer reason must not live in `title` alone).
  */
 import type { ReactNode } from 'react'
 import css from '../board.module.css'
@@ -26,11 +28,13 @@ import css from '../board.module.css'
 export type ChipKind = 'neutral' | 'success' | 'error' | 'warn' | 'muted'
 
 /** One badge. */
-export function Chip({ kind = 'neutral', fill = true, title, className, icon, children }: {
+export function Chip({ kind = 'neutral', fill = true, title, label, className, icon, children }: {
   kind?: ChipKind
   /** Pill look with neutral fill; false = plain semibold text. */
   fill?: boolean
   title?: string
+  /** Accessible name (defaults to the visible text when absent). */
+  label?: string
   className?: string
   /** Lead glyph (activity spinner, icon) with its own box geometry — kept a
    *  real flex item, outside the ellipsizing text body. */
@@ -42,6 +46,7 @@ export function Chip({ kind = 'neutral', fill = true, title, className, icon, ch
       className={`${css.chip}${fill ? ` ${css.chipFill}` : ''}${className !== undefined ? ` ${className}` : ''}`}
       data-kind={kind}
       title={title}
+      aria-label={label}
     >
       {icon !== undefined && <span className={css.chipLead}>{icon}</span>}
       <span className={css.chipBody}>{children}</span>

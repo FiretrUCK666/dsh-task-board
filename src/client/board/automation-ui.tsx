@@ -119,8 +119,11 @@ export function scheduleSummary(task: TaskRecord, pausedFailed = false): string 
   const readiness = ruleReadiness(task)
   if (readiness.kind === 'blocked') {
     // Empty prompt: the rule cannot drive anything — blocked, never "paused"
-    // (a chain never pauses; the card chip reads the same word).
-    return `${t('card.autoBlocked')} · ${t('detail.schedule.blocked')}`
+    // (a chain never pauses; the card chip reads the same word). A failed
+    // last run is an orthogonal second cause: both are named, never one
+    // swallowing the other.
+    const reason = `${t('card.autoBlocked')} · ${t('detail.schedule.blocked')}`
+    return pausedFailed ? `${reason} · ${t('detail.schedule.pausedFailedShort')}` : reason
   }
   if (readiness.kind === 'paused') {
     return pausedFailed

@@ -235,9 +235,10 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
   const readiness = ruleReadiness(task)
   // A paused rule names its blocking status; a review pause caused by a
   // failed run adds the "because it failed" reason word; a BLOCKED rule (an
-  // empty execution prompt) names the emptiness — one reason-line grammar
-  // (the one summary grammar is scheduleSummary; the detail only adds this
-  // word on top).
+  // empty execution prompt) names the emptiness — plus the failure word when
+  // the last run failed (orthogonal causes, both named). One reason-line
+  // grammar (the one summary grammar is scheduleSummary; the detail only
+  // adds this word on top).
   const stoppedReason = readiness.kind === 'paused'
     ? {
         extraFailed: readiness.status === 'review'
@@ -245,7 +246,7 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
         key: PAUSED_REASON_KEY[readiness.status],
       }
     : readiness.kind === 'blocked'
-      ? { extraFailed: false, key: 'detail.schedule.blocked' as TaskBoardKey }
+      ? { extraFailed: lastPlainResult(task) === 'failed', key: 'detail.schedule.blocked' as TaskBoardKey }
       : undefined
 
   // Collapsed by default UNLESS the rule is already enabled: an armed

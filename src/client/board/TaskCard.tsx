@@ -8,7 +8,8 @@ import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskLiveState } from '../../core/task-live.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { cardSourceLabel, latestExecutionOf, plainRunsOf, refining, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
+import { cardSourceLabel, latestExecutionOf, lastPlainResult, plainRunsOf, refining, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
+import { sessionRuleReadiness } from '../../core/automation.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
@@ -21,9 +22,10 @@ import { formatDateTime, formatTime } from './format-time.ts'
 /** Tooltip for the schedule chip: THE one summary grammar (shared with the
  *  detail's disclosure and the overview) — honest about the rule's readiness:
  *  chain reports its run budget, cron its next due instant, paused its
- *  blocking status. */
+ *  blocking status, blocked its reason (plus the failure word when the last
+ *  run failed — two orthogonal causes, both named). */
 function scheduleChipTitle(task: TaskRecord): string {
-  return scheduleSummary(task)
+  return scheduleSummary(task, lastPlainResult(task) === 'failed')
 }
 
 /** The open run's state text: either working ("进行中") or blocked on the
@@ -45,6 +47,23 @@ export function settledChipLabel(runs: number): string {
  *  grammar, which already names the blocking reason. */
 export function showsBlockedChip(task: TaskRecord): boolean {
   return task.schedule?.enabled === true && ruleReadiness(task).kind === 'blocked'
+}
+
+/** Whether any ENABLED session rule is blocked on the empty prompt (the
+ *  session-rule twin of {@link showsBlockedChip}): a custom-instruction rule
+ *  carries its own content and never reads the prompt, so only `usePrompt`
+ *  rules count — read through the rule's own readiness, never re-derived. */
+export function showsSessionBlocked(task: TaskRecord): boolean {
+  if (task.rules === undefined) return false
+  return task.rules.some(rule => sessionRuleReadiness(task, rule).kind === 'blocked')
+}
+
+/** Whether the automation slot collapses to the single blocked chip: any
+ *  blocked automation (task schedule or session rule) owns the slot — the
+ *  schedule/chain/progress text yields instead of stacking four chips for
+ *  one cause. THE priority table for the card's automation badges. */
+export function blockedAutomation(task: TaskRecord): boolean {
+  return showsBlockedChip(task) || showsSessionBlocked(task)
 }
 
 /** One card in a column — a PURE state summary: title, description, source
@@ -252,7 +271,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
             overflowing. */}
         {(task.schedule?.enabled === true || latest !== undefined) && (
           <span className={css.cardBadges}>
-            {task.schedule?.enabled === true && (
+            {task.schedule?.enabled === true && !blockedAutomation(task) && (
               <Chip
                 fill={false}
                 title={scheduleChipTitle(task)}
@@ -260,22 +279,23 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                 {task.schedule.mode === 'chain' ? t('card.chain') : t('card.scheduled')}
               </Chip>
             )}
-            {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && (
+            {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && !blockedAutomation(task) && (
               <Chip kind="muted" fill={false} title={t('card.batchProgress')}>
                 {task.schedule.runCount}/{task.schedule.maxRuns}
               </Chip>
             )}
-            {/* Armed but blocked (empty prompt): the rule can never fire — the
-                card says why at a glance instead of looking merely idle. */}
-            {showsBlockedChip(task) && (
-              <Chip kind="error" fill={false} title={scheduleChipTitle(task)}>
+            {/* Blocked automation owns the slot (task schedule or any session
+                rule): one cause, one chip — the schedule/chain/progress text
+                yields instead of stacking four chips for it. */}
+            {blockedAutomation(task) && (
+              <Chip kind="error" fill={false} title={scheduleChipTitle(task)} label={scheduleChipTitle(task)}>
                 {t('card.autoBlocked')}
               </Chip>
             )}
             {/* A live chain keeps the card in progress: the "接续中" chip
                 names the automation mode behind the running state. */}
-            {task.schedule?.enabled === true && task.schedule.mode === 'chain' && task.status === 'running' && (
-              <Chip kind="warn" fill={false} title={t('card.chainingTitle')}>
+            {task.schedule?.enabled === true && task.schedule.mode === 'chain' && task.status === 'running' && !blockedAutomation(task) && (
+              <Chip kind="warn" fill={false} title={t('card.chainingTitle')} label={t('card.chainingTitle')}>
                 {t('card.chaining')}
               </Chip>
             )}
@@ -283,7 +303,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                 "failure stopped the rule" at a glance, distinct from "success
                 awaiting confirmation". */}
             {pausedFailed && (
-              <Chip kind="error" fill={false} title={t('card.autoPausedFailedTitle')}>
+              <Chip kind="error" fill={false} title={t('card.autoPausedFailedTitle')} label={t('card.autoPausedFailedTitle')}>
                 {t('card.autoPausedFailed')}
               </Chip>
             )}

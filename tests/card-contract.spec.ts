@@ -23,8 +23,9 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { runningStateLabel, settledChipLabel, showsBlockedChip } from '../src/client/board/TaskCard.tsx'
+import { runningStateLabel, settledChipLabel, blockedAutomation, showsBlockedChip, showsSessionBlocked } from '../src/client/board/TaskCard.tsx'
 import { createTask, withSchedule } from '../src/core/tasks.ts'
+import { withSessionRules } from '../src/core/automation.ts'
 
 const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
 const source = readFileSync(cssPath, 'utf8')
@@ -193,5 +194,38 @@ describe('card chip label composition', () => {
     )
     expect(showsBlockedChip(armedReady)).toBe(false)
     expect(showsBlockedChip(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'))).toBe(false)
+  })
+
+  it('session-blocked: an enabled usePrompt rule with an empty prompt blocks, custom text never does', () => {
+    const at = 1_700_000_000_000
+    const usePromptRule = {
+      id: 'r1', sessionId: 's-1', instruction: '', usePrompt: true,
+      trigger: 'cron' as const, cron: '* * * * *', send: 'queue' as const, enabled: true,
+    }
+    const blocked = withSessionRules(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'), [usePromptRule])
+    expect(showsSessionBlocked(blocked)).toBe(true)
+    expect(blockedAutomation(blocked)).toBe(true)
+    const customRule = {
+      id: 'r1', sessionId: 's-1', instruction: 'do it', trigger: 'cron' as const,
+      cron: '* * * * *', send: 'queue' as const, enabled: true,
+    }
+    const custom = withSessionRules(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'), [customRule])
+    expect(showsSessionBlocked(custom)).toBe(false)
+    expect(blockedAutomation(custom)).toBe(false)
+    const off = withSessionRules(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'),
+      [{ ...usePromptRule, enabled: false }])
+    expect(showsSessionBlocked(off)).toBe(false)
+  })
+
+  it('blocked automation owns the slot: one cause, one chip', () => {
+    const at = 1_700_000_000_000
+    const both = withSessionRules(withSchedule(
+      createTask({ title: 'A', description: '', prompt: '' }, at, 'a'),
+      { enabled: true, mode: 'chain', cron: '', nextRunAt: undefined }, at,
+    ), [{ id: 'r1', sessionId: 's-1', instruction: '', usePrompt: true, trigger: 'cron' as const, cron: '* * * * *', send: 'queue' as const, enabled: true }])
+    // Task-level AND session-level blocked agree — still a single slot.
+    expect(blockedAutomation(both)).toBe(true)
+    expect(showsBlockedChip(both)).toBe(true)
+    expect(showsSessionBlocked(both)).toBe(true)
   })
 })
