@@ -509,6 +509,17 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(readFileSync(wiringPath, 'utf8')).toMatch(/refused: response\.result\.error\.code/)
   })
 
+  it('comment attachment lines name their own kind (images ≠ files, never one paraphrase)', () => {
+    // The "发文件却显示含图片" worry: the thread renders the image line and
+    // the file line as TWO independent conditionals (length-guarded each),
+    // so images-only / files-only / both / neither all read correctly — no
+    // shared label can drift across kinds.
+    const threadPath = fileURLToPath(new URL('../src/client/board/CommentsThread.tsx', import.meta.url))
+    const thread = readFileSync(threadPath, 'utf8')
+    expect(thread).toMatch(/promptImages[\s\S]{0,120}\.length > 0[\s\S]{0,200}review\.commentImages/)
+    expect(thread).toMatch(/promptFiles[\s\S]{0,120}\.length > 0[\s\S]{0,200}review\.commentFiles/)
+  })
+
   it('the attachment busy line names the in-flight intake, never the ledger', () => {
     // A staging file is not in the ledger yet: naming the busy line from
     // settled chips is exactly the "传文件却显示图片压缩中" lie. The hook

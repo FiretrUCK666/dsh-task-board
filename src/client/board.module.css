@@ -5284,6 +5284,13 @@ button.interactionOption:hover {
 
   .sessionRailFolds {
     grid-area: folds;
+    /* ONE rhythm for the whole narrow rail: every segment (state row, head
+       fold, comments fold) sits 10px apart — the old stack of ad-hoc values
+       (8px row pads + 12px head bottom + 10px block pads + 14px transcript
+       top) read as 「间距全都不一样」. The fold rows keep their own 8px tap
+       height inside their boxes; the gap owns BETWEEN. Desktop keeps its own
+       rhythm untouched (base rules above). */
+    gap: 10px;
     /* The area's ONE scroller (the base rule already declares it; `min-height:
        0` lets the row give its space back). The fold bodies inside it still
        render FULLY — one bar per region is the whole point. */
@@ -5298,6 +5305,15 @@ button.interactionOption:hover {
     border-bottom: var(--dsh-tb-separator);
   }
 
+  /* The head surrenders its desktop extras on a phone: no 12px bottom pad,
+     no hairline — the uniform 10px gap separates (air, not lines, is the
+     narrow separator; a border + a gap stacked is exactly the double
+     rhythm the user pointed at). */
+  .sessionRailHead {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
   .reviewMain {
     /* The conversation is NOT a fold: it is the panel's main body and keeps
        its own scroller (the follow logic resolves whatever element actually
@@ -5305,7 +5321,7 @@ button.interactionOption:hover {
     grid-area: transcript;
     min-height: 0;
     overflow: hidden;
-    padding: 14px;
+    padding: 10px 14px;
   }
 
   /* The composer is its OWN panel row at the bottom edge (where the thumb
@@ -5657,13 +5673,20 @@ button.interactionOption:hover {
     justify-self: end;
   }
 
-  /* The organize bar re-stacks (colors own a line, count + actions share the
-     next) — the grid AREAS re-flow, the members never scatter. */
+  /* The organize bar re-stacks to THREE deterministic rows (colors / count /
+     actions) — sharing one row between the count and five wrapping buttons
+     let the actions column size to max-content and paint OVER the count
+     (「已选N张被按钮盖住」). Areas say the layout: each member owns its
+     row, the actions wrap freely left-aligned within theirs. */
   .organizeBar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "colors colors"
-      "count actions";
+      "colors"
+      "count"
+      "actions";
+  }
+  .organizeBar .organizeActions {
+    justify-content: flex-start;
   }
 
   /* Five equal columns → a swipeable track. A column stays wide enough to
@@ -5705,10 +5728,19 @@ button.interactionOption:hover {
     overflow-x: visible;
   }
 
-  /* The pinned thumb bar: 新建 stretches, the bell + 动态 keep their size.
-     Opaque surface + top hairline (floating translucency is banned — inner
-     surfaces stay solid); rides above the keyboard inset var, clears the
-     home indicator with the safe area. z-index stays below dialogs (200+). */
+  /* Compact relocation (NOT duplication): the primary actions live in the
+     thumb bar within thumb reach — 新建 stretches, 铃 + 动态 ride along —
+     so their header twins hide here. One visible instance per width, same
+     handlers: two DOM nodes, never two on screen. */
+  .boardNewTask {
+    display: none;
+  }
+  .boardModes .notifyBell {
+    display: none;
+  }
+  .boardModes .modeDynamic {
+    display: none;
+  }
   .thumbBar {
     position: absolute;
     left: 0;

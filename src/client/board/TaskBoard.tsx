@@ -822,9 +822,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             >
               {t('board.automation')}
             </Button>
-            {/* 动态：全板近况聚合（只读 — 点行进任务详情，派生自台账，不同步）。 */}
+            {/* 动态：全板近况聚合（只读 — 点行进任务详情，派生自台账，不同步）。
+                拇指栏里有同一个入口（同一处理器）：窄屏下这里隐藏，归属见
+                thumbBar 注释 — 一处行为，两处 DOM，每宽度只见一处。 */}
             <Button
               variant="ghost"
+              className={css.modeDynamic}
               title={t('board.activityTitle')}
               onClick={() => { setShowActivity(true) }}
             >

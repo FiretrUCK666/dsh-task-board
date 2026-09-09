@@ -438,6 +438,13 @@ describe('board header and navigator legibility', () => {
     expect(ruleIn(compact, '.thumbBar')).toMatch(/bottom:\s*var\(--dsh-tb-kb/)
     expect(ruleIn(compact, '.thumbBar')).toMatch(/safe-area-inset-bottom/)
     expect(ruleIn(compact, '.columns')).toMatch(/padding-bottom:\s*calc\(64px \+ env\(safe-area-inset-bottom\)\)/)
+    // Relocation, not duplication: the header twins hide on compact (their
+    // thumb-bar twins carry the same handlers). One visible instance per
+    // width — two DOM nodes, never two on screen.
+    expect(compact).toMatch(/\.boardNewTask\s*\{[^}]*display:\s*none/)
+    expect(compact).toMatch(/\.boardModes \.notifyBell\s*\{[^}]*display:\s*none/)
+    expect(compact).toMatch(/\.boardModes \.modeDynamic\s*\{[^}]*display:\s*none/)
+    expect(board).toContain('css.modeDynamic')
   })
 })
 
@@ -734,5 +741,26 @@ describe('template library wiring', () => {
     const core = readFileSync(corePath, 'utf8')
     expect(core).not.toMatch(/schedule\??:/)
     expect(core).not.toMatch(/rules\??:/)
+  })
+
+  it('the compact organize bar is three deterministic rows (count never underlaps actions)', () => {
+    // 「已选N张被按钮盖住」: count + five wrapping buttons shared one row
+    // and the actions column sized to max-content, painting over the count.
+    // Areas own a row each now (colors / count / actions) — nothing shares,
+    // nothing overlaps, at any selection size.
+    const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
+    expect(ruleIn(compact, '.organizeBar')).toMatch(/grid-template-areas:[\s\S]*"colors"[\s\S]*"count"[\s\S]*"actions"/)
+    expect(ruleIn(compact, '.organizeBar')).not.toMatch(/"count actions"/)
+  })
+
+  it('the narrow rail keeps ONE rhythm (a single gap owns between)', () => {
+    // 「间距全都不一样」: 8px row pads + 12px head bottom + hairline + 10px
+    // block pads + 14px transcript top stacked ad-hoc. Narrow unifies to one
+    // 10px gap (desktop keeps its own rhythm — base rules untouched).
+    const compact = blockFrom(line => /@container\s+dsh-tb-panel\s*\(max-width:\s*600px\)/.test(line))
+    expect(ruleIn(compact, '.sessionRailFolds')).toMatch(/gap:\s*10px/)
+    expect(ruleIn(compact, '.sessionRailHead')).toMatch(/padding-bottom:\s*0/)
+    expect(ruleIn(compact, '.sessionRailHead')).toMatch(/border-bottom:\s*none/)
+    expect(ruleIn(compact, '.reviewMain')).toMatch(/padding:\s*10px 14px/)
   })
 })
