@@ -1099,6 +1099,26 @@ describe('scheduling', () => {
     expect(final.schedule?.enabled).toBe(false)
   })
 
+  it('revival resets the spent run budget (new life, same rule)', async () => {
+    const stub = new StubExec()
+    const { controller, store, stub: exec } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.setSchedule(task.id, { enabled: true, mode: 'chain', maxRuns: 1 })
+    const e1 = exec.runCalls[0].executionId
+    exec.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: e1, sessionId: 's-1' })
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: e1, outcome: 'succeeded' })
+    const spent = store.load()[0]
+    expect(spent.schedule).toMatchObject({ enabled: false, runCount: 1, maxRuns: 1 })
+    controller.moveTask(task.id, 'done')
+    expect(store.load()[0].status).toBe('done')
+    // A follow-up comment revives the card AND clears the spent budget (the
+    // rule stays disarmed — only the counter resets, never the config).
+    controller.submitComment(task.id, e1, 'one more thing')
+    const revived = store.load()[0]
+    expect(revived.status).toBe('todo')
+    expect(revived.schedule).toMatchObject({ enabled: false, runCount: 0, maxRuns: 1 })
+  })
+
   it('chain mode: a failed run stops the chain', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)

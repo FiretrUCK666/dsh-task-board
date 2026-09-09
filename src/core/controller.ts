@@ -2943,6 +2943,17 @@ export class BoardController {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined || task.status !== 'done') return
     this.moveTask(taskId, 'todo')
+    // Revival is a new life: the run budget resets so re-arming resumes the
+    // same rule from zero (the rule itself stays disarmed — arming is still
+    // an explicit act; only the spent counter clears, never the config).
+    const schedule = this.tasks.find(candidate => candidate.id === taskId)?.schedule
+    if (schedule !== undefined) {
+      const cleared = { ...schedule, runCount: 0 }
+      this.tasks = this.tasks.map(candidate => candidate.id === taskId
+        ? { ...candidate, schedule: cleared, updatedAt: this.now() }
+        : candidate)
+      this.persistAndNotify()
+    }
   }
 
   /**
