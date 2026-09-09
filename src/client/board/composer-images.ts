@@ -33,6 +33,102 @@ export function busyKindOf(images: number, files: number): IntakeBusyKind | unde
   return undefined
 }
 
+/**
+ * Cap for persisted draft images (base64 chars, whole envelope): ONE
+ * localStorage map holds EVERY draft, so an unsent 4MB phone photo must
+ * never nuke the entire map silently (the store skips the whole write on
+ * quota). Over the cap the images stay in memory only and the caller is
+ * told (imagesDropped) so the surface can say so — text + file names
+ * always persist.
+ */
+export const DRAFT_IMAGE_CHARS = 2_500_000
+
+/** A composer draft that survives unmount: text + images + lost file names. */
+export interface CommentDraftSnapshot {
+  text: string
+  images: DraftImage[]
+  /** Names of staged files (bytes are unrecoverable after unmount — the
+   *  surface names them so the user re-adds them, never silently drops). */
+  fileNames: string[]
+}
+
+/**
+ * Encode a composer draft for the string draft store (pure, tested). Empty
+ * drafts encode to '' (the store treats it as a clear).
+ */
+export function encodeCommentDraft(
+  text: string,
+  images: readonly DraftImage[],
+  files: readonly DraftFile[],
+): { value: string; imagesDropped: boolean } {
+  const kept: Array<{ name: string; data: string; mediaType: DraftImage['mediaType'] }> = []
+  let chars = 0
+  let imagesDropped = false
+  for (const image of images) {
+    if (chars + image.data.length > DRAFT_IMAGE_CHARS) {
+      imagesDropped = true
+      continue
+    }
+    chars += image.data.length
+    kept.push({ name: image.name, data: image.data, mediaType: image.mediaType })
+  }
+  if (text === '' && kept.length === 0 && files.length === 0) return { value: '', imagesDropped }
+  return {
+    value: JSON.stringify({
+      v: 1,
+      text,
+      images: kept,
+      fileNames: files.map(file => file.name),
+    }),
+    imagesDropped,
+  }
+}
+
+/**
+ * Decode a stored comment draft (pure, tested): the v1 envelope, legacy raw
+ * text (pre-attachment drafts), or corrupt → empty. Chip ids regenerate (a
+ * restored chip is a new chip, never a key collision across sessions).
+ */
+export function decodeCommentDraft(raw: string | undefined): CommentDraftSnapshot {
+  const empty: CommentDraftSnapshot = { text: '', images: [], fileNames: [] }
+  if (raw === undefined || raw === '') return empty
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return { ...empty, text: raw }
+    const record = parsed as Record<string, unknown>
+    if (record.v !== 1) return { ...empty, text: raw }
+    const text = typeof record.text === 'string' ? record.text : ''
+    const images: DraftImage[] = []
+    if (Array.isArray(record.images)) {
+      record.images.forEach((row, index) => {
+        if (typeof row !== 'object' || row === null) return
+        const candidate = row as Record<string, unknown>
+        if (typeof candidate.data !== 'string' || candidate.data === '') return
+        images.push({
+          id: `restored-${index}-${candidate.data.slice(0, 8)}`,
+          name: typeof candidate.name === 'string' ? candidate.name : '',
+          data: candidate.data,
+          mediaType: candidate.mediaType === 'image/png' || candidate.mediaType === 'image/jpeg'
+            || candidate.mediaType === 'image/webp' || candidate.mediaType === 'image/gif'
+            ? candidate.mediaType
+            : 'image/jpeg',
+        })
+      })
+    }
+    const fileNames = Array.isArray(record.fileNames)
+      ? record.fileNames.filter((name): name is string => typeof name === 'string' && name !== '')
+      : []
+    return { text, images, fileNames }
+  } catch {
+    return { ...empty, text: raw }
+  }
+}
+
+/** Whether a picked batch contains any non-image (a re-add clears the lost-file notice). */
+export function pickedHasFiles(files: FileList | File[]): boolean {
+  return Array.from(files).some(file => !file.type.startsWith('image/'))
+}
+
 /** One human line for one rejection reason (locale-owned). */
 export function rejectMessage(reason: ImageRejectReason, name: string, max?: number): string {
   switch (reason) {

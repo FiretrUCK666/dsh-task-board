@@ -24,7 +24,7 @@ import { resultChipKind } from './session-chip.ts'
 import { refineDraftKey, draftStore } from './drafts.ts'
 import { AttachmentStrip, attachBusyLabel } from './AttachmentStrip.tsx'
 import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, toPromptFile, toPromptImage } from './attach.ts'
-import { useComposerImages } from './composer-images.ts'
+import { decodeCommentDraft, encodeCommentDraft, pickedHasFiles, useComposerImages } from './composer-images.ts'
 import { useFileStager } from './session-panel.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { useSessionContext, useWireQuestion } from './use-interaction.ts'
@@ -48,12 +48,20 @@ export function RefineSection({ controller, task }: {
   const context = useSessionContext(controller, sessionId)
   const pendingInteraction = useWireQuestion(controller, sessionId)
 
-  // 草稿记忆：回答框里打了一半的文字，切走再回来仍保留（按任务各自保存）；
-  // 发送成功即清除。切换任务时读对应任务的草稿。
-  const [draft, setDraft] = useState<string>(() => draftStore.get(refineDraftKey(task.id)) ?? '')
+  // 草稿记忆：回答框里打了一半的文字 + 已加的图，切走再回来仍保留（按任务
+  // 各自保存）；发送成功即清除。切换任务时读对应任务的草稿。文件只留名
+  // （字节不可恢复），回来显示重加提示。
+  const [draft, setDraft] = useState<string>(() => decodeCommentDraft(draftStore.get(refineDraftKey(task.id))).text)
   const [applied, setApplied] = useState(false)
+  const [unrestoredFiles, setUnrestoredFiles] = useState<string[]>(() =>
+    decodeCommentDraft(draftStore.get(refineDraftKey(task.id))).fileNames)
+  const [draftOversized, setDraftOversized] = useState(false)
   useEffect(() => {
-    setDraft(draftStore.get(refineDraftKey(task.id)) ?? '')
+    const restored = decodeCommentDraft(draftStore.get(refineDraftKey(task.id)))
+    setDraft(restored.text)
+    setUnrestoredFiles(restored.fileNames)
+    setDraftOversized(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id])
 
   // The live conversation: shared transcript-tail state (auto-follow +
@@ -82,6 +90,21 @@ export function RefineSection({ controller, task }: {
   const attachments = useComposerImages(COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, undefined,
     stager !== undefined && sessionId !== undefined ? { sessionId, stage: stager } : undefined)
 
+  // Restore-once per task: images the draft kept come back as chips.
+  useEffect(() => {
+    const restored = decodeCommentDraft(draftStore.get(refineDraftKey(task.id)))
+    if (restored.images.length > 0) attachments.setImages(restored.images)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id])
+
+  // ONE persist grammar (same as the comment composer): text + images +
+  // staged file names land in the draft on every change.
+  useEffect(() => {
+    const { value, imagesDropped } = encodeCommentDraft(draft, attachments.images, attachments.files)
+    draftStore.set(refineDraftKey(task.id), value)
+    setDraftOversized(imagesDropped)
+  }, [task.id, draft, attachments.images, attachments.files])
+
   const send = (): void => {
     const text = draft.trim()
     if (text === '') return
@@ -94,9 +117,19 @@ export function RefineSection({ controller, task }: {
       draftStore.clear(refineDraftKey(task.id))
       attachments.setImages([])
       attachments.setFiles([])
+      setUnrestoredFiles([])
+      setDraftOversized(false)
       setApplied(false)
     }
   }
+
+  // Draft notices (same priority as the comment composer): oversized images
+  // + files lost to an unmount (names only — re-add them).
+  const draftNotice = draftOversized
+    ? t('review.draftImagesDropped')
+    : unrestoredFiles.length > 0
+      ? t('review.draftFilesGone', { names: unrestoredFiles.slice(0, 3).join('、') })
+      : undefined
 
   const apply = (): void => {
     if (resultText === undefined) return
@@ -205,10 +238,7 @@ export function RefineSection({ controller, task }: {
             )}
             <PromptInput
               value={draft}
-              onChange={next => {
-                setDraft(next)
-                draftStore.set(refineDraftKey(task.id), next)
-              }}
+              onChange={next => { setDraft(next) }}
               placeholder={t('detail.refine.answerPlaceholder')}
               rows={3}
               controller={controller}
@@ -217,12 +247,15 @@ export function RefineSection({ controller, task }: {
             <AttachmentStrip
               images={attachments.images}
               files={attachments.files}
-              onAdd={attachments.addFiles}
+              onAdd={files => {
+                if (pickedHasFiles(files)) setUnrestoredFiles([])
+                void attachments.addFiles(files)
+              }}
               onRemoveImage={id => { attachments.setImages(attachments.images.filter(image => image.id !== id)) }}
               onRemoveFile={id => { attachments.setFiles(attachments.files.filter(file => file.id !== id)) }}
               busy={attachments.busy}
               busyLabel={attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined}
-              error={attachments.error}
+              error={attachments.error ?? draftNotice}
             />
             <Button variant="primary" disabled={draft.trim() === ''} onClick={send}>
               {t('detail.refine.send')}

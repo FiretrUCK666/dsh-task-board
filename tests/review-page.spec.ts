@@ -498,6 +498,25 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(readFileSync(panelPath, 'utf8')).not.toMatch(/attachedFiles\.length > 0 \? t\('review\.attachFileBusy'\)/)
   })
 
+  it('comment + refine drafts persist attachments (text is not the only survivor)', () => {
+    // The reported loss: text came back, staged images/files did not. Both
+    // composers save the full envelope (text + images + file NAMES — bytes
+    // are unrecoverable after unmount, so files come back as a re-add
+    // notice, never as sendable chips) and restore through the hook setters.
+    for (const [name, key] of [['session-panel.tsx', 'commentDraftKey'], ['RefineSection.tsx', 'refineDraftKey']] as const) {
+      const caller = readFileSync(fileURLToPath(new URL(`../src/client/board/${name}`, import.meta.url)), 'utf8')
+      expect(caller).toContain('encodeCommentDraft(')
+      expect(caller).toContain('decodeCommentDraft(')
+      expect(caller).toContain(key)
+      expect(caller).toContain('draftFilesGone')
+    }
+    // No raw-text draft write may clobber the envelope (the persist effect
+    // owns the store after restore).
+    const panel = readFileSync(fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url)), 'utf8')
+    expect(panel).not.toMatch(/draftStore\.set\(storeKey, text\)/)
+    expect(panel).not.toMatch(/draftStore\.set\(storeKey, next\)/)
+  })
+
   it('the Agent row reads served-truth first, the applied ledger second (never a ghost field)', () => {
     // The host serves no preset read-back (no list field, no models-API
     // field, no projection) — a row reading only the host field shows

@@ -4098,11 +4098,15 @@ button.interactionOption:focus-visible,
 }
 
 /* The native "load earlier" row: ABOVE the list (older lives above), quiet
-   and centered — one grammar for every transcript surface. It never moves
-   the list below it (the prepend anchors to the bottom, see loadEarlier). */
+   and centered — one grammar for every transcript surface. Button on top,
+   the retry hint (if any) under it — never side-by-side (the pair reads as
+   one broken line). It never moves the list below it (the prepend anchors
+   to the bottom, see loadEarlier). */
 .transcriptEarlierRow {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   flex: none;
   padding: 2px 0 0;
 }

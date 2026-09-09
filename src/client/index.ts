@@ -519,7 +519,13 @@ export function apply(ctx: ClientContext): void {
           beforeSeq,
           maxMessages: 50,
         })
-        if (!response.result.ok) return undefined
+        // A refused page (old host without the endpoint, a rejected cursor)
+        // must name its code: the UI only says "retry", and this line is the
+        // whole diagnosis of "明明还有更早的对话却加载不出来".
+        if (!response.result.ok) {
+          console.error('[dsh-task-board] transcript page refused', response.result.error.code, response.result.error.message)
+          return undefined
+        }
         return {
           events: response.result.value.events.map(entry => entry.event as TranscriptEventShape),
           hasMore: response.result.value.hasMore === true,

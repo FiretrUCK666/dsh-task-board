@@ -29,7 +29,7 @@ import type { CommentView } from './comment-thread.ts'
 import { InteractionCard } from './InteractionCard.tsx'
 import { AttachmentStrip, attachBusyLabel } from './AttachmentStrip.tsx'
 import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, type DraftFile, type DraftImage } from './attach.ts'
-import { useComposerImages, type FileStager } from './composer-images.ts'
+import { decodeCommentDraft, encodeCommentDraft, pickedHasFiles, useComposerImages, type CommentDraftSnapshot, type FileStager } from './composer-images.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Disclosure, Notice, SendModeToggle } from './ui.tsx'
@@ -912,8 +912,20 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   onSteerFiles?: (text: string, images: readonly DraftImage[], files: readonly DraftFile[]) => Promise<boolean>
 }) {
   const storeKey = sessionId === undefined ? undefined : commentDraftKey(taskId, sessionId)
-  const [draft, setDraft] = useState<string>(() => (storeKey !== undefined ? draftStore.get(storeKey) ?? '' : ''))
+  // Restored once per mount (text via useState, attachments via the effect
+  // below — the hook owns the ledger, so restoration goes through its
+  // setters, never around them).
+  const [restored] = useState<CommentDraftSnapshot>(() =>
+    decodeCommentDraft(storeKey !== undefined ? draftStore.get(storeKey) : undefined))
+  const [draft, setDraft] = useState<string>(restored.text)
   const [steer, setSteer] = useState(false)
+  // Files staged before unmount are gone (bytes unrecoverable) — their names
+  // come back as a re-add notice, never as sendable chips (a chip promises
+  // "will send", a name only asks to be re-added).
+  const [unrestoredFiles, setUnrestoredFiles] = useState<string[]>(restored.fileNames)
+  // Images over the persist cap stay memory-only (see encodeCommentDraft) —
+  // the surface says so instead of losing them quietly.
+  const [draftOversized, setDraftOversized] = useState(false)
   // The attachment ledger is the SHARED hook: pick / drop-anywhere / paste,
   // image compression + file staging, count caps and every rejection said
   // out loud. The composer container carries the drop/paste props so a
@@ -928,11 +940,27 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   // the composer (never a silent drop — the user must know their words and
   // attachments did not go out).
   const [sendError, setSendError] = useState<string | undefined>(undefined)
+  // ONE persist grammar: every text/attachment change lands in the draft
+  // store (text + images + staged file NAMES — bytes are unrecoverable after
+  // unmount, so files come back as a re-add notice, images come back whole).
+  useEffect(() => {
+    if (storeKey === undefined) return
+    const { value, imagesDropped } = encodeCommentDraft(draft, attachedImages, attachedFiles)
+    draftStore.set(storeKey, value)
+    setDraftOversized(imagesDropped)
+  }, [storeKey, draft, attachedImages, attachedFiles])
+  // Restore-once: images the draft kept come back as chips on mount.
+  useEffect(() => {
+    if (restored.images.length > 0) setImages(restored.images)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const clear = (): void => {
     setDraft('')
     setImages([])
     setFiles([])
     setSendError(undefined)
+    setUnrestoredFiles([])
+    setDraftOversized(false)
     if (storeKey !== undefined) draftStore.clear(storeKey)
   }
   const submit = (): void => {
@@ -947,7 +975,9 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
       setDraft(text)
       setImages(attachedImages)
       setFiles(attachedFiles)
-      if (storeKey !== undefined) draftStore.set(storeKey, text)
+      // No direct store write: the persist effect re-saves the full envelope
+      // (text + images + file names) from the restored state — a raw-text
+      // write here would clobber the attachments out of the draft.
     }
     clear()
     // The send mode is the user's toggle — NEVER overridden by the presence of
@@ -968,14 +998,20 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   // settled ledger — a staging file is not in the ledger yet, and the old
   // ledger-based label is exactly the "传文件却显示图片压缩中" lie.
   const busyLabel = attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined
+  // Draft notices (below intake/send errors in priority): images that could
+  // not ride the draft (over the persist cap) + staged files lost to an
+  // unmount (names only — re-add them). Both clear on send; the file notice
+  // also clears the moment the user picks new non-image files (re-adding).
+  const draftNotice = draftOversized
+    ? t('review.draftImagesDropped')
+    : unrestoredFiles.length > 0
+      ? t('review.draftFilesGone', { names: unrestoredFiles.slice(0, 3).join('、') })
+      : undefined
   return (
     <div className={css.reviewComposer} {...dropProps}>
       <PromptInput
         value={draft}
-        onChange={next => {
-          setDraft(next)
-          if (storeKey !== undefined) draftStore.set(storeKey, next)
-        }}
+        onChange={next => { setDraft(next) }}
         placeholder={placeholder}
         rows={3}
         controller={controller}
@@ -988,12 +1024,15 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
       <AttachmentStrip
         images={attachedImages}
         files={attachedFiles}
-        onAdd={addFiles}
+        onAdd={files => {
+          if (pickedHasFiles(files)) setUnrestoredFiles([])
+          void addFiles(files)
+        }}
         onRemoveImage={id => { setImages(attachedImages.filter(image => image.id !== id)) }}
         onRemoveFile={id => { setFiles(attachedFiles.filter(file => file.id !== id)) }}
         busy={attachments.busy}
         busyLabel={busyLabel}
-        error={attachments.error ?? sendError}
+        error={attachments.error ?? sendError ?? draftNotice}
       />
       <div className={css.reviewComposerRow}>
         <SendModeToggle steer={steer} onChange={setSteer} />
