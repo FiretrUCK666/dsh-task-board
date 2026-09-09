@@ -71,11 +71,14 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
   const terms: string[] = []
   const qualifiers: BoardQualifier[] = []
   // Quoted `ws:` values first (multi-word workspace names); the remainder
-  // splits on whitespace as usual.
+  // splits on whitespace as usual. An empty quote pair is left alone (it
+  // falls through to a literal term and matches nothing — never a silent
+  // pass-all), and so is an unclosed quote (a quote inside a value is never
+  // a facet value, so the token stays literal text).
   const quoted: Array<{ key: string; value: string }> = []
-  const stripped = query.replace(/(^|\s)ws:"([^"]*)"/gi, (_match, _space, value: string) => {
+  const stripped = query.replace(/(^|\s)ws:"([^"]*)"/gi, (match, _space, value: string) => {
     if (value.trim() !== '') quoted.push({ key: 'ws', value: value.trim().toLowerCase() })
-    return ' '
+    return value.trim() === '' ? match : ' '
   })
   for (const raw of stripped.trim().toLowerCase().split(/\s+/)) {
     if (raw === '') continue
@@ -83,7 +86,9 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
     if (separator > 0) {
       const key = raw.slice(0, separator)
       const value = raw.slice(separator + 1)
-      if (value !== '' && (key === 'has' || key === 'is' || key === 'ws')) {
+      // A quote inside a would-be facet value means an unclosed `ws:"..."` —
+      // the token stays literal text (a facet value never contains quotes).
+      if (!value.includes('"') && value !== '' && (key === 'has' || key === 'is' || key === 'ws')) {
         if (key === 'has' && (value === 'auto' || value === 'color')) {
           qualifiers.push({ key, value })
           continue

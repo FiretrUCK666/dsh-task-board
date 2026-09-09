@@ -128,6 +128,13 @@ describe('parseBoardQuery (facet qualifiers)', () => {
     expect(matchTask(task, 'ws:"深夜 工作区"', [], { workspaceTitle: '深夜 工作区' })).toBe(true)
     expect(matchTask(task, 'ws:"深夜 工作区"', [], { workspaceTitle: '深夜工作区' })).toBe(false)
   })
+
+  it('keeps empty and unclosed quotes literal (honest zero-match, never a silent pass-all)', () => {
+    expect(parseBoardQuery('ws:""')).toEqual({ terms: ['ws:""'], qualifiers: [] })
+    expect(matchTask(task, 'ws:""', [], { workspaceTitle: '深夜工作区' })).toBe(false)
+    expect(parseBoardQuery('ws:"深夜工作区')).toEqual({ terms: ['ws:"深夜工作区'], qualifiers: [] })
+    expect(matchTask(task, 'ws:"深夜工作区', [], { workspaceTitle: '深夜工作区' })).toBe(false)
+  })
 })
 
 describe('matchTask qualifiers', () => {

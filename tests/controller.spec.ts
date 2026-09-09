@@ -651,9 +651,12 @@ describe('view state', () => {
     const rounds = controller.getSnapshot().tasks.find(task => task.id === base.id)!.executions
     expect(rounds.find(round => round.id === first.executionId)!.viewedAt).toBe(NOW + 3_000)
     expect(rounds.find(round => round.id === second.executionId)!.viewedAt).not.toBe(NOW + 3_000)
-    // Unknown task/session pairs are ignored.
+    // Unknown task/session pairs are pure no-ops: the baseline never moves
+    // for nothing seen.
+    const baseline = controller.getSnapshot().tasks.find(task => task.id === base.id)!.viewedAt
     controller.markTaskSessionViewed('unknown-id', 's-1')
     controller.markTaskSessionViewed(base.id, 'unknown-session')
+    expect(controller.getSnapshot().tasks.find(task => task.id === base.id)!.viewedAt).toBe(baseline)
   })
 })
 

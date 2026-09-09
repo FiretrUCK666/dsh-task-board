@@ -229,8 +229,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // 通知中心弹层：等你处理的会话聚合 + 未读待审（行内 triage，点主区进详情）。
   const [showNotify, setShowNotify] = useState(false)
   const [notifyFilter, setNotifyFilter] = useState<'all' | 'waiting' | 'review'>('all')
-  // 通知折叠组展开（单开；关屉即清，与动态组同纪律）。
+  // 通知折叠组展开（单开；键 = taskId，与折叠聚合键同——snooze 换头、切分组
+  // 都不动键，关屉或切分组即清，与动态组同纪律）。
   const [expandedFoldKey, setExpandedFoldKey] = useState<string | undefined>(undefined)
+  useEffect(() => { setExpandedFoldKey(undefined) }, [notifyFilter])
   // 稍后见（内存态）：key → snooze 时刻；新动静（note.at 推进）自然再浮起。
   const [snoozed, setSnoozed] = useState<Record<string, number>>({})
   const [failedSession, setFailedSession] = useState<string | undefined>(undefined)
@@ -621,14 +623,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // for a garbage id.
   const [detailSessionRequest, setDetailSessionRequest] = useState<{ taskId: string; sessionId: string } | undefined>(undefined)
   const openTaskAtSession = (taskId: string, sessionId: string | undefined): void => {
-    setDetailSessionRequest(
-      sessionId !== undefined && controller.sessionTitle(sessionId) !== undefined
-        ? { taskId, sessionId }
-        : undefined,
-    )
+    // Unknown sessions degrade to a plain task open (never a panel for a
+    // garbage id) — and to the task-wide clear, so the session-scoped clear
+    // below only ever runs for a session the host actually knows.
+    const known = sessionId !== undefined && controller.sessionTitle(sessionId) !== undefined
+    setDetailSessionRequest(known && sessionId !== undefined ? { taskId, sessionId } : undefined)
     // Feed/drawer opens clear the viewed session's rounds (unknown sessions
     // fall back to the whole task); pure card clicks keep openTask. ONE funnel.
-    controller.openTaskFromNotification(taskId, sessionId)
+    controller.openTaskFromNotification(taskId, known ? sessionId : undefined)
   }
   // Resolve a workspace id to its display title through the run catalog
   // (live workspace list; falls back to the raw id when the workspace no
@@ -1599,12 +1601,17 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               )}
               {/* 组标已读只对 review 层有意义：waiting 行等的是人的动作，
                   标读清不掉它——按钮在纯 waiting 视图下隐藏，而不是摆一个
-                  静默 no-op 让用户以为坏了。 */}
+                  静默 no-op 让用户以为坏了。混合视图下只传 review 行（去重），
+                  waiting 行的出路只留去会话/稍后见/进详情。 */}
               {visibleNotes.some(note => note.kind === 'review') && (
                 <button
                   type="button"
                   className={css.feedAction}
-                  onClick={() => { controller.markTasksViewed(visibleNotes.map(note => note.taskId)) }}
+                  onClick={() => {
+                    controller.markTasksViewed([...new Set(
+                      visibleNotes.filter(note => note.kind === 'review').map(note => note.taskId),
+                    )])
+                  }}
                   title={t('board.notifyMarkGroupTitle')}
                 >
                   {t('board.notifyMarkGroup')}
@@ -1696,19 +1703,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     // in members, so the N-1 buried sessions stay reachable
                     // while the collapsed row stays quiet.
                     if (entry.count === 1) return renderNotifyRow(entry.head)
-                    const headKey = noteKeyOf(entry.head)
-                    const foldedOpen = expandedFoldKey === headKey
+                    const foldedOpen = expandedFoldKey === entry.head.taskId
                     const head = entry.head
                     const headTitle = head.taskTitle.trim() === '' ? t('card.untitled') : head.taskTitle
                     return (
-                      <li key={headKey}>
+                      <li key={entry.head.taskId}>
                         <div className={css.notifyRow} data-kind={head.kind}>
                           <button
                             type="button"
                             className={css.feedAction}
                             aria-expanded={foldedOpen}
                             aria-label={headTitle}
-                            onClick={() => { setExpandedFoldKey(current => current === headKey ? undefined : headKey) }}
+                            onClick={() => { setExpandedFoldKey(current => current === entry.head.taskId ? undefined : entry.head.taskId) }}
                           >
                             <Icon name="chevronDown" className={css.detailChevron} />
                           </button>
@@ -1747,7 +1753,25 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                         </div>
                         {foldedOpen && (
                           <ul className={css.notifyList}>
-                            {entry.items.map(renderNotifyRow)}
+                            {(() => {
+                              // Members share the dynamic groups' cap
+                              // discipline: newest GROUP_ITEM_LIMIT rows plus
+                              // one quiet remainder line (navigation stays on
+                              // the head's actions).
+                              const split = splitGroupItems(entry.items)
+                              return (
+                                <>
+                                  {split.shown.map(renderNotifyRow)}
+                                  {split.rest > 0 && (
+                                    <li key={`${entry.head.taskId}|rest`}>
+                                      <p className={css.detailHint}>
+                                        {t('board.activityGroupRest', { n: String(split.rest) })}
+                                      </p>
+                                    </li>
+                                  )}
+                                </>
+                              )
+                            })()}
                           </ul>
                         )}
                       </li>
@@ -1880,7 +1904,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               // Expanded groups show the newest GROUP_ITEM_LIMIT rows plus one
               // quiet remainder line (the header's 进详情 owns navigation).
               const renderObjectGroup = (group: ActivityGroup): ReactNode => {
-                if (group.items.length === 1) return renderActivityRow(group.items[0])
+                if (group.items.length <= 1) return group.items.length === 1 ? renderActivityRow(group.items[0]) : null
                 const groupExpanded = expandedGroupKey === group.key
                 const title = group.taskTitle.trim() === '' ? t('card.untitled') : group.taskTitle
                 const split = groupExpanded ? splitGroupItems(group.items) : { shown: [], rest: 0 }

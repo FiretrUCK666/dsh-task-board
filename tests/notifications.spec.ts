@@ -143,4 +143,56 @@ describe('waiting moment clock (round activity, never task.updatedAt)', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].at).toBe(NOW + 5)
   })
+
+  it('orders by round activity even when the task clock disagrees', () => {
+    const tasks = [
+      task('old-task', NOW + 1_000, {
+        executions: [
+          { id: 'e1', sessionId: 's-1', startedAt: NOW + 500, endedAt: undefined, result: undefined, error: undefined },
+        ],
+      }),
+      task('new-task', NOW, {
+        executions: [
+          { id: 'e2', sessionId: 's-2', startedAt: NOW + 10, endedAt: undefined, result: undefined, error: undefined },
+        ],
+      }),
+    ]
+    const pending = (id: string | undefined): 'question' | undefined =>
+      id === 's-1' || id === 's-2' ? 'question' : undefined
+    const rows = notificationsOf(tasks, pending, id => id)
+    expect(rows.map(row => row.sessionId)).toEqual(['s-1', 's-2'])
+  })
+
+  it('breaks same-instant ties by row key, never by task metadata', () => {
+    const tasks = [
+      task('b-task', NOW + 1_000, {
+        executions: [
+          { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
+        ],
+      }),
+      task('a-task', NOW, {
+        executions: [
+          { id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
+        ],
+      }),
+    ]
+    const pending = (id: string | undefined): 'question' | undefined =>
+      id === 's-1' || id === 's-2' ? 'question' : undefined
+    // Same instant: metadata-newest (b-task) must NOT win — key order decides.
+    const rows = notificationsOf(tasks, pending, id => id)
+    expect(rows.map(row => row.taskId)).toEqual(['a-task', 'b-task'])
+  })
+
+  it('prefers endedAt over startedAt for settled waits', () => {
+    const tasks = [task('a', NOW, {
+      executions: [
+        { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 900, result: undefined, error: undefined },
+        { id: 'e2', sessionId: 's-2', startedAt: NOW + 800, endedAt: undefined, result: undefined, error: undefined },
+      ],
+    })]
+    const pending = (id: string | undefined): 'question' | undefined =>
+      id === 's-1' || id === 's-2' ? 'question' : undefined
+    const rows = notificationsOf(tasks, pending, id => id)
+    expect(rows.map(row => row.sessionId)).toEqual(['s-1', 's-2'])
+  })
 })

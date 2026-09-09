@@ -129,13 +129,15 @@ export const GROUP_ITEM_LIMIT = 10
 
 /**
  * Split a group's rows into the shown head and the folded remainder count.
- * Pure so the cap unit-tests without rendering; the header always counts the
- * full group (the count never lies about the cap).
+ * Generic over the row shape (feed rows and notification rows share the cap
+ * discipline, never a second copy): the header always counts the full group
+ * (the count never lies about the cap). Pure so the cap unit-tests without
+ * rendering.
  */
-export function splitGroupItems(
-  items: readonly ActivityItem[],
+export function splitGroupItems<T>(
+  items: readonly T[],
   limit: number = GROUP_ITEM_LIMIT,
-): { shown: ActivityItem[]; rest: number } {
+): { shown: T[]; rest: number } {
   if (items.length <= limit) return { shown: [...items], rest: 0 }
   return { shown: items.slice(0, limit), rest: items.length - limit }
 }

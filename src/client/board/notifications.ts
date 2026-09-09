@@ -43,6 +43,17 @@ export function noteKeyOf(note: Pick<NotificationItem, 'taskId' | 'sessionId' | 
   return `${note.taskId}|${note.sessionId}|${note.kind}`
 }
 
+/** Metadata-orthogonal row order: lexicographic key comparison for sort
+ *  tiebreaks (stable across metadata writes, drags and reorders). */
+function compareNoteKey(
+  a: Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>,
+  b: Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>,
+): number {
+  const left = noteKeyOf(a)
+  const right = noteKeyOf(b)
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
 /**
  * Collect every waiting session of every task, deduplicated by
  * task+session (an execution round and the refine round can name the same
@@ -94,6 +105,11 @@ export function notificationsExOf(
     seen.add(key)
     // The waiting moment is the round's own activity (started→ended): a
     // session-less binding (no round yet) falls back to the task clock.
+    // Approximation, stated honestly: this is round activity, NOT the pending
+    // arrival instant (a long run that starts waiting late still sorts by its
+    // start). A dedicated pending-since clock would need ledger storage;
+    // until then ordering among waits is approximate, arrival dots are exact
+    // (any post-waterline activity lights, whatever its `at`).
     const round = task.executions.find(candidate => candidate.sessionId === sessionId)
     waiting.push({
       taskId: task.id,
@@ -110,10 +126,10 @@ export function notificationsExOf(
   }
   // Newest moment first (the rows carry their own clocks now — no task-clock
   // lookup table, so metadata writes cannot reorder the bell). Ties break by
-  // task recency (stable, and the legacy newest-task-first when two waits
-  // start the same instant).
-  const recency = new Map(tasks.map(task => [task.id, task.updatedAt]))
-  waiting.sort((a, b) => b.at - a.at || (recency.get(b.taskId) ?? 0) - (recency.get(a.taskId) ?? 0))
+  // row key (task|session|kind, lexicographic) — metadata-orthogonal and
+  // stable, never by task.updatedAt (which would smuggle the metadata clock
+  // back through the tiebreak).
+  waiting.sort((a, b) => b.at - a.at || compareNoteKey(a, b))
 
   // Review tier: tasks sitting in review with unviewed content (the human
   // gate). Failed first (needs a decision), then succeeded. The session slot
@@ -149,7 +165,9 @@ export function notificationsExOf(
     const rank = (result: NotificationItem['result']): number =>
       result === 'failed' ? 0 : result === 'succeeded' ? 1 : 2
     const rankDiff = rank(a.result) - rank(b.result)
-    return rankDiff !== 0 ? rankDiff : b.at - a.at
+    if (rankDiff !== 0) return rankDiff
+    if (b.at !== a.at) return b.at - a.at
+    return compareNoteKey(a, b)
   })
   return [...waiting, ...review]
 }

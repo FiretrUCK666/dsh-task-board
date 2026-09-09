@@ -1219,18 +1219,22 @@ export class BoardController {
    * Mark ONE session's rounds viewed (plus the task baseline, so the card
    * ring follows the view) — a notification row's session entering the
    * detail. Same monotone read-state law as `markTaskViewed`, scoped to the
-   * session's rounds so sibling sessions keep their dots.
+   * session's rounds so sibling sessions keep their dots. No matching round
+   * (unknown session) = pure no-op: the baseline never moves for nothing seen.
    */
   markTaskSessionViewed(taskId: string, sessionId: string): void {
     const at = this.now()
     let changed = false
+    let matched = false
     this.tasks = this.tasks.map(task => {
       if (task.id !== taskId) return task
       const executions = task.executions.map(round => {
         if (round.sessionId !== sessionId || round.viewedAt === at) return round
+        matched = true
         changed = true
         return { ...round, viewedAt: at }
       })
+      if (!matched) return task
       if (executions.every((round, index) => round === task.executions[index]) && (task.viewedAt ?? 0) >= at) {
         return task
       }
