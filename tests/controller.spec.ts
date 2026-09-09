@@ -2529,6 +2529,16 @@ describe('linked sessions & bind', () => {
     expect(copy!.dueAt).toBe(1_700_000_000_000)
   })
 
+  it('copyTask carries priority and labels (inert shape rides along)', () => {
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const source = controller.createTask({ title: '源', description: '', prompt: 'run' })!
+    controller.updateTask(source.id, { priority: 1, labels: ['a', 'b'] })
+    const copy = controller.copyTask(source.id)
+    expect(copy!.priority).toBe(1)
+    expect(copy!.labels).toEqual(['a', 'b'])
+  })
+
   it('copyTask carries the prompt images (they are part of the card\'s prompt)', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub)

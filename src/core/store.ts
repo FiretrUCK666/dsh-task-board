@@ -15,7 +15,7 @@
 import { isValidCron } from './schedule.ts'
 import { normalizeSessionRules } from './automation.ts'
 import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
-import { isScheduleMode, isTaskStatus, normalizePriority, type TaskBind } from './tasks.ts'
+import { isScheduleMode, isTaskStatus, normalizeLabels, normalizePriority, type TaskBind } from './tasks.ts'
 
 /** Persistence seam for the task ledger. */
 export interface TaskStore {
@@ -244,6 +244,10 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     const priority = normalizePriority((row as Record<string, unknown>).priority)
     if (priority !== undefined) task.priority = priority
     else delete task.priority
+    // Labels: normalized (lowercase/dedupe/cap) or absent.
+    const labels = normalizeLabels((row as Record<string, unknown>).labels)
+    if (labels !== undefined) task.labels = labels
+    else delete task.labels
     // Session automation rules: valid rows kept, malformed dropped (old data
     // keeps working untouched).
     const rules = normalizeSessionRules((row as Record<string, unknown>).rules)

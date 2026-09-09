@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, normalizePriority, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, normalizeLabels, normalizePriority, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -968,5 +968,25 @@ describe('normalizePriority (1/2/3 or absent)', () => {
     expect(createTask({ title: 't', description: '', prompt: 'p', priority: 1 }, NOW, 'a').priority).toBe(1)
     expect(createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a').priority).toBeUndefined()
     expect(createTask({ title: 't', description: '', prompt: 'p', priority: 9 as unknown as 1 }, NOW, 'a').priority).toBeUndefined()
+  })
+})
+
+describe('normalizeLabels (lowercase/dedupe/cap or absent)', () => {
+  it('trims, lowercases, dedupes and drops empties', () => {
+    expect(normalizeLabels(['  Urgent ', 'urgent', '', 'phone'])).toEqual(['urgent', 'phone'])
+    expect(normalizeLabels([])).toBeUndefined()
+    expect(normalizeLabels(['   '])).toBeUndefined()
+    expect(normalizeLabels('urgent')).toBeUndefined()
+    expect(normalizeLabels(undefined)).toBeUndefined()
+  })
+
+  it('drops overlong labels and caps the count', () => {
+    expect(normalizeLabels(['x'.repeat(25)])).toBeUndefined()
+    expect(normalizeLabels(['a', 'b', 'c', 'd', 'e', 'f'])).toEqual(['a', 'b', 'c', 'd', 'e'])
+  })
+
+  it('createTask carries normalized labels', () => {
+    expect(createTask({ title: 't', description: '', prompt: 'p', labels: ['B', 'b', 'a'] }, NOW, 'a').labels).toEqual(['b', 'a'])
+    expect(createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a').labels).toBeUndefined()
   })
 })

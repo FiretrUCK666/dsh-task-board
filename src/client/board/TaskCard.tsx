@@ -269,7 +269,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
         {/* Row 2 only when there are badges; plain text badges keep the
             left edge flush with the title above, and wrap instead of
             overflowing. */}
-        {(task.schedule?.enabled === true || latest !== undefined || dueStateOf(task) !== undefined) && (
+        {(task.schedule?.enabled === true || latest !== undefined || dueStateOf(task) !== undefined || (task.labels ?? []).length > 0 || task.priority === 1 || task.priority === 2) && (
           <span className={css.cardBadges}>
             {/* Due date (today/overdue only — future dates live in the
                 detail): warn tone for overdue, quiet neutral for today. Never
@@ -294,6 +294,25 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
             {task.priority === 2 && (
               <Chip kind="neutral" fill={false} title={t('new.priorityP2')}>
                 P2
+              </Chip>
+            )}
+            {/* Labels: bounded display (first two + quiet remainder — the
+                ClickUp lesson: truncation must offer the full set, here via
+                title + the detail/edit surfaces). Neutral only: color
+                semantics belongs to the accent dot alone. */}
+            {(task.labels ?? []).slice(0, 2).map(label => (
+              <Chip
+                key={label}
+                kind="neutral"
+                fill={false}
+                title={(task.labels ?? []).join(', ')}
+              >
+                {label}
+              </Chip>
+            ))}
+            {(task.labels ?? []).length > 2 && (
+              <Chip kind="muted" fill={false} title={(task.labels ?? []).join(', ')}>
+                {`+${(task.labels ?? []).length - 2}`}
               </Chip>
             )}
             {task.schedule?.enabled === true && !blockedAutomation(task) && (

@@ -5,7 +5,7 @@
  * omitted) or an update patch (empty keys cleared explicitly).
  */
 import type { TaskRecord } from '../../core/tasks.ts'
-import { normalizePriority } from '../../core/tasks.ts'
+import { normalizeLabels, normalizePriority } from '../../core/tasks.ts'
 import type { NewTaskInput } from '../../core/tasks.ts'
 import type { TaskTemplate } from '../../core/task-templates.ts'
 import type { TaskUpdatePatch } from '../../core/controller.ts'
@@ -37,6 +37,9 @@ export interface TaskDraft {
   dueDate: string
   /** Priority as '1' | '2' | '3'; '' = none (the default, zero visuals). */
   priority: string
+  /** Labels as free text (comma-separated in the form); '' = none. The
+   *  converters split/normalize — the draft keeps the user's raw typing. */
+  labels: string
 }
 
 /** `YYYY-MM-DD` → local-midnight ms epoch; undefined when malformed
@@ -55,6 +58,11 @@ export function parseDueDateInput(value: string): number | undefined {
   date.setHours(0, 0, 0, 0)
   const time = date.getTime()
   return Number.isFinite(time) ? time : undefined
+}
+
+/** Split free-typed label text (commas, Chinese commas, whitespace runs). */
+export function splitLabelText(value: string): string[] {
+  return value.split(/[,、\s]+/).map(part => part.trim()).filter(part => part !== '')
 }
 
 /** ms epoch → `YYYY-MM-DD` local (the date-input shape). */
@@ -88,6 +96,7 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
       const priority = normalizePriority(Number(parsed.priority))
       return priority === undefined ? '' : String(priority)
     })(),
+    labels: typeof parsed.labels === 'string' ? parsed.labels : '',
   }
 }
 
@@ -113,6 +122,7 @@ export function draftFromTask(task: TaskRecord): TaskDraft {  return {
     permission: task.permission ?? '',
     dueDate: task.dueAt !== undefined ? toDueDateInput(task.dueAt) : '',
     priority: task.priority === undefined ? '' : String(task.priority),
+    labels: task.labels === undefined ? '' : task.labels.join(', '),
   }
 }
 
@@ -140,6 +150,8 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
     dueDate: '',
     // Templates never carry a priority either (a stamped task starts unranked).
     priority: '',
+    // Templates never carry labels either (context belongs to the source card).
+    labels: '',
   }
 }
 
@@ -147,6 +159,7 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
 export function draftToNewInput(draft: TaskDraft): NewTaskInput {
   const dueAt = parseDueDateInput(draft.dueDate)
   const priority = normalizePriority(Number(draft.priority))
+  const labels = normalizeLabels(splitLabelText(draft.labels))
   return {
     title: draft.title,
     description: draft.description,
@@ -162,6 +175,7 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     ...draft.permission !== '' ? { permission: draft.permission } : {},
     ...dueAt !== undefined ? { dueAt } : {},
     ...priority !== undefined ? { priority } : {},
+    ...labels !== undefined ? { labels } : {},
   }
 }
 
@@ -181,5 +195,6 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     permission: draft.permission !== '' ? draft.permission : undefined,
     dueAt: parseDueDateInput(draft.dueDate),
     priority: normalizePriority(Number(draft.priority)),
+    labels: normalizeLabels(splitLabelText(draft.labels)),
   }
 }

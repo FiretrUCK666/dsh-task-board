@@ -367,6 +367,13 @@ export interface TaskRecord {
    */
   dueAt?: number
   /**
+   * Labels (multi-dimensional context — where/how/who/energy; never priority,
+   * status or dates, which own their fields). Lowercase-normalized, capped in
+   * length and count (see normalizeLabels). Absent/empty = none. Rides the
+   * record like every scalar.
+   */
+  labels?: string[]
+  /**
    * Session automation rules — scheduled "send a preset instruction to one
    * of this task's sessions" rules (see automation.ts). Absent = none.
    */
@@ -394,6 +401,9 @@ export interface NewTaskInput {
   dueAt?: number
   /** Priority (1 highest … 3 lowest); absent = none. */
   priority?: 1 | 2 | 3
+  /** Labels (multi-dimensional context: where/how/who — never priority,
+   *  status or dates, which have their own fields). Absent/empty = none. */
+  labels?: string[]
 }
 
 /** The five kanban columns, in display order. */
@@ -576,9 +586,36 @@ export function normalizePriority(value: unknown): 1 | 2 | 3 | undefined {
   return value === 1 || value === 2 || value === 3 ? value : undefined
 }
 
+/** Max labels per task (Todoist allows 100; a board card is not a database —
+ *  five named contexts is plenty, the rest belongs in the description). */
+export const MAX_LABELS_PER_TASK = 5
+
+/** Max characters per label (Todoist allows 60; board chips ellipsis far
+ *  earlier — long labels are a description sentence wearing a costume). */
+export const MAX_LABEL_LENGTH = 24
+
+/** Normalize a label list: trim, lowercase (case splits are the classic tag
+ *  fork — `Urgent` vs `urgent` must never become two tags), drop empties and
+ *  overlong entries, dedupe, cap the count. Empty results read absent. */
+export function normalizeLabels(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const row of value) {
+    if (typeof row !== 'string') continue
+    const label = row.trim().toLowerCase()
+    if (label === '' || label.length > MAX_LABEL_LENGTH || seen.has(label)) continue
+    seen.add(label)
+    out.push(label)
+    if (out.length >= MAX_LABELS_PER_TASK) break
+  }
+  return out.length > 0 ? out : undefined
+}
+
 /** Create a task from user input. */
 export function createTask(input: NewTaskInput, now: number, id: string, order = 0): TaskRecord {
   const priority = normalizePriority(input.priority)
+  const labels = normalizeLabels(input.labels)
   return {
     id,
     title: input.title.trim(),
@@ -603,6 +640,7 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
       ? { dueAt: Math.floor(input.dueAt) }
       : {},
     ...priority !== undefined ? { priority } : {},
+    ...labels !== undefined ? { labels } : {},
   }
 }
 

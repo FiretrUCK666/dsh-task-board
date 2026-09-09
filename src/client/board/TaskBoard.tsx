@@ -726,7 +726,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // no ring; 「移除颜色」 dot lights instead).
   const orgColorValue = (() => {
     for (const task of snapshot.tasks) {
-      if (selectedCards.includes(task.id) && task.color !== undefined) return task.color
+      if (liveIds.includes(task.id) && task.color !== undefined) return task.color
     }
     return undefined
   })()

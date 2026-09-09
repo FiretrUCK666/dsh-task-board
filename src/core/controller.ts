@@ -34,7 +34,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, normalizePriority, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, normalizeLabels, normalizePriority, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -233,7 +233,7 @@ export interface ReferenceRemoteFace {
 /** The editable slice of a task (content + run configuration). */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   'title' | 'description' | 'prompt' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model'
-  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'dueAt' | 'priority'
+  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'dueAt' | 'priority' | 'labels'
 >>
 
 /** The auto-cruise state: the current on/off truth, the last manual intent,
@@ -1433,6 +1433,10 @@ export class BoardController {
       agentPreset: source.agentPreset,
       permission: source.permission,
       ...source.dueAt !== undefined ? { dueAt: source.dueAt } : {},
+      ...source.priority !== undefined ? { priority: source.priority } : {},
+      ...source.labels !== undefined ? { labels: [...source.labels] } : {},
+      ...source.priority !== undefined ? { priority: source.priority } : {},
+      ...source.labels !== undefined ? { labels: [...source.labels] } : {},
     }, now, this.uuid(), this.nextOrder())
     // The copy keeps the card's SHAPE AND its inert metadata (accent color,
     // prompt images, due date) — but NEVER an armed rule: like a stamped
@@ -1943,6 +1947,10 @@ export class BoardController {
     // Priority: a present key sets 1/2/3 or clears it (invalid values clear).
     if ('priority' in patch) {
       applied.priority = normalizePriority(patch.priority)
+    }
+    // Labels: a present key normalizes (lowercase/dedupe/cap) or clears.
+    if ('labels' in patch) {
+      applied.labels = normalizeLabels(patch.labels)
     }
     this.tasks = this.tasks.map(candidate => candidate.id === id
       ? this.supplementedTask({ ...candidate, ...applied, updatedAt: this.now() })

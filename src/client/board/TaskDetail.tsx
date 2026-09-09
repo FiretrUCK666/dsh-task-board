@@ -284,7 +284,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   // every Dialog and the session frame. The edit flag re-aims focus when
   // the panel's first control swaps identity (Edit button <-> form) — the
   // return chain stays mount-scoped, so closing still lands on the opener.
-  useEscapeStack(() => { controller.closeTask() })
+  // The stack callback is editing-aware (declared below): Escape in edit
+  // mode cancels the edit, it never closes the detail from under the form.
+  useEscapeStack(() => { detailEscape() })
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // Red-flag per-session removal (hidden-tray only): the session's rounds
@@ -566,6 +568,14 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
     draftStore.clear(editDraftKey(current.id))
   }
 
+  // THE detail's Escape: edit mode first (cancel the form, stay open), the
+  // panel second. Read fresh every render by the stack entry, so no
+  // re-registration dance — one key, one owner, never two closers.
+  const detailEscape = (): void => {
+    if (draft !== undefined) cancelEdit()
+    else controller.closeTask()
+  }
+
   return (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) controller.closeTask() }}>
       <div
@@ -654,6 +664,16 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                 <Section title={t('new.dueDate')}>
                   <p className={css.detailText} title={formatDateTime(current.dueAt)}>
                     {formatDueLabel(current.dueAt)}
+                  </p>
+                </Section>
+              )}
+
+              {/* Priority (every tier readable HERE — the card only flags
+                  P1/P2, P3 stays quiet there by design). Absent = no row. */}
+              {current.priority !== undefined && (
+                <Section title={t('new.priority')}>
+                  <p className={css.detailText}>
+                    {current.priority === 1 ? t('new.priorityP1') : current.priority === 2 ? t('new.priorityP2') : t('new.priorityP3')}
                   </p>
                 </Section>
               )}

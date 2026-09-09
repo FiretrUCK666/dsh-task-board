@@ -172,6 +172,12 @@ describe('matchTask qualifiers', () => {
     expect(parseBoardQuery('HAS:PRIORITY')).toEqual({ terms: [], qualifiers: [{ key: 'has', value: 'priority' }] })
   })
 
+  it('label: tests one normalized label', () => {
+    expect(matchTask({ ...task, labels: ['等车', '电话'] }, 'label:等车')).toBe(true)
+    expect(matchTask({ ...task, labels: ['等车'] }, 'label:电话')).toBe(false)
+    expect(matchTask(task, 'label:等车')).toBe(false)
+  })
+
   it('is:unread / is:read test the unviewed facet', () => {
     expect(matchTask(task, 'is:unread', [], { isUnviewed: true })).toBe(true)
     expect(matchTask(task, 'is:unread', [], { isUnviewed: false })).toBe(false)

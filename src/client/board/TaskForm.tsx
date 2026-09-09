@@ -107,6 +107,19 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         />
       </label>
 
+      {/* Labels: free text, comma-separated (where/how/who — never priority,
+          status or dates, which own their fields). Normalized on save
+          (lowercase/dedupe/cap), so the form keeps the user's raw typing. */}
+      <label className={css.field}>
+        <span className={css.fieldLabel}>{t('new.labels')}</span>
+        <input
+          className={css.input}
+          value={draft.labels}
+          placeholder={t('new.labelsPlaceholder')}
+          onChange={event => { onChange({ ...draft, labels: event.target.value }) }}
+        />
+      </label>
+
       {/* Prompt field: the text plus its image ledger (pick / drop / paste
           anywhere on the field). A <div>, not a <label> — the strip holds
           buttons, and a label would route their clicks to the input. */}

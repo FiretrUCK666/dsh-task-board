@@ -32,6 +32,7 @@ function freshDraft(): TaskDraft {
     permission: '',
     dueDate: '',
     priority: '',
+    labels: '',
   }
 }
 
@@ -90,9 +91,15 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
     const template = templates.find(candidate => candidate.id === id)
     if (template === undefined) return
     const stamped = draftFromTemplate(template)
-    // Templates never carry a due date — but a date the user already picked
-    // survives stamping (a template fills the form, it must not eat input).
-    changeDraft(draft.dueDate !== '' ? { ...stamped, dueDate: draft.dueDate } : stamped)
+    // Templates carry neither due dates nor priorities — but values the user
+    // already picked survive stamping (a template fills the form, it must
+    // not eat input). Both fields share the one preserve rule, never per-field
+    // exceptions.
+    changeDraft({
+      ...stamped,
+      ...(draft.dueDate !== '' ? { dueDate: draft.dueDate } : {}),
+      ...(draft.priority !== '' ? { priority: draft.priority } : {}),
+    })
   }
   const removePicked = (): void => {
     if (pickedId !== '') controller.deleteTemplate(pickedId)

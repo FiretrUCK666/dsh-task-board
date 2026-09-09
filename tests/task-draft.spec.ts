@@ -31,6 +31,7 @@ function draft() {
     permission: '',
     dueDate: '',
     priority: '',
+    labels: '',
   }
 }
 
@@ -87,5 +88,14 @@ describe('draft due-date converters', () => {
     expect(draftFromTask(createTask({ title: 't', description: '', prompt: 'p', priority: 3 }, NOW, 'a')).priority).toBe('3')
     expect(normalizeDraft({ ...draft(), priority: 'x' })?.priority).toBe('')
     expect(normalizeDraft({ ...draft(), priority: '2' })?.priority).toBe('2')
+  })
+
+  it('labels ride the draft as free text, normalized on write', () => {
+    expect(draftToNewInput({ ...draft(), labels: '等车, 电话,等车' }).labels).toEqual(['等车', '电话'])
+    expect(draftToNewInput(draft()).labels).toBeUndefined()
+    expect(draftToUpdatePatch({ ...draft(), labels: 'A、B C' }).labels).toEqual(['a', 'b', 'c'])
+    expect(draftToUpdatePatch(draft()).labels).toBeUndefined()
+    expect(draftFromTask(createTask({ title: 't', description: '', prompt: 'p', labels: ['x', 'y'] }, NOW, 'a')).labels).toBe('x, y')
+    expect(normalizeDraft({ ...draft(), labels: 'x' })?.labels).toBe('x')
   })
 })

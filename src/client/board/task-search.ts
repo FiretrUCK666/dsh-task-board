@@ -32,6 +32,8 @@ export function matchTask(
     color?: string
     /** Card priority (for the `has:priority` qualifier). */
     priority?: number
+    /** Card labels (for the `label:` qualifier, already lowercase). */
+    labels?: readonly string[]
   },
   query: string,
   sessionTitles: readonly string[] = [],
@@ -64,10 +66,10 @@ export interface BoardQualifier {
 /**
  * Split a raw query into plain terms plus recognized qualifiers. Matching is
  * case-insensitive; `has:` accepts `auto`/`color`/`priority`, `is:` accepts
- * `unread`/`read`, `ws:` takes any text — quoted (`ws:"a b"`) when the name
- * holds a space, first word otherwise. Anything unrecognized stays a literal
- * search term: an unknown qualifier narrows like ordinary text instead of
- * failing.
+ * `unread`/`read`, `ws:` takes any text, `label:` takes a label name —
+ * quoted (`ws:"a b"`) when the name holds a space, first word otherwise.
+ * Anything unrecognized stays a literal search term: an unknown qualifier
+ * narrows like ordinary text instead of failing.
  */
 export function parseBoardQuery(query: string): { terms: string[]; qualifiers: BoardQualifier[] } {
   const terms: string[] = []
@@ -90,7 +92,7 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
       const value = raw.slice(separator + 1)
       // A quote inside a would-be facet value means an unclosed `ws:"..."` —
       // the token stays literal text (a facet value never contains quotes).
-      if (!value.includes('"') && value !== '' && (key === 'has' || key === 'is' || key === 'ws')) {
+      if (!value.includes('"') && value !== '' && (key === 'has' || key === 'is' || key === 'ws' || key === 'label')) {
         if (key === 'has' && (value === 'auto' || value === 'color' || value === 'priority')) {
           qualifiers.push({ key, value })
           continue
@@ -103,6 +105,10 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
           qualifiers.push({ key, value })
           continue
         }
+        if (key === 'label') {
+          qualifiers.push({ key, value })
+          continue
+        }
       }
     }
     terms.push(raw)
@@ -112,13 +118,16 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
 
 /** Whether one qualifier holds (unknown facets read absent = no match). */
 function matchQualifier(
-  task: { color?: string; priority?: number },
+  task: { color?: string; priority?: number; labels?: readonly string[] },
   qualifier: BoardQualifier,
   facets: BoardQueryFacets,
 ): boolean {
   if (qualifier.key === 'has' && qualifier.value === 'auto') return facets.hasAutomation === true
   if (qualifier.key === 'has' && qualifier.value === 'color') return task.color !== undefined
   if (qualifier.key === 'has' && qualifier.value === 'priority') return task.priority !== undefined
+  if (qualifier.key === 'label') {
+    return task.labels !== undefined && task.labels.includes(qualifier.value)
+  }
   if (qualifier.key === 'is' && qualifier.value === 'unread') return facets.isUnviewed === true
   if (qualifier.key === 'is' && qualifier.value === 'read') return facets.isUnviewed === false
   if (qualifier.key === 'ws') {
