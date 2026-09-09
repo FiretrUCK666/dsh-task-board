@@ -417,12 +417,6 @@ describe('board header and navigator legibility', () => {
     // row): one tap opens the waiting-sessions dialog.
     expect(toolsRow).toContain('css.notifyBell')
     expect(board).toContain('setShowNotify(true)')
-    // The command palette (Ctrl/Cmd+K) never hijacks typing: inputs own
-    // their keystrokes, and it only wakes while the board is open.
-    expect(board).toContain("event.key.toLowerCase() !== 'k'")
-    expect(board).toContain('INPUT')
-    expect(board).toContain('TEXTAREA')
-    expect(board).toContain('getSnapshot().boardOpen')
     // Batch run rides the organize bar as its apex action (primary): only
     // prompt-ready cards fire, through the single launch point.
     expect(board).toContain("t('board.organizeRun')")

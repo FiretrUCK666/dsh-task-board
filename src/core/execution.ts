@@ -151,6 +151,14 @@ export interface ExecutionEnvironment {
   selectModel?: ModelSelectFace
   /** Applies a task's configured agent preset; absent = sessions run on the deployment default. */
   selectAgentPreset?: AgentPresetSelectFace
+  /**
+   * Fired after a preset switch SUCCEEDS (createSession + launch paths both
+   * report here — the only two places a preset is ever applied). The
+   * wiring records it into the applied-preset ledger (the display's
+   * fallback — the host offers no read-back). Failures never fire (the
+   * session kept its previous preset; recording it would be a lie).
+   */
+  onAgentApplied?: (sessionId: string, preset: string) => void
   /** Sends comment continuations to existing execution sessions (host API). */
   sendComment?: CommentSendFace
   /** Executes slash-command comment rounds through the native command registry. */
@@ -313,6 +321,7 @@ export class ExecutionService {
       if (configError === undefined && config.agentPreset !== undefined && this.env.selectAgentPreset !== undefined) {
         const applied = await this.env.selectAgentPreset(sessionId, config.agentPreset)
         if (!applied.ok) configError = `agent preset switch failed: ${applied.error}`
+        else this.env.onAgentApplied?.(sessionId, config.agentPreset)
       }
       if (configError === undefined && config.permission !== undefined) {
         const applied = await this.applyPermission(driver, config.permission)
@@ -411,6 +420,7 @@ export class ExecutionService {
           })
           return
         }
+        this.env.onAgentApplied?.(sessionId, task.agentPreset)
       }
       // Apply the task's configured permission preset through the native
       // `/permission` command — the same write path the GUI's permission

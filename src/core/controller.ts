@@ -24,6 +24,7 @@ import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLive
 import { withTaskColor } from './colors.ts'
 import { normalizeCruiseValue } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
+import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents.ts'
 import { LocalStorageTemplateStore, templateFromTask, templateToNewInput } from './task-templates.ts'
 import { LocalStorageRunPresetStore } from './run-presets.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
@@ -451,6 +452,13 @@ export interface ControllerDeps {
   presetStore?: import('./presets.ts').PresetStore
   /** Run-preset persistence; same synced/local split as {@link presetStore}. */
   runPresetStore?: import('./run-presets.ts').RunPresetStore
+  /**
+   * Applied-preset ledger (device-local display hint — which preset the
+   * board last composed each session from). Absent = the localStorage
+   * default. The host offers no preset read-back, so without this the
+   * session's Agent row can only ever read "部署默认".
+   */
+  sessionAgentStore?: import('./session-agents.ts').SessionAgentStore
   /**
    * Template-library persistence (device-local like drafts — templates are
    * personal starters, not board truth). Absent = the localStorage default.
@@ -938,14 +946,25 @@ export class BoardController {
     return this.deps.questionRpc?.cancel(rpcId) ?? Promise.resolve(false)
   }
 
-  /** The session's real workspace root + composed agent preset (native list summary). */
+  /** The session's real workspace root + composed agent preset.
+   *
+   *  Truth order (the "显示的必须是生效的" law): the host's served
+   *  `summary.agentPreset` first (a future host may serve it — costs nothing
+   *  to prefer), then the board's applied-preset ledger (what THIS board
+   *  successfully composed the session from — the only source that knows
+   *  today), else absent ("部署默认"). Reading the host field alone is how
+   *  the row lied 100% of the time: the field is declared "when known" but
+   *  no host serves it.
+   */
   sessionInfo(sessionId: string | undefined): { cwd?: string; agentPreset?: string } | undefined {
     if (sessionId === undefined) return undefined
     const summary = this.deps.sessions.list.getSnapshot().byId[sessionId]
     if (summary === undefined) return undefined
+    const applied = appliedPresetOf(this.deps.sessionAgentStore ?? new LocalStorageSessionAgentStore(), sessionId)
+    const agentPreset = summary.agentPreset ?? applied
     return {
       ...summary.cwd !== undefined ? { cwd: summary.cwd } : {},
-      ...summary.agentPreset !== undefined ? { agentPreset: summary.agentPreset } : {},
+      ...agentPreset !== undefined ? { agentPreset } : {},
     }
   }
 

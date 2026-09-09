@@ -20,6 +20,7 @@ import { SchedulerService } from '../core/scheduler.ts'
 import { LocalStorageTaskStore } from '../core/store.ts'
 import { LocalStoragePresetStore } from '../core/presets.ts'
 import { LocalStorageRunPresetStore } from '../core/run-presets.ts'
+import { LocalStorageSessionAgentStore, recordApplied } from '../core/session-agents.ts'
 import { BoardSyncClient, SyncedCruiseStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore } from '../core/host-sync.ts'
 import { createTranscriptReader } from './transcript-cache.ts'
 import { watchSessionActivity } from './board/activity-wake.ts'
@@ -384,6 +385,7 @@ export function apply(ctx: ClientContext): void {
       }
       return entry
     }
+    const sessionAgentStore = new LocalStorageSessionAgentStore()
     const exec = new ExecutionService({
       sessions: {
         list: sessions.list,
@@ -452,6 +454,15 @@ export function apply(ctx: ClientContext): void {
         return response.result.ok
           ? { ok: true as const }
           : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+      },
+      // Applied-preset ledger (the Agent row's fallback — the host offers no
+      // preset read-back, so the board remembers what it composed each
+      // session from; the execution service fires this on every successful
+      // switch, both paths). One store instance, shared with the
+      // controller's display side below.
+      onAgentApplied: (sessionId, preset) => {
+        const ledger = sessionAgentStore.load()
+        sessionAgentStore.save(recordApplied(ledger, sessionId, preset, Date.now()))
       },
       sendComment: (sessionId, text, mode, images) => sendComment(sessionId, text, images, mode),
       sendCommand,
@@ -720,6 +731,9 @@ export function apply(ctx: ClientContext): void {
       // synced one either way.
       presetStore: new SyncedPresetStore(sync, new LocalStoragePresetStore()),
       runPresetStore: new SyncedRunPresetStore(sync, new LocalStorageRunPresetStore()),
+      // The applied-preset ledger (the Agent row's fallback — shared with
+      // the execution service's onAgentApplied above).
+      sessionAgentStore,
       // A non-engine replica relays a user-initiated launch to the lease
       // holder (the host forwards it over the SSE command frame). Pre-sync
       // this replica is its own engine, so the relay is never used.
