@@ -1,4 +1,4 @@
-﻿# dsh-task-board — DSH Web GUI 任务看板插件
+# dsh-task-board — DSH Web GUI 任务看板插件
 
 在侧边栏底部「设置」旁（官方 `sidebar.footer.action` 槽）增加**任务看板**入口：多列看板管理任务，任务以 DSH 自身的会话机制
 **真实执行**，状态实时回写卡片。不修改 DSH 源码，卸载即恢复原状；任务数据持久化在 DSH

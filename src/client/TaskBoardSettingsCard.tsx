@@ -8,6 +8,7 @@
 import type { InjectFace, PropsLocale, SnapshotSelector } from './platform.ts'
 import type { SnapshotStore } from './platform.ts'
 import { PluginSettingsCard, BooleanField } from './PluginSettingsCard.tsx'
+import packageJson from '../../package.json'
 import { CardForm, booleanField, type CardActions, type CardShell, type FieldState as CardFieldState, type SettingsScopeLike } from './settings-form.ts'
 
 /** The task-board fields this card edits (the namespace's full schema). */
@@ -92,6 +93,7 @@ export function TaskBoardSettingsCard(props: TaskBoardSettingsCardProps) {
       titleKey="settings.title"
       descriptionKey="settings.description"
       state={state}
+      version={(packageJson as { version?: string }).version ?? ''}
       onSave={props.save}
       onDiscard={props.discard}
     >

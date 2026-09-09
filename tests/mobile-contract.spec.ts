@@ -760,16 +760,12 @@ describe('template library wiring', () => {
     expect(ruleIn(compact, '.organizeBar')).not.toMatch(/"count actions"/)
   })
 
-  it('compact crowds nothing: modes share the left x, empty columns do not stretch', () => {
+  it('compact crowds nothing: modes share the left x', () => {
     // After the relocation the modes cluster is two pills — right-aligning
     // them leaves the left two-thirds void. Left shares the x-line with
-    // 返回/筛选. Empty columns collapse to header + quiet block instead of
-    // full-height voids (desktop keeps stretching its drop surface).
+    // 返回/筛选.
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(ruleIn(compact, '.boardRowTools .boardModes')).toMatch(/justify-self:\s*start/)
-    expect(ruleIn(compact, '.column[data-empty]')).toMatch(/align-self:\s*flex-start/)
-    const boardPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
-    expect(readFileSync(boardPath, 'utf8')).toContain("data-empty={tasks.length === 0 ? '' : undefined}")
   })
 
   it('the narrow rail keeps ONE rhythm (a single gap owns between)', () => {

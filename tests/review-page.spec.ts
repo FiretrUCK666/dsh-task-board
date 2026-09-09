@@ -320,10 +320,9 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
     const panelSource = readFileSync(panelPath, 'utf8')
     expect(panelSource).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-panel\]', 600\)/)
-    // The comments fold starts OPEN at every width (one grammar — the thread
-    // is the first screen, collapsible on tap); only the config head keeps
-    // the narrow-default-folded split.
-    expect(panelSource).toMatch(/useState\(true\)/)
+    // The comments default follows the PANEL width (open desktop, folded
+    // phone — an open thread would bury the conversation there); only the
+    // config head keeps a single narrow-default. Tap toggles either way.
     expect(panelSource).toMatch(/useState\(!narrowPanel\)/)
     const framePath = fileURLToPath(new URL('../src/client/board/SessionFrame.tsx', import.meta.url))
     expect(readFileSync(framePath, 'utf8')).toContain('data-dsh-taskboard-panel=""')

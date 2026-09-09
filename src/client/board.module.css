@@ -5732,14 +5732,6 @@ button.interactionOption:hover {
     flex: 0 0 clamp(200px, 46cqw, 320px);
   }
 
-  /* Empty columns don't stretch: a full-height void reads as "missing".
-     Header + a short quiet block is the whole empty column (non-empty
-     columns keep stretching). Desktop keeps stretching everywhere (its
-     drop-target surface stays large). */
-  .column[data-empty] {
-    align-self: flex-start;
-  }
-
   /* The compact column navigator: FIVE EQUAL cells, one tap jumps that status
      column into view. Content-width pills overflowed a phone board (the tab
      strip itself needed a horizontal swipe — a navigator you cannot see is no
@@ -5750,7 +5742,10 @@ button.interactionOption:hover {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 6px;
-    padding: 1px 0 4px;
+    /* Bottom breathing before the track: the tab strip is a pale block and
+       the column headers start with their own dot row — 4px fused them into
+       one squeezed band (tab strip vs column heads挤在一起）. */
+    padding: 1px 0 8px;
     overflow-x: visible;
   }
 

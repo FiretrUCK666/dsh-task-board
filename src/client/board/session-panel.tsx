@@ -767,8 +767,8 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   const [commentsAtBottom, setCommentsAtBottom] = useState(true)
   // Both folds start with the config head FOLDED on a phone: the
   // conversation and the send box are the first screen, while the comments
-  // fold starts OPEN at every width (one grammar — the thread is always the
-  // first screen, collapsible on tap). A wide rail absorbs the config
+  // fold starts OPEN on desktop and FOLDED on a phone (one grammar —
+  // collapsible on tap at every width). A wide rail absorbs the config
   // (two-column config grid), so it starts open there. The signal is the PANEL's own width (the same
   // surface the CSS container query measures, via `useSurfaceNarrow`) — NOT the
   // viewport: a mid-size window with the shell sidebar open already renders the
@@ -776,10 +776,11 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // followed the viewport would disagree with what the user is looking at.
   const [narrowPanel, foldsRef] = useSurfaceNarrow('[data-dsh-taskboard-panel]', 600)
   const [headOpen, setHeadOpen] = useState(!narrowPanel)
-  // The comments fold starts OPEN at every width (one grammar, desktop and
-  // phone): the thread is the first screen, and the Disclosure row collapses
-  // it on tap. Only the config head starts folded on a phone.
-  const [commentsOpen, setCommentsOpen] = useState(true)
+  // The comments default follows the PANEL width (same surface the CSS
+  // queries): open on desktop (the thread is the first screen beside the
+  // conversation), folded on a phone (an open thread would bury the
+  // conversation + context — the tap toggles either way, one grammar).
+  const [commentsOpen, setCommentsOpen] = useState(!narrowPanel)
   const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
   const { measure: onCommentsScroll, jumpToBottom: jumpComments } = useFollowScroll(
     commentsScrollRef, commentsAtBottom, setCommentsAtBottom, threadFingerprint,
@@ -844,13 +845,15 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             />
           </Disclosure>
         </div>
-        {/* The comments: ONE Disclosure fold, open at every width. OPENED =
-            the thread box with its own capped scroll (the desktop grammar,
-            both widths — 滑到最新 drives this box, the follow hook resolves
-            the real scroller). A pending interaction FORCE-opens it — the
-            InteractionCard carries the answer affordance (in place on legacy
-            hosts, navigate-to-answer on 0.1.5), so a collapsed fold can never
-            hide it; the summary names that wait too. */}
+        {/* The comments: ONE Disclosure fold, open by default on desktop and
+            folded by default on a phone (an open thread would bury the
+            conversation + context there; the tap toggles either way).
+            OPENED = the thread box with its own capped scroll (the desktop
+            grammar, both widths — 滑到最新 drives this box, the follow hook
+            resolves the real scroller). A pending interaction FORCE-opens
+            it — the InteractionCard carries the answer affordance (in place
+            on legacy hosts, navigate-to-answer on 0.1.5), so a collapsed
+            fold can never hide it; the summary names that wait too. */}
         <div className={css.sessionRailComments} data-open={commentsOpen || interaction !== undefined}>
           <Disclosure
             title={t('review.comments')}
