@@ -37,8 +37,10 @@ export function percentileOf(sorted: readonly number[], p: number): number | und
   return sorted[rank]
 }
 
-/** Done task count per week over the trailing window (done instants read
- *  from the ledger: the last `done` entry of each task now in done). */
+/** Done task count per week over the trailing window. The atom is the
+ *  COMPLETION EVENT (the last `done` entry in the ledger), never the current
+ *  column: a task revived for a follow-up comment keeps the completion it
+ *  already earned (columns aggregate sessions, history records events). */
 export function throughputPerWeek(
   tasks: readonly Pick<TaskRecord, 'status' | 'statusHistory'>[],
   now: number = Date.now(),
@@ -46,7 +48,6 @@ export function throughputPerWeek(
   const floor = now - THROUGHPUT_WINDOW_MS
   let count = 0
   for (const task of tasks) {
-    if (task.status !== 'done') continue
     const history = task.statusHistory
     if (history === undefined) continue
     const doneAt = history.filter(entry => entry.status === 'done').map(entry => entry.at).pop()

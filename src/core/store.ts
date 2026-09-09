@@ -244,20 +244,35 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     const priority = normalizePriority((row as Record<string, unknown>).priority)
     if (priority !== undefined) task.priority = priority
     else delete task.priority
-    // Status history: valid {status, at} entries survive in order (legacy
-    // rows simply start unrecorded — treated as "always this column").
+    // Status history: valid {status, positive at} entries survive in
+    // chronological order, then align to the row's column — three laws, one
+    // place: (1) stable-sort by instant; (2) an empty/absent ledger backfills
+    // the birth column from createdAt (known birth beats "always this
+    // column"); (3) a diverged last entry appends the current column at
+    // updatedAt (the column is always the history's last entry).
     const rawHistory = (row as Record<string, unknown>).statusHistory
+    const birthAt = typeof task.createdAt === 'number' && Number.isFinite(task.createdAt) && task.createdAt > 0
+      ? task.createdAt
+      : task.updatedAt
     if (Array.isArray(rawHistory)) {
       const history = rawHistory
         .filter((entry): entry is { status: TaskStatus; at: number } =>
           typeof entry === 'object' && entry !== null
           && isTaskStatus((entry as Record<string, unknown>).status)
           && typeof (entry as Record<string, unknown>).at === 'number'
-          && Number.isFinite((entry as Record<string, unknown>).at))
+          && Number.isFinite((entry as Record<string, unknown>).at)
+          && ((entry as Record<string, unknown>).at as number) > 0)
         .map(entry => ({ status: entry.status, at: entry.at }))
-      if (history.length > 0) task.statusHistory = history
-      else delete task.statusHistory
-    } else delete task.statusHistory
+        .sort((a, b) => a.at - b.at)
+      if (history.length === 0) history.push({ status: task.status, at: birthAt })
+      const last = history[history.length - 1]
+      if (last !== undefined && last.status !== task.status) {
+        history.push({ status: task.status, at: task.updatedAt })
+      }
+      task.statusHistory = history
+    } else {
+      task.statusHistory = [{ status: task.status, at: birthAt }]
+    }
     // Labels: normalized (lowercase/dedupe/cap) or absent.
     const labels = normalizeLabels((row as Record<string, unknown>).labels)
     if (labels !== undefined) task.labels = labels
@@ -320,14 +335,43 @@ export class InMemoryTaskStore implements TaskStore {
   private ledger: TaskRecord[] = []
 
   load(): TaskRecord[] {
-    return this.ledger.map(task => ({ ...task, executions: [...task.executions] }))
+    return this.ledger.map(cloneRecord)
   }
 
   save(tasks: readonly TaskRecord[]): void {
-    this.ledger = tasks.map(task => ({ ...task, executions: [...task.executions] }))
+    this.ledger = tasks.map(cloneRecord)
   }
 
   clear(): void {
     this.ledger = []
   }
+}
+
+/** Deep-copy one ledger row (every nested array gets its own identity —
+ *  cloning `executions` while aliasing `statusHistory` is exactly how a
+ *  reader's push pollutes the store). One function, both directions. */
+function cloneRecord(task: TaskRecord): TaskRecord {
+  const next: TaskRecord = { ...task, executions: [...task.executions] }
+  if (task.statusHistory !== undefined) {
+    next.statusHistory = task.statusHistory.map(entry => ({ ...entry }))
+  }
+  if (task.binds !== undefined) next.binds = task.binds.map(bind => ({ ...bind }))
+  if (task.labels !== undefined) next.labels = [...task.labels]
+  if (task.promptImages !== undefined) {
+    next.promptImages = task.promptImages.map(image => ({ ...image }))
+  }
+  if (task.promptFiles !== undefined) {
+    next.promptFiles = task.promptFiles.map(file => ({ ...file }))
+  }
+  if (task.rules !== undefined) next.rules = task.rules.map(rule => ({ ...rule }))
+  if (task.hidden !== undefined) {
+    next.hidden = {
+      ...task.hidden,
+      ...(task.hidden.executions !== undefined ? { executions: [...task.hidden.executions] } : {}),
+      ...(task.hidden.sessions !== undefined ? { sessions: [...task.hidden.sessions] } : {}),
+    }
+  }
+  if (task.removedSessions !== undefined) next.removedSessions = [...task.removedSessions]
+  if (task.sessionsOrder !== undefined) next.sessionsOrder = [...task.sessionsOrder]
+  return next
 }

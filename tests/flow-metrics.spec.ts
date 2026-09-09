@@ -49,6 +49,13 @@ describe('throughputPerWeek (done tasks, trailing 28d)', () => {
     expect(throughputPerWeek(tasks, NOW)).toBe(0.25)
     expect(THROUGHPUT_WINDOW_MS).toBe(28 * DAY)
   })
+
+  it('keeps a completion earned before a revival (columns aggregate, history records)', () => {
+    const tasks = [
+      { status: 'todo' as const, statusHistory: history(['running', NOW - 7 * DAY], ['done', NOW - 7 * DAY], ['todo', NOW - DAY]) },
+    ]
+    expect(throughputPerWeek(tasks, NOW)).toBe(0.25)
+  })
 })
 
 describe('flowSummaryOf (samples-gated)', () => {

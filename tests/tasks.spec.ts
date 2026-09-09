@@ -161,6 +161,9 @@ describe('promoteToColumnTop', () => {
     const promoted = promoteToColumnTop([a, b, c, backlogTask], 'c', 'backlog', NOW + 1)
     expect(promoted.find(task => task.id === 'c')?.status).toBe('backlog')
     expect(promoted.find(task => task.id === 'c')?.order).toBe(0)
+    // Cross-column promotion records the move in the history.
+    expect(promoted.find(task => task.id === 'c')?.statusHistory)
+      .toEqual([{ status: 'todo', at: NOW }, { status: 'backlog', at: NOW + 1 }])
     // The source column keeps its own keys (gaps are harmless).
     expect(keyed(promoted)).toEqual({ a: 0, b: 1, e: 1, c: 0 })
   })
@@ -1004,5 +1007,14 @@ describe('statusHistory (column-move ledger)', () => {
     const touched = withStatus(moved, 'running', NOW + 2)
     expect(touched.statusHistory).toEqual(moved.statusHistory)
     expect(touched.updatedAt).toBe(NOW + 2)
+  })
+
+  it('withStatus backfills the birth column for legacy rows (honest lower bound)', () => {
+    const legacy = { ...createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a'), statusHistory: undefined, updatedAt: NOW + 5 }
+    const moved = withStatus(legacy, 'running', NOW + 10)
+    expect(moved.statusHistory).toEqual([
+      { status: 'todo', at: NOW + 5 },
+      { status: 'running', at: NOW + 10 },
+    ])
   })
 })

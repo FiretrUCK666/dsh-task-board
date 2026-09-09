@@ -3905,7 +3905,7 @@ export class BoardController {
           ...msg !== undefined && msg.text === undefined && msg.hasImage ? { imageOnly: true } : {},
         })],
       }
-      return refine || withRound.status === 'running' ? withRound : { ...withRound, status: 'running' }
+      return refine || withRound.status === 'running' ? withRound : withStatus(withRound, 'running', now)
     })
     if (!changed) return false
     this.activityBook.externalSince.set(sessionId, now)

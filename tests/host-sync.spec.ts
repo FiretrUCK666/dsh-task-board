@@ -316,17 +316,22 @@ describe('BoardSyncClient commit', () => {
     await timers.advance(16_100)
     expect(t.calls.commit).toHaveLength(5)
     await timers.advance(30_100)
-    expect(t.calls.commit).toHaveLength(6)
-    // Budget spent: no more timers spin against the dead host…
+    // Six chain attempts park the writer; the poll landing on the same beat
+    // then proves reachability and earns one (failing, silent) probe.
+    expect(t.calls.commit).toHaveLength(7)
+    // Parked means no SELF-SPUN timers — but every successful poll proves
+    // reachability and earns one probe (here the host is still down, so the
+    // probe fails back into silence). Timer loops chain one beat per advance,
+    // so a 120s jump runs exactly one poll beat = one probe.
     await timers.advance(120_000)
-    expect(t.calls.commit).toHaveLength(6)
+    expect(t.calls.commit).toHaveLength(8)
     // …but the dirty state is kept: the view still serves the local edit…
     expect(client.view().tasks.map(entry => entry.id)).toEqual(['a'])
     // …and the next local write reopens the cycle with a fresh budget.
     t.setCommitFails(false)
     client.setTasks([task('a'), task('b')])
     await timers.advance(300)
-    expect(t.calls.commit).toHaveLength(7)
+    expect(t.calls.commit).toHaveLength(9)
   })
 
   it('a parked writer probes once when a new remote truth arrives', async () => {
@@ -340,15 +345,15 @@ describe('BoardSyncClient commit', () => {
     await timers.advance(8_100)
     await timers.advance(16_100)
     await timers.advance(30_100)
-    expect(t.calls.commit).toHaveLength(6) // parked
+    expect(t.calls.commit).toHaveLength(7) // parked (six chain + one poll probe)
     // The host recovers AND a remote row lands: the poll adopts it and the
     // parked writer probes once without any user write.
     t.setCommitFails(false)
     const remote = applyCommit(t.getDoc(), commitOf({ clientId: 'other', tasks: [task('b', T0 + 10)] }), T0 + 10)
     t.setDoc(remote)
-    await timers.advance(30_100) // the poll beat adopts + probes…
-    await timers.advance(300) // …and the probe's debounce flush lands
-    expect(t.calls.commit).toHaveLength(7)
+    await timers.advance(30_100) // the poll beat adopts…
+    await timers.advance(300) // …and the probe flush lands
+    expect(t.calls.commit).toHaveLength(8)
     expect(client.view().tasks.map(entry => entry.id).sort()).toEqual(['a', 'b'])
   })
 
@@ -365,7 +370,7 @@ describe('BoardSyncClient commit', () => {
     await timers.advance(8_100)
     await timers.advance(16_100)
     await timers.advance(30_100)
-    expect(t.calls.commit).toHaveLength(6)
+    expect(t.calls.commit).toHaveLength(7) // six chain + one poll probe
     // A remote row lands while parked: the poll adopts it…
     const remote = applyCommit(t.getDoc(), commitOf({ clientId: 'other', tasks: [task('b', T0 + 10)] }), T0 + 10)
     t.setDoc(remote)

@@ -585,9 +585,12 @@ export class BoardSyncClient {
       this.commitAttempts += 1
       if (this.commitAttempts > MAX_COMMIT_ATTEMPTS) {
         // Budget spent: park the dirty state (reads keep converging through
-        // poll/SSE; the next local write reopens the cycle with a fresh
-        // budget because the user is watching then). No more timers.
-        this.log('[dsh-task-board] commit retry budget spent (keeping dirty state parked until the next local write)')
+        // poll/SSE; a user write or a reachability probe reopens the cycle).
+        // No more timers. The transition logs once — budget-neutral probes
+        // re-entering here stay silent.
+        if (this.commitAttempts === MAX_COMMIT_ATTEMPTS + 1) {
+          this.log('[dsh-task-board] commit retry budget spent (keeping dirty state parked)')
+        }
         return
       }
       // Backoff retry (2s → 4s → … capped) on its OWN timer lane: the failure
@@ -646,15 +649,18 @@ export class BoardSyncClient {
   /** Self-heal a parked writer: when a read proves the host reachable again
    *  (successful poll, reopened stream, foreground return) and dirty state
    *  waits with no timer driving it, probe once through the single funnel.
-   *  A failed probe falls straight back into backoff — reads gate retries,
-   *  never timers, so an idle tab never spams a dead host. */
+   *  The probe is BUDGET-NEUTRAL (it never restarts the retry cycle — a
+   *  failed probe falls straight back into silence, a success resets the
+   *  counter): otherwise every poll would reopen a full backoff chain and
+   *  parking would never hold. Only a real user write reopens the budget. */
   private probeParked(): void {
     if (this.mode !== 'synced' || this.disposed || this.inFlight !== undefined) return
     if (this.commitAttempts <= MAX_COMMIT_ATTEMPTS) return
     if (this.commitCancel !== undefined || this.backoffCancel !== undefined) return
     if (this.dirty.tasks === undefined && this.dirty.cruise === undefined
       && this.dirty.schedulePresets === undefined && this.dirty.runPresets === undefined) return
-    this.scheduleCommit()
+    this.commitAttempts = MAX_COMMIT_ATTEMPTS + 1
+    void this.flush()
   }
 
   /** Fetch only when the host revision moved past the baseline. */
@@ -673,12 +679,13 @@ export class BoardSyncClient {
       this.log('[dsh-task-board] board resync failed (keeping the last known truth)')
       return
     }
+    // Reachability and novelty are separate questions: ANY successful read
+    // proves the host is up, so a parked writer probes here — even when the
+    // doc is unchanged (a recovered host with no remote writes must still
+    // wake a parked writer; quiet idling never overrides self-heal).
+    this.probeParked()
     if (!result.available || result.unchanged || result.doc === undefined) return
     this.adopt(result.doc)
-    // A new remote truth proves reachability AND moves the merge base: a
-    // parked writer probes once here (routine unchanged polls stay silent —
-    // the park promise is quiet idling, not a 30s retry drip).
-    this.probeParked()
   }
 
   /** Renew (or take) the engine lease; publish SEAT changes (held AND the

@@ -201,6 +201,14 @@ describe('InMemoryTaskStore', () => {
     store.clear()
     expect(store.load()).toEqual([])
   })
+
+  it('deep-copies the status history (no shared entries)', () => {
+    const store = new InMemoryTaskStore()
+    store.save([createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')])
+    const loaded = store.load()
+    loaded[0].statusHistory!.push({ status: 'running', at: 2 })
+    expect(store.load()[0].statusHistory).toEqual([{ status: 'todo', at: 1 }])
+  })
 })
 
 describe('schedule persistence', () => {
@@ -359,16 +367,34 @@ describe('schedule persistence', () => {
   it('round-trips the status history and drops malformed entries', () => {
     const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
     const raw = [
-      { ...valid, id: 't-1', statusHistory: [{ status: 'todo', at: 1 }, { status: 'running', at: 2 }] },
-      { ...valid, id: 't-2', statusHistory: [{ status: 'nope', at: 1 }, { status: 'todo', at: 'x' }] },
+      { ...valid, id: 't-1', status: 'running', statusHistory: [{ status: 'todo', at: 1 }, { status: 'running', at: 2 }] },
+      { ...valid, id: 't-2', statusHistory: [{ status: 'nope', at: 1 }, { status: 'todo', at: 'x' }, { status: 'todo', at: -5 }] },
       { ...valid, id: 't-3', statusHistory: 'junk' },
       { ...valid, id: 't-4' },
     ]
     const parsed = parseLedger(JSON.stringify(raw))
     expect(parsed[0].statusHistory).toEqual([{ status: 'todo', at: 1 }, { status: 'running', at: 2 }])
-    expect(parsed[1].statusHistory).toBeUndefined()
-    expect(parsed[2].statusHistory).toBeUndefined()
-    // No history key at all: the seeded birth entry rides the row through.
+    // Junk or absent ledgers backfill the birth column (createdAt is the
+    // honest birth instant — "always this column" with a real timestamp).
+    expect(parsed[1].statusHistory).toEqual([{ status: 'todo', at: 1 }])
+    expect(parsed[2].statusHistory).toEqual([{ status: 'todo', at: 1 }])
     expect(parsed[3].statusHistory).toEqual([{ status: 'todo', at: 1 }])
+  })
+
+  it('aligns a diverged history tail to the row column', () => {
+    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 9, 't-1')
+    const raw = [
+      // Status says running but the ledger ends at todo: the column wins.
+      { ...valid, id: 't-1', status: 'running', statusHistory: [{ status: 'todo', at: 1 }] },
+      // Unordered entries sort stably by instant.
+      { ...valid, id: 't-2', status: 'done', statusHistory: [{ status: 'done', at: 8 }, { status: 'todo', at: 1 }, { status: 'running', at: 5 }] },
+    ]
+    const parsed = parseLedger(JSON.stringify(raw))
+    expect(parsed[0].statusHistory).toEqual([{ status: 'todo', at: 1 }, { status: 'running', at: 9 }])
+    expect(parsed[1].statusHistory).toEqual([
+      { status: 'todo', at: 1 },
+      { status: 'running', at: 5 },
+      { status: 'done', at: 8 },
+    ])
   })
 })

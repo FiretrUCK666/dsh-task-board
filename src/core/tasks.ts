@@ -660,14 +660,17 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
 /** Clone a task with an updated status and a fresh updatedAt. A real column
  *  move appends to the status history (cycle/streak/throughput derivations
  *  read it — without it every duration is a guess); a same-status touch only
- *  refreshes updatedAt. */
+ *  refreshes updatedAt. A legacy row moving for the first time backfills its
+ *  birth column from its own updatedAt (an honest lower bound — "at least
+ *  here since then", never a fabricated instant). */
 export function withStatus(task: TaskRecord, status: TaskStatus, now: number): TaskRecord {
   if (task.status === status) return { ...task, updatedAt: now }
+  const birth = task.statusHistory === undefined ? [{ status: task.status, at: task.updatedAt }] : []
   return {
     ...task,
     status,
     updatedAt: now,
-    statusHistory: [...(task.statusHistory ?? []), { status, at: now }],
+    statusHistory: [...birth, ...(task.statusHistory ?? []), { status, at: now }],
   }
 }
 
@@ -1229,7 +1232,9 @@ export function promoteToColumnTop(
     .sort((a, b) => a.order - b.order)
   return tasks.map(task => {
     if (task.id === movedId) {
-      return { ...task, status: targetStatus, order: 0, updatedAt: now }
+      // Column changes funnel through withStatus (same law as applyCardOrder:
+      // a same-column promotion only refreshes updatedAt, a real move appends).
+      return withStatus({ ...task, order: 0 }, targetStatus, now)
     }
     if (task.status === targetStatus) {
       // Shifted siblings carry the stamp too (see applyCardOrder's rule: an
