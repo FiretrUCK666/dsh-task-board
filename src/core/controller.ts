@@ -1274,8 +1274,9 @@ export class BoardController {
   /**
    * 缺则补、填则守：任务被写入（创建/编辑）或被真正启动（唯一发射门 launchTask）
    * 的时刻，空标题/空描述从执行 Prompt 补齐（`supplementLaunchFields` 纯函数）——
-   * 已填字段永不覆盖。这是整个特性的唯一作用点：任何路径（手动/重复/接续链/定时/
-   * 巡航/自动化/创建/编辑）都得到同一套语义，卡片永远不会无故空着头。
+   * 已填字段永不覆盖。这是整个特性的唯一作用点：任何创建与启动路径（手动/
+   * 重复/接续链/定时/巡航/自动化/创建/启动）都得到同一套语义，卡片在出生与
+   * 开跑时永远不会无故空着头；编辑路径永不补（清空即意图）。
    */
   private supplementedTask(task: TaskRecord): TaskRecord {
     const supplements = supplementLaunchFields(task)
@@ -1955,7 +1956,10 @@ export class BoardController {
       applied.color = patch.color !== undefined && patch.color !== '' ? patch.color : undefined
     }
     this.tasks = this.tasks.map(candidate => candidate.id === id
-      ? this.supplementedTask({ ...candidate, ...applied, updatedAt: this.now() })
+      // Edit path never supplements: clearing the title is a real intent
+      // (supplementing runs at birth and at launch only — "填则守" guards
+      // what the user filled AND what the user just cleared).
+      ? { ...candidate, ...applied, updatedAt: this.now() }
       : candidate)
     this.persistAndNotify()
     return true

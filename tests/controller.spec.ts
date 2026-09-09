@@ -429,17 +429,17 @@ describe('task mutations', () => {
     expect(persisted.permission).toBeUndefined()
   })
 
-  it('a blank edit title is allowed when there is no prompt; an unknown task is rejected without touching state', () => {
+  it('a blank edit title is allowed; clearing the title sticks (edit never supplements)', () => {
     const { controller, store } = makeController()
     const bare = controller.createTask({ title: 'x', description: '', prompt: '' })!
     // No prompt = nothing to derive: a blank title stays legal (未命名 card).
     expect(controller.updateTask(bare.id, { title: '   ' })).toBe(true)
     expect(store.load()[0].title).toBe('')
-    // With a prompt present the 缺则补 supplement fills a blank head at once
-    // (the user demand: empty title/description auto-fill from the prompt).
+    // A prompt present does NOT backfill on edit (supplement runs at birth
+    // and at launch only) — clearing the title is intent, and it sticks.
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     expect(controller.updateTask(task.id, { title: '   ' })).toBe(true)
-    expect(store.load().find(candidate => candidate.id === task.id)?.title).toBe('run')
+    expect(store.load().find(candidate => candidate.id === task.id)?.title).toBe('')
     expect(controller.updateTask('missing', { title: 'y' })).toBe(false)
   })
 
@@ -4526,17 +4526,20 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(bare.description).toBe('')
   })
 
-  it('updateTask supplements a blank head once a prompt arrives (编辑时缺则补)', () => {
+  it('updateTask never supplements: edits fill AND clear freely', () => {
     const { controller } = makeController()
     const task = controller.createTask({ title: '', description: '', prompt: '' })!
     expect(task.title).toBe('') // before the prompt there is nothing to derive
+    // A later prompt does NOT backfill the head (supplement runs at birth
+    // and at launch only) — the edit writes exactly what it says.
     controller.updateTask(task.id, { prompt: '画一只猫\n并解释配色' })
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
-    expect(row.title).toBe('画一只猫')
-    expect(row.description).toBe('画一只猫\n并解释配色')
-    // 填则守: an edit that keeps the (filled) fields never touches them.
-    controller.updateTask(task.id, { prompt: '画一只狗' })
-    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.title).toBe('画一只猫')
+    expect(row.prompt).toBe('画一只猫\n并解释配色')
+    expect(row.title).toBe('')
+    // And clearing the title sticks (clearing is intent, not absence).
+    controller.updateTask(task.id, { title: '画一只猫' })
+    controller.updateTask(task.id, { title: '' })
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.title).toBe('')
   })
 
   it('every real launch supplements: a seeded blank-head task picked up by the CRUISE runs with its head', async () => {
