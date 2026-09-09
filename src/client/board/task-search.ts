@@ -181,17 +181,17 @@ export function boardShortcutOf(
   return undefined
 }
 
-/** Qualifier keys the filter understands (the completion source of truth —
- *  adding a qualifier here teaches the parser, the cheatsheet hint and the
- *  suggestion list at once). */
-export const QUALIFIER_KEYS: readonly string[] = ['has:', 'is:', 'ws:', 'label:']
-
 /** Enumerated qualifier values (keys that take only these; `ws:`/`label:`
  *  take free text and complete nothing). */
 const QUALIFIER_VALUES: Readonly<Record<string, readonly string[]>> = {
   'has:': ['has:auto', 'has:color', 'has:priority'],
   'is:': ['is:unread', 'is:read'],
 }
+
+/** Qualifier keys the filter understands — derived from the enumerated table
+ *  plus the free-text keys (ONE source: adding a qualifier here teaches the
+ *  parser, the cheatsheet hint and the suggestion list at once). */
+export const QUALIFIER_KEYS: readonly string[] = [...Object.keys(QUALIFIER_VALUES), 'ws:', 'label:']
 
 /** All enumerated values (every `key:value` the completion can offer). */
 const ENUMERATED_VALUES: readonly string[] = Object.values(QUALIFIER_VALUES).flat()
@@ -219,12 +219,14 @@ export function completeBoardQuery(query: string): string[] {
 }
 
 /** Assemble a full query from a completion candidate: the last token is
- *  replaced in place (earlier tokens, their case and the separating spaces
- *  survive — a native datalist swaps the WHOLE value, so candidates must
- *  arrive as whole queries, never bare tokens). */
+ *  replaced in place (earlier tokens, their case and every separator survive
+ *  — a native datalist swaps the WHOLE value, so candidates must arrive as
+ *  whole queries, never bare tokens). A trailing separator means a fresh
+ *  empty token: the candidate appends instead of replacing. */
 export function applyCompletion(query: string, candidate: string): string {
-  const cut = Math.max(query.lastIndexOf(' '), query.lastIndexOf('\t'), query.lastIndexOf('\n'))
-  return cut < 0 ? candidate : `${query.slice(0, cut + 1)}${candidate}`
+  if (query === '' || /\s$/.test(query)) return `${query}${candidate}`
+  const cut = query.search(/\S+\s*$/)
+  return cut < 0 ? candidate : `${query.slice(0, cut)}${candidate}`
 }
 
 /** One cheatsheet row: the key plus its current-language description. */

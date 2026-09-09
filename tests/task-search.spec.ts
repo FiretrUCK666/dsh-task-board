@@ -4,7 +4,7 @@
  * matches all.
  */
 import { describe, expect, it } from 'vitest'
-import { boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, parseBoardQuery, taskHaystack } from '../src/client/board/task-search.ts'
+import { applyCompletion, boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, parseBoardQuery, taskHaystack } from '../src/client/board/task-search.ts'
 
 const task = {
   title: '给猫画一幅画',
@@ -220,5 +220,25 @@ describe('completeBoardQuery (qualifier key completion)', () => {
     expect(completeBoardQuery('label:')).toEqual([])
     expect(completeBoardQuery('ws:"深')).toEqual([])
     expect(completeBoardQuery('has:zzz')).toEqual([])
+  })
+
+  it('offers nothing for an already-complete enumerated value', () => {
+    expect(completeBoardQuery('has:auto')).toEqual([])
+    expect(completeBoardQuery('is:read')).toEqual([])
+  })
+})
+
+describe('applyCompletion (whole-query assembly)', () => {
+  it('replaces the last token in place, preserving the head verbatim', () => {
+    expect(applyCompletion('h', 'has:')).toBe('has:')
+    expect(applyCompletion('猫 h', 'has:')).toBe('猫 has:')
+    expect(applyCompletion('猫  has:a', 'has:auto')).toBe('猫  has:auto')
+    expect(applyCompletion('HAS', 'has:')).toBe('has:')
+  })
+
+  it('appends after a trailing separator and handles exotic whitespace', () => {
+    expect(applyCompletion('', 'has:')).toBe('has:')
+    expect(applyCompletion('猫 ', 'has:')).toBe('猫 has:')
+    expect(applyCompletion('a\rhas:a', 'has:auto')).toBe('a\rhas:auto')
   })
 })

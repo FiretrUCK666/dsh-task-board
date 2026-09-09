@@ -181,4 +181,9 @@ describe('freezeFeed (read-freeze behind the pill)', () => {
     expect(freezeFeed([1, 2], 5)).toEqual({ frozen: [1, 2], fresh: 0 })
     expect(freezeFeed([], 0)).toEqual({ frozen: [], fresh: 0 })
   })
+
+  it('a negative base means unfrozen (first frame shows live, zero queued)', () => {
+    expect(freezeFeed([1, 2, 3], -1)).toEqual({ frozen: [1, 2, 3], fresh: 0 })
+    expect(freezeFeed([], -1)).toEqual({ frozen: [], fresh: 0 })
+  })
 })

@@ -513,8 +513,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   }
 
   /** New-task copy of this task ("复制为模板"): fresh card, same content, run
-   *  config AND automation rule, landing in 待规划; runs/links are not
-   *  copied (controller.copyTask). */
+   *  config and inert shape (due/priority/labels/color), landing in 待规划;
+   *  runs/links/session rules are not copied, the schedule rides disarmed
+   *  (controller.copyTask). */
   const duplicateTask = (): void => {
     const copy = controller.copyTask(current.id)
     if (copy !== undefined) controller.closeTask()
