@@ -1729,15 +1729,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   }
                   return foldedVisible.map(entry => {
                     // Unfolded heads render exactly like before; folded groups
-                    // keep one primary head action (go/标已读) plus a chevron
-                    // toggle (same disclosure law as the feed groups) — full
-                    // triage (snooze/approve per session) lives one tap away
-                    // in members, so the N-1 buried sessions stay reachable
-                    // while the collapsed row stays quiet.
+                    // keep head actions by MEMBER KINDS present (waiting rows
+                    // offer go, review rows offer 标已读 — both when mixed),
+                    // plus a chevron toggle (same disclosure law as the feed
+                    // groups) — full per-session triage (snooze/approve) lives
+                    // one tap away in members, so the N-1 buried sessions stay
+                    // reachable while the collapsed row stays quiet.
                     if (entry.count === 1) return renderNotifyRow(entry.head)
                     const foldedOpen = expandedFoldKey === entry.head.taskId
                     const head = entry.head
                     const headTitle = head.taskTitle.trim() === '' ? t('card.untitled') : head.taskTitle
+                    const headWaiting = entry.items.find(item => item.kind === 'waiting')
+                    const headHasReview = entry.items.some(item => item.kind === 'review')
                     return (
                       <li key={entry.head.taskId}>
                         <div className={css.notifyRow} data-kind={head.kind}>
@@ -1762,17 +1765,18 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                             <span className={css.notifySession} title={head.sessionId}>{head.sessionTitle}</span>
                           </button>
                           <span className={css.notifyActions}>
-                            {head.kind === 'waiting' ? (
+                            {headWaiting !== undefined && (
                               <button
                                 type="button"
                                 className={css.feedAction}
                                 onClick={() => {
-                                  if (!controller.openSession(head.sessionId)) setFailedSession(head.sessionId)
+                                  if (!controller.openSession(headWaiting.sessionId)) setFailedSession(headWaiting.sessionId)
                                 }}
                               >
                                 {t('board.notifyGoSession')}
                               </button>
-                            ) : (
+                            )}
+                            {headHasReview && (
                               <button
                                 type="button"
                                 className={css.feedAction}

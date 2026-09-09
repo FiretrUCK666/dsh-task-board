@@ -284,18 +284,21 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                 {task.schedule.runCount}/{task.schedule.maxRuns}
               </Chip>
             )}
-            {/* Blocked automation owns the slot (task schedule or any session
-                rule): one cause, one chip — the schedule/chain/progress text
-                yields instead of stacking four chips for it. */}
+            {/* Blocked automation owns the wording slot (task schedule or any
+                session rule): one cause, one chip — the schedule/batch text
+                yields instead of stacking four chips for it. Live progress
+                below is orthogonal and survives (see chaining). */}
             {blockedAutomation(task) && (
-              <Chip kind="error" fill={false} title={scheduleChipTitle(task)} label={scheduleChipTitle(task)}>
+              <Chip kind="error" fill={false} title={scheduleChipTitle(task)}>
                 {t('card.autoBlocked')}
               </Chip>
             )}
             {/* A live chain keeps the card in progress: the "接续中" chip
-                names the automation mode behind the running state. */}
-            {task.schedule?.enabled === true && task.schedule.mode === 'chain' && task.status === 'running' && !blockedAutomation(task) && (
-              <Chip kind="warn" fill={false} title={t('card.chainingTitle')} label={t('card.chainingTitle')}>
+                names the automation mode behind the running state. It survives
+                blocked (a live run and a blocked rule are orthogonal causes —
+                hiding progress would lie about what is actually moving). */}
+            {task.schedule?.enabled === true && task.schedule.mode === 'chain' && task.status === 'running' && (
+              <Chip kind="warn" fill={false} title={t('card.chainingTitle')}>
                 {t('card.chaining')}
               </Chip>
             )}
@@ -303,7 +306,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                 "failure stopped the rule" at a glance, distinct from "success
                 awaiting confirmation". */}
             {pausedFailed && (
-              <Chip kind="error" fill={false} title={t('card.autoPausedFailedTitle')} label={t('card.autoPausedFailedTitle')}>
+              <Chip kind="error" fill={false} title={t('card.autoPausedFailedTitle')}>
                 {t('card.autoPausedFailed')}
               </Chip>
             )}

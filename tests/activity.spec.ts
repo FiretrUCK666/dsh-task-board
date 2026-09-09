@@ -162,4 +162,15 @@ describe('splitGroupItems (expanded-group cap)', () => {
       row(`a|${index}`, 'a', 'comment', 100 + index))
     expect(splitGroupItems(items).rest).toBe(0)
   })
+
+  it('normalizes illegal limits instead of lying about counts', () => {
+    const items = Array.from({ length: 3 }, (_, index) =>
+      row(`a|${index}`, 'a', 'comment', 100 + index))
+    // Negative → nothing shown, all three counted as rest.
+    expect(splitGroupItems(items, -1)).toEqual({ shown: [], rest: 3 })
+    // NaN → the default cap (short groups pass through untouched).
+    expect(splitGroupItems(items, Number.NaN)).toEqual({ shown: items, rest: 0 })
+    // Fractions floor to whole rows.
+    expect(splitGroupItems(items, 2.7).shown).toHaveLength(2)
+  })
 })

@@ -33,7 +33,9 @@ export function Chip({ kind = 'neutral', fill = true, title, label, className, i
   /** Pill look with neutral fill; false = plain semibold text. */
   fill?: boolean
   title?: string
-  /** Accessible name (defaults to the visible text when absent). */
+  /** Accessible name; defaults to `title` so a titled chip can never regress
+   *  to hover-only again — pass an explicit label only to say something the
+   *  title does not. */
   label?: string
   className?: string
   /** Lead glyph (activity spinner, icon) with its own box geometry — kept a
@@ -46,7 +48,7 @@ export function Chip({ kind = 'neutral', fill = true, title, label, className, i
       className={`${css.chip}${fill ? ` ${css.chipFill}` : ''}${className !== undefined ? ` ${className}` : ''}`}
       data-kind={kind}
       title={title}
-      aria-label={label}
+      aria-label={label ?? title}
     >
       {icon !== undefined && <span className={css.chipLead}>{icon}</span>}
       <span className={css.chipBody}>{children}</span>

@@ -138,15 +138,18 @@ export const GROUP_ITEM_LIMIT = 10
  * Split a group's rows into the shown head and the folded remainder count.
  * Generic over the row shape (feed rows and notification rows share the cap
  * discipline, never a second copy): the header always counts the full group
- * (the count never lies about the cap). Pure so the cap unit-tests without
- * rendering.
+ * (the count never lies about the cap). The limit normalizes defensively
+ * (non-finite → the default cap, negatives → 0, fractions → floor): an open
+ * generic must never lie about counts no matter who calls it next. Pure so
+ * the cap unit-tests without rendering.
  */
 export function splitGroupItems<T>(
   items: readonly T[],
   limit: number = GROUP_ITEM_LIMIT,
 ): { shown: T[]; rest: number } {
-  if (items.length <= limit) return { shown: [...items], rest: 0 }
-  return { shown: items.slice(0, limit), rest: items.length - limit }
+  const capped = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : GROUP_ITEM_LIMIT
+  if (items.length <= capped) return { shown: [...items], rest: 0 }
+  return { shown: items.slice(0, capped), rest: items.length - capped }
 }
 
 /**
