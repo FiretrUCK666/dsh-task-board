@@ -277,6 +277,15 @@ describe('splitFilterTokens / removeFilterToken (overview chips)', () => {
     expect(splitFilterTokens('猫 ws:"深 夜"')).toEqual(['猫', 'ws:"深 夜"'])
   })
 
+  it('splits non-ws quotes like the parser does (single scanner, no fork)', () => {
+    // label:"a b": the parser reads two literal terms — the chips show two.
+    expect(splitFilterTokens('label:"a b"')).toEqual(['label:"a', 'b"'])
+    expect(parseBoardQuery('label:"a b"')).toEqual({ terms: ['label:"a', 'b"'], qualifiers: [] })
+    // Unclosed ws quote: literal terms on both sides.
+    expect(splitFilterTokens('ws:"深 夜')).toEqual(['ws:"深', '夜'])
+    expect(parseBoardQuery('ws:"深 夜').qualifiers).toEqual([])
+  })
+
   it('removes one token by index, out-of-range returns the query', () => {
     expect(removeFilterToken('猫 has:color', 0)).toBe('has:color')
     expect(removeFilterToken('猫 has:color', 1)).toBe('猫')

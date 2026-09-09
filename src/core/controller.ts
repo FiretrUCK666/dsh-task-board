@@ -1992,7 +1992,13 @@ export class BoardController {
    */
   moveTask(id: string, status: TaskStatus, beforeId?: string): void {
     const previous = this.tasks.find(task => task.id === id)
-    this.tasks = applyCardOrder(this.tasks, id, status, beforeId, this.now())
+    if (previous === undefined) return
+    const moved = applyCardOrder(this.tasks, id, status, beforeId, this.now())
+    // Same-spot no-op: the pure layer returns identical element refs when
+    // nothing moved — skip disarm checks AND persistence (no authorship, no
+    // dirty commit, no SSE churn for a drop that changed nothing).
+    if (moved.find(task => task.id === id) === previous) return
+    this.tasks = moved
     this.tasks = this.tasks.map(task => {
       if (task.id !== id) return task
       // Completion is a hard stop, not a pause. The rule's configuration
@@ -2003,7 +2009,7 @@ export class BoardController {
       // manual drag, rerun): leaving done resets the spent run budget so
       // re-arming resumes the same rule from zero. The rule itself stays
       // disarmed — only the counter clears, never the config.
-      if (previous?.status === 'done' && task.schedule !== undefined) {
+      if (previous.status === 'done' && task.schedule !== undefined) {
         return { ...task, schedule: { ...task.schedule, runCount: 0 } }
       }
       return task

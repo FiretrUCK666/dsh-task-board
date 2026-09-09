@@ -76,20 +76,22 @@ export interface BoardQualifier {
 export function parseBoardQuery(query: string): { terms: string[]; qualifiers: BoardQualifier[] } {
   const terms: string[] = []
   const qualifiers: BoardQualifier[] = []
-  // Quoted `ws:` values first (multi-word workspace names — the ONLY quoted
-  // key by design: enumerated values are closed sets and labels are
-  // spaceless single tokens, so neither can hold a space worth quoting).
-  // The remainder splits on whitespace as usual. An empty quote pair is left alone (it
-  // falls through to a literal term and matches nothing — never a silent
-  // pass-all), and so is an unclosed quote (a quote inside a value is never
-  // a facet value, so the token stays literal text).
-  const quoted: Array<{ key: string; value: string }> = []
-  const stripped = query.replace(/(^|\s)ws:"([^"]*)"/gi, (match, _space, value: string) => {
-    if (value.trim() !== '') quoted.push({ key: 'ws', value: value.trim().toLowerCase() })
-    return value.trim() === '' ? match : ' '
-  })
-  for (const raw of stripped.trim().toLowerCase().split(/\s+/)) {
-    if (raw === '') continue
+  // Tokenize first (single scanner — the overview chips remove exactly these
+  // units). Only `ws:"..."` spans stay atomic (the one quoted form: labels
+  // are spaceless single tokens and enumerated values are closed sets, so
+  // neither can hold a space worth quoting). An empty quote pair is left
+  // alone (it falls through to a literal term and matches nothing — never a
+  // silent pass-all), and so is an unclosed quote (a quote inside a value is
+  // never a facet value, so the token stays literal text).
+  for (const token of splitFilterTokens(query)) {
+    const quoted = /^ws:"([^"]*)"$/i.exec(token)
+    if (quoted !== null) {
+      const quotedValue = quoted[1] ?? ''
+      if (quotedValue.trim() !== '') qualifiers.push({ key: 'ws', value: quotedValue.trim().toLowerCase() })
+      else terms.push(token.toLowerCase())
+      continue
+    }
+    const raw = token.toLowerCase()
     const separator = raw.indexOf(':')
     if (separator > 0) {
       const key = raw.slice(0, separator)
@@ -107,7 +109,7 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
     }
     terms.push(raw)
   }
-  return { terms, qualifiers: [...quoted, ...qualifiers] }
+  return { terms, qualifiers }
 }
 
 /** Whether one qualifier holds (unknown facets read absent = no match).
@@ -279,29 +281,28 @@ export function matchCheatRow(row: CheatRow, query: string): boolean {
   return row.key.toLowerCase().includes(q) || row.text.toLowerCase().includes(q)
 }
 
-/** Split a filter query into removable tokens, quote-aware (`ws:"a b"` is
- *  ONE token — the overview chips remove exactly what the parser reads). */
+/** Split a filter query into removable tokens — THE one scanner both the
+ *  parser and the overview chips read, so chips remove exactly what the
+ *  parser sees. Only `ws:"..."` spans stay atomic (the one quoted form);
+ *  every other quote splits normally (unclosed/non-ws quotes are literal
+ *  text to the parser, so the chips must show them split too). */
 export function splitFilterTokens(query: string): string[] {
   const tokens: string[] = []
-  let current = ''
-  let quoted = false
-  const push = (): void => {
-    if (current !== '') tokens.push(current)
-    current = ''
-  }
-  for (const char of query) {
-    if (char === '"') {
-      quoted = !quoted
-      current += char
-      continue
+  const flush = (text: string): void => {
+    for (const part of text.split(/\s+/)) {
+      if (part !== '') tokens.push(part)
     }
-    if (!quoted && /\s/.test(char)) {
-      push()
-      continue
-    }
-    current += char
   }
-  push()
+  const pattern = /(^|\s)(ws:"[^"]*")/gi
+  let last = 0
+  let match: RegExpExecArray | null
+  pattern.lastIndex = 0
+  while ((match = pattern.exec(query)) !== null) {
+    flush(query.slice(last, match.index))
+    tokens.push(match[2] ?? match[0])
+    last = match.index + match[0].length
+  }
+  flush(query.slice(last))
   return tokens
 }
 
