@@ -1284,6 +1284,38 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           </div>
         </Dialog>
       )}
+      {/* Thumb bar (compact only — CSS gates visibility): the thumb-zone
+          shortcuts. Every member reuses its header handler verbatim
+          (setShowNew / notify / activity), so desktop and phone share one
+          behavior and there is nothing new to maintain. */}
+      <nav className={css.thumbBar} aria-label={t('board.thumbBar')}>
+        <span className={css.thumbNew}>
+          <Button variant="primary" onClick={() => { setShowNew(true) }}>
+            {t('board.new')}
+          </Button>
+        </span>
+        <button
+          type="button"
+          className={`${css.iconButton} ${css.notifyBell}`}
+          aria-label={t('board.notify')}
+          title={t('board.notify')}
+          onClick={() => { setShowNotify(true) }}
+        >
+          <Icon name="bell" />
+          {notes.length > 0 && (
+            <span className={css.notifyBadge} aria-hidden="true">
+              {notes.length > 99 ? '99+' : String(notes.length)}
+            </span>
+          )}
+        </button>
+        <Button
+          variant="ghost"
+          title={t('board.activityTitle')}
+          onClick={() => { setShowActivity(true) }}
+        >
+          {t('board.activity')}
+        </Button>
+      </nav>
     </div>
   )
 }

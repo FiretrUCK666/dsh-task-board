@@ -435,6 +435,16 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
 }
 
+/* Thumb bar: the board's thumb zone. display:none at base (desktop never
+   renders it — one behavior, not two); the compact block below pins it to
+   the board box bottom with the box-relative geometry the whole board uses
+   (never vw/vh — the anchor is [data-dsh-taskboard-view], absolute inset 0).
+   Members reuse the header's own handlers, so there is no second behavior
+   to maintain: 新建 (primary, stretches) + 通知铃 (badge included) + 动态. */
+.thumbBar {
+  display: none;
+}
+
 /* 安静的行内巡航状态：一个状态色圆点 + 12px 次级文字；仅在有内容时渲染，
    且永远不做成 0/0 的空状态。 */
 .boardStatus {
@@ -5668,8 +5678,9 @@ button.interactionOption:hover {
     overflow-x: auto;
     overflow-y: hidden;
     /* Hidden bar: covered by the shared :is() hidden-bar rule above. */
-    /* A little bottom room so the horizontal bar never sits under a card. */
-    padding-bottom: 2px;
+    /* Bottom room for the pinned thumb bar (bar + safe area), so the last
+       cards never slide underneath it. */
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
   .column {
@@ -5688,6 +5699,33 @@ button.interactionOption:hover {
     gap: 6px;
     padding: 1px 0 4px;
     overflow-x: visible;
+  }
+
+  /* The pinned thumb bar: 新建 stretches, the bell + 动态 keep their size.
+     Opaque surface + top hairline (floating translucency is banned — inner
+     surfaces stay solid); rides above the keyboard inset var, clears the
+     home indicator with the safe area. z-index stays below dialogs (200+). */
+  .thumbBar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: var(--dsh-tb-kb, 0px);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    background: var(--dsh-tb-bg);
+    border-top: var(--dsh-tb-separator);
+    z-index: 5;
+  }
+  .thumbNew {
+    flex: 1 1 auto;
+    display: flex;
+    min-width: 0;
+  }
+  .thumbNew > * {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 
   .columnTab {

@@ -433,6 +433,17 @@ describe('board header and navigator legibility', () => {
     expect(board).toContain("t('board.activity')")
     expect(board).toContain('setShowActivity(true)')
     expect(board).toContain('activityOf(snapshot.tasks)')
+    // Thumb bar: compact-only shortcuts reusing the header handlers (one
+    // behavior, never a second implementation). Hidden at base, pinned to
+    // the board box bottom in the compact tier, clearing the home indicator.
+    expect(board).toContain('css.thumbBar')
+    expect(board).toContain("t('board.thumbBar')")
+    expect(ruleOf('thumbBar')).toMatch(/display:\s*none/)
+    expect(ruleIn(compact, '.thumbBar')).toMatch(/display:\s*flex/)
+    expect(ruleIn(compact, '.thumbBar')).toMatch(/position:\s*absolute/)
+    expect(ruleIn(compact, '.thumbBar')).toMatch(/bottom:\s*var\(--dsh-tb-kb/)
+    expect(ruleIn(compact, '.thumbBar')).toMatch(/safe-area-inset-bottom/)
+    expect(ruleIn(compact, '.columns')).toMatch(/padding-bottom:\s*calc\(64px \+ env\(safe-area-inset-bottom\)\)/)
   })
 })
 
