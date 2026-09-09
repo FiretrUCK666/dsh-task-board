@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
-import { COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -40,12 +40,7 @@ import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
-/** Case-insensitive keyword match over title/description. */
-function matchesFilter(task: TaskRecord, filter: string): boolean {
-  if (filter.trim() === '') return true
-  const needle = filter.trim().toLowerCase()
-  return task.title.toLowerCase().includes(needle) || task.description.toLowerCase().includes(needle)
-}
+import { matchTask } from './task-search.ts'
 
 /**
  * The cruise settings in its two forms, one content: the anchored popover
@@ -383,7 +378,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     id => controller.externalKindOf(id),
   )
   const selected = selectedTaskOf(snapshot)
-  const visible = snapshot.tasks.filter(task => matchesFilter(task, filter))
+  // Board-wide search: title/description/prompt/comments plus linked-session
+  // titles (the same derivation the rows render — a session renamed natively
+  // stays findable under its live name).
+  const visible = snapshot.tasks.filter(task =>
+    matchTask(task, filter, controller.linkedOf(task).map(row => row.title)))
   // Clicking a card: a modifier click (Ctrl/Cmd) toggles multi-selection any
   // time; in organize mode every click toggles; otherwise it opens the detail.
   const cardClick = (id: string, event?: React.MouseEvent): void => {
