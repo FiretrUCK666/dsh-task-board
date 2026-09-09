@@ -1418,6 +1418,41 @@ button.columnCount[data-over='true'] {
   flex-wrap: wrap;
   min-width: 0;
 }
+/* Applied-filter overview: one quiet line under the search box (single row,
+ * horizontal scroll — never wraps into a second row, never pushes columns).
+ * Only rendered while a filter is active, so the idle board gains zero px. */
+.filterChips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px 0 6px;
+  scrollbar-width: none;
+}
+.filterChips::-webkit-scrollbar {
+  display: none;
+}
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.filterChipRemove {
+  flex: none;
+  border: none;
+  background: none;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+}
+.filterChipRemove:hover {
+  opacity: 1;
+}
 .feedFilter {
   flex: none;
   height: 24px;

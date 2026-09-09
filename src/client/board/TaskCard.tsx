@@ -13,7 +13,7 @@ import { sessionRuleReadiness } from '../../core/automation.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
-import { cardNextActionOf, cardViewModelOf, dueStateOf, type CardSessionDot } from './card-view.ts'
+import { cardNextActionOf, cardViewModelOf, dueStateOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
 import { Chip } from './Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { ColorSwatches, Icon } from './ui.tsx'
@@ -245,7 +245,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
           <span className={css.cardColorMark} style={{ background: task.color }} aria-hidden="true" />
         )}
         <span className={css.cardTitle}>
-          {task.title.trim() === '' ? t('card.untitled') : task.title}
+          {titleOrUntitled(task.title, t('card.untitled'))}
         </span>
       </span>
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}

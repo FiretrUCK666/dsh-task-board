@@ -38,6 +38,14 @@ export interface CardSessionDot {
   state: 'waiting' | 'running' | 'idle'
 }
 
+/** Display title: the raw title, or the untitled placeholder when blank.
+ *  THE one blank-title judgment — card, board rows, detail header and delete
+ *  confirms all read it, so a blank card can never show different faces per
+ *  surface. Pure. */
+export function titleOrUntitled(title: string, untitled: string): string {
+  return title.trim() === '' ? untitled : title
+}
+
 /** Everything TaskCard renders (no JSX here — testable). */
 export interface CardViewModel {
   primary: CardPrimary

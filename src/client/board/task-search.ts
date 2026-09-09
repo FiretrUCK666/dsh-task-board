@@ -110,33 +110,10 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
   return { terms, qualifiers: [...quoted, ...qualifiers] }
 }
 
-/** Whether one qualifier holds (unknown facets read absent = no match). */
-type QualifierTest = (
-  task: { color?: string; priority?: number; labels?: readonly string[] },
-  facets: BoardQueryFacets,
-  value: string,
-) => boolean
-
-/** Enumerated `key:value` semantics — keyed by the FULL pair, so the matcher
- *  can never drift from the parser's tables: a pair the parser accepts but
- *  this table lacks reads false (loud) instead of half-matching, and the
- *  spec locks "every enumerated value has an entry here". */
-const ENUM_TESTS: Readonly<Record<string, QualifierTest>> = {
-  'has:auto': (_task, facets) => facets.hasAutomation === true,
-  'has:color': task => task.color !== undefined,
-  'has:priority': task => task.priority !== undefined,
-  'is:unread': (_task, facets) => facets.isUnviewed === true,
-  'is:read': (_task, facets) => facets.isUnviewed === false,
-}
-
-/** Free-text key semantics (keys with no enumerated values take any text —
- *  the parser gates these through FREE_TEXT_KEYS, derived from the same key
- *  tables as completion). */
-const TEXT_TESTS: Readonly<Record<string, QualifierTest>> = {
-  ws: (_task, facets, value) => (facets.workspaceTitle ?? '').toLowerCase().includes(value),
-  label: (task, _facets, value) => task.labels !== undefined && task.labels.includes(value),
-}
-
+/** Whether one qualifier holds (unknown facets read absent = no match).
+ *  The predicate reads THE registry above — no second table, so matching
+ *  can never drift from parsing: whatever the parser accepts, this resolves
+ *  through the same definition. */
 function matchQualifier(
   task: { color?: string; priority?: number; labels?: readonly string[] },
   qualifier: BoardQualifier,
@@ -144,12 +121,10 @@ function matchQualifier(
 ): boolean {
   const full = `${qualifier.key}:${qualifier.value}`
   if (ENUM_VALUE_SET.has(full)) {
-    const test = ENUM_TESTS[full]
-    return test !== undefined ? test(task, facets, qualifier.value) : false
+    return QUALIFIER_DEFS[full]?.test(task, facets, qualifier.value) === true
   }
-  const free = TEXT_TESTS[qualifier.key]
-  if (free !== undefined && FREE_TEXT_KEYS.has(qualifier.key)) {
-    return free(task, facets, qualifier.value)
+  if (FREE_TEXT_KEYS.has(qualifier.key)) {
+    return QUALIFIER_DEFS[`${qualifier.key}:`]?.test(task, facets, qualifier.value) === true
   }
   return false
 }
@@ -196,31 +171,65 @@ export function boardShortcutOf(
   return undefined
 }
 
-/** Enumerated qualifier values (keys that take only these; `ws:`/`label:`
- *  take free text and complete nothing). */
-const QUALIFIER_VALUES: Readonly<Record<string, readonly string[]>> = {
-  'has:': ['has:auto', 'has:color', 'has:priority'],
-  'is:': ['is:unread', 'is:read'],
+/** One qualifier predicate: task fields + caller-resolved facets + the value. */
+type QualifierTest = (
+  task: { color?: string; priority?: number; labels?: readonly string[] },
+  facets: BoardQueryFacets,
+  value: string,
+) => boolean
+
+/** One qualifier definition: its predicate plus whether it takes free text
+ *  (any value through the predicate) or only its enumerated pair.
+ *  THE single source — one entry here teaches parsing, completion AND
+ *  matching at once; every view below is derived, never edited. */
+interface QualifierDef {
+  test: QualifierTest
+  freeText?: boolean
 }
 
-/** Qualifier keys the filter understands — derived from the enumerated table
- *  plus the free-text keys (ONE source: adding a qualifier here teaches the
- *  parser, the cheatsheet hint and the suggestion list at once). */
-export const QUALIFIER_KEYS: readonly string[] = [...Object.keys(QUALIFIER_VALUES), 'ws:', 'label:']
+const QUALIFIER_DEFS: Readonly<Record<string, QualifierDef>> = {
+  'has:auto': { test: (_task, facets) => facets.hasAutomation === true },
+  'has:color': { test: task => task.color !== undefined },
+  'has:priority': { test: task => task.priority !== undefined },
+  'is:unread': { test: (_task, facets) => facets.isUnviewed === true },
+  'is:read': { test: (_task, facets) => facets.isUnviewed === false },
+  'ws:': {
+    test: (_task, facets, value) => (facets.workspaceTitle ?? '').toLowerCase().includes(value),
+    freeText: true,
+  },
+  'label:': {
+    test: (task, _facets, value) => task.labels !== undefined && task.labels.includes(value),
+    freeText: true,
+  },
+}
+
+/** Qualifier keys the filter understands — derived from the registry. */
+export const QUALIFIER_KEYS: readonly string[] = [...new Set(
+  Object.keys(QUALIFIER_DEFS).map(full => `${full.slice(0, full.indexOf(':'))}:`),
+)]
+
+/** Enumerated qualifier values by key — derived from the registry. */
+const QUALIFIER_VALUES: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  QUALIFIER_KEYS
+    .map(key => [key, Object.keys(QUALIFIER_DEFS).filter(full => full.startsWith(key) && QUALIFIER_DEFS[full]?.freeText !== true)] as const)
+    .filter(([, values]) => values.length > 0),
+)
 
 /** All enumerated values (every `key:value` the completion can offer). */
 const ENUMERATED_VALUES: readonly string[] = Object.values(QUALIFIER_VALUES).flat()
 
-/** Parser key set, derived (no second hardcode: a key added to the tables
- *  above parses, hints and completes at once). */
+/** Parser key set, derived (no second hardcode: a key added to the registry
+ *  parses, hints and completes at once). */
 const QUALIFIER_KEY_SET: ReadonlySet<string> = new Set(QUALIFIER_KEYS.map(key => key.slice(0, -1)))
 
 /** Enumerated `key:value` set, derived (the parser accepts exactly these). */
 const ENUM_VALUE_SET: ReadonlySet<string> = new Set(ENUMERATED_VALUES)
 
-/** Free-text keys, derived (keys with no enumerated values take any text). */
+/** Free-text keys, derived (registry entries flagged freeText). */
 const FREE_TEXT_KEYS: ReadonlySet<string> = new Set(
-  QUALIFIER_KEYS.filter(key => QUALIFIER_VALUES[key] === undefined).map(key => key.slice(0, -1)),
+  Object.keys(QUALIFIER_DEFS)
+    .filter(full => QUALIFIER_DEFS[full]?.freeText === true)
+    .map(full => full.slice(0, -1)),
 )
 
 /** Completion candidates for the token being typed (at most 8, key-first):
@@ -268,4 +277,40 @@ export function matchCheatRow(row: CheatRow, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (q === '') return true
   return row.key.toLowerCase().includes(q) || row.text.toLowerCase().includes(q)
+}
+
+/** Split a filter query into removable tokens, quote-aware (`ws:"a b"` is
+ *  ONE token — the overview chips remove exactly what the parser reads). */
+export function splitFilterTokens(query: string): string[] {
+  const tokens: string[] = []
+  let current = ''
+  let quoted = false
+  const push = (): void => {
+    if (current !== '') tokens.push(current)
+    current = ''
+  }
+  for (const char of query) {
+    if (char === '"') {
+      quoted = !quoted
+      current += char
+      continue
+    }
+    if (!quoted && /\s/.test(char)) {
+      push()
+      continue
+    }
+    current += char
+  }
+  push()
+  return tokens
+}
+
+/** Remove the token at `index` (single-token removal for the overview
+ *  chips — Clear-all is just `setFilter('')`, never this). Out-of-range
+ *  indexes return the query unchanged. */
+export function removeFilterToken(query: string, index: number): string {
+  const tokens = splitFilterTokens(query)
+  if (index < 0 || index >= tokens.length) return query
+  tokens.splice(index, 1)
+  return tokens.join(' ')
 }

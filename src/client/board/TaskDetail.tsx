@@ -33,6 +33,7 @@ import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
 import { Button, Disclosure, Icon, Section } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
+import { titleOrUntitled } from './card-view.ts'
 import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
 
 /** Status → shared-chip color (detail badge). */
@@ -589,7 +590,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
         onKeyDown={onDetailKeyDown}
       >
         <header className={css.detailHeader}>
-          <h2 className={css.detailTitle}>{current.title}</h2>
+          <h2 className={css.detailTitle}>
+            {titleOrUntitled(current.title, t('card.untitled'))}
+          </h2>
           <Chip kind={STATUS_CHIP[current.status]}>{t(STATUS_KEY[current.status])}</Chip>
           {!editing && (
             <Button onClick={startEditing}>
@@ -962,7 +965,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
       {confirmDelete && (
         <ConfirmDialog
           title={t('delete.title')}
-          message={t('delete.confirm', { name: current.title })}
+          message={t('delete.confirm', { name: titleOrUntitled(current.title, t('card.untitled')) })}
           confirmLabel={t('delete.ok')}
           danger
           onCancel={() => { setConfirmDelete(false) }}

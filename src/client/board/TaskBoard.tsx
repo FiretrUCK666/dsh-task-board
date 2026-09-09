@@ -43,11 +43,11 @@ import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
-import { applyCompletion, boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, type CheatRow } from './task-search.ts'
+import { applyCompletion, boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, removeFilterToken, splitFilterTokens, type CheatRow } from './task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
 import { foldNotesByTask, noteKeyOf, notificationsExOf, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
-import { cardNextActionOf, cardViewModelOf } from './card-view.ts'
+import { cardNextActionOf, cardViewModelOf, titleOrUntitled } from './card-view.ts'
 
 /** The activity feed's chip: success greens, failure reds, everything else quiet. */
 function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'error' | 'muted'; label: string } {
@@ -1274,6 +1274,35 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             </Button>
           </span>
         </div>
+        {/* Applied-filter overview: one quiet line while a filter is active
+            (confirm + single-remove + context — the triple role). Each chip
+            removes its own token; the trailing action clears all. Idle
+            boards render nothing here (zero px when quiet). */}
+        {splitFilterTokens(filter).length > 0 && (
+          <div className={css.filterChips} role="group" aria-label={t('board.search')}>
+            {splitFilterTokens(filter).map((token, index) => (
+              <span key={`${index}:${token}`} className={css.filterChip}>
+                <Chip kind="neutral" fill={false}>{token}</Chip>
+                <button
+                  type="button"
+                  className={css.filterChipRemove}
+                  aria-label={t('board.filterRemove', { token })}
+                  title={t('board.filterRemove', { token })}
+                  onClick={() => { setFilter(removeFilterToken(filter, index)) }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              className={css.feedAction}
+              onClick={() => { setFilter('') }}
+            >
+              {t('board.shortcutClear')}
+            </button>
+          </div>
+        )}
 
         {/* 多选横栏（整理模式或已有选中时出现）：先点卡片（Ctrl/Cmd+点击或整理
             模式下直接点）选中高亮，再在板头横栏批量换色 / 删除 / 全选清选。 */}
@@ -1759,7 +1788,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   // a folded group never restyles its members.
                   const renderNotifyRow = (note: NotificationItem): ReactNode => {
                     const key = noteKeyOf(note)
-                    const taskTitle = note.taskTitle.trim() === '' ? t('card.untitled') : note.taskTitle
+                    const taskTitle = titleOrUntitled(note.taskTitle, t('card.untitled'))
                     return (
                       <li key={key}>
                         <div className={css.notifyRow} data-kind={note.kind}>
@@ -1838,7 +1867,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     if (entry.count === 1) return renderNotifyRow(entry.head)
                     const foldedOpen = expandedFoldKey === entry.head.taskId
                     const head = entry.head
-                    const headTitle = head.taskTitle.trim() === '' ? t('card.untitled') : head.taskTitle
+                    const headTitle = titleOrUntitled(head.taskTitle, t('card.untitled'))
                     const headWaiting = entry.items.find(item => item.kind === 'waiting')
                     const headHasReview = entry.items.some(item => item.kind === 'review')
                     return (
@@ -1978,7 +2007,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               const renderActivityRow = (item: ActivityItem): ReactNode => {
                 const chip = activityChipOf(item)
                 const expanded = expandedActivityKey === item.key
-                const title = item.taskTitle.trim() === '' ? t('card.untitled') : item.taskTitle
+                const title = titleOrUntitled(item.taskTitle, t('card.untitled'))
                 return (
                   <li key={item.key}>
                     <div className={css.notifyRow} data-kind={item.kind}>
@@ -2045,7 +2074,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               const renderObjectGroup = (group: ActivityGroup): ReactNode => {
                 if (group.items.length <= 1) return group.items.length === 1 ? renderActivityRow(group.items[0]) : null
                 const groupExpanded = expandedGroupKey === group.key
-                const title = group.taskTitle.trim() === '' ? t('card.untitled') : group.taskTitle
+                const title = titleOrUntitled(group.taskTitle, t('card.untitled'))
                 const split = groupExpanded ? splitGroupItems(group.items) : { shown: [], rest: 0 }
                 return (
                   <li key={group.key}>

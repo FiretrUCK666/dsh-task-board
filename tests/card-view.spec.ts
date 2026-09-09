@@ -3,7 +3,7 @@
  * waiting > running > refining > queued > failed > review > idle.
  */
 import { describe, expect, it } from 'vitest'
-import { cardNextActionOf, cardViewModelOf, dueStateOf } from '../src/client/board/card-view.ts'
+import { cardNextActionOf, cardViewModelOf, dueStateOf, titleOrUntitled } from '../src/client/board/card-view.ts'
 import { createTask, newCommentRound, startExecution } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -11,6 +11,14 @@ const NOW = 1_700_000_000_000
 function task() {
   return createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'task-1')
 }
+
+describe('titleOrUntitled (the one blank-title judgment)', () => {
+  it('reads the title, or the placeholder when blank', () => {
+    expect(titleOrUntitled('画猫', '未命名')).toBe('画猫')
+    expect(titleOrUntitled('', '未命名')).toBe('未命名')
+    expect(titleOrUntitled('   ', '未命名')).toBe('未命名')
+  })
+})
 
 describe('cardViewModelOf', () => {
   it('idle task with nothing scheduled has no emphasis', () => {

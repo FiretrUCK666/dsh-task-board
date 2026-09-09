@@ -4,7 +4,7 @@
  * matches all.
  */
 import { describe, expect, it } from 'vitest'
-import { applyCompletion, boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, parseBoardQuery, taskHaystack } from '../src/client/board/task-search.ts'
+import { applyCompletion, boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, parseBoardQuery, removeFilterToken, splitFilterTokens, taskHaystack } from '../src/client/board/task-search.ts'
 
 const task = {
   title: '给猫画一幅画',
@@ -266,5 +266,21 @@ describe('applyCompletion (whole-query assembly)', () => {
     expect(applyCompletion('', 'has:')).toBe('has:')
     expect(applyCompletion('猫 ', 'has:')).toBe('猫 has:')
     expect(applyCompletion('a\rhas:a', 'has:auto')).toBe('a\rhas:auto')
+  })
+})
+
+describe('splitFilterTokens / removeFilterToken (overview chips)', () => {
+  it('splits quote-aware (ws:"a b" is one token)', () => {
+    expect(splitFilterTokens('')).toEqual([])
+    expect(splitFilterTokens('  ')).toEqual([])
+    expect(splitFilterTokens('猫 has:color')).toEqual(['猫', 'has:color'])
+    expect(splitFilterTokens('猫 ws:"深 夜"')).toEqual(['猫', 'ws:"深 夜"'])
+  })
+
+  it('removes one token by index, out-of-range returns the query', () => {
+    expect(removeFilterToken('猫 has:color', 0)).toBe('has:color')
+    expect(removeFilterToken('猫 has:color', 1)).toBe('猫')
+    expect(removeFilterToken('猫 ws:"深 夜" label:a', 1)).toBe('猫 label:a')
+    expect(removeFilterToken('猫', 5)).toBe('猫')
   })
 })

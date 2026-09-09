@@ -29,10 +29,14 @@ export function cycleDaysOf(
 ): number | undefined {
   const history = task.statusHistory
   if (history === undefined) return undefined
-  const start = history.find(entry => entry.status === 'running')
-  if (start === undefined || start.at > now) return undefined
-  const end = history.find(entry => entry.status === 'done' && entry.at >= start.at)
-  if (end === undefined || end.at > now) return undefined
+  // One funnel with throughput: only effective (non-future) instants exist —
+  // a future tombstone mid-array must not shadow the real trip (find would
+  // stop at it; filter-then-find skips it like throughput does).
+  const effective = history.filter(entry => entry.at <= now)
+  const start = effective.find(entry => entry.status === 'running')
+  if (start === undefined) return undefined
+  const end = effective.find(entry => entry.status === 'done' && entry.at >= start.at)
+  if (end === undefined) return undefined
   return Math.max(0, (end.at - start.at) / 86_400_000)
 }
 

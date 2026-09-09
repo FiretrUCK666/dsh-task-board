@@ -40,6 +40,19 @@ describe('cycleDaysOf (first running → first done after it)', () => {
       NOW,
     )).toBeUndefined()
   })
+
+  it('skips a future tombstone mid-array (filter-then-find, like throughput)', () => {
+    expect(cycleDaysOf(
+      {
+        statusHistory: history(
+          ['running', NOW - 20 * DAY],
+          ['done', NOW + DAY],
+          ['done', NOW - 6 * DAY],
+        ),
+      },
+      NOW,
+    )).toBe(14)
+  })
 })
 
 describe('percentileOf (nearest-rank, never zero-filled)', () => {
