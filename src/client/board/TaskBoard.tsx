@@ -1701,7 +1701,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     />
                   )
                 })}
-                {tasks.length === 0 && <div className={css.columnEmpty}>{t('board.empty')}</div>}
+                {tasks.length === 0 && (
+                  <div className={css.columnEmpty} role="status">
+                    {snapshot.tasks.length === 0
+                      ? t('board.emptyFirstRun')
+                      : filter.trim() !== '' ? t('board.emptyFiltered') : t('board.empty')}
+                  </div>
+                )}
               </div>
             </section>
           )

@@ -215,7 +215,11 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     status: draft.status,
     ...draft.agentPreset !== '' ? { agentPreset: draft.agentPreset } : {},
     ...draft.workspaceId !== '' ? { workspaceId: draft.workspaceId } : {},
-    ...draft.provider !== '' && draft.model !== '' ? { provider: draft.provider, model: draft.model } : {},
+    // Provider/model ride independently (same law as the update patch — a
+    // half route is the caller's explicit state, never silently dropped;
+    // the run layer falls back to defaults when the pair is incomplete).
+    ...draft.provider !== '' ? { provider: draft.provider } : {},
+    ...draft.model !== '' ? { model: draft.model } : {},
     ...draft.reasoningEffort !== '' ? { reasoningEffort: draft.reasoningEffort } : {},
     ...draft.permission !== '' ? { permission: draft.permission } : {},
     ...dueAt !== undefined ? { dueAt } : {},

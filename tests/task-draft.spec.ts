@@ -105,6 +105,13 @@ describe('draft due-date converters', () => {
     expect(normalizeDraft({ ...draft(), labels: 'x' })?.labels).toBe('x')
   })
 
+  it('routes ride independently on write (same law as update)', () => {
+    expect(draftToNewInput({ ...draft(), provider: 'my', model: '' }).provider).toBe('my')
+    expect(draftToNewInput({ ...draft(), provider: 'my', model: '' }).model).toBeUndefined()
+    expect(draftToNewInput({ ...draft(), provider: '', model: 'mm' }).provider).toBeUndefined()
+    expect(draftToNewInput({ ...draft(), provider: '', model: 'mm' }).model).toBe('mm')
+  })
+
   it('draftFromTemplate carries the template inert shape', () => {
     const stamped = draftFromTemplate({
       id: 't', name: 'T', title: 'x', description: '', prompt: 'p',

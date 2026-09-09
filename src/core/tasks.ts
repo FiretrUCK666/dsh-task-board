@@ -625,30 +625,32 @@ export function normalizeLabels(value: unknown): string[] | undefined {
   return out.length > 0 ? out : undefined
 }
 
-/** Admitted image media types (the intake gate AND every storage wall read
- *  this one table — never a second whitelist). */
+/** Admitted image media types (the INTAKE gate reads this — new uploads
+ *  outside it are rejected or transcoded at the door; stored rows are
+ *  grandfathered, see below). */
 export const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
 
-/** Whether a raw value is a well-formed prompt image (non-empty data +
- *  whitelisted media type). THE element predicate for images — ledger,
- *  template and draft walls all read it. */
+/** Whether a raw value is a storable prompt image (non-empty data + a media
+ *  type string). Deliberately LENIENT (no whitelist): storage walls must
+ *  never retroactively delete what an older version stored — the whitelist
+ *  gates new intake and the send layer, never the ledger. Crash-safety (no
+ *  undefined derefs downstream) is what storage guarantees. */
 export function isWellFormedImage(entry: unknown): entry is TaskImage {
   if (typeof entry !== 'object' || entry === null) return false
   const candidate = entry as Record<string, unknown>
   return typeof candidate.data === 'string' && candidate.data !== ''
-    && typeof candidate.mediaType === 'string'
-    && (IMAGE_MEDIA_TYPES as readonly string[]).includes(candidate.mediaType)
+    && typeof candidate.mediaType === 'string' && candidate.mediaType !== ''
 }
 
-/** Whether a raw value is a well-formed file ref (non-empty receipt + name,
- *  finite non-negative bytes). THE element predicate for files — same three
- *  walls. */
+/** Whether a raw value is a storable file ref (non-empty receipt + name;
+ *  bytes only needs to be a number for display math — NaN displays ugly but
+ *  never crashes and never deletes). Same leniency law as images above. */
 export function isWellFormedFile(entry: unknown): entry is TaskFile {
   if (typeof entry !== 'object' || entry === null) return false
   const candidate = entry as Record<string, unknown>
   return typeof candidate.receiptId === 'string' && candidate.receiptId !== ''
     && typeof candidate.name === 'string' && candidate.name !== ''
-    && typeof candidate.bytes === 'number' && Number.isFinite(candidate.bytes) && candidate.bytes >= 0
+    && typeof candidate.bytes === 'number'
 }
 
 /** Keep well-formed prompt images (a dirty element washes out, never the

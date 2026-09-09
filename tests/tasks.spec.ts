@@ -1004,13 +1004,19 @@ describe('normalizeLabels (lowercase/dedupe/cap or absent)', () => {
 })
 
 describe('normalizePromptImages / normalizePromptFiles (shared walls)', () => {
-  it('keeps well-formed elements, washes the rest, drops empty sets', () => {
+  it('keeps storable shapes, washes the rest, drops empty sets', () => {
+    // Storage walls are LENIENT (never retroactively delete): non-empty
+    // data + a media-type string passes, whitelist or not (the whitelist
+    // gates new intake and the send layer, never the ledger).
     expect(normalizePromptImages([
       { mediaType: 'image/png', data: 'QUJD', name: 'a.png' },
       { mediaType: 'image/bmp', data: 'QUJD', name: 'b.bmp' },
       { mediaType: 'image/png', data: '', name: 'c.png' },
       null,
-    ])).toEqual([{ mediaType: 'image/png', data: 'QUJD', name: 'a.png' }])
+    ])).toEqual([
+      { mediaType: 'image/png', data: 'QUJD', name: 'a.png' },
+      { mediaType: 'image/bmp', data: 'QUJD', name: 'b.bmp' },
+    ])
     expect(normalizePromptImages([])).toBeUndefined()
     expect(normalizePromptImages('junk')).toBeUndefined()
     expect(normalizePromptFiles([
@@ -1020,7 +1026,10 @@ describe('normalizePromptImages / normalizePromptFiles (shared walls)', () => {
       { receiptId: 'r4', name: 'd.pdf', bytes: -1 },
       { receiptId: 'r5', name: 'e.pdf' },
       null,
-    ])).toEqual([{ receiptId: 'r1', name: 'a.pdf', bytes: 10 }])
+    ])).toEqual([
+      { receiptId: 'r1', name: 'a.pdf', bytes: 10 },
+      { receiptId: 'r4', name: 'd.pdf', bytes: -1 },
+    ])
     expect(normalizePromptFiles([])).toBeUndefined()
   })
 })
