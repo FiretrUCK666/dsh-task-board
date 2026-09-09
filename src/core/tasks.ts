@@ -395,6 +395,10 @@ export interface NewTaskInput {
   /** Images attached to the execution prompt (already compressed by the
    *  browser intake; capped in count by the form). */
   promptImages?: TaskImage[]
+  /** File refs attached to the execution prompt (receipt shape — the twin
+   *  lane of images: every birth/copy/template/draft path carries both or
+   *  documents why not, never one silently). */
+  promptFiles?: TaskFile[]
   /** Landing column; defaults to 'todo'. Any column is legal — an external
    *  sidebar drop lands in exactly the column it was dropped into. */
   status?: TaskStatus
@@ -641,6 +645,9 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
     executions: [],
     ...input.promptImages !== undefined && input.promptImages.length > 0
       ? { promptImages: input.promptImages.map(image => ({ ...image })) }
+      : {},
+    ...input.promptFiles !== undefined && input.promptFiles.length > 0
+      ? { promptFiles: input.promptFiles.map(file => ({ ...file })) }
       : {},
     ...input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {},
     ...input.provider !== undefined ? { provider: input.provider } : {},

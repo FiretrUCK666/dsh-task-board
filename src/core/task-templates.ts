@@ -15,7 +15,7 @@
  * no migration and no multi-device merge grammar is needed. Pure functions +
  * a storage seam, so everything unit-tests in isolation.
  */
-import type { NewTaskInput, TaskImage, TaskRecord } from './tasks.ts'
+import type { NewTaskInput, TaskFile, TaskImage, TaskRecord } from './tasks.ts'
 import { normalizeLabels, normalizePriority } from './tasks.ts'
 
 /** The localStorage key for the user's template library (never renamed). */
@@ -31,6 +31,8 @@ export interface TaskTemplate {
   description: string
   prompt: string
   promptImages?: TaskImage[]
+  /** File refs (the twin lane of images — templates carry both or neither). */
+  promptFiles?: TaskFile[]
   workspaceId?: string
   provider?: string
   model?: string
@@ -70,6 +72,9 @@ export function templateFromTask(task: TaskRecord, id: string, name: string): Ta
     ...task.promptImages !== undefined && task.promptImages.length > 0
       ? { promptImages: task.promptImages.map(image => ({ ...image })) }
       : {},
+    ...task.promptFiles !== undefined && task.promptFiles.length > 0
+      ? { promptFiles: task.promptFiles.map(file => ({ ...file })) }
+      : {},
     ...task.workspaceId !== undefined ? { workspaceId: task.workspaceId } : {},
     ...task.provider !== undefined ? { provider: task.provider } : {},
     ...task.model !== undefined ? { model: task.model } : {},
@@ -95,6 +100,9 @@ export function templateToNewInput(template: TaskTemplate): NewTaskInput {
     ...template.promptImages !== undefined && template.promptImages.length > 0
       ? { promptImages: template.promptImages.map(image => ({ ...image })) }
       : {},
+    ...template.promptFiles !== undefined && template.promptFiles.length > 0
+      ? { promptFiles: template.promptFiles.map(file => ({ ...file })) }
+      : {},
     ...template.workspaceId !== undefined ? { workspaceId: template.workspaceId } : {},
     ...template.provider !== undefined ? { provider: template.provider } : {},
     ...template.model !== undefined ? { model: template.model } : {},
@@ -118,6 +126,31 @@ export function isTemplateRow(row: unknown): row is TaskTemplate {
     && typeof candidate.name === 'string' && candidate.name !== ''
 }
 
+/** Keep well-formed prompt images (element-level: non-empty data string +
+ *  known media type); anything else washes out (a single dirty element must
+ *  never crash stamping — normalize is the firewall, consumers stay dumb). */
+function normalizeImages(raw: unknown): TaskImage[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const kept = raw.filter((entry): entry is TaskImage =>
+    typeof entry === 'object' && entry !== null
+    && typeof (entry as Record<string, unknown>).data === 'string'
+    && (entry as Record<string, unknown>).data !== ''
+    && typeof (entry as Record<string, unknown>).mediaType === 'string')
+  return kept.length > 0 ? kept : undefined
+}
+
+/** Keep well-formed file refs (element-level: non-empty receipt + name);
+ *  the twin firewall of images above. */
+function normalizeFiles(raw: unknown): TaskFile[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const kept = raw.filter((entry): entry is TaskFile =>
+    typeof entry === 'object' && entry !== null
+    && typeof (entry as Record<string, unknown>).receiptId === 'string'
+    && (entry as Record<string, unknown>).receiptId !== ''
+    && typeof (entry as Record<string, unknown>).name === 'string')
+  return kept.length > 0 ? kept : undefined
+}
+
 /** Normalize a raw stored list: valid rows only, duplicates dropped. */
 export function normalizeTemplates(raw: unknown): TaskTemplate[] {
   if (!Array.isArray(raw)) return []
@@ -128,13 +161,16 @@ export function normalizeTemplates(raw: unknown): TaskTemplate[] {
     seen.add(row.id)
     const priority = normalizePriority(row.priority)
     const labels = normalizeLabels(row.labels)
+    const promptImages = normalizeImages(row.promptImages)
+    const promptFiles = normalizeFiles(row.promptFiles)
     out.push({
       id: row.id,
       name: row.name,
       title: typeof row.title === 'string' ? row.title : '',
       description: typeof row.description === 'string' ? row.description : '',
       prompt: typeof row.prompt === 'string' ? row.prompt : '',
-      ...Array.isArray(row.promptImages) ? { promptImages: row.promptImages as TaskImage[] } : {},
+      ...promptImages !== undefined ? { promptImages } : {},
+      ...promptFiles !== undefined ? { promptFiles } : {},
       ...typeof row.workspaceId === 'string' ? { workspaceId: row.workspaceId } : {},
       ...typeof row.provider === 'string' ? { provider: row.provider } : {},
       ...typeof row.model === 'string' ? { model: row.model } : {},

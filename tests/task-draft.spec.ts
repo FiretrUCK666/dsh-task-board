@@ -25,6 +25,7 @@ function draft() {
     description: '',
     prompt: 'p',
     promptImages: [],
+    promptFiles: [],
     status: 'backlog' as const,
     agentPreset: '',
     workspaceId: '',

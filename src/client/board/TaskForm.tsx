@@ -149,8 +149,10 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         />
         <AttachmentStrip
           images={draft.promptImages}
+          files={draft.promptFiles}
           onAdd={attachments.addFiles}
           onRemoveImage={id => { onChange({ ...draft, promptImages: draft.promptImages.filter(image => image.id !== id) }) }}
+          onRemoveFile={id => { onChange({ ...draft, promptFiles: draft.promptFiles.filter(file => file.id !== id) }) }}
           busy={attachments.busy}
           busyLabel={attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined}
           error={attachments.error}

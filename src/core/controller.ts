@@ -1469,6 +1469,9 @@ export class BoardController {
       ...source.promptImages !== undefined && source.promptImages.length > 0
         ? { promptImages: source.promptImages.map(image => ({ ...image })) }
         : {},
+      ...source.promptFiles !== undefined && source.promptFiles.length > 0
+        ? { promptFiles: source.promptFiles.map(file => ({ ...file })) }
+        : {},
     }
     // A template is a NEW card: it lands at the top of its landing column
     // (待规划) exactly like a manually created task — a copied card reads as
@@ -2488,7 +2491,13 @@ export class BoardController {
   async rerunTask(id: string): Promise<void> {
     const task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return
-    if (task.status !== 'running') {
+    if (task.status === 'done') {
+      // Through moveTask (never a hand-rolled withStatus): leaving done is
+      // a rebirth — the spent budget resets here too. (Other columns keep
+      // the plain move below: routing backlog through moveTask would ALSO
+      // trigger the armed-chain auto-run next to the manual run below.)
+      this.moveTask(id, 'todo')
+    } else if (task.status !== 'running') {
       this.tasks = this.tasks.map(candidate => candidate.id === id ? withStatus(candidate, 'todo', this.now()) : candidate)
       this.persistAndNotify()
     }

@@ -9,7 +9,8 @@ import { normalizeLabels, normalizePriority } from '../../core/tasks.ts'
 import type { NewTaskInput } from '../../core/tasks.ts'
 import type { TaskTemplate } from '../../core/task-templates.ts'
 import type { TaskUpdatePatch } from '../../core/controller.ts'
-import type { DraftImage } from './attach.ts'
+import type { DraftFile, DraftImage } from './attach.ts'
+import { toPromptFile } from './attach.ts'
 
 /** The editable slice of a task as the form sees it ('' = default/clear). */
 export interface TaskDraft {
@@ -19,6 +20,9 @@ export interface TaskDraft {
   /** Images attached to the execution prompt (browser form; the id is the
    *  strip's local identity and is dropped when the task is written). */
   promptImages: DraftImage[]
+  /** File refs attached to the execution prompt (receipt shape; same strip
+   *  identity discipline as images — shown removable, carried on write). */
+  promptFiles: DraftFile[]
   /** Landing column for new tasks ('backlog' | 'todo'); edit mode keeps it unchanged. */
   status: 'backlog' | 'todo'
   /** Agent preset id; '' = deployment default. */
@@ -103,6 +107,7 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
     })(),
     labels: typeof parsed.labels === 'string' ? parsed.labels : '',
     color: typeof parsed.color === 'string' ? parsed.color : '',
+    promptFiles: Array.isArray(parsed.promptFiles) ? parsed.promptFiles : [],
   }
 }
 
@@ -118,6 +123,14 @@ export function draftFromTask(task: TaskRecord): TaskDraft {  return {
       data: image.data,
       mediaType: image.mediaType as DraftImage['mediaType'],
       name: image.name ?? '',
+    })),
+    // File refs round-trip the same way (receipt + name + bytes; the strip
+    // shows them removable — nothing rides invisibly).
+    promptFiles: (task.promptFiles ?? []).map((file, index) => ({
+      id: `loaded-file-${index}-${file.receiptId.slice(0, 8)}`,
+      receiptId: file.receiptId,
+      name: file.name,
+      bytes: file.bytes,
     })),
     status: task.status === 'backlog' ? 'backlog' : 'todo',
     agentPreset: task.agentPreset ?? '',
@@ -145,6 +158,13 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
       data: image.data,
       mediaType: image.mediaType as DraftImage['mediaType'],
       name: image.name ?? '',
+    })),
+    // File refs stamp the same way (receipts re-stage at send time).
+    promptFiles: (template.promptFiles ?? []).map((file, index) => ({
+      id: `template-file-${index}-${file.receiptId.slice(0, 8)}`,
+      receiptId: file.receiptId,
+      name: file.name,
+      bytes: file.bytes,
     })),
     status: 'backlog',
     agentPreset: template.agentPreset ?? '',
@@ -174,6 +194,9 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     ...draft.promptImages.length > 0
       ? { promptImages: draft.promptImages.map(image => ({ mediaType: image.mediaType, data: image.data, name: image.name })) }
       : {},
+    ...draft.promptFiles.length > 0
+      ? { promptFiles: draft.promptFiles.map(file => toPromptFile(file)) }
+      : {},
     status: draft.status,
     ...draft.agentPreset !== '' ? { agentPreset: draft.agentPreset } : {},
     ...draft.workspaceId !== '' ? { workspaceId: draft.workspaceId } : {},
@@ -195,6 +218,8 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     prompt: draft.prompt,
     // The whole set is rewritten on every save (present key semantics).
     promptImages: draft.promptImages.map(image => ({ mediaType: image.mediaType, data: image.data, name: image.name })),
+    // File refs ride the same whole-set semantics (the twin lane of images).
+    promptFiles: draft.promptFiles.map(file => toPromptFile(file)),
     agentPreset: draft.agentPreset !== '' ? draft.agentPreset : undefined,
     workspaceId: draft.workspaceId !== '' ? draft.workspaceId : undefined,
     provider: draft.provider !== '' ? draft.provider : undefined,
@@ -224,6 +249,7 @@ export function stampTemplate(draft: TaskDraft, stamped: TaskDraft): TaskDraft {
     description: filledText(draft.description) ? draft.description : stamped.description,
     prompt: filledText(draft.prompt) ? draft.prompt : stamped.prompt,
     promptImages: draft.promptImages.length > 0 ? draft.promptImages : stamped.promptImages,
+    promptFiles: draft.promptFiles.length > 0 ? draft.promptFiles : stamped.promptFiles,
     status: draft.status !== 'backlog' ? draft.status : stamped.status,
     agentPreset: filledText(draft.agentPreset) ? draft.agentPreset : stamped.agentPreset,
     workspaceId: filledText(draft.workspaceId) ? draft.workspaceId : stamped.workspaceId,

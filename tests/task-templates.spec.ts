@@ -79,6 +79,28 @@ describe('templateToNewInput', () => {
     expect(rows[0]?.labels).toBeUndefined()
     expect(rows[0]?.color).toBeUndefined()
   })
+
+  it('carries both attachment lanes (images + files ride, never one silently)', () => {
+    const task = {
+      ...sourceTask(),
+      promptImages: [{ mediaType: 'image/webp', data: 'QUJD', name: 'a.webp' }] as never,
+      promptFiles: [{ receiptId: 'r1', name: 'a.pdf', bytes: 10 }],
+    }
+    const template = templateFromTask(task as never, 't-1', 'T')
+    expect(template.promptImages).toEqual([{ mediaType: 'image/webp', data: 'QUJD', name: 'a.webp' }])
+    expect(template.promptFiles).toEqual([{ receiptId: 'r1', name: 'a.pdf', bytes: 10 }])
+    const input = templateToNewInput(template)
+    expect(input.promptImages).toEqual([{ mediaType: 'image/webp', data: 'QUJD', name: 'a.webp' }])
+    expect(input.promptFiles).toEqual([{ receiptId: 'r1', name: 'a.pdf', bytes: 10 }])
+  })
+
+  it('washes dirty attachments at normalize (no stamping crash)', () => {
+    const rows = normalizeTemplates([
+      { id: 'a', name: 'A', title: 'x', promptImages: [null, { data: '', mediaType: 'image/png' }], promptFiles: [{ name: 'x' }] },
+    ])
+    expect(rows[0]?.promptImages).toBeUndefined()
+    expect(rows[0]?.promptFiles).toBeUndefined()
+  })
 })
 
 describe('normalizeTemplates', () => {

@@ -34,6 +34,7 @@ function freshDraft(): TaskDraft {
     priority: '',
     labels: '',
     color: '',
+    promptFiles: [],
   }
 }
 
