@@ -93,6 +93,33 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(ruleOf('reviewMessageText')).toContain('min-width: 0')
     expect(ruleOf('mdCode')).toContain('overflow-wrap: anywhere')
   })
+
+  it('a proven wait without parsed content renders the honest shell (never blank nothing)', () => {
+    // The 「plan 显示不了内容」 root fix, both halves: the mirror accepts a
+    // detail-carried plan (covered in question-mirror.spec), and whatever the
+    // parsers still cannot read falls back to a shell card — kind chip + one
+    // honest line + the same navigate action — in the SAME chrome, so the
+    // rail geometry cannot diverge between content and shell.
+    const cardPath = fileURLToPath(new URL('../src/client/board/InteractionCard.tsx', import.meta.url))
+    const cardSource = readFileSync(cardPath, 'utf8')
+    expect(cardSource).toContain('shellWaiting')
+    expect(cardSource).toContain('review.interactionBodyMissing')
+    // Shell reuses the content chrome verbatim (no second layout to drift).
+    const shell = cardSource.slice(cardSource.indexOf('if (question === undefined)'))
+    expect(shell).toContain('css.interactionCard')
+    expect(shell).toContain('css.interactionCardBody')
+    expect(shell).toContain('css.interactionActions')
+    expect(shell).toContain('review.interactionGoAnswer')
+    // Every composer surface reads the one awaiting hook (review page,
+    // session panel, refinement answers) — never the raw wire hook for
+    // display. The shared rail takes the folded result as props.
+    for (const file of ['ReviewDetail.tsx', 'SessionDetail.tsx', 'RefineSection.tsx']) {
+      const source = readFileSync(fileURLToPath(new URL(`../src/client/board/${file}`, import.meta.url)), 'utf8')
+      expect(source).toContain('useAwaitingCard')
+    }
+    const hookPath = fileURLToPath(new URL('../src/client/board/use-interaction.ts', import.meta.url))
+    expect(readFileSync(hookPath, 'utf8')).toContain('export function useAwaitingCard')
+  })
 })
 
 describe('review rail scroll contract (ONE scroll body + pinned composer, every width)', () => {
