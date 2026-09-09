@@ -44,6 +44,68 @@ export interface ActivityFilter {
   query?: string
 }
 
+/** Fold cluster: the same three groups the feed filter offers (all/run/
+ *  comment/other), so a group never straddles a filter switch — filtering to
+ *  `run` drops whole comment/other groups instead of hollowing them out. */
+export type ActivityCluster = 'run' | 'comment' | 'other'
+
+/** Map one row kind onto its fold cluster (mirrors the Dialog's filter map). */
+export function clusterOf(kind: ActivityItem['kind']): ActivityCluster {
+  if (kind === 'started' || kind === 'settled') return 'run'
+  if (kind === 'comment' || kind === 'queued' || kind === 'running') return 'comment'
+  return 'other'
+}
+
+/** One folded object-day group: same task, same calendar day, same cluster.
+ *  Order inside and across groups inherits the feed order (newest first) —
+ *  grouping never re-sorts, it only nests. */
+export interface ActivityGroup {
+  /** Stable group key (task + day + cluster). */
+  key: string
+  taskId: string
+  taskTitle: string
+  day: string
+  cluster: ActivityCluster
+  items: ActivityItem[]
+}
+
+/**
+ * Fold feed rows into object-day groups (GetStream-style aggregation keyed on
+ * object × day, with the filter cluster as the third leg). Single-item groups
+ * render exactly like unfolded rows, so sparse feeds look byte-identical to
+ * before — only genuinely busy object-days gain a header. Pure: no truncation
+ * here (caps stay at the feed/window layer), no unread marking (feed rows
+ * carry no unread signal by contract — unread breathes on the card only).
+ */
+export function groupActivityByObjectDay(
+  items: readonly ActivityItem[],
+  dayOf: (at: number) => string,
+): ActivityGroup[] {
+  const groups: ActivityGroup[] = []
+  const index = new Map<string, ActivityGroup>()
+  for (const item of items) {
+    const day = dayOf(item.at)
+    const cluster = clusterOf(item.kind)
+    const key = `${item.taskId}|${day}|${cluster}`
+    const existing = index.get(key)
+    if (existing !== undefined) {
+      existing.items.push(item)
+      continue
+    }
+    const group: ActivityGroup = {
+      key,
+      taskId: item.taskId,
+      taskTitle: item.taskTitle,
+      day,
+      cluster,
+      items: [item],
+    }
+    index.set(key, group)
+    groups.push(group)
+  }
+  return groups
+}
+
 /**
  * Collect every notable moment of every task, newest first. Running rounds
  * ARE moments (their start/observation/injection lights the feed); an empty

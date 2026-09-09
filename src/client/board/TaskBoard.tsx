@@ -65,7 +65,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   if (item.kind === 'external') return { kind: 'neutral', label: t('board.activityExternal') }
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
-import { activityOf, type ActivityItem } from './activity.ts'
+import { activityOf, groupActivityByObjectDay, type ActivityGroup, type ActivityItem } from './activity.ts'
 import { Chip } from './Chip.tsx'
 
 /**
@@ -164,10 +164,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const [activityUnviewed, setActivityUnviewed] = useState(false)
   const [activityShown, setActivityShown] = useState(30)
   const [expandedActivityKey, setExpandedActivityKey] = useState<string | undefined>(undefined)
+  // Folded object-day groups share the single-open discipline: one expanded
+  // group at a time, cleared on the same filter/show resets as row expansion.
+  const [expandedGroupKey, setExpandedGroupKey] = useState<string | undefined>(undefined)
   useEffect(() => {
     if (showActivity) {
       setActivityShown(30)
       setExpandedActivityKey(undefined)
+      setExpandedGroupKey(undefined)
     } else {
       setFailedSession(undefined)
     }
@@ -1654,72 +1658,119 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 if (list !== undefined) list.push(item)
                 else groups.set(day, [item])
               }
+              // ONE row grammar: every feed row — standalone or folded group
+              // member — renders through this, so a group can never restyle
+              // its members into a second visual language.
+              const renderActivityRow = (item: ActivityItem): ReactNode => {
+                const chip = activityChipOf(item)
+                const expanded = expandedActivityKey === item.key
+                const title = item.taskTitle.trim() === '' ? t('card.untitled') : item.taskTitle
+                return (
+                  <li key={item.key}>
+                    <div className={css.notifyRow} data-kind={item.kind}>
+                      <button
+                        type="button"
+                        className={css.notifyMain}
+                        title={item.taskTitle}
+                        aria-label={title}
+                        aria-expanded={expanded}
+                        onClick={() => { setExpandedActivityKey(current => current === item.key ? undefined : item.key) }}
+                      >
+                        <span className={css.notifyTask}>{title}</span>
+                        <Chip kind={chip.kind} fill={false}>{chip.label}</Chip>
+                        <span className={css.notifySession} title={item.text ?? ''}>
+                          {item.text !== undefined && item.text.trim() !== ''
+                            ? item.text.slice(0, 24)
+                            : formatTime(item.at)}
+                        </span>
+                      </button>
+                      <span className={css.notifyActions}>
+                        <button
+                          type="button"
+                          className={css.feedAction}
+                          onClick={() => { setShowActivity(false); openTaskAtSession(item.taskId, item.sessionId) }}
+                        >
+                          {t('board.activityOpen')}
+                        </button>
+                        {item.sessionId !== undefined && (
+                          <button
+                            type="button"
+                            className={css.feedAction}
+                            onClick={() => {
+                              if (!controller.openSession(item.sessionId!)) setFailedSession(item.sessionId)
+                            }}
+                          >
+                            {t('board.notifyGoSession')}
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                    {expanded && (
+                      <div className={css.feedPreview}>
+                        <p className={css.detailText}>
+                          {item.text !== undefined && item.text.trim() !== '' ? item.text : formatDateTime(item.at)}
+                        </p>
+                        <p className={css.detailHint}>
+                          {t('board.activityPreviewHint', { time: formatDateTime(item.at) })}
+                        </p>
+                      </div>
+                    )}
+                    {failedSession === item.sessionId && item.sessionId !== undefined && (
+                      <p className={css.detailHint}>{t('detail.sessionUnavailable')}</p>
+                    )}
+                  </li>
+                )
+              }
+              // Object-day folding: a busy object-day collapses to one header
+              // (title + count + chevron); single-item groups render exactly
+              // like unfolded rows, so sparse feeds look byte-identical to
+              // before. No unread signal here by contract — unread breathes on
+              // the card only; the filter-level `onlyUnviewed` still applies.
+              const renderObjectGroup = (group: ActivityGroup): ReactNode => {
+                if (group.items.length === 1) return renderActivityRow(group.items[0])
+                const groupExpanded = expandedGroupKey === group.key
+                const title = group.taskTitle.trim() === '' ? t('card.untitled') : group.taskTitle
+                return (
+                  <li key={group.key}>
+                    <div className={css.notifyRow} data-kind={group.items[0].kind}>
+                      <button
+                        type="button"
+                        className={css.notifyMain}
+                        title={group.taskTitle}
+                        aria-label={title}
+                        aria-expanded={groupExpanded}
+                        onClick={() => { setExpandedGroupKey(current => current === group.key ? undefined : group.key) }}
+                      >
+                        <Icon name="chevronDown" className={css.detailChevron} />
+                        <span className={css.notifyTask}>{title}</span>
+                        <Chip kind="neutral" fill={false}>{`×${group.items.length}`}</Chip>
+                        <span className={css.notifySession}>{formatTime(group.items[0].at)}</span>
+                      </button>
+                      <span className={css.notifyActions}>
+                        <button
+                          type="button"
+                          className={css.feedAction}
+                          onClick={() => { setShowActivity(false); openTaskAtSession(group.taskId, undefined) }}
+                        >
+                          {t('board.activityOpen')}
+                        </button>
+                      </span>
+                    </div>
+                    {groupExpanded && (
+                      <ul className={css.notifyList}>
+                        {group.items.map(renderActivityRow)}
+                      </ul>
+                    )}
+                  </li>
+                )
+              }
               return (
                 <>
                   {[...groups.entries()].map(([day, items]) => (
                     <section key={day} aria-label={dayLabelOf(day, todayBucket)}>
                       <h3 className={css.feedDay}>{dayLabelOf(day, todayBucket)}</h3>
                       <ul className={css.notifyList}>
-                        {items.map(item => {
-                          const chip = activityChipOf(item)
-                          const expanded = expandedActivityKey === item.key
-                          const title = item.taskTitle.trim() === '' ? t('card.untitled') : item.taskTitle
-                          return (
-                            <li key={item.key}>
-                              <div className={css.notifyRow} data-kind={item.kind}>
-                                <button
-                                  type="button"
-                                  className={css.notifyMain}
-                                  title={item.taskTitle}
-                                  aria-label={title}
-                                  aria-expanded={expanded}
-                                  onClick={() => { setExpandedActivityKey(current => current === item.key ? undefined : item.key) }}
-                                >
-                                  <span className={css.notifyTask}>{title}</span>
-                                  <Chip kind={chip.kind} fill={false}>{chip.label}</Chip>
-                                  <span className={css.notifySession} title={item.text ?? ''}>
-                                    {item.text !== undefined && item.text.trim() !== ''
-                                      ? item.text.slice(0, 24)
-                                      : formatTime(item.at)}
-                                  </span>
-                                </button>
-                                <span className={css.notifyActions}>
-                                  <button
-                                    type="button"
-                                    className={css.feedAction}
-                                    onClick={() => { setShowActivity(false); openTaskAtSession(item.taskId, item.sessionId) }}
-                                  >
-                                    {t('board.activityOpen')}
-                                  </button>
-                                  {item.sessionId !== undefined && (
-                                    <button
-                                      type="button"
-                                      className={css.feedAction}
-                                      onClick={() => {
-                                        if (!controller.openSession(item.sessionId!)) setFailedSession(item.sessionId)
-                                      }}
-                                    >
-                                      {t('board.notifyGoSession')}
-                                    </button>
-                                  )}
-                                </span>
-                              </div>
-                              {expanded && (
-                                <div className={css.feedPreview}>
-                                  <p className={css.detailText}>
-                                    {item.text !== undefined && item.text.trim() !== '' ? item.text : formatDateTime(item.at)}
-                                  </p>
-                                  <p className={css.detailHint}>
-                                    {t('board.activityPreviewHint', { time: formatDateTime(item.at) })}
-                                  </p>
-                                </div>
-                              )}
-                              {failedSession === item.sessionId && item.sessionId !== undefined && (
-                                <p className={css.detailHint}>{t('detail.sessionUnavailable')}</p>
-                              )}
-                            </li>
-                          )
-                        })}
+                        {groupActivityByObjectDay(items, dayBucketOf).map(renderObjectGroup)}
                       </ul>
                     </section>
                   ))}

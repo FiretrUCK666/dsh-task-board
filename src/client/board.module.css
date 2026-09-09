@@ -2234,6 +2234,14 @@ textarea.input {
   transform: rotate(-90deg);
 }
 
+/* Folded feed-group headers reuse the disclosure chevron law verbatim (same
+   11px tertiary glyph, same 140ms turn): collapsed reads right, expanded
+   reads down. Scoped to feed toggles carrying a chevron — row toggles have
+   none, so their look is untouched. */
+.notifyMain[aria-expanded='false'] .detailChevron {
+  transform: rotate(-90deg);
+}
+
 .detailDisclosureTitle {
   flex: none;
   font-size: 12px;
