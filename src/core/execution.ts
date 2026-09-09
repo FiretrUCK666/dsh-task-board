@@ -287,6 +287,17 @@ export class ExecutionService {
   constructor(private readonly env: ExecutionEnvironment) {}
 
   /**
+   * Sessions missing from the host list, by consecutive passes that missed
+   * them. A destructive verdict (cancel for "no longer exists") requires TWO
+   * consecutive misses: a single absent snapshot is a list race (host
+   * restart, pagination, a mid-rebuild read), never proof the session is
+   * gone — and a one-pass cancel is exactly the "finished sessions fall back
+   * to 待办" machine (the card's real outcome is discarded for a transient
+   * gap). Seen sessions clear immediately.
+   */
+  private readonly missingSessions = new Map<string, number>()
+
+  /**
    * Create one guaranteed-fresh native session and compose it with a run
    * configuration — the board's "新建会话" engine. Deliberately NOT a task
    * execution: no execution record, no dispatcher, no watch. The session is
@@ -697,8 +708,15 @@ export class ExecutionService {
     if (list.phase !== 'ready') return undefined
     const summary = list.byId[execution.sessionId]
     if (summary === undefined) {
+      const misses = (this.missingSessions.get(execution.sessionId) ?? 0) + 1
+      if (misses < 2) {
+        this.missingSessions.set(execution.sessionId, misses)
+        return undefined
+      }
+      this.missingSessions.delete(execution.sessionId)
       return { kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'cancelled', error: 'execution session no longer exists' }
     }
+    this.missingSessions.delete(execution.sessionId)
     if (summary.running) return undefined
     const driver = this.driverOf(execution.sessionId)
     if (driver !== undefined) {
@@ -879,6 +897,9 @@ export class ExecutionService {
   ): void {
     let settled = false
     let unsubscribe: Array<() => void> = []
+    // Consecutive passes that missed a known session (same two-pass rule as
+    // reconcile above: one absent snapshot never cancels).
+    let misses = 0
     const settle = (outcome: 'succeeded' | 'failed' | 'cancelled', error?: string): void => {
       if (settled) return
       settled = true
@@ -902,11 +923,16 @@ export class ExecutionService {
       const summary = list.byId[sessionId]
       if (summary === undefined) {
         // A known session that vanished was deleted/archived: settle as
-        // cancelled instead of waiting forever. Fresh runs keep waiting —
-        // their session may still be mid-creation.
-        if (sessionKnown) settle('cancelled', 'comment session no longer exists')
+        // cancelled instead of waiting forever — but only on the SECOND
+        // consecutive miss. Fresh runs keep waiting — their session may
+        // still be mid-creation.
+        if (sessionKnown) {
+          misses += 1
+          if (misses >= 2) settle('cancelled', 'comment session no longer exists')
+        }
         return
       }
+      misses = 0
       // Still running: keep watching.
       if (summary.running) return
       const snapshot = driver?.getSnapshot()

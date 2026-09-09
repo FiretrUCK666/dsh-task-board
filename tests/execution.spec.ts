@@ -661,6 +661,9 @@ describe('ExecutionService.reconcile', () => {
     const task = sampleTask()
     const { task: running } = startExecution(task, NOW, 'exec-1')
     const withSession = { ...running, executions: running.executions.map(e => ({ ...e, sessionId: 's-gone' })) }
+    // A single absent snapshot never cancels (list race) — the verdict needs
+    // two consecutive misses.
+    expect(await service.reconcile(withSession)).toBeUndefined()
     const event = await service.reconcile(withSession)
     expect(event).toMatchObject({ kind: 'settled', outcome: 'cancelled' })
   })
@@ -763,7 +766,8 @@ describe('ExecutionService.reconcile', () => {
     const readyService = new ExecutionService(env)
     expect(await readyService.reconcile(withSession)).toMatchObject({ kind: 'settled', outcome: 'succeeded' })
 
-    // A ready list without the session is a genuine cancel.
+    // A ready list without the session is a genuine cancel — but only on the
+    // second consecutive miss (one absent snapshot is a list race).
     const missingEnv: ExecutionEnvironment = {
       ...env,
       sessions: {
@@ -771,7 +775,9 @@ describe('ExecutionService.reconcile', () => {
         list: { getSnapshot: () => ({ phase: 'ready' as const, byId: {} }), subscribe: () => () => {} },
       },
     }
-    expect(await new ExecutionService(missingEnv).reconcile(withSession)).toMatchObject({ kind: 'settled', outcome: 'cancelled' })
+    const missingService = new ExecutionService(missingEnv)
+    expect(await missingService.reconcile(withSession)).toBeUndefined()
+    expect(await missingService.reconcile(withSession)).toMatchObject({ kind: 'settled', outcome: 'cancelled' })
   })
 
   it('ignores tasks with no open execution', async () => {
@@ -789,7 +795,7 @@ describe('ExecutionService.reconcile', () => {
 
 describe('ExecutionService.commentRun', () => {
   it('sends the comment and settles as cancelled when the session vanishes', async () => {
-    const { env } = makeEnv({ blankSummary: false })
+    const { env, setSummary } = makeEnv({ blankSummary: false })
     env.sendComment = async () => ({ ok: true })
     const service = new ExecutionService(env)
     const task = sampleTask()
@@ -801,8 +807,13 @@ describe('ExecutionService.commentRun', () => {
     }
     const events: ExecutionEvent[] = []
     // The session is absent from the host list (deleted/archived): the
-    // watch must settle the round as cancelled instead of waiting forever.
-    await service.commentRun(running, round, 's-1', '继续干活', event => { events.push(event) })
+    // watch settles the round as cancelled instead of waiting forever —
+    // but only on the second consecutive miss (one absent snapshot is a
+    // list race, never proof).
+    const pending = service.commentRun(running, round, 's-1', '继续干活', event => { events.push(event) })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    setSummary('s-noise', false)
+    await pending
     expect(events).toEqual([
       { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'cancelled', error: 'comment session no longer exists' },
     ])
@@ -988,7 +999,7 @@ describe('ExecutionService.commentRun', () => {
   })
 
   it('falls back to plain text for an unmatched command line (native default-sink)', async () => {
-    const { env } = makeEnv({ blankSummary: false })
+    const { env, setSummary } = makeEnv({ blankSummary: false })
     env.sendCommand = async () => ({ ok: true, matched: false })
     env.sendComment = async () => ({ ok: true })
     const service = new ExecutionService(env)
@@ -997,22 +1008,29 @@ describe('ExecutionService.commentRun', () => {
     const round = { ...running.executions[0], sessionId: 's-1', comment: '/not-a-command 你好', command: true }
     const events: ExecutionEvent[] = []
     // The session is absent from the host list: the text fallback runs the
-    // normal watch, which settles as cancelled (deleted session).
-    await service.commentRun(running, round, 's-1', '/not-a-command 你好', event => { events.push(event) })
+    // normal watch, which settles as cancelled (deleted session) — on the
+    // second consecutive miss.
+    const pending = service.commentRun(running, round, 's-1', '/not-a-command 你好', event => { events.push(event) })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    setSummary('s-noise', false)
+    await pending
     expect(events).toEqual([
       { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'cancelled', error: 'comment session no longer exists' },
     ])
   })
 
   it('falls back to plain text when no command face is wired', async () => {
-    const { env } = makeEnv({ blankSummary: false })
+    const { env, setSummary } = makeEnv({ blankSummary: false })
     env.sendComment = async () => ({ ok: true })
     const service = new ExecutionService(env)
     const task = sampleTask()
     const { task: running } = startExecution(task, NOW, 'exec-1')
     const round = { ...running.executions[0], sessionId: 's-1', comment: '/plan 继续', command: true }
     const events: ExecutionEvent[] = []
-    await service.commentRun(running, round, 's-1', '/plan 继续', event => { events.push(event) })
+    const pending = service.commentRun(running, round, 's-1', '/plan 继续', event => { events.push(event) })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    setSummary('s-noise', false)
+    await pending
     expect(events).toEqual([
       { kind: 'settled', taskId: task.id, executionId: 'exec-1', outcome: 'cancelled', error: 'comment session no longer exists' },
     ])

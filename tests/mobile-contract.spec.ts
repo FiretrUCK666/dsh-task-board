@@ -190,6 +190,9 @@ describe('compact columns + panel geometry', () => {
     expect(compact).toMatch(/\.columnTabs\s*\{\s*\n?\s*display:\s*grid/)
     expect(compact).toMatch(/grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/)
     expect(compact).toMatch(/\.columnTabLabel\s*\{[^}]*text-overflow:\s*ellipsis/)
+    // The strip owns symmetric breathing (never 1px-top cemented to the
+    // search bar while floating off the columns below).
+    expect(ruleIn(compact, '.columnTabs')).toMatch(/padding:\s*8px 0/)
     // A column is capped well under full width — roughly two columns plus the
     // next column's edge share a phone board (「一列占满整屏」 fix).
     const column = compact.slice(compact.indexOf('.column {'))

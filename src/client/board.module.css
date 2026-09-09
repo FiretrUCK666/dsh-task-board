@@ -5757,10 +5757,10 @@ button.interactionOption:hover {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 6px;
-    /* Bottom breathing before the track: the tab strip is a pale block and
-       the column headers start with their own dot row — 4px fused them into
-       one squeezed band (tab strip vs column heads挤在一起）. */
-    padding: 1px 0 8px;
+    /* The strip owns symmetric breathing (8px both sides): 1px top fused it
+       with the search bar above while 8px below floated it off the columns
+       (上贴下空）. Board gap alone can't fix an asymmetric member. */
+    padding: 8px 0;
     overflow-x: visible;
   }
 
