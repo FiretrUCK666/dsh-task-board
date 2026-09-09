@@ -23,7 +23,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { runningStateLabel, settledChipLabel } from '../src/client/board/TaskCard.tsx'
+import { runningStateLabel, settledChipLabel, showsBlockedChip } from '../src/client/board/TaskCard.tsx'
+import { createTask, withSchedule } from '../src/core/tasks.ts'
 
 const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
 const source = readFileSync(cssPath, 'utf8')
@@ -177,5 +178,20 @@ describe('card chip label composition', () => {
     useLanguage('en')
     expect(settledChipLabel(0)).toBe('0 runs')
     expect(settledChipLabel(3)).toBe('3 runs')
+  })
+
+  it('blocked chip: an armed rule with an empty prompt shows it, otherwise not', () => {
+    const at = 1_700_000_000_000
+    const armedEmpty = withSchedule(
+      createTask({ title: 'A', description: '', prompt: '' }, at, 'a'),
+      { enabled: true, cron: '* * * * *', nextRunAt: undefined }, at,
+    )
+    expect(showsBlockedChip(armedEmpty)).toBe(true)
+    const armedReady = withSchedule(
+      createTask({ title: 'A', description: '', prompt: 'run' }, at, 'a'),
+      { enabled: true, cron: '* * * * *', nextRunAt: undefined }, at,
+    )
+    expect(showsBlockedChip(armedReady)).toBe(false)
+    expect(showsBlockedChip(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'))).toBe(false)
   })
 })

@@ -39,6 +39,14 @@ export function settledChipLabel(runs: number): string {
   return `${runs} ${t('board.runs')}`
 }
 
+/** Whether the card shows the blocked-automation chip: an armed rule that
+ *  cannot drive anything (empty prompt — a reason, not a pause). Pure so the
+ *  badge composition is testable; the title reuses the schedule summary
+ *  grammar, which already names the blocking reason. */
+export function showsBlockedChip(task: TaskRecord): boolean {
+  return task.schedule?.enabled === true && ruleReadiness(task).kind === 'blocked'
+}
+
 /** One card in a column — a PURE state summary: title, description, source
  *  line (workspace / bound session), the updated stamp, and the status chips
  *  (what the task IS doing: running / waiting / scheduled / chaining / failed
@@ -255,6 +263,13 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
             {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && (
               <Chip kind="muted" fill={false} title={t('card.batchProgress')}>
                 {task.schedule.runCount}/{task.schedule.maxRuns}
+              </Chip>
+            )}
+            {/* Armed but blocked (empty prompt): the rule can never fire — the
+                card says why at a glance instead of looking merely idle. */}
+            {showsBlockedChip(task) && (
+              <Chip kind="error" fill={false} title={scheduleChipTitle(task)}>
+                {t('card.autoBlocked')}
               </Chip>
             )}
             {/* A live chain keeps the card in progress: the "接续中" chip
