@@ -75,6 +75,13 @@ describe('throughputPerWeek (done tasks, trailing 28d)', () => {
     expect(throughputPerWeek(tasks, NOW)).toBe(0)
   })
 
+  it('a future tombstone never erases the real completions', () => {
+    const tasks = [
+      { status: 'done' as const, statusHistory: history(['running', NOW - 20 * DAY], ['done', NOW - 6 * DAY], ['done', NOW + DAY]) },
+    ]
+    expect(throughputPerWeek(tasks, NOW)).toBe(0.25)
+  })
+
   it('counts a twice-completed task once (task caliber, last completion wins)', () => {
     const tasks = [
       { status: 'done' as const, statusHistory: history(['running', NOW - 20 * DAY], ['done', NOW - 20 * DAY], ['running', NOW - 6 * DAY], ['done', NOW - 6 * DAY]) },

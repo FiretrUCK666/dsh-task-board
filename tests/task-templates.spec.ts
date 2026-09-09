@@ -167,6 +167,22 @@ describe('controller template library', () => {
     expect(controller.getSnapshot().tasks.map(task => task.id)).toContain(stamped.id)
   })
 
+  it('instantiateTemplate supplements a blank head (births complete)', () => {
+    const { controller, templateStore } = controllerWith()
+    // A template carrying a blank head + prompt (e.g. saved before birth
+    // supplement existed) still stamps a complete card — instantiate is a
+    // birth door, not an edit door.
+    templateStore.rows.push({
+      ...templateFromTask(sourceTask(), 't-blank', 'Blank'),
+      title: '',
+      description: '',
+      prompt: '画一只猫\n并解释配色',
+    })
+    const stamped = controller.instantiateTemplate('t-blank')!
+    expect(stamped.title).toBe('画一只猫')
+    expect(stamped.description).toBe('画一只猫\n并解释配色')
+  })
+
   it('deleteTemplate removes by id; unknown id is a false no-op', () => {
     const { controller } = controllerWith([{ id: 'tpl-1', name: 'T' }])
     expect(controller.deleteTemplate('nope')).toBe(false)

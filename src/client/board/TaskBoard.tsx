@@ -748,14 +748,27 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     if (organizing || event?.ctrlKey === true || event?.metaKey === true) toggleCard(id)
     else controller.openTask(id)
   }
-  // Organize-bar color slot: the first selected card's color, else none —
-  // the ring never appears on a guessed default (a colorless selection has
-  // no ring; 「移除颜色」 dot lights instead).
+  // Organize-bar color slot: the selection's color ONLY when every selected
+  // card agrees (a mixed selection lights no ring — showing the first card's
+  // color would read as "all red". A colorless or mixed selection offers the
+  // 「移除颜色」 dot instead; the ring never appears on a guess).
   const orgColorValue = (() => {
+    let seen: string | undefined
+    let mixed = false
+    let any = false
     for (const task of snapshot.tasks) {
-      if (liveIds.includes(task.id) && task.color !== undefined) return task.color
+      if (!liveIds.includes(task.id)) continue
+      any = true
+      if (task.color === undefined) {
+        mixed = true
+      } else if (seen === undefined) {
+        seen = task.color
+      } else if (seen !== task.color) {
+        mixed = true
+      }
     }
-    return undefined
+    if (!any || mixed) return undefined
+    return seen
   })()
   const draggedTask = dragId !== undefined
     ? snapshot.tasks.find(candidate => candidate.id === dragId)
@@ -952,7 +965,11 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               ...flow.samples > 0 && flow.p85Days !== undefined
                 ? [flow.p85Days < 1 ? t('board.flowSubDay') : t('board.flowDays', { n: String(Math.round(flow.p85Days)) })]
                 : [],
-              ...flow.perWeek > 0 ? [t('board.flowThroughput', { n: String(Math.round(flow.perWeek * 10) / 10) })] : [],
+              ...flow.perWeek > 0 ? [t('board.flowThroughput', {
+                // Quarters are exact (count/4): two decimals, never rounded
+                // up to a coarser grain (0.25 must read 0.25, not 0.3).
+                n: String(Math.round(flow.perWeek * 100) / 100),
+              })] : [],
             ]
             const stateParts = [
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],

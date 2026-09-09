@@ -1190,6 +1190,14 @@ export function applyCardOrder(
   const at = beforeId === undefined ? target.length : target.findIndex(task => task.id === beforeId)
   const position = at < 0 ? target.length : at
   const ordered = [...target.slice(0, position), moved, ...target.slice(position)]
+  // Same-spot drop: the target column reads identically with the card in
+  // place — return untouched (no updatedAt bump, no authorship claim, no
+  // sync churn for a no-op). Same law as promoteToColumnTop's early return.
+  const currentOrder = tasks.filter(task => task.status === targetStatus).map(task => task.id)
+  if (currentOrder.length === ordered.length
+    && currentOrder.every((id, index) => ordered[index]?.id === id)) {
+    return [...tasks]
+  }
   return tasks.map(task => {
     if (task.id === movedId) {
       // Column moves funnel through withStatus (status history appends here —

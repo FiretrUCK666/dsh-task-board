@@ -61,8 +61,13 @@ export function throughputPerWeek(
   for (const task of tasks) {
     const history = task.statusHistory
     if (history === undefined) continue
-    const doneAt = history.filter(entry => entry.status === 'done').map(entry => entry.at).pop()
-    if (doneAt !== undefined && doneAt >= floor && doneAt <= now) count++
+    // The last EFFECTIVE completion (never a future instant — same dirt law
+    // as cycles: a future tombstone must not erase the real completions).
+    const doneAt = history
+      .filter(entry => entry.status === 'done' && entry.at <= now)
+      .map(entry => entry.at)
+      .pop()
+    if (doneAt !== undefined && doneAt >= floor) count++
   }
   return count / 4
 }

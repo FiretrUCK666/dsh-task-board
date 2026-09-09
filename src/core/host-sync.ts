@@ -278,7 +278,9 @@ export class BoardSyncClient {
         this.log(`[dsh-task-board] stream open #${this.streamOpens}`)
         this.scheduleResync()
         void this.renewLease()
-        this.probeParked()
+        // No direct probe here: the resync poll above carries it (one commit
+        // per trigger, never two — poll-then-probe AND direct-probe would
+        // double-send on every foreground return and stream reopen).
       },
     }))
     this.loopCancels.push(this.every(this.leaseRenewMs, () => this.renewLease()))
@@ -295,8 +297,9 @@ export class BoardSyncClient {
       const visibility = this.deps.visibility
       this.loopCancels.push(visibility.onVisible(() => {
         void this.renewLease()
+        // The poll below carries the parked-writer probe (same single-send
+        // law as stream reopen — never a direct probe alongside it).
         void this.poll()
-        this.probeParked()
       }))
       this.loopCancels.push(visibility.onHidden(() => {
         void this.deps.transport.lease(this.clientId, { ttlMs: this.leaseTtlMs, active: false }).catch(() => undefined)

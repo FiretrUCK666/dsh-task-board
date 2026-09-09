@@ -173,6 +173,15 @@ describe('promoteToColumnTop', () => {
     const out = promoteToColumnTop([a, b], 'a', 'todo', NOW + 1)
     expect(keyed(out)).toEqual({ a: 0, b: 1 })
   })
+
+  it('applyCardOrder returns untouched rows for a same-spot drop (no churn)', () => {
+    const [a, b, c] = column(['a', 'b', 'c'])
+    const out = applyCardOrder([a, b, c], 'b', 'todo', 'c', NOW + 1)
+    // b already sits right before c: same order, same objects, same stamps.
+    expect(out.map(task => task.id)).toEqual(['a', 'b', 'c'])
+    expect(out[1]).toBe(b)
+    expect(out[1]?.updatedAt).toBe(NOW)
+  })
 })
 
 describe('status transitions', () => {

@@ -1272,11 +1272,12 @@ export class BoardController {
   // --- task mutations ---------------------------------------------------------
 
   /**
-   * 缺则补、填则守：任务被写入（创建/编辑）或被真正启动（唯一发射门 launchTask）
-   * 的时刻，空标题/空描述从执行 Prompt 补齐（`supplementLaunchFields` 纯函数）——
-   * 已填字段永不覆盖。这是整个特性的唯一作用点：任何创建与启动路径（手动/
-   * 重复/接续链/定时/巡航/自动化/创建/启动）都得到同一套语义，卡片在出生与
-   * 开跑时永远不会无故空着头；编辑路径永不补（清空即意图）。
+   * 缺则补、填则守：任务被创建（四出生门：手动/复制/模板实例/绑定创建）或被真正
+   * 启动（唯一发射门 launchTask）的时刻，空标题/空描述从执行 Prompt 补齐
+   * （`supplementLaunchFields` 纯函数）——已填字段永不覆盖。这是整个特性的唯一
+   * 作用点：任何创建与启动路径（手动/重复/接续链/定时/巡航/自动化/创建/启动）
+   * 都得到同一套语义，卡片在出生与开跑时永远不会无故空着头；编辑路径永不补
+   * （清空即意图）。
    */
   private supplementedTask(task: TaskRecord): TaskRecord {
     const supplements = supplementLaunchFields(task)
@@ -1422,7 +1423,10 @@ export class BoardController {
     const source = this.tasks.find(task => task.id === id)
     if (source === undefined) return undefined
     const now = this.now()
-    let task = createTask({
+    // Birth supplement runs here too (copy/instantiate are births, not
+    // edits — a blank head copies the prompt's first line like a manual
+    // creation does; the launch door re-supplements idempotently).
+    let task = this.supplementedTask(createTask({
       title: source.title,
       description: source.description,
       prompt: source.prompt,
@@ -1436,7 +1440,7 @@ export class BoardController {
       ...source.dueAt !== undefined ? { dueAt: source.dueAt } : {},
       ...source.priority !== undefined ? { priority: source.priority } : {},
       ...source.labels !== undefined ? { labels: [...source.labels] } : {},
-    }, now, this.uuid(), this.nextOrder())
+    }, now, this.uuid(), this.nextOrder()))
     // The copy keeps the card's SHAPE AND its inert metadata (accent color,
     // prompt images, due date) — but NEVER an armed rule: like a stamped
     // template, a copy must not surprise-fire (arming is an explicit act on
@@ -1528,10 +1532,10 @@ export class BoardController {
     const store = this.deps.templateStore ?? new LocalStorageTemplateStore()
     const template = store.load().find(candidate => candidate.id === id)
     if (template === undefined) return undefined
-    const task = createTask(
+    const task = this.supplementedTask(createTask(
       templateToNewInput(template),
       this.now(), this.uuid(), this.nextOrder(),
-    )
+    ))
     this.tasks = promoteToColumnTop([...this.tasks, task], task.id, task.status, this.now())
     this.persistAndNotify()
     return this.tasks.find(candidate => candidate.id === task.id) ?? task
@@ -1899,9 +1903,9 @@ export class BoardController {
    * run configuration. A run-config key present in the patch with an empty
    * string or `undefined` clears the field (the run then falls back to
    * defaults); a value sets it; absent keys keep their current value. Text
-   * fields are trimmed; a blank title is allowed (the card shows an 未命名
-   * placeholder and the 缺则补 supplement fills empty title/description from
-   * a present execution prompt at once). The next execution — manual or
+   * fields are trimmed; a blank title is allowed and STAYS blank (the card
+   * shows an 未命名 placeholder — the 缺则补 supplement runs at birth and
+   * at launch only, never on edit). The next execution — manual or
    * scheduled — reads the updated record, so edits apply from the
    * following run onward.
    * @returns true when applied, false when rejected (unknown task).
@@ -2280,7 +2284,7 @@ export class BoardController {
    * execution record, and hand off to the ExecutionService. Automation no
    * longer awaits a manual first run — arming a schedule activates it at
    * once (see setSchedule / ruleReadiness) — so any trigger just starts.
-   * THE 缺则补 supplement lives here (plus at create/update): every real
+   * THE 缺则补 supplement lives here (plus at every birth): every real
    * launch — manual, rerun, chain, cron, cruise pickup, queued auto run —
    * reads the supplemented record, so no launch path can run a card with an
    * empty head (its title names the fresh session).

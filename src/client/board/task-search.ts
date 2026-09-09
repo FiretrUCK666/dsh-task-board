@@ -76,8 +76,10 @@ export interface BoardQualifier {
 export function parseBoardQuery(query: string): { terms: string[]; qualifiers: BoardQualifier[] } {
   const terms: string[] = []
   const qualifiers: BoardQualifier[] = []
-  // Quoted `ws:` values first (multi-word workspace names); the remainder
-  // splits on whitespace as usual. An empty quote pair is left alone (it
+  // Quoted `ws:` values first (multi-word workspace names — the ONLY quoted
+  // key by design: enumerated values are closed sets and labels are
+  // spaceless single tokens, so neither can hold a space worth quoting).
+  // The remainder splits on whitespace as usual. An empty quote pair is left alone (it
   // falls through to a literal term and matches nothing — never a silent
   // pass-all), and so is an unclosed quote (a quote inside a value is never
   // a facet value, so the token stays literal text).
