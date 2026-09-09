@@ -115,6 +115,23 @@ describe('SchedulerService.tick', () => {
     expect(h.scheduler.skipStats()).toEqual({ overlap: 0, missed: 1 })
   })
 
+  it('emits the cumulative skip ledger through onSkips (wiring sink, optional)', async () => {
+    const seen: Array<{ overlap: number; missed: number }> = []
+    const h = makeHarness({ onSkips: stats => { seen.push({ ...stats }) } })
+    h.setNow(at(2026, 1, 1, 10, 0, 30))
+    const base = scheduledTask('a', '* * * * *', at(2026, 1, 1, 10, 0, 0))
+    const { task: running } = startExecution(base, at(2026, 1, 1, 9, 59, 0), 'e-1')
+    h.setTasks([running])
+    await h.scheduler.tick()
+    expect(seen).toEqual([{ overlap: 1, missed: 0 }])
+    // No sink configured: skips stay readable through skipStats only.
+    const h2 = makeHarness()
+    h2.setNow(at(2026, 1, 1, 10, 0, 30))
+    h2.setTasks([scheduledTask('a', '* * * * *', at(2026, 1, 1, 9, 0, 0))])
+    await h2.scheduler.tick()
+    expect(h2.scheduler.skipStats()).toEqual({ overlap: 0, missed: 1 })
+  })
+
   it('still fires a merely-late slot, and honours a per-rule tolerance', async () => {
     // 90 seconds late with a 120-second tolerance: superseded but forgiven.
     const h = makeHarness()

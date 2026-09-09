@@ -1063,6 +1063,9 @@ export function apply(ctx: ClientContext): void {
       applySchedule: (id, nextRunAt, lastTriggeredAt, runCount, disable) =>
         controller.applyScheduleNextRun(id, nextRunAt, lastTriggeredAt, runCount, disable),
       ready: () => sessions.list.getSnapshot().phase === 'ready' && (!sync.isSynced() || sync.isEngine()),
+      // Forbid-policy skip telemetry surfaces on the board's status line
+      // (the controller snapshot carries it; zero stays hidden).
+      onSkips: stats => { controller.setSchedulerSkips(stats) },
       // Cruise scheduled windows flip on/off at their boundaries on the same
       // heartbeat as task schedules.
       cruiseTick: now => controller.tickCruise(now),

@@ -728,6 +728,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
               ...snapshot.stats.queued > 0 ? [t('board.statusQueued', { n: String(snapshot.stats.queued) })] : [],
               ...wipSentence !== undefined ? [wipSentence] : [],
+              // Forbid-policy skip ledger: cumulative and read-only, shown only
+              // while nonzero (the same quiet discipline as running/queued) —
+              // "why didn't it run" stays answerable without a new row.
+              ...snapshot.skips.overlap + snapshot.skips.missed > 0
+                ? [t('board.statusSkipped', { n: String(snapshot.skips.overlap + snapshot.skips.missed) })]
+                : [],
             ]
             // 引擎席位的诚实指示（只在同步模式且真的"不在本机/服务端过旧"时
             // 出现）：排队的工作在等谁、为什么不动——用户看得见，就不用猜、

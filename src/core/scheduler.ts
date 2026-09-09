@@ -49,6 +49,12 @@ export interface SchedulerDeps {
   /** Tick cadence; defaults to 60_000 ms. */
   tickMs?: number
   /**
+   * Skip telemetry sink: invoked with the cumulative skip ledger whenever a
+   * Forbid/missed skip lands (at most once per tick per task). Absent = the
+   * counts stay readable through `skipStats` only (tests, headless hosts).
+   */
+  onSkips?: (stats: { overlap: number; missed: number }) => void
+  /**
    * Gate: while false the tick no-ops (e.g. the session list baseline has not
    * arrived on page load, so executions would fail). Defaults to always ready.
    */
@@ -186,6 +192,7 @@ export class SchedulerService {
         const next = nextRunAtMs(schedule.cron, schedule.nextRunAt)
         if (next !== undefined) this.deps.applySchedule(task.id, next, undefined)
         this.skippedOverlap += 1
+        this.deps.onSkips?.(this.skipStats())
         continue
       }
       // Missed-slot tolerance: a due instant that a NEWER grid point already
@@ -200,6 +207,7 @@ export class SchedulerService {
         const next = nextRunAtMs(schedule.cron, now)
         if (next !== undefined) this.deps.applySchedule(task.id, next, undefined)
         this.skippedMissed += 1
+        this.deps.onSkips?.(this.skipStats())
         continue
       }
       // The final budgeted run disarms the schedule after firing; earlier

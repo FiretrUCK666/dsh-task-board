@@ -1612,6 +1612,16 @@ describe('auto-cruise', () => {
     expect(controller.getSnapshot().cruise.wip).toBeUndefined()
   })
 
+  it('mirrors scheduler skip telemetry read-only (zero stays hidden, never an edit)', () => {
+    const { controller } = makeController()
+    expect(controller.getSnapshot().skips).toEqual({ overlap: 0, missed: 0 })
+    controller.setSchedulerSkips({ overlap: 2, missed: 1 })
+    expect(controller.getSnapshot().skips).toEqual({ overlap: 2, missed: 1 })
+    // Same ledger re-set is a no-op (dedupes per-tick echo).
+    controller.setSchedulerSkips({ overlap: 2, missed: 1 })
+    expect(controller.getSnapshot().skips).toEqual({ overlap: 2, missed: 1 })
+  })
+
   it('restores a persisted enabled cruise on start and pumps the queue', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub, {

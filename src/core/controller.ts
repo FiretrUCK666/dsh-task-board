@@ -595,6 +595,11 @@ export interface ControllerSnapshot {
    *  sessions are running right now, and how many auto launches are queued
    *  for a freed slot. Both zero → the status line hides itself. */
   stats: { running: number; queued: number }
+  /** Scheduler Forbid-policy skip ledger (cumulative per board lifetime):
+   *  due slots skipped while the task still ran vs. slots too stale to catch
+   *  up. Read-only telemetry for the status line (zero → hidden, same quiet
+   *  discipline as stats); skips never enter the retry path. */
+  skips: { overlap: number; missed: number }
   /** Engine-seat facts for the board's quiet honesty: whether THIS device is
    *  the engine, whether the board runs in synced mode at all, the host's
    *  lease protocol (1 = predates visibility preemption → a queued card may
@@ -648,6 +653,8 @@ export class BoardController {
   private readonly now: () => number
   private readonly uuid: () => string
   private cruiseState: CruiseState
+  /** Scheduler Forbid-policy skip ledger mirrored from the `onSkips` sink. */
+  private schedulerSkips = { overlap: 0, missed: 0 }
 
   /** @param deps - store, execution service, and the sessions navigation face. */
   constructor(private readonly deps: ControllerDeps) {
@@ -773,6 +780,7 @@ export class BoardController {
       selectedTaskId: this.selectedTaskId,
       cruise: { ...this.cruiseState },
       stats: { running: this.inFlightCount(), queued: this.queuedLaunches.length },
+      skips: { ...this.schedulerSkips },
       engine: { held: this.engine, synced: this.syncActive, hostProto: this.hostProto, bootedAt: this.hostBootedAt },
     }
   }
@@ -3061,6 +3069,15 @@ export class BoardController {
       ? (() => { const rest = { ...this.cruiseState }; delete rest.wip; return rest })()
       : { ...this.cruiseState, wip: next }
     this.deps.cruiseStorage?.write(this.cruiseState)
+    this.notify()
+  }
+
+  /** Mirror the scheduler's Forbid-policy skip ledger into the snapshot (the
+   *  wiring calls this from the scheduler's `onSkips` sink). Cumulative and
+   *  read-only: skips are telemetry, never persisted, never retried. */
+  setSchedulerSkips(stats: { overlap: number; missed: number }): void {
+    if (this.schedulerSkips.overlap === stats.overlap && this.schedulerSkips.missed === stats.missed) return
+    this.schedulerSkips = { overlap: stats.overlap, missed: stats.missed }
     this.notify()
   }
 
