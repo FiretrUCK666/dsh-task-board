@@ -907,6 +907,29 @@ export function refining(task: TaskRecord): boolean {
   return task.executions.some(round => round.refine === true && round.endedAt === undefined)
 }
 
+/**
+ * Whether the task has anything to refine: title, description or execution
+ * prompt — at least one must be non-blank, because the refine instruction is
+ * built from exactly these three fields. An all-blank task would send an
+ * empty requirement round (a wasted run that only flips the card's lights);
+ * the UI disables the entry and says so instead of launching it.
+ */
+export function refinable(task: TaskRecord): boolean {
+  return task.title.trim() !== '' || task.description.trim() !== '' || task.prompt.trim() !== ''
+}
+
+/**
+ * Whether the task is genuinely EXECUTING right now (display truth): an open
+ * plain run, external round or injected comment — but NOT a lone refinement
+ * round. Refining is preparation inside the backlog column (its own 完善中
+ * chip + breathing); reading it as 进行中 is the "一点完善整卡变进行中" bug.
+ * Blocking semantics (run guard, concurrency budget, drop rules, reconcile
+ * drive) stay on {@link hasOpenRun} — this is display only, never a gate.
+ */
+export function executing(task: TaskRecord): boolean {
+  return task.executions.some(round => isOpenRound(round) && round.refine !== true)
+}
+
 /** Bind (or re-bind) the task's requirement-refinement session. */
 export function withRefineSession(task: TaskRecord, sessionId: string, now: number): TaskRecord {
   if (task.refineSessionId === sessionId) return task

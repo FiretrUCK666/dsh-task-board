@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, supplementLaunchFields, taskExecutable,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -681,6 +681,25 @@ describe('requirement refinement', () => {
     expect(hasOpenRun(task)).toBe(true)
     const settled = { ...task, executions: task.executions.map(round => ({ ...round, endedAt: NOW + 9 })) }
     expect(hasOpenRun(settled)).toBe(false)
+  })
+
+  it('refinable needs at least one non-blank field (an all-blank task has nothing to research)', () => {
+    expect(refinable(withRefine())).toBe(true)
+    expect(refinable(createTask({ title: '  ', description: ' ', prompt: '' }, NOW, 'blank'))).toBe(false)
+    expect(refinable(createTask({ title: '', description: '有个想法', prompt: '' }, NOW, 'desc'))).toBe(true)
+  })
+
+  it('executing excludes lone refinement (display truth, never a gate)', () => {
+    // A refining backlog card is preparing, not executing — the card must
+    // read 完善中, never 进行中 (the "一点完善整卡变进行中" bug).
+    expect(executing(withRefine())).toBe(false)
+    const settled = { ...withRefine(), executions: withRefine().executions.map(round => ({ ...round, endedAt: NOW + 9 })) }
+    expect(executing(settled)).toBe(false)
+    const plain = {
+      ...sampleTask(),
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    }
+    expect(executing(plain)).toBe(true)
   })
 
   it('withRefineSession binds the session and stamps the update', () => {

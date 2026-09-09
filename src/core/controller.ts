@@ -30,7 +30,7 @@ import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './quest
 import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVerbs } from './goal-verbs.ts'
 import type { TaskStore } from './store.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -2653,6 +2653,11 @@ export class BoardController {
   startRefine(taskId: string, english = false): boolean {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined || task.status !== 'backlog' || hasOpenRun(task)) return false
+    // An all-blank task has no requirement to research (the refine
+    // instruction is built from title/description/prompt) — launching would
+    // burn a run and light the card for nothing. The UI disables the entry
+    // with the same judgment; this is the backstop, never the messenger.
+    if (!refinable(task)) return false
     const round: ExecutionRecord = {
       id: this.uuid(),
       sessionId: task.refineSessionId,

@@ -8,7 +8,7 @@ import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskLiveState } from '../../core/task-live.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { hasOpenRun, latestExecutionOf, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf, cardSourceLabel } from '../../core/tasks.ts'
+import { executing, hasOpenRun, latestExecutionOf, pendingCommentCount, plainRunsOf, refining, ruleReadiness, taskBindsOf, cardSourceLabel } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
@@ -86,6 +86,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // run several at once), never "the last row is unsettled". A pending comment
   // round (task sitting in review) must never spin.
   const running = hasOpenRun(task)
+  // Display truth splits from the gate above: a lone refinement round keeps
+  // the card in its backlog column doing preparation — the chip must read
+  // 完善中 (its own badge below), never 进行中. Quick-run blocking, budget
+  // and drop rules stay on `running`.
+  const showingRunning = executing(task)
   // Comments saved but not yet injected (the task's queue): a quiet warn
   // badge so a card waiting for the dispatcher is never mistaken for idle.
   const queuedComments = pendingCommentCount(task)
@@ -275,7 +280,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                 {t('card.pending')} {pendingCount}
               </Chip>
             )}
-            {running ? (
+            {showingRunning ? (
               <Chip kind="warn" fill={false} title={waiting !== undefined
                 ? t('card.waitingTitle', { kind: t(waitingKeyOf(waiting)) })
                 : undefined}

@@ -1844,6 +1844,45 @@ describe('requirement refinement', () => {
     expect(controller.startRefine('task-b')).toBe(false)
   })
 
+  it('rejects refine for an all-blank task (no requirement to research)', () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const blank = createTask({ title: '  ', description: ' ', prompt: '' }, NOW, 'task-blank')
+    store.save([{ ...blank, status: 'backlog' }])
+    const { controller } = makeController(stub, { store })
+    expect(controller.startRefine('task-blank')).toBe(false)
+    expect(stub.runCalls).toHaveLength(0)
+    expect(store.load()[0].executions).toHaveLength(0)
+  })
+
+  it('a natively-running pre-bind refine session is never recorded as external (no column move)', async () => {
+    // The first refine round is born with sessionId undefined; the native
+    // session appears in the list BEFORE the started event binds it. That
+    // window must not record an out-of-band round (the session is
+    // board-owned from conception) and must never move the column.
+    const stub = new StubExec()
+    const sessions = new FakeSessions()
+    const store = new InMemoryTaskStore()
+    seedTask(store, { status: 'backlog' })
+    const { controller } = makeController(stub, { store, sessions, reconcileDebounceMs: 0 })
+    expect(controller.startRefine('task-a')).toBe(true)
+    sessions.setRunning('s-refine', true)
+    await flush()
+    const mid = store.load()[0]
+    expect(mid.status).toBe('backlog')
+    expect(mid.executions).toHaveLength(1)
+    expect(mid.executions[0].external).not.toBe(true)
+    // The late started event binds the session; the running turn stays
+    // board-owned (busy lane), still no external round, still backlog.
+    const call = stub.runCalls[0]
+    call.fire({ kind: 'started', taskId: 'task-a', executionId: call.executionId, sessionId: 's-refine' })
+    await flush()
+    const bound = store.load()[0]
+    expect(bound.status).toBe('backlog')
+    expect(bound.executions).toHaveLength(1)
+    expect(bound.refineSessionId).toBe('s-refine')
+  })
+
   it('reuses the bound refine session for answers and delivers them immediately', async () => {
     const stub = new StubExec()
     const store = new InMemoryTaskStore()

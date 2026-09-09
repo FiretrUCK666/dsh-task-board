@@ -157,6 +157,15 @@ describe('card chip label composition', () => {
     expect(runningStateLabel('question')).toBe('Waiting for you · Question')
   })
 
+  it('refining never reads as running: the chip uses display truth, the guard stays on hasOpenRun', () => {
+    // 一点完善整卡变进行中 — the spinner chip must ride `executing`
+    // (refine excluded) while quick-run blocking keeps `hasOpenRun`.
+    const cardPath = fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url))
+    const card = readFileSync(cardPath, 'utf8')
+    expect(card).toMatch(/showingRunning \?/)
+    expect(card).toMatch(/executing\(task\)/)
+  })
+
   it('settled count label (zh / en)', () => {
     useLanguage('zh')
     expect(settledChipLabel(0)).toBe('0 次执行')

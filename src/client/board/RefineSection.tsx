@@ -16,7 +16,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
-import { refining, refineRoundsOf, type TaskRecord } from '../../core/tasks.ts'
+import { refinable, refining, refineRoundsOf, type TaskRecord } from '../../core/tasks.ts'
 import { isEnglish, t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
@@ -121,9 +121,21 @@ export function RefineSection({ controller, task }: {
       {idle ? (
         <div className={css.refineIdle}>
           <p className={css.detailText}>{t('detail.refine.idleHint')}</p>
-          <Button variant="primary" onClick={() => { controller.startRefine(task.id, isEnglish()) }}>
+          {/* An all-blank task has nothing to research (the instruction is
+              built from title/description/prompt) — launching would burn a
+              run for an empty requirement. Disabled with the reason on the
+              line, never a silent dead button. */}
+          <Button
+            variant="primary"
+            disabled={!refinable(task)}
+            title={!refinable(task) ? t('detail.refine.emptyHint') : undefined}
+            onClick={() => { controller.startRefine(task.id, isEnglish()) }}
+          >
             {t('detail.refine.start')}
           </Button>
+          {!refinable(task) && (
+            <p className={css.detailHint}>{t('detail.refine.emptyHint')}</p>
+          )}
         </div>
       ) : (
         <>
