@@ -770,6 +770,10 @@ describe('template library wiring', () => {
     // air (padding alone never reads as separation against the shell head).
     expect(ruleIn(compact, '.board')).toMatch(/padding:\s*14px 12px/)
     expect(ruleIn(compact, '.board')).toMatch(/border-top:\s*var\(--dsh-tb-separator\)/)
+    // Column heads own their separation explicitly (12px vertical on narrow
+    // glass; the cards' 6px top pad belongs to the drop indicator, never to
+    // rhythm). Sides stay 20px (the cards' content line).
+    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 20px/)
   })
 
   it('the narrow rail keeps ONE rhythm (a single gap owns between)', () => {

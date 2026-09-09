@@ -5737,6 +5737,16 @@ button.interactionOption:hover {
     flex: 0 0 clamp(200px, 46cqw, 320px);
   }
 
+  /* Compact column heads breathe vertically (12px): on a 200px glass the
+     same 10px that reads fine on desktop presses the dot/title/count
+     against the top edge and the content below. Sides stay 20px (the header
+     shares the cards' 20px content line — see the base rule). This 12px IS
+     the head/content separation: the cards' 6px top pad belongs to the drop
+     indicator, never spend it as rhythm. */
+  .columnHeader {
+    padding: 12px 20px;
+  }
+
   /* The compact column navigator: FIVE EQUAL cells, one tap jumps that status
      column into view. Content-width pills overflowed a phone board (the tab
      strip itself needed a horizontal swipe — a navigator you cannot see is no
