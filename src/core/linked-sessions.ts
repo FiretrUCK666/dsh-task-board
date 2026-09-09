@@ -1,14 +1,16 @@
 /**
  * Linked-sessions derivation: the pure logic behind a task's 链接会话 section.
  *
- * A linked row exists ONLY for a session the user explicitly bound to the task
- * (dragged in from the sidebar, created through the detail, or picked in the
- * add-session dialog). A WORKSPACE BIND DELIBERATELY CONTRIBUTES NO SESSION
- * ROWS: it is a source/config association (where the task came from, where it
- * runs), never a subscription to that folder's conversations — a session the
- * user creates in the main UI must never appear on a task card by itself.
- * (The earlier live-member derivation was exactly that bug: every new session
- * in a bound workspace flooded into the card.)
+ * A linked row exists for a session the user explicitly bound to the task
+ * (dragged in from the sidebar, created through the detail, picked in the
+ * add-session dialog, or snapshotted at workspace-folder creation). A
+ * WORKSPACE BIND is a source/config association (where the task came from,
+ * where it runs) — it contributes NO rows by itself, so a session the user
+ * creates in the main UI never appears on a task card by itself. (The
+ * earlier live-member derivation was exactly that bug: every new session in
+ * a bound workspace flooded into the card.) The folder-drop snapshot above
+ * is the deliberate exception: at CREATION the card takes the workspace's
+ * current live sessions as explicit rows — a snapshot, not a subscription.
  *
  * The session row is derived live from the native session snapshot (title,
  * running, pending interaction), so renames and state changes surface with no
@@ -129,8 +131,9 @@ function rowOf(sessionId: string, source: LinkedSessionSource): LinkedSessionRow
  *
  * - session bind → exactly that session (never filtered by archived/blank:
  *   the user dragged it in on purpose; only the hide set applies);
- * - workspace bind → NO rows (a workspace is a source/config association,
- *   never a subscription to its conversations — see the module doc);
+ * - workspace bind → NO rows by itself (a workspace is a source/config
+ *   association, never a subscription — folder drops snapshot their members
+ *   as explicit session binds at creation instead);
  * - unbound → no rows.
  */
 export function deriveLinkedSessions(

@@ -50,10 +50,11 @@ import { Icon } from './ui.tsx'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { boardBox } from './Dialog.tsx'
 import { useEscapeStack } from './escape-stack.ts'
+import type { BoardController } from '../../core/controller.ts'
 import type { SessionContext } from './use-interaction.ts'
 
 /** The shared panel frame (see module doc). */
-export function SessionFrame({ title, badge, ariaLabel, actions, context, main, rail, onClose }: {
+export function SessionFrame({ title, badge, ariaLabel, actions, context, contextSessionId, controller, main, rail, onClose }: {
   /** Panel title (the task title on both surfaces). */
   title: string
   /** Optional type badge text — its family identity; absent hides the badge. */
@@ -67,6 +68,10 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
    *  popover placed between the title and the actions; narrow = the second
    *  header line's left member. */
   context?: SessionContext
+  /** The session the context belongs to: with `controller` it switches the
+   *  goal row to the interactive strip (pause / resume / edit / clear). */
+  contextSessionId?: string
+  controller?: BoardController
   /** Left column: the conversation region (caller owns its scroll region). */
   main: ReactNode
   /** Right column: the rail (caller owns its content). */
@@ -89,7 +94,12 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, main, 
             {badge !== undefined && <span className={css.reviewBadge}>{badge}</span>}
           </div>
           {context !== undefined && (
-            <SessionContextBlock context={context} className={css.reviewHeaderContext} />
+            <SessionContextBlock
+              context={context}
+              className={css.reviewHeaderContext}
+              sessionId={contextSessionId}
+              controller={controller}
+            />
           )}
           <div className={css.reviewActions}>{actions}</div>
           <button

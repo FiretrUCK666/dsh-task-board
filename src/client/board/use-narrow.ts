@@ -1,19 +1,22 @@
 /**
- * useNarrow / useSurfaceNarrow — the two sanctioned signals for
- * BEHAVIOR/STRUCTURE switches (React cannot branch on a CSS container query).
+ * useSurfaceNarrow — the sanctioned signal for BEHAVIOR/STRUCTURE switches
+ * (React cannot branch on a CSS container query).
  *
  * Geometry breakpoints live in CSS container queries (surface-relative); where
  * the DOM SHAPE or a default state must differ — the cruise settings ride a
  * compact anchored popover on a wide board but must become a full Dialog on a
  * phone; a review panel's folds start collapsed on a phone and open on a
- * desktop — these hooks are the switch.
+ * desktop — this hook is the switch.
  *
- * `useSurfaceNarrow` is the honest one: it measures THE SURFACE itself (the
- * floating panel the CSS is querying), so JS and CSS can never disagree.
- * `useNarrow` measures the viewport, which is only a proxy — a mid-size window
- * with the shell sidebar open has a viewport that says "wide" and a panel that
- * the container query already stacked; a default that follows the viewport
- * would then disagree with the geometry the user is looking at.
+ * `useSurfaceNarrow` measures THE SURFACE itself (the floating panel the CSS
+ * is querying), so JS and CSS can never disagree.
+ *
+ * @deprecated `useNarrow` (viewport proxy) is frozen: a mid-size window with
+ * the shell sidebar open has a viewport that says "wide" while the board or
+ * panel is already stacked, and a default that follows the viewport then
+ * disagrees with the geometry the user is looking at. All shape switches
+ * must use `useSurfaceNarrow`; this export stays only so old callers fail
+ * loudly in review, not silently in layout.
  */
 import { useEffect, useRef, useState } from 'react'
 

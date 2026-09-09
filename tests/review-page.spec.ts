@@ -237,25 +237,24 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(cssSource).not.toMatch(/@container dsh-tb \(max-width: 600px\) \{/)
   })
 
-  it('the narrow header is a deterministic grid: title+× one plane (× ALWAYS top-right), then context LEFT + actions RIGHT', () => {
+  it('the narrow header is a deterministic grid: title+badge+× one plane (× ALWAYS top-right), then context LEFT + actions RIGHT', () => {
     const block = stacked()
-    // The header is a NAMED GRID, not flex-wrap + order (which drifted the
-    // layout with content — × sometimes fell to line 2's left, 刷新/查看会话
-    // sometimes squeezed onto line 1). Areas fix every member: line 1 =
-    // title | close (× always top-right, same 14px top/right inset, centered
-    // with the title); line 2 = context | actions. The title stays single-line.
-    expect(block).toMatch(/\.reviewHeader\s*\{[^}]*display:\s*grid/)
-    expect(ruleIn(block, '.reviewHeader')).toMatch(/grid-template-areas:[\s\S]*"title title close"[\s\S]*"context actions actions"/)
-    expect(ruleIn(block, '.reviewHeaderContext')).toMatch(/grid-area:\s*context/)
-    expect(ruleIn(block, '.reviewActions')).toMatch(/grid-area:\s*actions/)
-    expect(ruleIn(block, '.reviewHeader > .iconButton')).toMatch(/grid-area:\s*close/)
-    // The close stays INLINE (never absolutely positioned — that let × and the
-    // title drift onto different baselines) and is pinned to the top-right cell.
+    // The header is a NAMED GRID at BOTH widths (never flex-wrap + order,
+    // which drifted the layout with content — × sometimes fell to line 2's
+    // left, 刷新/查看会话 sometimes squeezed onto line 1). The narrow block
+    // only RE-MAPS the same five names (title/badge/context/actions/close)
+    // to two lines: line 1 = title | badge | close (× always top-right,
+    // centered with the title); line 2 = context | actions. The title stays
+    // single-line. The base rule carries display:grid + areas; the narrow
+    // block carries only the override.
+    expect(ruleOf('reviewHeader')).toMatch(/display:\s*grid/)
+    expect(ruleOf('reviewHeader')).toMatch(/grid-template-areas:[\s\S]*"title badge context actions close"/)
+    expect(ruleIn(block, '.reviewHeader')).toMatch(/grid-template-areas:[\s\S]*"title badge close"[\s\S]*"context actions actions"/)
     expect(ruleIn(block, '.reviewHeader > .iconButton')).not.toMatch(/position:\s*absolute/)
-    // WIDE: everything on ONE line — context between the title and actions,
+    // WIDE: everything on ONE line — context between the badge and actions,
     // capped, same center baseline (the 「标题栏不在同一水平面」 fix).
     const wideContext = ruleOf('reviewHeaderContext')
-    expect(wideContext).toMatch(/flex:\s*none/)
+    expect(wideContext).toMatch(/grid-area:\s*context/)
     expect(wideContext).toMatch(/max-width:\s*320px/)
   })
 
@@ -263,9 +262,26 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // A header-anchored in-flow expansion without a cap grew past the whole
     // screen and pushed every function out of reach (「上下文占满屏幕」).
     const panel = ruleIn(stacked(), '.reviewHeaderContext .sessionContextPanel')
-    expect(panel).toMatch(/position:\s*static/)
+    // In-flow = NOT absolute (relative keeps it in the header's flow AND
+    // carries the isolation z-index; static cannot paint under the actions).
+    expect(panel).not.toMatch(/position:\s*absolute/)
     expect(panel).toMatch(/max-height:\s*240px/)
     expect(panel).toMatch(/overflow-y:\s*auto/)
+  })
+
+  it('the header context cell is isolated: its expansion paints UNDER the actions, never over them', () => {
+    // The 「上下文与刷新/查看会话重叠」 family: the context cell owns an
+    // isolation context; the expanded panel (wide popover AND narrow
+    // in-flow) sits at z-index 1 while the head row, the actions and the
+    // close sit at z-index 2. A long to-do list slides BENEATH the buttons.
+    const context = ruleOf('reviewHeaderContext')
+    expect(context).toMatch(/isolation:\s*isolate/)
+    expect(cssSource).toMatch(/\.reviewHeaderContext \.sessionContextPanel\s*\{[^}]*z-index:\s*1/)
+    expect(cssSource).toMatch(/\.reviewActions,\s*\n\.reviewHeader > \.iconButton\s*\{[^}]*z-index:\s*2/)
+    // The header wrap surrenders its own 14px (the cell owns the column's
+    // padding — a second inset double-indents the head and shrinks the
+    // popover anchor, which painted head text under the actions).
+    expect(cssSource).toMatch(/\.reviewHeaderContext \.sessionContextWrap\s*\{[^}]*padding:\s*0/)
   })
 
   it('the review title is single-line ellipsis on a phone (header stays one plane)', () => {
@@ -369,6 +385,11 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(cardSource).toMatch(/review\.interactionGoAnswer/)
     const mirrorBranch = cardSource.slice(cardSource.indexOf('function MirrorQuestionCard'))
     expect(mirrorBranch).not.toMatch(/<button/)
+    // The meter head is one line at every width (reading | percent | figures);
+    // the breakdown is one row per bucket — never a wrapping flex cluster
+    // (the 「对话消息另起一行」 family).
+    expect(cssSource).toMatch(/\.reviewMeterHead\s*\{[^}]*white-space:\s*nowrap/)
+    expect(cssSource).toMatch(/\.reviewMeterRows\s*\{[^}]*display:\s*grid/)
     // 滑到最新 binds ONLY the comments scroller (the 「跳转范围错误」 fix).
     expect(panelSource).toMatch(/onCommentsScroll/)
   })
@@ -398,8 +419,31 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
 
   it('the comment thread reuses the same hook instead of re-rolling it', () => {
     expect(panelSource).toMatch(/useFollowScroll\(/)
-    // No hand-rolled scrollTop pinning left in the panel (one mechanism).
-    expect(panelSource).not.toMatch(/scrollTop = \w+\.scrollHeight/)
+    // No hand-rolled scrollTop pinning left in the panel (one mechanism —
+    // the only scrollTop writes are the follow/jump/anchor paths).
+    const writes = panelSource.match(/scrollTop\s*=/g) ?? []
+    expect(writes.length).toBe(0)
+  })
+
+  it('the tail accumulates (poll extends, never replaces) and pages backward natively', () => {
+    // The 「刷新即暂无对话内容」 fix: the poll merges by seq (no
+    // same-watermark replace), and earlier pages prepend above the window
+    // through the native session.page grammar (beforeSeq = the window's
+    // first seq), anchored to the bottom.
+    expect(followSource).toMatch(/loadEarlier/)
+    expect(followSource).toMatch(/loadTranscriptPage/)
+    expect(followSource).toMatch(/floorRef/)
+    expect(followSource).toMatch(/scrollHeight/)
+    expect(followSource).toMatch(/scrollTop/)
+    const platformPath = fileURLToPath(new URL('../src/client/platform.ts', import.meta.url))
+    const platformSource = readFileSync(platformPath, 'utf8')
+    expect(platformSource).toMatch(/beforeSeq/)
+    // The "load earlier" row lives ABOVE the list (older lives above).
+    expect(cssSource).toMatch(/\.transcriptEarlierRow/)
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    const panelSource2 = readFileSync(panelPath, 'utf8')
+    expect(panelSource2).toMatch(/transcriptEarlierRow/)
+    expect(panelSource2).toMatch(/review\.loadEarlier/)
   })
 })
 
@@ -561,6 +605,18 @@ describe('transcript usage', () => {
       reasoningTokens: 2,
     })
     expect(sumUsage([lines[0]])).toBeUndefined()
+  })
+
+  it('the meter prefers whole-log projection totals over the paged-window sum', () => {
+    // P7: `tokenUsage` is durable whole-log; the 30-message `sumUsage` is
+    // only the fallback when the meter package is absent. The stats line
+    // comes from `sessionStats` (turns/steps/times), never recomputed.
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    const panel = readFileSync(panelPath, 'utf8')
+    expect(panel).toMatch(/projections\?\.tokenUsage/)
+    expect(panel).toMatch(/review\.usageTotal/)
+    expect(panel).toMatch(/projections\?\.sessionStats/)
+    expect(panel).toMatch(/review\.statsTurns/)
   })
 })
 
@@ -765,5 +821,25 @@ describe('session context panel row grammar (badge never spills over the text)',
     expect(tsxSource).toContain('<Chip fill={false} className={css.sessionContextGoalOn}>')
     expect(tsxSource).toContain('<Chip fill={false} className={css.sessionContextSubagent}>')
     expect(tsxSource).not.toContain('`${css.chip}')
+  })
+
+  it('the goal row is the interactive strip when verbs are served (official GoalBar grammar)', () => {
+    // 暂停/开启/修改/删除 ride the official `remote.goals` verbs with the
+    // call-time CAS ref; the legacy read-only row stays only for hosts
+    // without the face. The strip mirrors GoalBar: complete/cleared render
+    // nothing, one action at a time, failures inline.
+    expect(tsxSource).toContain('<GoalStrip')
+    expect(tsxSource).toContain('controller.goalVerbs(sessionId)')
+    const stripPath = fileURLToPath(new URL('../src/client/board/goal-strip.tsx', import.meta.url))
+    const strip = readFileSync(stripPath, 'utf8')
+    expect(strip).toContain('clearedGoalId')
+    expect(strip).toContain("phase === 'complete'")
+    expect(strip).toContain('pendingRef')
+    expect(strip).toContain('verbs.pause')
+    expect(strip).toContain('verbs.resume')
+    expect(strip).toContain('verbs.clear')
+    expect(strip).toContain('verbs.edit')
+    expect(ruleOf('goalStrip')).toContain('flex-wrap: wrap')
+    expect(ruleOf('goalStripActions')).toContain('flex: none')
   })
 })

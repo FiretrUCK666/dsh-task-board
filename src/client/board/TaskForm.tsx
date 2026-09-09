@@ -6,10 +6,12 @@
  * the same order. Used by the new-task modal and the detail edit mode so
  * both surfaces stay identical. Fully controlled: the parent owns the draft.
  *
- * The execution prompt carries an image ledger (the shared composer hook,
- * controlled by the draft): pick / drop / paste anywhere on the prompt field,
- * browser-compressed before it is stored, capped in count — and every run
- * path (manual / cron / cruise / chain) sends the same picture with the text.
+ * The execution prompt carries an attachment ledger (the shared composer
+ * hook, controlled by the draft): images persist as bytes; files persist as
+ * name + bytes and are RE-STAGED per run session at send time (receipts are
+ * per-Agent, never persisted). Pick / drop / paste anywhere on the prompt
+ * field, capped in count — and every run path (manual / cron / cruise /
+ * chain) sends the same attachments with the text.
  */
 import type { BoardController } from '../../core/controller.ts'
 import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
@@ -57,8 +59,11 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
     })
   }
 
-  // The prompt's image ledger, CONTROLLED by the draft (it round-trips
-  // through save/restore and persists onto the task).
+  // The prompt's attachment ledger, CONTROLLED by the draft (it round-trips
+  // through save/restore and persists onto the task). Images persist as
+  // bytes; files persist as name + bytes (receipts are per-Agent and are
+  // re-staged at send time). The task form has no session yet, so the file
+  // lane stages lazily at send (see the execution wiring).
   const attachments = useComposerImages(TASK_IMAGE_BUDGET, MAX_TASK_IMAGES, {
     images: draft.promptImages,
     onChange: next => { onChange({ ...draft, promptImages: [...next] }) },
@@ -103,7 +108,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         <AttachmentStrip
           images={draft.promptImages}
           onAdd={attachments.addFiles}
-          onRemove={id => { onChange({ ...draft, promptImages: draft.promptImages.filter(image => image.id !== id) }) }}
+          onRemoveImage={id => { onChange({ ...draft, promptImages: draft.promptImages.filter(image => image.id !== id) }) }}
           busy={attachments.busy}
           error={attachments.error}
         />

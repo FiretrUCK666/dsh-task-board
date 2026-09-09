@@ -46,9 +46,11 @@ function fakeApi(stubs: StubTable = {}): { ctx: ClientContext; api: ApiFace; cal
     attachment: named('session')('attachment'),
     modelCatalog: named('session')('modelCatalog'),
     follow: named('session')('follow'),
+    page: named('session')('page'),
   }
   const skills = { list: named('skills')('list') }
   const agentPresets = { list: named('agentPresets')('list'), select: named('agentPresets')('select') }
+  const fileUploads = { upload: named('fileUploads')('upload') }
   const sessions = {
     list: { getSnapshot: () => ({ ids: [], byId: {}, current: undefined, phase: 'pending' as const }), subscribe: () => () => {} },
     create: vi.fn(async () => 'sess-fresh'),
@@ -61,6 +63,7 @@ function fakeApi(stubs: StubTable = {}): { ctx: ClientContext; api: ApiFace; cal
       if (name === 'remote.session') return session
       if (name === 'remote.skills') return skills
       if (name === 'remote.agentPresets') return agentPresets
+      if (name === 'remote.fileUploads') return fileUploads
       return undefined
     },
     locale: { register: () => {} },
@@ -146,9 +149,9 @@ describe('buildApi endpoint wiring', () => {
     expect(response.result.value.groups).toHaveLength(1)
   })
 
-  it('history consumes the one-shot follow snapshot (records + projections)', async () => {
+  it('history consumes the one-shot follow snapshot (records + hasMore + projections)', async () => {
     const frames: FollowFrame[] = [
-      { type: 'snapshot', cursor: 9, hasMore: false, records: [{ type: 'event', event: { type: 'turn/start', data: null } }, { type: 'event', event: { type: 'turn/end', data: null } }], projections: { asOfSeq: 9, values: { contextPressure: { pressureTokens: 100 } } } },
+      { type: 'snapshot', cursor: 9, hasMore: true, records: [{ type: 'event', event: { type: 'turn/start', data: null, seq: 8 } }, { type: 'event', event: { type: 'turn/end', data: null, seq: 9 } }], projections: { asOfSeq: 9, values: { contextPressure: { pressureTokens: 100 } } } },
     ]
     const { api, calls } = fakeApi({
       'session.follow': async function* (): AsyncGenerator<FollowFrame> {
@@ -164,10 +167,34 @@ describe('buildApi endpoint wiring', () => {
     expect(response.result.ok).toBe(true)
     if (!response.result.ok) return
     expect(response.result.value.events.map(entry => entry.event)).toEqual([
-      { type: 'turn/start', data: null },
-      { type: 'turn/end', data: null },
+      { type: 'turn/start', data: null, seq: 8 },
+      { type: 'turn/end', data: null, seq: 9 },
     ])
+    expect(response.result.value.hasMore).toBe(true)
+    expect(response.result.value.floorSeq).toBe(8)
     expect(response.result.value.projections?.values).toEqual({ contextPressure: { pressureTokens: 100 } })
+  })
+
+  it('page routes to session/page with the backward window (beforeSeq + maxMessages)', async () => {    const { api, calls } = fakeApi({
+      'session.page': {
+        ok: true,
+        value: {
+          records: [{ type: 'event', event: { type: 'user/message', seq: 3 } }],
+          hasMore: false,
+        },
+      },
+    })
+    const response = await api.sessions.page({ sessionId: 's1' as never, beforeSeq: 9, maxMessages: 50 })
+    expect(calls[0]).toMatchObject({ ns: 'session', method: 'page' })
+    expect(calls[0].args[0]).toEqual({
+      address: { kind: 'session', sessionId: 's1' },
+      beforeSeq: 9,
+      maxMessages: 50,
+    })
+    expect(response.result.ok).toBe(true)
+    if (!response.result.ok) return
+    expect(response.result.value.hasMore).toBe(false)
+    expect(response.result.value.floorSeq).toBe(3)
   })
 
   it('history reports a stream failure as a failed result, never a throw', async () => {
@@ -201,6 +228,27 @@ describe('buildApi endpoint wiring', () => {
     await api.agentPresets.select({ sessionId: 's1' as never, agentPreset: 'deploy-default' })
     expect(calls[0]).toMatchObject({ ns: 'agentPresets', method: 'select' })
     expect(calls[0].args).toEqual(['s1', 'deploy-default'])
+  })
+
+  it('fileUploads.upload stages exact bytes on the session and returns the receipt', async () => {
+    const { api, calls } = fakeApi({
+      'fileUploads.upload': { ok: true, value: { receiptId: 'rcpt-1', file: { attachmentId: 'a', name: 'a.pdf', bytes: 10 } } },
+    })
+    const response = await api.fileUploads.upload({ sessionId: 's1' as never, data: 'QUJD', name: 'a.pdf' })
+    expect(calls[0]).toMatchObject({ ns: 'fileUploads', method: 'upload' })
+    expect(calls[0].args[0]).toBe('s1')
+    expect(calls[0].args[1]).toEqual({ data: 'QUJD', name: 'a.pdf' })
+    expect(response.result.ok).toBe(true)
+    if (!response.result.ok) return
+    expect(response.result.value.receiptId).toBe('rcpt-1')
+  })
+
+  it('fileUploads.upload rejects an empty receipt as a named failure, never a pass-through', async () => {
+    const { api } = fakeApi({
+      'fileUploads.upload': { ok: true, value: { receiptId: '' } },
+    })
+    const response = await api.fileUploads.upload({ sessionId: 's1' as never, data: 'QUJD' })
+    expect(response.result.ok).toBe(false)
   })
 
   it('reports a missing remote method as a named unavailable result, not a crash', async () => {

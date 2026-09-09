@@ -1,9 +1,8 @@
 /**
- * Browser image intake: turn a picked/pasted/dropped File into the base64
- * form the OFFICIAL native prompt part carries (png/jpeg/webp/gif — the
- * native whitelist). Two rules make this usable on a phone AND a desktop:
+ * Browser attachment intake: turn picked/pasted/dropped Files into the forms
+ * the OFFICIAL native prompt parts carry. Two lanes, one hook:
  *
- *  - EVERY decodable image is accepted (`accept="image/*"`) and RE-ENCODED
+ *  - IMAGES (png/jpeg/webp/gif — the native whitelist) are RE-ENCODED
  *    through a canvas downscale (longest edge + quality), so a 12 MB phone
  *    photo becomes a sub-megabyte JPEG/WebP in the browser BEFORE it goes on
  *    the wire — sending is fast and the model still sees the picture. A
@@ -12,13 +11,19 @@
  *    violation: every rejection names its reason to the user.
  *  - animated GIFs pass through untouched (a canvas would flatten them)
  *    while still bounded by the byte budget.
+ *  - FILES (everything else: pdf/txt/md/zip/video/…) never enter the image
+ *    lane. They ride the OFFICIAL file channel instead: the browser uploads
+ *    the exact bytes through `fileUploads/upload` (or the binary HTTP
+ *    fallback) and the prompt carries only the opaque `{type:'file',
+ *    receiptId}` ref. The board never invents a file wire shape and never
+ *    base64s file bytes into an image part.
  *
- * The HOST performs the durable admission when it takes the prompt (its
- * `PromptContentPart` image variant is temporary bytes, not a ref), so the
- * board never uploads images through a side channel — there is exactly one
- * image mechanism, shared with the native composer. The pure decision +
- * result-parsing halves are framework-free and unit-tested; only the
- * decode/encode middle touches the DOM.
+ * The HOST performs the durable admission when it takes the prompt (image
+ * bytes are temporary, file refs are staged per-Agent), so the board never
+ * uploads through a side channel — there is exactly one mechanism per lane,
+ * both shared with the native composer. The pure decision + result-parsing
+ * halves are framework-free and unit-tested; only the decode/encode middle
+ * touches the DOM.
  */
 import type { PromptImage } from '../../core/controller.ts'
 
@@ -42,8 +47,30 @@ export function toPromptImage(image: DraftImage): PromptImage {
 /** The accepted raster media types (the native version-one whitelist). */
 export const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
 
-/** Why one file never became a draft image (each maps to a visible reason). */
+/** Why one file never became a draft attachment (each maps to a visible reason). */
 export type ImageRejectReason = 'type' | 'size' | 'decode' | 'count'
+
+/** The file lane: a staged upload the prompt references by receipt. */
+export interface DraftFile {
+  /** Stable local identity for the composer strip. */
+  id: string
+  /** Opaque receipt from a preceding `fileUploads/upload` on the SAME session. */
+  receiptId: string
+  /** The file's display name + byte size (never an OS path). */
+  name: string
+  /** Exact byte size (files carry no admission limits — shown, not gated). */
+  bytes: number
+}
+
+/** The official file prompt part for one staged file. */
+export function toPromptFilePart(file: DraftFile): { type: 'file'; receiptId: string } {
+  return { type: 'file', receiptId: file.receiptId }
+}
+
+/** A staged file as the controller's PromptFile (receipt + name + bytes). */
+export function toPromptFile(file: DraftFile): { receiptId: string; name: string; bytes: number } {
+  return { receiptId: file.receiptId, name: file.name, bytes: file.bytes }
+}
 
 /** The outcome of intake for one file: an image, or the reason it was not. */
 export type IntakeOutcome =
@@ -77,16 +104,18 @@ export const MAX_COMMENT_IMAGES = 9
 
 /**
  * PURE decision for one candidate file (unit-tested): the intake route.
- * A pre-compression file may exceed maxBytes and still be fine (the re-encode
- * shrinks it), so size only rejects a PASSTHROUGH (gif) or the final
- * encoded result — never a re-encode candidate up front.
+ * Images route to the canvas lane; EVERYTHING else routes to the file lane
+ * (upload-then-receipt) — a non-image is never a "type rejection" anymore.
+ * A pre-compression image may exceed maxBytes and still be fine (the
+ * re-encode shrinks it), so size only rejects a PASSTHROUGH (gif) or the
+ * final encoded result — never a re-encode candidate up front.
  */
 export function intakeDecision(
   type: string,
   size: number,
   budget: ImageBudget,
-): { kind: 'passthrough'; mediaType: 'image/gif' } | { kind: 'reencode' } | { kind: 'reject'; reason: ImageRejectReason } {
-  if (!type.startsWith('image/')) return { kind: 'reject', reason: 'type' }
+): { kind: 'passthrough'; mediaType: 'image/gif' } | { kind: 'reencode' } | { kind: 'file' } | { kind: 'reject'; reason: ImageRejectReason } {
+  if (!type.startsWith('image/')) return { kind: 'file' }
   if (type === 'image/gif') {
     return size <= budget.maxBytes ? { kind: 'passthrough', mediaType: 'image/gif' } : { kind: 'reject', reason: 'size' }
   }

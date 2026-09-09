@@ -23,8 +23,9 @@ import { Chip } from './Chip.tsx'
 import { resultChipKind } from './session-chip.ts'
 import { refineDraftKey, draftStore } from './drafts.ts'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
-import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, toPromptImage } from './attach.ts'
+import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, toPromptFile, toPromptImage } from './attach.ts'
 import { useComposerImages } from './composer-images.ts'
+import { useFileStager } from './session-panel.tsx'
 import { PromptInput } from './PromptInput.tsx'
 import { useSessionContext, useWireQuestion } from './use-interaction.ts'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
@@ -57,7 +58,7 @@ export function RefineSection({ controller, task }: {
 
   // The live conversation: shared transcript-tail state (auto-follow +
   // 滑到最新), same mechanism as the review page.
-  const { lines, error, atBottom, scrollRef, onScroll, jumpToBottom, reload } = useTranscriptTail(
+  const { lines, error, atBottom, scrollRef, onScroll, jumpToBottom, reload, hasMore, loadingEarlier, loadEarlier } = useTranscriptTail(
     controller,
     sessionId,
     rounds.length,
@@ -74,18 +75,25 @@ export function RefineSection({ controller, task }: {
     return undefined
   }, [lines])
 
-  // The answer bar's image ledger (shared composer hook): pick / drop /
-  // paste; images ride the answer into the refine session.
-  const attachments = useComposerImages(COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES)
+  // The answer bar's attachment ledger (shared composer hook): pick / drop /
+  // paste; images + staged files ride the answer into the refine session.
+  // The file lane stages on the refine session (receipts are per-Agent).
+  const stager = useFileStager(controller, sessionId)
+  const attachments = useComposerImages(COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, undefined,
+    stager !== undefined && sessionId !== undefined ? { sessionId, stage: stager } : undefined)
 
   const send = (): void => {
     const text = draft.trim()
     if (text === '') return
     const images = attachments.images
-    if (controller.answerRefine(task.id, text, images.length > 0 ? images.map(toPromptImage) : undefined)) {
+    const files = attachments.files.map(toPromptFile)
+    if (controller.answerRefine(task.id, text,
+      images.length > 0 ? images.map(toPromptImage) : undefined,
+      files.length > 0 ? files : undefined)) {
       setDraft('')
       draftStore.clear(refineDraftKey(task.id))
       attachments.setImages([])
+      attachments.setFiles([])
       setApplied(false)
     }
   }
@@ -155,6 +163,9 @@ export function RefineSection({ controller, task }: {
                 atBottom={atBottom}
                 jumpToBottom={jumpToBottom}
                 maxLines={12}
+                hasMore={hasMore}
+                loadingEarlier={loadingEarlier}
+                onLoadEarlier={loadEarlier}
                 onRetry={reload}
                 sessionId={sessionId}
                 controller={controller}
@@ -178,7 +189,7 @@ export function RefineSection({ controller, task }: {
               />
             )}
             {sessionId !== undefined && (
-              <SessionContextBlock context={context} />
+              <SessionContextBlock context={context} sessionId={sessionId} controller={controller} />
             )}
             <PromptInput
               value={draft}
@@ -193,9 +204,12 @@ export function RefineSection({ controller, task }: {
             />
             <AttachmentStrip
               images={attachments.images}
+              files={attachments.files}
               onAdd={attachments.addFiles}
-              onRemove={id => { attachments.setImages(attachments.images.filter(image => image.id !== id)) }}
+              onRemoveImage={id => { attachments.setImages(attachments.images.filter(image => image.id !== id)) }}
+              onRemoveFile={id => { attachments.setFiles(attachments.files.filter(file => file.id !== id)) }}
               busy={attachments.busy}
+              busyLabel={attachments.files.length > 0 ? t('review.attachFileBusy') : undefined}
               error={attachments.error}
             />
             <Button variant="primary" disabled={draft.trim() === ''} onClick={send}>

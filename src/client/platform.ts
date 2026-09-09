@@ -129,10 +129,11 @@ export type RemoteResult<T> =
 
 // ─── Domain API face (alpha.3 `ctx.remote` projection) ──────────────────────
 
-/** One prompt content part (the wire accepts text + temporary image bytes). */
+/** One prompt content part (the wire accepts text + temporary image bytes + staged file refs). */
 export type PromptContentPart =
   | { readonly type: 'text'; readonly text: string }
   | { readonly type: 'image'; readonly mediaType: string; readonly data: string; readonly name?: string }
+  | { readonly type: 'file'; readonly receiptId: string }
 
 /** One complete model selection for a session. */
 export interface ModelSelection {
@@ -206,7 +207,20 @@ export interface ApiFace {
     }): Promise<{
       result: RemoteResult<{
         events: readonly { event: unknown }[]
+        hasMore: boolean
+        floorSeq?: number
         projections?: { values?: Record<string, unknown> }
+      }>
+    }>
+    page(request: {
+      sessionId: SessionId
+      beforeSeq: number
+      maxMessages: number
+    }): Promise<{
+      result: RemoteResult<{
+        events: readonly { event: unknown }[]
+        hasMore: boolean
+        floorSeq?: number
       }>
     }>
     rename(request: {
@@ -225,6 +239,13 @@ export interface ApiFace {
   agentPresets: {
     list(request: {}): Promise<{ result: RemoteResult<{ presets: readonly AgentPresetEntry[] }> }>
     select(request: { sessionId: SessionId; agentPreset: string }): Promise<{ result: RemoteResult<unknown> }>
+  }
+  fileUploads: {
+    upload(request: {
+      sessionId: SessionId
+      data: string
+      name?: string
+    }): Promise<{ result: RemoteResult<{ receiptId: string }> }>
   }
   events: {
     mux(request: {}, signal: AbortSignal): AsyncIterable<QuestionMuxEnvelope>
@@ -259,6 +280,24 @@ export type FollowFrame =
       }
     }
 
+/** One `session.page` response (structural slice of the Typert contract). */
+export type PageResult = {
+  readonly records: readonly { readonly type: 'event'; readonly event: unknown }[]
+  readonly hasMore: boolean
+}
+
+/** The oldest event seq covered by one record window (undefined when empty). */
+export function floorSeqOf(records: readonly { event: unknown }[]): number | undefined {
+  let floor: number | undefined
+  for (const record of records) {
+    const event = record.event as { seq?: unknown } | null
+    if (typeof event !== 'object' || event === null) continue
+    if (typeof event.seq !== 'number' || !Number.isFinite(event.seq)) continue
+    if (floor === undefined || event.seq < floor) floor = event.seq
+  }
+  return floor
+}
+
 // ─── Client runtime faces (alpha.3 services) ────────────────────────────────
 
 /** One session list row (alpha.3 `SessionSummary` projection). */
@@ -267,6 +306,8 @@ export interface SessionListSummary {
   title?: string
   displayTitle: string
   cwd?: string
+  /** The workspace id the host attributes the session to, when known. */
+  workspaceId?: string
   running: boolean
   completed?: boolean
   /** Host "never started" flag: only a blank session may be reused for a run. */
@@ -310,7 +351,20 @@ export interface BoundSessionFace {
   >
   getSnapshot(): BoundSessionSnapshot
   subscribe(fn: () => void): () => void
+  /**
+   * Session projection layer (the official `projections.faceOf` read — the
+   * goal verbs' call-time CAS ref comes from here). Absent on old hosts:
+   * structural, never required — callers degrade without it.
+   */
+  projections?: {
+    faceOf(key: string): { getSnapshot(): unknown } | undefined
+  }
 }
+
+/** The structural slice of the `remote.goals` Typert stub the goal verbs
+ *  call (positional `(sessionId, ref, …)`, GoalView results — verbatim the
+ *  calls the harness's own GoalBar makes). Absent = the goal strip hides. */
+export type GoalsRemoteFace = import('../core/goal-verbs.ts').GoalsRemoteFace
 
 /** One live binding record: the session object driving a host session. */
 export interface SessionBinding {
@@ -409,6 +463,10 @@ export interface ClientContext {
       attachment(request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
       modelCatalog(signal?: AbortSignal): Promise<RemoteResult<unknown>>
       follow(request: unknown, signal?: AbortSignal): AsyncIterable<unknown>
+      page(request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
+    }
+    fileUploads: {
+      upload(agentId: SessionId, request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
     }
     skills: {
       list(request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
@@ -446,6 +504,7 @@ export function buildApi(ctx: ClientContext): ApiFace {
   const remoteSession = ctx.get<ClientContext['remote']['session']>('remote.session')
   const remoteSkills = ctx.get<ClientContext['remote']['skills']>('remote.skills')
   const remoteAgentPresets = ctx.get<ClientContext['remote']['agentPresets']>('remote.agentPresets')
+  const remoteFileUploads = ctx.get<ClientContext['remote']['fileUploads']>('remote.fileUploads')
   const sessionsService = ctx.sessions
 
   // Missing-face guard: a host upgrade that renames or drops an endpoint must
@@ -510,12 +569,13 @@ export function buildApi(ctx: ClientContext): ApiFace {
         return { result: { ok: true as const, value: { sessionId } } }
       },
       history: async request => {
-        // The alpha.3 cold-history read is the one-shot `session.follow`
-        // snapshot frame: it pages the TAIL (up to `maxMessages` records,
-        // event + chunks rows) with the cursor and projection values in a
-        // single round trip — the closest equivalent of the rc.7 tail page.
-        // The board consumes the snapshot and closes the stream (the break
-        // returns the iterator, which aborts the underlying source).
+        // The cold-history read is the one-shot `session.follow` snapshot
+        // frame: it pages the TAIL (up to `maxMessages` message-surface
+        // records) with the cursor, the `hasMore` flag and the projection
+        // values in a single round trip. The board consumes the snapshot and
+        // closes the stream (the break returns the iterator, which aborts
+        // the underlying source). `hasMore` + the tail floor drive the
+        // native "load earlier" grammar (see `page` below).
         const follow = methodOf('session', 'follow', remoteSession?.follow)
         if (follow === undefined) return unavailable('session.follow')
         try {
@@ -525,11 +585,15 @@ export function buildApi(ctx: ClientContext): ApiFace {
             ...request.maxMessages !== undefined ? { maxMessages: request.maxMessages } : {},
           }, controller.signal)
           let events: readonly { event: unknown }[] = []
+          let hasMore = false
+          let floorSeq: number | undefined
           let projections: { asOfSeq?: number; values?: Record<string, unknown> } | undefined
           try {
             for await (const frame of stream as AsyncIterable<FollowFrame>) {
               if (frame.type !== 'snapshot') continue
               events = (frame.records ?? []).map(record => ({ event: record.event }))
+              hasMore = frame.hasMore === true
+              floorSeq = floorSeqOf(events)
               projections = frame.projections
               break
             }
@@ -539,7 +603,12 @@ export function buildApi(ctx: ClientContext): ApiFace {
           return {
             result: {
               ok: true as const,
-              value: { events, ...projections !== undefined ? { projections } : {} },
+              value: {
+                events,
+                hasMore,
+                ...floorSeq !== undefined ? { floorSeq } : {},
+                ...projections !== undefined ? { projections } : {},
+              },
             },
           }
         } catch (error) {
@@ -555,6 +624,34 @@ export function buildApi(ctx: ClientContext): ApiFace {
               error: failureBody,
             },
           }
+        }
+      },
+      page: async request => {
+        // The native "load earlier" grammar: one `session.page` call pages
+        // BACKWARD from `beforeSeq` (the window's first seq), returning the
+        // earlier records plus its own `hasMore`. The hook accumulates pages
+        // oldest-first; `follow`'s live tail then continues from the cursor.
+        const call = methodOf('session', 'page', remoteSession?.page)
+        if (call === undefined) return unavailable('session.page')
+        const result = await asResult<PageResult>('session.page', call({
+          address: { kind: 'session', sessionId: request.sessionId },
+          beforeSeq: request.beforeSeq,
+          maxMessages: request.maxMessages,
+        }))
+        if (!result.result.ok) return { result: result.result }
+        const records = result.result.value.records ?? []
+        return {
+          result: {
+            ok: true as const,
+            value: {
+              events: records.map(record => ({ event: record.event })),
+              hasMore: result.result.value.hasMore === true,
+              ...(() => {
+                const floor = floorSeqOf(records.map(record => ({ event: record.event })))
+                return floor !== undefined ? { floorSeq: floor } : {}
+              })(),
+            },
+          },
         }
       },
       rename: request => {
@@ -623,6 +720,30 @@ export function buildApi(ctx: ClientContext): ApiFace {
         const call = methodOf('agentPresets', 'select', remoteAgentPresets?.select)
         if (call === undefined) return unavailable('agentPresets.select')
         return asResult<unknown>('agentPresets.select', call(request.sessionId, request.agentPreset))
+      },
+    },
+    fileUploads: {
+      upload: async request => {
+        // The official pre-step of the file lane: stage the EXACT bytes on
+        // the SAME session, then carry only the opaque receipt in the prompt.
+        // No file shape is ever invented here — the host mints the receipt.
+        const call = methodOf('fileUploads', 'upload', remoteFileUploads?.upload)
+        if (call === undefined) return unavailable('fileUploads.upload')
+        const result = await asResult<{ receiptId: string; file?: { attachmentId: string; name: string; bytes: number } }>(
+          'fileUploads.upload',
+          call(request.sessionId, { data: request.data, ...request.name !== undefined ? { name: request.name } : {} }),
+        )
+        if (!result.result.ok) return { result: result.result }
+        const receiptId = result.result.value.receiptId
+        if (typeof receiptId !== 'string' || receiptId === '') {
+          return {
+            result: {
+              ok: false as const,
+              error: { code: 'fileUploads/bad-receipt', message: 'the host returned no file receipt' },
+            },
+          }
+        }
+        return { result: { ok: true as const, value: { receiptId } } }
       },
     },
     events: {

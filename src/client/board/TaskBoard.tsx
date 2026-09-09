@@ -21,7 +21,7 @@ import { taskPendingCount, taskUnviewed, taskUnviewedCount } from '../../core/se
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
-import { useNarrow } from './use-narrow.ts'
+import { useSurfaceNarrow } from './use-narrow.ts'
 import { activeColumnIndexAt, scrollLeftForColumn } from './column-tabs.ts'
 import { Dialog } from './Dialog.tsx'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
@@ -50,11 +50,12 @@ function matchesFilter(task: TaskRecord, filter: string): boolean {
 /**
  * The cruise settings in its two forms, one content: the anchored popover
  * beside the header pill on a wide board; the SAME children as a full Dialog
- * on a narrow screen (useNarrow). An absolutely positioned popover cannot
- * size itself against the board box from inside the header row — on a phone
- * it collapsed to a sliver (the 「面板只剩一条」 report); the Dialog grammar
- * (board-box relative, scrollable body, pinned actions) is the honest form
- * once the board is narrow.
+ * on a narrow board (surface bucket, same 680px as the CSS container). An
+ * absolutely positioned popover cannot size itself against the board box
+ * from inside the header row — on a phone it collapsed to a sliver (the
+ * 「面板只剩一条」 report); the Dialog grammar (board-box relative,
+ * scrollable body, pinned actions) is the honest form once the board is
+ * narrow.
  */
 function CruiseSettingsHost({ narrow, label, onClose, children }: {
   narrow: boolean
@@ -145,10 +146,24 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     clearSelection()
   }
 
-  // 自动巡航设置：宽屏 = 胶囊下的锚定弹层（点层外关闭）；窄屏 = 同一内容的
+  // The board root: the FLIP region + the narrow-bucket surface (the CSS
+  // container query measures this same box — one truth, never viewport vs
+  // surface). Declared FIRST: the cruise popover/Dialog switch below reads
+  // `narrow`, so the hook must precede it.
+  const [narrow, narrowRef] = useSurfaceNarrow('[data-dsh-taskboard-view]', 680)
+  const boardRef = useRef<HTMLDivElement | null>(null)
+  const boardRefs = useCallback((node: HTMLDivElement | null): void => {
+    boardRef.current = node
+    narrowRef.current = node
+  }, [narrowRef])
+  // 自动巡航设置：宽板 = 胶囊下的锚定弹层（点层外关闭）；窄板 = 同一内容的
   // 完整 Dialog（弹层几何在小板上不可靠——这是「面板只剩一条」的根治）。
+  // THE single-truth rule: this switch reads THE BOARD SURFACE (the same
+  // surface the CSS container query measures), never the viewport — a
+  // mid-size window with the shell sidebar open has a viewport that says
+  // "wide" while the board is already stacked, and a viewport default would
+  // disagree with the geometry the user is looking at.
   const [cruiseOpen, setCruiseOpen] = useState(false)
-  const narrow = useNarrow()
   // Cruise-limit input: a directly controlled number field cannot be cleared
   // to retype (any invalid edit snaps back), so the input keeps its own text;
   // a valid integer commits on edit (the controller clamps), an invalid or
@@ -260,9 +275,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   useEffect(() => () => {
     if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
   }, [])
-  // The board root: the FLIP region. Structure-driven and fully suppressed
-  // while a card drag is active (the post-drop settle is the moment it plays).
-  const boardRef = useRef<HTMLDivElement | null>(null)
+  // Structure-driven FLIP, fully suppressed while a card drag is
+  // active (the post-drop settle is the moment it plays).
   useFlipRegion(boardRef, dragId !== undefined)
   // Compact column navigator: the tabs mirror the horizontal track's scroll
   // position and jump a column into view on tap (hidden on desktop by the
@@ -525,7 +539,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
   return (
     <div
-      ref={boardRef}
+      ref={boardRefs}
       className={css.board}
       data-dsh-taskboard-board=""
       data-dragging={dragId !== undefined ? '' : undefined}
@@ -568,9 +582,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             <Icon name="arrowLeft" />
           </button>
           <h2 className={css.boardTitle}>{t('board.title')}</h2>
-          {/* 状态槽：运行/排队 + 引擎指示，一个语义单元，只在有内容时渲染。
-              零段省略（「排队 0」是噪音，与上下文计量同一文法）。紧凑档它独占
-              导航行的第二行，永远不再把主行动挤到折行上。 */}
+          {/* 右簇前的弹性留白：标题紧贴左，状态/巡航/新建同贴右。`margin-left:auto`
+              是被禁的"靠右"写法——它只右对齐换行首项，一换行即散架。 */}
+          <span className={css.boardSpacer} />
+          {/* 状态槽：运行/排队 + 引擎指示，坐在自动巡航的左边（用户原话），
+              与巡航同属右簇。零段省略（「排队 0」是噪音，与上下文计量同一文法）。
+              紧凑档它独占导航第二行左段，巡航守右，永远不挤主行动。 */}
           {(() => {
             const stateParts = [
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
@@ -615,13 +632,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               </span>
             )
           })()}
-          {/* The one spacer of the row: everything after it rides the right
-              end. `margin-left:auto` is the forbidden spelling of "靠右" — it
-              right-aligns whichever item happens to START a wrapped line. */}
-          <span className={css.boardSpacer} />
-          {/* 自动巡航：一颗安静的胶囊（开关 + 设置 ▾），点击展开定时设置弹层。
-              它坐在主行动（新建任务）的左边：右端两个成员一左一右，巡航是常态
-              开关、新建是一次性动作，动作永远在最右。 */}
+          {/* 自动巡航：右簇成员（状态 | 巡航 | 新建，动作永远在最右）。一颗安静的
+              胶囊（开关 + 设置 ▾），点击展开定时设置弹层；巡航是常态开关、新建
+              是一次性动作。 */}
           <div className={css.cruiseWrap} ref={cruiseWrapRef}>
             <div className={css.cruisePill}>
               <Switch

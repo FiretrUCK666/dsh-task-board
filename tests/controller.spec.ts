@@ -24,21 +24,27 @@ class FakeSessions {
   openCalls: string[] = []
   /** Known session ids; undefined = every id exists (legacy fake behavior). */
   knownIds: Set<string> | undefined = undefined
+  /** Native list order (workspace sections); absent = byId insertion order. */
+  order: string[] | undefined = undefined
   /** Host list running flags per session id (absent id = unknown to the list). */
   runningById: Record<string, boolean> = {}
   /** Host-list pending-interaction signals per session (native amber dot). */
   waitingById: Record<string, 'approval' | 'plan-review' | 'question'> = {}
   /** Host-list workspace facts per session. */
-  infoById: Record<string, { cwd?: string; agentPreset?: string }> = {}
+  infoById: Record<string, { cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string }> = {}
   /** Host-list durable title per session (absent = the host has not named it). */
   titleById: Record<string, string> = {}
+  /** Registry-global archive set. */
+  archivedIds: Set<string> = new Set()
   private listeners = new Set<() => void>()
   list = {
     getSnapshot: (): {
       current: string | undefined
-      byId: Record<string, { running: boolean; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; agentPreset?: string; title?: string }>
+      ids?: readonly string[]
+      byId: Record<string, { running: boolean; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string; title?: string }>
     } => ({
       current: this.current,
+      ...this.order !== undefined ? { ids: [...this.order] } : {},
       byId: Object.fromEntries(
         Object.entries(this.runningById).map(([id, running]) => [id, {
           running,
@@ -47,6 +53,16 @@ class FakeSessions {
           ...this.titleById[id] !== undefined ? { title: this.titleById[id] } : {},
         }]),
       ),
+    }),
+    subscribe: (fn: () => void): (() => void) => {
+      this.listeners.add(fn)
+      return () => { this.listeners.delete(fn) }
+    },
+  }
+  workspacesList = {
+    getSnapshot: (): { items: readonly { id: string; title: string }[]; archivedSessionIds: readonly string[] } => ({
+      items: [] as readonly { id: string; title: string }[],
+      archivedSessionIds: [...this.archivedIds] as readonly string[],
     }),
     subscribe: (fn: () => void): (() => void) => {
       this.listeners.add(fn)
@@ -77,7 +93,7 @@ class FakeSessions {
     for (const fn of [...this.listeners]) fn()
   }
   /** Set a session's workspace facts and notify (list change). */
-  setInfo(id: string, info: { cwd?: string; agentPreset?: string }): void {
+  setInfo(id: string, info: { cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string }): void {
     this.runningById[id] ??= false
     this.infoById[id] = info
     for (const fn of [...this.listeners]) fn()
@@ -112,8 +128,8 @@ class StubExec {
   }
 }
 
-function makeController(stub = new StubExec(), extra: Partial<ControllerDeps> = {}) {
-  const sessions = new FakeSessions()
+function makeController(stub = new StubExec(), extra: Partial<ControllerDeps> & { sessions?: FakeSessions } = {}) {
+  const sessions = extra.sessions ?? new FakeSessions()
   const store = new InMemoryTaskStore()
   const deps: ControllerDeps = {
     store,
@@ -124,6 +140,33 @@ function makeController(stub = new StubExec(), extra: Partial<ControllerDeps> = 
     ...extra,
   }
   const controller = new BoardController(deps)
+  controller.start()
+  return { controller, sessions, store, stub }
+}
+
+/** A controller whose sessions + workspaces fakes model one workspace's sidebar section. */
+function makeWorkspaceController(opts: {
+  workspaceId: string
+  members: Array<{ id: string; blank?: boolean; archived?: boolean }>
+  order?: string[]
+}): { controller: BoardController; sessions: FakeSessions; store: InMemoryTaskStore; stub: StubExec } {
+  const sessions = new FakeSessions()
+  sessions.order = opts.order ?? opts.members.map(member => member.id)
+  for (const member of opts.members) {
+    sessions.setRunning(member.id, false)
+    sessions.setInfo(member.id, { workspaceId: opts.workspaceId, ...member.blank === true ? { blank: true } : {} })
+    if (member.archived === true) sessions.archivedIds.add(member.id)
+  }
+  const store = new InMemoryTaskStore()
+  const stub = new StubExec()
+  const controller = new BoardController({
+    store,
+    exec: stub as unknown as ExecutionService,
+    sessions,
+    workspaces: { list: sessions.workspacesList },
+    now: () => NOW,
+    uuid,
+  })
   controller.start()
   return { controller, sessions, store, stub }
 }
@@ -1308,6 +1351,16 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
     expect(store.load()[0].executions[0].promptImages).toEqual([{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
   })
 
+  it('a queued comment carries its file refs on the round (same queueing as images)', async () => {
+    const stub = new StubExec()
+    const { controller, store } = makeController(stub)
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    const round = controller.submitSessionComment(task.id, 'linked-7', '看文件', false, undefined,
+      [{ receiptId: 'rcpt-1', name: 'a.pdf', bytes: 10 }])
+    expect(round?.promptFiles).toEqual([{ receiptId: 'rcpt-1', name: 'a.pdf', bytes: 10 }])
+    expect(store.load()[0].executions[0].promptFiles).toEqual([{ receiptId: 'rcpt-1', name: 'a.pdf', bytes: 10 }])
+  })
+
   it('rejects blank text and unknown tasks; a completed task is revived by its comment', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)
@@ -1950,8 +2003,7 @@ describe('linked sessions & bind', () => {
     expect(blank.description).toBe('run')
   })
 
-  it('createBoundTask honors any landing column (external drops stay where dropped)', () => {
-    const { controller } = makeController()
+  it('createBoundTask honors any landing column (external drops stay where dropped)', () => {    const { controller } = makeController()
     const running = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
       title: 'r', description: '', prompt: 'run', status: 'running',
     })!
@@ -1964,6 +2016,62 @@ describe('linked sessions & bind', () => {
     expect(running.status).toBe('running')
     expect(review.status).toBe('review')
     expect(done.status).toBe('done')
+  })
+
+  it('createBoundTask on a workspace snapshots its live sessions as explicit rows (archived/blank excluded)', () => {
+    const { controller, store } = makeWorkspaceController({
+      workspaceId: 'w-a',
+      members: [
+        { id: 's-live-1' },
+        { id: 's-live-2' },
+        { id: 's-archived', archived: true },
+        { id: 's-blank', blank: true },
+      ],
+    })
+    const created = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+      title: 'w', description: '', prompt: 'run', status: 'todo',
+    })!
+    // The workspace bind stays first (source association); live members join
+    // as explicit session binds in native list order.
+    expect(created.binds).toEqual([
+      { kind: 'workspace', workspaceId: 'w-a' },
+      { kind: 'session', sessionId: 's-live-1' },
+      { kind: 'session', sessionId: 's-live-2' },
+    ])
+    expect(store.load()[0].binds).toEqual(created.binds)
+    // The rows derive at once (archived/blank never surface).
+    const rows = controller.linkedOf(created).map(row => row.sessionId)
+    expect(rows).toEqual(['s-live-1', 's-live-2'])
+  })
+
+  it('createBoundTask on an empty workspace still creates the card (zero snapshot rows)', () => {
+    const { controller } = makeWorkspaceController({ workspaceId: 'w-empty', members: [] })
+    const created = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-empty' }, {
+      title: 'w', description: '', prompt: 'run', status: 'todo',
+    })!
+    expect(created.binds).toEqual([{ kind: 'workspace', workspaceId: 'w-empty' }])
+    expect(controller.linkedOf(created)).toEqual([])
+  })
+
+  it('workspace snapshot never re-fires: later sessions do not auto-join', () => {
+    const { controller, sessions } = makeWorkspaceController({
+      workspaceId: 'w-a',
+      members: [{ id: 's-live-1' }],
+    })
+    const created = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+      title: 'w', description: '', prompt: 'run', status: 'todo',
+    })!
+    expect(created.binds).toEqual([
+      { kind: 'workspace', workspaceId: 'w-a' },
+      { kind: 'session', sessionId: 's-live-1' },
+    ])
+    // A session born AFTER the drop never joins on its own.
+    sessions.setRunning('s-late', false)
+    sessions.setInfo('s-late', { workspaceId: 'w-a' })
+    sessions.order = [...(sessions.order ?? []), 's-late']
+    const rows = controller.linkedOf(controller.getSnapshot().tasks.find(task => task.id === created.id)!)
+      .map(row => row.sessionId)
+    expect(rows).toEqual(['s-live-1'])
   })
 
   it('hideTaskSession / unhideTaskSessions manage a per-session hide set (persisted)', () => {

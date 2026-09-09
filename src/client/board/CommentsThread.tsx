@@ -38,10 +38,13 @@ export function CommentsThread({ task, views, onCancel }: {
                   never stale text from an older message. */}
               {view.round.comment !== undefined && view.round.comment !== '' && <Markdown text={view.round.comment} />}
               {view.round.imageOnly === true && <span className={css.reviewCommentImage}>{t('review.commentImage')}</span>}
-              {/* A queued comment that carries pictures says so (the images
-                  ride the round and go out with it when the lane frees). */}
+              {/* A queued comment that carries attachments says so (they ride
+                  the round and go out with it when the lane frees). */}
               {view.round.promptImages !== undefined && view.round.promptImages.length > 0 && (
                 <span className={css.reviewCommentImage}>{t('review.commentImages', { n: String(view.round.promptImages.length) })}</span>
+              )}
+              {view.round.promptFiles !== undefined && view.round.promptFiles.length > 0 && (
+                <span className={css.reviewCommentImage}>{t('review.commentFiles', { n: String(view.round.promptFiles.length) })}</span>
               )}
             </span>
             <span className={css.reviewCommentMeta}>

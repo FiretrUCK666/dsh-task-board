@@ -38,6 +38,13 @@
   --dsh-tb-radius-md: 14px;
   --dsh-tb-radius-lg: 20px;
   --dsh-tb-radius-xl: 28px;
+  /* corner family: pills are FULLY round (999px), cards/panels step the
+     radius-md/lg/xl ladder. A pill written sm/md reads square — that was the
+     「圆变方」 family (columnTab compact override, interactionOption,
+     attachChip, attachAdd, timeFieldCalendar, cruiseLimit). Small widgets
+     that are NOT pills (meter swatch, code, remove ×) keep their own tiny
+     radii by design. */
+  --dsh-tb-pill: 999px;
 
   /* native button geometry (same rhythm as the shell's buttons): every
      variant shares ONE default height (primary is emphasized by its fill,
@@ -3679,7 +3686,15 @@ button.interactionOption:focus-visible,
 }
 
 .reviewHeader {
-  display: flex;
+  /* One named grid at BOTH widths (never flex + auto-wrap): title grows,
+     context/badge/actions/close each own a cell, so no content combination
+     can squeeze, drift or reflow the row. Wide = one line; the panel query
+     below re-maps the same names to two deterministic lines. The head never
+     grows with content: fixed padding + one 24px control line, so the top
+     gap stays constant while dragging the browser narrower. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  grid-template-areas: "title badge context actions close";
   align-items: center;
   gap: 10px;
   /* The page's OUTER grid: 14px vertical / 20px horizontal — the header
@@ -3689,6 +3704,8 @@ button.interactionOption:focus-visible,
   padding: 14px 20px;
   border-bottom: var(--dsh-tb-separator);
   flex: none;
+  min-height: 52px;
+  box-sizing: border-box;
 }
 
 /* 同一排控件同级高: the close glyph rides the SAME 24px box as the small
@@ -3699,15 +3716,15 @@ button.interactionOption:focus-visible,
   height: 24px;
 }
 
-/* Title + run-sequence badge share one flex row that grows (the title
-   ellipsizes, the badge never clips); the header's `align-items: center`
-   then keeps this row, the badge and every action button on exactly the
-   same horizontal line. */
+/* Title + run-sequence badge: two cells of the header grid (title grows and
+   ellipsizes, badge never clips); the grid's `align-items: center` keeps
+   title, badge, context, actions and close on exactly the same horizontal
+   line at every width. */
 .reviewTitleWrap {
+  grid-area: title;
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
   min-width: 0;
 }
 
@@ -3724,39 +3741,60 @@ button.interactionOption:focus-visible,
 }
 
 .reviewBadge {
+  grid-area: badge;
   flex: none;
   font-size: 11px;
   font-weight: 500;
   line-height: 1.4;
   color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
 }
 
 .reviewActions {
+  grid-area: actions;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   flex: none;
 }
 
-/* The header context readout sits between the title cluster and the actions —
-   ONE horizontal plane with 标题 / 会话·共N个 / 刷新 / 查看会话 / × (the
-   「标题栏不在同一水平面」 fix). The head row is content-sized (caps +
-   ellipsizes); the popover anchors under its right edge and drops over the
-   body (the two-pane content, never covering the header itself). */
+.reviewHeader > .iconButton {
+  grid-area: close;
+}
+
+/* The header context readout owns the context cell — ONE horizontal plane
+   with 标题 / 会话·共N个 / 刷新 / 查看会话 / × (the 「标题栏不在同一水平面」
+   fix). The cell is ISOLATED (isolation:isolate + its own stacking context)
+   so the expanded popover below can NEVER paint over the actions/close
+   cells beside it (the 「上下文与刷新/查看会话重叠」 family on narrow
+   panels — the head row is content-sized and the popover is a sibling of
+   the clipped grid, not a child of it). */
 .reviewHeaderContext {
+  grid-area: context;
   flex: none;
   min-width: 0;
   max-width: 320px;
   padding: 0;
+  isolation: isolate;
 }
 /* The header's context head spans its own column; its expanded panel drops
    BELOW the head and spans exactly the head's box (left:0/right:0), so it can
    never be clipped by the panel's overflow:hidden the way a right-anchored
-   fixed-width card was, and never needs a viewport unit either. */
+   fixed-width card was, and never needs a viewport unit either. The panel
+   paints UNDER the action cells (z-index:1 vs the header's own plane), so
+   even a tall to-do list slides beneath 刷新/查看会话/× instead of over
+   them. */
 .reviewHeaderContext .sessionContextPanel {
   left: 0;
   right: 0;
   width: auto;
+  z-index: 1;
+}
+.reviewHeaderContext .sessionContextHead,
+.reviewActions,
+.reviewHeader > .iconButton {
+  position: relative;
+  z-index: 2;
 }
 
 .reviewBody {
@@ -3972,6 +4010,16 @@ button.interactionOption:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 
+/* The native "load earlier" row: ABOVE the list (older lives above), quiet
+   and centered — one grammar for every transcript surface. It never moves
+   the list below it (the prepend anchors to the bottom, see loadEarlier). */
+.transcriptEarlierRow {
+  display: flex;
+  justify-content: center;
+  flex: none;
+  padding: 2px 0 0;
+}
+
 /* Conversation list: native cadence — 16px gaps between messages, the whole
    body scrolls (no inner fixed-height scroller). */
 .reviewTranscript {
@@ -4110,6 +4158,10 @@ button.interactionOption:focus-visible,
   align-items: baseline;
   gap: 8px;
   min-width: 0;
+  /* One line, forever: the figures track swallows the shrink (ellipsis),
+     so 已用/百分比 can never wrap under the numbers no matter how narrow
+     the rail gets. */
+  white-space: nowrap;
 }
 
 .reviewMeterReading {
@@ -4176,32 +4228,46 @@ button.interactionOption:focus-visible,
 .meterMessages { --meter-tint: var(--dsw-static-blue-450); }
 
 /* Breakdown rows: swatch + label + compact figure per composition bucket
-   (swatches share the segment tints). */
+   (swatches share the segment tints). One row per bucket on its own line —
+   never a wrapping flex cluster (the 「对话消息另起一行」 family). */
 .reviewMeterRows {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
 }
 
 .reviewMeterRow {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "swatch label value";
   align-items: center;
-  gap: 5px;
+  column-gap: 6px;
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
+  min-width: 0;
+}
+
+.reviewMeterRow > :nth-child(2) {
+  grid-area: label;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reviewMeterValue {
+  grid-area: value;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-primary);
 }
 
 .reviewMeterSwatch {
+  grid-area: swatch;
   width: 8px;
   height: 8px;
   border-radius: 2px;
   background: var(--meter-tint, var(--dsw-alias-label-tertiary));
-}
-
-.reviewMeterValue {
-  color: var(--dsw-alias-label-primary);
-  font-variant-numeric: tabular-nums;
 }
 
 /* Token-usage summary under the conversation (fallback when no native
@@ -4623,7 +4689,8 @@ button.interactionOption:focus-visible,
   color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-surface-float);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsh-tb-radius-sm);
+  /* A chip is a pill (same family as .chipFill: 999px) — sm read square. */
+  border-radius: var(--dsh-tb-pill);
   padding: 4px 10px;
 }
 /* Read-only mirror options (0.1.5 navigate-to-answer card): the same chip
@@ -4696,7 +4763,9 @@ button.interactionOption:hover {
   color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsh-tb-radius-sm);
+  /* Round icon button (same family as .iconButton/.cardQuickRun 999px) —
+     sm read square. */
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
 }
 .attachAdd:hover {
@@ -4713,7 +4782,8 @@ button.interactionOption:hover {
   color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-surface-float);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsh-tb-radius-sm);
+  /* A chip is a pill (same family as .chipFill: 999px) — sm read square. */
+  border-radius: var(--dsh-tb-pill);
   padding: 2px 6px 2px 8px;
   overflow: hidden;
   white-space: nowrap;
@@ -4726,6 +4796,15 @@ button.interactionOption:hover {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The file chip's byte size: quiet meta beside the name, never truncated
+   itself (the name yields first). */
+.attachChipMeta {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .attachRemove {
@@ -4774,6 +4853,15 @@ button.interactionOption:hover {
      content (the containers have no padding of their own, so a direct child
      would otherwise hug their edges). */
   padding: 0 14px;
+}
+
+/* In the HEADER cell the wrap surrenders its own 14px (the cell already
+   owns the column's padding): a second inset here would double-indent the
+   head AND shrink the popover's anchor box, which is exactly how the head
+   text ended up painted under the actions on narrow panels. */
+.reviewHeaderContext .sessionContextWrap {
+  padding: 0;
+  min-width: 0;
 }
 
 .sessionContextHead {
@@ -4838,10 +4926,12 @@ button.interactionOption:hover {
   top: calc(100% + 6px);
   /* Absolute children anchor to the wrap's PADDING box, not its content box
      — inset by the same 14px content box so the panel spans exactly the
-     meter/config/thread width. */
+     meter/config/thread width. In the HEADER cell the wrap surrenders its
+     padding (see above), so the header override re-anchors to the head box
+     (left:0/right:0) — one anchor rule per surface, never two insets. */
   left: 14px;
   right: 14px;
-  z-index: 30;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -4887,6 +4977,57 @@ button.interactionOption:hover {
      natural width and the label inside. */
   flex: none;
   color: var(--dsh-tb-success);
+}
+
+/* The session goal strip (the board's GoalBar): phase chip + objective +
+   verb buttons in the context row's own grammar (badge first-line, text
+   yields, actions never shrink). The strip is a WRAPPING flex row — the
+   input carries the form-row floor (flex:1 1 140px) so a narrow panel wraps
+   the actions under it instead of crushing them; error/blocked lines take
+   their own full line, same tone as every inline form error. */
+.goalStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.goalStrip .sessionContextRow {
+  flex: 1 1 100%;
+}
+.goalStrip .sessionContextText {
+  flex: 1;
+}
+.goalStripActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.goalStripActions .iconButton {
+  width: 24px;
+  height: 24px;
+}
+.goalStripInput {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.goalStripError {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsw-alias-state-error-primary);
+  overflow-wrap: anywhere;
+}
+/* A blocked goal names its reason out loud (the message rides the durable
+   snapshot, exactly while the phase is blocked) — never a bare 受阻 chip. */
+.goalStripBlocked {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+  overflow-wrap: break-word;
 }
 
 .sessionContextTodos {
@@ -5101,44 +5242,47 @@ button.interactionOption:hover {
     overflow-y: visible;
   }
 
-  /* The header becomes ONE deterministic grid (no flex-wrap + order, which
-     drifted the layout with content — sometimes 刷新/查看会话 squeezed onto
-     line 1, sometimes × fell to line 2's left). Areas fix every member:
-     line 1 = title | badge | close (× ALWAYS top-right, same 14px inset from
-     top and right, vertically centered with the title); line 2 = context |
-     actions (刷新/查看会话 right-aligned). The title is single-line ellipsis
-     (a wrapping title would push × off the baseline; full name = title/aria). */
+  /* The header re-maps the SAME five names to two deterministic lines (no
+     flex-wrap + order, which drifted the layout with content — sometimes
+     刷新/查看会话 squeezed onto line 1, sometimes × fell to line 2's left).
+     Line 1 = title | badge | close (× ALWAYS top-right, vertically centered
+     with the title); line 2 = context | actions (刷新/查看会话 right-aligned).
+     The title is single-line ellipsis (a wrapping title would push × off the
+     baseline; full name = title/aria). Same padding, same gap, same 24px
+     control line as the wide head — narrowing never moves the top gap. */
   .reviewHeader {
-    display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-areas:
-      "title title close"
+      "title badge close"
       "context actions actions";
     align-items: center;
     column-gap: 10px;
     row-gap: 8px;
     padding: 14px;
+    min-height: 0;
   }
 
   .reviewTitleWrap {
-    grid-area: title;
     min-width: 0;
+  }
+
+  .reviewBadge {
+    justify-self: start;
   }
 
   .reviewHeader > .iconButton {
-    grid-area: close;
     justify-self: end;
-    margin-left: 4px;
   }
 
   /* The context readout takes line 2's LEFT (at 刷新's left, one baseline —
-     the user's ask); the action cluster takes line 2's RIGHT. Both grow so
-     the two never fight. */
+     the user's ask); the action cluster takes line 2's RIGHT. The cell
+     keeps the isolation of the wide head (see above): the in-flow expansion
+     below can never paint over line 2's actions either. */
   .reviewHeaderContext {
-    grid-area: context;
     min-width: 0;
     max-width: none;
-    justify-self: start;
+    justify-self: stretch;
+    isolation: isolate;
   }
 
   /* A context block anchored in the narrow header expands IN FLOW, never as a
@@ -5146,16 +5290,26 @@ button.interactionOption:hover {
      it is CAPPED and scrolls internally, so a long to-do list never grows the
      header past the screen (「上下文占满屏幕」). */
   .reviewHeaderContext .sessionContextPanel {
-    position: static;
     max-height: 240px;
     overflow-y: auto;
     margin-top: 6px;
+    /* In-flow still paints under the action row (same isolation grammar as
+       the wide popover — a long to-do list slides beneath 刷新/查看会话,
+       never over their labels). */
+    position: relative;
+    z-index: 1;
   }
 
   /* The action cluster takes line 2's right and right-aligns its content. */
   .reviewActions {
-    grid-area: actions;
     justify-self: end;
+    position: relative;
+    z-index: 2;
+  }
+
+  .reviewHeader > .iconButton {
+    position: relative;
+    z-index: 2;
   }
 
   /* The conversation keeps its own scroller (the comments region owns the
@@ -5457,11 +5611,13 @@ button.interactionOption:hover {
 
   .columnTab {
     /* Each cell centers its pill content; the label ellipsizes instead of
-       pushing neighbours out. */
+       pushing neighbours out. The pill stays FULLY round here too (the
+       radius-md override was the 「圆变方」 bug — a grid cell is still a
+       pill, not a card). */
     justify-content: center;
     min-width: 0;
     padding: 0 6px;
-    border-radius: var(--dsh-tb-radius-md);
+    border-radius: var(--dsh-tb-pill);
   }
 
   .columnTab > span {

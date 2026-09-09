@@ -18,6 +18,7 @@ import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
+import { formatDuration } from './format-time.ts'
 import { Markdown } from './Markdown.tsx'
 import { sumUsage, type TranscriptImage, type TranscriptLine } from './review-transcript.ts'
 import { JumpToLatest, useFollowScroll } from './use-transcript.tsx'
@@ -27,8 +28,8 @@ import { CommentsThread } from './CommentsThread.tsx'
 import type { CommentView } from './comment-thread.ts'
 import { InteractionCard } from './InteractionCard.tsx'
 import { AttachmentStrip } from './AttachmentStrip.tsx'
-import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, type DraftImage } from './attach.ts'
-import { useComposerImages } from './composer-images.ts'
+import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, type DraftFile, type DraftImage } from './attach.ts'
+import { useComposerImages, type FileStager } from './composer-images.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Disclosure, Notice, SendModeToggle } from './ui.tsx'
@@ -112,12 +113,13 @@ const TranscriptRow = memo(function TranscriptRow(props:
 /**
  * The shared transcript-region content: optional header (the review page's
  * outcome banner), the waiting banner, error/loading/empty states, the
- * folded message list (optionally capped to the trailing N) and the
- * "滑到最新" pill. Callers own their scroll region and the tail hook; this
- * is pure rendering, so every live session surface looks and behaves
- * identically.
+ * folded message list (optionally capped to the trailing N, with the native
+ * "load earlier" affordance above it when the host holds older messages)
+ * and the "滑到最新" pill. Callers own their scroll region and the tail
+ * hook; this is pure rendering, so every live session surface looks and
+ * behaves identically.
  */
-export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, before, onRetry, sessionId, controller }: {
+export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, hasMore, loadingEarlier, onLoadEarlier, before, onRetry, sessionId, controller }: {
   lines: readonly TranscriptLine[] | undefined
   error: boolean
   atBottom: boolean
@@ -125,6 +127,12 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
   waiting?: PendingInteractionKind
   /** Render only the trailing N lines (the refinement panel's cap). */
   maxLines?: number
+  /** The host holds messages older than the loaded window. */
+  hasMore?: boolean
+  /** An earlier page is being fetched right now. */
+  loadingEarlier?: boolean
+  /** Prepend one earlier page above the window (the native grammar). */
+  onLoadEarlier?: () => void
   /** Optional header content inside the region (the review page's outcome banner). */
   before?: ReactNode
   /** Re-read the tail (the error state's retry — a timeout/unavailable read
@@ -136,6 +144,10 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
   controller?: BoardController
 }) {
   const shown = lines === undefined ? undefined : maxLines === undefined ? lines : lines.slice(-maxLines)
+  // The native "load earlier" row belongs ABOVE the list (older messages
+  // live above), capped to the uncapped surface — a capped refinement tail
+  // never pages (its window is a preview, not the log).
+  const paging = hasMore === true && maxLines === undefined && onLoadEarlier !== undefined
   return (
     <>
       {before}
@@ -152,26 +164,35 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
       ) : shown.length === 0 ? (
         <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
       ) : (
-        <ul className={css.reviewTranscript}>
-          {shown.map(line => line.kind === 'context' ? (
-            <TranscriptRow
-              key={line.id}
-              kind="context"
-              plugin={line.plugin}
-              summary={line.summary}
-            />
-          ) : (
-            <TranscriptRow
-              key={line.id}
-              kind="message"
-              role={line.role}
-              text={line.text}
-              sessionId={sessionId}
-              controller={controller}
-              images={line.images}
-            />
-          ))}
-        </ul>
+        <>
+          {paging && (
+            <div className={css.transcriptEarlierRow}>
+              <Button size="sm" disabled={loadingEarlier === true} onClick={onLoadEarlier}>
+                {t(loadingEarlier === true ? 'review.loadingEarlierBusy' : 'review.loadEarlier')}
+              </Button>
+            </div>
+          )}
+          <ul className={css.reviewTranscript}>
+            {shown.map(line => line.kind === 'context' ? (
+              <TranscriptRow
+                key={line.id}
+                kind="context"
+                plugin={line.plugin}
+                summary={line.summary}
+              />
+            ) : (
+              <TranscriptRow
+                key={line.id}
+                kind="message"
+                role={line.role}
+                text={line.text}
+                sessionId={sessionId}
+                controller={controller}
+                images={line.images}
+              />
+            ))}
+          </ul>
+        </>
       )}
       <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />
     </>
@@ -227,10 +248,12 @@ interface SessionUsage {
 
 /**
  * The context meter block: native occupancy figure + colored composition
- * bar (from the transcript projections), or the token-sum fallback strip
- * when no projection is served. A high-occupancy state (>= 85%) shifts the
- * reading to the attention tone — the same warn grammar as every board
- * signal.
+ * bar (from the transcript projections), the cumulative whole-log token
+ * totals (from the `tokenUsage` projection — durable, not the paged-window
+ * sum below), the whole-log turn/step figures (from `sessionStats`), or the
+ * token-sum fallback strip when no projection is served. A high-occupancy
+ * state (>= 85%) shifts the reading to the attention tone — the same warn
+ * grammar as every board signal.
  */
 export function ContextMeterPanel({ projections, usage }: {
   projections: TranscriptProjectionsShape | undefined
@@ -240,6 +263,17 @@ export function ContextMeterPanel({ projections, usage }: {
   const segments = occupancy !== undefined
     ? contextSegments(occupancy, projections?.contextBreakdown)
     : undefined
+  // Cumulative whole-log totals ride the projection; the paged-window sum is
+  // only the fallback when the meter package is absent.
+  const total = projections?.tokenUsage !== undefined
+    ? {
+      inputTokens: projections.tokenUsage.uncachedInputTokens,
+      outputTokens: projections.tokenUsage.outputTokens,
+      cacheReadTokens: projections.tokenUsage.cacheReadTokens,
+      cacheWriteTokens: projections.tokenUsage.cacheWriteTokens,
+    }
+    : usage
+  const totalCumulative = projections?.tokenUsage !== undefined
   if (occupancy !== undefined && segments !== undefined) {
     const warn = occupancy.percent >= 85
     return (
@@ -290,17 +324,46 @@ export function ContextMeterPanel({ projections, usage }: {
             </div>
           )
         })()}
+        {totalCumulative && total !== undefined && (
+          <p className={css.reviewUsage}>
+            {t('review.usageTotal')} · {t('review.usageInput', { n: formatTokens(total.inputTokens) })} · {t('review.usageOutput', { n: formatTokens(total.outputTokens) })}
+            {total.cacheReadTokens !== undefined && ` · ${t('review.usageCacheRead', { n: formatTokens(total.cacheReadTokens) })}`}
+            {total.cacheWriteTokens !== undefined && ` · ${t('review.usageCacheWrite', { n: formatTokens(total.cacheWriteTokens) })}`}
+          </p>
+        )}
+        {(() => {
+          const stats = projections?.sessionStats
+          if (stats === undefined) return null
+          return (
+            <p className={css.reviewUsage}>
+              {t('review.statsTurns', { turns: String(stats.turns), steps: String(stats.steps) })}
+              {(stats.llmMs > 0 || stats.toolMs > 0) && ` · ${t('review.statsTime', {
+                llm: formatDuration(stats.llmMs),
+                tool: formatDuration(stats.toolMs),
+              })}`}
+            </p>
+          )
+        })()}
       </div>
     )
   }
-  if (usage !== undefined) {
+  if (total !== undefined) {
+    if (totalCumulative) {
+      return (
+        <p className={css.reviewUsage}>
+          {t('review.usageTotal')} · {t('review.usageInput', { n: formatTokens(total.inputTokens) })} · {t('review.usageOutput', { n: formatTokens(total.outputTokens) })}
+          {total.cacheReadTokens !== undefined && ` · ${t('review.usageCacheRead', { n: formatTokens(total.cacheReadTokens) })}`}
+          {total.cacheWriteTokens !== undefined && ` · ${t('review.usageCacheWrite', { n: formatTokens(total.cacheWriteTokens) })}`}
+        </p>
+      )
+    }
     return (
       <p className={css.reviewUsage}>
         {t('review.usage')}：
-        {t('review.usageInput', { n: String(usage.inputTokens) })} · {t('review.usageOutput', { n: String(usage.outputTokens) })}
-        {usage.cacheReadTokens !== undefined && ` · ${t('review.usageCacheRead', { n: String(usage.cacheReadTokens) })}`}
-        {usage.cacheWriteTokens !== undefined && ` · ${t('review.usageCacheWrite', { n: String(usage.cacheWriteTokens) })}`}
-        {usage.reasoningTokens !== undefined && ` · ${t('review.usageReasoning', { n: String(usage.reasoningTokens) })}`}
+        {t('review.usageInput', { n: String(total.inputTokens) })} · {t('review.usageOutput', { n: String(total.outputTokens) })}
+        {total.cacheReadTokens !== undefined && ` · ${t('review.usageCacheRead', { n: String(total.cacheReadTokens) })}`}
+        {total.cacheWriteTokens !== undefined && ` · ${t('review.usageCacheWrite', { n: String(total.cacheWriteTokens) })}`}
+        {total.reasoningTokens !== undefined && ` · ${t('review.usageReasoning', { n: String(total.reasoningTokens) })}`}
       </p>
     )
   }
@@ -800,18 +863,28 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
  * what 排队/插话 do, and why sending is refused (a finished task, a gone
  * session), is information a touch user must be able to reach — a fold that
  * starts collapsed on a phone would otherwise hide it behind a hover-only
- * tooltip. Draft / steer mode / attached images live here (the per-session
- * draft slot, shared across panels); the caller supplies only the send
- * semantics:
- *   - onDrive(text, images) schedules a session-anchored comment round (true =
- *     saved, the draft clears) — / commands route through the native registry;
- *     any images ride the round and go out WITH it when the lane frees (排队
- *     means wait, with or without pictures);
+ * tooltip. Draft / steer mode / attachments (images + staged files) live
+ * here (the per-session draft slot, shared across panels); the caller
+ * supplies only the send semantics:
+ *   - onDrive(text, images, files) schedules a session-anchored comment round
+ *     (true = saved, the draft clears) — / commands route through the native
+ *     registry; attachments ride the round and go out WITH it when the lane
+ *     frees (排队 means wait, with or without attachments);
  *   - onSteer(text) delivers the comment straight to the session now;
  *   - onSteerImages(text, images) delivers text + images at once (插话 with a
- *     picture). The send mode is the user's toggle — images never force steer.
+ *     picture); onSteerFiles(text, images, files) the same with files. The
+ *     send mode is the user's toggle — attachments never force steer.
  */
-export function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, hint, onDrive, onSteer, onSteerImages }: {
+
+/** Stage one file's bytes on a session via the controller's upload face. */
+export function useFileStager(controller: BoardController, sessionId: string | undefined): FileStager | undefined {
+  if (sessionId === undefined) return undefined
+  const upload = controller.uploadFile(sessionId)
+  if (upload === undefined) return undefined
+  return async (target: string, file: File) => upload(target, file)
+}
+
+export function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, hint, onDrive, onSteer, onSteerImages, onSteerFiles }: {
   controller: BoardController
   taskId: string
   sessionId: string | undefined
@@ -820,32 +893,39 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   disabled?: boolean
   /** The composer's own explanation (blocking reason, or the drive hint). */
   hint?: string
-  onDrive: (text: string, images: readonly DraftImage[]) => boolean
+  onDrive: (text: string, images: readonly DraftImage[], files: readonly DraftFile[]) => boolean
   onSteer: (text: string) => Promise<boolean>
   onSteerImages: (text: string, images: readonly DraftImage[]) => Promise<boolean>
+  /** Steer with staged files (absent = this surface closes the file lane). */
+  onSteerFiles?: (text: string, images: readonly DraftImage[], files: readonly DraftFile[]) => Promise<boolean>
 }) {
   const storeKey = sessionId === undefined ? undefined : commentDraftKey(taskId, sessionId)
   const [draft, setDraft] = useState<string>(() => (storeKey !== undefined ? draftStore.get(storeKey) ?? '' : ''))
   const [steer, setSteer] = useState(false)
-  // The image ledger is the SHARED hook: pick / drop-anywhere / paste,
-  // compression, count cap and every rejection said out loud. The composer
-  // container carries the drop/paste props so a desktop user can drop a
-  // file or paste a screenshot anywhere on it, not just on the thin strip.
-  const attachments = useComposerImages(COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES)
-  const { images: attachedImages, setImages, addFiles, dropProps } = attachments
+  // The attachment ledger is the SHARED hook: pick / drop-anywhere / paste,
+  // image compression + file staging, count caps and every rejection said
+  // out loud. The composer container carries the drop/paste props so a
+  // desktop user can drop a file or paste a screenshot anywhere on it, not
+  // just on the thin strip. The file lane stages on THIS session (receipts
+  // are per-Agent); without a session it stays closed (images only).
+  const stager = useFileStager(controller, sessionId)
+  const attachments = useComposerImages(COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, undefined,
+    stager !== undefined && sessionId !== undefined ? { sessionId, stage: stager } : undefined)
+  const { images: attachedImages, files: attachedFiles, setImages, setFiles, addFiles, dropProps } = attachments
   // A failed SEND is distinct from a failed INTAKE; surface it right under
   // the composer (never a silent drop — the user must know their words and
-  // pictures did not go out).
+  // attachments did not go out).
   const [sendError, setSendError] = useState<string | undefined>(undefined)
   const clear = (): void => {
     setDraft('')
     setImages([])
+    setFiles([])
     setSendError(undefined)
     if (storeKey !== undefined) draftStore.clear(storeKey)
   }
   const submit = (): void => {
     const text = draft.trim()
-    if ((text === '' && attachedImages.length === 0) || disabled === true) return
+    if ((text === '' && attachedImages.length === 0 && attachedFiles.length === 0) || disabled === true) return
     // ONE clear grammar for every send mode: the draft leaves the composer at
     // submit, so a repeated click can never double-send (queue cleared right
     // away; steer only after the host answered — a quick second click would
@@ -854,21 +934,27 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     const restore = (): void => {
       setDraft(text)
       setImages(attachedImages)
+      setFiles(attachedFiles)
       if (storeKey !== undefined) draftStore.set(storeKey, text)
     }
     clear()
     // The send mode is the user's toggle — NEVER overridden by the presence of
-    // images (that was the bug: a queued picture jumped the queue and sent
+    // attachments (that was the bug: a queued picture jumped the queue and sent
     // immediately while the session was still running).
     if (steer) {
-      const sent = attachedImages.length > 0 ? onSteerImages(text, attachedImages) : onSteer(text)
+      const sent = attachedFiles.length > 0 && onSteerFiles !== undefined
+        ? onSteerFiles(text, attachedImages, attachedFiles)
+        : attachedImages.length > 0 ? onSteerImages(text, attachedImages) : onSteer(text)
       void sent.then(ok => { if (!ok) restore() })
       return
     }
-    // 排队: the dispatcher injects this round (text + any pictures) when the
+    // 排队: the dispatcher injects this round (text + attachments) when the
     // session's lane is free — it waits behind the running turn, never jumps it.
-    if (!onDrive(text, attachedImages)) restore()
+    if (!onDrive(text, attachedImages, attachedFiles)) restore()
   }
+  const busyLabel = attachments.busy
+    ? (attachedFiles.length > 0 ? t('review.attachFileBusy') : t('review.attachBusy'))
+    : undefined
   return (
     <div className={css.reviewComposer} {...dropProps}>
       <PromptInput
@@ -884,20 +970,23 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
       />
       {/* The attachment strip is its OWN row between the input and the action
           row: chips wrap there and can never grow the action row, so the send
-          button stays visible + tappable no matter how many pictures are
+          button stays visible + tappable no matter how many files are
           picked (the "选图后发送按钮被挤没" bug). */}
       <AttachmentStrip
         images={attachedImages}
+        files={attachedFiles}
         onAdd={addFiles}
-        onRemove={id => { setImages(attachedImages.filter(image => image.id !== id)) }}
+        onRemoveImage={id => { setImages(attachedImages.filter(image => image.id !== id)) }}
+        onRemoveFile={id => { setFiles(attachedFiles.filter(file => file.id !== id)) }}
         busy={attachments.busy}
+        busyLabel={busyLabel}
         error={attachments.error ?? sendError}
       />
       <div className={css.reviewComposerRow}>
         <SendModeToggle steer={steer} onChange={setSteer} />
         <Button
           variant="primary"
-          disabled={(draft.trim() === '' && attachedImages.length === 0) || disabled === true}
+          disabled={(draft.trim() === '' && attachedImages.length === 0 && attachedFiles.length === 0) || disabled === true}
           onClick={submit}
         >
           {t('review.commentSend')}

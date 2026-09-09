@@ -17,7 +17,7 @@ import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
-import { toPromptImage } from './attach.ts'
+import { toPromptFile, toPromptImage } from './attach.ts'
 import { sessionStateChip } from './session-chip.ts'
 import { sessionRowTitleOf } from '../../core/session-list.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
@@ -50,11 +50,14 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const {
     lines,
     error: transcriptError,
+    hasMore: transcriptHasMore,
+    loadingEarlier: transcriptLoadingEarlier,
     atBottom,
     scrollRef,
     onScroll,
     jumpToBottom,
     reload,
+    loadEarlier,
   } = useTranscriptTail(
     controller,
     liveSessionId,
@@ -105,6 +108,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       badge={t('detail.sessionCountBadge', { n: String(controller.sessionsOf(task).length) })}
       ariaLabel={t('detail.sessionPanel')}
       context={context}
+      contextSessionId={sessionId}
+      controller={controller}
       actions={
         <>
           <Button size="sm" onClick={reload} title={t('review.refresh')}>
@@ -126,6 +131,9 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               atBottom={atBottom}
               jumpToBottom={jumpToBottom}
               waiting={waiting}
+              hasMore={transcriptHasMore}
+              loadingEarlier={transcriptLoadingEarlier}
+              onLoadEarlier={loadEarlier}
               onRetry={reload}
               sessionId={sessionId}
               controller={controller}
@@ -154,9 +162,10 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               placeholder={t('detail.sessionDrivePlaceholder')}
               disabled={liveGone}
               hint={hint}
-              onDrive={(text, images) => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/'), images.map(toPromptImage)) !== undefined}
+              onDrive={(text, images, files) => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/'), images.map(toPromptImage), files.map(toPromptFile)) !== undefined}
               onSteer={text => controller.steerComment(task.id, sessionId, text).then(result => result.ok)}
               onSteerImages={(text, images) => controller.steerCommentWithImages(task.id, sessionId, text, images.map(toPromptImage)).then(result => result.ok)}
+              onSteerFiles={(text, images, files) => controller.steerCommentWithImages(task.id, sessionId, text, images.map(toPromptImage), files.map(toPromptFile)).then(result => result.ok)}
             />
           }
         />

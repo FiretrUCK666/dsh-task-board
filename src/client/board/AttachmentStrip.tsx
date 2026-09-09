@@ -1,38 +1,57 @@
 /**
- * Composer attachment strip: the image-drag/pick entrance of every composer
- * that attaches images (review page, session panel, refinement, task prompt).
+ * Composer attachment strip: the file-drag/pick entrance of every composer
+ * that attaches files (review page, session panel, refinement, task prompt).
  * It is PRESENTATION + the picker affordance; the ledger state, intake
- * (encode/compress) and the drop/paste wiring live in the shared
- * `useComposerImages` hook, which the composer spreads onto its container so
- * a drop anywhere on the composer (not just this strip) works. A plus button
- * opens the picker; encoded images show as removable chips; a busy row names
- * the in-flight compression and a rejection line names the failed file —
- * nothing is ever silently dropped. One grammar everywhere.
+ * (image encode/compress + file staging) and the drop/paste wiring live in
+ * the shared `useComposerImages` hook, which the composer spreads onto its
+ * container so a drop anywhere on the composer (not just this strip) works.
+ * A plus button opens the picker (any file kind — images route to the image
+ * lane, everything else to the staged-file lane); encoded images and staged
+ * files show as removable chips; a busy row names the in-flight work and a
+ * rejection line names the failed file — nothing is ever silently dropped.
+ * One grammar everywhere.
  */
 import { useRef } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
-import type { DraftImage } from './attach.ts'
+import type { DraftFile, DraftImage } from './attach.ts'
 
-export function AttachmentStrip({ images, onAdd, onRemove, busy, error }: {
+/** Format a byte count compactly (B/KB/MB, one decimal under 100). */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) {
+    const v = bytes / 1024
+    return `${v >= 100 ? String(Math.round(v)) : String(Math.round(v * 10) / 10)} KB`
+  }
+  const v = bytes / (1024 * 1024)
+  return `${v >= 100 ? String(Math.round(v)) : String(Math.round(v * 10) / 10)} MB`
+}
+
+export function AttachmentStrip({ images, files, onAdd, onRemoveImage, onRemoveFile, busy, busyLabel, error }: {
   images: readonly DraftImage[]
-  /** Intake picked files (the hook encodes + validates). */
+  /** Staged files (empty when the surface closes the file lane). */
+  files?: readonly DraftFile[]
+  /** Intake picked files (the hook encodes + stages + validates). */
   onAdd: (files: FileList | File[]) => void
-  onRemove: (id: string) => void
-  /** An image is decoding/compressing right now (phone photos take a beat). */
+  onRemoveImage: (id: string) => void
+  onRemoveFile?: (id: string) => void
+  /** A file is encoding/uploading right now (phone photos/uploads take a beat). */
   busy?: boolean
+  /** Busy line override (file uploads say uploading, not compressing). */
+  busyLabel?: string
   /** The last rejection, said out loud (never a silent drop). */
   error?: string
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const staged = files ?? []
   return (
     <div className={css.attachStrip}>
       <button
         type="button"
         className={css.attachAdd}
-        aria-label={t('review.attachImage')}
-        title={t('review.attachImage')}
+        aria-label={t('review.attachFile')}
+        title={t('review.attachFile')}
         onClick={() => { fileRef.current?.click() }}
       >
         <Icon name="link" />
@@ -40,7 +59,6 @@ export function AttachmentStrip({ images, onAdd, onRemove, busy, error }: {
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
         multiple
         hidden
         onChange={event => {
@@ -59,13 +77,29 @@ export function AttachmentStrip({ images, onAdd, onRemove, busy, error }: {
             type="button"
             className={css.attachRemove}
             aria-label={image.name}
-            onClick={() => { onRemove(image.id) }}
+            onClick={() => { onRemoveImage(image.id) }}
           >
             <Icon name="close" />
           </button>
         </span>
       ))}
-      {busy === true && <span className={css.attachHint}>{t('review.attachBusy')}</span>}
+      {staged.map(file => (
+        <span key={file.id} className={css.attachChip} title={`${file.name} · ${formatBytes(file.bytes)}`}>
+          <span className={css.attachChipName}>{file.name}</span>
+          <span className={css.attachChipMeta}>{formatBytes(file.bytes)}</span>
+          {onRemoveFile !== undefined && (
+            <button
+              type="button"
+              className={css.attachRemove}
+              aria-label={file.name}
+              onClick={() => { onRemoveFile(file.id) }}
+            >
+              <Icon name="close" />
+            </button>
+          )}
+        </span>
+      ))}
+      {busy === true && <span className={css.attachHint}>{busyLabel ?? t('review.attachBusy')}</span>}
       {error !== undefined && error !== '' && <span className={css.attachError}>{error}</span>}
     </div>
   )

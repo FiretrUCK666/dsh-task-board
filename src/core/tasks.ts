@@ -41,6 +41,13 @@ export interface ExecutionRecord {
    */
   promptImages?: TaskImage[]
   /**
+   * File refs attached to a comment round (the OFFICIAL `{type:'file',
+   * receiptId}` shape). Same queueing as images: a QUEUED comment carries
+   * its files on the round so the dispatcher sends text + files together
+   * when the lane frees.
+   */
+  promptFiles?: TaskFile[]
+  /**
    * When the user last opened this execution's review page (ms epoch),
    * clearing its unread reminder. Absent on legacy rows — the display layer
    * falls back to the run's own latest activity, so old content never lights
@@ -223,6 +230,16 @@ export interface TaskImage {
   name?: string
 }
 
+/** One file ref attached to a task's execution prompt — the OFFICIAL
+ *  `{type:'file', receiptId}` shape (files carry no admission limits; the
+ *  stored object is the exact submitted bytes). Queued like images: a file
+ *  staged for a session rides the round until the lane frees. */
+export interface TaskFile {
+  receiptId: string
+  name: string
+  bytes: number
+}
+
 export interface TaskRecord {
   /** Stable task id (uuid). */
   id: string
@@ -242,6 +259,15 @@ export interface TaskRecord {
    * a text-only prompt (the overwhelming majority of tasks).
    */
   promptImages?: TaskImage[]
+  /**
+   * File refs attached to the execution prompt — the OFFICIAL
+   * `{type:'file', receiptId}` shape, PERSISTED with the task like images.
+   * Receipts are staged per-Agent: a receipt minted for one session MUST be
+   * re-staged before a run on another session (the send layer re-uploads by
+   * name when the stored receipt is rejected — files are re-readable from
+   * the composer's staged bytes, never re-asked from the user).
+   */
+  promptFiles?: TaskFile[]
   /** Current column. */
   status: TaskStatus
   /** Column sort key (ascending; legacy rows are normalized on load). */
@@ -674,6 +700,8 @@ export function newCommentRound(options: {
   ruleId?: string
   /** Images carried by the comment (queued sends deliver them with the text). */
   images?: readonly TaskImage[]
+  /** File refs carried by the comment (queued sends deliver them with the text). */
+  files?: readonly TaskFile[]
 }): ExecutionRecord {
   return {
     id: options.id,
@@ -686,6 +714,9 @@ export function newCommentRound(options: {
     ...(options.command === true ? { command: true } : {}),
     ...(options.images !== undefined && options.images.length > 0
       ? { promptImages: options.images.map(image => ({ ...image })) }
+      : {}),
+    ...(options.files !== undefined && options.files.length > 0
+      ? { promptFiles: options.files.map(file => ({ ...file })) }
       : {}),
     ...(options.parentExecutionId !== undefined ? { parentExecutionId: options.parentExecutionId } : {}),
     ...(options.sessionAnchor !== undefined ? { sessionAnchor: options.sessionAnchor } : {}),

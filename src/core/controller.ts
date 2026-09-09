@@ -27,6 +27,7 @@ import { LocalStoragePresetStore } from './presets.ts'
 import { LocalStorageRunPresetStore } from './run-presets.ts'
 import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
+import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVerbs } from './goal-verbs.ts'
 import type { TaskStore } from './store.ts'
 import {
   applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
@@ -49,6 +50,8 @@ export interface SessionsControllerFace {
   list: {
     getSnapshot(): {
       current: string | undefined
+      /** Session ids in native list order (the workspace's own section order). */
+      ids?: readonly string[]
       /** Host session list rows; used to judge whether an execution session finished. */
       byId: Record<string, {
         running: boolean
@@ -56,6 +59,10 @@ export interface SessionsControllerFace {
         pendingInteraction?: PendingInteractionKind
         /** The session's real workspace root, when the host recorded one. */
         cwd?: string
+        /** The workspace id the host attributes the session to, when known. */
+        workspaceId?: string
+        /** Host "never started" flag (a blank session is a slot, not a conversation). */
+        blank?: boolean
         /** The agent preset the session's agent was composed from, when known. */
         agentPreset?: string
         /** The session's display title, when the host recorded one (execution-row identity). */
@@ -209,7 +216,7 @@ export interface ReferenceRemoteFace {
 
 /** The editable slice of a task (content + run configuration). */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
-  'title' | 'description' | 'prompt' | 'promptImages' | 'workspaceId' | 'provider' | 'model'
+  'title' | 'description' | 'prompt' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model'
   | 'reasoningEffort' | 'agentPreset' | 'permission'
 >>
 
@@ -239,6 +246,20 @@ export interface TranscriptEventShape {
   seq?: number
   time?: number
   data?: unknown
+}
+
+/**
+ * One history page the transcript reader serves: the raw events plus whether
+ * the host holds EARLIER messages (`hasMore`) and the oldest seq covered
+ * (`floorSeq`, for the next `beforeSeq` request). The tail and every earlier
+ * page share this shape — the hook accumulates them oldest-first.
+ */
+export interface TranscriptPage {
+  events: readonly TranscriptEventShape[]
+  /** True when the host holds messages older than this page. */
+  hasMore: boolean
+  /** The oldest event seq covered by this page (undefined when empty). */
+  floorSeq?: number
 }
 
 /**
@@ -284,6 +305,46 @@ export interface SessionTodoShape {
   status: 'pending' | 'in_progress' | 'completed'
 }
 
+/** The native cumulative token usage (the official `tokenUsage` projection:
+ *  durable whole-log totals, independent of paged history windows). The four
+ *  buckets are disjoint; reasoning tokens are already inside outputTokens. */
+export interface TokenUsageShape {
+  uncachedInputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+}
+
+/** The native whole-log conversation figures (the official `sessionStats`
+ *  projection): turn/step counts and wall times folded from the complete
+ *  durable log — every field is 0 until its first contributing event lands. */
+export interface SessionStatsShape {
+  turns: number
+  steps: number
+  llmMs: number
+  toolMs: number
+  ttftMs: number
+  ttftSteps: number
+  decodeMs: number
+  decodeTokens: number
+}
+
+/** The native current goal (the official `goal` projection, flattened):
+ *  the durable snapshot plus its replay counters. `blockedReason` is present
+ *  exactly while `phase` is `blocked`. A `complete` phase never surfaces
+ *  (the official surface renders nothing for it — same rule here). */
+export interface SessionGoalShape {
+  id: string
+  revision: number
+  objective: string
+  phase: 'active' | 'paused' | 'blocked' | 'complete'
+  blockedReason?: { code: string; message: string }
+  maxGoalRounds: number
+  roundsStarted: number
+  createdAt: number
+  updatedAt: number
+}
+
 /** The projection slice the review page reads (the history tail page's block). */
 export interface TranscriptProjectionsShape {
   contextPressure?: ContextPressureShape
@@ -292,11 +353,22 @@ export interface TranscriptProjectionsShape {
   /** The agent's whole todo list (the official `todos` projection, last-write
    *  wins); absent when the domain package/deployment does not serve it. */
   todos?: readonly SessionTodoShape[]
+  /** Cumulative whole-log token usage; absent when the meter package is absent. */
+  tokenUsage?: TokenUsageShape
+  /** Whole-log turn/step figures; absent when the stats package is absent. */
+  sessionStats?: SessionStatsShape
+  /** The session's current goal (`null` = cleared/none); absent when the
+   *  goal package is absent. */
+  goal?: SessionGoalShape | null
 }
 
-/** The review-page transcript: raw events plus the session's projection baseline. */
+/** The review-page transcript: the tail page plus the session's projection baseline. */
 export interface TranscriptLoadResult {
   events: readonly TranscriptEventShape[]
+  /** Whether the host holds messages older than this tail (the native "hasMore"). */
+  hasMore: boolean
+  /** The oldest event seq covered by this tail (undefined when empty). */
+  floorSeq?: number
   /** Native projection values riding the history tail page; absent when the deployment has no registry. */
   projections?: TranscriptProjectionsShape
 }
@@ -377,10 +449,27 @@ export interface ControllerDeps {
   runPresetStore?: import('./run-presets.ts').RunPresetStore
   /** Reads a session's recent history events (review-page transcript); absent = the page shows a hint. */
   transcript?: (sessionId: string) => Promise<TranscriptLoadResult | undefined>
+  /** Reads one earlier history page backward from `beforeSeq` (the native
+   *  "load earlier" grammar); absent = the transcript shows the tail only. */
+  transcriptPage?: (sessionId: string, beforeSeq: number) => Promise<TranscriptPage | undefined>
   /** Reads one durable image back as base64 (the official `sessions.attachment`
    *  read — the host proves the session references the id). Absent = message
    *  images render as quiet placeholders. */
   loadImage?: (sessionId: string, attachmentId: string) => Promise<{ data: string; mediaType: string } | undefined>
+  /** Stages one file's exact bytes on a session (the official file-lane
+   *  pre-step: `fileUploads/upload` or the binary HTTP fallback). Absent =
+   *  the file lane is closed (images only). */
+  uploadFile?: (sessionId: string, file: File) => Promise<
+    | { ok: true; receiptId: string }
+    | { ok: false; error: string }
+  >
+  /**
+   * The native goal service for one session's goal strip (the official
+   * `remote.goals` verbs + the live binding's `goal` projection for the
+   * call-time CAS ref + the `goal/activation-changed` subscription).
+   * Absent = the goal strip stays read-only (legacy bridge text only).
+   */
+  goalService?: GoalServiceFace
   /** Session-config surface (review-page model/permission panel); absent = the panel degrades gracefully. */
   sessionConfig?: SessionConfigFace
   /** Sends one plain message directly to any native session (linked-session
@@ -388,12 +477,13 @@ export interface ControllerDeps {
    *  direct composer is disabled with a hint). This is deliberately NOT the
    *  task-execution path: it never creates execution records, never enters
    *  the dispatcher and never affects task state — it is exactly "typing in
-   *  the native conversation". Images are durable attachment refs (admitted
-   *  through the host attachment bridge) appended to the prompt content.
+   *  the native conversation". Images (temporary bytes) and files (staged
+   *  receipts) ride the prompt content as the OFFICIAL parts — the host
+   *  admits both, exactly like the native composer does.
    *  `mode` is the OFFICIAL prompt disposition: 'queue' (in order) or
    *  'steer' (interrupt the current turn now) — a 插话 is only a 插话 when
    *  the wire says so. */
-  sessionMessage?: (sessionId: string, text: string, images?: readonly PromptImage[] | undefined, mode?: 'queue' | 'steer') => Promise<{ ok: true } | { ok: false; error: string }>
+  sessionMessage?: (sessionId: string, text: string, images?: readonly PromptImage[] | undefined, mode?: 'queue' | 'steer', files?: readonly PromptFile[] | undefined) => Promise<{ ok: true } | { ok: false; error: string }>
   /** Executes one slash-command line against any native session through the
    *  host command registry (matched = recognized; unmatched = the caller
    *  falls back to sending the line as plain text). Absent = slash lines
@@ -432,6 +522,19 @@ export interface PromptImage {
   /** Canonical base64 of the image bytes (no data-URL prefix). */
   data: string
   name?: string
+}
+
+/** One file attached to a native prompt — the OFFICIAL `PromptContentPart`
+ *  file shape: the browser stages the EXACT bytes first (same session) and
+ *  the prompt carries only the opaque receipt. Files carry no admission
+ *  limits; the stored object is the exact submitted bytes. */
+export interface PromptFile {
+  /** Opaque receipt from a preceding upload on the SAME session. */
+  receiptId: string
+  /** Display name (never an OS path). */
+  name: string
+  /** Exact byte size (shown, not gated). */
+  bytes: number
 }
 
 /** Immutable controller snapshot for UI subscriptions. */
@@ -731,15 +834,57 @@ export class BoardController {
     return this.deps.transcript?.(sessionId) ?? Promise.resolve(undefined)
   }
 
+  /** Read one earlier history page backward from `beforeSeq`. */
+  loadTranscriptPage(sessionId: string, beforeSeq: number): Promise<TranscriptPage | undefined> {
+    return this.deps.transcriptPage?.(sessionId, beforeSeq) ?? Promise.resolve(undefined)
+  }
+
   /** Read one durable message image back as base64 (official attachment read,
    *  cached + deduped by the wiring); undefined when unavailable. */
   loadImage(sessionId: string, attachmentId: string): Promise<{ data: string; mediaType: string } | undefined> {
     return this.deps.loadImage?.(sessionId, attachmentId) ?? Promise.resolve(undefined)
   }
 
+  /**
+   * Stage one file's exact bytes on a session (the official file-lane
+   * pre-step): returns a stager bound to `sessionId`, or undefined when the
+   * host serves no upload face. Receipts are per-Agent — a receipt minted
+   * here MUST NOT cross sessions (the execution send layer re-stages by
+   * name when a stored receipt is rejected).
+   */
+  uploadFile(sessionId: string): ((target: string, file: File) => Promise<
+    | { ok: true; receiptId: string }
+    | { ok: false; error: string }
+  >) | undefined {
+    const upload = this.deps.uploadFile
+    if (upload === undefined) return undefined
+    return (target: string, file: File) => upload(target === sessionId ? sessionId : target, file)
+  }
+
   /** The session-config face (review page's model/permission panel), or undefined. */
   sessionConfig(): SessionConfigFace | undefined {
     return this.deps.sessionConfig
+  }
+
+  /**
+   * The native goal verbs for one session's goal strip (official
+   * `remote.goals` mutations with the call-time CAS ref), or undefined when
+   * the host does not serve them — the strip then stays read-only.
+   */
+  goalVerbs(sessionId: string): GoalVerbs | undefined {
+    const service = this.deps.goalService
+    if (service === undefined) return undefined
+    return verbsOf(service, sessionId)
+  }
+
+  /** The goal activation subscription (official `goal/activation-changed`), or undefined. */
+  subscribeGoalActivation(
+    sessionId: string,
+    listener: (goal: GoalActivationChanged | undefined) => void,
+  ): (() => void) | undefined {
+    const service = this.deps.goalService
+    if (service === undefined) return undefined
+    return service.subscribeActivation(sessionId, listener)
   }
 
   /**
@@ -928,6 +1073,13 @@ export class BoardController {
    * workspace folder dragged in from the sidebar). The bind wires the card's
    * "链接会话" section; everything else behaves like a plain task — title is
    * optional like any new task (the first real run supplements it).
+   *
+   * Workspace snapshot semantics: a workspace bind is a source association,
+   * but at CREATION the card also snapshots the workspace's CURRENT live
+   * sessions (visible, unarchived, non-blank) as explicit session binds —
+   * the user dragged the folder "with what's in it", not an empty shell.
+   * Later sessions never auto-join (no flooding); archived sessions leave
+   * the rows at once (see linkedOf).
    * @param bind - the live binding.
    * @param input - title/description/prompt/landing column.
    * @returns the created task, or undefined for a bad bind.
@@ -935,7 +1087,10 @@ export class BoardController {
   createBoundTask(bind: TaskBind, input: NewTaskInput): TaskRecord | undefined {
     if (bind === undefined) return undefined
     const task = this.supplementedTask(createTask(input, this.now(), this.uuid(), this.nextOrder()))
-    const boundTask: TaskRecord = { ...task, binds: [bind] }
+    const binds = bind.kind === 'workspace'
+      ? [bind, ...this.snapshotWorkspaceSessions(bind.workspaceId).map(sessionId => ({ kind: 'session' as const, sessionId }))]
+      : [bind]
+    const boundTask: TaskRecord = { ...task, binds }
     this.tasks = promoteToColumnTop([...this.tasks, boundTask], boundTask.id, boundTask.status, this.now())
     this.persistAndNotify()
     // A freshly bound source may be RUNNING right now (the user dragged in a
@@ -944,6 +1099,44 @@ export class BoardController {
     // round; it settles to 「待审核」 when the native turn ends.
     void this.reconcileBoundTask(boundTask.id)
     return boundTask
+  }
+
+  /**
+   * The workspace's CURRENT live session snapshot for a folder drop: every
+   * session the native list shows right now that is visible (listed),
+   * unarchived and non-blank — deduplicated, in native list order. Pure
+   * derivation over the two snapshots (no I/O), so tests drive it with
+   * fakes. Later sessions never join (snapshot, not subscription).
+   */
+  private snapshotWorkspaceSessions(workspaceId: string): string[] {
+    const state = this.deps.sessions.list.getSnapshot()
+    const archived = new Set(this.deps.workspaces?.list.getSnapshot().archivedSessionIds ?? [])
+    const seen = new Set<string>()
+    const out: string[] = []
+    const order = state.ids ?? Object.keys(state.byId)
+    for (const id of order) {
+      const row = state.byId[id]
+      if (row === undefined || archived.has(id) || row.blank === true) continue
+      if (!this.sessionInWorkspace(id, row, workspaceId)) continue
+      if (seen.has(id)) continue
+      seen.add(id)
+      out.push(id)
+    }
+    return out
+  }
+
+  /** Whether a session row belongs to a workspace (cwd path or id match). */
+  private sessionInWorkspace(id: string, row: { cwd?: string; workspaceId?: string }, workspaceId: string): boolean {
+    if (row.workspaceId !== undefined && row.workspaceId !== '') return row.workspaceId === workspaceId
+    const title = this.deps.workspaces?.list.getSnapshot().items.find(item => item.id === workspaceId)?.title
+    if (row.cwd !== undefined && row.cwd !== '' && title !== undefined && title !== '') {
+      const segment = row.cwd.split(/[\\/]+/).filter(Boolean).pop()
+      if (segment === title) return true
+    }
+    // No workspace signal on the row: the list order is the workspace's own
+    // sidebar section, so only an explicit match binds. Never guess by id.
+    void id
+    return false
   }
 
   /**
@@ -1386,11 +1579,17 @@ export class BoardController {
     if (patch.title !== undefined) applied.title = title
     if (patch.description !== undefined) applied.description = patch.description.trim()
     if (patch.prompt !== undefined) applied.prompt = patch.prompt.trim()
-    // Prompt images: a present key sets/clears the whole set (the form owns
-    // the cap; an empty array clears the task's prompt images).
+    // Prompt attachments: a present key sets/clears the whole set (the form
+    // owns the cap; an empty array clears the task's attachments). Images
+    // and file refs ride side by side (two lanes, one set semantics).
     if ('promptImages' in patch) {
       applied.promptImages = patch.promptImages !== undefined && patch.promptImages.length > 0
         ? patch.promptImages.map(image => ({ ...image }))
+        : undefined
+    }
+    if ('promptFiles' in patch) {
+      applied.promptFiles = patch.promptFiles !== undefined && patch.promptFiles.length > 0
+        ? patch.promptFiles.map(file => ({ ...file }))
         : undefined
     }
     // Run-config fields: a present key with '' or undefined clears the field
@@ -1999,16 +2198,17 @@ export class BoardController {
     return this.steerCommentWithImages(taskId, sessionId, text, undefined)
   }
 
-  /** The image-carrying twin of steerComment: durable attachment refs ride
-   *  the same direct-send path as plain text. */
+  /** The attachment-carrying twin of steerComment: images (temporary bytes)
+   *  and files (staged receipts) ride the same direct-send path as text. */
   steerCommentWithImages(
     taskId: string,
     sessionId: string,
     text: string,
     images: readonly PromptImage[] | undefined,
+    files?: readonly PromptFile[] | undefined,
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     const trimmed = text.trim()
-    if (trimmed === '' && (images === undefined || images.length === 0)) {
+    if (trimmed === '' && (images === undefined || images.length === 0) && (files === undefined || files.length === 0)) {
       return Promise.resolve({ ok: false, error: 'empty message' })
     }
     // A steer on a completed task revives it (moved back to 待办) — the same
@@ -2017,7 +2217,7 @@ export class BoardController {
     // A steer is a human message — never gated by the task's execution prompt
     // (that gate belongs to task execution only); the blank-message rejection
     // above is the one guard.
-    return this.sendRawMessage(sessionId, trimmed, images, 'steer').then(result => {
+    return this.sendRawMessage(sessionId, trimmed, images, 'steer', files).then(result => {
       if (!result.ok) return result
       // The direct-sent turn is already what the steer created — keep the
       // running flip from ALSO becoming an external round.
@@ -2249,9 +2449,10 @@ export class BoardController {
   }
 
   /** The raw host send for a direct line (slash-aware, no recording).
-   *  `images` are durable attachment refs appended to the message content;
-   *  `mode` is the official prompt disposition (queue / steer). */
-  private sendRawMessage(sessionId: string, text: string, images?: readonly PromptImage[], mode: 'queue' | 'steer' = 'queue'): Promise<{ ok: true } | { ok: false; error: string }> {
+   *  Attachments are durable refs appended to the message content (images =
+   *  temporary bytes, files = staged receipts); `mode` is the official
+   *  prompt disposition (queue / steer). */
+  private sendRawMessage(sessionId: string, text: string, images?: readonly PromptImage[], mode: 'queue' | 'steer' = 'queue', files?: readonly PromptFile[]): Promise<{ ok: true } | { ok: false; error: string }> {
     const direct = this.deps.sessionMessage
     if (text.startsWith('/')) {
       const command = this.deps.sessionCommand
@@ -2260,14 +2461,14 @@ export class BoardController {
           if (!result.ok) return { ok: false as const, error: result.error }
           if (result.matched) return { ok: true as const }
           // Unknown command: the native default-sink — deliver the line as
-          // plain text (never drop a user's input), images still attach.
+          // plain text (never drop a user's input), attachments still ride.
           if (direct === undefined) return { ok: false as const, error: 'direct message unavailable' }
-          return direct(sessionId, text, images, mode)
+          return direct(sessionId, text, images, mode, files)
         })
       }
     }
     if (direct === undefined) return Promise.resolve({ ok: false, error: 'direct message unavailable' })
-    return direct(sessionId, text, images, mode)
+    return direct(sessionId, text, images, mode, files)
   }
 
   // --- comments ---------------------------------------------------------------
@@ -2299,7 +2500,7 @@ export class BoardController {
    * @returns the queued comment round, or undefined when rejected (unknown
    *   task/execution, execution not settled).
    */
-  submitComment(taskId: string, executionId: string, text: string, command = false, images?: readonly PromptImage[]): ExecutionRecord | undefined {
+  submitComment(taskId: string, executionId: string, text: string, command = false, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -2323,6 +2524,7 @@ export class BoardController {
       sessionId: execution.sessionId,
       parentExecutionId: execution.id,
       ...(images !== undefined && images.length > 0 ? { images } : {}),
+      ...(files !== undefined && files.length > 0 ? { files } : {}),
     })
     this.tasks = this.tasks.map(candidate => candidate.id === taskId
       ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
@@ -2359,13 +2561,13 @@ export class BoardController {
    * @returns the queued comment round, or undefined when rejected (unknown
    *   task).
    */
-  submitSessionComment(taskId: string, sessionId: string, text: string, command = false, images?: readonly PromptImage[]): ExecutionRecord | undefined {
+  submitSessionComment(taskId: string, sessionId: string, text: string, command = false, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
-    return this.queueRuleComment(taskId, sessionId, trimmed, command, undefined, undefined, images)
+    return this.queueRuleComment(taskId, sessionId, trimmed, command, undefined, undefined, images, files)
   }
 
   /**
@@ -2381,7 +2583,7 @@ export class BoardController {
    * its on-complete rule (完成后续跑 loop); a user comment carries none and
    * never loops.
    */
-  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string, injectedAt?: number, images?: readonly PromptImage[]): ExecutionRecord | undefined {
+  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string, injectedAt?: number, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
     if (trimmed === '') return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -2397,6 +2599,7 @@ export class BoardController {
         sessionAnchor: sessionId,
         ...ruleId !== undefined ? { ruleId } : {},
         ...(images !== undefined && images.length > 0 ? { images } : {}),
+        ...(files !== undefined && files.length > 0 ? { files } : {}),
       }),
       // A STEER rule round is born already-injected: it is handed to the
       // session immediately, so the dispatcher must NEVER see it as a fresh
@@ -2484,7 +2687,7 @@ export class BoardController {
    * @param text - the answer text.
    * @returns true when the answer was launched.
    */
-  answerRefine(taskId: string, text: string, images?: readonly PromptImage[]): boolean {
+  answerRefine(taskId: string, text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]): boolean {
     const trimmed = text.trim()
     if (trimmed === '') return false
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -2507,9 +2710,11 @@ export class BoardController {
     if (launchTask === undefined) return true
     void this.deps.exec.run(launchTask, round, (event) => { this.handleExecutionEvent(event) }, {
       prompt: trimmed,
-      // Freshly-attached answer images ride THIS round's prompt (the refine
-      // session's own prompt images belong to the original instruction).
+      // Freshly-attached answer attachments ride THIS round's prompt (the
+      // refine session's own prompt images belong to the original
+      // instruction).
       ...(images !== undefined && images.length > 0 ? { images } : {}),
+      ...(files !== undefined && files.length > 0 ? { files } : {}),
       sessionId: task.refineSessionId,
       fresh: false,
       renameTo: `${task.title} · 完善需求`,

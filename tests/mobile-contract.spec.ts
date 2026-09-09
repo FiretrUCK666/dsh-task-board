@@ -95,6 +95,21 @@ describe('responsive container mechanism', () => {
     // board's own column grid (the old @media (max-width: …) mechanism).
     expect(source).not.toMatch(/@media\s*\(max-width:\s*7\d\dpx\)/)
   })
+
+  it('shape switches read the surface, never the viewport (single truth)', () => {
+    // P6 freeze: the cruise popover/Dialog switch and the panel fold
+    // defaults both measure the surface the CSS queries. A viewport proxy
+    // disagrees exactly when it matters (mid-size window + shell sidebar
+    // open), so `useNarrow` is frozen and no caller may import it.
+    const boardPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    const board = readFileSync(boardPath, 'utf8')
+    expect(board).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-view\]', 680\)/)
+    expect(board).not.toMatch(/useNarrow\(/)
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    expect(readFileSync(panelPath, 'utf8')).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-panel\]', 600\)/)
+    const hookPath = fileURLToPath(new URL('../src/client/board/use-narrow.ts', import.meta.url))
+    expect(readFileSync(hookPath, 'utf8')).toMatch(/@deprecated/)
+  })
 })
 
 describe('compact columns + panel geometry', () => {

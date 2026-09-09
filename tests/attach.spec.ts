@@ -29,9 +29,10 @@ describe('intakeDecision (route every file, say why for rejects)', () => {
     expect(intakeDecision('image/gif', COMMENT_IMAGE_BUDGET.maxBytes + 1, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'reject', reason: 'size' })
   })
 
-  it('rejects a non-image with a reason (never a silent drop)', () => {
-    expect(intakeDecision('application/pdf', 10, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'reject', reason: 'type' })
-    expect(intakeDecision('', 10, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'reject', reason: 'type' })
+  it('routes a non-image to the file lane (upload-then-receipt, never a type rejection)', () => {
+    expect(intakeDecision('application/pdf', 10, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'file' })
+    expect(intakeDecision('', 10, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'file' })
+    expect(intakeDecision('video/mp4', 10, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'file' })
   })
 })
 

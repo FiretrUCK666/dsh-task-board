@@ -809,6 +809,28 @@ describe('ExecutionService.commentRun', () => {
     expect(seen[0]?.images).toEqual([{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
   })
 
+  it('a queued comment round delivers its file refs together through the comment face', async () => {
+    const { env } = makeEnv({ blankSummary: false })
+    const seen: Array<{ text: string; files?: readonly unknown[] }> = []
+    env.sendComment = async (_id, text, _mode, _images, files) => {
+      seen.push({ text, files })
+      return { ok: true }
+    }
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = {
+      ...running.executions[0],
+      sessionId: 's-1',
+      comment: '看文件',
+      promptFiles: [{ receiptId: 'rcpt-1', name: 'a.pdf', bytes: 10 }],
+    }
+    await service.commentRun(running, round, 's-1', '看文件', () => {})
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.text).toBe('看文件')
+    expect(seen[0]?.files).toEqual([{ receiptId: 'rcpt-1', name: 'a.pdf', bytes: 10 }])
+  })
+
   it('settles a rejected comment send as failed', async () => {
     const { env } = makeEnv()
     env.sendComment = async () => ({ ok: false, error: 'prompt rejected' })

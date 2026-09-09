@@ -24,12 +24,14 @@
  * Either way expanding can never eat the composer or push siblings away.
  */
 import { useEffect, useRef, useState } from 'react'
+import type { BoardController } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import type { SessionContext } from './use-interaction.ts'
 import { contextWorthOf, FINISHED_SUBAGENT_STATUS } from './interaction.ts'
 import { Chip } from './Chip.tsx'
 import { Icon } from './ui.tsx'
+import { GoalStrip } from './goal-strip.tsx'
 
 /** One todo glyph: pending = dashed circle, in_progress = the shared spinner,
  *  completed = the shared check — the same three-state read as the harness's
@@ -45,8 +47,16 @@ function TodoGlyph({ status }: { status: 'pending' | 'in_progress' | 'completed'
  *  `className` lets a surface switch the expanded panel from its DEFAULT
  *  popover to an IN-FLOW capped panel: the review/session dock passes
  *  `.sessionContextDockBlock` (in-flow above the composer); the refine panel
- *  keeps the default popover. */
-export function SessionContextBlock({ context, className }: { context: SessionContext; className?: string }) {
+ *  keeps the default popover.
+ *  `sessionId` + `controller` switch the goal row from the read-only legacy
+ *  text to the interactive goal strip (pause / resume / edit / clear through
+ *  the official verbs); absent = read-only (old hosts without remote.goals). */
+export function SessionContextBlock({ context, className, sessionId, controller }: {
+  context: SessionContext
+  className?: string
+  sessionId?: string
+  controller?: BoardController
+}) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -118,7 +128,9 @@ export function SessionContextBlock({ context, className }: { context: SessionCo
               ))}
             </ul>
           )}
-          {goalActive && (
+          {goalActive && (sessionId !== undefined && controller !== undefined && controller.goalVerbs(sessionId) !== undefined ? (
+            <GoalStrip sessionId={sessionId} controller={controller} goal={context.goal} activation={context.goal?.activation} />
+          ) : (
             <div className={css.sessionContextRow}>
               {/* The badge rides the shared Chip two-slot grammar: the label
                   text lives in .chipBody (breaks only into an ellipsis, never
@@ -129,7 +141,7 @@ export function SessionContextBlock({ context, className }: { context: SessionCo
               </Chip>
               <span className={css.sessionContextText}>{context.goal!.title}</span>
             </div>
-          )}
+          ))}
           {subagentCount > 0 && (
             <div className={css.sessionContextBlock}>
               <Chip fill={false} className={css.sessionContextSubagent}>

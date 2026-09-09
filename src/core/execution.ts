@@ -15,7 +15,7 @@
  * (a narrow slice of the real `ctx.sessions` / `ctx.workspaces` contracts)
  * so tests drive it with plain fakes.
  */
-import type { ExecutionRecord, TaskImage, TaskRecord } from './tasks.ts'
+import type { ExecutionRecord, TaskFile, TaskImage, TaskRecord } from './tasks.ts'
 
 /** The narrow sessions face the service needs. */
 export interface SessionsExecutionFace {
@@ -108,7 +108,7 @@ export interface AgentPresetSelectFace {
  * so an immediate rule message is genuinely immediate.
  */
 export interface CommentSendFace {
-  (sessionId: string, text: string, mode?: 'queue' | 'steer', images?: readonly TaskImage[]): Promise<{ ok: true } | { ok: false; error: string }>
+  (sessionId: string, text: string, mode?: 'queue' | 'steer', images?: readonly TaskImage[], files?: readonly TaskFile[]): Promise<{ ok: true } | { ok: false; error: string }>
 }
 
 /**
@@ -250,6 +250,12 @@ export interface RunOptions {
    * a refine answer passes its freshly-attached images instead.
    */
   images?: readonly { mediaType: string; data: string; name?: string }[]
+  /**
+   * File refs to send with the prompt (the official `{type:'file',
+   * receiptId}` parts). Same override rule as images: a plain run omits this
+   * and takes the TASK's own persisted prompt files.
+   */
+  files?: readonly { receiptId: string; name: string; bytes: number }[]
 }
 
 /**
@@ -431,7 +437,7 @@ export class ExecutionService {
       // completes while prompt is in flight must still advance past this
       // baseline, or the watch below would never observe it settle.
       const baseline = driver.getSnapshot().turnEnds.size
-      const accepted = await this.sendPrompt(driver, task, options?.prompt, options?.images)
+      const accepted = await this.sendPrompt(driver, task, options?.prompt, options?.images, options?.files)
       if (!accepted.ok) {
         onEvent({
           kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
@@ -488,7 +494,7 @@ export class ExecutionService {
       }
       const driver = this.driverOf(sessionId)
       const send = this.env.sendComment
-        ?? (async (id, content, m = 'queue' as const, imgs?: readonly TaskImage[]) => {
+        ?? (async (id, content, m = 'queue' as const, imgs?: readonly TaskImage[], files?: readonly TaskFile[]) => {
           const bound = this.driverOf(id)
           if (bound === undefined) return { ok: false as const, error: 'comment session is not ready' }
           const parts: unknown[] = []
@@ -496,12 +502,16 @@ export class ExecutionService {
           for (const image of imgs ?? []) {
             parts.push({ type: 'image', mediaType: image.mediaType, data: image.data, ...image.name !== undefined ? { name: image.name } : {} })
           }
+          for (const file of files ?? []) {
+            parts.push({ type: 'file', receiptId: file.receiptId })
+          }
           return bound.prompt(parts, m)
         })
-      // A queued comment carries its pictures on the round: text + images go
-      // out together when the dispatcher injects it (the send mode is the
-      // user's choice, never forced to steer just because images are present).
-      const result = await send(sessionId, text, mode, execution.promptImages)
+      // A queued comment carries its pictures AND files on the round: text +
+      // attachments go out together when the dispatcher injects it (the send
+      // mode is the user's choice, never forced to steer just because
+      // attachments are present).
+      const result = await send(sessionId, text, mode, execution.promptImages, execution.promptFiles)
       if (!result.ok) {
         onEvent({
           kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
@@ -763,16 +773,19 @@ export class ExecutionService {
     task: TaskRecord,
     promptOverride: string | undefined,
     images?: readonly { mediaType: string; data: string; name?: string }[],
+    files?: readonly { receiptId: string; name: string; bytes: number }[],
   ): Promise<{ ok: true } | { ok: false; error: unknown }> {
     const text = (promptOverride ?? task.prompt).trim() !== ''
       ? (promptOverride ?? task.prompt)
       : task.title
-    // The prompt's images: an explicit override (a refine answer's fresh
-    // attachments) wins; otherwise the TASK's persisted prompt images ride
+    // The prompt's attachments: an explicit override (a refine answer's fresh
+    // attachments) wins; otherwise the TASK's persisted attachments ride
     // EVERY run path (manual / scheduled / cruise / chain / rerun) — one
-    // prompt, one picture, wherever it fires from. The parts are the OFFICIAL
-    // image shape (temporary bytes the host admits durably).
+    // prompt, same attachments, wherever it fires from. Images are the
+    // OFFICIAL temporary-bytes shape (the host admits them durably); files
+    // are the OFFICIAL receipt refs (staged per-Agent before the run).
     const attached = images ?? task.promptImages ?? []
+    const attachedFiles = files ?? task.promptFiles ?? []
     const parts: readonly unknown[] = [
       ...(text === '' ? [] : [{ type: 'text', text }]),
       ...attached.map(image => ({
@@ -780,6 +793,10 @@ export class ExecutionService {
         mediaType: image.mediaType,
         data: image.data,
         ...(image.name !== undefined ? { name: image.name } : {}),
+      })),
+      ...attachedFiles.map(file => ({
+        type: 'file',
+        receiptId: file.receiptId,
       })),
     ]
     try {

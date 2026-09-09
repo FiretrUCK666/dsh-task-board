@@ -1,10 +1,19 @@
 /**
- * Shared transcript-tail logic: load a session's recent history, poll it
+ * Shared transcript-tail logic: load a session's recent history, page
+ * backward on demand (the native "load earlier" grammar), poll the tail
  * lightly (watermark-gated, so an idle session costs nothing), and follow
  * the latest output while the user is at the bottom — with a "滑到最新"
  * escape when they scroll up. Used by the review page, the refinement
  * panel, and anywhere else a live session tail is shown, so every surface
  * behaves identically.
+ *
+ * EMPTY discipline (the 「刷新即暂无对话内容」 fix): the tail window is
+ * message-aligned — a tail whose fold yields zero lines is a REAL empty
+ * (nothing to show), and the hook says so at once. It never mistakes a
+ * truncated window for an empty log, because the window NEVER truncates:
+ * the reader asks for the tail and the host returns it whole; when the
+ * host reports `hasMore`, the earlier pages stay reachable through
+ * `loadEarlier`, never silently dropped.
  *
  * EVERY follow/anchor/jump action runs against the RESOLVED scroller (see
  * `resolveScroller`), never against the content region by assumption: a wide
@@ -47,7 +56,8 @@ export function resolveScroller(element: HTMLElement | null): HTMLElement | null
   return element
 }
 
-/** The watermark of a loaded result (tail seq; 0 when empty). */
+/** The watermark of a loaded result (tail seq; 0 when empty). Kept for the
+ *  legacy settle path; the live poll/accumulate paths fold from state. */
 function watermarkOf(result: { events: readonly TranscriptEventShape[] }): number {
   const tail = result.events[result.events.length - 1]
   return tail?.seq ?? result.events.length
@@ -171,6 +181,10 @@ interface TranscriptTailState {
   lines: readonly TranscriptLine[] | undefined
   /** Whether the last load failed (the session/reader is unavailable). */
   error: boolean
+  /** Whether the host holds messages older than the loaded window. */
+  hasMore: boolean
+  /** Whether an earlier page is being fetched right now. */
+  loadingEarlier: boolean
   /** Whether the user is at (or near) the bottom of the scroll region. */
   atBottom: boolean
   /** Ref to attach to the content region (the scroller is resolved from it). */
@@ -181,6 +195,8 @@ interface TranscriptTailState {
   jumpToBottom: () => void
   /** Reload immediately (e.g. after a comment was injected). */
   reload: () => void
+  /** Prepend one earlier page above the current window (no-op at the floor). */
+  loadEarlier: () => void
 }
 
 /**
@@ -198,10 +214,18 @@ export function useTranscriptTail(
   reloadKey: unknown = undefined,
   onResult?: (result: { events: readonly TranscriptEventShape[]; projections?: TranscriptProjectionsShape }) => void,
 ): TranscriptTailState {
-  const [lines, setLines] = useState<readonly TranscriptLine[] | undefined>(undefined)
+  const [events, setEvents] = useState<readonly TranscriptEventShape[] | undefined>(undefined)
   const [error, setError] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingEarlier, setLoadingEarlier] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  // The accumulated window, oldest-first: the tail, then every earlier page
+  // prepended ABOVE it (never appended — order is a layout fact). The floor
+  // is the window's first seq; `hasMore` is the host's own flag.
+  const floorRef = useRef<number | undefined>(undefined)
+  const hasMoreRef = useRef(false)
+  hasMoreRef.current = hasMore
   const watermarkRef = useRef<number | undefined>(undefined)
   // Alive guard: a late `.then` must never repaint a dead surface (the panel
   // can close while a read is still in flight).
@@ -213,17 +237,21 @@ export function useTranscriptTail(
   // would loop reloads and fight the user's scroll position).
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
+  const lines = events === undefined ? undefined : foldTranscript(events)
   // One follow mechanism (resolved scroller + capture listener + pinning).
   const { measure, jumpToBottom } = useFollowScroll(scrollRef, atBottom, setAtBottom, lines)
 
   /** Fold + publish a successful tail read (the reload AND the poll share
    *  it — one settlement grammar). */
-  const settle = useCallback((result: { events: readonly TranscriptEventShape[]; projections?: TranscriptProjectionsShape }): void => {
+  const settle = useCallback((result: { events: readonly TranscriptEventShape[]; hasMore: boolean; floorSeq?: number; projections?: TranscriptProjectionsShape }): void => {
     setError(false)
     const next = watermarkOf(result)
-    if (watermarkRef.current === next) return
+    setHasMore(result.hasMore === true)
+    // A fresh tail REPLACES the window (reload / poll / session switch) —
+    // earlier pages belong to the previous window and must not linger.
+    floorRef.current = result.floorSeq
     watermarkRef.current = next
-    setLines(foldTranscript(result.events))
+    setEvents([...result.events])
     onResultRef.current?.(result)
   }, [])
 
@@ -242,18 +270,61 @@ export function useTranscriptTail(
     })
   }, [controller, sessionId, settle])
 
-  // Load on open + whenever the reload key changes.
-  useEffect(() => { reload() }, [reload, reloadKey])
+  // Load on open + whenever the reload key changes. A session switch resets
+  // the window (no lines from the previous session may flash) and the floor.
+  useEffect(() => {
+    setEvents(undefined)
+    setError(false)
+    setHasMore(false)
+    setLoadingEarlier(false)
+    floorRef.current = undefined
+    watermarkRef.current = undefined
+    reload()
+  }, [reload, reloadKey, sessionId])
 
   // Light poll at 3s while mounted; paused while the tab is hidden (the
   // native rhythm), with an immediate catch-up on return. ANY success also
-  // clears a previous error — this is the tail's self-healing retry.
+  // clears a previous error — this is the tail's self-healing retry. The
+  // poll NEVER replaces the window with a SHORTER tail: it only extends it
+  // (append new events) or re-folds it, so a refresh can never flash
+  // 「暂无对话内容」 over a loaded conversation.
   useEffect(() => {
     if (sessionId === undefined) return
     const poll = (): void => {
       void controller.loadTranscript(sessionId).then(result => {
         if (!aliveRef.current || result === undefined) return
-        settle(result)
+        setError(false)
+        setHasMore(result.hasMore === true)
+        if (result.floorSeq !== undefined) floorRef.current = result.floorSeq
+        const incoming = [...result.events]
+        const watermark = incoming.length === 0 ? 0 : (incoming[incoming.length - 1]?.seq ?? incoming.length)
+        setEvents(current => {
+          if (current === undefined) {
+            watermarkRef.current = watermark
+            onResultRef.current?.(result)
+            return incoming
+          }
+          const known = new Set<number>()
+          for (const event of current) {
+            if (event.seq !== undefined) known.add(event.seq)
+          }
+          let fresh = false
+          const merged = [...current]
+          for (const event of incoming) {
+            if (event.seq === undefined || !known.has(event.seq)) {
+              merged.push(event)
+              fresh = true
+            }
+          }
+          // New events (or the first load) re-fold; a same-watermark poll is
+          // a no-op that keeps the reader's scroll position.
+          if (fresh || watermarkRef.current === undefined) {
+            watermarkRef.current = watermark
+            onResultRef.current?.(result)
+            return merged
+          }
+          return current
+        })
       })
     }
     const timer = setInterval(poll, 3_000)
@@ -265,8 +336,54 @@ export function useTranscriptTail(
     }
   }, [controller, sessionId, settle])
 
+  /** Prepend one earlier page above the window (the native "load earlier"
+   *  grammar). Anchored: the scroller's offset from the BOTTOM is preserved
+   *  (not scrollTop), so the reader stays on the same message instead of
+   *  jumping to the top. At the floor, or without a page reader, a no-op. */
+  const loadEarlier = useCallback((): void => {
+    if (sessionId === undefined || loadingEarlier) return
+    const floor = floorRef.current
+    if (floor === undefined || !hasMoreRef.current) return
+    setLoadingEarlier(true)
+    void controller.loadTranscriptPage(sessionId, floor).then(page => {
+      if (!aliveRef.current) return
+      setLoadingEarlier(false)
+      if (page === undefined) return
+      const root = resolveScroller(scrollRef.current)
+      const distance = root === null ? undefined : root.scrollHeight - root.scrollTop
+      setEvents(current => {
+        const known = new Set<number>()
+        if (current !== undefined) {
+          for (const event of current) {
+            if (event.seq !== undefined) known.add(event.seq)
+          }
+        }
+        const earlier = page.events.filter(event => event.seq === undefined || !known.has(event.seq))
+        const merged = [...earlier, ...(current ?? [])]
+        if (earlier.length > 0 || page.floorSeq !== floorRef.current) {
+          if (page.floorSeq !== undefined) floorRef.current = page.floorSeq
+          const watermark = merged.length === 0 ? 0 : (merged[merged.length - 1]?.seq ?? merged.length)
+          watermarkRef.current = watermark
+          return merged
+        }
+        return current ?? merged
+      })
+      setHasMore(page.hasMore === true)
+      // Restore the reader's place AFTER paint (double rAF): the prepended
+      // content grows the scroller above the viewport, and scrollTop alone
+      // would leave the reader staring at older messages.
+      if (root !== null && distance !== undefined) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            root.scrollTop = root.scrollHeight - distance
+          })
+        })
+      }
+    })
+  }, [controller, sessionId, loadingEarlier])
+
   // Scroll measurement, bottom-following and the jump all live in
   // `useFollowScroll` above — one mechanism for every live list.
 
-  return { lines, error, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload }
+  return { lines, error, hasMore, loadingEarlier, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload, loadEarlier }
 }

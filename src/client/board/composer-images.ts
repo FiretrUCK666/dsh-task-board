@@ -1,17 +1,26 @@
 /**
- * The composer's image ledger — ONE mechanism for every surface that can
- * attach images (the comment composer, the refinement answer, the task's
- * execution prompt): state + intake from pick / drop / paste + a busy count
- * + the LAST rejection said out loud. A file that cannot become an image is
- * NEVER silently dropped (the old 「电脑端发不了图」 was silent rejection);
- * every rejection names its file and its reason.
+ * The composer's attachment ledger — ONE mechanism for every surface that
+ * can attach files (the comment composer, the refinement answer, the task's
+ * execution prompt): images + staged files, intake from pick / drop / paste
+ * + a busy count + the LAST rejection said out loud. A file that cannot be
+ * staged is NEVER silently dropped (the old 「电脑端发不了图」 was silent
+ * rejection); every rejection names its file and its reason.
  *
- * The host performs the durable admission when it takes the prompt — this
- * hook only produces the temporary-bytes wire shape (see attach.ts).
+ * Two lanes, one ledger: IMAGES encode to temporary bytes in the browser
+ * (see attach.ts); FILES upload their exact bytes first (same session) and
+ * ride the prompt as opaque receipts. The host performs the durable
+ * admission when it takes the prompt — this hook only produces the official
+ * wire shapes.
  */
 import { useCallback, useRef, useState } from 'react'
 import { t } from '../locales.ts'
-import { encodeImageFile, type DraftImage, type ImageBudget, type ImageRejectReason } from './attach.ts'
+import { encodeImageFile, intakeDecision, type DraftFile, type DraftImage, type ImageBudget, type ImageRejectReason } from './attach.ts'
+
+/** Image-lane or file-lane for one picked file (pure routing, no I/O). */
+function intakeDecisionOf(file: File): 'image' | 'file' {
+  const decision = intakeDecision(file.type, file.size, { maxEdge: 0, maxBytes: Number.POSITIVE_INFINITY, quality: 1 })
+  return decision.kind === 'file' ? 'file' : 'image'
+}
 
 /** One human line for one rejection reason (locale-owned). */
 export function rejectMessage(reason: ImageRejectReason, name: string, max?: number): string {
@@ -23,14 +32,23 @@ export function rejectMessage(reason: ImageRejectReason, name: string, max?: num
   }
 }
 
-/** The state + affordances one composer needs for its images. */
+/** Stage one file's exact bytes on a session (the official pre-step). */
+export type FileStager = (sessionId: string, file: File) => Promise<
+  | { ok: true; receiptId: string }
+  | { ok: false; error: string }
+>
+
+/** The state + affordances one composer needs for its attachments. */
 export interface ComposerImages {
   images: readonly DraftImage[]
-  /** Replace the ledger (composer clear after a send, chip removal). */
+  files: readonly DraftFile[]
+  /** Replace the image ledger (composer clear after a send, chip removal). */
   setImages: (next: readonly DraftImage[]) => void
+  /** Replace the file ledger. */
+  setFiles: (next: readonly DraftFile[]) => void
   /** Intake files (picker / drop / paste); rejections land in `error`. */
   addFiles: (files: FileList | File[]) => Promise<void>
-  /** An image is being decoded/compressed right now. */
+  /** A file is being encoded/uploaded right now. */
   busy: boolean
   /** The last rejection reason (one quiet line, replaced by the next try). */
   error: string | undefined
@@ -50,16 +68,23 @@ export function useComposerImages(
   /** Controlled mode: the ledger lives OUTSIDE the hook (a task draft that
    *  must round-trip through save/restore); absent = the hook owns it. */
   controlled?: { images: readonly DraftImage[]; onChange: (next: readonly DraftImage[]) => void },
+  /** File-lane options: the session to stage on + the stager. Absent = the
+   *  file lane is closed (images only, legacy surfaces). */
+  filesOpts?: { sessionId: string | undefined; stage: FileStager; maxFiles?: number },
 ): ComposerImages {
   const [own, setOwn] = useState<readonly DraftImage[]>([])
   const images = controlled !== undefined ? controlled.images : own
+  const [ownFiles, setOwnFiles] = useState<readonly DraftFile[]>([])
+  const filesLedger = ownFiles
   const [busyCount, setBusyCount] = useState(0)
   const [error, setError] = useState<string | undefined>(undefined)
   const [dragOver, setDragOver] = useState(false)
-  // The async intake loop must see the LATEST ledger (two drops in flight
-  // still respect the count cap), so the state mirrors into a ref.
+  // The async intake loop must see the LATEST ledgers (two drops in flight
+  // still respect the count caps), so the state mirrors into refs.
   const imagesRef = useRef<readonly DraftImage[]>(images)
   imagesRef.current = images
+  const filesRef = useRef<readonly DraftFile[]>(filesLedger)
+  filesRef.current = filesLedger
 
   const setImages = useCallback((next: readonly DraftImage[]): void => {
     imagesRef.current = next
@@ -68,29 +93,60 @@ export function useComposerImages(
     setError(undefined)
   }, [controlled])
 
-  const addFiles = useCallback(async (files: FileList | File[]): Promise<void> => {
-    const list = Array.from(files)
+  const setFiles = useCallback((next: readonly DraftFile[]): void => {
+    filesRef.current = next
+    setOwnFiles(next)
+    setError(undefined)
+  }, [])
+
+  const maxFiles = filesOpts?.maxFiles ?? 5
+  const addFiles = useCallback(async (picked: FileList | File[]): Promise<void> => {
+    const list = Array.from(picked)
     if (list.length === 0) return
     setError(undefined)
     setBusyCount(count => count + 1)
     try {
       const next = [...imagesRef.current]
+      const nextFiles = [...filesRef.current]
       for (const file of list) {
-        if (next.length >= maxImages) {
-          setError(rejectMessage('count', file.name, maxImages))
+        const decision = intakeDecisionOf(file)
+        if (decision === 'image') {
+          if (next.length >= maxImages) {
+            setError(rejectMessage('count', file.name, maxImages))
+            break
+          }
+          const outcome = await encodeImageFile(file, budget)
+          if (outcome.ok) next.push(outcome.image)
+          else setError(rejectMessage(outcome.reason, file.name, maxImages))
+          continue
+        }
+        // File lane: stage the exact bytes first (same session), then carry
+        // only the receipt. Closed lane / missing session / failed stage =
+        // a spoken reason, never a silent drop.
+        if (filesOpts === undefined || filesOpts.sessionId === undefined) {
+          setError(t('attach.rejectNoSession', { name: file.name }))
+          continue
+        }
+        if (nextFiles.length >= maxFiles) {
+          setError(t('attach.rejectFileCount', { name: file.name, max: String(maxFiles) }))
           break
         }
-        const outcome = await encodeImageFile(file, budget)
-        if (outcome.ok) next.push(outcome.image)
-        else setError(rejectMessage(outcome.reason, file.name, maxImages))
+        const staged = await filesOpts.stage(filesOpts.sessionId, file)
+        if (!staged.ok) {
+          setError(t('attach.rejectUpload', { name: file.name, error: staged.error }))
+          continue
+        }
+        nextFiles.push({ id: `file-${Date.now()}-${nextFiles.length}`, receiptId: staged.receiptId, name: file.name, bytes: file.size })
       }
       imagesRef.current = next
+      filesRef.current = nextFiles
       if (controlled !== undefined) controlled.onChange(next)
       else setOwn(next)
+      setOwnFiles(nextFiles)
     } finally {
       setBusyCount(count => count - 1)
     }
-  }, [budget, maxImages, controlled])
+  }, [budget, maxImages, controlled, filesOpts, maxFiles])
 
   const dropProps = {
     'data-dsh-tb-dndover': dragOver ? ('' as const) : undefined,
@@ -124,5 +180,5 @@ export function useComposerImages(
     },
   }
 
-  return { images, setImages, addFiles, busy: busyCount > 0, error, dropProps }
+  return { images, files: filesLedger, setImages, setFiles, addFiles, busy: busyCount > 0, error, dropProps }
 }

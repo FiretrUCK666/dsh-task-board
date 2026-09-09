@@ -8,11 +8,12 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
-import type { ApiFace, BoundSessionFace, ClientContext, IUiSessionFace, SessionId, WorkspaceId } from './platform.ts'
+import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, IUiSessionFace, SessionId, WorkspaceId } from './platform.ts'
 import { buildApi, sessionDriverOf } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
-import { BoardController, type PermissionOptionShape, type PromptImage, type ReferenceRemoteFace, type SessionConfigFace, type SessionTodoShape, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptProjectionsShape } from '../core/controller.ts'
+import { BoardController, type PromptFile, type PromptImage, type ReferenceRemoteFace, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptPage } from '../core/controller.ts'
+import { pickTranscriptProjections } from '../core/projections.ts'
 import { UNTITLED_SESSION_KEY } from '../core/session-list.ts'
 import { ExecutionService, type ExecutionHistoryEvent, type SessionDriver } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
@@ -165,76 +166,6 @@ async function selectModelOf(
 export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'uiSession']
 
 /**
- * Structural pick of the two context projections the review page reads from
- * the history tail page. `values` is typed as `Partial<SessionProjectionMap>`,
- * a merge table whose keys exist only when the domain packages are imported —
- * this plugin never imports them, so every field is read and shape-guarded
- * structurally. Anything that is not a plain object with the expected numeric
- * fields is dropped (the key's absence is handled gracefully downstream).
- */
-function pickProjections(values: Record<string, unknown> | undefined): Pick<TranscriptLoadResult, 'projections'> {
-  if (values === undefined) return {}
-  const pressure = values.contextPressure
-  const breakdown = values.contextBreakdown
-  const permissions = values.permissions
-  const projections: TranscriptProjectionsShape = {}
-  if (typeof pressure === 'object' && pressure !== null) {
-    const entry = pressure as Record<string, unknown>
-    projections.contextPressure = {
-      ...typeof entry.pressureTokens === 'number' ? { pressureTokens: entry.pressureTokens } : {},
-      ...typeof entry.projectedTokens === 'number' ? { projectedTokens: entry.projectedTokens } : {},
-      ...typeof entry.contextWindow === 'number' ? { contextWindow: entry.contextWindow } : {},
-    }
-  }
-  if (typeof breakdown === 'object' && breakdown !== null) {
-    const entry = breakdown as Record<string, unknown>
-    const systemTokens = entry.systemTokens
-    const toolsTokens = entry.toolsTokens
-    const messageTokens = entry.messageTokens
-    if (typeof systemTokens === 'number' && typeof toolsTokens === 'number' && typeof messageTokens === 'number') {
-      projections.contextBreakdown = { systemTokens, toolsTokens, messageTokens }
-    }
-  }
-  if (typeof permissions === 'object' && permissions !== null) {
-    const entry = permissions as Record<string, unknown>
-    const options = entry.options
-    const currentValue = entry.currentValue
-    if (Array.isArray(options) && typeof currentValue === 'string') {
-      const rows: PermissionOptionShape[] = []
-      for (const option of options) {
-        if (typeof option !== 'object' || option === null) continue
-        const row = option as Record<string, unknown>
-        if (typeof row.value === 'string' && typeof row.name === 'string') {
-          rows.push({
-            value: row.value,
-            name: row.name,
-            ...typeof row.description === 'string' ? { description: row.description } : {},
-          })
-        }
-      }
-      if (rows.length > 0) projections.permissions = { options: rows, currentValue }
-    }
-  }
-  // The official `todos` projection (the harness's own TodoPanel reads the
-  // same host-computed whole list) — structural pick, no typing imports.
-  const todos = values.todos
-  if (Array.isArray(todos)) {
-    const rows: SessionTodoShape[] = []
-    for (const item of todos) {
-      if (typeof item !== 'object' || item === null) continue
-      const row = item as Record<string, unknown>
-      if (typeof row.content !== 'string' || row.content === '') continue
-      const status = row.status === 'in_progress' || row.status === 'completed' ? row.status : 'pending'
-      rows.push({ content: row.content, status })
-    }
-    if (rows.length > 0) projections.todos = rows
-  }
-  return projections.contextPressure !== undefined || projections.contextBreakdown !== undefined || projections.permissions !== undefined || projections.todos !== undefined
-    ? { projections }
-    : {}
-}
-
-/**
  * Mount the task board.
  * @param ctx - client root context (services: sessions, workspaces).
  */
@@ -369,16 +300,18 @@ export function apply(ctx: ClientContext): void {
     // (sessionMessage) — "typing in the native conversation" is exactly
     // this call, shared by both callers. Images ride the content as the
     // OFFICIAL temporary-bytes part (`{type:'image', mediaType, data, name}`)
-    // — the host performs the durable admission itself, exactly like the
+    // and files as the OFFICIAL staged refs (`{type:'file', receiptId}`) —
+    // the host performs the durable admission itself, exactly like the
     // native composer does. There is deliberately no board-side attachment
-    // bridge: the wire only accepts this shape.
+    // bridge: the wire only accepts these shapes.
     const sendComment = async (
       sessionId: string,
       text: string,
       images?: readonly PromptImage[] | undefined,
       mode: 'queue' | 'steer' = 'queue',
+      files?: readonly PromptFile[] | undefined,
     ): Promise<{ ok: true } | { ok: false; error: string }> => {
-      const content: Array<{ type: string; text?: string; mediaType?: string; data?: string; name?: string }> =
+      const content: Array<{ type: string; text?: string; mediaType?: string; data?: string; name?: string; receiptId?: string }> =
         text.trim() !== ''
           ? [{ type: 'text', text }]
           : []
@@ -390,6 +323,11 @@ export function apply(ctx: ClientContext): void {
             data: image.data,
             ...image.name !== undefined ? { name: image.name } : {},
           })
+        }
+      }
+      if (files !== undefined) {
+        for (const file of files) {
+          content.push({ type: 'file', receiptId: file.receiptId })
         }
       }
       if (content.length === 0) return { ok: false as const, error: 'empty message' }
@@ -568,7 +506,31 @@ export function apply(ctx: ClientContext): void {
       const projections = value.projections?.values as Record<string, unknown> | undefined
       return {
         events: value.events.map(entry => entry.event as TranscriptEventShape),
-        ...pickProjections(projections),
+        hasMore: value.hasMore === true,
+        ...value.floorSeq !== undefined ? { floorSeq: value.floorSeq } : {},
+        ...pickTranscriptProjections(projections),
+      }
+    }
+    // One earlier page ("load earlier messages"): the same event shape as
+    // the tail, paged backward from `beforeSeq` (the window's first seq).
+    // Undefined when the host serves no page endpoint (old deployments) or
+    // the read fails — the hook then simply hides the affordance.
+    const readTranscriptPage = async (sessionId: string, beforeSeq: number): Promise<TranscriptPage | undefined> => {
+      try {
+        const response = await api.sessions.page({
+          sessionId: sessionId as SessionId,
+          beforeSeq,
+          maxMessages: 50,
+        })
+        if (!response.result.ok) return undefined
+        return {
+          events: response.result.value.events.map(entry => entry.event as TranscriptEventShape),
+          hasMore: response.result.value.hasMore === true,
+          ...response.result.value.floorSeq !== undefined ? { floorSeq: response.result.value.floorSeq } : {},
+        }
+      } catch (error) {
+        console.error('[dsh-task-board] transcript page read failed', error)
+        return undefined
       }
     }
     const transcriptLoader = createTranscriptReader<TranscriptLoadResult>({
@@ -613,6 +575,42 @@ export function apply(ctx: ClientContext): void {
       },
       ttlMs: 10 * 60_000,
     })
+    // File-lane staging: the EXACT bytes go up first (same session), the
+    // prompt carries only the opaque receipt. Base64 here because the Remote
+    // upload shape is `{data: base64, name?}`; the HTTP binary fallback stays
+    // available on the host for large files (the runtime owns that choice —
+    // the board never picks a transport, it only supplies exact bytes).
+    const readFileAsBase64 = (file: File): Promise<string | undefined> => new Promise(resolve => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = typeof reader.result === 'string' ? reader.result : ''
+        const comma = result.indexOf(',')
+        resolve(comma >= 0 ? result.slice(comma + 1) : undefined)
+      }
+      reader.onerror = () => resolve(undefined)
+      reader.readAsDataURL(file)
+    })
+    const uploadFile = async (sessionId: string, file: File): Promise<
+      | { ok: true; receiptId: string }
+      | { ok: false; error: string }
+    > => {
+      try {
+        const data = await readFileAsBase64(file)
+        if (data === undefined || data === '') return { ok: false as const, error: 'unreadable file' }
+        const response = await api.fileUploads.upload({
+          sessionId: sessionId as SessionId,
+          data,
+          name: file.name,
+        })
+        if (!response.result.ok) {
+          return { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+        }
+        return { ok: true as const, receiptId: response.result.value.receiptId }
+      } catch (error) {
+        console.error('[dsh-task-board] file upload failed', error)
+        return { ok: false as const, error: String(error) }
+      }
+    }
 
     // Slash-menu sources (see listSlashCandidates): each fetches one native
     // catalog and degrades to [] on any failure, with the reason logged.
@@ -756,8 +754,8 @@ export function apply(ctx: ClientContext): void {
       workspaces: {
         // Source labels, the run-config picker, drag classification AND the
         // registry-global ARCHIVE set (archived conversations leave the card's
-        // session rows). Workspace MEMBERSHIP is deliberately not read (a
-        // bound workspace never surfaces its sessions into a task card).
+        // session rows). Workspace MEMBERSHIP is read only as the creation-
+        // time snapshot for folder drops (later sessions never auto-join).
         list: {
           getSnapshot: () => {
             const snap = workspaces.list.getSnapshot()
@@ -781,10 +779,45 @@ export function apply(ctx: ClientContext): void {
       cruiseStorage: synced
         ? new SyncedCruiseStore(sync, localCruise)
         : localCruise,
-      // Review-page transcripts: recent history of an execution session.
+      // Review-page transcripts: recent history of an execution session,
+      // plus one earlier page at a time (the native "load earlier" grammar —
+      // the tail window is message-aligned, so refresh reads the same tail
+      // shape and an empty fold is a real empty, not a missed page).
       transcript: transcriptLoader,
-      // Durable message images (official attachment read, cached/deduped).
+      transcriptPage: readTranscriptPage,
+      // Durable message images (official attachment read, cached/deduped)
+      // + file-lane staging (official upload pre-step, per session).
       loadImage: (sessionId, attachmentId) => imageReader(`${sessionId}|${attachmentId}`),
+      uploadFile,
+      // The native goal verbs (official `remote.goals` mutations): the CAS
+      // ref is read at call time from the live binding's `goal` projection
+      // (verbatim the GoalBar grammar), activation arrives on
+      // `goal/activation-changed`. Absent namespace/binding = the goal
+      // strip stays read-only (never a throw at the click site).
+      goalService: {
+        bindingOf: sessionId => sessions.binding(sessionId as SessionId)?.session,
+        remote: ctx.get<GoalsRemoteFace>('remote.goals'),
+        subscribeActivation: (sessionId, listener) => {
+          const remote = ctx.get<{ $on(event: string, listener: (event: unknown) => void): () => void }>('remote')
+          if (remote === undefined || typeof remote.$on !== 'function') return () => {}
+          try {
+            return remote.$on('goal/activation-changed', (event: unknown) => {
+              const payload = event as { sessionId?: unknown; goal?: unknown } | null
+              if (payload === null || typeof payload !== 'object' || payload.sessionId !== sessionId) return
+              const goal = payload.goal as { id?: unknown; revision?: unknown; activation?: unknown } | undefined
+              if (goal === undefined) {
+                listener(undefined)
+                return
+              }
+              if (typeof goal.id !== 'string' || typeof goal.revision !== 'number'
+                || (goal.activation !== 'armed' && goal.activation !== 'disarmed')) return
+              listener({ id: goal.id, revision: goal.revision, activation: goal.activation })
+            })
+          } catch {
+            return () => {}
+          }
+        },
+      },
       // Review-page session panel: the live model directory + selection of
       // the execution session, straight from the native models/selectModel
       // APIs (the same sources the native model selector reads), and the

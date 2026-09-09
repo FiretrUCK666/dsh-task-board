@@ -35,7 +35,7 @@ import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
-import { toPromptImage } from './attach.ts'
+import { toPromptFile, toPromptImage } from './attach.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { sessionStateChip } from './session-chip.ts'
 import { useSessionContext, useWireQuestion } from './use-interaction.ts'
@@ -92,11 +92,14 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const {
     lines,
     error: transcriptError,
+    hasMore: transcriptHasMore,
+    loadingEarlier: transcriptLoadingEarlier,
     atBottom: transcriptAtBottom,
     scrollRef: transcriptScrollRef,
     onScroll: onTranscriptScroll,
     jumpToBottom: jumpTranscript,
     reload: reloadTranscript,
+    loadEarlier: loadEarlierTranscript,
   } = useTranscriptTail(
     controller,
     sessionId,
@@ -131,6 +134,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
       title={current.title}
       ariaLabel={`${t('review.title')} · ${current.title}`}
       context={context}
+      contextSessionId={sessionId}
+      controller={controller}
       actions={
         <>
           <Button size="sm" onClick={reload} title={t('review.refresh')}>
@@ -158,6 +163,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               atBottom={transcriptAtBottom}
               jumpToBottom={jumpTranscript}
               waiting={waiting}
+              hasMore={transcriptHasMore}
+              loadingEarlier={transcriptLoadingEarlier}
+              onLoadEarlier={loadEarlierTranscript}
               onRetry={reloadTranscript}
               sessionId={sessionId}
               controller={controller}
@@ -203,13 +211,16 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                  is the user's own words, never gated by the task's execution
                  prompt (that gate belongs to task execution only). */
               disabled={sessionId === undefined}
-              onDrive={(text, images) => controller.submitComment(current.id, execution.id, text, text.startsWith('/'), images.map(toPromptImage)) !== undefined}
+              onDrive={(text, images, files) => controller.submitComment(current.id, execution.id, text, text.startsWith('/'), images.map(toPromptImage), files.map(toPromptFile)) !== undefined}
               onSteer={text => sessionId === undefined
                 ? Promise.resolve(false)
                 : controller.steerComment(current.id, sessionId, text).then(result => result.ok)}
               onSteerImages={(text, images) => sessionId === undefined
                 ? Promise.resolve(false)
                 : controller.steerCommentWithImages(current.id, sessionId, text, images.map(toPromptImage)).then(result => result.ok)}
+              onSteerFiles={(text, images, files) => sessionId === undefined
+                ? Promise.resolve(false)
+                : controller.steerCommentWithImages(current.id, sessionId, text, images.map(toPromptImage), files.map(toPromptFile)).then(result => result.ok)}
             />
           }
         />

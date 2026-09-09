@@ -19,10 +19,24 @@ import type { BoardController } from '../../core/controller.ts'
 import type { WireQuestion } from '../../core/question-rpc.ts'
 import { latestSessionTodos, type SessionTodo } from './interaction.ts'
 
-/** The goal/subagent readout the host bridge carries (structural, degraded). */
+/** The goal/subagent readout (structural, degraded). The official `goal`
+ *  projection wins when served; the session-state bridge is the fallback. */
 export interface SessionGoalView {
   title: string
   active: boolean
+  /** Durable goal identity (projection only — the bridge has no id). */
+  id?: string
+  /** Durable lifecycle phase when read from the official `goal` projection. */
+  phase?: 'active' | 'paused' | 'blocked' | 'complete'
+  /** Admitted goal rounds (projection only). */
+  roundsStarted?: number
+  /** Blocker explanation (exactly while phase is `blocked`). */
+  blockedReason?: { code: string; message: string }
+  /** Process-local continuation eligibility (official activation hook); the
+   *  transcript poll never writes it — it arrives via `remote.goals.get`
+   *  once plus `goal/activation-changed`, and survives re-polls while the
+   *  goal id is unchanged. */
+  activation?: 'armed' | 'disarmed'
 }
 export interface SessionSubagentView {
   title: string
@@ -60,12 +74,44 @@ export function useSessionContext(controller: BoardController, sessionId: string
     const pollTranscript = (): void => {
       void controller.loadTranscript(sessionId).then(result => {
         if (!alive || result === undefined) return
+        // The official `goal` projection FIRST (same source as the native
+        // goal surface): `null`/missing defers to the bridge below; a
+        // `complete` phase never surfaces (official renders nothing for it).
+        const projected = result.projections?.goal
+        const goal = projected === undefined
+          ? undefined
+          : projected === null || projected.phase === 'complete'
+            ? null
+            : {
+              title: projected.objective,
+              active: true,
+              id: projected.id,
+              phase: projected.phase,
+              roundsStarted: projected.roundsStarted,
+              ...projected.blockedReason !== undefined ? { blockedReason: projected.blockedReason } : {},
+            }
         setContext(current => ({
           ...current,
           // The official `todos` projection FIRST (the harness's own TodoPanel
           // reads the same host-computed whole list), the transcript snapshot
           // parse as the legacy fallback when no deployment serves it.
           todos: result.projections?.todos ?? latestSessionTodos(result.events),
+          // A projected goal (or its null) wins over the bridge; undefined
+          // leaves whatever the bridge reported. Activation survives
+          // re-polls while the goal id is unchanged (it arrives on its own
+          // channel below); a new id drops the stale value.
+          ...goal !== undefined
+            ? {
+              goal: goal === null
+                ? undefined
+                : {
+                  ...goal,
+                  ...goal.id !== undefined && current.goal?.id === goal.id && current.goal.activation !== undefined
+                    ? { activation: current.goal.activation }
+                    : {},
+                },
+            }
+            : {},
         }))
       })
     }
@@ -80,7 +126,10 @@ export function useSessionContext(controller: BoardController, sessionId: string
           if (!alive) return
           setContext(current => ({
             ...current,
-            goal: view?.goal,
+            // The bridge only fills the goal when the projection said nothing
+            // (undefined) — a projected null (cleared) stays hidden even if
+            // the bridge still echoes a stale row.
+            ...current.goal === undefined ? { goal: view?.goal } : {},
             subagents: view?.subagents,
           }))
         })
@@ -103,6 +152,37 @@ export function useSessionContext(controller: BoardController, sessionId: string
       if (timer !== undefined) window.clearInterval(timer)
       observer.disconnect()
     }
+  }, [controller, sessionId])
+  // Process-local activation: `remote.goals.get` once (its durable goal is
+  // ignored — the transcript projection above owns the display; only the
+  // activation is taken), then live on `goal/activation-changed`. Absent
+  // verbs = no activation (the strip shows pause for an active goal).
+  useEffect(() => {
+    if (sessionId === undefined) return undefined
+    const verbs = controller.goalVerbs(sessionId)
+    if (verbs === undefined) return undefined
+    let alive = true
+    verbs.get().then(raw => {
+      if (!alive) return
+      const view = raw as { activation?: unknown } | null
+      if (view === null || typeof view !== 'object') return
+      if (view.activation !== 'armed' && view.activation !== 'disarmed') return
+      const activation = view.activation
+      setContext(current => current.goal === undefined
+        ? current
+        : { ...current, goal: { ...current.goal, activation } })
+    }).catch(() => { /* get failed — activation stays unknown */ })
+    return controller.subscribeGoalActivation(sessionId, change => {
+      setContext(current => {
+        if (current.goal === undefined) return current
+        if (change === undefined) {
+          if (current.goal.activation === undefined) return current
+          const { activation: _dropped, ...rest } = current.goal
+          return { ...current, goal: rest }
+        }
+        return { ...current, goal: { ...current.goal, activation: change.activation } }
+      })
+    })
   }, [controller, sessionId])
   return context
 }
