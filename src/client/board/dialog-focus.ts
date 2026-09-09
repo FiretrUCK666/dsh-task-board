@@ -8,11 +8,30 @@
  */
 import { useEffect, type KeyboardEvent, type RefObject } from 'react'
 
-/** Tabbable controls inside a root (keyboard order = DOM order). */
+/** Tabbable AND visible controls inside a root (keyboard order = DOM order).
+ *  Hidden inputs (`type=hidden`), aria-hidden subtrees and display:none
+ *  members never join the loop — focusing an invisible step reads as a
+ *  lost focus. One predicate, three surfaces (never per-surface filters). */
 export function focusablesOf(root: Element): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(
     'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-  )].filter(element => !element.hasAttribute('disabled'))
+  )].filter(element => {
+    if (element.hasAttribute('disabled')) return false
+    if (element instanceof HTMLInputElement && element.type === 'hidden') return false
+    if (element.closest('[aria-hidden="true"]') !== null) return false
+    const style = element instanceof HTMLElement ? getComputedStyle(element) : undefined
+    return style === undefined || (style.display !== 'none' && style.visibility !== 'hidden')
+  })
+}
+
+/** Move focus to the declared/first control of a panel (or the panel itself
+ *  when control-less). Shared by the mount effect and the refocus effect. */
+function focusFirst(panel: HTMLElement | null): void {
+  if (panel === null) return
+  const declared = panel.querySelector<HTMLElement>('[data-autofocus]')
+  const controls = focusablesOf(panel)
+  const target = declared ?? controls[0] ?? panel
+  target.focus()
 }
 
 /** Own the focus loop for one panel: mount-focus + unmount-return + Tab trap.
@@ -21,24 +40,40 @@ export function focusablesOf(root: Element): HTMLElement[] {
  *  (the caller's declared intent — e.g. a filter box over a master switch),
  *  else the first tabbable control, else the panel itself. Native `autoFocus`
  *  is banned inside Dialog subtrees (it races this effect); declare intent
- *  with `data-autofocus` instead. */
+ *  with `data-autofocus` instead.
+ *
+ *  `focusKey` re-aims focus WITHOUT touching the return chain: pass a value
+ *  that flips when the panel's first control changes identity (e.g. the
+ *  detail's edit mode swapping the Edit button for a form). The return chain
+ *  stays mount-scoped — only the mount effect captures `previous`.
+ *
+ *  Return falls back down a chain: the opener when alive, else the first
+ *  tabbable control of the board box (a deleted trigger must not strand
+ *  keyboard users on body). */
 export function useDialogFocus(
   ref: RefObject<HTMLElement | null>,
+  focusKey?: unknown,
 ): { onKeyDown: (event: KeyboardEvent<HTMLElement>) => void } {
   useEffect(() => {
-    const panel = ref.current
     const previous = document.activeElement
-    const declared = panel?.querySelector<HTMLElement>('[data-autofocus]')
-    const controls = panel === null ? [] : focusablesOf(panel)
-    const target = declared ?? controls[0] ?? panel ?? undefined
-    target?.focus()
+    focusFirst(ref.current)
     return () => {
       if (previous instanceof HTMLElement && document.contains(previous)) {
         previous.focus({ preventScroll: true })
+        return
+      }
+      const box = document.querySelector('[data-dsh-taskboard-view]')
+      if (box !== null) {
+        const fallback = focusablesOf(box)[0]
+        fallback?.focus({ preventScroll: true })
       }
     }
     // The panel IS the mount: no dependency can meaningfully change it.
   }, [])
+  useEffect(() => {
+    focusFirst(ref.current)
+    // Re-aim only (see focusKey): the return chain above never re-captures.
+  }, [focusKey])
   return {
     onKeyDown: (event: KeyboardEvent<HTMLElement>): void => {
       if (event.key !== 'Tab') return

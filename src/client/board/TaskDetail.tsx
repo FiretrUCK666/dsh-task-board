@@ -281,10 +281,11 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   // layer), and the detail's own backdrop click / close button stay the
   // mouse path. The edit draft is safe on close — it lives in draftStore.
   // Focus loops through the shared hook (initial / trap / return), like
-  // every Dialog and the session frame.
+  // every Dialog and the session frame. The edit flag re-aims focus when
+  // the panel's first control swaps identity (Edit button <-> form) — the
+  // return chain stays mount-scoped, so closing still lands on the opener.
   useEscapeStack(() => { controller.closeTask() })
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
-  const { onKeyDown: onDetailKeyDown } = useDialogFocus(detailPanelRef)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // Red-flag per-session removal (hidden-tray only): the session's rounds
   // and hide history are permanently removed after confirmation.
@@ -495,6 +496,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   useEffect(() => () => { if (promptCopyTimer.current !== undefined) clearTimeout(promptCopyTimer.current) }, [])
 
   const editing = draft !== undefined
+
+  // Focus loops through the shared hook (initial / trap / return), like
+  // every Dialog and the session frame. The edit flag re-aims focus when
+  // the panel's first control swaps identity (Edit button <-> form) — the
+  // return chain stays mount-scoped, so closing still lands on the opener.
+  const { onKeyDown: onDetailKeyDown } = useDialogFocus(detailPanelRef, editing)
 
   /** Enter edit mode with a draft of the current record. */
   const startEditing = (): void => {

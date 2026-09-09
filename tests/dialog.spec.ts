@@ -21,8 +21,25 @@ const frame = readFileSync(framePath, 'utf8')
 describe('useDialogFocus (one implementation, three surfaces)', () => {
   it('enters on the declared control, else the first control, else the panel', () => {
     expect(hook).toContain('[data-autofocus]')
-    expect(hook).toContain('controls[0]')
-    expect(hook).toContain('target?.focus()')
+    expect(hook).toContain('focusFirst(')
+    expect(hook).toContain('controls[0] ?? panel')
+  })
+
+  it('returns to the opener, else falls back to the board box (never strands on body)', () => {
+    expect(hook).toContain('const previous = document.activeElement')
+    expect(hook).toContain('document.contains(previous)')
+    expect(hook).toContain('[data-dsh-taskboard-view]')
+  })
+
+  it('filters invisible controls out of the loop (hidden/aria-hidden/display-none)', () => {
+    expect(hook).toContain("element.type === 'hidden'")
+    expect(hook).toContain('aria-hidden="true"')
+    expect(hook).toContain("style.display !== 'none'")
+  })
+
+  it('re-aims on identity swaps without touching the return chain', () => {
+    expect(hook).toContain('focusKey')
+    expect(hook).toContain('focusFirst(')
   })
 
   it('cycles Tab inside the panel (both directions, control-less panels hold)', () => {

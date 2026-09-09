@@ -393,19 +393,32 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     setSelectedCards(current => current.includes(id) ? current.filter(cardId => cardId !== id) : [...current, id])
   }
   const clearSelection = (): void => { setSelectedCards([]) }
+  // THE live selection (single funnel): raw ids intersected with the cards
+  // actually on the board. A card deleted elsewhere (sync, another tab) or
+  // hidden by the filter never inflates counts, confirmations or runs — every
+  // reader below takes this list, never the raw state.
+  const liveIds = useMemo(() => {
+    const present = new Set(snapshot.tasks.map(task => task.id))
+    return selectedCards.filter(id => present.has(id))
+  }, [snapshot.tasks, selectedCards])
+  // Prune dead ids from state (keeps the raw list from rotting; the derived
+  // list above is what renders, so pruning never flickers the UI).
+  useEffect(() => {
+    if (liveIds.length !== selectedCards.length) setSelectedCards(liveIds)
+  }, [liveIds, selectedCards.length])
   const exitOrganize = (): void => {
     setOrganizing(false)
     clearSelection()
   }
   /** 批量换色（undefined = 移除颜色，经单一色表文法的「移除颜色」点触发）。 */
   const applyColorToSelected = (color: string | undefined): void => {
-    const targets = snapshot.tasks.filter(task => selectedCards.includes(task.id))
+    const targets = snapshot.tasks.filter(task => liveIds.includes(task.id))
     for (const task of targets) controller.setTaskColor(task.id, color)
   }
   /** 批量删除（确认后）；删除会同步取消板上的选中集。 */
   const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false)
   const deleteSelected = (): void => {
-    for (const id of selectedCards) controller.deleteTask(id)
+    for (const id of liveIds) controller.deleteTask(id)
     clearSelection()
   }
 
@@ -1195,7 +1208,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
 
         {/* 多选横栏（整理模式或已有选中时出现）：先点卡片（Ctrl/Cmd+点击或整理
             模式下直接点）选中高亮，再在板头横栏批量换色 / 删除 / 全选清选。 */}
-        {(organizing || selectedCards.length > 0) && (
+        {(organizing || liveIds.length > 0) && (
           <div className={css.boardRow}>
             <span className={css.organizeBar}>
               {/* Color group: swatches (palette / custom / 移除颜色) — one
@@ -1207,7 +1220,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                   onChange={applyColorToSelected}
                 />
               </span>
-              <span className={css.organizeCount}>{t('board.organizeCount', { n: String(selectedCards.length) })}</span>
+              <span className={css.organizeCount}>{t('board.organizeCount', { n: String(liveIds.length) })}</span>
               {/* Selection group: select-all / clear / done + the danger
                   delete right next to 完成 (one right-cluster, hairline
                   between — the destructive action reads as part of the same
@@ -1217,28 +1230,28 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     selection exists; 完成 merely exits the mode, so it reads
                     secondary). Only prompt-ready cards fire; the rest stay
                     put visibly (the launch point owns lanes and budget). */}
-                {selectedCards.length > 0 && (
+                {liveIds.length > 0 && (
                   <Button
                     size="sm"
                     variant="primary"
                     title={t('board.organizeRunTitle')}
-                    disabled={runnableIds(snapshot.tasks, selectedCards).length === 0}
+                    disabled={runnableIds(snapshot.tasks, liveIds).length === 0}
                     onClick={() => {
-                      for (const id of runnableIds(snapshot.tasks, selectedCards)) {
+                      for (const id of runnableIds(snapshot.tasks, liveIds)) {
                         void controller.runTask(id, 'manual')
                       }
                     }}
                   >
                     {t('board.organizeRun', {
-                      m: String(runnableIds(snapshot.tasks, selectedCards).length),
-                      n: String(selectedCards.length),
+                      m: String(runnableIds(snapshot.tasks, liveIds).length),
+                      n: String(liveIds.length),
                     })}
                   </Button>
                 )}
                 <Button size="sm" onClick={() => { setSelectedCards(visible.map(task => task.id)) }}>
                   {t('board.organizeSelectAll')}
                 </Button>
-                <Button size="sm" disabled={selectedCards.length === 0} onClick={clearSelection}>
+                <Button size="sm" disabled={liveIds.length === 0} onClick={clearSelection}>
                   {t('board.organizeClear')}
                 </Button>
                 <Button size="sm" onClick={exitOrganize}>
@@ -1248,9 +1261,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     IS a selection (an empty organize mode never flashes a
                     destructive button next to the color row), separated from
                     完成 by the hairline. */}
-                {selectedCards.length > 0 && (
+                {liveIds.length > 0 && (
                   <span className={css.organizeDanger}>
-                    <Button size="sm" variant="danger" disabled={selectedCards.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
+                    <Button size="sm" variant="danger" disabled={liveIds.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
                       {t('board.organizeDelete')}
                     </Button>
                   </span>
@@ -1261,9 +1274,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         )}
         {confirmDeleteSelected && (
           <ConfirmDialog
-            title={t('board.deleteSelectedTitle', { n: String(selectedCards.length) })}
+            title={t('board.deleteSelectedTitle', { n: String(liveIds.length) })}
             message={t('board.deleteSelectedConfirm')}
-            confirmLabel={t('board.deleteSelectedOk', { n: String(selectedCards.length) })}
+            confirmLabel={t('board.deleteSelectedOk', { n: String(liveIds.length) })}
             danger
             onConfirm={() => { setConfirmDeleteSelected(false); deleteSelected() }}
             onCancel={() => { setConfirmDeleteSelected(false) }}
