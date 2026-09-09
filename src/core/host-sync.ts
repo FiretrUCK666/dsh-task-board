@@ -26,7 +26,7 @@
  * tests drive every path without a browser or a server.
  */
 import type { BoardDoc, BoardView } from './board-doc.ts'
-import { boardViewOf, changedIdsOf, diffDeletions, emptyBoardDoc, normalizeWipLimits, DEFAULT_CRUISE_VALUE } from './board-doc.ts'
+import { boardViewOf, changedIdsOf, emptyBoardDoc, normalizeWipLimits, DEFAULT_CRUISE_VALUE } from './board-doc.ts'
 import type {
   BoardCommit,
   BoardCommand,
@@ -100,6 +100,14 @@ interface DirtyState {
   runPresets?: BoardSection<RunPresetsDocument>
 }
 
+/** One user-intended deletion: the row id plus the baseline stamp seen when
+ *  the user dropped it (the host's delete guard compares against THIS stamp,
+ *  never a recomputed one). */
+interface AccruedDeletion {
+  id: string
+  baseUpdatedAt: number
+}
+
 /** Default empty document for a client that never synced (fallback mode). */
 function emptyBaseline(now: number): BoardDoc {
   return emptyBoardDoc(now)
@@ -151,6 +159,13 @@ export class BoardSyncClient {
   private engine = false
   private disposed = false
   private commitCancel: (() => void) | undefined
+  /** Backoff-retry timer (separate from the debounce above: a fresh write
+   *  reschedules the debounce but never cancels a pending backoff — the two
+   *  lanes have different owners and must never overwrite each other). */
+  private backoffCancel: (() => void) | undefined
+  /** User-intended deletions accrued at edit time (see setTasks) — flushed
+   *  verbatim, never recomputed against a newer baseline. */
+  private deleted: AccruedDeletion[] = []
   /** Consecutive un-acked commits (reset on ack and on every fresh local
    *  write — a user acting reopens the cycle because they are watching). */
   private commitAttempts = 0
@@ -296,6 +311,9 @@ export class BoardSyncClient {
     if (this.disposed) return
     this.disposed = true
     this.commitCancel?.()
+    this.commitCancel = undefined
+    this.backoffCancel?.()
+    this.backoffCancel = undefined
     this.resyncCancel?.()
     for (const cancel of this.loopCancels.splice(0)) cancel()
     if (this.mode === 'synced') {
@@ -325,15 +343,28 @@ export class BoardSyncClient {
 
   // --- replica reads -----------------------------------------------------------
 
-  /** The effective local view: baseline overlaid with un-acked dirty state. */
+  /** The effective local view: baseline overlaid with un-acked dirty state.
+   *  Tasks merge by id (never whole-array overlay): the dirty array keeps its
+   *  order, and baseline-only rows (remote arrivals during a parked spell)
+   *  append read-only — a parked replica keeps READING convergence even
+   *  though its writes wait. Accrued deletions stay excluded on both sides. */
   view(): BoardView {
     const base = boardViewOf(this.baseline)
+    const deletedIds = new Set(this.deleted.map(entry => entry.id))
     if (this.dirty.tasks === undefined && this.dirty.cruise === undefined
       && this.dirty.schedulePresets === undefined && this.dirty.runPresets === undefined) {
-      return base
+      return deletedIds.size === 0
+        ? base
+        : { ...base, tasks: base.tasks.filter(task => !deletedIds.has(task.id)) }
     }
+    const dirtyIds = new Set((this.dirty.tasks ?? []).map(task => task.id))
     return {
-      tasks: (this.dirty.tasks ?? base.tasks) as TaskRecord[],
+      tasks: [
+        ...(this.dirty.tasks ?? base.tasks).filter(task => !deletedIds.has(task.id)),
+        ...(this.dirty.tasks === undefined
+          ? []
+          : base.tasks.filter(task => !dirtyIds.has(task.id) && !deletedIds.has(task.id))),
+      ] as TaskRecord[],
       cruise: this.dirty.cruise?.value ?? base.cruise,
       schedulePresets: this.dirty.schedulePresets?.value ?? base.schedulePresets,
       runPresets: this.dirty.runPresets?.value ?? base.runPresets,
@@ -361,6 +392,25 @@ export class BoardSyncClient {
     for (const id of [...this.claims]) {
       if (!kept.has(id)) this.claims.delete(id)
     }
+    // Deletion accrual (THE delete semantics — see the S1 reasoning in the
+    // module history): a dropped row is recorded HERE, with the baseline
+    // stamp seen at edit time. Recomputing deletions at flush time against a
+    // newer baseline turns every park-period remote arrival into a phantom
+    // delete (the array lacks it, the fresh stamp waves it through the host
+    // guard). Rows the baseline never held need no tombstone (the host never
+    // saw them); rows that reappear drop their accrued delete.
+    const stamps = new Map(this.baseline.tasks.map(task => [task.id, task.updatedAt]))
+    const accrued = new Map(this.deleted.map(entry => [entry.id, entry.baseUpdatedAt]))
+    for (const row of previous) {
+      if (kept.has(row.id)) {
+        accrued.delete(row.id)
+        continue
+      }
+      if (accrued.has(row.id)) continue
+      const stamp = stamps.get(row.id)
+      if (stamp !== undefined) accrued.set(row.id, stamp)
+    }
+    this.deleted = [...accrued].map(([id, baseUpdatedAt]) => ({ id, baseUpdatedAt }))
     this.dirty.tasks = tasks
     this.scheduleCommit()
   }
@@ -445,9 +495,9 @@ export class BoardSyncClient {
 
   private scheduleCommit(): void {
     if (this.mode !== 'synced' || this.disposed) return
-    // A fresh local write reopens the retry cycle (reset the budget — the
-    // user is watching, so spinning again is correct, not spam).
-    this.commitAttempts = 0
+    // Fresh writes reschedule the debounce lane only — a pending backoff
+    // retry keeps its own timer and reads the latest dirty state when it
+    // fires (two lanes, two timers, never one overwriting the other).
     this.commitCancel?.()
     this.commitCancel = this.defer(() => {
       this.commitCancel = undefined
@@ -458,6 +508,10 @@ export class BoardSyncClient {
   /** Send the current dirty view (one in flight at a time, trailing refire). */
   async flush(): Promise<void> {
     if (this.mode !== 'synced' || this.disposed) return
+    // A flush consumes any pending backoff (this attempt supersedes it —
+    // one funnel, never two timers racing to send).
+    this.backoffCancel?.()
+    this.backoffCancel = undefined
     if (this.inFlight !== undefined) {
       this.refire = true
       return
@@ -483,7 +537,7 @@ export class BoardSyncClient {
         ...this.dirty.schedulePresets !== undefined ? ['schedulePresets' as const] : [],
         ...this.dirty.runPresets !== undefined ? ['runPresets' as const] : [],
       ],
-      deleted: diffDeletions(this.baseline.tasks, tasks),
+      deleted: [...this.deleted],
       cruise: this.dirty.cruise ?? this.baseline.cruise,
       schedulePresets: this.dirty.schedulePresets ?? this.baseline.schedulePresets,
       runPresets: this.dirty.runPresets ?? this.baseline.runPresets,
@@ -492,7 +546,7 @@ export class BoardSyncClient {
     // Named commit diagnostics (permanent): every "toggled but nothing
     // happened / refresh reverted" dispute ends here — what rode the commit,
     // how big it was, and whether the host acked. Failures keep the
-    // retry-once discipline below; they just stop being silent.
+    // backoff discipline below; they just stop being silent.
     const sectionNames = [
       ...snapshot.tasks !== undefined ? ['tasks'] : [],
       ...snapshot.cruise !== undefined ? ['cruise'] : [],
@@ -511,7 +565,12 @@ export class BoardSyncClient {
       return undefined
     })
     this.inFlight = undefined
+    if (this.disposed) return
     if (result === undefined || !result.available || result.doc === undefined) {
+      // A pending refire folds into the retry below (the retry re-reads the
+      // dirty state, so no boolean patch is needed — "reread dirty" is the
+      // only truth, never a flag).
+      this.refire = false
       this.commitAttempts += 1
       if (this.commitAttempts > MAX_COMMIT_ATTEMPTS) {
         // Budget spent: park the dirty state (reads keep converging through
@@ -520,12 +579,16 @@ export class BoardSyncClient {
         this.log('[dsh-task-board] commit retry budget spent (keeping dirty state parked until the next local write)')
         return
       }
-      // Backoff retry (2s → 4s → … capped): the failure keeps its log line,
-      // it just stops being silent AND stops spinning at full rate.
+      // Backoff retry (2s → 4s → … capped) on its OWN timer lane: the failure
+      // keeps its log line, it just stops being silent AND stops spinning at
+      // full rate. Fresh writes reschedule the debounce lane, never this one.
       const delay = Math.min(COMMIT_RETRY_BASE_MS * 2 ** (this.commitAttempts - 1), COMMIT_RETRY_CAP_MS)
       this.log(`[dsh-task-board] commit not acked (keeping dirty state, retry ${this.commitAttempts}/${MAX_COMMIT_ATTEMPTS} in ${delay}ms)`)
-      this.commitCancel = this.defer(() => {
-        this.commitCancel = undefined
+      // No cancel-before-schedule here: flush() consumed the backoff lane on
+      // entry, and the in-flight guard admits only one flusher — no second
+      // timer can exist at this point by construction.
+      this.backoffCancel = this.defer(() => {
+        this.backoffCancel = undefined
         void this.flush()
       }, delay)
       return
@@ -539,7 +602,11 @@ export class BoardSyncClient {
     if (snapshot.runPresets !== undefined && this.dirty.runPresets === snapshot.runPresets) delete this.dirty.runPresets
     // The ledger layer is fully acknowledged: the host has every claim it was
     // sent, so authorship state resets (the next claim accrues from here).
-    if (this.dirty.tasks === undefined) this.claims.clear()
+    // Accrued deletions clear with the same condition (acked = applied).
+    if (this.dirty.tasks === undefined) {
+      this.claims.clear()
+      this.deleted = []
+    }
     const refire = this.refire
     this.refire = false
     if (refire || this.dirty.tasks !== undefined || this.dirty.cruise !== undefined

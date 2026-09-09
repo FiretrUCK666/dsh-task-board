@@ -329,6 +329,54 @@ describe('BoardSyncClient commit', () => {
     expect(t.calls.commit).toHaveLength(7)
   })
 
+  it('a parked replica keeps reading remote arrivals (never a phantom delete)', async () => {
+    const { client, t, timers } = makeClient()
+    await client.start()
+    t.setCommitFails(true)
+    client.setTasks([task('a')])
+    await timers.advance(300)
+    expect(t.calls.commit).toHaveLength(1)
+    // Park the replica (five failed retries, stepped so each async chain lands).
+    await timers.advance(2_100)
+    await timers.advance(4_100)
+    await timers.advance(8_100)
+    await timers.advance(16_100)
+    await timers.advance(30_100)
+    expect(t.calls.commit).toHaveLength(6)
+    // A remote row lands while parked: the poll adopts it…
+    const remote = applyCommit(t.getDoc(), commitOf({ clientId: 'other', tasks: [task('b', T0 + 10)] }), T0 + 10)
+    t.setDoc(remote)
+    await timers.advance(30_100) // the poll beat
+    // …and the parked view serves BOTH rows (no phantom delete, reads converge).
+    expect(client.view().tasks.map(entry => entry.id).sort()).toEqual(['a', 'b'])
+    // Recovery: the next flush carries no deletion for the remote row.
+    t.setCommitFails(false)
+    client.setTasks(client.view().tasks)
+    await timers.advance(300)
+    const last = t.calls.commit.at(-1)!
+    expect(last.deleted ?? []).toEqual([])
+    expect(last.tasks.map(entry => entry.id).sort()).toEqual(['a', 'b'])
+  })
+
+  it('a user-intended delete rides the accrued stamp (never a recomputed one)', async () => {
+    const { client, t, timers } = makeClient()
+    t.setDoc(applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [task('a'), task('b')] }), T0))
+    await client.start()
+    t.setCommitFails(true)
+    client.setTasks([task('a')]) // the user drops b
+    await timers.advance(300)
+    expect(t.calls.commit).toHaveLength(1)
+    expect(t.calls.commit[0].deleted).toEqual([{ id: 'b', baseUpdatedAt: T0 }])
+    // Parked with the delete still unacked…
+    await timers.advance(2_100 + 4_100 + 8_100 + 16_100 + 30_100)
+    // …the view hides b (the user's intent), and recovery transmits it once.
+    expect(client.view().tasks.map(entry => entry.id)).toEqual(['a'])
+    t.setCommitFails(false)
+    client.setTasks(client.view().tasks)
+    await timers.advance(300)
+    expect(t.calls.commit.at(-1)?.deleted).toEqual([{ id: 'b', baseUpdatedAt: T0 }])
+  })
+
   it('computes deletions against the baseline', async () => {
     const { client, t, timers } = makeClient()
     t.setDoc(applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [task('a'), task('b')] }), T0))
