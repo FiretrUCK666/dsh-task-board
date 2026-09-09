@@ -26,6 +26,11 @@
  * touches the DOM.
  */
 import type { PromptImage } from '../../core/controller.ts'
+import { IMAGE_MEDIA_TYPES } from '../../core/tasks.ts'
+
+/** The accepted raster media types — the core table (the intake gate AND
+ *  every storage wall read one table, never two). */
+export { IMAGE_MEDIA_TYPES }
 
 /** An encoded, ready-to-send browser image. */
 export interface DraftImage {
@@ -44,8 +49,8 @@ export function toPromptImage(image: DraftImage): PromptImage {
   return { mediaType: image.mediaType, data: image.data, name: image.name }
 }
 
-/** The accepted raster media types (the native version-one whitelist). */
-export const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
+/** The accepted raster media types — re-exported from the core table (the
+ *  intake gate AND every storage wall read one table, never two). */
 
 /** Why one file never became a draft attachment (each maps to a visible reason). */
 export type ImageRejectReason = 'type' | 'size' | 'decode' | 'count'

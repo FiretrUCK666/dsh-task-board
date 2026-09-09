@@ -625,6 +625,47 @@ export function normalizeLabels(value: unknown): string[] | undefined {
   return out.length > 0 ? out : undefined
 }
 
+/** Admitted image media types (the intake gate AND every storage wall read
+ *  this one table — never a second whitelist). */
+export const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
+
+/** Whether a raw value is a well-formed prompt image (non-empty data +
+ *  whitelisted media type). THE element predicate for images — ledger,
+ *  template and draft walls all read it. */
+export function isWellFormedImage(entry: unknown): entry is TaskImage {
+  if (typeof entry !== 'object' || entry === null) return false
+  const candidate = entry as Record<string, unknown>
+  return typeof candidate.data === 'string' && candidate.data !== ''
+    && typeof candidate.mediaType === 'string'
+    && (IMAGE_MEDIA_TYPES as readonly string[]).includes(candidate.mediaType)
+}
+
+/** Whether a raw value is a well-formed file ref (non-empty receipt + name,
+ *  finite non-negative bytes). THE element predicate for files — same three
+ *  walls. */
+export function isWellFormedFile(entry: unknown): entry is TaskFile {
+  if (typeof entry !== 'object' || entry === null) return false
+  const candidate = entry as Record<string, unknown>
+  return typeof candidate.receiptId === 'string' && candidate.receiptId !== ''
+    && typeof candidate.name === 'string' && candidate.name !== ''
+    && typeof candidate.bytes === 'number' && Number.isFinite(candidate.bytes) && candidate.bytes >= 0
+}
+
+/** Keep well-formed prompt images (a dirty element washes out, never the
+ *  row and never a downstream crash). */
+export function normalizePromptImages(raw: unknown): TaskImage[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const kept = raw.filter(isWellFormedImage)
+  return kept.length > 0 ? kept : undefined
+}
+
+/** Keep well-formed file refs (same law as images). */
+export function normalizePromptFiles(raw: unknown): TaskFile[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const kept = raw.filter(isWellFormedFile)
+  return kept.length > 0 ? kept : undefined
+}
+
 /** Create a task from user input. */
 export function createTask(input: NewTaskInput, now: number, id: string, order = 0): TaskRecord {
   const priority = normalizePriority(input.priority)

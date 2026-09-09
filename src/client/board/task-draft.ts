@@ -82,7 +82,9 @@ export function toDueDateInput(at: number): string {
 }
 
 /** Normalize a parsed draft (a stored draft may predate a field — e.g.
- *  promptImages — so every consumer gets a complete, safe shape). */
+ *  promptImages — so every consumer gets a complete, safe shape). Attachment
+ *  arrays wash element-wise (never a throwing passthrough — a dirty stored
+ *  draft must degrade to fewer chips, not a crash). */
 export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): TaskDraft | undefined {
   if (parsed === null || parsed === undefined) return undefined
   if (typeof parsed.title !== 'string' || typeof parsed.prompt !== 'string') return undefined
@@ -90,7 +92,21 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
     title: parsed.title,
     description: parsed.description ?? '',
     prompt: parsed.prompt,
-    promptImages: Array.isArray(parsed.promptImages) ? parsed.promptImages : [],
+    promptImages: Array.isArray(parsed.promptImages)
+      ? parsed.promptImages.filter((entry: unknown): entry is DraftImage =>
+        typeof entry === 'object' && entry !== null
+        && typeof (entry as Record<string, unknown>).id === 'string'
+        && typeof (entry as Record<string, unknown>).data === 'string'
+        && (entry as Record<string, unknown>).data !== '')
+      : [],
+    promptFiles: Array.isArray(parsed.promptFiles)
+      ? parsed.promptFiles.filter((entry: unknown): entry is DraftFile =>
+        typeof entry === 'object' && entry !== null
+        && typeof (entry as Record<string, unknown>).id === 'string'
+        && typeof (entry as Record<string, unknown>).receiptId === 'string'
+        && (entry as Record<string, unknown>).receiptId !== ''
+        && typeof (entry as Record<string, unknown>).name === 'string')
+      : [],
     status: parsed.status === 'todo' ? 'todo' : 'backlog',
     agentPreset: parsed.agentPreset ?? '',
     workspaceId: parsed.workspaceId ?? '',
@@ -107,7 +123,6 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
     })(),
     labels: typeof parsed.labels === 'string' ? parsed.labels : '',
     color: typeof parsed.color === 'string' ? parsed.color : '',
-    promptFiles: Array.isArray(parsed.promptFiles) ? parsed.promptFiles : [],
   }
 }
 

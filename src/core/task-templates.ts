@@ -16,7 +16,7 @@
  * a storage seam, so everything unit-tests in isolation.
  */
 import type { NewTaskInput, TaskFile, TaskImage, TaskRecord } from './tasks.ts'
-import { normalizeLabels, normalizePriority } from './tasks.ts'
+import { normalizeLabels, normalizePriority, normalizePromptFiles, normalizePromptImages } from './tasks.ts'
 
 /** The localStorage key for the user's template library (never renamed). */
 export const TEMPLATE_STORAGE_KEY = 'dsh.taskBoard.templates.v1'
@@ -126,31 +126,6 @@ export function isTemplateRow(row: unknown): row is TaskTemplate {
     && typeof candidate.name === 'string' && candidate.name !== ''
 }
 
-/** Keep well-formed prompt images (element-level: non-empty data string +
- *  known media type); anything else washes out (a single dirty element must
- *  never crash stamping — normalize is the firewall, consumers stay dumb). */
-function normalizeImages(raw: unknown): TaskImage[] | undefined {
-  if (!Array.isArray(raw)) return undefined
-  const kept = raw.filter((entry): entry is TaskImage =>
-    typeof entry === 'object' && entry !== null
-    && typeof (entry as Record<string, unknown>).data === 'string'
-    && (entry as Record<string, unknown>).data !== ''
-    && typeof (entry as Record<string, unknown>).mediaType === 'string')
-  return kept.length > 0 ? kept : undefined
-}
-
-/** Keep well-formed file refs (element-level: non-empty receipt + name);
- *  the twin firewall of images above. */
-function normalizeFiles(raw: unknown): TaskFile[] | undefined {
-  if (!Array.isArray(raw)) return undefined
-  const kept = raw.filter((entry): entry is TaskFile =>
-    typeof entry === 'object' && entry !== null
-    && typeof (entry as Record<string, unknown>).receiptId === 'string'
-    && (entry as Record<string, unknown>).receiptId !== ''
-    && typeof (entry as Record<string, unknown>).name === 'string')
-  return kept.length > 0 ? kept : undefined
-}
-
 /** Normalize a raw stored list: valid rows only, duplicates dropped. */
 export function normalizeTemplates(raw: unknown): TaskTemplate[] {
   if (!Array.isArray(raw)) return []
@@ -161,8 +136,8 @@ export function normalizeTemplates(raw: unknown): TaskTemplate[] {
     seen.add(row.id)
     const priority = normalizePriority(row.priority)
     const labels = normalizeLabels(row.labels)
-    const promptImages = normalizeImages(row.promptImages)
-    const promptFiles = normalizeFiles(row.promptFiles)
+    const promptImages = normalizePromptImages(row.promptImages)
+    const promptFiles = normalizePromptFiles(row.promptFiles)
     out.push({
       id: row.id,
       name: row.name,

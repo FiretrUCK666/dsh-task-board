@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, normalizeLabels, normalizePriority, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
+  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, normalizeLabels, normalizePriority, normalizePromptFiles, normalizePromptImages, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -1000,6 +1000,28 @@ describe('normalizeLabels (lowercase/dedupe/cap or absent)', () => {
   it('createTask carries normalized labels', () => {
     expect(createTask({ title: 't', description: '', prompt: 'p', labels: ['B', 'b', 'a'] }, NOW, 'a').labels).toEqual(['b', 'a'])
     expect(createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a').labels).toBeUndefined()
+  })
+})
+
+describe('normalizePromptImages / normalizePromptFiles (shared walls)', () => {
+  it('keeps well-formed elements, washes the rest, drops empty sets', () => {
+    expect(normalizePromptImages([
+      { mediaType: 'image/png', data: 'QUJD', name: 'a.png' },
+      { mediaType: 'image/bmp', data: 'QUJD', name: 'b.bmp' },
+      { mediaType: 'image/png', data: '', name: 'c.png' },
+      null,
+    ])).toEqual([{ mediaType: 'image/png', data: 'QUJD', name: 'a.png' }])
+    expect(normalizePromptImages([])).toBeUndefined()
+    expect(normalizePromptImages('junk')).toBeUndefined()
+    expect(normalizePromptFiles([
+      { receiptId: 'r1', name: 'a.pdf', bytes: 10 },
+      { receiptId: '', name: 'b.pdf', bytes: 10 },
+      { receiptId: 'r3', name: '', bytes: 10 },
+      { receiptId: 'r4', name: 'd.pdf', bytes: -1 },
+      { receiptId: 'r5', name: 'e.pdf' },
+      null,
+    ])).toEqual([{ receiptId: 'r1', name: 'a.pdf', bytes: 10 }])
+    expect(normalizePromptFiles([])).toBeUndefined()
   })
 })
 
