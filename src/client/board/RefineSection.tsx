@@ -22,7 +22,7 @@ import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
 import { resultChipKind } from './session-chip.ts'
 import { refineDraftKey, draftStore } from './drafts.ts'
-import { AttachmentStrip } from './AttachmentStrip.tsx'
+import { AttachmentStrip, attachBusyLabel } from './AttachmentStrip.tsx'
 import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, toPromptFile, toPromptImage } from './attach.ts'
 import { useComposerImages } from './composer-images.ts'
 import { useFileStager } from './session-panel.tsx'
@@ -221,7 +221,7 @@ export function RefineSection({ controller, task }: {
               onRemoveImage={id => { attachments.setImages(attachments.images.filter(image => image.id !== id)) }}
               onRemoveFile={id => { attachments.setFiles(attachments.files.filter(file => file.id !== id)) }}
               busy={attachments.busy}
-              busyLabel={attachments.files.length > 0 ? t('review.attachFileBusy') : undefined}
+              busyLabel={attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined}
               error={attachments.error}
             />
             <Button variant="primary" disabled={draft.trim() === ''} onClick={send}>

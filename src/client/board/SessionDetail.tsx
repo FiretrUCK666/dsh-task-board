@@ -52,6 +52,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     error: transcriptError,
     hasMore: transcriptHasMore,
     loadingEarlier: transcriptLoadingEarlier,
+    pageError: transcriptPageError,
     atBottom,
     scrollRef,
     onScroll,
@@ -133,6 +134,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               waiting={waiting}
               hasMore={transcriptHasMore}
               loadingEarlier={transcriptLoadingEarlier}
+              pageError={transcriptPageError}
               onLoadEarlier={loadEarlier}
               onRetry={reload}
               sessionId={sessionId}

@@ -466,6 +466,38 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(followSource).toMatch(/floorRef\.current \?\? eventsRef\.current/)
   })
 
+  it('a failed earlier-page read is SAID (the button stays — tapping retries)', () => {
+    // An old host without the page endpoint answers every click with
+    // undefined: without this the button spins once and goes quiet (the
+    // second "点了没反应"). The hook keeps hasMore, flags pageError, and
+    // the row shows a quiet retry line under the button.
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    const panelSource = readFileSync(panelPath, 'utf8')
+    expect(followSource).toMatch(/pageError/)
+    expect(followSource).toMatch(/setPageError\(true\)/)
+    expect(panelSource).toMatch(/pageError/)
+    expect(panelSource).toMatch(/review\.loadEarlierFailed/)
+  })
+
+  it('the attachment busy line names the in-flight intake, never the ledger', () => {
+    // A staging file is not in the ledger yet: naming the busy line from
+    // settled chips is exactly the "传文件却显示图片压缩中" lie. The hook
+    // tracks per-lane in-flight counts; every caller renders the helper.
+    const composerPath = fileURLToPath(new URL('../src/client/board/composer-images.ts', import.meta.url))
+    const composer = readFileSync(composerPath, 'utf8')
+    expect(composer).toMatch(/busyKind/)
+    expect(composer).toMatch(/busyKindOf\(/)
+    const stripPath = fileURLToPath(new URL('../src/client/board/AttachmentStrip.tsx', import.meta.url))
+    expect(readFileSync(stripPath, 'utf8')).toMatch(/attachBusyLabel/)
+    for (const name of ['session-panel.tsx', 'RefineSection.tsx', 'TaskForm.tsx']) {
+      const caller = readFileSync(fileURLToPath(new URL(`../src/client/board/${name}`, import.meta.url)), 'utf8')
+      expect(caller).toContain('attachBusyLabel(attachments.busyKind)')
+    }
+    // No caller may still name the busy line from settled chips.
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    expect(readFileSync(panelPath, 'utf8')).not.toMatch(/attachedFiles\.length > 0 \? t\('review\.attachFileBusy'\)/)
+  })
+
   it('the Agent row reads served-truth first, the applied ledger second (never a ghost field)', () => {
     // The host serves no preset read-back (no list field, no models-API
     // field, no projection) — a row reading only the host field shows

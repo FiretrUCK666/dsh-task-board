@@ -27,7 +27,7 @@ import { Chip, type ChipKind } from './Chip.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
 import type { CommentView } from './comment-thread.ts'
 import { InteractionCard } from './InteractionCard.tsx'
-import { AttachmentStrip } from './AttachmentStrip.tsx'
+import { AttachmentStrip, attachBusyLabel } from './AttachmentStrip.tsx'
 import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, type DraftFile, type DraftImage } from './attach.ts'
 import { useComposerImages, type FileStager } from './composer-images.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
@@ -119,7 +119,7 @@ const TranscriptRow = memo(function TranscriptRow(props:
  * hook; this is pure rendering, so every live session surface looks and
  * behaves identically.
  */
-export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, hasMore, loadingEarlier, onLoadEarlier, before, onRetry, sessionId, controller }: {
+export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, hasMore, loadingEarlier, pageError, onLoadEarlier, before, onRetry, sessionId, controller }: {
   lines: readonly TranscriptLine[] | undefined
   error: boolean
   atBottom: boolean
@@ -131,6 +131,8 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
   hasMore?: boolean
   /** An earlier page is being fetched right now. */
   loadingEarlier?: boolean
+  /** The last earlier-page read failed (the button stays — tapping retries). */
+  pageError?: boolean
   /** Prepend one earlier page above the window (the native grammar). */
   onLoadEarlier?: () => void
   /** Optional header content inside the region (the review page's outcome banner). */
@@ -160,6 +162,9 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
           <Button size="sm" disabled={loadingEarlier === true} onClick={onLoadEarlier}>
             {t(loadingEarlier === true ? 'review.loadingEarlierBusy' : 'review.loadEarlier')}
           </Button>
+          {pageError === true && (
+            <p className={css.detailHint}>{t('review.loadEarlierFailed')}</p>
+          )}
         </div>
       )}
       {error ? (
@@ -959,9 +964,10 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     // session's lane is free — it waits behind the running turn, never jumps it.
     if (!onDrive(text, attachedImages, attachedFiles)) restore()
   }
-  const busyLabel = attachments.busy
-    ? (attachedFiles.length > 0 ? t('review.attachFileBusy') : t('review.attachBusy'))
-    : undefined
+  // The busy line names the IN-FLIGHT intake (hook's busyKind), never the
+  // settled ledger — a staging file is not in the ledger yet, and the old
+  // ledger-based label is exactly the "传文件却显示图片压缩中" lie.
+  const busyLabel = attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined
   return (
     <div className={css.reviewComposer} {...dropProps}>
       <PromptInput

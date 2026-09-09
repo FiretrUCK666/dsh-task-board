@@ -185,6 +185,13 @@ interface TranscriptTailState {
   hasMore: boolean
   /** Whether an earlier page is being fetched right now. */
   loadingEarlier: boolean
+  /**
+   * The last earlier-page read failed (stale host, no page endpoint, link
+   * down). The button STAYS (tapping retries — a failed page is never a
+   * dead end), and the surface says so instead of spinning once and going
+   * quiet (the "点加载更早没反应" report).
+   */
+  pageError: boolean
   /** Whether the user is at (or near) the bottom of the scroll region. */
   atBottom: boolean
   /** Ref to attach to the content region (the scroller is resolved from it). */
@@ -218,6 +225,7 @@ export function useTranscriptTail(
   const [error, setError] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const [pageError, setPageError] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // The accumulated window, oldest-first: the tail, then every earlier page
@@ -281,6 +289,7 @@ export function useTranscriptTail(
     setError(false)
     setHasMore(false)
     setLoadingEarlier(false)
+    setPageError(false)
     floorRef.current = undefined
     watermarkRef.current = undefined
     reload()
@@ -358,7 +367,14 @@ export function useTranscriptTail(
     void controller.loadTranscriptPage(sessionId, floor).then(page => {
       if (!aliveRef.current) return
       setLoadingEarlier(false)
-      if (page === undefined) return
+      // A failed page is SAID, not swallowed: hasMore stays (the host still
+      // claims more), the button stays, and the quiet line under it names
+      // the failure — tapping retries. A silent stop is the bug.
+      if (page === undefined) {
+        setPageError(true)
+        return
+      }
+      setPageError(false)
       const root = resolveScroller(scrollRef.current)
       const distance = root === null ? undefined : root.scrollHeight - root.scrollTop
       setEvents(current => {
@@ -395,5 +411,5 @@ export function useTranscriptTail(
   // Scroll measurement, bottom-following and the jump all live in
   // `useFollowScroll` above — one mechanism for every live list.
 
-  return { lines, error, hasMore, loadingEarlier, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload, loadEarlier }
+  return { lines, error, hasMore, loadingEarlier, pageError, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload, loadEarlier }
 }

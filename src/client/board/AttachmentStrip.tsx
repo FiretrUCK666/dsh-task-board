@@ -16,6 +16,19 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
 import type { DraftFile, DraftImage } from './attach.ts'
+import type { IntakeBusyKind } from './composer-images.ts'
+
+/**
+ * The busy line for an in-flight intake, named by WHAT is in flight (never
+ * the settled ledger — a staging file is not in the ledger yet). undefined
+ * kind falls back to the image line (the only intake a file-lane-less
+ * surface can start).
+ */
+export function attachBusyLabel(kind: IntakeBusyKind | undefined): string {
+  if (kind === 'file') return t('review.attachFileBusy')
+  if (kind === 'mixed') return t('review.attachWorking')
+  return t('review.attachBusy')
+}
 
 /** Format a byte count compactly (B/KB/MB, one decimal under 100). */
 export function formatBytes(bytes: number): string {

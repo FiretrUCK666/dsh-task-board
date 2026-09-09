@@ -17,7 +17,7 @@ import type { BoardController } from '../../core/controller.ts'
 import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { AttachmentStrip } from './AttachmentStrip.tsx'
+import { AttachmentStrip, attachBusyLabel } from './AttachmentStrip.tsx'
 import { MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
 import { useComposerImages } from './composer-images.ts'
 import { PromptInput } from './PromptInput.tsx'
@@ -110,6 +110,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
           onAdd={attachments.addFiles}
           onRemoveImage={id => { onChange({ ...draft, promptImages: draft.promptImages.filter(image => image.id !== id) }) }}
           busy={attachments.busy}
+          busyLabel={attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined}
           error={attachments.error}
         />
         <span className={css.fieldHint}>{t('new.promptImagesHint', { max: String(MAX_TASK_IMAGES) })}</span>

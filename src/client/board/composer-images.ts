@@ -22,6 +22,17 @@ function intakeDecisionOf(file: File): 'image' | 'file' {
   return decision.kind === 'file' ? 'file' : 'image'
 }
 
+/** The in-flight intake kind (what the busy line must name). */
+export type IntakeBusyKind = 'image' | 'file' | 'mixed'
+
+/** Combine per-lane in-flight counts into one label kind (pure, tested). */
+export function busyKindOf(images: number, files: number): IntakeBusyKind | undefined {
+  if (images > 0 && files > 0) return 'mixed'
+  if (files > 0) return 'file'
+  if (images > 0) return 'image'
+  return undefined
+}
+
 /** One human line for one rejection reason (locale-owned). */
 export function rejectMessage(reason: ImageRejectReason, name: string, max?: number): string {
   switch (reason) {
@@ -50,6 +61,13 @@ export interface ComposerImages {
   addFiles: (files: FileList | File[]) => Promise<void>
   /** A file is being encoded/uploaded right now. */
   busy: boolean
+  /**
+   * WHAT is in flight right now (the busy line's truth — never the settled
+   * ledger: a staging file is not in the ledger yet, and naming the busy
+   * line from the ledger is exactly the "传文件却显示图片压缩中" lie).
+   * undefined while idle.
+   */
+  busyKind: IntakeBusyKind | undefined
   /** The last rejection reason (one quiet line, replaced by the next try). */
   error: string | undefined
   /** Spread on the composer CONTAINER so drop-anywhere and paste work. */
@@ -79,6 +97,15 @@ export function useComposerImages(
   const [busyCount, setBusyCount] = useState(0)
   const [error, setError] = useState<string | undefined>(undefined)
   const [dragOver, setDragOver] = useState(false)
+  // In-flight intake by lane (the busy line's truth — see busyKind). Counts,
+  // not booleans: concurrent addFiles calls overlap, and a second drop must
+  // not clear the first drop's kind while it is still working.
+  const busyLanesRef = useRef({ image: 0, file: 0 })
+  const [busyKind, setBusyKind] = useState<IntakeBusyKind | undefined>(undefined)
+  const syncBusyKind = useCallback((): void => {
+    const lanes = busyLanesRef.current
+    setBusyKind(busyKindOf(lanes.image, lanes.file))
+  }, [])
   // The async intake loop must see the LATEST ledgers (two drops in flight
   // still respect the count caps), so the state mirrors into refs.
   const imagesRef = useRef<readonly DraftImage[]>(images)
@@ -109,34 +136,41 @@ export function useComposerImages(
       const next = [...imagesRef.current]
       const nextFiles = [...filesRef.current]
       for (const file of list) {
-        const decision = intakeDecisionOf(file)
-        if (decision === 'image') {
-          if (next.length >= maxImages) {
-            setError(rejectMessage('count', file.name, maxImages))
+        const lane = intakeDecisionOf(file)
+        busyLanesRef.current[lane] += 1
+        syncBusyKind()
+        try {
+          if (lane === 'image') {
+            if (next.length >= maxImages) {
+              setError(rejectMessage('count', file.name, maxImages))
+              break
+            }
+            const outcome = await encodeImageFile(file, budget)
+            if (outcome.ok) next.push(outcome.image)
+            else setError(rejectMessage(outcome.reason, file.name, maxImages))
+            continue
+          }
+          // File lane: stage the exact bytes first (same session), then carry
+          // only the receipt. Closed lane / missing session / failed stage =
+          // a spoken reason, never a silent drop.
+          if (filesOpts === undefined || filesOpts.sessionId === undefined) {
+            setError(t('attach.rejectNoSession', { name: file.name }))
+            continue
+          }
+          if (nextFiles.length >= maxFiles) {
+            setError(t('attach.rejectFileCount', { name: file.name, max: String(maxFiles) }))
             break
           }
-          const outcome = await encodeImageFile(file, budget)
-          if (outcome.ok) next.push(outcome.image)
-          else setError(rejectMessage(outcome.reason, file.name, maxImages))
-          continue
+          const staged = await filesOpts.stage(filesOpts.sessionId, file)
+          if (!staged.ok) {
+            setError(t('attach.rejectUpload', { name: file.name, error: staged.error }))
+            continue
+          }
+          nextFiles.push({ id: `file-${Date.now()}-${nextFiles.length}`, receiptId: staged.receiptId, name: file.name, bytes: file.size })
+        } finally {
+          busyLanesRef.current[lane] -= 1
+          syncBusyKind()
         }
-        // File lane: stage the exact bytes first (same session), then carry
-        // only the receipt. Closed lane / missing session / failed stage =
-        // a spoken reason, never a silent drop.
-        if (filesOpts === undefined || filesOpts.sessionId === undefined) {
-          setError(t('attach.rejectNoSession', { name: file.name }))
-          continue
-        }
-        if (nextFiles.length >= maxFiles) {
-          setError(t('attach.rejectFileCount', { name: file.name, max: String(maxFiles) }))
-          break
-        }
-        const staged = await filesOpts.stage(filesOpts.sessionId, file)
-        if (!staged.ok) {
-          setError(t('attach.rejectUpload', { name: file.name, error: staged.error }))
-          continue
-        }
-        nextFiles.push({ id: `file-${Date.now()}-${nextFiles.length}`, receiptId: staged.receiptId, name: file.name, bytes: file.size })
       }
       imagesRef.current = next
       filesRef.current = nextFiles
@@ -146,7 +180,7 @@ export function useComposerImages(
     } finally {
       setBusyCount(count => count - 1)
     }
-  }, [budget, maxImages, controlled, filesOpts, maxFiles])
+  }, [budget, maxImages, controlled, filesOpts, maxFiles, syncBusyKind])
 
   const dropProps = {
     'data-dsh-tb-dndover': dragOver ? ('' as const) : undefined,
@@ -180,5 +214,5 @@ export function useComposerImages(
     },
   }
 
-  return { images, files: filesLedger, setImages, setFiles, addFiles, busy: busyCount > 0, error, dropProps }
+  return { images, files: filesLedger, setImages, setFiles, addFiles, busy: busyCount > 0, busyKind, error, dropProps }
 }
