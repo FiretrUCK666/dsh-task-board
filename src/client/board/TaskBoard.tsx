@@ -24,7 +24,7 @@ import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { useSurfaceNarrow } from './use-narrow.ts'
 import { activeColumnIndexAt, scrollLeftForColumn } from './column-tabs.ts'
-import { boardBox, Dialog } from './Dialog.tsx'
+import { Dialog } from './Dialog.tsx'
 import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
@@ -43,6 +43,7 @@ import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../side
 import { taskBindsOf } from '../../core/tasks.ts'
 
 import { boardShortcutOf, isShortcutTyping, matchTask } from './task-search.ts'
+import { hasLiveAutomation } from '../../core/automation.ts'
 import { foldNotesByTask, notificationsExOf } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
 import { cardNextActionOf, cardViewModelOf } from './card-view.ts'
@@ -151,10 +152,12 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement | null
-      // Outside the board box the board perceives nothing: native pages and
-      // other views never feel `/`, `x` or `?` (same anchor the Dialog portal
-      // uses, so board dialogs stay inside the fence).
-      if (target === null || !boardBox().contains(target)) return
+      // Outside the board surface the board perceives nothing: native pages
+      // and other views never feel `/`, `x` or `?`. The check reads the DOM
+      // marker directly — never through the portal helper's body fallback
+      // (a fallback anchor would make the fence trivially true).
+      if (target === null || target.closest === undefined
+        || target.closest('[data-dsh-taskboard-view]') === null) return
       // THE one typing judgment (editables + IME composing, single predicate).
       const shortcut = boardShortcutOf(event, isShortcutTyping(target, event))
       if (shortcut === undefined) return
@@ -586,13 +589,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // titles (the same derivation the rows render — a session renamed natively
   // stays findable under its live name), plus facet qualifiers (`has:auto`,
   // `has:color`, `is:unread`/`is:read`, `ws:<text>`) resolved from the same
-  // live faces the rows render.
+  // live faces the rows render. `has:auto` reads THE automation membership
+  // (schedule enabled OR any enabled session rule), never a second judgment.
   const visible = snapshot.tasks.filter(task =>
     matchTask(task, filter, controller.linkedOf(task).map(row => row.title), {
       ...(task.workspaceId !== undefined
         ? { workspaceTitle: workspaceTitleOf(task.workspaceId) }
         : {}),
-      hasAutomation: task.schedule?.enabled === true,
+      hasAutomation: hasLiveAutomation(task),
       isUnviewed: taskUnviewed(task),
     }))
   // WIP counts: THE one full-ledger computation — the status line, the
@@ -1564,22 +1568,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           onClose={() => { setShowAutomation(false) }}
         />
       )}
-      {showShortcuts && (
-        <Dialog title={t('board.shortcuts')} label={t('board.shortcuts')} onClose={() => { setShowShortcuts(false) }} portal>
-          <div className={css.modalScroll}>
-            <p className={css.detailText}>
-              <Chip kind="neutral" fill={false}>/</Chip> {t('board.shortcutSearch')}
-            </p>
-            <p className={css.detailText}>
-              <Chip kind="neutral" fill={false}>x</Chip> {t('board.shortcutClear')}
-            </p>
-            <p className={css.detailText}>
-              <Chip kind="neutral" fill={false}>?</Chip> {t('board.shortcutHelp')}
-            </p>
-            <p className={css.detailHint}>{t('board.shortcutQuali')}</p>
-          </div>
-        </Dialog>
-      )}
       {showNotify && (
         <Dialog title={t('board.notify')} label={t('board.notify')} onClose={() => { setShowNotify(false); setSnoozed({}) }} portal>
           <div className={css.modalScroll}>
@@ -1892,6 +1880,25 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 </>
               )
             })()}
+          </div>
+        </Dialog>
+      )}
+      {/* Cheatsheet renders after every other overlay: same-layer stacking
+          paints it on top, so `?` from inside the activity drawer (or any
+          board dialog) actually surfaces instead of hiding underneath. */}
+      {showShortcuts && (
+        <Dialog title={t('board.shortcuts')} label={t('board.shortcuts')} onClose={() => { setShowShortcuts(false) }} portal>
+          <div className={css.modalScroll}>
+            <p className={css.detailText}>
+              <Chip kind="neutral" fill={false}>/</Chip> {t('board.shortcutSearch')}
+            </p>
+            <p className={css.detailText}>
+              <Chip kind="neutral" fill={false}>x</Chip> {t('board.shortcutClear')}
+            </p>
+            <p className={css.detailText}>
+              <Chip kind="neutral" fill={false}>?</Chip> {t('board.shortcutHelp')}
+            </p>
+            <p className={css.detailHint}>{t('board.shortcutQuali')}</p>
           </div>
         </Dialog>
       )}

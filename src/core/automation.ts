@@ -229,6 +229,13 @@ export function withSessionRules(task: TaskRecord, rules: SessionRule[] | undefi
  *  disarmed schedule is managed from the task detail / the expanded editor,
  *  never listed as if it were running). */
 export function automationTasksOf(tasks: readonly TaskRecord[]): TaskRecord[] {
-  return tasks.filter(task =>
-    task.schedule?.enabled === true || (task.rules !== undefined && task.rules.some(rule => rule.enabled)))
+  return tasks.filter(hasLiveAutomation)
+}
+
+/** Whether ONE task carries live automation (THE membership predicate —
+ *  the overview filter and the `has:auto` search facet both read this, so
+ *  the two can never disagree on what "automated" means). */
+export function hasLiveAutomation(task: TaskRecord): boolean {
+  return task.schedule?.enabled === true
+    || (task.rules !== undefined && task.rules.some(rule => rule.enabled))
 }

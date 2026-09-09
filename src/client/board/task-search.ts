@@ -61,14 +61,23 @@ export interface BoardQualifier {
 
 /**
  * Split a raw query into plain terms plus recognized qualifiers. Matching is
- * case-insensitive; `has:` accepts `auto`/`color` (with `no` negation:
- * `has:noauto` reads awkwardly, so `has:auto` + free text covers it —
- * negation stays out), `is:` accepts `unread`/`read`, `ws:` takes any text.
+ * case-insensitive; `has:` accepts `auto`/`color`, `is:` accepts
+ * `unread`/`read`, `ws:` takes any text — quoted (`ws:"a b"`) when the name
+ * holds a space, first word otherwise. Anything unrecognized stays a literal
+ * search term: an unknown qualifier narrows like ordinary text instead of
+ * failing.
  */
 export function parseBoardQuery(query: string): { terms: string[]; qualifiers: BoardQualifier[] } {
   const terms: string[] = []
   const qualifiers: BoardQualifier[] = []
-  for (const raw of query.trim().toLowerCase().split(/\s+/)) {
+  // Quoted `ws:` values first (multi-word workspace names); the remainder
+  // splits on whitespace as usual.
+  const quoted: Array<{ key: string; value: string }> = []
+  const stripped = query.replace(/(^|\s)ws:"([^"]*)"/gi, (_match, _space, value: string) => {
+    if (value.trim() !== '') quoted.push({ key: 'ws', value: value.trim().toLowerCase() })
+    return ' '
+  })
+  for (const raw of stripped.trim().toLowerCase().split(/\s+/)) {
     if (raw === '') continue
     const separator = raw.indexOf(':')
     if (separator > 0) {
@@ -91,7 +100,7 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
     }
     terms.push(raw)
   }
-  return { terms, qualifiers }
+  return { terms, qualifiers: [...quoted, ...qualifiers] }
 }
 
 /** Whether one qualifier holds (unknown facets read absent = no match). */

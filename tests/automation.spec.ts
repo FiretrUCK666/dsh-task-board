@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  automationRowsOf, automationTasksOf, isSessionRule, normalizeSessionRules, sessionRuleReadiness,
+  automationRowsOf, automationTasksOf, hasLiveAutomation, isSessionRule, normalizeSessionRules, sessionRuleReadiness,
   sessionRuleOf, withSessionRules, type SessionRule,
 } from '../src/core/automation.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
@@ -70,6 +70,20 @@ describe('automationTasksOf (the overview membership)', () => {
     ])
     expect(automationTasksOf([off])).toEqual([])
     expect(automationTasksOf([off, mixed]).map(t => t.id)).toEqual(['e'])
+  })
+
+  it('hasLiveAutomation is the single-task membership (overview and has:auto agree)', () => {
+    const armed = { ...bare, id: 'a', schedule: scheduleOf('cron', true) }
+    const ruled = withSessionRules({ ...bare, id: 'c' }, [rule()])
+    const off = withSessionRules({ ...bare, id: 'd' }, [{ ...rule(), enabled: false }])
+    expect(hasLiveAutomation(armed)).toBe(true)
+    expect(hasLiveAutomation(ruled)).toBe(true)
+    expect(hasLiveAutomation(off)).toBe(false)
+    expect(hasLiveAutomation(bare)).toBe(false)
+    // The list derives from it — one predicate, never two judgments.
+    for (const task of [bare, armed, ruled, off]) {
+      expect(automationTasksOf([task]).length).toBe(hasLiveAutomation(task) ? 1 : 0)
+    }
   })
 })
 

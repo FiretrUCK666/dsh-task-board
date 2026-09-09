@@ -119,6 +119,15 @@ describe('parseBoardQuery (facet qualifiers)', () => {
     })
     expect(parseBoardQuery('has:')).toEqual({ terms: ['has:'], qualifiers: [] })
   })
+
+  it('takes quoted ws: values with spaces as one qualifier', () => {
+    expect(parseBoardQuery('ws:"主 工作区" 猫')).toEqual({
+      terms: ['猫'],
+      qualifiers: [{ key: 'ws', value: '主 工作区' }],
+    })
+    expect(matchTask(task, 'ws:"深夜 工作区"', [], { workspaceTitle: '深夜 工作区' })).toBe(true)
+    expect(matchTask(task, 'ws:"深夜 工作区"', [], { workspaceTitle: '深夜工作区' })).toBe(false)
+  })
 })
 
 describe('matchTask qualifiers', () => {
