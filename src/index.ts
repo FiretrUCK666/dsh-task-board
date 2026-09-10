@@ -14,8 +14,8 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from 'schemastery'
+import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { registerPermissionRoute } from './host/permission-route.ts'
 import { registerSessionStateRoute } from './host/session-state-route.ts'
@@ -34,9 +34,10 @@ export const TASK_BOARD_GUIDANCE = '本机已安装 dsh-task-board 独立插件�
  * Settings namespace of the board's announcement capability — the section the
  * web settings surface edits, and the namespace the settings route serves.
  * Spelled here rather than imported: the browser half spells the same value
- * and must not depend on a Host package.
+ * and must not depend on a Host package. The settings service validates the
+ * spelling when it registers (a lowercase hyphenated identifier).
  */
-export const TASK_BOARD_SETTINGS_NAMESPACE = settingsNamespace('dsh-task-board')
+export const TASK_BOARD_SETTINGS_NAMESPACE = 'dsh-task-board'
 
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
@@ -67,9 +68,9 @@ const DEFAULT_ANNOUNCE = true
  * @param config - resolved plugin config (schema defaults applied by the loader).
  */
 export function apply(ctx: Context, config?: Config): void {
-  // The live source the announcement reads: the settings section once the web
-  // settings surface is served, the composition entry otherwise
-  // (installSettingsSection swaps it when the namespace registers).
+  // The live source the announcement reads: the settings scope once the
+  // namespace registers, the composition entry otherwise
+  // (installSection swaps it on attach and on detach).
   let current: () => Config = () => config ?? {}
   let disposeSection: (() => void) | undefined
 
@@ -90,7 +91,13 @@ export function apply(ctx: Context, config?: Config): void {
     })
   }
 
-  installSettingsSection(ctx, TASK_BOARD_SETTINGS_NAMESPACE, Config, config ?? {}, {
+  // Attach this consumer to the settings service. The composition entry is the
+  // base layer while the service is attached and the fallback when it detaches,
+  // so the board's configured behavior survives a settings service going away.
+  // Called off the injected service (the host half declares 'settings') rather
+  // than through ctx.inject: the settings route below needs the provider
+  // present at registration, so the two share one availability contract.
+  ctx.settings.installSection(ctx, TASK_BOARD_SETTINGS_NAMESPACE, Config, config ?? {}, {
     setSource: (source) => { current = source },
     onChange: sync,
   })
@@ -131,7 +138,7 @@ export function apply(ctx: Context, config?: Config): void {
     'dsh-task-board: board route',
   )
 
-  // Initial registration from the composition entry (covers deployments with
-  // no settings service, whose installSettingsSection never fires its hooks).
+  // Initial registration from the composition entry (covers the value the
+  // announcement reads before the settings service first calls its hooks).
   sync()
 }

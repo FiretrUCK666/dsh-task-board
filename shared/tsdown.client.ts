@@ -70,10 +70,9 @@ const SKIP_WORKSPACE_BUILD: UserConfig = { entry: '' }
 
 /**
  * Externals resolved from the loader module table: the platform seed entries
- * only. The rc.7-era `@deepseek-ai/dsh-client-runtime/client` exemption was
- * removed with the alpha.3 migration — the host no longer ships that package,
- * and this plugin's client half carries its snapshot-store engine locally
- * (see src/client/platform.ts), so no runtime require crosses the table.
+ * only. Anything outside that table is inlined instead — a `require` the
+ * browser module table cannot answer is a guaranteed runtime throw, so the
+ * seed list is the whole contract (see ./web-platform.ts).
  */
 export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES]
 

@@ -1,13 +1,13 @@
 /**
- * Local platform adaptation layer for dsh 0.1.2-alpha.3.
+ * Local platform adaptation layer.
  *
  * The `@deepseek-ai/dsh-client-runtime` package stopped at 0.1.x-rc.2 and was
- * removed from the alpha line: the host's client module system only resolves
- * PLATFORM_MODULES seed words (react / cordis / static UI libraries), dynamic
- * package rows, and registered factories — nothing else. The domain API moved
- * from `connection.api.*` to the Typert-generated `ctx.remote.<ns>.*` surface,
- * and `createSnapshotStore` belongs to a client-store package the alpha.3
- * host does not ship.
+ * removed from the line that ships today: the host's client module system only
+ * resolves the PLATFORM_MODULES seed words (react / cordis / static UI
+ * libraries), dynamic package rows, and registered factories — nothing else.
+ * The domain API moved from `connection.api.*` to the Typert-generated
+ * `ctx.remote.<ns>.*` surface, and `createSnapshotStore` belongs to the
+ * `dsh-client-store` package the shell seeds but this plugin does not require.
  *
  * This file therefore re-declares, locally and structurally, every runtime
  * face this plugin consumes — the same "framework-free, shape-guarded"

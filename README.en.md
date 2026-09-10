@@ -8,7 +8,7 @@ The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 
 ## Requirements
 
-- DeepSeek Harness `0.1.0-rc.7` or a later compatible release
+- DeepSeek Harness `0.1.5-rc.1` or a later compatible release
 - Node.js `^22.19.0` or `>= 24.0.0`
 - pnpm 10 or newer
 - The DSH `web` profile
@@ -33,7 +33,7 @@ Installs the most recent release. This is the right choice for everyday use.
 dsh plugin --profile web add github:FiretrUCK666/dsh-task-board
 ```
 
-Installs the current `main` branch. Use this to follow development; stability depends on the state of the branch at that moment.
+Installs the current `main` branch. Like the npm install this is a ready-to-use package, not a development environment: it has no tests and no build tooling, so the code cannot be changed in place. Use it to pick up unreleased changes early; stability depends on the state of the branch at that moment.
 
 ### From a local checkout
 
@@ -47,11 +47,16 @@ dsh plugin --profile web add .
 
 This is the path for changing the code. See "Building from source" below.
 
+The first two are installs: each delivers a ready-to-use package containing only the files in the publish list (runtime code, source, the bundle patch, documentation). The third is development: a full checkout you can edit and test.
+
 | | npm | GitHub | Local |
 | --- | --- | --- | --- |
+| Purpose | install and use | install and use | development |
 | You get | latest release | current `main` | your working tree |
+| Version | stable | newest, may be less stable | whatever you have |
 | Update source | npm version | latest commit | not applicable |
-| Best for | everyday use | following development | development |
+
+An npm install and a GitHub install contain essentially the same files; they differ in how new the code is. Install from GitHub to pick up unreleased changes, from npm for a stable release.
 
 ### After installing
 

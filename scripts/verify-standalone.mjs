@@ -244,11 +244,32 @@ for (const artifact of ['lib/index.js', 'lib/client.js']) {
   if (!existsSync(join(root, artifact))) failures.push(`${artifact} missing — run build first`)
 }
 
+// The browser bundle must register under the PACKAGE NAME. The host's client
+// module system locates a row's manifest, keys the served bundle and the
+// __ModuleLoader__ registration by the package name it found, and rejects a
+// bundle that registers anything else with "loaded without registering <name>".
+// An unscoped package name equals its plugin id, so this only breaks once a
+// scope separates them — the check exists because that is exactly what happened.
+const clientBundlePath = join(root, 'lib', 'client.js')
+if (existsSync(clientBundlePath)) {
+  const bundle = readFileSync(clientBundlePath, 'utf8')
+  const registered = /__ModuleLoader__\.load\(\{\s*id:\s*"([^"]+)"/.exec(bundle)
+  if (registered === null) failures.push('lib/client.js never registers through __ModuleLoader__.load')
+  else if (registered[1] !== packageName) {
+    failures.push(`lib/client.js registers id "${registered[1]}", but the loader keys the bundle by the package name "${packageName}" — rebuild after aligning the client bundle id in tsdown.config.ts`)
+  }
+}
+
 // --- 7. namespace + route spelling ------------------------------------------
 
 const srcFiles = allFiles.filter((f) => f.includes(sep + 'src' + sep))
 const srcText = srcFiles.map((f) => readFileSync(f, 'utf8')).join('\n')
-if (!srcText.includes(`settingsNamespace('${pluginId}')`)) failures.push(`src never registers settingsNamespace('${pluginId}')`)
+// The settings seam is a service method on the injected settings service
+// (`ctx.settings.installSection` / `ctx.settings.register`), so the gate reads
+// two facts: the plugin spells its own namespace, and it goes through that
+// seam rather than inventing a private settings channel.
+if (!srcText.includes(`'${pluginId}'`)) failures.push(`src never spells the settings namespace '${pluginId}'`)
+if (!/\.installSection\(|\.settings\.register\(/.test(srcText)) failures.push('src never registers through the official settings seam (ctx.settings.installSection / register)')
 if (!srcText.includes(`/api/${pluginId}/settings`)) failures.push(`src never spells the /api/${pluginId}/settings route`)
 
 // --- 8. import hygiene ------------------------------------------------------

@@ -249,6 +249,49 @@ push 之后 npm 不会自动变化，npm 发布之后远端也不会自动变化
 - 不提交：`node_modules/`；**`lib/` 必须提交**（安装时不执行构建，缺了别人起不来）。
 
 
+### 依赖版本同步（硬性，用户不必每次都提）
+
+SDK 版本**必须跟随实际运行的 DSH**，不是"能跑就行"的宽松范围。版本号有两条已核实
+的规律：
+
+- `@deepseek-ai/dsh-*` 的版本号与 DSH 本体**同号**（本体 `0.1.5-rc.1` → SDK 同为
+  `0.1.5-rc.1`）；`@deepseek-ai/cordis` 走自己的 4.x 线。
+- 这些包在 npm 上的 **`latest` dist-tag 可能过期**（曾见 `latest` 停在 `0.0.1-rc.1`
+  而实际已有 `0.1.5-rc.1`）。因此**不得用 `npm view <pkg> version` 判断最新**；要用
+  `npm view <pkg> versions --json` 取列表末项，并逐个包确认该版本确实存在（`dsh-client-runtime`
+  就停在旧版、没有新号）。
+
+同步动作（发现或执行 DSH 升级后主动做，不必等用户要求）：
+
+1. 用 `node -p "require('<dsh 安装目录>/package.json').version"` 读**实际运行的** DSH 版本。
+2. 把它写进 `package.json` 的 `devDependencies` 与 `peerDependencies`，并同步 README 的
+   「环境要求」。`peerDependencies` 用 `>=<该版本>` 表达"不低于"，避免把用户钉死。
+3. `pnpm install` —— pnpm 会自动把新版本补进 `pnpm-workspace.yaml` 的
+   `minimumReleaseAgeExclude`（新版本未过发布冷静期，不加会被拦）。
+4. **迁移真正的破坏性变更**：同步后 `pnpm typecheck` + `pnpm test` 全绿才算完成。
+   版本跳跃常伴随 API 改名/移除（已遇：`dsh-settings` 的 `settingsNamespace()` /
+   `installSettingsSection()` 在 0.1.5-rc.1 被替换为类型级命名空间与
+   `ctx.settings.installSection()`）。类型报错就是信号，按新契约改写，不要靠 `any` 绕过。
+5. 重新构建并**验证运行时可加载**：`lib/index.js` 必须能在该 DSH 上 import 成功
+   （`node -e "import(...)"`），`lib/client.js` 的注册 id 必须等于包名（见下）。
+6. 用户可见改动 → bump patch，走日常闭环。
+
+**客户端 bundle 的注册 id = 包名**（不是插件 id）。加载器定位行对应的包清单、按
+**包名**给 bundle 定键，注册成别的名字会被拒（报 `loaded without registering <name>`）。
+无作用域时二者相同，加了作用域才会分叉——`tsdown.config.ts` 的 `clientBundle()` 第一个
+参数因此必须是包名。`pnpm verify` 内置此检查，`pnpm smoke` 会真的执行一遍 handshake。
+
+### 平台模块表跟随 shell
+
+`shared/web-platform.ts` 的 `PLATFORM_MODULES` 是浏览器模块表的**镜像**，决定哪些
+import 走 external、哪些必须内联。list 与真实 shell 不符时：多列一个已被移除的模块
+（曾见 `dsh-client-web-react`、`dsh-client-schema-form` 在 0.1.5-rc.1 消失）、或少列
+一个新增的，都会在运行时炸。**核对方法**：读
+`<dsh>/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-*.js`，搜
+`__ModuleLoader__` 附近的 seed 对象（`react` 家族 + `@deepseek-ai/dsh-client-*`）。
+
+---
+
 ## 项目定位
 
 DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列看板 + 任务经 DSH 会话机制
@@ -263,8 +306,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 | 维度 | 值 |
 | --- | --- |
-| **插件 id**（行 id / 文件夹名 / 客户端 bundle id / 设置命名空间 / locale 命名空间 / `/plugins/<id>/client.js`） | `dsh-task-board` |
-| **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:`） | `@firetruck666/dsh-task-board` |
+| **插件 id**（行 id / 文件夹名 / 设置命名空间 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 设置卡 slot） | `dsh-task-board` |
+| **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / **客户端 bundle 的 `__ModuleLoader__` 注册 id** / `/plugins/<包名>/client.js`） | `@firetruck666/dsh-task-board` |
 | 设置路由 | `/api/dsh-task-board/settings` |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
@@ -348,7 +391,8 @@ pnpm install     # 依赖变化后
 pnpm build       # tsc -p tsconfig.build.json && tsdown → lib/index.js + lib/client.js
 pnpm typecheck   # tsc --noEmit
 pnpm test        # vitest run
-pnpm verify      # node scripts/verify-standalone.mjs . dsh-task-board
+pnpm verify      # 静态门禁 + 客户端 bundle 冒烟（注册 id 与 factory 启动）
+pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执行一遍 handshake
 ```
 
 生效规则：改 host 半区（src/index.ts、src/host/）需重启 `dsh web`；改 client 半区

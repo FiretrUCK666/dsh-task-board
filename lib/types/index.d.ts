@@ -21,9 +21,10 @@ export declare const TASK_BOARD_GUIDANCE = "\u672C\u673A\u5DF2\u5B89\u88C5 dsh-t
  * Settings namespace of the board's announcement capability — the section the
  * web settings surface edits, and the namespace the settings route serves.
  * Spelled here rather than imported: the browser half spells the same value
- * and must not depend on a Host package.
+ * and must not depend on a Host package. The settings service validates the
+ * spelling when it registers (a lowercase hyphenated identifier).
  */
-export declare const TASK_BOARD_SETTINGS_NAMESPACE: import("@deepseek-ai/dsh-settings").SettingsNamespace;
+export declare const TASK_BOARD_SETTINGS_NAMESPACE = "dsh-task-board";
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
     /**
