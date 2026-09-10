@@ -44,7 +44,9 @@ jobs:
 
       - name: Committed artifacts match a fresh build
         run: |
-          if ! git diff --exit-code -- lib; then
+          if ! git diff --exit-code --stat -- lib; then
             echo "::error::lib/ is out of date — run 'pnpm build' and commit the result together with the src change."
+            echo "--- per-file diff, truncated ---"
+            git diff -U1 -- lib | head -300
             exit 1
           fi
