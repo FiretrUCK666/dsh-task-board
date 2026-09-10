@@ -2514,14 +2514,16 @@ describe('linked sessions & bind', () => {
     expect(backlogCards[0].id).toBe(copy!.id)
   })
 
-  it('copyTask carries the TASK-level automation, but NEVER the session rules', () => {
+  it('copyTask carries the accent color and the TASK-level automation, but NEVER the session rules', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub)
     const source = controller.createTask({ title: '源', description: '', prompt: 'run' })!
+    controller.setTaskColor(source.id, '#4f46e5')
     controller.setSchedule(source.id, { enabled: true, mode: 'cron', cron: '0 9 * * *' })
     controller.createSessionRule(source.id, { sessionId: 's-1', instruction: '继续', cron: '0 * * * *', send: 'steer' })
     const copy = controller.copyTask(source.id)
     expect(copy).toBeDefined()
+    expect(copy!.color).toBe('#4f46e5')
     // The TASK-level schedule configuration comes along DISARMED (a copy must
     // never surprise-fire); only session rules never copy at all.
     expect(copy!.schedule).toMatchObject({ enabled: false, mode: 'cron', cron: '0 9 * * *', runCount: 0 })
@@ -3465,6 +3467,19 @@ describe('recordNativeTurn (live turn channel)', () => {
     controller.recordActivityWake('s-1', 200)
     const after = controller.getSnapshot().tasks[0]
     expect(after.executions.some(run => run.external === true)).toBe(false)
+  })
+})
+
+describe('card accent color', () => {
+  it('setTaskColor sets/clears on the card', () => {
+    const { controller } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.setTaskColor(task.id, '#12a594')
+    let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.color).toBe('#12a594')
+    controller.setTaskColor(task.id, undefined)
+    row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.color).toBeUndefined()
   })
 })
 
@@ -4652,8 +4667,8 @@ describe('BoardController engine seat + remote apply', () => {
     controller.start()
     controller.setEngine(false)
     // A local edit is accepted (it will sync); no launch happens here.
-    controller.updateTask('task-a', { title: 'B' })
-    expect(controller.getSnapshot().tasks[0].title).toBe('B')
+    controller.setTaskColor('task-a', '#ff0000')
+    expect(controller.getSnapshot().tasks[0].color).toBe('#ff0000')
     expect(stub.runCalls).toHaveLength(0)
   })
 

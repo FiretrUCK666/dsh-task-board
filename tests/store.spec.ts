@@ -319,15 +319,27 @@ describe('schedule persistence', () => {
     expect(parsed[2].schedule).toBeUndefined() // values out of range
   })
 
-  it('drops removed scalar fields from legacy rows (priority/color/labels)', () => {
+  it('drops removed scalar fields from legacy rows (priority/labels)', () => {
     const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
     const raw = [
-      { ...valid, id: 't-1', priority: 2, color: '#fff', labels: ['a'] },
+      { ...valid, id: 't-1', priority: 2, labels: ['a'] },
     ]
     const parsed = parseLedger(JSON.stringify(raw))
     expect((parsed[0] as unknown as Record<string, unknown>).priority).toBeUndefined()
-    expect((parsed[0] as unknown as Record<string, unknown>).color).toBeUndefined()
     expect((parsed[0] as unknown as Record<string, unknown>).labels).toBeUndefined()
+  })
+
+  it('round-trips the accent color and drops junk to absent', () => {
+    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
+    const raw = [
+      { ...valid, id: 't-1', color: '#fff' },
+      { ...valid, id: 't-2', color: '' },
+      { ...valid, id: 't-3' },
+    ]
+    const parsed = parseLedger(JSON.stringify(raw))
+    expect(parsed[0].color).toBe('#fff')
+    expect(parsed[1].color).toBeUndefined()
+    expect(parsed[2].color).toBeUndefined()
   })
 
   it('round-trips the status history and drops malformed entries', () => {

@@ -38,6 +38,9 @@ export interface TaskTemplate {
   reasoningEffort?: string
   agentPreset?: string
   permission?: string
+  /** Inert shape (absent on legacy templates): accent color — carried,
+   *  never armed. */
+  color?: string
 }
 
 /** Persistence seam for the template library. */
@@ -74,6 +77,7 @@ export function templateFromTask(task: TaskRecord, id: string, name: string): Ta
     ...task.reasoningEffort !== undefined ? { reasoningEffort: task.reasoningEffort } : {},
     ...task.agentPreset !== undefined ? { agentPreset: task.agentPreset } : {},
     ...task.permission !== undefined ? { permission: task.permission } : {},
+    ...task.color !== undefined ? { color: task.color } : {},
   }
 }
 
@@ -96,6 +100,7 @@ export function templateToNewInput(template: TaskTemplate): NewTaskInput {
     ...template.reasoningEffort !== undefined ? { reasoningEffort: template.reasoningEffort } : {},
     ...template.agentPreset !== undefined ? { agentPreset: template.agentPreset } : {},
     ...template.permission !== undefined ? { permission: template.permission } : {},
+    ...template.color !== undefined ? { color: template.color } : {},
   }
 }
 
@@ -131,6 +136,7 @@ export function normalizeTemplates(raw: unknown): TaskTemplate[] {
       ...typeof row.reasoningEffort === 'string' ? { reasoningEffort: row.reasoningEffort } : {},
       ...typeof row.agentPreset === 'string' ? { agentPreset: row.agentPreset } : {},
       ...typeof row.permission === 'string' ? { permission: row.permission } : {},
+      ...typeof row.color === 'string' && row.color !== '' ? { color: row.color } : {},
     })
   }
   return out

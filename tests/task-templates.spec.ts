@@ -50,13 +50,20 @@ describe('templateToNewInput', () => {
     expect(input.prompt).toBe('do it')
   })
 
+  it('carries the accent color (inert shape rides, armed never)', () => {
+    const task = { ...sourceTask(), color: '#fff' }
+    const template = templateFromTask(task, 't-1', 'T')
+    expect(template.color).toBe('#fff')
+    const input = templateToNewInput(template)
+    expect(input.color).toBe('#fff')
+  })
+
   it('drops removed inert fields from legacy templates', () => {
     const rows = normalizeTemplates([
-      { id: 'a', name: 'A', title: 'x', priority: 9, labels: 'urgent', color: '' },
+      { id: 'a', name: 'A', title: 'x', priority: 9, labels: 'urgent' },
     ])
     expect((rows[0] as unknown as Record<string, unknown>)?.priority).toBeUndefined()
     expect((rows[0] as unknown as Record<string, unknown>)?.labels).toBeUndefined()
-    expect((rows[0] as unknown as Record<string, unknown>)?.color).toBeUndefined()
   })
 
   it('carries both attachment lanes (images + files ride, never one silently)', () => {

@@ -354,6 +354,11 @@ export interface TaskRecord {
    */
   viewedAt?: number
   /**
+   * A per-card accent color (hex string, applied as an inline tint — data,
+   * never a CSS literal). Absent = no accent.
+   */
+  color?: string
+  /**
    * Session automation rules — scheduled "send a preset instruction to one
    * of this task's sessions" rules (see automation.ts). Absent = none.
    */
@@ -381,6 +386,8 @@ export interface NewTaskInput {
   reasoningEffort?: string
   agentPreset?: string
   permission?: string
+  /** Accent color (hex string data, never CSS); absent = no accent. */
+  color?: string
 }
 
 /** The five kanban columns, in display order. */
@@ -629,6 +636,7 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
     ...input.reasoningEffort !== undefined ? { reasoningEffort: input.reasoningEffort } : {},
     ...input.agentPreset !== undefined ? { agentPreset: input.agentPreset } : {},
     ...input.permission !== undefined ? { permission: input.permission } : {},
+    ...input.color !== undefined && input.color !== '' ? { color: input.color } : {},
   }
 }
 

@@ -7,6 +7,7 @@
  * any per-surface styling drift.
  */
 import { type ReactNode } from 'react'
+import { PALETTE } from '../../core/colors.ts'
 import css from '../board.module.css'
 import { t } from '../locales.ts'
 import { Chip } from './Chip.tsx'
@@ -199,6 +200,71 @@ export function Icon({ name, className }: { name: IconName; className?: string }
     >
       <path d={ICON_PATHS[name]} />
     </svg>
+  )
+}
+
+/**
+ * THE one color-picker row of the whole board: preset palette dots + the
+ * native custom-color dot + the trailing 「移除颜色」 dot. Effect colors are
+ * DATA (applied inline from user choices), so the same row is safe wherever
+ * a data color is chosen — the card hover bar and the board's organize bar
+ * share exactly this grammar. Every entry is round and same-sized; the
+ * selected ring appears only when `value` truly equals the entry — never a
+ * guessed default, never a mixed shape.
+ */
+export function ColorSwatches({ value, onChange, none = true, custom = true }: {
+  value: string | undefined
+  onChange: (color: string | undefined) => void
+  /** Show the trailing 「移除颜色」 dot. */
+  none?: boolean
+  /** Show the native custom-color dot (trailing, before 「移除颜色」). */
+  custom?: boolean
+}) {
+  const isCustom = value !== undefined && !PALETTE.includes(value)
+  return (
+    <span className={css.tagSwatches}>
+      {PALETTE.map(color => (
+        <button
+          key={color}
+          type="button"
+          className={`${css.tagSwatch}${value === color ? ` ${css.tagSwatchOn}` : ''}`}
+          style={{ background: color }}
+          aria-label={color}
+          title={color}
+          onClick={() => { onChange(color) }}
+        />
+      ))}
+      {custom && (
+        /* The native custom-color dot: NOT a paint of the current value
+           (that read as a plain white circle next to 「移除颜色」 when no
+           custom color was picked — two white dots). The wrap carries the
+           look: the picked custom color when one IS active, a conic rainbow
+           affordance when not; the native input sits on top invisibly
+           (still opens the picker / stays keyboard-focusable). */
+        <span
+          className={`${css.tagCustomWrap}${isCustom ? ` ${css.tagSwatchOn}` : ` ${css.tagCustomEmpty}`}`}
+          style={isCustom ? { background: value } : undefined}
+          title={t('color.custom')}
+        >
+          <input
+            type="color"
+            className={css.tagCustomColor}
+            value={value ?? '#ffffff'}
+            aria-label={t('color.custom')}
+            onChange={event => { onChange(event.target.value) }}
+          />
+        </span>
+      )}
+      {none && (
+        <button
+          type="button"
+          className={`${css.tagSwatch} ${css.tagSwatchNone}${value === undefined ? ` ${css.tagSwatchOn}` : ''}`}
+          aria-label={t('card.colorNone')}
+          title={t('card.colorNone')}
+          onClick={() => { onChange(undefined) }}
+        />
+      )}
+    </span>
   )
 }
 

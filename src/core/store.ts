@@ -235,11 +235,15 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     // Due dates are removed from the product: old persisted rows drop the
     // field on read (no migration — absent is the only state).
     delete (task as { dueAt?: unknown }).dueAt
-    // Removed fields (priority/color/labels): old persisted rows drop them on
+    // Removed fields (priority/labels): old persisted rows drop them on
     // read (no migration — absent is the only state).
     delete (task as { priority?: unknown }).priority
-    delete (task as { color?: unknown }).color
     delete (task as { labels?: unknown }).labels
+    // The per-card accent color is a forward-compatible optional field:
+    // validate it loosely (old data keeps working untouched).
+    const rawColor = (row as Record<string, unknown>).color
+    if (typeof rawColor === 'string' && rawColor !== '') task.color = rawColor
+    else delete task.color
     // Attachments: element-level firewall (shared core predicates — a single
     // dirty element washes out, never the row, never a downstream crash).
     const rawImages = (row as Record<string, unknown>).promptImages

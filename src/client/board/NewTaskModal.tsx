@@ -30,6 +30,7 @@ function freshDraft(): TaskDraft {
     model: '',
     reasoningEffort: '',
     permission: '',
+    color: '',
     promptFiles: [],
   }
 }

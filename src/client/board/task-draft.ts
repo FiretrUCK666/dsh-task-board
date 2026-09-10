@@ -36,6 +36,10 @@ export interface TaskDraft {
   reasoningEffort: string
   /** Permission preset key; '' = session default. */
   permission: string
+  /** Accent color (hex string); '' = none. Edited through the form's swatch
+   *  row (the one shared grammar) — what the draft carries is always
+   *  visible, template stamps included. */
+  color: string
 }
 
 /** Normalize a parsed draft (a stored draft may predate a field — e.g.
@@ -71,6 +75,7 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
     model: parsed.model ?? '',
     reasoningEffort: parsed.reasoningEffort ?? '',
     permission: parsed.permission ?? '',
+    color: typeof parsed.color === 'string' ? parsed.color : '',
   }
 }
 
@@ -102,6 +107,7 @@ export function draftFromTask(task: TaskRecord): TaskDraft {  return {
     model: task.model ?? '',
     reasoningEffort: task.reasoningEffort ?? '',
     permission: task.permission ?? '',
+    color: task.color ?? '',
   }
 }
 
@@ -132,6 +138,7 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
     model: template.model ?? '',
     reasoningEffort: template.reasoningEffort ?? '',
     permission: template.permission ?? '',
+    color: template.color ?? '',
   }
 }
 
@@ -157,6 +164,7 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     ...draft.model !== '' ? { model: draft.model } : {},
     ...draft.reasoningEffort !== '' ? { reasoningEffort: draft.reasoningEffort } : {},
     ...draft.permission !== '' ? { permission: draft.permission } : {},
+    ...draft.color !== '' ? { color: draft.color } : {},
   }
 }
 
@@ -176,6 +184,7 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     model: draft.model !== '' ? draft.model : undefined,
     reasoningEffort: draft.reasoningEffort !== '' ? draft.reasoningEffort : undefined,
     permission: draft.permission !== '' ? draft.permission : undefined,
+    color: draft.color !== '' ? draft.color : undefined,
   }
 }
 
@@ -209,5 +218,6 @@ export function stampTemplate(draft: TaskDraft, stamped: TaskDraft): TaskDraft {
     model: userRouteComplete ? draft.model : stamped.model,
     reasoningEffort: userRouteComplete ? draft.reasoningEffort : stamped.reasoningEffort,
     permission: filledText(draft.permission) ? draft.permission : stamped.permission,
+    color: filledText(draft.color) ? draft.color : stamped.color,
   }
 }

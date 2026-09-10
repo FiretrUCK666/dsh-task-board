@@ -27,6 +27,8 @@ export function matchTask(
     description: string
     prompt: string
     executions: readonly { comment?: string }[]
+    /** Card accent color (for the `has:color` qualifier). */
+    color?: string
   },
   query: string,
   sessionTitles: readonly string[] = [],
@@ -114,6 +116,7 @@ function matchQualifier(
     description: string
     prompt: string
     executions: readonly { comment?: string }[]
+    color?: string
   },
   qualifier: BoardQualifier,
   facets: BoardQueryFacets,
@@ -135,6 +138,7 @@ type QualifierTest = (
     description: string
     prompt: string
     executions: readonly { comment?: string }[]
+    color?: string
   },
   facets: BoardQueryFacets,
   value: string,
@@ -151,6 +155,7 @@ interface QualifierDef {
 
 const QUALIFIER_DEFS: Readonly<Record<string, QualifierDef>> = {
   'has:auto': { test: (_task, facets) => facets.hasAutomation === true },
+  'has:color': { test: task => task.color !== undefined },
   'is:unread': { test: (_task, facets) => facets.isUnviewed === true },
   'is:read': { test: (_task, facets) => facets.isUnviewed === false },
   'ws:': {

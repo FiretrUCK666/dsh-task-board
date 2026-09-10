@@ -28,6 +28,7 @@ function draft() {
     model: '',
     reasoningEffort: '',
     permission: '',
+    color: '',
   }
 }
 
@@ -51,12 +52,14 @@ describe('draft scalar converters', () => {
   it('draftFromTemplate carries run config and content', () => {
     const stamped = draftFromTemplate({
       id: 't', name: 'T', title: 'x', description: '', prompt: 'p',
-      provider: 'ty', model: 'tm',
+      provider: 'ty', model: 'tm', color: '#fff',
     })
     expect(stamped.provider).toBe('ty')
     expect(stamped.model).toBe('tm')
+    expect(stamped.color).toBe('#fff')
     const bare = draftFromTemplate({ id: 't', name: 'T', title: 'x', description: '', prompt: 'p' })
     expect(bare.provider).toBe('')
+    expect(bare.color).toBe('')
   })
 
   it('stampTemplate fills blanks only (touched fields always win)', () => {
@@ -67,8 +70,7 @@ describe('draft scalar converters', () => {
     // Touched fields survive; blanks fill from the template.
     const filled = stampTemplate({ ...empty, title: 'mine' }, template)
     expect(filled.title).toBe('mine')
-    expect(filled.description).toBe('D')
-    // A non-default status survives too.
+    expect(filled.description).toBe('D')    // A non-default status survives too.
     const moved = stampTemplate({ ...empty, status: 'todo' as const }, template)
     expect(moved.status).toBe('todo')
   })
