@@ -44,11 +44,28 @@ const cssFileByVirtualId = new Map<string, string>()
  * @returns the virtual id handed to the bundler.
  */
 function cssVirtualId(absolutePath: string): string {
-  const repositoryRelative = relative(REPOSITORY_ROOT, absolutePath)
-  const portable = repositoryRelative.startsWith('..') ? absolutePath : repositoryRelative.split(sep).join('/')
-  const virtualId = CSS_VIRTUAL_PREFIX + portable + CSS_VIRTUAL_SUFFIX
+  const virtualId = CSS_VIRTUAL_PREFIX + portableCssPath(absolutePath) + CSS_VIRTUAL_SUFFIX
   cssFileByVirtualId.set(virtualId, absolutePath)
   return virtualId
+}
+
+/**
+ * A machine-independent name for one stylesheet, used wherever a path could
+ * reach the output.
+ *
+ * Both the virtual module id and the CSS-Modules `filename` influence emitted
+ * bytes, and lightningcss derives its `[hash]` from the filename: feeding it an
+ * absolute path makes class names differ between the machine that built the
+ * artifact and every other machine, so identical sources compile to different
+ * bundles and a cross-platform consistency check can never pass. The
+ * repository-relative path is stable everywhere; the absolute path stays in
+ * `cssFileByVirtualId` for the actual file read.
+ * @param absolutePath - the resolved `.module.css` path.
+ * @returns the repository-relative path with forward slashes.
+ */
+function portableCssPath(absolutePath: string): string {
+  const repositoryRelative = relative(REPOSITORY_ROOT, absolutePath)
+  return repositoryRelative.startsWith('..') ? absolutePath : repositoryRelative.split(sep).join('/')
 }
 
 /**
@@ -285,7 +302,12 @@ function clientConfig(id: string, entry: string): UserConfig {
         this.addWatchFile(fileId)
         const source = await readFile(fileId)
         const { code, exports: cssExports } = transform({
-          filename: fileId,
+          // Portable, not the absolute path: lightningcss derives the
+          // `[hash]_[local]` prefix from this name, so an absolute path produces
+          // machine-specific class names and a bundle that only reproduces on
+          // the machine that built it. Neither stylesheet references url() or
+          // @import, so nothing depends on this being a real filesystem path.
+          filename: portableCssPath(fileId),
           code: source,
           cssModules: { pattern: '[hash]_[local]' },
           minify: true,
