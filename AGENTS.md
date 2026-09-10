@@ -211,6 +211,12 @@
 9. `git tag v<版本>` + `git push origin v<版本>`。
 10. 建 GitHub Release，正文写**人话更新说明**（用户看的是这个；市场的新版说明优先读
     Release，其次提交记录，最后 npm 发布时间。仓库里不放 CHANGELOG.md）。
+    **必须用 `scripts/github-release.mjs`**（`GITHUB_TOKEN=<pat> node scripts/github-release.mjs
+    <tag> <notes文件> --repo owner/name`）：说明是中文，而用 shell 一行命令发中文会静默损坏
+    ——PowerShell 的 `Invoke-WebRequest -Body <字符串>` 按请求 charset 编码，`application/json`
+    不带 charset 时把非 ASCII 全变成 `?`；改成手工转义 `\uXXXX` 又会被 `ConvertTo-Json`
+    再转义一次，把转义序列当字面文本存进去。两种都是 API 返回 2xx、只有打开 Release 页面
+    才看得出。该脚本从 UTF-8 文件读正文、按字节发送，并在写入后回读比对，不一致即报错。
 11. `npm publish --access public`（需要 npm 账号的 2FA 验证码，见下）。
 
 **停手（用户说「先别提交 / 只看效果」）**——只做到第 6 步，不 commit、不 push。
