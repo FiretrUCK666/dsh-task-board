@@ -55,36 +55,54 @@ const headers = {
   'content-type': 'application/json; charset=utf-8',
 }
 
-/** Send one request, failing loud on a non-2xx so a broken note never ships quietly. */
+/**
+ * Send one request. A non-2xx throws, so callers can treat "absent" as a normal
+ * outcome (looking up a release that does not exist yet is expected on a first
+ * publish); genuinely unexpected failures still surface with the API's message.
+ */
 async function call(url, init) {
   const response = await fetch(url, { ...init, headers })
   const text = await response.text()
   if (!response.ok) {
-    console.error(`GitHub API ${String(response.status)} for ${init?.method ?? 'GET'} ${url}`)
-    console.error(text.slice(0, 600))
-    process.exit(1)
+    const error = new Error(`GitHub API ${String(response.status)} for ${init?.method ?? 'GET'} ${url}`)
+    error.status = response.status
+    error.body = text.slice(0, 600)
+    throw error
   }
   return text === '' ? {} : JSON.parse(text)
 }
 
-// UTF-8 bytes go on the wire verbatim: Buffer.from(..., 'utf8') is the whole
-// point of this script.
-const body = Buffer.from(JSON.stringify({ name: tag, body: notes, draft: false, prerelease: false }), 'utf8')
-
-const existing = await call(`${api}/tags/${encodeURIComponent(tag)}`, { method: 'GET' }).catch(() => undefined)
-if (existing !== undefined && existing.id !== undefined) {
-  const updated = await call(`${api}/${String(existing.id)}`, { method: 'PATCH', body })
-  console.log(`updated release ${String(updated.name)} (${String(updated.html_url)})`)
-} else {
-  const created = await call(api, { method: 'POST', body: Buffer.from(JSON.stringify({ tag_name: tag, name: tag, body: notes, draft: false, prerelease: false }), 'utf8') })
-  console.log(`created release ${String(created.name)} (${String(created.html_url)})`)
+/** Look up a release by tag, treating "not found" as undefined. */
+async function findRelease(tag) {
+  try {
+    return await call(`${api}/tags/${encodeURIComponent(tag)}`, { method: 'GET' })
+  } catch (error) {
+    if (error.status === 404) return undefined
+    throw error
+  }
 }
 
-// Read the notes back and prove they survived the round trip.
-const check = await call(`${api}/tags/${encodeURIComponent(tag)}`, { method: 'GET' })
-if (check.body !== notes) {
-  console.error('round-trip mismatch: the stored notes differ from the file')
-  console.error(`stored ${String(check.body?.length)} chars, file ${String(notes.length)} chars`)
+try {
+  const existing = await findRelease(tag)
+  if (existing !== undefined && existing.id !== undefined) {
+    const updated = await call(`${api}/${String(existing.id)}`, { method: 'PATCH', body })
+    console.log(`updated release ${String(updated.name)} (${String(updated.html_url)})`)
+  } else {
+    const payload = Buffer.from(JSON.stringify({ tag_name: tag, name: tag, body: notes, draft: false, prerelease: false }), 'utf8')
+    const created = await call(api, { method: 'POST', body: payload })
+    console.log(`created release ${String(created.name)} (${String(created.html_url)})`)
+  }
+
+  // Read the notes back and prove they survived the round trip.
+  const check = await findRelease(tag)
+  if (check?.body !== notes) {
+    console.error('round-trip mismatch: the stored notes differ from the file')
+    console.error(`stored ${String(check?.body?.length)} chars, file ${String(notes.length)} chars`)
+    process.exit(1)
+  }
+  console.log(`notes verified: ${String(notes.length)} characters round-tripped intact`)
+} catch (error) {
+  console.error(error.message)
+  if (error.body !== undefined) console.error(error.body)
   process.exit(1)
 }
-console.log(`notes verified: ${String(notes.length)} characters round-tripped intact`)

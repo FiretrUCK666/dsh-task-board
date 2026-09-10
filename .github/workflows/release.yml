@@ -46,11 +46,13 @@ jobs:
         with:
           version: 11.21.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           # Never cache a release build: a stale cache can change what ships.
+          # (The `cache` input is what enables caching in setup-node; leaving it
+          # unset is how a release workflow stays uncached.)
           package-manager-cache: false
 
       # The npm bundled with Node is not guaranteed to be new enough for OIDC
