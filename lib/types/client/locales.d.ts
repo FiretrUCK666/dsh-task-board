@@ -284,6 +284,7 @@ export declare const zh: {
     'board.notifySnooze': string;
     'board.notifySnoozeTitle': string;
     'board.notifyApprove': string;
+    'board.notifyApproveBlocked': string;
     'board.notifyMarkOne': string;
     'board.notifyReview': string;
     'board.notifyReviewFailed': string;

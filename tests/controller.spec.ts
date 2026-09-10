@@ -284,6 +284,36 @@ describe('task mutations', () => {
     expect(completed.rules).toHaveLength(1)
   })
 
+  it('approveTask moves a quiescent task to done and marks it viewed', async () => {
+    // A frozen clock would settle in the same instant as creation (never
+    // unviewed) — advance it so the settlement really is newer content.
+    let now = NOW
+    const { controller, store, stub } = makeController(new StubExec(), { now: () => now })
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    await controller.runTask(task.id, 'manual')
+    const call = stub.runCalls[0]
+    now += 60_000
+    call.fire({ kind: 'settled', taskId: task.id, executionId: call.executionId, outcome: 'succeeded' })
+    expect(store.load()[0].status).toBe('review')
+    expect(taskUnviewed(store.load()[0])).toBe(true)
+    expect(controller.approveTask(task.id)).toBe(true)
+    const done = store.load()[0]
+    expect(done.status).toBe('done')
+    expect(taskUnviewed(done)).toBe(false)
+  })
+
+  it('approveTask refuses a task with an open round (column and automation untouched)', async () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
+    await controller.runTask(task.id, 'manual')
+    expect(controller.approveTask(task.id)).toBe(false)
+    const kept = store.load()[0]
+    expect(kept.status).toBe('running')
+    expect(kept.schedule?.enabled).toBe(true)
+    expect(controller.approveTask('unknown-id')).toBe(false)
+  })
+
   it('a done-disarmed rule stays off when the task moves back to a live column', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!

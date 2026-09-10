@@ -173,9 +173,13 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // 都不动键，关屉或切分组即清，与动态组同纪律）。
   const [expandedFoldKey, setExpandedFoldKey] = useState<string | undefined>(undefined)
   useEffect(() => { setExpandedFoldKey(undefined) }, [notifyFilter])
+  useEffect(() => { setApproveBlockedKey(undefined) }, [notifyFilter])
   // 稍后见（内存态）：key → snooze 时刻；新动静（note.at 推进）自然再浮起。
   const [snoozed, setSnoozed] = useState<Record<string, number>>({})
   const [failedSession, setFailedSession] = useState<string | undefined>(undefined)
+  // 被门禁拦下的通过（卡还有在跑轮次）：行内就近解释原因。触屏没有 hover，
+  // 纯 title 说明不可达——与 failedSession 同一行的内反馈文法，关屉即清。
+  const [approveBlockedKey, setApproveBlockedKey] = useState<string | undefined>(undefined)
   // 未见水位（内存态，不进同步）：上次开屉瞬间看到的最大时刻。开屉灭点留数 —
   // 点只为开屉后新到的行而亮（到达感），数仍是全部未处理（待办量）。跨端不
   // 同步是有意的：unseen 是本端"眼睛"，unread 是全局"账"。
@@ -184,6 +188,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     if (!showNotify) {
       setSnoozed({})
       setFailedSession(undefined)
+      setApproveBlockedKey(undefined)
       setDrawerOpenedAt(undefined)
       setExpandedFoldKey(undefined)
     }
@@ -1797,7 +1802,14 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                                 <button
                                   type="button"
                                   className={css.feedAction}
-                                  onClick={() => { controller.moveTask(note.taskId, 'done') }}
+                                  onClick={() => {
+                                    // The single approve door (see approveTask):
+                                    // busy cards refuse untouched and explain
+                                    // inline — never a silent no-op, never a
+                                    // mid-flight yank into done.
+                                    if (controller.approveTask(note.taskId)) setApproveBlockedKey(undefined)
+                                    else setApproveBlockedKey(key)
+                                  }}
                                 >
                                   {t('board.notifyApprove')}
                                 </button>
@@ -1814,6 +1826,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                         </div>
                         {failedSession === note.sessionId && (
                           <p className={css.detailHint}>{t('detail.sessionUnavailable')}</p>
+                        )}
+                        {approveBlockedKey === key && (
+                          <p className={css.detailHint}>{t('board.notifyApproveBlocked')}</p>
                         )}
                       </li>
                     )

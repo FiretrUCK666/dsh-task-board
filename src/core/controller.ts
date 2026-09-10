@@ -2001,6 +2001,26 @@ export class BoardController {
     this.persistAndNotify()
   }
 
+  /**
+   * Approve a review task from the notification center: mark it viewed and
+   * move it to done — but never while any of its rounds is still open. An
+   * approve mid-flight would yank the column AND hard-disarm the automation
+   * driving the live sessions (moving to done is a hard stop, see
+   * {@link moveTask}), so a busy card refuses untouched. The UI disables —
+   * or, where the reason must stay reachable, explains — through this same
+   * judgment; the card drop and the detail move buttons already enforce the
+   * identical busy law at their own doors.
+   * @param taskId - the task to approve.
+   * @returns true when approved; false when unknown or busy (state untouched).
+   */
+  approveTask(taskId: string): boolean {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined || hasOpenRun(task)) return false
+    this.markTaskViewed(taskId)
+    this.moveTask(taskId, 'done')
+    return true
+  }
+
   deleteTask(id: string): void {
     this.tasks = this.tasks.filter(task => task.id !== id)
     if (this.selectedTaskId === id) this.selectedTaskId = undefined
