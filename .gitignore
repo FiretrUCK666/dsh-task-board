@@ -12,6 +12,10 @@ coverage/
 *.log
 .DS_Store
 
+# `npm pack` writes its tarball into the repository root. It is a build output
+# for a one-off inspection or publish, never a source file.
+*.tgz
+
 # NOTE: lib/ is NOT ignored. It is the published artifact — the browser half
 # (lib/client.js) and the host half (lib/index.js) that a `dsh plugin add`
 # installs straight from this repository without running a build. It must be
