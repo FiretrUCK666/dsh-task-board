@@ -103,6 +103,12 @@ With the plugin marketplace installed, press Update on the Installed tab. Otherw
 dsh plugin --profile web add @firetruck666/dsh-task-board@latest
 ```
 
+Or, if you installed from the GitHub source, point the same command at the repository — the latest commit on the default branch is what gets installed:
+
+```sh
+dsh plugin --profile web add github:FiretrUCK666/dsh-task-board
+```
+
 Restart `dsh web` afterwards.
 
 ## Building from source
