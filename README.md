@@ -8,7 +8,7 @@ DeepSeek Harness 的任务看板插件。它在 Web 界面的侧边栏底部加�
 
 ## 环境要求
 
-- DeepSeek Harness `0.1.5-rc.1` 或更高。插件跟随 DSH 的版本更新，升级 DSH 后如遇加载问题，把本插件一起更新即可。
+- DeepSeek Harness `0.1.5-rc.1` 或更高。`0.1.5-rc.1` 是**已验证的最低版本**：这个版本上确认可用。更高的版本会跟随更新，但没有逐一验证过，所以不保证。加载失败时先按「常见问题」里的说明处理。
 - Node.js `^22.19.0` 或 `>= 24.0.0`
 - pnpm 10 或更高
 - DSH 的 `web` profile
@@ -188,12 +188,23 @@ pnpm verify      # 独立插件静态门禁
 
 `lib/` 是构建产物，但它随仓库一起提交。原因是从 GitHub 或 npm 安装时只会复制文件，不会执行构建，仓库里没有 `lib/` 的话装完就启动不了。改完源码要重新构建，并把 `lib/` 和源码放在同一次提交里（CI 会检查两者是否一致）。
 
-如果你想在这个仓库上改代码做贡献，仓库根目录的 `AGENTS.md` 记录了项目的约定、架构索引和发布流程。
+想在这个仓库上改代码做贡献，先读 [CONTRIBUTING.md](CONTRIBUTING.md)（开发环境、提交前要跑什么、哪些是硬性规范）；仓库根目录的 `AGENTS.md` 则记录了项目的约定、架构索引与发布流程，是给 AI 助手在这个仓库里工作时用的依据。
 
 ## 常见问题
 
 **装完刷新页面看不到入口。**
 host 半区在服务端进程里加载，必须重启 `dsh web`，只刷新页面不够。
+
+**升级 DeepSeek Harness 之后插件加载失败（页面提示 Failed to load plugins）。**
+DeepSeek Harness 的内部接口会随版本变化，本插件需要跟着改。先做这两步：
+
+1. 把本插件更新到最新版，然后重启 `dsh web`：
+
+   ```sh
+   dsh plugin --profile web add @firetruck666/dsh-task-board@latest
+   ```
+
+2. 仍然失败，说明本插件还没跟上你用的那个 DSH 版本。请到 [Issues](https://github.com/FiretrUCK666/dsh-task-board/issues) 提交，附上三个信息：你的 DeepSeek Harness 版本、本插件版本（在设置的已安装插件列表里看）、页面上那段报错原文。有这三样就能直接定位。
 
 **改了代码没生效。**
 改 host 半区（`src/index.ts`、`src/host/`）需要重启 `dsh web`；改 client 半区刷新页面即可。两种情况都要先 `pnpm build`。

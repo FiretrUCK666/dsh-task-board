@@ -61,6 +61,11 @@
 `git config user.name`、`npm whoami`。**仓库是这些事实的唯一权威来源**——换人、换
 remote、换 npm 作用域时，改这些真实配置即可，本文不需要跟着改，也不会失准。
 
+**这条只管本文，不管给人看的文档**。README 与 CONTRIBUTING 面向的使用者和贡献者，
+要能直接复制粘贴，因此**必须写具体地址与命令**；易主时跟着改一次即可（改动集中在
+安装命令与 Issue 链接几处）。区分标准是**读者是谁**：读者是 AI（需要推理、会读仓库）
+就现场取值，读者是人（需要照做）就给现成命令。
+
 **别人 fork 之后怎么办**：直接沿用即可。本文的机制与规范描述的是这个项目的做法，对
 任何接手者同样成立；而所有"取值"都是现场读的，会自动指向他自己的仓库与账号。他若想改
 工作方式（例如换分支模型、换 CI），按下面的编辑规则改本文即可——这正是本文"是活的"
@@ -232,11 +237,11 @@ remote、换 npm 作用域时，改这些真实配置即可，本文不需要跟
 10. 建 GitHub Release，正文写**人话更新说明**（用户看的是这个；市场的新版说明优先读
     Release，其次提交记录，最后 npm 发布时间。仓库里不放 CHANGELOG.md）。
     **必须用 `scripts/github-release.mjs`**（`GITHUB_TOKEN=<pat> node scripts/github-release.mjs
-    <tag> <notes文件> --repo owner/name`）：说明是中文，而用 shell 一行命令发中文会静默损坏
-    ——PowerShell 的 `Invoke-WebRequest -Body <字符串>` 按请求 charset 编码，`application/json`
-    不带 charset 时把非 ASCII 全变成 `?`；改成手工转义 `\uXXXX` 又会被 `ConvertTo-Json`
-    再转义一次，把转义序列当字面文本存进去。两种都是 API 返回 2xx、只有打开 Release 页面
-    才看得出。该脚本从 UTF-8 文件读正文、按字节发送，并在写入后回读比对，不一致即报错。
+    <tag> <notes文件> --repo owner/name`）。规则是**非 ASCII 正文不经 shell 传递**：写进
+    UTF-8 文件，由脚本按字节发送。理由与平台无关——shell 的引用与编码规则各不相同（同一条
+    命令在不同系统上行为不同），凡把中文拼进命令行或由 shell 拼请求体，都可能被静默改写；
+    而这类损坏的共性是**API 仍返回 2xx**，只有打开页面才看得出。脚本另在写入后回读比对，
+    不一致即报错。要发英文说明也用同一入口，理由相同：少一条需要分平台验证的路径。
 11. `npm publish --access public`（需要 npm 账号的 2FA 验证码，见下）。
 
 **停手（用户说「先别提交 / 只看效果」）**——只做到第 6 步，不 commit、不 push。
@@ -359,13 +364,14 @@ import 走 external、哪些必须内联。它与真实 shell 不符时会在运
 
 - **不要把绝对路径交给会把它写进产物、或用来派生标识的工具**。lightningcss 的
   CSS Modules `[hash]_[local]` 前缀取自传给 `transform()` 的 `filename`——传绝对路径
-  会让同一份 CSS 在 Windows 与 Linux 上编译出不同类名（曾见本地 `JIHNWa_*`、Linux
-  另一个前缀），`lib/client.js` 于是永远无法在别的机器上复现。构建脚本一律传
-  **仓库相对路径**（`shared/tsdown.client.ts` 的 `portableCssPath()`）。
+  会让同一份 CSS 在不同目录（乃至不同系统）下编译出不同类名，`lib/client.js` 于是
+  永远无法在别的机器上复现。构建脚本一律传**仓库相对路径**
+  （`shared/tsdown.client.ts` 的 `portableCssPath()`）。
 - **工作区行尾必须与 `.gitattributes` 一致**。sourcemap 的 `sourcesContent` 内嵌源码
   原文，工作区残留 CRLF 会被原样写进 `lib/client.js.map`（曾见 16 个源文件、约 8000
-  处差异），而 Linux 检出是 LF。修正：`git rm --cached -r . && git reset --hard`
-  按 attributes 重新检出后重建。
+  处差异），而 CI 检出是 LF。修正：`git rm --cached -r . && git reset --hard`
+  按 attributes 重新检出后重建。这条与用哪个系统开发无关：只要检出工具按平台改写行尾，
+  就可能触发。
 - **自检手段**：把仓库复制到另一个绝对路径、装依赖、构建，产物应逐字节相同。
   CI 的「Committed artifacts match a fresh build」就是这条规则在 Linux 上的常驻检查；
   它红了先怀疑以上两点，不要急于提交「本机能过」的产物。

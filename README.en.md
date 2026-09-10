@@ -10,7 +10,7 @@ The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 
 ## Requirements
 
-- DeepSeek Harness `0.1.5-rc.1` or later. The plugin tracks DSH releases; if loading breaks after a DSH upgrade, update the plugin alongside it.
+- DeepSeek Harness `0.1.5-rc.1` or later. `0.1.5-rc.1` is the **verified minimum**: the plugin is known to work there. Later releases are tracked but not individually tested, so they are not guaranteed. If loading fails, follow the Troubleshooting section.
 - Node.js `^22.19.0` or `>= 24.0.0`
 - pnpm 10 or newer
 - The DSH `web` profile
@@ -121,11 +121,21 @@ pnpm verify
 
 `lib/` is a build artifact, but it is committed. Installing from GitHub or npm only copies files and never runs a build, so a repository without `lib/` would install a plugin that cannot start. Rebuild after changing source and commit `lib/` together with that change; CI checks that the two agree.
 
-`AGENTS.md` in the repository root documents the project conventions, the architecture index and the release process.
+To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md) first (development environment, what to run before submitting, the hard rules). `AGENTS.md` in the repository root records the project conventions, the architecture index and the release process; it is the reference AI assistants work from in this repository.
 
 ## Troubleshooting
 
 **No sidebar entry after installing.** The host half loads in the server process. Restart `dsh web`; refreshing the page is not enough.
+
+**The plugin fails to load after a DeepSeek Harness upgrade (the page says "Failed to load plugins").** DSH's internal interfaces change between releases, and the plugin has to follow. Two steps:
+
+1. Update the plugin to the latest release, then restart `dsh web`:
+
+   ```sh
+   dsh plugin --profile web add @firetruck666/dsh-task-board@latest
+   ```
+
+2. If it still fails, the plugin has not caught up with your DSH version yet. Please open an [issue](https://github.com/FiretrUCK666/dsh-task-board/issues) with three things: your DeepSeek Harness version, the plugin version (shown in Settings, installed plugins), and the exact error text from the page. Those three are enough to locate the cause.
 
 **A code change had no effect.** Changes under `src/index.ts` or `src/host/` need a `dsh web` restart; client-side changes only need a page refresh. Run `pnpm build` first in both cases.
 
