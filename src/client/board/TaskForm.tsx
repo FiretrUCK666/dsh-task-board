@@ -18,7 +18,7 @@ import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { AttachmentStrip, attachBusyLabel } from './AttachmentStrip.tsx'
-import { MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
+import { MAX_COMMENT_FILES, MAX_COMMENT_IMAGES, MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
 import { useComposerImages } from './composer-images.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { RunConfigFields } from './RunConfigFields.tsx'
@@ -136,7 +136,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, with
           busyLabel={attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined}
           error={attachments.error}
         />
-        <span className={css.fieldHint}>{t('new.promptImagesHint', { max: String(MAX_TASK_IMAGES) })}</span>
+        <span className={css.fieldHint}>{t('new.attachHint', { maxImages: String(MAX_TASK_IMAGES), commentImages: String(MAX_COMMENT_IMAGES), commentFiles: String(MAX_COMMENT_FILES) })}</span>
       </div>
 
       {/* Landing-column selector: new-task modal only. Choosing a column is

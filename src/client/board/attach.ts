@@ -107,6 +107,10 @@ export const MAX_TASK_IMAGES = 3
  *  generous, but a hard edge so a whole album drop cannot balloon one send). */
 export const MAX_COMMENT_IMAGES = 9
 
+/** How many non-image files one send may carry (the twin cap of images —
+ *  files ride receipts, not bytes, but the strip still needs an edge). */
+export const MAX_COMMENT_FILES = 5
+
 /**
  * PURE decision for one candidate file (unit-tested): the intake route.
  * Images route to the canvas lane; EVERYTHING else routes to the file lane

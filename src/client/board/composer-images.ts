@@ -14,7 +14,7 @@
  */
 import { useCallback, useRef, useState } from 'react'
 import { t } from '../locales.ts'
-import { encodeImageFile, intakeDecision, type DraftFile, type DraftImage, type ImageBudget, type ImageRejectReason } from './attach.ts'
+import { encodeImageFile, intakeDecision, MAX_COMMENT_FILES, type DraftFile, type DraftImage, type ImageBudget, type ImageRejectReason } from './attach.ts'
 
 /** Image-lane or file-lane for one picked file (pure routing, no I/O). */
 function intakeDecisionOf(file: File): 'image' | 'file' {
@@ -222,7 +222,7 @@ export function useComposerImages(
     setError(undefined)
   }, [])
 
-  const maxFiles = filesOpts?.maxFiles ?? 5
+  const maxFiles = filesOpts?.maxFiles ?? MAX_COMMENT_FILES
   const addFiles = useCallback(async (picked: FileList | File[]): Promise<void> => {
     const list = Array.from(picked)
     if (list.length === 0) return
