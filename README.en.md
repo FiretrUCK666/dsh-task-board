@@ -1,5 +1,7 @@
 # dsh-task-board
 
+[中文](README.md) | English
+
 A task-board plugin for the DeepSeek Harness web GUI. It adds a **Task Board** entry at the bottom of the sidebar and manages work on a five-column kanban board, where each task is actually executed by a real DSH session and its status is written back to the card.
 
 The plugin does not modify DSH source, and removing it restores the interface. Board data lives on the DSH host process, so a desktop and a phone pointed at the same deployment see the same board, synchronised over SSE. Narrow screens switch to a compact layout.
@@ -8,7 +10,7 @@ The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 
 ## Requirements
 
-- DeepSeek Harness `0.1.5-rc.1` or a later compatible release
+- DeepSeek Harness `0.1.5-rc.1` or later. The plugin tracks DSH releases; if loading breaks after a DSH upgrade, update the plugin alongside it.
 - Node.js `^22.19.0` or `>= 24.0.0`
 - pnpm 10 or newer
 - The DSH `web` profile

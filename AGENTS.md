@@ -247,37 +247,51 @@ push 之后 npm 不会自动变化，npm 发布之后远端也不会自动变化
 ### 身份与发布前检查
 
 - **插件 id 与包名是两件事**，见「命名矩阵」。改名只动包身份，不动 id 与数据键。
-- 提交身份：`user.name` = `FiretrUCK`，`user.email` = GitHub noreply 地址（不暴露私人邮箱）。
+- **本文件不绑定具体账号**：仓库与包可能易主、复用或由他人接手，因此本文只写"怎么查"，
+  不写死 GitHub 用户名、npm 作用域或邮箱。需要具体值时现场读 `package.json` 的
+  `name` / `repository.url`（它们是这些身份的唯一权威来源），或 `git config user.name`、
+  `npm whoami`。下面的步骤里凡是出现账号名的地方，都按这个方式取。
+- 提交身份：`user.name` 用仓库所有者的常用署名，`user.email` 用 GitHub 的 noreply 地址
+  （形如 `<id>+<login>@users.noreply.github.com`，从 `package.json` 的仓库地址或
+  `git config` 现场确认，不写死具体值，避免暴露私人邮箱）。
 - 发布前必查：`pnpm verify`（含产物不得出现本机路径、不得出现凭据、无 emoji 三项审计）；
   `npm pack` 产物装进隔离 profile 能真实加载，不用 `link:` 代替。
-- npm 强制 2FA：发布需要一个由用户手机验证器生成的 6 位验证码（30 秒有效），因此
-  **发布动作由用户在自己终端执行**，agent 准备好一切并给出确切命令。
+- **发布方式优先可信发布（OIDC）**：仓库已带 `.github/workflows/release.yml`，推 tag 即
+  自动构建、测试并发布，无需人工验证码。前提是该包在 npm 网站上配置了对应的
+  Trusted Publisher（组织/用户名、仓库名、工作流文件名 `release.yml`、允许 `npm publish`）。
+  未配置时工作流会在 Publish 步骤失败（npm 返回 404 ── 权限不足时它不区分"无权"与"不存在"），
+  此时退回手动发布：`npm publish --access public`，需要账号 2FA 的一次性验证码，
+  **由账号持有人在自己终端执行**（agent 准备好一切并给出确切命令）。
 - 不提交：`node_modules/`；**`lib/` 必须提交**（安装时不执行构建，缺了别人起不来）。
 
 
-### 依赖版本同步（硬性，用户不必每次都提）
+### 依赖版本同步（硬性，不必每次交代）
 
-SDK 版本**必须跟随实际运行的 DSH**，不是"能跑就行"的宽松范围。版本号有两条已核实
-的规律：
+SDK 版本**必须跟随实际运行的 DSH**──不写死、不靠宽松范围蒙过去，每次都在现场查。
+本节只写**规律与查法**，不写具体版本号（版本号会过期，写进来就是下一个坑）。
 
-- `@deepseek-ai/dsh-*` 的版本号与 DSH 本体**同号**（本体 `0.1.5-rc.1` → SDK 同为
-  `0.1.5-rc.1`）；`@deepseek-ai/cordis` 走自己的 4.x 线。
-- 这些包在 npm 上的 **`latest` dist-tag 可能过期**（曾见 `latest` 停在 `0.0.1-rc.1`
-  而实际已有 `0.1.5-rc.1`）。因此**不得用 `npm view <pkg> version` 判断最新**；要用
-  `npm view <pkg> versions --json` 取列表末项，并逐个包确认该版本确实存在（`dsh-client-runtime`
-  就停在旧版、没有新号）。
+两条必须知道的规律：
 
-同步动作（发现或执行 DSH 升级后主动做，不必等用户要求）：
+- **SDK 与 DSH 本体同号**：`@deepseek-ai/dsh-*` 的版本号与正在运行的 DSH 一致；
+  `@deepseek-ai/cordis` 走自己的一条线，不与本体同号。**个别包会停更**（不再跟随本体
+  出号），所以每个包都要单独确认目标版本确实存在，不能假定"同号"普遍成立。
+- **npm 的 `latest` dist-tag 不可信**：这些包的 `latest` 可能停在很旧的版本，而实际
+  已发布更新的版本。因此**不得用 `npm view <pkg> version` 判断最新**（它读的就是
+  `latest`）。一律用 `npm view <pkg> versions --json` 取完整列表，从末尾找目标版本。
 
-1. 用 `node -p "require('<dsh 安装目录>/package.json').version"` 读**实际运行的** DSH 版本。
-2. 把它写进 `package.json` 的 `devDependencies` 与 `peerDependencies`，并同步 README 的
-   「环境要求」。`peerDependencies` 用 `>=<该版本>` 表达"不低于"，避免把用户钉死。
+同步动作（发现或执行 DSH 升级后主动做，不必等要求）：
+
+1. 读**实际运行的** DSH 版本，作为目标版本：
+   `node -p "require('<dsh 安装目录>/package.json').version"`（安装目录用
+   `require.resolve` 或 `npm root -g` 现场求，不要写死）。
+2. 逐个包确认该版本存在（见上「规律」），再写进 `package.json` 的 `devDependencies`
+   与 `peerDependencies`，并同步 README 的「环境要求」。`peerDependencies` 用
+   `>=<该版本>` 表达"不低于"，避免把使用者钉死。
 3. `pnpm install` —— pnpm 会自动把新版本补进 `pnpm-workspace.yaml` 的
    `minimumReleaseAgeExclude`（新版本未过发布冷静期，不加会被拦）。
-4. **迁移真正的破坏性变更**：同步后 `pnpm typecheck` + `pnpm test` 全绿才算完成。
-   版本跳跃常伴随 API 改名/移除（已遇：`dsh-settings` 的 `settingsNamespace()` /
-   `installSettingsSection()` 在 0.1.5-rc.1 被替换为类型级命名空间与
-   `ctx.settings.installSection()`）。类型报错就是信号，按新契约改写，不要靠 `any` 绕过。
+4. **迁移破坏性变更**：同步后 `pnpm typecheck` + `pnpm test` 必须全绿。跨版本升级
+   常伴随 API 改名/移除，类型报错就是信号──按新契约改写，不要用 `any` 绕过。
+   `pnpm test` 里若有官方文法镜像的 spec，其期望值也要同步（那是逐字镜像，不是偏好）。
 5. 重新构建并**验证运行时可加载**：`lib/index.js` 必须能在该 DSH 上 import 成功
    （`node -e "import(...)"`），`lib/client.js` 的注册 id 必须等于包名（见下）。
 6. 用户可见改动 → bump patch，走日常闭环。
@@ -290,9 +304,9 @@ SDK 版本**必须跟随实际运行的 DSH**，不是"能跑就行"的宽松范
 ### 平台模块表跟随 shell
 
 `shared/web-platform.ts` 的 `PLATFORM_MODULES` 是浏览器模块表的**镜像**，决定哪些
-import 走 external、哪些必须内联。list 与真实 shell 不符时：多列一个已被移除的模块
-（曾见 `dsh-client-web-react`、`dsh-client-schema-form` 在 0.1.5-rc.1 消失）、或少列
-一个新增的，都会在运行时炸。**核对方法**：读
+import 走 external、哪些必须内联。它与真实 shell 不符时会在运行时炸——两种方向都危险：
+列了一个已被移除的模块（shell 换实现时这类模块会消失），或少列一个新增的。因此
+**每次 DSH 升级都要重新核对**，不要假定这份清单长期有效。**核对方法**：读
 `<dsh>/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-*.js`，搜
 `__ModuleLoader__` 附近的 seed 对象（`react` 家族 + `@deepseek-ai/dsh-client-*`）。
 
@@ -326,12 +340,17 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 ### 命名矩阵（硬性规范 3，新增标识不得偏离）
 
 **插件 id 与包名是两个身份，不得混用**：id 是加载与数据身份的根，包名只是安装标识。
-包名带作用域（`@firetruck666/dsh-task-board`）不改变任何 id、路由、存储单元或数据键。
+包名带作用域不改变任何 id、路由、存储单元或数据键。
+
+**本表是规格，不是账号绑定**：表中的包名必须与 `package.json` 的 `name` 逐字一致
+（改错一个字符就加载不了），所以照抄即可；但它是**从 `package.json` 读出来**的值，
+不是本文"认领"某个账号。若项目易主或换作用域，改 `package.json` 后同步这张表即可，
+本文其余部分不需要跟着变。
 
 | 维度 | 值 |
 | --- | --- |
 | **插件 id**（行 id / 文件夹名 / 设置命名空间 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 设置卡 slot） | `dsh-task-board` |
-| **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / **客户端 bundle 的 `__ModuleLoader__` 注册 id** / `/plugins/<包名>/client.js`） | `@firetruck666/dsh-task-board` |
+| **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / **客户端 bundle 的 `__ModuleLoader__` 注册 id** / `/plugins/<包名>/client.js`） | 以 `package.json` 的 `name` 为准（当前为 `@firetruck666/dsh-task-board`，**含 npm 作用域**） |
 | 设置路由 | `/api/dsh-task-board/settings` |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |

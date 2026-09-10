@@ -1,12 +1,14 @@
 # 任务看板（dsh-task-board）
 
+[English](README.en.md) | 中文
+
 DeepSeek Harness 的任务看板插件。它在 Web 界面的侧边栏底部加一个「任务看板」入口，用五列看板管理任务；任务交给 DSH 自己的会话真实执行，状态自动回写到卡片上。
 
 插件不修改 DSH 源码，卸载后界面恢复原状。看板数据保存在 DSH 主进程（host）一侧，电脑和手机打开同一个部署看到的是同一块板，改动经 SSE 实时同步；窄屏自动进入紧凑布局。
 
 ## 环境要求
 
-- DeepSeek Harness `0.1.5-rc.1` 或更高的兼容版本
+- DeepSeek Harness `0.1.5-rc.1` 或更高。插件跟随 DSH 的版本更新，升级 DSH 后如遇加载问题，把本插件一起更新即可。
 - Node.js `^22.19.0` 或 `>= 24.0.0`
 - pnpm 10 或更高
 - DSH 的 `web` profile
