@@ -9,9 +9,6 @@
  * supplies the linked titles from its existing resolvers (no new data
  * plumbing — the haystack is assembled at the call site).
  */
-import { dueStateOf } from './card-view.ts'
-import { isTaskStatus } from '../../core/tasks.ts'
-
 /** All searchable text of one task (the caller appends session titles). */
 export function taskHaystack(
   task: { title: string; description: string; prompt: string; executions: readonly { comment?: string }[] },
@@ -36,10 +33,6 @@ export function matchTask(
     priority?: number
     /** Card labels (for the `label:` qualifier, already lowercase). */
     labels?: readonly string[]
-    /** Card column (for the `due:` qualifiers — only live columns carry dues). */
-    status?: string
-    /** Due instant (for the `due:` qualifiers). */
-    dueAt?: number
   },
   query: string,
   sessionTitles: readonly string[] = [],
@@ -127,8 +120,6 @@ function matchQualifier(
     color?: string
     priority?: number
     labels?: readonly string[]
-    status?: string
-    dueAt?: number
   },
   qualifier: BoardQualifier,
   facets: BoardQueryFacets,
@@ -143,56 +134,12 @@ function matchQualifier(
   return false
 }
 
-/** Board keyboard shortcuts: OS-agnostic single keys (no modifiers, so touch
- *  loses nothing and the OS/browser keep theirs). Discoverable through the
- *  `?` cheatsheet, which lists exactly this set. */
-export type BoardShortcut = 'focus-search' | 'clear-filter' | 'toggle-help'
-
-/**
- * Whether a keydown target is mid-typing: inside an editable, or composing
- * text (CJK input method wedges `isComposing`/229 while the candidate window
- * lives outside any input — without this guard a `/`, `x` or `?` meant as
- * pinyin/标点 would yank focus, clear the filter or pop the cheatsheet).
- * THE one typing judgment: callers pass its answer as `typing` instead of
- * re-deriving it, so adding a key never forks the predicate.
- */
-export function isShortcutTyping(
-  target: unknown,
-  event: { isComposing?: boolean; keyCode?: number },
-): boolean {
-  if (event.isComposing === true || event.keyCode === 229) return true
-  if (target === null || typeof target !== 'object') return false
-  const closest = (target as { closest?: unknown }).closest
-  if (typeof closest !== 'function') return false
-  return (closest as (selectors: string) => unknown)
-    .call(target, 'input, textarea, select, [contenteditable="true"]') !== null
-}
-
-/**
- * Map one keydown onto a board shortcut (`/` focuses the filter, `x` clears
- * it, `?` toggles the cheatsheet). Never fires while typing in an editable —
- * inputs keep their keystrokes — nor with modifiers held.
- */
-export function boardShortcutOf(
-  event: { key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean },
-  typing: boolean,
-): BoardShortcut | undefined {
-  if (typing) return undefined
-  if (event.ctrlKey === true || event.metaKey === true || event.altKey === true) return undefined
-  if (event.key === '/') return 'focus-search'
-  if (event.key === 'x' || event.key === 'X') return 'clear-filter'
-  if (event.key === '?') return 'toggle-help'
-  return undefined
-}
-
 /** One qualifier predicate: task fields + caller-resolved facets + the value. */
 type QualifierTest = (
   task: {
     color?: string
     priority?: number
     labels?: readonly string[]
-    status?: string
-    dueAt?: number
   },
   facets: BoardQueryFacets,
   value: string,
@@ -213,19 +160,6 @@ const QUALIFIER_DEFS: Readonly<Record<string, QualifierDef>> = {
   'has:priority': { test: task => task.priority !== undefined },
   'is:unread': { test: (_task, facets) => facets.isUnviewed === true },
   'is:read': { test: (_task, facets) => facets.isUnviewed === false },
-  // Due qualifiers read the card's day state (the same fact the due chips
-  // render — never a second date judgment). `due:today` is the Today lens
-  // (today's dues PLUS overdue — an undone overdue is still today's work);
-  // `due:overdue` is the strictly-past subset. Both skip done/review
-  // columns with the chips (a finished card is never "due").
-  'due:today': {
-    test: task => task.status !== undefined && isTaskStatus(task.status)
-      && dueStateOf({ status: task.status, dueAt: task.dueAt }) !== undefined,
-  },
-  'due:overdue': {
-    test: task => task.status !== undefined && isTaskStatus(task.status)
-      && dueStateOf({ status: task.status, dueAt: task.dueAt }) === 'overdue',
-  },
   'ws:': {
     test: (_task, facets, value) => (facets.workspaceTitle ?? '').toLowerCase().includes(value),
     freeText: true,
@@ -303,20 +237,6 @@ export function applyCompletion(query: string, candidate: string): string {
   const last = tokens[tokens.length - 1]
   if (last === undefined) return candidate
   return `${query.slice(0, query.length - last.length)}${candidate}`
-}
-
-/** One cheatsheet row: the key plus its current-language description. */
-export interface CheatRow {
-  key: string
-  text: string
-}
-
-/** Whether a cheatsheet row survives the filter (blank = all; key or text
- *  substring, case-insensitive — the same sieve spirit as the task filter). */
-export function matchCheatRow(row: CheatRow, query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (q === '') return true
-  return row.key.toLowerCase().includes(q) || row.text.toLowerCase().includes(q)
 }
 
 /** Split a filter query into removable tokens — THE one scanner both the

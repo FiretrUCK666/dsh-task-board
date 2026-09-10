@@ -915,12 +915,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-3);
 }
 
-/* Compact navigator shares the column over-limit tone (text only, no ring —
-   the tab itself is already a button, so no extra affordance is needed). */
-.columnTabCount[data-over='true'] {
-  color: var(--dsw-alias-state-warn-primary);
-}
-
 .column {
   display: flex;
   flex-direction: column;
@@ -963,27 +957,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   line-height: inherit;
   color: var(--dsh-tb-text-3);
   /* Single-layer solid pill: an rgba pill on a translucent column would
-     wash out to a double fade. The transparent border reserves the over
-     state's ring width up front, so toggling over never moves layout by
-     even a pixel (no hand-computed padding compensation). */
+     wash out to a double fade. */
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid transparent;
   border-radius: 999px;
   padding: 0 7px;
   cursor: inherit;
-}
-
-/* Soft WIP over-limit: same pill slot, same box — only the tone changes
-   (warn token, never a hex), so compact columns never grow. Renders as a
-   button when over (touch/keyboard reachable into the WIP settings). */
-button.columnCount[data-over='true'] {
-  cursor: pointer;
-}
-
-.columnCount[data-over='true'] {
-  color: var(--dsw-alias-state-warn-primary);
-  background: var(--dsh-tb-surface-sunken);
-  border-color: var(--dsw-alias-state-warn-primary);
 }
 
 .statusDot {
@@ -5988,12 +5967,6 @@ button.interactionOption:hover {
     display: none;
   }
   .boardModes .modeDynamic {
-    display: none;
-  }
-  .boardModes .modeShortcuts {
-    display: none;
-  }
-  .boardModes .modeViews {
     display: none;
   }
   .thumbBar {

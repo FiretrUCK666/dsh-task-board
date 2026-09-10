@@ -39,9 +39,8 @@ export interface TaskTemplate {
   reasoningEffort?: string
   agentPreset?: string
   permission?: string
-  /** Inert shape (absent on legacy templates): due instant, priority,
-   *  labels, accent color — carried, never armed. */
-  dueAt?: number
+  /** Inert shape (absent on legacy templates): priority, labels, accent
+   *  color — carried, never armed. */
   priority?: 1 | 2 | 3
   labels?: string[]
   color?: string
@@ -55,7 +54,7 @@ export interface TemplateStore {
 
 /**
  * Snapshot a task as a template: content + run configuration + the inert
- * shape (due/priority/labels/color) come along, instance state never does.
+ * shape (priority/labels/color) come along, instance state never does.
  * Images ride along (the user attached them to the prompt deliberately —
  * dropping them silently would violate the no-silent-drop law);
  * schedule/rules stay behind (a template must never surprise-fire — arming
@@ -81,7 +80,6 @@ export function templateFromTask(task: TaskRecord, id: string, name: string): Ta
     ...task.reasoningEffort !== undefined ? { reasoningEffort: task.reasoningEffort } : {},
     ...task.agentPreset !== undefined ? { agentPreset: task.agentPreset } : {},
     ...task.permission !== undefined ? { permission: task.permission } : {},
-    ...task.dueAt !== undefined ? { dueAt: task.dueAt } : {},
     ...task.priority !== undefined ? { priority: task.priority } : {},
     ...task.labels !== undefined ? { labels: [...task.labels] } : {},
     ...task.color !== undefined ? { color: task.color } : {},
@@ -109,9 +107,6 @@ export function templateToNewInput(template: TaskTemplate): NewTaskInput {
     ...template.reasoningEffort !== undefined ? { reasoningEffort: template.reasoningEffort } : {},
     ...template.agentPreset !== undefined ? { agentPreset: template.agentPreset } : {},
     ...template.permission !== undefined ? { permission: template.permission } : {},
-    ...template.dueAt !== undefined && Number.isFinite(template.dueAt) && template.dueAt > 0
-      ? { dueAt: Math.floor(template.dueAt) }
-      : {},
     ...priority !== undefined ? { priority } : {},
     ...labels !== undefined ? { labels } : {},
     ...template.color !== undefined ? { color: template.color } : {},
@@ -152,9 +147,6 @@ export function normalizeTemplates(raw: unknown): TaskTemplate[] {
       ...typeof row.reasoningEffort === 'string' ? { reasoningEffort: row.reasoningEffort } : {},
       ...typeof row.agentPreset === 'string' ? { agentPreset: row.agentPreset } : {},
       ...typeof row.permission === 'string' ? { permission: row.permission } : {},
-      ...typeof row.dueAt === 'number' && Number.isFinite(row.dueAt) && row.dueAt > 0
-        ? { dueAt: Math.floor(row.dueAt) }
-        : {},
       ...priority !== undefined ? { priority } : {},
       ...labels !== undefined ? { labels } : {},
       ...typeof row.color === 'string' && row.color !== '' ? { color: row.color } : {},

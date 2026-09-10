@@ -366,14 +366,6 @@ export interface TaskRecord {
    */
   priority?: 1 | 2 | 3
   /**
-   * Due instant (ms epoch, day granularity: the form edits a calendar date).
-   * Set only for a REAL due (external consequence); absent = no due, never an
-   * implicit one. Defer/start ride the existing schedule (cron/nextRunAt),
-   * never a second date field. Rides the record like every scalar: authorship
-   * claims, LWW merge and tombstones need no new grammar.
-   */
-  dueAt?: number
-  /**
    * Labels (multi-dimensional context — where/how/who/energy; never priority,
    * status or dates, which own their fields). Lowercase-normalized, capped in
    * length and count (see normalizeLabels). Absent/empty = none. Rides the
@@ -408,8 +400,6 @@ export interface NewTaskInput {
   reasoningEffort?: string
   agentPreset?: string
   permission?: string
-  /** Due instant (ms epoch); absent = no due. */
-  dueAt?: number
   /** Priority (1 highest … 3 lowest); absent = none. */
   priority?: 1 | 2 | 3
   /** Labels (multi-dimensional context: where/how/who — never priority,
@@ -698,9 +688,6 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
     ...input.reasoningEffort !== undefined ? { reasoningEffort: input.reasoningEffort } : {},
     ...input.agentPreset !== undefined ? { agentPreset: input.agentPreset } : {},
     ...input.permission !== undefined ? { permission: input.permission } : {},
-    ...input.dueAt !== undefined && Number.isFinite(input.dueAt) && input.dueAt > 0
-      ? { dueAt: Math.floor(input.dueAt) }
-      : {},
     ...priority !== undefined ? { priority } : {},
     ...labels !== undefined ? { labels } : {},
     ...input.color !== undefined && input.color !== '' ? { color: input.color } : {},

@@ -3,7 +3,7 @@
  * waiting > running > refining > queued > failed > review > idle.
  */
 import { describe, expect, it } from 'vitest'
-import { cardNextActionOf, cardViewModelOf, dueStateOf, titleOrUntitled } from '../src/client/board/card-view.ts'
+import { cardNextActionOf, cardViewModelOf, titleOrUntitled } from '../src/client/board/card-view.ts'
 import { createTask, newCommentRound, startExecution } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -50,30 +50,5 @@ describe('cardViewModelOf', () => {
     })
     expect(view.dots).toHaveLength(3)
     expect(view.overflowDots).toBe(1)
-  })
-})
-
-describe('dueStateOf (day-granularity, incomplete columns only)', () => {
-  // Fixed "now": 2025-01-05 14:23 local.
-  const now = new Date(2025, 0, 5, 14, 23, 0).getTime()
-  const day = (y: number, m: number, d: number): number => new Date(y, m, d).getTime()
-
-  it('reads absent due as undefined', () => {
-    expect(dueStateOf({ ...task(), dueAt: undefined }, now)).toBeUndefined()
-  })
-
-  it('reads today and past days on incomplete columns', () => {
-    const base = { ...task(), status: 'todo' as const }
-    expect(dueStateOf({ ...base, dueAt: day(2025, 0, 5) }, now)).toBe('today')
-    expect(dueStateOf({ ...base, dueAt: day(2025, 0, 4) }, now)).toBe('overdue')
-    expect(dueStateOf({ ...base, status: 'running', dueAt: day(2025, 0, 1) }, now)).toBe('overdue')
-    expect(dueStateOf({ ...base, status: 'backlog', dueAt: day(2025, 0, 4) }, now)).toBe('overdue')
-  })
-
-  it('future dues and closed columns stay quiet', () => {
-    const base = { ...task(), status: 'todo' as const }
-    expect(dueStateOf({ ...base, dueAt: day(2025, 0, 8) }, now)).toBeUndefined()
-    expect(dueStateOf({ ...base, status: 'review', dueAt: day(2025, 0, 1) }, now)).toBeUndefined()
-    expect(dueStateOf({ ...base, status: 'done', dueAt: day(2025, 0, 1) }, now)).toBeUndefined()
   })
 })

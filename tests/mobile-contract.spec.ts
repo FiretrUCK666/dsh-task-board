@@ -442,7 +442,7 @@ describe('board header and navigator legibility', () => {
     expect(board).toContain("t('board.activity')")
     expect(board).toContain('setShowActivity(true)')
     expect(board).toContain('activityOf(snapshot.tasks,')
-    // Thumb bar: compact-only shortcuts reusing the header handlers (one
+    // Thumb bar: compact-only twins reusing the header handlers (one
     // behavior, never a second implementation). Hidden at base, pinned to
     // the board box bottom in the compact tier, clearing the home indicator.
     expect(board).toContain('css.thumbBar')
@@ -459,13 +459,6 @@ describe('board header and navigator legibility', () => {
     expect(compact).toMatch(/\.boardNewTask\s*\{[^}]*display:\s*none/)
     expect(compact).toMatch(/\.boardModes \.notifyBell\s*\{[^}]*display:\s*none/)
     expect(compact).toMatch(/\.boardModes \.modeDynamic\s*\{[^}]*display:\s*none/)
-    // The shortcuts twin relocates the same way (header hides, thumb bar twin
-    // carries the same handler — touch reaches the cheatsheet by tap).
-    expect(compact).toMatch(/\.boardModes \.modeShortcuts\s*\{[^}]*display:\s*none/)
-    // The saved-views twin relocates the same way (one ghost button, two DOM
-    // nodes, never two on screen).
-    expect(compact).toMatch(/\.boardModes \.modeViews\s*\{[^}]*display:\s*none/)
-    expect(board).toContain('css.modeViews')
     expect(board).toContain('css.modeDynamic')
   })
 
@@ -701,19 +694,6 @@ describe('no raw color literals leak in (design-system rule)', () => {
     // The board's hard rule: colors ride --dsw-*/--dsh-tb-* tokens only.
     expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     expect(source).not.toMatch(/rgba?\(\s*\d/)
-  })
-
-  it('soft WIP over-limit reuses the count slot with a token tint (zero extra width)', () => {
-    const scope = blockFrom(line => line.trim().startsWith(".columnCount[data-over='true']"))
-    expect(scope).toContain('--dsw-alias-state-warn-primary')
-    expect(scope).not.toMatch(/vw|vh/)
-  })
-
-  it('soft WIP reserves the ring up front (transparent border, same box either way)', () => {
-    const base = ruleOf('columnCount')
-    expect(base).toContain('border: 1px solid transparent')
-    const tab = blockFrom(line => line.includes(".columnTabCount[data-over='true']"))
-    expect(tab).toContain('--dsw-alias-state-warn-primary')
   })
 
   it('the unseen arrival dot is static and token-fed (no second breathing source)', () => {

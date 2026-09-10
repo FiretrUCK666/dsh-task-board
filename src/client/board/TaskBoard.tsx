@@ -16,7 +16,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
-import { WIP_LIMIT_MAX } from '../../core/board-doc.ts'
 import { isHeartbeatStale } from '../../core/scheduler.ts'
 import { COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount, taskViewedBaseline } from '../../core/session-display.ts'
@@ -32,7 +31,7 @@ import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, n
 import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime, formatTime } from './format-time.ts'
 import { dayBucketOf } from '../../core/board-events.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
-import { COLUMN_HINT_KEY, STATUS_KEY, STATUS_SHORT_KEY, wipCountsOf, wipSentenceKeyOf } from './status.ts'
+import { COLUMN_HINT_KEY, STATUS_KEY, STATUS_SHORT_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
@@ -43,7 +42,7 @@ import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
-import { applyCompletion, boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, removeFilterToken, splitFilterTokens, type CheatRow } from './task-search.ts'
+import { applyCompletion, completeBoardQuery, matchTask, removeFilterToken, splitFilterTokens } from './task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
 import { foldNotesByTask, noteKeyOf, notificationsExOf, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
@@ -68,7 +67,6 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
 }
 import { activityGroupKeyOf, activityOf, clusterOf, freezeFeed, groupActivityByObjectDay, remainderKeyOf, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
 import { flowSummaryOf } from '../../core/flow-metrics.ts'
-import { deleteView, loadViews, MAX_SAVED_VIEWS, saveView, type SavedView } from './saved-views.ts'
 import { Chip } from './Chip.tsx'
 
 /**
@@ -137,69 +135,6 @@ function cruiseWindowTitleOf(window: CruiseWindow): string {
   return formatDateTime(grammar.endAt)
 }
 
-/** One soft-ceiling number field (THE typing discipline for WIP inputs, used
- *  twice): valid integers commit on edit; clearing happens on blur/Enter
- *  only, so selecting-all to retype never flickers the persisted ceiling
- *  through an empty middle state. */
-function WipLimitField({ label, title, text, committed, onText, onCommit }: {
-  label: string
-  title: string
-  text: string
-  committed: number | undefined
-  onText: (text: string) => void
-  onCommit: (value: number | undefined) => void
-}): ReactNode {
-  return (
-    <label className={css.cruisePopoverLimit}>
-      <span className={css.cruisePopoverLabel}>{label}</span>
-      <input
-        className={css.cruiseLimit}
-        type="number"
-        min={1}
-        max={WIP_LIMIT_MAX}
-        value={text}
-        title={title}
-        aria-label={label}
-        placeholder=""
-        onChange={event => {
-          onText(event.target.value)
-          const raw = event.target.value.trim()
-          if (raw === '') return
-          const value = Number(raw)
-          if (Number.isInteger(value) && value >= 1) {
-            onCommit(value)
-          }
-        }}
-        onBlur={() => {
-          if (text.trim() === '') {
-            onCommit(undefined)
-          }
-          onText(committed === undefined ? '' : String(committed))
-        }}
-        onKeyDown={event => {
-          if (event.key === 'Enter') {
-            (event.currentTarget as HTMLInputElement).blur()
-          }
-        }}
-      />
-    </label>
-  )
-}
-
-/** Device-local key for the single-key shortcuts master switch (never
- *  renamed: input preference is per-device — syncing it would pollute another
- *  device's desktop habits. Absent/other values read enabled). */
-const SHORTCUTS_STORAGE_KEY = 'dsh.taskBoard.shortcuts.v1'
-
-/** Read the persisted shortcuts preference (session default on any failure). */
-function readShortcutsEnabled(): boolean {
-  try {
-    return localStorage.getItem(SHORTCUTS_STORAGE_KEY) !== '0'
-  } catch {
-    return true
-  }
-}
-
 /** Board component; subscribes to the controller snapshot. */
 export function TaskBoard({ controller }: { controller: BoardController }) {
   const [snapshot, setSnapshot] = useState(controller.getSnapshot())
@@ -208,62 +143,9 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     [controller],
   )
   const [filter, setFilter] = useState('')
-  const searchRef = useRef<HTMLInputElement | null>(null)
   const [showNew, setShowNew] = useState(false)
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
   const [showAutomation, setShowAutomation] = useState(false)
-  // 快捷键速查表 + 单键快捷键（`/`聚焦筛选、`x`清空、`?`开关本表）：无修饰键，
-  // 输入中与弹窗内一律让路（触屏零损失，桌面键位零冲突），随 effect 释放监听。
-  const [showShortcuts, setShowShortcuts] = useState(false)
-  const [cheatQuery, setCheatQuery] = useState('')
-  // 保存的视图（命名筛选快照，设备本地）：列表态常驻内存，读写直达存储。
-  const [showViews, setShowViews] = useState(false)
-  const [views, setViews] = useState<SavedView[]>(() => loadViews())
-  const [newViewName, setNewViewName] = useState('')
-  useEffect(() => {
-    if (showShortcuts) setCheatQuery('')
-  }, [showShortcuts])
-  // 单键快捷键总开关（设备本地偏好：触屏设备本就无键盘，同步它只会污染他人
-  // 的桌面习惯——默认开，关后速查表仍可点达，永无死路）。
-  const [shortcutsEnabled, setShortcutsEnabled] = useState(readShortcutsEnabled)
-  const setShortcutsEnabledPersisted = (next: boolean): void => {
-    setShortcutsEnabled(next)
-    try {
-      localStorage.setItem(SHORTCUTS_STORAGE_KEY, next ? '1' : '0')
-    } catch {
-      // Private mode / quota: the toggle still works for the session.
-    }
-  }
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      const target = event.target as HTMLElement | null
-      // Outside the board surface the board perceives nothing: native pages
-      // and other views never feel `/`, `x` or `?`. The check reads the DOM
-      // marker directly — never through the portal helper's body fallback
-      // (a fallback anchor would make the fence trivially true).
-      if (target === null || target.closest === undefined
-        || target.closest('[data-dsh-taskboard-view]') === null) return
-      // THE one typing judgment (editables + IME composing, single predicate).
-      const shortcut = boardShortcutOf(event, isShortcutTyping(target, event))
-      if (shortcut === undefined) return
-      // Dialogs keep their keys — except the cheatsheet toggle, which stays
-      // reachable wherever focus sits inside the board (orthogonal to Esc).
-      if (target.closest('[role="dialog"]') !== null && shortcut !== 'toggle-help') return
-      // Master switch off: single keys stay silent (the cheatsheet button
-      // remains, so there is never a dead end).
-      if (!shortcutsEnabled) return
-      if (shortcut === 'focus-search') {
-        event.preventDefault()
-        searchRef.current?.focus()
-      } else if (shortcut === 'clear-filter') {
-        if (filter !== '') setFilter('')
-      } else if (shortcut === 'toggle-help') {
-        setShowShortcuts(current => !current)
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('keydown', onKey) }
-  }, [filter, shortcutsEnabled])
   // 通知中心弹层：等你处理的会话聚合 + 未读待审（行内 triage，点主区进详情）。
   const [showNotify, setShowNotify] = useState(false)
   const [notifyFilter, setNotifyFilter] = useState<'all' | 'waiting' | 'review'>('all')
@@ -474,12 +356,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // empty text stays for typing and blur restores the committed value.
   const [limitText, setLimitText] = useState(String(snapshot.cruise.limit))
   useEffect(() => { setLimitText(String(snapshot.cruise.limit)) }, [snapshot.cruise.limit])
-  // Soft WIP ceilings: same typing discipline as the cruise limit — empty text
-  // means unlimited (clears the ceiling); a valid integer commits on edit.
-  const [wipGlobalText, setWipGlobalText] = useState(snapshot.cruise.wip?.global === undefined ? '' : String(snapshot.cruise.wip.global))
-  const [wipRunningText, setWipRunningText] = useState(snapshot.cruise.wip?.running === undefined ? '' : String(snapshot.cruise.wip.running))
-  useEffect(() => { setWipGlobalText(snapshot.cruise.wip?.global === undefined ? '' : String(snapshot.cruise.wip.global)) }, [snapshot.cruise.wip?.global])
-  useEffect(() => { setWipRunningText(snapshot.cruise.wip?.running === undefined ? '' : String(snapshot.cruise.wip.running)) }, [snapshot.cruise.wip?.running])
   const cruiseWrapRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     // Only the anchored popover closes on outside press; the Dialog owns its
@@ -735,13 +611,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       hasAutomation: hasLiveAutomation(task),
       isUnviewed: taskUnviewed(task),
     }))
-  // WIP counts: THE one full-ledger computation — the status line, the
-  // compact tabs and the column headers all read this value, so the three
-  // surfaces can never disagree on denominators.
-  const wipCounts = useMemo(
-    () => wipCountsOf(snapshot.tasks.map(task => task.status)),
-    [snapshot.tasks],
-  )
   // Clicking a card: a modifier click (Ctrl/Cmd) toggles multi-selection any
   // time; in organize mode every click toggles; otherwise it opens the detail.
   const cardClick = (id: string, event?: React.MouseEvent): void => {
@@ -950,12 +819,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               与巡航同属右簇。零段省略（「排队 0」是噪音，与上下文计量同一文法）。
               紧凑档它独占导航第二行左段，巡航守右，永远不挤主行动。 */}
           {(() => {
-            // Soft WIP awareness (advisory only): counts come from THE shared
-            // full-ledger computation above (never the search-filtered
-            // `visible`, so the sentence never mixes denominators). Over-limit
-            // folds to ONE sentence (running wins over global) in the existing
-            // status slot — never a new row, never a block on drags.
-            const wipSentence = wipSentenceKeyOf(wipCounts, snapshot.cruise.wip)
             // Flow pulse (one sentence, independently gated): cycle p85 and
             // weekly throughput from the column-move ledger. Each half shows
             // on its own evidence (a direct-to-done board has throughput but
@@ -974,7 +837,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             const stateParts = [
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
               ...snapshot.stats.queued > 0 ? [t('board.statusQueued', { n: String(snapshot.stats.queued) })] : [],
-              ...wipSentence !== undefined ? [t(wipSentence.key, wipSentence.params)] : [],
               ...flowParts.length > 0 ? [t('board.flowStats', { parts: flowParts.join(' · ') })] : [],
               // Forbid-policy skip ledger: cumulative and read-only, shown only
               // while nonzero (the same quiet discipline as running/queued) —
@@ -1092,32 +954,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     />
                   </span>
                 </div>
-                {/* 柔性在制品上限：与巡航同属板级共享状态，收敛在同一巡航设置
-                    弹层——不新增顶层入口、不新增按钮。空=不限；超限只着色解释。 */}
-                <div className={css.cruiseSchedule}>
-                  <div className={css.cruiseScheduleHead}>
-                    <span className={css.cruiseScheduleTitle}>{t('board.wipSection')}</span>
-                  </div>
-                  <p className={css.detailHint}>{t('board.wipHint')}</p>
-                  <div className={css.cruiseWindowAdd}>
-                    <WipLimitField
-                      label={t('board.wipGlobal')}
-                      title={t('board.wipTitle')}
-                      text={wipGlobalText}
-                      committed={snapshot.cruise.wip?.global}
-                      onText={setWipGlobalText}
-                      onCommit={value => { controller.setWipLimit('global', value) }}
-                    />
-                    <WipLimitField
-                      label={t('board.wipRunning')}
-                      title={t('board.wipTitle')}
-                      text={wipRunningText}
-                      committed={snapshot.cruise.wip?.running}
-                      onText={setWipRunningText}
-                      onCommit={value => { controller.setWipLimit('running', value) }}
-                    />
-                  </div>
-                </div>
                 {/* 定时窗口：设定靠后的开启时刻与可选结束时刻（不设=一直保持）；
                     多个窗口独立——当前窗口结束时关闭，更靠后的窗口到点再次自动开启。 */}
                 <div className={css.cruiseSchedule}>
@@ -1198,7 +1034,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             紧凑档筛选独占整行、模式组独占一行且右对齐——换行，不压扁。 */}
         <div className={`${css.boardRow} ${css.boardRowTools}`}>
           <input
-            ref={searchRef}
             className={css.search}
             type="search"
             placeholder={t('board.search')}
@@ -1208,8 +1043,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             aria-label={t('board.search')}
           />
           {/* Qualifier suggestions (native datalist: zero chrome, zero keys,
-              mobile degrades to a plain input — the cheatsheet stays the
-              learning surface, this only shortens typing). Candidates arrive
+              mobile degrades to a plain input — this only shortens typing).
+              Candidates arrive
               as WHOLE queries (the datalist swaps the entire value — a bare
               token would eat earlier terms). */}
           <datalist id="dsh-tb-qualifiers">
@@ -1252,26 +1087,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 会话操作归详情页）。有等待事项才亮数（折叠计 1），开屉后新到
                 才亮点，无则安静。 */}
             {renderNotifyBell()}
-            {/* 快捷键：与动态/通知同一收纳（窄屏下沉拇指栏，同一处理器）——
-                触屏没有 `?` 键，速查表必须可点可达。 */}
-            <Button
-              variant="ghost"
-              className={css.modeShortcuts}
-              title={`${t('board.shortcuts')} (?)`}
-              onClick={() => { setShowShortcuts(true) }}
-            >
-              {t('board.shortcuts')}
-            </Button>
-            {/* 保存的视图：命名筛选快照（设备本地个人视角，不同步）——同一
-                收纳纪律，窄屏下沉拇指栏。 */}
-            <Button
-              variant="ghost"
-              className={css.modeViews}
-              title={t('board.views')}
-              onClick={() => { setShowViews(true) }}
-            >
-              {t('board.views')}
-            </Button>
           </span>
         </div>
         {/* Applied-filter overview: one quiet line while a filter is active
@@ -1299,7 +1114,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               className={css.feedAction}
               onClick={() => { setFilter('') }}
             >
-              {t('board.shortcutClear')}
+              {t('board.filterClear')}
             </button>
           </div>
         )}
@@ -1437,16 +1252,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
       <div className={css.columnTabs} role="tablist" aria-label={t('board.title')}>
         {COLUMNS.map(column => {
           const count = visible.filter(task => task.status === column.status).length
-          // Over-limit tint shares the status line's counts AND its sentence
-          // question (masked per column), so tab, header and status can never
-          // disagree on what "over" means.
-          const columnWip = column.status === 'running'
-            ? { running: snapshot.cruise.wip?.running }
-            : column.status === 'review'
-              ? { global: snapshot.cruise.wip?.global }
-              : undefined
-          const tabOver = columnWip !== undefined
-            && wipSentenceKeyOf(wipCounts, columnWip) !== undefined
           return (
             <button
               key={column.status}
@@ -1460,7 +1265,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             >
               <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
               <span className={css.columnTabLabel}>{t(STATUS_SHORT_KEY[column.status])}</span>
-              <span className={css.columnTabCount} {...tabOver ? { 'data-over': 'true' } : {}}>{String(count)}</span>
+              <span className={css.columnTabCount}>{String(count)}</span>
             </button>
           )
         })}
@@ -1550,39 +1355,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               <header className={css.columnHeader}>
                 <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
                 <h3 className={css.columnTitle} title={t(COLUMN_HINT_KEY[column.status])}>{t(STATUS_KEY[column.status])}</h3>
-                {(() => {
-                  // Soft WIP tint reuses the existing count slot — same pill,
-                  // zero extra width (compact-safe). The over question is the
-                  // status line's, masked to this column (running reads the
-                  // running ceiling, review the global one). An over-limit
-                  // count is a real button into the cruise/WIP settings (the
-                  // unified board-level entry) with an aria-label — touch and
-                  // keyboard can reach the why, never hover-only title.
-                  const columnWip = column.status === 'running'
-                    ? { running: snapshot.cruise.wip?.running }
-                    : column.status === 'review'
-                      ? { global: snapshot.cruise.wip?.global }
-                      : undefined
-                  const overSentence = columnWip === undefined
-                    ? undefined
-                    : wipSentenceKeyOf(wipCounts, columnWip)
-                  if (overSentence === undefined) {
-                    return <span className={css.columnCount}>{tasks.length}</span>
-                  }
-                  const overLabel = t(overSentence.key, overSentence.params)
-                  return (
-                    <button
-                      type="button"
-                      className={css.columnCount}
-                      data-over="true"
-                      aria-label={overLabel}
-                      title={overLabel}
-                      onClick={() => { setCruiseOpen(true) }}
-                    >
-                      {tasks.length}
-                    </button>
-                  )
-                })()}
+                <span className={css.columnCount}>{tasks.length}</span>
               </header>
               {/* Drag events bubble from the cards: the container tracks the
                   drag source (dragstart/dragend); reorder anchors are
@@ -2159,142 +1932,8 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           </div>
         </Dialog>
       )}
-      {/* Cheatsheet renders after every other overlay: same-layer stacking
-          paints it on top, so `?` from inside the activity drawer (or any
-          board dialog) actually surfaces instead of hiding underneath. */}
-      {showShortcuts && (
-        <Dialog title={t('board.shortcuts')} label={t('board.shortcuts')} onClose={() => { setShowShortcuts(false) }} portal>
-          <div className={css.modalScroll}>
-            <label className={css.cruisePopoverLimit}>
-              <Switch
-                checked={shortcutsEnabled}
-                onChange={next => { setShortcutsEnabledPersisted(next) }}
-                label={t('board.shortcutsToggle')}
-                title={t('board.shortcutsToggle')}
-              />
-            </label>
-            <input
-              className={css.search}
-              type="search"
-              placeholder={t('board.shortcutFilter')}
-              value={cheatQuery}
-              data-autofocus
-              onChange={event => { setCheatQuery(event.target.value) }}
-              aria-label={t('board.shortcutFilter')}
-            />
-            {([
-              { key: '/', text: t('board.shortcutSearch') },
-              { key: 'x', text: t('board.shortcutClear') },
-              { key: '?', text: t('board.shortcutHelp') },
-              // Column pull policies live here too (the touch-reachable home
-              // for the header tooltip — tappable, searchable, no hover).
-              ...(['backlog', 'todo', 'running', 'review', 'done'] as const).map(status => ({
-                key: t(STATUS_SHORT_KEY[status]),
-                text: t(COLUMN_HINT_KEY[status]),
-              })),
-            ] as CheatRow[]).filter(row => matchCheatRow(row, cheatQuery)).map(row => (
-              <p key={row.key} className={css.detailText}>
-                <Chip kind="neutral" fill={false}>{row.key}</Chip> {row.text}
-              </p>
-            ))}
-            <p className={css.detailHint}>{t('board.shortcutQuali')}</p>
-          </div>
-        </Dialog>
-      )}
-      {showViews && (
-        <Dialog title={t('board.views')} label={t('board.views')} onClose={() => { setShowViews(false) }} portal>
-          <div className={css.modalScroll}>
-            {/* Save the current filter under a name (empty name/filter or a
-                full shelf keeps the button off — the store backstops it
-                anyway). */}
-            <div className={css.cruiseWindowAdd}>
-              <input
-                className={css.search}
-                type="text"
-                placeholder={t('board.viewName')}
-                value={newViewName}
-                data-autofocus
-                onChange={event => { setNewViewName(event.target.value) }}
-                aria-label={t('board.viewName')}
-              />
-              <Button
-                size="sm"
-                disabled={newViewName.trim() === '' || filter.trim() === '' || views.length >= MAX_SAVED_VIEWS}
-                onClick={() => {
-                  // The store reports the outcome: the typed name survives a
-                  // failed save (full shelf behind a stale count) instead of
-                  // being eaten silently.
-                  const outcome = saveView(newViewName, filter)
-                  setViews(outcome.views)
-                  if (outcome.saved) setNewViewName('')
-                }}
-              >
-                {t('board.viewSave')}
-              </Button>
-            </div>
-            {views.length >= MAX_SAVED_VIEWS && (
-              <p className={css.detailHint}>{t('board.viewsFull', { n: String(MAX_SAVED_VIEWS) })}</p>
-            )}
-            {/* Built-in lenses (pinned above personal views — they apply a
-                filter without consuming a shelf slot, and cannot be deleted:
-                Today = today's dues plus overdue, Overdue = strictly past). */}
-            <ul className={css.notifyList}>
-              {([
-                { name: t('board.viewToday'), filter: 'due:today' },
-                { name: t('board.viewOverdue'), filter: 'due:overdue' },
-              ]).map(preset => (
-                <li key={preset.filter}>
-                  <div className={css.notifyRow} data-kind="view">
-                    <button
-                      type="button"
-                      className={css.notifyMain}
-                      title={preset.filter}
-                      aria-label={preset.name}
-                      onClick={() => { setFilter(preset.filter); setShowViews(false) }}
-                    >
-                      <span className={css.notifyTask}>{preset.name}</span>
-                      <span className={css.notifySession} title={preset.filter}>{preset.filter}</span>
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            {views.length === 0 ? (
-              <p className={css.detailText}>{t('board.viewsEmpty')}</p>
-            ) : (
-              <ul className={css.notifyList}>
-                {views.map(view => (
-                  <li key={view.id}>
-                    <div className={css.notifyRow} data-kind="view">
-                      <button
-                        type="button"
-                        className={css.notifyMain}
-                        title={view.filter}
-                        aria-label={view.name}
-                        onClick={() => { setFilter(view.filter); setShowViews(false) }}
-                      >
-                        <span className={css.notifyTask}>{view.name}</span>
-                        <span className={css.notifySession} title={view.filter}>{view.filter}</span>
-                      </button>
-                      <span className={css.notifyActions}>
-                        <button
-                          type="button"
-                          className={css.feedAction}
-                          onClick={() => { setViews(deleteView(view.id)) }}
-                        >
-                          {t('board.organizeDelete')}
-                        </button>
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </Dialog>
-      )}
       {/* Thumb bar (compact only — CSS gates visibility): the thumb-zone
-          shortcuts. Every member reuses its header handler verbatim
+          twins. Every member reuses its header handler verbatim
           (setShowNew / notify / activity), so desktop and phone share one
           behavior and there is nothing new to maintain. */}
       <nav className={css.thumbBar} aria-label={t('board.thumbBar')}>
@@ -2304,20 +1943,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
           </Button>
         </span>
         {renderNotifyBell()}
-        <Button
-          variant="ghost"
-          title={`${t('board.shortcuts')} (?)`}
-          onClick={() => { setShowShortcuts(true) }}
-        >
-          {t('board.shortcuts')}
-        </Button>
-        <Button
-          variant="ghost"
-          title={t('board.views')}
-          onClick={() => { setShowViews(true) }}
-        >
-          {t('board.views')}
-        </Button>
         <Button
           variant="ghost"
           title={t('board.activityTitle')}

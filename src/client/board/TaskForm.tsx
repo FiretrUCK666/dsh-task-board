@@ -94,22 +94,8 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         />
       </label>
 
-      {/* Due date (optional calendar date; empty = none). Day granularity by
-          design — defer/start ride the automation schedule, never a second
-          date field. Native date input (keyboard + picker + mobile wheels),
-          same field grammar as title/description. */}
-      <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.dueDate')}</span>
-        <input
-          className={css.input}
-          type="date"
-          value={draft.dueDate}
-          onChange={event => { onChange({ ...draft, dueDate: event.target.value }) }}
-        />
-      </label>
-
       {/* Labels: free text, comma-separated (where/how/who — never priority,
-          status or dates, which own their fields). Normalized on save
+          which owns its field). Normalized on save
           (lowercase/dedupe/cap), so the form keeps the user's raw typing. */}
       <label className={css.field}>
         <span className={css.fieldLabel}>{t('new.labels')}</span>

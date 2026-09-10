@@ -37,8 +37,6 @@ export interface TaskDraft {
   reasoningEffort: string
   /** Permission preset key; '' = session default. */
   permission: string
-  /** Due date as `YYYY-MM-DD` (the date-input shape); '' = no due. */
-  dueDate: string
   /** Priority as '1' | '2' | '3'; '' = none (the default, zero visuals). */
   priority: string
   /** Labels as free text (comma-separated in the form); '' = none. The
@@ -50,35 +48,10 @@ export interface TaskDraft {
   color: string
 }
 
-/** `YYYY-MM-DD` → local-midnight ms epoch; undefined when malformed
- *  (including impossible dates like month 13 — the Date constructor rolls
- *  those over instead of failing, so the components are verified back). */
-export function parseDueDateInput(value: string): number | undefined {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim())
-  if (match === null) return undefined
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const day = Number(match[3])
-  const date = new Date(year, month - 1, day)
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
-    return undefined
-  }
-  date.setHours(0, 0, 0, 0)
-  const time = date.getTime()
-  return Number.isFinite(time) ? time : undefined
-}
-
 /** Split free-typed label text (half/full-width commas and semicolons,
  *  ideographic commas, whitespace runs — the IME default must just work). */
 export function splitLabelText(value: string): string[] {
   return value.split(/[,，、；;|\s]+/).map(part => part.trim()).filter(part => part !== '')
-}
-
-/** ms epoch → `YYYY-MM-DD` local (the date-input shape). */
-export function toDueDateInput(at: number): string {
-  const date = new Date(at)
-  const pad = (value: number): string => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 /** Normalize a parsed draft (a stored draft may predate a field — e.g.
@@ -114,9 +87,6 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
     model: parsed.model ?? '',
     reasoningEffort: parsed.reasoningEffort ?? '',
     permission: parsed.permission ?? '',
-    dueDate: typeof parsed.dueDate === 'string' && parseDueDateInput(parsed.dueDate) !== undefined
-      ? parsed.dueDate.trim()
-      : '',
     priority: (() => {
       const priority = normalizePriority(Number(parsed.priority))
       return priority === undefined ? '' : String(priority)
@@ -154,7 +124,6 @@ export function draftFromTask(task: TaskRecord): TaskDraft {  return {
     model: task.model ?? '',
     reasoningEffort: task.reasoningEffort ?? '',
     permission: task.permission ?? '',
-    dueDate: task.dueAt !== undefined ? toDueDateInput(task.dueAt) : '',
     priority: task.priority === undefined ? '' : String(task.priority),
     labels: task.labels === undefined ? '' : task.labels.join(', '),
     color: task.color ?? '',
@@ -188,9 +157,8 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
     model: template.model ?? '',
     reasoningEffort: template.reasoningEffort ?? '',
     permission: template.permission ?? '',
-    // Templates carry the inert shape (due/priority/labels ride along, like
-    // copies — stamping a dated, ranked, labeled card keeps its shape).
-    dueDate: template.dueAt !== undefined ? toDueDateInput(template.dueAt) : '',
+    // Templates carry the inert shape (priority/labels ride along, like
+    // copies — stamping a ranked, labeled card keeps its shape).
     priority: template.priority === undefined ? '' : String(template.priority),
     labels: template.labels === undefined ? '' : template.labels.join(', '),
     color: template.color ?? '',
@@ -199,7 +167,6 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
 
 /** Draft → create input; empty fields are omitted (fall back to defaults). */
 export function draftToNewInput(draft: TaskDraft): NewTaskInput {
-  const dueAt = parseDueDateInput(draft.dueDate)
   const priority = normalizePriority(Number(draft.priority))
   const labels = normalizeLabels(splitLabelText(draft.labels))
   return {
@@ -222,7 +189,6 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     ...draft.model !== '' ? { model: draft.model } : {},
     ...draft.reasoningEffort !== '' ? { reasoningEffort: draft.reasoningEffort } : {},
     ...draft.permission !== '' ? { permission: draft.permission } : {},
-    ...dueAt !== undefined ? { dueAt } : {},
     ...priority !== undefined ? { priority } : {},
     ...labels !== undefined ? { labels } : {},
     ...draft.color !== '' ? { color: draft.color } : {},
@@ -245,7 +211,6 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     model: draft.model !== '' ? draft.model : undefined,
     reasoningEffort: draft.reasoningEffort !== '' ? draft.reasoningEffort : undefined,
     permission: draft.permission !== '' ? draft.permission : undefined,
-    dueAt: parseDueDateInput(draft.dueDate),
     priority: normalizePriority(Number(draft.priority)),
     labels: normalizeLabels(splitLabelText(draft.labels)),
     color: draft.color !== '' ? draft.color : undefined,
@@ -261,7 +226,7 @@ function filledText(value: string): boolean {
 /** Stamp a template onto a draft by filling BLANKS only: every field the user
  *  already touched keeps the user's value; the template supplies the rest.
  *  One merge law for all fields (title/description/prompt/images/status/run
- *  config/due/priority/labels/color) — never per-field preserve exceptions.
+ *  config/priority/labels/color) — never per-field preserve exceptions.
  *  The one atomic group is provider/model/reasoningEffort (a run route):
  *  mixing the user's provider with the template's model breeds invalid
  *  combos, so the user's triple wins only when the pair is complete —
@@ -282,7 +247,6 @@ export function stampTemplate(draft: TaskDraft, stamped: TaskDraft): TaskDraft {
     model: userRouteComplete ? draft.model : stamped.model,
     reasoningEffort: userRouteComplete ? draft.reasoningEffort : stamped.reasoningEffort,
     permission: filledText(draft.permission) ? draft.permission : stamped.permission,
-    dueDate: filledText(draft.dueDate) ? draft.dueDate : stamped.dueDate,
     priority: filledText(draft.priority) ? draft.priority : stamped.priority,
     labels: filledText(draft.labels) ? draft.labels : stamped.labels,
     color: filledText(draft.color) ? draft.color : stamped.color,

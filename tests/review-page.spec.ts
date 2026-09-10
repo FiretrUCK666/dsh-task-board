@@ -1017,17 +1017,9 @@ describe('session context panel row grammar (badge never spills over the text)',
   })
 })
 
-describe('task detail due row (future dues live here, not on the card)', () => {
+describe('task detail labels row (the full-set home)', () => {
   const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url))
   const detail = readFileSync(detailPath, 'utf8')
-
-  it('renders a due row only when the task carries a due instant', () => {
-    // Future dues are quiet on the card by design — the detail is their
-    // one readable home (relative label in text, exact instant in title).
-    expect(detail).toContain('current.dueAt !== undefined')
-    expect(detail).toContain('formatDueLabel(current.dueAt)')
-    expect(detail).toContain('title={formatDateTime(current.dueAt)}')
-  })
 
   it('renders a labels row with the full set when the task carries labels', () => {
     // The card bounds to two plus a remainder — the detail is the full-set home.

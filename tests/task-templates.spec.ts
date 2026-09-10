@@ -53,18 +53,15 @@ describe('templateToNewInput', () => {
   it('carries the inert shape (due/priority/labels/color ride, armed never)', () => {
     const task = {
       ...sourceTask(),
-      dueAt: 1_700_000_000_000,
       priority: 1 as const,
       labels: ['a', 'b'],
       color: '#fff',
     }
     const template = templateFromTask(task, 't-1', 'T')
-    expect(template.dueAt).toBe(1_700_000_000_000)
     expect(template.priority).toBe(1)
     expect(template.labels).toEqual(['a', 'b'])
     expect(template.color).toBe('#fff')
     const input = templateToNewInput(template)
-    expect(input.dueAt).toBe(1_700_000_000_000)
     expect(input.priority).toBe(1)
     expect(input.labels).toEqual(['a', 'b'])
     expect(input.color).toBe('#fff')
@@ -72,9 +69,8 @@ describe('templateToNewInput', () => {
 
   it('normalizes junk inert fields to absent (legacy templates stay valid)', () => {
     const rows = normalizeTemplates([
-      { id: 'a', name: 'A', title: 'x', dueAt: 'soon', priority: 9, labels: 'urgent', color: '' },
+      { id: 'a', name: 'A', title: 'x', priority: 9, labels: 'urgent', color: '' },
     ])
-    expect(rows[0]?.dueAt).toBeUndefined()
     expect(rows[0]?.priority).toBeUndefined()
     expect(rows[0]?.labels).toBeUndefined()
     expect(rows[0]?.color).toBeUndefined()

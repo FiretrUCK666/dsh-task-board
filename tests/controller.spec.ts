@@ -1737,22 +1737,6 @@ describe('auto-cruise', () => {
     expect(controller.getSnapshot().cruise.limit).toBe(1)
   })
 
-  it('stores soft WIP ceilings advisory-only (empty = unlimited, never pumps)', () => {
-    const { controller } = makeController()
-    expect(controller.getSnapshot().cruise.wip).toBeUndefined()
-    controller.setWipLimit('running', 3)
-    expect(controller.getSnapshot().cruise.wip).toEqual({ running: 3 })
-    controller.setWipLimit('global', 999)
-    expect(controller.getSnapshot().cruise.wip).toEqual({ running: 3, global: 20 })
-    controller.setWipLimit('running', 2.7)
-    expect(controller.getSnapshot().cruise.wip).toEqual({ running: 2, global: 20 })
-    controller.setWipLimit('global', Number.NaN)
-    expect(controller.getSnapshot().cruise.wip).toEqual({ running: 2, global: 20 })
-    controller.setWipLimit('running', undefined)
-    controller.setWipLimit('global', undefined)
-    expect(controller.getSnapshot().cruise.wip).toBeUndefined()
-  })
-
   it('mirrors scheduler skip telemetry read-only (zero stays hidden, never an edit)', () => {
     const { controller } = makeController()
     expect(controller.getSnapshot().skips).toEqual({ overlap: 0, missed: 0 })
@@ -2554,15 +2538,6 @@ describe('linked sessions & bind', () => {
     controller.setSchedule(source.id, { enabled: true, mode: 'chain', maxRuns: 7 })
     const copy = controller.copyTask(source.id)
     expect(copy!.schedule).toMatchObject({ enabled: false, mode: 'chain', maxRuns: 7, runCount: 0 })
-  })
-
-  it('copyTask carries the due date (inert metadata rides along)', () => {
-    const stub = new StubExec()
-    const { controller } = makeController(stub)
-    const source = controller.createTask({ title: '源', description: '', prompt: 'run' })!
-    controller.updateTask(source.id, { dueAt: 1_700_000_000_000 })
-    const copy = controller.copyTask(source.id)
-    expect(copy!.dueAt).toBe(1_700_000_000_000)
   })
 
   it('copyTask carries priority and labels (inert shape rides along)', () => {

@@ -10,18 +10,13 @@ import {
   boardViewOf,
   changedIdsOf,
   clampCruiseLimit,
-  clampWipLimit,
   CRUISE_LIMIT_MAX,
   CRUISE_LIMIT_MIN,
   emptyBoardDoc,
-  isWipOver,
   normalizeBoardDoc,
   normalizeCruiseValue,
-  normalizeWipLimits,
   sameBoardDocs,
   TOMBSTONE_TTL_MS,
-  WIP_LIMIT_MAX,
-  WIP_LIMIT_MIN,
   type BoardCommit,
 } from '../src/core/board-doc.ts'
 import { createTask } from '../src/core/tasks.ts'
@@ -104,18 +99,7 @@ describe('normalizeCruiseValue', () => {
     expect(normalizeCruiseValue({ enabled: true, limit: 'many', schedule: [] }).limit).toBe(5)
   })
 
-  it('keeps old docs unlimited and clamps WIP numbers (soft, never throws)', () => {
-    expect(normalizeCruiseValue({ enabled: false, limit: 5, schedule: [] }).wip).toBeUndefined()
-    expect(normalizeWipLimits(undefined)).toBeUndefined()
-    expect(normalizeWipLimits('junk')).toBeUndefined()
-    expect(normalizeWipLimits({})).toBeUndefined()
-    expect(normalizeCruiseValue({ enabled: false, limit: 5, schedule: [], wip: { global: 999, running: 0 } }).wip).toEqual({ global: 20, running: 1 })
-    expect(normalizeCruiseValue({ enabled: false, limit: 5, schedule: [], wip: { global: 'many' } }).wip).toBeUndefined()
-  })
-
-  it('floors handmade floats through the same clamp as writes (never flips to unlimited)', () => {
-    expect(normalizeWipLimits({ global: 2.7 })).toEqual({ global: 2 })
-    expect(normalizeWipLimits({ running: Number.NaN })).toBeUndefined()
+  it('floors handmade floats through the same clamp as writes', () => {
     expect(normalizeCruiseValue({ enabled: true, limit: 7.9, schedule: [] }).limit).toBe(7)
   })
 
@@ -123,15 +107,6 @@ describe('normalizeCruiseValue', () => {
     expect(clampCruiseLimit(Number.NaN)).toBe(CRUISE_LIMIT_MIN)
     expect(clampCruiseLimit(Number.POSITIVE_INFINITY)).toBe(CRUISE_LIMIT_MAX)
     expect(clampCruiseLimit(-3)).toBe(CRUISE_LIMIT_MIN)
-    expect(clampWipLimit(Number.NaN)).toBe(WIP_LIMIT_MIN)
-    expect(clampWipLimit(Number.NEGATIVE_INFINITY)).toBe(WIP_LIMIT_MIN)
-    expect(clampWipLimit(999)).toBe(WIP_LIMIT_MAX)
-  })
-
-  it('judges over-limit advisory only (undefined = never over)', () => {
-    expect(isWipOver(5, undefined)).toBe(false)
-    expect(isWipOver(3, 3)).toBe(false)
-    expect(isWipOver(4, 3)).toBe(true)
   })
 })
 

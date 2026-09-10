@@ -131,32 +131,6 @@ export function cardViewModelOf(
 }
 
 /**
- * Due state of a card (day granularity, evaluated against `now`): `today`
- * when the due date is the current local day, `overdue` when it lies before
- * it. Only incomplete columns (backlog/todo/running) can be due — review and
- * done are someone else's gate now, not a debt (the debt stays readable in
- * the detail's due row; the card goes quiet). Backlog keeps lighting: owed
- * is owed, shelved or not. Absent due = undefined.
- * Never breathing, never primary: the chip is the signal, this is the fact.
- */
-export function dueStateOf(
-  task: Pick<TaskRecord, 'status' | 'dueAt'>,
-  now: number = Date.now(),
-): 'today' | 'overdue' | undefined {
-  if (task.dueAt === undefined) return undefined
-  if (task.status !== 'backlog' && task.status !== 'todo' && task.status !== 'running') return undefined
-  const startOfDay = (at: number): number => {
-    const date = new Date(at)
-    date.setHours(0, 0, 0, 0)
-    return date.getTime()
-  }
-  const dueDay = startOfDay(task.dueAt)
-  const today = startOfDay(now)
-  if (dueDay === today) return 'today'
-  return dueDay < today ? 'overdue' : undefined
-}
-
-/**
  * One quiet "what's next" sentence for the card (scanning aid, never a
  * second status system — it names the same primary the chips already show,
  * plus the schedule horizon when armed). Returns undefined for idle cards

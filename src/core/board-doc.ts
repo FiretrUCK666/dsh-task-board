@@ -47,19 +47,6 @@ export interface CruiseValue {
   manual?: boolean
   limit: number
   schedule: CruiseWindow[]
-  /** Soft WIP awareness (advisory only, never blocks drags): absent = unlimited.
-   *  Lives in the cruise section so no new sync section/route is needed —
-   *  the existing section claim + LWW carries it, and old docs normalize to
-   *  unlimited without migration. */
-  wip?: WipLimits
-}
-
-/** Soft per-board WIP limits: each present number is an advisory ceiling. */
-export interface WipLimits {
-  /** Total cards in play (running + review); undefined = unlimited. */
-  global?: number
-  /** Cards in running; undefined = unlimited. */
-  running?: number
 }
 
 /** One synced section: the value plus the client write stamp (LWW key). */
@@ -181,25 +168,11 @@ export const CRUISE_LIMIT_MAX = 20
 
 /** Clamp one concurrency budget to the shared bounds (THE one clamp: writes
  *  floor + clamp through this, reads normalize through this — never two
- *  grammars, mirroring {@link clampWipLimit}). NaN falls to MIN (self-guarding:
+ *  grammars). NaN falls to MIN (self-guarding:
  *  no caller memory required — infinities clamp naturally to their end). */
 export function clampCruiseLimit(value: number): number {
   if (Number.isNaN(value)) return CRUISE_LIMIT_MIN
   return Math.min(CRUISE_LIMIT_MAX, Math.max(CRUISE_LIMIT_MIN, Math.floor(value)))
-}
-
-/** Soft WIP bounds — THE one declaration for WIP (same clamp-everywhere
- *  discipline as the cruise budget via {@link clampCruiseLimit}; undefined =
- *  unlimited, so old docs stay valid). */
-export const WIP_LIMIT_MIN = 1
-export const WIP_LIMIT_MAX = 20
-
-/** Clamp one WIP number to the shared bounds (THE one clamp: writes floor +
- *  clamp through this, reads normalize through this — never two grammars).
- *  NaN falls to MIN (self-guarding, same as the cruise clamp). */
-export function clampWipLimit(value: number): number {
-  if (Number.isNaN(value)) return WIP_LIMIT_MIN
-  return Math.min(WIP_LIMIT_MAX, Math.max(WIP_LIMIT_MIN, Math.floor(value)))
 }
 
 /** A fresh empty document (host first boot; revision 0 marks "never committed"). */
@@ -223,7 +196,6 @@ export function normalizeCruiseValue(value: unknown): CruiseValue {
   const row = value as Record<string, unknown>
   const raw = typeof row.limit === 'number' && Number.isFinite(row.limit) ? row.limit : DEFAULT_CRUISE_VALUE.limit
   const limit = clampCruiseLimit(raw)
-  const wip = normalizeWipLimits(row.wip)
   return {
     enabled: row.enabled === true,
     ...(row.manual === true || row.manual === false ? { manual: row.manual } : {}),
@@ -231,41 +203,7 @@ export function normalizeCruiseValue(value: unknown): CruiseValue {
     schedule: Array.isArray(row.schedule)
       ? sortWindows((row.schedule as unknown[]).filter(isCruiseWindow).map(normalizeWindow))
       : [],
-    ...(wip !== undefined ? { wip } : {}),
   }
-}
-
-/** Normalize an unknown WIP value: undefined = unlimited (old docs); present
- *  numbers floor + clamp to the WIP bounds (same grammar as writes, so a
- *  hand-made float commit floors instead of flipping to unlimited); garbage
- *  drops to undefined (never throws, so a remote commit can never poison the
- *  section).
- *
- *  Known contract (cruise-section LWW): the whole cruise value (enabled /
- *  limit / schedule / wip.*) merges as ONE section — two replicas editing
- *  different fields at once keep the later section, not both fields.
- *  Field-level intent merge is the tracked follow-up; until then concurrent
- *  different-field edits may drop one field (same discipline as the pre-WIP
- *  limit/schedule sharing). */
-export function normalizeWipLimits(value: unknown): WipLimits | undefined {
-  if (typeof value !== 'object' || value === null) return undefined
-  const row = value as Record<string, unknown>
-  const cleanOne = (raw: unknown): number | undefined => {
-    if (typeof raw !== 'number' || !Number.isFinite(raw)) return undefined
-    return clampWipLimit(raw)
-  }
-  const global = cleanOne(row.global)
-  const running = cleanOne(row.running)
-  if (global === undefined && running === undefined) return undefined
-  return {
-    ...(global !== undefined ? { global } : {}),
-    ...(running !== undefined ? { running } : {}),
-  }
-}
-
-/** Whether a count exceeds an advisory limit (undefined limit = never over). */
-export function isWipOver(count: number, limit: number | undefined): boolean {
-  return limit !== undefined && count > limit
 }
 
 /** Normalize an unknown section carrying a value + write stamp. */

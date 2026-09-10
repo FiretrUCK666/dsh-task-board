@@ -80,7 +80,9 @@ describe('useDialogFocus (one implementation, three surfaces)', () => {
     expect(hook).toContain('[data-autofocus]')
     const boardPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
     const board = readFileSync(boardPath, 'utf8')
-    expect(board).toContain('data-autofocus')
+    // No remaining board Dialog needs declared focus (the hook's first-control
+    // fallback owns them) — but native autoFocus must never sneak back in.
+    expect(board).not.toContain('autoFocus')
     const presetsPath = fileURLToPath(new URL('../src/client/board/RunPresetManager.tsx', import.meta.url))
     const presets = readFileSync(presetsPath, 'utf8')
     expect(presets).toContain('data-autofocus')

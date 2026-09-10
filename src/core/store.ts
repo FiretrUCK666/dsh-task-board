@@ -232,18 +232,15 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     // validate it loosely (old data keeps working untouched). The legacy tag
     // ids field is dropped silently — tags were removed, color only remains.
     delete (task as { tags?: unknown }).tags
+    // Due dates are removed from the product: old persisted rows drop the
+    // field on read (no migration — absent is the only state).
+    delete (task as { dueAt?: unknown }).dueAt
     const rawColor = (row as Record<string, unknown>).color
     if (typeof rawColor === 'string' && rawColor !== '') task.color = rawColor
     else delete task.color
-    // Due instant: a finite positive instant survives, anything else reads
-    // absent (old data keeps working untouched).
-    const rawDue = (row as Record<string, unknown>).dueAt
-    if (typeof rawDue === 'number' && Number.isFinite(rawDue) && rawDue > 0) task.dueAt = Math.floor(rawDue)
-    else delete task.dueAt
-    // Attachments: element-level firewall (the shared core predicates — the
-    // same law as template normalization: a single dirty element washes out,
-    // never the row, and never a crash downstream in draft converters or
-    // the send layer).
+    // Priority: 1/2/3 survives, anything else reads absent.
+    // Attachments: element-level firewall (shared core predicates — a single
+    // dirty element washes out, never the row, never a downstream crash).
     const rawImages = (row as Record<string, unknown>).promptImages
     const images = normalizePromptImages(rawImages)
     if (images !== undefined) task.promptImages = images

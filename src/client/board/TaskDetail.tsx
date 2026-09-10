@@ -16,7 +16,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { useEscapeStack } from './escape-stack.ts'
 import { useDialogFocus } from './dialog-focus.ts'
 import { Chip, type ChipKind } from './Chip.tsx'
-import { formatDateTime, formatDueLabel, formatDuration, formatTime } from './format-time.ts'
+import { formatDateTime, formatDuration, formatTime } from './format-time.ts'
 import { TaskForm } from './TaskForm.tsx'
 import { draftFromTask, draftToUpdatePatch, normalizeDraft, type TaskDraft } from './task-draft.ts'
 import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
@@ -661,16 +661,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                   </div>
                 )}
               </Section>
-
-              {/* Due date (future dates live HERE — the card only chips today
-                  and overdue, staying quiet otherwise). Absent = no row. */}
-              {current.dueAt !== undefined && (
-                <Section title={t('new.dueDate')}>
-                  <p className={css.detailText} title={formatDateTime(current.dueAt)}>
-                    {formatDueLabel(current.dueAt)}
-                  </p>
-                </Section>
-              )}
 
               {/* Priority (every tier readable HERE — the card only flags
                   P1/P2, P3 stays quiet there by design). Absent = no row. */}

@@ -22,8 +22,7 @@ import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as ti
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
 import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { withTaskColor } from './colors.ts'
-import { normalizeCruiseValue, normalizeWipLimits, clampCruiseLimit, clampWipLimit, CRUISE_LIMIT_MAX } from './board-doc.ts'
-import type { WipLimits } from './board-doc.ts'
+import { normalizeCruiseValue, clampCruiseLimit, CRUISE_LIMIT_MAX } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
 import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents.ts'
 import { LocalStorageTemplateStore, templateFromTask, templateToNewInput } from './task-templates.ts'
@@ -233,16 +232,14 @@ export interface ReferenceRemoteFace {
 /** The editable slice of a task (content + run configuration). */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   'title' | 'description' | 'prompt' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model'
-  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'dueAt' | 'priority' | 'labels' | 'color'
+  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'priority' | 'labels' | 'color'
 >>
 
 /** The auto-cruise state: the current on/off truth, the last manual intent,
  *  concurrency, and the scheduled windows that flip it at their boundaries
  *  (see cruise.ts — `enabled` IS the truth: manual toggles set it directly
  *  and never touch the schedule; window start/end instants flip it and take
- *  over from the manual intent; expired windows prune). `wip` is the soft
- *  advisory WIP awareness (undefined = unlimited, never blocks) sharing the
- *  cruise section, so no new sync section is needed. */
+ *  over from the manual intent; expired windows prune). */
 export interface CruiseState {
   enabled: boolean
   /** Last explicit manual intent (true=手动开, false=手动关); undefined = none yet. */
@@ -250,8 +247,6 @@ export interface CruiseState {
   limit: number
   /** Scheduled windows `[startAt?, endAt?]`; empty = no auto schedule. */
   schedule: import('./cruise.ts').CruiseWindow[]
-  /** Soft WIP ceilings; absent = unlimited. */
-  wip?: WipLimits
 }
 
 /** Persistence seam for the cruise state (localStorage in the browser). */
@@ -1437,7 +1432,6 @@ export class BoardController {
       reasoningEffort: source.reasoningEffort,
       agentPreset: source.agentPreset,
       permission: source.permission,
-      ...source.dueAt !== undefined ? { dueAt: source.dueAt } : {},
       ...source.priority !== undefined ? { priority: source.priority } : {},
       ...source.labels !== undefined ? { labels: [...source.labels] } : {},
     }, now, this.uuid(), this.nextOrder()))
@@ -1941,14 +1935,6 @@ export class BoardController {
         const value = patch[key]
         applied[key] = value === undefined || value === '' ? undefined : value
       }
-    }
-    // Due instant: a present key sets a finite positive instant or clears it
-    // (invalid values clear — the form only ever writes parsed dates).
-    if ('dueAt' in patch) {
-      const value = patch.dueAt
-      applied.dueAt = value !== undefined && Number.isFinite(value) && value > 0
-        ? Math.floor(value)
-        : undefined
     }
     // Priority: a present key sets 1/2/3 or clears it (invalid values clear).
     if ('priority' in patch) {
@@ -3195,8 +3181,8 @@ export class BoardController {
 
   /** Change the concurrency budget (persisted; the dispatcher re-pumps). The
    *  one clamp lives in board-doc ({@link clampCruiseLimit}) — writes and
-   *  reads share it. Non-finite input is ignored (same guard as the WIP
-   *  ceilings — a NaN write must never clear the budget). */
+   *  reads share it. Non-finite input is ignored (a NaN write must never
+   *  clear the budget). */
   setCruiseLimit(limit: number): void {
     if (!Number.isFinite(limit)) return
     const clamped = clampCruiseLimit(limit)
@@ -3204,29 +3190,6 @@ export class BoardController {
     this.cruiseState = { ...this.cruiseState, limit: clamped }
     this.deps.cruiseStorage?.write(this.cruiseState)
     this.dispatch()
-    this.notify()
-  }
-
-  /** Set (or clear with undefined) one soft WIP ceiling (persisted, advisory
-   *  only — never blocks drags or dispatch). Shares the cruise section, so
-   *  the existing section claim carries it; reads re-normalize through the
-   *  same clamp (floats floor, out-of-range clamps — the same discipline as
-   *  the cruise budget, and the same silent-clamp UX: the field re-renders
-   *  the clamped value on blur). Non-finite numbers are ignored (never clear
-   *  the ceiling on NaN). */
-  setWipLimit(scope: 'global' | 'running', value: number | undefined): void {
-    if (value !== undefined && !Number.isFinite(value)) return
-    const clean = value === undefined ? undefined : clampWipLimit(value)
-    const prev = this.cruiseState.wip?.[scope]
-    if (prev === clean) return
-    const next: WipLimits | undefined = normalizeWipLimits({
-      ...this.cruiseState.wip,
-      [scope]: clean,
-    })
-    this.cruiseState = next === undefined
-      ? (() => { const rest = { ...this.cruiseState }; delete rest.wip; return rest })()
-      : { ...this.cruiseState, wip: next }
-    this.deps.cruiseStorage?.write(this.cruiseState)
     this.notify()
   }
 

@@ -4,7 +4,7 @@
  * matches all.
  */
 import { describe, expect, it } from 'vitest'
-import { applyCompletion, boardShortcutOf, completeBoardQuery, isShortcutTyping, matchCheatRow, matchTask, parseBoardQuery, removeFilterToken, splitFilterTokens, taskHaystack } from '../src/client/board/task-search.ts'
+import { applyCompletion, completeBoardQuery, matchTask, parseBoardQuery, removeFilterToken, splitFilterTokens, taskHaystack } from '../src/client/board/task-search.ts'
 
 const task = {
   title: '给猫画一幅画',
@@ -55,61 +55,6 @@ describe('taskHaystack', () => {
     expect(hay).toContain('给猫画一幅画')
     expect(hay).toContain('先从草稿开始')
     expect(hay).toContain('s1')
-  })
-})
-
-describe('boardShortcutOf (single keys, never while typing, never with modifiers)', () => {
-  it('maps the three board keys', () => {
-    expect(boardShortcutOf({ key: '/' }, false)).toBe('focus-search')
-    expect(boardShortcutOf({ key: 'x' }, false)).toBe('clear-filter')
-    expect(boardShortcutOf({ key: 'X' }, false)).toBe('clear-filter')
-    expect(boardShortcutOf({ key: '?' }, false)).toBe('toggle-help')
-  })
-
-  it('stays silent while typing or with modifiers held', () => {
-    expect(boardShortcutOf({ key: '/' }, true)).toBeUndefined()
-    expect(boardShortcutOf({ key: 'x' }, true)).toBeUndefined()
-    expect(boardShortcutOf({ key: '?' }, true)).toBeUndefined()
-    expect(boardShortcutOf({ key: '/', ctrlKey: true }, false)).toBeUndefined()
-    expect(boardShortcutOf({ key: '/', metaKey: true }, false)).toBeUndefined()
-    expect(boardShortcutOf({ key: 'x', altKey: true }, false)).toBeUndefined()
-  })
-
-  it('ignores every other key', () => {
-    expect(boardShortcutOf({ key: 'Enter' }, false)).toBeUndefined()
-    expect(boardShortcutOf({ key: 'a' }, false)).toBeUndefined()
-    expect(boardShortcutOf({ key: 'Escape' }, false)).toBeUndefined()
-  })
-})
-
-describe('matchCheatRow (cheatsheet filter sieve)', () => {
-  it('blank query keeps every row', () => {
-    expect(matchCheatRow({ key: '/', text: 'Focus' }, '')).toBe(true)
-    expect(matchCheatRow({ key: '/', text: 'Focus' }, '   ')).toBe(true)
-  })
-
-  it('matches key or description substring, case-insensitive', () => {
-    expect(matchCheatRow({ key: '/', text: '聚焦任务筛选' }, '/')).toBe(true)
-    expect(matchCheatRow({ key: 'x', text: '清空筛选' }, '清空')).toBe(true)
-    expect(matchCheatRow({ key: '?', text: 'Toggle this cheatsheet' }, 'toggle')).toBe(true)
-    expect(matchCheatRow({ key: '/', text: '聚焦任务筛选' }, '不存在')).toBe(false)
-  })
-})
-
-describe('isShortcutTyping (THE one typing judgment)', () => {
-  it('treats IME composing (isComposing / 229) as typing wherever focus sits', () => {
-    expect(isShortcutTyping(null, { isComposing: true })).toBe(true)
-    expect(isShortcutTyping(null, { keyCode: 229 })).toBe(true)
-    expect(isShortcutTyping({ closest: () => null }, { isComposing: true })).toBe(true)
-  })
-
-  it('treats editables as typing, plain surfaces as not', () => {
-    const input = { closest: (selectors: string) => selectors.includes('input') ? {} : null }
-    const board = { closest: () => null }
-    expect(isShortcutTyping(input, {})).toBe(true)
-    expect(isShortcutTyping(board, {})).toBe(false)
-    expect(isShortcutTyping(null, {})).toBe(false)
-    expect(isShortcutTyping({}, {})).toBe(false)
   })
 })
 
@@ -251,28 +196,6 @@ describe('qualifier single source (parse + complete + match agree)', () => {
     expect(matchTask(task, 'ws:深夜', [], { workspaceTitle: '深夜食堂' })).toBe(true)
     expect(parseBoardQuery('label:a').qualifiers).toEqual([{ key: 'label', value: 'a' }])
     expect(completeBoardQuery('label:')).toEqual([])
-  })
-
-  it('due:today covers today plus overdue; due:overdue only the past', () => {
-    const now = Date.now()
-    const day = 86_400_000
-    const startOfToday = (() => {
-      const date = new Date(now)
-      date.setHours(0, 0, 0, 0)
-      return date.getTime()
-    })()
-    const todayTask = { ...task, status: 'todo', dueAt: startOfToday + day / 2 }
-    const overdueTask = { ...task, status: 'todo', dueAt: startOfToday - day }
-    const futureTask = { ...task, status: 'todo', dueAt: startOfToday + 2 * day }
-    const doneTask = { ...task, status: 'done', dueAt: startOfToday - day }
-    expect(parseBoardQuery('due:today').qualifiers).toEqual([{ key: 'due', value: 'today' }])
-    expect(completeBoardQuery('due:')).toEqual(['due:today', 'due:overdue'])
-    expect(matchTask(todayTask, 'due:today')).toBe(true)
-    expect(matchTask(overdueTask, 'due:today')).toBe(true)
-    expect(matchTask(futureTask, 'due:today')).toBe(false)
-    expect(matchTask(doneTask, 'due:today')).toBe(false)
-    expect(matchTask(overdueTask, 'due:overdue')).toBe(true)
-    expect(matchTask(todayTask, 'due:overdue')).toBe(false)
   })
 })
 
