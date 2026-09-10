@@ -1,0 +1,93 @@
+# Publishes the package to npm from CI, with no long-lived token and no manual
+# one-time password.
+#
+# npm trusted publishing (OIDC) lets a workflow prove its identity to the
+# registry: GitHub mints a short-lived, workflow-scoped token, npm exchanges it
+# for a publish grant, and the publish is authorized by the trusted-publisher
+# configuration on npmjs.com rather than by a password plus 2FA prompt. See
+# https://docs.npmjs.com/trusted-publishers.
+#
+# Wiring required outside this repository (one-time, on npmjs.com):
+#   Package -> Settings -> Trusted Publisher -> GitHub Actions
+#     Organization or user : FiretrUCK666
+#     Repository           : dsh-task-board
+#     Workflow filename    : release.yml
+#     Allowed actions      : allow npm publish (direct), not stage-only
+# npm matches these fields exactly and case-sensitively; it does not validate
+# them when saving, so a typo only surfaces as an ENEEDAUTH at publish time.
+#
+# Release flow: bump the version and commit (the tag must match package.json),
+# then push a v<version> tag. This workflow re-runs the full gate and publishes.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # A manual run of THIS workflow carries the same workflow name in its OIDC
+  # claim, so it is authorized by the same trusted-publisher entry. Handy for
+  # verifying the wiring on a version that is already published (it will fail
+  # at the registry with "cannot publish over" rather than at authentication).
+  workflow_dispatch:
+
+# id-token: write is what lets the job request the OIDC token. Without it the
+# publish fails as unauthenticated.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          # Never cache a release build: a stale cache can change what ships.
+          package-manager-cache: false
+
+      # The npm bundled with Node is not guaranteed to be new enough for OIDC
+      # publishing (that needs npm >= 11.5.1). Pin a known-good 11.x rather
+      # than floating to a major that may change publish behavior.
+      - name: Use an npm that supports trusted publishing
+        run: npm install -g npm@^11.15.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Refuse a tag that disagrees with package.json
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "v$pkg" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version $pkg — bump the version, commit, then re-tag."
+            exit 1
+          fi
+
+      # Build first: the published artifacts must come from this source tree.
+      # lib/ is committed as well, and the CI workflow's consistency check is
+      # what guarantees the committed copy equals this build.
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Verify
+        run: pnpm verify
+
+      # No NODE_AUTH_TOKEN and no --otp: the npm CLI detects the OIDC
+      # environment and authenticates through it. prepublishOnly re-runs the
+      # gate above; that redundancy is deliberate, so a publish can never ship
+      # a tree that no longer passes.
+      - name: Publish to npm
+        run: npm publish --access public
