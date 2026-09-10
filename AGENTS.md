@@ -224,7 +224,17 @@ remote、换 npm 作用域时，改这些真实配置即可，本文不需要跟
 1. `git status` 确认工作区；有未提交改动先存一个「改前存档点」。
 2. 改代码。
 3. `pnpm typecheck` + `pnpm test`。
-4. 用户可见改动（行为/UI/文案/修复）→ bump `package.json` patch。纯重构/测试/文档不 bump。
+4. 用户可见改动（行为/UI/文案/修复）→ bump `package.json` patch。
+   **判断标准是「使用者会不会看到」**，不是「改的是代码还是字」：
+
+   | 要 bump | 不 bump |
+   | --- | --- |
+   | 行为、界面、交互、报错文案 | 重构、测试、构建脚本 |
+   | **随包发出的说明**（README、README.en.md——npm 页面上展示的就是它，装完后也在包内） | **不进包的内部文档**（AGENTS.md、CONTRIBUTING.md） |
+
+   最容易判错的是最下面一行：同样叫「文档」，README 是**产品表面**（使用者按它判断
+   能不能用、怎么装），改名一个字都算用户可见；AGENTS.md 只是给 AI 的契约，改了不影响
+   使用者。前者不 bump 就会出现「仓库里的说明已经改了，npm 上还是旧的」——已发生过。
 5. `pnpm build`（**版号在 build 时进包**，顺序不能颠倒）。
 6. `pnpm verify`。
 7. `git add -A && git commit`——提交信息简短说明本次改动（中文或英文均可，禁止 emoji）。
