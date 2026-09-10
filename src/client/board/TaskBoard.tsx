@@ -39,6 +39,8 @@ import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
 import { waitingKeyOf } from './session-chip.ts'
+import { isGitBehind, isNewerVersion, shortSha, updateActionsFor, type UpdateInstallMode } from '../../core/update-check.ts'
+import { BUNDLED_PACKAGE_NAME, BUNDLED_VERSION, fetchNpmLatest, fetchUpdateSource, type NpmLatest, type UpdateSourceView } from '../update-source.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
@@ -68,6 +70,24 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
 import { activityGroupKeyOf, activityOf, clusterOf, freezeFeed, groupActivityByObjectDay, remainderKeyOf, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
 import { flowSummaryOf } from '../../core/flow-metrics.ts'
 import { Chip } from './Chip.tsx'
+
+/**
+ * The install-mode label the update dialog shows (one branch per mode — the
+ * locale dict keys cannot be built dynamically, so the mapping lives here).
+ */
+function updateModeLabel(mode: UpdateInstallMode): string {
+  if (mode === 'npm') return t('board.update.mode.npm')
+  if (mode === 'github') return t('board.update.mode.github')
+  if (mode === 'local') return t('board.update.mode.local')
+  return t('board.update.mode.unknown')
+}
+
+/** The one-line hint above one copyable update command. */
+function updateHintOf(kind: 'npm' | 'github' | 'local'): string {
+  if (kind === 'npm') return t('board.update.hint.npm')
+  if (kind === 'github') return t('board.update.hint.github')
+  return t('board.update.hint.local')
+}
 
 /**
  * Human day label for an activity group header: 今天 / 昨天, else the
@@ -288,6 +308,88 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   // The engine-seat note the header chip opens (touch has no hover, so the
   // explanation must be a real, reachable surface — not a `title`).
   const [engineNote, setEngineNote] = useState<'stale' | 'viewer' | undefined>(undefined)
+  // 常驻检查更新（Header 模式组的 ghost 按钮，点一下即查）：host 安装来源与
+  // npm 最新版并行读取，有新版（npm 版号或本地 git 落后）即开结果 Dialog；
+  // 更新永远是可复制命令 + 重启说明，绝不在运行中就地改写。
+  const [updatePhase, setUpdatePhase] = useState<'idle' | 'checking' | 'latest' | 'available' | 'failed'>('idle')
+  const [updateSource, setUpdateSource] = useState<UpdateSourceView | undefined>(undefined)
+  const [updateLatest, setUpdateLatest] = useState<NpmLatest | undefined>(undefined)
+  const [showUpdate, setShowUpdate] = useState(false)
+  const [updateCopiedAt, setUpdateCopiedAt] = useState<number | undefined>(undefined)
+  const [updateCopyFailedAt, setUpdateCopyFailedAt] = useState<number | undefined>(undefined)
+  const updateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => {
+    if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
+  }, [])
+
+  /** 点一下即查：两路并行，任一能证明"有新版"即 available，否则按 npm 定论。 */
+  const checkUpdate = (): void => {
+    if (updatePhase === 'checking') return
+    setUpdatePhase('checking')
+    void (async () => {
+      const [source, latest] = await Promise.all([
+        fetchUpdateSource(),
+        fetchNpmLatest(BUNDLED_PACKAGE_NAME),
+      ])
+      const current = source?.version ?? BUNDLED_VERSION
+      setUpdateSource(source)
+      setUpdateLatest(latest ?? undefined)
+      const npmNewer = latest !== undefined && isNewerVersion(latest.version, current)
+      const gitNewer = source?.mode === 'local' && source.git !== undefined && isGitBehind(source.git)
+      if (npmNewer || gitNewer) {
+        setUpdatePhase('available')
+        setShowUpdate(true)
+        return
+      }
+      // npm 不可读时无法定论（唯一的"无证据"形态）：行内失败可重试。
+      if (latest === undefined) {
+        setUpdatePhase('failed')
+        return
+      }
+      // 已是最新：按钮短暂确认后回弹常驻态（注意力只借两秒）。
+      setUpdatePhase('latest')
+      if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
+      updateTimer.current = setTimeout(() => { setUpdatePhase('idle') }, 2500)
+    })()
+  }
+
+  /** 复制一条更新命令（与详情页复制同一闪现文法，best-effort 不抛）。 */
+  const copyUpdateCommand = (index: number, command: string): void => {
+    const flash = (ok: boolean): void => {
+      setUpdateCopiedAt(ok ? index : undefined)
+      setUpdateCopyFailedAt(ok ? undefined : index)
+      if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
+      updateTimer.current = setTimeout(() => {
+        setUpdateCopiedAt(undefined)
+        setUpdateCopyFailedAt(undefined)
+      }, 1500)
+    }
+    void navigator.clipboard?.writeText(command).then(
+      () => { flash(true) },
+      () => { flash(false) },
+    )
+  }
+
+  // The dialog's derived readings (one funnel — the button label below and
+  // the dialog body read the same three values, never recompute apart).
+  const updateCurrent = updateSource?.version ?? BUNDLED_VERSION
+  const updateNpmNewer = updateLatest !== undefined && isNewerVersion(updateLatest.version, updateCurrent)
+  const updateGit = updateSource?.mode === 'local' ? updateSource.git : undefined
+  const updateGitBehind = updateGit !== undefined && isGitBehind(updateGit)
+  const updatePublishedMs = updateLatest?.publishedAt !== undefined
+    ? Date.parse(updateLatest.publishedAt)
+    : Number.NaN
+  const updateLabel = (() => {
+    if (updatePhase === 'checking') return t('board.update.checking')
+    if (updatePhase === 'latest') return t('board.update.latest')
+    if (updatePhase === 'failed') return t('board.update.failed')
+    if (updatePhase === 'available') {
+      return updateNpmNewer && updateLatest !== undefined
+        ? t('board.update.available', { v: updateLatest.version })
+        : t('board.update.availableGit')
+    }
+    return t('board.update.check')
+  })()
   // The stale note resolves itself: once a seat re-read reports a current
   // protocol (or sync drops), the dialog closes WITH its banner — no stale
   // explanation lingering over a healthy state.
@@ -1083,6 +1185,19 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             >
               {t('board.activity')}
             </Button>
+            {/* 检查更新：常驻的 ghost 按钮（与模式组同进同退，窄屏同行换列不断行）。
+                点一下即查；有新版时同一按钮改文案，再点重开结果 Dialog。 */}
+            <Button
+              variant="ghost"
+              title={t('board.update.check')}
+              disabled={updatePhase === 'checking'}
+              onClick={() => {
+                if (updatePhase === 'available' && !showUpdate) setShowUpdate(true)
+                else checkUpdate()
+              }}
+            >
+              {updateLabel}
+            </Button>
             {/* 通知：等你处理的会话聚合（只读列表 — 点行进任务详情，
                 会话操作归详情页）。有等待事项才亮数（折叠计 1），开屉后新到
                 才亮点，无则安静。 */}
@@ -1239,6 +1354,74 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
               )}
               <Button variant="primary" onClick={() => { setEngineNote(undefined) }}>
                 {t('board.engineNoteOk')}
+              </Button>
+            </footer>
+          </Dialog>
+        )}
+        {/* 检查更新的结果：与引擎说明同一 Dialog 家族（正文走 modalScroll，
+            动作钉 modalFooter）。更新永远是可复制命令 + 重启说明——Dialog 里
+            没有"一键升级"按钮：在运行中改写 profile 会把正在服务的 DSH 搞崩。 */}
+        {showUpdate && updatePhase === 'available' && (
+          <Dialog
+            label={t('board.update.title')}
+            title={t('board.update.title')}
+            onClose={() => { setShowUpdate(false) }}
+            portal
+          >
+            <div className={css.modalScroll}>
+              <p className={css.detailText}>{t('board.update.current', { v: updateCurrent })}</p>
+              {updateSource !== undefined && (
+                <p className={css.detailHint}>{t('board.update.source', { mode: updateModeLabel(updateSource.mode) })}</p>
+              )}
+              {updateNpmNewer && updateLatest !== undefined && (
+                <p className={css.detailText}>{t('board.update.newVersion', { v: updateLatest.version })}</p>
+              )}
+              {updateNpmNewer && Number.isFinite(updatePublishedMs) && (
+                <p className={css.detailHint}>
+                  {t('board.update.published', { time: formatDateTime(updatePublishedMs) })}
+                </p>
+              )}
+              {updateGitBehind && updateGit?.remoteHead !== undefined && (
+                <p className={css.detailHint}>
+                  {t('board.update.gitBehind', { head: shortSha(updateGit.head), remote: shortSha(updateGit.remoteHead) })}
+                </p>
+              )}
+              {updateGit !== undefined && !updateGitBehind && (
+                <p className={css.detailHint}>{t('board.update.gitUpToDate')}</p>
+              )}
+              {updateGit !== undefined && updateGit.dirty && (
+                <p className={css.detailHint}>{t('board.update.gitDirty')}</p>
+              )}
+              {updateActionsFor(
+                updateSource?.mode ?? 'unknown',
+                updateSource?.packageName ?? BUNDLED_PACKAGE_NAME,
+                updateSource?.githubSpec,
+              ).map((action, index) => {
+                const copied = updateCopiedAt === index
+                const failed = updateCopyFailedAt === index
+                return (
+                  <div key={action.kind}>
+                    <p className={css.detailHint}>{updateHintOf(action.kind)}</p>
+                    <p className={css.detailText}>
+                      <code>{action.command}</code>
+                      {' '}
+                      <Button
+                        size="sm"
+                        title={copied ? t('detail.copied') : failed ? t('detail.copyFailed') : t('board.update.copy')}
+                        aria-label={t('board.update.copy')}
+                        onClick={() => { copyUpdateCommand(index, action.command) }}
+                      >
+                        {copied ? t('detail.copied') : failed ? t('detail.copyFailed') : t('board.update.copy')}
+                      </Button>
+                    </p>
+                  </div>
+                )
+              })}
+              <p className={css.detailHint}>{t('board.update.restart')}</p>
+            </div>
+            <footer className={css.modalFooter}>
+              <Button variant="primary" onClick={() => { setShowUpdate(false) }}>
+                {t('detail.close')}
               </Button>
             </footer>
           </Dialog>

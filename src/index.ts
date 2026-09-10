@@ -21,6 +21,7 @@ import { registerPermissionRoute } from './host/permission-route.ts'
 import { registerSessionStateRoute } from './host/session-state-route.ts'
 import { registerSettingsRoute } from './host/settings-route.ts'
 import { registerBoardRoute } from './host/board-route.ts'
+import { registerUpdateRoute } from './host/update-route.ts'
 
 /** Order of the announcement section within the tool-guidance band. */
 const SECTION_ORDER = 200
@@ -136,6 +137,13 @@ export function apply(ctx: Context, config?: Config): void {
   ctx.effect(
     () => registerBoardRoute(ctx, 'dsh-task-board'),
     'dsh-task-board: board route',
+  )
+
+  // Serve the install source (version + install mode + checkout state) the
+  // header's check-for-updates button reads before comparing against npm.
+  ctx.effect(
+    () => registerUpdateRoute(ctx, 'dsh-task-board'),
+    'dsh-task-board: update route',
   )
 
   // Initial registration from the composition entry (covers the value the

@@ -117,6 +117,8 @@ A restart is required here too. Your task data is not deleted.
 
 ## Updating
 
+Easiest: the board header's right toolbar has a permanent Check for updates button. One click compares the running version against the latest; when an update exists it shows the matching update command for your install method — copy it and run it in your own terminal.
+
 With the plugin marketplace installed, press Update on the Installed tab. Otherwise re-run an install command:
 
 ```sh
