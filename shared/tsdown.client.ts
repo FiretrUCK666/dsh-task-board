@@ -29,6 +29,29 @@ const CSS_VIRTUAL_PREFIX = '\0dsh-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
 
 /**
+ * Virtual id -> physical stylesheet. The id is what survives into the emitted
+ * bundle (the bundler stamps it into a `//#region` comment), so it must stay
+ * repository-relative: an absolute path would publish the builder's home
+ * directory, break reproducibility, and mean nothing on another machine. The
+ * real path is kept here because `load()` still has to read the file.
+ */
+const cssFileByVirtualId = new Map<string, string>()
+
+/**
+ * Wrap one physical stylesheet in the virtual id its module wrapper is keyed
+ * by, remembering the file for `load()`.
+ * @param absolutePath - the resolved `.module.css` path.
+ * @returns the virtual id handed to the bundler.
+ */
+function cssVirtualId(absolutePath: string): string {
+  const repositoryRelative = relative(REPOSITORY_ROOT, absolutePath)
+  const portable = repositoryRelative.startsWith('..') ? absolutePath : repositoryRelative.split(sep).join('/')
+  const virtualId = CSS_VIRTUAL_PREFIX + portable + CSS_VIRTUAL_SUFFIX
+  cssFileByVirtualId.set(virtualId, absolutePath)
+  return virtualId
+}
+
+/**
  * Wire/type layers a client bundle may inline: browser-safe contract surfaces
  * with no runtime identity to share (no Symbol/instanceof/singleton state).
  * Everything else under @deepseek-ai/* is either a module-table entry
@@ -253,11 +276,12 @@ function clientConfig(id: string, entry: string): UserConfig {
       resolveId(source: string, importer: string | undefined) {
         if (!source.endsWith('.module.css')) return null
         const abs = importer !== undefined ? sourceAssetPath(source, importer) : source
-        return CSS_VIRTUAL_PREFIX + abs + CSS_VIRTUAL_SUFFIX
+        return cssVirtualId(abs)
       },
       async load(virtualId: string) {
         if (!virtualId.startsWith(CSS_VIRTUAL_PREFIX)) return null
-        const fileId = virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+        const fileId = cssFileByVirtualId.get(virtualId)
+          ?? resolvePath(REPOSITORY_ROOT, virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length))
         // The virtual id otherwise hides the physical stylesheet from Rolldown's watch graph.
         this.addWatchFile(fileId)
         const source = await readFile(fileId)

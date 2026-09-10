@@ -186,22 +186,68 @@
   完全独立、互不依赖、互不引用。
 - 生效规则：host 半区改动需重启 `dsh web`；client 半区改动刷新页面即可。
 
-## 版本管理流程（必守）
+## 版本管理与发布（必守）
 
-本项目使用本地 git 仓库做版本管理（无远程；用户不用掌握 git，由 agent 代为执行）。
+本项目是「本地仓库 + 远端 `origin` + npm 包」三处结构。**用户不掌握 git 与发布操作，
+由 agent 代为执行**；用户只描述需求，不重复交代流程。三处互不自动同步，各自由下面的
+动作推进。
 
-- **修改前**：`git status` 确认工作区状态；如有未提交改动先 `git add -A && git commit`
-  存一个「改前存档点」。
-- **修改后**：build/typecheck/test/verify 全绿后 `git add -A && git commit`，提交信息
-  简短说明本次改动（中文或英文均可，禁止 emoji）。
-- **版号（硬性）**：用户可见改动（行为/UI/文案/修复）必须**同提交 bump `package.json` patch**，
-  `pnpm build` 后 grep `lib/client.js` 确认新版号已进包；回复用户只报版号（用户在已安装插件列表看号，
-  板内任何位置不显示版本号）。纯重构/测试/文档提交不 bump。（与"文档不记版本号快照"
-  不冲突：那条禁的是文档里写"某版修了某事"，这里管的是包版本号递进。）
-- **回滚**：用户要求「回到上一个版本 / 撤销改动」时——未提交的改动用
-  `git checkout -- <file>` 丢弃；已提交的用 `git log --oneline` 定位存档点后
-  `git reset --hard <commit>`（执行前确认工作区无未提交的重要改动，并向用户说明影响）。
-- 不提交：`node_modules/`、`lib/`（已在 .gitignore 忽略）。
+### 三种触发与对应动作
+
+**日常（默认，用户描述需求即触发）**——一次改到远端：
+
+1. `git status` 确认工作区；有未提交改动先存一个「改前存档点」。
+2. 改代码。
+3. `pnpm typecheck` + `pnpm test`。
+4. 用户可见改动（行为/UI/文案/修复）→ bump `package.json` patch。纯重构/测试/文档不 bump。
+5. `pnpm build`（**版号在 build 时进包**，顺序不能颠倒）。
+6. `pnpm verify`。
+7. `git add -A && git commit`——提交信息简短说明本次改动（中文或英文均可，禁止 emoji）。
+   **`lib/` 与产生它的 src 改动必须同一次提交**。
+8. `git push origin main`。
+
+**发版（只有用户明确说「发版 / 发出去」才触发）**——在上面的基础上追加：
+
+9. `git tag v<版本>` + `git push origin v<版本>`。
+10. 建 GitHub Release，正文写**人话更新说明**（用户看的是这个；市场的新版说明优先读
+    Release，其次提交记录，最后 npm 发布时间。仓库里不放 CHANGELOG.md）。
+11. `npm publish --access public`（需要 npm 账号的 2FA 验证码，见下）。
+
+**停手（用户说「先别提交 / 只看效果」）**——只做到第 6 步，不 commit、不 push。
+
+### 三处各管什么（不要混为一谈）
+
+| 动作 | 效果 | 谁能感知 |
+| --- | --- | --- |
+| `git push` | 远端仓库更新 | 从 GitHub 源安装的人立刻可更新（市场比对 commit） |
+| tag + GitHub Release | 立版本节点 + 写更新说明 | 用户能看到该版本的说明 |
+| `npm publish` | npm 上的版本更新 | 从 npm 源安装的人可更新；市场的更新提示也读 npm 版本号 |
+
+push 之后 npm 不会自动变化，npm 发布之后远端也不会自动变化。**未发布 ≠ 别人拿不到**：
+从 GitHub 源安装的人在你 push 的瞬间就能拿到最新代码。
+
+### 版本号与不变量
+
+- 三档语义：patch（修补、小改动，日常默认）/ minor（明显新功能）/ major（大改版）。
+- **单调递增，永不复用**：已 `npm publish` 的版本号不能再发第二次。npm 上的已发布版本
+  无法删除，只能发新版本修正。
+- **已推送的历史不改写**：不用 `git push --force`、不 rebase 已推送的提交。
+- 回滚分档：未提交 → 丢弃；已提交未推送 → `git reset --hard <存档点>`；已推送 →
+  `git revert`（不改写历史）；已发 npm → 只能发新版本修回。
+- 用户可见改动完成后，**回复用户只报版号**（用户在已安装插件列表看号，板内任何位置不
+  显示版本号）。（与「文档不记版本号快照」不冲突：那条禁的是文档里写「某版修了某事」，
+  这里管的是包版本号递进。）
+
+### 身份与发布前检查
+
+- **插件 id 与包名是两件事**，见「命名矩阵」。改名只动包身份，不动 id 与数据键。
+- 提交身份：`user.name` = `FiretrUCK`，`user.email` = GitHub noreply 地址（不暴露私人邮箱）。
+- 发布前必查：`pnpm verify`（含产物不得出现本机路径、不得出现凭据、无 emoji 三项审计）；
+  `npm pack` 产物装进隔离 profile 能真实加载，不用 `link:` 代替。
+- npm 强制 2FA：发布需要一个由用户手机验证器生成的 6 位验证码（30 秒有效），因此
+  **发布动作由用户在自己终端执行**，agent 准备好一切并给出确切命令。
+- 不提交：`node_modules/`；**`lib/` 必须提交**（安装时不执行构建，缺了别人起不来）。
+
 
 ## 项目定位
 
@@ -212,9 +258,13 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### 命名矩阵（硬性规范 3，新增标识不得偏离）
 
+**插件 id 与包名是两个身份，不得混用**：id 是加载与数据身份的根，包名只是安装标识。
+包名带作用域（`@firetruck666/dsh-task-board`）不改变任何 id、路由、存储单元或数据键。
+
 | 维度 | 值 |
 | --- | --- |
-| 包名 / 文件夹名 / 行 id / 设置命名空间 / locale 命名空间 | `dsh-task-board` |
+| **插件 id**（行 id / 文件夹名 / 客户端 bundle id / 设置命名空间 / locale 命名空间 / `/plugins/<id>/client.js`） | `dsh-task-board` |
+| **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:`） | `@firetruck666/dsh-task-board` |
 | 设置路由 | `/api/dsh-task-board/settings` |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
@@ -223,8 +273,10 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 设置卡 slot id | `dsh-task-board`（`settings.plugin.item`，order 110） |
 | localStorage 键（现为离线镜像 + 草稿 + 备份） | `dsh.taskBoard.v1` 等（**不得改名**，见「数据键稳定」） |
 
-挂载：`cordis.patch.yml` 声明 `dsh.bundle.patch`，安装命令
-`dsh plugin --profile web add link:<本目录>`。
+挂载：`package.json` 声明 `dsh.bundle.patch` → `cordis.patch.yml`；安装命令
+`dsh plugin --profile web add @firetruck666/dsh-task-board`（本地开发用 `add .` 或
+`link:<本目录>`）。`scripts/dsh-task-board.js` 是本地挂载辅助，会清理改名前的旧
+无作用域键。
 
 ## 架构（索引：职责与入口，机制细节以代码注释为准，不复述）
 

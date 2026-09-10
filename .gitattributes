@@ -1,0 +1,20 @@
+# Normalize line endings to LF everywhere. The whole project is authored and
+# built with LF; without this, a Windows checkout with core.autocrlf=true
+# rewrites text files to CRLF and shows phantom modifications, while CI on
+# Linux sees LF — the two disagree about the same commit.
+* text=auto eol=lf
+
+# Windows batch files are the one format that must keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets stay byte-exact.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.tgz binary

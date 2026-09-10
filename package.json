@@ -1,7 +1,7 @@
 {
-  "name": "dsh-task-board",
+  "name": "@firetruck666/dsh-task-board",
   "description": "Task board plugin for the DSH web GUI: a sidebar entry plus a multi-column kanban view with real execution through DSH sessions, schedules, session rules and auto-cruise automation. Board truth lives on the host and syncs to every device over SSE (the browser is an offline-first copy). Standalone plugin, no DSH source changes.",
-  "version": "0.2.74",
+  "version": "0.2.75",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -20,6 +20,27 @@
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FiretrUCK666/dsh-task-board.git"
+  },
+  "homepage": "https://github.com/FiretrUCK666/dsh-task-board#readme",
+  "bugs": "https://github.com/FiretrUCK666/dsh-task-board/issues",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "task-board",
+    "kanban",
+    "cordis"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "dsh": {
     "bundle": {
@@ -44,7 +65,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "node scripts/verify-standalone.mjs . dsh-task-board"
+    "verify": "node scripts/verify-standalone.mjs . dsh-task-board @firetruck666/dsh-task-board",
+    "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test && pnpm verify"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.7",

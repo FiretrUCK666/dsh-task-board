@@ -1,13 +1,18 @@
 # dsh-task-board bundle patch: inserts the dual-face plugin row into the web
 # profile roster. Applied as a profile bundle layer (the `dsh.bundle.patch`
 # manifest field) over dsh-base; activate with
-# `dsh plugin --profile <name> add link:.../dsh-task-board`.
+# `dsh plugin --profile <name> add @firetruck666/dsh-task-board`.
 #
-# The row is a bare plugin by package name: the node half (exports ".") runs
-# in the host process (the system-prompt announcement section and the settings
-# route), and the `dsh.client` declaration in package.json makes the browser
-# half (exports "./client", served at /plugins/<id>/client.js) load in the web
-# GUI.
+# The row id is the plugin id (load-bearing: the browser half is served at
+# /plugins/<id>/client.js, and the id also names the settings namespace, the
+# HTTP routes, the storage unit and the settings-card slot). The row name is
+# the package name pnpm installed, which may differ from the id — a scoped
+# package name does not change the id.
+#
+# The node half (exports ".") runs in the host process (the system-prompt
+# announcement section and the settings route), and the `dsh.client`
+# declaration in package.json makes the browser half (exports "./client") load
+# in the web GUI.
 - insert:
     - id: dsh-task-board
-      name: 'dsh-task-board'
+      name: '@firetruck666/dsh-task-board'

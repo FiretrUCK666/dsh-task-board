@@ -7,24 +7,34 @@
  * The plugin ships in the official profile-bundle shape: the local
  * package.json declares `dsh.bundle.patch` (this repo's cordis.patch.yml)
  * and `dsh.client`; mounting registers it in the web profile manifest
- * ($DSH_HOME/.dsh/profiles/web/package.json, dependencies + dsh.profile.bundles)
+ * ($DSH_HOME/profiles/web/package.json, dependencies + dsh.profile.bundles)
  * and runs pnpm install in the profile directory. Restarting the dsh web
  * GUI makes the bundle layer load; a page refresh then shows the sidebar
  * entry.
  *
  * mount   : add the profile-manifest dependency + bundle row, pnpm install.
  * unmount : remove both rows, pnpm install — the GUI fully reverts; task
- *           data stays in the browser (localStorage).
+ *           data stays in the host storage unit and the browser.
  * status  : report the current mount state.
  *
+ * Two identities are in play and they are not interchangeable. PACKAGE_NAME
+ * is what pnpm installed and what the profile manifest keys on (dependencies
+ * and dsh.profile.bundles both hold package names, and cordis.patch.yml's row
+ * `name:` must match it). PLUGIN_ID names the loader row, the served browser
+ * asset, the settings namespace, the HTTP routes, the storage unit and the
+ * settings-card slot — a scoped package name never moves it.
+ *
  * Only the profile manifest rows owned by this plugin are touched; other
- * other profile rows are left alone.
+ * profile rows are left alone. The legacy unscoped key is cleaned up too, so
+ * a checkout that predates the scoped rename migrates instead of leaving a
+ * dependency pointing at a package that no longer exists.
  */
 
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 // Resolve the DSH home root. DSH_HOME is authoritative and already points at
 // the ~/.dsh directory itself (it may sit somewhere other than the user's
@@ -33,8 +43,11 @@ import { execSync } from 'node:child_process'
 const DSH_HOME = process.env.DSH_HOME ?? path.join(os.homedir(), '.dsh')
 const PROFILE_DIR = path.join(DSH_HOME, 'profiles', 'web')
 const PROFILE_MANIFEST = path.join(PROFILE_DIR, 'package.json')
+const PACKAGE_NAME = '@firetruck666/dsh-task-board'
 const PLUGIN_ID = 'dsh-task-board'
-const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
+/** Rows written by versions before the scoped rename; removed on mount. */
+const LEGACY_PACKAGE_NAMES = ['dsh-task-board']
+const REPO = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 
 function readManifest() {
   return JSON.parse(fs.readFileSync(PROFILE_MANIFEST, 'utf8'))
@@ -75,17 +88,29 @@ function mount() {
   const bundles = manifest.dsh?.profile?.bundles ?? (manifest.dsh = { profile: { bundles: [] } }).profile.bundles
   const spec = `link:${REPO}`
 
-  if (deps[PLUGIN_ID] !== undefined) {
-    console.log(`[ok] ${PLUGIN_ID} 已在 dependencies（跳过）`)
-  } else {
-    deps[PLUGIN_ID] = spec
-    console.log(`[ok] dependencies += ${PLUGIN_ID}: ${spec}`)
+  for (const legacy of LEGACY_PACKAGE_NAMES) {
+    if (legacy !== PACKAGE_NAME && deps[legacy] !== undefined) {
+      delete deps[legacy]
+      console.log(`[ok] dependencies -= ${legacy}（旧的无作用域键，迁移到 ${PACKAGE_NAME}）`)
+    }
+    const legacyIdx = bundles.indexOf(legacy)
+    if (legacy !== PACKAGE_NAME && legacyIdx !== -1) {
+      bundles.splice(legacyIdx, 1)
+      console.log(`[ok] dsh.profile.bundles -= ${legacy}（旧的无作用域键）`)
+    }
   }
-  if (bundles.includes(PLUGIN_ID)) {
-    console.log(`[ok] ${PLUGIN_ID} 已在 dsh.profile.bundles（跳过）`)
+
+  if (deps[PACKAGE_NAME] !== undefined) {
+    console.log(`[ok] ${PACKAGE_NAME} 已在 dependencies（跳过）`)
   } else {
-    bundles.push(PLUGIN_ID)
-    console.log(`[ok] dsh.profile.bundles += ${PLUGIN_ID}`)
+    deps[PACKAGE_NAME] = spec
+    console.log(`[ok] dependencies += ${PACKAGE_NAME}: ${spec}`)
+  }
+  if (bundles.includes(PACKAGE_NAME)) {
+    console.log(`[ok] ${PACKAGE_NAME} 已在 dsh.profile.bundles（跳过）`)
+  } else {
+    bundles.push(PACKAGE_NAME)
+    console.log(`[ok] dsh.profile.bundles += ${PACKAGE_NAME}`)
   }
   writeManifest(manifest)
   installProfile()
@@ -98,27 +123,33 @@ function unmount() {
   const manifest = readManifest()
   const deps = manifest.dependencies ?? {}
   const bundles = manifest.dsh?.profile?.bundles ?? []
-  const changed = deps[PLUGIN_ID] !== undefined || bundles.includes(PLUGIN_ID)
+  const names = [PACKAGE_NAME, ...LEGACY_PACKAGE_NAMES.filter((n) => n !== PACKAGE_NAME)]
+  let changed = false
 
-  if (deps[PLUGIN_ID] !== undefined) {
-    delete deps[PLUGIN_ID]
-    console.log(`[ok] dependencies -= ${PLUGIN_ID}`)
-  } else {
-    console.log(`· dependencies 无 ${PLUGIN_ID}（跳过）`)
+  for (const name of names) {
+    if (deps[name] !== undefined) {
+      delete deps[name]
+      console.log(`[ok] dependencies -= ${name}`)
+      changed = true
+    } else {
+      console.log(`· dependencies 无 ${name}（跳过）`)
+    }
+    const idx = bundles.indexOf(name)
+    if (idx !== -1) {
+      bundles.splice(idx, 1)
+      console.log(`[ok] dsh.profile.bundles -= ${name}`)
+      changed = true
+    } else {
+      console.log(`· dsh.profile.bundles 无 ${name}（跳过）`)
+    }
   }
-  const idx = bundles.indexOf(PLUGIN_ID)
-  if (idx !== -1) {
-    bundles.splice(idx, 1)
-    console.log(`[ok] dsh.profile.bundles -= ${PLUGIN_ID}`)
-  } else {
-    console.log(`· dsh.profile.bundles 无 ${PLUGIN_ID}（跳过）`)
-  }
+
   if (changed) {
     writeManifest(manifest)
     installProfile()
   }
 
-  console.log('\n完成。重启 dsh web GUI 后恢复原状；任务数据保留在浏览器 localStorage（如需清除：浏览器控制台执行 localStorage.removeItem("dsh.taskBoard.v1")）。')
+  console.log('\n完成。重启 dsh web GUI 后恢复原状；任务数据保留在 host 存储单元与浏览器（如需清除浏览器镜像：控制台执行 localStorage.removeItem("dsh.taskBoard.v1")）。')
 }
 
 function status() {
@@ -126,13 +157,16 @@ function status() {
   const manifest = readManifest()
   const deps = manifest.dependencies ?? {}
   const bundles = manifest.dsh?.profile?.bundles ?? []
-  const installed = fs.existsSync(path.join(PROFILE_DIR, 'node_modules', PLUGIN_ID))
-  console.log(`插件 id    : ${PLUGIN_ID}`)
-  console.log(`仓库       : ${REPO}`)
-  console.log(`dependencies: ${deps[PLUGIN_ID] !== undefined ? `已声明 (${deps[PLUGIN_ID]})` : '未声明'}`)
-  console.log(`bundles     : ${bundles.includes(PLUGIN_ID) ? '已列入 dsh.profile.bundles' : '未列入'}`)
-  console.log(`node_modules: ${installed ? '已安装' : '未安装'} (${path.join(PROFILE_DIR, 'node_modules', PLUGIN_ID)})`)
+  const installed = fs.existsSync(path.join(PROFILE_DIR, 'node_modules', ...PACKAGE_NAME.split('/')))
+  const legacyDeps = LEGACY_PACKAGE_NAMES.filter((n) => n !== PACKAGE_NAME && deps[n] !== undefined)
+  console.log(`插件 id      : ${PLUGIN_ID}`)
+  console.log(`包名         : ${PACKAGE_NAME}`)
+  console.log(`仓库         : ${REPO}`)
+  console.log(`dependencies : ${deps[PACKAGE_NAME] !== undefined ? `已声明 (${deps[PACKAGE_NAME]})` : '未声明'}`)
+  console.log(`bundles      : ${bundles.includes(PACKAGE_NAME) ? '已列入 dsh.profile.bundles' : '未列入'}`)
+  console.log(`node_modules : ${installed ? '已安装' : '未安装'} (${path.join(PROFILE_DIR, 'node_modules', ...PACKAGE_NAME.split('/'))})`)
   console.log(`lib/client.js: ${fs.existsSync(path.join(REPO, 'lib', 'client.js')) ? '已构建' : '未构建'}`)
+  if (legacyDeps.length > 0) console.log(`提示         : 仍有旧的无作用域键 ${legacyDeps.join(', ')}，执行 mount 会自动迁移`)
 }
 
 const command = process.argv[2]

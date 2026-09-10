@@ -1,0 +1,50 @@
+# Continuous integration: prove a fresh clone builds, type-checks, passes its
+# tests, clears the standalone gate, and — the check that catches the most
+# common mistake in this repository — that the committed lib/ artifacts match
+# what the current src actually builds. A stale artifact means everyone who
+# installs from this repository or from npm runs code that no longer matches
+# the source they can read.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Verify standalone gate
+        run: pnpm verify
+
+      - name: Committed artifacts match a fresh build
+        run: |
+          if ! git diff --exit-code -- lib; then
+            echo "::error::lib/ is out of date — run 'pnpm build' and commit the result together with the src change."
+            exit 1
+          fi

@@ -1,4 +1,19 @@
+# Installed dependencies. Users get these back from package.json via pnpm;
+# they are never committed.
 node_modules/
-lib/
+
+# Build caches and coverage output.
+coverage/
+.vite/
+*.tsbuildinfo
+.pnpm-store/
+
+# Logs and editor/OS noise.
 *.log
 .DS_Store
+
+# NOTE: lib/ is NOT ignored. It is the published artifact — the browser half
+# (lib/client.js) and the host half (lib/index.js) that a `dsh plugin add`
+# installs straight from this repository without running a build. It must be
+# committed in the same commit as the src change that produced it; CI fails
+# when the two drift apart.
