@@ -29,14 +29,32 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 
-const [dirArg, pluginId, packageNameArg] = process.argv.slice(2)
-if (!dirArg || !pluginId) {
-  console.error('usage: node verify-standalone.mjs <plugin-dir> <plugin-id> [package-name]')
+const [dirArg, pluginIdArg, packageNameArg] = process.argv.slice(2)
+if (!dirArg) {
+  console.error('usage: node verify-standalone.mjs <plugin-dir> [plugin-id] [package-name]')
   process.exit(2)
 }
-/** The installed package name; equals the plugin id for an unscoped package. */
-const packageName = packageNameArg ?? pluginId
 const root = resolve(dirArg)
+
+/**
+ * The identity values the checks below compare against. Both default to what
+ * the plugin itself declares, so a rename (a fork taking its own npm scope,
+ * say) needs no edit here — `package.json` is the single source of truth:
+ *
+ * - the plugin id is the folder name (the same rule the loader applies), and it
+ *   is what the routes, the settings namespace and the patch row id must spell;
+ * - the package name is `package.json`'s `name`, and it is what the patch row
+ *   `name:` and the browser bundle's registration id must equal.
+ *
+ * Passing them explicitly is allowed for asserting an intended identity; every
+ * check is a CROSS-FILE comparison either way, which is where the value is —
+ * "package.json equals what the caller typed" would prove nothing.
+ */
+const manifestPath = join(root, 'package.json')
+const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : {}
+const folderName = root.split(sep).pop()
+const pluginId = pluginIdArg ?? folderName
+const packageName = packageNameArg ?? (typeof manifest.name === 'string' ? manifest.name : pluginId)
 const failures = []
 const notes = []
 
@@ -96,23 +114,25 @@ function isArtifact(file) {
   return relative(root, file).split(sep)[0] === 'lib'
 }
 
-// --- 1. identity ------------------------------------------------------------
+// --- 1. identity (cross-file) -----------------------------------------------
 
 const pkgPath = join(root, 'package.json')
 if (!existsSync(pkgPath)) failures.push('package.json missing')
 else {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-  if (pkg.name !== packageName) failures.push(`package.json name is "${pkg.name}", expected "${packageName}"`)
-  const folder = root.split(sep).pop()
-  if (folder !== pluginId) failures.push(`plugin directory is "${folder}", expected the plugin id "${pluginId}"`)
+  // The loader keys the browser bundle by the package name, so a declared name
+  // that is not what the caller expects is worth reporting: it usually means
+  // the rename was applied in one place and not the others.
+  if (pkg.name !== packageName) failures.push(`package.json name is "${pkg.name}", but the bundle registration and patch row must use "${packageName}"`)
+  if (folderName !== pluginId) failures.push(`plugin directory is "${folderName}", but the plugin id (routes, settings namespace, patch row id) is "${pluginId}"`)
 }
 
 const patchPath = join(root, 'cordis.patch.yml')
 if (!existsSync(patchPath)) failures.push('cordis.patch.yml missing')
 else {
   const patch = readFileSync(patchPath, 'utf8')
-  if (!patch.includes(`- id: ${pluginId}`)) failures.push(`cordis.patch.yml lacks row id "${pluginId}"`)
-  if (!patch.includes(`name: '${packageName}'`)) failures.push(`cordis.patch.yml lacks row name '${packageName}'`)
+  if (!patch.includes(`- id: ${pluginId}`)) failures.push(`cordis.patch.yml lacks row id "${pluginId}" (the plugin id)`)
+  if (!patch.includes(`name: '${packageName}'`)) failures.push(`cordis.patch.yml lacks row name '${packageName}' (the package name)`)
 }
 
 // --- 2. forbidden tokens ----------------------------------------------------

@@ -43,11 +43,17 @@ import { fileURLToPath } from 'node:url'
 const DSH_HOME = process.env.DSH_HOME ?? path.join(os.homedir(), '.dsh')
 const PROFILE_DIR = path.join(DSH_HOME, 'profiles', 'web')
 const PROFILE_MANIFEST = path.join(PROFILE_DIR, 'package.json')
-const PACKAGE_NAME = '@firetruck666/dsh-task-board'
-const PLUGIN_ID = 'dsh-task-board'
-/** Rows written by versions before the scoped rename; removed on mount. */
-const LEGACY_PACKAGE_NAMES = ['dsh-task-board']
 const REPO = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
+
+// Both identities are read from the plugin's own manifest rather than repeated
+// here, so a rename needs no edit in this helper: the package name is what goes
+// into the profile manifest, and the plugin id is the row identity the loader
+// uses (it defaults to the folder name, matching the loader's own rule).
+const PACKAGE_JSON = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'))
+const PACKAGE_NAME = PACKAGE_JSON.name
+const PLUGIN_ID = PACKAGE_JSON.name.split('/').pop()
+/** Rows written by versions before the scoped rename; removed on mount. */
+const LEGACY_PACKAGE_NAMES = PLUGIN_ID === 'dsh-task-board' ? ['dsh-task-board'] : []
 
 function readManifest() {
   return JSON.parse(fs.readFileSync(PROFILE_MANIFEST, 'utf8'))

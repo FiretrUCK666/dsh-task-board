@@ -13,21 +13,27 @@
  * catches exactly the class of bug a string check cannot — a mismatched id, a
  * factory that throws on boot, or a require the table cannot answer.
  *
- * Usage: node scripts/smoke-client.mjs <plugin-dir> <expected-bundle-id>
+ * Usage: node scripts/smoke-client.mjs <plugin-dir> [expected-bundle-id]
+ *
+ * The expected id defaults to `package.json`'s `name`, which is what the host's
+ * client module system keys the bundle by — deriving it keeps a rename (a fork
+ * taking its own scope, say) from needing an edit here.
  */
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-const [dirArg, expectedId] = process.argv.slice(2)
-if (!dirArg || !expectedId) {
-  console.error('usage: node scripts/smoke-client.mjs <plugin-dir> <expected-bundle-id>')
+const [dirArg, expectedIdArg] = process.argv.slice(2)
+if (!dirArg) {
+  console.error('usage: node scripts/smoke-client.mjs <plugin-dir> [expected-bundle-id]')
   process.exit(2)
 }
 
 const root = resolve(dirArg)
 const bundlePath = join(root, 'lib', 'client.js')
 const source = readFileSync(bundlePath, 'utf8')
+const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+const expectedId = expectedIdArg ?? manifest.name
 
 let registration
 globalThis.window = {

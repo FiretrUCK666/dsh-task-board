@@ -65,8 +65,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "node scripts/verify-standalone.mjs . dsh-task-board @firetruck666/dsh-task-board && node scripts/smoke-client.mjs . @firetruck666/dsh-task-board",
-    "smoke": "node scripts/smoke-client.mjs . @firetruck666/dsh-task-board",
+    "verify": "node scripts/verify-standalone.mjs . && node scripts/smoke-client.mjs .",
+    "smoke": "node scripts/smoke-client.mjs .",
     "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test && pnpm verify"
   },
   "peerDependencies": {
