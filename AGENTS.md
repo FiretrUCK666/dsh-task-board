@@ -290,6 +290,24 @@ import 走 external、哪些必须内联。list 与真实 shell 不符时：多�
 `<dsh>/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-*.js`，搜
 `__ModuleLoader__` 附近的 seed 对象（`react` 家族 + `@deepseek-ai/dsh-client-*`）。
 
+### 构建可复现（硬性：产物必须与构建机无关）
+
+`lib/` 是被跟踪的发布产物，且 CI 会在 Linux 上重建并与提交比对。因此**构建结果
+不得依赖构建机的绝对路径、行尾或平台**。已踩过两个坑，现由 CI 与 `pnpm verify` 兜住：
+
+- **不要把绝对路径交给会把它写进产物、或用来派生标识的工具**。lightningcss 的
+  CSS Modules `[hash]_[local]` 前缀取自传给 `transform()` 的 `filename`——传绝对路径
+  会让同一份 CSS 在 Windows 与 Linux 上编译出不同类名（曾见本地 `JIHNWa_*`、Linux
+  另一个前缀），`lib/client.js` 于是永远无法在别的机器上复现。构建脚本一律传
+  **仓库相对路径**（`shared/tsdown.client.ts` 的 `portableCssPath()`）。
+- **工作区行尾必须与 `.gitattributes` 一致**。sourcemap 的 `sourcesContent` 内嵌源码
+  原文，工作区残留 CRLF 会被原样写进 `lib/client.js.map`（曾见 16 个源文件、约 8000
+  处差异），而 Linux 检出是 LF。修正：`git rm --cached -r . && git reset --hard`
+  按 attributes 重新检出后重建。
+- **自检手段**：把仓库复制到另一个绝对路径、装依赖、构建，产物应逐字节相同。
+  CI 的「Committed artifacts match a fresh build」就是这条规则在 Linux 上的常驻检查；
+  它红了先怀疑以上两点，不要急于提交「本机能过」的产物。
+
 ---
 
 ## 项目定位
