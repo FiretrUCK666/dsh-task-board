@@ -2,9 +2,29 @@
 
 [English](README.en.md) | 中文
 
+[![npm](https://img.shields.io/npm/v/@firetruck666/dsh-task-board)](https://www.npmjs.com/package/@firetruck666/dsh-task-board)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Node](https://img.shields.io/badge/Node-%5E22.19.0%20%7C%7C%20%3E%3D24.0.0-339933)](README.md#环境要求)
+
 DeepSeek Harness 的任务看板插件。它在 Web 界面的侧边栏底部加一个「任务看板」入口，用五列看板管理任务；任务交给 DSH 自己的会话真实执行，状态自动回写到卡片上。
 
 插件不修改 DSH 源码，卸载后界面恢复原状。看板数据保存在 DSH 主进程（host）一侧，电脑和手机打开同一个部署看到的是同一块板，改动经 SSE 实时同步；窄屏自动进入紧凑布局。
+
+## 目录
+
+<!-- toc:start -->
+
+- [环境要求](#环境要求)
+- [安装](#安装)
+- [主要能力](#主要能力)
+- [数据保存在哪里](#数据保存在哪里)
+- [更新](#更新)
+- [从源码构建](#从源码构建)
+- [常见问题](#常见问题)
+- [命名约定](#命名约定)
+- [许可证](#许可证)
+
+<!-- toc:end -->
 
 ## 环境要求
 

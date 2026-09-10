@@ -1,7 +1,7 @@
 {
   "name": "@firetruck666/dsh-task-board",
   "description": "Task board plugin for the DSH web GUI: a sidebar entry plus a multi-column kanban view with real execution through DSH sessions, schedules, session rules and auto-cruise automation. Board truth lives on the host and syncs to every device over SSE (the browser is an offline-first copy). Standalone plugin, no DSH source changes.",
-  "version": "0.2.79",
+  "version": "0.2.80",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -65,8 +65,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "node scripts/verify-standalone.mjs . && node scripts/smoke-client.mjs .",
+    "verify": "node scripts/verify-standalone.mjs . && node scripts/smoke-client.mjs . && node scripts/sync-toc.mjs README.md README.en.md --check",
     "smoke": "node scripts/smoke-client.mjs .",
+    "toc": "node scripts/sync-toc.mjs README.md README.en.md",
     "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test && pnpm verify"
   },
   "peerDependencies": {

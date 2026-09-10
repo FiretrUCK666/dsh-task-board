@@ -2,11 +2,31 @@
 
 [中文](README.md) | English
 
+[![npm](https://img.shields.io/npm/v/@firetruck666/dsh-task-board)](https://www.npmjs.com/package/@firetruck666/dsh-task-board)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Node](https://img.shields.io/badge/Node-%5E22.19.0%20%7C%7C%20%3E%3D24.0.0-339933)](README.en.md#requirements)
+
 A task-board plugin for the DeepSeek Harness web GUI. It adds a **Task Board** entry at the bottom of the sidebar and manages work on a five-column kanban board, where each task is actually executed by a real DSH session and its status is written back to the card.
 
 The plugin does not modify DSH source, and removing it restores the interface. Board data lives on the DSH host process, so a desktop and a phone pointed at the same deployment see the same board, synchronised over SSE. Narrow screens switch to a compact layout.
 
 The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
+
+## 目录
+
+<!-- toc:start -->
+
+- [Requirements](#requirements)
+- [Install](#install)
+- [What it does](#what-it-does)
+- [Data locations](#data-locations)
+- [Updating](#updating)
+- [Building from source](#building-from-source)
+- [Troubleshooting](#troubleshooting)
+- [Naming](#naming)
+- [License](#license)
+
+<!-- toc:end -->
 
 ## Requirements
 
