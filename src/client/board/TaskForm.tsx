@@ -22,7 +22,6 @@ import { MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
 import { useComposerImages } from './composer-images.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { RunConfigFields } from './RunConfigFields.tsx'
-import { ColorSwatches } from './ui.tsx'
 import type { TaskDraft } from './task-draft.ts'
 
 /** The shared new/edit task form. */
@@ -94,32 +93,6 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         />
       </label>
 
-      {/* Labels: free text, comma-separated (where/how/who — never priority,
-          which owns its field). Normalized on save
-          (lowercase/dedupe/cap), so the form keeps the user's raw typing. */}
-      <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.labels')}</span>
-        <input
-          className={css.input}
-          value={draft.labels}
-          placeholder={t('new.labelsPlaceholder')}
-          onChange={event => { onChange({ ...draft, labels: event.target.value }) }}
-        />
-      </label>
-
-      {/* Accent color: THE one swatch row (the same grammar as the organize
-          bar and the card hover strip). A <div>, not a <label> — the row
-          holds buttons, and a label would route their clicks to nowhere
-          useful. What the draft carries is always visible here (template
-          stamps included) — never a ghost write. */}
-      <div className={css.field}>
-        <span className={css.fieldLabel}>{t('new.color')}</span>
-        <ColorSwatches
-          value={draft.color !== '' ? draft.color : undefined}
-          onChange={color => { onChange({ ...draft, color: color ?? '' }) }}
-        />
-      </div>
-
       {/* Prompt field: the text plus its image ledger (pick / drop / paste
           anywhere on the field). A <div>, not a <label> — the strip holds
           buttons, and a label would route their clicks to the input. */}
@@ -145,25 +118,6 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
         />
         <span className={css.fieldHint}>{t('new.promptImagesHint', { max: String(MAX_TASK_IMAGES) })}</span>
       </div>
-
-      {/* Priority: P1/P2/P3 or none (the default, zero visuals). Orthogonal
-          to due date and accent color — a separate "how重" signal that never
-          breathes. Same select grammar as the landing column. */}
-      <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.priority')}</span>
-        <span className={css.selectWrap}>
-          <select
-            className={css.input}
-            value={draft.priority}
-            onChange={event => { onChange({ ...draft, priority: event.target.value }) }}
-          >
-            <option value="">{t('new.priorityNone')}</option>
-            <option value="1">{t('new.priorityP1')}</option>
-            <option value="2">{t('new.priorityP2')}</option>
-            <option value="3">{t('new.priorityP3')}</option>
-          </select>
-        </span>
-      </label>
 
       {/* Landing-column selector: new-task modal only. Choosing a column is
           about where the task rests until it is started; auto rules never

@@ -513,10 +513,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
     setDraftRestored(false)
   }
 
-  /** New-task copy of this task ("复制为模板"): fresh card, same content, run
-   *  config and inert shape (due/priority/labels/color), landing in 待规划;
-   *  runs/links/session rules are not copied, the schedule rides disarmed
-   *  (controller.copyTask). */
+  /** New-task copy of this task ("复制为模板"): fresh card, same content and
+   *  run config, landing in 待规划; runs/links/session rules are not copied,
+   *  the schedule rides disarmed (controller.copyTask). */
   const duplicateTask = (): void => {
     const copy = controller.copyTask(current.id)
     if (copy !== undefined) controller.closeTask()
@@ -661,26 +660,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                   </div>
                 )}
               </Section>
-
-              {/* Priority (every tier readable HERE — the card only flags
-                  P1/P2, P3 stays quiet there by design). Absent = no row. */}
-              {current.priority !== undefined && (
-                <Section title={t('new.priority')}>
-                  <p className={css.detailText}>
-                    {current.priority === 1 ? t('new.priorityP1') : current.priority === 2 ? t('new.priorityP2') : t('new.priorityP3')}
-                  </p>
-                </Section>
-              )}
-
-              {/* Labels (the full set readable HERE — the card bounds to two
-                  plus a remainder). Absent/empty = no row. */}
-              {current.labels !== undefined && current.labels.length > 0 && (
-                <Section title={t('new.labels')}>
-                  <p className={css.detailText} title={current.labels.join(', ')}>
-                    {current.labels.join(', ')}
-                  </p>
-                </Section>
-              )}
 
               <Disclosure
                 title={t('detail.runConfig')}

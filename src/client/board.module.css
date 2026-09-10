@@ -1033,13 +1033,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   text-align: left;
   /* Cards are inner floating surfaces: opaque under a glass skin (the
      translucent canvas stays behind them). Radius md (sharper than the
-     column container's lg) so a card reads as an item inside a panel.
-     A per-card accent color tints the WHOLE card background VERY lightly
-     (6% over the surface — pure atmosphere, NEVER the identity: the solid
-     8px dot on the title line carries the exact picked color, identical to
-     the palette swatch, so the card never looks 偏色). Applied as data
-     through --card-tint, never a CSS literal; unset cards stay plain. */
-  background: color-mix(in srgb, var(--card-tint, transparent) 6%, var(--dsh-tb-surface-float));
+     column container's lg) so a card reads as an item inside a panel. */
+  background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-md);
   cursor: pointer;
@@ -1220,28 +1215,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
-/* The title line: the card's solid color mark (exact picked color, 100% of
-   the swatch value) sits in front of the title; the row is a shrink-only
-   flex so the clamped title can never push the mark away. */
+/* The title line: a shrink-only flex so the clamped title keeps its box. */
 .cardTitleRow {
   display: flex;
   align-items: flex-start;
   gap: 7px;
   min-width: 0;
-}
-
-.cardColorMark {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  /* Optical centering against the first title line (14px / 1.35 ≈ 18.9px):
-     the dot's center must sit on the line's visual center, NOT on the
-     flex-start edge — the 4px offset read "high" next to the title. */
-  margin-top: 5px;
-  /* The mark's hairline ring is a soft transparency of the SAME data color:
-     the visible dot is exactly the picked color — no blend, no偏色. */
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--card-tint) 30%, transparent);
 }
 
 .cardTitle {
@@ -5627,132 +5606,19 @@ button.interactionOption:hover {
   }
 }
 
-/* --- card color: the hover color bar (ColorSwatches — the one grammar) ------
-   Effect colors are DATA (applied inline from user choices); the card bar,
-   the organize bar and the custom picker all render through the same dots. */
-
-.cardColorBar {
-  display: none;
-  flex-wrap: wrap;
-  gap: 5px;
-  align-items: center;
-  padding-top: 2px;
-}
-.card:hover .cardColorBar,
-.card:focus-within .cardColorBar {
-  display: flex;
-}
-
-/* The one swatch row grammar (ColorSwatches): palette dots + native custom
-   color dot + trailing 「移除颜色」 dot — shared by the card hover bar and
-   the organize bar. Every entry is round and same-sized (16px), so a mixed
-   shape can never appear. */
-.tagSwatches {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.tagSwatch {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--dsw-static-neutral-1000) 22%, transparent);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: transform var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
-}
-
-.tagSwatch:hover {
-  transform: scale(1.12);
-}
-
-.tagSwatchOn {
-  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsw-alias-state-business-primary);
-}
-
-/* The 「移除颜色」 dot: an empty circle with a hairline — reads as "no
-   color" next to the filled palette dots. */
-.tagSwatchNone {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2);
-}
-
-.tagSwatchNone:hover {
-  background: var(--dsh-tb-surface-sunken);
-}
-
-/* The native color input dressed as one round dot of the same size. The wrap
-   carries the LOOK: the picked custom color when one is active (data, applied
-   inline), otherwise a conic rainbow affordance ("open the picker" — named
-   colors only, never a white circle that reads as a second 移除颜色 dot).
-   The native input floats on top invisibly: still opens the picker and stays
-   focusable (the focus ring comes from the wrap's :focus-within). */
-.tagCustomWrap {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  overflow: hidden;
-}
-
-.tagCustomEmpty {
-  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
-}
-
-.tagCustomWrap:focus-within {
-  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsw-alias-state-business-primary);
-}
-
-.tagCustomColor {
-  appearance: none;
-  -webkit-appearance: none;
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  opacity: 0;
-  cursor: pointer;
-}
-
-/* --- organize (tidy) mode bar: the board header strip for bulk tagging and
-       recoloring — same chip/swatch grammar reused, nothing hand-rolled --- */
-/* The organize bar is a NAMED GRID (colors | count | actions), not a flex row
+/* --- organize (tidy) mode bar: the board header strip for bulk actions --- */
+/* The organize bar is a NAMED GRID (count | actions), not a flex row
    with margin-left:auto — the auto-margin only right-aligns the FIRST item of
    whichever wrapped line it lands on, so a narrow board scattered 删除 across
    the bar (the detailFooter lesson, applied here). The bar fills the row so
    the actions cluster truly reaches the right edge on every width. */
 .organizeBar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas: "colors count actions";
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "count actions";
   align-items: center;
   gap: 8px 12px;
   width: 100%;
-}
-
-.organizeGroup {
-  grid-area: colors;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.organizeLabel {
-  flex: none;
-  font-size: 12px;
-  color: var(--dsh-tb-text-3);
-  white-space: nowrap;
 }
 
 .organizeCount {
@@ -6284,13 +6150,6 @@ button.interactionOption:hover {
     position: absolute;
     inset: -7px;
     border-radius: inherit;
-  }
-
-  /* The 16px color dots are too small to tap; grow the swatch itself. */
-  .tagSwatch,
-  .tagCustomWrap {
-    width: 24px;
-    height: 24px;
   }
 
   /* 16px input text stops iOS/Android auto-zoom on focus. */

@@ -97,30 +97,10 @@ describe('parseBoardQuery (facet qualifiers)', () => {
 })
 
 describe('matchTask qualifiers', () => {
-  const colored = { ...task, color: '#e5484d' }
-
   it('has:auto tests the automation facet', () => {
     expect(matchTask(task, 'has:auto', [], { hasAutomation: true })).toBe(true)
     expect(matchTask(task, 'has:auto', [], { hasAutomation: false })).toBe(false)
     expect(matchTask(task, 'has:auto')).toBe(false)
-  })
-
-  it('has:color tests the card accent', () => {
-    expect(matchTask(colored, 'has:color')).toBe(true)
-    expect(matchTask(task, 'has:color')).toBe(false)
-  })
-
-  it('has:priority tests the card priority (any of P1/P2/P3)', () => {
-    expect(matchTask({ ...task, priority: 1 }, 'has:priority')).toBe(true)
-    expect(matchTask({ ...task, priority: 3 }, 'has:priority')).toBe(true)
-    expect(matchTask(task, 'has:priority')).toBe(false)
-    expect(parseBoardQuery('HAS:PRIORITY')).toEqual({ terms: [], qualifiers: [{ key: 'has', value: 'priority' }] })
-  })
-
-  it('label: tests one normalized label', () => {
-    expect(matchTask({ ...task, labels: ['等车', '电话'] }, 'label:等车')).toBe(true)
-    expect(matchTask({ ...task, labels: ['等车'] }, 'label:电话')).toBe(false)
-    expect(matchTask(task, 'label:等车')).toBe(false)
   })
 
   it('is:unread / is:read test the unviewed facet', () => {
@@ -138,9 +118,9 @@ describe('matchTask qualifiers', () => {
 
   it('qualifiers AND with plain terms', () => {
     const facets = { hasAutomation: true, isUnviewed: true } as const
-    expect(matchTask(colored, '猫 has:color', [], facets)).toBe(true)
-    expect(matchTask(colored, '油画 has:color', [], facets)).toBe(false)
-    expect(matchTask(colored, '猫 is:read', [], facets)).toBe(false)
+    expect(matchTask(task, '猫 has:auto', [], facets)).toBe(true)
+    expect(matchTask(task, '油画 has:auto', [], facets)).toBe(false)
+    expect(matchTask(task, '猫 is:read', [], facets)).toBe(false)
   })
 })
 
@@ -154,7 +134,7 @@ describe('completeBoardQuery (qualifier key completion)', () => {
   })
 
   it('offers values for bare keys and narrows by value prefix', () => {
-    expect(completeBoardQuery('has:')).toEqual(['has:auto', 'has:color', 'has:priority'])
+    expect(completeBoardQuery('has:')).toEqual(['has:auto'])
     expect(completeBoardQuery('has:a')).toEqual(['has:auto'])
     expect(completeBoardQuery('is:')).toEqual(['is:unread', 'is:read'])
     expect(completeBoardQuery('has:auto ')).toEqual([])
@@ -162,7 +142,6 @@ describe('completeBoardQuery (qualifier key completion)', () => {
 
   it('offers nothing for free-text keys and quoted fragments', () => {
     expect(completeBoardQuery('ws:')).toEqual([])
-    expect(completeBoardQuery('label:')).toEqual([])
     expect(completeBoardQuery('ws:"深')).toEqual([])
     expect(completeBoardQuery('has:zzz')).toEqual([])
   })
@@ -180,11 +159,6 @@ describe('qualifier single source (parse + complete + match agree)', () => {
     expect(completeBoardQuery('has:a')).toContain('has:auto')
     expect(matchTask(task, 'has:auto', [], { hasAutomation: true })).toBe(true)
     expect(matchTask(task, 'has:auto', [], { hasAutomation: false })).toBe(false)
-    // has:color / has:priority (task-field-gated).
-    expect(matchTask({ ...task, color: '#fff' }, 'has:color')).toBe(true)
-    expect(matchTask(task, 'has:color')).toBe(false)
-    expect(matchTask({ ...task, priority: 3 }, 'has:priority')).toBe(true)
-    expect(matchTask(task, 'has:priority')).toBe(false)
     // is:unread / is:read (facet-gated).
     expect(matchTask(task, 'is:unread', [], { isUnviewed: true })).toBe(true)
     expect(matchTask(task, 'is:read', [], { isUnviewed: false })).toBe(true)
@@ -194,8 +168,6 @@ describe('qualifier single source (parse + complete + match agree)', () => {
     expect(parseBoardQuery('ws:深夜').qualifiers).toEqual([{ key: 'ws', value: '深夜' }])
     expect(completeBoardQuery('ws:')).toEqual([])
     expect(matchTask(task, 'ws:深夜', [], { workspaceTitle: '深夜食堂' })).toBe(true)
-    expect(parseBoardQuery('label:a').qualifiers).toEqual([{ key: 'label', value: 'a' }])
-    expect(completeBoardQuery('label:')).toEqual([])
   })
 })
 
@@ -224,23 +196,23 @@ describe('splitFilterTokens / removeFilterToken (overview chips)', () => {
   it('splits quote-aware (ws:"a b" is one token)', () => {
     expect(splitFilterTokens('')).toEqual([])
     expect(splitFilterTokens('  ')).toEqual([])
-    expect(splitFilterTokens('猫 has:color')).toEqual(['猫', 'has:color'])
+    expect(splitFilterTokens('猫 has:auto')).toEqual(['猫', 'has:auto'])
     expect(splitFilterTokens('猫 ws:"深 夜"')).toEqual(['猫', 'ws:"深 夜"'])
   })
 
   it('splits non-ws quotes like the parser does (single scanner, no fork)', () => {
-    // label:"a b": the parser reads two literal terms — the chips show two.
-    expect(splitFilterTokens('label:"a b"')).toEqual(['label:"a', 'b"'])
-    expect(parseBoardQuery('label:"a b"')).toEqual({ terms: ['label:"a', 'b"'], qualifiers: [] })
+    // has:"a b": the parser reads two literal terms — the chips show two.
+    expect(splitFilterTokens('has:"a b"')).toEqual(['has:"a', 'b"'])
+    expect(parseBoardQuery('has:"a b"')).toEqual({ terms: ['has:"a', 'b"'], qualifiers: [] })
     // Unclosed ws quote: literal terms on both sides.
     expect(splitFilterTokens('ws:"深 夜')).toEqual(['ws:"深', '夜'])
     expect(parseBoardQuery('ws:"深 夜').qualifiers).toEqual([])
   })
 
   it('removes one token by index, out-of-range returns the query', () => {
-    expect(removeFilterToken('猫 has:color', 0)).toBe('has:color')
-    expect(removeFilterToken('猫 has:color', 1)).toBe('猫')
-    expect(removeFilterToken('猫 ws:"深 夜" label:a', 1)).toBe('猫 label:a')
+    expect(removeFilterToken('猫 has:auto', 0)).toBe('has:auto')
+    expect(removeFilterToken('猫 has:auto', 1)).toBe('猫')
+    expect(removeFilterToken('猫 ws:"深 夜" has:auto', 1)).toBe('猫 has:auto')
     expect(removeFilterToken('猫', 5)).toBe('猫')
   })
 })

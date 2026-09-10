@@ -319,34 +319,15 @@ describe('schedule persistence', () => {
     expect(parsed[2].schedule).toBeUndefined() // values out of range
   })
 
-  it('round-trips a priority and drops junk to absent', () => {
+  it('drops removed scalar fields from legacy rows (priority/color/labels)', () => {
     const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
     const raw = [
-      { ...valid, id: 't-1', priority: 2 },
-      { ...valid, id: 't-2', priority: 9 },
-      { ...valid, id: 't-3', priority: 'high' },
-      { ...valid, id: 't-4' },
+      { ...valid, id: 't-1', priority: 2, color: '#fff', labels: ['a'] },
     ]
     const parsed = parseLedger(JSON.stringify(raw))
-    expect(parsed[0].priority).toBe(2)
-    expect(parsed[1].priority).toBeUndefined()
-    expect(parsed[2].priority).toBeUndefined()
-    expect(parsed[3].priority).toBeUndefined()
-  })
-
-  it('round-trips labels normalized and drops junk to absent', () => {
-    const valid = createTask({ title: 'ok', description: '', prompt: '' }, 1, 't-1')
-    const raw = [
-      { ...valid, id: 't-1', labels: ['A', 'a', 'b'] },
-      { ...valid, id: 't-2', labels: 'urgent' },
-      { ...valid, id: 't-3', labels: [] },
-      { ...valid, id: 't-4' },
-    ]
-    const parsed = parseLedger(JSON.stringify(raw))
-    expect(parsed[0].labels).toEqual(['a', 'b'])
-    expect(parsed[1].labels).toBeUndefined()
-    expect(parsed[2].labels).toBeUndefined()
-    expect(parsed[3].labels).toBeUndefined()
+    expect((parsed[0] as unknown as Record<string, unknown>).priority).toBeUndefined()
+    expect((parsed[0] as unknown as Record<string, unknown>).color).toBeUndefined()
+    expect((parsed[0] as unknown as Record<string, unknown>).labels).toBeUndefined()
   })
 
   it('round-trips the status history and drops malformed entries', () => {

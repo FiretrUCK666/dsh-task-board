@@ -21,7 +21,6 @@ import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-ses
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
 import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
-import { withTaskColor } from './colors.ts'
 import { normalizeCruiseValue, clampCruiseLimit, CRUISE_LIMIT_MAX } from './board-doc.ts'
 import { LocalStoragePresetStore } from './presets.ts'
 import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents.ts'
@@ -33,7 +32,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, normalizeLabels, normalizePriority, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -232,7 +231,7 @@ export interface ReferenceRemoteFace {
 /** The editable slice of a task (content + run configuration). */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
   'title' | 'description' | 'prompt' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model'
-  | 'reasoningEffort' | 'agentPreset' | 'permission' | 'priority' | 'labels' | 'color'
+  | 'reasoningEffort' | 'agentPreset' | 'permission'
 >>
 
 /** The auto-cruise state: the current on/off truth, the last manual intent,
@@ -837,14 +836,6 @@ export class BoardController {
     return this.deps.seatRecheck !== undefined ? this.deps.seatRecheck() : Promise.resolve()
   }
 
-  /** Set (or clear, with undefined) a task's accent color. */
-  setTaskColor(taskId: string, color: string | undefined): void {
-    this.tasks = this.tasks.map(task => task.id === taskId
-      ? withTaskColor({ ...task, updatedAt: this.now() }, color)
-      : task)
-    this.persistAndNotify()
-  }
-
   /** The run-catalog face for form selects, or undefined when not wired. */
   runCatalog(): RunCatalogFace | undefined {
     return this.deps.runCatalog
@@ -1432,14 +1423,12 @@ export class BoardController {
       reasoningEffort: source.reasoningEffort,
       agentPreset: source.agentPreset,
       permission: source.permission,
-      ...source.priority !== undefined ? { priority: source.priority } : {},
-      ...source.labels !== undefined ? { labels: [...source.labels] } : {},
     }, now, this.uuid(), this.nextOrder()))
-    // The copy keeps the card's SHAPE AND its inert metadata (accent color,
-    // prompt images, due date) — but NEVER an armed rule: like a stamped
-    // template, a copy must not surprise-fire (arming is an explicit act on
-    // the new card). The schedule configuration rides along disarmed so
-    // re-arming resumes the same rule.
+    // The copy keeps the card's SHAPE AND its inert attachments (prompt
+    // images) — but NEVER an armed rule: like a stamped template, a copy
+    // must not surprise-fire (arming is an explicit act on the new card).
+    // The schedule configuration rides along disarmed so re-arming resumes
+    // the same rule.
     const schedule = source.schedule
     if (schedule !== undefined) {
       task = withSchedule(task, {
@@ -1451,15 +1440,13 @@ export class BoardController {
         nextRunAt: undefined,
       }, now)
     }
-    // The template keeps the card's SHAPE: the accent color and the prompt's
-    // attached images ride along (both are part of how this card looks and
-    // what its prompt says), but session rules do NOT — they are bound to the
-    // source's own sessions ("给这个绘画会话定时发指令"), and the template is a
-    // new card without them; copying them would silently automate sessions the
-    // template does not own.
+    // The copy keeps the prompt's attached images (part of what its prompt
+    // says), but session rules do NOT — they are bound to the source's own
+    // sessions ("给这个绘画会话定时发指令"), and the copy is a new card
+    // without them; copying them would silently automate sessions the copy
+    // does not own.
     task = {
       ...task,
-      ...source.color !== undefined ? { color: source.color } : {},
       ...source.promptImages !== undefined && source.promptImages.length > 0
         ? { promptImages: source.promptImages.map(image => ({ ...image })) }
         : {},
@@ -1935,18 +1922,6 @@ export class BoardController {
         const value = patch[key]
         applied[key] = value === undefined || value === '' ? undefined : value
       }
-    }
-    // Priority: a present key sets 1/2/3 or clears it (invalid values clear).
-    if ('priority' in patch) {
-      applied.priority = normalizePriority(patch.priority)
-    }
-    // Labels: a present key normalizes (lowercase/dedupe/cap) or clears.
-    if ('labels' in patch) {
-      applied.labels = normalizeLabels(patch.labels)
-    }
-    // Accent color: a present key sets a non-empty string or clears it.
-    if ('color' in patch) {
-      applied.color = patch.color !== undefined && patch.color !== '' ? patch.color : undefined
     }
     this.tasks = this.tasks.map(candidate => candidate.id === id
       // Edit path never supplements: clearing the title is a real intent

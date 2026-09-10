@@ -8,8 +8,6 @@ import {
   draftFromTemplate,
   draftToNewInput,
   draftToUpdatePatch,
-  normalizeDraft,
-  splitLabelText,
   stampTemplate,
 } from '../src/client/board/task-draft.ts'
 import { createTask } from '../src/core/tasks.ts'
@@ -30,41 +28,17 @@ function draft() {
     model: '',
     reasoningEffort: '',
     permission: '',
-    priority: '',
-    labels: '',
-    color: '',
   }
 }
 
 describe('draft scalar converters', () => {
   it('update patches clear with undefined (present-key semantics)', () => {
-    expect(draftToUpdatePatch(draft()).priority).toBeUndefined()
-    expect(draftToUpdatePatch({ ...draft(), priority: '2' }).priority).toBe(2)
+    expect(draftToUpdatePatch(draft()).provider).toBeUndefined()
+    expect(draftToUpdatePatch({ ...draft(), provider: 'my' }).provider).toBe('my')
   })
 
   it('drafts round-trip the record and normalize persisted junk', () => {
-    expect(draftFromTask(createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a')).priority).toBe('')
-  })
-
-  it('priority rides the draft as 1/2/3-or-empty (junk normalizes to empty)', () => {
-    expect(draftToNewInput({ ...draft(), priority: '1' }).priority).toBe(1)
-    expect(draftToNewInput(draft()).priority).toBeUndefined()
-    expect(draftToNewInput({ ...draft(), priority: '9' }).priority).toBeUndefined()
-    expect(draftToUpdatePatch({ ...draft(), priority: '2' }).priority).toBe(2)
-    expect(draftToUpdatePatch(draft()).priority).toBeUndefined()
-    expect(draftFromTask(createTask({ title: 't', description: '', prompt: 'p', priority: 3 }, NOW, 'a')).priority).toBe('3')
-    expect(normalizeDraft({ ...draft(), priority: 'x' })?.priority).toBe('')
-    expect(normalizeDraft({ ...draft(), priority: '2' })?.priority).toBe('2')
-  })
-
-  it('labels ride the draft as free text, normalized on write', () => {
-    expect(draftToNewInput({ ...draft(), labels: '等车, 电话,等车' }).labels).toEqual(['等车', '电话'])
-    expect(draftToNewInput({ ...draft(), labels: '等车，电话；短信|邮件' }).labels).toEqual(['等车', '电话', '短信', '邮件'])
-    expect(draftToNewInput(draft()).labels).toBeUndefined()
-    expect(draftToUpdatePatch({ ...draft(), labels: 'A、B C' }).labels).toEqual(['a', 'b', 'c'])
-    expect(draftToUpdatePatch(draft()).labels).toBeUndefined()
-    expect(draftFromTask(createTask({ title: 't', description: '', prompt: 'p', labels: ['x', 'y'] }, NOW, 'a')).labels).toBe('x, y')
-    expect(normalizeDraft({ ...draft(), labels: 'x' })?.labels).toBe('x')
+    expect(draftFromTask(createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'a')).provider).toBe('')
   })
 
   it('routes ride independently on write (same law as update)', () => {
@@ -74,31 +48,26 @@ describe('draft scalar converters', () => {
     expect(draftToNewInput({ ...draft(), provider: '', model: 'mm' }).model).toBe('mm')
   })
 
-  it('draftFromTemplate carries the template inert shape', () => {
+  it('draftFromTemplate carries run config and content', () => {
     const stamped = draftFromTemplate({
       id: 't', name: 'T', title: 'x', description: '', prompt: 'p',
-      priority: 2, labels: ['a'], color: '#fff',
+      provider: 'ty', model: 'tm',
     })
-    expect(stamped.priority).toBe('2')
-    expect(stamped.labels).toBe('a')
-    expect(stamped.color).toBe('#fff')
+    expect(stamped.provider).toBe('ty')
+    expect(stamped.model).toBe('tm')
     const bare = draftFromTemplate({ id: 't', name: 'T', title: 'x', description: '', prompt: 'p' })
-    expect(bare.priority).toBe('')
-    expect(bare.labels).toBe('')
-    expect(bare.color).toBe('')
+    expect(bare.provider).toBe('')
   })
 
   it('stampTemplate fills blanks only (touched fields always win)', () => {
-    const template = { ...draft(), title: 'T', description: 'D', prompt: 'P', priority: '1', labels: 'a' }
+    const template = { ...draft(), title: 'T', description: 'D', prompt: 'P' }
     const empty = { ...draft(), title: '', description: '', prompt: '' }
     // Empty draft takes everything.
     expect(stampTemplate(empty, template)).toEqual(template)
     // Touched fields survive; blanks fill from the template.
-    const filled = stampTemplate({ ...empty, title: 'mine', priority: '2' }, template)
+    const filled = stampTemplate({ ...empty, title: 'mine' }, template)
     expect(filled.title).toBe('mine')
-    expect(filled.priority).toBe('2')
     expect(filled.description).toBe('D')
-    expect(filled.labels).toBe('a')
     // A non-default status survives too.
     const moved = stampTemplate({ ...empty, status: 'todo' as const }, template)
     expect(moved.status).toBe('todo')
@@ -120,10 +89,5 @@ describe('draft scalar converters', () => {
       template,
     )
     expect([half.provider, half.model, half.reasoningEffort]).toEqual(['ty', 'tm', 'te'])
-  })
-
-  it('splitLabelText cuts on half/full-width separators', () => {
-    expect(splitLabelText('a,b、c d，e；f|g')).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
-    expect(splitLabelText('  ')).toEqual([])
   })
 })

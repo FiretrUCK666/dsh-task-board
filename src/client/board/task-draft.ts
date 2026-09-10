@@ -5,7 +5,6 @@
  * omitted) or an update patch (empty keys cleared explicitly).
  */
 import type { TaskRecord } from '../../core/tasks.ts'
-import { normalizeLabels, normalizePriority } from '../../core/tasks.ts'
 import type { NewTaskInput } from '../../core/tasks.ts'
 import type { TaskTemplate } from '../../core/task-templates.ts'
 import type { TaskUpdatePatch } from '../../core/controller.ts'
@@ -37,21 +36,6 @@ export interface TaskDraft {
   reasoningEffort: string
   /** Permission preset key; '' = session default. */
   permission: string
-  /** Priority as '1' | '2' | '3'; '' = none (the default, zero visuals). */
-  priority: string
-  /** Labels as free text (comma-separated in the form); '' = none. The
-   *  converters split/normalize — the draft keeps the user's raw typing. */
-  labels: string
-  /** Accent color (hex string); '' = none. Edited through the form's swatch
-   *  row (the one shared grammar) — what the draft carries is always
-   *  visible, template stamps included. */
-  color: string
-}
-
-/** Split free-typed label text (half/full-width commas and semicolons,
- *  ideographic commas, whitespace runs — the IME default must just work). */
-export function splitLabelText(value: string): string[] {
-  return value.split(/[,，、；;|\s]+/).map(part => part.trim()).filter(part => part !== '')
 }
 
 /** Normalize a parsed draft (a stored draft may predate a field — e.g.
@@ -87,12 +71,6 @@ export function normalizeDraft(parsed: Partial<TaskDraft> | null | undefined): T
     model: parsed.model ?? '',
     reasoningEffort: parsed.reasoningEffort ?? '',
     permission: parsed.permission ?? '',
-    priority: (() => {
-      const priority = normalizePriority(Number(parsed.priority))
-      return priority === undefined ? '' : String(priority)
-    })(),
-    labels: typeof parsed.labels === 'string' ? parsed.labels : '',
-    color: typeof parsed.color === 'string' ? parsed.color : '',
   }
 }
 
@@ -124,9 +102,6 @@ export function draftFromTask(task: TaskRecord): TaskDraft {  return {
     model: task.model ?? '',
     reasoningEffort: task.reasoningEffort ?? '',
     permission: task.permission ?? '',
-    priority: task.priority === undefined ? '' : String(task.priority),
-    labels: task.labels === undefined ? '' : task.labels.join(', '),
-    color: task.color ?? '',
   }
 }
 
@@ -157,18 +132,11 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
     model: template.model ?? '',
     reasoningEffort: template.reasoningEffort ?? '',
     permission: template.permission ?? '',
-    // Templates carry the inert shape (priority/labels ride along, like
-    // copies — stamping a ranked, labeled card keeps its shape).
-    priority: template.priority === undefined ? '' : String(template.priority),
-    labels: template.labels === undefined ? '' : template.labels.join(', '),
-    color: template.color ?? '',
   }
 }
 
 /** Draft → create input; empty fields are omitted (fall back to defaults). */
 export function draftToNewInput(draft: TaskDraft): NewTaskInput {
-  const priority = normalizePriority(Number(draft.priority))
-  const labels = normalizeLabels(splitLabelText(draft.labels))
   return {
     title: draft.title,
     description: draft.description,
@@ -189,9 +157,6 @@ export function draftToNewInput(draft: TaskDraft): NewTaskInput {
     ...draft.model !== '' ? { model: draft.model } : {},
     ...draft.reasoningEffort !== '' ? { reasoningEffort: draft.reasoningEffort } : {},
     ...draft.permission !== '' ? { permission: draft.permission } : {},
-    ...priority !== undefined ? { priority } : {},
-    ...labels !== undefined ? { labels } : {},
-    ...draft.color !== '' ? { color: draft.color } : {},
   }
 }
 
@@ -211,9 +176,6 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     model: draft.model !== '' ? draft.model : undefined,
     reasoningEffort: draft.reasoningEffort !== '' ? draft.reasoningEffort : undefined,
     permission: draft.permission !== '' ? draft.permission : undefined,
-    priority: normalizePriority(Number(draft.priority)),
-    labels: normalizeLabels(splitLabelText(draft.labels)),
-    color: draft.color !== '' ? draft.color : undefined,
   }
 }
 
@@ -226,7 +188,7 @@ function filledText(value: string): boolean {
 /** Stamp a template onto a draft by filling BLANKS only: every field the user
  *  already touched keeps the user's value; the template supplies the rest.
  *  One merge law for all fields (title/description/prompt/images/status/run
- *  config/priority/labels/color) — never per-field preserve exceptions.
+ *  config) — never per-field preserve exceptions.
  *  The one atomic group is provider/model/reasoningEffort (a run route):
  *  mixing the user's provider with the template's model breeds invalid
  *  combos, so the user's triple wins only when the pair is complete —
@@ -247,8 +209,5 @@ export function stampTemplate(draft: TaskDraft, stamped: TaskDraft): TaskDraft {
     model: userRouteComplete ? draft.model : stamped.model,
     reasoningEffort: userRouteComplete ? draft.reasoningEffort : stamped.reasoningEffort,
     permission: filledText(draft.permission) ? draft.permission : stamped.permission,
-    priority: filledText(draft.priority) ? draft.priority : stamped.priority,
-    labels: filledText(draft.labels) ? draft.labels : stamped.labels,
-    color: filledText(draft.color) ? draft.color : stamped.color,
   }
 }

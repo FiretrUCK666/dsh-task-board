@@ -15,7 +15,7 @@
 import { isValidCron } from './schedule.ts'
 import { normalizeSessionRules } from './automation.ts'
 import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
-import { isScheduleMode, isTaskStatus, normalizeLabels, normalizePriority, normalizePromptFiles, normalizePromptImages, type TaskBind } from './tasks.ts'
+import { isScheduleMode, isTaskStatus, normalizePromptFiles, normalizePromptImages, type TaskBind } from './tasks.ts'
 
 /** Persistence seam for the task ledger. */
 export interface TaskStore {
@@ -235,10 +235,11 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     // Due dates are removed from the product: old persisted rows drop the
     // field on read (no migration — absent is the only state).
     delete (task as { dueAt?: unknown }).dueAt
-    const rawColor = (row as Record<string, unknown>).color
-    if (typeof rawColor === 'string' && rawColor !== '') task.color = rawColor
-    else delete task.color
-    // Priority: 1/2/3 survives, anything else reads absent.
+    // Removed fields (priority/color/labels): old persisted rows drop them on
+    // read (no migration — absent is the only state).
+    delete (task as { priority?: unknown }).priority
+    delete (task as { color?: unknown }).color
+    delete (task as { labels?: unknown }).labels
     // Attachments: element-level firewall (shared core predicates — a single
     // dirty element washes out, never the row, never a downstream crash).
     const rawImages = (row as Record<string, unknown>).promptImages
@@ -249,10 +250,6 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     const files = normalizePromptFiles(rawFiles)
     if (files !== undefined) task.promptFiles = files
     else delete task.promptFiles
-    // Priority: 1/2/3 survives, anything else reads absent.
-    const priority = normalizePriority((row as Record<string, unknown>).priority)
-    if (priority !== undefined) task.priority = priority
-    else delete task.priority
     // Status history: valid {status, positive at} entries survive in
     // chronological order, then align to the row's column — three laws, one
     // place: (1) stable-sort by instant; (2) an empty/absent ledger backfills
@@ -282,10 +279,6 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     } else {
       task.statusHistory = [{ status: task.status, at: birthAt }]
     }
-    // Labels: normalized (lowercase/dedupe/cap) or absent.
-    const labels = normalizeLabels((row as Record<string, unknown>).labels)
-    if (labels !== undefined) task.labels = labels
-    else delete task.labels
     // Session automation rules: valid rows kept, malformed dropped (old data
     // keeps working untouched).
     const rules = normalizeSessionRules((row as Record<string, unknown>).rules)
@@ -372,7 +365,6 @@ function cloneRecord(task: TaskRecord): TaskRecord {
     next.statusHistory = task.statusHistory.map(entry => ({ ...entry }))
   }
   if (task.binds !== undefined) next.binds = task.binds.map(bind => ({ ...bind }))
-  if (task.labels !== undefined) next.labels = [...task.labels]
   if (task.promptImages !== undefined) {
     next.promptImages = task.promptImages.map(image => ({ ...image }))
   }

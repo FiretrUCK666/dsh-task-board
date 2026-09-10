@@ -4,7 +4,7 @@
  * draggable onto other columns; the drop semantics are decided by the board
  * through resolveCardDrop.
  */
-import { useState, type CSSProperties } from 'react'
+import { useState } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskLiveState } from '../../core/task-live.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -16,7 +16,7 @@ import { scheduleSummary } from './automation-ui.tsx'
 import { cardNextActionOf, cardViewModelOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
 import { Chip } from './Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
-import { ColorSwatches, Icon } from './ui.tsx'
+import { Icon } from './ui.tsx'
 import { formatDateTime, formatTime } from './format-time.ts'
 
 /** Tooltip for the schedule chip: THE one summary grammar (shared with the
@@ -72,7 +72,7 @@ export function blockedAutomation(task: TaskRecord): boolean {
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, live, dots, overflowDots, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -95,8 +95,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   /** Optional hover quick-action: run the task right from the card (rerun
    *  semantics, same run guard; disabled while a run is open). */
   onQuickRun?: () => void
-  /** Optional hover quick-action: pick a card color right from the card. */
-  onColorPick?: (color: string | undefined) => void
   /** THE live-state derivation (taskLiveStateOf, controller.liveStateOf):
    *  'running' = a related session is genuinely working (board run, direct
    *  steer, session rule, out-of-band chat). Absent = falls back to the
@@ -158,16 +156,15 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // text it accompanies.
   const active = view.active
   return (
-    /* A card is a clickable REGION, never a <button>: the color swatches and
-       the quick-run control inside are real interactive elements, and a
-       button inside a button is invalid HTML with a broken keyboard/screen
-       reader model. The region handles Enter/Space itself (same activation
-       as a click); the inner controls stop propagation. */
+    /* A card is a clickable REGION, never a <button>: the quick-run control
+       inside is a real interactive element, and a button inside a button is
+       invalid HTML with a broken keyboard/screen reader model. The region
+       handles Enter/Space itself (same activation as a click); the inner
+       controls stop propagation. */
     <div
       role="button"
       tabIndex={0}
       className={`${css.card}${dragging ? ` ${css.dragging}` : ''}${selected ? ` ${css.selectedCard}` : ''}`}
-      style={task.color !== undefined ? ({ '--card-tint': task.color } as CSSProperties) : undefined}
       data-status={task.status}
       data-task-id={task.id}
       data-unviewed={unviewed ? '' : undefined}
@@ -237,13 +234,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
         </span>
       )}
       <span className={css.cardTitleRow}>
-        {/* The card's真实 color: a solid dot in the EXACT picked color (the
-            palette swatch is 100% of the data color; a blended card tint can
-            never show it exactly). The dot carries the identity, the 6% tint
-            below is pure atmosphere. */}
-        {task.color !== undefined && (
-          <span className={css.cardColorMark} style={{ background: task.color }} aria-hidden="true" />
-        )}
         <span className={css.cardTitle}>
           {titleOrUntitled(task.title, t('card.untitled'))}
         </span>
@@ -269,39 +259,8 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
         {/* Row 2 only when there are badges; plain text badges keep the
             left edge flush with the title above, and wrap instead of
             overflowing. */}
-        {(task.schedule?.enabled === true || latest !== undefined || (task.labels ?? []).length > 0 || task.priority === 1 || task.priority === 2) && (
+        {(task.schedule?.enabled === true || latest !== undefined) && (
           <span className={css.cardBadges}>
-            {/* Priority flag (P1/P2 only — P3 and none stay quiet, like the
-                medium-tier silence; never breathing, never error red). */}
-            {task.priority === 1 && (
-              <Chip kind="warn" fill={false} title={t('new.priorityP1')}>
-                P1
-              </Chip>
-            )}
-            {task.priority === 2 && (
-              <Chip kind="neutral" fill={false} title={t('new.priorityP2')}>
-                P2
-              </Chip>
-            )}
-            {/* Labels: bounded display (first two + quiet remainder — the
-                ClickUp lesson: truncation must offer the full set, here via
-                title + the detail/edit surfaces). Neutral only: color
-                semantics belongs to the accent dot alone. */}
-            {(task.labels ?? []).slice(0, 2).map(label => (
-              <Chip
-                key={label}
-                kind="neutral"
-                fill={false}
-                title={(task.labels ?? []).join(', ')}
-              >
-                {label}
-              </Chip>
-            ))}
-            {(task.labels ?? []).length > 2 && (
-              <Chip kind="muted" fill={false} title={(task.labels ?? []).join(', ')}>
-                {`+${(task.labels ?? []).length - 2}`}
-              </Chip>
-            )}
             {task.schedule?.enabled === true && !blockedAutomation(task) && (
               <Chip
                 fill={false}
@@ -406,11 +365,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
       )}
       {nextAction !== undefined && nextAction !== '' && (
         <span className={css.cardNext}>{nextAction}</span>
-      )}
-      {onColorPick !== undefined && (
-        <span className={css.cardColorBar} data-ghost-hide="" onClick={event => { event.stopPropagation() }}>
-          <ColorSwatches value={task.color} onChange={color => { onColorPick(color) }} />
-        </span>
       )}
     </div>
   )

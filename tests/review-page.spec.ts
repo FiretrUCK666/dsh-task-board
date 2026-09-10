@@ -1017,13 +1017,3 @@ describe('session context panel row grammar (badge never spills over the text)',
   })
 })
 
-describe('task detail labels row (the full-set home)', () => {
-  const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url))
-  const detail = readFileSync(detailPath, 'utf8')
-
-  it('renders a labels row with the full set when the task carries labels', () => {
-    // The card bounds to two plus a remainder — the detail is the full-set home.
-    expect(detail).toContain('current.labels !== undefined && current.labels.length > 0')
-    expect(detail).toContain("title={current.labels.join(', ')}")
-  })
-})

@@ -208,10 +208,9 @@ describe('touch parity block (invisible ergonomics only)', () => {
   })
 
   it('never force-reveals the hover-only affordances (mobile IS desktop)', () => {
-    // The user's contract: quick-run / color bar / copy ride hover exactly
+    // The user's contract: quick-run / copy ride hover exactly
     // like on the desktop board — an always-visible override is a regression.
     expect(touch).not.toMatch(/\.cardQuickRun\s*\{[^}]*opacity:\s*1/)
-    expect(touch).not.toMatch(/\.cardColorBar\s*\{[^}]*display:\s*flex/)
     expect(touch).not.toMatch(/\.promptCopy\s*\{[^}]*opacity:\s*1/)
   })
 

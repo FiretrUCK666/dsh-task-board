@@ -1,7 +1,6 @@
 /**
  * Task templates: named, reusable task blueprints. A template is the task's
- * CONTENT + its inert shape (title/description/prompt + images + run
- * configuration + due date + priority + labels + accent color — the same
+ * CONTENT (title/description/prompt + images + run configuration — the same
  * inert set controller copyTask carries) with everything instance-specific
  * stripped (bindings, executions, hidden state, sessions order, viewed
  * baselines) and everything ARMED stripped (schedule enable-state, session
@@ -16,7 +15,7 @@
  * a storage seam, so everything unit-tests in isolation.
  */
 import type { NewTaskInput, TaskFile, TaskImage, TaskRecord } from './tasks.ts'
-import { normalizeLabels, normalizePriority, normalizePromptFiles, normalizePromptImages } from './tasks.ts'
+import { normalizePromptFiles, normalizePromptImages } from './tasks.ts'
 
 /** The localStorage key for the user's template library (never renamed). */
 export const TEMPLATE_STORAGE_KEY = 'dsh.taskBoard.templates.v1'
@@ -39,11 +38,6 @@ export interface TaskTemplate {
   reasoningEffort?: string
   agentPreset?: string
   permission?: string
-  /** Inert shape (absent on legacy templates): priority, labels, accent
-   *  color — carried, never armed. */
-  priority?: 1 | 2 | 3
-  labels?: string[]
-  color?: string
 }
 
 /** Persistence seam for the template library. */
@@ -53,8 +47,8 @@ export interface TemplateStore {
 }
 
 /**
- * Snapshot a task as a template: content + run configuration + the inert
- * shape (priority/labels/color) come along, instance state never does.
+ * Snapshot a task as a template: content + run configuration come along,
+ * instance state never does.
  * Images ride along (the user attached them to the prompt deliberately —
  * dropping them silently would violate the no-silent-drop law);
  * schedule/rules stay behind (a template must never surprise-fire — arming
@@ -80,16 +74,11 @@ export function templateFromTask(task: TaskRecord, id: string, name: string): Ta
     ...task.reasoningEffort !== undefined ? { reasoningEffort: task.reasoningEffort } : {},
     ...task.agentPreset !== undefined ? { agentPreset: task.agentPreset } : {},
     ...task.permission !== undefined ? { permission: task.permission } : {},
-    ...task.priority !== undefined ? { priority: task.priority } : {},
-    ...task.labels !== undefined ? { labels: [...task.labels] } : {},
-    ...task.color !== undefined ? { color: task.color } : {},
   }
 }
 
 /** Stamp a fresh backlog input from a template (the card lands in 待规划). */
 export function templateToNewInput(template: TaskTemplate): NewTaskInput {
-  const priority = normalizePriority(template.priority)
-  const labels = normalizeLabels(template.labels)
   return {
     title: template.title,
     description: template.description,
@@ -107,9 +96,6 @@ export function templateToNewInput(template: TaskTemplate): NewTaskInput {
     ...template.reasoningEffort !== undefined ? { reasoningEffort: template.reasoningEffort } : {},
     ...template.agentPreset !== undefined ? { agentPreset: template.agentPreset } : {},
     ...template.permission !== undefined ? { permission: template.permission } : {},
-    ...priority !== undefined ? { priority } : {},
-    ...labels !== undefined ? { labels } : {},
-    ...template.color !== undefined ? { color: template.color } : {},
   }
 }
 
@@ -129,8 +115,6 @@ export function normalizeTemplates(raw: unknown): TaskTemplate[] {
   for (const row of raw) {
     if (!isTemplateRow(row) || seen.has(row.id)) continue
     seen.add(row.id)
-    const priority = normalizePriority(row.priority)
-    const labels = normalizeLabels(row.labels)
     const promptImages = normalizePromptImages(row.promptImages)
     const promptFiles = normalizePromptFiles(row.promptFiles)
     out.push({
@@ -147,9 +131,6 @@ export function normalizeTemplates(raw: unknown): TaskTemplate[] {
       ...typeof row.reasoningEffort === 'string' ? { reasoningEffort: row.reasoningEffort } : {},
       ...typeof row.agentPreset === 'string' ? { agentPreset: row.agentPreset } : {},
       ...typeof row.permission === 'string' ? { permission: row.permission } : {},
-      ...priority !== undefined ? { priority } : {},
-      ...labels !== undefined ? { labels } : {},
-      ...typeof row.color === 'string' && row.color !== '' ? { color: row.color } : {},
     })
   }
   return out

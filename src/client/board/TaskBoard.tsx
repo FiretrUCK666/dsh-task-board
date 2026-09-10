@@ -37,7 +37,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
-import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
+import { Button, Icon, Switch } from './ui.tsx'
 import { waitingKeyOf } from './session-chip.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
@@ -319,11 +319,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
   const exitOrganize = (): void => {
     setOrganizing(false)
     clearSelection()
-  }
-  /** 批量换色（undefined = 移除颜色，经单一色表文法的「移除颜色」点触发）。 */
-  const applyColorToSelected = (color: string | undefined): void => {
-    const targets = snapshot.tasks.filter(task => liveIds.includes(task.id))
-    for (const task of targets) controller.setTaskColor(task.id, color)
   }
   /** 批量删除（确认后）；删除会同步取消板上的选中集。 */
   const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false)
@@ -617,28 +612,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
     if (organizing || event?.ctrlKey === true || event?.metaKey === true) toggleCard(id)
     else controller.openTask(id)
   }
-  // Organize-bar color slot: the selection's color ONLY when every selected
-  // card agrees (a mixed selection lights no ring — showing the first card's
-  // color would read as "all red". A colorless or mixed selection offers the
-  // 「移除颜色」 dot instead; the ring never appears on a guess).
-  const orgColorValue = (() => {
-    let seen: string | undefined
-    let mixed = false
-    let any = false
-    for (const task of snapshot.tasks) {
-      if (!liveIds.includes(task.id)) continue
-      any = true
-      if (task.color === undefined) {
-        mixed = true
-      } else if (seen === undefined) {
-        seen = task.color
-      } else if (seen !== task.color) {
-        mixed = true
-      }
-    }
-    if (!any || mixed) return undefined
-    return seen
-  })()
   const draggedTask = dragId !== undefined
     ? snapshot.tasks.find(candidate => candidate.id === dragId)
     : undefined
@@ -1120,19 +1093,10 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
         )}
 
         {/* 多选横栏（整理模式或已有选中时出现）：先点卡片（Ctrl/Cmd+点击或整理
-            模式下直接点）选中高亮，再在板头横栏批量换色 / 删除 / 全选清选。 */}
+            模式下直接点）选中高亮，再在板头横栏批量执行 / 删除 / 全选清选。 */}
         {(organizing || liveIds.length > 0) && (
           <div className={css.boardRow}>
             <span className={css.organizeBar}>
-              {/* Color group: swatches (palette / custom / 移除颜色) — one
-                  grammar with the card hover bar; applying is instant. */}
-              <span className={css.organizeGroup}>
-                <span className={css.organizeLabel}>{t('board.organizeColor')}</span>
-                <ColorSwatches
-                  value={orgColorValue}
-                  onChange={applyColorToSelected}
-                />
-              </span>
               <span className={css.organizeCount}>{t('board.organizeCount', { n: String(liveIds.length) })}</span>
               {/* Selection group: select-all / clear / done + the danger
                   delete right next to 完成 (one right-cluster, hairline
@@ -1172,8 +1136,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                 </Button>
                 {/* Danger group: delete the selected cards — only once there
                     IS a selection (an empty organize mode never flashes a
-                    destructive button next to the color row), separated from
-                    完成 by the hairline. */}
+                    destructive button), separated from 完成 by the hairline. */}
                 {liveIds.length > 0 && (
                   <span className={css.organizeDanger}>
                     <Button size="sm" variant="danger" disabled={liveIds.length === 0} onClick={() => { setConfirmDeleteSelected(true) }}>
@@ -1460,7 +1423,6 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                       selected={selectedCards.includes(task.id)}
                       onClick={event => { cardClick(task.id, event) }}
                       onQuickRun={taskExecutable(task) ? () => { void controller.rerunTask(task.id) } : undefined}
-                      onColorPick={color => { controller.setTaskColor(task.id, color) }}
                       dots={dots}
                       overflowDots={overflowDots}
                       nextAction={nextAction}

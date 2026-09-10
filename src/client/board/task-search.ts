@@ -27,12 +27,6 @@ export function matchTask(
     description: string
     prompt: string
     executions: readonly { comment?: string }[]
-    /** Card accent color (for the `has:color` qualifier). */
-    color?: string
-    /** Card priority (for the `has:priority` qualifier). */
-    priority?: number
-    /** Card labels (for the `label:` qualifier, already lowercase). */
-    labels?: readonly string[]
   },
   query: string,
   sessionTitles: readonly string[] = [],
@@ -65,9 +59,8 @@ export interface BoardQualifier {
 /**
  * Split a raw query into plain terms plus recognized qualifiers (see
  * QUALIFIER_KEYS/QUALIFIER_VALUES for the key set and enumerated values).
- * Matching is case-insensitive; `has:` accepts `auto`/`color`/`priority`,
- * `is:` accepts `unread`/`read`, `ws:` takes any text, `label:` takes a
- * label name —
+ * Matching is case-insensitive; `has:` accepts `auto`, `is:` accepts
+ * `unread`/`read`, `ws:` takes any text —
  * quoted (`ws:"a b"`) when the name holds a space, first word otherwise.
  * Anything unrecognized stays a literal search term: an unknown qualifier
  * narrows like ordinary text instead of failing.
@@ -76,9 +69,9 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
   const terms: string[] = []
   const qualifiers: BoardQualifier[] = []
   // Tokenize first (single scanner — the overview chips remove exactly these
-  // units). Only `ws:"..."` spans stay atomic (the one quoted form: labels
-  // are spaceless single tokens and enumerated values are closed sets, so
-  // neither can hold a space worth quoting). An empty quote pair is left
+  // units). Only `ws:"..."` spans stay atomic (the one quoted form:
+  // enumerated values are closed sets, so they can hold no space worth
+  // quoting). An empty quote pair is left
   // alone (it falls through to a literal term and matches nothing — never a
   // silent pass-all), and so is an unclosed quote (a quote inside a value is
   // never a facet value, so the token stays literal text).
@@ -117,9 +110,10 @@ export function parseBoardQuery(query: string): { terms: string[]; qualifiers: B
  *  through the same definition. */
 function matchQualifier(
   task: {
-    color?: string
-    priority?: number
-    labels?: readonly string[]
+    title: string
+    description: string
+    prompt: string
+    executions: readonly { comment?: string }[]
   },
   qualifier: BoardQualifier,
   facets: BoardQueryFacets,
@@ -137,9 +131,10 @@ function matchQualifier(
 /** One qualifier predicate: task fields + caller-resolved facets + the value. */
 type QualifierTest = (
   task: {
-    color?: string
-    priority?: number
-    labels?: readonly string[]
+    title: string
+    description: string
+    prompt: string
+    executions: readonly { comment?: string }[]
   },
   facets: BoardQueryFacets,
   value: string,
@@ -156,16 +151,10 @@ interface QualifierDef {
 
 const QUALIFIER_DEFS: Readonly<Record<string, QualifierDef>> = {
   'has:auto': { test: (_task, facets) => facets.hasAutomation === true },
-  'has:color': { test: task => task.color !== undefined },
-  'has:priority': { test: task => task.priority !== undefined },
   'is:unread': { test: (_task, facets) => facets.isUnviewed === true },
   'is:read': { test: (_task, facets) => facets.isUnviewed === false },
   'ws:': {
     test: (_task, facets, value) => (facets.workspaceTitle ?? '').toLowerCase().includes(value),
-    freeText: true,
-  },
-  'label:': {
-    test: (task, _facets, value) => task.labels !== undefined && task.labels.includes(value),
     freeText: true,
   },
 }
@@ -201,8 +190,8 @@ const FREE_TEXT_KEYS: ReadonlySet<string> = new Set(
 
 /** Completion candidates for the token being typed (at most 8, key-first):
  *  a key prefix offers keys (`h` → `has:`), a bare key offers its values
- *  (`has:` → its three), a value prefix narrows them (`has:a` → `has:auto`).
- *  Free-text keys (`ws:`/`label:`) and complete tokens offer nothing — the
+ *  (`has:` → `has:auto`), a value prefix narrows them (`has:a` → `has:auto`).
+ *  Free-text keys (`ws:`) and complete tokens offer nothing — the
  *  native datalist narrows the offered set further as typing continues.
  *  The token reads THE single scanner (a `ws:"..."` span is one token —
  *  completion never fires from inside quotes). */

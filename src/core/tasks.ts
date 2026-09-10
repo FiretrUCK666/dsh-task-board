@@ -354,25 +354,6 @@ export interface TaskRecord {
    */
   viewedAt?: number
   /**
-   * A per-card accent color (hex string, applied as an inline tint — data,
-   * never a CSS literal). Absent = no accent.
-   */
-  color?: string
-  /**
-   * Priority (1 = highest … 3 = lowest); absent = none (the default, zero
-   * visuals). Orthogonal to due date (欠 vs 重) and accent color: priority
-   * never breathes, never enters the card primary, never takes error red
-   * (red belongs to blocked). Rides the record like every scalar.
-   */
-  priority?: 1 | 2 | 3
-  /**
-   * Labels (multi-dimensional context — where/how/who/energy; never priority,
-   * status or dates, which own their fields). Lowercase-normalized, capped in
-   * length and count (see normalizeLabels). Absent/empty = none. Rides the
-   * record like every scalar.
-   */
-  labels?: string[]
-  /**
    * Session automation rules — scheduled "send a preset instruction to one
    * of this task's sessions" rules (see automation.ts). Absent = none.
    */
@@ -400,13 +381,6 @@ export interface NewTaskInput {
   reasoningEffort?: string
   agentPreset?: string
   permission?: string
-  /** Priority (1 highest … 3 lowest); absent = none. */
-  priority?: 1 | 2 | 3
-  /** Labels (multi-dimensional context: where/how/who — never priority,
-   *  status or dates, which have their own fields). Absent/empty = none. */
-  labels?: string[]
-  /** Accent color (hex string data, never CSS); absent = no accent. */
-  color?: string
 }
 
 /** The five kanban columns, in display order. */
@@ -584,37 +558,6 @@ export function chainUnlimited(mode: ScheduleMode | undefined, maxRuns: number |
   return mode === 'chain' && (maxRuns === undefined || maxRuns < 1)
 }
 
-/** Brand an unknown value as a priority (1, 2 or 3); undefined otherwise. */
-export function normalizePriority(value: unknown): 1 | 2 | 3 | undefined {
-  return value === 1 || value === 2 || value === 3 ? value : undefined
-}
-
-/** Max labels per task (Todoist allows 100; a board card is not a database —
- *  five named contexts is plenty, the rest belongs in the description). */
-export const MAX_LABELS_PER_TASK = 5
-
-/** Max characters per label (Todoist allows 60; board chips ellipsis far
- *  earlier — long labels are a description sentence wearing a costume). */
-export const MAX_LABEL_LENGTH = 24
-
-/** Normalize a label list: trim, lowercase (case splits are the classic tag
- *  fork — `Urgent` vs `urgent` must never become two tags), drop empties and
- *  overlong entries, dedupe, cap the count. Empty results read absent. */
-export function normalizeLabels(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const row of value) {
-    if (typeof row !== 'string') continue
-    const label = row.trim().toLowerCase()
-    if (label === '' || label.length > MAX_LABEL_LENGTH || seen.has(label)) continue
-    seen.add(label)
-    out.push(label)
-    if (out.length >= MAX_LABELS_PER_TASK) break
-  }
-  return out.length > 0 ? out : undefined
-}
-
 /** Admitted image media types (the INTAKE gate reads this — new uploads
  *  outside it are rejected or transcoded at the door; stored rows are
  *  grandfathered, see below). */
@@ -660,8 +603,6 @@ export function normalizePromptFiles(raw: unknown): TaskFile[] | undefined {
 
 /** Create a task from user input. */
 export function createTask(input: NewTaskInput, now: number, id: string, order = 0): TaskRecord {
-  const priority = normalizePriority(input.priority)
-  const labels = normalizeLabels(input.labels)
   const status = input.status ?? 'todo'
   return {
     id,
@@ -688,9 +629,6 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
     ...input.reasoningEffort !== undefined ? { reasoningEffort: input.reasoningEffort } : {},
     ...input.agentPreset !== undefined ? { agentPreset: input.agentPreset } : {},
     ...input.permission !== undefined ? { permission: input.permission } : {},
-    ...priority !== undefined ? { priority } : {},
-    ...labels !== undefined ? { labels } : {},
-    ...input.color !== undefined && input.color !== '' ? { color: input.color } : {},
   }
 }
 
