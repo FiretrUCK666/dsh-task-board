@@ -346,23 +346,17 @@ export function ContextMeterPanel({ projections, usage }: {
             {t('review.usageTotal')} · {t('review.usageInput', { n: formatTokens(total.inputTokens) })} · {t('review.usageOutput', { n: formatTokens(total.outputTokens) })}
             {total.cacheReadTokens !== undefined && ` · ${t('review.usageCacheRead', { n: formatTokens(total.cacheReadTokens) })}`}
             {total.cacheWriteTokens !== undefined && ` · ${t('review.usageCacheWrite', { n: formatTokens(total.cacheWriteTokens) })}`}
+            {(() => {
+              // Prompt-cache hit rate rides the same cumulative buckets (read
+              // over all input); a zero denominator hides the fragment instead
+              // of printing NaN — absence is key absence, never a fake figure.
+              const hit = total.cacheReadTokens !== undefined
+                ? cacheHitRate(total.cacheReadTokens, total.inputTokens)
+                : undefined
+              return hit !== undefined ? ` · ${t('review.usageHitRate', { p: hit })}` : null
+            })()}
           </p>
         )}
-        {(() => {
-          // Prompt-cache hit rate derives from the same cumulative buckets
-          // (read over all input); a zero denominator hides the line instead
-          // of printing NaN — absence is key absence, never a fake figure.
-          if (!totalCumulative || total === undefined) return null
-          const hit = total.cacheReadTokens !== undefined
-            ? cacheHitRate(total.cacheReadTokens, total.inputTokens)
-            : undefined
-          if (hit === undefined) return null
-          return (
-            <p className={css.reviewUsage}>
-              {t('review.usageHitRate', { p: hit })}
-            </p>
-          )
-        })()}
         {(() => {
           const stats = projections?.sessionStats
           if (stats === undefined) return null
