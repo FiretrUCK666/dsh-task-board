@@ -454,8 +454,10 @@ describe('board header and navigator legibility', () => {
     expect(ruleIn(compact, '.thumbBar')).toMatch(/safe-area-inset-bottom/)
     // The columns' bottom clearance is DERIVED from the thumb bar's real
     // geometry (border + paddings + one button row) plus one strip breathing
-    // step — never a hand-typed 64px the two sides can't keep in sync.
-    expect(ruleIn(compact, '.columns')).toMatch(/padding-bottom:\s*calc\(1px \+ 10px \+ var\(--dsh-tb-button-h\) \+ 10px \+ var\(--dsh-tb-strip-gap\)/)
+    // step — never a hand-typed 64px the two sides can't keep in sync — and it
+    // rides the SAME kb global as the bar, so a soft keyboard lifts the floor
+    // together with the bar instead of sliding the bar over the columns.
+    expect(ruleIn(compact, '.columns')).toMatch(/padding-bottom:\s*calc\(1px \+ 10px \+ var\(--dsh-tb-button-h\) \+ 10px \+ var\(--dsh-tb-strip-gap\) \+ var\(--dsh-tb-kb, 0px\) \+ env\(safe-area-inset-bottom\)\)/)
     expect(ruleIn(compact, '.columns')).not.toMatch(/64px/)
     // Relocation, not duplication: the header twins hide on compact (their
     // thumb-bar twins carry the same handlers). One visible instance per
@@ -652,6 +654,25 @@ describe('button geometry (one base for every variant)', () => {
     expect(base).toMatch(/\.dangerGhostButton\s*\{/)
     expect(base).toMatch(/height:\s*var\(--dsh-tb-button-h\)/)
     expect(base).toMatch(/border-radius:\s*var\(--dsh-tb-button-radius\)/)
+  })
+
+  it('height MEANS outer height on the row controls (border-box, no 2px drift)', () => {
+    // Content-box made every bordered 28px control really 30 (search 30 vs
+    // cruise 28 never agreed; every clearance formula silently lost 2px).
+    const base = blockFrom(line => line.trim() === '.primaryButton,')
+    expect(base).toMatch(/box-sizing:\s*border-box/)
+    for (const name of ['buttonSm', 'search', 'columnTab']) {
+      expect(ruleOf(name), `.${name} missing`).toMatch(/box-sizing:\s*border-box/)
+    }
+  })
+
+  it('the compact column header is declared ONCE (no dead second padding)', () => {
+    // Two competing paddings lived in the same compact block (12px 20px with
+    // the contract comment, then a bare 10px 12px that won) — the top-rhythm
+    // churn behind conflicting reports. One declaration survives.
+    const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
+    expect(compact.match(/\.columnHeader\s*\{/g) ?? []).toHaveLength(1)
+    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 20px/)
   })
 
   it('the button radius token IS the pill (true round at every height)', () => {

@@ -578,6 +578,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: 1 1 260px;
   max-width: 520px;
   min-width: 140px;
+  /* Border-box like the buttons it rides with: 28px means 28. */
+  box-sizing: border-box;
   /* 28px — the same row rhythm as the header action buttons (28px standard),
      so 搜索框 and 整理/自动化/新建任务 read as one control row. */
   height: var(--dsh-tb-button-h);
@@ -893,6 +895,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .columnTab {
   gap: 6px;
   flex: none;
+  /* Border-box like the header buttons: 28px means 28. */
+  box-sizing: border-box;
   height: 28px;
   padding: 0 10px;
   border: var(--dsh-tb-border);
@@ -1611,6 +1615,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   align-items: center;
   justify-content: center;
   gap: 6px;
+  /* Border-box: height MEANS outer height (the cruise pill already owns this;
+     without it every 28px control is really 30 and no two rows ever agree). */
+  box-sizing: border-box;
   height: var(--dsh-tb-button-h);
   /* Wider pill ends read rounder at a glance than a narrow one at the same
      height (radius already clamps to the semicircle — width is the free
@@ -1729,6 +1736,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    every secondary affordance on a row/header — view-session, refresh, row
    actions — so a full-size button never sits inside a row. */
 .buttonSm {
+  /* Border-box with the base: 24px means 24, so the derived hint-row offset
+     stays exact instead of drifting 2px under content-box. */
+  box-sizing: border-box;
   height: var(--dsh-tb-button-h-sm);
   padding: 0 10px;
   font-size: 12px;
@@ -5938,8 +5948,12 @@ button.interactionOption:hover {
        (1px top border + 10px padding + one button row + 10px padding) plus one
        strip breathing step, so the last cards never slide underneath it and
        the clearance can never disagree with the bar again (no more hand-typed
-       constants that silently rot when either side changes). */
-    padding-bottom: calc(1px + 10px + var(--dsh-tb-button-h) + 10px + var(--dsh-tb-strip-gap) + env(safe-area-inset-bottom));
+       constants that silently rot when either side changes). The kb term rides
+       the SAME global the bar itself stands on (documentElement, removed at 0
+       so the fallback holds): when the soft keyboard lifts the bar, the floor
+       lifts with it — without this the bar slides OVER the columns while the
+       search box has focus (the compact bottom-overlap report). */
+    padding-bottom: calc(1px + 10px + var(--dsh-tb-button-h) + 10px + var(--dsh-tb-strip-gap) + var(--dsh-tb-kb, 0px) + env(safe-area-inset-bottom));
   }
 
   .column {
@@ -6042,10 +6056,6 @@ button.interactionOption:hover {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .columnHeader {
-    padding: 10px 12px;
   }
 
   /* The floating-panel geometry is board-relative at EVERY width now (see
