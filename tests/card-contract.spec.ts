@@ -141,6 +141,90 @@ describe('card no-breakout CSS contract', () => {
   })
 })
 
+describe('design-system contracts: pill geometry + frosted canvas', () => {
+  /**
+   * WHY (the 「改了好多次都没弄回来」 family): pills used to drift to a fixed
+   * px radius one member at a time (columnTab compact override,
+   * interactionOption, attachChip, …) and each fix only repaired the instance
+   * on the current screenshot. The single truth is the --dsh-tb-pill /
+   * --dsh-tb-button-radius token pair; this block fails the build the moment
+   * any pill stops consuming it, so the family can never drift piecemeal
+   * again. Shapes that are NOT pills (cards/panels/inputs on the sm/md/lg/xl
+   * ladder, dots, code, meter, the native bubble/sidebar benchmarks) are
+   * intentionally absent — see the px allowlist below.
+   */
+  it('token chain: the button radius rides the pill token', () => {
+    expect(source).toMatch(/--dsh-tb-pill:\s*999px/)
+    expect(source).toMatch(/--dsh-tb-button-radius:\s*var\(--dsh-tb-pill\)/)
+    // The shared button rule is the only consumer of the button token; every
+    // variant (primary/ghost/danger/dangerGhost) inherits it from there.
+    expect(source).toContain('border-radius: var(--dsh-tb-button-radius)')
+  })
+
+  it('every pill-geometry rule consumes the pill token (never a fixed px)', () => {
+    for (const name of [
+      'boardBack', 'search', 'cruisePill', 'cruiseMore', 'columnTab',
+      'columnCount', 'chipFill', 'feedFilter', 'feedSearch', 'feedAction',
+      'segmentedButton', 'iconButton', 'buttonSm', 'notifyBadge',
+      'cardQuickRun', 'promptCopy', 'reviewJumpLatest', 'attachAdd',
+      'attachChip', 'interactionOption', 'timeFieldCalendar', 'switchTrack',
+    ]) {
+      expect(expectRule(name), `.${name} must stay a true pill`).toContain('var(--dsh-tb-pill)')
+    }
+  })
+
+  it('no new fixed-px corner radii outside the documented allowlist', () => {
+    // Any future `border-radius: Npx` on a control fails here with its file
+    // line: reach for var(--dsh-tb-pill) (pills) or the sm/md/lg/xl ladder
+    // (panels/inputs) instead. Each allowlist entry names its reason.
+    const allowed: { px: string; why: RegExp }[] = [
+      { px: '12px', why: /sidebarFooterAction|interactionCard/ },
+      { px: '22px', why: /reviewMessage/ },
+      { px: '3px', why: /dropIndicator/ },
+      { px: '4px', why: /scrollbar-thumb|mdCode|attachRemove/ },
+      { px: '1px', why: /MeterSegment/ },
+      { px: '2px', why: /MeterSwatch/ },
+    ]
+    const bad: string[] = []
+    const lines = source.split('\n')
+    lines.forEach((line, index) => {
+      const hit = line.match(/border-radius:\s*(\d+px)/)
+      if (hit === null || line.includes('border-radius: inherit')) return
+      const px = hit[1]
+      // Nearest enclosing selector: walk back to the closest opening brace.
+      let open = index
+      while (open >= 0 && open > index - 40 && !lines[open].includes('{')) open--
+      const context = lines.slice(Math.max(0, open), index + 1).join('\n')
+      if (!allowed.some(entry => entry.px === px && entry.why.test(context))) {
+        bad.push(`L${index + 1}: ${line.trim()}`)
+      }
+    })
+    expect(bad, 'fixed-px radii must join the allowlist with a reason, or use the pill/ladder tokens').toEqual([])
+  })
+
+  it('the turning spinner keeps its circle grammar (square box + 50% + cut + spin)', () => {
+    const spinner = expectRule('spinner')
+    expect(spinner).toContain('border-radius: 50%')
+    expect(spinner).toMatch(/width:\s*10px/)
+    expect(spinner).toMatch(/height:\s*10px/)
+    // The transparent cut is what reads as motion; without it the ring is a
+    // static dot that can be misread as a stuck square at small sizes.
+    expect(spinner).toContain('border-top-color: transparent')
+    expect(spinner).toContain('animation: dshTbSpin')
+  })
+
+  it('frosted canvas: the board blurs the skin wallpaper behind it', () => {
+    // Dense work surface over any wallpaper: both the standard and the
+    // -webkit line must survive (older Chromium/WebKit need the prefix).
+    expect(source).toContain('-webkit-backdrop-filter: blur(')
+    expect(source).toContain('backdrop-filter: blur(')
+  })
+
+  it('compact rhythm derives from the single strip token (symmetric by construction)', () => {
+    expect(source).toContain('row-gap: var(--dsh-tb-strip-gap)')
+    expect(source).toContain('padding: var(--dsh-tb-strip-gap) 0')
+  })
+})
 describe('card chip label composition', () => {
   function useLanguage(lang: string): void {
     vi.stubGlobal('document', { documentElement: { lang } })

@@ -156,6 +156,17 @@
   inset: 0;
   display: none;
   z-index: 200;
+  /* Frosted canvas (dense-surface readability law): the board is a dense work
+     surface, not a conversation — under a glass skin the wallpaper wash sits
+     directly behind dozens of small controls, and a sharp photo competes with
+     every one of them (the 「背景和内容重叠在一起、排版显乱」 family). One
+     frost here keeps the skin's hue while text/controls always sit on calm
+     glass; inner surfaces keep their tokens untouched (no color churn, no
+     per-skin work). Unsupported browsers ignore the two lines and fall back
+     to plain translucency. Placed on the VIEW (already the positioned
+     containing block) so no descendant's anchor moves. */
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   /* The ONE responsive reference for the whole board is the board BOX's own
      width, never the viewport: it is correct under a collapsed/expanded
      sidebar, a split-screen, and a phone alike. Every compact rule below is
