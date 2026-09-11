@@ -268,6 +268,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* Border-box is load-bearing, not cosmetic: height:100% plus padding under
+     content-box makes the board ~30px taller than its view, and the in-flow
+     thumb bar lands exactly in that overflowed strip and reads as 「底部被截
+     断」 (the pinned bar used to hide this; the notifyRow rule documents the
+     same class). With border-box the bar sits fully inside, both widths. */
+  box-sizing: border-box;
   min-width: 0;
   min-height: 0;
   padding: 14px 16px 16px;

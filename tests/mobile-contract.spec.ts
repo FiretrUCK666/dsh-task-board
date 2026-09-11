@@ -463,6 +463,10 @@ describe('board header and navigator legibility', () => {
     expect(board).toContain('css.thumbBar')
     expect(board).toContain("t('board.thumbBar')")
     expect(ruleOf('thumbBar')).toMatch(/display:\s*none/)
+    // The board frame is height:100% plus padding: without border-box it runs
+    // ~30px taller than its view and the in-flow thumb bar lands in the
+    // overflowed strip (「底部被截断」); the pinned bar used to hide this.
+    expect(ruleOf('board')).toMatch(/box-sizing:\s*border-box/)
     expect(ruleIn(compact, '.thumbBar')).toMatch(/display:\s*flex/)
     expect(ruleIn(compact, '.thumbBar')).toMatch(/flex:\s*none/)
     expect(ruleIn(compact, '.thumbBar')).not.toMatch(/position:\s*absolute/)
