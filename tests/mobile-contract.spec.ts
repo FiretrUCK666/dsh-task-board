@@ -532,6 +532,14 @@ describe('alignment grammar (the OCD contract)', () => {
     const tools = ruleIn(compact, '.boardRowTools')
     expect(tools).toMatch(/display:\s*grid/)
     expect(tools).toMatch(/grid-template-areas:[\s\S]*"modes"[\s\S]*"search"/)
+    // Both tracks are DECLARED as one button row each, so the row's height is
+    // 28 + 8 + 28 = 64 by construction: an auto track would size to whatever
+    // line box the content brings, and a device-side quirk in the search
+    // field's inline box then stretches the row — pushing the column strip
+    // below it out of rhythm (measured: the gap above the strip read ~3px
+    // larger than the gap below on a real phone, while a pristine render of
+    // this same sheet measured an exact 20/20).
+    expect(tools).toMatch(/grid-template-rows:\s*var\(--dsh-tb-button-h\) var\(--dsh-tb-button-h\)/)
     const search = ruleIn(compact, '.boardRowTools .search')
     expect(search).toMatch(/grid-area:\s*search/)
     expect(search).toMatch(/max-width:\s*none/)

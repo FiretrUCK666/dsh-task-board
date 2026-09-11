@@ -5910,6 +5910,16 @@ button.interactionOption:hover {
      DOM 内），宽档（flex 单行）零影响。 */
   .boardRowTools {
     display: grid;
+    /* Each track is EXACTLY one button row, DECLARED rather than derived from
+       whichever content lands in it. Auto tracks size to content, so any
+       line-box quirk inside a track (the search field's inline box on some
+       mobile browsers) silently makes the whole row taller than the controls
+       the eye sees — which pushes everything below it out of rhythm. Measured
+       on a real phone: the gap above the column strip read ~3px larger than
+       the gap below it while a pristine render of the same CSS measured an
+       exact 20px/20px. Declaring the tracks makes the rhythm device-proof:
+       28 + 8 + 28 = 64, always. */
+    grid-template-rows: var(--dsh-tb-button-h) var(--dsh-tb-button-h);
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "modes"
