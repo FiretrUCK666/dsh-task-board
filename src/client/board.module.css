@@ -45,6 +45,12 @@
      that are NOT pills (meter swatch, code, remove ×) keep their own tiny
      radii by design. */
   --dsh-tb-pill: 999px;
+  /* ONE breathing rhythm for the compact navigator strip and the thumb-bar
+     clearance: both sides of the strip and the room above the thumb bar draw
+     from this single value, so the top gap can never again disagree with the
+     bottom one (the 「上面有空隙下面紧贴」 class). Hand-typed 8px/10px/64px
+     must not come back — see the compact rules below. */
+  --dsh-tb-strip-gap: 10px;
 
   /* Button family: every clickable button is FULLY round (pill), at every
      height (28px default, 24px sm, 34px preset rows, 44px touch floor). A
@@ -296,7 +302,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-2);
   background: transparent;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
 }
@@ -371,7 +377,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   line-height: 1;
   color: var(--dsw-alias-label-primary-foreground);
   background: var(--dsh-tb-attention);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -581,7 +587,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: var(--dsh-tb-input-bg);
   border: var(--dsh-tb-border-soft);
   /* 胶囊 — 与板头其它动作同一圆角语言。 */
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   outline: none;
 }
 
@@ -602,7 +608,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   height: var(--dsh-tb-button-h);
   box-sizing: border-box;
   padding: 0 4px 0 6px;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   transition: background var(--dsh-tb-motion);
 }
 
@@ -621,7 +627,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-3);
   background: transparent;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
 }
@@ -890,7 +896,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   height: 28px;
   padding: 0 10px;
   border: var(--dsh-tb-border);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-surface-sunken);
   color: var(--dsh-tb-text-2);
   font: inherit;
@@ -964,7 +970,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
      wash out to a double fade. */
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   padding: 0 7px;
   cursor: inherit;
 }
@@ -1181,7 +1187,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-surface-float);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   box-shadow: var(--dsh-tb-shadow-1);
   opacity: 0;
@@ -1444,7 +1450,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-2);
   background: none;
   border: var(--dsh-tb-border-soft);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
 }
 .feedFilter[data-active] {
@@ -1461,7 +1467,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-surface-sunken);
   border: var(--dsh-tb-border-soft);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
 }
 .feedAction {
   flex: none;
@@ -1471,7 +1477,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-2);
   background: none;
   border: var(--dsh-tb-border-soft);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
 }
 .feedAction:hover {
@@ -1560,7 +1566,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .chipFill {
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   /* Single-layer solid fill (an rgba fill on translucent surfaces would
      double-fade under a glass skin). */
   background: var(--dsh-tb-surface-sunken);
@@ -1606,7 +1612,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   justify-content: center;
   gap: 6px;
   height: var(--dsh-tb-button-h);
-  padding: 0 16px;
+  /* Wider pill ends read rounder at a glance than a narrow one at the same
+     height (radius already clamps to the semicircle — width is the free
+     dimension). Height stays on the shared row rhythm, never touched here. */
+  padding: 0 18px;
   font-size: 14px;
   font-weight: 500;
   line-height: 1;
@@ -1723,7 +1732,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   height: var(--dsh-tb-button-h-sm);
   padding: 0 10px;
   font-size: 12px;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
 }
 
 .iconButton {
@@ -1735,7 +1744,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   color: var(--dsh-tb-text-2);
   cursor: pointer;
   font-size: 14px;
@@ -1775,7 +1784,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   flex: none;
   width: 38px;
   height: 22px;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   background: var(--dsw-alias-interactive-bg-pressed, var(--dsh-tb-hover));
   border: var(--dsh-tb-border-soft);
   transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
@@ -2639,7 +2648,7 @@ textarea.input {
   font-size: 12px;
   color: var(--dsh-tb-accent);
   background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
 }
 
 /* The add-preset row obeys the SAME form-row grammar as every other control
@@ -2708,7 +2717,7 @@ textarea.input {
   color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-surface-float);
   border: var(--dsh-tb-border-soft);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   box-shadow: var(--dsh-tb-shadow-1);
   opacity: 0;
@@ -3126,7 +3135,7 @@ textarea.input {
   color: var(--dsw-alias-label-primary-foreground);
   background: var(--dsw-alias-state-warn-primary);
   border: none;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   white-space: nowrap;
   transition: background var(--dsh-tb-motion);
@@ -3276,7 +3285,7 @@ textarea.input {
   /* Single-layer solid capsule (an rgba fill would double-fade on the
      translucent row under a glass skin). */
   background: var(--dsh-tb-surface-sunken);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   white-space: nowrap;
 }
 
@@ -4521,7 +4530,7 @@ button.interactionOption:focus-visible,
   display: flex;
   gap: 1px;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   background: var(--dsw-alias-interactive-bg-hover);
   overflow: hidden;
 }
@@ -4881,7 +4890,7 @@ button.interactionOption:focus-visible,
   color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-bg-raised);
   border: var(--dsh-tb-border-soft);
-  border-radius: 999px;
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   box-shadow: var(--dsh-tb-shadow-2);
   transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
@@ -5925,9 +5934,12 @@ button.interactionOption:hover {
     overflow-x: auto;
     overflow-y: hidden;
     /* Hidden bar: covered by the shared :is() hidden-bar rule above. */
-    /* Bottom room for the pinned thumb bar (bar + safe area), so the last
-       cards never slide underneath it. */
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+    /* Bottom room for the pinned thumb bar, DERIVED from its real geometry
+       (1px top border + 10px padding + one button row + 10px padding) plus one
+       strip breathing step, so the last cards never slide underneath it and
+       the clearance can never disagree with the bar again (no more hand-typed
+       constants that silently rot when either side changes). */
+    padding-bottom: calc(1px + 10px + var(--dsh-tb-button-h) + 10px + var(--dsh-tb-strip-gap) + env(safe-area-inset-bottom));
   }
 
   .column {
@@ -5954,10 +5966,10 @@ button.interactionOption:hover {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 6px;
-    /* The strip owns symmetric breathing (8px both sides): 1px top fused it
-       with the search bar above while 8px below floated it off the columns
-       (上贴下空）. Board gap alone can't fix an asymmetric member. */
-    padding: 8px 0;
+    /* The strip owns symmetric breathing from the ONE strip token (board gap
+       alone can't fix an asymmetric member — the earlier 上贴下空 came from
+       hand-typed 1px/8px here). */
+    padding: var(--dsh-tb-strip-gap) 0;
     overflow-x: visible;
   }
 

@@ -123,6 +123,15 @@ describe('card no-breakout CSS contract', () => {
     // an inline element would ignore width/height and collapse to a strip,
     // so it carries its own inline-block geometry as a belt.
     expect(expectRule('spinner')).toContain('display: inline-block')
+
+    // The spinner is the board's ONE turning circle (running cards, session
+    // rows, execution rows, todo glyphs): a square box with a 50% radius is
+    // what makes it a circle — either half missing reads as 「方的圈」.
+    const spinner = expectRule('spinner')
+    expect(spinner).toContain('border-radius: 50%')
+    expect(spinner).toMatch(/width:\s*10px/)
+    expect(spinner).toMatch(/height:\s*10px/)
+    expect(spinner).toContain('animation: dshTbSpin')
   })
 
   it('badges row still wraps and can shrink', () => {

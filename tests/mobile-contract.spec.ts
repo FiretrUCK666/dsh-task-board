@@ -190,9 +190,10 @@ describe('compact columns + panel geometry', () => {
     expect(compact).toMatch(/\.columnTabs\s*\{\s*\n?\s*display:\s*grid/)
     expect(compact).toMatch(/grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/)
     expect(compact).toMatch(/\.columnTabLabel\s*\{[^}]*text-overflow:\s*ellipsis/)
-    // The strip owns symmetric breathing (never 1px-top cemented to the
-    // search bar while floating off the columns below).
-    expect(ruleIn(compact, '.columnTabs')).toMatch(/padding:\s*8px 0/)
+    // The strip owns symmetric breathing from the ONE strip token (never a
+    // hand-typed px pair that rots apart — the 「上面有空隙下面紧贴」 class).
+    expect(ruleIn(compact, '.columnTabs')).toMatch(/padding:\s*var\(--dsh-tb-strip-gap\) 0/)
+    expect(source).toMatch(/--dsh-tb-strip-gap:\s*\d+px/)
     // A column is capped well under full width — roughly two columns plus the
     // next column's edge share a phone board (「一列占满整屏」 fix).
     const column = compact.slice(compact.indexOf('.column {'))
@@ -451,7 +452,11 @@ describe('board header and navigator legibility', () => {
     expect(ruleIn(compact, '.thumbBar')).toMatch(/position:\s*absolute/)
     expect(ruleIn(compact, '.thumbBar')).toMatch(/bottom:\s*var\(--dsh-tb-kb/)
     expect(ruleIn(compact, '.thumbBar')).toMatch(/safe-area-inset-bottom/)
-    expect(ruleIn(compact, '.columns')).toMatch(/padding-bottom:\s*calc\(64px \+ env\(safe-area-inset-bottom\)\)/)
+    // The columns' bottom clearance is DERIVED from the thumb bar's real
+    // geometry (border + paddings + one button row) plus one strip breathing
+    // step — never a hand-typed 64px the two sides can't keep in sync.
+    expect(ruleIn(compact, '.columns')).toMatch(/padding-bottom:\s*calc\(1px \+ 10px \+ var\(--dsh-tb-button-h\) \+ 10px \+ var\(--dsh-tb-strip-gap\)/)
+    expect(ruleIn(compact, '.columns')).not.toMatch(/64px/)
     // Relocation, not duplication: the header twins hide on compact (their
     // thumb-bar twins carry the same handlers). One visible instance per
     // width — two DOM nodes, never two on screen.
