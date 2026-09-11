@@ -666,6 +666,15 @@ describe('button geometry (one base for every variant)', () => {
     }
   })
 
+  it('buttons stay dainty like the reference (13px on 0 14px, never widened back)', () => {
+    // Roundness feel is the aspect ratio, not the radius (already clamped to
+    // the semicircle): the 0 18px widening read squarer and was reverted.
+    const base = blockFrom(line => line.trim() === '.primaryButton,')
+    expect(base).toMatch(/padding:\s*0 14px/)
+    expect(base).toMatch(/font-size:\s*13px/)
+    expect(base).toMatch(/height:\s*var\(--dsh-tb-button-h\)/)
+  })
+
   it('the compact column header is declared ONCE (no dead second padding)', () => {
     // Two competing paddings lived in the same compact block (12px 20px with
     // the contract comment, then a bare 10px 12px that won) — the top-rhythm

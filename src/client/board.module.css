@@ -1619,11 +1619,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
      without it every 28px control is really 30 and no two rows ever agree). */
   box-sizing: border-box;
   height: var(--dsh-tb-button-h);
-  /* Wider pill ends read rounder at a glance than a narrow one at the same
-     height (radius already clamps to the semicircle — width is the free
-     dimension). Height stays on the shared row rhythm, never touched here. */
-  padding: 0 18px;
-  font-size: 14px;
+  /* Dainty reads round: at a fixed height the NARROWER pill's semicircle ends
+     dominate and the straighter the long edges, the squarer it feels (the old
+     0 18px widening went the wrong way — admitted and reverted here). 13px /
+     0 14px lands the two-character label near a 2:1 aspect like the reference
+     board; height and radius stay on the shared rhythm, untouched. */
+  padding: 0 14px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1;
   border-radius: var(--dsh-tb-button-radius);
