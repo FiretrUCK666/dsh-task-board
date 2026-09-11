@@ -1242,6 +1242,33 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                 才亮点，无则安静。 */}
             {renderNotifyBell()}
           </span>
+          {/* 紧凑列导航（仅 compact 档显示）：它是紧凑工具列的第三轨，与
+              整理/自动化、筛选同属一个 DECLARED grid —— 间距由轨道与 row-gap
+              声明，不再由"上一行的盒子底边"推导。板头盒底与条带之间那几像素
+              在真机上会被行盒悄悄吃掉（本机渲染实测 20/20，真机 23.6/19.3），
+              而落在同一个 grid 里之后，任何一侧的行盒异动都影响不到轨道间距。
+              宽档 display:none，DOM 位置对桌面零影响。 */}
+          <div className={css.columnTabs} role="tablist" aria-label={t('board.title')}>
+            {COLUMNS.map(column => {
+              const count = visible.filter(task => task.status === column.status).length
+              return (
+                <button
+                  key={column.status}
+                  type="button"
+                  role="tab"
+                  className={css.columnTab}
+                  aria-selected={activeColumn === column.status}
+                  aria-label={t(STATUS_KEY[column.status])}
+                  data-active={activeColumn === column.status ? 'true' : undefined}
+                  onClick={() => { jumpToColumn(column.status) }}
+                >
+                  <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
+                  <span className={css.columnTabLabel}>{t(STATUS_SHORT_KEY[column.status])}</span>
+                  <span className={css.columnTabCount}>{String(count)}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
         {/* Applied-filter overview: one quiet line while a filter is active
             (confirm + single-remove + context — the triple role). Each chip
@@ -1467,31 +1494,6 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
         )}
 
       </header>
-
-      {/* 紧凑列导航（仅 compact 档显示）：点按直达状态列，滚动位置回写高亮。
-          文法即列头——状态点 + 名称 + 计数，tab 就是它跳转的列。超限染色与列头
-          同源（全量口径），手机滑轨上同样可见。 */}
-      <div className={css.columnTabs} role="tablist" aria-label={t('board.title')}>
-        {COLUMNS.map(column => {
-          const count = visible.filter(task => task.status === column.status).length
-          return (
-            <button
-              key={column.status}
-              type="button"
-              role="tab"
-              className={css.columnTab}
-              aria-selected={activeColumn === column.status}
-              aria-label={t(STATUS_KEY[column.status])}
-              data-active={activeColumn === column.status ? 'true' : undefined}
-              onClick={() => { jumpToColumn(column.status) }}
-            >
-              <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
-              <span className={css.columnTabLabel}>{t(STATUS_SHORT_KEY[column.status])}</span>
-              <span className={css.columnTabCount}>{String(count)}</span>
-            </button>
-          )
-        })}
-      </div>
 
       <div
         className={css.columns}

@@ -74,6 +74,16 @@ function ruleIn(scope: string, selector: string): string {
   return scope.slice(at, end < 0 ? undefined : end)
 }
 
+/** The rule whose selector is EXACTLY `selector` in a scope — never a
+ *  descendant selector that merely ends with it (`.boardRowTools .columnTabs`
+ *  must not answer for `.columnTabs`). */
+function ruleExact(scope: string, selector: string): string {
+  const at = scope.indexOf(`\n  ${selector} {`)
+  if (at < 0) return ''
+  const end = scope.indexOf('}', at)
+  return scope.slice(at, end < 0 ? undefined : end)
+}
+
 describe('responsive container mechanism', () => {
   it('the board view root is a named size container', () => {
     const root = blockWith(/container-type:\s*inline-size/)
@@ -192,7 +202,7 @@ describe('compact columns + panel geometry', () => {
     expect(compact).toMatch(/\.columnTabLabel\s*\{[^}]*text-overflow:\s*ellipsis/)
     // The strip owns symmetric breathing from the ONE strip token (never a
     // hand-typed px pair that rots apart — the 「上面有空隙下面紧贴」 class).
-    expect(ruleIn(compact, '.columnTabs')).toMatch(/padding:\s*var\(--dsh-tb-strip-gap\) 0/)
+    expect(ruleExact(compact, '.columnTabs')).toMatch(/padding:\s*var\(--dsh-tb-strip-gap\) 0/)
     expect(source).toMatch(/--dsh-tb-strip-gap:\s*\d+px/)
     // A column is capped well under full width — roughly two columns plus the
     // next column's edge share a phone board (「一列占满整屏」 fix).
@@ -531,15 +541,21 @@ describe('alignment grammar (the OCD contract)', () => {
     // here at all (it moved to the nav row).
     const tools = ruleIn(compact, '.boardRowTools')
     expect(tools).toMatch(/display:\s*grid/)
-    expect(tools).toMatch(/grid-template-areas:[\s\S]*"modes"[\s\S]*"search"/)
-    // Both tracks are DECLARED as one button row each, so the row's height is
-    // 28 + 8 + 28 = 64 by construction: an auto track would size to whatever
-    // line box the content brings, and a device-side quirk in the search
-    // field's inline box then stretches the row — pushing the column strip
-    // below it out of rhythm (measured: the gap above the strip read ~3px
-    // larger than the gap below on a real phone, while a pristine render of
-    // this same sheet measured an exact 20/20).
-    expect(tools).toMatch(/grid-template-rows:\s*var\(--dsh-tb-button-h\) var\(--dsh-tb-button-h\)/)
+    expect(tools).toMatch(/grid-template-areas:[\s\S]*"modes"[\s\S]*"search"[\s\S]*"tabs"/)
+    // All three tracks are DECLARED (two button rows + the strip), and the one
+    // rhythm token owns the row gap: the strip then sits exactly gap + its own
+    // padding below the search field and the columns sit exactly its own
+    // padding + the board gap below the pills. Deriving that spacing from a
+    // neighbour's BOX EDGE is what let a device-side line box eat ~3px above
+    // the strip (pristine render: 20/20; real phone: 23.6/19.3 across three
+    // releases — the measurement that motivated moving the strip into this
+    // grid).
+    expect(tools).toMatch(/grid-template-rows:\s*var\(--dsh-tb-button-h\) var\(--dsh-tb-button-h\) auto/)
+    expect(tools).toMatch(/row-gap:\s*var\(--dsh-tb-strip-gap\)/)
+    expect(ruleIn(compact, '.boardRowTools .columnTabs')).toMatch(/grid-area:\s*tabs/)
+    // The strip declares its own single pill row too, so no line box inside it
+    // can inflate its box either.
+    expect(ruleExact(compact, '.columnTabs')).toMatch(/grid-template-rows:\s*var\(--dsh-tb-button-h\)/)
     const search = ruleIn(compact, '.boardRowTools .search')
     expect(search).toMatch(/grid-area:\s*search/)
     expect(search).toMatch(/max-width:\s*none/)
@@ -547,6 +563,12 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(modes).toMatch(/grid-area:\s*modes/)
     expect(modes).toMatch(/justify-self:\s*start/)
     expect(compact).not.toMatch(/\.boardRowTools \.boardNewTask/)
+    // The strip really lives inside that grid (DOM, not just CSS): the JSX
+    // nests it in the tools row, so the declared tracks actually own it.
+    const boardPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    const board = readFileSync(boardPath, 'utf8')
+    const toolsRow = board.slice(board.indexOf('css.boardRowTools'), board.indexOf('organizeBar'))
+    expect(toolsRow).toContain('css.columnTabs')
   })
 
   it('row actions collapse to glyphs compact so the title keeps its quota', () => {

@@ -5904,26 +5904,26 @@ button.interactionOption:hover {
     justify-self: end;
   }
 
-  /* 工具行 = 换序后的两行：整理/自动化 上一行右对齐，筛选长条 下一行
-     （整幅贴宽）——筛选因此紧挨其下的 5 个状态列，用户要的「长条贴在状态
-     上面、与整理自动化换序」。纯 CSS 换序（search/modes 仍在 tools 行
-     DOM 内），宽档（flex 单行）零影响。 */
+  /* 紧凑工具列 = 一个 DECLARED 三轨 grid：整理/自动化 ‖ 筛选 ‖ 列导航条。
+     间距由轨道与 row-gap 声明，不再从"上一行盒子的底边"推导 —— 那条底边在
+     真机上会被行盒悄悄吃掉几像素（本机渲染实测条带上下 20/20，真机 23.6/19.3
+     且四张截图跨三个版本纹丝不动），而落在同一 grid 里之后，任何一侧的行盒
+     异动都够不到轨道间距。宽档（flex 单行）零影响，条带在宽档 display:none。 */
   .boardRowTools {
     display: grid;
-    /* Each track is EXACTLY one button row, DECLARED rather than derived from
-       whichever content lands in it. Auto tracks size to content, so any
-       line-box quirk inside a track (the search field's inline box on some
-       mobile browsers) silently makes the whole row taller than the controls
-       the eye sees — which pushes everything below it out of rhythm. Measured
-       on a real phone: the gap above the column strip read ~3px larger than
-       the gap below it while a pristine render of the same CSS measured an
-       exact 20px/20px. Declaring the tracks makes the rhythm device-proof:
-       28 + 8 + 28 = 64, always. */
-    grid-template-rows: var(--dsh-tb-button-h) var(--dsh-tb-button-h);
+    /* 两条控件轨各恰好一行按钮高；第三条（列导航条）按自身内容，条带自己
+       再用 padding 给它内部呼吸。 */
+    grid-template-rows: var(--dsh-tb-button-h) var(--dsh-tb-button-h) auto;
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "modes"
-      "search";
+      "search"
+      "tabs";
+    /* ONE rhythm for the whole tool column: 28 + 10 + 28 + 10 + 条带. The
+       strip then sits 10 (gap) + 10 (its own padding) = 20 below the search
+       field and the columns sit 10 (its own padding) + 10 (board gap) = 20
+       below the pills — equal by construction. */
+    row-gap: var(--dsh-tb-strip-gap);
   }
 
   .boardRowTools .search {
@@ -5938,6 +5938,10 @@ button.interactionOption:hover {
        (twins live in the thumb bar) — right-aligning two pills leaves the
        whole left two-thirds void. Left shares the x-line with 返回/筛选. */
     justify-self: start;
+  }
+
+  .boardRowTools .columnTabs {
+    grid-area: tabs;
   }
 
   /* The organize bar re-stacks to THREE deterministic rows (colors / count /
@@ -6007,10 +6011,14 @@ button.interactionOption:hover {
   .columnTabs {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
+    /* The strip's own single track is DECLARED as one pill row: whatever line
+       box a pill's content brings can no longer make the strip's box taller
+       than the pills the eye sees (the mirror image of the neighbour-edge
+       problem the tool grid above closes). */
+    grid-template-rows: var(--dsh-tb-button-h);
+    align-content: center;
     gap: 6px;
-    /* The strip owns symmetric breathing from the ONE strip token (board gap
-       alone can't fix an asymmetric member — the earlier 上贴下空 came from
-       hand-typed 1px/8px here). */
+    /* The strip owns symmetric breathing from the ONE strip token. */
     padding: var(--dsh-tb-strip-gap) 0;
     overflow-x: visible;
   }
