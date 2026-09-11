@@ -1572,6 +1572,13 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   ? resolveCardDrop(draggedTask, column.status)
                   : undefined
                 const insertable = sameColumnDrag || decision?.kind === 'move'
+                // The platform's own legibility channel: a refusing column
+                // shows the not-allowed cursor BEFORE release, so a designed
+                // refusal (busy card, rerun lane) never reads as 「根本插不进」.
+                // Set only on the card path — the external branch above keeps
+                // the sidebar's own effectAllowed untouched (an incompatible
+                // dropEffect there would block the drop itself).
+                event.dataTransfer.dropEffect = insertable ? 'move' : 'none'
                 if (!insertable) {
                   if (dropGapRef.current !== undefined) {
                     dropGapRef.current = undefined

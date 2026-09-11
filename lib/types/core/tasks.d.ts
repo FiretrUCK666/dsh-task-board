@@ -763,6 +763,14 @@ export declare function resolveCardDrop(task: TaskRecord, target: TaskStatus): C
  * index is naturally off-by-one safe. Only the target column's orders are
  * rewritten — other columns keep their relative order (gaps are harmless,
  * since sorting only compares within a column).
+ *
+ * THE order-key invariant: the ARRAY order is never trusted — only the `order`
+ * keys are truth, because the store keeps array positions while every render
+ * sorts by key. Splicing against raw array order lands the card at a visually
+ * wrong gap, defeats the same-spot check (phantom updatedAt churn on every
+ * sibling → sync storms and whole-column FLIP flashes), and scrambles the
+ * column on the next drag. Both lists below are key-sorted first — the same
+ * law promoteToColumnTop already follows.
  */
 export declare function applyCardOrder(tasks: readonly TaskRecord[], movedId: string, targetStatus: TaskStatus, beforeId: string | undefined, now: number): TaskRecord[];
 /**

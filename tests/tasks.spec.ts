@@ -135,6 +135,38 @@ describe('applyCardOrder', () => {
     const out = applyCardOrder([a, b, c], 'ghost', 'todo', undefined, NOW + 1)
     expect(keyed(out)).toEqual({ a: 0, b: 1, c: 2 })
   })
+
+  it('splices against key order, never array order (the post-move array shape)', () => {
+    // After any real move the store keeps array positions while keys change:
+    // array [a, b, c] with keys a=1, b=0, c=2 renders as [b, a, c]. Dropping c
+    // before b must read [c, b, a] — splicing the raw array order landed it at
+    // [a, c, b] and re-stamped every sibling (the scramble + flash family).
+    const [a, b, c] = column(['a', 'b', 'c'], [1, 0, 2])
+    const out = applyCardOrder([a, b, c], 'c', 'todo', 'b', NOW + 1)
+    expect(keyed(out)).toEqual({ c: 0, b: 1, a: 2 })
+    expect(out.find(task => task.id === 'c')?.updatedAt).toBe(NOW + 1)
+  })
+
+  it('a same-spot drop on scrambled array order is a true no-op (identity, no stamps)', () => {
+    // Visual order is [b, a, c]; a already sits right before c: same objects,
+    // same stamps, no sync churn for a no-op.
+    const [a, b, c] = column(['a', 'b', 'c'], [1, 0, 2])
+    const out = applyCardOrder([a, b, c], 'a', 'todo', 'c', NOW + 1)
+    expect(out.map(task => task.id)).toEqual(['a', 'b', 'c'])
+    expect(out[0]).toBe(a)
+    expect(out[1]).toBe(b)
+    expect(out[2]).toBe(c)
+  })
+
+  it('chained moves never drift: the array is never re-sorted between drops', () => {
+    // Production shape: moveTask maps over the same array twice in a row.
+    const [a, b, c] = column(['a', 'b', 'c'])
+    const first = applyCardOrder([a, b, c], 'a', 'todo', undefined, NOW + 1)
+    // Array still [a, b, c], keys { b:0, c:1, a:2 } rendering [b, c, a].
+    const second = applyCardOrder(first, 'a', 'todo', 'b', NOW + 2)
+    // a lands on top with keys restored.
+    expect(keyed(second)).toEqual({ a: 0, b: 1, c: 2 })
+  })
 })
 
 describe('promoteToColumnTop', () => {

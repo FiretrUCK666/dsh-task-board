@@ -419,15 +419,22 @@ describe('task mutations', () => {
     const c = controller.createTask({ title: 'c', description: '', prompt: 'run' })!
     const keyed = (): Record<string, number> =>
       Object.fromEntries(store.load().map(task => [task.id, task.order]))
-    // Move the last card before the first: c gets key 0, a and b shift.
+    // Fresh creates promote to the top, so the column renders [c, b, a].
+    // Dropping c "before a" names the gap between b and a (c excluded, the
+    // list reads [b, a]) — the card lands there, exactly where a gap-bar
+    // drawn at a's upper edge promises. (Splicing raw array order used to
+    // snap it back to the top, contradicting the indicator.)
     controller.moveTask(c.id, 'todo', a.id)
-    expect(keyed()).toEqual({ [c.id]: 0, [a.id]: 1, [b.id]: 2 })
+    expect(keyed()).toEqual({ [b.id]: 0, [c.id]: 1, [a.id]: 2 })
+    // Dropping c at the very top (before b) keeps it first.
+    controller.moveTask(c.id, 'todo', b.id)
+    expect(keyed()).toEqual({ [c.id]: 0, [b.id]: 1, [a.id]: 2 })
     // Moving a card onto itself keeps its position.
     controller.moveTask(c.id, 'todo', c.id)
-    expect(keyed()).toEqual({ [c.id]: 0, [a.id]: 1, [b.id]: 2 })
+    expect(keyed()).toEqual({ [c.id]: 0, [b.id]: 1, [a.id]: 2 })
     // Moving to another column does not disturb the source column's keys.
     controller.moveTask(b.id, 'backlog')
-    expect(keyed()).toEqual({ [c.id]: 0, [a.id]: 1, [b.id]: 0 })
+    expect(keyed()).toEqual({ [c.id]: 0, [a.id]: 2, [b.id]: 0 })
   })
 
   it('updates content and run configuration, clearing fields with undefined', () => {

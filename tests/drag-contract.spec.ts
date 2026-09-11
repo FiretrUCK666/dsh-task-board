@@ -5,6 +5,8 @@
  * math (content coordinates, so the bar sits where the gap is even
  * mid-scroll), and the edge-scroll stepper (the drag auto-scroll grammar).
  */
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { indicatorTopOf, insertionGapOf } from '../src/client/board/drop-position.ts'
 import { edgeScrollStep } from '../src/client/board/drag-autoscroll.ts'
@@ -83,6 +85,17 @@ describe('indicatorTopOf (scrolled content coordinates)', () => {
   })
 })
 
+describe('drop decision legibility (wiring)', () => {
+  it('the column dragover names its outcome through the platform cursor', () => {
+    // A refusing column must show not-allowed BEFORE release: a designed
+    // refusal (busy card, rerun lane) with no advance signal reads as
+    // 「拖了也插不进」. Set only on the card path — the external branch keeps
+    // the sidebar's own effectAllowed (an incompatible value would block it).
+    const board = readFileSync(
+      fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8')
+    expect(board).toContain("event.dataTransfer.dropEffect = insertable ? 'move' : 'none'")
+  })
+})
 describe('edgeScrollStep (drag edge auto-scroll)', () => {
   it('returns 0 outside the edge zones and outside the box', () => {
     expect(edgeScrollStep(100, 0, 600, 48, 14)).toBe(0)

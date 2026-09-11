@@ -1155,6 +1155,14 @@ export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropD
  * index is naturally off-by-one safe. Only the target column's orders are
  * rewritten — other columns keep their relative order (gaps are harmless,
  * since sorting only compares within a column).
+ *
+ * THE order-key invariant: the ARRAY order is never trusted — only the `order`
+ * keys are truth, because the store keeps array positions while every render
+ * sorts by key. Splicing against raw array order lands the card at a visually
+ * wrong gap, defeats the same-spot check (phantom updatedAt churn on every
+ * sibling → sync storms and whole-column FLIP flashes), and scrambles the
+ * column on the next drag. Both lists below are key-sorted first — the same
+ * law promoteToColumnTop already follows.
  */
 export function applyCardOrder(
   tasks: readonly TaskRecord[],
@@ -1169,14 +1177,20 @@ export function applyCardOrder(
   // from the target list, so it could never be found as an anchor).
   if (beforeId === movedId) return [...tasks]
   const others = tasks.filter(task => task.id !== movedId)
-  const target = others.filter(task => task.status === targetStatus)
+  const target = others
+    .filter(task => task.status === targetStatus)
+    .sort((a, b) => a.order - b.order)
   const at = beforeId === undefined ? target.length : target.findIndex(task => task.id === beforeId)
   const position = at < 0 ? target.length : at
   const ordered = [...target.slice(0, position), moved, ...target.slice(position)]
   // Same-spot drop: the target column reads identically with the card in
   // place — return untouched (no updatedAt bump, no authorship claim, no
   // sync churn for a no-op). Same law as promoteToColumnTop's early return.
-  const currentOrder = tasks.filter(task => task.status === targetStatus).map(task => task.id)
+  // Compared in RENDER order (key-sorted), never in array order.
+  const currentOrder = tasks
+    .filter(task => task.status === targetStatus)
+    .sort((a, b) => a.order - b.order)
+    .map(task => task.id)
   if (currentOrder.length === ordered.length
     && currentOrder.every((id, index) => ordered[index]?.id === id)) {
     return [...tasks]
