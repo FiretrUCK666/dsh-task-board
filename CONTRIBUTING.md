@@ -64,4 +64,4 @@ pnpm build && pnpm typecheck && pnpm test && pnpm verify
 
 ## 发布
 
-发版由维护者执行：更新版本号 → 构建 → 提交 → 推 tag。推 tag 会触发 GitHub Actions 完成构建、测试与发布，不需要手动操作 npm。
+发版由维护者执行：更新版本号 → 构建 → 提交 → 推 tag。推 tag 会触发 GitHub Actions 完成构建、测试、GitHub Release 说明与 npm 发布，不需要手动操作 npm。
