@@ -648,6 +648,68 @@ describe('button geometry (one base for every variant)', () => {
     expect(base).toMatch(/height:\s*var\(--dsh-tb-button-h\)/)
     expect(base).toMatch(/border-radius:\s*var\(--dsh-tb-button-radius\)/)
   })
+
+  it('the button radius token IS the pill (true round at every height)', () => {
+    // 22px only covers the 28px row; beside 999px pills (search/cruise/
+    // columnTab) it reads as 「方形圆弧」. The token is the single truth so
+    // 34px preset rows and the 44px touch floor stay semicircular too.
+    expect(source).toMatch(/--dsh-tb-button-radius:\s*(var\(--dsh-tb-pill\)|999px)/)
+    expect(source).toMatch(/--dsh-tb-pill:\s*999px/)
+  })
+
+  it('every button-family member is a pill, never sm/md (no omissions)', () => {
+    // Full census: core Button variants ride the shared base above; every
+    // other clickable button lists here explicitly so a future square-arc
+    // addition fails the build instead of shipping beside the pills.
+    // (Inputs/selects/panels/cards are NOT in this list — see the next test.)
+    for (const name of [
+      'buttonSm',
+      'iconButton',
+      'boardBack',
+      'cruisePill',
+      'cruiseMore',
+      'columnTab',
+      'feedFilter',
+      'feedAction',
+      'feedSearch',
+      'search',
+      'cardQuickRun',
+      'columnCount',
+      'notifyBadge',
+      'segmentedButton',
+      'timeFieldCalendar',
+      'interactionOption',
+      'attachAdd',
+      'attachChip',
+    ]) {
+      const rule = ruleOf(name)
+      expect(rule, `.${name} missing`).not.toBe('')
+      expect(rule, `.${name} must be pill`).toMatch(/border-radius:\s*(var\(--dsh-tb-pill\)|999px|50%)/)
+      expect(rule, `.${name} must not use sm/md`).not.toMatch(/border-radius:\s*var\(--dsh-tb-radius-(sm|md|lg|xl)\)/)
+    }
+  })
+
+  it('non-buttons keep the stepped ladder (pill must not leak into containers)', () => {
+    // Over-rounding is the mirror bug: cards/columns/panels/inputs stay on
+    // sm/md/lg/xl so a button fix never turns the whole board into bubbles.
+    for (const [name, ladder] of [
+      ['card', 'md'],
+      ['column', 'lg'],
+      ['input', 'md'],
+      ['segmentedRow', 'md'],
+      ['schedulePreset', 'md'],
+      ['cruiseLimit', 'sm'],
+    ] as const) {
+      const rule = ruleOf(name)
+      expect(rule, `.${name} missing`).not.toBe('')
+      expect(rule, `.${name} must stay ${ladder}`).toMatch(new RegExp(`border-radius:\\s*var\\(--dsh-tb-radius-${ladder}\\)`))
+    }
+    for (const panel of ['modal', 'detail', 'review']) {
+      expect(ruleOf(panel), `.${panel} missing`).not.toBe('')
+    }
+    const chrome = blockFrom(line => line.trim() === '.modal, .detail, .review {')
+    expect(chrome).toMatch(/border-radius:\s*var\(--dsh-tb-radius-xl\)/)
+  })
 })
 
 describe('section entry buttons (hint row for the session area, action slot for the rules)', () => {

@@ -46,10 +46,13 @@
      radii by design. */
   --dsh-tb-pill: 999px;
 
-  /* native button geometry (same rhythm as the shell's buttons): every
-     variant shares ONE default height (primary is emphasized by its fill,
-     never by being taller), so 执行/保存/取消/删除 in one row are aligned */
-  --dsh-tb-button-radius: 22px;
+  /* Button family: every clickable button is FULLY round (pill), at every
+     height (28px default, 24px sm, 34px preset rows, 44px touch floor). A
+     fixed px radius (the old 22px) only covers one height and reads as
+     「方形圆弧」 beside 999px pills (search/cruise/columnTab) — the token
+     below is the single truth so future buttons cannot drift. Cards/panels/
+     inputs keep the sm/md/lg/xl ladder and are NOT pills. */
+  --dsh-tb-button-radius: var(--dsh-tb-pill);
   --dsh-tb-button-h: 28px;
   /* The in-list tier. A quiet row action and the text beside it are aligned by
      a DERIVED offset, never by a hand-tuned ±3px (which silently breaks the
@@ -807,7 +810,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-text-2);
   background: transparent;
   border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-sm);
+  /* Round icon button (same family as .iconButton 999px) — a 30px circle. */
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion), transform var(--dsh-tb-motion);
 }
@@ -2491,7 +2495,8 @@ textarea.input {
 
 /* One segmented-radio grammar for every mode switch on the board (schedule
    drive mode, session composer mode): a quiet track, an elevated active
-   segment, no per-mode styling — both controls read as siblings. */
+   segment, no per-mode styling — both controls read as siblings. Segments
+   are pills (same family as buttons): sm read square beside them. */
 .segmentedButton {
   display: inline-flex;
   align-items: center;
@@ -2506,7 +2511,7 @@ textarea.input {
   color: var(--dsh-tb-text-2);
   background: transparent;
   border: none;
-  border-radius: var(--dsh-tb-radius-sm);
+  border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   white-space: nowrap;
   transition: color var(--dsh-tb-motion), background-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
