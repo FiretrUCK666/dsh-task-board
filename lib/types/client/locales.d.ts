@@ -420,6 +420,8 @@ export declare const zh: {
     'board.engineViewer': string;
     'board.engineViewerHint': string;
     'board.engineStale': string;
+    'board.bundleStale': string;
+    'board.bundleStaleTitle': string;
     'board.engineNoteOk': string;
     'board.engineNoteRecheck': string;
     'board.engineNoteProto': string;

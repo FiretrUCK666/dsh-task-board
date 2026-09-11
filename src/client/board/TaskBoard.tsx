@@ -70,6 +70,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
 import { activityGroupKeyOf, activityOf, clusterOf, freezeFeed, groupActivityByObjectDay, remainderKeyOf, splitGroupItems, CLUSTER_KINDS, type ActivityGroup, type ActivityItem } from './activity.ts'
 import { flowSummaryOf } from '../../core/flow-metrics.ts'
 import { Chip } from './Chip.tsx'
+import { reloadForFreshBundle, type BundleFreshnessState } from '../bundle-freshness.ts'
 
 /**
  * The install-mode label the update dialog shows (one branch per mode — the
@@ -156,12 +157,24 @@ function cruiseWindowTitleOf(window: CruiseWindow): string {
 }
 
 /** Board component; subscribes to the controller snapshot. */
-export function TaskBoard({ controller }: { controller: BoardController }) {
+export function TaskBoard({ controller, freshness }: { controller: BoardController; freshness?: BundleFreshnessState }) {
   const [snapshot, setSnapshot] = useState(controller.getSnapshot())
   useEffect(
     () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
     [controller],
   )
+  // The stale-bundle verdict (see bundle-freshness.ts): the page compares the
+  // version it was built from against the one the host serves, reloads itself
+  // once when they disagree, and states the mismatch here if it survives that
+  // attempt. A silent stale page is what makes "I restarted everything and
+  // nothing changed" unfalsifiable — this line is the falsifier.
+  const [freshnessView, setFreshnessView] = useState(() => freshness?.snapshot())
+  useEffect(() => {
+    if (freshness === undefined) return undefined
+    setFreshnessView(freshness.snapshot())
+    return freshness.subscribe(() => { setFreshnessView(freshness.snapshot()) })
+  }, [freshness])
+  const bundleStale = freshnessView?.state === 'stale'
   const [filter, setFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
@@ -972,7 +985,7 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
             // 「点此了解」却点不动是假 affordance，比不写更糟）。
             const engineStale = snapshot.engine.synced && snapshot.engine.hostProto < 2
             const engineViewer = snapshot.engine.synced && !engineStale && !snapshot.engine.held && engineWaitVisible
-            if (stateParts.length === 0 && !engineStale && !engineViewer) return null
+            if (stateParts.length === 0 && !engineStale && !engineViewer && !bundleStale) return null
             return (
               <span className={css.boardState}>
                 {stateParts.length > 0 && (
@@ -980,6 +993,27 @@ export function TaskBoard({ controller }: { controller: BoardController }) {
                     <span className={css.boardStatusDot} aria-hidden="true" />
                     <span className={css.boardStatusText}>{stateParts.join(' · ')}</span>
                   </span>
+                )}
+                {/* The page itself is running an old client bundle: stated in the
+                    same quiet warn grammar as the engine note, and it is a REAL
+                    button (touch has no hover — a warning you cannot act on is
+                    worse than none). */}
+                {bundleStale && (
+                  <button
+                    type="button"
+                    className={css.boardStatusButton}
+                    data-warn="true"
+                    title={t('board.bundleStaleTitle')}
+                    onClick={() => { reloadForFreshBundle() }}
+                  >
+                    <span className={css.boardStatusDot} aria-hidden="true" />
+                    <span className={css.boardStatusText}>
+                      {t('board.bundleStale', {
+                        c: freshnessView?.bundled ?? '',
+                        s: freshnessView?.host ?? '',
+                      })}
+                    </span>
+                  </button>
                 )}
                 {engineStale && (
                   <button

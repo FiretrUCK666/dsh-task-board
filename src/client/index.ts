@@ -28,6 +28,8 @@ import { nativeTurnOf } from '../core/session-activity.ts'
 import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
 import { mountBoard } from './board-mount.tsx'
+import { BundleFreshnessState, reloadForFreshBundle } from './bundle-freshness.ts'
+import { fetchUpdateSource } from './update-source.ts'
 import packageJson from '../../package.json'
 
 /** Deployed bundle version (diagnostic only — never rendered in the UI). */
@@ -176,6 +178,32 @@ export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'u
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-task-board: dictionaries')
+  // Stale-bundle self-heal (see bundle-freshness.ts). This runs BEFORE any
+  // mounting work: the client half is an immutable, revisioned artifact, so a
+  // document that is already open keeps rendering the bundle it booted with —
+  // and every rebuild plus host restart then looks like "nothing changed" for
+  // as long as that document lives. Comparing the version baked into this
+  // bundle against the one the host serves (an uncached API route) is the only
+  // way the page itself can notice, and re-entering the boot graph once with a
+  // cache-busting URL is the only way it can fix itself. The verdict is also
+  // rendered (a real, tappable status line) so a page that stays stale after
+  // one attempt says so instead of pretending.
+  const freshness = new BundleFreshnessState({
+    bundled: BOARD_VERSION,
+    readHostVersion: async () => (await fetchUpdateSource())?.version,
+    reload: reloadForFreshBundle,
+    storage: (() => {
+      try {
+        return window.sessionStorage
+      } catch {
+        return undefined
+      }
+    })(),
+  })
+  ctx.effect(() => {
+    void freshness.probe()
+    return () => {}
+  }, 'dsh-task-board: bundle freshness probe')
   // Official sidebar seat: register the board entry into the shell's
   // `sidebar.footer.action` slot (list hole beside Settings). The shell
   // renders it in every presentation (wide column / collapsed rail / mobile
@@ -1094,7 +1122,7 @@ export function apply(ctx: ClientContext): void {
         footer.setOpen(controller.getSnapshot().boardOpen)
       })
       disposers.push(() => { unsubscribeFooter(); footer.dispose() })
-      disposers.push(mountBoard(controller))
+      disposers.push(mountBoard(controller, freshness))
     } catch (error) {
       // DOM failures degrade the board, never the GUI.
       console.error('[dsh-task-board] mount failed:', error)

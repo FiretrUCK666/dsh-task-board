@@ -11,6 +11,7 @@
  */
 import { createRoot, type Root } from 'react-dom/client'
 import type { BoardController } from '../core/controller.ts'
+import type { BundleFreshnessState } from './bundle-freshness.ts'
 import { TaskBoard } from './board/TaskBoard.tsx'
 import { watchKeyboardInset } from './board/keyboard-inset.ts'
 
@@ -30,9 +31,10 @@ function conversationColumn(): HTMLElement | undefined {
  * Mount the board React tree into the center column and bind its visibility
  * to the controller's boardOpen state.
  * @param controller - the board controller driving the view.
+ * @param freshness - the stale-bundle verdict to render (see bundle-freshness).
  * @returns disposer unmounting the tree and restoring the column.
  */
-export function mountBoard(controller: BoardController): () => void {
+export function mountBoard(controller: BoardController, freshness?: BundleFreshnessState): () => void {
   let root: Root | undefined
   let container: HTMLDivElement | undefined
   let detachKeyboardInset: (() => void) | undefined
@@ -51,7 +53,7 @@ export function mountBoard(controller: BoardController): () => void {
     // EVERY possible portal target, not just the board container.
     detachKeyboardInset = watchKeyboardInset(document.documentElement)
     root = createRoot(container)
-    root.render(<TaskBoard controller={controller} />)
+    root.render(<TaskBoard controller={controller} freshness={freshness} />)
   }
 
   // The frame mounts after boot settlement; watch for the column's arrival.
