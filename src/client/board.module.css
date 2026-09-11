@@ -1666,6 +1666,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: transparent;
   /* The native outline border (l2), not the softer l1. */
   border: 1px solid var(--dsw-alias-border-l2);
+  /* Quiet density (reference parity: their ghost is 12px on tighter padding
+     while their primary stays 13px — the small pill reads round, the wide one
+     reads square-arc, so the two tracks never share type scale). */
+  font-size: 12px;
+  padding: 0 12px;
 }
 
 .ghostButton:hover:not(:disabled) {
@@ -1718,6 +1723,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-danger);
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) 45%, transparent);
+  /* Same quiet density as the ghost twin above (one track, never drift). */
+  font-size: 12px;
+  padding: 0 12px;
 }
 
 .dangerGhostButton:hover:not(:disabled) {

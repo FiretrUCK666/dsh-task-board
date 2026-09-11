@@ -675,6 +675,19 @@ describe('button geometry (one base for every variant)', () => {
     expect(base).toMatch(/height:\s*var\(--dsh-tb-button-h\)/)
   })
 
+  it('the quiet ghost track stays one step smaller (12px on 0 12px, reference parity)', () => {
+    // The reference runs two type scales (primary 13px, ghost 12px): the small
+    // quiet pill reads round where the wide one reads square-arc.
+    expect(ruleOf('ghostButton')).toMatch(/font-size:\s*12px/)
+    expect(ruleOf('ghostButton')).toMatch(/padding:\s*0 12px/)
+    // NOTE: ruleOf('dangerGhostButton') would land on the shared base selector
+    // list (its last line reads `.dangerGhostButton {`), so anchor on the
+    // variant's own comment instead.
+    const dangerGhost = blockFrom(line => line.includes('Row-level destructive'))
+    expect(dangerGhost).toMatch(/font-size:\s*12px/)
+    expect(dangerGhost).toMatch(/padding:\s*0 12px/)
+  })
+
   it('the compact column header is declared ONCE (no dead second padding)', () => {
     // Two competing paddings lived in the same compact block (12px 20px with
     // the contract comment, then a bare 10px 12px that won) — the top-rhythm
