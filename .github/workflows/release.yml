@@ -17,7 +17,8 @@
 # them when saving, so a typo only surfaces as an ENEEDAUTH at publish time.
 #
 # Release flow: bump the version and commit (the tag must match package.json),
-# then push a v<version> tag. This workflow re-runs the full gate and publishes.
+# then push a v<version> tag. This workflow re-runs the full gate, creates the
+# GitHub Release notes, and publishes.
 name: release
 
 on:
@@ -32,9 +33,12 @@ on:
 
 # id-token: write is what lets the job request the OIDC token. Without it the
 # publish fails as unauthenticated.
+# contents: write is for creating the GitHub Release below (reading the tree
+# alone would only need read). The two permissions serve different steps and
+# do not interfere with each other.
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 jobs:
   publish:
@@ -86,6 +90,20 @@ jobs:
 
       - name: Verify
         run: pnpm verify
+
+      # GitHub Release first: it is the human-readable note for this version,
+      # and it must exist even if the npm step below fails. Idempotent — an
+      # existing Release for this tag is left alone. No personal token needed:
+      # gh authenticates with the workflow's own GITHUB_TOKEN here.
+      - name: Create GitHub Release (idempotent)
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists, skipping."
+          else
+            gh release create "${GITHUB_REF_NAME}" --generate-notes --title "${GITHUB_REF_NAME}"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       # No NODE_AUTH_TOKEN and no --otp: the npm CLI detects the OIDC
       # environment and authenticates through it. prepublishOnly re-runs the
