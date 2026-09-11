@@ -79,8 +79,8 @@ function headings(text, maxLevel) {
     let id = slug(title)
     // 同名标题：GitHub 会给第二个加 -1、第三个加 -2
     if (seen.has(id)) {
-      const n = seen.get(id) + 1
-      seen.set(id, n)
+      const n = seen.get(id)
+      seen.set(id, n + 1)
       id = `${id}-${n}`
     } else {
       seen.set(id, 1)
