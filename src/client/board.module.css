@@ -5851,7 +5851,12 @@ button.interactionOption:hover {
        edge gets the same hairline the columns use. One line, both widths'
        language; padding stays desktop-parity. */
     border-top: var(--dsh-tb-separator);
-    padding: 14px 12px calc(12px + env(safe-area-inset-bottom));
+    /* Dock-bleed tokens (single source): the in-flow thumb bar spends exactly
+       these back through negative margins to fill edge to edge — the numbers
+       live here once, never re-typed beside the bar. */
+    --dsh-tb-dock-x: 12px;
+    --dsh-tb-dock-b: 12px;
+    padding: 14px var(--dsh-tb-dock-x) calc(var(--dsh-tb-dock-b) + env(safe-area-inset-bottom));
     gap: 10px;
   }
 
@@ -6043,19 +6048,19 @@ button.interactionOption:hover {
     display: none;
   }
   .thumbBar {
-    /* In-flow thumb bar (THE columns-vs-bar overlap fix): the bar is the board
-       column's last flex child, so overlap is structurally impossible — no
-       reserved padding in .columns to keep in sync, no keyboard-lift var on
-       the bar (a shrinking layout viewport lifts an in-flow bar by itself),
-       no safe-area double count (the board's own bottom padding owns the home
-       indicator once). Separation from the columns is the board's own gap.
-       Inset by the board padding like every other row — never negative
-       margins back to full-bleed (those re-couple to the board's padding). */
+    /* Full-bleed dock, still in-flow: negative margins spend exactly the
+       board's dock tokens above, so the strip fills edge to edge like the old
+       pinned bar (never the inset 「长方形盒子」 read) while overlap stays
+       structurally impossible — sequential flex children can never cover each
+       other. No keyboard-lift var (a shrinking layout viewport lifts an
+       in-flow bar by itself); the board's bottom padding still owns the home
+       indicator once, the bar simply cancels its own share. */
     display: flex;
     align-items: center;
     gap: 10px;
     flex: none;
-    padding: 10px 14px;
+    margin: 0 calc(-1 * var(--dsh-tb-dock-x)) calc(-1 * (var(--dsh-tb-dock-b) + env(safe-area-inset-bottom)));
+    padding: 10px 14px calc(10px + var(--dsh-tb-dock-b) + env(safe-area-inset-bottom));
     background: var(--dsh-tb-bg);
     border-top: var(--dsh-tb-separator);
     z-index: 5;

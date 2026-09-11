@@ -456,10 +456,13 @@ describe('board header and navigator legibility', () => {
     // behavior, never a second implementation). Hidden at base; in the compact
     // tier it is the board column's LAST FLEX CHILD — overlap with the columns
     // is then structurally impossible (no reserved padding, no keyboard-lift
-    // var, no safe-area double count: the board's own gap separates, the
-    // board's own bottom padding owns the home indicator once). An absolutely
-    // positioned bar plus a derived reservation formula is the banned spelling
-    // (the 「列底部被拇指栏压住」 family: two numbers that must agree forever).
+    // var: the board's own gap separates, a shrinking viewport lifts an
+    // in-flow bar by itself). It still FILLS edge to edge like the old pinned
+    // dock (never an inset box): negative margins spend exactly the board's
+    // dock-bleed tokens, which live on the compact board rule once. An
+    // absolutely positioned bar plus a derived reservation formula is the
+    // banned spelling (the 「列底部被拇指栏压住」 family: two numbers that
+    // must agree forever).
     expect(board).toContain('css.thumbBar')
     expect(board).toContain("t('board.thumbBar')")
     expect(ruleOf('thumbBar')).toMatch(/display:\s*none/)
@@ -467,11 +470,16 @@ describe('board header and navigator legibility', () => {
     // ~30px taller than its view and the in-flow thumb bar lands in the
     // overflowed strip (「底部被截断」); the pinned bar used to hide this.
     expect(ruleOf('board')).toMatch(/box-sizing:\s*border-box/)
+    // The bleed tokens live on the compact board rule and feed its padding.
+    expect(compact).toMatch(/--dsh-tb-dock-x:\s*12px/)
+    expect(compact).toMatch(/--dsh-tb-dock-b:\s*12px/)
     expect(ruleIn(compact, '.thumbBar')).toMatch(/display:\s*flex/)
     expect(ruleIn(compact, '.thumbBar')).toMatch(/flex:\s*none/)
     expect(ruleIn(compact, '.thumbBar')).not.toMatch(/position:\s*absolute/)
     expect(ruleIn(compact, '.thumbBar')).not.toMatch(/--dsh-tb-kb/)
-    expect(ruleIn(compact, '.thumbBar')).not.toMatch(/safe-area-inset-bottom/)
+    // Full-bleed spends the tokens, never re-typed 12s.
+    expect(ruleIn(compact, '.thumbBar')).toMatch(/-1 \* var\(--dsh-tb-dock-x\)/)
+    expect(ruleIn(compact, '.thumbBar')).toMatch(/-1 \* \(var\(--dsh-tb-dock-b\)/)
     // The columns carry no bottom reservation for the bar anymore (in-flow
     // needs none) — and no hand-typed clearance may come back.
     expect(ruleIn(compact, '.columns')).not.toMatch(/padding-bottom:/)
@@ -974,7 +982,8 @@ describe('template library wiring', () => {
     expect(ruleIn(compact, '.boardRowTools .boardModes')).toMatch(/justify-self:\s*start/)
     // The board meets the shell edge-to-edge: separation is a hairline, not
     // air (padding alone never reads as separation against the shell head).
-    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*14px 12px/)
+    // Padding rides the dock-bleed tokens (same values, single source).
+    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*14px var\(--dsh-tb-dock-x\)/)
     expect(ruleIn(compact, '.board')).toMatch(/border-top:\s*var\(--dsh-tb-separator\)/)
     // Column heads own their separation explicitly (12px vertical on narrow
     // glass; the cards' 6px top pad belongs to the drop indicator, never to
