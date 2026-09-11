@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { foldTranscript, sumUsage, type TranscriptEvent } from '../src/client/board/review-transcript.ts'
-import { contextOccupancy, contextSegments, formatTokens } from '../src/client/board/context-meter.ts'
+import { cacheHitRate, contextOccupancy, contextSegments, formatTokens, formatTps } from '../src/client/board/context-meter.ts'
 import { shouldFlipMenuUp } from '../src/client/board/menu-direction.ts'
 import { contextWorthOf, isOpenTodo, latestSessionTodos } from '../src/client/board/interaction.ts'
 
@@ -788,8 +788,13 @@ describe('transcript usage', () => {
     const panel = readFileSync(panelPath, 'utf8')
     expect(panel).toMatch(/projections\?\.tokenUsage/)
     expect(panel).toMatch(/review\.usageTotal/)
+    expect(panel).toMatch(/review\.usageCacheWrite/)
     expect(panel).toMatch(/projections\?\.sessionStats/)
     expect(panel).toMatch(/review\.statsTurns/)
+    // Every picked figure renders: TTFT average, decode rate, hit rate.
+    expect(panel).toMatch(/review\.statsTtft/)
+    expect(panel).toMatch(/review\.usageTps/)
+    expect(panel).toMatch(/review\.usageHitRate/)
   })
 })
 
@@ -846,6 +851,22 @@ describe('contextOccupancy / contextSegments / formatTokens', () => {
     expect(formatTokens(465_000)).toBe('465K')
     expect(formatTokens(1_000_000)).toBe('1M')
     expect(formatTokens(2_500_000)).toBe('2.5M')
+  })
+
+  it('formats the decode rate whole (figure only, unit rides the locale)', () => {
+    expect(formatTps(253_000, 1_000_000)).toBe('253')
+    expect(formatTps(0, 1_000)).toBe('0')
+    // No measurable window: the fragment hides instead of printing `0 tok/s`.
+    expect(formatTps(100, 0)).toBeUndefined()
+    expect(formatTps(100, -5)).toBeUndefined()
+  })
+
+  it('computes the cache hit rate over all input (rounded, whole percent)', () => {
+    // The official 95% shape: 50,350,059 read over 2,455,146 uncached + read.
+    expect(cacheHitRate(50_350_059, 2_455_146)).toBe('95')
+    expect(cacheHitRate(0, 1_000)).toBe('0')
+    // No input measured: the line hides instead of printing NaN.
+    expect(cacheHitRate(0, 0)).toBeUndefined()
   })
 })
 

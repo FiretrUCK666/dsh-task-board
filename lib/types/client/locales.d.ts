@@ -405,8 +405,11 @@ export declare const zh: {
     'review.usageCacheRead': string;
     'review.usageCacheWrite': string;
     'review.usageReasoning': string;
+    'review.usageTps': string;
+    'review.usageHitRate': string;
     'review.statsTurns': string;
     'review.statsTime': string;
+    'review.statsTtft': string;
     'review.transcriptEmpty': string;
     'review.transcriptUnavailable': string;
     'review.retry': string;

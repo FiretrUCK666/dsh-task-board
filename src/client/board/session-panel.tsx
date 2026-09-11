@@ -17,7 +17,7 @@ import type { TaskRecord } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { contextOccupancy, contextSegments, formatTokens } from './context-meter.ts'
+import { cacheHitRate, contextOccupancy, contextSegments, formatTokens, formatTps } from './context-meter.ts'
 import { formatDuration } from './format-time.ts'
 import { Markdown } from './Markdown.tsx'
 import { sumUsage, type TranscriptImage, type TranscriptLine } from './review-transcript.ts'
@@ -349,8 +349,29 @@ export function ContextMeterPanel({ projections, usage }: {
           </p>
         )}
         {(() => {
+          // Prompt-cache hit rate derives from the same cumulative buckets
+          // (read over all input); a zero denominator hides the line instead
+          // of printing NaN — absence is key absence, never a fake figure.
+          if (!totalCumulative || total === undefined) return null
+          const hit = total.cacheReadTokens !== undefined
+            ? cacheHitRate(total.cacheReadTokens, total.inputTokens)
+            : undefined
+          if (hit === undefined) return null
+          return (
+            <p className={css.reviewUsage}>
+              {t('review.usageHitRate', { p: hit })}
+            </p>
+          )
+        })()}
+        {(() => {
           const stats = projections?.sessionStats
           if (stats === undefined) return null
+          // TTFT average and decode rate ride the same whole-log figures;
+          // either unmeasurable hides its own fragment (never `0 tok/s`).
+          const ttft = stats.ttftSteps > 0
+            ? t('review.statsTtft', { d: formatDuration(stats.ttftMs / stats.ttftSteps) })
+            : undefined
+          const tps = formatTps(stats.decodeTokens, stats.decodeMs)
           return (
             <p className={css.reviewUsage}>
               {t('review.statsTurns', { turns: String(stats.turns), steps: String(stats.steps) })}
@@ -358,6 +379,8 @@ export function ContextMeterPanel({ projections, usage }: {
                 llm: formatDuration(stats.llmMs),
                 tool: formatDuration(stats.toolMs),
               })}`}
+              {ttft !== undefined && ` · ${ttft}`}
+              {tps !== undefined && ` · ${t('review.usageTps', { n: tps })}`}
             </p>
           )
         })()}

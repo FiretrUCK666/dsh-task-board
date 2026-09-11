@@ -47,4 +47,20 @@ export declare function contextSegments(occupancy: ContextOccupancy, breakdown: 
  * 100 (matching the native `formatTokens` exactly: `639K`, `1M`).
  */
 export declare function formatTokens(n: number): string;
+/**
+ * Decode rate (native TPS): tokens per second, rounded to a whole number.
+ * Returns the FIGURE only — the `tok/s` unit rides the locale key, like every
+ * other usage fragment (`formatTokens` never carries its own label either).
+ * A non-positive window means "no measurable decode yet": undefined, so the
+ * whole fragment hides instead of printing `0 tok/s` (same grammar as the
+ * `(llmMs > 0 || toolMs > 0)` time-line gate in the panel).
+ */
+export declare function formatTps(decodeTokens: number, decodeMs: number): string | undefined;
+/**
+ * Prompt-cache hit rate: cached reads over all input (`cacheRead /
+ * (uncached + cacheRead)`), rounded to a whole percent — the native "缓存命中"
+ * figure. Returns the FIGURE only (`%` rides the locale key). A zero
+ * denominator means "no input measured yet": undefined, never NaN.
+ */
+export declare function cacheHitRate(cacheReadTokens: number, uncachedInputTokens: number): string | undefined;
 export {};
