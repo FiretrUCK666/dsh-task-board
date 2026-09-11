@@ -21,7 +21,8 @@ export interface MeasuredBox {
     height: number;
 }
 /** Landmark → class name. The caller supplies the real (scoped) class names,
- *  so this module never guesses a selector. */
+ *  so this module never guesses a selector. `thumbBar` is the falsifier for
+ *  the columns-vs-bar overlap: overlap ⇔ firstColumn.bottom > thumbBar.top. */
 export interface LandmarkClasses {
     modes: string;
     search: string;
@@ -31,6 +32,7 @@ export interface LandmarkClasses {
     columns: string;
     firstColumn: string;
     primary: string;
+    thumbBar: string;
 }
 /** One element's box, or undefined when it is absent or has no area. */
 export declare function boxOf(element: Element | null | undefined): MeasuredBox | undefined;

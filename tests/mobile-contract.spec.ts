@@ -453,21 +453,24 @@ describe('board header and navigator legibility', () => {
     expect(board).toContain('setShowActivity(true)')
     expect(board).toContain('activityOf(snapshot.tasks,')
     // Thumb bar: compact-only twins reusing the header handlers (one
-    // behavior, never a second implementation). Hidden at base, pinned to
-    // the board box bottom in the compact tier, clearing the home indicator.
+    // behavior, never a second implementation). Hidden at base; in the compact
+    // tier it is the board column's LAST FLEX CHILD — overlap with the columns
+    // is then structurally impossible (no reserved padding, no keyboard-lift
+    // var, no safe-area double count: the board's own gap separates, the
+    // board's own bottom padding owns the home indicator once). An absolutely
+    // positioned bar plus a derived reservation formula is the banned spelling
+    // (the 「列底部被拇指栏压住」 family: two numbers that must agree forever).
     expect(board).toContain('css.thumbBar')
     expect(board).toContain("t('board.thumbBar')")
     expect(ruleOf('thumbBar')).toMatch(/display:\s*none/)
     expect(ruleIn(compact, '.thumbBar')).toMatch(/display:\s*flex/)
-    expect(ruleIn(compact, '.thumbBar')).toMatch(/position:\s*absolute/)
-    expect(ruleIn(compact, '.thumbBar')).toMatch(/bottom:\s*var\(--dsh-tb-kb/)
-    expect(ruleIn(compact, '.thumbBar')).toMatch(/safe-area-inset-bottom/)
-    // The columns' bottom clearance is DERIVED from the thumb bar's real
-    // geometry (border + paddings + one button row) plus one strip breathing
-    // step — never a hand-typed 64px the two sides can't keep in sync — and it
-    // rides the SAME kb global as the bar, so a soft keyboard lifts the floor
-    // together with the bar instead of sliding the bar over the columns.
-    expect(ruleIn(compact, '.columns')).toMatch(/padding-bottom:\s*calc\(1px \+ 10px \+ var\(--dsh-tb-button-h\) \+ 10px \+ var\(--dsh-tb-strip-gap\) \+ var\(--dsh-tb-kb, 0px\) \+ env\(safe-area-inset-bottom\)\)/)
+    expect(ruleIn(compact, '.thumbBar')).toMatch(/flex:\s*none/)
+    expect(ruleIn(compact, '.thumbBar')).not.toMatch(/position:\s*absolute/)
+    expect(ruleIn(compact, '.thumbBar')).not.toMatch(/--dsh-tb-kb/)
+    expect(ruleIn(compact, '.thumbBar')).not.toMatch(/safe-area-inset-bottom/)
+    // The columns carry no bottom reservation for the bar anymore (in-flow
+    // needs none) — and no hand-typed clearance may come back.
+    expect(ruleIn(compact, '.columns')).not.toMatch(/padding-bottom:/)
     expect(ruleIn(compact, '.columns')).not.toMatch(/64px/)
     // Relocation, not duplication: the header twins hide on compact (their
     // thumb-bar twins carry the same handlers). One visible instance per

@@ -176,11 +176,15 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     return freshness.subscribe(() => { setFreshnessView(freshness.snapshot()) })
   }, [freshness])
   const bundleStale = freshnessView?.state === 'stale'
-  // One self-report per mounted board: the bundle version plus the measured
-  // boxes of the compact tool column (see client-report.ts). It is the only way
-  // the host can tell a stale page from a wrong rule — and it turns "the phone
-  // looks wrong" into numbers instead of another screenshot argument.
+  // One self-report per VISIBLE board: the bundle version plus the measured
+  // boxes (see client-report.ts). The tree mounts once at boot and stays
+  // mounted while hidden (display:none → every rect is 0x0), so a mount-only
+  // report always arrives blind; gating on boardOpen re-sends on every
+  // opening, and turns "the phone looks wrong" into numbers instead of
+  // another screenshot argument. The thumbBar box is the falsifier for the
+  // columns-vs-bar overlap: overlap ⇔ firstColumn.bottom > thumbBar.top.
   useEffect(() => {
+    if (!snapshot.boardOpen) return
     void sendClientReport(BUNDLED_VERSION, {
       modes: css.boardModes,
       search: css.search,
@@ -190,8 +194,9 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
       columns: css.columns,
       firstColumn: css.column,
       primary: css.primaryButton,
+      thumbBar: css.thumbBar,
     })
-  }, [])
+  }, [snapshot.boardOpen])
   const [filter, setFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。

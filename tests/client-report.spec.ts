@@ -128,6 +128,7 @@ describe('the client collector', () => {
   const landing: LandmarkClasses = {
     modes: 'modes_x', search: 'search_x', strip: 'strip_x', pill: 'pill_x',
     header: 'header_x', columns: 'columns_x', firstColumn: 'column_x', primary: 'primary_x',
+    thumbBar: 'thumb_x',
   }
 
   it('reports only the landmarks that exist and have area', () => {
@@ -136,6 +137,8 @@ describe('the client collector', () => {
       strip_x: { top: 320, bottom: 368, height: 48 },
       pill_x: { top: 330, bottom: 358, height: 28 },
       search_x: { top: 280, bottom: 308, height: 28 },
+      column_x: { top: 380, bottom: 700, height: 320 },
+      thumb_x: { top: 710, bottom: 759, height: 49 },
     }
     const root = {
       querySelector: (selector: string) => {
@@ -146,10 +149,12 @@ describe('the client collector', () => {
       },
     } as unknown as ParentNode
     const measured = collectBoardBoxes(landing, root)
-    expect(Object.keys(measured).sort()).toEqual(['header', 'pill', 'search', 'strip'])
+    expect(Object.keys(measured).sort()).toEqual(['firstColumn', 'header', 'pill', 'search', 'strip', 'thumbBar'])
     expect(measured.strip).toEqual({ top: 320, bottom: 368, height: 48 })
     // The gap the whole investigation was about is computable from the report.
     expect(measured.pill!.top - measured.search!.bottom).toBe(22)
+    // The columns-vs-bar overlap falsifier: firstColumn.bottom <= thumbBar.top.
+    expect(measured.firstColumn!.bottom).toBeLessThanOrEqual(measured.thumbBar!.top)
   })
 
   it('treats a zero-area element as absent (hidden strip on a wide board)', () => {
@@ -174,5 +179,15 @@ describe('wiring (the channel cannot be dropped silently)', () => {
     expect(board).toContain('sendClientReport(BUNDLED_VERSION, {')
     expect(board).toContain('strip: css.columnTabs')
     expect(board).toContain('pill: css.columnTab')
+    expect(board).toContain('thumbBar: css.thumbBar')
+  })
+
+  it('the report is gated on visibility (a hidden pre-mount has zero-area boxes)', () => {
+    // The tree mounts once at boot and stays mounted while the board is
+    // closed (display:none): a mount-only report always arrives blind. The
+    // effect must therefore key on the open state, not on mount.
+    const board = read('../src/client/board/TaskBoard.tsx')
+    expect(board).toMatch(/if \(!snapshot\.boardOpen\) return/)
+    expect(board).toMatch(/\[snapshot\.boardOpen\]/)
   })
 })

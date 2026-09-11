@@ -156,17 +156,11 @@
   inset: 0;
   display: none;
   z-index: 200;
-  /* Frosted canvas (dense-surface readability law): the board is a dense work
-     surface, not a conversation — under a glass skin the wallpaper wash sits
-     directly behind dozens of small controls, and a sharp photo competes with
-     every one of them (the 「背景和内容重叠在一起、排版显乱」 family). One
-     frost here keeps the skin's hue while text/controls always sit on calm
-     glass; inner surfaces keep their tokens untouched (no color churn, no
-     per-skin work). Unsupported browsers ignore the two lines and fall back
-     to plain translucency. Placed on the VIEW (already the positioned
-     containing block) so no descendant's anchor moves. */
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  /* No backdrop blur here by decision: the user keeps transparent skins and
+     wants the wallpaper wash to show through untouched (a frost reads as
+     「背景变不透明」 — tried in 0.2.97, reverted). Readability over a photo
+     is carried by the opaque controls themselves, never by flattening the
+     canvas. */
   /* The ONE responsive reference for the whole board is the board BOX's own
      width, never the viewport: it is correct under a collapsed/expanded
      sidebar, a split-screen, and a phone alike. Every compact rule below is
@@ -5987,16 +5981,11 @@ button.interactionOption:hover {
     overflow-x: auto;
     overflow-y: hidden;
     /* Hidden bar: covered by the shared :is() hidden-bar rule above. */
-    /* Bottom room for the pinned thumb bar, DERIVED from its real geometry
-       (1px top border + 10px padding + one button row + 10px padding) plus one
-       strip breathing step, so the last cards never slide underneath it and
-       the clearance can never disagree with the bar again (no more hand-typed
-       constants that silently rot when either side changes). The kb term rides
-       the SAME global the bar itself stands on (documentElement, removed at 0
-       so the fallback holds): when the soft keyboard lifts the bar, the floor
-       lifts with it — without this the bar slides OVER the columns while the
-       search box has focus (the compact bottom-overlap report). */
-    padding-bottom: calc(1px + 10px + var(--dsh-tb-button-h) + 10px + var(--dsh-tb-strip-gap) + var(--dsh-tb-kb, 0px) + env(safe-area-inset-bottom));
+    /* No bottom reservation here by decision: the thumb bar is in-flow below
+       (see .thumbBar), so the columns can never slide underneath it — the old
+       padding-bottom formula had to agree with the bar's real height, keyboard
+       lift and safe-area on every device, and any disagreement painted as the
+       「列底部被拇指栏压住」 overlap. */
   }
 
   .column {
@@ -6048,14 +6037,19 @@ button.interactionOption:hover {
     display: none;
   }
   .thumbBar {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: var(--dsh-tb-kb, 0px);
+    /* In-flow thumb bar (THE columns-vs-bar overlap fix): the bar is the board
+       column's last flex child, so overlap is structurally impossible — no
+       reserved padding in .columns to keep in sync, no keyboard-lift var on
+       the bar (a shrinking layout viewport lifts an in-flow bar by itself),
+       no safe-area double count (the board's own bottom padding owns the home
+       indicator once). Separation from the columns is the board's own gap.
+       Inset by the board padding like every other row — never negative
+       margins back to full-bleed (those re-couple to the board's padding). */
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    flex: none;
+    padding: 10px 14px;
     background: var(--dsh-tb-bg);
     border-top: var(--dsh-tb-separator);
     z-index: 5;

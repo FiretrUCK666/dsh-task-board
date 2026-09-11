@@ -141,7 +141,7 @@ describe('card no-breakout CSS contract', () => {
   })
 })
 
-describe('design-system contracts: pill geometry + frosted canvas', () => {
+describe('design-system contracts: pill geometry + compact rhythm', () => {
   /**
    * WHY (the 「改了好多次都没弄回来」 family): pills used to drift to a fixed
    * px radius one member at a time (columnTab compact override,
@@ -211,13 +211,6 @@ describe('design-system contracts: pill geometry + frosted canvas', () => {
     // static dot that can be misread as a stuck square at small sizes.
     expect(spinner).toContain('border-top-color: transparent')
     expect(spinner).toContain('animation: dshTbSpin')
-  })
-
-  it('frosted canvas: the board blurs the skin wallpaper behind it', () => {
-    // Dense work surface over any wallpaper: both the standard and the
-    // -webkit line must survive (older Chromium/WebKit need the prefix).
-    expect(source).toContain('-webkit-backdrop-filter: blur(')
-    expect(source).toContain('backdrop-filter: blur(')
   })
 
   it('compact rhythm derives from the single strip token (symmetric by construction)', () => {
