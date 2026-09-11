@@ -101,6 +101,17 @@ export declare class BundleFreshnessState {
      * @returns the resulting view.
      */
     probe(): Promise<BundleFreshnessView>;
+    /**
+     * Keep watching after the boot probe: re-check whenever the page returns to
+     * the foreground and on a slow interval. This is what makes a host restart
+     * reach a page that is ALREADY open — without it the single boot-time probe
+     * runs once and an open document never learns the server moved on, which is
+     * exactly the "I restarted everything and the page still looks old" loop.
+     * The one-reload-per-pair guard makes repeated probes harmless.
+     * @param intervalMs - slow re-probe period (default 60s).
+     * @returns the disposer removing both triggers.
+     */
+    watch(intervalMs?: number): () => void;
     /** Notify subscribers (one tick, never re-entrant work). */
     private emit;
 }

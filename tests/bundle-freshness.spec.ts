@@ -126,6 +126,61 @@ describe('BundleFreshnessState', () => {
     dispose()
     expect(seen).toEqual(['stale', 'stale'])
   })
+
+  it('watch() re-probes on a foreground return and on the slow interval, and stops on dispose', async () => {
+    vi.useFakeTimers()
+    const listeners = new Map<string, () => void>()
+    vi.stubGlobal('document', {
+      visibilityState: 'visible',
+      addEventListener: (type: string, fn: () => void) => { listeners.set(type, fn) },
+      removeEventListener: (type: string) => { listeners.delete(type) },
+    })
+    const readHostVersion = vi.fn(async () => '0.2.93')
+    const state = new BundleFreshnessState({
+      bundled: '0.2.90',
+      readHostVersion,
+      reload: () => {},
+      storage: memoryStorage(),
+    })
+    const dispose = state.watch(1_000)
+    expect(readHostVersion).not.toHaveBeenCalled()
+    // Returning to the page re-checks (this is how a host restart reaches an
+    // already-open tab).
+    listeners.get('visibilitychange')?.()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(readHostVersion).toHaveBeenCalledTimes(1)
+    // …and the slow interval keeps it honest while the page just sits there.
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(readHostVersion).toHaveBeenCalledTimes(2)
+    dispose()
+    expect(listeners.has('visibilitychange')).toBe(false)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(readHostVersion).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('watch() stays quiet while the page is hidden', async () => {
+    const listeners = new Map<string, () => void>()
+    vi.stubGlobal('document', {
+      visibilityState: 'hidden',
+      addEventListener: (type: string, fn: () => void) => { listeners.set(type, fn) },
+      removeEventListener: (type: string) => { listeners.delete(type) },
+    })
+    const readHostVersion = vi.fn(async () => '0.2.93')
+    const state = new BundleFreshnessState({
+      bundled: '0.2.90',
+      readHostVersion,
+      reload: () => {},
+      storage: memoryStorage(),
+    })
+    const dispose = state.watch(10_000)
+    listeners.get('visibilitychange')?.()
+    await Promise.resolve()
+    expect(readHostVersion).not.toHaveBeenCalled()
+    dispose()
+    vi.unstubAllGlobals()
+  })
 })
 
 describe('wiring (the probe cannot be dropped silently)', () => {
@@ -138,6 +193,8 @@ describe('wiring (the probe cannot be dropped silently)', () => {
     expect(bootstrap).toContain('bundled: BOARD_VERSION')
     expect(bootstrap).toContain('void freshness.probe()')
     expect(bootstrap).toContain('mountBoard(controller, freshness)')
+    // Watching, not just probing: a restart must reach an already-open page.
+    expect(bootstrap).toContain('return freshness.watch()')
   })
 
   it('the board renders the stale verdict as a real, tappable status line', () => {
