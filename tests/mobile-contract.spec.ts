@@ -688,6 +688,20 @@ describe('button geometry (one base for every variant)', () => {
     expect(dangerGhost).toMatch(/padding:\s*0 12px/)
   })
 
+  it('a quiet button is a FILLED chip like the tabs (a hollow pill reads as a frame)', () => {
+    // Measured on a real phone: the mode-button pill was geometrically perfect
+    // (corner arc 41px on a 94px-tall button) yet still read 「方的」 because a
+    // transparent pill's only ink is its outline. The quiet family therefore
+    // carries the SAME filled-chrome grammar as .columnTab / .search — one
+    // chip language, no second hollow variant:
+    const ghost = ruleOf('ghostButton')
+    expect(ghost).not.toMatch(/background:\s*transparent/)
+    expect(ghost).toMatch(/background:\s*var\(--dsh-tb-surface-sunken\)/)
+    expect(ghost).toMatch(/border:\s*var\(--dsh-tb-border\)/)
+    // The tabs are the benchmark this grammar mirrors.
+    expect(ruleOf('columnTab')).toMatch(/background:\s*var\(--dsh-tb-surface-sunken\)/)
+  })
+
   it('the compact column header is declared ONCE (no dead second padding)', () => {
     // Two competing paddings lived in the same compact block (12px 20px with
     // the contract comment, then a bare 10px 12px that won) — the top-rhythm

@@ -1663,9 +1663,17 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .ghostButton {
   color: var(--dsh-tb-text-1);
-  background: transparent;
-  /* The native outline border (l2), not the softer l1. */
-  border: 1px solid var(--dsw-alias-border-l2);
+  /* FILLED quiet chip — the SAME grammar as every other quiet control the
+     board already has (the column tabs, the search field, and the shell's own
+     nav rows are all filled pills). A hollow pill whose only ink is a hairline
+     outline reads as a rectangular FRAME: the border draws two long straight
+     edges and the eye reads the shape as boxy even though the ends are exact
+     semicircles (measured on a real phone: a 94px-tall button whose corner arc
+     is 41px = half the height, i.e. already maximally round, still reported as
+     「方的」). Fill first, then geometry is what the eye actually sees. */
+  background: var(--dsh-tb-surface-sunken);
+  /* The same hairline the tabs carry (l2) — one chip grammar, no new token. */
+  border: var(--dsh-tb-border);
   /* Quiet density (reference parity: their ghost is 12px on tighter padding
      while their primary stays 13px — the small pill reads round, the wide one
      reads square-arc, so the two tracks never share type scale). */
