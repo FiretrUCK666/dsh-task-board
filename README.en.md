@@ -22,6 +22,7 @@ The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 - [Data locations](#data-locations)
 - [Updating](#updating)
 - [Building from source](#building-from-source)
+- [Contributing](#contributing)
 - [Troubleshooting](#troubleshooting)
 - [Naming](#naming)
 - [License](#license)
@@ -149,7 +150,11 @@ pnpm verify
 
 `lib/` is a build artifact, but it is committed. Installing from GitHub or npm only copies files and never runs a build, so a repository without `lib/` would install a plugin that cannot start. Rebuild after changing source and commit `lib/` together with that change; CI checks that the two agree.
 
-To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md) first (development environment, what to run before submitting, the hard rules). `AGENTS.md` in the repository root records the project conventions, the architecture index and the release process; it is the reference AI assistants work from in this repository.
+`AGENTS.md` in the repository root records the project conventions, the architecture index and the release process; it is the reference AI assistants work from in this repository.
+
+## Contributing
+
+Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](CONTRIBUTING.md): development setup, the pre-PR checklist and the hard rules. Load-failure reports should include three things: your DSH version, the plugin version and the error text.
 
 ## Troubleshooting
 
