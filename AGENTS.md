@@ -299,7 +299,7 @@ pnpm toc    # 改完 README 结构后重跑，目录即与标题同步
 9. `git tag v<版本>` + `git push origin v<版本>`。
 10. 建 GitHub Release，正文写**人话更新说明**（用户看的是这个；市场的新版说明优先读
     Release，其次提交记录，最后 npm 发布时间。仓库里不放 CHANGELOG.md）。
-    **推 tag 即由 CI 自动建**（`release.yml` 按提交记录生成，已存在则跳过）。
+    **推 tag 即由 CI 自动建**（`release.yml` 从提交记录起草中文说明，已存在则跳过）。
     `scripts/github-release.mjs` 只作补漏路径（tag 推得比 job 早、或 job 失败时手动跑：
     `GITHUB_TOKEN=<pat> node scripts/github-release.mjs <tag> <notes文件> --repo owner/name`）。
     规则是**非 ASCII 正文不经 shell 传递**：写进

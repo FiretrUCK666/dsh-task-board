@@ -45,6 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 起草要读上一个标签，全历史必须在
 
       - uses: pnpm/action-setup@v4
         with:
@@ -91,16 +93,15 @@ jobs:
       - name: Verify
         run: pnpm verify
 
-      # GitHub Release first: it is the human-readable note for this version,
-      # and it must exist even if the npm step below fails. Idempotent — an
-      # existing Release for this tag is left alone. No personal token needed:
-      # gh authenticates with the workflow's own GITHUB_TOKEN here.
+      # GitHub Release 起草中文说明：提交记录本来就是中文人话，收集即正文。
+      # 无上一标签的首版也能起草（全量提交），不会交英文白卷。
       - name: Create GitHub Release (idempotent)
         run: |
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             echo "Release ${GITHUB_REF_NAME} already exists, skipping."
           else
-            gh release create "${GITHUB_REF_NAME}" --generate-notes --title "${GITHUB_REF_NAME}"
+            node scripts/draft-release-notes.mjs "${GITHUB_REF_NAME}" notes.md
+            gh release create "${GITHUB_REF_NAME}" --notes-file notes.md --title "${GITHUB_REF_NAME}"
           fi
         env:
           GH_TOKEN: ${{ github.token }}
