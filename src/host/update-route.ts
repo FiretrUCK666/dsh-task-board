@@ -25,6 +25,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { classifyInstallSpec, githubSpecOfRepositoryUrl, type UpdateGitStatus, type UpdateInstallMode } from '../core/update-check.ts'
+import { readClientReports, type ClientReport } from './client-report-route.ts'
 import packageJson from '../../package.json'
 
 /** Package identity, read live from the manifest (never repeated in code). */
@@ -48,6 +49,8 @@ export interface UpdateSourceView {
   githubSpec?: string
   /** Local-checkout git state (only for `local` installs). */
   git?: UpdateGitStatus
+  /** Self-reports from the pages that are currently open (newest first). */
+  clients?: ClientReport[]
 }
 
 /** Success envelope carrying the update-source view. */
@@ -174,6 +177,13 @@ function readLiveView(): UpdateSourceView {
     mode,
     ...(GITHUB_SPEC !== undefined ? { githubSpec: GITHUB_SPEC } : {}),
     ...(git !== undefined ? { git } : {}),
+    // What the pages that are actually open reported about themselves (bundle
+    // version + measured geometry). Diagnosing "the phone looks wrong" without
+    // this meant arguing from screenshots; with it, the host shows the truth.
+    ...(() => {
+      const clients = readClientReports()
+      return clients.length > 0 ? { clients } : {}
+    })(),
   }
 }
 

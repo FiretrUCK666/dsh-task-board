@@ -19,6 +19,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import { type UpdateGitStatus, type UpdateInstallMode } from '../core/update-check.ts';
+import { type ClientReport } from './client-report-route.ts';
 /** The update-source view served to the browser half. */
 export interface UpdateSourceView {
     /** Package name (the npm update command's subject). */
@@ -33,6 +34,8 @@ export interface UpdateSourceView {
     githubSpec?: string;
     /** Local-checkout git state (only for `local` installs). */
     git?: UpdateGitStatus;
+    /** Self-reports from the pages that are currently open (newest first). */
+    clients?: ClientReport[];
 }
 /** Success envelope carrying the update-source view. */
 export interface UpdateRouteOk {

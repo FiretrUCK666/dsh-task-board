@@ -22,6 +22,7 @@ import { registerSessionStateRoute } from './host/session-state-route.ts'
 import { registerSettingsRoute } from './host/settings-route.ts'
 import { registerBoardRoute } from './host/board-route.ts'
 import { registerUpdateRoute } from './host/update-route.ts'
+import { registerClientReportRoute } from './host/client-report-route.ts'
 
 /** Order of the announcement section within the tool-guidance band. */
 const SECTION_ORDER = 200
@@ -144,6 +145,14 @@ export function apply(ctx: Context, config?: Config): void {
   ctx.effect(
     () => registerUpdateRoute(ctx, 'dsh-task-board'),
     'dsh-task-board: update route',
+  )
+
+  // Live page reports (bundle version + measured geometry). Diagnostic only:
+  // it is what lets the host answer "which bundle is that phone running, and
+  // what did its layout actually compute to" without another screenshot.
+  ctx.effect(
+    () => registerClientReportRoute(ctx, 'dsh-task-board'),
+    'dsh-task-board: client report route',
   )
 
   // Initial registration from the composition entry (covers the value the

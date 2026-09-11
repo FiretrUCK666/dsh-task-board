@@ -71,6 +71,7 @@ import { activityGroupKeyOf, activityOf, clusterOf, freezeFeed, groupActivityByO
 import { flowSummaryOf } from '../../core/flow-metrics.ts'
 import { Chip } from './Chip.tsx'
 import { reloadForFreshBundle, type BundleFreshnessState } from '../bundle-freshness.ts'
+import { sendClientReport } from '../client-report.ts'
 
 /**
  * The install-mode label the update dialog shows (one branch per mode — the
@@ -175,6 +176,22 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     return freshness.subscribe(() => { setFreshnessView(freshness.snapshot()) })
   }, [freshness])
   const bundleStale = freshnessView?.state === 'stale'
+  // One self-report per mounted board: the bundle version plus the measured
+  // boxes of the compact tool column (see client-report.ts). It is the only way
+  // the host can tell a stale page from a wrong rule — and it turns "the phone
+  // looks wrong" into numbers instead of another screenshot argument.
+  useEffect(() => {
+    void sendClientReport(BUNDLED_VERSION, {
+      modes: css.boardModes,
+      search: css.search,
+      strip: css.columnTabs,
+      pill: css.columnTab,
+      header: css.boardHeader,
+      columns: css.columns,
+      firstColumn: css.column,
+      primary: css.primaryButton,
+    })
+  }, [])
   const [filter, setFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
