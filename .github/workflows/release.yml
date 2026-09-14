@@ -112,3 +112,27 @@ jobs:
       # a tree that no longer passes.
       - name: Publish to npm
         run: npm publish --access public
+
+      # 回读，不是看退出码。npm 会在包「还在处理、对外尚不可见」时就成功退出
+      # 并打印 `+ 包名@版本`，所以上面那一步绿了**不等于** npm 上真的有这一版：
+      # 没人在看 CI 输出，一次没落地的发布会以「全绿」的样子过去。只查这一个
+      # 版本的地址（不问 dist-tags——「最新」标记可能不跟随实际发布）。
+      - name: Verify the published version is live on npm
+        run: |
+          set -euo pipefail
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+          ENCODED="$(node -p "encodeURIComponent(require('./package.json').name)")"
+          URL="https://registry.npmjs.org/$ENCODED/$VERSION"
+          CODE=""
+          for attempt in $(seq 1 60); do
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)"
+            if [ "$CODE" = "200" ]; then
+              echo "$NAME@$VERSION is live on npm: $URL"
+              exit 0
+            fi
+            echo "attempt $attempt: HTTP $CODE (registry still catching up), retrying in 5s"
+            sleep 5
+          done
+          echo "::error::$NAME@$VERSION is not visible on npm after 5 minutes (last HTTP $CODE). Do NOT re-publish the same version — find out why first."
+          exit 1
