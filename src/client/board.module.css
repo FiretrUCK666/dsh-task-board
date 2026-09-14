@@ -3970,6 +3970,24 @@ textarea.input {
 .schedulePreset:focus-visible,
 .attachAdd:focus-visible,
 .reviewJumpLatest:focus-visible,
+/* The remainder of the board's interactive surface. These are all real
+   <button>/<input> elements, so they WERE keyboard-visible through the UA's own
+   ring — but that ring is the browser's, not this system's: a platform-dependent
+   outline sitting beside a board of 2px accent rings, which is exactly the
+   "browser surface nobody drew" class. None of them sets `outline: none`, so
+   adding them to the group only replaces the default with the system's own
+   grammar; it cannot remove an indicator that was not there. */
+.notifyMain:focus-visible,
+.filterChipRemove:focus-visible,
+.feedFilter:focus-visible,
+.feedAction:focus-visible,
+.detailDisclosure:focus-visible,
+.segmentedButton:focus-visible,
+.autoTaskExpand:focus-visible,
+.reviewCommentCancel:focus-visible,
+.attachRemove:focus-visible,
+.sessionContextHead:focus-visible,
+.tagCustomColor:focus-visible,
 button.interactionOption:focus-visible,
 .tagSwatch:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
@@ -4148,6 +4166,16 @@ button.interactionOption:focus-visible,
 
 .cruiseLimit:focus {
   border-color: var(--dsw-alias-state-business-primary);
+}
+
+/* The one control that used to sit below the board's own focus grammar: it killed
+   the UA ring and replaced it with a 1px border-colour change (1.26:1 → 4.23:1),
+   which clears the 3:1 non-text threshold but is the only focus cue here that is
+   not the 2px outline every sibling carries — and a colour-only shift is
+   invisible to anyone who cannot distinguish it. Same grammar as `.cruiseMore`. */
+.cruiseLimit:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
 }
 
 /* --- review page (execution comments) ------------------------------------------ */

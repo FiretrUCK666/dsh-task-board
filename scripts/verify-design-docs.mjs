@@ -215,6 +215,15 @@ const sidecarText = existsSync(sidecarPath) ? stripBom(readFileSync(sidecarPath,
 
 // --- check 1: every token name the docs rely on still exists -----------------
 
+// The snapshot rule below applies to PRODUCT.md too (it is a hand-written doc for
+// the same readers), but the token checks above are about tokens and colors, which
+// PRODUCT.md does not carry — so it is scanned by the snapshot pass only rather
+// than joining DOC_FILES and reporting "0 referenced tokens" noise.
+const snapshotFiles = (() => {
+  const productPath = join(root, 'PRODUCT.md')
+  return existsSync(productPath) ? [['PRODUCT.md', readFileSync(productPath, 'utf8')]] : []
+})()
+
 const DOC_FILES = [
   ['DESIGN.md', design],
   ...(sidecarText === null ? [] : [['.impeccable/design.json', sidecarText]]),
@@ -341,6 +350,34 @@ if (sidecar !== null) {
     if (!compared) notRemarked++
   }
   notes.push(`colorMeta: ${checked} recorded values compared against live token resolution (${notRemarked} mapped entries had nothing comparable)`)
+}
+
+// --- check 3: no snapshot values in the docs ---------------------------------
+// The project's own rule for AGENTS.md is 「写意图不写快照」, and these two docs
+// inherit it. A count of lines, files, tests or keys is TRUE for exactly one
+// commit and silently wrong forever after: this file's prose claimed "6779 行"
+// while the stylesheet had already grown past 6900, and PRODUCT.md advertised
+// "78 个测试" long after the suite had been restructured. A number that asserts a
+// measurement goes stale; a principle does not. Thresholds and pixel values are
+// not snapshots — only counts of things that grow.
+{
+  const SNAPSHOT_RES = [
+    { re: /\d{2,}\s*行/g, what: 'a line count' },
+    // "78 个测试" / "1200 个键" / "32 个文件" — the measure sits between the number
+    // and 个, so the noun cannot be adjacent to the digits.
+    { re: /\d{2,}\s*个[^\s，。；、）)]{0,4}(?:测试|用例|键|文件)/g, what: 'a count of files/tests/keys' },
+    { re: /\d+(?:\.\d+)?\s*(?:KB|MB)\b/g, what: 'a file size' },
+  ]
+  for (const [label, text] of [...DOC_FILES, ...snapshotFiles]) {
+    for (const { re, what } of SNAPSHOT_RES) {
+      for (const m of text.matchAll(re)) {
+        const line = text.slice(0, m.index).split('\n').length
+        const around = text.slice(Math.max(0, m.index - 30), m.index + m[0].length + 30).replace(/\n/g, ' ')
+        failures.push(`${label}:${line}: records ${what} (${JSON.stringify(m[0])}) — a snapshot that goes stale. State the principle or the invariant instead (AGENTS.md 「写意图不写快照」). Context: …${around}…`)
+      }
+    }
+  }
+  notes.push(`snapshot scan: ${DOC_FILES.length + snapshotFiles.length} documents checked for line/size/count assertions`)
 }
 
 // --- report ------------------------------------------------------------------

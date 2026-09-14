@@ -103,12 +103,12 @@ DSH Web 界面上的任务看板插件：侧边栏入口 + 五列看板（待规
 
 **真实存在**：
 
-- 完整可跑的插件本体与 78 个测试（`tests/`，一模块一 spec）；
+- 完整可跑的插件本体与覆盖各域的测试套件（`tests/`，一个 src 模块一个 spec）；
 - `README.md` / `README.en.md`（成对维护，中文为权威）；
 - `AGENTS.md`：机制、不变量、硬性规范；
-- `src/client/board.module.css`（6779 行）：设计系统的**事实来源**，含令牌别名层与
+- `src/client/board.module.css`：设计系统的**事实来源**，含令牌别名层与
   各条规则背后的用户原话（「圆变方」「上面有空隙下面紧贴」等）；
-- `src/client/locales.ts`（约 1200 个键）：全部用户可见词汇的中英对照；
+- `src/client/locales.ts`：全部用户可见词汇的 zh/en 对照（键集严格成对）；
 - 三个 CSS 布局契约 spec（`review-page` / `mobile-contract` / `card-contract`）。
 
 **不存在，未来的工作不得编造**：用户量、性能基准、客户案例、媒体报道、认证、
