@@ -264,6 +264,32 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     // would be broken (hover reveals it, then it must be clickable).
     expect(source).toMatch(/\.card:hover \.cardQuickRun,\s*\n\s*\.cardQuickRun:focus-visible \{\s*\n\s*opacity: 1;\s*\n\s*pointer-events: auto;/)
 
+    // The SAME rule for every other control that hides behind `opacity: 0`, swept
+    // rather than fixed one at a time: `opacity: 0` does not remove an element from
+    // hit-testing, so a hidden control can still receive a tap. The quick-run was the
+    // severe case (a mis-tap launched a real agent run); the prompt block's copy pill
+    // was the second (a tap to scroll or select text silently copied the prompt).
+    // A rule that only guards the instance that was reported is a patch; this sweep is
+    // the fix for the class.
+    //
+    // The line between "needs a guard" and "must stay tappable" is FUNCTIONAL vs
+    // TRANSITIONAL hiding: a control revealed on hover/focus is transitional and must
+    // decline the pointer while invisible; a control that is permanently invisible
+    // because a wrapper draws it (`.tagCustomColor`, the native colour input inside the
+    // rainbow swatch) is functional, and guarding it would BREAK it — the wrapper's
+    // `:focus-within` and the colour picker both depend on the input being hittable.
+    const revealedOnInteraction = (name: string) =>
+      new RegExp(`[^}]*\\.${name}[^{]*\\{[^}]*opacity:\\s*1`).test(source)
+    const opacityHidden = [...source.matchAll(/\.([a-zA-Z][\w]*)\s*\{[^}]*opacity:\s*0;[^}]*\}/g)]
+      .map((m) => ({ name: m[1], body: m[0] }))
+      .filter((r) => !r.body.includes('display: none'))
+      .filter((r) => revealedOnInteraction(r.name))
+    expect(opacityHidden.length, 'the sweep must find the transitional hidden controls').toBeGreaterThan(0)
+    for (const rule of opacityHidden) {
+      expect(rule.body, `.${rule.name} is revealed on interaction but rests at opacity 0 without a pointer guard, so an invisible control can receive a tap`)
+        .toContain('pointer-events: none')
+    }
+
     // 2. "a run finished and you have not looked" and "work is in flight" were the
     //    SAME animation, duration and colour, so the one light on the card could
     //    not separate the state that asks you to look from the state that is merely

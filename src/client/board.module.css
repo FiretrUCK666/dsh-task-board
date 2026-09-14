@@ -2998,12 +2998,23 @@ textarea.input {
   cursor: pointer;
   box-shadow: var(--dsh-tb-shadow-1);
   opacity: 0;
+  /* An invisible control must not be able to receive a tap — the same guard the
+     card's quick-run got, for the same reason. This one sits on the prompt block,
+     which IS a tappable-looking reading area, so a tap to scroll or select text
+     landing on it silently copied the whole prompt to the clipboard with nothing on
+     screen to say so. */
+  pointer-events: none;
   transition: opacity var(--dsh-tb-motion), background var(--dsh-tb-motion), color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
 }
 
 .promptBlock:hover .promptCopy,
 .promptCopy:focus-visible {
   opacity: 1;
+  /* Hand the pointer back the moment the control is actually visible, or the button
+     would be unreachable on desktop (keyboard reaches it via focus-visible; the mouse
+     reaches it by hovering the block, which keeps `.promptBlock:hover` true while the
+     pointer travels onto the copy pill). */
+  pointer-events: auto;
 }
 
 .promptCopy:hover {
