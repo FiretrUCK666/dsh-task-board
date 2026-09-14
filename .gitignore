@@ -16,6 +16,14 @@ coverage/
 # for a one-off inspection or publish, never a source file.
 *.tgz
 
+# Tool state for the `impeccable` design skill. It holds regenerable derivatives
+# of DESIGN.md (the design linter reads it back), so it is a cache, not a source:
+# deleting it is harmless and `DESIGN.md` remains the single authority. Keeping
+# one copy in the tree avoids the drift a committed duplicate would cause.
+# NOTE: this is NOT the same kind of thing as DESIGN.md / PRODUCT.md below —
+# those are tracked hand-written docs (see AGENTS.md 「设计与产品文档」).
+.impeccable/
+
 # NOTE: lib/ is NOT ignored. It is the published artifact — the browser half
 # (lib/client.js) and the host half (lib/index.js) that a `dsh plugin add`
 # installs straight from this repository without running a build. It must be
