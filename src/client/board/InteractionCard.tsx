@@ -505,11 +505,17 @@ function AnswerField({ variant, value, placeholder, disabled, focusOnMount, onCh
 }
 
 /**
- * The plan under review: the plan body (Markdown, its own scroll region) with
- * the three native decisions — 去聊天里说 (dismiss the request, keep
- * discussing), 拒绝 and 确认执行. A refusal that carries an amendment is sent
- * as custom text; the approve label is the intent's own, never inferred from
- * option order.
+ * The plan under review: the plan body (Markdown, its own scroll region) with the
+ * three decisions the hosted plan card itself offers — 去聊天里说 (dismiss the
+ * request, keep discussing), 拒绝 and 确认执行. The approve label is the intent's
+ * own, never inferred from option order.
+ *
+ * This card used to carry a fourth affordance, an amendment field whose text turned
+ * a refusal into "revise with feedback". It was removed for parity: the hosted plan
+ * card offers no such input, and a board card that invents an extra decision is not
+ * the same card. `planDecisionAnswers` still accepts an amendment (the host API
+ * supports revise-with-feedback), so restoring it is a UI change, not a new
+ * capability — and `''` here is deliberate rather than an oversight.
  */
 function PlanReviewCard({ question, item, sessionId, controller }: {
   question: WireQuestion

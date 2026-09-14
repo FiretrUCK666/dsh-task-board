@@ -325,9 +325,7 @@ export declare const zh: {
     'auto.openDetail': string;
     'auto.editAutomation': string;
     'auto.ruleCount': string;
-    'auto.schedule.off': string;
     'auto.schedule.paused': string;
-    'auto.schedule.enable': string;
     'auto.rules': string;
     'auto.taskSchedule': string;
     'auto.cron': string;
@@ -441,14 +439,12 @@ export declare const zh: {
     'review.noComments': string;
     'review.commentPlaceholder': string;
     'review.commentSend': string;
-    'review.attachImage': string;
     'review.attachFile': string;
     'review.attachBusy': string;
     'review.attachFileBusy': string;
     'review.attachWorking': string;
     'review.draftImagesDropped': string;
     'review.draftFilesGone': string;
-    'review.sendFailed': string;
     'attach.rejectType': string;
     'attach.rejectSize': string;
     'attach.rejectDecode': string;

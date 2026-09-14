@@ -352,7 +352,67 @@ if (sidecar !== null) {
   notes.push(`colorMeta: ${checked} recorded values compared against live token resolution (${notRemarked} mapped entries had nothing comparable)`)
 }
 
-// --- check 3: no snapshot values in the docs ---------------------------------
+// --- check 5: no CSS class drifts away from the components ---------------------
+// Both directions of this drift are silent, and neither is visible in review or to
+// the detector (which cannot read CSS Modules):
+//   - referenced but undefined: `css.foo` resolves to `undefined`, the element gets
+//     the string "undefined" as a class and renders with NO styling. This is the
+//     same failure mode as the board-alias-in-the-wrong-scope bug, and finding one
+//     live instance is what motivated the check.
+//   - defined but unreferenced: a rule nobody dares delete, which accumulates until
+//     the stylesheet stops being readable. One live instance (`.interactionAmend`,
+//     left behind when the plan card dropped its amendment field).
+// The scan is exact rather than heuristic because this codebase reaches classes only
+// through `css.<name>` — verified against the whole surface: 460 defined, 460
+// referenced, zero on both sides.
+{
+  const clientDir = join(root, 'src', 'client')
+  const tsxFiles = []
+  const walk = (d) => {
+    if (!existsSync(d)) return
+    for (const entry of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, entry.name)
+      if (entry.isDirectory()) walk(p)
+      else if (/\.tsx?$/.test(entry.name)) tsxFiles.push(p)
+    }
+  }
+  walk(clientDir)
+
+  const stripCssComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '')
+  const defined = new Set()
+  let classesDefined = 0
+  for (const sheet of ['board.module.css', 'settings-card.module.css']) {
+    const p = join(clientDir, sheet)
+    if (!existsSync(p)) continue
+    const css = stripCssComments(readFileSync(p, 'utf8'))
+    for (const m of css.matchAll(/\.([a-zA-Z][\w-]*)/g)) { defined.add(m[1]); classesDefined++ }
+  }
+
+  const referenced = new Map()
+  for (const f of tsxFiles) {
+    const text = readFileSync(f, 'utf8')
+    for (const m of text.matchAll(/\bcss\.([a-zA-Z][\w-]*)/g)) {
+      if (!referenced.has(m[1])) {
+        const line = text.slice(0, m.index).split('\n').length
+        referenced.set(m[1], `${relative(root, f).split(sep).join('/')}:${line}`)
+      }
+    }
+  }
+
+  for (const [name, at] of referenced) {
+    if (!defined.has(name)) {
+      failures.push(`${at}: css.${name} is not defined in any stylesheet — it resolves to undefined, so the element renders with no styling at all.`)
+    }
+  }
+  for (const name of defined) {
+    if (!referenced.has(name)) {
+      failures.push(`stylesheets: .${name} is defined but no component references it — a rule nobody dares delete. Remove it, or give it back its user.`)
+    }
+  }
+  notes.push(`class drift: ${defined.size} classes defined, ${referenced.size} referenced, ${failures.length} drift finding(s) so far`)
+}
+
+// --- check 6: no snapshot values in the docs ---------------------------------
 // The project's own rule for AGENTS.md is 「写意图不写快照」, and these two docs
 // inherit it. A count of lines, files, tests or keys is TRUE for exactly one
 // commit and silently wrong forever after: this file's prose claimed "6779 行"

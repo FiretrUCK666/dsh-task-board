@@ -5619,6 +5619,23 @@ span.interactionOptions {
   border-color: var(--dsh-tb-focus-color);
 }
 
+/* The inline variant carries NO surface of its own BY DESIGN: `.interactionCustomRow`
+   is its visual parent and already supplies the row's geometry (min-height 36px,
+   padding, a transparent 1px border that turns into the focus ring on
+   `:focus-within`) — the same geometry and focus language as an option row, so
+   "type your own" reads as one more choice. Two rules for one box is the
+   double-chrome bug this avoids.
+   It must still GROW, though: the shared `.interactionField` rule above sets
+   `flex: 1`, and a `flex: none` here would override that and collapse the field to
+   zero width inside the custom row. Stated explicitly rather than inherited, so
+   the two rules cannot fight. Before this, the class had no rule at all, which made
+   `css.interactionFieldInline` resolve to nothing — indistinguishable from a
+   missing definition, inviting the next reader to either add a second border here
+   or copy the empty name elsewhere. */
+.interactionFieldInline {
+  flex: 1 1 auto;
+}
+
 /* The pinned footer: pager left, the refusal reason in the middle, skip +
    next/submit right. It WRAPS instead of compressing — on a narrow rail the
    words move to a second line, they are never dropped or shrunk (硬性规范 10)
@@ -5708,11 +5725,15 @@ span.interactionOptions {
   flex: none;
   padding: 0 12px 10px;
 }
-.interactionAmend {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+/* `.interactionAmend` lived here: the plan-review card's amendment field (an input
+   plus its hint) from the original round-6 implementation. The field was dropped
+   when the card was brought to parity with the hosted plan card — which offers only
+   计划待审 / 确认执行 / 拒绝 and no amendment input at all — so the rule, the two
+   locale keys it styled and the stale comment above PlanReviewCard went with it.
+   Removing the reference without the rule is how a stylesheet accumulates rules
+   nobody dares delete; `planDecisionAnswers` still ACCEPTS an amendment (the host
+   API supports revise-with-feedback), so if a future surface wants to offer one,
+   the capability is there and the rule should come back with its user. */
 
 /* The composer attachment strip: a quiet add button + removable image chips;
    a dropped file highlights the strip then encodes. */
