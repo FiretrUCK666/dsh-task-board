@@ -1347,12 +1347,24 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   cursor: pointer;
   box-shadow: var(--dsh-tb-shadow-1);
   opacity: 0;
+  /* An INVISIBLE control must not be able to receive a tap. `opacity: 0` alone
+     does not disable hit-testing, so on a touch device (no hover to reveal it) a
+     tap in the card's top-right 26x26 was delivered to this span, fired
+     `onQuickRun`, and started a real DSH agent session — with nothing on screen
+     saying a control had been pressed ("tap a card to look at it" with a "launch
+     an agent" outcome). Declining the pointer while hidden removes the hazard at
+     the root; the `:hover` rule below hands it straight back as soon as the
+     control is actually revealed, so the desktop path is unchanged (hover the
+     card → the pill appears → it is clickable, including walking the pointer onto
+     the pill itself, which keeps `.card:hover` true). */
+  pointer-events: none;
   transition: opacity var(--dsh-tb-motion), background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
 
 .card:hover .cardQuickRun,
 .cardQuickRun:focus-visible {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .cardQuickRun:hover {
@@ -1366,24 +1378,37 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   cursor: default;
 }
 
-/* The card's unread reminder: a slow breathing glow ring (CHI 2016: pulsing
-   glow shadows score best on noticeability combined with likability) around
-   cards with content newer than the last time the detail was opened — the
-   same attention color + breath timing as the execution rows' inner halo, so
-   the whole board speaks one light language. The "新 N" chip carries the
-   count; reduced-motion users get a quiet static ring instead (see the
-   reduced-motion block below). */
+/* THE two card lights, split by MEANING — two states, two forms.
+   Both used to be `animation: dshTbBreathRing` at the same 2.6s timing and the
+   same colour, so "a run finished and you have not looked" and "work is in
+   flight" were one identical light. The project's own tables (AGENTS.md's breath
+   table, DESIGN.md's 「只在形态上区分（外环 / 内晕 / 实心点）」) describe several
+   variants; the card implemented one.
+
+   Now: unread wears the OUTER RING at full strength — it is the only state asking
+   you to LOOK, and it is the message that must never be silenced. In-flight work
+   wears the INSET HALO at the soft alpha step: you need not do anything about it,
+   so it must not outrank the card that does. Form and intensity differ; the hue
+   stays the single attention colour.
+
+   Reduced motion needs no rule here: the block further down redefines
+   `--dsh-tb-breath` / `-spread` / `-halo` (5s, 2px, 8px), so both lights survive
+   slower and gentler — which is this project's rule for state indicators (they
+   are messages, so they are never `animation: none`). An earlier version of this
+   comment promised "a quiet static ring" for reduced motion; no such rule exists
+   and never did. */
 .card[data-unviewed] {
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
-/* A LIVE card breathes: running / waiting / refining — the one STATE-BOUND
-   light (same family as the unread ring; a card can carry both, still one
-   light). Never driven by the unread baseline: a running card always pulses,
-   even when every round is technically "seen" (the old unread-only ring was
-   the 进行中有时不闪 symptom). */
+/* A LIVE card breathes an inset halo: running / waiting / refining — the one
+   STATE-BOUND light. `data-active` wins the cascade over `data-unviewed`, so a
+   running card shows the ambient halo rather than the louder unread ring: work in
+   flight is not a request. Never driven by the unread baseline: a running card
+   always pulses, even when every round is technically "seen" (the old unread-only
+   ring was the 进行中有时不闪 symptom). */
 .card[data-active] {
-  animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
+  animation: dshTbBreathHalo var(--dsh-tb-breath) infinite;
 }
 
 /* The title line: the card's solid color mark (exact picked color, 100% of
@@ -3982,6 +4007,18 @@ textarea.input {
 .detailMeta {
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* The blocked-prompt line: the description's neutral line, but in the attention
+   colour, because this emptiness STOPS THE TASK. It is not decoration — it is the
+   disabled 执行 button's reason, stated where the missing thing actually lives, so
+   a touch user (who never sees the button's `title`) is not left at a dead end,
+   and the field that blocks says the same sentence as the button it blocks. */
+.detailBlockedField {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-attention);
 }
 
 /* -----------------------------------------------------------------------------

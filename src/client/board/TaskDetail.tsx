@@ -640,14 +640,20 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
               </Section>
 
               <Section title={t('detail.prompt')}>
-                {/* An empty run prompt is nothing — the same quiet line as the
-                    description. It never shows the title as if it were a
-                    prompt (the title only serves as the execution fallback).
-                    The copy action floats INSIDE the block's top-right
-                    corner (hover/focus revealed, check-mark feedback), so it
-                    reads as part of the block instead of a loose row below. */}
+                {/* An empty run prompt is a BLOCKER, not an absence, and it used to
+                    read as an absence: the same neutral 「暂无内容」 the description
+                    gets, while the disabled 执行 button explained the gate only in
+                    its `title` — which a touch user never sees, and which turned the
+                    primary action into a dead end with no reason given. The gate's
+                    own sentence is used verbatim (one copy, one meaning), so the
+                    field that blocks and the button that is blocked say the same
+                    thing. It never shows the title as if it were a prompt (the title
+                    only serves as the execution fallback). The copy action floats
+                    INSIDE the block's top-right corner (hover/focus revealed,
+                    check-mark feedback), so it reads as part of the block instead of
+                    a loose row below. */}
                 {current.prompt === '' ? (
-                  <p className={css.detailEmptyField}>{t('detail.emptyField')}</p>
+                  <p className={css.detailBlockedField}>{t('detail.promptEmpty')}</p>
                 ) : (
                   <div className={css.promptBlock}>
                     <pre className={css.promptBlockText}>{current.prompt}</pre>

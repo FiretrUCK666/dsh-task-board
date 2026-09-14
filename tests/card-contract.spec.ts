@@ -249,6 +249,36 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     expect(bad, 'font sizes must be on 11/12/13/14/16, or join the content-pass allowlist with a reason').toEqual([])
   })
 
+  it('an invisible control cannot receive a tap, and the unread light outranks in-flight work', () => {
+    // Two hazards that no visual review catches, both previously live:
+    //
+    // 1. `.cardQuickRun` rests at `opacity: 0` and is revealed by hover. Opacity
+    //    does NOT disable hit-testing, so on a touch device — which has no hover —
+    //    a tap in the card's top-right corner was delivered to that span, fired
+    //    `onQuickRun`, and started a real DSH agent session while showing nothing.
+    //    An invisible control must decline the pointer until it is revealed.
+    const quickRun = expectRule('cardQuickRun')
+    expect(quickRun, 'the hidden quick-run must decline pointer events').toContain('pointer-events: none')
+    expect(quickRun).toContain('opacity: 0')
+    // ...and hand them straight back the moment it is visible, or the desktop path
+    // would be broken (hover reveals it, then it must be clickable).
+    expect(source).toMatch(/\.card:hover \.cardQuickRun,\s*\n\s*\.cardQuickRun:focus-visible \{\s*\n\s*opacity: 1;\s*\n\s*pointer-events: auto;/)
+
+    // 2. "a run finished and you have not looked" and "work is in flight" were the
+    //    SAME animation, duration and colour, so the one light on the card could
+    //    not separate the state that asks you to look from the state that is merely
+    //    ambient. They must differ in FORM: the unread ring (outer, full strength)
+    //    versus the in-flight halo (inset, soft alpha).
+    const unread = source.match(/\.card\[data-unviewed\] \{\s*\n\s*animation:\s*(\S+)/)?.[1]
+    const active = source.match(/\.card\[data-active\] \{\s*\n\s*animation:\s*(\S+)/)?.[1]
+    expect(unread, 'the unread card must use a breath animation').toBeTruthy()
+    expect(active, 'the live card must use a breath animation').toBeTruthy()
+    expect(unread, 'the two card lights must not be the same animation').not.toBe(active)
+    // The inset variant is the only one whose shadow is contained by the card's own
+    // clipped box, so the states must not be swapped by accident.
+    expect(active).toBe('dshTbBreathHalo')
+  })
+
   it('the turning spinner keeps its circle grammar (square box + 50% + cut + spin)', () => {
     const spinner = expectRule('spinner')
     expect(spinner).toContain('border-radius: 50%')
