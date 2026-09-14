@@ -582,7 +582,13 @@ function MirrorQuestionCard({ question, sessionId, controller }: {
         ) : (
           <>
             {question.questions.map((item, index) => (
-              <span key={item.id} className={css.interactionQuestion}>
+              /* Two different jobs, two class names. This element is the question
+                 BLOCK (chip + text + detail + options stacked); the span inside is
+                 the question TEXT, which owns the typography. They used to share
+                 `.interactionQuestion`, so the same class was a layout container in
+                 one place and a text style in the other — the kind of overload that
+                 reads as a bug and invites a wrong "fix". */
+              <span key={item.id} className={css.interactionQuestionBlock}>
                 <span className={css.interactionQuestion}>
                   <Chip
                     kind="warn"

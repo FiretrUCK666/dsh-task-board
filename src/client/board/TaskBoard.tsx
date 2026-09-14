@@ -301,11 +301,20 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
   }
   const renderNotifyBell = (): ReactNode => {
     const total = foldedNotes.length
+    // The bell carries TWO facts, and they are deliberately different ones: the
+    // badge is the open total, the dot is "arrived since you last opened the
+    // drawer". Both belong in the accessible name — the dot was `aria-hidden` and
+    // unmentioned, so "something new came in" was a fact only sighted users got.
+    // Named as a second clause rather than a second number so the two can never be
+    // mistaken for a disagreement about one count.
+    const label = total > 0
+      ? t('board.notifyCount', { n: total > 99 ? '99+' : String(total) })
+      : t('board.notify')
     return (
       <button
         type="button"
         className={`${css.iconButton} ${css.notifyBell}`}
-        aria-label={total > 0 ? t('board.notifyCount', { n: total > 99 ? '99+' : String(total) }) : t('board.notify')}
+        aria-label={unseenCount > 0 ? t('board.notifyNew', { base: label, n: String(unseenCount) }) : label}
         title={t('board.notify')}
         onClick={openNotify}
       >

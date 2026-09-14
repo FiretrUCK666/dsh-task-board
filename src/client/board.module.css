@@ -5301,6 +5301,17 @@ button.interactionOption:focus-visible,
   color: var(--dsh-tb-text-1);
   overflow-wrap: break-word;
 }
+
+/* The question BLOCK inside the list variant (chip + text + detail + options):
+   layout only, no typography — the text span inside owns that. Separate from
+   `.interactionQuestion` because one class doing both jobs is what made the
+   nesting look like a doubled style. */
+.interactionQuestionBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
 /* The question's supporting detail (native renders it as Markdown): one
    wrapper, then the Markdown block's own rhythm — a paragraph margin inside a
    card would read as a gap nobody declared. */

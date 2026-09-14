@@ -272,6 +272,7 @@ export declare const zh: {
     'board.automationTitle': string;
     'board.notify': string;
     'board.notifyCount': string;
+    'board.notifyNew': string;
     'board.notifyEmpty': string;
     'board.notifyFilter.all': string;
     'board.notifyFilter.waiting': string;
