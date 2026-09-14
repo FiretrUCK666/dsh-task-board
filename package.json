@@ -65,9 +65,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "node scripts/verify-standalone.mjs . && node scripts/smoke-client.mjs . && node scripts/sync-toc.mjs README.md README.en.md --check",
+    "verify": "node scripts/verify-standalone.mjs . && node scripts/smoke-client.mjs . && node scripts/sync-toc.mjs README.md README.en.md --check && node scripts/verify-design-docs.mjs .",
     "smoke": "node scripts/smoke-client.mjs .",
     "toc": "node scripts/sync-toc.mjs README.md README.en.md",
+    "design-docs": "node scripts/verify-design-docs.mjs .",
     "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test && pnpm verify"
   },
   "peerDependencies": {
