@@ -1158,13 +1158,28 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 }
 
 .columnEmpty {
-  /* A quiet, empty column reads as "empty" — short text, pointer-transparent
-     so it never blocks the drop-target highlight of the column itself. */
+  /* Tier 2 rather than 3: the third tier's documented meaning is "faint,
+     disposable", but an empty column is the only thing on screen — there is
+     nothing for it to be subordinate TO. Measured 3.71:1 at tier 3 in the light
+     theme versus 5.80:1 here. */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   padding: 16px 8px;
   text-align: center;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  line-height: 1.5;
+  color: var(--dsh-tb-text-2);
   pointer-events: none;
+}
+
+/* The one-time mechanic explanation, subordinate to the line above it but still
+   readable (tier 2 both): an onboarding sentence nobody can read is not
+   onboarding. */
+.columnEmptyHint {
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  overflow-wrap: anywhere;
 }
 
 /* --- cards -------------------------------------------------------------------- */

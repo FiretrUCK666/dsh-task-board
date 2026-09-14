@@ -27,7 +27,7 @@
  *    positioning context for this panel.
  * Either way expanding can never eat the composer or push siblings away.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -63,6 +63,8 @@ export function SessionContextBlock({ context, className, sessionId, controller 
   controller?: BoardController
 }) {
   const [open, setOpen] = useState(false)
+  // Identity for the region the header discloses — see the aria-controls note.
+  const panelId = useId()
   const wrapRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!open) return
@@ -111,6 +113,7 @@ export function SessionContextBlock({ context, className, sessionId, controller 
         type="button"
         className={css.sessionContextHead}
         aria-expanded={open}
+        aria-controls={panelId}
         onClick={() => { setOpen(value => !value) }}
       >
         <Icon name="checklist" className={css.sessionContextLead} />
@@ -122,7 +125,7 @@ export function SessionContextBlock({ context, className, sessionId, controller 
         <Icon name="chevronDown" className={css.sessionContextChevron} />
       </button>
       {open && (
-        <div className={css.sessionContextPanel}>
+        <div className={css.sessionContextPanel} id={panelId}>
           {todos.length > 0 && (
             <ul className={css.sessionContextTodos}>
               {todos.map((todo, index) => (

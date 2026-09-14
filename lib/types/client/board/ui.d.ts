@@ -83,7 +83,7 @@ export declare function Notice({ chip, children }: {
  * glyph can ever balloon to the SVG default 300x150 box). Every board icon
  * route goes through this component.
  */
-export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'pause' | 'bell' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff' | 'pencil';
+export type IconName = 'arrowDown' | 'arrowUp' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'pause' | 'bell' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff' | 'pencil';
 export declare function Icon({ name, className }: {
     name: IconName;
     className?: string;

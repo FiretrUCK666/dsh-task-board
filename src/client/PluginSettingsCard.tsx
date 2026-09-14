@@ -7,7 +7,7 @@
  * sibling UI package).
  */
 
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import type { CardShell } from './settings-form.ts'
 import type { SettingsCardKey } from './locales.ts'
 import css from './settings-card.module.css'
@@ -39,6 +39,10 @@ export function PluginSettingsCard(props: PluginSettingsCardProps) {
   const [open, setOpen] = useState(false)
   const { state } = props
   const title = props.t(props.titleKey)
+  // Identity for the body this header discloses. Declared before the early
+  // return so it is called on every render (hooks cannot sit after a branch),
+  // and shared by both branches because only one of them ever renders.
+  const bodyId = useId()
   if (!state.available) {
     // The namespace is not served; render the header and an unavailable hint
     // so the card never silently vanishes from the settings surface.
@@ -48,6 +52,7 @@ export function PluginSettingsCard(props: PluginSettingsCardProps) {
           type="button"
           className={css.header}
           aria-expanded={open}
+          aria-controls={bodyId}
           aria-label={`${props.t(open ? 'settings.collapse' : 'settings.expand')}: ${title}`}
           onClick={() => { setOpen(!open) }}
         >
@@ -59,7 +64,7 @@ export function PluginSettingsCard(props: PluginSettingsCardProps) {
         </button>
         {open
           ? (
-            <div className={css.body}>
+            <div className={css.body} id={bodyId}>
               <p className={css.readOnly} role="status">{props.t('settings.unavailable')}</p>
             </div>
           )
@@ -74,6 +79,7 @@ export function PluginSettingsCard(props: PluginSettingsCardProps) {
         type="button"
         className={css.header}
         aria-expanded={open}
+        aria-controls={bodyId}
         aria-label={`${props.t(open ? 'settings.collapse' : 'settings.expand')}: ${title}`}
         onClick={() => { setOpen(!open) }}
       >
@@ -86,7 +92,7 @@ export function PluginSettingsCard(props: PluginSettingsCardProps) {
       </button>
       {open
         ? (
-          <div className={css.body}>
+          <div className={css.body} id={bodyId}>
             {!state.writable ? <p className={css.readOnly} role="status">{props.t('settings.readOnly')}</p> : null}
             {props.children}
             <div className={css.footer}>

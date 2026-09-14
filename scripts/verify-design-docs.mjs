@@ -20,7 +20,7 @@
  * usage: node scripts/verify-design-docs.mjs [plugin-dir]
  */
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
-import { resolve, join, dirname } from 'node:path'
+import { resolve, join, dirname, relative, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
 const root = resolve(process.argv[2] ?? '.')
@@ -378,6 +378,43 @@ if (sidecar !== null) {
     }
   }
   notes.push(`snapshot scan: ${DOC_FILES.length + snapshotFiles.length} documents checked for line/size/count assertions`)
+}
+
+// --- check 4: a disclosure reports its state AND its subject -------------------
+// `aria-expanded` without `aria-controls` tells a screen reader the control's
+// state but not what it governs — and this project already had the right pattern
+// in some places and was missing it in others (the interaction card's collapse
+// button was the concrete case). Mechanical, so it costs nothing to keep honest:
+// every element carrying `aria-expanded` must also carry `aria-controls`.
+{
+  const walkTsx = (dir) => {
+    const out = []
+    if (!existsSync(dir)) return out
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) out.push(...walkTsx(p))
+      else if (entry.name.endsWith('.tsx')) out.push(p)
+    }
+    return out
+  }
+  let checked = 0
+  for (const file of walkTsx(join(root, 'src', 'client'))) {
+    const text = readFileSync(file, 'utf8')
+    // Split into JSX opening tags so an aria-expanded can be matched against the
+    // attributes of ITS OWN element rather than a neighbouring one. Only DOM
+    // elements are considered: a component invocation (`<Disclosure ...>`) is not
+    // an element, and its props are not attributes — flagging those would make the
+    // check wrong about the thing it is supposed to protect.
+    for (const m of text.matchAll(/<[a-z][a-zA-Z0-9-]*[^>]*?>/gs)) {
+      const tag = m[0]
+      if (!/aria-expanded/.test(tag)) continue
+      checked++
+      if (/aria-controls/.test(tag)) continue
+      const line = text.slice(0, m.index).split('\n').length
+      failures.push(`${relative(root, file).split(sep).join('/')}:${line}: an element sets aria-expanded without aria-controls — it announces its state but not what it governs. Point it at the id of the region it expands.`)
+    }
+  }
+  notes.push(`disclosure scan: ${checked} aria-expanded element(s) checked for a matching aria-controls`)
 }
 
 // --- report ------------------------------------------------------------------

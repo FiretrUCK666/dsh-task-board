@@ -29,7 +29,7 @@
  * the read-only shell (kind + one navigate affordance); the waiting banner
  * stays available there, so a proven wait never reaches the UI as silence.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import {
   answerBatchOf,
@@ -152,6 +152,10 @@ function QuestionFlow({ question, sessionId, controller }: {
   const [busy, setBusy] = useState<'answer' | 'cancel' | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const [minimized, setMinimized] = useState(false)
+  // A stable id so the collapse button can point at what it collapses: a control
+  // that reports `aria-expanded` without `aria-controls` tells a screen reader its
+  // state but not its subject.
+  const bodyId = useId()
   // Questions whose custom field already took focus: auto-focus is a
   // first-visit affordance only (native rule — refocusing on every advance
   // would fight the user's own navigation).
@@ -294,10 +298,15 @@ function QuestionFlow({ question, sessionId, controller }: {
             aria-label={t(minimized ? 'review.interactionExpand' : 'review.interactionCollapse')}
             title={t(minimized ? 'review.interactionExpand' : 'review.interactionCollapse')}
             aria-expanded={!minimized}
+            aria-controls={bodyId}
             disabled={disabled}
             onClick={() => { setMinimized(value => !value) }}
           >
-            <Icon name={minimized ? 'chevronDown' : 'arrowDown'} />
+            {/* The arrow turns around. It used to render `chevronDown` expanded and
+                `arrowDown` collapsed — two glyphs half a unit apart, both pointing
+                down, so the icon said "down" either way and only `aria-expanded`
+                carried the state (to screen readers alone). */}
+            <Icon name={minimized ? 'chevronDown' : 'arrowUp'} />
           </button>
           <button
             type="button"
@@ -314,7 +323,7 @@ function QuestionFlow({ question, sessionId, controller }: {
 
       {!minimized && (
         <>
-          <div className={css.interactionBody}>
+          <div className={css.interactionBody} id={bodyId}>
             {item?.detail !== undefined && item.detail !== '' && (
               <div className={css.interactionDetail}>
                 <Markdown text={item.detail} />

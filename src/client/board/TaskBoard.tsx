@@ -113,18 +113,23 @@ function dayLabelOf(day: string, today: string): string {
  * scrollable body, pinned actions) is the honest form once the board is
  * narrow.
  */
-function CruiseSettingsHost({ narrow, label, onClose, children }: {
+function CruiseSettingsHost({ narrow, label, id, onClose, children }: {
   narrow: boolean
   label: string
+  /** Identity of the region this host renders, so the toggle that opens it can
+   *  point at it (`aria-controls`). Stated on BOTH branches: the wide popover and
+   *  the narrow Dialog are the same content in two shells, and an aria-controls
+   *  that resolves on one width and dangles on the other is worse than none. */
+  id: string
   onClose: () => void
   children: ReactNode
 }) {
   if (!narrow) {
-    return <div className={css.cruisePopover} role="menu" aria-label={label}>{children}</div>
+    return <div className={css.cruisePopover} id={id} role="menu" aria-label={label}>{children}</div>
   }
   return (
     <Dialog title={label} label={label} onClose={onClose} portal className={css.autoModal}>
-      <div className={css.modalScroll}>{children}</div>
+      <div className={css.modalScroll} id={id}>{children}</div>
     </Dialog>
   )
 }
@@ -1143,6 +1148,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                 aria-label={t('board.cruiseSettings')}
                 title={t('board.cruiseSettings')}
                 aria-expanded={cruiseOpen}
+                aria-controls="dsh-tb-cruise-settings"
                 onClick={() => { setCruiseOpen(!cruiseOpen) }}
               >
                 <Icon name="chevronDown" />
@@ -1152,6 +1158,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
               <CruiseSettingsHost
                 narrow={narrow}
                 label={t('board.cruiseSettings')}
+                id="dsh-tb-cruise-settings"
                 onClose={() => { setCruiseOpen(false) }}
               >
                 <div className={css.cruisePopoverHead}>
@@ -1810,6 +1817,17 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                     {snapshot.tasks.length === 0
                       ? t('board.emptyFirstRun')
                       : filter.trim() !== '' ? t('board.emptyFiltered') : t('board.empty')}
+                    {/* First run is the one moment a stranger is looking at an
+                        empty board and has no way to learn what it does. The
+                        product's thesis is that a card is EXECUTED in a DSH
+                        session rather than filed — which until now lived in a
+                        `title=` on a control two surfaces away. Stated once, in
+                        the first column only: five repetitions would be noise,
+                        and the column that owns creation is the right place to
+                        explain what creating does. */}
+                    {snapshot.tasks.length === 0 && column.status === 'backlog' && (
+                      <span className={css.columnEmptyHint}>{t('board.emptyFirstRunHint')}</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -1998,6 +2016,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                             className={css.feedAction}
                             aria-expanded={foldedOpen}
                             aria-label={headTitle}
+                            aria-controls={`dsh-tb-notify-fold-${entry.head.taskId}`}
                             onClick={() => { setExpandedFoldKey(current => current === entry.head.taskId ? undefined : entry.head.taskId) }}
                           >
                             <Icon name="chevronDown" className={css.detailChevron} />
@@ -2037,7 +2056,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                           </span>
                         </div>
                         {foldedOpen && (
-                          <ul className={css.notifyList}>
+                          <ul className={css.notifyList} id={`dsh-tb-notify-fold-${entry.head.taskId}`}>
                             {(() => {
                               // Members share the dynamic groups' cap
                               // discipline: newest GROUP_ITEM_LIMIT rows plus
@@ -2137,6 +2156,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                         title={item.taskTitle}
                         aria-label={title}
                         aria-expanded={expanded}
+                        aria-controls={`dsh-tb-activity-${item.key}`}
                         onClick={() => { setExpandedActivityKey(current => current === item.key ? undefined : item.key) }}
                       >
                         <span className={css.notifyTask}>{title}</span>
@@ -2169,7 +2189,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       </span>
                     </div>
                     {expanded && (
-                      <div className={css.feedPreview}>
+                      <div className={css.feedPreview} id={`dsh-tb-activity-${item.key}`}>
                         <p className={css.detailText}>
                           {item.text !== undefined && item.text.trim() !== '' ? item.text : formatDateTime(item.at)}
                         </p>
@@ -2205,6 +2225,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                         title={group.taskTitle}
                         aria-label={title}
                         aria-expanded={groupExpanded}
+                        aria-controls={`dsh-tb-activity-group-${group.key}`}
                         onClick={() => { setExpandedGroupKey(current => current === group.key ? undefined : group.key) }}
                       >
                         <Icon name="chevronDown" className={css.detailChevron} />
@@ -2223,7 +2244,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       </span>
                     </div>
                     {groupExpanded && (
-                      <ul className={css.notifyList}>
+                      <ul className={css.notifyList} id={`dsh-tb-activity-group-${group.key}`}>
                         {split.shown.map(renderActivityRow)}
                         {split.rest > 0 && (
                           <li key={remainderKeyOf(group.key)}>

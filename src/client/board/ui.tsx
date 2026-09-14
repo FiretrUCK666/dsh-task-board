@@ -6,7 +6,7 @@
  * follows the native --dsw-* tokens (light/dark + any skin plugin) without
  * any per-surface styling drift.
  */
-import { type ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { PALETTE } from '../../core/colors.ts'
 import css from '../board.module.css'
 import { t } from '../locales.ts'
@@ -126,19 +126,25 @@ export function Disclosure({ title, summary, open, onToggle, children }: {
   onToggle: () => void
   children?: ReactNode
 }) {
+  // The controlled region needs an identity for the header to point at: a
+  // disclosure that reports `aria-expanded` without `aria-controls` states its
+  // condition but never its subject. Done here once, so every fold built on this
+  // component is complete rather than each caller remembering.
+  const regionId = useId()
   return (
     <section className={css.detailSection}>
       <button
         type="button"
         className={css.detailDisclosure}
         aria-expanded={open}
+        aria-controls={regionId}
         onClick={onToggle}
       >
         <Icon name="chevronDown" className={css.detailChevron} />
         <span className={css.detailDisclosureTitle}>{title}</span>
         {summary !== undefined && <span className={css.detailDisclosureSummary}>{summary}</span>}
       </button>
-      {open && children}
+      {open && <div id={regionId}>{children}</div>}
     </section>
   )
 }
@@ -158,10 +164,18 @@ export function Notice({ chip, children }: { chip: ReactNode; children: ReactNod
  * glyph can ever balloon to the SVG default 300x150 box). Every board icon
  * route goes through this component.
  */
-export type IconName = 'arrowDown' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'pause' | 'bell' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff' | 'pencil'
+export type IconName = 'arrowDown' | 'arrowUp' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'pause' | 'bell' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff' | 'pencil'
 
 const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5',
   chevronDown: 'M3 6 8 11 13 6',
+  /* The up twin of `chevronDown`, mirrored about y = 8. Needed because the
+     collapse control used two VISUALLY IDENTICAL downward glyphs for opposite
+     states (`chevronDown` and `arrowDown` differ by half a unit of y): the icon
+     said "down" whether the card was open or closed, so the arrow carried no
+     state at all while `aria-expanded` carried it correctly for screen readers
+     only. A disclosure triangle that never turns around is a missed affordance,
+     not a style choice. */
+  arrowUp: 'M3 9.5 8 4.5 13 9.5',
   close: 'M4 4 12 12M12 4 4 12',
   arrowRight: 'M4 8h8M9 4l4 4-4 4',
   arrowLeft: 'M12 8H4M7 4l-4 4 4 4',

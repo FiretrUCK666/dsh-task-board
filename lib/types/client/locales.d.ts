@@ -60,6 +60,7 @@ export declare const zh: {
     'board.cruiseStatusOff': string;
     'board.empty': string;
     'board.emptyFirstRun': string;
+    'board.emptyFirstRunHint': string;
     'board.emptyFiltered': string;
     'board.status.backlog': string;
     'board.statusRunning': string;

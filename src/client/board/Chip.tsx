@@ -48,7 +48,15 @@ export function Chip({ kind = 'neutral', fill = true, title, label, className, i
       className={`${css.chip}${fill ? ` ${css.chipFill}` : ''}${className !== undefined ? ` ${className}` : ''}`}
       data-kind={kind}
       title={title}
-      aria-label={label ?? title}
+      /* Only stated when it would ADD information. `label ?? title ?? undefined`
+         resolved to `undefined` for a chip with neither, and React then OMITTED
+         the attribute entirely — but an empty `aria-label=""` (what a bare
+         `label` with an empty string would produce) is worse than no attribute at
+         all: it OVERRIDES the element's text, so the chip announces nothing while
+         still showing its word on screen. A chip always has a text child, so with
+         no title and no label the text is the accessible name and nothing needs
+         saying here. */
+      {...(label ?? title) !== undefined ? { 'aria-label': label ?? title } : {}}
     >
       {icon !== undefined && <span className={css.chipLead}>{icon}</span>}
       <span className={css.chipBody}>{children}</span>

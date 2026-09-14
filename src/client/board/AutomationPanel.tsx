@@ -12,7 +12,7 @@
  * the editor (one switch, one place, no duplicated affordances), and the
  * board has every capability the detail has (including 完成后接续).
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { type BoardController } from '../../core/controller.ts'
 import { automationTasksOf } from '../../core/automation.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -32,6 +32,9 @@ function AutomationTaskCard({ controller, task, onClose }: {
   onClose: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  // Identity for the editor region the expand row discloses — see the
+  // aria-controls note (a disclosure states its condition AND its subject).
+  const editorId = useId()
   const schedule = task.schedule
   // The expand row renders the live task-level summary (the same string the
   // detail's 自动化 disclosure header reads); a rules-only task (no schedule)
@@ -61,13 +64,14 @@ function AutomationTaskCard({ controller, task, onClose }: {
         type="button"
         className={css.autoTaskExpand}
         aria-expanded={expanded}
+        aria-controls={editorId}
         title={t('auto.editAutomation')}
         onClick={() => { setExpanded(value => !value) }}
       >
         <Icon name="chevronDown" className={css.autoTaskChevron} />
         <span className={css.autoTaskSummary} title={summary}>{summary}</span>
       </button>
-      {expanded && <AutomationEditor controller={controller} task={task} />}
+      {expanded && <div id={editorId}><AutomationEditor controller={controller} task={task} /></div>}
     </section>
   )
 }
