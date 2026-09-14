@@ -12,6 +12,12 @@
  * transitionend dependency, no inline-transform residue, auto-cancel on
  * unmount), and it is fully suppressed while the user is dragging: the
  * post-drop settle is the one moment it plays.
+ *
+ * Newcomers (in the current snapshot, absent from the previous one) arrive
+ * instead of teleporting: the hook stamps them with `data-fresh` so the CSS
+ * reveals them once (see `.card[data-fresh]`), then removes the stamp on the
+ * next frame batch — the animation belongs to the arrival, not to the card,
+ * so a later re-render never replays it.
  */
 import { useLayoutEffect, useRef, type RefObject } from 'react'
 
@@ -89,6 +95,18 @@ export function useFlipRegion(containerRef: RefObject<HTMLElement | null>, disab
     if (container === null) return
     const { structures, rects } = snapshotRegion(container)
     if (!disabled && !reducedMotion()) {
+      // Stamped here rather than in the candidates loop below: newcomers
+      // are NOT flip candidates (no old rect to animate FROM), so without
+      // this loop they would teleport.
+      for (const [id] of structures) {
+        if (previousStructures.current.has(id)) continue
+        const element = container.querySelector<HTMLElement>(`[data-task-id="${id}"]`)
+        if (element === null || element.hasAttribute('data-fresh')) continue
+        element.setAttribute('data-fresh', '')
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => { element.removeAttribute('data-fresh') })
+        })
+      }
       const candidates = flipCandidatesOf(previousStructures.current, structures)
       if (candidates.length > 0) {
         const track = container.querySelector<HTMLElement>('[data-dsh-tb-columns]')

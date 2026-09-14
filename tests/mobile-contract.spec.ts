@@ -1116,6 +1116,37 @@ describe('reduced-motion functional exemption', () => {
   it('decorative entrance motion is still suppressed', () => {
     expect(reduced).toMatch(/\.modalBackdrop[\s\S]*?animation:\s*none/)
   })
+
+  it('the entrance grammar is ONE keyframes, joined — never a second family', () => {
+    // Entrance drift used to mint a new keyframes per surface (fade-up here,
+    // dialog-in there, a staggered row entrance somewhere else): three names
+    // for one idea, each with its own timing, stacking into a stagger of
+    // staggers. One family means: the board owns `dshTbBoardIn`, the overlay
+    // family owns `dshTbDialogIn` (scale = depth, a different meaning), and a
+    // pure fade owns `dshTbFadeIn`. Nothing else animates a mount.
+    for (const name of ['dshTbBoardIn', 'dshTbDialogIn', 'dshTbFadeIn']) {
+      expect(source).toContain(`@keyframes ${name}`)
+    }
+    expect(source).not.toContain('@keyframes dshTbFadeUp')
+    expect(source).not.toContain('@keyframes dshTbSelectIn')
+    expect(source).not.toMatch(/animation-delay:\s*\d+ms/)
+  })
+
+  it('a newcomer arrives once from structure, never from a re-render', () => {
+    // The FLIP hook stamps cards absent from its previous snapshot with
+    // `data-fresh`; the CSS reveals exactly those once. A class or a bare
+    // re-mount animation would replay on every re-render of an old card.
+    expect(source).toMatch(/\.card\[data-fresh\]\s*\{[^}]*animation:\s*dshTbBoardIn/)
+    const flipPath = fileURLToPath(new URL('../src/client/board/use-flip.ts', import.meta.url))
+    const flip = readFileSync(flipPath, 'utf8')
+    expect(flip).toContain("setAttribute('data-fresh', '')")
+    expect(flip).toContain("removeAttribute('data-fresh')")
+    expect(flip).toContain('requestAnimationFrame')
+    // The stamp lives exactly one frame batch beside the candidate loop that
+    // already knows newcomers are not FLIP-eligible (no old rect to play
+    // from) — one structural filter, not two mechanisms disagreeing.
+    expect(flip).toContain('flipCandidatesOf(previousStructures.current, structures)')
+  })
 })
 
 describe('template library wiring', () => {

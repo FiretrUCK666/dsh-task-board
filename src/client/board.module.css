@@ -846,7 +846,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border-radius: var(--dsh-tb-radius-lg);
   box-shadow: var(--dsh-tb-shadow-3);
   color: var(--dsh-tb-text-1);
-  animation: dshTbFadeUp 140ms ease;
+  animation: dshTbBoardIn 140ms ease;
 }
 
 .cruisePopoverHead {
@@ -922,10 +922,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   gap: 8px;
   padding: 3px 6px;
   border-radius: var(--dsh-tb-radius-sm);
-  /* Entrance: a soft fade-up, staggered by the row's inline animation-delay.
-     `backwards` holds the hidden start during the delay. Reduced-motion
-     downgrades it to static below. */
-  animation: dshTbFadeUp 140ms ease backwards;
 }
 
 .cruiseWindowRow:hover {
@@ -1128,6 +1124,26 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   overflow: hidden;
 }
 
+/* Reading rhythm: the board owns ONE entrance grammar (`dshTbBoardIn` —
+   3px up, 160ms, already-visible default). Mounting the board announces its
+   arrival once — the header and the column track rise together — and a fresh
+   CARD joins the same way wherever it lands: first create, a new filter
+   match, a card arriving from another device over SSE. The filter is
+   structural (the FLIP hook stamps newcomers with `data-fresh` — a card
+   absent from its previous snapshot), so a scrolled, hovered or re-rendered
+   card never replays it. One keyframes block owns the family — a future
+   entrance joins this list instead of minting a new keyframes. */
+@keyframes dshTbBoardIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.boardHeader,
+.columns,
+.thumbBar {
+  animation: dshTbBoardIn 160ms ease;
+}
+
 .columnHeader {
   display: flex;
   align-items: center;
@@ -1275,7 +1291,10 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    round check badge. Same light family as the attention/breath system (one
    accent, alpha 22%/10% steps, motion token); a running card's warn border
    stays visible underneath (border-color wins on top, status semantics kept
-   in the chip row below). */
+   in the chip row below). No entrance fade: the ring IS the feedback (one
+   grammar — state changes arrive, they do not perform), and a second
+   keyframes for "being picked" is exactly the family-splitting this sheet
+   closed above. */
 .card.selectedCard {
   border-color: var(--dsw-alias-state-business-primary);
   box-shadow:
@@ -1284,12 +1303,6 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
     0 4px 18px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent),
     var(--dsh-tb-shadow-2);
   transform: translateY(-1px);
-  animation: dshTbSelectIn var(--dsh-tb-motion) ease-out;
-}
-
-@keyframes dshTbSelectIn {
-  from { opacity: 0.55; }
-  to { opacity: 1; }
 }
 
 /* The selection check badge: top-right round accent chip — the one glyph
@@ -1626,14 +1639,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   border: 0;
 }
 
-/* Next-action sentence: one quiet line (secondary, ellipsis in its own
-   text slot). Never a second status system — it names the same primary the
-   chips show so scanning needs no chip archaeology. */
-/* The card's verb: what to do about this card, in words. Two lines rather than
-   one — every template in this line is long ("失败待决策 · 留言 steering 或重跑"),
-   so a single clamped line is guaranteed to truncate the instruction on a narrow
-   card, and a half-stated instruction is worse than a taller card. It sits with
-   the content instead of in the meta block for the same reason. */
+/* One line for what IS vs HAS: the card's fact line, always single. */
 .cardNext {
   min-width: 0;
   font-size: 12px;
@@ -1641,9 +1647,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsw-alias-label-secondary);
   overflow: hidden;
   overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Feed tools: filter group + search + actions in one wrapping row. Labels
@@ -2147,7 +2152,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   /* A touch stronger than the native mask-1 so the column lines behind the
      glassy board no longer glimmer through the dialog edges. */
   background: var(--dsh-tb-mask);
-  animation: dshTbFadeIn 140ms ease;
+  animation: dshTbBoardIn 140ms ease;
 }
 
 /* THE single scrollbar grammar for every panel scroll body: a THIN bar that
@@ -2176,19 +2181,14 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: transparent;
 }
 
-@keyframes dshTbFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
 @keyframes dshTbDialogIn {
   from { opacity: 0; transform: translateY(6px) scale(0.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-@keyframes dshTbFadeUp {
-  from { opacity: 0; transform: translateY(3px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes dshTbFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* THE overlay-panel chrome — one declaration for the whole family (.modal
@@ -4175,13 +4175,27 @@ button.interactionOption:focus-visible,
   box-shadow: none;
 }
 
+/* The board's own selective reveal: a card that was NOT under the eye
+   arrives instead of teleporting. FLIP owns position (a moved card glides
+   from its old rect via WAAPI); a brand-NEW card (no old rect — first
+   create, a fresh filter match, a card arriving from another device over
+   SSE) fades up once via this rule. The filter is structural, not
+   animation-chasing: FLIP's own snapshot table already knows which cards
+   are new (absent from the previous snapshot), and it stamps exactly those
+   with `data-fresh` for one frame batch — a re-rendered old card never
+   replays it. Suppressed while dragging (the drop settle is FLIP's moment)
+   and under reduced motion (the block below strips decorative entrances),
+   same as the board mount. */
+.card[data-fresh] {
+  animation: dshTbBoardIn 160ms ease;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card.dragging {
     transform: none;
   }
-  /* Selection stays a static ring (no entrance fade, no rise). */
+  /* Selection stays a static ring (no rise) under reduced motion. */
   .card.selectedCard {
-    animation: none;
     transform: none;
   }
   /* The pending-ack pulse is a FUNCTIONAL indicator (the click is queued) —
@@ -4245,13 +4259,17 @@ button.interactionOption:focus-visible,
     transition: none;
   }
 
+  .boardHeader,
+  .columns,
+  .thumbBar,
+  .card[data-fresh],
   .modalBackdrop,
   .modal,
   .review,
   .reviewMessage,
+  .reviewComment,
   .reviewContext,
-  .cruisePopover,
-  .cruiseWindowRow {
+  .cruisePopover {
     animation: none;
   }
 
@@ -4712,7 +4730,7 @@ button.interactionOption:focus-visible,
 .reviewMessage {
   display: flex;
   max-width: 100%;
-  animation: dshTbFadeUp 160ms ease;
+  animation: dshTbBoardIn 160ms ease;
 }
 
 .reviewMessage[data-role='user'] {
@@ -4803,7 +4821,7 @@ button.interactionOption:focus-visible,
   padding: 4px 10px;
   border-left: 2px solid var(--dsw-alias-border-l2);
   opacity: 0.85;
-  animation: dshTbFadeUp 160ms ease;
+  animation: dshTbBoardIn 160ms ease;
 }
 
 /* The "waiting for you" notice: shown while the execution session is blocked
@@ -5060,7 +5078,7 @@ button.interactionOption:focus-visible,
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: var(--dsh-tb-radius-md);
-  animation: dshTbFadeUp 160ms ease;
+  animation: dshTbBoardIn 160ms ease;
 }
 
 .reviewCommentText {
@@ -5150,9 +5168,18 @@ button.interactionOption:focus-visible,
   color: var(--dsw-alias-label-secondary);
 }
 
+/* Rendered links read as links: an underline with offset is the affordance —
+   accent colour alone is indistinguishable from plain text, and touch has no
+   hover to reveal it. Thickness grows on hover without moving layout. */
 .mdLink {
   color: var(--dsw-alias-state-business-primary);
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+.mdLink:hover {
+  text-decoration-thickness: 2px;
 }
 
 .mdRule {

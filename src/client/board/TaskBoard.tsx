@@ -1287,7 +1287,6 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                         <li
                           key={`${window.startAt ?? 'open'}-${window.endAt ?? 'open'}`}
                           className={css.cruiseWindowRow}
-                          style={{ animationDelay: `${index * 20}ms` }}
                         >
                           {/* ONE grammar line per window (range / from-start /
                               on-now-until-end; a cross-midnight range already

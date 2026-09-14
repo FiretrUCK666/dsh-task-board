@@ -12,6 +12,12 @@
  * transitionend dependency, no inline-transform residue, auto-cancel on
  * unmount), and it is fully suppressed while the user is dragging: the
  * post-drop settle is the one moment it plays.
+ *
+ * Newcomers (in the current snapshot, absent from the previous one) arrive
+ * instead of teleporting: the hook stamps them with `data-fresh` so the CSS
+ * reveals them once (see `.card[data-fresh]`), then removes the stamp on the
+ * next frame batch — the animation belongs to the arrival, not to the card,
+ * so a later re-render never replays it.
  */
 import { type RefObject } from 'react';
 /** A card's structural identity: which column, and which index inside it. */

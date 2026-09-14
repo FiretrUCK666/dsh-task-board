@@ -13,7 +13,7 @@ import { sessionRuleReadiness } from '../../core/automation.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
-import { cardNextActionOf, cardViewModelOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
+import { cardViewModelOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
 import { Chip } from './Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { STATUS_KEY } from './status.ts'
@@ -137,7 +137,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
     ...(waiting !== undefined ? { waiting } : {}),
     unviewedCount,
   })
-  void cardNextActionOf
   // Plain-run count (comment continuation rounds are not executions): the
   // single numbering source shared with the detail list and review badge.
   const runs = plainRunsOf(task)

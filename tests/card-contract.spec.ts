@@ -376,6 +376,27 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     expect(source).toContain('padding: var(--dsh-tb-strip-gap) 0')
   })
 })
+describe('card reading measure (one line for what IS vs HAS)', () => {
+  function ruleOfMeasure(name: string): string {
+    return expectRule(name)
+  }
+
+  it('the fact line stays single: title and verb are the two reading slots', () => {
+    // A doubled title is one wide card away from fitting; a doubled verb is
+    // a second reading of the same state the primary chip already names.
+    // The excerpt carries the only longer thought on the card.
+    const next = ruleOfMeasure('cardNext')
+    expect(next).toContain('white-space: nowrap')
+    expect(next).toContain('text-overflow: ellipsis')
+    expect(next).not.toContain('-webkit-line-clamp')
+  })
+
+  it('rendered links read as links (colour alone is not an affordance)', () => {
+    const link = ruleOfMeasure('mdLink')
+    expect(link).toMatch(/text-decoration:\s*underline/)
+    expect(link).toMatch(/text-underline-offset:\s*2px/)
+  })
+})
 describe('card chip label composition', () => {
   function useLanguage(lang: string): void {
     vi.stubGlobal('document', { documentElement: { lang } })
