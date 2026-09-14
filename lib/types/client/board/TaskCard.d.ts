@@ -28,7 +28,7 @@ export declare function blockedAutomation(task: TaskRecord): boolean;
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
+export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, hasUnviewedRun, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
     task: TaskRecord;
     /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
     selected?: boolean;
@@ -47,6 +47,11 @@ export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleO
     unviewed: boolean;
     /** How many plain-run executions are unviewed (the "新 N" badge figure). */
     unviewedCount: number;
+    /** Whether at least one of those unviewed items is a plain RUN (as opposed to
+     *  comment-only activity). The card states a count only when a run is behind
+     *  it, so "新 2" can never mean "two comments". Computed by the caller from the
+     *  same source as `unviewedCount`, so the two can never disagree. */
+    hasUnviewedRun?: boolean;
     /** A review task whose run has settled and no human has passed or sent it
      *  back: the plateau the board used to hide. Unlike `unviewed` it does not
      *  clear when the card is opened — reading is not deciding. */

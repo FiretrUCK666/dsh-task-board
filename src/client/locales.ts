@@ -567,6 +567,8 @@ export const zh = {
      reading a card retires 「新」, but only a decision retires this one. It is
      never a breathing state — the breath belongs to unread alone. */
   'card.awaitingDecision': '待你决断',
+  'card.newComment': '新留言',
+  'card.newCommentTitle': '这条卡片有没看过的评论',
   'card.keyboardLabel': '{title}，{column}。[ 与 ] 键移到相邻列；回车打开。',
   'card.awaitingDecisionTitle': '已跑完，等你在待审核列通过或打回；看过之后仍然算未决',
   /* Header demand row: the board stating, in words, what it owes the user.
@@ -1186,6 +1188,8 @@ export const en: Record<keyof typeof zh, string> = {
   'card.nextScheduled': 'Scheduled · runs automatically',
   'card.nextChain': 'Chaining · next round after completion',
   'card.awaitingDecision': 'Awaiting your decision',
+  'card.newComment': 'New comment',
+  'card.newCommentTitle': 'This card has comments you have not read',
   'card.keyboardLabel': '{title}, {column}. Press [ or ] to move it one column; Enter opens it.',
   'card.awaitingDecisionTitle': 'The run finished and is waiting in Review for you to approve or send back; it still counts after you have looked',
   'board.demand': '{n} need you · {m} in review',

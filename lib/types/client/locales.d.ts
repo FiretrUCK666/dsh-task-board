@@ -560,6 +560,8 @@ export declare const zh: {
     'card.nextScheduled': string;
     'card.nextChain': string;
     'card.awaitingDecision': string;
+    'card.newComment': string;
+    'card.newCommentTitle': string;
     'card.keyboardLabel': string;
     'card.awaitingDecisionTitle': string;
     'board.demand': string;

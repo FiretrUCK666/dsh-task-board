@@ -73,7 +73,7 @@ export function blockedAutomation(task: TaskRecord): boolean {
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, hasUnviewedRun, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -92,6 +92,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   unviewed: boolean
   /** How many plain-run executions are unviewed (the "新 N" badge figure). */
   unviewedCount: number
+  /** Whether at least one of those unviewed items is a plain RUN (as opposed to
+   *  comment-only activity). The card states a count only when a run is behind
+   *  it, so "新 2" can never mean "two comments". Computed by the caller from the
+   *  same source as `unviewedCount`, so the two can never disagree. */
+  hasUnviewedRun?: boolean
   /** A review task whose run has settled and no human has passed or sent it
    *  back: the plateau the board used to hide. Unlike `unviewed` it does not
    *  clear when the card is opened — reading is not deciding. */
@@ -352,8 +357,14 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
               </Chip>
             )}
             {unviewed && (
-              <Chip kind="warn" fill={false} title={t('card.newContentTitle')}>
-                {t('card.newContent')}{unviewedCount > 0 ? ` ${unviewedCount}` : ''}
+              /* Two different facts used to render identically: "a run settled and
+                 you have not looked" and "only a comment arrived". Only the first
+                 one means a round is finished and the card may be ready to move;
+                 the second means somebody said something. Stating the count only
+                 when a run is behind it keeps the number meaningful — a bare 新
+                 with no number is the comment-only case. */
+              <Chip kind="warn" fill={false} title={t(hasUnviewedRun ? 'card.newContentTitle' : 'card.newCommentTitle')}>
+                {hasUnviewedRun ? `${t('card.newContent')} ${unviewedCount}` : t('card.newComment')}
               </Chip>
             )}
             {/* The human gate, stated as a FACT rather than as an unread state.

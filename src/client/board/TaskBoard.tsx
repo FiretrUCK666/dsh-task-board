@@ -1785,6 +1785,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       pendingTitle={pendingTitle}
                       unviewed={taskUnviewed(task)}
                       unviewedCount={taskUnviewedCount(task)}
+                      hasUnviewedRun={taskUnviewedCount(task) > 0}
                       awaitingDecision={view.awaitingDecision}
                       onMoveStep={direction => { stepCard(task, direction) }}
                       selected={selectedCards.includes(task.id)}
