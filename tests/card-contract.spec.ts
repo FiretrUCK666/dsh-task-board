@@ -279,6 +279,39 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     expect(active).toBe('dshTbBreathHalo')
   })
 
+  it('the badge row ranks its primary first, and never gates the row on automation', () => {
+    // Two structural facts about the card's chip row, both previously wrong in ways
+    // no visual review surfaces:
+    //
+    // 1. ORDER. `cardViewModelOf` computes a priority (waiting > running > refining
+    //    > queued > failed > review > idle) and the render used to emit that winner
+    //    LAST, behind every automation badge — the row's reading order contradicted
+    //    the view model's own ranking, on the surface whose whole job is a scan.
+    const card = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
+    const primaryAt = card.indexOf('{primaryChip}')
+    const autoAt = card.indexOf('{automationChips}')
+    expect(primaryAt, 'the row must render the primary chip').toBeGreaterThan(-1)
+    expect(autoAt, 'the row must render the automation chips').toBeGreaterThan(-1)
+    expect(primaryAt, 'the primary chip must come before the automation chips').toBeLessThan(autoAt)
+
+    // 2. THE GATE. The row was wrapped in `schedule?.enabled === true || latest !==
+    //    undefined`, which is FALSE for a card that has never run and has no
+    //    schedule — precisely the shape of "somebody just made this card and the
+    //    agent is asking a question". The view model reported `primary: waiting`
+    //    while the gate hid the whole row, so the one signal asking the user to act
+    //    was unrenderable exactly when it mattered. Each chip carries its own
+    //    condition, so the row must not reintroduce a shared one.
+    expect(card, 'the badge row must not be gated on automation/execution again')
+      .not.toContain('{(task.schedule?.enabled === true || latest !== undefined) && (')
+    expect(card).toContain('if (!hasAnything) return null')
+
+    // 3. The primary group must cover every state the view model can rank, so a
+    //    future primary kind cannot silently render as an empty row.
+    for (const key of ['card.awaitingDecision', 'card.pending', 'card.refining', 'card.newContent']) {
+      expect(card, `${key} must still be rendered by the card`).toContain(key)
+    }
+  })
+
   it('the turning spinner keeps its circle grammar (square box + 50% + cut + spin)', () => {
     const spinner = expectRule('spinner')
     expect(spinner).toContain('border-radius: 50%')

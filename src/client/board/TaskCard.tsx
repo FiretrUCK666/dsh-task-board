@@ -155,6 +155,12 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // Comments saved but not yet injected (the task's queue): a quiet warn
   // badge so a card waiting for the dispatcher is never mistaken for idle.
   const queuedComments = view.queued
+  // A live chain run: the "接续中" chip names the automation mode BEHIND the running
+  // state, and it survives a blocked rule — a live run and a blocked rule are
+  // orthogonal causes, so hiding progress would lie about what is actually moving.
+  const chaining = task.schedule?.enabled === true
+    && task.schedule.mode === 'chain'
+    && task.status === 'running'
   // The card's source line — one derivation for every card (see
   // cardSourceLabel): the bound session's title when it differs from the
   // task title, else the workspace label. Empty = no source line.
@@ -311,111 +317,121 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
             {t('board.updated')} {formatTime(task.updatedAt)}
           </span>
         </span>
-        {/* Row 2 only when there are badges; plain text badges keep the
-            left edge flush with the title above, and wrap instead of
-            overflowing. */}
-        {(task.schedule?.enabled === true || latest !== undefined) && (
-          <span className={css.cardBadges}>
-            {task.schedule?.enabled === true && !blockedAutomation(task) && (
-              <Chip
-                fill={false}
-                title={scheduleChipTitle(task)}
-              >
-                {task.schedule.mode === 'chain' ? t('card.chain') : t('card.scheduled')}
-              </Chip>
-            )}
-            {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && !blockedAutomation(task) && (
-              <Chip kind="muted" fill={false} title={t('card.batchProgress')}>
-                {task.schedule.runCount}/{task.schedule.maxRuns}
-              </Chip>
-            )}
-            {/* Blocked automation owns the wording slot (task schedule or any
-                session rule): one cause, one chip — the schedule/batch text
-                yields instead of stacking four chips for it. Live progress
-                below is orthogonal and survives (see chaining). */}
-            {blockedAutomation(task) && (
-              <Chip kind="error" fill={false} title={scheduleChipTitle(task)}>
-                {t('card.autoBlocked')}
-              </Chip>
-            )}
-            {/* A live chain keeps the card in progress: the "接续中" chip
-                names the automation mode behind the running state. It survives
-                blocked (a live run and a blocked rule are orthogonal causes —
-                hiding progress would lie about what is actually moving). */}
-            {task.schedule?.enabled === true && task.schedule.mode === 'chain' && task.status === 'running' && (
-              <Chip kind="warn" fill={false} title={t('card.chainingTitle')}>
-                {t('card.chaining')}
-              </Chip>
-            )}
-            {/* Automation paused by a failed run: the review column reads
-                "failure stopped the rule" at a glance, distinct from "success
-                awaiting confirmation". */}
-            {pausedFailed && (
-              <Chip kind="error" fill={false} title={t('card.autoPausedFailedTitle')}>
-                {t('card.autoPausedFailed')}
-              </Chip>
-            )}
-            {queuedComments > 0 && (
-              <Chip
-                kind="warn"
-                fill={false}
-                title={task.status === 'done'
-                  ? t('card.commentQueueDone', { n: String(queuedComments) })
-                  : t('card.commentQueueTitle', { n: String(queuedComments) })}
-              >
-                {t('card.commentQueue')} {queuedComments}
-              </Chip>
-            )}
-            {unviewed && (
-              /* Two different facts used to render identically: "a run settled and
-                 you have not looked" and "only a comment arrived". Only the first
-                 one means a round is finished and the card may be ready to move;
-                 the second means somebody said something. Stating the count only
-                 when a run is behind it keeps the number meaningful — a bare 新
-                 with no number is the comment-only case. */
-              <Chip kind="warn" fill={false} title={t(hasUnviewedRun ? 'card.newContentTitle' : 'card.newCommentTitle')}>
-                {hasUnviewedRun ? `${t('card.newContent')} ${unviewedCount}` : t('card.newComment')}
-              </Chip>
-            )}
-            {/* The human gate, stated as a FACT rather than as an unread state.
-                `unviewed` above retires the moment the card is opened; this one
-                does not, because reading a finished run is not the same as
-                passing or sending it back — and a card that has been glanced at
-                used to become indistinguishable from a filed one. Rendered
-                STATIC (no breathing): the amber breath belongs to unread alone,
-                so the two signals can never be confused for each other. */}
-            {awaitingDecision === true && (
-              <Chip kind="warn" fill={false} title={t('card.awaitingDecisionTitle')}>
-                {t('card.awaitingDecision')}
-              </Chip>
-            )}
-            {refining(task) && (
-              <Chip kind="warn" fill={false} title={t('card.refiningTitle')}>
-                {t('card.refining')}
-              </Chip>
-            )}
-            {pendingCount > 0 && (
-              <Chip kind="warn" fill={false} title={pendingTitle}>
-                {t('card.pending')} {pendingCount}
-              </Chip>
-            )}
-            {showingRunning ? (
-              <Chip kind="warn" fill={false} title={waiting !== undefined
-                ? t('card.waitingTitle', { kind: t(waitingKeyOf(waiting)) })
-                : undefined}
-                icon={<span className={css.spinner} aria-hidden="true" />}>
-                {runningStateLabel(waiting)}
-              </Chip>
-            ) : lastPlain !== undefined && (
-              <Chip
-                kind={resultChipKind(lastPlain.result)}
-                fill={false}
-              >
-                {settledChipLabel(runs.length)}
-              </Chip>
-            )}
-          </span>
-        )}
+        {/* Row 2: the card's chips. Two rules govern this row, and both used to be
+            broken.
+
+            (1) The PRIMARY chip comes first. `cardViewModelOf` computes a priority
+            (waiting > running > refining > queued > failed > review > idle) and the
+            render used to put that winner LAST, behind every automation badge — so
+            the row's reading order contradicted the view model's own ranking, on the
+            surface whose whole job is a five-second scan.
+
+            (2) The row must render whenever there is ANYTHING to say. Its gate used
+            to be `schedule?.enabled === true || latest !== undefined`, which is false
+            for a card that has never run and has no schedule — and that is exactly
+            the shape of "somebody just made this card and the agent is asking a
+            question". The view model reported `primary: waiting` while the gate hid
+            the entire row, so the one signal that asks the user to act was
+            unrenderable precisely when it mattered. Each chip below already carries
+            its own condition, so the row needs no gate of its own. */}
+        {(() => {
+          const primaryChip = showingRunning ? (
+            <Chip kind="warn" fill={false} title={waiting !== undefined
+              ? t('card.waitingTitle', { kind: t(waitingKeyOf(waiting)) })
+              : undefined}
+              icon={<span className={css.spinner} aria-hidden="true" />}>
+              {runningStateLabel(waiting)}
+            </Chip>
+          ) : pendingCount > 0 ? (
+            <Chip kind="warn" fill={false} title={pendingTitle}>
+              {t('card.pending')} {pendingCount}
+            </Chip>
+          ) : awaitingDecision === true ? (
+            /* The human gate, stated as a FACT rather than as an unread state.
+               `unviewed` retires the moment the card is opened; this does not,
+               because reading a finished run is not the same as passing or sending
+               it back — a card that has been glanced at used to become
+               indistinguishable from a filed one. STATIC (no breathing): the amber
+               breath belongs to unread alone, so the two can never be confused. */
+            <Chip kind="warn" fill={false} title={t('card.awaitingDecisionTitle')}>
+              {t('card.awaitingDecision')}
+            </Chip>
+          ) : refining(task) ? (
+            <Chip kind="warn" fill={false} title={t('card.refiningTitle')}>
+              {t('card.refining')}
+            </Chip>
+          ) : lastPlain !== undefined ? (
+            <Chip kind={resultChipKind(lastPlain.result)} fill={false}>
+              {settledChipLabel(runs.length)}
+            </Chip>
+          ) : undefined
+          const automationChips = (
+            <>
+              {task.schedule?.enabled === true && !blockedAutomation(task) && (
+                <Chip fill={false} title={scheduleChipTitle(task)}>
+                  {task.schedule.mode === 'chain' ? t('card.chain') : t('card.scheduled')}
+                </Chip>
+              )}
+              {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && !blockedAutomation(task) && (
+                <Chip kind="muted" fill={false} title={t('card.batchProgress')}>
+                  {task.schedule.runCount}/{task.schedule.maxRuns}
+                </Chip>
+              )}
+              {/* Blocked automation owns the wording slot (task schedule or any
+                  session rule): one cause, one chip — the schedule/batch text yields
+                  instead of stacking four chips for it. Live progress is orthogonal
+                  and survives (see chaining). */}
+              {blockedAutomation(task) && (
+                <Chip kind="error" fill={false} title={scheduleChipTitle(task)}>
+                  {t('card.autoBlocked')}
+                </Chip>
+              )}
+              {chaining && (
+                <Chip kind="warn" fill={false} title={t('card.chainingTitle')}>
+                  {t('card.chaining')}
+                </Chip>
+              )}
+              {/* Automation paused by a failed run: the review column reads "failure
+                  stopped the rule" at a glance, distinct from "success awaiting
+                  confirmation". */}
+              {pausedFailed && (
+                <Chip kind="error" fill={false} title={t('card.autoPausedFailedTitle')}>
+                  {t('card.autoPausedFailed')}
+                </Chip>
+              )}
+              {queuedComments > 0 && (
+                <Chip kind="warn" fill={false} title={t('card.commentQueueTitle')}>
+                  {t('card.commentQueue')} {queuedComments}
+                </Chip>
+              )}
+              {unviewed && (
+                /* Two different facts used to render identically: "a run settled and
+                   you have not looked" and "only a comment arrived". Only the first
+                   means a round is finished and the card may be ready to move; the
+                   second means somebody said something. Stating the count only when a
+                   run is behind it keeps the number meaningful — a bare new-comment
+                   label is the comment-only case. */
+                <Chip kind="warn" fill={false} title={t(hasUnviewedRun ? 'card.newContentTitle' : 'card.newCommentTitle')}>
+                  {hasUnviewedRun ? `${t('card.newContent')} ${unviewedCount}` : t('card.newComment')}
+                </Chip>
+              )}
+            </>
+          )
+          const hasAnything = primaryChip !== undefined
+            || task.schedule?.enabled === true
+            || latest !== undefined
+            || queuedComments > 0
+            || unviewed
+            || pausedFailed
+            || chaining
+          if (!hasAnything) return null
+          return (
+            <span className={css.cardBadges}>
+              {primaryChip}
+              {automationChips}
+            </span>
+          )
+        })()}
       </span>
       {/* Sessions strip + next action: who is working + what happens next.
           Both wrap (never overflow); dots reuse the status-dot tokens so no
