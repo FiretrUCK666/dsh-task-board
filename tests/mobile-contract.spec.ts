@@ -659,6 +659,18 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(source).toMatch(/--dsh-tb-lead-x:\s*calc\(/)
   })
 
+  it('the dock does not re-type the rail line either', () => {
+    // Same class as above, one surface further out: the compact dock's negative
+    // margins spend the dock tokens, and its padding had `14px` written by hand —
+    // the rail token's value, typed instead of referenced. It could not disagree
+    // with the rail members TODAY, which is what makes it dangerous: the day the
+    // rail line moves, the dock's contents stay behind and nothing fails.
+    const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
+    const bar = ruleIn(compact, '.thumbBar')
+    expect(bar).toMatch(/padding:\s*10px var\(--dsh-tb-rail-inset\)/)
+    expect(bar).not.toMatch(/padding:[^;]*\b14px\b/)
+  })
+
   it('paragraphs carry no inherited spacing inside the board', () => {
     // A `<p>` used as a LAYOUT row kept the UA's 1em margin (an invisible 16px
     // above and below) — the whole 「会话 3 下面一大片空」 gap. Rhythm here is
