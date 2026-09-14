@@ -1,0 +1,63 @@
+{
+  "hook": {
+    "enabled": true,
+    "limits": {
+      "maxFindings": 5,
+      "maxChars": 8000
+    }
+  },
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-radius",
+        "value": "4px",
+        "createdAt": "2026-09-14T02:17:52.002Z",
+        "reason": "Agent: per-element micro radius (scrollbar thumb, inline code, remove-x); DESIGN.md Shapes documents the micro family as detail sizes that stay out of the rounded scale"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "2px",
+        "createdAt": "2026-09-14T02:17:52.040Z",
+        "reason": "Agent: element-sized micro radius (meter swatch, badge slots); DESIGN.md Shapes documents the micro family as detail sizes that stay out of the rounded scale"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "3px",
+        "createdAt": "2026-09-14T02:17:52.104Z",
+        "reason": "Agent: one-off detail radius on the drop indicator; DESIGN.md Shapes documents the micro family as detail sizes that stay out of the rounded scale"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "1px",
+        "createdAt": "2026-09-14T02:17:52.141Z",
+        "reason": "Agent: one-off detail radius on the meter segment; DESIGN.md Shapes documents the micro family as detail sizes that stay out of the rounded scale"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "22px",
+        "createdAt": "2026-09-14T02:17:52.179Z",
+        "reason": "Agent: session bubble radius sized to the bubble; DESIGN.md Shapes records it as a per-element value, not a scale step"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "8px",
+        "createdAt": "2026-09-14T02:17:52.216Z",
+        "reason": "Agent: settings card mirrors the native DSH settings card radius - the shell's own settings card and sidebar panel rows use 8px, and this file exists to read as that same surface"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "6px",
+        "createdAt": "2026-09-14T02:17:52.252Z",
+        "reason": "Agent: settings controls mirror the native DSH control radius - the shell's own settings controls use 6px, and this file exists to read as that same surface"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "12px",
+        "createdAt": "2026-09-14T02:17:52.289Z",
+        "reason": "Agent: sidebar entry row mirrors the native DSH sidebar width; the shell's own new-session row is 38px tall at 12px radius and this row is 42px at the same radius, so it reads as the same family"
+      }
+    ]
+  }
+}
