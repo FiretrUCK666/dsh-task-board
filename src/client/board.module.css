@@ -5276,8 +5276,15 @@ button.interactionOption:focus-visible,
   padding: 8px 12px;
 }
 
-/* The read-only shell's plain-text body (no scroller of its own: it is short
-   by construction). */
+/* The read-only shell's plain-text body. It DOES scroll its own content, and that
+   is a requirement rather than an accident: the card is capped
+   (`max-height: min(320px, 100%)`) and clips (`overflow: hidden`), so without a
+   scroll region here any overflow would be silently unreachable instead of
+   scrollable — the shell body would lose content with no way to see it.
+   Two CSS layout contracts pin this (`mobile-contract` and `review-page`).
+   The earlier comment said "no scroller of its own", which was wrong about the
+   requirement and is exactly the kind of stale prose that invites someone to
+   delete a load-bearing declaration. */
 .interactionCardBody {
   display: flex;
   flex-direction: column;
@@ -6296,6 +6303,13 @@ span.interactionOptions {
   overflow: hidden;
 }
 
+/* The custom-colour affordance: a full hue wheel, because the control's whole job
+   is to say "pick any colour" and a part-spectrum ring would silently narrow the
+   offer. These are the browser's six named hues on purpose, NOT palette values:
+   the wheel represents every colour the picker can produce, so tinting it from
+   --dsw-* would make it advertise a subset of itself. This is the ONE place in
+   the stylesheet without a token, it is a control rather than a design colour,
+   and the reason lives here so the next reader neither "fixes" it nor copies it. */
 .tagCustomEmpty {
   background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
 }
