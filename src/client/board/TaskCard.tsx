@@ -433,23 +433,33 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
           )
         })()}
       </span>
-      {/* Sessions strip + next action: who is working + what happens next.
-          Both wrap (never overflow); dots reuse the status-dot tokens so no
-          new color semantics are invented. Empty = no strip, never a guessed
-          default. */}
+      {/* Sessions strip: who is working on this card, and how many. The dots are a
+          pure-visual encoding (colour + position carry the state), and their content
+          used to live only in a `title` on a non-focusable span inside an
+          `aria-hidden` container — so "which of my sessions is working, and how
+          many are there" was a fact only sighted hovering users could get. Now the
+          strip keeps the dots decorative and states the same thing in words for
+          assistive tech, exactly as the notification bell does. */}
       {dots !== undefined && dots.length > 0 && (
-        <span className={css.cardSessions} aria-hidden="true">
+        <span className={css.cardSessions}>
           {dots.map(dot => (
             <span
               key={dot.sessionId}
               className={css.cardSessionDot}
               data-state={dot.state}
               title={dotTitleOf?.(dot.sessionId) ?? dot.sessionId}
+              aria-hidden="true"
             />
           ))}
           {(overflowDots ?? 0) > 0 && (
-            <span className={css.cardSessionMore}>+{String(overflowDots)}</span>
+            <span className={css.cardSessionMore} aria-hidden="true">+{String(overflowDots)}</span>
           )}
+          <span className={css.visuallyHidden}>
+            {t('card.sessionsForAt', {
+              sessions: dots.map(dot => dotTitleOf?.(dot.sessionId) ?? dot.sessionId).join('；'),
+              n: String((dots.length + (overflowDots ?? 0))),
+            })}
+          </span>
         </span>
       )}
       {onColorPick !== undefined && (

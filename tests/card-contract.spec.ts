@@ -312,6 +312,28 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     }
   })
 
+  it('a fact painted as geometry is also stated in words', () => {
+    // The session dots encode "who is working on this card, and how many" as colour
+    // and position, and the overflow is a `+N` glyph. Both used to sit inside an
+    // `aria-hidden` container whose only text lived in a `title` on a non-focusable
+    // span — unreachable by keyboard, unread by a screen reader, so the fact was
+    // available only to sighted hovering users. Hard rule 11③ forbids exactly that
+    // (「触屏没有 hover——承载必要信息的说明不能只挂 title=」), and the bell was fixed
+    // for the same reason one round earlier; this is its second instance.
+    const card = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
+    const strip = card.slice(card.indexOf('css.cardSessions'), card.indexOf('css.cardSessions') + 1600)
+    expect(strip, 'the strip must carry a text alternative').toContain('css.visuallyHidden')
+    expect(strip, 'the text alternative must use a locale key, never a raw string').toContain("t('card.sessionsForAt'")
+    // The dots stay decorative (announcing "status dot, status dot" is noise), which
+    // is only correct BECAUSE the words are present in the same strip.
+    expect(strip).toContain('aria-hidden="true"')
+    // And the utility must be real: hiding it from the a11y tree would defeat it.
+    const util = expectRule('visuallyHidden')
+    expect(util).toContain('clip-path')
+    expect(util, 'display:none would remove it from the accessibility tree').not.toContain('display: none')
+    expect(util, 'visibility:hidden would remove it from the accessibility tree').not.toContain('visibility: hidden')
+  })
+
   it('the turning spinner keeps its circle grammar (square box + 50% + cut + spin)', () => {
     const spinner = expectRule('spinner')
     expect(spinner).toContain('border-radius: 50%')

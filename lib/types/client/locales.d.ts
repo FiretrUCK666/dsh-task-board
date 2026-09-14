@@ -562,6 +562,7 @@ export declare const zh: {
     'card.newComment': string;
     'card.newCommentTitle': string;
     'card.keyboardLabel': string;
+    'card.sessionsForAt': string;
     'card.awaitingDecisionTitle': string;
     'board.demand': string;
     'board.demandTitle': string;
