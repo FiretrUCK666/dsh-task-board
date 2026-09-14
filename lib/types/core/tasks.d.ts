@@ -379,6 +379,18 @@ export declare const COLUMNS: readonly {
 }[];
 /** Statuses a user may move a card to manually (execution states are owned by the runner). */
 export declare const MANUAL_STATUSES: readonly TaskStatus[];
+/**
+ * The status one column over, along the board's own COLUMNS order — the keyboard
+ * equivalent of dragging a card one column. Pure, and deliberately derived from
+ * COLUMNS rather than from a second hand-written list: a column added or
+ * reordered in the board is reachable by `[` / `]` the same day.
+ *
+ * Returns undefined at either end and for a status the board does not show, so
+ * the caller can stay silent instead of inventing a move. Whether the step is
+ * actually ALLOWED is `resolveCardDrop`'s judgment, not this function's: this
+ * answers "which column is next", never "may I".
+ */
+export declare function adjacentStatus(status: TaskStatus, direction: -1 | 1): TaskStatus | undefined;
 /** All valid statuses (closed union guard). */
 export declare const ALL_STATUSES: readonly TaskStatus[];
 /** Brand an unknown string as a status; undefined when it is not one. */

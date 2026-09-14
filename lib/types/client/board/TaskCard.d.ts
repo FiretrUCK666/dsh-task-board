@@ -28,7 +28,7 @@ export declare function blockedAutomation(task: TaskRecord): boolean;
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, awaitingDecision, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
+export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
     task: TaskRecord;
     /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
     selected?: boolean;
@@ -55,6 +55,11 @@ export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleO
     /** Optional hover quick-action: run the task right from the card (rerun
      *  semantics, same run guard; disabled while a run is open). */
     onQuickRun?: () => void;
+    /** Keyboard column step: -1 = one column left, +1 = one column right, along
+     *  the board's own COLUMNS order. The caller resolves it through the same
+     *  `resolveCardDrop` a drag uses, so the keyboard cannot reach a move the
+     *  pointer would refuse. Absent = no keyboard moves (read-only surfaces). */
+    onMoveStep?: (direction: -1 | 1) => void;
     /** Optional hover quick-action: pick a card color right from the card. */
     onColorPick?: (color: string | undefined) => void;
     /** THE live-state derivation (taskLiveStateOf, controller.liveStateOf):

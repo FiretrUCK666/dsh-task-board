@@ -580,6 +580,20 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
+/* A refused drop, in words. Sits in the header's own column flow (not absolute),
+   so it can never cover a control, and it carries `role="status"` in the markup
+   so the refusal is announced rather than only flashed. Attention-tinted because
+   it reports a refusal, but it is a sentence rather than a fill: the one attention
+   colour, the same as the flash it explains. */
+.dragRejectHint {
+  margin: 0;
+  align-self: flex-start;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsh-tb-attention);
+}
+
 /* 诉求行：全板最该先说的事，坐在导航行之上。只在真有事在等时渲染。
    它是注意力色上的**静态**指示——呼吸归未读独有，所以「等你」与「有新的」永远
    不会读成同一件事。真按钮（触屏没有 hover），故用 --dsh-tb-hover 做悬停底、

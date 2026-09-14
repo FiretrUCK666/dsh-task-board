@@ -224,6 +224,7 @@ export declare const zh: {
     'status.move.backlog': string;
     'status.move.todo': string;
     'status.move.done': string;
+    'board.dragRejectBusy': string;
     'detail.runBlockedBusy': string;
     'detail.rerunHint': string;
     'detail.refine': string;
@@ -558,6 +559,7 @@ export declare const zh: {
     'card.nextScheduled': string;
     'card.nextChain': string;
     'card.awaitingDecision': string;
+    'card.keyboardLabel': string;
     'card.awaitingDecisionTitle': string;
     'board.demand': string;
     'board.demandTitle': string;

@@ -16,6 +16,7 @@ import { scheduleSummary } from './automation-ui.tsx'
 import { cardNextActionOf, cardViewModelOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
 import { Chip } from './Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
+import { STATUS_KEY } from './status.ts'
 import { ColorSwatches, Icon } from './ui.tsx'
 import { formatDateTime, formatTime } from './format-time.ts'
 
@@ -72,7 +73,7 @@ export function blockedAutomation(task: TaskRecord): boolean {
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, awaitingDecision, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -99,6 +100,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   /** Optional hover quick-action: run the task right from the card (rerun
    *  semantics, same run guard; disabled while a run is open). */
   onQuickRun?: () => void
+  /** Keyboard column step: -1 = one column left, +1 = one column right, along
+   *  the board's own COLUMNS order. The caller resolves it through the same
+   *  `resolveCardDrop` a drag uses, so the keyboard cannot reach a move the
+   *  pointer would refuse. Absent = no keyboard moves (read-only surfaces). */
+  onMoveStep?: (direction: -1 | 1) => void
   /** Optional hover quick-action: pick a card color right from the card. */
   onColorPick?: (color: string | undefined) => void
   /** THE live-state derivation (taskLiveStateOf, controller.liveStateOf):
@@ -179,12 +185,32 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
       draggable
       onClick={onClick}
       onKeyDown={event => {
+        // Keyboard parity for the one interaction that used to be mouse-only.
+        // `[` / `]` step the card one column along the SAME COLUMNS order the
+        // board renders, and the caller runs them through `resolveCardDrop` — so
+        // a key move can never take a path a drag could not refuse. Modifier
+        // combinations are left alone: Ctrl+[ and friends belong to the browser.
+        if (onMoveStep !== undefined && (event.key === '[' || event.key === ']')) {
+          if (event.ctrlKey || event.metaKey || event.altKey) return
+          event.preventDefault()
+          onMoveStep(event.key === ']' ? 1 : -1)
+          return
+        }
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           onClick(event as unknown as React.MouseEvent)
         }
       }}
       title={task.description !== '' ? task.description : task.title}
+      /* The accessible name carries the keyboard grammar, which is how a shortcut
+         becomes discoverable at all: a screen-reader or keyboard user hears the
+         card, its column, and the keys that move it, without opening anything. */
+      aria-label={onMoveStep === undefined
+        ? undefined
+        : t('card.keyboardLabel', {
+          title: titleOrUntitled(task.title, t('card.untitled')),
+          column: t(STATUS_KEY[task.status]),
+        })}
       onDragStart={event => {
         setDragging(true)
         event.dataTransfer.setData('text/plain', task.id)

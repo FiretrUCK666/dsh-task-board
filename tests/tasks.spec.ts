@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  applyCardOrder, canMoveManually, cardSourceLabel, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
+  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -1049,5 +1049,43 @@ describe('statusHistory (column-move ledger)', () => {
       { status: 'todo', at: NOW },
       { status: 'running', at: NOW + 10 },
     ])
+  })
+})
+
+/**
+ * The keyboard's column step. Derived from COLUMNS rather than from a second
+ * hand-written order, so the answer to "which column is next" can never disagree
+ * with the columns the board actually renders.
+ *
+ * This function answers the POSITION question only; whether a step is permitted
+ * stays `resolveCardDrop`'s judgment (tested above), which is why the two are
+ * separate — a keyboard move must not be able to reach a transition a drag would
+ * refuse.
+ */
+describe('adjacentStatus (the keyboard column step)', () => {
+  it('walks the board order in both directions', () => {
+    expect(adjacentStatus('backlog', 1)).toBe('todo')
+    expect(adjacentStatus('todo', 1)).toBe('running')
+    expect(adjacentStatus('running', 1)).toBe('review')
+    expect(adjacentStatus('review', 1)).toBe('done')
+    expect(adjacentStatus('done', -1)).toBe('review')
+    expect(adjacentStatus('review', -1)).toBe('running')
+    expect(adjacentStatus('running', -1)).toBe('todo')
+    expect(adjacentStatus('todo', -1)).toBe('backlog')
+  })
+
+  it('is undefined at either end, so the caller stays silent instead of inventing a move', () => {
+    expect(adjacentStatus('backlog', -1)).toBeUndefined()
+    expect(adjacentStatus('done', 1)).toBeUndefined()
+  })
+
+  it('answers from the board order, not a private list', () => {
+    // Every rendered column except the last has a right neighbour, and every one
+    // except the first has a left neighbour: a column added to COLUMNS is
+    // keyboard-reachable the same day, with no second edit.
+    for (const [index, column] of COLUMNS.entries()) {
+      expect(adjacentStatus(column.status, 1)).toBe(COLUMNS[index + 1]?.status)
+      expect(adjacentStatus(column.status, -1)).toBe(COLUMNS[index - 1]?.status)
+    }
   })
 })

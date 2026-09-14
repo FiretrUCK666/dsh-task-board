@@ -17,7 +17,7 @@ import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
 import { isHeartbeatStale } from '../../core/scheduler.ts'
-import { COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskStatus } from '../../core/tasks.ts'
+import { adjacentStatus, COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount, taskViewedBaseline } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -591,7 +591,11 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     return t('board.cruiseStatusOff')
   })()
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
-  const [dragReject, setDragReject] = useState<TaskStatus | undefined>(undefined)
+  // A refused drop carries WHY, not just where. `resolveCardDrop` already computed
+  // a reason and the UI used to throw it away, leaving a 180ms border flash on the
+  // column that said "no" without ever saying why — while the reason was right
+  // there in the decision. Keeping it lets the board state the cause in words.
+  const [dragReject, setDragReject] = useState<{ status: TaskStatus; reason: 'busy' } | undefined>(undefined)
   // The id of the card being dragged and the insertion gap it would land at —
   // a gap now also recalls WHICH column it was computed for, so a cross-column
   // move previews (and drops at) an exact position, not just the tail. The
@@ -901,18 +905,39 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
       controller.moveTask(task.id, status, gapOf(status))
       return
     }
+    applyCardDrop(task, status)
+  }
+
+  /**
+   * THE one place a card is asked to change column. Both the pointer path (drop)
+   * and the keyboard path (`[` / `]`) come through here, so the keyboard can never
+   * reach a transition a drag would refuse — the guard, the run-vs-move judgment
+   * and the refusal notice exist once. The insertion position is read from the
+   * live drop-gap ref (undefined for a keyboard move, which lands at the tail —
+   * the same place a drop with no previewed gap lands).
+   */
+  const applyCardDrop = (task: TaskRecord, status: TaskStatus): void => {
+    const gapRef = dropGapRef.current
+    const beforeId = gapRef !== undefined && gapRef.status === status ? gapRef.beforeId : undefined
     const decision = resolveCardDrop(task, status)
     if (decision.kind === 'move') {
-      controller.moveTask(task.id, decision.status, gapOf(decision.status))
+      controller.moveTask(task.id, decision.status, beforeId)
     } else if (decision.kind === 'run') {
-      // Dropping on 'running' means "run again" (same semantics as the
-      // detail button; the shared run guard rejects a live run).
+      // Landing on 'running' means "run again" (same semantics as the detail
+      // button; the shared run guard rejects a live run).
       void controller.rerunTask(task.id)
     } else if (decision.kind === 'reject') {
-      setDragReject(status)
+      setDragReject({ status, reason: decision.reason })
       if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
       rejectTimer.current = setTimeout(() => { setDragReject(undefined) }, 600)
     }
+  }
+
+  /** Step a card one column along the board's own COLUMNS order (keyboard). */
+  const stepCard = (task: TaskRecord, direction: -1 | 1): void => {
+    const next = adjacentStatus(task.status, direction)
+    if (next === undefined) return // already at an end: nothing to do, no noise
+    applyCardDrop(task, next)
   }
 
   // The viewer hint only matters while something is actually waiting on the
@@ -1295,6 +1320,16 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                 才亮点，无则安静。 */}
             {renderNotifyBell()}
           </span>
+          {/* A refused drop explains itself here, in words, for the same reason the
+              project puts every other rule on a real control: the 180ms flash on
+              the column says "no" and nothing else, and `resolveCardDrop` had the
+              cause all along. `aria-live="polite"` so the refusal reaches a screen
+              reader too — a colour flash never does. */}
+          {dragReject !== undefined && (
+            <p className={css.dragRejectHint} role="status" aria-live="polite">
+              {t('board.dragRejectBusy', { column: t(STATUS_KEY[dragReject.status]) })}
+            </p>
+          )}
           {/* 紧凑列导航（仅 compact 档显示）：它是紧凑工具列的第三轨，与
               整理/自动化、筛选同属一个 DECLARED grid —— 间距由轨道与 row-gap
               声明，不再由"上一行的盒子底边"推导。板头盒底与条带之间那几像素
@@ -1567,7 +1602,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
               className={css.column}
               data-status={column.status}
               data-dragover={dragOver === column.status ? '' : undefined}
-              data-dragreject={dragReject === column.status ? '' : undefined}
+              data-dragreject={dragReject?.status === column.status ? '' : undefined}
               data-dropaccept={dropAccept === column.status ? 'link' : undefined}
               onDragOver={event => {
                 // The drag edge auto-scroll targets the column under the
@@ -1742,6 +1777,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       unviewed={taskUnviewed(task)}
                       unviewedCount={taskUnviewedCount(task)}
                       awaitingDecision={view.awaitingDecision}
+                      onMoveStep={direction => { stepCard(task, direction) }}
                       selected={selectedCards.includes(task.id)}
                       onClick={event => { cardClick(task.id, event) }}
                       onQuickRun={taskExecutable(task) ? () => { void controller.rerunTask(task.id) } : undefined}

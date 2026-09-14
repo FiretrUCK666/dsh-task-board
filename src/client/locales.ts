@@ -225,6 +225,7 @@ export const zh = {
   'status.move.backlog': '移到待规划',
   'status.move.todo': '移到待办',
   'status.move.done': '移到已完成',
+  'board.dragRejectBusy': '这条还有一轮在跑，所以不能移到{column}。等它结束，或先插话。',
   'detail.runBlockedBusy': '这条任务已经有一轮在跑了：等它结束，或先插话。',
   'detail.rerunHint': '以当前最新执行 Prompt 开启全新一轮执行（评论是在旧会话中继续对话）',
   'detail.refine': '需求完善',
@@ -565,6 +566,7 @@ export const zh = {
      reading a card retires 「新」, but only a decision retires this one. It is
      never a breathing state — the breath belongs to unread alone. */
   'card.awaitingDecision': '待你决断',
+  'card.keyboardLabel': '{title}，{column}。[ 与 ] 键移到相邻列；回车打开。',
   'card.awaitingDecisionTitle': '已跑完，等你在待审核列通过或打回；看过之后仍然算未决',
   /* Header demand row: the board stating, in words, what it owes the user.
      The bell badge counts folded notification ROWS and a column header counts
@@ -844,6 +846,7 @@ export const en: Record<keyof typeof zh, string> = {
   'status.move.backlog': 'Move to Backlog',
   'status.move.todo': 'Move to To Do',
   'status.move.done': 'Move to Done',
+  'board.dragRejectBusy': 'A round is still running, so this cannot move to {column}. Wait for it, or steer it.',
   'detail.runBlockedBusy': 'This task already has a round running: wait for it, or steer it.',
   'detail.rerunHint': 'Start a fresh round with the current run prompt (comments continue the old session)',
   'detail.refine': 'Refine Requirement',
@@ -1181,6 +1184,7 @@ export const en: Record<keyof typeof zh, string> = {
   'card.nextScheduled': 'Scheduled · runs automatically',
   'card.nextChain': 'Chaining · next round after completion',
   'card.awaitingDecision': 'Awaiting your decision',
+  'card.keyboardLabel': '{title}, {column}. Press [ or ] to move it one column; Enter opens it.',
   'card.awaitingDecisionTitle': 'The run finished and is waiting in Review for you to approve or send back; it still counts after you have looked',
   'board.demand': '{n} need you · {m} in review',
   'board.demandTitle': 'Need you = sessions suspended on your answer. In review = runs that finished and nobody has approved or sent back yet (looked-at ones still count)',
