@@ -1392,7 +1392,13 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
               {t('board.activity')}
             </Button>
             {/* 检查更新：常驻的 ghost 按钮（与模式组同进同退，窄屏同行换列不断行）。
-                点一下即查；有新版时同一按钮改文案，再点重开结果 Dialog。 */}
+                点一下即查；有新版时同一按钮改文案，再点重开结果 Dialog。
+
+                为什么必须常驻：**检查只由这个按钮触发**——没有自动检查，也没有定时器。
+                把它藏到「有新版时」看起来更克制，实际会让这个功能永久不可达（藏起来的
+                入口等于不存在，硬性规范 11③）。它确实与邻居分类不同（那三个是模式开关，
+                靠 aria-pressed 区分），但可达性优先于分类洁癖；真正的整理（把维护动作搬去
+                设置卡）需要先给它另一个入口，不是把入口摘掉。 */}
             <Button
               variant="ghost"
               title={t('board.update.check')}
