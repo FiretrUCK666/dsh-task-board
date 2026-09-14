@@ -268,9 +268,13 @@ components:
 
 - **列**：`.columns` 是五等分的横向布局，每列 `border-radius: lg (20px)`，列内卡片列表是
   该列**唯一的滚动体**（`overflow-y: auto`）。列与列之间靠留白分开，不靠分隔线。
-- **板头是具名 grid，不是 flex 流**。桌面档：导航行 `"back title cruise"` / 状态行
-  `"state state state"`；工具行 `"modes"` / `"search"`。层级由区域名说明，而不是靠 `order`
-  加自动外边距堆出来——后者在窄屏会塌掉。
+- **板头两档用的是两套不同的机制，各有各的理由。** 桌面档是 **flex 行 + 一个具名 spacer**
+  （`.boardRow` 是 `display: flex`）：右簇靠 `.boardSpacer` 弹到末端，**刻意不用
+  `margin-left: auto`**——那个写法只右对齐换行后的首项，一换行即散架。紧凑档（< 680px）则
+  改为**具名 grid 区域**，层级由区域名说明而不是靠 `order` 加自动外边距堆出来：导航行
+  `"back title cruise"` / `"state state state"`，工具行 `"modes"` / `"search"`。
+  换句话说：**具名区域是窄屏才需要的东西**（那时一行装不下，必须确定性地换行），
+  桌面的 flex + spacer 已经够用，且它的失败模式被这行 spacer 关掉了。
 - **响应式的参照是板自身的盒子宽度，永远不是视口。** 板声明
   `container-type: inline-size; container-name: dsh-tb`，所有紧凑规则都是
   `@container dsh-tb (max-width: 680px)`。会话面板同理，声明 `dsh-tb-panel`（600px）。
@@ -395,8 +399,8 @@ components:
 
 - **列导航（紧凑档）:** 五等分标签，药丸形，短名 + `aria-label` 全名。选中档用强调色 10% 填充
   + 强调色描边 + 更强墨色，**并额外带 `2px` 强调色 outline**（窄屏看不清描边时的兜底）。
-- **板头工具栏:** 一行「模式」+ 一行「搜索」，由具名 grid 区域声明。板名与导航同排，
-  但窄屏确定性地换到第二行——不靠 `order` 猜。
+- **板头工具栏:** 桌面档是一行「模式」+ 一行「搜索」的 flex 行；**紧凑档**才改成具名区域
+  的两条轨道（`"modes"` / `"search"`），板名与导航在窄屏确定性地换到第二行——不靠 `order` 猜。
 - **拇指栏（紧凑档）:** 底部 dock，放新建、通知铃与动态；左右下沿的出血量由
   `--dsh-tb-dock-x` / `--dsh-tb-dock-b` 两个令牌单点声明，内流元素用负边距精确花掉它们。
 
