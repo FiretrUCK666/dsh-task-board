@@ -280,6 +280,41 @@ function QuestionFlow({ question, sessionId, controller }: {
 
   const disabled = busy !== undefined
 
+  /**
+   * The option list is announced as `role="radiogroup"` (single-select) or `role="group"`
+   * (multi-select), and a radiogroup PROMISES arrow-key navigation with roving tabindex.
+   * Neither existed: the options were plain buttons reachable only by Tab, so the
+   * announced interaction model was false and a five-option question cost five tab
+   * stops. The roles were right; the behaviour was missing.
+   *
+   * WAI-ARIA radio grammar: Up/Down (and Left/Right, which the pattern also allows)
+   * move within the group AND select, wrapping at both ends; Home/End jump to the
+   * ends. For a checkbox group the arrows only move — toggling on arrow is checkbox
+   * behaviour, not radio behaviour, and this group is a set of independent answers.
+   * Enter keeps its existing job (submit the whole batch once every question is
+   * complete); the two never collide because they are different keys.
+   */
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const onOptionKeyDown = (event: React.KeyboardEvent, optionIndex: number): void => {
+    const count = options.length
+    if (count === 0) return
+    let next: number | undefined
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (optionIndex + 1) % count
+    else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (optionIndex - 1 + count) % count
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = count - 1
+    if (next === undefined) return
+    event.preventDefault()
+    const target = options[next]
+    if (target === undefined) return
+    if (item?.multiSelect !== true) choose(target.label)
+    optionRefs.current[next]?.focus()
+  }
+  // Roving tabindex: the group is ONE stop, and the checked option (or the first when
+  // nothing is checked) is the one that carries it.
+  const selectedOptionIndex = options.findIndex(option => draft.selected.includes(option.label))
+  const rovingIndex = selectedOptionIndex >= 0 ? selectedOptionIndex : 0
+
   return (
     <section className={css.interactionCard} data-plan={undefined} aria-label={item?.question ?? t('review.planAwaiting')}>
       <header className={css.interactionHead}>
@@ -345,9 +380,15 @@ function QuestionFlow({ question, sessionId, controller }: {
                     role={item?.multiSelect === true ? 'checkbox' : 'radio'}
                     aria-checked={selected}
                     aria-label={display.label}
+                    ref={element => { optionRefs.current[optionIndex] = element }}
+                    tabIndex={optionIndex === rovingIndex ? 0 : -1}
                     disabled={disabled}
                     onClick={() => { choose(option.label) }}
                     onKeyDown={event => {
+                      // Arrow/Home/End first: they belong to the radio group and must
+                      // not be swallowed by the Enter shortcut below.
+                      onOptionKeyDown(event, optionIndex)
+                      if (event.defaultPrevented) return
                       // Native shortcut: Enter on an option submits the whole
                       // batch, but only once every question is complete.
                       if (event.key !== 'Enter' || !drafts.every(draftCompleted)) return
@@ -434,8 +475,16 @@ function QuestionFlow({ question, sessionId, controller }: {
               <button
                 type="button"
                 className={css.iconButton}
-                aria-label={t('review.interactionNext')}
-                title={t('review.interactionNext')}
+                /* The pager's forward arrow and the primary button were BOTH named
+                   「下一题」 while behaving differently: the arrow moves between
+                   questions without submitting (and without the "answer this one
+                   first" guard the primary button carries). Two controls with one
+                   accessible name is an ambiguous target for voice control — "click
+                   下一题" matches either — and it also hid the guard difference from
+                   screen-reader users, who could not tell which one would refuse.
+                   The arrow now says what it actually does. */
+                aria-label={t('review.interactionNextQuestion')}
+                title={t('review.interactionNextQuestion')}
                 disabled={last || disabled}
                 onClick={() => { replaceProgress(index + 1, drafts); setError(undefined) }}
               >

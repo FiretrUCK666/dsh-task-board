@@ -678,6 +678,29 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(bar).not.toMatch(/padding:[^;]*\b14px\b/)
   })
 
+  it('a widget role that promises arrow keys implements them', () => {
+    // `role="tablist"` and `role="radiogroup"` are not decoration: ARIA defines both
+    // as composites whose arrow keys move within the widget, and both also define
+    // roving tabindex (the widget is ONE stop in the page's tab order). The board
+    // announced both roles while implementing neither — a keyboard user walked five
+    // tab stops for one navigator, and a screen reader was told to expect an
+    // interaction that did not exist. Announcing less would also have been honest;
+    // implementing the grammar is better, because the roles were correct.
+    //
+    // This check is deliberately coarse — it asserts that the file which declares the
+    // role also handles arrow keys and sets a tabIndex — because the alternative
+    // (rendering the component and driving keys) is not available in this suite. It
+    // catches the failure mode that actually happened: role present, behaviour absent.
+    const probe = (file: string, role: string) => {
+      const text = readFileSync(fileURLToPath(new URL(`../src/client/${file}`, import.meta.url)), 'utf8')
+      expect(text, `${file} must still declare ${role}`).toContain(role)
+      expect(text, `${file} declares ${role} so it must handle arrow keys`).toMatch(/Arrow(Right|Left|Down|Up)/)
+      expect(text, `${file} declares ${role} so it needs roving tabindex`).toContain('tabIndex=')
+    }
+    probe('board/TaskBoard.tsx', 'role="tablist"')
+    probe('board/InteractionCard.tsx', "'radiogroup'")
+  })
+
   it('paragraphs carry no inherited spacing inside the board', () => {
     // A `<p>` used as a LAYOUT row kept the UA's 1em margin (an invisible 16px
     // above and below) — the whole 「会话 3 下面一大片空」 gap. Rhythm here is

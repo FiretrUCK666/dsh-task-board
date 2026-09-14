@@ -490,6 +490,7 @@ export declare const zh: {
     'review.questionIndex': string;
     'review.interactionTypePlaceholder': string;
     'review.interactionNext': string;
+    'review.interactionNextQuestion': string;
     'review.interactionPrev': string;
     'review.interactionSubmit': string;
     'review.interactionSkip': string;

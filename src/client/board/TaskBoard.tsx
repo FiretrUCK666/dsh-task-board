@@ -659,6 +659,34 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     if (root === null) return
     root.scrollLeft = scrollLeftForColumn(columnIndex(status), columnLefts(root), root.clientWidth, root.scrollWidth)
   }
+  /**
+   * The compact column navigator is announced as `role="tablist"` / `role="tab"`, and
+   * an ARIA tablist PROMISES arrow-key navigation plus roving tabindex — neither of
+   * which existed: the tabs were plain buttons with no key handling, so the announced
+   * interaction model was false and a keyboard user had five tab stops to walk. The
+   * roles were right (this really is a tablist over five panes); the behaviour was
+   * missing, so the behaviour is what got written.
+   *
+   * WAI-ARIA tablist grammar: Left/Right move (wrapping), Home/End jump to the ends,
+   * and only the active tab stays in the page's tab order.
+   */
+  const columnTabRefs = useRef<Partial<Record<TaskStatus, HTMLButtonElement | null>>>({})
+  const onColumnTabKeyDown = (event: React.KeyboardEvent, status: TaskStatus): void => {
+    const at = columnIndex(status)
+    let next: number | undefined
+    if (event.key === 'ArrowRight') next = (at + 1) % COLUMNS.length
+    else if (event.key === 'ArrowLeft') next = (at - 1 + COLUMNS.length) % COLUMNS.length
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = COLUMNS.length - 1
+    if (next === undefined) return
+    event.preventDefault()
+    const target = COLUMNS[next]?.status
+    if (target === undefined) return
+    jumpToColumn(target)
+    // Moving focus with the selection is the tablist contract; without it the user
+    // would scroll the track while leaving focus behind on the old tab.
+    columnTabRefs.current[target]?.focus()
+  }
   // Column-identity anchoring: whenever the board box changes width (the
   // shell sidebar opening/closing, a rotation, a split-screen drag), the track
   // is re-aimed at the SAME COLUMN's left edge. Pixels are never the truth,
@@ -1380,11 +1408,17 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   key={column.status}
                   type="button"
                   role="tab"
+                  ref={element => { columnTabRefs.current[column.status] = element }}
                   className={css.columnTab}
                   aria-selected={activeColumn === column.status}
                   aria-label={t(STATUS_KEY[column.status])}
+                  /* Roving tabindex: the tablist is ONE stop in the page's tab order,
+                     and Arrow/Home/End move within it (see onColumnTabKeyDown). Five
+                     tab stops for one widget is what the ARIA pattern exists to avoid. */
+                  tabIndex={activeColumn === column.status ? 0 : -1}
                   data-active={activeColumn === column.status ? 'true' : undefined}
                   onClick={() => { jumpToColumn(column.status) }}
+                  onKeyDown={event => { onColumnTabKeyDown(event, column.status) }}
                 >
                   <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
                   <span className={css.columnTabLabel}>{t(STATUS_SHORT_KEY[column.status])}</span>
@@ -1847,6 +1881,21 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                         explain what creating does. */}
                     {snapshot.tasks.length === 0 && column.status === 'backlog' && (
                       <span className={css.columnEmptyHint}>{t('board.emptyFirstRunHint')}</span>
+                    )}
+                    {/* What this column MEANS. The line above answers "why is it
+                        empty"; this answers "what happens here". It previously
+                        existed only as a `title` on the column heading — a hover-only
+                        explanation, which hard rule 11③ forbids for anything a user
+                        must read to use the surface, and these are rules of the
+                        system (「一次只做少量，完工才拉新」) rather than trivia.
+                        Shown only when the board HAS tasks, the column is empty and no
+                        filter is active: an empty column is the one place with room,
+                        while first run already spends its lines on "how to start" and
+                        a filter result is about the query, not the column. One line,
+                        never more — a stack of explanations is the 「压扁」 failure the
+                        dual-width rule names. */}
+                    {snapshot.tasks.length > 0 && filter.trim() === '' && (
+                      <span className={css.columnEmptyHint}>{t(COLUMN_HINT_KEY[column.status])}</span>
                     )}
                   </div>
                 )}
