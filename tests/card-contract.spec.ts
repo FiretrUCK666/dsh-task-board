@@ -29,6 +29,8 @@ import { withSessionRules } from '../src/core/automation.ts'
 
 const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
 const source = readFileSync(cssPath, 'utf8')
+/** The second stylesheet (the plugin settings surface) — same scale contract. */
+const settingsSource = readFileSync(fileURLToPath(new URL('../src/client/settings-card.module.css', import.meta.url)), 'utf8')
 
 /** Extract the top-level rule block whose opening line is exactly ".name {". */
 function ruleOf(name: string): string | undefined {
@@ -211,6 +213,10 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     // wrong. `.interactionTitle` sat at 15px for exactly that reason: on no
     // tier, in no allowlist, reported by nobody.
     //
+    // Both stylesheets are covered, like the token audit is: the settings card is
+    // a second surface with its own scale, and it happened to be correct — which
+    // is exactly why it needs the same guarantee rather than luck.
+    //
     // A new size must either join this allowlist with its reason, or move onto
     // the scale. Keep the list short; the point is that the scale is a decision,
     // not a drift.
@@ -221,20 +227,25 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       { px: '17px', why: /mdHeading/ },
     ]
     const bad: string[] = []
-    const lines = source.split('\n')
-    lines.forEach((line, index) => {
-      const hit = line.match(/font-size:\s*(\d+(?:\.\d+)?px)/)
-      if (hit === null) return
-      const px = hit[1]
-      if (SCALE.has(px)) return
-      // Nearest enclosing selector, same walk as the radius allowlist above.
-      let open = index
-      while (open >= 0 && open > index - 40 && !lines[open].includes('{')) open--
-      const context = lines.slice(Math.max(0, open), index + 1).join('\n')
-      if (!CONTENT_PASS.some(entry => entry.px === px && entry.why.test(context))) {
-        bad.push(`L${index + 1}: ${line.trim()}`)
-      }
-    })
+    for (const [label, text] of [
+      ['board.module.css', source],
+      ['settings-card.module.css', settingsSource],
+    ] as const) {
+      const lines = text.split('\n')
+      lines.forEach((line, index) => {
+        const hit = line.match(/font-size:\s*(\d+(?:\.\d+)?px)/)
+        if (hit === null) return
+        const px = hit[1]
+        if (SCALE.has(px)) return
+        // Nearest enclosing selector, same walk as the radius allowlist above.
+        let open = index
+        while (open >= 0 && open > index - 40 && !lines[open].includes('{')) open--
+        const context = lines.slice(Math.max(0, open), index + 1).join('\n')
+        if (!CONTENT_PASS.some(entry => entry.px === px && entry.why.test(context))) {
+          bad.push(`${label} L${index + 1}: ${line.trim()}`)
+        }
+      })
+    }
     expect(bad, 'font sizes must be on 11/12/13/14/16, or join the content-pass allowlist with a reason').toEqual([])
   })
 
