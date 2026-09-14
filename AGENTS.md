@@ -473,6 +473,15 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   （Markdown 里可写成 `<!-- dsw-missing: --dsw-foo -->`；JSON 没有注释语法，写进字符串即可）。
   标记是**名字级**豁免，且只在写了标记的文档里生效——没有标记的缺失名字一律报错。
 
+- **Impeccable 的检测器（`impeccable detect`）在本项目上是空转的**——经实测确认，不是猜测：
+  它只解析 HTML 文件，对 CSS Modules 与 TSX 一律返回零发现（用已知有问题的探针文件验证过：
+  HTML 探针报出 `low-contrast` / `ai-color-palette` 两条，而含同样问题的 `.module.css` 与
+  `.tsx` 探针均为零）。**本项目没有 HTML 文件**——表面就是 TSX + CSS Modules。
+  因此它的「exit 0 / 0 findings」**不构成对本项目的任何结论**，不要把它当作代码干净的证据；
+  本技术栈里的等价静态门禁是上面那个 `verify-design-docs.mjs`（令牌引用、别名作用域、
+  快照值、折叠控件 aria-controls）加两个 CSS 布局契约 spec。检测器的退出码也不可信
+  （实测有发现时仍可能返回 0），要判读只看 JSON。
+
 ### 核心层（`src/core/` 纯逻辑 + 关键职责）
 
 - 模块一行：`tasks`（状态机/车道/`newExternalRound`）· `schedule/scheduler`（cron tick）· `cruise`（窗口 v4）· `presets/run-presets` · `automation`（规则 + 就绪）· `colors/session-list/session-display/comment-thread/question-rpc/store` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）。
