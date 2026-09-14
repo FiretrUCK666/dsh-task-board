@@ -5260,11 +5260,18 @@ button.interactionOption:focus-visible,
   line-height: 16px;
   color: var(--dsh-tb-text-3);
 }
+/* The title tier (16px), like every other container title in the board
+   (.boardTitle / .modalTitle / .detailTitle / .reviewTitle). It was 15px, which
+   is the one size on this stylesheet that belongs to no tier: DESIGN.md's own
+   Four-Size Rule says interface text uses 11/12/13/14 plus the 16px title step,
+   and 15px is reserved for rendered CONTENT (the Markdown pass). An off-scale
+   size is invisible to review — it just looks slightly wrong — and the project's
+   detector cannot see CSS Modules at all, so nothing was going to report it. */
 .interactionTitle {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
-  line-height: 21px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 .interactionHeadActions {

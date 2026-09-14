@@ -568,8 +568,15 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(ruleOf('interactionOptionLine')).toContain('flex-wrap: wrap')
     expect(ruleOf('interactionOptionLine')).toContain('min-width: 0')
     // Text never leaves its box, and the font size never shrinks for space.
+    // The bound is a FLOOR, not a ceiling: hard rule 11 forbids shrinking type to
+    // save room, and DESIGN.md's Four-Size Rule puts the title step at 16px. This
+    // asserted `1[1-5]px`, which is an upper bound wearing a floor's name — it
+    // rejected the 16px title tier the design system itself sanctions, so a size
+    // moving UP onto the scale failed a test about sizes shrinking.
+    // The real invariant: interface text never goes below 11px.
     for (const name of ['interactionTitle', 'interactionOptionLabel', 'interactionProgress']) {
-      expect(ruleOf(name)).toMatch(/font-size:\s*1[1-5]px/)
+      const size = Number(/font-size:\s*(\d+(?:\.\d+)?)px/.exec(ruleOf(name) ?? '')?.[1])
+      expect(size, `.${name} must not shrink below the 11px floor`).toBeGreaterThanOrEqual(11)
     }
     expect(ruleOf('interactionOptionLabel')).toContain('overflow-wrap: anywhere')
     // The custom answer field's textarea mirrors the field's own metrics, so

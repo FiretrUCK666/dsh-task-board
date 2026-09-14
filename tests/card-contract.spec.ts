@@ -202,6 +202,42 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     expect(bad, 'fixed-px radii must join the allowlist with a reason, or use the pill/ladder tokens').toEqual([])
   })
 
+  it('every interface font-size sits on the declared scale', () => {
+    // DESIGN.md's Four-Size Rule: interface text uses 11/12/13/14px plus the
+    // 16px title step, and the Content-Pass Exemption reserves 15/17/12.5px for
+    // RENDERED CONTENT (the Markdown pass), which is laid out as prose rather
+    // than as UI. Nothing enforced that: the detector cannot read CSS Modules,
+    // and review does not notice an off-scale size — it just looks slightly
+    // wrong. `.interactionTitle` sat at 15px for exactly that reason: on no
+    // tier, in no allowlist, reported by nobody.
+    //
+    // A new size must either join this allowlist with its reason, or move onto
+    // the scale. Keep the list short; the point is that the scale is a decision,
+    // not a drift.
+    const SCALE = new Set(['11px', '12px', '13px', '14px', '16px'])
+    const CONTENT_PASS: { px: string; why: RegExp }[] = [
+      { px: '12.5px', why: /mdCodeBlock/ },
+      { px: '15px', why: /mdHeading/ },
+      { px: '17px', why: /mdHeading/ },
+    ]
+    const bad: string[] = []
+    const lines = source.split('\n')
+    lines.forEach((line, index) => {
+      const hit = line.match(/font-size:\s*(\d+(?:\.\d+)?px)/)
+      if (hit === null) return
+      const px = hit[1]
+      if (SCALE.has(px)) return
+      // Nearest enclosing selector, same walk as the radius allowlist above.
+      let open = index
+      while (open >= 0 && open > index - 40 && !lines[open].includes('{')) open--
+      const context = lines.slice(Math.max(0, open), index + 1).join('\n')
+      if (!CONTENT_PASS.some(entry => entry.px === px && entry.why.test(context))) {
+        bad.push(`L${index + 1}: ${line.trim()}`)
+      }
+    })
+    expect(bad, 'font sizes must be on 11/12/13/14/16, or join the content-pass allowlist with a reason').toEqual([])
+  })
+
   it('the turning spinner keeps its circle grammar (square box + 50% + cut + spin)', () => {
     const spinner = expectRule('spinner')
     expect(spinner).toContain('border-radius: 50%')
