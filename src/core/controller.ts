@@ -1175,7 +1175,7 @@ export class BoardController {
 
   /**
    * Mark ONE task (and its rounds) viewed without navigating — a triage row's
-   * inline "标已读". Same monotone read-state law as `markAllViewed`, scoped
+   * inline "标已读". Same monotone read-state law as the bulk clears, scoped
    * to a single record so the board stays where it is.
    */
   markTaskViewed(taskId: string): void {
@@ -3518,13 +3518,39 @@ export class BoardController {
     this.scheduleReconcile()
     if (!this.boardOpen) return
     const current = currentOf(this.deps.sessions)
-    if (current !== this.lastCurrent) this.closeBoard()
+    // A wait that fires WHILE the user watches the board must not close it:
+    // navigating to a built-in selection (a native session the user opened)
+    // closes the board, but a wait arriving on a session the board itself
+    // stages (execution / linked / refine — the board's own conversations,
+    // whose "current" the list may surface while the user reads the board)
+    // keeps it open. Otherwise the exact moment a question pops is the moment
+    // the board vanishes — the notification's 去回答 would reopen what the
+    // wait just closed, every single time.
+    if (current !== this.lastCurrent && !this.isBoardStagedSession(current)) this.closeBoard()
     this.lastCurrent = current
     // The session list also carries live wait states (approval / plan-review
     // / question) and the review page's session facts (cwd / agent preset).
     // Re-render consumers so a card's "等待回应" chip and the review page's
     // banner appear the moment the session starts waiting — without a poll.
     this.notify()
+  }
+
+  /**
+   * Whether a session selection belongs to the board's own stage: any related
+   * session of any task (execution rounds, binds, the refine session, live
+   * linked rows). The board stages these conversations itself (run / bind /
+   * create), so the list surfacing one as `current` is the board's own echo,
+   * never the user walking away to a native chat. Pure read over the ledger
+   * + linked derivation — no new state, no second judgment.
+   */
+  private isBoardStagedSession(sessionId: string | undefined): boolean {
+    if (sessionId === undefined) return false
+    for (const task of this.tasks) {
+      for (const { sessionId: related } of relatedSessionIdsOf(task, this.linkedOf(task).map(row => row.sessionId))) {
+        if (related === sessionId) return true
+      }
+    }
+    return false
   }
 
   private lastCurrent: string | undefined = undefined

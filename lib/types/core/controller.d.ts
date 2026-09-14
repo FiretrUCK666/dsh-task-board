@@ -848,7 +848,7 @@ export declare class BoardController {
     markAllViewed(): void;
     /**
      * Mark ONE task (and its rounds) viewed without navigating — a triage row's
-     * inline "标已读". Same monotone read-state law as `markAllViewed`, scoped
+     * inline "标已读". Same monotone read-state law as the bulk clears, scoped
      * to a single record so the board stays where it is.
      */
     markTaskViewed(taskId: string): void;
@@ -1600,6 +1600,15 @@ export declare class BoardController {
     private settleRound;
     /** Reconcile running tasks and close the board when the user navigates. */
     private onSessionsChanged;
+    /**
+     * Whether a session selection belongs to the board's own stage: any related
+     * session of any task (execution rounds, binds, the refine session, live
+     * linked rows). The board stages these conversations itself (run / bind /
+     * create), so the list surfacing one as `current` is the board's own echo,
+     * never the user walking away to a native chat. Pure read over the ledger
+     * + linked derivation — no new state, no second judgment.
+     */
+    private isBoardStagedSession;
     private lastCurrent;
     /** Execution ids launched on this page; they settle via their live watch, never list reconciliation. */
     private readonly activeExecutionIds;

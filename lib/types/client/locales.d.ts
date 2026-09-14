@@ -273,13 +273,10 @@ export declare const zh: {
     'board.notifyFilter.waiting': string;
     'board.notifyFilter.review': string;
     'board.notifyFilterEmpty': string;
-    'board.notifyMarkAll': string;
-    'board.notifyMarkAllTitle': string;
     'board.notifyMarkGroup': string;
     'board.notifyMarkGroupTitle': string;
     'board.notifyGoSession': string;
-    'board.notifySnooze': string;
-    'board.notifySnoozeTitle': string;
+    'board.notifyGoAnswer': string;
     'board.notifyApprove': string;
     'review.sendBack': string;
     'review.sendBackTitle': string;
@@ -532,6 +529,7 @@ export declare const zh: {
     'card.batchProgress': string;
     'card.waiting': string;
     'waiting.approval': string;
+    'waiting.approvalHint': string;
     'waiting.plan-review': string;
     'waiting.question': string;
     'card.waitingTitle': string;

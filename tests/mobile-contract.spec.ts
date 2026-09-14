@@ -1046,6 +1046,34 @@ describe('no raw color literals leak in (design-system rule)', () => {
     expect(dot).toContain('--dsh-tb-attention')
     expect(dot).not.toMatch(/animation|transition/)
   })
+
+  it('the arrival ping is a one-shot tense on the same dot (same tone, breath tokens, reduced-motion safe)', () => {
+    // The dot says "something is new" (static); the ping tenses it to "JUST
+    // arrived" — same element, same attention tone, never a second signal.
+    // One-shot (iteration count 1), so a landed fact rests as the dot instead
+    // of looping forever; reduced-motion replays it slower, never zeroes it
+    // (it IS the arrival tense, same law as the breath lights).
+    const pulse = ruleOf('notifyPulse')
+    expect(pulse).toContain('dshTbNotifyPing')
+    expect(pulse).toMatch(/animation:[^;]*\b1\b/)
+    expect(source).toMatch(/@keyframes dshTbNotifyPing\s*\{[\s\S]*?var\(--dsh-tb-attention/)
+    // The demand row flashes the same tense while the board stays open (the
+    // bell alone is behind a tap): one-shot halo, attention tone, resting
+    // back to the static row. Anchored on the attribute selector (the static
+    // `.boardDemand` rule never animates — the flash is the tense, not the row).
+    // blockWith answers with the ENCLOSING block, so match the attribute
+    // inside it rather than demanding the exact selector text.
+    const demandFresh = blockWith(/dshTbDemandFlash/)
+    expect(demandFresh, 'the demand flash must be anchored on the fresh state').toContain('.boardDemand[data-fresh]')
+    expect(source).toMatch(/@keyframes dshTbDemandFlash\s*\{[\s\S]*?var\(--dsh-tb-attention/)
+    // The waiting-row excerpt is a second-line scan slot inside the wrapping
+    // row: full-width by line (让位), clamped, tertiary ink, unbreakable-safe.
+    const excerpt = ruleOf('notifyExcerpt')
+    expect(excerpt).toContain('flex: 1 1 100%')
+    expect(excerpt).toContain('-webkit-line-clamp: 2')
+    expect(excerpt).toContain('var(--dsh-tb-text-3)')
+    expect(excerpt).toContain('overflow-wrap: anywhere')
+  })
 })
 
 describe('column tab math', () => {
@@ -1106,6 +1134,8 @@ describe('reduced-motion functional exemption', () => {
     // spinner's exemption: slower and gentler, never `animation: none`.
     expect(reduced).not.toMatch(/\.card\[data-(unviewed|active)\][\s\S]{0,80}animation:\s*none/)
     expect(reduced).not.toMatch(/\.sessionRow::after\s*\{\s*\n?\s*animation:\s*none/)
+    expect(reduced).not.toMatch(/\.notifyPulse\s*\{[\s\S]{0,80}animation:\s*none/)
+    expect(reduced).toMatch(/\.notifyPulse\s*\{[\s\S]*?animation-duration:/)
     // The amplitude lives in tokens, which is how the pulse is softened
     // instead of deleted.
     expect(reduced).toMatch(/--dsh-tb-breath:\s*[\d.]+s/)

@@ -233,6 +233,18 @@
   50% { box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)); }
 }
 
+/* One-shot arrival replay for the bell's unseen dot: the dot itself is the
+   "something is new" fact (static, same attention tone); the pulse tenses it
+   to "JUST arrived". Keyed by arrival generation in the markup (`key` =
+   newest arrival instant), so each new generation replays once and then rests
+   as the static dot — no infinite motion for a fact that has already landed.
+   Same breath tokens, same reduced-motion law as every state light: slower
+   and gentler, never gone. */
+@keyframes dshTbNotifyPing {
+  0% { box-shadow: 0 0 0 0 var(--dsh-tb-attention-alpha); }
+  100% { box-shadow: 0 0 0 7px transparent; }
+}
+
 /* --- center-column takeover (global rules, attribute-scoped) ----------------- */
 
 [data-pane='conversation'],
@@ -506,6 +518,12 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   background: var(--dsh-tb-attention);
 }
 
+/* The one-shot replay half of the dot (see dshTbNotifyPing): same element,
+   same tone — the animation is the tense, not a second signal. */
+.notifyPulse {
+  animation: dshTbNotifyPing 900ms ease-out 1;
+}
+
 /* 通知列表：一行一条（主区进任务详情 + 行内 triage 动作）。主区与动作区
    同行，窄屏换列为两行（主区上、动作下），控件数量不变、字号不变。 */
 .notifyList {
@@ -582,6 +600,25 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
   font-size: 12px;
   color: var(--dsh-tb-text-3);
+}
+
+/* Waiting-row excerpt: the quoted question/plan body (or the honest
+   missing-body / approval line). A SECOND flex line inside the row — the
+   row wraps, so this takes the full width under the title line instead of
+   squeezing beside the actions (让位, never 压扁). Clamped to two lines:
+   the row stays a scan line while still quoting enough to recognize the
+   ask. Tertiary ink: metadata, never the message. */
+.notifyExcerpt {
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--dsh-tb-text-3);
+  overflow-wrap: anywhere;
 }
 
 /* 工具行 = 筛选任务（左，与返回/板名同一条 x）+ 模式组（整理/自动化，右）：
@@ -695,6 +732,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Fresh-arrival flash for the demand row: while the board stays open, a new
+   wait must catch the eye HERE (the bell alone is behind a tap). One-shot,
+   same grammar as the bell ping (`key` = arrival generation replays it):
+   a brief attention-tinted halo that rests back to the static demand row.
+   Reduced-motion softens it with the shared breath tokens, never zeroes it —
+   it IS the arrival tense, same law as the card lights. */
+.boardDemand[data-fresh] {
+  animation: dshTbDemandFlash 900ms ease-out 1;
+}
+
+@keyframes dshTbDemandFlash {
+  0% { box-shadow: 0 0 0 0 var(--dsh-tb-attention-alpha); }
+  100% { box-shadow: 0 0 0 10px transparent; }
 }
 
 /* The engine note is a REAL button (same quiet line as the status text): on a
@@ -4313,6 +4365,17 @@ button.interactionOption:focus-visible,
      motion that only pleases is dropped. */
   .spinner {
     animation-duration: 1.4s;
+  }
+
+  /* The bell's arrival ping is the same class of message (it IS the "just
+     arrived" tense): it replays once, slower, then rests as the static dot. */
+  .notifyPulse {
+    animation-duration: 1.8s;
+  }
+
+  /* The demand flash with it (same tense, same law). */
+  .boardDemand[data-fresh] {
+    animation-duration: 1.8s;
   }
 }
 

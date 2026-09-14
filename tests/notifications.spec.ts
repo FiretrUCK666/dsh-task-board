@@ -4,7 +4,7 @@
  * never a notification.
  */
 import { describe, expect, it } from 'vitest'
-import { boardDemandOf, foldNotesByTask, noteKeyOf, notificationsExOf, notificationsOf } from '../src/client/board/notifications.ts'
+import { arrivalOf, boardDemandOf, foldNotesByTask, noteKeyOf, notificationsExOf, notificationsOf, stampWaitingArrivals, waitingBodyOf, waitingExcerptOf, WAITING_EXCERPT_BUDGET } from '../src/client/board/notifications.ts'
 import { taskUnviewed } from '../src/core/session-display.ts'
 import { createTask, settleExecution, startExecution } from '../src/core/tasks.ts'
 
@@ -75,12 +75,23 @@ describe('notificationsOf', () => {
     expect(notificationsExOf([reviewed], () => undefined, id => id, () => false)).toEqual([])
   })
 
-  it('a waiting row suppresses the same task review echo', () => {
+  it('a waiting row suppresses the same-SESSION review echo, never a sibling session', () => {
     const base = createTask({ title: 'R', description: '', prompt: 'p' }, NOW, 'r')
     const running = startExecution(base, NOW + 1, 'e1')
     const reviewed = settleExecution({ ...running.task, executions: running.task.executions.map(round => ({ ...round, sessionId: 's-1' })) }, 'e1', 'succeeded', NOW + 2, undefined)
-    const rows = notificationsExOf([reviewed], id => (id === 's-1' ? 'question' : undefined), id => id, () => true)
-    expect(rows.map(row => row.kind)).toEqual(['waiting'])
+    // Same session waits too → the louder waiting row stands alone.
+    const same = notificationsExOf([reviewed], id => (id === 's-1' ? 'question' : undefined), id => id, () => true)
+    expect(same.map(row => row.kind)).toEqual(['waiting'])
+    // An UNRELATED session waits → both rows stand: the finished run keeps
+    // its 通过/打回, the blocked sibling keeps its 去回答. Suppressing the
+    // gate here is what hid the decision behind a question on another lane.
+    const sibling = notificationsExOf(
+      [{ ...reviewed, refineSessionId: 's-2' }],
+      id => (id === 's-2' ? 'question' : undefined),
+      id => id,
+      () => true,
+    )
+    expect(sibling.map(row => `${row.kind}:${row.sessionId}`).sort()).toEqual(['review:s-1', 'waiting:s-2'])
   })
 
   it('a bound-but-never-run waiting session notifies (same related set as live)', () => {
@@ -130,6 +141,157 @@ describe('foldNotesByTask (one head per task, collapsed counts one)', () => {
 describe('noteKeyOf (THE row identity)', () => {
   it('builds task|session|kind for snooze keys, drawer keys and unseen sets', () => {
     expect(noteKeyOf({ taskId: 'a', sessionId: 's', kind: 'waiting' })).toBe('a|s|waiting')
+  })
+})
+
+describe('noteKeyOf (THE row identity)', () => {
+  it('builds task|session|kind for snooze keys, drawer keys and unseen sets', () => {
+    expect(noteKeyOf({ taskId: 'a', sessionId: 's', kind: 'waiting' })).toBe('a|s|waiting')
+  })
+})
+
+describe('waiting arrival clock (first-seen, never the round clock)', () => {
+  const arrival = (seen: ReadonlyMap<string, number>) =>
+    (note: { taskId: string; sessionId: string; kind: 'waiting' | 'review' }): number | undefined =>
+      arrivalOf(seen, note)
+
+  it('a wait that fires late in a long turn sorts by arrival, not by round start', () => {
+    // s-old's round started long ago; s-new's round started later — but the
+    // OLD session's wait arrived just now (a /plan popped at minute ten).
+    const tasks = [
+      task('early', NOW, {
+        executions: [{ id: 'e1', sessionId: 's-old', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+      }),
+      task('late', NOW + 1_000, {
+        executions: [{ id: 'e2', sessionId: 's-new', startedAt: NOW + 900, endedAt: undefined, result: undefined, error: undefined }],
+      }),
+    ]
+    const pending = (id: string | undefined): 'question' | undefined =>
+      id === 's-old' || id === 's-new' ? 'question' : undefined
+    // Round-clock order (legacy): the later-started round wins.
+    const legacy = notificationsExOf(tasks, pending, id => id)
+    expect(legacy.map(row => row.sessionId)).toEqual(['s-new', 's-old'])
+    // Arrival order: the just-arrived wait jumps first, whatever its start.
+    const seen = new Map([
+      ['early|s-old|waiting', NOW + 5_000],
+      ['late|s-new|waiting', NOW + 1_000],
+    ])
+    const arrived = notificationsExOf(tasks, pending, id => id, () => false, () => [], {}, arrival(seen))
+    expect(arrived.map(row => row.sessionId)).toEqual(['s-old', 's-new'])
+  })
+
+  it('stampWaitingArrivals stamps unseen waiting keys, keeps first-seen, drops the gone', () => {
+    const first = stampWaitingArrivals(new Map(), [
+      { taskId: 'a', sessionId: 's-1', kind: 'waiting' },
+      { taskId: 'a', sessionId: 's-1', kind: 'review' },
+    ], 100)
+    // Waiting keys stamp; review keys never enter the map.
+    expect([...first.entries()]).toEqual([['a|s-1|waiting', 100]])
+    const second = stampWaitingArrivals(first, [
+      { taskId: 'a', sessionId: 's-1', kind: 'waiting' },
+      { taskId: 'b', sessionId: 's-2', kind: 'waiting' },
+    ], 200)
+    // s-1 keeps its first stamp; s-2 stamps now.
+    expect(second.get('a|s-1|waiting')).toBe(100)
+    expect(second.get('b|s-2|waiting')).toBe(200)
+    const third = stampWaitingArrivals(second, [
+      { taskId: 'b', sessionId: 's-2', kind: 'waiting' },
+    ], 300)
+    // s-1 left the board: dropped, so the map cannot outgrow the bell.
+    expect([...third.keys()]).toEqual(['b|s-2|waiting'])
+  })
+
+  it('approval signals sort by arrival like any other wait', () => {
+    const tasks = [task('a', NOW, {
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    })]
+    const rows = notificationsExOf(tasks, () => 'approval' as const, id => id, () => false, () => [], {}, arrival(new Map()))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ kind: 'waiting', waitingKind: 'approval' })
+    expect(rows[0].excerpt).toBeUndefined()
+    expect(rows[0].answerable).toBeUndefined()
+  })
+})
+
+describe('waiting body (signal + content + affordance, one derivation)', () => {
+  const questionBatch = {
+    questions: [{ question: '要继续吗？', detail: undefined, intent: undefined }],
+    isPlanReview: false,
+  }
+  const planBatch = {
+    questions: [{ question: '', detail: '## 计划\n1. 先做 A\n2. 再做 B', intent: { kind: 'plan-review' } }],
+    isPlanReview: true,
+  }
+
+  it('a plan quotes its detail body and flags the plan grammar', () => {
+    expect(waitingBodyOf(planBatch)).toEqual({ text: '## 计划\n1. 先做 A\n2. 再做 B', isPlan: true })
+  })
+
+  it('a plan without detail falls back to its question line', () => {
+    expect(waitingBodyOf({
+      questions: [{ question: '执行这个计划？', detail: undefined, intent: { kind: 'plan-review' } }],
+      isPlanReview: true,
+    })).toEqual({ text: '执行这个计划？', isPlan: true })
+  })
+
+  it('a question quotes its first item; an empty batch is a shell', () => {
+    expect(waitingBodyOf(questionBatch)).toEqual({ text: '要继续吗？', isPlan: false })
+    expect(waitingBodyOf(undefined)).toBeUndefined()
+    expect(waitingBodyOf({ questions: [], isPlanReview: false })).toBeUndefined()
+    expect(waitingBodyOf({
+      questions: [{ question: '   ', detail: undefined, intent: undefined }],
+      isPlanReview: false,
+    })).toBeUndefined()
+  })
+
+  it('excerpts collapse whitespace and clamp to the budget with an ellipsis', () => {
+    expect(waitingExcerptOf('  要继续吗？ ')).toBe('要继续吗？')
+    const long = `x${'y'.repeat(WAITING_EXCERPT_BUDGET + 20)}`
+    const excerpt = waitingExcerptOf(long)
+    expect(excerpt.length).toBeLessThanOrEqual(WAITING_EXCERPT_BUDGET)
+    expect(excerpt.endsWith('…')).toBe(true)
+    expect(waitingExcerptOf('a\nb\tc')).toBe('a b c')
+  })
+
+  it('rows carry excerpt + answerable only with a readable carrier and an interactive host', () => {
+    const tasks = [task('a', NOW, {
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    })]
+    const pending = (id: string | undefined): 'question' | undefined =>
+      id === 's-1' ? 'question' : undefined
+    // Readable carrier + interactive host = content row with 去回答.
+    const content = notificationsExOf(tasks, pending, id => id, () => false, () => [],
+      { questionOf: () => questionBatch, answerInPlace: true })
+    expect(content[0].excerpt).toBe('要继续吗？')
+    expect(content[0].answerable).toBe(true)
+    // Same carrier, display-only host = content WITHOUT the affordance.
+    const degraded = notificationsExOf(tasks, pending, id => id, () => false, () => [],
+      { questionOf: () => questionBatch, answerInPlace: false })
+    expect(degraded[0].excerpt).toBe('要继续吗？')
+    expect(degraded[0].answerable).toBeUndefined()
+    // No carrier at all = shell (no excerpt, no affordance).
+    const shell = notificationsExOf(tasks, pending, id => id)
+    expect(shell[0].excerpt).toBeUndefined()
+    expect(shell[0].answerable).toBeUndefined()
+  })
+
+  it('plan rows quote the plan body (the row promises what the card holds)', () => {
+    const tasks = [task('a', NOW, {
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    })]
+    const rows = notificationsExOf(tasks, () => 'plan-review' as const, id => id, () => false, () => [],
+      { questionOf: () => planBatch, answerInPlace: true })
+    expect(rows[0].excerpt).toBe(waitingExcerptOf('## 计划 1. 先做 A 2. 再做 B'))
+    expect(rows[0].answerable).toBe(true)
+  })
+
+  it('legacy callers keep signal-only rows (no content face, no arrival map)', () => {
+    const tasks = [task('a', NOW, {
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    })]
+    const rows = notificationsOf(tasks, () => 'question' as const, id => id)
+    expect(rows[0].excerpt).toBeUndefined()
+    expect(rows[0].answerable).toBeUndefined()
   })
 })
 

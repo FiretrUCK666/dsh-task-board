@@ -17,7 +17,7 @@ import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
 import { isHeartbeatStale } from '../../core/scheduler.ts'
-import { adjacentStatus, COLUMNS, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { adjacentStatus, COLUMNS, hasOpenRun, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { taskPendingCount, taskUnviewed, taskUnviewedCount, taskViewedBaseline } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -46,7 +46,7 @@ import { taskBindsOf } from '../../core/tasks.ts'
 
 import { applyCompletion, completeBoardQuery, matchTask, removeFilterToken, splitFilterTokens } from './task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
-import { boardDemandOf, foldNotesByTask, noteKeyOf, notificationsExOf, type NotificationItem } from './notifications.ts'
+import { arrivalOf, boardDemandOf, foldNotesByTask, noteKeyOf, notificationsExOf, stampWaitingArrivals, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
 import { cardNextActionOf, cardViewModelOf, titleOrUntitled } from './card-view.ts'
 
@@ -169,6 +169,13 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
     [controller],
   )
+  // A wait that fires while the board is OPEN must surface, never hide: the
+  // controller keeps the board open for its own staged sessions (see
+  // `isBoardStagedSession`), so the fresh arrival is visible right here — but
+  // only if the user can TELL it arrived. The bell already pulses; the demand
+  // row (the board's loudest line) flashes the same generation key, so the
+  // eye lands on the new wait without opening anything.
+  const [lastArrivalGen, setLastArrivalGen] = useState(0)
   // The stale-bundle verdict (see bundle-freshness.ts): the page compares the
   // version it was built from against the one the host serves, reloads itself
   // once when they disagree, and states the mismatch here if it survives that
@@ -223,7 +230,6 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
   // 都不动键，关屉或切分组即清，与动态组同纪律）。
   const [expandedFoldKey, setExpandedFoldKey] = useState<string | undefined>(undefined)
   useEffect(() => { setExpandedFoldKey(undefined) }, [notifyFilter])
-  useEffect(() => { setApproveBlockedKey(undefined) }, [notifyFilter])
   // 稍后见（内存态）：key → snooze 时刻；新动静（note.at 推进）自然再浮起。
   const [snoozed, setSnoozed] = useState<Record<string, number>>({})
   const [failedSession, setFailedSession] = useState<string | undefined>(undefined)
@@ -271,13 +277,53 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
   // like the card breathes (same related set as the live state).
   // Memoized: derivation walks every round, so unrelated local state (typing
   // in a filter box, expanding one row) must not re-walk the ledger.
+  //
+  // The question faces ride the same memo: signal (pendingInteraction) and
+  // content (questionPendingOf) arrive on DIFFERENT subscriptions, and the
+  // `questionTick` below re-fires this memo when a batch body lands — without
+  // it the excerpt would freeze at the signal's first frame. `arrivalTick`
+  // re-fires it once per new waiting key so the arrival-sorted list settles
+  // in the same pass the stamp map lands.
+  const [questionTick, setQuestionTick] = useState(0)
+  useEffect(() => controller.subscribeQuestions(() => { setQuestionTick(tick => tick + 1) }), [controller])
+  // The arrival clock (the board's own eyes — memory only, never synced):
+  // when THIS browser first saw each waiting row. A wait that fires late in
+  // a long turn sorts by this instant, never by the round's start. First
+  // paint baselines whatever is already here (nothing is "just arrived" on
+  // mount); keys that leave are dropped so the map cannot grow past the bell.
+  const [arrivalSeen, setArrivalSeen] = useState<ReadonlyMap<string, number>>(new Map())
+  const [arrivalTick, setArrivalTick] = useState(0)
   const notes = useMemo(() => notificationsExOf(
     snapshot.tasks,
     sessionId => controller.pendingInteractionOf(sessionId),
     sessionId => controller.sessionTitle(sessionId) ?? sessionId,
     task => taskUnviewed(task),
     task => controller.linkedOf(task).map(row => row.sessionId),
-  ), [snapshot.tasks, snapshot, controller])
+    {
+      questionOf: sessionId => controller.questionPendingOf(sessionId),
+      answerInPlace: controller.questionAnswerInPlace,
+    },
+    note => arrivalOf(arrivalSeen, note),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [snapshot.tasks, snapshot, controller, questionTick, arrivalTick, arrivalSeen])
+  useEffect(() => {
+    setArrivalSeen(current => {
+      const next = stampWaitingArrivals(current, notes, Date.now())
+      if (next.size === current.size) {
+        let same = true
+        for (const [key, at] of next) {
+          if (current.get(key) !== at) { same = false; break }
+        }
+        if (same) return current
+      }
+      // A genuinely new key landed: re-run the memo once so the arrival sort
+      // settles in the same frame the stamp does (the memo reads arrivalSeen),
+      // and bump the arrival generation so the open-board flash replays.
+      setArrivalTick(tick => tick + 1)
+      setLastArrivalGen(gen => gen + 1)
+      return next
+    })
+  }, [notes])
   // What the board owes the user, stated once for the whole surface. Separate
   // from the bell on purpose: the bell counts folded notification ROWS, a column
   // header counts CARDS, and a card that has merely been looked at leaves the
@@ -292,26 +338,39 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
   const visibleNotes = useMemo(() => notes.filter(note => {
     if (notifyFilter === 'waiting' && note.kind !== 'waiting') return false
     if (notifyFilter === 'review' && note.kind !== 'review') return false
-    // Snoozed rows stay hidden until newer activity (note.at) outruns the
-    // snooze stamp — "稍后即再浮起", no timers, no stored state.
-    if ((snoozed[noteKeyOf(note)] ?? -1) >= note.at) return false
+    // Snooze is a REVIEW-tier affordance only (waiting rows offer no Later —
+    // a blocked wait reads no clock that could resurface it, so hiding it
+    // hides it forever). Review rows resurface when newer activity
+    // (note.at) outruns the snooze stamp — "稍后即再浮起", no timers, no
+    // stored state.
+    if (note.kind === 'review' && (snoozed[noteKeyOf(note)] ?? -1) >= note.at) return false
     return true
   }), [notes, notifyFilter, snoozed])
   // 折叠与未见（与上面同 memo 纪律）：铃数与屉表同读折叠后（collapsed 计 1），
-  // 未见点只为水位之后的 at 而亮。开屉处理器两处铃共用（同一行为，两处 DOM）。
+  // 未见点只为水位之后的到达而亮。开屉处理器两处铃共用（同一行为，两处 DOM）。
   // 铃读“全局账减去稍后见”（与分组过滤正交）：snooze 藏起的行不再计数，
   // 屉内分组只改变视图，不改变账。
+  // 「新到」一律读到达钟（首见 instant），不读轮次钟：snooze 的 resurface
+  // 照旧读 `note.at`（那是"内容有没有新动静"的账），而铃点读的是
+  // "这行我有没有见过"（眼睛）——两条线，各管各的。
   const foldedNotes = useMemo(() => foldNotesByTask(notes.filter(note =>
-    (snoozed[noteKeyOf(note)] ?? -1) < note.at)), [notes, snoozed])
+    note.kind !== 'review' || (snoozed[noteKeyOf(note)] ?? -1) < note.at)), [notes, snoozed])
   const foldedVisible = useMemo(() => foldNotesByTask(visibleNotes), [visibleNotes])
   const unseenCount = useMemo(() => drawerOpenedAt === undefined
     ? 0
-    : notes.filter(note => note.at > drawerOpenedAt).length,
-  [notes, drawerOpenedAt])
+    : notes.filter(note => (arrivalOf(arrivalSeen, note) ?? note.at) > drawerOpenedAt).length,
+  [notes, drawerOpenedAt, arrivalSeen])
   const openNotify = (): void => {
     const at = Date.now()
-    const maxAt = notes.reduce((max, note) => Math.max(max, note.at), at)
+    const maxAt = notes.reduce((max, note) => Math.max(max, arrivalOf(arrivalSeen, note) ?? note.at), at)
     setDrawerOpenedAt(maxAt)
+    // A fresh wait must never hide behind a stale group filter: opening with
+    // unseen arrivals resets to `all` (the user's last filter resumes on the
+    // next open only when nothing is new — the reset below on close keeps it
+    // from sticking).
+    if (notes.some(note => (arrivalOf(arrivalSeen, note) ?? note.at) > (drawerOpenedAt ?? -1))) {
+      setNotifyFilter('all')
+    }
     setShowNotify(true)
   }
   const renderNotifyBell = (): ReactNode => {
@@ -322,6 +381,13 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     // unmentioned, so "something new came in" was a fact only sighted users got.
     // Named as a second clause rather than a second number so the two can never be
     // mistaken for a disagreement about one count.
+    // The dot PULSES once per arrival generation (keyed by the newest arrival
+    // instant): a static dot says "something is new", a replayed pulse says
+    // "something JUST arrived" — same attention color, form carries the tense.
+    // The pulse is a state message, so reduced-motion softens it (the shared
+    // breath tokens), never zeroes it — same law as the card lights.
+    const newestArrival = notes.reduce<number | undefined>((max, note) =>
+      Math.max(max ?? -1, arrivalOf(arrivalSeen, note) ?? note.at), undefined)
     const label = total > 0
       ? t('board.notifyCount', { n: total > 99 ? '99+' : String(total) })
       : t('board.notify')
@@ -334,7 +400,13 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
         onClick={openNotify}
       >
         <Icon name="bell" />
-        {unseenCount > 0 && <span className={css.notifyDot} aria-hidden="true" />}
+        {unseenCount > 0 && (
+          <span
+            key={newestArrival === undefined ? 'none' : String(newestArrival)}
+            className={`${css.notifyDot} ${css.notifyPulse}`}
+            aria-hidden="true"
+          />
+        )}
         {total > 0 && (
           <span className={css.notifyBadge} aria-hidden="true">
             {total > 99 ? '99+' : String(total)}
@@ -778,19 +850,26 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     id => controller.externalKindOf(id),
   )
   const selected = selectedTaskOf(snapshot)
-  // One-shot deep link into a task's session panel (notification / activity
-  // rows land on the session's comment thread, not just the task): the
-  // session half is honored only while the native side still knows it
-  // (sessionTitle undefined = gone/never-a-session, e.g. a review row's
-  // task-id fallback) — then it degrades to a plain task open, never a panel
-  // for a garbage id.
-  const [detailSessionRequest, setDetailSessionRequest] = useState<{ taskId: string; sessionId: string } | undefined>(undefined)
+  // One-shot deep link into a task's session (notification / activity rows
+  // land on the session's comment thread, not just the task): the session
+  // half is honored only while the native side still knows it (sessionTitle
+  // undefined = gone/never-a-session, e.g. a review row's task-id fallback) —
+  // then it degrades to a plain task open, never a panel for a garbage id.
+  // LANDING GRAMMAR (one place — every waiting row reads it):
+  // - the task's refine session → the refinement section (its InteractionCard
+  //   lives in RefineSection; a linked-session panel for it would degrade to
+  //   「会话已不可用」, because SessionDetail reads linkedOf, not refine);
+  // - any other known session → the linked-session panel (rail force-opens
+  //   the awaiting fold and scrolls the card into view by itself).
+  const [detailSessionRequest, setDetailSessionRequest] = useState<{ taskId: string; sessionId: string; surface: 'session' | 'refine' } | undefined>(undefined)
   const openTaskAtSession = (taskId: string, sessionId: string | undefined): void => {
     // Unknown sessions degrade to a plain task open (never a panel for a
     // garbage id) — and to the task-wide clear, so the session-scoped clear
     // below only ever runs for a session the host actually knows.
     const known = sessionId !== undefined && controller.sessionTitle(sessionId) !== undefined
-    setDetailSessionRequest(known && sessionId !== undefined ? { taskId, sessionId } : undefined)
+    const task = snapshot.tasks.find(candidate => candidate.id === taskId)
+    const surface = sessionId !== undefined && task?.refineSessionId === sessionId ? 'refine' as const : 'session' as const
+    setDetailSessionRequest(known && sessionId !== undefined ? { taskId, sessionId, surface } : undefined)
     // Feed/drawer opens clear the viewed session's rounds (unknown sessions
     // fall back to the whole task); pure card clicks keep openTask. ONE funnel.
     controller.openTaskFromNotification(taskId, known ? sessionId : undefined)
@@ -1061,9 +1140,21 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
           <button
             type="button"
             className={css.boardDemand}
+            // The flash replays per arrival generation (same one-shot grammar
+            // as the bell ping): while the board stays open, a fresh wait must
+            // catch the eye HERE — not just behind the bell.
+            key={`demand-${lastArrivalGen}`}
+            data-fresh={lastArrivalGen > 0 ? '' : undefined}
             title={t('board.demandTitle')}
             aria-label={`${t('board.demand', { n: String(demand.waiting), m: String(demand.review) })}。${t('board.demandTitle')}`}
-            onClick={openNotify}
+            onClick={() => {
+              // It names its halves, it lands on them: a waiting-heavy board
+              // opens on the waiting group, a review-only board on review —
+              // the filter is a landing choice, never a hiding place (a fresh
+              // arrival still forces `all`, see openNotify).
+              setNotifyFilter(demand.waiting > 0 ? 'waiting' : 'review')
+              openNotify()
+            }}
           >
             <span className={css.boardDemandDot} aria-hidden="true" />
             <span className={css.boardDemandText}>
@@ -1937,6 +2028,9 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
           requestSessionId={detailSessionRequest !== undefined && detailSessionRequest.taskId === selected.id
             ? detailSessionRequest.sessionId
             : undefined}
+          requestSurface={detailSessionRequest !== undefined && detailSessionRequest.taskId === selected.id
+            ? detailSessionRequest.surface
+            : undefined}
           onRequestSessionConsumed={() => { setDetailSessionRequest(undefined) }}
         />
       )}
@@ -1970,20 +2064,9 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   </button>
                 ))}
               </span>
-              {notes.length > 0 && (
-                <button
-                  type="button"
-                  className={css.feedAction}
-                  onClick={() => { controller.markAllViewed() }}
-                  title={t('board.notifyMarkAllTitle')}
-                >
-                  {t('board.notifyMarkAll')}
-                </button>
-              )}
-              {/* 组标已读只对 review 层有意义：waiting 行等的是人的动作，
-                  标读清不掉它——按钮在纯 waiting 视图下隐藏，而不是摆一个
-                  静默 no-op 让用户以为坏了。混合视图下只传 review 行（去重），
-                  waiting 行的出路只留去会话/稍后见/进详情。 */}
+              {/* 「全部标为已读」是 review 层的账（waiting 行等的是动作，标读
+                  清不掉它——与组标已读同一纪律）：纯 waiting 视图下隐藏，有
+                  review 行才出现；混合视图下它只清 review 行，waiting 行不动。 */}
               {visibleNotes.some(note => note.kind === 'review') && (
                 <button
                   type="button"
@@ -2006,9 +2089,34 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                 {(() => {
                   // ONE row grammar: heads and members render through this —
                   // a folded group never restyles its members.
+                  // WAITING ROW ACTION MATRIX (one place — members inherit it):
+                  // - question/plan-review WITH a readable carrier AND an
+                  //   interactive host → 「去回答」(lands on the in-board
+                  //   answer card, see the landing grammar on
+                  //   openTaskAtSession) + 「去会话」 escape hatch;
+                  // - approval, or a shell (proven wait, unreadable body) →
+                  //   「去会话」 only — approvals are never answered in-board,
+                  //   a shell has no body to answer. The shell's excerpt slot
+                  //   carries the honest missing-body line, never a bare chip.
+                  // Main-area click = 去回答 where offered, else 进详情.
+                  // REVIEW ROW GATE (same law as the review page): 通过/打回
+                  // decide a FINISHED run only — while any round is in flight
+                  // the row offers 进详情 + the inline wait reason instead of
+                  // the gate (approveTask is the door behind both buttons).
                   const renderNotifyRow = (note: NotificationItem): ReactNode => {
                     const key = noteKeyOf(note)
                     const taskTitle = titleOrUntitled(note.taskTitle, t('card.untitled'))
+                    const goAnswer = note.kind === 'waiting' && note.answerable === true
+                    // Review-gate liveness, read once per row: the gate decides
+                    // a FINISHED run only (see the button comments below).
+                    const gateBusy = note.kind === 'review' && (() => {
+                      const current = snapshot.tasks.find(candidate => candidate.id === note.taskId)
+                      return current !== undefined && hasOpenRun(current)
+                    })()
+                    const goAnswerLanding = (): void => {
+                      setShowNotify(false)
+                      openTaskAtSession(note.taskId, note.sessionId)
+                    }
                     return (
                       <li key={key}>
                         <div className={css.notifyRow} data-kind={note.kind}>
@@ -2017,7 +2125,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                             className={css.notifyMain}
                             title={note.taskTitle}
                             aria-label={taskTitle}
-                            onClick={() => { setShowNotify(false); openTaskAtSession(note.taskId, note.sessionId) }}
+                            onClick={goAnswerLanding}
                           >
                             <span className={css.notifyTask}>{taskTitle}</span>
                             {note.kind === 'waiting' && note.waitingKind !== undefined ? (
@@ -2029,9 +2137,27 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                             )}
                             <span className={css.notifySession} title={note.sessionId}>{note.sessionTitle}</span>
                           </button>
+                          {(note.kind === 'waiting' && (note.excerpt !== undefined || note.waitingKind === 'approval' || note.answerable !== true)) && (
+                            <p className={css.notifyExcerpt}>
+                              {note.excerpt !== undefined && note.excerpt !== ''
+                                ? note.excerpt
+                                : note.waitingKind === 'approval'
+                                  ? t('waiting.approvalHint')
+                                  : t('review.interactionBodyMissing')}
+                            </p>
+                          )}
                           <span className={css.notifyActions}>
                             {note.kind === 'waiting' ? (
                               <>
+                                {goAnswer && (
+                                  <button
+                                    type="button"
+                                    className={css.feedAction}
+                                    onClick={goAnswerLanding}
+                                  >
+                                    {t('board.notifyGoAnswer')}
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   className={css.feedAction}
@@ -2041,30 +2167,58 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                                 >
                                   {t('board.notifyGoSession')}
                                 </button>
-                                <button
-                                  type="button"
-                                  className={css.feedAction}
-                                  onClick={() => { setSnoozed(current => ({ ...current, [key]: note.at })) }}
-                                  title={t('board.notifySnoozeTitle')}
-                                >
-                                  {t('board.notifySnooze')}
-                                </button>
                               </>
+                            ) : gateBusy ? (
+                              // A busy gate keeps exactly one honest affordance:
+                              // the row that explains why there is nothing to
+                              // decide yet (the detail page owns the decision).
+                              // 通过/打回/标读 all wait for the settle — hiding
+                              // the gate instead of disabling it would read as
+                              // "already decided".
+                              <button
+                                type="button"
+                                className={css.feedAction}
+                                onClick={() => { setShowNotify(false); openTaskAtSession(note.taskId, note.sessionId) }}
+                              >
+                                {t('board.activityOpen')}
+                              </button>
                             ) : (
                               <>
+                                {/* The review gate decides a FINISHED run — and only a
+                                    finished one. While any round of this card is still
+                                    in flight there is nothing to 通过/打回 yet: both
+                                    buttons refuse with the same inline reason the
+                                    review page shows (disabled + title + row hint on
+                                    tap), never a silent no-op, never a yank into
+                                    done mid-flight (approveTask guards it too — the
+                                    door, not just the paint). */}
                                 <button
                                   type="button"
                                   className={css.feedAction}
+                                  disabled={gateBusy}
+                                  title={t('board.notifyApproveBlocked')}
                                   onClick={() => {
-                                    // The single approve door (see approveTask):
-                                    // busy cards refuse untouched and explain
-                                    // inline — never a silent no-op, never a
-                                    // mid-flight yank into done.
                                     if (controller.approveTask(note.taskId)) setApproveBlockedKey(undefined)
                                     else setApproveBlockedKey(key)
                                   }}
                                 >
                                   {t('board.notifyApprove')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={css.feedAction}
+                                  disabled={gateBusy}
+                                  title={t('review.sendBackTitle')}
+                                  onClick={() => {
+                                    const current = snapshot.tasks.find(candidate => candidate.id === note.taskId)
+                                    if (current === undefined || hasOpenRun(current)) {
+                                      setApproveBlockedKey(key)
+                                      return
+                                    }
+                                    controller.moveTask(note.taskId, 'todo')
+                                  }}
+                                >
+                                  {t('review.sendBack')}
                                 </button>
                                 <button
                                   type="button"
@@ -2080,7 +2234,14 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                         {failedSession === note.sessionId && (
                           <p className={css.detailHint}>{t('detail.sessionUnavailable')}</p>
                         )}
-                        {approveBlockedKey === key && (
+                        {/* Busy-gate rows explain inline instead of asking: the
+                            buttons already carry the reason in `title`, but a
+                            touch user (no hover) and a screen reader need it as
+                            text — same near-field grammar as failedSession. */}
+                        {gateBusy && note.kind === 'review' && (
+                          <p className={css.detailHint}>{t('board.notifyApproveBlocked')}</p>
+                        )}
+                        {approveBlockedKey === key && !gateBusy && (
                           <p className={css.detailHint}>{t('board.notifyApproveBlocked')}</p>
                         )}
                       </li>
@@ -2089,17 +2250,26 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   return foldedVisible.map(entry => {
                     // Unfolded heads render exactly like before; folded groups
                     // keep head actions by MEMBER KINDS present (waiting rows
-                    // offer go, review rows offer 标已读 — both when mixed),
-                    // plus a chevron toggle (same disclosure law as the feed
-                    // groups) — full per-session triage (snooze/approve) lives
-                    // one tap away in members, so the N-1 buried sessions stay
-                    // reachable while the collapsed row stays quiet.
+                    // offer go/answer, review rows offer 标已读 — both when
+                    // mixed), plus a chevron toggle (same disclosure law as
+                    // the feed groups) — full per-session triage
+                    // (answer/go-session/approve/send-back) lives one tap away
+                    // in members, so the N-1 buried sessions stay reachable
+                    // while the collapsed row stays quiet. The folded review
+                    // gate obeys the same finished-only law as member rows
+                    // (see renderNotifyRow's gateBusy): shared so the head can
+                    // never approve/send-back what its own members refuse.
                     if (entry.count === 1) return renderNotifyRow(entry.head)
                     const foldedOpen = expandedFoldKey === entry.head.taskId
                     const head = entry.head
                     const headTitle = titleOrUntitled(head.taskTitle, t('card.untitled'))
                     const headWaiting = entry.items.find(item => item.kind === 'waiting')
+                    const headAnswerable = entry.items.find(item => item.kind === 'waiting' && item.answerable === true)
                     const headHasReview = entry.items.some(item => item.kind === 'review')
+                    const headBusy = (() => {
+                      const current = snapshot.tasks.find(candidate => candidate.id === entry.head.taskId)
+                      return current !== undefined && hasOpenRun(current)
+                    })()
                     return (
                       <li key={entry.head.taskId}>
                         <div className={css.notifyRow} data-kind={head.kind}>
@@ -2125,6 +2295,20 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                             <span className={css.notifySession} title={head.sessionId}>{head.sessionTitle}</span>
                           </button>
                           <span className={css.notifyActions}>
+                            {/* Folded head keeps the member matrix: 去回答 only
+                                when a member actually offers it (an answerable
+                                question/plan), 去会话 for any waiting member —
+                                the head never promises an answer card that no
+                                member can land on. */}
+                            {headAnswerable !== undefined && (
+                              <button
+                                type="button"
+                                className={css.feedAction}
+                                onClick={() => { setShowNotify(false); openTaskAtSession(headAnswerable.taskId, headAnswerable.sessionId) }}
+                              >
+                                {t('board.notifyGoAnswer')}
+                              </button>
+                            )}
                             {headWaiting !== undefined && (
                               <button
                                 type="button"
@@ -2136,17 +2320,63 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                                 {t('board.notifyGoSession')}
                               </button>
                             )}
-                            {headHasReview && (
+                            {headHasReview && !headBusy && (
+                              <>
+                                <button
+                                  type="button"
+                                  className={css.feedAction}
+                                  title={t('board.notifyApproveBlocked')}
+                                  onClick={() => {
+                                    if (controller.approveTask(head.taskId)) setApproveBlockedKey(undefined)
+                                    else setApproveBlockedKey(`fold:${entry.head.taskId}`)
+                                  }}
+                                >
+                                  {t('board.notifyApprove')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={css.feedAction}
+                                  title={t('review.sendBackTitle')}
+                                  onClick={() => {
+                                    const current = snapshot.tasks.find(candidate => candidate.id === entry.head.taskId)
+                                    if (current === undefined || hasOpenRun(current)) {
+                                      setApproveBlockedKey(`fold:${entry.head.taskId}`)
+                                      return
+                                    }
+                                    controller.moveTask(head.taskId, 'todo')
+                                  }}
+                                >
+                                  {t('review.sendBack')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={css.feedAction}
+                                  onClick={() => { controller.markTaskViewed(head.taskId) }}
+                                >
+                                  {t('board.notifyMarkOne')}
+                                </button>
+                              </>
+                            )}
+                            {headHasReview && headBusy && (
+                              // Same busy-gate grammar as member rows: one honest
+                              // affordance into the detail, no gate buttons while
+                              // a round is still in flight.
                               <button
                                 type="button"
                                 className={css.feedAction}
-                                onClick={() => { controller.markTaskViewed(head.taskId) }}
+                                onClick={() => { setShowNotify(false); openTaskAtSession(head.taskId, head.sessionId) }}
                               >
-                                {t('board.notifyMarkOne')}
+                                {t('board.activityOpen')}
                               </button>
                             )}
                           </span>
                         </div>
+                        {headHasReview && headBusy && (
+                          <p className={css.detailHint}>{t('board.notifyApproveBlocked')}</p>
+                        )}
+                        {approveBlockedKey === `fold:${entry.head.taskId}` && !headBusy && (
+                          <p className={css.detailHint}>{t('board.notifyApproveBlocked')}</p>
+                        )}
                         {foldedOpen && (
                           <ul className={css.notifyList} id={`dsh-tb-notify-fold-${entry.head.taskId}`}>
                             {(() => {
