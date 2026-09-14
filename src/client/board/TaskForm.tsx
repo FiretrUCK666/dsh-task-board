@@ -22,19 +22,15 @@ import { MAX_COMMENT_FILES, MAX_COMMENT_IMAGES, MAX_TASK_IMAGES, TASK_IMAGE_BUDG
 import { useComposerImages } from './composer-images.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { RunConfigFields } from './RunConfigFields.tsx'
-import { ColorSwatches } from './ui.tsx'
 import type { TaskDraft } from './task-draft.ts'
 
 /** The shared new/edit task form. */
-export function TaskForm({ draft, onChange, controller, withStatus = false, withColor = false, sessionId }: {
+export function TaskForm({ draft, onChange, controller, withStatus = false, sessionId }: {
   draft: TaskDraft
   onChange: (next: TaskDraft) => void
   controller: BoardController
   /** Show the landing-column selector (new-task modal only). */
   withStatus?: boolean
-  /** Show the accent-color row (edit mode only — new tasks stay uncolored
-   *  until they exist; color is picked from the card or the edit form). */
-  withColor?: boolean
   /** The session scoping the run prompt's official '@' reference menu — the
    *  task's own session when editing; a resolved current/first session (or
    *  undefined = '@' closed) when creating. */
@@ -97,21 +93,11 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, with
         />
       </label>
 
-      {/* Accent color: THE one swatch row (the same grammar as the organize
-          bar and the card hover strip). A <div>, not a <label> — the row
-          holds buttons, and a label would route their clicks to nowhere
-          useful. What the draft carries is always visible here (template
-          stamps included) — never a ghost write. Edit mode only (see
-          withColor): new tasks stay uncolored until they exist. */}
-      {withColor && (
-        <div className={css.field}>
-          <span className={css.fieldLabel}>{t('new.color')}</span>
-          <ColorSwatches
-            value={draft.color !== '' ? draft.color : undefined}
-            onChange={color => { onChange({ ...draft, color: color ?? '' }) }}
-          />
-        </div>
-      )}
+      {/* NO color row here. Color belongs to the two places the user manages
+          it in: the board's 整理 panel (assign/clear in bulk) and the card
+          itself (hover a card, pick a swatch). The edit form is about the
+          task's CONTENT — a palette wedged between 描述 and 执行 Prompt read
+          as a third content field and pushed the real inputs down. */}
 
       {/* Prompt field: the text plus its image ledger (pick / drop / paste
           anywhere on the field). A <div>, not a <label> — the strip holds

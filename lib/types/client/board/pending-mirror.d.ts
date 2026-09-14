@@ -2,19 +2,37 @@
  * Official pending-interaction mirror: the 0.1.5 question face.
  *
  * The waterfall is a claim chain (first answer wins), so the board never
- * registers its own listener and never answers — it only SUBSCRIBES to the
- * official uiSession `pendingInteractions` snapshot the host already
- * projects (the same source the native sidebar and composer read). Answers
- * stay in the native session; the board navigates there.
+ * REGISTERS a listener of its own — it subscribes to the official uiSession
+ * `pendingInteractions` snapshot (the same source the native sidebar and
+ * composer read) and, while an entry is live, it holds the carrier object
+ * that entry carries.
  *
- * The controller keeps consuming the historical `QuestionRpcFace`
- * (WireQuestion), so this adapter normalizes the official carrier into that
- * shape: `key` becomes the display rpcId (never echoed to any wire — there
- * is no respond path), and `answer`/`cancel` always report false so the card
- * degrades to its navigate affordance. One instance per board mount.
+ * That carried object IS the native `PendingQuestion`: its `answer(answer)`
+ * and `cancel()` settle the very waterfall invocation the native composer
+ * would settle (verified against the shipped plugin: the carrier exposes
+ * `sessionId / kind / key / questions` plus those two methods, and the
+ * client-side listener's return value resolves the host call). Answering
+ * through it is therefore NOT a competing answerer — nothing new is
+ * registered, the same claim is settled once, and the other surface's card
+ * drops with the next snapshot notification. In-place answering is offered
+ * only for a carrier that really exposes those methods; a host whose
+ * snapshot entries carry data but no action (or no uiSession at all) keeps
+ * the read-only navigate shell.
  */
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from '../../core/question-rpc.ts';
 import { type MirrorSnapshotLike } from '../../core/question-mirror.ts';
+/**
+ * The action half of an official carrier, when the entry has one. Read
+ * structurally (never `instanceof` across the plugin boundary): the shipped
+ * native `PendingQuestion` exposes both, a snapshot entry that does not is
+ * display-only and degrades to the navigate shell.
+ */
+export interface MirrorCarrierActions {
+    answer(answer: {
+        answers: readonly QuestionAnswerEntry[];
+    }): Promise<unknown> | unknown;
+    cancel(): Promise<unknown> | unknown;
+}
 /** The structural slice of the official uiSession face this mirror reads. */
 export interface UiSessionMirrorFace {
     readonly pendingInteractions: {
@@ -22,18 +40,36 @@ export interface UiSessionMirrorFace {
         subscribe(listener: () => void): () => void;
     };
 }
-/** Read-only QuestionRpcFace over the official pending snapshot. */
+/** In-place answering over the official pending snapshot (see module doc). */
 export declare class PendingMirror implements QuestionRpcFace {
     private readonly uiSession;
-    /** The board never answers in place on 0.1.5 (navigate to answer). */
-    readonly answerInPlace: false;
-    private pending;
     constructor(uiSession: UiSessionMirrorFace | undefined);
-    /** Re-read the official snapshot (call on every subscribe notification). */
-    refresh(): void;
+    /**
+     * The current projection, DERIVED on every read from the official snapshot
+     * — there is no cached copy that a missed notification could leave stale,
+     * so "what the card shows" and "what an answer settles" are always the same
+     * generation of the snapshot.
+     */
+    private get entries();
     pendingOf(sessionId: string | undefined): WireQuestion | undefined;
+    /**
+     * Whether ANY live interaction can be settled from here. Read fresh by the
+     * card on every render: a data-only snapshot entry (no `answer`/`cancel`)
+     * keeps the read-only navigate shell, so "can answer" is never claimed for
+     * a carrier that cannot.
+     */
+    get answerInPlace(): boolean;
     subscribe(listener: () => void): () => void;
-    answer(_rpcId: string, _sessionId: string, _answers: readonly QuestionAnswerEntry[]): Promise<boolean>;
-    cancel(_rpcId: string): Promise<boolean>;
+    /**
+     * Settle the session's live request with the whole answer batch. The
+     * identity guard is the contract: the answered carrier must be the SAME
+     * object (key and identity) the official snapshot publishes RIGHT NOW — a
+     * request answered or cancelled elsewhere, or replaced by a newer one,
+     * rejects instead of settling something stale. False = not accepted; the
+     * card keeps itself open and reports it.
+     */
+    answer(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>;
+    /** Reject the whole ask (the tool call settles as cancelled, like the native ×). */
+    cancel(rpcId: string): Promise<boolean>;
 }
 export type { MirrorSnapshotLike };

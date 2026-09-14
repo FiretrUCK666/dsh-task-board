@@ -49,18 +49,26 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
 
   it('HEIGHT CONTRACT: the interaction card is capped, its body scrolls, its actions stay pinned', () => {
     const card = ruleOf('interactionCard')
-    // A px cap, never a viewport unit: the card lives inside a panel that is
-    // itself sized against the BOARD box, so `40vh` measured a different box
-    // than the one that has to hold it (and the mobile contract bans viewport
-    // units board-wide — the two tests used to disagree about this line).
-    expect(card).toMatch(/max-height:\s*320px/)
+    // THE cap is a two-part min(): never taller than the 320px reading ceiling
+    // AND never taller than the box holding it. The 100% half is the whole fix
+    // for the phone report — a 320px card inside the rail's 285px comments box
+    // overflowed its scrollport, so the pinned action row was painted under the
+    // conversation column and 跳过本题 / 下一题 / 提交 could not be tapped at
+    // all. Still never a viewport unit: the card lives inside a panel sized
+    // against the BOARD box, so `40vh` measured a different box than the one
+    // that has to hold it (and the mobile contract bans viewport units
+    // board-wide — the two tests used to disagree about this line).
+    expect(card).toMatch(/max-height:\s*min\(320px,\s*100%\)/)
     expect(card).not.toMatch(/\d+(vh|dvh|vw)\b/)
     expect(card).toContain('overflow: hidden')
-    // The body is the scroll slot (never the card itself): long plan/question
-    // text scrolls inside while the action row remains visible at the bottom.
-    const body = ruleOf('interactionCardBody')
-    expect(body).toContain('overflow-y: auto')
-    expect(body).toContain('min-height: 0')
+    // The body is the ONE scroll slot: long plan/question text scrolls inside
+    // while the action row stays pinned at the card's bottom edge, always
+    // inside the comments scrollport (never painted past it).
+    for (const body of ['interactionBody', 'interactionCardBody']) {
+      expect(ruleOf(body), `.${body} must scroll its own content`).toContain('overflow-y: auto')
+      expect(ruleOf(body), `.${body} must be allowed to shrink`).toContain('min-height: 0')
+    }
+    expect(ruleOf('interactionFooter')).toContain('flex: none')
   })
 
   it('the rail clips horizontally; the FOLDS block owns the only scroll', () => {
@@ -78,6 +86,66 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
   it('action rows wrap instead of bursting the card right edge', () => {
     const actions = ruleOf('interactionActions')
     expect(actions).toContain('flex-wrap: wrap')
+    // The interactive card's footer (pager ‖ reason ‖ skip + next/submit) is
+    // the SAME graceful layer, and keeps the native status row for the reason
+    // a submit was refused.
+    expect(ruleOf('interactionFooter')).toContain('flex-wrap: wrap')
+    expect(ruleOf('interactionFeedback')).toMatch(/min-height:\s*16px/)
+  })
+
+  it('the interaction card carries the native question grammar, item by item', () => {
+    // 与原生的提问卡逐条对齐是契约：同一批部件、同一套行为。这条 spec 把
+    // 部件清单钉死，任何一处被删/改名都会红，避免再次退回「只有一个按钮」。
+    const cardPath = fileURLToPath(new URL('../src/client/board/InteractionCard.tsx', import.meta.url))
+    const card = readFileSync(cardPath, 'utf8')
+    // Head: eyebrow + title + the collapse / dismiss-all pair.
+    for (const part of ['interactionEyebrow', 'interactionTitle', 'interactionHead', 'interactionHeadActions']) {
+      expect(card).toContain(`css.${part}`)
+    }
+    expect(card).toContain("t('review.interactionAbandon')")
+    expect(card).toMatch(/t\(minimized \? 'review\.interactionExpand' : 'review\.interactionCollapse'\)/)
+    // Options: numbered radios, or checkboxes for a multi-select, plus the
+    // custom-answer row appended to the list.
+    expect(card).toContain("role={item?.multiSelect === true ? 'checkbox' : 'radio'}")
+    expect(card).toContain('interactionOptionNumber')
+    expect(card).toContain('interactionCheck')
+    expect(card).toContain('interactionCustomRow')
+    expect(card).toContain('splitRecommended')
+    expect(card).toContain("t('review.interactionRecommended')")
+    // Field: the auto-growing mirrored textarea, inline beside options and
+    // standalone as a block when the question offers none.
+    expect(card).toContain('interactionFieldMirror')
+    expect(card).toContain("variant=\"block\"")
+    // Footer: pager + progress + the reason row + skip and next/submit.
+    for (const key of ['review.interactionPrev', 'review.interactionNext', 'review.interactionProgress',
+      'review.interactionSkip', 'review.interactionSubmit', 'review.interactionSubmitting']) {
+      expect(card).toContain(`'${key}'`)
+    }
+    // Both refusal reasons, word-for-word with the native dictionary.
+    expect(card).toContain("t('review.interactionUnanswered')")
+    expect(card).toContain("t('review.interactionIncomplete')")
+    expect(card).toContain("t('review.interactionRejected')")
+    // Behaviour parity: single-select auto-advance, custom-clears-selection,
+    // Enter continues (Shift+Enter and IME exempt), failed submit keeps the
+    // card open with the reason.
+    expect(card).toMatch(/item\?\.multiSelect !== true && !last \? index \+ 1 : index/)
+    expect(card).toMatch(/selected: item\?\.multiSelect === true \? entry\.selected : \[\]/)
+    expect(card).toMatch(/event\.key !== 'Enter' \|\| event\.shiftKey \|\| isComposing\(event\)/)
+    expect(card).toMatch(/if \(!accepted\) setError\(t\('review\.interactionRejected'\)\)/)
+  })
+
+  it('the plan card keeps the native three decisions (approve / decline / discuss)', () => {
+    const cardPath = fileURLToPath(new URL('../src/client/board/InteractionCard.tsx', import.meta.url))
+    const card = readFileSync(cardPath, 'utf8')
+    const plan = card.slice(card.indexOf('function PlanReviewCard'))
+    expect(plan).toContain('css.interactionStrip')
+    expect(plan).toContain('css.interactionPlanBody')
+    expect(plan).toContain("t('review.planConfirm')")
+    expect(plan).toContain("t('review.planDecline')")
+    expect(plan).toContain("t('review.interactionDiscuss')")
+    // The decision is the intent's own label, never inferred from order.
+    expect(plan).toContain("planDecisionAnswers(item, 'approve', '')")
+    expect(plan).toContain("planDecisionAnswers(item, 'decline', '')")
   })
 
   it('the comments region and the composer stay inside the rail content box', () => {
@@ -578,6 +646,43 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     // No caller may still name the busy line from settled chips.
     const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
     expect(readFileSync(panelPath, 'utf8')).not.toMatch(/attachedFiles\.length > 0 \? t\('review\.attachFileBusy'\)/)
+  })
+
+  it('color is managed in exactly two places: the 整理 panel and the card itself', () => {
+    // User decision: the task edit form no longer carries a palette. Color is
+    // assigned where it is meaningful — in bulk (整理) or in place (hover the
+    // card) — and the form is about the task's CONTENT only, where a swatch row
+    // between 描述 and 执行 Prompt read as a third content field.
+    const formPath = fileURLToPath(new URL('../src/client/board/TaskForm.tsx', import.meta.url))
+    const form = readFileSync(formPath, 'utf8')
+    expect(form).not.toContain('ColorSwatches')
+    expect(form).not.toContain('withColor')
+    const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url))
+    expect(readFileSync(detailPath, 'utf8')).not.toContain('withColor')
+    // The two sanctioned homes stay: the organize bar's swatch row and the
+    // card's hover strip (zero-render until hover, so a card face is never
+    // crowded by the palette).
+    const boardPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
+    expect(readFileSync(boardPath, 'utf8')).toContain('<ColorSwatches')
+    const cardPath = fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url))
+    const card = readFileSync(cardPath, 'utf8')
+    expect(card).toContain('cardColorBar')
+    expect(card).toContain('<ColorSwatches')
+    const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
+    const sheet = readFileSync(cssPath, 'utf8')
+    expect(sheet).toMatch(/\.card:hover \.cardColorBar,\s*\n\.card:focus-within \.cardColorBar \{\s*\n\s*display: flex;/)
+  })
+
+  it('the apply action is separated by AIR, never by a stray rule', () => {
+    // The reported 「应用到任务上面有一条线，很奇怪」: a full-width border-top
+    // that belonged to nothing and travelled with the content. The block still
+    // needs separation from the answer area above it, so the gap owns it.
+    const actions = ruleOf('refineActionArea')
+    expect(actions).not.toMatch(/border-top/)
+    expect(actions).toMatch(/margin-top:\s*4px/)
+    expect(actions).toMatch(/gap:\s*8px/)
+    // The apply button itself stays the full-width primary it always was.
+    expect(ruleOf('refineApplyButton')).toMatch(/width:\s*100%/)
   })
 
   it('comment + refine drafts persist attachments (text is not the only survivor)', () => {

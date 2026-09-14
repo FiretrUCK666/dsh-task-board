@@ -3,9 +3,9 @@
  * (pre-0.5 hosts replay every still-pending question frame on a new stream,
  * then push live frames), reduces them into the pure pending map, and
  * answers/cancels through the same `respond` wire call the native composer
- * uses. On 0.1.5 the stream is gone and the board renders from the official
- * read-only mirror (`pending-mirror.ts`) instead; this tracker stays as the
- * fallback while no uiSession face is served. One instance per board mount —
+ * uses. On 0.1.5 the stream is gone and the board settles the official
+ * carrier instead (`pending-mirror.ts`); this tracker stays as the fallback
+ * while no uiSession face is served. One instance per board mount —
  * every surface (review page, session panel, refine panel) reads the same
  * projection by session id, so answering on one surface is instantly
  * reflected everywhere, and the card disappears when the host resolves the

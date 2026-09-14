@@ -64,7 +64,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     : []
 
   // The open native interaction (plan confirm / question): the card over the
-  // composer mirrors it read-only (answering stays in the native session).
+  // composer renders the SAME request the native composer renders and settles
+  // it in place; answering in the native session is still the escape hatch.
   // Plus the live session context (to-do / goal / subagents) for the readout
   // above the composer.
   const context = useSessionContext(controller, sessionId)

@@ -1,11 +1,42 @@
 /**
  * PendingMirror contract: the official snapshot projects into per-session
- * newest-wins WireQuestions, approvals never render, and the face never
- * answers in place (navigate-to-answer). Drives the face with a
+ * newest-wins WireQuestions, approvals never render, and — while an entry
+ * carries the native carrier's own `answer`/`cancel` — the face settles THAT
+ * request in place (never a second answerer, never a stale object). A
+ * display-only entry (or no uiSession at all) reports `answerInPlace` false so
+ * the card degrades to navigate-to-answer. Drives the face with a
  * hand-controlled fake uiSession (snapshot + listener set), no real host.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { PendingMirror } from '../src/client/board/pending-mirror.ts'
+
+/** One live interactive carrier, shaped like the native `PendingQuestion`. */
+interface FakeCarrier {
+  sessionId: string
+  kind: string
+  key: string
+  questions: { id: string; question: string }[]
+  answer: ReturnType<typeof vi.fn>
+  cancel: ReturnType<typeof vi.fn>
+}
+
+function carrier(sessionId: string, text: string, kind = 'question'): FakeCarrier {
+  return {
+    sessionId,
+    kind,
+    key: '',
+    questions: [{ id: 'q-1', question: text }],
+    answer: vi.fn(async (_answer: unknown) => undefined),
+    cancel: vi.fn(async () => undefined),
+  }
+}
+
+/** One interactive carrier under its own key (the snapshot pair). */
+function live(key: string, sessionId: string, text: string, kind = 'question'): [string, FakeCarrier] {
+  const entry = carrier(sessionId, text, kind)
+  entry.key = key
+  return [key, entry]
+}
 
 class FakeUiSession {
   snapshot = new Map<string, unknown>()
@@ -23,6 +54,7 @@ class FakeUiSession {
   }
 }
 
+/** A data-only entry (the shape a host without the carrier actions serves). */
 const question = (key: string, sessionId: string, text: string, kind = 'question'): [string, unknown] => [
   key,
   { key, kind, sessionId, questions: [{ id: 'q-1', question: text }] },
@@ -50,6 +82,7 @@ describe('PendingMirror', () => {
     ])
     const mirror = new PendingMirror(ui)
     expect(mirror.pendingOf('s-1')).toBeUndefined()
+    expect(mirror.answerInPlace).toBe(false)
   })
 
   it('renders a detail-carried plan review (empty question line, plan in detail)', () => {
@@ -81,7 +114,41 @@ describe('PendingMirror', () => {
     dispose()
   })
 
-  it('never answers in place: answer/cancel always report false', async () => {
+  it('settles the carrier it received (in place, whole batch, native shape)', async () => {
+    const ui = new FakeUiSession()
+    const [, entry] = live('question:1', 's-1', '一')
+    ui.snapshot = new Map([['question:1', entry]])
+    const mirror = new PendingMirror(ui)
+    expect(mirror.answerInPlace).toBe(true)
+    const answers = [{ id: 'q-1', selected: ['好'] }]
+    await expect(mirror.answer('question:1', 's-1', answers)).resolves.toBe(true)
+    // The ONE answerer: the request's own method, with the native answer shape.
+    expect(entry.answer).toHaveBeenCalledTimes(1)
+    expect(entry.answer).toHaveBeenCalledWith({ answers })
+    await expect(mirror.cancel('question:1')).resolves.toBe(true)
+    expect(entry.cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a stale identity instead of settling something else', async () => {
+    const ui = new FakeUiSession()
+    const [firstKey, first] = live('question:1', 's-1', '一')
+    ui.snapshot = new Map([[firstKey, first]])
+    const mirror = new PendingMirror(ui)
+    // A NEWER interaction replaces the first one (same session, new key).
+    const [secondKey, second] = live('question:2', 's-1', '二')
+    ui.publish(new Map([[secondKey, second]]))
+    await expect(mirror.answer('question:1', 's-1', [])).resolves.toBe(false)
+    await expect(mirror.cancel('question:1')).resolves.toBe(false)
+    expect(first.answer).not.toHaveBeenCalled()
+    expect(first.cancel).not.toHaveBeenCalled()
+    // The live one still answers.
+    await expect(mirror.answer('question:2', 's-1', [])).resolves.toBe(true)
+    // A settled request is gone: nothing left to settle.
+    ui.publish(new Map())
+    await expect(mirror.answer('question:2', 's-1', [])).resolves.toBe(false)
+  })
+
+  it('never answers a carrier that exposes no action (display-only entry)', async () => {
     const ui = new FakeUiSession()
     ui.snapshot = new Map([question('question:1', 's-1', '一')])
     const mirror = new PendingMirror(ui)
@@ -90,13 +157,24 @@ describe('PendingMirror', () => {
     await expect(mirror.cancel('question:1')).resolves.toBe(false)
   })
 
+  it('reports a refused settle as false (the card keeps itself open)', async () => {
+    const ui = new FakeUiSession()
+    const [, entry] = live('question:1', 's-1', '一')
+    entry.answer.mockRejectedValueOnce(new Error('already settled'))
+    ui.snapshot = new Map([['question:1', entry]])
+    const mirror = new PendingMirror(ui)
+    await expect(mirror.answer('question:1', 's-1', [])).resolves.toBe(false)
+  })
+
   it('degrades to empty without a uiSession face', async () => {
     const mirror = new PendingMirror(undefined)
     expect(mirror.pendingOf('s-1')).toBeUndefined()
+    expect(mirror.answerInPlace).toBe(false)
     let calls = 0
     const dispose = mirror.subscribe(() => { calls += 1 })
     dispose()
     expect(calls).toBe(0)
     await expect(mirror.answer('k', 's-1', [])).resolves.toBe(false)
+    await expect(mirror.cancel('k')).resolves.toBe(false)
   })
 })

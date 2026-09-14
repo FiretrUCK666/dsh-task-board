@@ -1,7 +1,7 @@
 {
   "name": "@firetruck666/dsh-task-board",
   "description": "Task board plugin for the DSH web GUI: a sidebar entry plus a multi-column kanban view with real execution through DSH sessions, schedules, session rules and auto-cruise automation. Board truth lives on the host and syncs to every device over SSE (the browser is an offline-first copy). Standalone plugin, no DSH source changes.",
-  "version": "0.2.104",
+  "version": "0.2.107",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

@@ -5,15 +5,16 @@
  * a broadcast: the board must never register its own listener (it would race
  * the native composer). The official read-only projection is the uiSession
  * `pendingInteractions` snapshot (`Map<sessionId, interaction>`), where each
- * interaction carries its session, kind and full question batch. The board
- * only SUBSCRIBES to that snapshot and renders from it; answering stays in
- * the native session (the board navigates there via `sessions.open`).
+ * interaction carries its session, kind and full question batch — AND, on the
+ * shipped host, the carrier's own `answer`/`cancel` (the native
+ * `PendingQuestion`). The board subscribes to that snapshot for DISPLAY and,
+ * when the carrier exposes those actions, settles the request through the
+ * very object it received: same claim, no second answerer, so the two
+ * surfaces can never disagree about who answered. A carrier without them is
+ * display-only and the card degrades to navigate-to-answer.
  *
- * rc.7 concepts do not exist here on purpose: there is no rpcId to echo
- * (the official carrier settles through its own `result` promise), and the
- * mirror never answers, cancels or delegates — "has the capability" must not
- * become "uses it". Framework-free and DOM-free, so the rules unit-test in
- * isolation (the live subscription lives in the client wiring).
+ * Framework-free and DOM-free, so the rules unit-test in isolation (the live
+ * subscription and the action calls live in the client adapter).
  */
 
 import { isDetailOnlyPlanItem } from './question-rpc.ts'

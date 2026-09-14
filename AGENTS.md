@@ -443,7 +443,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - **统一会话与评论单轨**：同会话同一线程；排队/插话两态，模式只由用户开关定；图片字节 part 直发、文件 `receiptId`（`toPromptImage`/`toPromptFile`），禁自建桥；线程行显示「含 N 张图片 / M 个文件」；附件条独立成行。
 - **运行态唯一推导**：`task-live` + 相关集；`sessionDisplay(nativeRunning)`；直发轮经 `driveLiveStates` 走同一 `settledFollowUp`；行徽章与卡片列同涨同落。
 - **官方 @ 引用**：`reference-source.ts` 唯一桥；子代理会话宿主回 `agent-busy`（官方语义）；插入走官方 mention；失败永不 reject（会话域失败降级板内目录）。
-- **交互卡 + 上下文块**：只读订阅 `pendingInteractions`（board 永不注册 waterfall）；回答 = 跳回原生会话；todo/用量/goal 读官方 projection（缺面降级）；`SessionContextBlock` 宽行内/窄浮层（240px 封顶）；goal 可操作 strip；有未完成才显示。
+- **交互卡 + 上下文块**：只订阅 `pendingInteractions`（board 永不注册 waterfall）；carrier 自带 `answer`/`cancel` 时**就卡作答**（`PendingMirror` 身份守卫：只结算当前快照里那一个对象，身份不符即拒，失败留卡报错），数据型 carrier 才降级为跳回原生会话；卡与原生提问卡逐条同形同行为（head 收起/放弃整组、编号或勾选选项 + 推荐徽章 + 自定义答案、上一题/进度/下一题、跳过本题、提交/提交中、就近报错）；todo/用量/goal 读官方 projection（缺面降级）；`SessionContextBlock` 宽行内/窄浮层（240px 封顶）；goal 可操作 strip；有未完成才显示。
 - **多源绑定**：`binds` 真相源；session 绑定上卡，workspace 绑定只关联（拖入瞬间按注册表账本快照一次）；隐藏删除进 `removedSessions`（权威非相关门）；再拖回可恢复。
 - **完成态留言 auto 回待办并驱动**（queue/steer 同规则）。
 - **真执行补全**：空标题/描述从 Prompt 补（`supplementedTask` 唯一作用点，写入/启动时；永不覆盖）；空 Prompt 门禁只拦真执行（评论/插话/完善不封）；完善永不碰列；`refinable` 任一非空才可完善。

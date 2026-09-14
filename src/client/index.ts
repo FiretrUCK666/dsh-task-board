@@ -721,15 +721,16 @@ export function apply(ctx: ClientContext): void {
       }
     })()
 
-    // Pending native questions: the official read-only mirror over the
-    // host's pendingInteractions snapshot (the same source the native
-    // sidebar and composer read). The board never registers its own
-    // waterfall listener — the waterfall is a claim chain (first answer
-    // wins), so listening would race the native composer for the answer.
-    // Rendering reads questions/kind/sessionId/key structurally (never
-    // instanceof across the plugin boundary); answering stays in the native
-    // session (the card navigates there via sessions.open). The legacy mux
-    // tracker stays as the fallback while no uiSession face is served.
+    // Pending native questions: the official mirror over the host's
+    // pendingInteractions snapshot (the same source the native sidebar and
+    // composer read). The board never registers its own waterfall listener —
+    // the waterfall is a claim chain (first answer wins) — but the snapshot
+    // entry IS the native carrier, so when it exposes answer/cancel the board
+    // settles that one claim through it (in-place answering, identical to the
+    // native card). Rendering reads questions/kind/sessionId/key structurally
+    // (never instanceof across the plugin boundary); a carrier without those
+    // actions degrades to navigate-to-answer. The legacy mux tracker stays as
+    // the fallback while no uiSession face is served.
     const uiSession = ctx.get<IUiSessionFace>('uiSession')
     const mirror = uiSession !== undefined
       ? new PendingMirror(uiSession as unknown as UiSessionMirrorFace)

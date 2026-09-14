@@ -876,7 +876,8 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             grammar, both widths — 滑到最新 drives this box, the follow hook
             resolves the real scroller). A pending interaction FORCE-opens
             it — the InteractionCard carries the answer affordance (in place
-            on legacy hosts, navigate-to-answer on 0.1.5), so a collapsed
+            through the official carrier, navigate-to-answer only when that
+            carrier exposes no action), so a collapsed
             fold can never hide it; the summary names that wait too. */}
         <div className={css.sessionRailComments} data-open={commentsOpen || awaiting}>
           <Disclosure

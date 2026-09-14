@@ -95,7 +95,6 @@ export declare const zh: {
     'new.titlePlaceholder': string;
     'new.description': string;
     'new.descriptionPlaceholder': string;
-    'new.color': string;
     'new.prompt': string;
     'new.promptPlaceholder': string;
     'new.attachHint': string;
@@ -498,6 +497,12 @@ export declare const zh: {
     'review.interactionBodyMissing': string;
     'review.interactionRejected': string;
     'review.interactionUnanswered': string;
+    'review.interactionCollapse': string;
+    'review.interactionExpand': string;
+    'review.interactionProgress': string;
+    'review.interactionSubmitting': string;
+    'review.interactionRecommended': string;
+    'review.interactionIncomplete': string;
     'review.sessionContext': string;
     'review.todosDone': string;
     'review.todosActive': string;

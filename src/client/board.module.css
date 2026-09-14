@@ -24,6 +24,17 @@
   --dsh-tb-surface-float: var(--dsw-alias-bg-layer-1);
   --dsh-tb-surface-sunken: var(--dsw-alias-bg-layer-2);
   --dsh-tb-surface-menu: var(--dsw-specific-menu);
+  /* THE chip fill: ONE fill for every quiet control that must read as "a
+     field I can act on" — the 筛选任务 search box, the quiet buttons beside it
+     (整理 / 自动化 / 动态 / 检查更新 / 刷新 / 查看会话 …) and the tabs.
+     It is the NATIVE input surface (`bg` + `specific-input-major`), not our
+     own layer-2 approximation: a hand-picked layer token is an opaque colour
+     the shell never remaps, so under a skin the chips drifted away from the
+     native inputs sitting right next to them (the 「跟其他按钮都不一样」
+     report). Consuming the native input face makes every one of them move with
+     the skin, at both themes, by construction — there is no second value left
+     to keep in sync. */
+  --dsh-tb-chip-fill: var(--dsh-tb-input-bg);
   /* Modal mask: a touch stronger than the native mask-1 so column lines
      behind the glassy board no longer glimmer through the dialog. */
   --dsh-tb-mask: color-mix(in srgb, var(--dsw-alias-bg-mask-1) 60%, var(--dsw-alias-bg-mask-3));
@@ -368,6 +379,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 /* 通知铃：与模式组同高（28px 行盒）的图标键；计数徽标只在有等待事项时
    出现（无事项 = 安静铃，无空徽标噪音）。徽标是计数本身，不是装饰。 */
+/* The notification bell is a 28px icon button that rides the tool row beside
+   the mode buttons (see .boardModes .notifyBell below for its chip surface —
+   it must be declared AFTER .iconButton to win the cascade). */
 .notifyBell {
   position: relative;
   width: 28px;
@@ -597,7 +611,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 0 12px;
   font-size: 13px;
   color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-input-bg);
+  background: var(--dsh-tb-chip-fill);
   border: var(--dsh-tb-border-soft);
   /* 胶囊 — 与板头其它动作同一圆角语言。 */
   border-radius: var(--dsh-tb-pill);
@@ -912,7 +926,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 0 10px;
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-chip-fill);
   color: var(--dsh-tb-text-2);
   font: inherit;
   font-size: 12px;
@@ -1480,7 +1494,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 0 10px;
   font-size: 12px;
   color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-chip-fill);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
 }
@@ -1583,8 +1597,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   padding: 2px 8px;
   border-radius: var(--dsh-tb-pill);
   /* Single-layer solid fill (an rgba fill on translucent surfaces would
-     double-fade under a glass skin). */
-  background: var(--dsh-tb-surface-sunken);
+     double-fade under a glass skin) — the shared quiet-chip surface, so a
+     status chip and the controls around it never drift apart under a skin. */
+  background: var(--dsh-tb-chip-fill);
 }
 
 .chip[data-kind='success'] { color: var(--dsw-alias-state-success-primary); }
@@ -1681,8 +1696,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
      edges and the eye reads the shape as boxy even though the ends are exact
      semicircles (measured on a real phone: a 94px-tall button whose corner arc
      is 41px = half the height, i.e. already maximally round, still reported as
-     「方的」). Fill first, then geometry is what the eye actually sees. */
-  background: var(--dsh-tb-surface-sunken);
+     「方的」). Fill first, then geometry is what the eye actually sees.
+     The fill is the SHARED chip token, so a quiet button and the search field
+     beside it are literally the same surface — a hand-picked layer token here
+     is what made these buttons read as a different family under a skin. */
+  background: var(--dsh-tb-chip-fill);
   /* The same hairline the tabs carry (l2) — one chip grammar, no new token. */
   border: var(--dsh-tb-border);
   /* Quiet density (reference parity: their ghost is 12px on tighter padding
@@ -1793,6 +1811,18 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 .iconButton:hover {
   background: var(--dsh-tb-hover);
   color: var(--dsh-tb-text-1);
+}
+
+/* The bell, in its tool-row home, takes the SAME chip surface as the mode
+   buttons beside it (fill + hairline + pill), so the row reads as one control
+   family at every theme and under any skin — the bare icon between two filled
+   chips was the one member that looked borrowed. It is declared HERE, after
+   the .iconButton base that sets `background: transparent; border: none`, so
+   the chip wins the cascade; `.boardModes .notifyBell` is where the bell only
+   ever lives, which also keeps every other .iconButton untouched. */
+.boardModes .notifyBell {
+  background: var(--dsh-tb-chip-fill);
+  border: var(--dsh-tb-border);
 }
 
 /* --- iOS-style switch (Switch component) -------------------------------------- */
@@ -2236,6 +2266,11 @@ textarea.input {
   /* Board-relative (see the shared overlay chrome): % of the backdrop content
      box, never vw/vh. */
   width: min(640px, 100%);
+  /* NO container here on purpose: making this box a container would resolve
+     the composer textarea's own `height: 100%` against it instead of against
+     the auto-height flex item that used to size it, which changes the detail
+     panel's input geometry. The refinement stack therefore keeps the base
+     card cap (see .interactionCard). */
 }
 
 .detailHeader {
@@ -3740,12 +3775,15 @@ textarea.input {
   width: 100%;
 }
 
-/* Apply action area */
+/* Apply action area: ONE action, separated by AIR, never by a rule. A
+   `border-top` here drew a full-width line that read as a stray artifact —
+   it belonged to nothing (the section above already ends with its own edge)
+   and it moved with the content. The gap carries the separation. */
 .refineActionArea {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
+  margin-top: 4px;
 }
 
 .refineApplyButton {
@@ -4972,49 +5010,49 @@ button.interactionOption:focus-visible,
   flex: none;
 }
 
-/* The pending native-interaction card, pinned just above the composer (or
-   inside the rail's scroll zone — same grammar everywhere): a plan awaiting
-   confirmation or an ask_user_question. Surfaces live with the real tool
-   lifecycle; one grammar for plan and question. The card is a rail flex
-   child and must never exceed the rail's content box — min-width: 0 lets
-   its rows wrap instead of bursting out of the rail's right edge (the
-   reported 「放弃整组爆出框」bug); margins land on the rail's 14px box.
-   HEIGHT CONTRACT: the card is capped (max-height) and the body scrolls
-   internally while the ACTION ROW stays pinned at its bottom — a long
-   plan/question can never push 确认/拒绝 or the composer out of reach
-   (the reported 「长计划把评论区/发送挤掉」bug). */
+/* The pending native-interaction card — the board's rendering of the SAME
+   request the native question composer shows (a plan awaiting confirmation or
+   an ask_user_question), pinned just above the composer or inside the rail's
+   scroll zone. Surfaces live with the real tool lifecycle; one grammar for
+   plan and question, one component for all three surfaces (review rail,
+   session panel, refinement panel).
+
+   PARITY IS THE CONTRACT: the parts, their order and their behaviour mirror
+   the native card (head with eyebrow/title + collapse/dismiss icons, the
+   option list with numbered radios or checkboxes, the custom answer row, the
+   pager, the near-field error line, the skip + next/submit pair), so a user
+   who knows the native question card already knows this one. Only the tokens
+   differ — this file consumes --dsh-tb-* / --dsw-* like every other surface.
+
+   The card is a rail flex child and must never exceed its container —
+   min-width: 0 lets its rows wrap instead of bursting out of the rail's right
+   edge (the reported 「放弃整组爆出框」bug). HEIGHT CONTRACT: the card is
+   capped and the BODY scrolls internally while the head and the footer stay
+   pinned — a long plan/question can never push 确认执行/拒绝 or the composer
+   out of reach (the reported 「长计划把评论区/发送挤掉」bug). */
 .interactionCard {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   flex: none;
   min-width: 0;
-  /* A px cap: the card sits in a panel sized against the BOARD box, so a
-     viewport unit would measure a different box than the one holding it. */
-  max-height: 320px;
+  /* THE height contract: a card is at most as tall as the box it sits in, and
+     never taller than the 320px reading cap. The 100% half is what keeps the
+     pinned footer reachable — a card that outgrows its scrollport (the
+     comment rail's capped comments box is 285px on a phone) has its action row
+     painted outside every scrollport, under the conversation column: the card
+     looks cut off mid-content and 跳过本题 / 下一题 / 提交 cannot be tapped at
+     all. `min()` needs BOTH halves valid, and its 100% resolves to `auto` in
+     an unbounded container (the refinement stack), where the card simply
+     takes the 320px ceiling and scrolls its own body — so one declaration
+     serves both surfaces. Never a viewport unit here: the board box is not
+     the viewport (see the .modalBackdrop note). */
+  max-height: min(320px, 100%);
   overflow: hidden;
-  /* VERTICAL padding only: the scroll body owns its own horizontal inset, so
-     its scrollbar lands flush on the card's inner edge (the transcript's
-     grammar) instead of floating 12px inside, hugging the text. */
-  padding: 10px 0 12px;
   margin: 0 var(--dsh-tb-rail-inset) 2px;
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-}
-
-/* The card's own scroll slot: the text/options/input part scrolls inside
-   the capped card; the action row stays outside it, always visible. The
-   12px side inset lives HERE (on the scroller) so the bar renders at the
-   card edge, never beside the text. */
-.interactionCardBody {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 0 12px;
+  border-radius: var(--dsh-tb-radius-md);
+  color: var(--dsh-tb-text-1);
 }
 .interactionCard[data-plan='true'] {
   border-color: color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent);
@@ -5028,60 +5066,412 @@ button.interactionOption:focus-visible,
 .commentsScroll .interactionCard {
   margin: 0 0 2px;
 }
+
+/* Head: eyebrow + title on the left, the collapse/dismiss icons on the right
+   (native insets, tightened for a rail-width card). The head never scrolls —
+   collapsing and dismissing stay reachable however long the body is. */
+.interactionHead {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 8px 0 12px;
+}
+.interactionHeading {
+  min-width: 0;
+}
+.interactionEyebrow {
+  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsh-tb-text-3);
+}
+.interactionTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 21px;
+  overflow-wrap: anywhere;
+}
+.interactionHeadActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+/* The head's two icon buttons ride the card's own compact scale (the shared
+   .iconButton is 30px for a toolbar; the native card's pair is 24px). */
+.interactionHeadActions .iconButton {
+  width: 24px;
+  height: 24px;
+  color: var(--dsh-tb-text-3);
+}
+.interactionHeadActions .iconButton:hover:not(:disabled) {
+  color: var(--dsh-tb-text-1);
+}
+
+/* The card's ONE scroll region: the question body (detail, options, custom
+   answer field). Its 12px side inset lives HERE so the bar renders at the
+   card edge, never beside the text. */
+.interactionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 12px;
+}
+
+/* The read-only shell's plain-text body (no scroller of its own: it is short
+   by construction). */
+.interactionCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 12px;
+}
+
 .interactionQuestion {
   font-size: 13px;
   line-height: 1.5;
   color: var(--dsh-tb-text-1);
   overflow-wrap: break-word;
 }
+/* The question's supporting detail (native renders it as Markdown): one
+   wrapper, then the Markdown block's own rhythm — a paragraph margin inside a
+   card would read as a gap nobody declared. */
 .interactionDetail {
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--dsh-tb-text-2);
   overflow-wrap: break-word;
 }
+.interactionDetail p {
+  margin: 0;
+}
+
+/* The option list: a vertical menu at every width (native grammar) — a
+   wrapping chip row made a two-line option and a one-word option read as the
+   same thing, and on a phone it turned a four-option question into a wall. */
 .interactionOptions {
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+/* Read-only shell options are PLAIN TEXT (never clickable): they stay inline
+   chips so the read-only card reads as a description, not as a menu the user
+   will try to press. */
+span.interactionOptions {
+  flex-direction: row;
   flex-wrap: wrap;
   gap: 6px;
 }
+/* The option's shape: the pill belongs to the READ-ONLY shell's chips (plain
+   text — never clickable). The interactive menu row is its own class, so the
+   pill geometry contract keeps one meaning. */
 .interactionOption {
+  display: inline-flex;
+  width: auto;
+  min-height: 0;
+  padding: 4px 10px;
   font: inherit;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-surface-float);
   border: 1px solid var(--dsw-alias-border-l2);
-  /* A chip is a pill (same family as .chipFill: 999px) — sm read square. */
   border-radius: var(--dsh-tb-pill);
-  padding: 4px 10px;
-}
-/* Read-only mirror options (0.1.5 navigate-to-answer card): the same chip
-   geometry, never clickable — no pointer cursor, no hover lift, no selected
-   state. The interactive grammar stays on the button element only. */
-span.interactionOption {
   cursor: default;
 }
-button.interactionOption {
+
+/* One clickable choice: a full-width menu row (native grammar) — a wrapping
+   chip row made a two-line option and a one-word option read as the same
+   thing, and on a phone it turned a four-option question into a wall. */
+.interactionOptionButton {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: none;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--dsh-tb-radius-sm);
   cursor: pointer;
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
-button.interactionOption:hover {
+.interactionOptionButton:hover:not(:disabled),
+.interactionOptionOn {
   background: var(--dsh-tb-hover);
 }
 .interactionOptionOn {
-  color: var(--dsh-tb-accent);
-  border-color: color-mix(in srgb, var(--dsh-tb-accent) 55%, transparent);
+  border-color: var(--dsw-alias-border-l2);
 }
+.interactionOptionButton:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* The option's leading marker: the number square (single-select) or the
+   checkbox (multi-select) — the same 20px slot, so the two list shapes align
+   on one text line. */
+.interactionOptionNumber {
+  display: grid;
+  place-items: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsw-alias-bg-overlay);
+  border-radius: var(--dsh-tb-radius-sm);
+}
+.interactionCheck {
+  display: grid;
+  place-items: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: var(--dsh-tb-radius-sm);
+}
+.interactionCheck::before {
+  content: '';
+  grid-area: 1 / 1;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsh-tb-radius-sm);
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+.interactionCheck > svg {
+  grid-area: 1 / 1;
+  position: relative;
+}
+.interactionCheckOn {
+  color: var(--dsw-alias-label-primary-foreground);
+}
+.interactionCheckOn::before {
+  background: var(--dsh-tb-text-1);
+  border-color: var(--dsh-tb-text-1);
+}
+.interactionOptionCopy {
+  flex: 1;
+  min-width: 0;
+}
+/* The option's one text line: label + 推荐 badge + description. It WRAPS
+   rather than clipping — the description is content, not a caption to be
+   truncated away. */
+.interactionOptionLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  min-width: 0;
+}
+.interactionOptionLabel {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.interactionBadge {
+  flex: none;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) 16%, transparent);
+  border-radius: var(--dsh-tb-radius-sm);
+}
+.interactionOptionDescription {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsh-tb-text-3);
+  overflow-wrap: anywhere;
+}
+
+/* The custom answer row, appended to the option list (native inline variant):
+   the same geometry as an option row, so it reads as one more choice — "type
+   your own". */
+.interactionCustomRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--dsh-tb-radius-sm);
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+.interactionCustomRow:hover,
+.interactionCustomRow:focus-within,
+.interactionCustomRowOn {
+  background: var(--dsh-tb-hover);
+}
+.interactionCustomRow:focus-within,
+.interactionCustomRowOn {
+  border-color: var(--dsw-alias-border-l2);
+}
+
+/* The auto-growing answer field: a textarea over a hidden mirror that owns
+   the height (native grammar), so a long answer soft-wraps and grows while
+   Shift+Enter still breaks a line; past the cap the textarea scrolls itself.
+   Mirror and textarea share font, line-height, padding and wrapping rules or
+   the two heights diverge. */
+.interactionField {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.interactionField > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.interactionFieldMirror {
+  box-sizing: content-box;
+  max-height: 120px;
+  visibility: hidden;
+  overflow: hidden;
+}
+.interactionFieldInput {
+  resize: none;
+  color: var(--dsh-tb-text-1);
+  caret-color: var(--dsh-tb-accent);
+  background: none;
+  border: none;
+  outline: none;
+  overflow-y: auto;
+}
+.interactionFieldInput::placeholder {
+  color: var(--dsh-tb-text-3);
+}
+/* No options at all: the field IS the question's body (native block variant). */
+.interactionFieldBlock {
+  flex: none;
+  min-height: 56px;
+  margin: 2px 12px;
+  padding: 8px 12px;
+  background: var(--dsh-tb-input-bg);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsh-tb-radius-sm);
+}
+.interactionFieldBlock:focus-within {
+  border-color: var(--dsh-tb-focus-color);
+}
+
+/* The pinned footer: pager left, the refusal reason in the middle, skip +
+   next/submit right. It WRAPS instead of compressing — on a narrow rail the
+   words move to a second line, they are never dropped or shrunk (硬性规范 10)
+   and no button is ever pushed out of the card. */
+.interactionFooter {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 10px;
+}
+.interactionPager {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+.interactionProgress {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--dsh-tb-text-2);
+  white-space: nowrap;
+  word-spacing: -2px;
+}
+/* role=status: the reason a refusal happened is announced, not just painted.
+   min-height keeps the row from collapsing (and the buttons from jumping)
+   when there is no error. */
+.interactionFeedback {
+  flex: 1;
+  min-width: 0;
+  min-height: 16px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsh-tb-danger);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.interactionFooterActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The plan strip + its body (native plan-review grammar): a labelled strip,
+   then the plan itself in its own scroll region. */
+.interactionStrip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+.interactionStripDot {
+  flex: none;
+  width: var(--dsh-tb-dot);
+  height: var(--dsh-tb-dot);
+  background: var(--dsh-tb-attention);
+  border-radius: 50%;
+}
+.interactionPlanBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* The read-only shell's single action row (one navigate affordance). Same
+   pinned-row grammar as the footer; kept separate because the shell is not a
+   flow with a pager. */
 .interactionActions {
   display: flex;
   align-items: center;
-  /* Wrapping is the graceful layer: a narrow rail wraps the button row onto
-     a second line instead of forcing the card past the rail's right edge
-     (question row: 下一题/上一题/跳过本题/放弃整组; plan row: 确认/拒绝/讨论). */
   flex-wrap: wrap;
   gap: 8px;
-  /* The card carries no horizontal padding (the scroll body owns its inset so
-     its bar lands on the card edge); the pinned action row takes the same
-     12px inset itself. */
-  padding: 0 12px;
+  flex: none;
+  padding: 0 12px 10px;
 }
 .interactionAmend {
   display: flex;

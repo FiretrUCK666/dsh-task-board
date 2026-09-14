@@ -994,7 +994,7 @@ export class BoardController {
   // --- pending native questions (official mirror) -----------------------------
 
   /** The open ask_user_question batch for a session (the interaction card's
-   *  read-only source — answering stays in the native session). */
+   *  content source — the same request the native composer renders). */
   questionPendingOf(sessionId: string | undefined): WireQuestion | undefined {
     return this.deps.questionRpc?.pendingOf(sessionId)
   }
@@ -1004,15 +1004,18 @@ export class BoardController {
     return this.deps.questionRpc?.subscribe(listener) ?? (() => {})
   }
 
-  /** Whether the board can answer a pending question in place. Always false
-   *  on 0.1.5: the waterfall is a claim chain (first answer wins), so the
-   *  board never registers its own answerer — the card navigates to the
-   *  native session instead. Kept so callers degrade structurally. */
+  /** Whether the board can answer a pending question in place. True while the
+   *  official snapshot carries an interactive carrier (the native
+   *  `PendingQuestion` exposes `answer`/`cancel`; settling through it resolves
+   *  the ONE host waterfall call — nothing new is registered, so first answer
+   *  still wins). False for a display-only snapshot entry or a host with no
+   *  uiSession: the card degrades to its navigate-to-answer shell. */
   get questionAnswerInPlace(): boolean {
     return this.deps.questionRpc?.answerInPlace ?? false
   }
 
-  /** Deliver one answer batch to the suspended ask (true = accepted). */
+  /** Deliver one answer batch to the suspended ask. True = accepted; false =
+   *  refused or stale — the card keeps itself open and reports the reason. */
   answerQuestion(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean> {
     return this.deps.questionRpc?.answer(rpcId, sessionId, answers) ?? Promise.resolve(false)
   }

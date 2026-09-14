@@ -533,16 +533,51 @@ describe('alignment grammar (the OCD contract)', () => {
     // unpadded scroller floats the bar beside the text — the「滚动条贴着文字」
     // complaint on the interaction (question/plan) card.
     const card = ruleOf('interactionCard')
-    expect(card).toMatch(/max-height:\s*320px/)
+    // The narrow rail is exactly where the card's cap must be container-bound:
+    // the comments box is 285px on a phone, so a 320px card overflowed it and
+    // its pinned action row landed outside every scrollport (盘点「选项在、
+    // 按钮按不了」). min() keeps the reading ceiling AND the container bound.
+    expect(card).toMatch(/max-height:\s*min\(320px,\s*100%\)/)
+    // The interactive card's ONE scroller is the question body (detail,
+    // options, custom answer field); the read-only shell's plain-text body
+    // keeps its own. Both own their horizontal inset.
+    expect(ruleOf('interactionBody')).toMatch(/overflow-y:\s*auto[\s\S]*?padding:\s*8px 12px/)
     expect(ruleOf('interactionCardBody')).toMatch(/overflow-y:\s*auto[\s\S]*?padding:\s*0 12px/)
     expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
-    // The 0.1.5 read-only mirror options share the chip geometry but are
-    // spans, never buttons: no pointer cursor, no hover lift, no focus ring.
-    // (The interactive grammar stays on button.interactionOption only.)
-    expect(source).toMatch(/span\.interactionOption/)
-    expect(source).toMatch(/button\.interactionOption:hover/)
+    // Two option grammars, deliberately distinct: the read-only shell's chips
+    // are plain text (no pointer cursor, no hover lift, no focus ring), while
+    // the interactive menu row is its own class with its own hover.
+    expect(source).toMatch(/^\.interactionOption\s*\{/m)
+    expect(source).toMatch(/\.interactionOptionButton:hover:not\(:disabled\)/)
     expect(source).not.toMatch(/[^.:\w]interactionOption:hover/)
     expect(source).not.toMatch(/[^\w.]interactionOption:focus-visible/)
+  })
+
+  it('the interactive question card stays fully operable on a phone', () => {
+    // 双端同治：交互卡（提问/计划）是窄档最容易被挤坏的一块——选项行、输入行、
+    // 动作行必须都留在卡里，且**不许靠藏标签/缩字号省地方**（硬性规范 10）。
+    // 这里钉死四条：动作行换行、可点目标有地板、正文可换行、字号不缩。
+    const footer = ruleOf('interactionFooter')
+    expect(footer).toContain('flex-wrap: wrap')
+    expect(footer).toMatch(/padding:\s*8px 12px 10px/)
+    // Every tap target keeps a floor (option rows and the custom row).
+    expect(ruleOf('interactionOptionButton')).toMatch(/min-height:\s*36px/)
+    expect(ruleOf('interactionCustomRow')).toMatch(/min-height:\s*36px/)
+    // The option's one text line wraps (label / 推荐 / description) instead of
+    // clipping the description away.
+    expect(ruleOf('interactionOptionLine')).toContain('flex-wrap: wrap')
+    expect(ruleOf('interactionOptionLine')).toContain('min-width: 0')
+    // Text never leaves its box, and the font size never shrinks for space.
+    for (const name of ['interactionTitle', 'interactionOptionLabel', 'interactionProgress']) {
+      expect(ruleOf(name)).toMatch(/font-size:\s*1[1-5]px/)
+    }
+    expect(ruleOf('interactionOptionLabel')).toContain('overflow-wrap: anywhere')
+    // The custom answer field's textarea mirrors the field's own metrics, so
+    // the auto-grown height can never disagree with the text inside it.
+    const field = ruleOf('interactionField')
+    expect(field).toBeTruthy()
+    expect(source).toMatch(/\.interactionField > \* \{[^}]*font-size:\s*13px/)
+    expect(source).toMatch(/\.interactionField > \* \{[^}]*line-height:\s*20px/)
   })
 
   it('the compact tool row is deterministic: modes above, the filter owns the line below it (贴状态列)', () => {
@@ -741,10 +776,31 @@ describe('button geometry (one base for every variant)', () => {
     // chip language, no second hollow variant:
     const ghost = ruleOf('ghostButton')
     expect(ghost).not.toMatch(/background:\s*transparent/)
-    expect(ghost).toMatch(/background:\s*var\(--dsh-tb-surface-sunken\)/)
+    // ONE fill for the whole quiet family, and it is the NATIVE input surface:
+    // the hand-picked layer token this used to carry is an opaque colour the
+    // shell never remaps, which is exactly why 整理/自动化/动态/检查更新 drifted
+    // away from 筛选任务 under a skin (「跟其他按钮都不一样」).
+    expect(ghost).toMatch(/background:\s*var\(--dsh-tb-chip-fill\)/)
     expect(ghost).toMatch(/border:\s*var\(--dsh-tb-border\)/)
-    // The tabs are the benchmark this grammar mirrors.
-    expect(ruleOf('columnTab')).toMatch(/background:\s*var\(--dsh-tb-surface-sunken\)/)
+    // The token itself resolves to the native input face, and every member of
+    // the family consumes it — the labels the user compared must not drift.
+    expect(source).toMatch(/--dsh-tb-chip-fill:\s*var\(--dsh-tb-input-bg\)/)
+    expect(source).toMatch(/--dsh-tb-input-bg:\s*var\(--dsw-specific-input-major\)/)
+    for (const name of ['search', 'columnTab', 'chipFill', 'feedSearch']) {
+      expect(ruleOf(name), `.${name} must consume the shared chip fill`).toContain('var(--dsh-tb-chip-fill)')
+    }
+    // No member of the family may go back to the private layer token.
+    for (const name of ['ghostButton', 'search', 'columnTab', 'chipFill', 'feedSearch']) {
+      expect(ruleOf(name), `.${name} must not use the private layer fill`).not.toContain('--dsh-tb-surface-sunken')
+    }
+    // The tool row's own icon member takes the same surface, and it must be
+    // declared AFTER the .iconButton BASE (the one that sets `background:
+    // transparent; border: none`) or the chip never wins the cascade — the
+    // exact way this one stayed bare.
+    const bell = source.indexOf('.boardModes .notifyBell {')
+    const iconBase = source.indexOf('background: transparent;\n  border: none;')
+    expect(bell).toBeGreaterThan(iconBase)
+    expect(source.slice(bell, source.indexOf('}', bell))).toContain('var(--dsh-tb-chip-fill)')
   })
 
   it('the compact column header is declared ONCE (no dead second padding)', () => {

@@ -2,14 +2,13 @@
  * Pending `ask_user_question` answers over the official mirror.
  *
  * On dsh 0.1.5 the waterfall is a CLAIM chain (first answer wins, never a
- * broadcast), so the board never registers its own answerer — answering stays
- * in the native session and the board only mirrors the official
- * `pendingInteractions` snapshot (see question-mirror.ts). This module keeps
- * the historical wire model (frame normalization, the per-rpcId pending
- * projection, answer assembly and the plan-review grammar) for the legacy
- * tracker path; the mirror path renders from `MirrorQuestion` instead.
- * Framework-free and DOM-free, so the rules unit-test in isolation. The live
- * stream and the wire calls live in the client tracker; the controller
+ * broadcast), so the board never registers its own answerer — it settles the
+ * official carrier it received from `pendingInteractions` (see
+ * question-mirror.ts). This module keeps the wire model (frame
+ * normalization, the per-rpcId pending projection, answer assembly and the
+ * plan-review grammar) shared by both the legacy tracker path and the mirror
+ * path. Framework-free and DOM-free, so the rules unit-test in isolation. The
+ * live stream and the wire calls live in the client tracker; the controller
  * exposes a thin `QuestionRpcFace`.
  *
  * Frame identity: the host mints one rpcId per open `ask()` and replays it
@@ -75,10 +74,14 @@ export type QuestionFrameIn = {
 };
 /** Plan-review decision a UI can send (see planDecisionAnswers). */
 export type PlanDecision = 'approve' | 'decline';
-/** The controller's thin question surface (implemented by the live tracker
- *  or the official mirror; absent when the host wire is unavailable —
- *  surfaces then hide the card). On 0.1.5 the mirror never answers in place
- *  (`answerInPlace` is false): the card navigates to the native session. */
+/** The controller's thin question surface (implemented by the official mirror
+ *  or the legacy tracker; absent when the host wire is unavailable — surfaces
+ *  then hide the card). On 0.1.5 the mirror IS able to answer in place
+ *  (`answerInPlace` is true while the official snapshot publishes an
+ *  interactive carrier): it settles the very request the native composer
+ *  holds, without registering a second answerer. A snapshot entry that
+ *  carries data but no action keeps `answerInPlace` false and the card
+ *  degrades to navigate-to-answer. */
 export interface QuestionRpcFace {
     /** The pending wire question for one session (newest wins), if any. */
     pendingOf(sessionId: string | undefined): WireQuestion | undefined;
@@ -86,7 +89,8 @@ export interface QuestionRpcFace {
     subscribe(listener: () => void): () => void;
     /** Whether the board answers in place (false = navigate to answer). */
     readonly answerInPlace?: boolean;
-    /** Deliver the whole answer batch; false = the host rejected it. */
+    /** Deliver the whole answer batch; false = refused, stale or unavailable
+     *  (the card stays open and shows the reason — never a silent close). */
     answer(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>;
     /** Reject the whole ask (the host resolves the tool call as cancelled). */
     cancel(rpcId: string): Promise<boolean>;

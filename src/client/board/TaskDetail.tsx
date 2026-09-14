@@ -620,7 +620,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                   draftStore.set(editDraftKey(current.id), JSON.stringify(next))
                 }}
                 controller={controller}
-                withColor
                 sessionId={referenceSession}
               />
               {editError !== undefined && <p className={css.formError}>{editError}</p>}

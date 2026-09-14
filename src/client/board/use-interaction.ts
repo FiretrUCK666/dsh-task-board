@@ -6,11 +6,11 @@
  * readout.
  *
  * The pending QUESTION comes from the controller's question face
- * (questionPendingOf / subscribeQuestions) — on 0.1.5 a read-only mirror of
- * the official pending snapshot (answering stays in the native session), on
- * older hosts the live tracker whose frame settles the suspended call. The
- * card appears/disappears with the real tool lifecycle either way. The to-do
- * list still rides the transcript tail
+ * (questionPendingOf / subscribeQuestions) — on 0.1.5 the official pending
+ * snapshot, whose carrier the card answers through in place (identical to the
+ * native question card); on older hosts the live tracker whose frame settles
+ * the suspended call. The card appears/disappears with the real tool
+ * lifecycle either way. The to-do list still rides the transcript tail
  * (last-write-wins `todo/write` snapshot); goal + subagents come from the
  * narrow session-state bridge when the host registered it.
  */
