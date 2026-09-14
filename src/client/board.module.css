@@ -8,11 +8,12 @@
 
 /* --- design-system layer -----------------------------------------------------
  * One alias layer: the board never writes raw values — every color, border,
- * radius, shadow, text level and motion constant flows from the native dsh
- * semantic tokens below (or is derived from them). A future skin re-maps the
- * --dsw-* tokens and the whole board follows automatically.
+ * radius, corner SHAPE, shadow, text level and motion constant flows from the
+ * native dsh semantic tokens below (or is derived from them). A future skin
+ * re-maps the --dsw-* tokens and the whole board follows automatically.
  */
-[data-dsh-taskboard-view] {
+[data-dsh-taskboard-view],
+:where([data-dsh-taskboard-panel]) {
   /* surfaces: the glass/opaque split lives here once — the wallpaper wash
      (--dsh-tb-glass, follows a skin's translucency on bg-base) belongs to
      the canvas layer only; every inner floating/sunken surface consumes the
@@ -65,6 +66,20 @@
      that are NOT pills (meter swatch, code, remove ×) keep their own tiny
      radii by design. */
   --dsh-tb-pill: 999px;
+  /* corner geometry: `border-radius` decides how big a corner is, `corner-shape`
+     decides whether that corner is a circular ARC. They are two axes, and only
+     the second one can turn a 50% dot or a 999px pill into a rounded square —
+     measured in the browser: `corner-shape: superellipse(1.33)` renders an 8x8
+     `border-radius: 50%` box as a rounded square, while the initial value
+     (`superellipse(1)`) renders a true circle. That is why the 「圆变方」 family
+     survived every previous radius-only pass: the radii were always correct.
+     `corner-shape` does NOT inherit (measured: a value on the parent box leaves
+     every child at the initial value), so it cannot be fixed from the root —
+     but it CAN be declared once for the whole subtree with the universal
+     selector below, which is zero-specificity and therefore overrides an
+     element rule while still losing to nothing else. `--dsh-tb-corner` is the
+     single switch: if the board ever wants a squircle family, it changes here. */
+  --dsh-tb-corner: round;
   /* ONE breathing rhythm for the compact navigator strip and the thumb-bar
      clearance: both sides of the strip and the room above the thumb bar draw
      from this single value, so the top gap can never again disagree with the
@@ -161,6 +176,40 @@
      to zero, which would turn "live" into "frozen"). */
   --dsh-tb-breath-spread: 3px;
   --dsh-tb-breath-halo: 14px;
+}
+
+/* The corner SHAPE, declared once for the whole board surface.
+ *
+ * `corner-shape` is not inherited (measured: a value on the parent box leaves
+ * every child at the initial value), so this one rule states the board's corner
+ * language for every element it renders — dots, spinners, pills, chips, cards —
+ * in one place, instead of an `corner-shape: round` on each of the ~60 pills
+ * and 8 circles (the drift-prone patch pile this rule exists to replace).
+ *
+ * Why it is needed at all: with the initial value the two axes agree and every
+ * radius draws a circular arc, but any environment that sets a superellipse
+ * family (a skin, an injected stylesheet, a future default) silently turns
+ * every one of those same radii into a rounded square — and no radius edit can
+ * undo it. That is the 「圆变方」 family, and it came back after every previous
+ * radius-only pass because the radii were never the problem.
+ *
+ * The declaration is `!important` and the descendant selector carries the
+ * `[class]` qualifier, both for the same measured reason: against a leak of
+ * equal specificity `!important` is decided by SPECIFICITY rather than source
+ * order, so `[data-dsh-taskboard-view] *` (0,2,0) still loses to
+ * `.theme .statusDot` (0,2,0) and the dots stay square. Describing the board's
+ * own geometry is not a case for a specificity bet: the reader of a stylesheet
+ * the board does not control is unknown, and the value may be inherited or
+ * injected per element. There is no cost inside this sheet — a component
+ * wanting another shape would be expressing the same board language — and a
+ * skin that genuinely wants another corner family has a supported door:
+ * re-map `--dsh-tb-corner` below, the board's single switch. The root is in the
+ * selector list so the token resolves there too; `*[class]` is what every
+ * widget the board actually renders matches. */
+[data-dsh-taskboard-view],
+[data-dsh-taskboard-view] *[class],
+[data-dsh-taskboard-panel] {
+  corner-shape: var(--dsh-tb-corner, round) !important;
 }
 
 /* --- shared attention motion ------------------------------------------------

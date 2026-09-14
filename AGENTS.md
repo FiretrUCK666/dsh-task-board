@@ -438,6 +438,13 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 ### 设计系统层（宪法标题 + 锚点，展开解释见代码注释与 spec）
 
 - 令牌只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）；表面三层（画布/不透明内层）；浮层家族同一 chrome（板盒 % 参照，禁 vw/vh；Dialog 默认 portal 板盒 + 一处 Escape）。
+- **圆角几何在根层一次声明（「圆变方」的唯一根治点）**：`corner-shape` 决定角是不是**圆弧**，与 `border-radius`
+  是两条轴；它**不继承**，所以环境里任何 superellipse 家族都会把 `50%` 圆点与 `999px` 胶囊渲染成方加圆弧，
+  而改半径永远修不掉——这正是历史上每次只改半径都没修好的原因。全板只在设计系统层声明一次：
+  `[data-dsh-taskboard-view], [data-dsh-taskboard-view] *[class], [data-dsh-taskboard-panel]` 上的
+  `corner-shape: var(--dsh-tb-corner, round) !important`（`*[class]` 提特异性、`!important` 兜住未知泄漏；
+  皮肤要换圆角家族就重映射 `--dsh-tb-corner`，不另写声明）。**禁止在任何圆点/胶囊上逐处补 `corner-shape`**，
+  也禁止把 50% 换成 px 半径去「修圆」——契约见 `mobile-contract.spec.ts` 的 corner geometry 一节。
 - 共用部件一律复用（`ui.tsx`/`Chip`/`Dialog`/`Markdown`/自动化唯一 UI/时间与 chip 唯一映射，见 `session-panel.tsx`/`automation-ui.tsx`）。
 - 动效：装饰降级、状态指示器存活（只重定义令牌）；光效规则见下表；拖拽三件套（`drop-position`/`drag-autoscroll`/`use-flip`）；卡片三契约（`card-contract.spec`）。
 - **光效规则表（呼吸显示与否的唯一判定，无例外）**：

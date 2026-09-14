@@ -74,6 +74,12 @@ function ruleIn(scope: string, selector: string): string {
   return scope.slice(at, end < 0 ? undefined : end)
 }
 
+/** One rule's own text with its comments removed — comments carry prose, and a
+ *  sentence ABOUT a declaration must never answer for the declaration itself. */
+function withoutComments(rule: string): string {
+  return rule.replace(/\/\*[\s\S]*?\*\//g, '')
+}
+
 /** The rule whose selector is EXACTLY `selector` in a scope — never a
  *  descendant selector that merely ends with it (`.boardRowTools .columnTabs`
  *  must not answer for `.columnTabs`). */
@@ -914,6 +920,79 @@ describe('button geometry (one base for every variant)', () => {
     }
     const chrome = blockFrom(line => line.trim() === '.modal, .detail, .review {')
     expect(chrome).toMatch(/border-radius:\s*var\(--dsh-tb-radius-xl\)/)
+  })
+})
+
+describe('corner geometry (true circles, never rounded squares)', () => {
+  /* radius and SHAPE are two different axes: `border-radius` decides how big a
+     corner is, `corner-shape` decides whether that corner is a circular ARC.
+     Only the second one can turn an 8px 50% dot or a 999px pill into a rounded
+     square, and it is NOT inherited (A value on a parent box leaves every child
+     at the initial value — reproducible in the browser, see the probe below).
+     So it must be stated for the whole subtree in ONE zero-specificity rule:
+     per-element declarations are the drift-prone answer, and a root-only
+     declaration does nothing at all.
+     History: the 「圆变方」 family came back after every previous radius-only
+     pass because those passes only ever changed radius VALUES — and these very
+     tests asserted those values, so the geometry was never covered. */
+
+  // Found by the rule's own unique declaration (one line, like every other
+  // rule-hunting helper in this file).
+  const rule = blockFrom(line => line.includes('corner-shape: var(--dsh-tb-corner, round)'))
+  const selector = (() => {
+    const at = source.indexOf(rule)
+    return at < 0 ? '' : source.slice(source.lastIndexOf('}', at) + 1, at).trim()
+  })()
+
+  it('one rule states the corner shape for the whole board surface', () => {
+    expect(rule, 'the corner-shape rule is missing').not.toBe('')
+    const body = withoutComments(rule)
+    expect(selector, 'must cover the board root').toContain('[data-dsh-taskboard-view]')
+    // `*[class]`, not a bare `*`: the class qualifier is what raises the
+    // specificity above `[data-dsh-taskboard-view] *`, which measured EQUAL to a
+    // class-level leak (both 0,2,0). With `!important` on both sides the tie is
+    // decided by specificity, so the bare form loses and the dots stay square.
+    expect(selector, 'must cover every widget the board renders').toContain('[data-dsh-taskboard-view] *[class]')
+    expect(selector, 'must cover the panel surface too').toContain('[data-dsh-taskboard-panel]')
+    // Specificity would be a guess about a stylesheet the board does not
+    // control: measured, a class-level leak on the same elements beats this
+    // rule without the marker, and the dots stay square. The escape door for a
+    // skin is the token, not a weaker declaration.
+    expect(body, 'must win against an unknown leak').toMatch(/corner-shape:\s*var\(--dsh-tb-corner,\s*round\)\s*!important/)
+    expect(body, 'must ride the corner-family switch').toMatch(/corner-shape:\s*var\(--dsh-tb-corner,\s*round\)/)
+  })
+
+  it('it is the ONLY shape declaration, and the switch has ONE definition', () => {
+    expect((source.match(/(^|\s)corner-shape\s*:/g) ?? []).length, 'exactly one corner-shape declaration').toBe(1)
+    expect((source.match(/--dsh-tb-corner\s*:/g) ?? []).length, 'exactly one corner-family definition').toBe(1)
+    expect(withoutComments(source)).toMatch(/--dsh-tb-corner:\s*round/)
+  })
+
+  it('the true circles keep being circles by radius', () => {
+    // The rule above supplies the SHAPE; these rules keep supplying the radius.
+    // A future edit that "fixes roundness" by swapping 50% for a px radius
+    // fails here instead of shipping rounded rectangles.
+    for (const name of [
+      'statusDot',
+      'cardColorMark',
+      'cardSessionDot',
+      'cardWorkspaceDot',
+      'boardStatusDot',
+      'boardDemandDot',
+      'switchKnob',
+      'notifyDot',
+    ]) {
+      const widget = ruleOf(name)
+      expect(widget, `.${name} missing`).not.toBe('')
+      expect(widget, `.${name} must stay a true circle`).toMatch(/border-radius:\s*50%/)
+    }
+    expect(ruleOf('switchTrack')).toMatch(/border-radius:\s*var\(--dsh-tb-pill\)/)
+  })
+
+  it('the shipped bundle carries it (a source-only fix cannot ship)', () => {
+    const bundle = readFileSync(fileURLToPath(new URL('../lib/client.js', import.meta.url)), 'utf8')
+    expect(bundle, 'lib/client.js must be rebuilt and committed').toContain('--dsh-tb-corner:round')
+    expect(bundle).toContain('corner-shape:var(--dsh-tb-corner,round)')
   })
 })
 
