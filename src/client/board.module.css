@@ -40,7 +40,16 @@
   --dsh-tb-mask: color-mix(in srgb, var(--dsw-alias-bg-mask-1) 60%, var(--dsw-alias-bg-mask-3));
   --dsh-tb-border: 1px solid var(--dsw-alias-border-l2);
   --dsh-tb-border-soft: 1px solid var(--dsw-alias-border-l1);
-  --dsh-tb-separator: 1px solid var(--dsw-alias-separator-primary);
+  /* Deliberately nothing. This was `1px solid var(--dsw-alias-separator-primary)`,
+     and the shell declares no such token (0 declarations across the whole DSH
+     install — only references), so the alias was invalid and every consumer
+     dropped to `none` anyway: the separators never painted. Declaring the intent
+     as `none` says what is actually true and keeps the three consumers honest,
+     instead of a broken `var()` that reads as a hairline to every future reader.
+     If a shell version ever exports the token, this becomes a real border again
+     — `scripts/verify-design-docs.mjs` audits CSS token references and will say
+     so when it exists. */
+  --dsh-tb-separator: none;
 
   /* corners: proportional to component size (Apple rhythm). The rounder
      values are the "圆润感" the user asked back for — the previous sm/md/lg
@@ -117,7 +126,15 @@
   /* interaction + motion grammar (one source) */
   --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
   --dsh-tb-input-bg: var(--dsw-specific-input-major);
-  --dsh-tb-focus-ring: var(--dsw-alias-state-business-primary-alpha);
+  /* The focus halo, derived from the SAME 22% step the attention/selection system
+     already uses (see --dsh-tb-attention-alpha below) rather than from a token
+     that does not exist: `var(--dsw-alias-state-business-primary-alpha)` was
+     declared by no shell version, so without a fallback the property was invalid
+     at computed-value time and the four `box-shadow` rings that consume it
+     (`.input:focus`, `.search:focus`, the drop-accept ring, the bind-active drop
+     zone) painted nothing — the documented 3px halo never once appeared.
+     Deriving it here keeps one alpha ladder instead of inventing a second. */
+  --dsh-tb-focus-ring: color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent);
   --dsh-tb-focus-color: var(--dsw-alias-state-business-primary);
   --dsh-tb-motion: 160ms ease;
   --dsh-tb-breath: 2.6s ease-in-out;
@@ -3808,7 +3825,7 @@ textarea.input {
   align-items: center;
   gap: 12px;
   padding: 12px 18px;
-  border-top: 1px solid var(--dsw-alias-separator-primary);
+  border-top: var(--dsh-tb-separator);
   flex: none;
 }
 
@@ -4880,7 +4897,13 @@ button.interactionOption:focus-visible,
 
 .mdRule {
   border: none;
-  border-top: 1px solid var(--dsw-alias-separator-primary);
+  /* Separator above a rendered markdown rule. The first choice is the shell's own
+     separator token — which no installed version declares yet — and the fallback
+     is the inner-opaque layer, so this paints as a quiet hairline today and
+     becomes the shell's own separator the moment that token exists. A bare
+     `var(--dsw-alias-separator-primary)` would instead make the whole declaration
+     invalid and leave the rule with no line at all. */
+  border-top: 1px solid var(--dsw-alias-separator-primary, var(--dsw-alias-bg-layer-2));
   margin: 10px 0;
 }
 

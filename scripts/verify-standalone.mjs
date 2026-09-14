@@ -26,6 +26,7 @@
  *   8. src imports only official SDK / react / node builtins / schemastery / relative
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 
@@ -208,8 +209,41 @@ const REAL_HOME_SPELLINGS = [...new Set([
   REAL_HOME.split(sep).join('\\\\'),
 ])].filter((spelling) => spelling.length > 3)
 
+/**
+ * The leak audit is about what can ESCAPE this machine, so it reasons about the
+ * distributable set rather than the working tree: a gitignored file is never
+ * committed, never packed and never pushed, so nothing in it can leak. Asking
+ * Git instead of listing directory names keeps the rule general — local scratch
+ * of any name is covered, and a file that stops being ignored is audited again
+ * with no edit here. (Skip-list names are how `.impeccable/critique/` snapshots
+ * came to be scanned at all: they are ignored locally, hold absolute paths by
+ * nature, and cannot ship.)
+ *
+ * When Git cannot answer, the set is null and every file is audited exactly as
+ * before — an environment that cannot resolve ignores must not lose coverage.
+ */
+function ignoredFiles(files) {
+  if (files.length === 0) return null
+  try {
+    const input = files.map((f) => relative(root, f).split(sep).join('/')).join('\n')
+    const out = spawnSync('git', ['check-ignore', '--stdin'], { cwd: root, input, encoding: 'utf8' })
+    if (out.status !== 0 && out.status !== 1) return null
+    return new Set(
+      String(out.stdout ?? '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== '')
+        .map((line) => join(root, line)),
+    )
+  } catch {
+    return null
+  }
+}
+const IGNORED = ignoredFiles(textFiles)
+
 for (const file of textFiles) {
   if (file === VERIFY_SELF) continue // the patterns themselves live here
+  if (IGNORED !== null && IGNORED.has(file)) continue // cannot escape this machine
   const rel = relative(root, file)
   const text = readFileSync(file, 'utf8')
   if (isArtifact(file)) {

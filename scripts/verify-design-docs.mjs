@@ -247,6 +247,40 @@ for (const [label, text] of DOC_FILES) {
   }
 }
 
+// --- check 1b: every host token the STYLESHEET references must exist ----------
+// The docs check above only sees names written in DESIGN.md, which is why two
+// separate "references a token the shell never declared" defects shipped without
+// notice (--dsw-alias-separator-primary, --dsw-alias-state-business-primary-alpha).
+// DESIGN.md happened to name neither, so the audit was structurally blind to the
+// class. This closes it from the other end: scan the CSS itself.
+//
+// A `var(--dsw-x)` with a fallback is a deliberate soft dependency and is left
+// alone; a bare `var(--dsw-x)` on a name the shell does not declare can never
+// paint, so it is a defect by construction.
+{
+  const localAliases = new Set()
+  for (const file of ['src/client/board.module.css', 'src/client/settings-card.module.css']) {
+    const p = join(root, file)
+    if (!existsSync(p)) continue
+    const css = readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    for (const m of css.matchAll(/(--[a-z0-9-]+)\s*:/g)) localAliases.add(m[1])
+    const seenRef = new Set()
+    for (const m of css.matchAll(/var\(\s*(--dsw-[a-z0-9-]+)\s*(,)?/g)) {
+      const name = m[1]
+      const hasFallback = m[2] === ','
+      if (hasFallback || declared.has(name) || seenRef.has(name)) continue
+      seenRef.add(name)
+      // Locate one declaration line for a usable message.
+      const at = css.indexOf(name)
+      const line = css.slice(0, at).split('\n').length
+      failures.push(
+        `${file}:${line}: var(${name}) has no fallback and the DSH shell never declares it — every declaration using this custom property is invalid at computed-value time and paints nothing`,
+      )
+    }
+    notes.push(`${file}: ${localAliases.size} local custom properties, ${[...css.matchAll(/var\(\s*--dsw-/g)].length} host-token references audited`)
+  }
+}
+
 // --- check 2: the values the docs record are the values the tokens resolve to --
 
 const sidecar = sidecarText === null ? null : JSON.parse(sidecarText)
