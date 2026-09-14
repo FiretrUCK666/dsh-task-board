@@ -1365,9 +1365,16 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
           <span className={css.boardModes}>
             {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
                 never the brand fill, so the bar reads quiet until there is a
-                real selection to manage. */}
+                real selection to manage.
+                Its `title` says what the mode DOES (select many, then run /
+                recolour / delete together), because 「整理」 alone reads as
+                housekeeping while this is in fact the gateway to the board's most
+                distinctive capability — pushing several cards into real agent
+                sessions at once. It was also the only control in this cluster with
+                no explanation at all, while both neighbours carried one. */}
             <Button
               variant="ghost"
+              title={t('board.organizeTitle')}
               pressed={organizing}
               onClick={() => { organizing ? exitOrganize() : setOrganizing(true) }}
             >

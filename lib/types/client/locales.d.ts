@@ -15,6 +15,7 @@ export declare const zh: {
     'board.filterClear': string;
     'board.filterRemove': string;
     'board.organize': string;
+    'board.organizeTitle': string;
     'board.organizeColor': string;
     'board.organizeCount': string;
     'board.organizeSelectAll': string;
