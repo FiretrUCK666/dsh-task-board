@@ -640,20 +640,19 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
               </Section>
 
               <Section title={t('detail.prompt')}>
-                {/* An empty run prompt is a BLOCKER, not an absence, and it used to
-                    read as an absence: the same neutral 「暂无内容」 the description
-                    gets, while the disabled 执行 button explained the gate only in
-                    its `title` — which a touch user never sees, and which turned the
-                    primary action into a dead end with no reason given. The gate's
-                    own sentence is used verbatim (one copy, one meaning), so the
-                    field that blocks and the button that is blocked say the same
-                    thing. It never shows the title as if it were a prompt (the title
-                    only serves as the execution fallback). The copy action floats
-                    INSIDE the block's top-right corner (hover/focus revealed,
+                {/* Empty reads as EMPTY — the same quiet 「暂无内容」 line the
+                    description gets, not a sentence about the gate. The gate's own
+                    wording belongs on the gate: the disabled 执行 button already
+                    carries it in its `title` (and the automation editor reports it as
+                    a validation error where it is the actual obstacle). Stating it
+                    here as well put an instruction where the user was simply looking
+                    at a field. It never shows the title as if it were a prompt (the
+                    title only serves as the execution fallback). The copy action
+                    floats INSIDE the block's top-right corner (hover/focus revealed,
                     check-mark feedback), so it reads as part of the block instead of
                     a loose row below. */}
                 {current.prompt === '' ? (
-                  <p className={css.detailBlockedField}>{t('detail.promptEmpty')}</p>
+                  <p className={css.detailEmptyField}>{t('detail.emptyField')}</p>
                 ) : (
                   <div className={css.promptBlock}>
                     <pre className={css.promptBlockText}>{current.prompt}</pre>

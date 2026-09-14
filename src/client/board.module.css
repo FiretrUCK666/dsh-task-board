@@ -4038,17 +4038,12 @@ textarea.input {
   color: var(--dsw-alias-label-tertiary);
 }
 
-/* The blocked-prompt line: the description's neutral line, but in the attention
-   colour, because this emptiness STOPS THE TASK. It is not decoration — it is the
-   disabled 执行 button's reason, stated where the missing thing actually lives, so
-   a touch user (who never sees the button's `title`) is not left at a dead end,
-   and the field that blocks says the same sentence as the button it blocks. */
-.detailBlockedField {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--dsh-tb-attention);
-}
+/* `.detailBlockedField` lived here: an attention-coloured replacement for the empty
+   Prompt line that spelled out the execution gate right where the field is. Removed
+   with the change — an empty field reads as empty (「暂无内容」, the same quiet line
+   the description gets), and the gate's wording stays on the gate itself: the
+   disabled 执行 button's `title`, plus the automation editor's validation error where
+   it is the real obstacle. */
 
 /* -----------------------------------------------------------------------------
  * Polish pass: complete interaction states (hover / active / focus-visible /
