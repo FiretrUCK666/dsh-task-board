@@ -1522,13 +1522,21 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 /* Next-action sentence: one quiet line (secondary, ellipsis in its own
    text slot). Never a second status system — it names the same primary the
    chips show so scanning needs no chip archaeology. */
+/* The card's verb: what to do about this card, in words. Two lines rather than
+   one — every template in this line is long ("失败待决策 · 留言 steering 或重跑"),
+   so a single clamped line is guaranteed to truncate the instruction on a narrow
+   card, and a half-stated instruction is worse than a taller card. It sits with
+   the content instead of in the meta block for the same reason. */
 .cardNext {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 /* Feed tools: filter group + search + actions in one wrapping row. Labels

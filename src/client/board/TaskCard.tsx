@@ -284,6 +284,16 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
         </span>
       </span>
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
+      {/* The next-action line sits directly under the content, BEFORE the meta
+          block. It is the card's verb — "what do I do about this" — and it used to
+          be the last child: smallest type, last in reading order, and the first
+          thing to be truncated (it was `nowrap` with an ellipsis, and every one of
+          its sentences is long enough to truncate on a narrow card). Position,
+          size and truncation all told the same wrong story about the least
+          decorative line on the card. */}
+      {nextAction !== undefined && nextAction !== '' && (
+        <span className={css.cardNext}>{nextAction}</span>
+      )}
       <span className={css.cardMeta}>
         {/* Row 1 is identical on every card: source line (when there IS one
             — a source named like the task is never repeated) + last activity. */}
@@ -425,9 +435,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
             <span className={css.cardSessionMore}>+{String(overflowDots)}</span>
           )}
         </span>
-      )}
-      {nextAction !== undefined && nextAction !== '' && (
-        <span className={css.cardNext}>{nextAction}</span>
       )}
       {onColorPick !== undefined && (
         <span className={css.cardColorBar} data-ghost-hide="" onClick={event => { event.stopPropagation() }}>
