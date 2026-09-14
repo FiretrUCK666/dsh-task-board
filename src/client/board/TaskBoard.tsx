@@ -1084,10 +1084,19 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
               与巡航同属右簇。零段省略（「排队 0」是噪音，与上下文计量同一文法）。
               紧凑档它独占导航第二行左段，巡航守右，永远不挤主行动。 */}
           {(() => {
-            // Flow pulse (one sentence, independently gated): cycle p85 and
-            // weekly throughput from the column-move ledger. Each half shows
-            // on its own evidence (a direct-to-done board has throughput but
-            // no cycles); both absent = silence, never a pseudo-number.
+            // Flow pulse: cycle p85 and weekly throughput, measured over a 28-day
+            // window (THROUGHPUT_WINDOW_MS) — LIFETIME statistics, not a statement
+            // about right now, which is why they are no longer merged into the one
+            // sentence that reports running/queued. Mixing an instant fact with a
+            // four-week average in a single 12px run makes the reader unable to tell
+            // which numbers describe the present.
+            //
+            // They also used to render unconditionally whenever the ledger had
+            // samples, on a quiet board with nothing happening — against the project's
+            // own 「只在真有事时说话」 discipline (running/queued/skipped are all
+            // gated that way). Now they appear only while something is QUEUED, which
+            // is the one moment they answer a question the user is actually asking:
+            // "how fast does this board clear work, and is adding more wise?"
             const flow = flowSummaryOf(snapshot.tasks, Date.now())
             const flowParts = [
               ...flow.samples > 0 && flow.p85Days !== undefined
@@ -1099,10 +1108,10 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                 n: String(Math.round(flow.perWeek * 100) / 100),
               })] : [],
             ]
+            const showFlow = snapshot.stats.queued > 0 && flowParts.length > 0
             const stateParts = [
               ...snapshot.stats.running > 0 ? [t('board.statusRunning', { n: String(snapshot.stats.running) })] : [],
               ...snapshot.stats.queued > 0 ? [t('board.statusQueued', { n: String(snapshot.stats.queued) })] : [],
-              ...flowParts.length > 0 ? [t('board.flowStats', { parts: flowParts.join(' · ') })] : [],
               // Forbid-policy skip ledger: cumulative and read-only, shown only
               // while nonzero (the same quiet discipline as running/queued) —
               // "why didn't it run" stays answerable without a new row.
@@ -1137,6 +1146,17 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   <span className={css.boardStatus}>
                     <span className={css.boardStatusDot} aria-hidden="true" />
                     <span className={css.boardStatusText}>{stateParts.join(' · ')}</span>
+                  </span>
+                )}
+                {/* The flow numbers, in their OWN slot so the instant facts above are
+                    not read as part of a four-week average. `title` carries the one-line
+                    meaning of the jargon (p85 = the slowest 15% take at most this long)
+                    — supplementary here rather than load-bearing: the numbers appear
+                    only while work is queued, and the sentence beside them already says
+                    what is happening now. */}
+                {showFlow && (
+                  <span className={css.boardStatus} title={t('board.flowStatsTitle')}>
+                    <span className={css.boardStatusText}>{t('board.flowStats', { parts: flowParts.join(' · ') })}</span>
                   </span>
                 )}
                 {/* The page itself is running an old client bundle: stated in the

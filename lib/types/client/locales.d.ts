@@ -89,6 +89,7 @@ export declare const zh: {
     'board.cruiseTitle': string;
     'board.cruiseLimit': string;
     'board.flowStats': string;
+    'board.flowStatsTitle': string;
     'board.flowDays': string;
     'board.flowSubDay': string;
     'board.flowThroughput': string;
