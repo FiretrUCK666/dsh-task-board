@@ -421,6 +421,8 @@ export declare const zh: {
     'board.engineViewerHint': string;
     'board.engineStale': string;
     'board.bundleStale': string;
+    'board.bundleStaleHostOld': string;
+    'board.bundleStaleHostOldTitle': string;
     'board.bundleStaleTitle': string;
     'board.engineNoteOk': string;
     'board.engineNoteRecheck': string;

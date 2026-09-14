@@ -201,16 +201,44 @@ describe('wiring (the probe cannot be dropped silently)', () => {
     const board = read('../src/client/board/TaskBoard.tsx')
     expect(board).toContain('freshness?.snapshot()')
     expect(board).toContain("freshnessView?.state === 'stale'")
-    expect(board).toContain("t('board.bundleStale'")
+    // The key must be REACHED, not written in a particular shape: the render picks
+    // between two copy sets with a ternary, so `t('board.bundleStale'` never appears
+    // as one contiguous string. Assert the key's presence and let the shape be the
+    // implementation's business.
+    expect(board).toContain("'board.bundleStale'")
     expect(board).toContain('reloadForFreshBundle()')
     // It rides the settled status-button grammar (a warn-styled real button),
     // never a bare title attribute (touch has no hover).
     expect(board).toMatch(/data-warn="true"[\s\S]{0,400}reloadForFreshBundle\(\)/)
   })
 
+  it('the warning names WHICH side is stale, because the two need different actions', () => {
+    // `stale` covers two situations and only one of them is fixed by a reload:
+    //   - the PAGE loaded an older bundle -> the reload the button offers works;
+    //   - the HOST is older than the page -> the package was updated on disk and
+    //     `dsh web` was never restarted, so reloading fetches the same old server
+    //     however many times it is tried. "tap to force reload" sends the user in a
+    //     circle.
+    // The second is what a maintainer sees after any version bump before restarting,
+    // so it is the ordinary case, not an edge case.
+    const board = read('../src/client/board/TaskBoard.tsx')
+    expect(board, 'the direction must come from the two versions the probe carries')
+      .toContain('isNewerVersion(freshnessView.bundled, freshnessView.host)')
+    expect(board, 'the host-old case needs its own copy').toContain("t(hostOld ? 'board.bundleStaleHostOld'")
+    expect(board, 'the host-old case needs its own explainer').toContain("t(hostOld ? 'board.bundleStaleHostOldTitle'")
+    // Still a real button in both cases: tapping reloads, which is the right action
+    // for page-old and a harmless retry for host-old.
+    expect(board).toMatch(/data-warn="true"[\s\S]{0,600}reloadForFreshBundle\(\)/)
+  })
+
   it('both dictionaries carry the copy (the warning can never read as a raw key)', () => {
     const locales = read('../src/client/locales.ts')
-    for (const key of ['board.bundleStale', 'board.bundleStaleTitle']) {
+    for (const key of [
+      'board.bundleStale',
+      'board.bundleStaleTitle',
+      'board.bundleStaleHostOld',
+      'board.bundleStaleHostOldTitle',
+    ]) {
       expect(locales.match(new RegExp(`'${key}':`, 'g')) ?? []).toHaveLength(2)
     }
   })

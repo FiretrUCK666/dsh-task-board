@@ -181,6 +181,16 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     return freshness.subscribe(() => { setFreshnessView(freshness.snapshot()) })
   }, [freshness])
   const bundleStale = freshnessView?.state === 'stale'
+  /**
+   * Which side is the stale one. Both read as `stale`, but only one of them can be
+   * fixed from the page: when the HOST is older (the package was updated on disk and
+   * `dsh web` has not been restarted), reloading fetches the same old server however
+   * many times it is tried. Read from the versions the freshness probe already
+   * carries, so no second comparison path exists.
+   */
+  const hostOld = freshnessView !== undefined
+    && freshnessView.host !== undefined
+    && isNewerVersion(freshnessView.bundled, freshnessView.host)
   // One self-report per VISIBLE board: the bundle version plus the measured
   // boxes (see client-report.ts). The tree mounts once at boot and stays
   // mounted while hidden (display:none → every rect is 0x0), so a mount-only
@@ -1154,21 +1164,26 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                     <span className={css.boardStatusText}>{t('board.flowStats', { parts: flowParts.join(' · ') })}</span>
                   </span>
                 )}
-                {/* The page itself is running an old client bundle: stated in the
-                    same quiet warn grammar as the engine note, and it is a REAL
-                    button (touch has no hover — a warning you cannot act on is
-                    worse than none). */}
+                {/* The page or the server runs an older version — and WHICH one it is
+                    decides what the user must do, so the two cases are separated.
+                    `hostOld` = the disk package is newer than the running host process,
+                    which is what happens after any version bump before `dsh web` is
+                    restarted; refreshing cannot resolve it and telling the user to
+                    force-refresh sends them in a circle. The button stays a real button
+                    in both cases (touch has no hover, and a warning you cannot act on is
+                    worse than none): tapping still reloads, which is the right action
+                    for the page-old case and a harmless retry for the host-old one. */}
                 {bundleStale && (
                   <button
                     type="button"
                     className={css.boardStatusButton}
                     data-warn="true"
-                    title={t('board.bundleStaleTitle')}
+                    title={t(hostOld ? 'board.bundleStaleHostOldTitle' : 'board.bundleStaleTitle')}
                     onClick={() => { reloadForFreshBundle() }}
                   >
                     <span className={css.boardStatusDot} aria-hidden="true" />
                     <span className={css.boardStatusText}>
-                      {t('board.bundleStale', {
+                      {t(hostOld ? 'board.bundleStaleHostOld' : 'board.bundleStale', {
                         c: freshnessView?.bundled ?? '',
                         s: freshnessView?.host ?? '',
                       })}

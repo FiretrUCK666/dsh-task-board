@@ -427,6 +427,15 @@ export const zh = {
   'board.engineViewerHint': '定时与排队注入由持有席位的设备执行；该设备不可见时这台会自动接管。排队中的留言在等它。',
   'board.engineStale': '服务端未重启 · 点此了解',
   'board.bundleStale': '页面仍是旧包（客户端 {c} / 服务端 {s}）· 点此强制刷新',
+  /* Two different situations were wearing this one word, and conflating them sent the
+     user to the wrong action. The versions disagree either because the PAGE loaded an
+     older bundle (the server already serves a newer one, so a refresh genuinely fixes
+     it) or because the SERVER PROCESS is older than the page (the package was updated
+     on disk but `dsh web` was never restarted — refreshing can never fix that, however
+     many times it is done). The second case is exactly what a maintainer sees after
+     bumping the package: the client is the NEW one and the host is the stale one. */
+  'board.bundleStaleHostOld': '服务端仍在跑旧版本（页面 {c} / 服务端 {s}）· 刷新无用，需重启 dsh web',
+  'board.bundleStaleHostOldTitle': '磁盘上的包已经比正在运行的服务端新了。刷新页面取不到新服务端，必须重启 dsh web；任务数据不受影响。',
   'board.bundleStaleTitle': '这个页面加载的是旧的客户端包（服务端已在提供新的）。点一下重新加载取回新包；任务数据不受影响。',
   'board.engineNoteOk': '知道了',
   'board.engineNoteRecheck': '重新检查',
@@ -1046,6 +1055,8 @@ export const en: Record<keyof typeof zh, string> = {
   'board.engineViewerHint': 'Scheduled work and queued comments run on the seat holder; a visible device takes the seat over when that one is hidden. Queued comments are waiting for it.',
   'board.engineStale': 'Server not restarted · details',
   'board.bundleStale': 'Page runs an old bundle ({c} vs server {s}) · tap to force reload',
+  'board.bundleStaleHostOld': 'The server still runs an older version (page {c} / server {s}) · a refresh cannot fix it; restart dsh web',
+  'board.bundleStaleHostOldTitle': 'The package on disk is newer than the running host process. Reloading the page cannot fetch a newer host — restart dsh web. Board data is untouched.',
   'board.bundleStaleTitle': 'This page still runs the previous client bundle while the server already serves a newer one. Tap to reload and pick it up; board data is untouched.',
   'board.engineNoteOk': 'Got it',
   'board.engineNoteRecheck': 'Re-check',
