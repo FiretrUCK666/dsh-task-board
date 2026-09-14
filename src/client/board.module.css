@@ -6872,7 +6872,23 @@ span.interactionOptions {
   .attachRemove,
   .reviewCommentCancel,
   .promptCopy,
-  .timeFieldCalendar {
+  .timeFieldCalendar,
+  /* The rest of the board's touch surface. Each is a real control in a row or
+     dock with >= 6px of shared spacing, so a 7px ring cannot reach a neighbour's
+     hit area: the strip buttons, the two dock controls (the relocated primary
+     and the bell), the triage rows, the disclosure headers and the segmented
+     control. ONE list: the positioning context and the ring below must name the
+     same set, and two lists is how they drift apart. */
+  .notifyMain,
+  .filterChipRemove,
+  .feedFilter,
+  .feedAction,
+  .detailDisclosure,
+  .autoTaskExpand,
+  .sessionContextHead,
+  .tagCustomColor,
+  .thumbNew > *,
+  .thumbBar .iconButton {
     position: relative;
   }
 
@@ -6887,7 +6903,22 @@ span.interactionOptions {
   .attachRemove::before,
   .reviewCommentCancel::before,
   .promptCopy::before,
-  .timeFieldCalendar::before {
+  .timeFieldCalendar::before,
+  /* The rest of the board's touch surface that has room to give. Each of these
+     is a real control in a row or dock with >= 6px of shared spacing, so a 7px
+     ring cannot reach a neighbour's hit area: the strip buttons, the two dock
+     controls (the relocated primary and the bell), the triage rows, the
+     disclosure headers and the segmented control. */
+  .notifyMain::before,
+  .filterChipRemove::before,
+  .feedFilter::before,
+  .feedAction::before,
+  .detailDisclosure::before,
+  .autoTaskExpand::before,
+  .sessionContextHead::before,
+  .tagCustomColor::before,
+  .thumbNew > *::before,
+  .thumbBar .iconButton::before {
     content: '';
     position: absolute;
     inset: -7px;

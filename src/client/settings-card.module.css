@@ -178,7 +178,18 @@
   background: transparent;
   color: var(--dsw-alias-state-business-primary);
   cursor: pointer;
-  padding: 0;
+  /* WCAG 2.2 SC 2.5.8 asks for a 24x24 target. With `padding: 0` and no border
+     this control was just its own 11px line box — the only control in the plugin
+     that missed that floor. Raising the floor (rather than shrinking anything) is
+     how the project's own dual-width rule says to make room, and the surrounding
+     `.head` row is a centred flex line, so the extra height grows the row instead
+     of pushing its neighbours around. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 6px;
+  margin: 0 -6px;
 }
 
 .reset:hover:not(:disabled) {
