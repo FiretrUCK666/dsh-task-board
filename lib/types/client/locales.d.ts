@@ -224,6 +224,7 @@ export declare const zh: {
     'status.move.backlog': string;
     'status.move.todo': string;
     'status.move.done': string;
+    'detail.runBlockedBusy': string;
     'detail.rerunHint': string;
     'detail.refine': string;
     'detail.refine.start': string;

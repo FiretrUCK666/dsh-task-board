@@ -297,6 +297,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   // so live record updates (e.g. an execution settling) never clobber it.
   const [draft, setDraft] = useState<TaskDraft | undefined>(undefined)
   const [editError, setEditError] = useState<string | undefined>(undefined)
+  // A refused launch, named inline instead of swallowed: the run button used to
+  // close the sheet before firing, so "nothing ran" and "it ran" looked the same.
+  const [runError, setRunError] = useState<string | undefined>(undefined)
   // True while the current edit was restored from the persisted draft store:
   // the user switched away mid-edit and came back to their own text — a quiet
   // inline note says so instead of silently surprising them.
@@ -898,15 +901,25 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                 title={taskExecutable(current) ? t('detail.rerunHint') : t('detail.promptEmpty')}
                 onClick={() => {
                   // Running kicks off a real agent session; close the detail so
-                  // the whole board stays visible while the task executes.
+                  // the whole board stays visible while the task executes — but
+                  // only ONCE the launch is actually accepted. Firing first and
+                  // closing regardless made a refused launch indistinguishable
+                  // from a successful one: the sheet vanished, nothing ran, and
+                  // the board said nothing at all. A refusal now keeps the sheet
+                  // open and says why, in the same inline grammar the rest of the
+                  // detail uses.
                   if (!taskExecutable(current)) return
-                  controller.closeTask()
-                  void controller.rerunTask(current.id)
+                  setRunError(undefined)
+                  void controller.rerunTask(current.id).then(accepted => {
+                    if (accepted) { controller.closeTask(); return }
+                    setRunError(t('detail.runBlockedBusy'))
+                  })
                 }}
               >
                 {plainRunsOf(current).length === 0 ? t('detail.run') : t('detail.rerun')}
               </Button>
             )}
+            {runError !== undefined && <p className={css.formError}>{runError}</p>}
             <Button title={t('detail.duplicateTitle')} onClick={duplicateTask}>
               {t('detail.duplicate')}
             </Button>

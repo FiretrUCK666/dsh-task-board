@@ -12,6 +12,7 @@
  * unrelated inputs never collide. Only the new `dsh.taskBoard.drafts.v1`
  * key is used — the task ledger key `dsh.taskBoard.v1` is untouched.
  */
+import type { QuestionDraft } from '../../core/question-rpc.ts';
 /** Storage key for the draft document. */
 export declare const DRAFT_STORAGE_KEY = "dsh.taskBoard.drafts.v1";
 /** Shared comment-composer draft key for one native session of one task. */
@@ -28,6 +29,16 @@ export declare const NEW_TASK_DRAFT_KEY = "new";
 export declare function newSessionDraftKey(taskId: string): string;
 /** Session-rule form draft key (the instruction text) for one task + rule. */
 export declare function ruleDraftKey(taskId: string, ruleId: string): string;
+/** Answer-form draft key for one open question carrier.
+ *
+ *  Keyed by `rpcId` alone, and that is the point: the host mints one rpcId per
+ *  open `ask()` and REPLAYS it with every requested frame, so the key survives
+ *  a re-render, a remount and a page reload — which is exactly the window in
+ *  which a half-completed answer used to be destroyed. A genuinely new request
+ *  mints a new rpcId and therefore starts clean, so the isolation the component
+ *  already got from `key={rpcId}` is preserved.
+ */
+export declare function questionDraftKey(rpcId: string): string;
 /** Persistence seam for drafts (framework-free, testable). */
 export interface DraftStore {
     /** Read a draft slot (undefined when never written or already cleared). */
@@ -60,3 +71,22 @@ export declare class InMemoryDraftStore implements DraftStore {
 }
 /** The default browser-backed singleton the surfaces use. */
 export declare const draftStore: DraftStore;
+/**
+ * Answer-form drafts are a LIST of objects, while `DraftStore` holds one string
+ * per slot — so the two typed helpers below are the only place that knows the
+ * encoding. Keeping them here (rather than in the component) means the round
+ * trip is testable on its own, and the component only ever sees `QuestionDraft[]`.
+ *
+ * Validation is deliberately strict and total: a draft slot is user-writable
+ * storage that can hold anything at all (an older build's shape, a hand-edited
+ * value, a truncated write). Anything that does not parse into the exact shape
+ * is dropped rather than trusted, so a corrupted slot degrades to "no draft"
+ * instead of throwing inside render or restoring a malformed answer.
+ */
+export declare function saveQuestionDrafts(store: DraftStore, rpcId: string, drafts: readonly unknown[]): void;
+/**
+ * Read a saved answer batch back. Returns undefined when nothing usable is
+ * stored — the caller then falls back to its own fresh drafts, so this can
+ * never hand back a partial or malformed batch.
+ */
+export declare function restoreQuestionDrafts(store: DraftStore, rpcId: string): QuestionDraft[] | undefined;

@@ -9,7 +9,10 @@ import {
   commentDraftKey,
   editDraftKey,
   newSessionDraftKey,
+  questionDraftKey,
+  restoreQuestionDrafts,
   ruleDraftKey,
+  saveQuestionDrafts,
   NEW_TASK_DRAFT_KEY,
   refineDraftKey,
   InMemoryDraftStore,
@@ -100,5 +103,77 @@ describe('InMemoryDraftStore', () => {
     store.clear('a')
     expect(store.get('a')).toBeUndefined()
     expect(store.get('b')).toBe('2')
+  })
+})
+
+/**
+ * Answer-form drafts. This is the durability story for the highest-stakes
+ * interaction in the product: an agent is suspended waiting for an answer, and
+ * the exits around that form (Escape, a backdrop tap, a reload, a re-published
+ * carrier) must never destroy a half-completed batch. The key is the host's
+ * rpcId — minted once per open `ask()` and replayed with every frame — which is
+ * what makes the round trip survive a reload.
+ */
+describe('answer drafts (questionDraftKey / save / restore)', () => {
+  it('scopes the key by rpcId alone, so a replayed carrier restores its own batch', () => {
+    expect(questionDraftKey('rpc-1')).toBe('question:rpc-1')
+    const store = new InMemoryDraftStore()
+    saveQuestionDrafts(store, 'rpc-1', [{ selected: ['A'] }])
+    expect(restoreQuestionDrafts(store, 'rpc-1')).toEqual([{ selected: ['A'] }])
+    // A different request mints a different rpcId: it must not inherit anything.
+    expect(restoreQuestionDrafts(store, 'rpc-2')).toBeUndefined()
+  })
+
+  it('round-trips every field of a batch (selection, custom text, skip)', () => {
+    const store = new InMemoryDraftStore()
+    const batch = [
+      { selected: ['发布', '灰度'] },
+      { selected: [], custom: '自定义答案…' },
+      { selected: [], skipped: true },
+      { selected: [] },
+    ]
+    saveQuestionDrafts(store, 'rpc-9', batch)
+    expect(restoreQuestionDrafts(store, 'rpc-9')).toEqual(batch)
+  })
+
+  it('treats an all-empty batch as no draft (nothing to restore, no stale slot)', () => {
+    const store = new InMemoryDraftStore()
+    saveQuestionDrafts(store, 'rpc-3', [{ selected: [] }, { selected: [] }])
+    expect(store.get(questionDraftKey('rpc-3'))).toBeUndefined()
+    expect(restoreQuestionDrafts(store, 'rpc-3')).toBeUndefined()
+    // A batch that HAD content and is then emptied releases the slot too.
+    saveQuestionDrafts(store, 'rpc-3', [{ selected: ['A'] }])
+    expect(restoreQuestionDrafts(store, 'rpc-3')).toEqual([{ selected: ['A'] }])
+    saveQuestionDrafts(store, 'rpc-3', [{ selected: [] }])
+    expect(restoreQuestionDrafts(store, 'rpc-3')).toBeUndefined()
+  })
+
+  it('counts a skip as content worth keeping', () => {
+    const store = new InMemoryDraftStore()
+    saveQuestionDrafts(store, 'rpc-4', [{ selected: [], skipped: true }])
+    expect(restoreQuestionDrafts(store, 'rpc-4')).toEqual([{ selected: [], skipped: true }])
+  })
+
+  it('degrades to "no draft" on any malformed slot instead of throwing', () => {
+    const cases = [
+      'not json at all',
+      '{}',
+      '[]',
+      '"a string"',
+      '[1,2,3]',
+      '[{"selected":"A"}]',
+      '[{"selected":[1,2]}]',
+      '[{"selected":[],"custom":7}]',
+      '[{"selected":[],"skipped":"yes"}]',
+      '[null]',
+      // One good entry is not enough: a partially-restorable batch is a batch we
+      // cannot trust, so the whole slot is refused and the caller starts fresh.
+      '[{"selected":["A"]},{"selected":"B"}]',
+    ]
+    for (const raw of cases) {
+      const store = new InMemoryDraftStore()
+      store.set(questionDraftKey('rpc-bad'), raw)
+      expect(restoreQuestionDrafts(store, 'rpc-bad'), `raw=${raw}`).toBeUndefined()
+    }
   })
 })

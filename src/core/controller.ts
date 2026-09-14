@@ -2493,9 +2493,19 @@ export class BoardController {
   // --- execution ---------------------------------------------------------------
 
   /** Re-run a settled task: move it back to 'todo' first, then execute. */
-  async rerunTask(id: string): Promise<void> {
+  /**
+   * Promote the task and start a fresh round, reporting whether the launch was
+   * actually accepted — the same answer `runTask` gives.
+   *
+   * The return value is load-bearing: the detail sheet used to close BEFORE
+   * firing, so a refused launch (empty prompt, or a round already open) looked
+   * exactly like a successful one — the sheet vanished, nothing ran, and the
+   * board said nothing. Callers that want the old fire-and-forget shape can
+   * still ignore it; the UI keeps the sheet open and names the reason.
+   */
+  async rerunTask(id: string): Promise<boolean> {
     const task = this.tasks.find(candidate => candidate.id === id)
-    if (task === undefined) return
+    if (task === undefined) return false
     if (task.status === 'done') {
       // Through moveTask (never a hand-rolled withStatus): leaving done is
       // a rebirth — the spent budget resets here too. (Other columns keep
@@ -2509,7 +2519,7 @@ export class BoardController {
       this.tasks = promoteToColumnTop(this.tasks, id, 'todo', this.now())
       this.persistAndNotify()
     }
-    await this.runTask(id, 'manual')
+    return await this.runTask(id, 'manual')
   }
 
   // --- direct session messages (linked-session panel) -------------------------

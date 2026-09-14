@@ -760,6 +760,29 @@ describe('run loop', () => {
     expect(exec.runCalls).toHaveLength(2)
   })
 
+  it('rerunTask reports whether the launch was accepted, so a refusal cannot look like a success', async () => {
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub)
+    // An empty prompt is the hard gate: nothing may run. The detail sheet used
+    // to close BEFORE firing, so this refusal was invisible — the sheet
+    // vanished, nothing ran, and the board said nothing.
+    const blank = controller.createTask({ title: '空', description: '', prompt: '' })!
+    expect(await controller.rerunTask(blank.id)).toBe(false)
+    expect(exec.runCalls).toHaveLength(0)
+
+    // A real task launches, and the accepted half says so.
+    const task = controller.createTask({ title: '任务B', description: '', prompt: '干活' })!
+    expect(await controller.rerunTask(task.id)).toBe(true)
+    expect(exec.runCalls).toHaveLength(1)
+
+    // A second launch while a round is open is refused too (not silently queued).
+    expect(await controller.rerunTask(task.id)).toBe(false)
+    expect(exec.runCalls).toHaveLength(1)
+
+    // An unknown id is a refusal, never a throw.
+    expect(await controller.rerunTask('nope')).toBe(false)
+  })
+
   it('reconciles running tasks left over from a previous load', async () => {
     const stub = new StubExec()
     stub.reconcileResult = { kind: 'settled', taskId: 'task-a', executionId: 'e1', outcome: 'cancelled', error: 'gone' }

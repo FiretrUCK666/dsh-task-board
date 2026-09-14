@@ -1269,7 +1269,17 @@ export declare class BoardController {
      */
     openSession(sessionId: string): boolean;
     /** Re-run a settled task: move it back to 'todo' first, then execute. */
-    rerunTask(id: string): Promise<void>;
+    /**
+     * Promote the task and start a fresh round, reporting whether the launch was
+     * actually accepted — the same answer `runTask` gives.
+     *
+     * The return value is load-bearing: the detail sheet used to close BEFORE
+     * firing, so a refused launch (empty prompt, or a round already open) looked
+     * exactly like a successful one — the sheet vanished, nothing ran, and the
+     * board said nothing. Callers that want the old fire-and-forget shape can
+     * still ignore it; the UI keeps the sheet open and names the reason.
+     */
+    rerunTask(id: string): Promise<boolean>;
     /** Whether the runtime offers the direct-message channel (the linked
      *  panel's composer is disabled without it). */
     directMessageAvailable(): boolean;

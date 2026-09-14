@@ -12,6 +12,7 @@
  * unrelated inputs never collide. Only the new `dsh.taskBoard.drafts.v1`
  * key is used — the task ledger key `dsh.taskBoard.v1` is untouched.
  */
+import type { QuestionDraft } from '../../core/question-rpc.ts'
 
 /** Storage key for the draft document. */
 export const DRAFT_STORAGE_KEY = 'dsh.taskBoard.drafts.v1'
@@ -44,6 +45,19 @@ export function newSessionDraftKey(taskId: string): string {
 /** Session-rule form draft key (the instruction text) for one task + rule. */
 export function ruleDraftKey(taskId: string, ruleId: string): string {
   return `rule:${taskId}:${ruleId}`
+}
+
+/** Answer-form draft key for one open question carrier.
+ *
+ *  Keyed by `rpcId` alone, and that is the point: the host mints one rpcId per
+ *  open `ask()` and REPLAYS it with every requested frame, so the key survives
+ *  a re-render, a remount and a page reload — which is exactly the window in
+ *  which a half-completed answer used to be destroyed. A genuinely new request
+ *  mints a new rpcId and therefore starts clean, so the isolation the component
+ *  already got from `key={rpcId}` is preserved.
+ */
+export function questionDraftKey(rpcId: string): string {
+  return `question:${rpcId}`
 }
 
 /** Persistence seam for drafts (framework-free, testable). */
@@ -137,3 +151,67 @@ export class InMemoryDraftStore implements DraftStore {
 
 /** The default browser-backed singleton the surfaces use. */
 export const draftStore: DraftStore = new LocalStorageDraftStore()
+
+/**
+ * Answer-form drafts are a LIST of objects, while `DraftStore` holds one string
+ * per slot — so the two typed helpers below are the only place that knows the
+ * encoding. Keeping them here (rather than in the component) means the round
+ * trip is testable on its own, and the component only ever sees `QuestionDraft[]`.
+ *
+ * Validation is deliberately strict and total: a draft slot is user-writable
+ * storage that can hold anything at all (an older build's shape, a hand-edited
+ * value, a truncated write). Anything that does not parse into the exact shape
+ * is dropped rather than trusted, so a corrupted slot degrades to "no draft"
+ * instead of throwing inside render or restoring a malformed answer.
+ */
+export function saveQuestionDrafts(store: DraftStore, rpcId: string, drafts: readonly unknown[]): void {
+  const key = questionDraftKey(rpcId)
+  // An all-empty batch is not a draft: writing it would leave a slot behind for
+  // every question the user merely looked at, and would make "is there anything
+  // to restore" unanswerable.
+  const hasContent = drafts.some(draft => {
+    if (typeof draft !== 'object' || draft === null) return false
+    const entry = draft as { selected?: unknown; custom?: unknown; skipped?: unknown }
+    const selected = Array.isArray(entry.selected) ? entry.selected.length > 0 : false
+    const custom = typeof entry.custom === 'string' && entry.custom !== ''
+    return selected || custom || entry.skipped === true
+  })
+  if (!hasContent) {
+    store.clear(key)
+    return
+  }
+  store.set(key, JSON.stringify(drafts))
+}
+
+/**
+ * Read a saved answer batch back. Returns undefined when nothing usable is
+ * stored — the caller then falls back to its own fresh drafts, so this can
+ * never hand back a partial or malformed batch.
+ */
+export function restoreQuestionDrafts(store: DraftStore, rpcId: string): QuestionDraft[] | undefined {
+  const raw = store.get(questionDraftKey(rpcId))
+  if (raw === undefined) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) return undefined
+  const out: QuestionDraft[] = []
+  for (const entry of parsed) {
+    if (typeof entry !== 'object' || entry === null) return undefined
+    const record = entry as { selected?: unknown; custom?: unknown; skipped?: unknown }
+    if (!Array.isArray(record.selected)) return undefined
+    const selected = record.selected.filter((value): value is string => typeof value === 'string')
+    if (selected.length !== record.selected.length) return undefined
+    if (record.custom !== undefined && typeof record.custom !== 'string') return undefined
+    if (record.skipped !== undefined && typeof record.skipped !== 'boolean') return undefined
+    out.push({
+      selected,
+      ...(record.custom !== undefined ? { custom: record.custom } : {}),
+      ...(record.skipped !== undefined ? { skipped: record.skipped } : {}),
+    })
+  }
+  return out
+}

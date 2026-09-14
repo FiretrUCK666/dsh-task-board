@@ -41,6 +41,7 @@ import {
 } from '../../core/question-rpc.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { draftStore, questionDraftKey, restoreQuestionDrafts, saveQuestionDrafts } from './drafts.ts'
 import { Markdown } from './Markdown.tsx'
 import { Button } from './ui.tsx'
 import { Chip } from './Chip.tsx'
@@ -135,8 +136,18 @@ function QuestionFlow({ question, sessionId, controller }: {
   // `progress` is keyed by carrier: the state below belongs to `key`, so a
   // re-render with a different request starts clean in the SAME pass (no
   // stale frame of the previous request's answers).
+  //
+  // Initialised from the draft store, which is what makes a half-completed
+  // answer survive the exits that used to destroy it: Escape, a backdrop tap,
+  // a reload, or a re-published carrier. The key is the host's rpcId, replayed
+  // identically for as long as the ask() is open, so the same card comes back
+  // with the same answers. A new request mints a new rpcId and starts clean.
   const [progress, setProgress] = useState<{ key: string; index: number; drafts: QuestionDraft[] }>(
-    () => ({ key: question.rpcId, index: 0, drafts: freshDrafts(question.questions) }),
+    () => ({
+      key: question.rpcId,
+      index: 0,
+      drafts: restoreQuestionDrafts(draftStore, question.rpcId) ?? freshDrafts(question.questions),
+    }),
   )
   const [busy, setBusy] = useState<'answer' | 'cancel' | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
@@ -159,6 +170,16 @@ function QuestionFlow({ question, sessionId, controller }: {
   const replaceProgress = (nextIndex: number, nextDrafts: QuestionDraft[]): void => {
     setProgress({ key: question.rpcId, index: nextIndex, drafts: nextDrafts })
   }
+
+  // Persist every answer as it is made. This is the whole durability story for
+  // the product's highest-stakes interaction: the exits that used to discard a
+  // half-completed batch (Escape, an accidental backdrop tap, a reload, a
+  // re-published carrier) now merely hide it, and coming back restores it.
+  // Keyed by rpcId, so it can never leak into a different request.
+  useEffect(() => {
+    if (progress.key !== question.rpcId) return
+    saveQuestionDrafts(draftStore, question.rpcId, progress.drafts)
+  }, [progress, question.rpcId])
 
   const updateDraft = (update: (entry: QuestionDraft) => QuestionDraft, nextIndex: number = index): void => {
     replaceProgress(nextIndex, drafts.map((entry, entryIndex) => entryIndex === index ? update(entry) : entry))
@@ -210,7 +231,14 @@ function QuestionFlow({ question, sessionId, controller }: {
       setBusy(undefined)
       // Accepted: the snapshot drops the carrier and this card unmounts —
       // nothing to do here. Rejected: the card STAYS, with the reason on it.
-      if (!accepted) setError(t('review.interactionRejected'))
+      if (!accepted) {
+        setError(t('review.interactionRejected'))
+        return
+      }
+      // Accepted is the ONE moment the answers stop being a draft: they are now
+      // the host's answer, so the saved copy is released (a later request mints
+      // a new rpcId anyway, but leaving it would keep a stale slot alive).
+      draftStore.clear(questionDraftKey(question.rpcId))
     })
   }
 
