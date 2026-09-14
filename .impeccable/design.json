@@ -397,6 +397,18 @@
       "mono": {
         "displayName": "Mono",
         "purpose": "代码块、路径与命令。"
+      },
+      "emphasis": {
+        "displayName": "Emphasis",
+        "purpose": "界面文字里最醒目的一档：卡片标题、详情正文、会话名、侧栏入口行。全文件 5 处。"
+      },
+      "content-h1": {
+        "displayName": "Content Heading 1 (Markdown only)",
+        "purpose": "渲染 Markdown 的一级小标题（17px）。排的是内容而非界面，不参与界面字阶纪律。"
+      },
+      "content-h2": {
+        "displayName": "Content Heading 2 (Markdown only)",
+        "purpose": "渲染 Markdown 的二级小标题（15px）。与 h1 同族，仅内容使用。"
       }
     },
     "shadows": [
