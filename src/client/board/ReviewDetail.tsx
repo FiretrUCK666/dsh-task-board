@@ -26,7 +26,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
-import { type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
+import { hasOpenRun, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
 import { sessionDisplay } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -131,6 +131,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   const session = sessionDisplay(current, execution, waiting, sessionId !== undefined && controller.nativeRunningOf(sessionId))
   const stateChip = sessionStateChip(session.state, waiting, 'detail.result.succeeded', 'detail.result.cancelled')
   const updatedAt = formatDateTime(execution.endedAt ?? execution.startedAt)
+  // The same gate `approveTask` itself enforces: a card with a round still in flight
+  // cannot be decided. Read from the controller's own judgment rather than re-derived,
+  // so the button and the door can never disagree.
+  const blockedByOpenRun = hasOpenRun(current)
 
   return (
     <SessionFrame
@@ -148,6 +152,44 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             <Button size="sm" onClick={() => { controller.openSession(sessionId) }}>
               {t('detail.viewSession')} →
             </Button>
+          )}
+          {/* THE review decision, on the surface that exists to make it. This page
+              is where a finished run is judged, and it used to offer only 刷新 and
+              查看会话 — no approve, no send-back. The one 通过 button in the product
+              lived inside the notification drawer, and the same act appeared in the
+              task detail as 「移到已完成」 under generic move-column vocabulary, so the
+              product's most frequent decision had three names and no home.
+              Both actions route to the controller's existing doors (approveTask /
+              moveTask), so there is still ONE implementation of each; only the
+              surface is new. Labels come from the copy the board already teaches
+              (「通过或打回」), so the description and the action finally agree.
+              Kept in the header slot beside the other two: same size, same row, no
+              new chrome. */}
+          {current.status === 'review' && (
+            <>
+              <Button
+                size="sm"
+                disabled={blockedByOpenRun}
+                title={blockedByOpenRun ? t('board.notifyApproveBlocked') : undefined}
+                onClick={() => {
+                  if (!controller.approveTask(current.id)) return
+                  onClose()
+                }}
+              >
+                {t('board.notifyApprove')}
+              </Button>
+              <Button
+                size="sm"
+                disabled={blockedByOpenRun}
+                title={t('review.sendBackTitle')}
+                onClick={() => {
+                  controller.moveTask(current.id, 'todo')
+                  onClose()
+                }}
+              >
+                {t('review.sendBack')}
+              </Button>
+            </>
           )}
         </>
       }

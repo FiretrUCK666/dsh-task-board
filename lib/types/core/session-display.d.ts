@@ -66,6 +66,7 @@ export declare function taskPendingCount(task: TaskRecord, pendingInteractionOf:
     count: number;
     items: Array<{
         executionId?: string;
+        sessionId: string;
         waitingKind: PendingInteractionKind;
     }>;
 };

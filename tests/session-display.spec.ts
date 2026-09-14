@@ -425,7 +425,7 @@ describe('taskPendingCount', () => {
     const result = taskPendingCount(task, pendingOf)
     expect(result.count).toBe(1)
     expect(result.items).toEqual([
-      { executionId: 'exec-1', waitingKind: 'approval' },
+      { executionId: 'exec-1', sessionId: 's1', waitingKind: 'approval' },
     ])
   })
 
@@ -438,8 +438,8 @@ describe('taskPendingCount', () => {
     const result = taskPendingCount(task, pendingOf)
     expect(result.count).toBe(2)
     expect(result.items).toEqual([
-      { executionId: 'exec-1', waitingKind: 'approval' },
-      { executionId: 'exec-2', waitingKind: 'question' },
+      { executionId: 'exec-1', sessionId: 's1', waitingKind: 'approval' },
+      { executionId: 'exec-2', sessionId: 's2', waitingKind: 'question' },
     ])
   })
 
@@ -452,7 +452,7 @@ describe('taskPendingCount', () => {
       sid === 'refine-s1' ? 'plan-review' : undefined
     const result = taskPendingCount(task, pendingOf)
     expect(result.count).toBe(1)
-    expect(result.items).toEqual([{ waitingKind: 'plan-review' }])
+    expect(result.items).toEqual([{ sessionId: 'refine-s1', waitingKind: 'plan-review' }])
   })
 
   it('counts both execution and refine waiting', () => {
@@ -466,8 +466,8 @@ describe('taskPendingCount', () => {
     const result = taskPendingCount(task, pendingOf)
     expect(result.count).toBe(2)
     expect(result.items).toEqual([
-      { executionId: 'exec-1', waitingKind: 'approval' },
-      { waitingKind: 'question' },
+      { executionId: 'exec-1', sessionId: 's1', waitingKind: 'approval' },
+      { sessionId: 'refine-s1', waitingKind: 'question' },
     ])
   })
 
@@ -487,7 +487,7 @@ describe('taskPendingCount', () => {
     ])
     const result = taskPendingCount(task, () => 'question' as const)
     expect(result.count).toBe(1)
-    expect(result.items).toEqual([{ executionId: 'exec-1', waitingKind: 'question' }])
+    expect(result.items).toEqual([{ executionId: 'exec-1', sessionId: 's1', waitingKind: 'question' }])
   })
 })
 

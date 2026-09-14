@@ -784,9 +784,29 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     }))
   // Clicking a card: a modifier click (Ctrl/Cmd) toggles multi-selection any
   // time; in organize mode every click toggles; otherwise it opens the detail.
+  //
+  // A card whose session is suspended on a human says 「点开前往会话」 — so the click
+  // has to LAND on that conversation. It used to open the plain detail, whose session
+  // rail is closed, leaving the user to find the session row themselves: the sentence
+  // promised a one-click path that did not exist, and the thing that needed them was
+  // two taps deeper than the label said. The session is resolved through the SAME
+  // judgment the card uses to decide it is waiting (`pendingInteractionOf` over the
+  // card's pending lanes), so the promise and the action cannot drift; with nothing
+  // waiting this is a plain open, exactly as before.
   const cardClick = (id: string, event?: React.MouseEvent): void => {
-    if (organizing || event?.ctrlKey === true || event?.metaKey === true) toggleCard(id)
-    else controller.openTask(id)
+    if (organizing || event?.ctrlKey === true || event?.metaKey === true) {
+      toggleCard(id)
+      return
+    }
+    const task = snapshot.tasks.find(candidate => candidate.id === id)
+    const waitingSessionId = task === undefined
+      ? undefined
+      : taskPendingCount(task, sessionId => controller.pendingInteractionOf(sessionId)).items[0]?.sessionId
+    if (waitingSessionId !== undefined && controller.sessionTitle(waitingSessionId) !== undefined) {
+      openTaskAtSession(id, waitingSessionId)
+      return
+    }
+    controller.openTask(id)
   }
   // Organize-bar color slot: the selection's color ONLY when every selected
   // card agrees (a mixed selection lights no ring — showing the first card's

@@ -162,8 +162,8 @@ export function sessionTimes(task: TaskRecord, execution: ExecutionRecord): {
 export function taskPendingCount(
   task: TaskRecord,
   pendingInteractionOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
-): { count: number; items: Array<{ executionId?: string; waitingKind: PendingInteractionKind }> } {
-  const items: Array<{ executionId?: string; waitingKind: PendingInteractionKind }> = []
+): { count: number; items: Array<{ executionId?: string; sessionId: string; waitingKind: PendingInteractionKind }> } {
+  const items: Array<{ executionId?: string; sessionId: string; waitingKind: PendingInteractionKind }> = []
   const seen = new Set<string>()
 
   // Check every execution's session (first waiting execution names the row).
@@ -172,7 +172,12 @@ export function taskPendingCount(
     const waitingKind = pendingInteractionOf(execution.sessionId)
     if (waitingKind !== undefined) {
       seen.add(execution.sessionId)
-      items.push({ executionId: execution.id, waitingKind })
+      // `sessionId` is carried because the caller that turns this into a row needs
+      // to point AT the conversation. It was known here all along and dropped, so
+      // the only way to recover it downstream was to re-walk the executions and
+      // re-test each session — a second implementation of the same judgment, which
+      // is how "which session is waiting" drifts.
+      items.push({ executionId: execution.id, sessionId: execution.sessionId, waitingKind })
     }
   }
 
@@ -181,7 +186,7 @@ export function taskPendingCount(
     const waitingKind = pendingInteractionOf(task.refineSessionId)
     if (waitingKind !== undefined) {
       seen.add(task.refineSessionId)
-      items.push({ waitingKind })
+      items.push({ sessionId: task.refineSessionId, waitingKind })
     }
   }
 

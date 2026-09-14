@@ -288,6 +288,12 @@ export const zh = {
   'board.notifySnooze': '稍后见',
   'board.notifySnoozeTitle': '先收起，下次有动静时再浮起',
   'board.notifyApprove': '通过',
+  /* The other half of the review decision. The word is 打回, taken from the copy the
+     product ALREADY teaches (the review column hint and the card's awaiting-decision
+     tooltip both say 「通过或打回」) — so the surface that makes the decision speaks
+     the same language as the surfaces that describe it. */
+  'review.sendBack': '打回',
+  'review.sendBackTitle': '打回 = 回到「待办」，当作还要再改一轮',
   'board.notifyApproveBlocked': '这张卡还有会话在跑 · 等它们结束后再通过',
   'board.notifyMarkOne': '标已读',
   'board.notifyReview': '待审核',
@@ -909,6 +915,8 @@ export const en: Record<keyof typeof zh, string> = {
   'board.notifySnooze': 'Later',
   'board.notifySnoozeTitle': 'Hide for now; resurfaces on next activity',
   'board.notifyApprove': 'Approve',
+  'review.sendBack': 'Send back',
+  'review.sendBackTitle': 'Send back = return it to Todo, meaning it needs another round',
   'board.notifyApproveBlocked': 'Sessions on this card are still running · approve after they finish',
   'board.notifyMarkOne': 'Mark read',
   'board.notifyReview': 'Review',

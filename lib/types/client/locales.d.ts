@@ -287,6 +287,8 @@ export declare const zh: {
     'board.notifySnooze': string;
     'board.notifySnoozeTitle': string;
     'board.notifyApprove': string;
+    'review.sendBack': string;
+    'review.sendBackTitle': string;
     'board.notifyApproveBlocked': string;
     'board.notifyMarkOne': string;
     'board.notifyReview': string;
