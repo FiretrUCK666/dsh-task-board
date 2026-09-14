@@ -620,6 +620,20 @@ export declare class BoardController {
     private tasks;
     private boardOpen;
     private selectedTaskId;
+    /**
+     * The card a `done` move just DISARMED, kept so the move can be undone.
+     *
+     * Why this is the one undo the board needs: a column change is visible and
+     * reversible (drag it back), and delete already asks first. But moving a card to
+     * 已完成 silently switches its schedule and every session rule OFF — a documented,
+     * deliberate behaviour that nothing on screen announces, and the only way back was
+     * to re-arm each rule by hand in the editor. That is the ledger quietly losing a
+     * fact, which is exactly what this product must not do.
+     *
+     * One slot, not a history stack: the board's promise is 「板上不丢事」, not a
+     * general undo, and a single named offer is honest about its own limit.
+     */
+    private lastDisarm;
     private listeners;
     private disposers;
     private readonly now;
@@ -1122,6 +1136,30 @@ export declare class BoardController {
      */
     approveTask(taskId: string): boolean;
     deleteTask(id: string): void;
+    /** What the last `done` move disarmed, for the undo affordance. */
+    undoableDisarmOf(): {
+        taskId: string;
+        title: string;
+    } | undefined;
+    /**
+     * Put a card back the way it was before the `done` move that disarmed it: the
+     * stored snapshot is restored wholesale (status, order, schedule and session
+     * rules together) and only `updatedAt` is refreshed — the ledger stamps a change
+     * when it happens, and this is a change.
+     *
+     * Wholesale restore rather than a field-by-field inverse on purpose: the move
+     * touched several things (`disarmSchedule`, `disarmSessionRules`) and any inverse
+     * written by hand would be a second description of what the move does — the one
+     * that drifts the first time the move changes. Restoring the snapshot cannot drift
+     * from the move it undoes.
+     *
+     * The task is put back AT ITS OLD POSITION (any tasks that arrived after it stay
+     * after it), so undo restores the list the user was looking at.
+     *
+     * @returns true when a DISARMED card was restored; false when there is nothing to
+     *          undo (so the caller can keep the affordance honest).
+     */
+    undoMoveToDone(): boolean;
     /**
      * Update a task's schedule rule. A blank or invalid cron expression is
      * rejected (returns false, state untouched) in cron mode. When the rule

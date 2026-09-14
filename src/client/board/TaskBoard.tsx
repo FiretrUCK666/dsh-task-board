@@ -605,7 +605,12 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     return t('board.cruiseStatusOff')
   })()
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
-  // A refused drop carries WHY, not just where. `resolveCardDrop` already computed
+  // The one undo the board offers: the automation a `done` move switched off. Read
+  // from the controller (the move is the only thing that knows what it disarmed) so
+  // the offer describes a real loss rather than a guess. Derived on every render
+  // because the controller clears it the moment it stops being true (the card was
+  // deleted, moved again, or the undo was taken).
+  const undoDisarm = controller.undoableDisarmOf()  // A refused drop carries WHY, not just where. `resolveCardDrop` already computed
   // a reason and the UI used to throw it away, leaving a 180ms border flash on the
   // column that said "no" without ever saying why — while the reason was right
   // there in the decision. Keeping it lets the board state the cause in words.
@@ -1392,6 +1397,28 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
           {dragReject !== undefined && (
             <p className={css.dragRejectHint} role="status" aria-live="polite">
               {t('board.dragRejectBusy', { column: t(STATUS_KEY[dragReject.status]) })}
+            </p>
+          )}
+          {/* Moving a card to 已完成 silently switches its schedule and every session
+              rule off — deliberate, and the only way back was to re-arm each rule by
+              hand. So the board says what it just did and offers the one undo it can
+              honour: restoring the snapshot the move disarmed. A real button, not a
+              toast: it must be keyboard-reachable and must not vanish while being
+              read. It disappears the moment the card is deleted, the same card is
+              moved again, or the undo is taken — see undoableDisarmOf. */}
+          {undoDisarm !== undefined && (
+            <p className={css.undoDisarmRow} role="status">
+              <span className={css.undoDisarmText}>
+                {t('board.undoDisarmText', { title: titleOrUntitled(undoDisarm.title, t('card.untitled')) })}
+              </span>
+              <button
+                type="button"
+                className={css.boardStatusButton}
+                onClick={() => { controller.undoMoveToDone() }}
+              >
+                <span className={css.boardStatusDot} aria-hidden="true" />
+                <span className={css.boardStatusText}>{t('board.undoDisarm')}</span>
+              </button>
             </p>
           )}
           {/* 紧凑列导航（仅 compact 档显示）：它是紧凑工具列的第三轨，与

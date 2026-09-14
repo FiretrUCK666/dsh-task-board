@@ -985,6 +985,58 @@ describe('run loop', () => {
 })
 
 describe('scheduling', () => {
+  it('undoing a done move restores the automation that move switched off', () => {
+    // Moving a card to 已完成 is a documented hard stop: the armed schedule and every
+    // session rule are switched OFF, and re-arming had to be done by hand in the
+    // editor. Position is recoverable by dragging back; the automation was not — so
+    // the board offers the one undo it can honour, and this pins its contract.
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: '定时任务', description: '', prompt: 'run' })!
+    controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
+    expect(store.load()[0].schedule?.enabled).toBe(true)
+    expect(controller.undoableDisarmOf()).toBeUndefined()
+
+    controller.moveTask(task.id, 'done')
+
+    // The move did its job: the rule is off, and the board says so.
+    expect(store.load()[0].schedule?.enabled).toBe(false)
+    expect(controller.undoableDisarmOf()).toEqual({ taskId: task.id, title: '定时任务' })
+
+    expect(controller.undoMoveToDone()).toBe(true)
+
+    // Restored wholesale: the rule is armed again and the card is back in Todo.
+    const back = store.load()[0]
+    expect(back.status).toBe('todo')
+    expect(back.schedule?.enabled).toBe(true)
+    expect(back.schedule?.cron).toBe('0 9 * * *')
+    // One-shot: the offer is spent, and there is nothing left to undo.
+    expect(controller.undoableDisarmOf()).toBeUndefined()
+    expect(controller.undoMoveToDone()).toBe(false)
+  })
+
+  it('the undo offer is withdrawn when it would be a lie', () => {
+    const { controller } = makeController()
+    const a = controller.createTask({ title: 'a', description: '', prompt: 'run' })!
+    controller.setSchedule(a.id, { enabled: true, cron: '0 9 * * *' })
+    controller.moveTask(a.id, 'done')
+    expect(controller.undoableDisarmOf()).toBeDefined()
+
+    // Deleting the card makes the offer meaningless — an undo of a deleted task
+    // would restore nothing the user can see.
+    controller.deleteTask(a.id)
+    expect(controller.undoableDisarmOf()).toBeUndefined()
+    expect(controller.undoMoveToDone()).toBe(false)
+
+    // Moving the SAME card again (not to done) also spends the offer: the entry
+    // describes one specific disarming move, not a general history.
+    const b = controller.createTask({ title: 'b', description: '', prompt: 'run' })!
+    controller.setSchedule(b.id, { enabled: true, cron: '0 9 * * *' })
+    controller.moveTask(b.id, 'done')
+    expect(controller.undoableDisarmOf()).toBeDefined()
+    controller.moveTask(b.id, 'todo')
+    expect(controller.undoableDisarmOf()).toBeUndefined()
+  })
+
   it('setSchedule enables a rule and computes the next run instant', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
