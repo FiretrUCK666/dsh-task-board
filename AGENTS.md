@@ -506,7 +506,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - **多源绑定**：`binds` 真相源；session 绑定上卡，workspace 绑定只关联（拖入瞬间按注册表账本快照一次）；隐藏删除进 `removedSessions`（权威非相关门）；再拖回可恢复。
 - **完成态留言 auto 回待办并驱动**（queue/steer 同规则）。
 - **真执行补全**：空标题/描述从 Prompt 补（`supplementedTask` 唯一作用点，写入/启动时；永不覆盖）；空 Prompt 门禁只拦真执行（评论/插话/完善不封）；完善永不碰列；`refinable` 任一非空才可完善。
-- **车道 = 会话**：`isOpenRound` 唯一判定（评论轮已注入才算；在跑才占槽）；预算数轮；lane 忙滚下一格不叠；排队数本车道；结果一律 `lastPlainResult`；外源检测走 `sessionIsBusy` + 消费只认身份；看门狗清扫每条在跑轮；卡片离进行中三处同判据。
+- **车道 = 会话**：`isOpenRound` 唯一判定（评论轮已注入才算；在跑才占槽）；预算数轮；lane 忙滚下一格不叠；排队数本车道；结果一律 `lastPlainResult`；外源检测走 `sessionIsBusy` + 消费只认身份；看门狗清扫每条在跑轮；卡片离进行中唯一判定 `leaveRunningTargetOf`（open/live/schedule 三腿，落列复用 `settleColumnOf` 取消语义；调用点：结算系、direct 回落、删除同 tick、reconcile 兜底扫——不另起特判）。
 - **自动化**：任务 `schedule` 与会话 `rules` 正交；UI 唯一 `AutomationEditor`；on-complete 永续循环（共用 `settledFollowUp`，规则轮成功即续）；链武装即开跑（`done` 硬停）；每会话至多一条规则。
 - **巡航 v4**：`enabled` 主权；窗口三态 + 自动排序；`windowRangeIssueOf` 校验（跨午夜最多一晚）；状态行一句话解释开关值。
 - **校验文案**：`inputInvalid` 唯一错边框；规则表单按会话→指令→Cron 报首错；`saveFailed` 兜底。

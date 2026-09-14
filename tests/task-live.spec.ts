@@ -5,9 +5,10 @@
  * can never again read a different source than the rows.
  */
 import { describe, expect, it } from 'vitest'
-import { latestExecutionOf, type TaskRecord } from '../src/core/tasks.ts'
+import { latestExecutionOf, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 import {
-  DIRECT_FALLBACK_STATUS, isDirectLike, relatedSessionIdsOf, taskLiveStateOf,
+  DIRECT_FALLBACK_STATUS, isDirectLike, leaveRunningTargetOf, relatedSessionIdsOf,
+  runningJustificationOf, scheduleGapHolds, taskLiveStateOf,
   type TaskLiveState,
 } from '../src/core/task-live.ts'
 
@@ -149,5 +150,118 @@ describe('direct-round fallback (无事件路径)', () => {
 
   it('falls back to the review column (a steer that ran to completion is a human gate)', () => {
     expect(DIRECT_FALLBACK_STATUS).toBe('review')
+  })
+})
+
+describe('leave-running judgment (删空即离场的唯一判定)', () => {
+  const runningTaskWith = (
+    rounds: Array<{ sessionId: string; comment?: string; direct?: boolean; endedAt?: number }>,
+  ): TaskRecord => withStatus(taskWith(rounds), 'running', 99)
+
+  it('non-running cards never leave (not applicable)', () => {
+    const task = taskWith([{ sessionId: 'a' }])
+    expect(task.status).toBe('todo')
+    expect(runningJustificationOf(task, 'running')).toBeUndefined()
+    expect(leaveRunningTargetOf(task, 'running')).toBeUndefined()
+  })
+
+  it('an open execution round justifies staying', () => {
+    const task = runningTaskWith([{ sessionId: 'a' }])
+    expect(runningJustificationOf(task, 'idle')).toBe('open')
+    expect(leaveRunningTargetOf(task, 'idle')).toBeUndefined()
+  })
+
+  it('a live native session justifies staying even with no rounds', () => {
+    const task = runningTaskWith([])
+    expect(runningJustificationOf(task, 'running')).toBe('live')
+    expect(leaveRunningTargetOf(task, 'running')).toBeUndefined()
+    expect(runningJustificationOf(task, 'waiting')).toBe('live')
+    expect(leaveRunningTargetOf(task, 'waiting')).toBeUndefined()
+  })
+
+  it('an orphan (no rounds, no live truth, no schedule) leaves to todo', () => {
+    const task = runningTaskWith([])
+    expect(runningJustificationOf(task, 'idle')).toBeUndefined()
+    expect(leaveRunningTargetOf(task, 'idle')).toBe('todo')
+  })
+
+  it('an orphan holding completed work leaves to review (the human gate survives)', () => {
+    const task = runningTaskWith([{ sessionId: 'a', endedAt: 5 }])
+    expect(runningJustificationOf(task, 'idle')).toBeUndefined()
+    expect(leaveRunningTargetOf(task, 'idle')).toBe('review')
+  })
+
+  it('a lone open refine round does NOT justify staying (preparation keeps its own column)', () => {
+    const base = runningTaskWith([])
+    const task: TaskRecord = {
+      ...base,
+      refineSessionId: 'refine-1',
+      executions: [{
+        id: 'ref-1',
+        sessionId: 'refine-1',
+        startedAt: 1,
+        endedAt: undefined,
+        result: undefined,
+        error: undefined,
+        refine: true,
+      }],
+    }
+    expect(runningJustificationOf(task, 'idle')).toBeUndefined()
+    expect(leaveRunningTargetOf(task, 'idle')).toBe('todo')
+  })
+
+  it('an armed chain gap holds the column; ignoreSchedule drops it (deletion is a cancel)', () => {
+    const task = withStatus(
+      withSchedule(taskWith([]), { enabled: true, mode: 'chain', cron: '', maxRuns: undefined, runCount: 0 }, 1),
+      'running',
+      2,
+    )
+    expect(scheduleGapHolds(task)).toBe(true)
+    expect(runningJustificationOf(task, 'idle')).toBe('schedule')
+    expect(leaveRunningTargetOf(task, 'idle')).toBeUndefined()
+    expect(runningJustificationOf(task, 'idle', { ignoreSchedule: true })).toBeUndefined()
+    expect(leaveRunningTargetOf(task, 'idle', { ignoreSchedule: true })).toBe('todo')
+  })
+
+  it('a budgeted cron gap holds the column only while runs remain', () => {
+    const holding = withStatus(
+      withSchedule(taskWith([]), { enabled: true, cron: '* * * * *', maxRuns: 3, runCount: 1 }, 1),
+      'running',
+      2,
+    )
+    expect(scheduleGapHolds(holding)).toBe(true)
+    expect(leaveRunningTargetOf(holding, 'idle')).toBeUndefined()
+    const spent = withStatus(
+      withSchedule(taskWith([]), { enabled: true, cron: '* * * * *', maxRuns: 3, runCount: 3 }, 1),
+      'running',
+      2,
+    )
+    expect(scheduleGapHolds(spent)).toBe(false)
+    expect(leaveRunningTargetOf(spent, 'idle')).toBe('todo')
+  })
+
+  it('an unbudgeted cron never holds the column (no pending run between fires)', () => {
+    const task = withStatus(
+      withSchedule(taskWith([]), { enabled: true, cron: '* * * * *', maxRuns: undefined, runCount: 3 }, 1),
+      'running',
+      2,
+    )
+    expect(scheduleGapHolds(task)).toBe(false)
+    expect(leaveRunningTargetOf(task, 'idle')).toBe('todo')
+  })
+
+  it('a disarmed or prompt-less schedule never holds the column', () => {
+    const off = withStatus(
+      withSchedule(taskWith([]), { enabled: false, cron: '* * * * *', maxRuns: 5, runCount: 0 }, 1),
+      'running',
+      2,
+    )
+    expect(scheduleGapHolds(off)).toBe(false)
+    const emptyPrompt = withStatus(
+      withSchedule({ ...taskWith([]), prompt: '   ' }, { enabled: true, mode: 'chain', cron: '', runCount: 0 }, 1),
+      'running',
+      2,
+    )
+    expect(scheduleGapHolds(emptyPrompt)).toBe(false)
   })
 })

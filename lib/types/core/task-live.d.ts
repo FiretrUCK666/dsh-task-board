@@ -21,7 +21,7 @@
  * go dark while one of its bound workspace's sessions is genuinely running
  * (the "行显示进行中、卡片不动" bug).
  */
-import type { ExecutionRecord, TaskRecord } from './tasks.ts';
+import type { ExecutionRecord, TaskRecord, TaskStatus } from './tasks.ts';
 /** The live question's answer. */
 export type TaskLiveState = 'running' | 'waiting' | 'idle';
 /** The classify facts a caller supplies for the derived set's rows. */
@@ -65,6 +65,52 @@ export declare function relatedSessionIdsOf(task: TaskRecord, linkedSessionIds?:
  * unit-testable; the controller wires the native list snapshot.
  */
 export declare function taskLiveStateOf(task: TaskRecord, isRunningOf: (sessionId: string) => boolean, waitingOf: (sessionId: string) => unknown, linkedSessionIds?: readonly string[]): TaskLiveState;
+/**
+ * Why a `running`-column card is allowed to keep its column — THE one
+ * leave-running judgment behind every non-settle exit (session deletion,
+ * the reconcile orphan sweep, the direct-steer fallback). The settled
+ * exits keep their own decision (`settleColumnOf`): they record an outcome
+ * first, then decide; the exits here decide on the CURRENT facts only.
+ *
+ * One three-way justification, read in order:
+ * - `'open'` — an in-flight execution round (refinement excluded, same law
+ *   as the column gate): real work is still running on this card;
+ * - `'live'` — a related session genuinely working right now (native truth);
+ * - `'schedule'` — an armed schedule whose next automatic run is still to
+ *   come keeps the card parked in `running` between runs (the budgeted
+ *   batch/chain gap — the same continuation `settleExecution` grants on a
+ *   succeeded settle).
+ * `undefined` = the card is an orphan: no evidence for `running` anywhere,
+ * and it must leave (where to is `leaveRunningTargetOf`).
+ */
+export type RunningJustification = 'open' | 'live' | 'schedule';
+/** The schedule-continuation half of the justification above: an armed rule
+ *  whose budget still has a run left (chain and budgeted cron share one
+ *  shape here — the settle path reads the same two counters, only adjusted
+ *  for when each path increments them, see the branches). Unbudgeted cron
+ *  never holds the column: a cron with no `maxRuns` keeps nothing pending
+ *  between fires, so its card settles to review like any plain run. */
+export declare function scheduleGapHolds(task: TaskRecord): boolean;
+/**
+ * The single leave-`running` judgment: why the card may stay, undefined when
+ * it must leave. `live` is the native truth (`taskLiveStateOf` on the same
+ * related set the caller renders from). `ignoreSchedule` drops the schedule
+ * leg — a deletion that removed in-flight work is a cancellation (the work
+ * is gone, there is nothing to continue), never a batch gap.
+ */
+export declare function runningJustificationOf(task: TaskRecord, live: TaskLiveState, opts?: {
+    ignoreSchedule?: boolean;
+}): RunningJustification | undefined;
+/**
+ * Where a `running`-column card with NO justification leaves to — the
+ * cancellation semantics of `settleColumnOf` (a card holding completed work
+ * keeps its human gate in review, otherwise it returns to the queue).
+ * `undefined` = the card stays (either it is not in `running`, or one of
+ * the three legs above still holds it).
+ */
+export declare function leaveRunningTargetOf(task: TaskRecord, live: TaskLiveState, opts?: {
+    ignoreSchedule?: boolean;
+}): TaskStatus | undefined;
 /**
  * Whether a round is "direct-like": a direct steer round is settled at birth
  * and has NO host turn/end settle event — its completion is only visible as

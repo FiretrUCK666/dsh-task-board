@@ -1064,6 +1064,15 @@ export declare class BoardController {
      *  live session binding that points ONLY at this session is unbound (a
      *  deleted source cannot stay bound). The task itself and every other
      *  session remain.
+     *
+     *  The deletion also re-derives the column in the SAME tick: an external
+     *  round the deletion swept away was the card's only evidence for
+     *  `running` — without an immediate leave the status cache strands the
+     *  card there (yellow border, running chip intent, but no breathing,
+     *  because the live state is already idle). The single leave judgment
+     *  (`leaveRunningTargetOf`) decides, with the schedule leg ignored when an
+     *  in-flight round was among the deleted (a removed run is a cancellation,
+     *  never a batch gap). Hiding stays display-only and never re-derives.
      *  @returns true when anything was removed. */
     removeTaskSession(taskId: string, sessionId: string): boolean;
     /** Restore ONE hidden session (single-item restore; the bulk "恢复全部"
@@ -1756,6 +1765,18 @@ export declare class BoardController {
      * for this turn is never double-recorded.
      */
     private reconcileBoundTask;
+    /**
+     * The orphan sweep (reconcile Stage 3.5): a `running`-column card with no
+     * justification left (no open round, no live session, no schedule gap)
+     * leaves through the single leave judgment. Covers every orphan the event
+     * paths cannot see — an archived/vanished session whose round lingers, a
+     * spuriously-driven column, any future evidence loss — without adding a
+     * per-cause special case. Direct-steer owners are excluded: their
+     * completion belongs to `driveLiveStates` (one completion per steer, with
+     * the on-complete appointment). A leave lands the card at the top of its
+     * landed column like every other arrival.
+     */
+    private sweepOrphanRunning;
     /**
      * Cancel an open external round whose session has already finished WITHOUT
      * any real turn evidence past the settle grace — the flip was spurious

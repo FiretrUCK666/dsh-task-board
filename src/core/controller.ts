@@ -20,7 +20,7 @@ import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource }
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
-import { DIRECT_FALLBACK_STATUS, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
+import { DIRECT_FALLBACK_STATUS, leaveRunningTargetOf, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { normalizeCruiseValue, clampCruiseLimit, CRUISE_LIMIT_MAX } from './board-doc.ts'
 import { withTaskColor } from './colors.ts'
 import { LocalStoragePresetStore } from './presets.ts'
@@ -33,7 +33,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -1799,9 +1799,18 @@ export class BoardController {
    *  live session binding that points ONLY at this session is unbound (a
    *  deleted source cannot stay bound). The task itself and every other
    *  session remain.
+   *
+   *  The deletion also re-derives the column in the SAME tick: an external
+   *  round the deletion swept away was the card's only evidence for
+   *  `running` — without an immediate leave the status cache strands the
+   *  card there (yellow border, running chip intent, but no breathing,
+   *  because the live state is already idle). The single leave judgment
+   *  (`leaveRunningTargetOf`) decides, with the schedule leg ignored when an
+   *  in-flight round was among the deleted (a removed run is a cancellation,
+   *  never a batch gap). Hiding stays display-only and never re-derives.
    *  @returns true when anything was removed. */
   removeTaskSession(taskId: string, sessionId: string): boolean {
-    return this.userEdit(taskId, task => {
+    const changed = this.userEdit(taskId, task => {
       const kept = task.executions.filter(round => round.sessionId !== sessionId)
       const wasHidden = task.hidden?.sessions?.includes(sessionId) === true
       if (kept.length === task.executions.length && !wasHidden) return task
@@ -1829,21 +1838,67 @@ export class BoardController {
       // rejoin the list) — its slot is gone for good.
       const order = task.sessionsOrder
       if (order !== undefined) {
-        const kept = order.filter(id => id !== sessionId)
-        if (kept.length > 0) next.sessionsOrder = kept
+        const keptOrder = order.filter(id => id !== sessionId)
+        if (keptOrder.length > 0) next.sessionsOrder = keptOrder
         else delete next.sessionsOrder
       }
       // A live binding that points ONLY at this session cannot stay: its
       // source no longer exists on the task.
       const binds = taskBindsOf(next)
-      if (binds.length === 1 && binds[0].kind === 'session' && binds[0].sessionId === sessionId) {
-        const unbound: TaskRecord = { ...next }
-        delete unbound.bind
-        delete unbound.binds
-        return unbound
-      }
-      return next
+      const unbound = binds.length === 1 && binds[0].kind === 'session' && binds[0].sessionId === sessionId
+      const shaped: TaskRecord = !unbound ? next : (() => {
+        const freed: TaskRecord = { ...next }
+        delete freed.bind
+        delete freed.binds
+        return freed
+      })()
+      // Immediate leave: the deletion may have swept the card's last running
+      // evidence (its open external round). Read the post-deletion live state
+      // off the CURRENT native snapshot so the column, the border, the chip
+      // and the breathing agree in the same frame.
+      const deletedOpen = task.executions.some(round =>
+        round.sessionId === sessionId && round.refine !== true && isOpenRound(round))
+      const byId = this.deps.sessions.list.getSnapshot().byId
+      const live = taskLiveStateOf(
+        shaped,
+        id => byId[id]?.running === true,
+        id => byId[id]?.pendingInteraction,
+        this.linkedOf(shaped).map(row => row.sessionId),
+      )
+      const target = leaveRunningTargetOf(shaped, live, { ignoreSchedule: deletedOpen })
+      if (target === undefined) return shaped
+      // Column changes funnel through withStatus (status history appends).
+      // Promotion (landed-column re-sort) happens AFTER the edit commits
+      // (see below): userEdit owns the array, and a mutate closure must not
+      // rewrite siblings — re-sorting other cards here would be silently
+      // dropped by the funnel's map-back. userEdit stamps the record once on
+      // the way out.
+      return withStatus(shaped, target, this.now())
     })
+    if (!changed) return false
+    // The whole delete+leave is one user edit (one persist for the deletion,
+    // one for the promotion — same as every other status move): the moved row
+    // reads as newest of its landed column.
+    const landed = this.tasks.find(candidate => candidate.id === taskId)
+    if (landed !== undefined && landed.status !== 'running') {
+      this.tasks = promoteToColumnTop(this.tasks, taskId, landed.status, this.now())
+      this.persistAndNotify()
+    }
+    // The session is gone from this card: its transient detection state must
+    // go with it, or a re-dragged session inherits a consumed period / a stale
+    // settle clock / a board-owned grace that swallows its first native turn.
+    this.activityBook.running.delete(sessionId)
+    this.activityBook.recorded.delete(sessionId)
+    this.activityBook.externalSince.delete(sessionId)
+    this.activityWake.delete(sessionId)
+    this.directGraceUntil.delete(sessionId)
+    const current = this.tasks.find(candidate => candidate.id === taskId)
+    const fallback = current !== undefined ? this.directFallbackRounds.get(taskId) : undefined
+    if (fallback !== undefined && current !== undefined
+      && !current.executions.some(round => round.id === fallback)) {
+      this.directFallbackRounds.delete(taskId)
+    }
+    return true
   }
 
   /** Restore ONE hidden session (single-item restore; the bulk "恢复全部"
@@ -3692,6 +3747,15 @@ export class BoardController {
       // evidence past the grace (a spurious flip must not strand the card).
       if (this.cancelSpuriousExternal()) changed = true
 
+      // Stage 3.5 — the orphan sweep: a `running` card whose every running
+      // leg is gone (no open round, no live session, no schedule gap) leaves
+      // through the single leave judgment — e.g. an archived session whose
+      // round lingers past the watchdogs, or a native session that vanished
+      // without a flip. Direct-steer owners stay with `driveLiveStates`
+      // (their completion carries the on-complete appointment + idempotency),
+      // so the sweep skips them.
+      if (this.sweepOrphanRunning(linkedIds)) changed = true
+
       if (changed) this.persistAndNotify()
       // Stage 4 — the SAME post-settle appointments as a live settle: a
       // recovery/background settlement is a completion too, and automation
@@ -3763,7 +3827,10 @@ export class BoardController {
         // Demote only when NOTHING of this card is in flight any more: with
         // per-session lanes the steered conversation can finish while another
         // session of the same card is still working, and yanking the card out
-        // of 进行中 then would lie about the lanes that remain.
+        // of 进行中 then would lie about the lanes that remain. The target
+        // reads the single leave judgment (a settled steer is a cancellation
+        // of the drive — it always ignores the schedule leg — and a steer
+        // that ran to completion lands in review through it).
         //
         // One completion per steer round, ever. `newestDirectLike` searches the
         // whole history, so a stale steer could otherwise re-fire the
@@ -3772,7 +3839,8 @@ export class BoardController {
         // above makes this an edge, not a level; this makes it idempotent.
         if (this.directFallbackRounds.get(task.id) === latest.id) continue
         this.directFallbackRounds.set(task.id, latest.id)
-        const next = withStatus(task, DIRECT_FALLBACK_STATUS, now)
+        const target = leaveRunningTargetOf(task, live, { ignoreSchedule: true }) ?? DIRECT_FALLBACK_STATUS
+        const next = withStatus(task, target, now)
         this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
         changed = true
         if (!this.disposed) this.settledFollowUp(latest, task.id, 'succeeded')
@@ -4083,6 +4151,46 @@ export class BoardController {
     this.tasks = this.tasks.map(candidate =>
       candidate.id === taskId ? { ...candidate, viewedAt: now - 1 } : candidate)
     this.persistAndNotify()
+  }
+
+  /**
+   * The orphan sweep (reconcile Stage 3.5): a `running`-column card with no
+   * justification left (no open round, no live session, no schedule gap)
+   * leaves through the single leave judgment. Covers every orphan the event
+   * paths cannot see — an archived/vanished session whose round lingers, a
+   * spuriously-driven column, any future evidence loss — without adding a
+   * per-cause special case. Direct-steer owners are excluded: their
+   * completion belongs to `driveLiveStates` (one completion per steer, with
+   * the on-complete appointment). A leave lands the card at the top of its
+   * landed column like every other arrival.
+   */
+  private sweepOrphanRunning(linked: ReadonlyArray<{ task: TaskRecord; ids: readonly string[] }>): boolean {
+    const byId = this.deps.sessions.list.getSnapshot().byId
+    const linkedIdsOf = (taskId: string): readonly string[] | undefined =>
+      linked.find(entry => entry.task.id === taskId)?.ids
+    let changed = false
+    const now = this.now()
+    for (const task of this.tasks) {
+      if (task.status !== 'running') continue
+      if (newestDirectLike(task) !== undefined) continue
+      const live = taskLiveStateOf(
+        task,
+        sessionId => byId[sessionId]?.running === true,
+        sessionId => byId[sessionId]?.pendingInteraction,
+        linkedIdsOf(task.id),
+      )
+      const target = leaveRunningTargetOf(task, live)
+      if (target === undefined) continue
+      const next = withStatus(task, target, now)
+      this.tasks = promoteToColumnTop(
+        this.tasks.map(candidate => candidate.id === task.id ? next : candidate),
+        task.id,
+        target,
+        now,
+      )
+      changed = true
+    }
+    return changed
   }
 
   /**

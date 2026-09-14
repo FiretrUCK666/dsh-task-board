@@ -3874,6 +3874,142 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     // The deleted session leaves the related set → it is re-offerable in the
     // add-session picker (删除 = 可再拖回/再选回).
     expect(controller.relatedSessionIdSet(row).has('s-x')).toBe(false)
+    // The deletion swept the card's last running evidence: the column leaves
+    // `running` in the same tick (no orphan — border, chip and breathing
+    // agree again). The deleted round was in flight → a cancellation: the
+    // card holds no completed work, so it lands in todo, at the column top.
+    expect(row.status).toBe('todo')
+  })
+
+  it('the reported bug: hide-then-delete the only running session leaves running in the same tick', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    const wss = new FakeWorkspaces()
+    wss.items = [{ id: 'w-a', title: '工作区A', sessionIds: ['s-live'] }]
+    sessions.setRunning('s-live', true)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, workspaces: wss, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    // Drag the whole workspace in (the snapshot binds the running member).
+    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: 'run' })!
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.status).toBe('running')
+    // Hide first: display-only — the card correctly stays in running.
+    controller.hideTaskSession(task.id, 's-live')
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.status).toBe('running')
+    expect(controller.sessionsOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)).toHaveLength(0)
+    // Then 删除 from the hidden tray: the card leaves running at once — the
+    // session row is gone AND the column, breathing and live state agree.
+    expect(controller.removeTaskSession(task.id, 's-live')).toBe(true)
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.status).not.toBe('running')
+    expect(row.status).toBe('todo')
+    expect(controller.sessionsOf(row)).toHaveLength(0)
+    expect(controller.liveStateOf(task.id)).toBe('idle')
+    expect(row.executions.filter(round => round.sessionId === 's-live')).toHaveLength(0)
+    expect(row.statusHistory?.[row.statusHistory.length - 1]?.status).toBe('todo')
+    // The native session keeps running in its workspace — it must not
+    // re-light this card (the removed gate holds).
+    await flush()
+    await flush()
+    expect(controller.liveStateOf(task.id)).toBe('idle')
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.status).toBe('todo')
+    // …but the user dragging it back restores the row AND the live truth.
+    expect(controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-live' })).toBe(true)
+    await flush()
+    await flush()
+    const restored = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.sessionsOf(restored).map(r => r.sessionId)).toContain('s-live')
+    expect(controller.liveStateOf(task.id)).toBe('running')
+  })
+
+  it('deleting the last in-flight round with completed work behind it lands in review', async () => {
+    // A manual run settles a success (completed work → review); a native
+    // turn on a second bound session re-lights the card to running; deleting
+    // that session's in-flight round is a cancellation ON TOP of history —
+    // the human gate survives in review (same as settle cancel).
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-run', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createTask({ title: 'w', description: '', prompt: 'run' })!
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-run' })
+    await controller.runTask(task.id, 'manual')
+    const runId = stub.runCalls[0].executionId
+    stub.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: runId, sessionId: 's-run' })
+    await flush()
+    stub.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: runId, outcome: 'succeeded' })
+    expect(controller.getSnapshot().tasks[0].status).toBe('review')
+    // Bind the live session only now (after the success settled): its native
+    // turn is fresh activity that re-lights the card through instant sync.
+    sessions.setRunning('s-live', true)
+    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+    expect(controller.liveStateOf(task.id)).toBe('running')
+    // Deleting the in-flight session keeps the gate: review, not todo.
+    expect(controller.removeTaskSession(task.id, 's-live')).toBe(true)
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.status).toBe('review')
+    expect(row.executions.some(round => round.sessionId === 's-run' && round.result === 'succeeded')).toBe(true)
+    expect(row.executions.some(round => round.sessionId === 's-live')).toBe(false)
+  })
+
+  it('deleting history on an armed-chain gap keeps running; deleting the last in-flight run does not', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('s-live', true)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createBoundTask({ kind: 'session', sessionId: 's-live' }, { title: 'w', description: '', prompt: 'run' })!
+    await flush()
+    await flush()
+    // Arm an unlimited chain on the running card.
+    expect(controller.setSchedule(task.id, { enabled: true, mode: 'chain' })).toBe(true)
+    // The schedule leg alone would hold the column — but the open external
+    // round is in flight too. Deleting it is a cancellation: the (empty)
+    // card leaves running despite the armed chain.
+    expect(controller.removeTaskSession(task.id, 's-live')).toBe(true)
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.status).toBe('todo')
+  })
+
+  it('the reconcile orphan sweep releases a running card with no evidence and no schedule', async () => {
+    // A seeded orphan: `running` column, no rounds at all (the deletion path
+    // above is covered by the hide-then-delete test; the sweep exists for the
+    // orphans no event path can see — archive/vanish/legacy rows). Start must
+    // NOT strand it: the first pass already sweeps it home.
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'w', description: '', prompt: 'run' }, NOW, 'task-orphan')
+    store.save([{ ...seeded, status: 'running' }])
+    const sessions = new FakeSessions()
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === 'task-orphan')!
+    expect(row.status).toBe('todo')
+    expect(controller.liveStateOf('task-orphan')).toBe('idle')
   })
 
   it('createTaskSession creates a fresh session through the exec service and binds it (新建会话)', async () => {
