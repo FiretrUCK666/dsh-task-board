@@ -277,6 +277,21 @@ for (const [label, text] of DOC_FILES) {
         `${file}:${line}: var(${name}) has no fallback and the DSH shell never declares it — every declaration using this custom property is invalid at computed-value time and paints nothing`,
       )
     }
+    // The board's own alias namespace is declared on `[data-dsh-taskboard-view]`,
+    // so it exists ONLY inside that scope. A stylesheet that never mentions the
+    // attribute cannot see those aliases, and referencing one there resolves to
+    // nothing — the failure mode is invisible in review (the declaration simply
+    // does not paint) and it is easy to introduce by copying a token name between
+    // files. Host tokens are global; aliases are not.
+    if (!/data-dsh-taskboard-view/.test(css)) {
+      for (const m of css.matchAll(/var\(\s*(--dsh-tb-[a-z0-9-]+)/g)) {
+        const at = css.indexOf(m[1])
+        const line = css.slice(0, at).split('\n').length
+        failures.push(
+          `${file}:${line}: var(${m[1]}) is a BOARD alias, and this stylesheet is not inside the [data-dsh-taskboard-view] scope where it is declared — it resolves to nothing here. Use the host token the alias maps to instead.`,
+        )
+      }
+    }
     notes.push(`${file}: ${localAliases.size} local custom properties, ${[...css.matchAll(/var\(\s*--dsw-/g)].length} host-token references audited`)
   }
 }

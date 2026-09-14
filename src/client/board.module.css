@@ -123,6 +123,24 @@
   --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) 22%, transparent);
   --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
 
+  /* THE text colour for text sitting ON a light-hued fill.
+     The state fills have fixed hues that do not follow the theme (warn, success
+     and the accent all resolve to the same value in light and dark), but
+     `--dsw-alias-label-primary-foreground` DOES flip: it is white in the light
+     theme and near-black in the dark one. That token answers "what reads on the
+     BRAND fill", and the brand fill is dark ink — so pairing it with a light
+     fill got the answer backwards exactly half the time. Measured before this
+     token existed, in the light theme: white on warn 2.15:1, white on
+     warn-secondary 1.91:1, white on success 2.28:1, white on the accent 4.23:1
+     — all below 4.5, while the same pairings passed in the dark theme.
+     A light fill needs dark ink in BOTH themes, so the value comes from the
+     static ramp (identical in light and dark by construction). Measured after:
+     8.80 / 9.88 / 8.29 / 4.46.
+     NOT for dark fills: the brand button and the danger button are dark in both
+     themes, and `label-primary-foreground` is already the right answer there
+     (18.90 and 4.50 in the light theme) — see .primaryButton / .dangerButton. */
+  --dsh-tb-ink-on-fill: var(--dsw-static-neutral-bluish-1000);
+
   /* interaction + motion grammar (one source) */
   --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
   --dsh-tb-input-bg: var(--dsw-specific-input-major);
@@ -417,7 +435,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
-  color: var(--dsw-alias-label-primary-foreground);
+  /* Dark ink, not `foreground`: this fill is a LIGHT hue shared by both themes,
+     so the text must be dark in both — see the --dsh-tb-ink-on-fill note. */
+  color: var(--dsh-tb-ink-on-fill);
   background: var(--dsh-tb-attention);
   border-radius: var(--dsh-tb-pill);
   font-variant-numeric: tabular-nums;
@@ -813,7 +833,13 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--dsh-tb-text-3);
+  /* Tier 2, not 3, on purpose. The third tier's documented meaning is "faint,
+     disposable" (它承载时间戳、占位符这类可舍弃的元信息), and this line is the
+     opposite: it is the sentence that explains what the cruise switch currently
+     MEANS. Measured light-theme contrast for tier 3 is 3.71:1 versus 5.80:1 for
+     tier 2, so a decision-bearing sentence belongs one tier up. The board does
+     not invent a palette — it picks the right DECLARED step. */
+  color: var(--dsh-tb-text-2);
 }
 
 .cruiseWindowList {
@@ -950,7 +976,9 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
 
 .timeFieldHint {
   font-size: 11px;
-  color: var(--dsh-tb-text-3);
+  /* Tier 2: "时钟不对请手动改" is an instruction the user acts on, not disposable
+     meta — see .cruiseStateLine for the measured reasoning. */
+  color: var(--dsh-tb-text-2);
 }
 
 /* --- columns ------------------------------------------------------------------ */
@@ -1200,7 +1228,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   justify-content: center;
   width: 18px;
   height: 18px;
-  color: var(--dsw-alias-label-primary-foreground);
+  /* Dark ink on a light accent fill (see --dsh-tb-ink-on-fill). */
+  color: var(--dsh-tb-ink-on-fill);
   background: var(--dsw-alias-state-business-primary);
   border-radius: 50%;
   pointer-events: none;
@@ -1552,7 +1581,8 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   cursor: pointer;
 }
 .feedFilter[data-active] {
-  color: var(--dsw-alias-label-primary-foreground);
+  /* Dark ink on a light accent fill (see --dsh-tb-ink-on-fill). */
+  color: var(--dsh-tb-ink-on-fill);
   background: var(--dsw-alias-state-business-primary);
   border-color: transparent;
 }
@@ -3275,7 +3305,10 @@ textarea.input {
   padding: 0 10px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary-foreground);
+  /* Dark ink, not `foreground`: the amber fill is light in BOTH themes, so the
+     label must be dark in both. Measured 2.15:1 before, 8.80:1 after — the
+     worst pairing in the whole stylesheet. See --dsh-tb-ink-on-fill. */
+  color: var(--dsh-tb-ink-on-fill);
   background: var(--dsw-alias-state-warn-primary);
   border: none;
   border-radius: var(--dsh-tb-pill);
@@ -5651,7 +5684,10 @@ span.interactionOptions {
 }
 .attachHint {
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  /* Tier 2: this line states the SIZE LIMIT the user must respect to send a
+     file ("图片 2.5M 自保"). Getting it wrong costs a failed upload, so it is
+     instruction rather than disposable meta — see .cruiseStateLine. */
+  color: var(--dsh-tb-text-2);
 }
 
 /* A rejected file is named OUT LOUD (the silent-drop that read as 「电脑端
