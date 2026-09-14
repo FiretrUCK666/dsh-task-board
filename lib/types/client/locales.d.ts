@@ -556,6 +556,10 @@ export declare const zh: {
     'card.nextReview': string;
     'card.nextScheduled': string;
     'card.nextChain': string;
+    'card.awaitingDecision': string;
+    'card.awaitingDecisionTitle': string;
+    'board.demand': string;
+    'board.demandTitle': string;
     'prompt.commandList': string;
     'prompt.noCommands': string;
     'prompt.noReferences': string;

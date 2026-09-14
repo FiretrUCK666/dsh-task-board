@@ -52,6 +52,14 @@ export interface CardViewModel {
     unviewedCount: number;
     /** Whether the card breathes (state-bound, independent of unread). */
     active: boolean;
+    /**
+     * A task in review whose plain run has settled: the human gate owes an
+     * answer. Deliberately NOT `unviewed` — reading a card retires the unread
+     * glow (that message stays honest) but never resolves the decision, so this
+     * keeps counting after the card has been looked at. Drives the static
+     * 「待你决断」 chip and the header demand count.
+     */
+    awaitingDecision: boolean;
     /** Display truth splits from the gate: refining never reads as running. */
     showingRunning: boolean;
     /** Run guard (open-round gate — queued comments never block). */

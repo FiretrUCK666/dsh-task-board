@@ -4,7 +4,8 @@
  * never a notification.
  */
 import { describe, expect, it } from 'vitest'
-import { foldNotesByTask, noteKeyOf, notificationsExOf, notificationsOf } from '../src/client/board/notifications.ts'
+import { boardDemandOf, foldNotesByTask, noteKeyOf, notificationsExOf, notificationsOf } from '../src/client/board/notifications.ts'
+import { taskUnviewed } from '../src/core/session-display.ts'
 import { createTask, settleExecution, startExecution } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -194,5 +195,82 @@ describe('waiting moment clock (round activity, never task.updatedAt)', () => {
       id === 's-1' || id === 's-2' ? 'question' : undefined
     const rows = notificationsOf(tasks, pending, id => id)
     expect(rows.map(row => row.sessionId)).toEqual(['s-1', 's-2'])
+  })
+})
+
+/**
+ * The board's demand count: the answer to 「等我做什么」, stated for the whole
+ * surface. It exists because the bell counts folded ROWS and a column header
+ * counts CARDS — two numbers that measure different things and can never
+ * reconcile on screen. The load-bearing rule is that the review half is
+ * independent of `viewedAt`: reading a finished run retires the unread GLOW
+ * (that message stays honest) but never resolves the decision, and treating
+ * "seen" as "done" is exactly how a board stops being safe to leave running.
+ */
+describe('boardDemandOf', () => {
+  it('an idle board owes nothing', () => {
+    expect(boardDemandOf([], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
+    expect(boardDemandOf([task('a', NOW)], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
+  })
+
+  it('counts each suspended session once, deduplicated across rounds', () => {
+    const tasks = [task('a', NOW, {
+      refineSessionId: 's-1',
+      executions: [
+        { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
+        { id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
+      ],
+    })]
+    const pending = (id: string | undefined): 'question' | undefined =>
+      id === 's-1' || id === 's-2' ? 'question' : undefined
+    expect(boardDemandOf(tasks, pending)).toEqual({ total: 2, waiting: 2, review: 0 })
+  })
+
+  it('counts a settled review task regardless of whether it was looked at', () => {
+    const base = createTask({ title: 'R', description: '', prompt: 'p' }, NOW, 'r')
+    const running = startExecution(base, NOW + 1, 'e1')
+    const settled = settleExecution(running.task, 'e1', 'succeeded', NOW + 2, undefined)
+    // Looked at (viewedAt past the settle): the bell goes quiet, the gate does not.
+    const looked = { ...settled, viewedAt: NOW + 3 }
+    expect(taskUnviewed(looked)).toBe(false)
+    expect(boardDemandOf([looked], () => undefined)).toEqual({ total: 1, waiting: 0, review: 1 })
+    // Never looked at: same verdict on the gate, and the glow is a separate signal.
+    expect(boardDemandOf([settled], () => undefined)).toEqual({ total: 1, waiting: 0, review: 1 })
+    expect(taskUnviewed(settled)).toBe(true)
+  })
+
+  it('does not count a task still running, nor one that never ran', () => {
+    const base = createTask({ title: 'X', description: '', prompt: 'p' }, NOW, 'x')
+    const running = startExecution(base, NOW + 1, 'e1').task
+    expect(boardDemandOf([running], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
+    expect(boardDemandOf([base], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
+  })
+
+  it('counts a bound-but-never-run waiting session, like the bell and the glow', () => {
+    const base = createTask({ title: 'B', description: '', prompt: 'p' }, NOW, 'b')
+    const bound = { ...base, binds: [{ kind: 'session' as const, sessionId: 's-bound' }] }
+    // The session bind alone puts it in the related set, with no round behind it —
+    // the same path the bell and the card glow read.
+    const pending = (id: string | undefined): 'approval' | undefined => (id === 's-bound' ? 'approval' : undefined)
+    expect(boardDemandOf([bound], pending)).toEqual({ total: 1, waiting: 1, review: 0 })
+    // And it is the waiting SIGNAL that counts, not the bind: no signal, no demand.
+    expect(boardDemandOf([bound], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
+  })
+
+  it('sums the two halves into the headline total', () => {
+    const base = createTask({ title: 'R', description: '', prompt: 'p' }, NOW, 'r')
+    const running = startExecution(base, NOW + 1, 'e1')
+    const settled = settleExecution(
+      { ...running.task, executions: running.task.executions.map(round => ({ ...round, sessionId: 's-1' })) },
+      'e1',
+      'failed',
+      NOW + 2,
+      'boom',
+    )
+    const waiting = task('w', NOW, {
+      executions: [{ id: 'e9', sessionId: 's-9', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    })
+    const pending = (id: string | undefined): 'approval' | undefined => (id === 's-9' ? 'approval' : undefined)
+    expect(boardDemandOf([settled, waiting], pending)).toEqual({ total: 2, waiting: 1, review: 1 })
   })
 })

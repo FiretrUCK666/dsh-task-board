@@ -560,6 +560,17 @@ export const zh = {
   'card.nextReview': '待你确认完成',
   'card.nextScheduled': '已排程 · 到点自动运行',
   'card.nextChain': '接续中 · 完成后自动下一轮',
+  /* The static gate marker. Distinct from the amber unread chip on purpose:
+     reading a card retires 「新」, but only a decision retires this one. It is
+     never a breathing state — the breath belongs to unread alone. */
+  'card.awaitingDecision': '待你决断',
+  'card.awaitingDecisionTitle': '已跑完，等你在待审核列通过或打回；看过之后仍然算未决',
+  /* Header demand row: the board stating, in words, what it owes the user.
+     The bell badge counts folded notification ROWS and a column header counts
+     CARDS; neither answers 「等我做什么」, so this row states it separately and
+     without a number that could contradict them. */
+  'board.demand': '等你处理 {n} 项 · 待审核 {m} 张',
+  'board.demandTitle': '等你处理 = 挂起等你作答的会话；待审核 = 已跑完但还没通过或打回的任务（看过也算）',
   'prompt.commandList': '命令列表',
   'prompt.noCommands': '无匹配命令',
   'prompt.noReferences': '没有匹配的文件或会话',
@@ -1167,6 +1178,10 @@ export const en: Record<keyof typeof zh, string> = {
   'card.nextReview': 'Awaiting your confirmation',
   'card.nextScheduled': 'Scheduled · runs automatically',
   'card.nextChain': 'Chaining · next round after completion',
+  'card.awaitingDecision': 'Awaiting your decision',
+  'card.awaitingDecisionTitle': 'The run finished and is waiting in Review for you to approve or send back; it still counts after you have looked',
+  'board.demand': '{n} need you · {m} in review',
+  'board.demandTitle': 'Need you = sessions suspended on your answer. In review = runs that finished and nobody has approved or sent back yet (looked-at ones still count)',
   'prompt.commandList': 'Command list',
   'prompt.noCommands': 'No matching commands',
   'prompt.noReferences': 'No matching files or sessions',

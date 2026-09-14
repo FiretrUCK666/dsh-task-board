@@ -173,6 +173,62 @@ export function notificationsExOf(
   return [...waiting, ...review]
 }
 
+/**
+ * What the board owes the user, stated as one fact for the whole surface.
+ *
+ * The bell's badge counts ROWS (folded by task), and a column header counts
+ * CARDS — two numbers that measure different things and, on screen, never
+ * reconcile. Neither of them answers the question the board exists to answer
+ * (「等我做什么」), and a card that has been glanced at drops out of the bell
+ * entirely. This derivation is that answer, and it is deliberately independent
+ * of `viewedAt`:
+ *
+ *  - `waiting` is a live block: an agent suspended on approval / plan / question.
+ *  - `review` is the human gate: a task sitting in review with a settled run.
+ *    Once looked at it stops BREATHING (that is the unread signal, and it stays
+ *    honest) but it is not resolved until a human passes or sends it back — so
+ *    it keeps counting here. This is the split the board was missing: five
+ *    cards can wait in review while the only visible demand is an 11px digit.
+ *
+ * Pure, so the header row and the tests read the same number.
+ */
+export interface BoardDemand {
+  /** Total items awaiting a human: waiting sessions + review tasks. */
+  total: number
+  /** Sessions currently suspended on a question / approval / plan. */
+  waiting: number
+  /** Tasks in review whose latest plain run has settled. */
+  review: number
+}
+
+export function boardDemandOf(
+  tasks: readonly TaskRecord[],
+  pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
+  linkedIdsOf: (task: TaskRecord) => readonly string[] = () => [],
+): BoardDemand {
+  let waiting = 0
+  let review = 0
+  for (const task of tasks) {
+    // A waiting session is counted once per session, exactly like the bell:
+    // a run round and a refine round can name the same session.
+    const counted = new Set<string>()
+    // `relatedSessionIdsOf` takes the task's linked ids as an ARRAY (it is the
+    // live related-set derivation, shared with the card's glow and the bell), so
+    // the callback is invoked here — passing the callback itself would iterate
+    // the function's characters instead of the ids.
+    for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task))) {
+      if (sessionId === undefined || counted.has(sessionId)) continue
+      if (pendingOf(sessionId) === undefined) continue
+      counted.add(sessionId)
+      waiting += 1
+    }
+    // The human gate. `lastPlainResult !== undefined` means a plain run has
+    // settled; the task is still in review, so nobody has decided yet.
+    if (task.status === 'review' && lastPlainResult(task) !== undefined) review += 1
+  }
+  return { total: waiting + review, waiting, review }
+}
+
 /** One folded task entry: the head row plus every row sharing its task.
  *  The bell and the drawer read the same folded list, so the badge always
  *  equals the visible row count ("collapsed counts one" — a folded group of

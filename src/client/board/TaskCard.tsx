@@ -72,7 +72,7 @@ export function blockedAutomation(task: TaskRecord): boolean {
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, awaitingDecision, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -91,6 +91,10 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   unviewed: boolean
   /** How many plain-run executions are unviewed (the "新 N" badge figure). */
   unviewedCount: number
+  /** A review task whose run has settled and no human has passed or sent it
+   *  back: the plateau the board used to hide. Unlike `unviewed` it does not
+   *  clear when the card is opened — reading is not deciding. */
+  awaitingDecision?: boolean
   onClick: (event: React.MouseEvent) => void
   /** Optional hover quick-action: run the task right from the card (rerun
    *  semantics, same run guard; disabled while a run is open). */
@@ -324,6 +328,18 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
             {unviewed && (
               <Chip kind="warn" fill={false} title={t('card.newContentTitle')}>
                 {t('card.newContent')}{unviewedCount > 0 ? ` ${unviewedCount}` : ''}
+              </Chip>
+            )}
+            {/* The human gate, stated as a FACT rather than as an unread state.
+                `unviewed` above retires the moment the card is opened; this one
+                does not, because reading a finished run is not the same as
+                passing or sending it back — and a card that has been glanced at
+                used to become indistinguishable from a filed one. Rendered
+                STATIC (no breathing): the amber breath belongs to unread alone,
+                so the two signals can never be confused for each other. */}
+            {awaitingDecision === true && (
+              <Chip kind="warn" fill={false} title={t('card.awaitingDecisionTitle')}>
+                {t('card.awaitingDecision')}
               </Chip>
             )}
             {refining(task) && (

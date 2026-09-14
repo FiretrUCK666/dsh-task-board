@@ -28,7 +28,7 @@ export declare function blockedAutomation(task: TaskRecord): boolean;
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
+export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, awaitingDecision, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
     task: TaskRecord;
     /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
     selected?: boolean;
@@ -47,6 +47,10 @@ export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleO
     unviewed: boolean;
     /** How many plain-run executions are unviewed (the "新 N" badge figure). */
     unviewedCount: number;
+    /** A review task whose run has settled and no human has passed or sent it
+     *  back: the plateau the board used to hide. Unlike `unviewed` it does not
+     *  clear when the card is opened — reading is not deciding. */
+    awaitingDecision?: boolean;
     onClick: (event: React.MouseEvent) => void;
     /** Optional hover quick-action: run the task right from the card (rerun
      *  semantics, same run guard; disabled while a run is open). */

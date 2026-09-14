@@ -46,7 +46,7 @@ import { taskBindsOf } from '../../core/tasks.ts'
 
 import { applyCompletion, completeBoardQuery, matchTask, removeFilterToken, splitFilterTokens } from './task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
-import { foldNotesByTask, noteKeyOf, notificationsExOf, type NotificationItem } from './notifications.ts'
+import { boardDemandOf, foldNotesByTask, noteKeyOf, notificationsExOf, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
 import { cardNextActionOf, cardViewModelOf, titleOrUntitled } from './card-view.ts'
 
@@ -261,6 +261,17 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     sessionId => controller.pendingInteractionOf(sessionId),
     sessionId => controller.sessionTitle(sessionId) ?? sessionId,
     task => taskUnviewed(task),
+    task => controller.linkedOf(task).map(row => row.sessionId),
+  ), [snapshot.tasks, snapshot, controller])
+  // What the board owes the user, stated once for the whole surface. Separate
+  // from the bell on purpose: the bell counts folded notification ROWS, a column
+  // header counts CARDS, and a card that has merely been looked at leaves the
+  // bell entirely — so neither can answer 「等我做什么」. This one is independent
+  // of `viewedAt` and never debates the bell, because it counts sessions for the
+  // waiting half and tasks for the gate half.
+  const demand = useMemo(() => boardDemandOf(
+    snapshot.tasks,
+    sessionId => controller.pendingInteractionOf(sessionId),
     task => controller.linkedOf(task).map(row => row.sessionId),
   ), [snapshot.tasks, snapshot, controller])
   const visibleNotes = useMemo(() => notes.filter(note => {
@@ -943,6 +954,26 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
             空位 + 模式组（整理/自动化，右）。紧凑档各自再确定性地换行：
             导航第二行 = 状态（有内容才出现），工具第二行 = 模式组右对齐，
             筛选永远独占一条整幅白长条。标签一律保留。 */}
+        {/* 诉求行（全板最该先说的事）：它答的是产品存在的那个问题——「等我做
+            什么」。放在导航行之上，因为它是用户来这块板的第一个理由；只在真的
+            有事在等时出现，安静时整行消失（与状态行同一条纪律）。
+            它是真按钮：触屏没有 hover，一个写着「等你处理」却点不动的横幅比不
+            写更糟。三处数字各自的含义由 title 与 aria-label 说明。
+            不加新的颜色：它复用注意力色，与卡片上的「待你决断」chip 同族。 */}
+        {demand.total > 0 && (
+          <button
+            type="button"
+            className={css.boardDemand}
+            title={t('board.demandTitle')}
+            aria-label={`${t('board.demand', { n: String(demand.waiting), m: String(demand.review) })}。${t('board.demandTitle')}`}
+            onClick={openNotify}
+          >
+            <span className={css.boardDemandDot} aria-hidden="true" />
+            <span className={css.boardDemandText}>
+              {t('board.demand', { n: String(demand.waiting), m: String(demand.review) })}
+            </span>
+          </button>
+        )}
         <div className={`${css.boardRow} ${css.boardRowNav}`}>
           <button
             type="button"
@@ -1710,6 +1741,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       pendingTitle={pendingTitle}
                       unviewed={taskUnviewed(task)}
                       unviewedCount={taskUnviewedCount(task)}
+                      awaitingDecision={view.awaitingDecision}
                       selected={selectedCards.includes(task.id)}
                       onClick={event => { cardClick(task.id, event) }}
                       onQuickRun={taskExecutable(task) ? () => { void controller.rerunTask(task.id) } : undefined}

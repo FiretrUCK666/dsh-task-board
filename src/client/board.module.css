@@ -560,6 +560,58 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   white-space: nowrap;
 }
 
+/* 诉求行：全板最该先说的事，坐在导航行之上。只在真有事在等时渲染。
+   它是注意力色上的**静态**指示——呼吸归未读独有，所以「等你」与「有新的」永远
+   不会读成同一件事。真按钮（触屏没有 hover），故用 --dsh-tb-hover 做悬停底、
+   并用药丸形与其它安静控件同族；不新增颜色。 */
+.boardDemand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* Shrinkable like .boardStatus, with the clip on the text slot so the dot's
+     halo is never cut by its own container. */
+  flex: 0 1 auto;
+  min-width: 0;
+  align-self: flex-start;
+  height: var(--dsh-tb-button-h);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--dsh-tb-attention);
+  background: var(--dsh-tb-chip-fill);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+  -webkit-appearance: none;
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.boardDemand:hover {
+  background: var(--dsh-tb-hover);
+  border-color: var(--dsw-alias-border-l3);
+}
+
+.boardDemand:focus-visible {
+  outline: 2px solid var(--dsh-tb-focus-color);
+  outline-offset: 2px;
+}
+
+.boardDemandDot {
+  flex: none;
+  width: var(--dsh-tb-dot);
+  height: var(--dsh-tb-dot);
+  border-radius: 50%;
+  background: var(--dsh-tb-attention);
+}
+
+.boardDemandText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The engine note is a REAL button (same quiet line as the status text): on a
    touch device a `title=` explanation can never be reached, so anything that
    says "tap to learn" must actually respond to a tap. */
