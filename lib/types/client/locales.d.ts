@@ -60,9 +60,6 @@ export declare const zh: {
     'board.cruiseStatusScheduled': string;
     'board.cruiseStatusOff': string;
     'board.empty': string;
-    'board.emptyFirstRun': string;
-    'board.emptyFirstRunHint': string;
-    'board.emptyFiltered': string;
     'board.status.backlog': string;
     'board.statusRunning': string;
     'board.statusQueued': string;
@@ -78,11 +75,6 @@ export declare const zh: {
     'board.statusShort.running': string;
     'board.statusShort.review': string;
     'board.statusShort.done': string;
-    'board.columnHint.backlog': string;
-    'board.columnHint.todo': string;
-    'board.columnHint.running': string;
-    'board.columnHint.review': string;
-    'board.columnHint.done': string;
     'board.runs': string;
     'board.updated': string;
     'board.created': string;
@@ -227,8 +219,6 @@ export declare const zh: {
     'status.move.backlog': string;
     'status.move.todo': string;
     'status.move.done': string;
-    'board.undoDisarm': string;
-    'board.undoDisarmText': string;
     'board.dragRejectBusy': string;
     'detail.runBlockedBusy': string;
     'detail.rerunHint': string;

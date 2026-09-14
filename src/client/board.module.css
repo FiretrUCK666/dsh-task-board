@@ -594,28 +594,7 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   color: var(--dsh-tb-attention);
 }
 
-/* The undo offer for a `done` move. Same shape as the refusal line above — a
-   sentence plus the action that answers it — because both report something the
-   board just did that the user may not have wanted. The sentence is tier-2 (it
-   states a fact, not a refusal) and the action reuses the status-button chrome so
-   it reads as the board's own quiet control rather than new furniture. Wraps
-   instead of overflowing: the title inside it is user text of any length. */
-.undoDisarmRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  align-self: flex-start;
-  max-width: 100%;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsh-tb-text-2);
-}
-.undoDisarmText {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
+
 
 /* 诉求行：全板最该先说的事，坐在导航行之上。只在真有事在等时渲染。
    它是注意力色上的**静态**指示——呼吸归未读独有，所以「等你」与「有新的」永远
@@ -1196,14 +1175,11 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
   pointer-events: none;
 }
 
-/* The one-time mechanic explanation, subordinate to the line above it but still
-   readable (tier 2 both): an onboarding sentence nobody can read is not
-   onboarding. */
-.columnEmptyHint {
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-  overflow-wrap: anywhere;
-}
+/* `.columnEmptyHint` lived here: a second, subordinate line inside an empty column,
+   used first for the one-time "how this board works" sentence and later for the
+   column's pull-policy sentence. Both are gone — an empty column says 暂无任务 and
+   nothing else. The rule went with them rather than lingering as something the
+   class-drift audit would have to report. */
 
 /* --- cards -------------------------------------------------------------------- */
 

@@ -31,16 +31,13 @@ export const STATUS_SHORT_KEY: Record<TaskStatus, TaskBoardKey> = {
   done: 'board.statusShort.done',
 }
 
-/** Status → pull-policy hint (one sentence per column: what may enter, what
- *  it means to sit here). Read by the column header tooltip — supplementary
- *  orientation, never the sole carrier of anything actionable. */
-export const COLUMN_HINT_KEY: Record<TaskStatus, TaskBoardKey> = {
-  backlog: 'board.columnHint.backlog',
-  todo: 'board.columnHint.todo',
-  running: 'board.columnHint.running',
-  review: 'board.columnHint.review',
-  done: 'board.columnHint.done',
-}
+/* `COLUMN_HINT_KEY` used to live here: one pull-policy sentence per column
+   (「进行中：一次只做少量，完工才拉新」…). It was removed with its two consumers —
+   the column heading's tooltip and the empty-column line — because the board states
+   what a column IS through its name, its count and the cards in it, and the extra
+   sentences were explanation layered onto a surface the user reads by scanning.
+   The five `board.columnHint.*` locale entries went with it; if the sentences ever
+   come back, they need a visible home, not a `title`. */
 
 /**
  * Paused-rule explanation keyed by the pausing status: ONE map read by both

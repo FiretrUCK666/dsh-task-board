@@ -31,7 +31,7 @@ import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, n
 import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime, formatTime } from './format-time.ts'
 import { dayBucketOf } from '../../core/board-events.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
-import { COLUMN_HINT_KEY, STATUS_KEY, STATUS_SHORT_KEY } from './status.ts'
+import { STATUS_KEY, STATUS_SHORT_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
@@ -605,12 +605,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     return t('board.cruiseStatusOff')
   })()
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
-  // The one undo the board offers: the automation a `done` move switched off. Read
-  // from the controller (the move is the only thing that knows what it disarmed) so
-  // the offer describes a real loss rather than a guess. Derived on every render
-  // because the controller clears it the moment it stops being true (the card was
-  // deleted, moved again, or the undo was taken).
-  const undoDisarm = controller.undoableDisarmOf()  // A refused drop carries WHY, not just where. `resolveCardDrop` already computed
+  // A refused drop carries WHY, not just where. `resolveCardDrop` already computed
   // a reason and the UI used to throw it away, leaving a 180ms border flash on the
   // column that said "no" without ever saying why — while the reason was right
   // there in the decision. Keeping it lets the board state the cause in words.
@@ -1432,28 +1427,6 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
               {t('board.dragRejectBusy', { column: t(STATUS_KEY[dragReject.status]) })}
             </p>
           )}
-          {/* Moving a card to 已完成 silently switches its schedule and every session
-              rule off — deliberate, and the only way back was to re-arm each rule by
-              hand. So the board says what it just did and offers the one undo it can
-              honour: restoring the snapshot the move disarmed. A real button, not a
-              toast: it must be keyboard-reachable and must not vanish while being
-              read. It disappears the moment the card is deleted, the same card is
-              moved again, or the undo is taken — see undoableDisarmOf. */}
-          {undoDisarm !== undefined && (
-            <p className={css.undoDisarmRow} role="status">
-              <span className={css.undoDisarmText}>
-                {t('board.undoDisarmText', { title: titleOrUntitled(undoDisarm.title, t('card.untitled')) })}
-              </span>
-              <button
-                type="button"
-                className={css.boardStatusButton}
-                onClick={() => { controller.undoMoveToDone() }}
-              >
-                <span className={css.boardStatusDot} aria-hidden="true" />
-                <span className={css.boardStatusText}>{t('board.undoDisarm')}</span>
-              </button>
-            </p>
-          )}
           {/* 紧凑列导航（仅 compact 档显示）：它是紧凑工具列的第三轨，与
               整理/自动化、筛选同属一个 DECLARED grid —— 间距由轨道与 row-gap
               声明，不再由"上一行的盒子底边"推导。板头盒底与条带之间那几像素
@@ -1803,7 +1776,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
             >
               <header className={css.columnHeader}>
                 <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
-                <h3 className={css.columnTitle} title={t(COLUMN_HINT_KEY[column.status])}>{t(STATUS_KEY[column.status])}</h3>
+                <h3 className={css.columnTitle}>{t(STATUS_KEY[column.status])}</h3>
                 <span className={css.columnCount}>{tasks.length}</span>
               </header>
               {/* Drag events bubble from the cards: the container tracks the
@@ -1927,37 +1900,13 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   )
                 })}
                 {tasks.length === 0 && (
-                  <div className={css.columnEmpty} role="status">
-                    {snapshot.tasks.length === 0
-                      ? t('board.emptyFirstRun')
-                      : filter.trim() !== '' ? t('board.emptyFiltered') : t('board.empty')}
-                    {/* First run is the one moment a stranger is looking at an
-                        empty board and has no way to learn what it does. The
-                        product's thesis is that a card is EXECUTED in a DSH
-                        session rather than filed — which until now lived in a
-                        `title=` on a control two surfaces away. Stated once, in
-                        the first column only: five repetitions would be noise,
-                        and the column that owns creation is the right place to
-                        explain what creating does. */}
-                    {snapshot.tasks.length === 0 && column.status === 'backlog' && (
-                      <span className={css.columnEmptyHint}>{t('board.emptyFirstRunHint')}</span>
-                    )}
-                    {/* What this column MEANS. The line above answers "why is it
-                        empty"; this answers "what happens here". It previously
-                        existed only as a `title` on the column heading — a hover-only
-                        explanation, which hard rule 11③ forbids for anything a user
-                        must read to use the surface, and these are rules of the
-                        system (「一次只做少量，完工才拉新」) rather than trivia.
-                        Shown only when the board HAS tasks, the column is empty and no
-                        filter is active: an empty column is the one place with room,
-                        while first run already spends its lines on "how to start" and
-                        a filter result is about the query, not the column. One line,
-                        never more — a stack of explanations is the 「压扁」 failure the
-                        dual-width rule names. */}
-                    {snapshot.tasks.length > 0 && filter.trim() === '' && (
-                      <span className={css.columnEmptyHint}>{t(COLUMN_HINT_KEY[column.status])}</span>
-                    )}
-                  </div>
+                  /* One word for every empty column, in every situation (no tasks yet /
+                     filtered to nothing / this column happens to be empty). It used to branch
+                     into three sentences plus, on first run, a mechanic hint and per-column
+                     semantics — explanation where the user asked for a statement. 「暂无任务」 is
+                     the whole message; the columns, their names and their counts are already on
+                     screen. */
+                  <div className={css.columnEmpty} role="status">{t('board.empty')}</div>
                 )}
               </div>
             </section>

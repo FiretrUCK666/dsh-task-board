@@ -16,10 +16,6 @@ export declare const STATUS_KEY: Record<TaskStatus, TaskBoardKey>;
  * tab as its accessible name.
  */
 export declare const STATUS_SHORT_KEY: Record<TaskStatus, TaskBoardKey>;
-/** Status → pull-policy hint (one sentence per column: what may enter, what
- *  it means to sit here). Read by the column header tooltip — supplementary
- *  orientation, never the sole carrier of anything actionable. */
-export declare const COLUMN_HINT_KEY: Record<TaskStatus, TaskBoardKey>;
 /**
  * Paused-rule explanation keyed by the pausing status: ONE map read by both
  * automation surfaces (the detail editor and the overview row derive the same

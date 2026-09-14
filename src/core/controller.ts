@@ -648,20 +648,6 @@ export class BoardController {
   private tasks: TaskRecord[] = []
   private boardOpen = false
   private selectedTaskId: string | undefined
-  /**
-   * The card a `done` move just DISARMED, kept so the move can be undone.
-   *
-   * Why this is the one undo the board needs: a column change is visible and
-   * reversible (drag it back), and delete already asks first. But moving a card to
-   * 已完成 silently switches its schedule and every session rule OFF — a documented,
-   * deliberate behaviour that nothing on screen announces, and the only way back was
-   * to re-arm each rule by hand in the editor. That is the ledger quietly losing a
-   * fact, which is exactly what this product must not do.
-   *
-   * One slot, not a history stack: the board's promise is 「板上不丢事」, not a
-   * general undo, and a single named offer is honest about its own limit.
-   */
-  private lastDisarm: { task: TaskRecord } | undefined
   private listeners = new Set<() => void>()
   private disposers: Array<() => void> = []
   private readonly now: () => number
@@ -1997,15 +1983,7 @@ export class BoardController {
       // Completion is a hard stop, not a pause. The rule's configuration
       // survives, so re-arming from the detail editor resumes the schedule.
       // Session rules shut off with it (done = full terminal for automation).
-      if (status === 'done') {
-        // Remember what this move DISARMED. The position is recoverable by dragging
-        // back; the automation was not — 「移到已完成」 switched the schedule and every
-        // session rule off with nothing on screen saying so, and the only way back
-        // was to re-arm each one by hand. Captured here (the move is the only place
-        // that knows what it changed) and offered by `undoMoveToDone`.
-        if (status !== previous.status) this.lastDisarm = { task: previous }
-        return disarmSessionRules(disarmSchedule(task, this.now()))
-      }
+      if (status === 'done') return disarmSessionRules(disarmSchedule(task, this.now()))
       // Rebirth is a new life, whichever hand moves it (comment revive,
       // manual drag, rerun): leaving done resets the spent run budget so
       // re-arming resumes the same rule from zero. The rule itself stays
@@ -2015,11 +1993,6 @@ export class BoardController {
       }
       return task
     })
-    // A move that armed nothing to disarm is not undoable — the entry has to
-    // describe a real loss or the affordance would lie about what it restores.
-    if (this.lastDisarm !== undefined && this.lastDisarm.task.id === id && status !== 'done') {
-      this.lastDisarm = undefined
-    }
     // An armed-but-never-run chain leaving backlog for todo starts its first
     // run (arming already covers any column; this stays as the idempotent
     // resume path — hasOpenRun/taskExecutable gate it either way).
@@ -2054,53 +2027,15 @@ export class BoardController {
   deleteTask(id: string): void {
     this.tasks = this.tasks.filter(task => task.id !== id)
     if (this.selectedTaskId === id) this.selectedTaskId = undefined
-    if (this.lastDisarm?.task.id === id) this.lastDisarm = undefined
     this.persistAndNotify()
   }
 
-  /** What the last `done` move disarmed, for the undo affordance. */
-  undoableDisarmOf(): { taskId: string; title: string } | undefined {
-    if (this.lastDisarm === undefined) return undefined
-    // Gone is gone: an undo offer for a deleted task would be a lie.
-    if (!this.tasks.some(task => task.id === this.lastDisarm!.task.id)) return undefined
-    return { taskId: this.lastDisarm.task.id, title: this.lastDisarm.task.title }
-  }
-
-  /**
-   * Put a card back the way it was before the `done` move that disarmed it: the
-   * stored snapshot is restored wholesale (status, order, schedule and session
-   * rules together) and only `updatedAt` is refreshed — the ledger stamps a change
-   * when it happens, and this is a change.
-   *
-   * Wholesale restore rather than a field-by-field inverse on purpose: the move
-   * touched several things (`disarmSchedule`, `disarmSessionRules`) and any inverse
-   * written by hand would be a second description of what the move does — the one
-   * that drifts the first time the move changes. Restoring the snapshot cannot drift
-   * from the move it undoes.
-   *
-   * The task is put back AT ITS OLD POSITION (any tasks that arrived after it stay
-   * after it), so undo restores the list the user was looking at.
-   *
-   * @returns true when a DISARMED card was restored; false when there is nothing to
-   *          undo (so the caller can keep the affordance honest).
-   */
-  undoMoveToDone(): boolean {
-    if (this.lastDisarm === undefined) return false
-    const snapshot = this.lastDisarm.task
-    const current = this.tasks.find(task => task.id === snapshot.id)
-    if (current === undefined) {
-      this.lastDisarm = undefined
-      return false
-    }
-    const restored: TaskRecord = { ...snapshot, updatedAt: this.now() }
-    const without = this.tasks.filter(task => task.id !== snapshot.id)
-    const at = this.tasks.findIndex(task => task.id === snapshot.id)
-    const next = [...without.slice(0, at), restored, ...without.slice(at)]
-    this.tasks = next
-    this.lastDisarm = undefined
-    this.persistAndNotify()
-    return true
-  }
+  /* `undoableDisarmOf` and `undoMoveToDone` lived here: an offer to restore the
+     automation a `done` move switched off. They were removed with their UI — the
+     board says 暂无任务 and otherwise speaks only when something is moving, and a
+     standing undo row above the columns was one more thing to read. A card can
+     still be dragged out of 已完成 and its rules re-armed in the detail editor;
+     what is gone is the board-level offer, not the ability. */
 
   // --- scheduling ---------------------------------------------------------------
 
