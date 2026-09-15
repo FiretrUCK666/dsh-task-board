@@ -144,7 +144,7 @@ export function Disclosure({ title, summary, open, onToggle, children }: {
         <span className={css.detailDisclosureTitle}>{title}</span>
         {summary !== undefined && <span className={css.detailDisclosureSummary}>{summary}</span>}
       </button>
-      {open && <div id={regionId}>{children}</div>}
+      {open && <div id={regionId} className={css.detailSectionBody}>{children}</div>}
     </section>
   )
 }

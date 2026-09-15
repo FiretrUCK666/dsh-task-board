@@ -204,6 +204,30 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     expect(bad, 'fixed-px radii must join the allowlist with a reason, or use the pill/ladder tokens').toEqual([])
   })
 
+  it('the fold body spaces the sections it stacks (the rhythm law has an owner)', () => {
+    // The board's rhythm law: paragraphs carry `margin: 0`, so EVERY declaration
+    // of vertical space belongs to a container's `gap` — never to inherited
+    // margins. Every stacking container on the session rail declares it
+    // (.detailSection 6px, .reviewContextMeter 6px, .reviewConfig 8px) EXCEPT
+    // the one that stacks the folds' own sections: Disclosure's body was a bare
+    // <div>, `display: block` with no gap, so the pair of sections inside it sat
+    // at a measured 0px. 「运行配置（当前会话）」 landed flush against the token
+    // totals above it — the gap the user pointed at, "跟其他地方不一样".
+    const body = expectRule('detailSectionBody')
+    expect(body).toContain('display: flex')
+    expect(body).toContain('flex-direction: column')
+    const gap = /gap:\s*(\d+)px/.exec(body)
+    expect(gap, '.detailSectionBody must own its section gap explicitly').not.toBeNull()
+    // A section gap must out-rank a section's OWN internal gap, or the fold
+    // reads as one block: .reviewConfig spaces its title from its grid by 8px.
+    const configGap = Number(/gap:\s*(\d+)px/.exec(expectRule('reviewConfig'))?.[1] ?? '0')
+    expect(Number(gap?.[1] ?? '0'), 'the section gap must exceed a section\'s internal gap').toBeGreaterThan(configGap)
+    // And the fold body must be the ONE owner: the Disclosure component is the
+    // only place that renders it, so no caller can forget it.
+    const ui = readFileSync(fileURLToPath(new URL('../src/client/board/ui.tsx', import.meta.url)), 'utf8')
+    expect(ui).toContain('className={css.detailSectionBody}')
+  })
+
   it('every interface font-size sits on the declared scale', () => {
     // DESIGN.md's Four-Size Rule: interface text uses 11/12/13/14px plus the
     // 16px title step, and the Content-Pass Exemption reserves 15/17/12.5px for

@@ -2601,6 +2601,25 @@ textarea.input {
   gap: 6px;
 }
 
+/* The fold's BODY: the container that stacks the folded sections themselves.
+   The board's one rhythm law is "every declaration of vertical space belongs to
+   a container": paragraphs carry `margin: 0`, so a stack of sections is spaced
+   by ITS OWN gap and never by inherited margins. `.detailSection` above is the
+   header-to-body gap; this is the section-to-section gap inside it, which had
+   no owner at all — an unstyled div in block flow put every pair of folded
+   sections at a measured 0px, beside neighbours sitting at 6px/8px on purpose.
+   That is exactly the 「这个间隙跟其他地方不一样」 the user pointed at under
+   「运行配置（当前会话）」, whose title landed flush against the token totals
+   above it. Declared HERE, once per fold, so no caller has to remember it and
+   no second fold can drift (the automation editor and the run-config fold are
+   the same container). */
+.detailSectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
 /* The shared collapsible-block grammar (Disclosure): chevron + title +
    one-line live summary; collapsed it is a single quiet row with no buttons.
    Used by the run-config disclosure and the automation editor, so every
