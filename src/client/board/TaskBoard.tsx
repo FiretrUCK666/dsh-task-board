@@ -1039,9 +1039,14 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     // drop would silently fall to the column tail. Order contract: read drop
     // state first, clear transient UI after. The gap recalls its column, so
     // a cross-column move previewed at a position drops exactly there.
+    //
+    // The decision is captured HERE, once, and handed down to applyCardDrop —
+    // it is never re-read from the ref further in. Reading the ref twice meant
+    // the capture above protected only the branch that used it directly: the
+    // cross-column path cleared the ref first and then read it again, so every
+    // cross-column drop lost its position and landed at the column tail.
     const gapRef = dropGapRef.current
-    const gapOf = (target: TaskStatus): string | undefined =>
-      gapRef !== undefined && gapRef.status === target ? gapRef.beforeId : undefined
+    const beforeId = gapRef !== undefined && gapRef.status === status ? gapRef.beforeId : undefined
     const external = externalOf(event)
     const id = dragId ?? event.dataTransfer.getData('text/plain')
     clearDrag()
@@ -1052,24 +1057,29 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     }
     const task = snapshot.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return
+    // A pointer drop always carries a column: a same-column drag reorders at
+    // the previewed gap (and is never a run), a cross-column drag goes through
+    // the one card-drop funnel below.
     if (dragId !== undefined && task.status === status) {
-      controller.moveTask(task.id, status, gapOf(status))
+      controller.moveTask(task.id, status, beforeId)
       return
     }
-    applyCardDrop(task, status)
+    applyCardDrop(task, status, beforeId)
   }
 
   /**
    * THE one place a card is asked to change column. Both the pointer path (drop)
    * and the keyboard path (`[` / `]`) come through here, so the keyboard can never
    * reach a transition a drag would refuse — the guard, the run-vs-move judgment
-   * and the refusal notice exist once. The insertion position is read from the
-   * live drop-gap ref (undefined for a keyboard move, which lands at the tail —
-   * the same place a drop with no previewed gap lands).
+   * and the refusal notice exist once.
+   *
+   * `beforeId` is ALWAYS passed in, never re-read from the drop-gap ref: the ref
+   * is transient drag state that the drop path has already cleared by the time
+   * this runs. Callers with no previewed gap (keyboard moves) pass undefined,
+   * which lands the card at the column tail — the same place a drop over a
+   * column's empty tail resolves to.
    */
-  const applyCardDrop = (task: TaskRecord, status: TaskStatus): void => {
-    const gapRef = dropGapRef.current
-    const beforeId = gapRef !== undefined && gapRef.status === status ? gapRef.beforeId : undefined
+  const applyCardDrop = (task: TaskRecord, status: TaskStatus, beforeId?: string): void => {
     const decision = resolveCardDrop(task, status)
     if (decision.kind === 'move') {
       controller.moveTask(task.id, decision.status, beforeId)

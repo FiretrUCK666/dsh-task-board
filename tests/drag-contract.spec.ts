@@ -3,13 +3,26 @@
  * against each card's gap centers decides the landing gap, symmetric in
  * both directions and correct for any column size — the scrolled indicator
  * math (content coordinates, so the bar sits where the gap is even
- * mid-scroll), and the edge-scroll stepper (the drag auto-scroll grammar).
+ * mid-scroll), the edge-scroll stepper (the drag auto-scroll grammar), and
+ * the drop DISPATCH: a real drop gesture, mounted, resolving to the very
+ * `moveTask(id, status, beforeId)` the previewed gap promised.
+ *
+ * The dispatch half is the one contract these pure functions cannot express,
+ * and its absence is what let a cross-column drop lose its position: the two
+ * halves above stayed green while the wiring re-read the (already cleared)
+ * transient gap. It runs under jsdom, so the file declares that environment.
  */
+// @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
 import { indicatorTopOf, insertionGapOf } from '../src/client/board/drop-position.ts'
 import { edgeScrollStep } from '../src/client/board/drag-autoscroll.ts'
+import { TaskBoard } from '../src/client/board/TaskBoard.tsx'
+import type { BoardController } from '../src/core/controller.ts'
+import type { TaskRecord, TaskStatus } from '../src/core/tasks.ts'
 
 /** Cards at fixed vertical positions (top, 40px tall, 8px gaps). */
 function cards(ids: string[], startY = 0): Array<{ id: string; rect: { top: number; height: number } }> {
@@ -91,11 +104,212 @@ describe('drop decision legibility (wiring)', () => {
     // refusal (busy card, rerun lane) with no advance signal reads as
     // 「拖了也插不进」. Set only on the card path — the external branch keeps
     // the sidebar's own effectAllowed (an incompatible value would block it).
-    const board = readFileSync(
-      fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8')
+    // Read from the real filesystem by path (this file runs under jsdom, where
+    // `import.meta.url` is an http URL and not a file URL).
+    const board = readFileSync(join(process.cwd(), 'src', 'client', 'board', 'TaskBoard.tsx'), 'utf8')
     expect(board).toContain("event.dataTransfer.dropEffect = insertable ? 'move' : 'none'")
   })
 })
+describe('drop dispatch (the gap the preview promises is the gap the drop takes)', () => {
+  /** Card box used by the fake layout below (cards, and the 8px grid gap). */
+  const CARD_H = 40
+  const COLUMN_TOP = 100
+
+  /**
+   * jsdom has no layout, so the ONE thing the drop math reads — a card's rect —
+   * is faked here: card index inside its column decides its top. Everything
+   * else (the mounted tree, the events, the decisions) is the real component.
+   */
+  const installLayout = (): void => {
+    window.Element.prototype.getBoundingClientRect = function rect(this: Element) {
+      const el = this as HTMLElement
+      const taskId = el.getAttribute?.('data-task-id')
+      if (taskId !== null && taskId !== undefined) {
+        const column = el.closest('section[data-status]')
+        const inColumn = column === null ? [] : Array.from(column.querySelectorAll('[data-task-id]'))
+        const top = COLUMN_TOP + inColumn.indexOf(el) * (CARD_H + 8)
+        return {
+          x: 0, y: top, top, bottom: top + CARD_H, left: 0, right: 200, width: 200, height: CARD_H,
+          toJSON() { return this },
+        } as DOMRect
+      }
+      return {
+        x: 0, y: 0, top: 0, bottom: 600, left: 0, right: 400, width: 400, height: 600,
+        toJSON() { return this },
+      } as DOMRect
+    }
+  }
+
+  /** A ledger row as the board renders it (the fields the card summary reads). */
+  const card = (id: string, status: TaskStatus, order: number): TaskRecord => ({
+    id, title: id, description: '', prompt: 'p', status, order,
+    createdAt: 0, updatedAt: 0, executions: [], statusHistory: [], viewedAt: 0,
+  })
+
+  /** A controller that records moves; everything else the board reads is inert. */
+  const boardStub = (tasks: ReturnType<typeof card>[]) => {
+    const moves: Array<{ id: string; status: string; beforeId?: string }> = []
+    const snapshot = () => ({
+      tasks,
+      boardOpen: true,
+      selectedTaskId: undefined,
+      cruise: { enabled: false, limit: 3, schedule: [] },
+      stats: { running: 0, queued: 0 },
+      skips: { overlap: 0, missed: 0 },
+      heartbeat: { lastOkAt: 0 },
+      engine: { held: true, synced: false, hostProto: 2, bootedAt: undefined },
+    })
+    const controller = new Proxy({} as Record<string, unknown>, {
+      get(_target, key) {
+        if (key === 'getSnapshot') return snapshot
+        if (key === 'moveTask') return (id: string, status: string, beforeId?: string) => {
+          moves.push({ id, status, ...(beforeId !== undefined ? { beforeId } : {}) })
+        }
+        if (key === 'subscribe' || key === 'subscribeQuestions') return () => () => {}
+        if (key === 'linkedOf') return () => []
+        if (key === 'relatedSessionIdSet') return () => new Set<string>()
+        if (key === 'liveStateOf') return () => 'idle'
+        if (key === 'nativeRunningOf') return () => false
+        if (key === 'pendingInteractionOf' || key === 'questionPendingOf') return () => undefined
+        if (key === 'sessionTitle') return () => undefined
+        if (key === 'boundSourceTitleOf') return () => ''
+        if (key === 'runCatalog') return () => undefined
+        if (key === 'externalKindOf') return () => undefined
+        if (key === 'canRecheckSeat') return () => false
+        if (key === 'ts') return () => 0
+        return () => undefined
+      },
+    })
+    return { controller, moves }
+  }
+
+  /** One real drag event of the given type at (100, clientY). */
+  const dragEvent = (type: string, target: Element, clientY: number): void => {
+    const init = { bubbles: true, cancelable: true }
+    const event = typeof window.DragEvent === 'function'
+      ? new window.DragEvent(type, init)
+      : new window.Event(type, init)
+    Object.defineProperty(event, 'clientX', { value: 100, configurable: true })
+    Object.defineProperty(event, 'clientY', { value: clientY, configurable: true })
+    Object.defineProperty(event, 'dataTransfer', {
+      configurable: true,
+      value: {
+        types: ['text/plain'],
+        effectAllowed: 'move',
+        dropEffect: 'none',
+        setData() {}, getData: () => '', setDragImage() {}, files: [],
+      },
+    })
+    target.dispatchEvent(event)
+  }
+
+  /**
+   * The two browser APIs the mounted board touches that jsdom does not
+   * implement: the column-identity observer and the reduced-motion query. Both
+   * are inert here — the contract under test is the drop path, not the layout.
+   */
+  const installBrowserFakes = (): void => {
+    const g = globalThis as unknown as Record<string, unknown>
+    g.ResizeObserver = g.ResizeObserver ?? class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    if (typeof window.matchMedia !== 'function') {
+      const w = window as unknown as Record<string, unknown>
+      w.matchMedia = (query: string) => ({
+        matches: false, media: query, onchange: null,
+        addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
+        dispatchEvent() { return false },
+      })
+    }
+  }
+
+  /** Mount the board with `tasks`, drag `dragId` onto a card, and report the moves. */
+  const dragOnto = async (
+    tasks: ReturnType<typeof card>[],
+    dragId: string,
+    targetId: string,
+    pointerInUpperHalf: boolean,
+  ): Promise<{ moves: Array<{ id: string; status: string; beforeId?: string }>; targetStatus: string }> => {
+    installBrowserFakes()
+    installLayout()
+    const { controller, moves } = boardStub(tasks)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    // One cast at the boundary: the stub answers every member the board asks
+    // for (see boardStub) and records the one call this contract is about.
+    await act(async () => {
+      root.render(createElement(TaskBoard, { controller: controller as unknown as BoardController }))
+    })
+
+    const source = host.querySelector(`[data-task-id="${dragId}"]`)
+    const target = host.querySelector(`[data-task-id="${targetId}"]`)
+    const targetStatus = target?.getAttribute('data-status') ?? ''
+    expect(source).not.toBeNull()
+    expect(target).not.toBeNull()
+    const targetTop = target!.getBoundingClientRect().top
+    const y = targetTop + (pointerInUpperHalf ? 10 : CARD_H - 10)
+
+    await act(async () => { dragEvent('dragstart', source!, y) })
+    await act(async () => {
+      dragEvent('dragenter', target!, y)
+      dragEvent('dragover', target!, y)
+    })
+    await act(async () => { dragEvent('drop', target!, y) })
+    return { moves, targetStatus }
+  }
+
+  it('a CROSS-column drop inserts at the previewed gap, not the column tail', async () => {
+    // The reported defect: x (待办) dropped on h's upper half in 待规划 — the
+    // indicator promises the gap above h, so the move must name h. The drop
+    // path used to re-read the transient gap ref AFTER clearing it, so the
+    // position was always lost and the card fell to the tail.
+    const { moves, targetStatus } = await dragOnto(
+      [card('x', 'todo', 0), card('g', 'backlog', 0), card('h', 'backlog', 1)],
+      'x',
+      'h',
+      true,
+    )
+    expect(targetStatus).toBe('backlog')
+    expect(moves).toEqual([{ id: 'x', status: 'backlog', beforeId: 'h' }])
+  })
+
+  it('a cross-column drop in the lower half inserts BELOW that card', async () => {
+    // Same gesture geometry, other half: the gap below g is the gap above h.
+    const { moves } = await dragOnto(
+      [card('x', 'todo', 0), card('g', 'backlog', 0), card('h', 'backlog', 1)],
+      'x',
+      'g',
+      false,
+    )
+    expect(moves).toEqual([{ id: 'x', status: 'backlog', beforeId: 'h' }])
+  })
+
+  it('a cross-column drop on the last card lower half lands at the tail (no beforeId)', async () => {
+    // The mirror case must stay honest too: the tail is a real gap, so the
+    // move carries no anchor — and it is the ONLY path that legitimately does.
+    const { moves } = await dragOnto(
+      [card('x', 'todo', 0), card('g', 'backlog', 0), card('h', 'backlog', 1)],
+      'x',
+      'h',
+      false,
+    )
+    expect(moves).toEqual([{ id: 'x', status: 'backlog' }])
+  })
+
+  it('a SAME-column reorder keeps its previewed gap', async () => {
+    const { moves } = await dragOnto(
+      [card('a', 'todo', 0), card('b', 'todo', 1), card('c', 'todo', 2)],
+      'c',
+      'b',
+      true,
+    )
+    expect(moves).toEqual([{ id: 'c', status: 'todo', beforeId: 'b' }])
+  })
+})
+
 describe('edgeScrollStep (drag edge auto-scroll)', () => {
   it('returns 0 outside the edge zones and outside the box', () => {
     expect(edgeScrollStep(100, 0, 600, 48, 14)).toBe(0)
