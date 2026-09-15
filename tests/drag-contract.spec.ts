@@ -21,6 +21,8 @@ import { createRoot } from 'react-dom/client'
 import { indicatorTopOf, insertionGapOf } from '../src/client/board/drop-position.ts'
 import { edgeScrollStep } from '../src/client/board/drag-autoscroll.ts'
 import { TaskBoard } from '../src/client/board/TaskBoard.tsx'
+import { TaskDetail } from '../src/client/board/TaskDetail.tsx'
+import { sessionDisplay } from '../src/core/session-display.ts'
 import type { BoardController } from '../src/core/controller.ts'
 import type { TaskRecord, TaskStatus } from '../src/core/tasks.ts'
 
@@ -307,6 +309,161 @@ describe('drop dispatch (the gap the preview promises is the gap the drop takes)
       true,
     )
     expect(moves).toEqual([{ id: 'c', status: 'todo', beforeId: 'b' }])
+  })
+})
+
+/**
+ * The 会话 list of the open task's detail is the board's card reorder grammar on
+ * a second surface (its own `sessionGapRef`, its own clear), so the same
+ * drop-dispatch contract applies to it — and this is the surface a regression
+ * would reach second.
+ */
+describe('session-list drop dispatch (TaskDetail)', () => {
+  const installLayout = (): void => {
+    window.Element.prototype.getBoundingClientRect = function rect(this: Element) {
+      const el = this as HTMLElement
+      const sessionId = el.getAttribute?.('data-session-id')
+      if (sessionId !== null && sessionId !== undefined) {
+        const rows = el.parentElement === null
+          ? []
+          : Array.from(el.parentElement.querySelectorAll('[data-session-id]'))
+        const top = 100 + rows.indexOf(el) * 48
+        return {
+          x: 0, y: top, top, bottom: top + 40, left: 0, right: 300, width: 300, height: 40,
+          toJSON() { return this },
+        } as DOMRect
+      }
+      return {
+        x: 0, y: 0, top: 0, bottom: 600, left: 0, right: 400, width: 400, height: 600,
+        toJSON() { return this },
+      } as DOMRect
+    }
+  }
+
+  /** The one browser API the mounted detail touches that jsdom lacks. */
+  const installBrowserFakes = (): void => {
+    const g = globalThis as unknown as Record<string, unknown>
+    g.ResizeObserver = g.ResizeObserver ?? class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+  }
+
+  const stubTask = (): TaskRecord => {
+    // Two settled plain runs, one per 会话 row: the row derivation the detail
+    // renders reads the real execution list (sessionDisplay over its rounds).
+    const executions = ['s-1', 's-2'].map((sessionId, index) => ({
+      id: `e-${index + 1}`, sessionId, startedAt: 1, endedAt: 2, result: 'succeeded' as const, error: undefined,
+    }))
+    return {
+      id: 't-1', title: 't', description: '', prompt: 'p', status: 'todo', order: 0,
+      createdAt: 0, updatedAt: 0, viewedAt: 0, executions, statusHistory: [],
+    }
+  }
+
+  /** The 会话 rows the detail renders (the app's own display derivation). */
+  const sessionRows = (task: TaskRecord) => task.executions.map(execution => ({
+    sessionId: execution.sessionId as string,
+    title: execution.sessionId as string,
+    executionId: execution.id,
+    display: sessionDisplay(task, execution, undefined, false),
+    updatedAt: execution.startedAt,
+    unviewed: false,
+  }))
+
+  /** A controller stub that records 会话 reorders and reports its gaps. */
+  const detailStub = (task: TaskRecord) => {
+    const reorders: Array<{ taskId: string; sessionId: string; beforeId?: string }> = []
+    const asked = new Set<string | symbol>()
+    const rows = sessionRows(task)
+    const controller = new Proxy({} as Record<string, unknown>, {
+      get(_target, key) {
+        asked.add(key)
+        if (key === 'sessionsOf') return () => rows
+        if (key === 'reorderTaskSession') return (taskId: string, sessionId: string, beforeId?: string) => {
+          reorders.push({ taskId, sessionId, ...(beforeId !== undefined ? { beforeId } : {}) })
+          return true
+        }
+        if (key === 'getSnapshot') return () => ({
+          tasks: [{ ...task }],
+          boardOpen: true,
+          selectedTaskId: task.id,
+          cruise: { enabled: false, limit: 3, schedule: [] },
+          stats: { running: 0, queued: 0 },
+          skips: { overlap: 0, missed: 0 },
+          heartbeat: { lastOkAt: 0 },
+          engine: { held: true, synced: false, hostProto: 2, bootedAt: undefined },
+        })
+        if (key === 'referenceSessionOf') return () => undefined
+        if (key === 'sessionTitle') return () => undefined
+        if (key === 'nativeRunningOf') return () => false
+        if (key === 'pendingInteractionOf') return () => undefined
+        if (key === 'sessionLabelsOf') return () => []
+        if (key === 'externalKindOf') return () => undefined
+        if (key === 'ts') return () => 0
+        return () => undefined
+      },
+    })
+    return { controller, reorders, asked }
+  }
+
+  const dragEvent = (type: string, target: Element, clientY: number): void => {
+    const init = { bubbles: true, cancelable: true }
+    const event = typeof window.DragEvent === 'function'
+      ? new window.DragEvent(type, init)
+      : new window.Event(type, init)
+    Object.defineProperty(event, 'clientX', { value: 100, configurable: true })
+    Object.defineProperty(event, 'clientY', { value: clientY, configurable: true })
+    Object.defineProperty(event, 'dataTransfer', {
+      configurable: true,
+      value: {
+        types: ['text/plain'],
+        effectAllowed: 'move',
+        dropEffect: 'none',
+        setData() {}, getData: () => '', setDragImage() {}, files: [],
+      },
+    })
+    target.dispatchEvent(event)
+  }
+
+  it('reorders the 会话 list at the previewed gap, not the end of the list', async () => {
+    installBrowserFakes()
+    installLayout()
+    const task = stubTask()
+    const { controller, reorders, asked } = detailStub(task)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => {
+      root.render(createElement(TaskDetail, {
+        controller: controller as unknown as BoardController,
+        task,
+        workspaceTitleOf: () => 'w',
+        dragSourceRef: { current: false },
+      }))
+    })
+
+    const dragged = host.querySelector('[data-session-id="s-1"]')
+    const target = host.querySelector('[data-session-id="s-2"]')
+    expect(dragged).not.toBeNull()
+    expect(target).not.toBeNull()
+
+    // s-2's upper half: the promised gap is above s-2.
+    const y = target!.getBoundingClientRect().top + 10
+    await act(async () => { dragEvent('dragstart', dragged!, y) })
+    await act(async () => { dragEvent('dragover', target!.parentElement!, y) })
+    await act(async () => { dragEvent('drop', target!.parentElement!, y) })
+
+    expect(reorders).toEqual([{ taskId: 't-1', sessionId: 's-1', beforeId: 's-2' }])
+    // The stub answered every member the detail asked for: a new dependency
+    // arriving later lands here as a named miss instead of a silent undefined.
+    const unhandled = [...asked].filter(key => ![
+      'sessionsOf', 'reorderTaskSession', 'getSnapshot', 'referenceSessionOf',
+      'sessionTitle', 'nativeRunningOf', 'pendingInteractionOf', 'sessionLabelsOf',
+      'externalKindOf', 'ts',
+    ].includes(String(key)))
+    expect(unhandled).toEqual([])
   })
 })
 
