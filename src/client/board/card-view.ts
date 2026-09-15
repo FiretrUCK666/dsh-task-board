@@ -11,7 +11,6 @@
  * for the glow, read review stays quiet); idle otherwise.
  */
 import type { PendingInteractionKind } from '../../core/controller.ts'
-import type { TaskLiveState } from '../../core/task-live.ts'
 import {
   executing,
   hasOpenRun,
@@ -46,6 +45,29 @@ export function titleOrUntitled(title: string, untitled: string): string {
   return title.trim() === '' ? untitled : title
 }
 
+/** Which light a card wears. ONE light at a time — see {@link cardLightOf}. */
+export type CardLight = 'none' | 'halo' | 'ring'
+
+/**
+ * THE card light table, in code (the board's 光效规则表, one row per card):
+ *
+ *   'halo' — state-bound brightness: the card is working (waiting / running /
+ *            refining). Inset and soft: work in flight is not a request;
+ *   'ring' — unread: a run finished and this content has not been looked at.
+ *            Outer and stronger: it IS a request to look;
+ *   'none' — read and settled, or idle.
+ *
+ * A card that is BOTH working and unread wears the halo — this function is the
+ * single place that decides, so the precedence is stated rather than inherited
+ * from stylesheet order (both lights set the same `animation` property through
+ * ONE `data-light` switch, so there is no second rule to fight).
+ */
+export function cardLightOf(active: boolean, unviewed: boolean): CardLight {
+  if (active) return 'halo'
+  if (unviewed) return 'ring'
+  return 'none'
+}
+
 /** Everything TaskCard renders (no JSX here — testable). */
 export interface CardViewModel {
   primary: CardPrimary
@@ -73,15 +95,22 @@ export interface CardViewModel {
 }
 
 /**
- * Derive the card's view-model. `live` is the native truth
- * (controller.liveStateOf); absent = status fallback (card without
- * controller). `sessionStateOf` resolves per-session dots (waiting >
- * running > idle); absent = no dots.
+ * Derive the card's view-model from the card's OWN facts. Every field is a
+ * reading of the task record (open rounds, pending comments, the refine
+ * session), so the chip, the light and the next-action line can never disagree:
+ * they are one derivation.
+ *
+ * There is deliberately NO live-state input. The card's "is this working" is
+ * already answered by its own unfinished round (`executing`), and a second
+ * answer — the native session `running` flag — disagreed with it in exactly the
+ * states the user hit: an externally observed turn keeps a card in 进行中 while
+ * no session reports running, so the chip said 进行中 and the light stayed off.
+ * `sessionStateOf` only refines the per-session DOTS (waiting > running > idle);
+ * absent = no dots.
  */
 export function cardViewModelOf(
   task: TaskRecord,
   opts: {
-    live?: TaskLiveState
     pendingCount?: number
     waiting?: PendingInteractionKind
     unviewedCount?: number
@@ -95,9 +124,11 @@ export function cardViewModelOf(
   const runs = plainRunsOf(task)
   const lastResult = lastPlainResult(task)
   const isRefining = refining(task)
-  const liveRunning = (opts.live ?? (task.status === 'running' ? 'running' : 'idle')) === 'running'
-  const pendingCount = opts.pendingCount ?? 0
-  const active = liveRunning || pendingCount > 0 || isRefining
+  // THE light is derived from the state the card DISPLAYS, never from a second
+  // judgment that can disagree with it. `primary` is computed below from the
+  // card's own facts, so binding the pulse to it makes the chip and the light
+  // one fact: a card reading 进行中 / 待你决断 / 完善中 pulses, a card reading
+  // 已排队 / 待审核 / idle is quiet.
 
   let primary: CardPrimary
   if (opts.waiting !== undefined) primary = { kind: 'waiting', waiting: opts.waiting }
@@ -107,6 +138,11 @@ export function cardViewModelOf(
   else if (task.status === 'review' && lastResult === 'failed') primary = { kind: 'failed' }
   else if (task.status === 'review') primary = { kind: 'review', unviewed: (opts.unviewedCount ?? 0) > 0 }
   else primary = { kind: 'idle' }
+
+  // The light table (see the board's 光效规则表): waiting / running / refining
+  // breathe; queued, failed, review and idle do not. Keep this the ONLY place
+  // the mapping lives — a second copy is how the chip and the light drift.
+  const active = primary.kind === 'waiting' || primary.kind === 'running' || primary.kind === 'refining'
 
   const dots: CardSessionDot[] = []
   const ids = opts.sessionIds ?? []

@@ -1960,8 +1960,9 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   const dots = relatedIds.slice(0, 3).map(sessionId => ({ sessionId, state: dotStateOf(sessionId) }))
                   const overflowDots = Math.max(0, relatedIds.length - dots.length)
                   // One quiet next-action sentence (same primary the chips show).
+                  // No live-state input: the card's light and its chip are one
+                  // derivation from the card's own facts (see card-view.ts).
                   const view = cardViewModelOf(task, {
-                    live: controller.liveStateOf(task.id),
                     pendingCount: pending.count,
                     ...(waiting !== undefined ? { waiting } : {}),
                     unviewedCount: taskUnviewedCount(task),
@@ -1983,7 +1984,6 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                     <TaskCard
                       key={task.id}
                       task={task}
-                      live={controller.liveStateOf(task.id)}
                       boundTitleOf={candidate => {
                         const binds = taskBindsOf(candidate)
                         return binds.length > 0 ? controller.boundSourceTitleOf(binds[0]) : ''

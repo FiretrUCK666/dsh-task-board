@@ -319,8 +319,8 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     //    not separate the state that asks you to look from the state that is merely
     //    ambient. They must differ in FORM: the unread ring (outer, full strength)
     //    versus the in-flight halo (inset, soft alpha).
-    const unread = source.match(/\.card\[data-unviewed\] \{\s*\n\s*animation:\s*(\S+)/)?.[1]
-    const active = source.match(/\.card\[data-active\] \{\s*\n\s*animation:\s*(\S+)/)?.[1]
+    const unread = source.match(/\.card\[data-light='ring'\] \{\s*\n\s*animation:\s*(\S+)/)?.[1]
+    const active = source.match(/\.card\[data-light='halo'\] \{\s*\n\s*animation:\s*(\S+)/)?.[1]
     expect(unread, 'the unread card must use a breath animation').toBeTruthy()
     expect(active, 'the live card must use a breath animation').toBeTruthy()
     expect(unread, 'the two card lights must not be the same animation').not.toBe(active)

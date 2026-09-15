@@ -1504,23 +1504,24 @@ html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-
    so it must not outrank the card that does. Form and intensity differ; the hue
    stays the single attention colour.
 
+   The switch is ONE attribute (`data-light`, from cardLightOf in card-view.ts),
+   never two independent ones: these two rules set the SAME property, so which
+   light a card wears must be decided before CSS — as an `if` in the view model —
+   or "working AND unread" would silently depend on stylesheet order. The
+   precedence (a working card wears the halo, since work in flight is both newer
+   and not a request) is stated there, once, and tested.
+
    Reduced motion needs no rule here: the block further down redefines
    `--dsh-tb-breath` / `-spread` / `-halo` (5s, 2px, 8px), so both lights survive
    slower and gentler — which is this project's rule for state indicators (they
    are messages, so they are never `animation: none`). An earlier version of this
    comment promised "a quiet static ring" for reduced motion; no such rule exists
    and never did. */
-.card[data-unviewed] {
+.card[data-light='ring'] {
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
-/* A LIVE card breathes an inset halo: running / waiting / refining — the one
-   STATE-BOUND light. `data-active` wins the cascade over `data-unviewed`, so a
-   running card shows the ambient halo rather than the louder unread ring: work in
-   flight is not a request. Never driven by the unread baseline: a running card
-   always pulses, even when every round is technically "seen" (the old unread-only
-   ring was the 进行中有时不闪 symptom). */
-.card[data-active] {
+.card[data-light='halo'] {
   animation: dshTbBreathHalo var(--dsh-tb-breath) infinite;
 }
 

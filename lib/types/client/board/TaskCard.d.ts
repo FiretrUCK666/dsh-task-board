@@ -1,5 +1,4 @@
 import type { PendingInteractionKind } from '../../core/controller.ts';
-import type { TaskLiveState } from '../../core/task-live.ts';
 import type { TaskRecord } from '../../core/tasks.ts';
 import { type CardSessionDot } from './card-view.ts';
 /** The open run's state text: either working ("进行中") or blocked on the
@@ -28,7 +27,7 @@ export declare function blockedAutomation(task: TaskRecord): boolean;
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, hasUnviewedRun, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
+export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, hasUnviewedRun, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, nextAction, dotTitleOf }: {
     task: TaskRecord;
     /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
     selected?: boolean;
@@ -67,11 +66,6 @@ export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleO
     onMoveStep?: (direction: -1 | 1) => void;
     /** Optional hover quick-action: pick a card color right from the card. */
     onColorPick?: (color: string | undefined) => void;
-    /** THE live-state derivation (taskLiveStateOf, controller.liveStateOf):
-     *  'running' = a related session is genuinely working (board run, direct
-     *  steer, session rule, out-of-band chat). Absent = falls back to the
-     *  status-based judgment (card used without a controller). */
-    live?: TaskLiveState;
     /** Related-session dots (max 3 rendered, overflow counted separately). */
     dots?: readonly CardSessionDot[];
     /** Overflow session count beyond `dots` (+N). */

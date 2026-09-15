@@ -11,7 +11,6 @@
  * for the glow, read review stays quiet); idle otherwise.
  */
 import type { PendingInteractionKind } from '../../core/controller.ts';
-import type { TaskLiveState } from '../../core/task-live.ts';
 import { type TaskRecord } from '../../core/tasks.ts';
 /** The card's primary line (one emphasis). */
 export type CardPrimary = {
@@ -42,6 +41,23 @@ export interface CardSessionDot {
  *  confirms all read it, so a blank card can never show different faces per
  *  surface. Pure. */
 export declare function titleOrUntitled(title: string, untitled: string): string;
+/** Which light a card wears. ONE light at a time — see {@link cardLightOf}. */
+export type CardLight = 'none' | 'halo' | 'ring';
+/**
+ * THE card light table, in code (the board's 光效规则表, one row per card):
+ *
+ *   'halo' — state-bound brightness: the card is working (waiting / running /
+ *            refining). Inset and soft: work in flight is not a request;
+ *   'ring' — unread: a run finished and this content has not been looked at.
+ *            Outer and stronger: it IS a request to look;
+ *   'none' — read and settled, or idle.
+ *
+ * A card that is BOTH working and unread wears the halo — this function is the
+ * single place that decides, so the precedence is stated rather than inherited
+ * from stylesheet order (both lights set the same `animation` property through
+ * ONE `data-light` switch, so there is no second rule to fight).
+ */
+export declare function cardLightOf(active: boolean, unviewed: boolean): CardLight;
 /** Everything TaskCard renders (no JSX here — testable). */
 export interface CardViewModel {
     primary: CardPrimary;
@@ -68,13 +84,20 @@ export interface CardViewModel {
     overflowDots: number;
 }
 /**
- * Derive the card's view-model. `live` is the native truth
- * (controller.liveStateOf); absent = status fallback (card without
- * controller). `sessionStateOf` resolves per-session dots (waiting >
- * running > idle); absent = no dots.
+ * Derive the card's view-model from the card's OWN facts. Every field is a
+ * reading of the task record (open rounds, pending comments, the refine
+ * session), so the chip, the light and the next-action line can never disagree:
+ * they are one derivation.
+ *
+ * There is deliberately NO live-state input. The card's "is this working" is
+ * already answered by its own unfinished round (`executing`), and a second
+ * answer — the native session `running` flag — disagreed with it in exactly the
+ * states the user hit: an externally observed turn keeps a card in 进行中 while
+ * no session reports running, so the chip said 进行中 and the light stayed off.
+ * `sessionStateOf` only refines the per-session DOTS (waiting > running > idle);
+ * absent = no dots.
  */
 export declare function cardViewModelOf(task: TaskRecord, opts?: {
-    live?: TaskLiveState;
     pendingCount?: number;
     waiting?: PendingInteractionKind;
     unviewedCount?: number;

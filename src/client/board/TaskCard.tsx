@@ -6,14 +6,13 @@
  */
 import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
-import type { TaskLiveState } from '../../core/task-live.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { cardSourceLabel, latestExecutionOf, plainRunsOf, refining, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
 import { sessionRuleReadiness } from '../../core/automation.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
-import { cardViewModelOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
+import { cardLightOf, cardViewModelOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
 import { Chip } from './Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { STATUS_KEY } from './status.ts'
@@ -73,7 +72,7 @@ export function blockedAutomation(task: TaskRecord): boolean {
  *  paused / queued / refining / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, hasUnviewedRun, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, live, dots, overflowDots, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, hasUnviewedRun, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -112,11 +111,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   onMoveStep?: (direction: -1 | 1) => void
   /** Optional hover quick-action: pick a card color right from the card. */
   onColorPick?: (color: string | undefined) => void
-  /** THE live-state derivation (taskLiveStateOf, controller.liveStateOf):
-   *  'running' = a related session is genuinely working (board run, direct
-   *  steer, session rule, out-of-band chat). Absent = falls back to the
-   *  status-based judgment (card used without a controller). */
-  live?: TaskLiveState
   /** Related-session dots (max 3 rendered, overflow counted separately). */
   dots?: readonly CardSessionDot[]
   /** Overflow session count beyond `dots` (+N). */
@@ -132,7 +126,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // chips below still read the same fields so the view-model never drifts
   // from the render.
   const view = cardViewModelOf(task, {
-    live,
     pendingCount,
     ...(waiting !== undefined ? { waiting } : {}),
     unviewedCount,
@@ -176,7 +169,10 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // Breathing is owned by the view-model (same priority as the primary chip):
   // the component never re-derives it, so the light can never drift from the
   // text it accompanies.
-  const active = view.active
+  // ONE light at a time, decided in the view model (cardLightOf): a card that
+  // is working AND unread wears the in-flight halo — never both, and never a
+  // winner left to stylesheet order.
+  const light = cardLightOf(view.active, unviewed)
   return (
     /* A card is a clickable REGION, never a <button>: the color swatches and
        the quick-run control inside are real interactive elements, and a
@@ -190,8 +186,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
       style={task.color !== undefined ? ({ '--card-tint': task.color } as CSSProperties) : undefined}
       data-status={task.status}
       data-task-id={task.id}
-      data-unviewed={unviewed ? '' : undefined}
-      data-active={active ? '' : undefined}
+      data-light={light}
       draggable
       onClick={onClick}
       onKeyDown={event => {

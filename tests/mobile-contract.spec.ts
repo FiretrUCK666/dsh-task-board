@@ -1132,7 +1132,7 @@ describe('reduced-motion functional exemption', () => {
     // A still ring reads as "stuck" (the opposite of "running") and cannot be
     // told apart from a finished-and-unread card, so the ring joins the
     // spinner's exemption: slower and gentler, never `animation: none`.
-    expect(reduced).not.toMatch(/\.card\[data-(unviewed|active)\][\s\S]{0,80}animation:\s*none/)
+    expect(reduced).not.toMatch(/\.card\[data-light=[^\]]+\][\s\S]{0,80}animation:\s*none/)
     expect(reduced).not.toMatch(/\.sessionRow::after\s*\{\s*\n?\s*animation:\s*none/)
     expect(reduced).not.toMatch(/\.notifyPulse\s*\{[\s\S]{0,80}animation:\s*none/)
     expect(reduced).toMatch(/\.notifyPulse\s*\{[\s\S]*?animation-duration:/)
