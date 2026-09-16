@@ -504,6 +504,12 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - **官方 @ 引用**：`reference-source.ts` 唯一桥；子代理会话宿主回 `agent-busy`（官方语义）；插入走官方 mention；失败永不 reject（会话域失败降级板内目录）。
 - **交互卡 + 上下文块**：只订阅 `pendingInteractions`（board 永不注册 waterfall）；carrier 自带 `answer`/`cancel` 时**就卡作答**（`PendingMirror` 身份守卫：只结算当前快照里那一个对象，身份不符即拒，失败留卡报错），数据型 carrier 才降级为跳回原生会话；卡与原生提问卡逐条同形同行为（head 收起/放弃整组、编号或勾选选项 + 推荐徽章 + 自定义答案、上一题/进度/下一题、跳过本题、提交/提交中、就近报错）；todo/用量/goal 读官方 projection（缺面降级）；`SessionContextBlock` 宽行内/窄浮层（240px 封顶）；goal 可操作 strip；有未完成才显示。通知行落点按会话出身分：执行/链接会话进会话面板（rail 自带 force-open + 滚到卡），refine 会话定位完善区（它没有链接面板），approval 只去原生会话；等待行只给前进动作（去回答/去会话/进详情），阻塞读不掉也藏不起。
 - **多源绑定**：`binds` 真相源；session 绑定上卡，workspace 绑定只关联（拖入瞬间按注册表账本快照一次）；隐藏删除进 `removedSessions`（权威非相关门）；再拖回可恢复。
+- **归档是「可恢复的隐藏」，不是删除**：归档态只有一个来源——`ctx.workspaces.list` 快照的 `archivedSessionIds`（注册表全局集合；**每会话摘要里没有 archived 布尔**，只能 join）。它是**原生状态、从不改写台账**：归档不碰工作区归属槽，恢复（设置 → 已归档会话 → 取消归档）只是把 id 从集合里去掉，会话回到原位。因此本插件对归档只做**派生**：读快照 + 订阅（`workspaces.list.subscribe` 已是既有接线），任何界面**不得缓存归档结论**、不得把归档写进台账。**派生 + 订阅 = 恢复即自愈**：卡片会话行、链接行、规则可选项、@ 目录、文件夹快照、看门狗都在同一次通知里重算。
+  四条推论（改归档相关代码前先读）：
+  ① **判据一致**：凡「卡片能显示什么」与「界面能选什么」必须同一口径——同一组闸门（`hiddenSessionIdsOf` / `removedSessions` / `archivedOf`）过滤；归档的会话不可选（选了也显示不出来），恢复后自动可选；三处挑选面（卡片行、规则可选项、添加会话）共用，不得各写一套。
+  ② **触发侧同门**：规则不得向归档会话投递，但**保留 due 槽**——取消归档后自然续跑，不是静默丢一次。
+  ③ **说真话**：「不可用」有三种成因必须分辨：`sessionAvailability()` 是唯一判据（`archived` 可恢复 / `removed` 拖回即可 / `gone` 真的没了），文案由 `sessionUnavailableReasonOf()` 单点映射。归档期间仍说「已不可用」是假话。
+  ④ **孤儿归档条目**：入口页只列「归档集合 ∩ 已加载摘要」，**摘要已不存在的条目在官方界面里恢复不了**（底层 API 可以但无调用方）——这是 DSH 的已知限制，本插件不兜底，只在文案里把「恢复」的落点说清。
 - **完成态留言 auto 回待办并驱动**（queue/steer 同规则）。
 - **真执行补全**：空标题/描述从 Prompt 补（`supplementedTask` 唯一作用点，写入/启动时；永不覆盖）；空 Prompt 门禁只拦真执行（评论/插话/完善不封）；完善永不碰列；`refinable` 任一非空才可完善。
 - **车道 = 会话**：`isOpenRound` 唯一判定（评论轮已注入才算；在跑才占槽）；预算数轮；lane 忙滚下一格不叠；排队数本车道；结果一律 `lastPlainResult`；外源检测走 `sessionIsBusy` + 消费只认身份；看门狗清扫每条在跑轮；卡片离进行中唯一判定 `leaveRunningTargetOf`（open/live/schedule 三腿，落列复用 `settleColumnOf` 取消语义；调用点：结算系、direct 回落、删除同 tick、reconcile 兜底扫——不另起特判）。

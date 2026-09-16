@@ -31,6 +31,13 @@ export function AddSessionModal({ controller, task, onClose }: {
   const needle = query.trim().toLowerCase()
   const rows = controller.referenceSessionCatalog()
     .filter(row => !bound.has(row.sessionId))
+    // An ARCHIVED session is not offered: the card's rows skip archived
+    // conversations, so binding one would add a source that can never show on
+    // the card — a silent no-op dressed as an action. The archive set is
+    // recoverable (设置 → 已归档会话), and the session appears here by itself
+    // once it is back. Same gate as the session-rule picker: what the card can
+    // show is what can be chosen.
+    .filter(row => controller.sessionAvailability(row.sessionId) !== 'archived')
     .filter(row => needle === '' || row.label.toLowerCase().includes(needle) || row.sessionId.toLowerCase().includes(needle))
     .slice(0, 50)
 

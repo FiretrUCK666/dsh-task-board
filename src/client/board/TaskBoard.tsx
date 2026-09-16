@@ -38,7 +38,7 @@ import { TaskDetail } from './TaskDetail.tsx'
 import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
-import { waitingKeyOf } from './session-chip.ts'
+import { sessionUnavailableReasonOf, waitingKeyOf } from './session-chip.ts'
 import { isGitBehind, isNewerVersion, shortSha, updateActionsFor, type UpdateInstallMode } from '../../core/update-check.ts'
 import { BUNDLED_PACKAGE_NAME, BUNDLED_VERSION, fetchNpmLatest, fetchUpdateSource, type NpmLatest, type UpdateSourceView } from '../update-source.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
@@ -2242,7 +2242,9 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                           </span>
                         </div>
                         {failedSession === note.sessionId && (
-                          <p className={css.detailHint}>{t('detail.sessionUnavailable')}</p>
+                          <p className={css.detailHint}>
+                            {sessionUnavailableReasonOf(controller.sessionAvailability(note.sessionId)) ?? t('detail.sessionUnavailable')}
+                          </p>
                         )}
                         {/* Busy-gate rows explain inline instead of asking: the
                             buttons already carry the reason in `title`, but a
@@ -2531,7 +2533,9 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       </div>
                     )}
                     {failedSession === item.sessionId && item.sessionId !== undefined && (
-                      <p className={css.detailHint}>{t('detail.sessionUnavailable')}</p>
+                      <p className={css.detailHint}>
+                        {sessionUnavailableReasonOf(controller.sessionAvailability(item.sessionId)) ?? t('detail.sessionUnavailable')}
+                      </p>
                     )}
                   </li>
                 )

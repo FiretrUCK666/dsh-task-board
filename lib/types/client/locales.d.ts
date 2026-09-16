@@ -189,6 +189,8 @@ export declare const zh: {
     'detail.sessionUpdated': string;
     'detail.sessionCountBadge': string;
     'detail.sessionUnavailable': string;
+    'detail.sessionArchived': string;
+    'detail.sessionRemoved': string;
     'detail.sessionNew': string;
     'detail.sessionNewTitle': string;
     'detail.addSession': string;

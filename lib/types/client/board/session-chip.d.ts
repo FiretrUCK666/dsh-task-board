@@ -23,6 +23,19 @@ export type SessionChipShape = {
 /** The waiting-kind locale key, typed (never a string cast). */
 export declare function waitingKeyOf(kind: PendingInteractionKind): TaskBoardKey;
 /**
+ * Why a session cannot be acted on, as ONE sentence — the shared read of
+ * `controller.sessionAvailability` for every surface that used to say
+ * 「该会话已不可用」 and nothing else.
+ *
+ * It exists because archiving stopped meaning "gone" once DSH shipped the
+ * archive-restore page: an archived session is RECOVERABLE (设置 → 已归档会话 →
+ * 取消归档) and returns to every surface at once, since all of them derive from
+ * the one registry-global set. A deleted-from-this-card session is recoverable
+ * too (drag it back). Only a session with no native summary left is honestly
+ * unavailable. `undefined` = nothing to explain; the session is available.
+ */
+export declare function sessionUnavailableReasonOf(availability: 'visible' | 'archived' | 'removed' | 'gone'): string | undefined;
+/**
  * The result → chip COLOR mapping — the one place that decides an execution
  * result's tint (failed red, succeeded green, cancelled/unknown muted). A
  * surface that carries its OWN settled label (the card's "N 次执行", the

@@ -39,6 +39,7 @@ import { STATUS_KEY, PAUSED_REASON_KEY } from './status.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Icon, Section, Segmented, SendModeToggle, Switch } from './ui.tsx'
 import { Chip } from './Chip.tsx'
+import { sessionUnavailableReasonOf } from './session-chip.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 
 /**
@@ -274,10 +275,16 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
   const [presetStore] = useState(() => controller.presetStore())
   const [presets, setPresets] = useState(() => mergedPresets(presetStore))
   const [showPresets, setShowPresets] = useState(false)
-  // In edit mode the target session may have gone from the native list — the
-  // select still offers it, so the rule never becomes un-editable.
+  // In edit mode the target session may have gone from the card — the select
+  // still offers it, so the rule never becomes un-editable. The row says WHY it
+  // is no longer offered by the picker (archived = recoverable in 设置 →
+  // 已归档会话, removed from this card, or gone): otherwise the reader sees a
+  // bare id and cannot tell why the rule stopped firing.
   const options = existing !== undefined && !labels.some(label => label.sessionId === existing.sessionId)
-    ? [{ sessionId: existing.sessionId, title: existing.sessionId }, ...labels]
+    ? [{
+      sessionId: existing.sessionId,
+      title: `${existing.sessionId}（${sessionUnavailableReasonOf(controller.sessionAvailability(existing.sessionId)) ?? t('detail.sessionUnavailable')}）`,
+    }, ...labels]
     : labels
 
   const submit = (): void => {

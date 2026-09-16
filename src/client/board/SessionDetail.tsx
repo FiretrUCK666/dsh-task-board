@@ -18,7 +18,7 @@ import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
 import { toPromptFile, toPromptImage } from './attach.ts'
-import { sessionStateChip } from './session-chip.ts'
+import { sessionStateChip, sessionUnavailableReasonOf } from './session-chip.ts'
 import { sessionRowTitleOf } from '../../core/session-list.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { Button } from './ui.tsx'
@@ -100,9 +100,11 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     : undefined
   const updatedAt = row !== undefined ? formatDateTime(row.updatedAt) : undefined
 
-  // The hint under the thread header: the blocking reason when there is one
-  // (a gone session), the standing drive explanation otherwise.
-  const hint = liveGone ? t('detail.sessionUnavailable') : undefined
+  // The hint under the thread header: WHY this session cannot be acted on —
+  // archived (recoverable in 设置 → 已归档会话), removed from this card
+  // (drag it back), or genuinely gone. One judgment, shared with the badge row
+  // below, so the two lines can never name different causes.
+  const goneReason = sessionUnavailableReasonOf(controller.sessionAvailability(sessionId))
 
   return (
     <SessionFrame
@@ -124,7 +126,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       }
       main={
         row === undefined ? (
-          <p className={css.detailText}>{t('detail.sessionUnavailable')}</p>
+          <p className={css.detailText}>{goneReason ?? t('detail.sessionUnavailable')}</p>
         ) : (
           <div className={css.reviewTranscriptScroll} ref={scrollRef} onScroll={onScroll}>
             <SessionTranscript
@@ -166,7 +168,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               sessionId={sessionId}
               placeholder={t('detail.sessionDrivePlaceholder')}
               disabled={liveGone}
-              hint={hint}
+              hint={goneReason}
               onDrive={(text, images, files) => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/'), images.map(toPromptImage), files.map(toPromptFile)) !== undefined}
               onSteer={text => controller.steerComment(task.id, sessionId, text).then(result => result.ok)}
               onSteerImages={(text, images) => controller.steerCommentWithImages(task.id, sessionId, text, images.map(toPromptImage)).then(result => result.ok)}

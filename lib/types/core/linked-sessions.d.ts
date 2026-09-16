@@ -14,9 +14,11 @@
  *
  * The session row is derived live from the native session snapshot (title,
  * running, pending interaction), so renames and state changes surface with no
- * manual copy, no drift. An explicitly bound session is NEVER filtered by
- * archived/blank (the user dragged it in on purpose); only the user's own
- * hide set applies. Pure and framework-free.
+ * manual copy, no drift. An explicitly bound session is never filtered by
+ * BLANK (the user dragged it in on purpose) and only the user's own hide set
+ * applies here; ARCHIVING is applied one level up, in `linkedOf`, because the
+ * archive set is a registry-global concern (and it is reversible — the row
+ * comes back the moment the session is unarchived). Pure and framework-free.
  */
 import type { TaskRecord } from './tasks.ts';
 import type { PendingInteractionKind } from './controller.ts';

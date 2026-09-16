@@ -623,6 +623,13 @@ export function selectedTaskOf(snapshot: ControllerSnapshot): TaskRecord | undef
  */
 export type RunTrigger = 'manual' | 'schedule' | 'chain'
 
+/**
+ * Why a session is (not) on a surface — see {@link BoardController.sessionAvailability}.
+ * `'visible'` is the normal case; the other three name the cause so a blocked
+ * action can say something true instead of 「已不可用」.
+ */
+export type SessionAvailability = 'visible' | 'archived' | 'removed' | 'gone'
+
 function randomUuid(): string {
   const bytes = globalThis.crypto?.getRandomValues(new Uint8Array(16))
   if (bytes === undefined) {
@@ -1061,11 +1068,37 @@ export class BoardController {
     return realTitleOf(row?.title, row?.cwd)
   }
 
+  /**
+   * WHY a session is missing from a surface — the one availability judgment
+   * every "not available" line reads, so the sentence can name the cause
+   * instead of shrugging. Three causes look identical to `row === undefined`
+   * but mean different things to the user:
+   *
+   * - `'archived'` — the session exists but sits in the registry-global archive
+   *   set: it is RECOVERABLE (设置 → 已归档会话 → 取消归档) and comes back to
+   *   every surface at once, because every surface derives from that set. Saying
+   *   「已不可用」 here was wrong the moment DSH shipped unarchive.
+   * - `'removed'` — the user deleted this session FROM THIS CARD (hidden-tray
+   *   删除): a tombstone in `removedSessions`. The conversation is fine; it is
+   *   intentionally not part of this task until dragged back in.
+   * - `'gone'` — no summary in the session list at all: archived entries whose
+   *   session no longer loads look like this, and so does a session deleted
+   *   natively. Nothing can be said beyond "not available".
+   *
+   * `'visible'` means the session is listed and unarchived (the normal case).
+   */
+  sessionAvailability(sessionId: string | undefined): SessionAvailability {
+    if (sessionId === undefined) return 'gone'
+    if (this.archivedOf(sessionId)) return 'archived'
+    if (this.tasks.some(task => (task.removedSessions ?? []).includes(sessionId))) return 'removed'
+    if (this.deps.sessions.list.getSnapshot().byId[sessionId] === undefined) return 'gone'
+    return 'visible'
+  }
+
   /** The localized 未命名 placeholder the session rows show for a session
    *  the host has not titled yet (set by the client wiring; undefined in
    *  tests = legacy task-title fallback). */
   untitledSessionLabel?: string
-
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn)
     return () => { this.listeners.delete(fn) }

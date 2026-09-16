@@ -612,6 +612,12 @@ export declare function selectedTaskOf(snapshot: ControllerSnapshot): TaskRecord
  */
 export type RunTrigger = 'manual' | 'schedule' | 'chain';
 /**
+ * Why a session is (not) on a surface — see {@link BoardController.sessionAvailability}.
+ * `'visible'` is the normal case; the other three name the cause so a blocked
+ * action can say something true instead of 「已不可用」.
+ */
+export type SessionAvailability = 'visible' | 'archived' | 'removed' | 'gone';
+/**
  * Board controller (see module doc). All mutations bump the snapshot and
  * persist through the store; UI and DOM mounts subscribe and re-render.
  */
@@ -821,6 +827,26 @@ export declare class BoardController {
      *  user-pinned title arrives (the recurring "不填标题却显示工作区名" bug).
      *  One judgment with the linked rows: both call `realTitleOf`. */
     sessionTitle(sessionId: string | undefined): string | undefined;
+    /**
+     * WHY a session is missing from a surface — the one availability judgment
+     * every "not available" line reads, so the sentence can name the cause
+     * instead of shrugging. Three causes look identical to `row === undefined`
+     * but mean different things to the user:
+     *
+     * - `'archived'` — the session exists but sits in the registry-global archive
+     *   set: it is RECOVERABLE (设置 → 已归档会话 → 取消归档) and comes back to
+     *   every surface at once, because every surface derives from that set. Saying
+     *   「已不可用」 here was wrong the moment DSH shipped unarchive.
+     * - `'removed'` — the user deleted this session FROM THIS CARD (hidden-tray
+     *   删除): a tombstone in `removedSessions`. The conversation is fine; it is
+     *   intentionally not part of this task until dragged back in.
+     * - `'gone'` — no summary in the session list at all: archived entries whose
+     *   session no longer loads look like this, and so does a session deleted
+     *   natively. Nothing can be said beyond "not available".
+     *
+     * `'visible'` means the session is listed and unarchived (the normal case).
+     */
+    sessionAvailability(sessionId: string | undefined): SessionAvailability;
     /** The localized 未命名 placeholder the session rows show for a session
      *  the host has not titled yet (set by the client wiring; undefined in
      *  tests = legacy task-title fallback). */
