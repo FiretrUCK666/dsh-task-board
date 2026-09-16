@@ -665,6 +665,13 @@ export class ExecutionService {
       const timer = setTimeout(() => finish(false), graceMs)
       const check = (): void => {
         if (done) return
+        // RAW ON PURPOSE (this is one of the reads that must never see a
+        // rolled-up activity value): the question is whether the COMMAND this
+        // board sent opened a real turn on THIS session. Counting a running
+        // subagent descendant here would report "a turn started" for a
+        // `/permission`-style command that never opened one, and the round
+        // would then wait for the descendant chain to finish — the reverse
+        // deadlock (lane + concurrency slot held).
         const summary = this.env.sessions.list.getSnapshot().byId[sessionId]
         if (summary !== undefined && summary.running) { finish(true); return }
         const driver = this.driverOf(sessionId)
@@ -730,6 +737,12 @@ export class ExecutionService {
       return { kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'cancelled', error: 'execution session no longer exists' }
     }
     this.missingSessions.delete(execution.sessionId)
+    // RAW ON PURPOSE — and this one is load-bearing as a FRONT GATE: the
+    // driver probe and the history fallback below can only run when this read
+    // says the session stopped. A rolled-up activity value here would keep a
+    // cold session (no driver, e.g. a background/comment continuation) from
+    // ever reaching its real turn evidence, so the round would live as long as
+    // any descendant chain does — rounds never expiring, lanes never freeing.
     if (summary.running) return undefined
     const driver = this.driverOf(execution.sessionId)
     if (driver !== undefined) {
@@ -952,6 +965,9 @@ export class ExecutionService {
         return
       }
       misses = 0
+      // RAW ON PURPOSE (the cold-session settle channel): "still running" here
+      // means THIS session's own turn — a descendant's activity must never
+      // hold a round open, or the lane that round occupies never frees.
       // Still running: keep watching (and reset the no-evidence streak — a
       // turn in flight is evidence enough to wait).
       if (summary.running) {

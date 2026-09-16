@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { cardLightOf, cardNextActionOf, cardViewModelOf, titleOrUntitled } from '../src/client/board/card-view.ts'
-import { createTask, newCommentRound, startExecution } from '../src/core/tasks.ts'
+import { createTask, newCommentRound, startExecution, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -49,9 +49,48 @@ describe('cardViewModelOf', () => {
     const view = cardViewModelOf(card, {})
     expect(view.primary).toEqual({ kind: 'running' })
     expect(view.active, 'a card reading 进行中 must pulse (the chip and the light are one fact)').toBe(true)
-    // Settled rounds — nothing in flight — stay quiet.
+    // The card's own COLUMN is the other half of the same fact, and it is the
+    // SAME `task.status` the yellow border reads (`data-status`): a card in
+    // 进行中 breathes even with nothing in flight — the 有黄边、没呼吸 report
+    // (an armed schedule's gap, a direct steer settled at birth, or a related
+    // session whose own turn paused while its subagent keeps working). The
+    // border and the light can no longer disagree.
     const settled = { ...card, executions: [{ ...open, endedAt: NOW + 1, result: 'succeeded' as const }] }
-    expect(cardViewModelOf(settled, {}).active).toBe(false)
+    expect(
+      cardViewModelOf(settled, {}).active,
+      'yellow border on ⇒ breath on: the column is the fact both attributes read',
+    ).toBe(true)
+    // Out of the running column with nothing in flight: quiet.
+    const reviewed = { ...settled, status: 'review' as const }
+    expect(cardViewModelOf(reviewed, {}).active).toBe(false)
+  })
+
+  it('every way a card reaches the 进行中 column breathes (the light table, one row per fact)', () => {
+    // The three reachable holders of the column, all of which used to be able
+    // to sit there with the border on and no animation: an open round, a
+    // direct steer settled at birth (its session is the only signal), and a
+    // chain/budget gap between automatic runs — plus the activity leg a
+    // running subagent descendant creates. The light reads the COLUMN, so all
+    // of them breathe; the quiet rows stay quiet.
+    const openRound = { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }
+    const directRound = { id: 'e2', sessionId: 's-1', startedAt: NOW, endedAt: NOW, result: 'succeeded' as const, error: undefined, direct: true as const }
+    const gap = withSchedule(task(), { enabled: true, mode: 'chain', cron: '', runCount: 0 }, NOW)
+    const holders: Array<[string, TaskRecord]> = [
+      ['an open round', { ...task(), status: 'running' as const, executions: [openRound] }],
+      ['a direct steer settled at birth (no open round)', { ...task(), status: 'running' as const, executions: [directRound] }],
+      ['a chain gap between runs (no rounds at all)', withStatus(gap, 'running', NOW)],
+      ['a live related session with no board round (the subagent case)', { ...task(), status: 'running' as const }],
+    ]
+    for (const [what, card] of holders) {
+      const view = cardViewModelOf(card, {})
+      expect(view.active, `${what} must wear the halo`).toBe(true)
+      expect(cardLightOf(view.active, false), `${what} must animate`).toBe('halo')
+    }
+    // Quiet rows: everything settled and out of the column.
+    const settledRun = { ...task(), status: 'review' as const, executions: [{ ...openRound, endedAt: NOW, result: 'succeeded' as const }] }
+    expect(cardViewModelOf(settledRun, {}).active).toBe(false)
+    expect(cardViewModelOf(settledRun, { unviewedCount: 1 }).active, 'unread alone is the RING, never the halo').toBe(false)
+    expect(cardLightOf(cardViewModelOf(settledRun, { unviewedCount: 1 }).active, true)).toBe('ring')
   })
 
   it('the light table: waiting/running/refining pulse, queued/failed/review/idle do not', () => {

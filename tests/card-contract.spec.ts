@@ -32,6 +32,26 @@ const source = readFileSync(cssPath, 'utf8')
 /** The second stylesheet (the plugin settings surface) — same scale contract. */
 const settingsSource = readFileSync(fileURLToPath(new URL('../src/client/settings-card.module.css', import.meta.url)), 'utf8')
 
+/** The [start, end) character ranges of every conditional block of one kind
+ *  (`@media` / `@container`), found by brace-walking — used to prove a rule is
+ *  NOT inside one (both ends must share it). */
+function conditionalRanges(css: string, kind: '@media' | '@container'): Array<[number, number]> {
+  const ranges: Array<[number, number]> = []
+  const opener = new RegExp(`${kind}[^{]*\\{`, 'g')
+  let match: RegExpExecArray | null
+  while ((match = opener.exec(css)) !== null) {
+    let depth = 1
+    let cursor = match.index + match[0].length
+    while (cursor < css.length && depth > 0) {
+      if (css[cursor] === '{') depth += 1
+      else if (css[cursor] === '}') depth -= 1
+      cursor += 1
+    }
+    ranges.push([match.index, cursor])
+  }
+  return ranges
+}
+
 /** Extract the top-level rule block whose opening line is exactly ".name {". */
 function ruleOf(name: string): string | undefined {
   const lines = source.split('\n')
@@ -327,6 +347,64 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     // The inset variant is the only one whose shadow is contained by the card's own
     // clipped box, so the states must not be swapped by accident.
     expect(active).toBe('dshTbBreathHalo')
+
+    // 3. FORM is asserted at the KEYFRAME level too, not only through the two
+    //    animation names: a swap of the two keyframe BODIES would keep the name
+    //    assertions green while the in-flight halo silently became the light
+    //    that asks you to look (and vice versa). The contract is the shape —
+    //    halo = INNER (`inset`) shadow at the SOFT alpha step, ring = OUTER
+    //    spread at the STRONGER step — and both rest transparent so each light
+    //    is a pulse, never a permanent glow.
+    /** The 50% frame of one `@keyframes <name>` block (the pulse's peak). */
+    const peakOf = (name: string): string => {
+      const block = new RegExp(`@keyframes ${name} \\{([\\s\\S]*?)\\n\\}`).exec(source)?.[1]
+      expect(block, `${name} must exist`).toBeTruthy()
+      return /50%\s*\{([^}]*)\}/.exec(block ?? '')?.[1] ?? ''
+    }
+    const haloPeak = peakOf('dshTbBreathHalo')
+    expect(haloPeak, 'the live halo must be an INSET shadow').toMatch(/\binset\b/)
+    expect(haloPeak, 'the halo amplitude token is the inset blur').toContain('var(--dsh-tb-breath-halo)')
+    expect(haloPeak, 'the halo wears the soft alpha step').toContain('var(--dsh-tb-attention-alpha-soft)')
+    const ringPeak = peakOf('dshTbBreathRing')
+    expect(ringPeak, 'the unread ring must be an OUTER shadow').not.toMatch(/\binset\b/)
+    expect(ringPeak, 'the ring amplitude token is the outer spread').toContain('var(--dsh-tb-breath-spread)')
+    expect(ringPeak, 'the ring wears the stronger alpha step').toContain('var(--dsh-tb-attention-alpha)')
+    for (const name of ['dshTbBreathRing', 'dshTbBreathHalo']) {
+      expect(source, `${name} must rest transparent (a pulse, not a permanent glow)`).toMatch(
+        new RegExp(`@keyframes ${name} \\{\\s*0%, 100% \\{ box-shadow: [^}]*transparent; \\}`),
+      )
+    }
+  })
+
+  it('the light and the yellow border are ONE end-agnostic pair (both ends read the same two attributes)', () => {
+    // The reported defect was a card with the yellow border and no breath: the
+    // border read `task.status`, the light read `executing(task)`. They are one
+    // derivation now — the light's `active` includes the card's own column — so
+    // the two attributes cannot disagree, and NOTHING may re-decide either of
+    // them per end (硬性规范 11: 桌面与窄屏同治).
+    //
+    // 1. The client half is end-free: no viewport read, no narrow flag, no
+    //    second derivation. The light comes from one attribute in one place.
+    const card = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
+    expect(card).toContain('data-status={task.status}')
+    expect(card).toContain('data-light={light}')
+    const view = readFileSync(fileURLToPath(new URL('../src/client/board/card-view.ts', import.meta.url)), 'utf8')
+    expect(view, 'the light must not be re-decided per screen').not.toMatch(/matchMedia|innerWidth|useSurfaceNarrow/)
+    expect(view, 'the card column is part of the light derivation').toContain("task.status === 'running'")
+
+    // 2. The stylesheet half: both rules sit OUTSIDE every `@media`/`@container`
+    //    block, so 窄屏 and desktop read exactly the same declarations. (The
+    //    board's only compact query touching `.card` is the colour-bar hover —
+    //    it drives neither the border nor the breath.)
+    const ranges = [...conditionalRanges(source, '@media'), ...conditionalRanges(source, '@container')]
+    for (const selector of [".card[data-status='running']", ".card[data-light='halo']", ".card[data-light='ring']"]) {
+      const at = source.indexOf(selector)
+      expect(at, `${selector} must exist`).toBeGreaterThan(-1)
+      expect(
+        ranges.some(([start, end]) => at >= start && at < end),
+        `${selector} must not sit inside a conditional block (both ends share one rule)`,
+      ).toBe(false)
+    }
   })
 
   it('the badge row ranks its primary first, and never gates the row on automation', () => {

@@ -16,6 +16,14 @@ coverage/
 # for a one-off inspection or publish, never a source file.
 *.tgz
 
+# AgentTeams team state (roster, task graph, mailboxes). Per-machine coordination
+# scratch, never a source file: it names this machine's members and their
+# attempts, and it changes on every dispatch. Ignored rather than tracked
+# because a committed copy would be a second, drifting description of work that
+# already lives in the task list — and because team state must never end up
+# inside the published artifacts.
+.agent-teams/
+
 # Tool state for the `impeccable` design skill. Everything in this directory is
 # scratch EXCEPT the two files re-included below — the same reasoning that keeps
 # `lib/` tracked (see the NOTE at the bottom).

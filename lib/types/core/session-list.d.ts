@@ -76,10 +76,13 @@ export interface TaskSessionContext {
     titleOf(sessionId: string): string | undefined;
     /** Resolve a session's pending interaction. */
     pendingInteractionOf(sessionId: string): PendingInteractionKind | undefined;
-    /** Resolve a session's NATIVE running flag (host truth — a direct steer's
-     *  round is settled at birth, so without this the row stays dark while the
-     *  agent is genuinely working). */
-    nativeRunningOf?(sessionId: string): boolean;
+    /** Resolve the session's ACTIVITY: is it still working right now (its own
+     *  turn or a running subagent descendant)? The controller wires the one
+     *  activity derivation (session-activity.ts) here; a direct steer's round is
+     *  settled at birth and a session whose own turn paused but whose subagent
+     *  keeps working is still working, so a bare flag would leave the row dark
+     *  while the agent is genuinely busy. */
+    sessionActiveOf?(sessionId: string): boolean;
     /** Whether the session is ARCHIVED natively (the registry's archive set).
      *  An archived conversation is put away: its row leaves the card on every
      *  replica the instant the native state moves (derived, never ledger — zero

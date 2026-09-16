@@ -66,7 +66,12 @@ export interface CardViewModel {
     lastResult: 'succeeded' | 'failed' | 'cancelled' | undefined;
     queued: number;
     unviewedCount: number;
-    /** Whether the card breathes (state-bound, independent of unread). */
+    /**
+     * Whether the card breathes: a state-bound fact, independent of unread. True
+     * for waiting / running / refining AND for a card sitting in the 进行中
+     * column (the same `task.status` the yellow border reads), so the border and
+     * the breath are one fact — see {@link cardLightOf}.
+     */
     active: boolean;
     /**
      * A task in review whose plain run has settled: the human gate owes an

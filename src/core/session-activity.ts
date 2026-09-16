@@ -22,8 +22,23 @@
  * direct-send grace; cleared the moment the session reads idle), so the same
  * native turn is never recorded twice, while every NEW turn re-arms it. Past
  * completed turns are never re-fired (a finished turn is not running).
+ *
+ * THE other half of this module — {@link sessionActivityOf} and the index
+ * behind it — answers the DIFFERENT question the board's surfaces ask: "is this
+ * session still working?" (its own turn OR a subagent descendant it summoned).
+ * The two must never be confused: the detector below reads the session's OWN
+ * turn flag verbatim (one native turn = one observed round), while the activity
+ * layer rolls the same flag up the lineage (see session-lineage.ts). Feeding
+ * the rolled-up value into the detector would lengthen a session's run period
+ * behind a descendant and fabricate external rounds that never happened.
  * Pure and framework-free.
  */
+import {
+  indexSubagentDescendants,
+  type DescendantRollup,
+  type LineageIndex,
+  type LineageRow,
+} from './session-lineage.ts'
 
 /** Bookkeeping the controller keeps between passes (baselines + grace). */
 export interface ActivityBook {
@@ -181,6 +196,10 @@ export function detectExternalTurns(
   const found: DetectedExternalTurn[] = []
   for (const { taskId, candidate } of candidates) {
     for (const session of candidate.sessions) {
+      // RAW ON PURPOSE: one native turn = one observed round. Rolling the
+      // descendant activity up here would lengthen the session's run period
+      // behind a subagent and fabricate a round for a turn that never
+      // happened (the ghost-round/thread-duplication risk the audit proved).
       const current = byId[session.sessionId]?.running ?? false
       book.running.set(session.sessionId, current)
       if (!current) {
@@ -216,3 +235,124 @@ export const DIRECT_GRACE_MS = 60_000
 
 /** How long an external round may wait for settle evidence before it is cancelled as spurious. */
 export const EXTERNAL_SETTLE_GRACE_MS = 90_000
+
+// --- session activity: THE one "is this session still working?" derivation ----
+//
+// The board used to answer that question in three places — the column
+// (`runningJustificationOf`'s live leg), the card's light (`executing(task)`),
+// and every session row's own `running` read — and the three answers disagreed
+// in exactly the states the user hit: a session whose own turn stopped while
+// the subagent it summoned kept working (official sidebar: still working), and
+// a card parked in 进行中 by its column or its armed schedule with no open
+// round (yellow border, no breath). One derivation answers it now, and every
+// surface reads THAT: `own` (this session's turn) ∨ `descendant` (an
+// uninterrupted subagent-origin chain below it is running) ⇒ active.
+
+/**
+ * One session's activity answer — the complete truth, so a caller can never
+ * mistake "no verdict" for "not working".
+ * - `'own'` — this session's own turn is running;
+ * - `'descendant'` — a subagent-origin descendant of this session is running,
+ *   even when this session's own turn already stopped (the official sidebar's
+ *   「N 个子代理运行中」 case);
+ * - `'idle'` — the session is PRESENT in a ready list and neither holds;
+ * - `'unknown'` — no verdict: the list has not arrived (`phase === 'pending'`)
+ *   or the session's row is missing from the snapshot (the host list is the
+ *   only truth, and an absent row cannot tell "not working" from "not listed").
+ *   Callers must neither read it as idle (that is how a working card gets
+ *   written out of 进行中 and persisted) nor as active (that would park a card
+ *   forever on a session that no longer exists).
+ */
+export type SessionActivity = 'own' | 'descendant' | 'idle' | 'unknown'
+
+/**
+ * Whether one session is still working: its own turn or a running
+ * subagent-origin descendant. `ready` is the caller's snapshot-readiness fact
+ * (`phase !== 'pending'`); a list that has not arrived testifies about
+ * nothing, so every session reads `unknown` there — the same law the round
+ * watchdogs already follow.
+ * @param sessionId - the session to judge.
+ * @param rows - the list snapshot's `byId` (verbatim, including subagent rows).
+ * @param rollup - the lineage index over those rows (session-lineage.ts).
+ * @param ready - whether the list has served its baseline.
+ */
+export function sessionActivityOf(
+  sessionId: string,
+  rows: Readonly<Record<string, LineageRow | undefined>>,
+  rollup: LineageIndex,
+  ready = true,
+): SessionActivity {
+  if (!ready) return 'unknown'
+  const own = rows[sessionId]
+  if (own === undefined) return 'unknown'
+  if (own.running) return 'own'
+  return (rollup.get(sessionId)?.runningCount ?? 0) > 0 ? 'descendant' : 'idle'
+}
+
+/**
+ * Whether a session counts as working right now — THE boolean every surface
+ * that used to read the bare `running` flag wants (the card's session dots,
+ * the session rows' glow, the detail/review state chips, the card's live leg).
+ * `unknown` is false: "no verdict" must never be rendered as working; the
+ * leave-running side reads the three-valued form instead.
+ */
+export function sessionActiveOf(
+  sessionId: string,
+  rows: Readonly<Record<string, LineageRow | undefined>>,
+  rollup: LineageIndex,
+  ready = true,
+): boolean {
+  const activity = sessionActivityOf(sessionId, rows, rollup, ready)
+  return activity === 'own' || activity === 'descendant'
+}
+
+/**
+ * The O(1) activity lookup for one snapshot: the index the callers hold. Built
+ * once per snapshot REFERENCE (the controller's cache), so the board's
+ * per-card / per-row asks are lookups and the lineage is never re-walked per
+ * query.
+ */
+export interface SessionActivityIndex {
+  /** Whether the snapshot behind this index may be used as evidence at all. */
+  readonly ready: boolean
+  /** The three-valued answer (see {@link SessionActivity}). */
+  activityOf(sessionId: string): SessionActivity
+  /** The two-valued answer: own ∨ descendant (see {@link sessionActiveOf}). */
+  active(sessionId: string): boolean
+  /** How many subagent descendants of this session are running right now. */
+  descendantRunningCount(sessionId: string): number
+}
+
+/**
+ * Build the activity index for one snapshot: the lineage rollup plus the
+ * O(1) lookups over it.
+ * @param rows - the list snapshot's `byId`.
+ * @param rollup - the lineage index over those rows (session-lineage.ts).
+ * @param ready - the snapshot's readiness (`phase !== 'pending'`).
+ */
+export function buildSessionActivityIndex(
+  rows: Readonly<Record<string, LineageRow | undefined>>,
+  rollup: LineageIndex,
+  ready = true,
+): SessionActivityIndex {
+  return {
+    ready,
+    activityOf: sessionId => sessionActivityOf(sessionId, rows, rollup, ready),
+    active: sessionId => sessionActiveOf(sessionId, rows, rollup, ready),
+    descendantRunningCount: sessionId => rollup.get(sessionId)?.runningCount ?? 0,
+  }
+}
+
+/** Build the lineage index + the activity index over one snapshot in one call —
+ *  the ONE construction site (the controller's snapshot-keyed cache; tests
+ *  build the same pair). */
+export function buildSessionActivity(
+  rows: Readonly<Record<string, LineageRow | undefined>>,
+  ready = true,
+): { rollup: LineageIndex; activity: SessionActivityIndex } {
+  const rollup = indexSubagentDescendants(rows)
+  return { rollup, activity: buildSessionActivityIndex(rows, rollup, ready) }
+}
+
+/** Re-exported for the callers that need the rollup's shape (display counts). */
+export type { DescendantRollup }

@@ -117,12 +117,12 @@ describe('taskLiveStateOf (任务运行态唯一推导)', () => {
 
   it('is running when a LINKED (workspace-member) session is working — the bound-card glow bug', () => {
     const task = taskWith([{ sessionId: 'run', endedAt: 5 }])
-    expect(taskLiveStateOf(task, runningOf({ run: false, link: true }), waitingOf({}), ['link'])).toBe('running')
+    expect(taskLiveStateOf(task, runningOf({ run: false, link: true }), waitingOf({}), { linkedSessionIds: ['link'] })).toBe('running')
   })
 
   it('is waiting when a linked session waits on the user', () => {
     const task = taskWith([])
-    expect(taskLiveStateOf(task, runningOf({}), waitingOf({ link: 'plan-review' }), ['link'])).toBe('waiting')
+    expect(taskLiveStateOf(task, runningOf({}), waitingOf({ link: 'plan-review' }), { linkedSessionIds: ['link'] })).toBe('waiting')
   })
 
   it('a REMOVED running session never drives the card (deleted-session gate)', () => {

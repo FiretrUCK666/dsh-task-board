@@ -3,10 +3,13 @@
  * awareness, and the full run loop (running → started(sessionId) → settled).
  */
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { BoardController, type ControllerDeps } from '../src/core/controller.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
 import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
+import { cardLightOf, cardViewModelOf } from '../src/client/board/card-view.ts'
 import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import type { CruiseWindow } from '../src/core/cruise.ts'
 import { createTask, ruleReadiness, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
@@ -33,6 +36,10 @@ class FakeSessions {
   runningById: Record<string, boolean> = {}
   /** Host-list pending-interaction signals per session (native amber dot). */
   waitingById: Record<string, 'approval' | 'plan-review' | 'question'> = {}
+  /** Host-list lineage facts per session: the subagent link the activity
+   *  derivation rolls up (origin is the first gate; a fork carries only a
+   *  parent, which is exactly what this map lets a test express). */
+  lineageById: Record<string, { parentId?: string; origin?: 'subagent' }> = {}
   /** Host-list workspace facts per session. */
   infoById: Record<string, { cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string }> = {}
   /** Host-list durable title per session (absent = the host has not named it). */
@@ -45,7 +52,7 @@ class FakeSessions {
       current: string | undefined
       phase?: 'pending' | 'ready'
       ids?: readonly string[]
-      byId: Record<string, { running: boolean; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string; title?: string }>
+      byId: Record<string, { running: boolean; parentId?: string; origin?: 'subagent'; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string; title?: string }>
     } => ({
       current: this.current,
       ...this.phase !== undefined ? { phase: this.phase } : {},
@@ -53,6 +60,7 @@ class FakeSessions {
       byId: Object.fromEntries(
         Object.entries(this.runningById).map(([id, running]) => [id, {
           running,
+          ...this.lineageById[id] !== undefined ? this.lineageById[id] : {},
           ...this.waitingById[id] !== undefined ? { pendingInteraction: this.waitingById[id] } : {},
           ...this.infoById[id] !== undefined ? this.infoById[id] : {},
           ...this.titleById[id] !== undefined ? { title: this.titleById[id] } : {},
@@ -97,6 +105,24 @@ class FakeSessions {
   /** Set the host-list running flag of a session and notify (list change). */
   setRunning(id: string, running: boolean): void {
     this.runningById[id] = running
+    for (const fn of [...this.listeners]) fn()
+  }
+  /** Seed a subagent-origin child row (the official projection's shape: the
+   *  host list carries the child with its parent and origin). */
+  setSubagent(id: string, parentId: string, running: boolean): void {
+    this.lineageById[id] = { parentId, origin: 'subagent' }
+    this.setRunning(id, running)
+  }
+  /** Seed a FORK child row: a parent link with NO origin — the row the lineage
+   *  first gate must refuse (a fork is not a subagent). */
+  setFork(id: string, parentId: string, running: boolean): void {
+    this.lineageById[id] = { parentId }
+    this.setRunning(id, running)
+  }
+  /** Drop a session row entirely (the missing-row case of a lagging list). */
+  forget(id: string): void {
+    delete this.runningById[id]
+    delete this.lineageById[id]
     for (const fn of [...this.listeners]) fn()
   }
   /** Set a session's pending-interaction signal and notify (list change). */
@@ -516,6 +542,34 @@ describe('task mutations', () => {
   })
 })
 
+/**
+ * A board whose task stages all three conversation families the native sidebar
+ * also lists: a BOUND session ('s-bind'), a RUN session ('s-run') and the
+ * REFINE session ('s-refine'). The sidebar boundary contract has to hold for
+ * every family — the close decision reads the user's pick, not "is it staged".
+ */
+async function makeStagedBoard(): Promise<{
+  controller: BoardController
+  sessions: FakeSessions
+  store: InMemoryTaskStore
+  stub: StubExec
+  task: TaskRecord
+}> {
+  const stub = new StubExec()
+  const { controller, sessions, store } = makeController(stub)
+  const task = controller.createTask({ title: '边界', description: '', prompt: 'run' })!
+  controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-bind' })
+  await controller.runTask(task.id)
+  const run = stub.runCalls[0]
+  run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-run' })
+  // The refine family needs a backlog card (refinement is preparation).
+  const back = controller.createTask({ title: '准备', description: 'd', prompt: 'run', status: 'backlog' })!
+  controller.startRefine(back.id)
+  const refine = stub.runCalls[1]
+  refine.fire({ kind: 'started', taskId: back.id, executionId: refine.executionId, sessionId: 's-refine' })
+  return { controller, sessions, store, stub, task: controller.getSnapshot().tasks.find(row => row.id === task.id)! }
+}
+
 describe('view state', () => {
   it('toggles the board and reflects it in the snapshot', () => {
     const { controller } = makeController()
@@ -554,6 +608,119 @@ describe('view state', () => {
     // A notification with an unchanged selection must not close the board.
     for (const fn of [...(sessions as unknown as { listeners: Set<() => void> }).listeners]) fn()
     expect(controller.getSnapshot().boardOpen).toBe(true)
+  })
+
+  it('a sidebar pick closes the board even when the selection cannot move (every staged family)', async () => {
+    // The reported hole: clicking the row that is ALREADY current moves nothing,
+    // so the selection-diff leg can never see the user's intent — the board kept
+    // the center column while the user saw no reaction at all. The pick probe's
+    // report is the second leg and it does not care whether the id is staged.
+    const { controller, sessions } = await makeStagedBoard()
+    for (const sessionId of ['s-run', 's-bind', 's-refine']) {
+      sessions.setCurrent(sessionId)
+      controller.openBoard()
+      expect(controller.getSnapshot().boardOpen, sessionId).toBe(true)
+      expect(sessions.current, sessionId).toBe(sessionId) // already current: no movement possible
+      controller.userSelectedNativeSession()
+      expect(controller.getSnapshot().boardOpen, `${sessionId} pick must close the board`).toBe(false)
+    }
+  })
+
+  it("the board's own navigation never closes it (execution / linked / refine jumps)", async () => {
+    const { controller, sessions } = await makeStagedBoard()
+    sessions.setCurrent('s-other')
+    controller.openBoard()
+    for (const sessionId of ['s-run', 's-bind', 's-refine']) {
+      expect(controller.openSession(sessionId), sessionId).toBe(true)
+      // The selection DID move — the runtime selects and notifies from inside
+      // the call — and the board must still be there: it asked for this itself,
+      // which the one-shot board pick marks explicitly.
+      expect(sessions.current, sessionId).toBe(sessionId)
+      expect(controller.getSnapshot().boardOpen, `${sessionId} jump must keep the board`).toBe(true)
+    }
+  })
+
+  it('the notification entries keep the board open, including when the target is already current', async () => {
+    const { controller, sessions } = await makeStagedBoard()
+    sessions.setCurrent('s-run')
+    controller.openBoard()
+    // 去会话 on the row that is already current: open() moves nothing and the
+    // board's own entry must not read as the user walking away.
+    expect(controller.openSession('s-run')).toBe(true)
+    expect(controller.getSnapshot().boardOpen).toBe(true)
+    // 去回答 on another of the card's conversations: the selection moves.
+    expect(controller.openSession('s-refine')).toBe(true)
+    expect(sessions.current).toBe('s-refine')
+    expect(controller.getSnapshot().boardOpen).toBe(true)
+  })
+
+  it('a wait arriving on a board conversation keeps the board open', async () => {
+    const { controller, sessions } = await makeStagedBoard()
+    sessions.setCurrent('s-other')
+    controller.openBoard()
+    // A question pops on the card's run session and the shell surfaces it as
+    // current: the wait is the board's own subject matter (its 去回答 entry
+    // lives on the board), so the board stays open.
+    sessions.setWaiting('s-run', 'plan-review')
+    sessions.setCurrent('s-run')
+    expect(controller.getSnapshot().boardOpen).toBe(true)
+    // The exemption is the WAIT, not "staged": an unattributed move onto a
+    // staged conversation with no wait still reads as walking away (the user's
+    // own click is the probe's leg; a board-chosen selection is marked).
+    sessions.setWaiting('s-run', undefined)
+    sessions.setCurrent('s-bind')
+    expect(controller.getSnapshot().boardOpen).toBe(false)
+  })
+
+  it('a sidebar pick closes the board even on a waiting row (the click leg never consults the wait exemption)', async () => {
+    const { controller, sessions } = await makeStagedBoard()
+    sessions.setWaiting('s-run', 'approval')
+    sessions.setCurrent('s-run')
+    controller.openBoard()
+    expect(controller.getSnapshot().boardOpen).toBe(true)
+    controller.userSelectedNativeSession()
+    expect(controller.getSnapshot().boardOpen).toBe(false)
+  })
+
+  it('a pick with the board closed is a no-op, and a stale board pick never guards a later selection', async () => {
+    const { controller, sessions } = await makeStagedBoard()
+    controller.userSelectedNativeSession() // nothing open: nothing to close
+    expect(controller.getSnapshot().boardOpen).toBe(false)
+    // A jump while the board is closed (a notification entry after it closed):
+    // its one-shot is consumed by that very selection — a marker outliving its
+    // notification must never guard a later, unrelated selection of the same id.
+    controller.openSession('s-run')
+    sessions.setCurrent('s-other')
+    controller.openBoard()
+    expect(controller.getSnapshot().boardOpen).toBe(true)
+    sessions.setCurrent('s-run')
+    expect(controller.getSnapshot().boardOpen).toBe(false)
+  })
+
+  it('the sidebar pick is ONE probe, torn down with the mount, anchored on the row ARIA contract', () => {
+    const read = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
+    const mount = read('../src/client/board-mount.tsx')
+    // Exactly one listener, capture phase: the board's state settles before the
+    // sidebar's own handler runs, and the sidebar's own pick is not swallowed.
+    expect(mount.match(/addEventListener\(/g) ?? []).toHaveLength(1)
+    expect(mount).toContain("document.addEventListener('click', onDocumentClick, true)")
+    expect(mount).toContain("document.removeEventListener('click', onDocumentClick, true)")
+    expect(mount).toContain('controller.userSelectedNativeSession()')
+    // The anchor is the row's SEMANTIC selection contract (the official sidebar
+    // renders session rows as role=treeitem + aria-selected, its workspace GROUP
+    // rows as role=treeitem + aria-expanded), never a hashed class name.
+    expect(mount).toContain(`const SESSION_ROW_SELECTOR = '[role="treeitem"][aria-selected]'`)
+    expect(mount).not.toMatch(/SESSION_ROW_SELECTOR = '[^']*\[class/)
+    // A sidebar DRAG into the board fires pointerdown but never a click: closing
+    // on pointerdown would break dragging a session onto a card.
+    expect(mount).not.toMatch(/addEventListener\('(pointer|mouse)down'/)
+    // The controller's one-shot marker is written BEFORE open(): the runtime
+    // notifies from inside the call, so a marker written after would arrive
+    // after the notification already judged the selection as the user's.
+    const controller = read('../src/core/controller.ts')
+    const markerAt = controller.indexOf('this.boardPick = sessionId')
+    expect(markerAt).toBeGreaterThan(-1)
+    expect(controller.indexOf('this.deps.sessions.open(sessionId)', markerAt)).toBeGreaterThan(markerAt)
   })
 
   it('openTask/closeTask manage the selection', () => {
@@ -5072,6 +5239,321 @@ describe('BoardController engine seat + remote apply', () => {
     controller.setHostProto(2) // the host restarts while the seat stays put
     expect(controller.getSnapshot().engine.hostProto).toBe(2)
     expect(notified).toBe(2)
+  })
+})
+
+/**
+ * Session activity end to end (A + B of the contract): a session whose own
+ * turn stopped while the subagent it summoned keeps working is still working —
+ * the card keeps 进行中, the light keeps breathing, the rows keep glowing — and
+ * the moment the whole chain stopped the SAME derivation lands the card once.
+ * The reverse-deadlock boundary is pinned too: nothing here may reach the
+ * settle paths, the round watchdogs or the external-turn detector.
+ */
+describe('session activity: subagent descendants keep the card live', () => {
+  /** A card in 进行中 whose only settled round ran on `parent`. */
+  const seededRunningCard = (store: InMemoryTaskStore, parent: string, taskId = 'task-desc') => {
+    const seeded = createTask({ title: '父会话在跑', description: '', prompt: 'run', status: 'running' }, NOW, taskId)
+    store.save([{
+      ...seeded,
+      executions: [{ id: 'e1', sessionId: parent, startedAt: NOW - 1000, endedAt: NOW - 500, result: 'succeeded' as const, error: undefined }],
+    }])
+  }
+
+  it('AC1: the parent turn stopped, the child still runs ⇒ the card stays 进行中 and keeps breathing', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('P', false)
+    sessions.setSubagent('C', 'P', true)
+    seededRunningCard(store, 'P')
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    const task = controller.getSnapshot().tasks[0]
+    expect(controller.sessionActiveOf('P'), 'the parent is working through its descendant').toBe(true)
+    expect(task.status, 'the card keeps its column').toBe('running')
+    expect(controller.liveStateOf(task.id)).toBe('running')
+    // The light reads the same fact as the border (`data-status`), so a card in
+    // the running column MUST pulse — this is the reported 有黄边、没呼吸 bug.
+    const view = cardViewModelOf(task, { pendingCount: 0, unviewedCount: 0 })
+    expect(view.active).toBe(true)
+    expect(cardLightOf(view.active, false)).toBe('halo')
+  })
+
+  it('AC1b: settling the parent\'s round while the child runs keeps the column; the end of the chain lands it once', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('P', true) // the run's own turn is in flight
+    sessions.setSubagent('C', 'P', true) // …and so is a subagent it summoned
+    const seeded = createTask({ title: '父会话', description: '', prompt: 'run', status: 'running' }, NOW, 'task-desc')
+    store.save([{
+      ...seeded,
+      executions: [{ id: 'e1', sessionId: 'P', startedAt: NOW - 1000, endedAt: undefined, result: undefined, error: undefined }],
+    }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    // The parent's OWN turn ends (that is the round's evidence) while the
+    // subagent it summoned keeps working: the round settles, the column waits.
+    sessions.setRunning('P', false)
+    stub.reconcileResult = { kind: 'settled', taskId: 'task-desc', executionId: 'e1', outcome: 'succeeded' }
+    sessions.notifyAll()
+    await flush()
+    await flush()
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === 'task-desc')!
+    expect(row.executions[0].endedAt, 'the round settles on its own turn (never on a descendant)').toBeDefined()
+    expect(row.executions[0].result).toBe('succeeded')
+    expect(row.status, 'the descendant still works ⇒ the column waits').toBe('running')
+    // The chain ends: the next pass lands the card where the cancelled leave
+    // judgment points (completed work ⇒ the human gate).
+    sessions.setRunning('C', false)
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === 'task-desc')!.status).toBe('review')
+    // One pass only: further passes do not move it a second time.
+    sessions.notifyAll()
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === 'task-desc')!.status).toBe('review')
+  })
+
+  it('a session row and a linked row read the same derivation (the subagent case lights them)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('P', false)
+    sessions.setSubagent('C', 'P', true)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createBoundTask({ kind: 'session', sessionId: 'P' }, { title: '绑定', description: '', prompt: 'p' })!
+    await flush()
+    // The linked row carries the activity answer, not the bare flag.
+    const linked = controller.linkedOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)
+    expect(linked.map(row => [row.sessionId, row.running])).toEqual([['P', true]])
+    // …and so does the unified session row's display state.
+    const row = controller.sessionsOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)[0]
+    expect(row?.display.state).toBe('running')
+  })
+
+  it('an ARCHIVED descendant still counts (the rollup follows the official one; archive is a display concern)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('P', false)
+    sessions.setSubagent('C', 'P', true)
+    sessions.archivedIds.add('C')
+    seededRunningCard(store, 'P')
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, workspaces: { list: sessions.workspacesList }, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    expect(controller.sessionActiveOf('P')).toBe(true)
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+  })
+
+  it('a FORK child never keeps the card live (parentId without origin)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('P', false)
+    sessions.setFork('F', 'P', true)
+    seededRunningCard(store, 'P')
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    expect(controller.sessionActiveOf('P'), 'a fork is not a subagent').toBe(false)
+    // The card leaves through the ONE leave judgment (completed work ⇒ review).
+    expect(controller.getSnapshot().tasks[0].status).toBe('review')
+  })
+
+  it('a WAITING related session still outranks a running descendant (official priority order)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('P', false)
+    sessions.setSubagent('C', 'P', true)
+    sessions.setWaiting('P', 'question')
+    seededRunningCard(store, 'P')
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    expect(controller.liveStateOf('task-desc')).toBe('waiting')
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+  })
+
+  it('AC4: a ready list that is missing a related row does NOT leave on the first pass, and leaves on the second', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('P', false)
+    sessions.setSubagent('C', 'P', true)
+    seededRunningCard(store, 'P')
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+    // A lagging snapshot: the parent row vanishes while its child keeps running.
+    // An absent row is not evidence — the FIRST incomplete pass must not write.
+    sessions.forget('P')
+    sessions.notifyAll()
+    await flush()
+    await flush()
+    expect(
+      controller.getSnapshot().tasks[0].status,
+      'one absent snapshot never judges: the card keeps 进行中',
+    ).toBe('running')
+    // Second consecutive incomplete pass: the same law reconcile/watchForSettlement
+    // follow (two misses), so a session that truly vanished cannot park a card.
+    sessions.notifyAll()
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status).toBe('review')
+  })
+
+  it('AC4: a list that has NOT ARRIVED never drives a running card out (phase pending)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.phase = 'ready'
+    sessions.setRunning('P', false)
+    sessions.setSubagent('C', 'P', true)
+    // A running card whose ONLY justification is the bound parent's ACTIVITY
+    // (no round, no schedule): its own turn is over, the subagent keeps it
+    // alive — so the row's presence is the whole verdict.
+    const seeded = createTask({ title: '父会话', description: '', prompt: 'run', status: 'running' }, NOW, 'task-desc')
+    store.save([{ ...seeded, binds: [{ kind: 'session' as const, sessionId: 'P' }] }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status, 'the descendant holds the column').toBe('running')
+    expect(controller.getSnapshot().tasks[0].executions, 'no round is fabricated for it').toHaveLength(0)
+    // The list re-reads (reconnect/sleep): phase pending, byId empty.
+    sessions.phase = 'pending'
+    sessions.runningById = {}
+    sessions.notifyAll()
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status, 'no verdict ⇒ no write').toBe('running')
+    // The list arrives and POSITIVELY reports the parent idle: now the card
+    // leaves (a present row is a verdict; a missing one never was).
+    sessions.phase = 'ready'
+    sessions.setRunning('P', false)
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status).toBe('todo')
+  })
+
+  it('KEPT RAW: a running descendant never fabricates an external round on its idle parent', async () => {
+    // The reverse-deadlock boundary, end to end: binding a session whose OWN
+    // turn is idle while a subagent under it runs must not record a round
+    // (that round would be anchored to an old user message and hold the lane).
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('P', false)
+    sessions.setSubagent('C', 'P', true)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    const task = controller.createBoundTask({ kind: 'session', sessionId: 'P' }, { title: '绑定', description: '', prompt: 'p' })!
+    await flush()
+    await flush()
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.executions, 'no ghost round for a turn that never happened').toHaveLength(0)
+    // The card still shows the live truth (the activity leg), just without a
+    // fabricated round.
+    expect(controller.liveStateOf(task.id)).toBe('running')
+  })
+
+  it('a direct steer onto an idle parent stays live while its subagent works (driveLiveStates reads the activity)', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    sessions.setRunning('P', false)
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+      sessionMessage: async () => ({ ok: true as const }),
+    })
+    controller.start()
+    await flush()
+    const task = controller.createTask({ title: '插话', description: '', prompt: 'run' })!
+    await controller.steerComment(task.id, 'P', '继续')
+    await flush()
+    // The steer round is settled at BIRTH and the parent's own turn is idle, so
+    // nothing of the board's own is in flight…
+    const steered = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(steered.executions.some(round => round.direct === true)).toBe(true)
+    expect(steered.status).not.toBe('running')
+    // …and then the subagent the parent summoned starts working: the list
+    // notification drives `driveLiveStates`, whose activity answer is the
+    // descendant — the card joins 进行中 with no open round at all (the state
+    // that used to leave a 进行中 card with no breath).
+    sessions.setSubagent('C', 'P', true)
+    await flush()
+    await flush()
+    const driven = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(controller.liveStateOf(task.id)).toBe('running')
+    expect(driven.status).toBe('running')
+    expect(cardViewModelOf(driven, {}).active, 'column and light agree on the driven card').toBe(true)
+    // The chain ends → the steer's completion lands through the same fallback.
+    sessions.setRunning('C', false)
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.status).toBe('review')
+  })
+
+  it('AC5: the settle/watchdog paths still read the RAW flag (a descendant cannot extend a round)', () => {
+    // Mechanical proof at the source level: the two files whose reads decide a
+    // round's life never reach the activity derivation.
+    const read = (relative: string): string => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8')
+    const execution = read('../src/core/execution.ts')
+    expect(execution).not.toContain('session-activity')
+    expect(execution).not.toContain('session-lineage')
+    expect(execution).not.toContain('sessionActiveOf')
+    expect(execution).not.toContain('liveStateOf')
+    // The lineage rule itself lives in exactly one place (plus the structural
+    // type declarations and the tests that pin it).
+    const sources = ['controller.ts', 'task-live.ts', 'tasks.ts', 'session-activity.ts', 'session-display.ts', 'session-list.ts', 'linked-sessions.ts']
+      .map(name => read(`../src/core/${name}`))
+      .join('\n')
+    expect(sources).not.toContain("origin === 'subagent'")
+    expect(sources).not.toContain('origin !== \'subagent\'')
   })
 })
 

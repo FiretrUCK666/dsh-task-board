@@ -1951,10 +1951,13 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       }).join('；')
                   // Session dots: related sessions (deduped, stable order) with
                   // live waiting > running > idle. Max 3 rendered, +N overflow.
+                  // `sessionActiveOf` is the ONE activity answer (this session's
+                  // turn or a running subagent descendant — the same derivation
+                  // the card's light and the session rows read).
                   const relatedIds = [...controller.relatedSessionIdSet(task)]
                   const dotStateOf = (sessionId: string): 'waiting' | 'running' | 'idle' => {
                     if (controller.pendingInteractionOf(sessionId) !== undefined) return 'waiting'
-                    if (controller.nativeRunningOf(sessionId)) return 'running'
+                    if (controller.sessionActiveOf(sessionId)) return 'running'
                     return 'idle'
                   }
                   const dots = relatedIds.slice(0, 3).map(sessionId => ({ sessionId, state: dotStateOf(sessionId) }))

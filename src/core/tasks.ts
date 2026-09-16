@@ -877,11 +877,21 @@ export function hasCompletedWork(task: TaskRecord): boolean {
  * cancel). Pure so the whole board — live watches, reconciles, watchdogs,
  * spurious-external sweeps — lands in the same column for the same facts.
  * Priority:
- * 1. another lane still open → `running` (the column aggregates sessions);
- * 2. succeeded/failed → `review` (chain/batch incomplete stays `running`);
- * 3. cancelled → keep a parked column as-is; from `running`, return to
+ * 0. another lane still open, or a related session still working → `running`
+ *    (the column and the card's light both read this one fact: a card whose
+ *    session is working must never be written out of 进行中 — the yellow
+ *    border without the breath AND the "settled while the subagent still
+ *    runs" bug are the same disagreement);
+ * 1. succeeded/failed → `review` (chain/batch incomplete stays `running`);
+ * 2. cancelled → keep a parked column as-is; from `running`, return to
  *    `review` when completed work exists (the human gate survives noise),
  *    else `todo` (nothing completed — back to the queue).
+ * `stillWorking` is the ACTIVITY leg (`taskLiveStateOf(...) === 'running'`,
+ * i.e. this session's own turn or a running subagent descendant — see
+ * session-activity.ts). It is a separate parameter from `othersOpen` on
+ * purpose: `othersOpen` counts THIS CARD's other open rounds, while the
+ * activity leg is the native truth about the related sessions. Folding one
+ * into the other is how the two readings drift apart again.
  */
 export function settleColumnOf(
   task: TaskRecord,
@@ -889,8 +899,9 @@ export function settleColumnOf(
   othersOpen: boolean,
   chainIncomplete: boolean,
   batchIncomplete: boolean,
+  stillWorking = false,
 ): TaskStatus {
-  if (othersOpen) return 'running'
+  if (othersOpen || stillWorking) return 'running'
   if (outcome === 'cancelled') {
     if (task.status !== 'running') return task.status
     return hasCompletedWork(task) ? 'review' : 'todo'
@@ -920,6 +931,15 @@ export function settleColumnOf(
  * A cancelled run returns to 'todo' ONLY when the card holds no completed
  * work; with prior success/failure it lands in 'review' (noise must never
  * swallow the human gate — see `settleColumnOf`).
+ *
+ * `stillWorking` is the caller's ACTIVITY leg for the related sessions (own
+ * turn or a running subagent descendant — the one derivation in
+ * session-activity.ts), and it is POSITIVE evidence only: an incomplete
+ * snapshot verdict must not hold a settle (the round has its own turn
+ * evidence; "no verdict" only ever prevents a LEAVE). The ROUND always settles
+ * on its own turn's evidence (I3: a descendant never extends a round's
+ * deadline); what waits for the work to end is the COLUMN, and the sweep that
+ * finally lands it reads the same leg.
  */
 export function settleExecution(
   task: TaskRecord,
@@ -927,6 +947,7 @@ export function settleExecution(
   outcome: 'succeeded' | 'failed' | 'cancelled',
   now: number,
   error: string | undefined,
+  stillWorking = false,
 ): TaskRecord {
   const index = task.executions.findIndex(execution => execution.id === executionId)
   if (index === -1) return task
@@ -958,7 +979,7 @@ export function settleExecution(
   // is not a record of the last round to finish). Refinement never counts:
   // preparation keeps its own column and must not pin execution there.
   const othersOpen = openExecutionRoundsOf({ ...task, executions }).length > 0
-  const status = settleColumnOf(task, outcome, othersOpen, chainIncomplete, batchIncomplete)
+  const status = settleColumnOf(task, outcome, othersOpen, chainIncomplete, batchIncomplete, stillWorking)
   return withStatus({ ...task, executions }, status, now)
 }
 

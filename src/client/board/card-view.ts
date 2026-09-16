@@ -76,7 +76,12 @@ export interface CardViewModel {
   lastResult: 'succeeded' | 'failed' | 'cancelled' | undefined
   queued: number
   unviewedCount: number
-  /** Whether the card breathes (state-bound, independent of unread). */
+  /**
+   * Whether the card breathes: a state-bound fact, independent of unread. True
+   * for waiting / running / refining AND for a card sitting in the 进行中
+   * column (the same `task.status` the yellow border reads), so the border and
+   * the breath are one fact — see {@link cardLightOf}.
+   */
   active: boolean
   /**
    * A task in review whose plain run has settled: the human gate owes an
@@ -140,9 +145,24 @@ export function cardViewModelOf(
   else primary = { kind: 'idle' }
 
   // The light table (see the board's 光效规则表): waiting / running / refining
-  // breathe; queued, failed, review and idle do not. Keep this the ONLY place
-  // the mapping lives — a second copy is how the chip and the light drift.
-  const active = primary.kind === 'waiting' || primary.kind === 'running' || primary.kind === 'refining'
+  // breathe; queued, failed, review and idle do not.
+  //
+  // The card's OWN COLUMN is part of that answer, and it is the SAME fact the
+  // yellow border reads (`data-status={task.status}`): a card in the 进行中
+  // column wears the halo no matter which leg holds it there — an in-flight
+  // round, an armed schedule's gap, or (once the activity derivation landed) a
+  // related session whose own turn paused while the subagent it summoned still
+  // works. Binding the light to the column makes "has the yellow border ⇒ has
+  // the breath" a structural property; the two attributes can no longer
+  // disagree, which is exactly the state the user hit (border on, light off —
+  // the light used to read `executing(task)`, i.e. only ONE of the ways a card
+  // reaches 进行中). Keep this the ONLY place the mapping lives — a second copy
+  // is how the chip and the light drift.
+  const columnRunning = task.status === 'running'
+  const active = columnRunning
+    || primary.kind === 'waiting'
+    || primary.kind === 'running'
+    || primary.kind === 'refining'
 
   const dots: CardSessionDot[] = []
   const ids = opts.sessionIds ?? []

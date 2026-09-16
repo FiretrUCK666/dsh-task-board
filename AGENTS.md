@@ -452,12 +452,12 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   | 任务状态 | 卡片 | 会话行 |
   | --- | --- | --- |
   | 等待（处理/计划确认/提问） | 呼吸（waiting） | 呼吸（waiting） |
-  | 进行中（板内/外源/续跑） | 呼吸（running） | 呼吸（running） |
+  | 进行中（板内/外源/续跑/子代理在跑） | 呼吸（running） | 呼吸（running） |
   | 完善中 | 呼吸（refining） | 无 |
   | 已结束且未读 | 呼吸（未读） | 静默 |
   | 已读已结束 / 空闲 | 静默 | 静默 |
 
-  「进行中」只由状态驱动、与未读无关（`TaskCard` `data-active`）。**未读信号只在卡片呼吸**（`markExecutionViewed`/详情打开清 `task.viewedAt`/`settleRefine` 自清单基线）——会话行不再渲染任何未读指示（点/晕），因为行旁边的卡片已有同一状态的呼吸，双处标记读作重复（用户决策）。外源轮从观察起视为 open（`sessionDisplay` 含 `external === true`）计入轮次集。
+  「进行中」只由状态驱动、与未读无关。卡片上这条判定只有一个出口：`TaskCard` 的 `data-status`（列，黄边读它）与 `data-light`（光，`cardLightOf(view.active, unviewed)` 读它）**读同一事实**——`view.active` 含卡片自身列状态 `task.status === 'running'`，所以「有黄边必有呼吸」是结构性质（`data-light` 之外不存在第二个光属性；历史上那句「黄边来自 `data-active`」是文档落后于 `ce52298`，卡片从来没有 `data-active`）。**未读信号只在卡片呼吸**（`markExecutionViewed`/详情打开清 `task.viewedAt`/`settleRefine` 自清单基线）——会话行不再渲染任何未读指示（点/晕），因为行旁边的卡片已有同一状态的呼吸，双处标记读作重复（用户决策）。外源轮从观察起视为 open（`sessionDisplay` 含 `external === true`）计入轮次集。
 - **拖拽/穿模/控件**：插入条 + 自动滚动 + FLIP 全结构驱动（`drop-position`/`drag-autoscroll`/`use-flip`，跨列先滚入视野；排序只有按住拖拽）；卡片 `overflow:hidden` + 子项 `min-width:0` + 徽标两槽（`card-contract.spec`）；同排控件同级高（28/24px），字号三档，一强调四状态全令牌。
 - **响应式与触屏**：参照 = 表面自身宽度（板 `dsh-tb` 680px / 面板 `dsh-tb-panel` 600px），禁 `@media(max-width)`；compact 列滑轨 + 五等分 tab（短名 + `aria-label` 全名）+ 列身份纯函数换算；板头两档不同机制（`drop-position`/`mobile-contract` 钉死——桌面是 flex 行 + 具名 spacer，右簇靠它弹到末端且**刻意不用 `margin-left: auto`**；具名 grid 只在 compact 档：导航 `"back title cruise"/"state state state"`、工具行 `"modes"/"search"`，拇指栏 relocation 禁重复）；触屏只加隐形人体工学；JS 开关唯一 `useSurfaceNarrow`；会话行三槽具名 grid（可选成员不占固定轨）；滚动跟随一条机制（`use-transcript.tsx`，按"谁被声明为滚动体"判定）；滚动条/内衬单归属（成员至多引用一次）；面板三行网格 + 折叠完整渲染 + 每区最多一滚动体；窄屏锚定弹层换 Dialog；表单行具名 areas + 说明必须可达（`mobile-contract`/`review-page` 双 spec 钉死）。
 - **表单/说明/节奏/加载**：表单行具名 areas + 标签让位（`sectionHead` 恒一行）；说明必须可点可达（禁纯 `title=`）；节奏三宪法（p margin 清零 + gap 声明 / 偏移派生禁手写 ±3px / 可选成员具名落位）；加载三态（读中安静 / 失败行内重试 + 自动退避 / 空态非错）。
@@ -492,7 +492,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 ### 核心层（`src/core/` 纯逻辑 + 关键职责）
 
 - 模块一行：`tasks`（状态机/车道/`newExternalRound`）· `schedule/scheduler`（cron tick）· `cruise`（窗口 v4）· `presets/run-presets` · `automation`（规则 + 就绪）· `colors/session-list/session-display/comment-thread/question-rpc/store` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）。
-- 唯一推导：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定；归档即时同步）。
+- 唯一推导：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定；归档即时同步）+ `session-lineage`/`session-activity`（**会话活跃度**：`own ∨ descendant`，见下条）。
+- **会话活跃度（「还在工作吗」的唯一判定）**：`session-lineage.ts` 按官方 `indexSubagentDescendants` 逐字卷起子代理后代（`origin==='subagent'` 首闸、沿无中断链逐层计提、按被遍历节点自身 `running` 累加、`seen` 环保护；fork 只写 parentId 不写 origin，天然排除），`session-activity.ts` 给出 `own|descendant|idle|unknown` 并封装为按快照引用缓存的 O(1) 索引（`controller.sessionActiveOf` 是唯一对外查询口：卡片会话点、链接行、会话行、详情/复核 state chip 全读它）。**`unknown`**（列表 `phase==='pending'` 或该行缺席）既不得读作 idle 去写台账，也不得读作 active 去长占；离场侧按既有的「两次规则」处理（`conclusiveLiveState`：首个不完整帧只记账，连续第二帧才允许离场）。**裸值边界（改动即反向卡死）**：`execution.ts`（`waitForCommandWork`/`reconcile`/`watchForSettlement`）、`zombieRoundEvent`、active-run 兜底、`cancelSpuriousExternal`、`reconcileBoundTask` 与外源轮检测（`session-activity.ts` 的 `detectExternalTurns`）一律继续读 `byId[id].running` 原值——卷起值只进活性层，否则轮次永不过期、且会产生幽灵外源轮。
 - 原生活动：`session-activity`（外源轮每运行期恰一轮 + wake 双通道 + 锚点去重 + `reconcileBoundTask` 即时同步；消费只认身份不认覆盖——`inBoardTurnOn` 才消费，`hasOpenRoundOn` 永不消费）。
 - 同步域：`board-doc`（作者声明裁决 + 读态单调 max + section 同构）+ `host-sync`（迁移/去抖/SSE+轮询/租约）；用户意图写走 `userEdit` 单一漏斗。
 
@@ -500,7 +501,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 - **多端同步**：真相 = host `BoardDoc`；浏览器乐观写 + 去抖提交 + `applyRemote` 永不回写；单引擎泵（租约；席位 `(held,proto,bootedAt)` 任一半变即通知）；板头引擎指示只在真等待时出现；过旧弹窗显示服务端真实启动时间。细则见 `board-doc.ts`/`host-sync.ts`。
 - **统一会话与评论单轨**：同会话同一线程；排队/插话两态，模式只由用户开关定；图片字节 part 直发、文件 `receiptId`（`toPromptImage`/`toPromptFile`），禁自建桥；线程行显示「含 N 张图片 / M 个文件」；附件条独立成行。
-- **运行态唯一推导**：`task-live` + 相关集；`sessionDisplay(nativeRunning)`；直发轮经 `driveLiveStates` 走同一 `settledFollowUp`；行徽章与卡片列同涨同落。
+- **运行态唯一推导**：`task-live` + 相关集，`live` 腿读**会话活跃度**（`own ∨ descendant`，见核心层「会话活跃度」条），不是裸 `running`；`sessionDisplay(active)`；结算的列门读同一条活跃腿（`settleColumnOf` 的 `stillWorking`，轮的期限不因后代延长）；直发轮经 `driveLiveStates` 走同一 `settledFollowUp`；卡片黄边（`data-status`）与呼吸（`data-light`）同源，行徽章与卡片列同涨同落。
 - **官方 @ 引用**：`reference-source.ts` 唯一桥；子代理会话宿主回 `agent-busy`（官方语义）；插入走官方 mention；失败永不 reject（会话域失败降级板内目录）。
 - **交互卡 + 上下文块**：只订阅 `pendingInteractions`（board 永不注册 waterfall）；carrier 自带 `answer`/`cancel` 时**就卡作答**（`PendingMirror` 身份守卫：只结算当前快照里那一个对象，身份不符即拒，失败留卡报错），数据型 carrier 才降级为跳回原生会话；卡与原生提问卡逐条同形同行为（head 收起/放弃整组、编号或勾选选项 + 推荐徽章 + 自定义答案、上一题/进度/下一题、跳过本题、提交/提交中、就近报错）；todo/用量/goal 读官方 projection（缺面降级）；`SessionContextBlock` 宽行内/窄浮层（240px 封顶）；goal 可操作 strip；有未完成才显示。通知行落点按会话出身分：执行/链接会话进会话面板（rail 自带 force-open + 滚到卡），refine 会话定位完善区（它没有链接面板），approval 只去原生会话；等待行只给前进动作（去回答/去会话/进详情），阻塞读不掉也藏不起。
 - **多源绑定**：`binds` 真相源；session 绑定上卡，workspace 绑定只关联（拖入瞬间按注册表账本快照一次）；隐藏删除进 `removedSessions`（权威非相关门）；再拖回可恢复。

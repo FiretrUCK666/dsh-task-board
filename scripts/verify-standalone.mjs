@@ -154,12 +154,50 @@ for (const file of textFiles) {
   }
 }
 
+/**
+ * The gitignored set, asked of Git once and shared by the source-audit rules
+ * that ask what this repository SHIPS (the emoji rule and the leak audit; a
+ * later rule of the same family reads it too instead of parsing ignores again):
+ * a gitignored file is never committed, never packed and never pushed, so
+ * nothing in it can escape this machine — machine-local scratch of any name is
+ * covered, and a file that stops being ignored is audited again with no edit
+ * here. (Skip-list names are how `.impeccable/critique/` snapshots came to be
+ * scanned at all: they are ignored locally, hold absolute paths by nature, and
+ * cannot ship.)
+ *
+ * When Git cannot answer, the set is null and every file is audited exactly as
+ * before — an environment that cannot resolve ignores must not lose coverage.
+ */
+function ignoredFiles(files) {
+  if (files.length === 0) return null
+  try {
+    const input = files.map((f) => relative(root, f).split(sep).join('/')).join('\n')
+    const out = spawnSync('git', ['check-ignore', '--stdin'], { cwd: root, input, encoding: 'utf8' })
+    if (out.status !== 0 && out.status !== 1) return null
+    return new Set(
+      String(out.stdout ?? '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== '')
+        .map((line) => join(root, line)),
+    )
+  } catch {
+    return null
+  }
+}
+const IGNORED = ignoredFiles(textFiles)
+
 // --- 3. emoji ---------------------------------------------------------------
 
 // eslint-disable-next-line no-control-regex
 const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{2764}\u{1F1E6}-\u{1F1FF}]/u
 for (const file of textFiles) {
   if (file === VERIFY_SELF) continue
+  // Same reasoning as the leak audit: the emoji rule is about what this
+  // repository SHIPS, and a gitignored file ships nowhere. An unresolvable
+  // ignore set (IGNORED === null) falls back to scanning everything, so
+  // coverage is never lost by this skip.
+  if (IGNORED !== null && IGNORED.has(file)) continue
   if (isArtifact(file)) continue // inlined third-party code is not authored here
   const rel = relative(root, file)
   const text = readFileSync(file, 'utf8')
@@ -208,38 +246,6 @@ const REAL_HOME_SPELLINGS = [...new Set([
   REAL_HOME.split(sep).join('\\'),
   REAL_HOME.split(sep).join('\\\\'),
 ])].filter((spelling) => spelling.length > 3)
-
-/**
- * The leak audit is about what can ESCAPE this machine, so it reasons about the
- * distributable set rather than the working tree: a gitignored file is never
- * committed, never packed and never pushed, so nothing in it can leak. Asking
- * Git instead of listing directory names keeps the rule general — local scratch
- * of any name is covered, and a file that stops being ignored is audited again
- * with no edit here. (Skip-list names are how `.impeccable/critique/` snapshots
- * came to be scanned at all: they are ignored locally, hold absolute paths by
- * nature, and cannot ship.)
- *
- * When Git cannot answer, the set is null and every file is audited exactly as
- * before — an environment that cannot resolve ignores must not lose coverage.
- */
-function ignoredFiles(files) {
-  if (files.length === 0) return null
-  try {
-    const input = files.map((f) => relative(root, f).split(sep).join('/')).join('\n')
-    const out = spawnSync('git', ['check-ignore', '--stdin'], { cwd: root, input, encoding: 'utf8' })
-    if (out.status !== 0 && out.status !== 1) return null
-    return new Set(
-      String(out.stdout ?? '')
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line !== '')
-        .map((line) => join(root, line)),
-    )
-  } catch {
-    return null
-  }
-}
-const IGNORED = ignoredFiles(textFiles)
 
 for (const file of textFiles) {
   if (file === VERIFY_SELF) continue // the patterns themselves live here

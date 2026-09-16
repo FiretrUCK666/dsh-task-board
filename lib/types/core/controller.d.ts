@@ -48,7 +48,25 @@ export interface SessionsControllerFace {
             phase?: 'pending' | 'ready';
             /** Host session list rows; used to judge whether an execution session finished. */
             byId: Record<string, {
+                /**
+                 * THE SESSION'S OWN turn flag — the only meaning this field ever has.
+                 * It is deliberately NOT rolled up: the round watchdogs, the settle
+                 * paths and the external-turn detector all ask "did the turn I sent
+                 * finish?", and a rolled-up value answers a different question (see
+                 * session-activity.ts). Surfaces ask the rolled-up question through
+                 * {@link BoardController.sessionActiveOf}.
+                 */
                 running: boolean;
+                /**
+                 * The session this one was spawned from, when the host recorded one.
+                 * Declared here because the lineage rollup reads it: the official
+                 * projection writes it from `parentSessionId` (the board's structural
+                 * row type simply never declared it before). A fork carries a parentId
+                 * too, which is why lineage gates on `origin` first.
+                 */
+                parentId?: string;
+                /** Coarse durable origin; `'subagent'` marks an agent-summoned session. */
+                origin?: 'subagent';
                 /** User interaction the session is blocked on (approval / plan review / question). */
                 pendingInteraction?: PendingInteractionKind;
                 /** The session's real workspace root, when the host recorded one. */
@@ -1295,14 +1313,31 @@ export declare class BoardController {
      */
     applyScheduleNextRun(id: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined, runCount?: number, disable?: boolean): void;
     /**
-     * Jump to an execution's session transcript. Selecting the session changes
-     * `current`, which closes the board (the conversation view takes over).
+     * Jump to an execution's session transcript — every in-board entry
+     * ("查看会话", the notification drawer's 去回答/去会话/进详情) goes through
+     * here. Selecting the session changes `current`, and a selection the board
+     * did not ask for means the user walked away to a native conversation — so
+     * this call marks its own request as the BOARD's pick (see
+     * {@link boardPick}). Without that marker the board would close on its own
+     * navigation the moment the list reports the selection it just made.
+     *
      * Refuses to navigate when the session no longer exists (deleted/archived):
      * navigating a stale id would silently land on a fresh-session screen.
      * @param sessionId - the execution session to open.
      * @returns true when the session exists and the navigation was requested.
      */
     openSession(sessionId: string): boolean;
+    /**
+     * The user picked a session row in the NATIVE sidebar — the DOM probe's
+     * single report (installed by board-mount.tsx, which documents why the
+     * official sessions face cannot express this intent). The user's pick is
+     * the ONE leg that must close the board even when the selection does not
+     * move (the clicked row is already `current`, or it is a conversation the
+     * board itself staged) — the very case the selection-diff leg can never
+     * see. Closing is the whole semantic: the native conversation view takes
+     * over and shows the clicked session, with no refresh.
+     */
+    userSelectedNativeSession(): void;
     /** Re-run a settled task: move it back to 'todo' first, then execute. */
     /**
      * Promote the task and start a fresh round, reporting whether the launch was
@@ -1641,18 +1676,53 @@ export declare class BoardController {
     /** Settle a round with the rule its kind demands: refine rounds keep the
      *  task in its column (settlement of a plain run may move the card). */
     private settleRound;
-    /** Reconcile running tasks and close the board when the user navigates. */
+    /**
+     * Reconcile running tasks and close the board when the user navigates.
+     *
+     * The close decision has TWO legs and neither of them alone is the truth:
+     * - the board's OWN pick (`openSession`) is marked explicitly
+     *   ({@link boardPick}), so the board never closes itself while navigating
+     *   from its own surfaces (execution/linked/refine jumps and the
+     *   notification drawer's 去回答/去会话/进详情);
+     * - a selection movement no board pick accounts for is the user walking away
+     *   to a native conversation — EXCEPT when the arriving selection is a wait
+     *   the board can serve (see {@link waitsOnBoard}): a question that pops
+     *   while the user reads the board must not close it, or the notification
+     *   that caused it would reopen what it just threw away.
+     *
+     * The user's CLICK leg does not live here: a click on the row that is already
+     * `current` moves nothing observable, so it is read at the DOM boundary and
+     * reported through {@link userSelectedNativeSession} (one probe, one
+     * decision point).
+     */
     private onSessionsChanged;
     /**
-     * Whether a session selection belongs to the board's own stage: any related
+     * Whether an arriving selection is a wait the BOARD can serve: one of the
+     * board's own conversations (a related session of some task) that is
+     * blocked on the user right now (approval / plan review / question). Such a
+     * selection keeps the board open — the wait is the board's own subject
+     * matter and its 去回答 entry lives on the board. A user CLICK on that very
+     * row still closes the board: the click leg is the DOM probe, which never
+     * consults this exemption.
+     */
+    private waitsOnBoard;
+    /**
+     * Whether a session is one of the board's own conversations: any related
      * session of any task (execution rounds, binds, the refine session, live
-     * linked rows). The board stages these conversations itself (run / bind /
-     * create), so the list surfacing one as `current` is the board's own echo,
-     * never the user walking away to a native chat. Pure read over the ledger
-     * + linked derivation — no new state, no second judgment.
+     * linked rows) — the related-set read shared with the wait exemption above.
+     * Pure read over the ledger + linked derivation — no new state, no second
+     * judgment. It is NOT a "leave the board alone" verdict by itself: the
+     * board's own picks are marked explicitly and the user's clicks are read at
+     * the DOM boundary, so being staged is no longer what exempts a selection
+     * from closing the board.
      */
     private isBoardStagedSession;
     private lastCurrent;
+    /** The session the board ITSELF just asked the runtime to select (one-shot;
+     *  see {@link openSession} and {@link onSessionsChanged}). This is the
+     *  explicit "the board made this selection" marker — never a time window
+     *  guess. */
+    private boardPick;
     /** Execution ids launched on this page; they settle via their live watch, never list reconciliation. */
     private readonly activeExecutionIds;
     /** One entry per card (the steer round whose completion was already
@@ -1672,6 +1742,16 @@ export declare class BoardController {
      *  running baselines per session, when external rounds were created, and
      *  which sessions' CURRENT run periods are already consumed. */
     private readonly activityBook;
+    /** The list snapshot the activity index below was built from (identity key). */
+    private activitySnapshot;
+    /** Whether that snapshot had arrived (part of the cache key: readiness is
+     *  what turns every activity answer into `unknown`). */
+    private activityReady;
+    /** The activity index for {@link activitySnapshot} — see {@link activity}. */
+    private activityCache;
+    /** Consecutive INCOMPLETE live verdicts per task (see
+     *  {@link conclusiveLiveState}): per-device, memory-only, never persisted. */
+    private readonly incompleteLive;
     /** Latest wake stamp per session (see recordActivityWake): a stamp advance
      *  is a turn the status edge may have missed — the next reconcile pass
      *  re-checks the session even when its running flag did not move. */
@@ -1732,16 +1812,65 @@ export declare class BoardController {
      * settles anything twice (isDirectLike is only true for already-settled
      * direct rounds, and the fallback fires exactly once — status was
      * 'running' before the transition).
+     *
+     * The state it drives from is the ONE activity derivation (this session's
+     * own turn or a running subagent descendant), read through the same
+     * two-pass discipline as the orphan sweep: a steered conversation whose
+     * subagent keeps working stays 进行中, and the completion lands the moment
+     * the whole chain stopped.
      */
     private driveLiveStates;
     /** THE live-state question for one task (card breathing source): waiting >
-     *  running > idle — same single derivation for every surface. The related
-     *  set is the task's OWN sessions (refine + explicit binds + execution
+     *  running > unknown > idle — same single derivation for every surface. The
+     *  related set is the task's OWN sessions (refine + explicit binds + execution
      *  rounds; a workspace bind contributes none), so the card and its rows
      *  always answer the same question from the same set. */
     liveStateOf(taskId: string): TaskLiveState;
-    /** Whether one session is genuinely running right now (the native truth). */
-    nativeRunningOf(sessionId: string): boolean;
+    /**
+     * THE live-state derivation with the controller's three injected facts: the
+     * related set (task-live.ts), the session-activity index (`own` ∨
+     * `descendant` — never the bare flag) and row presence (a related session the
+     * snapshot does not carry leaves the verdict `unknown` instead of inventing
+     * `idle`). Every surface and every exit below calls THIS, so the card's
+     * column, its light, its rows and its leave judgment can never disagree.
+     * @param task - the task to judge.
+     * @param linkedIds - the task's live linked-session ids (the caller's own
+     *   derivation of them; absent = skip that source).
+     */
+    private liveStateFor;
+    /**
+     * THE session-activity index for the CURRENT list snapshot (see
+     * session-activity.ts): `own` / `descendant` / `idle` / `unknown`, built
+     * from the subagent-lineage rollup over `byId` once per snapshot REFERENCE.
+     * Every card and every row asks, so a read must be an O(1) lookup and the
+     * lineage must never be re-walked per query; an old wiring whose
+     * `getSnapshot()` hands back a fresh object each call simply rebuilds
+     * (correct, just not memoized). Readiness rides along: a list that has not
+     * arrived answers `unknown` for every session, never "not working".
+     */
+    private activity;
+    /** Whether one session is genuinely working right now — this session's own
+     *  turn OR a running subagent descendant (the official sidebar's semantics).
+     *  THE query every surface that used to read the bare `running` flag calls:
+     *  the card's session dots, the linked rows, the session list rows, the
+     *  detail and review state chips. It deliberately does NOT drive the round
+     *  watchdogs, the settle paths or the external-turn detector — those ask
+     *  "did MY turn finish?" and must keep reading `byId[id].running` verbatim
+     *  (see the byId declaration and session-activity.ts). */
+    sessionActiveOf(sessionId: string): boolean;
+    /**
+     * The two-pass discipline for an INCOMPLETE live verdict (`'unknown'`: a
+     * related row the snapshot does not carry, or a list that has not arrived).
+     * One incomplete pass is not a verdict — the same law `reconcile`'s `misses`
+     * and `watchForSettlement`'s `idleStreak` already follow ("an absent snapshot
+     * never judges") — so the FIRST incomplete pass leaves the card alone and
+     * only a SECOND CONSECUTIVE one lets the leave judgment run. That is what
+     * keeps a lagging/reconnecting snapshot from writing a working card out of
+     * 进行中 (and persisting it), while a session that truly vanished cannot park
+     * a card there forever. The counter is per-device, memory-only (never
+     * persisted, never synced) and cleared by any conclusive pass.
+     */
+    private conclusiveLiveState;
     /**
      * Every related session of a task (de-duplicated, refine first) — THE one
      * derivation from task-live.ts, consumed by the external-activity scanner,
@@ -1827,18 +1956,35 @@ export declare class BoardController {
      * from this point on. Idempotent: the shared write path re-checks the
      * open-round and turn-anchor guards at write time — a session with a round
      * for this turn is never double-recorded.
+     *
+     * RAW VALUE ON PURPOSE below: this is the external-turn detector's instant
+     * half (it records an external round with `runningSessionId`), and the
+     * detector asks "did THIS session's own turn run?" — never "is anything
+     * under it still working?". Reading the activity rollup here would fabricate
+     * an external round on a session whose own turn is idle while a subagent
+     * descendant runs: the round would be anchored to an old user message and
+     * hold that lane (the ghost-round / thread-duplication machine the audit
+     * flagged). Descendant liveness belongs to the live leg, which reads the
+     * activity derivation.
      */
     private reconcileBoundTask;
     /**
      * The orphan sweep (reconcile Stage 3.5): a `running`-column card with no
-     * justification left (no open round, no live session, no schedule gap)
-     * leaves through the single leave judgment. Covers every orphan the event
-     * paths cannot see — an archived/vanished session whose round lingers, a
-     * spuriously-driven column, any future evidence loss — without adding a
-     * per-cause special case. Direct-steer owners are excluded: their
-     * completion belongs to `driveLiveStates` (one completion per steer, with
-     * the on-complete appointment). A leave lands the card at the top of its
-     * landed column like every other arrival.
+     * justification left (no open round, no active related session, no schedule
+     * gap) leaves through the single leave judgment. Covers every orphan the
+     * event paths cannot see — an archived/vanished session whose round lingers,
+     * a spuriously-driven column, any future evidence loss — without adding a
+     * per-cause special case. Direct-steer owners are excluded: their completion
+     * belongs to `driveLiveStates` (one completion per steer, with the
+     * on-complete appointment). A leave lands the card at the top of its landed
+     * column like every other arrival.
+     *
+     * "No active session" is the ACTIVITY answer, and an INCOMPLETE one (a
+     * related row the snapshot does not carry) is not a verdict: the first such
+     * pass only records the miss, the second consecutive one lets the card leave
+     * (see {@link conclusiveLiveState}) — a lagging snapshot must never write a
+     * working card out of 进行中, and a vanished session must never park it
+     * there forever.
      */
     private sweepOrphanRunning;
     /**

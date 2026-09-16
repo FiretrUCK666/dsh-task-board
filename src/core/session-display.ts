@@ -54,19 +54,20 @@ export function sessionRoundsOf(task: TaskRecord, execution: ExecutionRecord): r
  * @param execution - the execution whose session we're displaying.
  * @param waitingKind - the interaction kind if the session is waiting on the
  *   user (from the controller's pendingInteractionOf); undefined otherwise.
- * @param nativeRunning - the session's NATIVE running flag (the host list).
- *   TRUE means the agent is working right now — no matter which surface
+ * @param active - whether the session is still working right now: its own
+ *   native turn OR a running subagent descendant it summoned (the controller's
+ *   single activity derivation, session-activity.ts — never a locally
+ *   re-derived flag). TRUE means the agent is working, no matter which surface
  *   started the turn (a plain run, a direct steer, a session rule, an
- *   out-of-band native chat). Without it a direct-steer round (settled at
- *   birth) would leave the row dark while the session was genuinely running —
- *   the "插话后卡片/会话行不动" bug. Board open rounds and refine rounds
- *   keep their own semantics below; this only ADDS the native truth.
+ *   out-of-band native chat) and no matter whose turn holds the session. Board
+ *   open rounds and refine rounds keep their own semantics below; this only
+ *   ADDS the native/lineage truth.
  */
 export function sessionDisplay(
   task: TaskRecord,
   execution: ExecutionRecord,
   waitingKind: PendingInteractionKind | undefined,
-  nativeRunning = false,
+  active = false,
 ): SessionDisplay {
   const rounds = sessionRoundsOf(task, execution)
   if (rounds.length === 0) {
@@ -93,13 +94,14 @@ export function sessionDisplay(
   }
 
   // All rounds settled — but the agent is genuinely working right now
-  // (native truth): a direct-steer round is settled at birth, so without
-  // this the session would read as finished while its turn was running.
+  // (native truth: this session's turn, or a subagent descendant it summoned
+  // whose turn is still running). A direct-steer round is settled at birth, so
+  // without this the session would read as finished while its turn ran.
   // A pending interaction still outranks (the human turn is first).
   if (waitingKind !== undefined) {
     return { state: 'waiting', lastActivity: rounds[0].startedAt, waitingKind }
   }
-  if (nativeRunning) {
+  if (active) {
     return { state: 'running', lastActivity: rounds[0].startedAt, waitingKind: undefined }
   }
 

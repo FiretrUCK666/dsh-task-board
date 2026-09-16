@@ -128,7 +128,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // The live state row (shared rail grammar): the run's own outcome chip +
   // its last activity time — THE one state-chip derivation (the review page
   // names the execution result; an open run spins).
-  const session = sessionDisplay(current, execution, waiting, sessionId !== undefined && controller.nativeRunningOf(sessionId))
+  const session = sessionDisplay(current, execution, waiting, sessionId !== undefined && controller.sessionActiveOf(sessionId))
   const stateChip = sessionStateChip(session.state, waiting, 'detail.result.succeeded', 'detail.result.cancelled')
   const updatedAt = formatDateTime(execution.endedAt ?? execution.startedAt)
   // The same gate `approveTask` itself enforces: a card with a round still in flight

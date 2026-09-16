@@ -171,7 +171,7 @@ describe('drop dispatch (the gap the preview promises is the gap the drop takes)
         if (key === 'linkedOf') return () => []
         if (key === 'relatedSessionIdSet') return () => new Set<string>()
         if (key === 'liveStateOf') return () => 'idle'
-        if (key === 'nativeRunningOf') return () => false
+        if (key === 'sessionActiveOf') return () => false
         if (key === 'pendingInteractionOf' || key === 'questionPendingOf') return () => undefined
         if (key === 'sessionTitle') return () => undefined
         if (key === 'boundSourceTitleOf') return () => ''
@@ -397,7 +397,7 @@ describe('session-list drop dispatch (TaskDetail)', () => {
         })
         if (key === 'referenceSessionOf') return () => undefined
         if (key === 'sessionTitle') return () => undefined
-        if (key === 'nativeRunningOf') return () => false
+        if (key === 'sessionActiveOf') return () => false
         if (key === 'pendingInteractionOf') return () => undefined
         if (key === 'sessionLabelsOf') return () => []
         if (key === 'externalKindOf') return () => undefined
@@ -460,7 +460,7 @@ describe('session-list drop dispatch (TaskDetail)', () => {
     // arriving later lands here as a named miss instead of a silent undefined.
     const unhandled = [...asked].filter(key => ![
       'sessionsOf', 'reorderTaskSession', 'getSnapshot', 'referenceSessionOf',
-      'sessionTitle', 'nativeRunningOf', 'pendingInteractionOf', 'sessionLabelsOf',
+      'sessionTitle', 'sessionActiveOf', 'pendingInteractionOf', 'sessionLabelsOf',
       'externalKindOf', 'ts',
     ].includes(String(key)))
     expect(unhandled).toEqual([])

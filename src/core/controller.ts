@@ -19,7 +19,8 @@ import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
-import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage } from './session-activity.ts'
+import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, buildSessionActivity, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage, type SessionActivityIndex } from './session-activity.ts'
+import type { LineageRow } from './session-lineage.ts'
 import { DIRECT_FALLBACK_STATUS, leaveRunningTargetOf, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { normalizeCruiseValue, clampCruiseLimit, CRUISE_LIMIT_MAX } from './board-doc.ts'
 import { withTaskColor } from './colors.ts'
@@ -66,7 +67,25 @@ export interface SessionsControllerFace {
       phase?: 'pending' | 'ready'
       /** Host session list rows; used to judge whether an execution session finished. */
       byId: Record<string, {
+        /**
+         * THE SESSION'S OWN turn flag — the only meaning this field ever has.
+         * It is deliberately NOT rolled up: the round watchdogs, the settle
+         * paths and the external-turn detector all ask "did the turn I sent
+         * finish?", and a rolled-up value answers a different question (see
+         * session-activity.ts). Surfaces ask the rolled-up question through
+         * {@link BoardController.sessionActiveOf}.
+         */
         running: boolean
+        /**
+         * The session this one was spawned from, when the host recorded one.
+         * Declared here because the lineage rollup reads it: the official
+         * projection writes it from `parentSessionId` (the board's structural
+         * row type simply never declared it before). A fork carries a parentId
+         * too, which is why lineage gates on `origin` first.
+         */
+        parentId?: string
+        /** Coarse durable origin; `'subagent'` marks an agent-summoned session. */
+        origin?: 'subagent'
         /** User interaction the session is blocked on (approval / plan review / question). */
         pendingInteraction?: PendingInteractionKind
         /** The session's real workspace root, when the host recorded one. */
@@ -1591,6 +1610,7 @@ export class BoardController {
     const binds = taskBindsOf(task)
     if (binds.length === 0) return []
     const byId = this.deps.sessions.list.getSnapshot().byId
+    const activity = this.activity()
     const rows: LinkedSessionRow[] = []
     const seen = new Set<string>()
     // Permanently removed sessions never re-derive — a deleted source must
@@ -1603,7 +1623,12 @@ export class BoardController {
       })) {
         if (seen.has(row.sessionId) || removed.includes(row.sessionId) || this.archivedOf(row.sessionId)) continue
         seen.add(row.sessionId)
-        rows.push(row)
+        // The row's `running` is the ACTIVITY answer (own turn or a running
+        // subagent descendant — the official sidebar's semantics), applied
+        // here so the linked panel, the unified session list and every other
+        // row consumer read one derivation instead of their own flag check.
+        // The title/workspace/archive derivation above stays what it was.
+        rows.push({ ...row, running: activity.active(row.sessionId) })
       }
     }
     return rows
@@ -1653,7 +1678,7 @@ export class BoardController {
       linked: this.linkedOf(task),
       titleOf: sessionId => this.sessionTitle(sessionId),
       pendingInteractionOf: sessionId => this.pendingInteractionOf(sessionId),
-      nativeRunningOf: sessionId => this.nativeRunningOf(sessionId),
+      sessionActiveOf: sessionId => this.sessionActiveOf(sessionId),
       archivedOf: sessionId => this.archivedOf(sessionId),
       untitledLabel: this.untitledSessionLabel,
     })
@@ -1891,13 +1916,15 @@ export class BoardController {
       // and the breathing agree in the same frame.
       const deletedOpen = task.executions.some(round =>
         round.sessionId === sessionId && round.refine !== true && isOpenRound(round))
-      const byId = this.deps.sessions.list.getSnapshot().byId
-      const live = taskLiveStateOf(
-        shaped,
-        id => byId[id]?.running === true,
-        id => byId[id]?.pendingInteraction,
-        this.linkedOf(shaped).map(row => row.sessionId),
-      )
+      // Immediate leave: the deletion may have swept the card's last running
+      // evidence (its open external round). Read the post-deletion live state
+      // off the CURRENT native snapshot — through the SAME derivation every
+      // other surface reads (activity: own ∨ subagent descendant), so the
+      // column, the border, the chip and the breathing agree in the same
+      // frame. This is a user edit, not a background pass: it reads the
+      // three-valued state directly (no two-pass discipline here — the user
+      // just acted, and an incomplete verdict still keeps the card).
+      const live = this.liveStateFor(shaped, this.linkedOf(shaped).map(row => row.sessionId))
       const target = leaveRunningTargetOf(shaped, live, { ignoreSchedule: deletedOpen })
       if (target === undefined) return shaped
       // Column changes funnel through withStatus (status history appends).
@@ -2569,8 +2596,14 @@ export class BoardController {
   }
 
   /**
-   * Jump to an execution's session transcript. Selecting the session changes
-   * `current`, which closes the board (the conversation view takes over).
+   * Jump to an execution's session transcript — every in-board entry
+   * ("查看会话", the notification drawer's 去回答/去会话/进详情) goes through
+   * here. Selecting the session changes `current`, and a selection the board
+   * did not ask for means the user walked away to a native conversation — so
+   * this call marks its own request as the BOARD's pick (see
+   * {@link boardPick}). Without that marker the board would close on its own
+   * navigation the moment the list reports the selection it just made.
+   *
    * Refuses to navigate when the session no longer exists (deleted/archived):
    * navigating a stale id would silently land on a fresh-session screen.
    * @param sessionId - the execution session to open.
@@ -2581,8 +2614,33 @@ export class BoardController {
       console.warn(`[dsh-task-board] execution session ${sessionId} no longer exists; refusing to navigate`)
       return false
     }
+    // The one-shot is written BEFORE the call: the runtime may notify
+    // synchronously from inside `open()` (the official manager selects and
+    // notifies in one step), and a marker written afterwards would arrive
+    // after the notification already judged the selection as the user's.
+    const before = currentOf(this.deps.sessions)
+    this.boardPick = sessionId
     this.deps.sessions.open(sessionId)
+    // The requested session was ALREADY current: no movement can ever be
+    // observed for this request, so its one-shot is consumed here. Leaving it
+    // set would let it guard a later, unrelated selection of the same id.
+    if (before === sessionId) this.boardPick = undefined
     return true
+  }
+
+  /**
+   * The user picked a session row in the NATIVE sidebar — the DOM probe's
+   * single report (installed by board-mount.tsx, which documents why the
+   * official sessions face cannot express this intent). The user's pick is
+   * the ONE leg that must close the board even when the selection does not
+   * move (the clicked row is already `current`, or it is a conversation the
+   * board itself staged) — the very case the selection-diff leg can never
+   * see. Closing is the whole semantic: the native conversation view takes
+   * over and shows the clicked session, with no refresh.
+   */
+  userSelectedNativeSession(): void {
+    if (this.disposed) return
+    if (this.boardOpen) this.closeBoard()
   }
 
   // --- execution ---------------------------------------------------------------
@@ -3558,7 +3616,25 @@ export class BoardController {
   ): TaskRecord {
     const round = task.executions.find(candidate => candidate.id === executionId)
     if (round?.refine === true) return settleRefine(task, executionId, outcome, this.now(), error)
-    const next = settleExecution(task, executionId, outcome, this.now(), error)
+    // The COLUMN leg of a settle: the round always settles on its own turn's
+    // evidence (never on a descendant's), but the card must not be written out
+    // of 进行中 while a related session is POSITIVELY working — its own turn or
+    // a running subagent descendant (the activity derivation the card's light,
+    // its rows and the leave sweep read). Without this, "the run finished while
+    // the subagent it summoned still works" lands in 待审核 and the light and
+    // the column disagree in the opposite direction.
+    //
+    // Positive evidence only, deliberately: an INCOMPLETE verdict (`unknown` —
+    // a related row the list does not carry) does NOT hold a settle. The
+    // settle already carries its own turn evidence ("this round finished"), and
+    // the missing row says nothing about the round; holding here would delay
+    // every settle whose session left the list page. "No verdict" belongs on
+    // the LEAVE side instead, where it prevents a leave (the sweep's two-pass
+    // discipline) rather than inventing one. The leave side's `live !== 'idle'`
+    // therefore stays the wider predicate — asymmetry on purpose, both stated
+    // once here and in `runningJustificationOf`.
+    const stillWorking = this.liveStateFor(task, this.linkedOf(task).map(row => row.sessionId)) === 'running'
+    const next = settleExecution(task, executionId, outcome, this.now(), error, stillWorking)
     // Permanent settle diagnostic: every "finished but landed in the wrong
     // column" dispute ends here (which round, what outcome, which column).
     if (next !== task) {
@@ -3569,24 +3645,40 @@ export class BoardController {
 
   // --- internals ---------------------------------------------------------------
 
-  /** Reconcile running tasks and close the board when the user navigates. */
+  /**
+   * Reconcile running tasks and close the board when the user navigates.
+   *
+   * The close decision has TWO legs and neither of them alone is the truth:
+   * - the board's OWN pick (`openSession`) is marked explicitly
+   *   ({@link boardPick}), so the board never closes itself while navigating
+   *   from its own surfaces (execution/linked/refine jumps and the
+   *   notification drawer's 去回答/去会话/进详情);
+   * - a selection movement no board pick accounts for is the user walking away
+   *   to a native conversation — EXCEPT when the arriving selection is a wait
+   *   the board can serve (see {@link waitsOnBoard}): a question that pops
+   *   while the user reads the board must not close it, or the notification
+   *   that caused it would reopen what it just threw away.
+   *
+   * The user's CLICK leg does not live here: a click on the row that is already
+   * `current` moves nothing observable, so it is read at the DOM boundary and
+   * reported through {@link userSelectedNativeSession} (one probe, one
+   * decision point).
+   */
   private onSessionsChanged(): void {
     // Background/leftover executions settle through the session list (their
     // conversation snapshots stay cold until opened). Coalesce the burst of
     // list notifications into one reconcile pass instead of fanning out a
     // history read per notification; see scheduleReconcile.
     this.scheduleReconcile()
-    if (!this.boardOpen) return
     const current = currentOf(this.deps.sessions)
-    // A wait that fires WHILE the user watches the board must not close it:
-    // navigating to a built-in selection (a native session the user opened)
-    // closes the board, but a wait arriving on a session the board itself
-    // stages (execution / linked / refine — the board's own conversations,
-    // whose "current" the list may surface while the user reads the board)
-    // keeps it open. Otherwise the exact moment a question pops is the moment
-    // the board vanishes — the notification's 去回答 would reopen what the
-    // wait just closed, every single time.
-    if (current !== this.lastCurrent && !this.isBoardStagedSession(current)) this.closeBoard()
+    // One-shot consumption happens HERE, the single observation point, and
+    // before the boardOpen gate on purpose: a marker that outlived its
+    // notification (the board happened to be closed) must never guard a later
+    // selection.
+    const boardPicked = this.boardPick !== undefined && current === this.boardPick
+    this.boardPick = undefined
+    if (!this.boardOpen) return
+    if (current !== this.lastCurrent && !boardPicked && !this.waitsOnBoard(current)) this.closeBoard()
     this.lastCurrent = current
     // The session list also carries live wait states (approval / plan-review
     // / question) and the review page's session facts (cwd / agent preset).
@@ -3596,12 +3688,29 @@ export class BoardController {
   }
 
   /**
-   * Whether a session selection belongs to the board's own stage: any related
+   * Whether an arriving selection is a wait the BOARD can serve: one of the
+   * board's own conversations (a related session of some task) that is
+   * blocked on the user right now (approval / plan review / question). Such a
+   * selection keeps the board open — the wait is the board's own subject
+   * matter and its 去回答 entry lives on the board. A user CLICK on that very
+   * row still closes the board: the click leg is the DOM probe, which never
+   * consults this exemption.
+   */
+  private waitsOnBoard(sessionId: string | undefined): boolean {
+    if (sessionId === undefined) return false
+    if (this.pendingInteractionOf(sessionId) === undefined) return false
+    return this.isBoardStagedSession(sessionId)
+  }
+
+  /**
+   * Whether a session is one of the board's own conversations: any related
    * session of any task (execution rounds, binds, the refine session, live
-   * linked rows). The board stages these conversations itself (run / bind /
-   * create), so the list surfacing one as `current` is the board's own echo,
-   * never the user walking away to a native chat. Pure read over the ledger
-   * + linked derivation — no new state, no second judgment.
+   * linked rows) — the related-set read shared with the wait exemption above.
+   * Pure read over the ledger + linked derivation — no new state, no second
+   * judgment. It is NOT a "leave the board alone" verdict by itself: the
+   * board's own picks are marked explicitly and the user's clicks are read at
+   * the DOM boundary, so being staged is no longer what exempts a selection
+   * from closing the board.
    */
   private isBoardStagedSession(sessionId: string | undefined): boolean {
     if (sessionId === undefined) return false
@@ -3614,6 +3723,12 @@ export class BoardController {
   }
 
   private lastCurrent: string | undefined = undefined
+
+  /** The session the board ITSELF just asked the runtime to select (one-shot;
+   *  see {@link openSession} and {@link onSessionsChanged}). This is the
+   *  explicit "the board made this selection" marker — never a time window
+   *  guess. */
+  private boardPick: string | undefined = undefined
 
   /** Execution ids launched on this page; they settle via their live watch, never list reconciliation. */
   private readonly activeExecutionIds = new Set<string>()
@@ -3639,6 +3754,18 @@ export class BoardController {
    *  running baselines per session, when external rounds were created, and
    *  which sessions' CURRENT run periods are already consumed. */
   private readonly activityBook: ActivityBook = { running: new Map(), externalSince: new Map(), recorded: new Set() }
+
+  /** The list snapshot the activity index below was built from (identity key). */
+  private activitySnapshot: object | undefined = undefined
+  /** Whether that snapshot had arrived (part of the cache key: readiness is
+   *  what turns every activity answer into `unknown`). */
+  private activityReady = false
+  /** The activity index for {@link activitySnapshot} — see {@link activity}. */
+  private activityCache: SessionActivityIndex | undefined = undefined
+
+  /** Consecutive INCOMPLETE live verdicts per task (see
+   *  {@link conclusiveLiveState}): per-device, memory-only, never persisted. */
+  private readonly incompleteLive = new Map<string, number>()
   /** Latest wake stamp per session (see recordActivityWake): a stamp advance
    *  is a turn the status edge may have missed — the next reconcile pass
    *  re-checks the session even when its running flag did not move. */
@@ -3726,6 +3853,10 @@ export class BoardController {
     // says its turn ended. Only an explicit "not running" on a session we can
     // see is evidence.
     if (summary === undefined) return undefined
+    // RAW ON PURPOSE (the b-class read): the round watchdog asks whether the
+    // turn THIS BOARD SENT ended. A rolled-up value would let a long-lived
+    // subagent descendant delay the round's release indefinitely — the very
+    // reverse deadlock the audit proved for execution.ts's settle paths.
     if (summary.running === true) return undefined
     if (summary.pendingInteraction !== undefined) return undefined // waiting on a human is evidence
     return { kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'cancelled', error: 'no turn evidence' }
@@ -3786,6 +3917,10 @@ export class BoardController {
             if (sessionId === undefined) continue // still connecting; never judge
             const list = this.deps.sessions.list.getSnapshot()
             const summary = list.byId[sessionId]
+            // RAW ON PURPOSE: the fallback releases a page-launched run once
+            // THIS session's own turn is done; a descendant must not extend a
+            // round's life (the round lane would stay blocked behind a
+            // continuable subagent).
             const finished = summary !== undefined && !summary.running
             const pastGrace = this.now() - execution.startedAt > BoardController.ACTIVE_RECONCILE_GRACE_MS
             if (!(finished && pastGrace)) continue
@@ -3896,9 +4031,14 @@ export class BoardController {
    * settles anything twice (isDirectLike is only true for already-settled
    * direct rounds, and the fallback fires exactly once — status was
    * 'running' before the transition).
+   *
+   * The state it drives from is the ONE activity derivation (this session's
+   * own turn or a running subagent descendant), read through the same
+   * two-pass discipline as the orphan sweep: a steered conversation whose
+   * subagent keeps working stays 进行中, and the completion lands the moment
+   * the whole chain stopped.
    */
   private driveLiveStates(linked?: ReadonlyArray<{ task: TaskRecord; ids: readonly string[] }>): boolean {
-    const byId = this.deps.sessions.list.getSnapshot().byId
     const linkedIdsOf = (taskId: string): readonly string[] | undefined =>
       linked?.find(entry => entry.task.id === taskId)?.ids
     let changed = false
@@ -3911,12 +4051,7 @@ export class BoardController {
       // on-complete appointment below) vanished with it.
       const latest = newestDirectLike(task)
       if (latest === undefined) continue
-      const live = taskLiveStateOf(
-        task,
-        sessionId => byId[sessionId]?.running === true,
-        sessionId => byId[sessionId]?.pendingInteraction,
-        linkedIdsOf(task.id),
-      )
+      const live = this.conclusiveLiveState(task.id, this.liveStateFor(task, linkedIdsOf(task.id)))
       const now = this.now()
       if (live === 'running') {
         if (task.status !== 'running') {
@@ -3955,25 +4090,106 @@ export class BoardController {
   }
 
   /** THE live-state question for one task (card breathing source): waiting >
-   *  running > idle — same single derivation for every surface. The related
-   *  set is the task's OWN sessions (refine + explicit binds + execution
+   *  running > unknown > idle — same single derivation for every surface. The
+   *  related set is the task's OWN sessions (refine + explicit binds + execution
    *  rounds; a workspace bind contributes none), so the card and its rows
    *  always answer the same question from the same set. */
   liveStateOf(taskId: string): TaskLiveState {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return 'idle'
+    return this.liveStateFor(task, this.linkedOf(task).map(row => row.sessionId))
+  }
+
+  /**
+   * THE live-state derivation with the controller's three injected facts: the
+   * related set (task-live.ts), the session-activity index (`own` ∨
+   * `descendant` — never the bare flag) and row presence (a related session the
+   * snapshot does not carry leaves the verdict `unknown` instead of inventing
+   * `idle`). Every surface and every exit below calls THIS, so the card's
+   * column, its light, its rows and its leave judgment can never disagree.
+   * @param task - the task to judge.
+   * @param linkedIds - the task's live linked-session ids (the caller's own
+   *   derivation of them; absent = skip that source).
+   */
+  private liveStateFor(task: TaskRecord, linkedIds?: readonly string[]): TaskLiveState {
     const byId = this.deps.sessions.list.getSnapshot().byId
+    const activity = this.activity()
     return taskLiveStateOf(
       task,
-      sessionId => byId[sessionId]?.running === true,
+      sessionId => activity.active(sessionId),
       sessionId => byId[sessionId]?.pendingInteraction,
-      this.linkedOf(task).map(row => row.sessionId),
+      {
+        ...linkedIds !== undefined ? { linkedSessionIds: linkedIds } : {},
+        // Readiness is part of "known", stated explicitly: the activity index
+        // answers `unknown` for EVERY session while the list has not arrived,
+        // so the presence fact must agree — otherwise a stale row left over
+        // from an old read could be folded into `idle` and a leave judgment
+        // would run on a snapshot no one vouches for. Every caller already
+        // gates on `sessionsReady()` first, so this only makes the implicit
+        // premise explicit (no behavior change on the official wiring).
+        isKnownOf: sessionId => activity.ready && byId[sessionId] !== undefined,
+      },
     )
   }
 
-  /** Whether one session is genuinely running right now (the native truth). */
-  nativeRunningOf(sessionId: string): boolean {
-    return this.deps.sessions.list.getSnapshot().byId[sessionId]?.running === true
+  /**
+   * THE session-activity index for the CURRENT list snapshot (see
+   * session-activity.ts): `own` / `descendant` / `idle` / `unknown`, built
+   * from the subagent-lineage rollup over `byId` once per snapshot REFERENCE.
+   * Every card and every row asks, so a read must be an O(1) lookup and the
+   * lineage must never be re-walked per query; an old wiring whose
+   * `getSnapshot()` hands back a fresh object each call simply rebuilds
+   * (correct, just not memoized). Readiness rides along: a list that has not
+   * arrived answers `unknown` for every session, never "not working".
+   */
+  private activity(): SessionActivityIndex {
+    const list = this.deps.sessions.list.getSnapshot()
+    const ready = this.sessionsReady()
+    if (this.activityCache !== undefined && this.activitySnapshot === list && this.activityReady === ready) {
+      return this.activityCache
+    }
+    const built = buildSessionActivity(
+      list.byId as Readonly<Record<string, LineageRow | undefined>>,
+      ready,
+    )
+    this.activitySnapshot = list
+    this.activityReady = ready
+    this.activityCache = built.activity
+    return built.activity
+  }
+
+  /** Whether one session is genuinely working right now — this session's own
+   *  turn OR a running subagent descendant (the official sidebar's semantics).
+   *  THE query every surface that used to read the bare `running` flag calls:
+   *  the card's session dots, the linked rows, the session list rows, the
+   *  detail and review state chips. It deliberately does NOT drive the round
+   *  watchdogs, the settle paths or the external-turn detector — those ask
+   *  "did MY turn finish?" and must keep reading `byId[id].running` verbatim
+   *  (see the byId declaration and session-activity.ts). */
+  sessionActiveOf(sessionId: string): boolean {
+    return this.activity().active(sessionId)
+  }
+
+  /**
+   * The two-pass discipline for an INCOMPLETE live verdict (`'unknown'`: a
+   * related row the snapshot does not carry, or a list that has not arrived).
+   * One incomplete pass is not a verdict — the same law `reconcile`'s `misses`
+   * and `watchForSettlement`'s `idleStreak` already follow ("an absent snapshot
+   * never judges") — so the FIRST incomplete pass leaves the card alone and
+   * only a SECOND CONSECUTIVE one lets the leave judgment run. That is what
+   * keeps a lagging/reconnecting snapshot from writing a working card out of
+   * 进行中 (and persisting it), while a session that truly vanished cannot park
+   * a card there forever. The counter is per-device, memory-only (never
+   * persisted, never synced) and cleared by any conclusive pass.
+   */
+  private conclusiveLiveState(taskId: string, live: TaskLiveState): TaskLiveState {
+    if (live !== 'unknown') {
+      this.incompleteLive.delete(taskId)
+      return live
+    }
+    const misses = (this.incompleteLive.get(taskId) ?? 0) + 1
+    this.incompleteLive.set(taskId, misses)
+    return misses >= 2 ? 'idle' : 'unknown'
   }
 
   /**
@@ -4138,6 +4354,10 @@ export class BoardController {
       this.activityBook.recorded.add(sessionId)
       this.recordExternalRound(task.id, sessionId, candidate.refine, turn)
     }
+    // RAW ON PURPOSE: the baseline mirrors the session's OWN turn — this frame
+    // reported a native user turn FOR this session, and the run-period
+    // bookkeeping ("one round per running period") is keyed on that, never on
+    // a descendant's activity.
     if (related) this.activityBook.running.set(sessionId, true)
   }
 
@@ -4199,6 +4419,16 @@ export class BoardController {
    * from this point on. Idempotent: the shared write path re-checks the
    * open-round and turn-anchor guards at write time — a session with a round
    * for this turn is never double-recorded.
+   *
+   * RAW VALUE ON PURPOSE below: this is the external-turn detector's instant
+   * half (it records an external round with `runningSessionId`), and the
+   * detector asks "did THIS session's own turn run?" — never "is anything
+   * under it still working?". Reading the activity rollup here would fabricate
+   * an external round on a session whose own turn is idle while a subagent
+   * descendant runs: the round would be anchored to an old user message and
+   * hold that lane (the ghost-round / thread-duplication machine the audit
+   * flagged). Descendant liveness belongs to the live leg, which reads the
+   * activity derivation.
    */
   private async reconcileBoundTask(taskId: string): Promise<void> {
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -4213,6 +4443,7 @@ export class BoardController {
     // pass after this records them through the normal channel.
     let leftover = false
     for (const session of this.relatedSessionsOf(task)) {
+      // RAW (see above): the bare own-turn flag, verbatim.
       const current = byId[session.sessionId]?.running ?? false
       this.activityBook.running.set(session.sessionId, current)
       if (!current) {
@@ -4260,14 +4491,21 @@ export class BoardController {
 
   /**
    * The orphan sweep (reconcile Stage 3.5): a `running`-column card with no
-   * justification left (no open round, no live session, no schedule gap)
-   * leaves through the single leave judgment. Covers every orphan the event
-   * paths cannot see — an archived/vanished session whose round lingers, a
-   * spuriously-driven column, any future evidence loss — without adding a
-   * per-cause special case. Direct-steer owners are excluded: their
-   * completion belongs to `driveLiveStates` (one completion per steer, with
-   * the on-complete appointment). A leave lands the card at the top of its
-   * landed column like every other arrival.
+   * justification left (no open round, no active related session, no schedule
+   * gap) leaves through the single leave judgment. Covers every orphan the
+   * event paths cannot see — an archived/vanished session whose round lingers,
+   * a spuriously-driven column, any future evidence loss — without adding a
+   * per-cause special case. Direct-steer owners are excluded: their completion
+   * belongs to `driveLiveStates` (one completion per steer, with the
+   * on-complete appointment). A leave lands the card at the top of its landed
+   * column like every other arrival.
+   *
+   * "No active session" is the ACTIVITY answer, and an INCOMPLETE one (a
+   * related row the snapshot does not carry) is not a verdict: the first such
+   * pass only records the miss, the second consecutive one lets the card leave
+   * (see {@link conclusiveLiveState}) — a lagging snapshot must never write a
+   * working card out of 进行中, and a vanished session must never park it
+   * there forever.
    */
   private sweepOrphanRunning(linked: ReadonlyArray<{ task: TaskRecord; ids: readonly string[] }>): boolean {
     // A list that has not arrived is not evidence that a session is gone: with
@@ -4275,7 +4513,6 @@ export class BoardController {
     // would be swept out of 进行中 on the very first pass after a reload. Same
     // law as zombieRoundEvent / cancelSpuriousExternal.
     if (!this.sessionsReady()) return false
-    const byId = this.deps.sessions.list.getSnapshot().byId
     const linkedIdsOf = (taskId: string): readonly string[] | undefined =>
       linked.find(entry => entry.task.id === taskId)?.ids
     let changed = false
@@ -4283,12 +4520,7 @@ export class BoardController {
     for (const task of this.tasks) {
       if (task.status !== 'running') continue
       if (newestDirectLike(task) !== undefined) continue
-      const live = taskLiveStateOf(
-        task,
-        sessionId => byId[sessionId]?.running === true,
-        sessionId => byId[sessionId]?.pendingInteraction,
-        linkedIdsOf(task.id),
-      )
+      const live = this.conclusiveLiveState(task.id, this.liveStateFor(task, linkedIdsOf(task.id)))
       const target = leaveRunningTargetOf(task, live)
       if (target === undefined) continue
       const next = withStatus(task, target, now)
@@ -4331,6 +4563,10 @@ export class BoardController {
         const since = this.activityBook.externalSince.get(sessionId) ?? latest.startedAt
         // Absent from a READY list is not evidence of completion (see above).
         if (summary === undefined) continue
+        // RAW ON PURPOSE (the b-class read, same family as session-activity.ts's
+        // detector): the round being cancelled is the observation of ONE native
+        // user turn; rolling up descendants would keep it alive behind a
+        // subagent that has nothing to do with that turn.
         if (summary.running === true || now - since <= EXTERNAL_SETTLE_GRACE_MS) continue
         const next = this.settleRound(task, latest.id, 'cancelled', undefined)
         if (next !== task) {

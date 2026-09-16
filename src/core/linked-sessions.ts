@@ -23,13 +23,20 @@
 import type { TaskRecord } from './tasks.ts'
 import type { PendingInteractionKind } from './controller.ts'
 
-/** The subset of a native session row the derivation reads. */
+/** The subset of a native session row the derivation reads. The controller
+ *  supplies `running` as the session's ACTIVITY answer (its own turn or a
+ *  running subagent descendant — the one derivation in session-activity.ts),
+ *  never the bare flag: a session whose own turn paused while the subagent it
+ *  summoned keeps working still renders as working, exactly like the official
+ *  sidebar. */
 export interface LinkedSessionSource {
   title?: string
   /** The session's workspace directory path (its folder label derives from it). */
   cwd?: string
   /** Empty-log placeholder (a blank session is a "New Session" slot, not a conversation). */
   blank: boolean
+  /** Whether the session is still working (activity: own turn ∨ running
+   *  subagent descendant), as resolved by the caller. */
   running: boolean
   pendingInteraction?: PendingInteractionKind
   completed?: boolean
@@ -43,6 +50,7 @@ export interface LinkedSessionRow {
   title: string
   /** The workspace folder label (cwd's last segment), when the cwd is known. */
   workspaceLabel?: string
+  /** Whether the session is still working (see {@link LinkedSessionSource.running}). */
   running: boolean
   pendingInteraction?: PendingInteractionKind
   completed: boolean

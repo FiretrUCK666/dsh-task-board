@@ -4257,7 +4257,22 @@ button.interactionOption:focus-visible,
    with `data-fresh` for one frame batch — a re-rendered old card never
    replays it. Suppressed while dragging (the drop settle is FLIP's moment)
    and under reduced motion (the block below strips decorative entrances),
-   same as the board mount. */
+   same as the board mount.
+
+   ONE known cascade with the card's light, stated here so it is not
+   rediscovered as a bug: this rule and `.card[data-light='halo']` (above)
+   have the SAME specificity (0,2,0) and BOTH set the `animation` property,
+   and this one sits LATER in the sheet — so for the one frame batch that
+   carries `data-fresh` (a couple of frames, roughly 32ms) a just-arrived
+   card plays the entrance instead of its halo, and the halo resumes the
+   moment FLIP removes the attribute (use-flip.ts). That overlap is
+   pre-existing, bounded and self-healing: it delays the breath of a
+   brand-new card by one frame batch, it never changes WHICH light the card
+   wears (the view model decides that, once), and it cannot leave a card
+   dark — the `data-light` rules are the only other writers of `animation`.
+   Deliberately not "fixed" with `:where()`/`!important`: that would trade
+   this bounded, self-healing overlap for a permanent ordering rule nobody
+   can see. */
 .card[data-fresh] {
   animation: dshTbBoardIn 160ms ease;
 }

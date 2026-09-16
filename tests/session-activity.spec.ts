@@ -7,7 +7,10 @@
  * never re-firing a completed turn.
  */
 import { describe, expect, it } from 'vitest'
-import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, detectExternalTurns, latestUserMessage, nativeTurnOf, withinGrace, type ActivityBook } from '../src/core/session-activity.ts'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, buildSessionActivity, detectExternalTurns, latestUserMessage, nativeTurnOf, withinGrace, type ActivityBook } from '../src/core/session-activity.ts'
+import type { LineageRow } from '../src/core/session-lineage.ts'
 
 const TASK = 't-1'
 const SESSION = 's-1'
@@ -157,5 +160,104 @@ describe('nativeTurnOf', () => {
     expect(nativeTurnOf({ type: 'user/message', data: { source: { kind: 'injected' }, content: [] } })).toBeUndefined()
     expect(nativeTurnOf(null)).toBeUndefined()
     expect(nativeTurnOf('junk')).toBeUndefined()
+  })
+})
+
+/**
+ * THE activity layer of the same module: "is this session still working?"
+ * (own turn ∨ running subagent descendant), three-valued so "no verdict" can
+ * never be read as "not working". The detector tests above stay RAW-value
+ * tests — the two questions must never be merged (see the last block).
+ */
+describe('sessionActivityOf / sessionActiveOf / buildSessionActivity (the one activity derivation)', () => {
+  const rows = (spec: Record<string, [boolean, string | undefined, 'subagent' | undefined]>): Record<string, LineageRow> => {
+    const out: Record<string, LineageRow> = {}
+    for (const [id, [running, parentId, origin]] of Object.entries(spec)) {
+      out[id] = {
+        running,
+        ...parentId !== undefined ? { parentId } : {},
+        ...origin !== undefined ? { origin } : {},
+      }
+    }
+    return out
+  }
+  const index = (spec: Parameters<typeof rows>[0], ready = true) =>
+    buildSessionActivity(rows(spec), ready).activity
+
+  it('own turn ⇒ own (the active flag is the same value)', () => {
+    const activity = index({ P: [true, undefined, undefined] })
+    expect(activity.activityOf('P')).toBe('own')
+    expect(activity.active('P')).toBe(true)
+  })
+
+  it('own turn stopped, subagent descendant running ⇒ descendant, and ACTIVE', () => {
+    // THE reported case: the parent's own turn is over while the subagent it
+    // summoned keeps working. The official sidebar calls this still working.
+    const activity = index({ P: [false, undefined, undefined], C: [true, 'P', 'subagent'] })
+    expect(activity.activityOf('P')).toBe('descendant')
+    expect(activity.active('P')).toBe(true)
+    expect(activity.descendantRunningCount('P')).toBe(1)
+    // The child answers for its own turn.
+    expect(activity.activityOf('C')).toBe('own')
+  })
+
+  it('all descendants finished ⇒ idle (the rollback)', () => {
+    const activity = index({ P: [false, undefined, undefined], C: [false, 'P', 'subagent'] })
+    expect(activity.activityOf('P')).toBe('idle')
+    expect(activity.active('P')).toBe(false)
+    expect(activity.descendantRunningCount('P')).toBe(0)
+  })
+
+  it('a fork never makes its source active (origin is the first gate)', () => {
+    const activity = index({ P: [false, undefined, undefined], F: [true, 'P', undefined] })
+    expect(activity.activityOf('P')).toBe('idle')
+  })
+
+  it('a row missing from a READY snapshot is UNKNOWN — never idle, never active', () => {
+    // The host list is the only truth: an absent row cannot tell "the work
+    // stopped" from "the session is not in this page".
+    const activity = index({})
+    expect(activity.activityOf('GONE')).toBe('unknown')
+    expect(activity.active('GONE')).toBe(false)
+  })
+
+  it('a list that has NOT ARRIVED testifies about nothing (every answer unknown)', () => {
+    const activity = index({ P: [true, undefined, undefined] }, false)
+    expect(activity.ready).toBe(false)
+    expect(activity.activityOf('P')).toBe('unknown')
+    expect(activity.active('P')).toBe(false)
+  })
+
+  it('an archived descendant still counts (the official rollup filters no archives)', () => {
+    // Archive is a display concern of the registry, never an input here: the
+    // row still says a subagent is running, so the ancestor is active. The
+    // board must not cache an archive conclusion into activity (it is
+    // reversible — un-archiving restores the session).
+    const activity = index({ P: [false, undefined, undefined], C: [true, 'P', 'subagent'] })
+    expect(activity.active('P')).toBe(true)
+  })
+})
+
+describe('the detector keeps reading the RAW turn flag (activity never feeds it)', () => {
+  it('a running DESCENDANT does not fire an external round for its idle parent', () => {
+    // The reverse-deadlock guard: rolling descendants into the detector would
+    // fabricate a round on the parent (anchored to an old user message) and
+    // hold its lane. The detector must see the parent's own flag only.
+    const b = book()
+    const parent = { taskId: TASK, candidate: { sessions: [{ sessionId: 'P', refine: false }], hasOpenRoundOn: () => false, inBoardTurnOn: () => false } }
+    const byIdRaw = { P: { running: false }, C: { running: true, parentId: 'P', origin: 'subagent' as const } }
+    expect(detectExternalTurns([parent], b, byIdRaw)).toEqual([])
+  })
+
+  it('the source pins that read: the detector reads byId[...].running and never the activity read', () => {
+    // A text-level contract, because the two live in one module: the detector
+    // body must contain the raw read and must not call the activity helpers.
+    const source = readFileSync(fileURLToPath(new URL('../src/core/session-activity.ts', import.meta.url)), 'utf8')
+    const body = source.slice(source.indexOf('export function detectExternalTurns'))
+      .slice(0, source.slice(source.indexOf('export function detectExternalTurns')).indexOf('\n}'))
+    expect(body).toContain('byId[session.sessionId]?.running')
+    expect(body).not.toContain('sessionActiveOf')
+    expect(body).not.toContain('sessionActivityOf')
+    expect(body).not.toContain('buildSessionActivity')
   })
 })

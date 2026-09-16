@@ -334,7 +334,24 @@ export interface SessionListSummary {
     cwd?: string;
     /** The workspace id the host attributes the session to, when known. */
     workspaceId?: string;
+    /**
+     * THE SESSION'S OWN turn flag — the official projection's meaning, and the
+     * only one this field ever has. Surfaces ask "is anything still working?"
+     * through the activity derivation (session-activity.ts), which is the only
+     * place that rolls subagent descendants up; the settle/watchdog paths keep
+     * reading this value verbatim.
+     */
     running: boolean;
+    /**
+     * The session this one was spawned from (`parentSessionId` on the wire).
+     * Declared because the lineage rollup reads it — a subagent's session row
+     * carries it, and the rollup walks that link up to the turn that summoned
+     * it. A fork also carries one (and no `origin`), which is why lineage gates
+     * on `origin` FIRST.
+     */
+    parentId?: SessionId;
+    /** Coarse durable origin (`'subagent'` marks an agent-summoned session). */
+    origin?: 'subagent';
     completed?: boolean;
     /** Host "never started" flag: only a blank session may be reused for a run. */
     blank?: boolean;

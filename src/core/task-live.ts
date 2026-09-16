@@ -8,11 +8,16 @@
  * settled at birth so NOTHING ever reflected that the session was truly
  * running.
  *
- * The truth source is the NATIVE session list: a related session whose
- * `running === true` means the agent is working right now — no matter which
- * surface started it (board execution, direct steer, a session rule, an
- * out-of-band native chat). Board rounds stay authoritative for their own
- * settle events; this module only answers the live question.
+ * The truth source is the NATIVE session list, read through ONE activity
+ * derivation: a related session is working right now when its OWN turn runs
+ * OR when a subagent-origin descendant it summoned is still running
+ * (session-activity.ts / session-lineage.ts — the official sidebar's
+ * semantics). That covers every way work can still be in flight no matter
+ * which surface started it (board execution, direct steer, a session rule, an
+ * out-of-band native chat, a subagent continuing after its parent's turn
+ * paused). Board rounds stay authoritative for their own settle events; this
+ * module only answers the live question — and the callers pass the activity
+ * reader in, never a locally re-derived flag.
  *
  * "Related" is defined ONCE here: the refine session, every bound session
  * source, every execution-round session and every live linked (workspace)
@@ -24,8 +29,20 @@
 import type { ExecutionRecord, TaskRecord, TaskStatus } from './tasks.ts'
 import { openExecutionRoundsOf, settleColumnOf, taskBindsOf, taskExecutable } from './tasks.ts'
 
-/** The live question's answer. */
-export type TaskLiveState = 'running' | 'waiting' | 'idle'
+/**
+ * The live question's answer.
+ * - `running` — some related session is working (its own turn or a running
+ *   subagent descendant — see session-activity.ts);
+ * - `waiting` — some related session waits on the user (approval / plan review
+ *   / question); the human's turn outranks everything;
+ * - `idle` — every related session is PRESENT and provably not working;
+ * - `unknown` — no verdict: a related row is missing from the snapshot (or the
+ *   list has not arrived). It is deliberately NOT `idle`: an absent row cannot
+ *   tell "the work stopped" from "the session is not in this list", and the
+ *   exits that write the column must not treat it as evidence (see
+ *   {@link leaveRunningTargetOf} and the controller's two-pass discipline).
+ */
+export type TaskLiveState = 'running' | 'waiting' | 'idle' | 'unknown'
 
 /** The classify facts a caller supplies for the derived set's rows. */
 export interface RelatedSessionFact {
@@ -80,26 +97,49 @@ export function relatedSessionIdsOf(task: TaskRecord, linkedSessionIds?: readonl
  * The one live-state derivation:
  * - waiting — any related session is pending on the user (approval /
  *   plan-review / question); the human's turn outranks everything;
- * - running — any related session reports `running` (the agent is working);
- * - idle — otherwise.
+ * - running — any related session is ACTIVE (its own turn, or a subagent
+ *   descendant it summoned — the session-activity derivation, never a second
+ *   reading of the bare flag);
+ * - unknown — nothing is active AND at least one related row is missing from
+ *   the snapshot: no verdict (see `TaskLiveState`);
+ * - idle — otherwise: every related session is present and not working.
  * Sources are injected callbacks so the module stays framework-free and
  * unit-testable; the controller wires the native list snapshot.
+ * @param task - the task owning the sessions.
+ * @param isActiveOf - whether a session is still working (activity: own ∨
+ *   descendant — `sessionActiveOf` from session-activity.ts).
+ * @param waitingOf - the session's pending interaction, if any.
+ * @param opts.linkedSessionIds - the task's live linked-session ids.
+ * @param opts.isKnownOf - whether a session's row is PRESENT in the snapshot.
+ *   Absent (old wirings, fakes) = every related session counts as known, which
+ *   is exactly the pre-`unknown` behavior — a judge never invents a verdict it
+ *   cannot support, but a caller that cannot testify about presence must not
+ *   hold the card hostage either.
  */
 export function taskLiveStateOf(
   task: TaskRecord,
-  isRunningOf: (sessionId: string) => boolean,
+  isActiveOf: (sessionId: string) => boolean,
   waitingOf: (sessionId: string) => unknown,
-  linkedSessionIds?: readonly string[],
+  opts: {
+    linkedSessionIds?: readonly string[]
+    isKnownOf?: (sessionId: string) => boolean
+  } = {},
 ): TaskLiveState {
-  const sessions = relatedSessionIdsOf(task, linkedSessionIds)
+  const sessions = relatedSessionIdsOf(task, opts.linkedSessionIds)
   for (const { sessionId } of sessions) {
     const waiting = waitingOf(sessionId)
     if (waiting !== undefined && waiting !== null) return 'waiting'
   }
+  let incomplete = false
   for (const { sessionId } of sessions) {
-    if (isRunningOf(sessionId)) return 'running'
+    if (isActiveOf(sessionId)) return 'running'
+    // No positive evidence yet: an absent row leaves the verdict open instead
+    // of reading as "it stopped" — a card must never be written out of 进行中
+    // on a row the snapshot simply does not carry (the reconcile/watchFor
+    // Settlement "an absent snapshot never judges" law).
+    if (opts.isKnownOf !== undefined && !opts.isKnownOf(sessionId)) incomplete = true
   }
-  return 'idle'
+  return incomplete ? 'unknown' : 'idle'
 }
 
 /**
@@ -112,7 +152,13 @@ export function taskLiveStateOf(
  * One three-way justification, read in order:
  * - `'open'` — an in-flight execution round (refinement excluded, same law
  *   as the column gate): real work is still running on this card;
- * - `'live'` — a related session genuinely working right now (native truth);
+ * - `'live'` — a related session genuinely working right now (native truth:
+ *   its own turn OR a running subagent descendant). `'unknown'` lands here
+ *   too, deliberately: with no verdict the card keeps its column (leaving on
+ *   an incomplete snapshot is how a working card gets persisted out of
+ *   进行中), and the controller's two-pass discipline converts a SECOND
+ *   consecutive incomplete pass into `'idle'` before asking — so "no verdict"
+ *   can never hold the column forever;
  * - `'schedule'` — an armed schedule whose next automatic run is still to
  *   come keeps the card parked in `running` between runs (the budgeted
  *   batch/chain gap — the same continuation `settleExecution` grants on a
