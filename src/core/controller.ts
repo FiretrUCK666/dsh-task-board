@@ -3623,10 +3623,22 @@ export class BoardController {
 
   /**
    * The watchdog verdict for one open round: a synthetic `cancelled` settle
-   * when the round is past the deadline and its session is NOT running (or
-   * gone), undefined while any evidence could still arrive (still connecting,
-   * session still working, deadline not reached). Never judges a round whose
-   * session is actively working — a long run is not a zombie.
+   * when the round is past the deadline and its session has POSITIVELY finished
+   * (or is gone), undefined while any evidence could still arrive (still
+   * connecting, session still working, deadline not reached). Never judges a
+   * round whose session is actively working — a long run is not a zombie.
+   *
+   * POSITIVE evidence only, and this is the whole point of the guard. The
+   * session list is a projection that is EMPTY until its first read lands
+   * (`phase: 'pending'`, byId = {}), and on a phone it is re-read after every
+   * sleep, tab switch and reconnect. "This snapshot does not mention the
+   * session" therefore does NOT mean "the session is finished" — it means the
+   * board does not know yet. Reading it as evidence is how a card that was
+   * genuinely working got cancelled and dropped out of 进行中: the round was
+   * recorded from a live turn, then the watchdog killed it on a snapshot that
+   * simply had not arrived. An unknown session is never judged here; the round
+   * stays open (and visibly 进行中) until the list READY and reports it, or
+   * until real turn evidence settles it.
    */
   private zombieRoundEvent(task: TaskRecord, execution: ExecutionRecord): Extract<ExecutionEvent, { kind: 'settled' }> | undefined {
     // Age the round from when its WORK began, not from when it was written
@@ -3646,9 +3658,16 @@ export class BoardController {
       // re-run, with no sweeper that could see it.
       return { kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'cancelled', error: 'run never reached a session' }
     }
+    // The list has to have ARRIVED before it can testify about a session.
+    if (!this.sessionsReady()) return undefined
     const summary = this.deps.sessions.list.getSnapshot().byId[execution.sessionId]
-    if (summary?.running === true) return undefined
-    if (summary !== undefined && summary.pendingInteraction !== undefined) return undefined // waiting on a human is evidence
+    // Absent from a READY list: still not a verdict. A session can be outside
+    // the page the list carries, or archived in the native sidebar — neither
+    // says its turn ended. Only an explicit "not running" on a session we can
+    // see is evidence.
+    if (summary === undefined) return undefined
+    if (summary.running === true) return undefined
+    if (summary.pendingInteraction !== undefined) return undefined // waiting on a human is evidence
     return { kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'cancelled', error: 'no turn evidence' }
   }
 
@@ -4191,6 +4210,11 @@ export class BoardController {
    * landed column like every other arrival.
    */
   private sweepOrphanRunning(linked: ReadonlyArray<{ task: TaskRecord; ids: readonly string[] }>): boolean {
+    // A list that has not arrived is not evidence that a session is gone: with
+    // an empty byId every liveness leg reads false and a genuinely working card
+    // would be swept out of 进行中 on the very first pass after a reload. Same
+    // law as zombieRoundEvent / cancelSpuriousExternal.
+    if (!this.sessionsReady()) return false
     const byId = this.deps.sessions.list.getSnapshot().byId
     const linkedIdsOf = (taskId: string): readonly string[] | undefined =>
       linked.find(entry => entry.task.id === taskId)?.ids
@@ -4228,6 +4252,10 @@ export class BoardController {
    */
   private cancelSpuriousExternal(): boolean {
     const now = this.now()
+    // Same law as the round watchdog: a session list that has not ARRIVED cannot
+    // testify that a session finished. Cancelling on an empty projection is how
+    // a working turn's round got dropped (see zombieRoundEvent).
+    if (!this.sessionsReady()) return false
     const byId = this.deps.sessions.list.getSnapshot().byId
     let changed = false
     for (const task of this.tasks) {
@@ -4241,7 +4269,9 @@ export class BoardController {
         if (latest.external !== true || sessionId === undefined) continue
         const summary = byId[sessionId]
         const since = this.activityBook.externalSince.get(sessionId) ?? latest.startedAt
-        if (summary?.running === true || now - since <= EXTERNAL_SETTLE_GRACE_MS) continue
+        // Absent from a READY list is not evidence of completion (see above).
+        if (summary === undefined) continue
+        if (summary.running === true || now - since <= EXTERNAL_SETTLE_GRACE_MS) continue
         const next = this.settleRound(task, latest.id, 'cancelled', undefined)
         if (next !== task) {
           this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)

@@ -1657,10 +1657,22 @@ export declare class BoardController {
     private static readonly OPEN_ROUND_WATCHDOG_MS;
     /**
      * The watchdog verdict for one open round: a synthetic `cancelled` settle
-     * when the round is past the deadline and its session is NOT running (or
-     * gone), undefined while any evidence could still arrive (still connecting,
-     * session still working, deadline not reached). Never judges a round whose
-     * session is actively working — a long run is not a zombie.
+     * when the round is past the deadline and its session has POSITIVELY finished
+     * (or is gone), undefined while any evidence could still arrive (still
+     * connecting, session still working, deadline not reached). Never judges a
+     * round whose session is actively working — a long run is not a zombie.
+     *
+     * POSITIVE evidence only, and this is the whole point of the guard. The
+     * session list is a projection that is EMPTY until its first read lands
+     * (`phase: 'pending'`, byId = {}), and on a phone it is re-read after every
+     * sleep, tab switch and reconnect. "This snapshot does not mention the
+     * session" therefore does NOT mean "the session is finished" — it means the
+     * board does not know yet. Reading it as evidence is how a card that was
+     * genuinely working got cancelled and dropped out of 进行中: the round was
+     * recorded from a live turn, then the watchdog killed it on a snapshot that
+     * simply had not arrived. An unknown session is never judged here; the round
+     * stays open (and visibly 进行中) until the list READY and reports it, or
+     * until real turn evidence settles it.
      */
     private zombieRoundEvent;
     /** Settle tasks left 'running' whose sessions already finished. */

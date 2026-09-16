@@ -22,6 +22,9 @@ const flush = (): Promise<void> => new Promise(resolve => { setTimeout(resolve, 
 class FakeSessions {
   current: string | undefined = undefined
   openCalls: string[] = []
+  /** Host list readiness: 'pending' until the first read lands (absent = ready,
+   *  the legacy/fake shape the controller treats as ready). */
+  phase: 'pending' | 'ready' | undefined = undefined
   /** Known session ids; undefined = every id exists (legacy fake behavior). */
   knownIds: Set<string> | undefined = undefined
   /** Native list order (workspace sections); absent = byId insertion order. */
@@ -40,10 +43,12 @@ class FakeSessions {
   list = {
     getSnapshot: (): {
       current: string | undefined
+      phase?: 'pending' | 'ready'
       ids?: readonly string[]
       byId: Record<string, { running: boolean; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string; title?: string }>
     } => ({
       current: this.current,
+      ...this.phase !== undefined ? { phase: this.phase } : {},
       ...this.order !== undefined ? { ids: [...this.order] } : {},
       byId: Object.fromEntries(
         Object.entries(this.runningById).map(([id, running]) => [id, {
@@ -83,6 +88,10 @@ class FakeSessions {
   }
   setCurrent(id: string | undefined): void {
     this.current = id
+    for (const fn of [...this.listeners]) fn()
+  }
+  /** Notify subscribers without changing anything (e.g. the list just arrived). */
+  notifyAll(): void {
     for (const fn of [...this.listeners]) fn()
   }
   /** Set the host-list running flag of a session and notify (list change). */
@@ -925,8 +934,100 @@ describe('run loop', () => {
     expect(store.load()[0].status).toBe('running')
   })
 
-  it('the delivery watchdog releases an open round whose session never produced evidence', async () => {
+  it('a session the LIST DOES NOT MENTION is never evidence that its round ended', async () => {
+    // The reported defect: a card whose session was working on the phone sat in
+    // 待审核 instead of 进行中, and its round came back `cancelled` / 'no turn
+    // evidence'. The watchdog read `byId[sessionId]` as a verdict, but a session
+    // list that does not mention the session is only "the board does not know
+    // yet" — the list is a projection that starts EMPTY (`phase: 'pending'`,
+    // byId = {}) and is re-read after every sleep/tab switch/reconnect, and it
+    // can simply not carry a session that is outside the page it fetches.
+    // Unknown must not equal finished: the round stays open, the card stays
+    // 进行中, and a later pass with a session that IS visible decides.
     let clock = NOW
+    const stub = new StubExec()
+    stub.reconcileResult = undefined
+    const sessions = new FakeSessions()
+    sessions.knownIds = new Set() // a READY list that mentions no session at all
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run', status: 'running' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      executions: [{
+        id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined,
+        error: undefined, external: true, comment: '研究一下', anchor: 11,
+      }],
+    }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => clock, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    clock = NOW + 30 * 60_000 // far past the watchdog deadline
+    await flush()
+    await flush()
+    const kept = store.load()[0]
+    expect(kept.status).toBe('running')
+    expect(kept.executions[0].endedAt, 'an unknown session must not settle the round').toBeUndefined()
+    // …and the sweep must not move the card either.
+    expect(kept.executions[0].result).toBeUndefined()
+  })
+
+  it('a list that has NOT ARRIVED yet testifies about nothing (phase pending)', async () => {
+    // The same law one step earlier: while the list is still loading its byId is
+    // empty, so every liveness leg reads false. A reconcile pass landing in that
+    // window used to cancel the round, drop the card out of 进行中 and leave it
+    // there — the exact "session is working, card is not 进行中" report.
+    //
+    // The pass has to actually RUN while the list is pending for this to test
+    // anything, so the sequence is: boot READY (the first pass may run), then the
+    // list goes pending (a reload/sleep/reconnect re-read) and a list
+    // notification drives another pass — subscription-driven passes have no
+    // readiness gate of their own.
+    let clock = NOW
+    const stub = new StubExec()
+    stub.reconcileResult = undefined
+    const sessions = new FakeSessions()
+    sessions.phase = 'ready'
+    sessions.runningById['s-1'] = true // genuinely working when the list arrived
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run', status: 'running' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined, external: true, comment: 'hi' }],
+    }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => clock, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    expect(store.load()[0].status, 'the first (ready) pass keeps the working card in place').toBe('running')
+    // The list re-reads: phase pending, byId empty again. Long past the deadline.
+    clock = NOW + 30 * 60_000
+    sessions.phase = 'pending'
+    sessions.runningById = {}
+    sessions.notifyAll()
+    await flush()
+    await flush()
+    await flush()
+    const kept = store.load()[0]
+    expect(kept.status, 'a list that has not arrived must not move the card').toBe('running')
+    expect(kept.executions[0].endedAt, 'nor settle its round').toBeUndefined()
+    // Once the list arrives and POSITIVELY reports the session idle, the same
+    // round is released — the watchdog still does its job.
+    sessions.phase = 'ready'
+    sessions.runningById['s-1'] = false
+    sessions.notifyAll()
+    await flush()
+    await flush()
+    await flush()
+    const settled = store.load()[0]
+    expect(settled.executions[0].result).toBe('cancelled')
+  })
+
+  it('the delivery watchdog releases an open round whose session never produced evidence', async () => {    let clock = NOW
     const stub = new StubExec()
     stub.reconcileResult = undefined // no turn evidence, ever
     const sessions = new FakeSessions()
