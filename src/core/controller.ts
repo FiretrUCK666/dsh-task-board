@@ -27,7 +27,7 @@ import { LocalStoragePresetStore } from './presets.ts'
 import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents.ts'
 import { LocalStorageTemplateStore, templateFromTask, templateToNewInput } from './task-templates.ts'
 import { LocalStorageRunPresetStore } from './run-presets.ts'
-import { taskSessionsOf, type TaskSessionRow } from './session-list.ts'
+import { hiddenSessionIdsOf, taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVerbs } from './goal-verbs.ts'
 import type { TaskStore } from './store.ts'
@@ -2640,18 +2640,38 @@ export class BoardController {
   }
 
   /**
-   * Related-session labels of a task (for the composer's @ mention): the
-   *  task's sessions, each with a native title (falling back to the raw id),
-   *  de-duplicated in related-session order. */
+   * Related-session labels of a task (the composer's @ mention, the session
+   * rule's session picker): the task's sessions, each with a native title
+   * (falling back to the raw id), de-duplicated in related-session order.
+   *
+   * VISIBLE sessions only — the same three gates the card's own session rows
+   * apply (`hiddenSessionIdsOf` / `removedSessions` / `archivedOf`, see
+   * session-list.ts's taskSessionsOf). This set answers "which of this task's
+   * sessions are on the card right now", and every consumer means that: the @
+   * menu must not offer a conversation the user put away, and a session RULE
+   * must not be pointable at one (a rule is an automation aimed at a visible
+   * conversation; offering an archived one invites a rule that fires into
+   * nothing).
+   *
+   * The gate had a hole: the set was built from the RELATED back-set (binds +
+   * execution rounds), which keeps an archived session forever — archiving is
+   * native state that never edits the ledger, and hide/remove never touch the
+   * rounds either. So every session the card had EVER run in stayed on offer,
+   * and a workspace folder dropped on the card (which snapshots its members as
+   * binds) made the list longer still. 「已归了档的还会显示出来」.
+   */
   sessionLabelsOf(taskId: string): Array<{ sessionId: string; title: string }> {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return []
     const byId = this.deps.sessions.list.getSnapshot().byId
+    const hidden = hiddenSessionIdsOf(task)
     const seen = new Set<string>()
     const out: Array<{ sessionId: string; title: string }> = []
     for (const { sessionId } of this.relatedSessionsOf(task)) {
       if (sessionId === undefined || seen.has(sessionId)) continue
       seen.add(sessionId)
+      // The card's three visibility gates, read once, in one place.
+      if (hidden.has(sessionId) || this.archivedOf(sessionId)) continue
       const title = (byId[sessionId] as { title?: unknown } | undefined)?.title
       out.push({ sessionId, title: typeof title === 'string' && title !== '' ? title : sessionId })
     }
@@ -2873,6 +2893,13 @@ export class BoardController {
         if (!rule.enabled || rule.trigger !== 'cron') continue
         if (rule.nextAt === undefined) continue // defensive: no due slot → skip
         if (byId[rule.sessionId] === undefined) continue // session gone: keep due slot
+        // An ARCHIVED session is put away: the same gate the picker and the
+        // card's rows apply. Firing into it would light the card up (the round
+        // lands on a conversation the user cannot see) and un-archive it from
+        // the native sidebar's point of view — a rule must never resurrect a
+        // conversation the user put away. The due slot is kept, so
+        // un-archiving resumes the schedule.
+        if (this.archivedOf(rule.sessionId)) continue
         // The SAME readiness semantics as the task-level schedule: a rule is
         // active only while the task sits in a drivable column. A paused rule
         // keeps its due slot (the pause is a hold, never a drop) and is NOT

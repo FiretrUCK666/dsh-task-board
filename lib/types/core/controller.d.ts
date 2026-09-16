@@ -1320,9 +1320,26 @@ export declare class BoardController {
         error: string;
     }>;
     /**
-     * Related-session labels of a task (for the composer's @ mention): the
-     *  task's sessions, each with a native title (falling back to the raw id),
-     *  de-duplicated in related-session order. */
+     * Related-session labels of a task (the composer's @ mention, the session
+     * rule's session picker): the task's sessions, each with a native title
+     * (falling back to the raw id), de-duplicated in related-session order.
+     *
+     * VISIBLE sessions only — the same three gates the card's own session rows
+     * apply (`hiddenSessionIdsOf` / `removedSessions` / `archivedOf`, see
+     * session-list.ts's taskSessionsOf). This set answers "which of this task's
+     * sessions are on the card right now", and every consumer means that: the @
+     * menu must not offer a conversation the user put away, and a session RULE
+     * must not be pointable at one (a rule is an automation aimed at a visible
+     * conversation; offering an archived one invites a rule that fires into
+     * nothing).
+     *
+     * The gate had a hole: the set was built from the RELATED back-set (binds +
+     * execution rounds), which keeps an archived session forever — archiving is
+     * native state that never edits the ledger, and hide/remove never touch the
+     * rounds either. So every session the card had EVER run in stayed on offer,
+     * and a workspace folder dropped on the card (which snapshots its members as
+     * binds) made the list longer still. 「已归了档的还会显示出来」.
+     */
     sessionLabelsOf(taskId: string): Array<{
         sessionId: string;
         title: string;

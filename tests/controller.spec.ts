@@ -3835,8 +3835,92 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect(row.executions.filter(round => round.external === true).length).toBe(1)
   })
 
-  it('a bound RUNNING session settles to 待审核 when the native turn finishes', async () => {
-    const stub = new StubExec()
+  it('the session picker offers only what the card SHOWS: archived / hidden / removed are out', async () => {
+    // Reported: 「新增会话规则时，已经归了档的筛选还会显示出来」. The picker read the
+    // RELATED back-set (binds + every execution round), which keeps a session
+    // forever — archiving is native state that never edits the ledger, and
+    // hide/remove never touch the rounds either. So every session the card had
+    // ever run in stayed on offer. It must read like the card's own session
+    // rows instead: what is on the card is selectable, what was put away is not.
+    const sessions = new FakeSessions()
+    sessions.runningById['s-visible'] = false
+    sessions.runningById['s-archived'] = false
+    sessions.runningById['s-hidden'] = false
+    sessions.runningById['s-removed'] = false
+    sessions.titleById['s-visible'] = '可见会话'
+    sessions.titleById['s-archived'] = '已归档会话'
+    sessions.titleById['s-hidden'] = '已隐藏会话'
+    const archive = new FakeWorkspaces()
+    archive.archivedSessionIds = ['s-archived']
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      binds: [
+        { kind: 'session', sessionId: 's-visible' },
+        { kind: 'session', sessionId: 's-hidden' },
+        { kind: 'workspace', workspaceId: 'w-1' },
+      ],
+      hidden: { sessions: ['s-hidden'] },
+      removedSessions: ['s-removed'],
+      executions: [
+        { id: 'e1', sessionId: 's-visible', startedAt: NOW, endedAt: NOW + 1, result: 'succeeded', error: undefined },
+        { id: 'e2', sessionId: 's-archived', startedAt: NOW, endedAt: NOW + 1, result: 'succeeded', error: undefined },
+        { id: 'e3', sessionId: 's-removed', startedAt: NOW, endedAt: NOW + 1, result: 'succeeded', error: undefined },
+      ],
+    }])
+    const controller = new BoardController({
+      store, exec: new StubExec() as unknown as ExecutionService,
+      sessions, workspaces: archive as never, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    const labels = controller.sessionLabelsOf('task-a')
+    expect(labels.map(l => l.sessionId)).toEqual(['s-visible'])
+    expect(labels[0].title).toBe('可见会话')
+    // The card shows the same one row, so picker and card cannot drift.
+    const rowIds = controller.sessionsOf(controller.getSnapshot().tasks[0]).map(row => row.sessionId)
+    expect(rowIds).toEqual(['s-visible'])
+  })
+
+  it('a rule never fires into an ARCHIVED session (the due slot is kept)', async () => {
+    // The other half of the same gate: the tick skipped only a session that was
+    // GONE from the list, so an archived one still took its instruction — the
+    // card lit up on a conversation the user had put away, and the native
+    // sidebar showed it revived. Archived means put away, for the picker AND
+    // for the automation aimed at it.
+    let clock = NOW
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    sessions.titleById['s-1'] = 'target'
+    // Archiving is driven by the workspace registry's archive set (the same
+    // source the card's rows read), NOT the session list.
+    const archive = new FakeWorkspaces()
+    archive.archivedSessionIds = ['s-1']
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      status: 'todo',
+      rules: [{ id: 'r1', sessionId: 's-1', instruction: '继续', trigger: 'cron', cron: '*/5 * * * *', send: 'queue', enabled: true, nextAt: NOW, lastAt: undefined }],
+    }])
+    const controller = new BoardController({
+      store, exec: new StubExec() as unknown as ExecutionService,
+      sessions, workspaces: archive as never, now: () => clock, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    clock = NOW + 60_000
+    await controller.tickSessionRules(clock)
+    const after = store.load()[0]
+    expect(after.executions ?? [], 'an archived target takes no round').toHaveLength(0)
+    // The due slot survives: un-archiving resumes the schedule.
+    expect(after.rules?.[0].nextAt).toBe(NOW)
+    // Un-archived: the rule fires.
+    archive.archivedSessionIds = []
+    await controller.tickSessionRules(clock)
+    expect((store.load()[0].executions ?? []).length).toBe(1)
+  })
+
+  it('a bound RUNNING session settles to 待审核 when the native turn finishes', async () => {    const stub = new StubExec()
     const store = new InMemoryTaskStore()
     const sessions = new FakeSessions()
     sessions.setRunning('s-live', true)
