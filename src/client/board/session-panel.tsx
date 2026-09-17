@@ -1037,7 +1037,13 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     }
     // 排队: the dispatcher injects this round (text + attachments) when the
     // session's lane is free — it waits behind the running turn, never jumps it.
-    if (!onDrive(text, attachedImages, attachedFiles)) restore()
+    // A refusal must SPEAK: restoring the draft silently is how "点了没反应"
+    // happens (the words came back, so the user sees nothing at all).
+    setSendError(undefined)
+    if (!onDrive(text, attachedImages, attachedFiles)) {
+      restore()
+      setSendError(t('review.sendNotSent'))
+    }
   }
   // The busy line names the IN-FLIGHT intake (hook's busyKind), never the
   // settled ledger — a staging file is not in the ledger yet, and the old

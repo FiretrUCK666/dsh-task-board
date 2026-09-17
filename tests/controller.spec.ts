@@ -1526,6 +1526,38 @@ describe('comments', () => {
     expect(controller.submitComment(task.id, openExecutionId, '   ')).toBeUndefined()
   })
 
+  it('accepts an attachment-only message on every send path (a picture is content)', async () => {
+    // The regression this pins: the composer lets an attachment-only message
+    // through (`text === '' && images.length === 0 && files.length === 0` is its
+    // gate), while the comment paths rejected `trimmed === ''`. The result was
+    // "chips appear, send does nothing" — the draft was silently restored. Only
+    // the direct-steer path had the rule right, which is how one judgment living
+    // in four places drifts. All four now share isBlankMessage.
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const { taskId, executionId } = await settledReviewTask(stub, controller)
+    const image = { mediaType: 'image/png' as const, data: 'AAAA', name: 'shot.png' }
+    const file = { receiptId: 'r-1', name: 'notes.txt', bytes: 12 }
+
+    const withImage = controller.submitComment(taskId, executionId, '', false, [image])
+    expect(withImage, 'an image with no words must still send').toBeDefined()
+    expect(withImage?.promptImages).toHaveLength(1)
+
+    const withFile = controller.submitComment(taskId, executionId, '   ', false, undefined, [file])
+    expect(withFile, 'a staged file with no words must still send').toBeDefined()
+    expect(withFile?.promptFiles).toHaveLength(1)
+
+    // The session-anchored path (linked-session composer) obeys the same rule.
+    const sessionRound = controller.submitSessionComment(taskId, 's-1', '', false, [image])
+    expect(sessionRound).toBeDefined()
+    expect(sessionRound?.promptImages).toHaveLength(1)
+
+    // And the rule still rejects a message with NOTHING at all — text alone was
+    // never the whole question.
+    expect(controller.submitComment(taskId, executionId, '   ')).toBeUndefined()
+    expect(controller.submitComment(taskId, executionId, '', false, [], [])).toBeUndefined()
+  })
+
   it('injects pending comments when the cruise turns on and settles back into review', async () => {
     const stub = new StubExec()
     const { controller, store, stub: exec } = makeController(stub)

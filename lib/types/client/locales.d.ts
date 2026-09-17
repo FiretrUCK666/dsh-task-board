@@ -450,6 +450,7 @@ export declare const zh: {
     'attach.rejectFileCount': string;
     'attach.rejectUpload': string;
     'review.sendMode': string;
+    'review.sendNotSent': string;
     'review.sendQueue': string;
     'review.sendQueueTitle': string;
     'review.sendSteer': string;

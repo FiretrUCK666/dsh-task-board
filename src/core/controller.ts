@@ -34,7 +34,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -2801,7 +2801,9 @@ export class BoardController {
     files?: readonly PromptFile[] | undefined,
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     const trimmed = text.trim()
-    if (trimmed === '' && (images === undefined || images.length === 0) && (files === undefined || files.length === 0)) {
+    // THE one blank-message rule (see isBlankMessage): an image or a staged
+    // file with no words is still a message.
+    if (isBlankMessage(text, images, files)) {
       return Promise.resolve({ ok: false, error: 'empty message' })
     }
     // A steer on a completed task revives it (moved back to 待办) — the same
@@ -3129,7 +3131,9 @@ export class BoardController {
    */
   submitComment(taskId: string, executionId: string, text: string, command = false, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
-    if (trimmed === '') return undefined
+    // Attachments are content: a message with an image or a staged file and no
+    // words is a real message (see isBlankMessage).
+    if (isBlankMessage(text, images, files)) return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     // A comment on a completed task revives it (moved back to 待办) — the
@@ -3192,7 +3196,8 @@ export class BoardController {
    */
   submitSessionComment(taskId: string, sessionId: string, text: string, command = false, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
-    if (trimmed === '') return undefined
+    // Same blank rule as every other path: attachments alone are a message.
+    if (isBlankMessage(text, images, files)) return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
@@ -3214,7 +3219,8 @@ export class BoardController {
    */
   private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string, injectedAt?: number, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
-    if (trimmed === '') return undefined
+    // Same blank rule as every other path: attachments alone are a message.
+    if (isBlankMessage(text, images, files)) return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
@@ -3323,7 +3329,8 @@ export class BoardController {
    */
   answerRefine(taskId: string, text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]): boolean {
     const trimmed = text.trim()
-    if (trimmed === '') return false
+    // Same blank rule as every other path: an answer may be attachments alone.
+    if (isBlankMessage(text, images, files)) return false
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined || task.refineSessionId === undefined) return false
     const round: ExecutionRecord = {

@@ -560,6 +560,26 @@ export declare function newExternalRound(options: {
     imageOnly?: boolean;
 }): ExecutionRecord;
 /**
+ * Whether a user-authored message carries NOTHING to deliver.
+ *
+ * THE one blank-message rule for every send path (queued comment, session
+ * comment, rule comment, direct steer). It used to be written per path as
+ * `trimmed === ''`, which quietly rejected an ATTACHMENT-ONLY message — the
+ * composer accepted it (`text === '' && images.length === 0 && files.length === 0`
+ * is the gate that lets it through) and the controller then returned
+ * `undefined`, so the draft was restored and the user saw nothing happen at
+ * all. Only the direct-steer path had it right, which is exactly how one rule
+ * living in four places drifts: the picture-with-no-words case worked on one
+ * surface and silently failed on the others.
+ *
+ * Attachments are content: text alone is not the whole message.
+ * @param text - raw (untrimmed) message text.
+ * @param images - images carried by the message, if any.
+ * @param files - staged file refs carried by the message, if any.
+ * @returns whether there is nothing to send.
+ */
+export declare function isBlankMessage(text: string, images?: readonly unknown[] | undefined, files?: readonly unknown[] | undefined): boolean;
+/**
  * Create a new comment-continuation round (pure): the single factory for
  * both comment anchors. An execution-anchored comment (`parentExecutionId`)
  * continues a settled run and reuses its session; a session-anchored
