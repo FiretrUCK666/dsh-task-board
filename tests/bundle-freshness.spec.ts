@@ -192,7 +192,12 @@ describe('wiring (the probe cannot be dropped silently)', () => {
     expect(bootstrap).toContain('new BundleFreshnessState({')
     expect(bootstrap).toContain('bundled: BOARD_VERSION')
     expect(bootstrap).toContain('void freshness.probe()')
-    expect(bootstrap).toContain('mountBoard(controller, freshness)')
+    // The verdict reaches the board through the panel registration: the stage
+    // renders TaskBoard with the freshness state (there is no DOM mount to hand
+    // it to any more).
+    expect(bootstrap).toContain('new TaskBoardStage()')
+    const panel = read('../src/client/TaskBoardPanel.tsx')
+    expect(panel).toContain('<TaskBoard controller={controller} freshness={freshness} />')
     // Watching, not just probing: a restart must reach an already-open page.
     expect(bootstrap).toContain('return freshness.watch()')
   })

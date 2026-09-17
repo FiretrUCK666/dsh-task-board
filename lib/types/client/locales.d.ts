@@ -568,6 +568,7 @@ export declare const zh: {
     'prompt.noReferences': string;
     'prompt.loading': string;
     'prompt.skillUserOnly': string;
+    'board.loading': string;
     'board.update.check': string;
     'board.update.checking': string;
     'board.update.latest': string;

@@ -30,11 +30,10 @@ export declare const DEFAULT_CRUISE_LIMIT = 5;
 export declare const MAX_CRUISE_LIMIT = 20;
 /** The native session-list "waiting for the user" signal (sidebar amber dot). */
 export type PendingInteractionKind = 'approval' | 'plan-review' | 'question';
-/** The sessions face the controller needs for navigation awareness. */
+/** The sessions face the controller needs (catalog reads + navigation). */
 export interface SessionsControllerFace {
     list: {
         getSnapshot(): {
-            current: string | undefined;
             /** Session ids in native list order (the workspace's own section order). */
             ids?: readonly string[];
             /**
@@ -85,8 +84,17 @@ export interface SessionsControllerFace {
     };
     /** Whether a session still exists in the host session list. */
     exists(id: string): boolean;
-    /** Select a session as current (navigates the conversation view). */
-    open(id: string): void;
+    /**
+     * Show a session's Conversation (the official one-action navigation).
+     *
+     * OPTIONAL, because the capability itself can be absent: navigation is a
+     * separate service from the session catalog, and only the client composition
+     * knows whether it was wired. A face that requires it would force every fake
+     * and every degraded host to pretend; an absent capability is a real state
+     * that returns false below.
+     * @returns whether the navigation was actually performed.
+     */
+    open?(id: string): boolean;
 }
 /**
  * The workspaces face the controller needs: the registry's workspace rows
@@ -184,8 +192,12 @@ export interface RunCatalogFace {
      * name). undefined = no session to scope the catalog to; individual
      * sources degrade to empty when their fetch fails. Nothing is hard-coded,
      * so registry/catalog changes show up without a plugin update.
+     *
+     * `sessionId` is the session the calling composer edits: both wire sources
+     * are session-scoped, and the host publishes no global "current session"
+     * any more (it is view state), so the caller is the only place that knows.
      */
-    listSlashCandidates(): Promise<readonly SlashCandidate[] | undefined>;
+    listSlashCandidates(sessionId: string | undefined): Promise<readonly SlashCandidate[] | undefined>;
 }
 /** One file/directory candidate of the OFFICIAL `@file` discovery (the
  *  `remote.fileReferences.list` result row). Structural — no SDK import. */
@@ -437,6 +449,15 @@ export interface ControllerDeps {
     store: TaskStore;
     exec: ExecutionService;
     sessions: SessionsControllerFace;
+    /**
+     * Show the Conversation again — the board's own "back" affordance
+     * (TaskBoard's 返回). The board is a global panel, so leaving it means asking
+     * the shell to select the Conversation panel; this face is the shell's panel
+     * API narrowed to that one verb. Absent = the back button has nowhere to go
+     * (the board then relies on the shell's own panel switching), so the control
+     * reports that instead of pretending.
+     */
+    showConversation?: () => void;
     /** Optional workspaces face (workspace-bound "链接会话" derivation + live refresh). */
     workspaces?: WorkspacesControllerFace;
     /** Optional run-catalog surface (workspace/model pickers in the new-task form). */
@@ -740,9 +761,14 @@ export declare class BoardController {
      * discovery excludes the target itself):
      * 1. the task's own related session (refine → execution → linked, the
      *    same order every surface reads);
-     * 2. the currently staged native session;
-     * 3. the first session of the native list.
+     * 2. the first session of the native list.
      * undefined only when there is no task and no session at all.
+     *
+     * NO "currently staged native session" STEP: the host no longer publishes a
+     * current-session identity anywhere the plugin can reach (it is view state,
+     * owned by the workspace browser). The caller passes the exact session it
+     * means whenever it has one; this fallback is only for surfaces that have
+     * none, and it promises nothing about what the user is looking at.
      */
     referenceSessionOf(taskId: string | undefined): string | undefined;
     /**
@@ -870,9 +896,23 @@ export declare class BoardController {
      *  tests = legacy task-title fallback). */
     untitledSessionLabel?: string;
     subscribe(fn: () => void): () => void;
+    /**
+     * The board is showing (driven by the stage component's mount lifetime — see
+     * TaskBoardPanel; the panel selection IS the visibility, so nothing else may
+     * set this).
+     */
     openBoard(): void;
+    /** The board stopped showing (stage unmounted). */
     closeBoard(): void;
-    toggleBoard(): void;
+    /**
+     * Leave the board for the Conversation — the board's 返回 affordance.
+     *
+     * Nothing is flipped here: the shell switches the centre stage, the stage
+     * unmounts, and the mount lifetime calls {@link closeBoard}. That is why this
+     * cannot drift from what is on screen.
+     * @returns false when no panel capability is wired (the control says so).
+     */
+    showConversation(): boolean;
     openTask(id: string): void;
     /**
      * Mark one execution as viewed (the user opened its review page), clearing
@@ -1315,29 +1355,18 @@ export declare class BoardController {
     /**
      * Jump to an execution's session transcript — every in-board entry
      * ("查看会话", the notification drawer's 去回答/去会话/进详情) goes through
-     * here. Selecting the session changes `current`, and a selection the board
-     * did not ask for means the user walked away to a native conversation — so
-     * this call marks its own request as the BOARD's pick (see
-     * {@link boardPick}). Without that marker the board would close on its own
-     * navigation the moment the list reports the selection it just made.
+     * here. The host performs the whole navigation in one action
+     * (`uiWorkspace.openSession`: select the session AND show its Conversation),
+     * so the board needs no "this pick was mine" marker any more: what closes the
+     * board is the centre stage switching to the Conversation panel, which is
+     * exactly what the user asked for.
      *
      * Refuses to navigate when the session no longer exists (deleted/archived):
      * navigating a stale id would silently land on a fresh-session screen.
      * @param sessionId - the execution session to open.
-     * @returns true when the session exists and the navigation was requested.
+     * @returns true when the navigation actually happened.
      */
     openSession(sessionId: string): boolean;
-    /**
-     * The user picked a session row in the NATIVE sidebar — the DOM probe's
-     * single report (installed by board-mount.tsx, which documents why the
-     * official sessions face cannot express this intent). The user's pick is
-     * the ONE leg that must close the board even when the selection does not
-     * move (the clicked row is already `current`, or it is a conversation the
-     * board itself staged) — the very case the selection-diff leg can never
-     * see. Closing is the whole semantic: the native conversation view takes
-     * over and shows the clicked session, with no refresh.
-     */
-    userSelectedNativeSession(): void;
     /** Re-run a settled task: move it back to 'todo' first, then execute. */
     /**
      * Promote the task and start a fresh round, reporting whether the launch was
@@ -1677,52 +1706,18 @@ export declare class BoardController {
      *  task in its column (settlement of a plain run may move the card). */
     private settleRound;
     /**
-     * Reconcile running tasks and close the board when the user navigates.
+     * Session-list change: reconcile running tasks and re-render consumers.
      *
-     * The close decision has TWO legs and neither of them alone is the truth:
-     * - the board's OWN pick (`openSession`) is marked explicitly
-     *   ({@link boardPick}), so the board never closes itself while navigating
-     *   from its own surfaces (execution/linked/refine jumps and the
-     *   notification drawer's 去回答/去会话/进详情);
-     * - a selection movement no board pick accounts for is the user walking away
-     *   to a native conversation — EXCEPT when the arriving selection is a wait
-     *   the board can serve (see {@link waitsOnBoard}): a question that pops
-     *   while the user reads the board must not close it, or the notification
-     *   that caused it would reopen what it just threw away.
-     *
-     * The user's CLICK leg does not live here: a click on the row that is already
-     * `current` moves nothing observable, so it is read at the DOM boundary and
-     * reported through {@link userSelectedNativeSession} (one probe, one
-     * decision point).
+     * The board CLOSE decision is no longer here. It used to watch the host's
+     * `current` selection and decide "the user walked away" versus "the board
+     * picked this itself" (a one-shot marker), with a wait exemption on top.
+     * The host removed that field — selection is view state — and the board's
+     * own presence moved to the centre-stage panel, so what closes the board is
+     * the stage switching to the Conversation panel. Deleting the chain removed
+     * three pieces of coupled state (`lastCurrent`, `boardPick`, the DOM click
+     * probe) that only existed to reconstruct one fact the view layer now owns.
      */
     private onSessionsChanged;
-    /**
-     * Whether an arriving selection is a wait the BOARD can serve: one of the
-     * board's own conversations (a related session of some task) that is
-     * blocked on the user right now (approval / plan review / question). Such a
-     * selection keeps the board open — the wait is the board's own subject
-     * matter and its 去回答 entry lives on the board. A user CLICK on that very
-     * row still closes the board: the click leg is the DOM probe, which never
-     * consults this exemption.
-     */
-    private waitsOnBoard;
-    /**
-     * Whether a session is one of the board's own conversations: any related
-     * session of any task (execution rounds, binds, the refine session, live
-     * linked rows) — the related-set read shared with the wait exemption above.
-     * Pure read over the ledger + linked derivation — no new state, no second
-     * judgment. It is NOT a "leave the board alone" verdict by itself: the
-     * board's own picks are marked explicitly and the user's clicks are read at
-     * the DOM boundary, so being staged is no longer what exempts a selection
-     * from closing the board.
-     */
-    private isBoardStagedSession;
-    private lastCurrent;
-    /** The session the board ITSELF just asked the runtime to select (one-shot;
-     *  see {@link openSession} and {@link onSessionsChanged}). This is the
-     *  explicit "the board made this selection" marker — never a time window
-     *  guess. */
-    private boardPick;
     /** Execution ids launched on this page; they settle via their live watch, never list reconciliation. */
     private readonly activeExecutionIds;
     /** One entry per card (the steer round whose completion was already

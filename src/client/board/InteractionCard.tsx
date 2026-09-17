@@ -21,8 +21,9 @@
  * keeps the card open with the reason on it.
  *
  * ANSWERING IS IN PLACE, THROUGH THE OFFICIAL CARRIER. The pending question
- * arrives from the official `pendingInteractions` snapshot (the same source
- * the native composer reads), so `answer`/`cancel` settle the very request
+ * arrives from the official session-status snapshot (each session's
+ * `pendingInteraction` — the same source the native composer reads), so
+ * `answer`/`cancel` settle the very request
  * the native surface would settle — nothing new is registered, first answer
  * still wins, and the other surface's card drops with the next snapshot
  * notification. A host whose snapshot entries carry data but no action keeps

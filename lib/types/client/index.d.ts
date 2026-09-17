@@ -19,11 +19,13 @@ import type { ClientContext } from './platform.ts';
  * needs the loader to bring up. `sessions` / `workspaces` are the client
  * object-layer services (dsh-api-session-controller / workspace-controller),
  * `connection` the wire carrier, `locale` the copy service, and `remote` the
- * Typert-generated Host API namespaces — all real alpha.3 services, with the
+ * Typert-generated Host API namespaces — all real services, with the
  * package-name edges declared in `dsh.client.inject`. `uiSession` is the
  * session-UI adapter (dsh-client-ui-session): the board only subscribes to
- * its official `pendingInteractions` snapshot (read-only — answering stays
+ * its official session-status snapshot (read-only — answering stays
  * in the native session), never registering a waterfall listener of its own.
+ * Navigation is NOT a required service: `ctx.uiWorkspace` is read optionally
+ * at call time (see the sessions.open adapter in buildApi).
  */
 export declare const inject: string[];
 /**

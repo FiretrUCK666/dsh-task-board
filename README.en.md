@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%5E22.19.0%20%7C%7C%20%3E%3D24.0.0-339933)](README.en.md#requirements)
 
-A task-board plugin for the DeepSeek Harness web GUI. It adds a **Task Board** entry at the bottom of the sidebar and manages work on a five-column kanban board, where each task is actually executed by a real DSH session and its status is written back to the card.
+A task-board plugin for the DeepSeek Harness web GUI. It adds a **Task Board** entry in the sidebar and manages work on a five-column kanban board, where each task is actually executed by a real DSH session and its status is written back to the card.
 
 The plugin does not modify DSH source, and removing it restores the interface. Board data lives on the DSH host process, so a desktop and a phone pointed at the same deployment see the same board, synchronised over SSE. Narrow screens switch to a compact layout.
 
@@ -83,7 +83,9 @@ An npm install and a GitHub install contain essentially the same files; they dif
 
 ### After installing
 
-Stop the running `dsh web` and start it again. Refreshing the page is not enough: the host half of the plugin loads inside the server process. The **Task Board** entry appears at the bottom of the sidebar after the restart.
+Stop the running `dsh web` and start it again. Refreshing the page is not enough: the host half of the plugin loads inside the server process. The **Task Board** entry appears in the sidebar after the restart.
+
+The entry sits beside DSH's own Plugins panel. Selecting it puts the board in the centre stage; selecting any session in the sidebar brings the conversation back. The plugin's settings live in **Settings → Task Board**.
 
 To remove it:
 
@@ -161,6 +163,8 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 
 **No sidebar entry after installing.** The host half loads in the server process. Restart `dsh web`; refreshing the page is not enough.
 
+**Upgrading from an older version: the entry and the settings moved.** The board now attaches through DSH's official UI extension points (which is what lets it keep working across interface changes): the entry went from a row at the bottom of the sidebar to a panel icon beside DSH's own Plugins panel, and the plugin's settings went from Settings → built-in plugins to Settings → Task Board. Nothing was removed and no task data changed. If you still see the old locations, this client is running an older front-end bundle — refresh the page.
+
 **The plugin fails to load after a DeepSeek Harness upgrade (the page says "Failed to load plugins").** DSH's internal interfaces change between releases, and the plugin has to follow. Two steps:
 
 1. Update the plugin to the latest release, then restart `dsh web`:
@@ -189,10 +193,12 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 | Permission preset route | `/api/dsh-task-board/permissions` |
 | Board data route | `/api/dsh-task-board/board` (`/lease`, `/command`, `/events`) |
 | Host storage unit | `dsh_task_board` |
-| Settings card slot id | `dsh-task-board` |
+| Board stage slot | `main` (`key: dsh-task-board`) |
+| Sidebar entry slot | `sidebar.panellist` (`id: dsh-task-board`) |
+| Settings surface slot | `settings.section` (`id: dsh-task-board`) |
 | `localStorage` keys | `dsh.taskBoard.v1` and friends |
 
-The plugin id and the package name are different things. The id names the loader row, the served browser asset, the settings namespace, the routes, the storage unit and the settings-card slot; the package name is only what pnpm installed. A scoped package name never moves the id.
+The plugin id and the package name are different things. The id names the loader row, the served browser asset, the settings namespace, the routes, the storage unit and the three slots above; the package name is only what pnpm installed. A scoped package name never moves the id.
 
 ## License
 

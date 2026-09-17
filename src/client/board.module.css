@@ -245,33 +245,24 @@
   100% { box-shadow: 0 0 0 7px transparent; }
 }
 
-/* --- center-column takeover (global rules, attribute-scoped) ----------------- */
+/* --- board root (the panel's inner surface) --------------------------------- */
 
-[data-pane='conversation'],
-[class*='centerCol'] {
-  position: relative;
-}
-
-/* The board container rides inside the conversation grid item as an extra
-   trailing child; hidden unless the board is active. The z-index sits above
-   every in-column floating layer (the conversation subtree's menus/panels
-   top out at 100) but below the frame-level overlays (settings panel, the
-   shell.overlay layer — both render at 1000), so opening e.g. DSH Settings
-   while the board is active always lands on top. */
+/* `[data-dsh-taskboard-view]` is the board BOX: the element every layout rule
+   below is scoped to and the ONE responsive reference for the whole board.
+   It is a named inline-size container so compact geometry follows the box's own
+   width — correct under a collapsed/expanded sidebar, a split-screen, and a
+   phone alike — and never the viewport. Every compact rule below is a
+   @container query against this name. */
 [data-dsh-taskboard-view] {
-  position: absolute;
-  inset: 0;
-  display: none;
-  z-index: 200;
+  position: relative;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   /* No backdrop blur here by decision: the user keeps transparent skins and
      wants the wallpaper wash to show through untouched (a frost reads as
      「背景变不透明」 — tried in 0.2.97, reverted). Readability over a photo
      is carried by the opaque controls themselves, never by flattening the
      canvas. */
-  /* The ONE responsive reference for the whole board is the board BOX's own
-     width, never the viewport: it is correct under a collapsed/expanded
-     sidebar, a split-screen, and a phone alike. Every compact rule below is
-     a @container query against this name. */
   container-type: inline-size;
   container-name: dsh-tb;
   /* Defeat Android/WeChat font boosting, which inflates px text inside a
@@ -280,8 +271,29 @@
   text-size-adjust: 100%;
 }
 
-html[data-dsh-taskboard-active] [data-dsh-taskboard-view] {
-  display: block;
+/* The board's stage: the shell's own `main` panel is the mounting point
+   (TaskBoardPanel.tsx), so this element is an ordinary grid item body — the
+   shell hands it the centre column's real width, which is what every
+   `@container` rule below measures against. Nothing here claims a shell DOM
+   node, hides a shell subtree, or depends on a shell class name: the board is
+   a panel the shell renders, not a takeover it must tolerate. */
+.panelStage {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The stage's own loading state: the panel is registered at apply time (so the
+   shell can always resolve its row to a stage) while the board behind it is
+   still being built. Quiet and centred — it is a transient, not an error. */
+.panelLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
 }
 
 /* Paragraphs carry NO inherited spacing inside the board. The UA's `1em`
@@ -295,78 +307,16 @@ html[data-dsh-taskboard-active] [data-dsh-taskboard-view] {
   margin: 0;
 }
 
-/* While the board is active, the conversation content underneath is hidden
-   (it stays mounted and stateful). `!important` guards against more specific
-   shell rules re-showing the content. */
-html[data-dsh-taskboard-active] [data-pane='conversation'] > :not([data-dsh-taskboard-view]),
-html[data-dsh-taskboard-active] [class*='centerCol'] > :not([data-dsh-taskboard-view]) {
-  display: none !important;
-}
+/* --- panel entry icon (official slot, TaskBoardIcon.tsx) -------------------- */
 
-/* --- sidebar footer action (official slot, SidebarFooter.tsx) -------------- */
-
-/* The board entry rendered into the shell's `sidebar.footer.action` slot
-   (list hole beside Settings). The alignment benchmark is the NATIVE settings
-   trigger (settings-general's `VOzbGW_trigger` — the 设置 row): its own box
-   geometry — 42px height, padding 0 10px 0 8px, gap 8, radius 12, flex 1,
-   14px/22px label — is mirrored verbatim so the row's icon/label/spacing
-   match the native row EXACTLY. The DSH Usage badge (49px, padding 6px) is
-   deliberately NOT the benchmark — it sits 2px off (user observation). */
-.sidebarFooterAction {
-  box-sizing: border-box;
-  cursor: pointer;
-  width: auto;
-  min-width: 0;
-  height: 42px;
-  color: var(--dsw-alias-label-primary);
-  background: none;
-  border: none;
-  border-radius: 12px;
-  flex: 1;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  padding: 0 10px 0 8px;
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 22px;
-  display: flex;
-  overflow: hidden;
-}
-
-.sidebarFooterAction:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-/* A queued click (the board is still syncing on a slow network): the entry
-   reads as acknowledged — the label pulses gently, the row keeps its native
-   geometry (the "点了没反应" was the click being dropped while the board was
-   not bound). */
-.sidebarFooterAction[data-pending] {
-  opacity: 0.7;
-  animation: dshTbFooterPending 1.4s ease-in-out infinite;
-}
-
-@keyframes dshTbFooterPending {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
-}
-
-.sidebarFooterIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+/* The board's row in the shell's global-panel list (`sidebar.panellist`). The
+   shell owns the button, its geometry, its hover/active fill and the active
+   highlight (`aria-current="page"`); this component draws ONLY the glyph at the
+   size the sidebar asks for, so there is no row geometry to keep in step with
+   the native entries. */
+.panelIcon {
+  display: block;
   flex: none;
-  width: 16px;
-  height: 16px;
-}
-
-/* The svg size is set by the component (14 wide / 18 rail — the same law as
-   the DSH Usage badge); the icon box centers it. */
-
-.sidebarFooterLabel {
-  white-space: nowrap;
-  overflow: hidden;
 }
 
 /* --- board frame -------------------------------------------------------------- */
@@ -4175,7 +4125,6 @@ textarea.input {
  * --------------------------------------------------------------------------- */
 
 /* --- one themed focus-visible ring (approx 2px, 2px offset) --- */
-.sidebarFooterAction:focus-visible,
 .card:focus-visible,
 .primaryButton:focus-visible,
 .ghostButton:focus-visible,
@@ -4285,11 +4234,6 @@ button.interactionOption:focus-visible,
   .card.selectedCard {
     transform: none;
   }
-  /* The pending-ack pulse is a FUNCTIONAL indicator (the click is queued) —
-     it survives reduced motion, just slower so it reads as calm, not busy. */
-  .sidebarFooterAction[data-pending] {
-    animation-duration: 4s;
-  }
 }
 
 /* Drop targets: business accent while hovering. Rejection and successful
@@ -4299,7 +4243,6 @@ button.interactionOption:focus-visible,
   border-color: var(--dsw-alias-state-business-primary);
 }
 
-.sidebarFooterAction:active,
 .primaryButton:active:not(:disabled),
 .ghostButton:active:not(:disabled),
 .dangerButton:active:not(:disabled),
@@ -4328,7 +4271,6 @@ button.interactionOption:focus-visible,
 
 /* --- reduced motion: strip transitions, stop the decorative animations --- */
 @media (prefers-reduced-motion: reduce) {
-  .sidebarFooterAction,
   .card,
   .primaryButton,
   .ghostButton,

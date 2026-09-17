@@ -36,11 +36,12 @@ export interface SessionContext {
     /** Child subagents of the session, if any. */
     subagents?: readonly SessionSubagentView[];
 }
-/** One 3s poll: transcript → todos; bridge → goal + subagents. The board's
- *  tree stays mounted while hidden (the conversation view takes over), so the
- *  poll pauses whenever the board is not visible — `data-dsh-taskboard-active`
- *  on <html> is the ONE visibility marker (board-mount owns it) — and resumes
- *  with an immediate refresh the moment the board reappears. */
+/** One 3s poll: transcript → todos; bridge → goal + subagents. The board is a
+ *  centre-stage PANEL now, so the shell unmounts this whole tree whenever
+ *  another panel (or the Conversation) is selected — there is no "mounted but
+ *  hidden" state to detect, and the poll starts fresh on the next selection.
+ *  The remaining case is a mounted board in a BACKGROUND TAB, which is what
+ *  `document.visibilityState` answers. */
 export declare function useSessionContext(controller: BoardController, sessionId: string | undefined): SessionContext;
 /**
  * What the comment interface shows for a session's wait: parsed content, or —

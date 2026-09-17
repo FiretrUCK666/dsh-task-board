@@ -1,43 +1,34 @@
 .card {
-  list-style: none;
+  display: block;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 8px;
   background: var(--dsw-alias-bg-layer-3);
   overflow: hidden;
-  transition: border-color 0.16s, background 0.16s;
 }
 
+/* The section's heading block. Static (it is a page heading, not a disclosure):
+   the settings panel already navigated the user here, so an extra click to reveal
+   the controls would sit between the intent and the form. */
 .header {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-}
-
-.header:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.headText {
-  display: flex;
   flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
+  gap: 4px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
 
+/* The section title is an <h3>: the settings panel already renders the section
+   name in its own chrome, so this heading states WHAT inside the page is being
+   configured and is sized to sit under that, not to compete with it. */
 .name {
+  margin: 0;
+  font-size: 14px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
 }
 
 .description {
+  margin: 0;
   font-size: 12px;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -45,15 +36,6 @@
 .pending {
   font-size: 12px;
   color: var(--dsw-alias-state-warn-primary);
-}
-
-.chevron {
-  transition: transform 120ms ease;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.chevronOpen {
-  transform: rotate(180deg);
 }
 
 .body {
@@ -253,7 +235,6 @@
 @media (prefers-reduced-motion: reduce) {
   .card,
   .header,
-  .chevron,
   .discard,
   .save,
   .reset {

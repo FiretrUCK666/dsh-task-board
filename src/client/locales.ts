@@ -593,6 +593,7 @@ export const zh = {
   'prompt.noReferences': '没有匹配的文件或会话',
   'prompt.loading': '正在查找…',
   'prompt.skillUserOnly': '仅用户可用',
+  'board.loading': '看板准备中…',
   'board.update.check': '检查更新',
   'board.update.checking': '检查中…',
   'board.update.latest': '已是最新',
@@ -616,7 +617,7 @@ export const zh = {
   'board.update.gitBehind': '远端已有新提交（{head} → {remote}），更新命令会拉取它们。',
   'board.update.gitDirty': '工作区有未提交改动，更新前请先存档或提交。',
   'board.update.gitUpToDate': '本地已与远端同步。',
-  // 插件设置卡片（settings.plugin.item 席位）。
+  // 插件设置界面（settings.section 席位：设置 → 任务看板）。
   'settings.title': '任务看板',
   'settings.description': '控制看板在 agent 系统提示中的播报行为。',
   'settings.enabled': '启用任务看板',
@@ -1207,6 +1208,7 @@ export const en: Record<keyof typeof zh, string> = {
   'prompt.noReferences': 'No matching files or sessions',
   'prompt.loading': 'Searching…',
   'prompt.skillUserOnly': 'User only',
+  'board.loading': 'Preparing the board…',
   'board.update.check': 'Check for updates',
   'board.update.checking': 'Checking…',
   'board.update.latest': 'Up to date',
@@ -1230,7 +1232,7 @@ export const en: Record<keyof typeof zh, string> = {
   'board.update.gitBehind': 'New commits on origin ({head} → {remote}) — the update command pulls them.',
   'board.update.gitDirty': 'Uncommitted changes in the worktree — stash or commit before pulling.',
   'board.update.gitUpToDate': 'The local checkout is in sync with origin.',
-  // Plugin settings card (the `settings.plugin.item` seat).
+  // Plugin settings surface (the `settings.section` seat: Settings → Task Board).
   'settings.title': 'Task Board',
   'settings.description': 'How the board announces itself in each agent system prompt.',
   'settings.enabled': 'Enable the task board',

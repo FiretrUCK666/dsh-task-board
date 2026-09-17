@@ -1,8 +1,18 @@
 /**
- * The task-board settings card: whether the board announces itself in every
- * agent's system prompt. Registers into the `settings.plugin.item` slot the
- * plugin-configuration section renders, bound to the `dsh-task-board` settings
- * namespace.
+ * The task board's settings section: the "设置" page's own entry for this
+ * plugin, registered into the shell's `settings.section` slot as one page of the
+ * settings panel (the same seat the shipped Theme/Remote sections use).
+ *
+ * WHY A SECTION AND NOT A PLUGIN-LIST CARD: the card used to register into
+ * `settings.plugin.item`, a slot the built-in plugin-configuration tab declared.
+ * The host removed that tab's slot in 0.1.6-alpha.2 — it remains declared by
+ * nobody, and `slots.inject` silently no-ops for an undeclared slot, so the form
+ * vanished with no error at all. A settings section is declared and rendered by
+ * the settings domain itself, so it cannot be removed without the settings panel
+ * going with it.
+ *
+ * It edits the `dsh-task-board` settings namespace through the plugin's own host
+ * route (RouteSettingsScope), so the section needs no sibling settings package.
  */
 
 import type { InjectFace, PropsLocale, SnapshotSelector } from './platform.ts'
@@ -63,20 +73,29 @@ export class TaskBoardSettingsCardController {
   inject(): TaskBoardSettingsCardFace {
     return { hooks: { taskBoardSettingsCard: this.store }, ...this.form.actions() }
   }
+
+  /** Drop the form's subscription to the settings scope (fiber teardown). */
+  dispose(): void {
+    this.form.dispose()
+  }
 }
 
-/** Props the renderer binds for the task-board card. */
-type TaskBoardSettingsCardProps =
+/** Props the renderer binds for the task-board settings section. */
+type TaskBoardSettingsSectionProps =
   { useTaskBoardSettingsCard: SnapshotSelector<TaskBoardSettingsCardState> }
   & PropsLocale
   & InjectFace<TaskBoardSettingsCardFace>
+  // The settings shell's owner share for every `settings.section` entry: the one
+  // affordance a section receives, for flows that leave settings altogether.
+  // This section never navigates away, so it is accepted and unused.
+  & { close?: () => void }
 
 /**
- * Render the task-board card.
- * @param props - locale copy, the card snapshot, and its form actions.
- * @returns the card.
+ * Render the task-board settings section.
+ * @param props - locale copy, the form snapshot, and its actions.
+ * @returns the section's form.
  */
-export function TaskBoardSettingsCard(props: TaskBoardSettingsCardProps) {
+export function TaskBoardSettingsSection(props: TaskBoardSettingsSectionProps) {
   const { t } = props
   const state = props.useTaskBoardSettingsCard(snapshot => snapshot)
   const disabled = !state.writable

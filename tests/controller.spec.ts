@@ -49,12 +49,10 @@ class FakeSessions {
   private listeners = new Set<() => void>()
   list = {
     getSnapshot: (): {
-      current: string | undefined
       phase?: 'pending' | 'ready'
       ids?: readonly string[]
       byId: Record<string, { running: boolean; parentId?: string; origin?: 'subagent'; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string; title?: string }>
     } => ({
-      current: this.current,
       ...this.phase !== undefined ? { phase: this.phase } : {},
       ...this.order !== undefined ? { ids: [...this.order] } : {},
       byId: Object.fromEntries(
@@ -90,9 +88,10 @@ class FakeSessions {
   exists(id: string): boolean {
     return this.knownIds === undefined || this.knownIds.has(id)
   }
-  open(id: string): void {
+  open(id: string): boolean {
     this.openCalls.push(id)
     this.setCurrent(id)
+    return true
   }
   setCurrent(id: string | undefined): void {
     this.current = id
@@ -542,185 +541,65 @@ describe('task mutations', () => {
   })
 })
 
-/**
- * A board whose task stages all three conversation families the native sidebar
- * also lists: a BOUND session ('s-bind'), a RUN session ('s-run') and the
- * REFINE session ('s-refine'). The sidebar boundary contract has to hold for
- * every family — the close decision reads the user's pick, not "is it staged".
- */
-async function makeStagedBoard(): Promise<{
-  controller: BoardController
-  sessions: FakeSessions
-  store: InMemoryTaskStore
-  stub: StubExec
-  task: TaskRecord
-}> {
-  const stub = new StubExec()
-  const { controller, sessions, store } = makeController(stub)
-  const task = controller.createTask({ title: '边界', description: '', prompt: 'run' })!
-  controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-bind' })
-  await controller.runTask(task.id)
-  const run = stub.runCalls[0]
-  run.fire({ kind: 'started', taskId: task.id, executionId: run.executionId, sessionId: 's-run' })
-  // The refine family needs a backlog card (refinement is preparation).
-  const back = controller.createTask({ title: '准备', description: 'd', prompt: 'run', status: 'backlog' })!
-  controller.startRefine(back.id)
-  const refine = stub.runCalls[1]
-  refine.fire({ kind: 'started', taskId: back.id, executionId: refine.executionId, sessionId: 's-refine' })
-  return { controller, sessions, store, stub, task: controller.getSnapshot().tasks.find(row => row.id === task.id)! }
-}
-
 describe('view state', () => {
-  it('toggles the board and reflects it in the snapshot', () => {
+  it('reflects the board stage in the snapshot', () => {
     const { controller } = makeController()
     expect(controller.getSnapshot().boardOpen).toBe(false)
     controller.openBoard()
     expect(controller.getSnapshot().boardOpen).toBe(true)
-    controller.openBoard() // idempotent
+    controller.openBoard() // idempotent (the stage may re-render)
     expect(controller.getSnapshot().boardOpen).toBe(true)
     controller.closeBoard()
     expect(controller.getSnapshot().boardOpen).toBe(false)
-    controller.toggleBoard()
-    expect(controller.getSnapshot().boardOpen).toBe(true)
+    controller.closeBoard() // idempotent
+    expect(controller.getSnapshot().boardOpen).toBe(false)
   })
 
-  it('closes the board when the user navigates to a session', () => {
+  it('the board back control leaves through the panel capability, or reports it cannot', () => {
+    let calls = 0
+    const withPanel = makeController(new StubExec(), { showConversation: () => { calls += 1 } })
+    expect(withPanel.controller.showConversation()).toBe(true)
+    expect(calls).toBe(1)
+    // No panel capability wired: honest false, never a silent no-op.
+    const bare = makeController()
+    expect(bare.controller.showConversation()).toBe(false)
+  })
+
+  it('keeps the board open across session-list changes (the stage owns the close)', () => {
+    // The close decision moved to the centre-stage panel: what closes the board
+    // is the stage switching to the Conversation panel, not a selection diff.
+    // The host no longer publishes a current-session field at all, so a list
+    // notification carries no navigation intent and must never close the board.
     const { controller, sessions } = makeController()
     sessions.setCurrent('s-1')
     controller.openBoard()
-    expect(controller.getSnapshot().boardOpen).toBe(true)
     sessions.setCurrent('s-2')
-    expect(controller.getSnapshot().boardOpen).toBe(false)
-  })
-
-  it('closes the board when a new session is started (selection cleared)', () => {
-    const { controller, sessions } = makeController()
-    sessions.setCurrent('s-1')
-    controller.openBoard()
+    expect(controller.getSnapshot().boardOpen).toBe(true)
     sessions.setCurrent(undefined)
-    expect(controller.getSnapshot().boardOpen).toBe(false)
-  })
-
-  it('stays open on unrelated session-list changes (status updates of the same selection)', () => {
-    const { controller, sessions } = makeController()
-    sessions.setCurrent('s-1')
-    controller.openBoard()
-    // A notification with an unchanged selection must not close the board.
-    for (const fn of [...(sessions as unknown as { listeners: Set<() => void> }).listeners]) fn()
     expect(controller.getSnapshot().boardOpen).toBe(true)
   })
 
-  it('a sidebar pick closes the board even when the selection cannot move (every staged family)', async () => {
-    // The reported hole: clicking the row that is ALREADY current moves nothing,
-    // so the selection-diff leg can never see the user's intent — the board kept
-    // the center column while the user saw no reaction at all. The pick probe's
-    // report is the second leg and it does not care whether the id is staged.
-    const { controller, sessions } = await makeStagedBoard()
-    for (const sessionId of ['s-run', 's-bind', 's-refine']) {
-      sessions.setCurrent(sessionId)
-      controller.openBoard()
-      expect(controller.getSnapshot().boardOpen, sessionId).toBe(true)
-      expect(sessions.current, sessionId).toBe(sessionId) // already current: no movement possible
-      controller.userSelectedNativeSession()
-      expect(controller.getSnapshot().boardOpen, `${sessionId} pick must close the board`).toBe(false)
-    }
-  })
+  it('openSession delegates to the navigation capability and reports refusal honestly', () => {
+    // Navigation is the view owner's now, so the controller's job is the
+    // existence check plus an honest answer: a missing session, and a
+    // composition with no navigation capability, must both read as refused (the
+    // caller then shows "cannot open") instead of a dead button.
+    const sessions = new FakeSessions()
+    sessions.knownIds = new Set(['s-1'])
+    const { controller } = makeController(new StubExec(), { sessions })
 
-  it("the board's own navigation never closes it (execution / linked / refine jumps)", async () => {
-    const { controller, sessions } = await makeStagedBoard()
-    sessions.setCurrent('s-other')
-    controller.openBoard()
-    for (const sessionId of ['s-run', 's-bind', 's-refine']) {
-      expect(controller.openSession(sessionId), sessionId).toBe(true)
-      // The selection DID move — the runtime selects and notifies from inside
-      // the call — and the board must still be there: it asked for this itself,
-      // which the one-shot board pick marks explicitly.
-      expect(sessions.current, sessionId).toBe(sessionId)
-      expect(controller.getSnapshot().boardOpen, `${sessionId} jump must keep the board`).toBe(true)
-    }
-  })
+    expect(controller.openSession('s-missing')).toBe(false)
+    expect(sessions.openCalls).toEqual([])
 
-  it('the notification entries keep the board open, including when the target is already current', async () => {
-    const { controller, sessions } = await makeStagedBoard()
-    sessions.setCurrent('s-run')
-    controller.openBoard()
-    // 去会话 on the row that is already current: open() moves nothing and the
-    // board's own entry must not read as the user walking away.
-    expect(controller.openSession('s-run')).toBe(true)
-    expect(controller.getSnapshot().boardOpen).toBe(true)
-    // 去回答 on another of the card's conversations: the selection moves.
-    expect(controller.openSession('s-refine')).toBe(true)
-    expect(sessions.current).toBe('s-refine')
-    expect(controller.getSnapshot().boardOpen).toBe(true)
-  })
+    expect(controller.openSession('s-1')).toBe(true)
+    expect(sessions.openCalls).toEqual(['s-1'])
 
-  it('a wait arriving on a board conversation keeps the board open', async () => {
-    const { controller, sessions } = await makeStagedBoard()
-    sessions.setCurrent('s-other')
-    controller.openBoard()
-    // A question pops on the card's run session and the shell surfaces it as
-    // current: the wait is the board's own subject matter (its 去回答 entry
-    // lives on the board), so the board stays open.
-    sessions.setWaiting('s-run', 'plan-review')
-    sessions.setCurrent('s-run')
-    expect(controller.getSnapshot().boardOpen).toBe(true)
-    // The exemption is the WAIT, not "staged": an unattributed move onto a
-    // staged conversation with no wait still reads as walking away (the user's
-    // own click is the probe's leg; a board-chosen selection is marked).
-    sessions.setWaiting('s-run', undefined)
-    sessions.setCurrent('s-bind')
-    expect(controller.getSnapshot().boardOpen).toBe(false)
-  })
-
-  it('a sidebar pick closes the board even on a waiting row (the click leg never consults the wait exemption)', async () => {
-    const { controller, sessions } = await makeStagedBoard()
-    sessions.setWaiting('s-run', 'approval')
-    sessions.setCurrent('s-run')
-    controller.openBoard()
-    expect(controller.getSnapshot().boardOpen).toBe(true)
-    controller.userSelectedNativeSession()
-    expect(controller.getSnapshot().boardOpen).toBe(false)
-  })
-
-  it('a pick with the board closed is a no-op, and a stale board pick never guards a later selection', async () => {
-    const { controller, sessions } = await makeStagedBoard()
-    controller.userSelectedNativeSession() // nothing open: nothing to close
-    expect(controller.getSnapshot().boardOpen).toBe(false)
-    // A jump while the board is closed (a notification entry after it closed):
-    // its one-shot is consumed by that very selection — a marker outliving its
-    // notification must never guard a later, unrelated selection of the same id.
-    controller.openSession('s-run')
-    sessions.setCurrent('s-other')
-    controller.openBoard()
-    expect(controller.getSnapshot().boardOpen).toBe(true)
-    sessions.setCurrent('s-run')
-    expect(controller.getSnapshot().boardOpen).toBe(false)
-  })
-
-  it('the sidebar pick is ONE probe, torn down with the mount, anchored on the row ARIA contract', () => {
-    const read = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
-    const mount = read('../src/client/board-mount.tsx')
-    // Exactly one listener, capture phase: the board's state settles before the
-    // sidebar's own handler runs, and the sidebar's own pick is not swallowed.
-    expect(mount.match(/addEventListener\(/g) ?? []).toHaveLength(1)
-    expect(mount).toContain("document.addEventListener('click', onDocumentClick, true)")
-    expect(mount).toContain("document.removeEventListener('click', onDocumentClick, true)")
-    expect(mount).toContain('controller.userSelectedNativeSession()')
-    // The anchor is the row's SEMANTIC selection contract (the official sidebar
-    // renders session rows as role=treeitem + aria-selected, its workspace GROUP
-    // rows as role=treeitem + aria-expanded), never a hashed class name.
-    expect(mount).toContain(`const SESSION_ROW_SELECTOR = '[role="treeitem"][aria-selected]'`)
-    expect(mount).not.toMatch(/SESSION_ROW_SELECTOR = '[^']*\[class/)
-    // A sidebar DRAG into the board fires pointerdown but never a click: closing
-    // on pointerdown would break dragging a session onto a card.
-    expect(mount).not.toMatch(/addEventListener\('(pointer|mouse)down'/)
-    // The controller's one-shot marker is written BEFORE open(): the runtime
-    // notifies from inside the call, so a marker written after would arrive
-    // after the notification already judged the selection as the user's.
-    const controller = read('../src/core/controller.ts')
-    const markerAt = controller.indexOf('this.boardPick = sessionId')
-    expect(markerAt).toBeGreaterThan(-1)
-    expect(controller.indexOf('this.deps.sessions.open(sessionId)', markerAt)).toBeGreaterThan(markerAt)
+    // A composition without the navigation capability: no throw, honest false.
+    const withoutNav = new FakeSessions()
+    withoutNav.knownIds = new Set(['s-1'])
+    ;(withoutNav as { open?: unknown }).open = undefined
+    const bare = makeController(new StubExec(), { sessions: withoutNav })
+    expect(bare.controller.openSession('s-1')).toBe(false)
   })
 
   it('openTask/closeTask manage the selection', () => {
@@ -2014,20 +1893,18 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
 
 describe('referenceSessionOf (官方 @ 菜单的目标会话解析)', () => {
   it('resolves the task own related session first (refine → execution → linked)', () => {
-    const { controller, sessions } = makeController()
-    sessions.setCurrent('native-current')
+    const { controller } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // A bound session makes it the task's own related session.
     controller.addTaskSource(task.id, { kind: 'session', sessionId: 'bound-1' })
     expect(controller.referenceSessionOf(task.id)).toBe('bound-1')
-    expect(controller.referenceSessionOf(undefined)).toBe('native-current')
   })
 
-  it('falls back to the staged native session, then the first list entry', () => {
+  it('falls back to the first list entry when no task session applies', () => {
+    // There is no "staged native session" step any more: the host publishes no
+    // current-session identity (it is view state), so claiming the user's
+    // selection here would be a guess. The first list entry is the honest floor.
     const { controller, sessions } = makeController()
-    sessions.setCurrent('staged')
-    expect(controller.referenceSessionOf(undefined)).toBe('staged')
-    sessions.setCurrent(undefined)
     sessions.setRunning('only-one', false)
     expect(controller.referenceSessionOf(undefined)).toBe('only-one')
   })

@@ -414,13 +414,63 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
 | host 存储单元名（storage hub json 后端） | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board.json`；平台 `UNIT_NAME_RE` 只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
 | 公告 section | `plugin:dsh-task-board`（order 200） |
-| 设置卡 slot id | `dsh-task-board`（`settings.plugin.item`，order 110） |
+| **看板舞台 slot**（面板本体） | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
+| **侧栏入口 slot**（面板图标） | `sidebar.panellist`，`id: dsh-task-board`（**必须等于 `main` 的 key**，shell 靠它把行解析到舞台） |
+| **设置界面 slot** | `settings.section`，`id: dsh-task-board`，order 112 |
 | localStorage 键（现为离线镜像 + 草稿 + 备份） | `dsh.taskBoard.v1` 等（**不得改名**，见「数据键稳定」） |
 
 挂载：`package.json` 声明 `dsh.bundle.patch` → `cordis.patch.yml`；安装命令
 `dsh plugin --profile web add @firetruck666/dsh-task-board`（本地开发用 `add .` 或
 `link:<本目录>`）。`scripts/dsh-task-board.js` 是本地挂载辅助，会清理改名前的旧
 无作用域键。
+
+## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
+
+本插件是**外部插件**，与宿主之间只有下面这些接触面。它们全部由
+`pnpm verify` 里的 `verify-host-contracts.mjs` 对照**实际安装的 DSH** 核对：任何一条
+在宿主里消失，或源码里出现「已移除」那半张表的成员，命令即红并指名。
+
+这张表存在的原因是一次真实事故：宿主升级删掉了 `settings.plugin.item`、把
+`uiSession.pendingInteractions` 改名成 `sessionStatus`、并拿掉了
+`ISessions.open`/`current`。三处都没有让构建失败——未声明的 slot 在 `slots.inject`
+里**静默 no-op**，被删的服务成员只在用户点击的那一刻抛 `TypeError`。表现是「看板点了
+没反应」和「设置里什么都没有」，而所有自动化检查全绿。
+
+### 插件依赖的 slot（必须由宿主声明）
+
+| slot | 用途 |
+| --- | --- |
+| `main` | 看板舞台（keyed slot，key = `dsh-task-board`） |
+| `sidebar.panellist` | 侧栏面板图标（id = `dsh-task-board`） |
+| `settings.section` | 「设置」页顶层入口 |
+
+### 插件按名读的宿主成员（必须存在）
+
+| 包 | 成员 |
+| --- | --- |
+| `@deepseek-ai/dsh-client-ui-session` | `sessionStatus` |
+| `@deepseek-ai/dsh-client-ui-session` | `pendingInteraction` |
+| `@deepseek-ai/dsh-client-ui-workspace` | `openSession` |
+| `@deepseek-ai/dsh-client-ui-layout` | `selectPanel` |
+| `@deepseek-ai/dsh-api-session-controller` | `binding` |
+| `@deepseek-ai/dsh-api-session-controller` | `retainInfo` |
+
+### 宿主已移除、源码不得再引用（反向检查）
+
+| 包 | 成员 |
+| --- | --- |
+| `@deepseek-ai/dsh-client-ui-session` | `pendingInteractions` (removed) |
+| `@deepseek-ai/dsh-api-session-controller` | `current` (removed) |
+
+**两条使用纪律**（比表本身更重要）：
+
+1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 历史包袱
+   `[data-pane='conversation']`、`[class*='centerCol']`、`html[data-dsh-taskboard-active]`
+   全部已删除：前两个在 alpha.2 已失效（`data-pane` 整个不存在，`centerCol` 是 shell 的
+   CSS Module 哈希类名，每次重建都变），第三个是「接管会话列」这套猜法的配套。看板现在是
+   官方 `main` 面板，不再向 shell DOM 写一个字节。
+2. **接口只按名读，绝不 `instanceof`、绝不跨包值导入。** 宿主成员缺失时降级并说真话
+   （`openSession` 返回 `false` 让 UI 就近报错），不抛、不静默假装成功。
 
 ## 架构（索引：职责与入口，机制细节以代码注释为准，不复述）
 
@@ -432,8 +482,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### client 半区（浏览器）
 
-- `src/client/index.ts`：inject 六包（slots/sessions/workspaces/locale/remote/uiSession；uiSession 只读 `pendingInteractions`，board 永不注册 waterfall）；offline-first 挂载（Synced*Store 常驻 → 接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；提问面 `PendingMirror`；唤醒 `watchSessionActivity`；席位 `(held, proto, bootedAt)` 元组；宿主面全经 `platform.ts`（`buildApi` 钉端点，`tests/platform.spec.ts` 钉死；执行会话复用 workspace `sessionIds`，无则新建；翻页 follow 开口 cursor→tail→hook→page，`throughSeq` 全链透传，缺 cut 即拒）。
-- `board-transport.ts`：fetch + EventSource（缺席降纯轮询）。`board-mount.tsx`：DOM 级挂中列（`[data-dsh-taskboard-view]` + 键盘内缩）；入口唯一官方侧栏 slot，无 DOM 注入。
+- `src/client/index.ts`：inject 六包（slots/sessions/workspaces/locale/remote/uiSession；uiSession 只读 `sessionStatus`，board 永不注册 waterfall）；offline-first 挂载（Synced*Store 常驻 → 接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；提问面 `PendingMirror`；唤醒 `watchSessionActivity`；席位 `(held, proto, bootedAt)` 元组；官方 seat 三处注册（`main` 面板 / `sidebar.panellist` 入口 / `settings.section` 设置页）；宿主面全经 `platform.ts`（`buildApi` 钉端点，`tests/platform.spec.ts` 钉死；导航走 `ctx.uiWorkspace.openSession`，返回会话走 `ctx.layout.selectPanel(null)`；执行会话复用 workspace `sessionIds`，无则新建；翻页 follow 开口 cursor→tail→hook→page，`throughSeq` 全链透传，缺 cut 即拒）。
+- `board-transport.ts`：fetch + EventSource（缺席降纯轮询）。`TaskBoardPanel.tsx`：看板的官方 `main` 面板席位（键盘内缩 + 未就绪占位；**不向 shell DOM 写一个字节**）；`TaskBoardIcon.tsx`：`sidebar.panellist` 图标。
 
 ### 设计系统层（宪法标题 + 锚点，展开解释见代码注释与 spec）
 
@@ -503,7 +553,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - **统一会话与评论单轨**：同会话同一线程；排队/插话两态，模式只由用户开关定；图片字节 part 直发、文件 `receiptId`（`toPromptImage`/`toPromptFile`），禁自建桥；线程行显示「含 N 张图片 / M 个文件」；附件条独立成行。
 - **运行态唯一推导**：`task-live` + 相关集，`live` 腿读**会话活跃度**（`own ∨ descendant`，见核心层「会话活跃度」条），不是裸 `running`；`sessionDisplay(active)`；结算的列门读同一条活跃腿（`settleColumnOf` 的 `stillWorking`，轮的期限不因后代延长）；直发轮经 `driveLiveStates` 走同一 `settledFollowUp`；卡片黄边（`data-status`）与呼吸（`data-light`）同源，行徽章与卡片列同涨同落。
 - **官方 @ 引用**：`reference-source.ts` 唯一桥；子代理会话宿主回 `agent-busy`（官方语义）；插入走官方 mention；失败永不 reject（会话域失败降级板内目录）。
-- **交互卡 + 上下文块**：只订阅 `pendingInteractions`（board 永不注册 waterfall）；carrier 自带 `answer`/`cancel` 时**就卡作答**（`PendingMirror` 身份守卫：只结算当前快照里那一个对象，身份不符即拒，失败留卡报错），数据型 carrier 才降级为跳回原生会话；卡与原生提问卡逐条同形同行为（head 收起/放弃整组、编号或勾选选项 + 推荐徽章 + 自定义答案、上一题/进度/下一题、跳过本题、提交/提交中、就近报错）；todo/用量/goal 读官方 projection（缺面降级）；`SessionContextBlock` 宽行内/窄浮层（240px 封顶）；goal 可操作 strip；有未完成才显示。通知行落点按会话出身分：执行/链接会话进会话面板（rail 自带 force-open + 滚到卡），refine 会话定位完善区（它没有链接面板），approval 只去原生会话；等待行只给前进动作（去回答/去会话/进详情），阻塞读不掉也藏不起。
+- **交互卡 + 上下文块**：只订阅 `uiSession.sessionStatus`（宿主按会话发布的状态表，interaction 在 `pendingInteraction` 字段里；board 永不注册 waterfall）；carrier 自带 `answer`/`cancel` 时**就卡作答**（`PendingMirror` 身份守卫：只结算当前快照里那一个对象，身份不符即拒，失败留卡报错），数据型 carrier 才降级为跳回原生会话；卡与原生提问卡逐条同形同行为（head 收起/放弃整组、编号或勾选选项 + 推荐徽章 + 自定义答案、上一题/进度/下一题、跳过本题、提交/提交中、就近报错）；todo/用量/goal 读官方 projection（缺面降级）；`SessionContextBlock` 宽行内/窄浮层（240px 封顶）；goal 可操作 strip；有未完成才显示。通知行落点按会话出身分：执行/链接会话进会话面板（rail 自带 force-open + 滚到卡），refine 会话定位完善区（它没有链接面板），approval 只去原生会话；等待行只给前进动作（去回答/去会话/进详情），阻塞读不掉也藏不起。
 - **多源绑定**：`binds` 真相源；session 绑定上卡，workspace 绑定只关联（拖入瞬间按注册表账本快照一次）；隐藏删除进 `removedSessions`（权威非相关门）；再拖回可恢复。
 - **归档是「可恢复的隐藏」，不是删除**：归档态只有一个来源——`ctx.workspaces.list` 快照的 `archivedSessionIds`（注册表全局集合；**每会话摘要里没有 archived 布尔**，只能 join）。它是**原生状态、从不改写台账**：归档不碰工作区归属槽，恢复（设置 → 已归档会话 → 取消归档）只是把 id 从集合里去掉，会话回到原位。因此本插件对归档只做**派生**：读快照 + 订阅（`workspaces.list.subscribe` 已是既有接线），任何界面**不得缓存归档结论**、不得把归档写进台账。**派生 + 订阅 = 恢复即自愈**：卡片会话行、链接行、规则可选项、@ 目录、文件夹快照、看门狗都在同一次通知里重算。
   四条推论（改归档相关代码前先读）：

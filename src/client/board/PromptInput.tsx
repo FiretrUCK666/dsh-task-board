@@ -95,17 +95,24 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
   // keyed; the effect aborts the previous fetch on every change).
   const [mentionReq, setMentionReq] = useState<CommandToken | undefined>(undefined)
 
-  // Load the live slash catalog once per mount; unavailable surfaces
-  // degrade to no menu.
+  // Load the live slash catalog once the composer's session is known; both
+  // native sources are session-scoped, so there is nothing to fetch without
+  // one (the menu simply stays unavailable until it arrives). Unavailable
+  // surfaces degrade to no menu.
   useEffect(() => {
+    if (sessionId === undefined) {
+      setCatalog(null)
+      return
+    }
     let alive = true
+    setCatalog(undefined)
     void (async () => {
-      const rows = await controller.runCatalog()?.listSlashCandidates()
+      const rows = await controller.runCatalog()?.listSlashCandidates(sessionId)
       if (!alive) return
       setCatalog(rows ?? null)
     })()
     return () => { alive = false }
-  }, [controller])
+  }, [controller, sessionId])
 
   // The official reference candidates (files + sessions) for the active '@'
   // token — the SAME two Remote namespaces the harness's ui-reference source

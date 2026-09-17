@@ -1,11 +1,11 @@
 /**
- * Official pending-interaction mirror: the 0.1.5 question face.
+ * Official pending-interaction mirror: the current question face.
  *
  * The waterfall is a claim chain (first answer wins), so the board never
  * REGISTERS a listener of its own — it subscribes to the official uiSession
- * `pendingInteractions` snapshot (the same source the native sidebar and
- * composer read) and, while an entry is live, it holds the carrier object
- * that entry carries.
+ * session-status snapshot (the same source the native sidebar and composer
+ * read) and, while an entry is live, it holds the carrier object that entry
+ * carries.
  *
  * That carried object IS the native `PendingQuestion`: its `answer(answer)`
  * and `cancel()` settle the very waterfall invocation the native composer
@@ -18,6 +18,14 @@
  * only for a carrier that really exposes those methods; a host whose
  * snapshot entries carry data but no action (or no uiSession at all) keeps
  * the read-only navigate shell.
+ *
+ * ENVELOPE (this module is the ONE place the plugin knows it): the host
+ * publishes a per-session STATUS map, not a bare interaction map —
+ * `sessionStatus: Map<sessionId, { running, pendingInteraction, completionUnread }>`,
+ * carrying every session (running and idle alike). The board wants only the
+ * pending-interaction half, so {@link pendingOnly} unwraps that ONE layer
+ * here and everything downstream still speaks the carrier vocabulary it
+ * always spoke. A future envelope change lands in that function alone.
  */
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from '../../core/question-rpc.ts'
 import {
@@ -45,10 +53,35 @@ interface MirrorEntry {
 
 /** The structural slice of the official uiSession face this mirror reads. */
 export interface UiSessionMirrorFace {
-  readonly pendingInteractions: {
+  readonly sessionStatus: {
     getSnapshot(): ReadonlyMap<string, unknown>
     subscribe(listener: () => void): () => void
   }
+}
+
+/** One entry of the host's per-session status map, as far as this module reads it. */
+interface SessionStatusLike {
+  pendingInteraction?: unknown
+}
+
+/**
+ * Unwrap the host's per-session status map into the bare interaction map the
+ * rest of this module consumes: one entry per session, absent when that
+ * session has no pending interaction (an idle or merely running session
+ * carries no carrier, and must NOT be projected as one).
+ * @param snapshot - the official session-status snapshot.
+ * @returns sessionId -> pending interaction, for sessions that have one.
+ */
+function pendingOnly(snapshot: ReadonlyMap<string, unknown> | undefined): ReadonlyMap<string, unknown> | undefined {
+  if (snapshot === undefined) return undefined
+  const next = new Map<string, unknown>()
+  for (const [sessionId, status] of snapshot) {
+    if (typeof status !== 'object' || status === null) continue
+    const interaction = (status as SessionStatusLike).pendingInteraction
+    if (interaction === undefined) continue
+    next.set(sessionId, interaction)
+  }
+  return next
 }
 
 /** Whether a snapshot entry can settle its own pending request. */
@@ -86,7 +119,7 @@ export class PendingMirror implements QuestionRpcFace {
    * generation of the snapshot.
    */
   private get entries(): ReadonlyMap<string, MirrorEntry> {
-    return reduceSnapshot(this.uiSession?.pendingInteractions.getSnapshot())
+    return reduceSnapshot(pendingOnly(this.uiSession?.sessionStatus.getSnapshot()))
   }
 
   pendingOf(sessionId: string | undefined): WireQuestion | undefined {
@@ -108,7 +141,7 @@ export class PendingMirror implements QuestionRpcFace {
   }
 
   subscribe(listener: () => void): () => void {
-    const source = this.uiSession?.pendingInteractions
+    const source = this.uiSession?.sessionStatus
     if (source === undefined) return () => {}
     return source.subscribe(listener)
   }

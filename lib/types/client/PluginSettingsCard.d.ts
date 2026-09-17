@@ -1,23 +1,27 @@
 /**
- * Shared chrome for the plugin settings card: a disclosure header naming the
- * plugin and what its settings govern, the controls inside, and the save that
- * writes them. Renders always — an unavailable namespace shows a hint in place
- * of the controls rather than disappearing. Mirrors the official ui-plugin-config
- * PluginCard in a self-contained slice (this package must not depend on a
- * sibling UI package).
+ * Shared chrome for the plugin's settings SECTION: a heading naming what these
+ * settings govern, the controls, and the save that writes them.
+ *
+ * The controls are always visible. The previous shape was a collapsible card
+ * inside the built-in plugin list — a disclosure because a list of many plugins
+ * needed folding. A settings section is its own page with exactly one subject,
+ * so a disclosure in front of it only adds a click between the user and the
+ * settings they just navigated to. The unavailable/read-only/failed states are
+ * all still rendered (an unavailable namespace explains itself instead of
+ * showing an empty page).
  */
 import { type ReactNode } from 'react';
 import type { CardShell } from './settings-form.ts';
 import type { SettingsCardKey } from './locales.ts';
-/** Card chrome shared by every plugin settings card. */
+/** Section chrome shared by the plugin's settings form. */
 interface PluginSettingsCardProps {
-    /** Locale reader for this card's copy. */
+    /** Locale reader for this section's copy. */
     t: (key: SettingsCardKey) => string;
     /** Locale key of the plugin's name. */
     titleKey: SettingsCardKey;
     /** Locale key of the line describing what this plugin's settings govern. */
     descriptionKey: SettingsCardKey;
-    /** The card's form state: availability, writability, and what a save would do. */
+    /** The form state: availability, writability, and what a save would do. */
     state: CardShell;
     /** Write every staged edit. */
     onSave: () => void;
@@ -27,9 +31,9 @@ interface PluginSettingsCardProps {
     children: ReactNode;
 }
 /**
- * Render one plugin settings card.
+ * Render one plugin settings section.
  * @param props - the plugin's copy keys, its form state, and its controls.
- * @returns the card; an unavailable namespace renders a hint instead of controls.
+ * @returns the section; an unavailable namespace renders an explanatory hint in place of the controls.
  */
 export declare function PluginSettingsCard(props: PluginSettingsCardProps): import("react").JSX.Element;
 /** Props every field control needs regardless of its value type. */

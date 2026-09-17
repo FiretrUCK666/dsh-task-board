@@ -125,6 +125,8 @@ export class CardForm<T> {
   private readonly listeners = new Set<() => void>()
   private saving = false
   private failed = false
+  /** The scope subscription, released by {@link dispose}. */
+  private readonly scopeUnsubscribe: () => void
 
   /** @param scope - the bound settings scope for this card's namespace. */
   constructor(
@@ -132,7 +134,7 @@ export class CardForm<T> {
     specs: FieldSpec[],
   ) {
     this.specs = new Map(specs.map(spec => [spec.field, spec]))
-    scope.subscribe(() => { this.publish() })
+    this.scopeUnsubscribe = scope.subscribe(() => { this.publish() })
   }
 
   /** Publish a projection of this form, rebuilt whenever the scope or a draft changes. */
@@ -140,6 +142,18 @@ export class CardForm<T> {
     const store = createSnapshotStore(project())
     this.listeners.add(() => { store.set(project()) })
     return store
+  }
+
+  /**
+   * Drop the scope subscription and every projection listener.
+   *
+   * The form subscribes to the settings scope in its constructor, so it must be
+   * told when the scope's owner is torn down — otherwise the subscription (and
+   * the bound store behind it) outlives the namespace it reads. Idempotent.
+   */
+  dispose(): void {
+    this.scopeUnsubscribe()
+    this.listeners.clear()
   }
 
   /** Read the card-level state: what the Host serves, and what a save would do. */

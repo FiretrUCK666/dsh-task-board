@@ -1,26 +1,30 @@
 /**
- * Shared chrome for the plugin settings card: a disclosure header naming the
- * plugin and what its settings govern, the controls inside, and the save that
- * writes them. Renders always — an unavailable namespace shows a hint in place
- * of the controls rather than disappearing. Mirrors the official ui-plugin-config
- * PluginCard in a self-contained slice (this package must not depend on a
- * sibling UI package).
+ * Shared chrome for the plugin's settings SECTION: a heading naming what these
+ * settings govern, the controls, and the save that writes them.
+ *
+ * The controls are always visible. The previous shape was a collapsible card
+ * inside the built-in plugin list — a disclosure because a list of many plugins
+ * needed folding. A settings section is its own page with exactly one subject,
+ * so a disclosure in front of it only adds a click between the user and the
+ * settings they just navigated to. The unavailable/read-only/failed states are
+ * all still rendered (an unavailable namespace explains itself instead of
+ * showing an empty page).
  */
 
-import { useId, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import type { CardShell } from './settings-form.ts'
 import type { SettingsCardKey } from './locales.ts'
 import css from './settings-card.module.css'
 
-/** Card chrome shared by every plugin settings card. */
+/** Section chrome shared by the plugin's settings form. */
 interface PluginSettingsCardProps {
-  /** Locale reader for this card's copy. */
+  /** Locale reader for this section's copy. */
   t: (key: SettingsCardKey) => string
   /** Locale key of the plugin's name. */
   titleKey: SettingsCardKey
   /** Locale key of the line describing what this plugin's settings govern. */
   descriptionKey: SettingsCardKey
-  /** The card's form state: availability, writability, and what a save would do. */
+  /** The form state: availability, writability, and what a save would do. */
   state: CardShell
   /** Write every staged edit. */
   onSave: () => void
@@ -31,70 +35,28 @@ interface PluginSettingsCardProps {
 }
 
 /**
- * Render one plugin settings card.
+ * Render one plugin settings section.
  * @param props - the plugin's copy keys, its form state, and its controls.
- * @returns the card; an unavailable namespace renders a hint instead of controls.
+ * @returns the section; an unavailable namespace renders an explanatory hint in place of the controls.
  */
 export function PluginSettingsCard(props: PluginSettingsCardProps) {
-  const [open, setOpen] = useState(false)
   const { state } = props
-  const title = props.t(props.titleKey)
-  // Identity for the body this header discloses. Declared before the early
-  // return so it is called on every render (hooks cannot sit after a branch),
-  // and shared by both branches because only one of them ever renders.
-  const bodyId = useId()
-  if (!state.available) {
-    // The namespace is not served; render the header and an unavailable hint
-    // so the card never silently vanishes from the settings surface.
-    return (
-      <li className={css.card}>
-        <button
-          type="button"
-          className={css.header}
-          aria-expanded={open}
-          aria-controls={bodyId}
-          aria-label={`${props.t(open ? 'settings.collapse' : 'settings.expand')}: ${title}`}
-          onClick={() => { setOpen(!open) }}
-        >
-          <span className={css.headText}>
-            <span className={css.name}>{title}</span>
-            <span className={css.description}>{props.t(props.descriptionKey)}</span>
-          </span>
-          <span className={open ? css.chevronOpen : css.chevron}>▾</span>
-        </button>
-        {open
-          ? (
-            <div className={css.body} id={bodyId}>
-              <p className={css.readOnly} role="status">{props.t('settings.unavailable')}</p>
-            </div>
-          )
-          : null}
-      </li>
-    )
-  }
   const blocked = !state.dirty || state.invalid || state.saving
   return (
-    <li className={css.card}>
-      <button
-        type="button"
-        className={css.header}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        aria-label={`${props.t(open ? 'settings.collapse' : 'settings.expand')}: ${title}`}
-        onClick={() => { setOpen(!open) }}
-      >
-        <span className={css.headText}>
-          <span className={css.name}>{title}</span>
-          <span className={css.description}>{props.t(props.descriptionKey)}</span>
-        </span>
+    <section className={css.card}>
+      <header className={css.header}>
+        <h3 className={css.name}>{props.t(props.titleKey)}</h3>
+        <p className={css.description}>{props.t(props.descriptionKey)}</p>
         {state.dirty ? <span className={css.pending}>{props.t('settings.unsaved')}</span> : null}
-        <span className={open ? css.chevronOpen : css.chevron}>▾</span>
-      </button>
-      {open
-        ? (
-          <div className={css.body} id={bodyId}>
-            {!state.writable ? <p className={css.readOnly} role="status">{props.t('settings.readOnly')}</p> : null}
-            {props.children}
+      </header>
+      <div className={css.body}>
+        {!state.available ? <p className={css.readOnly} role="status">{props.t('settings.unavailable')}</p> : null}
+        {state.available && !state.writable
+          ? <p className={css.readOnly} role="status">{props.t('settings.readOnly')}</p>
+          : null}
+        {state.available ? props.children : null}
+        {state.available
+          ? (
             <div className={css.footer}>
               {state.failed ? <p className={css.failed} role="status">{props.t('settings.saveFailed')}</p> : null}
               <button
@@ -114,10 +76,10 @@ export function PluginSettingsCard(props: PluginSettingsCardProps) {
                 {props.t(!state.saving ? 'settings.save' : 'settings.saving')}
               </button>
             </div>
-          </div>
-        )
-        : null}
-    </li>
+          )
+          : null}
+      </div>
+    </section>
   )
 }
 

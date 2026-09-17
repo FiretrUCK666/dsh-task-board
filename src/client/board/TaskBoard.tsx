@@ -1178,7 +1178,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
             className={css.boardBack}
             aria-label={t('board.close')}
             title={t('board.close')}
-            onClick={() => { controller.closeBoard() }}
+            onClick={() => { controller.showConversation() }}
           >
             <Icon name="arrowLeft" />
           </button>

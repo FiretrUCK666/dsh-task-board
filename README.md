@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%5E22.19.0%20%7C%7C%20%3E%3D24.0.0-339933)](README.md#环境要求)
 
-DeepSeek Harness 的任务看板插件。它在 Web 界面的侧边栏底部加一个「任务看板」入口，用五列看板管理任务；任务交给 DSH 自己的会话真实执行，状态自动回写到卡片上。
+DeepSeek Harness 的任务看板插件。它在 Web 界面的侧边栏加一个「任务看板」入口，用五列看板管理任务；任务交给 DSH 自己的会话真实执行，状态自动回写到卡片上。
 
 插件不修改 DSH 源码，卸载后界面恢复原状。看板数据保存在 DSH 主进程（host）一侧，电脑和手机打开同一个部署看到的是同一块板，改动经 SSE 实时同步；窄屏自动进入紧凑布局。
 
@@ -83,7 +83,9 @@ dsh plugin --profile web add .
 
 ### 安装之后
 
-停掉正在运行的 `dsh web`，重新启动它。只刷新页面不够——插件的 host 半区在服务端进程里加载，必须重启才生效。重启后刷新页面，侧边栏底部就会出现「任务看板」入口。
+停掉正在运行的 `dsh web`，重新启动它。只刷新页面不够——插件的 host 半区在服务端进程里加载，必须重启才生效。重启后刷新页面，侧边栏就会出现「任务看板」入口。
+
+入口和 DSH 自带的「插件」面板并排：点它，看板占用中间主区域，再点侧边栏里的任意会话即可回到对话。插件的设置项在 **设置 → 任务看板**。
 
 卸载：
 
@@ -222,6 +224,12 @@ pnpm verify      # 独立插件静态门禁
 **装完刷新页面看不到入口。**
 host 半区在服务端进程里加载，必须重启 `dsh web`，只刷新页面不够。
 
+**从旧版本升级上来，入口和设置的位置变了。**
+新版把看板接进了 DSH 的官方界面机制（这也是它能在界面改版后继续正常显示的原因）：
+入口从「侧边栏底部的一行」变成「侧边栏的面板图标，与 DSH 自带的『插件』面板并排」，
+设置项从「设置 → 内置插件」搬到「设置 → 任务看板」。功能没有减少，任务数据也没有变化。
+如果你看到的是旧位置，说明这一端还跑着旧的前端资源——刷新页面即可。
+
 **升级 DeepSeek Harness 之后插件加载失败（页面提示 Failed to load plugins）。**
 DeepSeek Harness 的内部接口会随版本变化，本插件需要跟着改。先做这两步：
 
@@ -258,10 +266,12 @@ DeepSeek Harness 的内部接口会随版本变化，本插件需要跟着改。
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由 | `/api/dsh-task-board/board`（含 `/lease`、`/command`、`/events`） |
 | host 存储单元 | `dsh_task_board` |
-| 设置卡 slot id | `dsh-task-board` |
+| 看板舞台 slot | `main`（`key: dsh-task-board`） |
+| 侧栏入口 slot | `sidebar.panellist`（`id: dsh-task-board`） |
+| 设置界面 slot | `settings.section`（`id: dsh-task-board`） |
 | localStorage 键 | `dsh.taskBoard.v1` 等 |
 
-插件 id 和包名是两件事：id 决定加载器行、浏览器资源路径、设置命名空间、路由、存储单元和设置卡 slot；包名只是 pnpm 安装时的标识。包名带作用域不会改变 id。
+插件 id 和包名是两件事：id 决定加载器行、浏览器资源路径、设置命名空间、路由、存储单元和上面的三个 slot；包名只是 pnpm 安装时的标识。包名带作用域不会改变 id。
 
 ## 许可证
 

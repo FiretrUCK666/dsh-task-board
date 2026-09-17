@@ -1,11 +1,11 @@
 /**
- * Official pending-interaction mirror: the 0.1.5 question face.
+ * Official pending-interaction mirror: the current question face.
  *
  * The waterfall is a claim chain (first answer wins), so the board never
  * REGISTERS a listener of its own — it subscribes to the official uiSession
- * `pendingInteractions` snapshot (the same source the native sidebar and
- * composer read) and, while an entry is live, it holds the carrier object
- * that entry carries.
+ * session-status snapshot (the same source the native sidebar and composer
+ * read) and, while an entry is live, it holds the carrier object that entry
+ * carries.
  *
  * That carried object IS the native `PendingQuestion`: its `answer(answer)`
  * and `cancel()` settle the very waterfall invocation the native composer
@@ -18,6 +18,14 @@
  * only for a carrier that really exposes those methods; a host whose
  * snapshot entries carry data but no action (or no uiSession at all) keeps
  * the read-only navigate shell.
+ *
+ * ENVELOPE (this module is the ONE place the plugin knows it): the host
+ * publishes a per-session STATUS map, not a bare interaction map —
+ * `sessionStatus: Map<sessionId, { running, pendingInteraction, completionUnread }>`,
+ * carrying every session (running and idle alike). The board wants only the
+ * pending-interaction half, so {@link pendingOnly} unwraps that ONE layer
+ * here and everything downstream still speaks the carrier vocabulary it
+ * always spoke. A future envelope change lands in that function alone.
  */
 import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from '../../core/question-rpc.ts';
 import { type MirrorSnapshotLike } from '../../core/question-mirror.ts';
@@ -35,7 +43,7 @@ export interface MirrorCarrierActions {
 }
 /** The structural slice of the official uiSession face this mirror reads. */
 export interface UiSessionMirrorFace {
-    readonly pendingInteractions: {
+    readonly sessionStatus: {
         getSnapshot(): ReadonlyMap<string, unknown>;
         subscribe(listener: () => void): () => void;
     };

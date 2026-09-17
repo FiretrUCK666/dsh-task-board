@@ -8,7 +8,7 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
-import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, IUiSessionFace, SessionId, WorkspaceId } from './platform.ts'
+import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
 import { buildApi, sessionDriverOf } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
@@ -27,20 +27,54 @@ import { watchSessionActivity } from './board/activity-wake.ts'
 import { nativeTurnOf } from '../core/session-activity.ts'
 import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
-import { mountBoard } from './board-mount.tsx'
+import { TaskBoardPanel } from './TaskBoardPanel.tsx'
+import { TaskBoardIcon } from './TaskBoardIcon.tsx'
 import { BundleFreshnessState, reloadForFreshBundle } from './bundle-freshness.ts'
 import { fetchUpdateSource } from './update-source.ts'
 import packageJson from '../../package.json'
 
 /** Deployed bundle version (diagnostic only — never rendered in the UI). */
 const BOARD_VERSION = (packageJson as { version?: string }).version ?? 'unknown'
-import { SidebarFooter, SidebarFooterController } from './SidebarFooter.tsx'
 import { RouteSettingsScope } from './route-scope.ts'
-import { TaskBoardSettingsCard, TaskBoardSettingsCardController, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
+import { TaskBoardSettingsCardController, TaskBoardSettingsSection, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
 import { en, t, zh } from './locales.ts'
 
 /** Locale namespace this plugin owns. */
 const NS = 'dsh-task-board'
+
+/**
+ * The board's stage identity — ONE value used for both official registrations:
+ * the `main` slot key (which panel stage to show) and the `sidebar.panellist`
+ * entry id (which row selects it). The shell resolves a row to its stage by
+ * this id, so the two must be the same string; keeping it in one place is what
+ * makes "they agree" structural rather than a coincidence two call sites must
+ * remember.
+ */
+const GROUP = { id: 'dsh-task-board' } as const
+
+/**
+ * The controller holder behind the panel registration.
+ *
+ * The registration happens at apply time (the slot must be contributed before
+ * the shell renders the panel), while the controller is built later in the
+ * background settle. One mutable holder bridges the two without inventing a
+ * second source of truth: until `bind` runs the stage renders its loading state,
+ * and after the board is disposed `unbind` returns it there.
+ */
+class TaskBoardStage {
+  private controller: BoardController | undefined
+
+  /** Publish the live board to the stage. */
+  bind(controller: BoardController): void { this.controller = controller }
+
+  /** Stop publishing a board (the board is being disposed). */
+  unbind(): void { this.controller = undefined }
+
+  /** Build the face the panel registration injects (read fresh on every render). */
+  inject(): { controller: BoardController | undefined } {
+    return { controller: this.controller }
+  }
+}
 
 /** Settings namespace the settings card edits (the Host plugin registers it). */
 const TASK_BOARD_NS = 'dsh-task-board'
@@ -164,11 +198,13 @@ async function selectModelOf(
  * needs the loader to bring up. `sessions` / `workspaces` are the client
  * object-layer services (dsh-api-session-controller / workspace-controller),
  * `connection` the wire carrier, `locale` the copy service, and `remote` the
- * Typert-generated Host API namespaces — all real alpha.3 services, with the
+ * Typert-generated Host API namespaces — all real services, with the
  * package-name edges declared in `dsh.client.inject`. `uiSession` is the
  * session-UI adapter (dsh-client-ui-session): the board only subscribes to
- * its official `pendingInteractions` snapshot (read-only — answering stays
+ * its official session-status snapshot (read-only — answering stays
  * in the native session), never registering a waterfall listener of its own.
+ * Navigation is NOT a required service: `ctx.uiWorkspace` is read optionally
+ * at call time (see the sessions.open adapter in buildApi).
  */
 export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'uiSession']
 
@@ -207,37 +243,51 @@ export function apply(ctx: ClientContext): void {
     // leave an open tab pinned to the previous bundle forever).
     return freshness.watch()
   }, 'dsh-task-board: bundle freshness probe + watch')
-  // Official sidebar seat: register the board entry into the shell's
-  // `sidebar.footer.action` slot (list hole beside Settings). The shell
-  // renders it in every presentation (wide column / collapsed rail / mobile
-  // overlaid drawer — one React tree), which is the structural end of the old
-  // DOM-injection row that only landed in the column's inner subtree (the
-  // "按钮时隐时现" root). The controller is created here (the slot needs a
-  // registration at apply time); mountUiBody binds the real board later.
-  const footer = new SidebarFooterController()
-  ctx.effect(() => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
-    name: 'sidebar.footer.action',
-    key: 'dsh-task-board',
-    // LIST-kind slot: id/order/label are the mandatory list shape (a missing
-    // id throws at load-time validation — which how the entry silently failed
-    // to appear while the old injection path still worked).
-    id: 'dsh-task-board',
+  // --- official seats ---------------------------------------------------------
+  //
+  // The board occupies the shell's CENTRE STAGE as a global panel, and its entry
+  // is that panel's own icon in the shell's panel list. Both are official slots
+  // with the shell owning the chrome, geometry and selection semantics; the
+  // registration ids MUST agree (`GROUP` below is both the `main` key and the
+  // panellist entry id), because that is how the shell resolves a row to its
+  // stage. There is deliberately no other sidebar affordance: one surface, one
+  // entry point, no second "is the board open" subscription to keep in step.
+  const stage = new TaskBoardStage()
+  ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register({
+    name: 'main',
+    key: GROUP.id,
+    locale: NS,
+    inject: () => stage.inject(),
+  }, TaskBoardPanel)), 'dsh-task-board: main panel')
+  ctx.effect(() => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+    name: 'sidebar.panellist',
+    // LIST-kind slot: id/order/label are the mandatory list shape (a missing id
+    // throws at load-time validation).
+    id: GROUP.id,
     order: 110,
     label: () => t('entry.label'),
     locale: NS,
-    inject: () => footer.inject(),
-  }, SidebarFooter)), 'dsh-task-board: sidebar footer action')
+  }, TaskBoardIcon)), 'dsh-task-board: panel entry')
+
   const scope = new RouteSettingsScope<TaskBoardSettings>(TASK_BOARD_NS)
+  // The settings section's form controller lives exactly as long as the scope it
+  // edits, both owned by this fiber. (The old shape rebuilt it inside the inject
+  // callback, which was only safe while that callback ran exactly once.)
+  const settingsCard = new TaskBoardSettingsCardController(scope)
   ctx.effect(() => {
-    const settingsCard = new TaskBoardSettingsCardController(scope)
-    ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-      name: 'settings.plugin.item',
-      key: 'dsh-task-board',
+    ctx.slots.inject('settings.section', () => ctx.slots.register({
+      name: 'settings.section',
+      id: GROUP.id,
+      order: 112,
+      label: () => t('settings.title'),
       locale: NS,
       inject: () => settingsCard.inject(),
-    }, TaskBoardSettingsCard))
-    return () => { scope.dispose() }
-  }, 'dsh-task-board: settings card + scope')
+    }, TaskBoardSettingsSection))
+    return () => {
+      settingsCard.dispose()
+      scope.dispose()
+    }
+  }, 'dsh-task-board: settings section + scope')
 
   // The sidebar entry and board view mount once the settings scope settles;
   // while the scope is still loading, the composition default is unknown, so
@@ -722,9 +772,9 @@ export function apply(ctx: ClientContext): void {
     })()
 
     // Pending native questions: the official mirror over the host's
-    // pendingInteractions snapshot (the same source the native sidebar and
+    // session-status snapshot (the same source the native sidebar and
     // composer read). The board never registers its own waterfall listener —
-    // the waterfall is a claim chain (first answer wins) — but the snapshot
+    // the waterfall is a claim chain (first answer wins) — but the pending
     // entry IS the native carrier, so when it exposes answer/cancel the board
     // settles that one claim through it (in-place answering, identical to the
     // native card). Rendering reads questions/kind/sessionId/key structurally
@@ -768,8 +818,7 @@ export function apply(ctx: ClientContext): void {
     const controller = new BoardController({
       store,
       exec,
-      questionRpc: mirror ?? questionTracker,
-      // Presets ride the shared document once adopted (edits propagate to
+      questionRpc: mirror ?? questionTracker,      // Presets ride the shared document once adopted (edits propagate to
       // every replica); before that the local keys serve (offline-first).
       // The localStorage instance stays as the offline mirror behind the
       // synced one either way.
@@ -791,7 +840,20 @@ export function apply(ctx: ClientContext): void {
       sessions: {
         list: sessions.list,
         exists: id => sessions.list.getSnapshot().byId[id as SessionId] !== undefined,
-        open: id => sessions.open(id as SessionId),
+        // Navigation lives with the view owner now (`ctx.uiWorkspace`,
+        // "select a Session and show its Conversation as one UI navigation
+        // action"). The controller's own face dropped `open`, so this is the
+        // only correct route — and a composition without the workspace UI
+        // reports refusal instead of throwing on an undefined method.
+        open: id => {
+          const uiWorkspace = ctx.get<IUiWorkspaceFace>('uiWorkspace')
+          if (uiWorkspace === undefined) {
+            console.warn('[dsh-task-board] navigation unavailable: no uiWorkspace capability')
+            return false
+          }
+          uiWorkspace.openSession(id as SessionId)
+          return true
+        },
       },
       workspaces: {
         // Source labels, the run-config picker, drag classification AND the
@@ -940,6 +1002,19 @@ export function apply(ctx: ClientContext): void {
       // session itself (typing there), never through the task's dispatcher.
       sessionMessage: sendComment,
       sessionCommand: sendCommand,
+      // The board's 返回: leave the stage for the Conversation through the
+      // shell's own panel API (`selectPanel(null)` is exactly what the shipped
+      // workspace browser does when the user picks a session). Read at call
+      // time: the layout service needs no fiber-inject edge of its own, and an
+      // absent one degrades to "nowhere to go" rather than throwing.
+      showConversation: () => {
+        const layout = ctx.get<ILayoutFace>('layout')
+        if (layout === undefined) {
+          console.warn('[dsh-task-board] cannot return to the conversation: no layout panel capability')
+          return
+        }
+        layout.selectPanel(null)
+      },
       runCatalog: {
         listWorkspaces: () => workspaces.list.getSnapshot().items.map(item => ({
           id: item.workspaceId,
@@ -1003,14 +1078,13 @@ export function apply(ctx: ClientContext): void {
             return undefined
           }
         },
-        listSlashCandidates: async () => {
+        listSlashCandidates: async sessionId => {
           // The slash menu merges the two native sources the composer's '/'
           // menu reads: host commands (live command registry via the remote
           // bridge) and skills (the skill catalog — every skill name is a
-          // slash entry). One session scopes both; a missing session hides
-          // the menu; a failing source degrades to the other one.
-          const list = sessions.list.getSnapshot()
-          const sessionId = list.current ?? Object.keys(list.byId)[0]
+          // slash entry). Both sources are SESSION-SCOPED on the wire, so the
+          // caller supplies the session its composer edits; a missing session
+          // hides the menu (there is no global catalog to fall back to).
           if (sessionId === undefined) {
             console.warn('[dsh-task-board] slash catalog unavailable: no session to scope it to')
             return undefined
@@ -1114,23 +1188,14 @@ export function apply(ctx: ClientContext): void {
     })
     scheduler.start()
 
+    // The board is LIVE now: the stage component renders it the moment the user
+    // selects the panel, so all this does is publish the controller to the panel
+    // registration. Nothing mounts into shell DOM, so there is no frame to wait
+    // for and no observer to keep — the one failure mode left is "no controller
+    // yet", which the stage renders as its own loading state.
     const disposers: Array<() => void> = []
-    try {
-      // Bind the official footer entry to the live board (toggle + open
-      // highlight); it was registered at apply time and is inert until now.
-      footer.bindBoard(
-        () => controller.getSnapshot().boardOpen,
-        () => controller.toggleBoard(),
-      )
-      const unsubscribeFooter = controller.subscribe(() => {
-        footer.setOpen(controller.getSnapshot().boardOpen)
-      })
-      disposers.push(() => { unsubscribeFooter(); footer.dispose() })
-      disposers.push(mountBoard(controller, freshness))
-    } catch (error) {
-      // DOM failures degrade the board, never the GUI.
-      console.error('[dsh-task-board] mount failed:', error)
-    }
+    stage.bind(controller)
+    disposers.push(() => { stage.unbind() })
     // Host-truth convergence runs in the BACKGROUND: the entry above is
     // already live on the local mirror. When the line allows, the host doc
     // (unioned with any pre-sync local writes by start's migration) replaces

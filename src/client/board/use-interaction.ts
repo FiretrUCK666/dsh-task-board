@@ -57,11 +57,12 @@ export interface SessionContext {
 
 const STATE_URL = '/api/dsh-task-board/session-state'
 
-/** One 3s poll: transcript → todos; bridge → goal + subagents. The board's
- *  tree stays mounted while hidden (the conversation view takes over), so the
- *  poll pauses whenever the board is not visible — `data-dsh-taskboard-active`
- *  on <html> is the ONE visibility marker (board-mount owns it) — and resumes
- *  with an immediate refresh the moment the board reappears. */
+/** One 3s poll: transcript → todos; bridge → goal + subagents. The board is a
+ *  centre-stage PANEL now, so the shell unmounts this whole tree whenever
+ *  another panel (or the Conversation) is selected — there is no "mounted but
+ *  hidden" state to detect, and the poll starts fresh on the next selection.
+ *  The remaining case is a mounted board in a BACKGROUND TAB, which is what
+ *  `document.visibilityState` answers. */
 export function useSessionContext(controller: BoardController, sessionId: string | undefined): SessionContext {
   const [context, setContext] = useState<SessionContext>({})
   useEffect(() => {
@@ -71,7 +72,7 @@ export function useSessionContext(controller: BoardController, sessionId: string
     }
     let alive = true
     let timer: number | undefined
-    const visible = (): boolean => document.documentElement.hasAttribute('data-dsh-taskboard-active')
+    const visible = (): boolean => document.visibilityState === 'visible'
 
     const pollTranscript = (): void => {
       void controller.loadTranscript(sessionId).then(result => {
@@ -139,11 +140,12 @@ export function useSessionContext(controller: BoardController, sessionId: string
     }
 
     const poll = (): void => { pollTranscript(); pollSessionState() }
-    // Visibility flips (the board opening/closing) refresh the read at once.
-    const observer = new MutationObserver(() => {
-      if (visible()) poll()
-    })
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-dsh-taskboard-active'] })
+    // Coming back to the tab refreshes the read at once instead of waiting out
+    // the interval. (There is no "board hidden behind the conversation" case to
+    // observe any more: panel switching unmounts this tree entirely, so the
+    // effect's own mount IS the board appearing.)
+    const onVisibility = (): void => { if (visible()) poll() }
+    document.addEventListener('visibilitychange', onVisibility)
 
     if (visible()) poll()
     timer = window.setInterval(() => {
@@ -152,7 +154,7 @@ export function useSessionContext(controller: BoardController, sessionId: string
     return () => {
       alive = false
       if (timer !== undefined) window.clearInterval(timer)
-      observer.disconnect()
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [controller, sessionId])
   // Process-local activation: `remote.goals.get` once (its durable goal is

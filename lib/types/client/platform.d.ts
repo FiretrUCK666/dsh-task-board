@@ -359,11 +359,17 @@ export interface SessionListSummary {
      *  `api-session/activity` projection — the wake channel's list face). */
     updatedAt?: number;
 }
-/** The session-list snapshot `ctx.sessions.list` exposes. */
+/** The session-list snapshot `ctx.sessions.list` exposes.
+ *
+ *  NO `current` MEMBER. The host used to carry the selection here; it moved to
+ *  the view layer (the workspace browser owns it and persists it), so the list
+ *  is pure catalog. Declaring it would promise a field the host never sends —
+ *  every read would silently yield `undefined`, which is exactly how the old
+ *  board lost its "the user switched sessions" signal.
+ */
 export interface SessionListState {
     ids: readonly SessionId[];
     byId: Readonly<Record<string, SessionListSummary>>;
-    current: SessionId | undefined;
     phase: 'pending' | 'ready';
 }
 /** The snapshot the alpha.3 Session object publishes (structural slice). */
@@ -419,7 +425,16 @@ export type GoalsRemoteFace = import('../core/goal-verbs.ts').GoalsRemoteFace;
 export interface SessionBinding {
     readonly session: BoundSessionFace;
 }
-/** The narrow `ctx.sessions` service face this plugin reads. */
+/** The narrow `ctx.sessions` service face this plugin reads.
+ *
+ *  NAVIGATION IS DELIBERATELY ABSENT. The host used to expose `open(id)` /
+ *  `current` here; the current contract states "navigation belongs to view
+ *  owners" and removed both, so this plugin navigates through the layout
+ *  service instead (see `buildApi`'s `sessions.open` adapter, which routes to
+ *  `ctx.layout.selectPanel`). Reading a removed member would fail at runtime
+ *  with nothing but a `TypeError` on the first click, so a face that never
+ *  declares one is the structural guard.
+ */
 export interface ISessionsFace {
     list: ObservableSnapshot<SessionListState>;
     create(opts?: {
@@ -427,7 +442,6 @@ export interface ISessionsFace {
         cwd?: string;
         sessionId?: SessionId;
     }): Promise<SessionId>;
-    open(id: SessionId): void;
     /**
      * Resolve the stable session binding (scope-addressed assembly feed). Pure
      * resolution — undefined for a session neither listed nor already scoped.
@@ -453,14 +467,40 @@ export interface WorkspaceListState {
 export interface IWorkspacesFace {
     list: ObservableSnapshot<WorkspaceListState>;
 }
+/**
+ * The narrow `ctx.uiWorkspace` face this plugin reads: the official
+ * navigation capability ("Select a Session and show its Conversation as one
+ * UI navigation action"). This is the board's replacement for the removed
+ * `sessions.open`, and the ONLY navigation the board performs.
+ */
+export interface IUiWorkspaceFace {
+    openSession(target: SessionId): void;
+}
+/**
+ * The narrow `ctx.layout` face this plugin reads: the official centre-stage
+ * panel selector. `selectPanel(null)` shows the Conversation, which is how the
+ * board's 返回 and its panel entry work — the panel selection IS the board's
+ * visibility, so this is the only lever that can actually change what is on
+ * screen (`@throws` when the id is not a registered main panel, hence the
+ * guard at the call site).
+ */
+export interface ILayoutFace {
+    selectPanel(panelId: string | null): void;
+}
 /** The narrow `ctx.uiSession` service face this plugin reads. The board only
- *  SUBSCRIBES to the official `pendingInteractions` snapshot (the same
- *  source the native sidebar and composer read) — it never registers its
- *  own waterfall listener and never publishes an interaction (publishing
- *  would race the native composer for the answer). Absent = the question
- *  card degrades to the waiting banner. */
+ *  SUBSCRIBES to the official session-status snapshot (the same source the
+ *  native sidebar and composer read) — it never registers its own waterfall
+ *  listener and never publishes an interaction (publishing would race the
+ *  native composer for the answer). Absent = the question card degrades to the
+ *  waiting banner.
+ *
+ *  ENVELOPE NOTE: the host publishes per-session STATUS
+ *  (`Map<sessionId, { running, pendingInteraction, completionUnread }>`), not
+ *  a bare interaction map. This face declares the source; pending-mirror.ts is
+ *  the single place that unwraps the envelope.
+ */
 export interface IUiSessionFace {
-    readonly pendingInteractions: {
+    readonly sessionStatus: {
         getSnapshot(): ReadonlyMap<string, unknown>;
         subscribe(listener: () => void): () => void;
     };
@@ -488,8 +528,20 @@ export interface ClientContext {
     sessions: ISessionsFace;
     /** Workspace object layer. */
     workspaces: IWorkspacesFace;
-    /** Session UI layer (the official pending-interaction projection). */
+    /** Session UI layer (the official session-status projection). */
     uiSession?: IUiSessionFace;
+    /**
+     * Workspace navigation layer (`ctx.uiWorkspace`, the official Client
+     * navigation capability). This is where "show this session's conversation"
+     * lives now that the session controller dropped `open`/`current` — the
+     * controller's own contract states navigation belongs to view owners.
+     * Optional: read through `ctx.get`, absent on a composition without the
+     * workspace UI (the board then reports the navigation as failed instead of
+     * throwing on an undefined member).
+     */
+    uiWorkspace?: IUiWorkspaceFace;
+    /** Centre-stage panel selection (the board's own seat). */
+    layout?: ILayoutFace;
     /**
      * Typert-generated Host Remote namespaces. The alpha.3 host registers
      * exactly these methods per namespace (verified against the shipped

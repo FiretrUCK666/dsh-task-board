@@ -1,10 +1,10 @@
 /**
  * Pending `ask_user_question` answers over the official mirror.
  *
- * On dsh 0.1.5 the waterfall is a CLAIM chain (first answer wins, never a
- * broadcast), so the board never registers its own answerer — it settles the
- * official carrier it received from `pendingInteractions` (see
- * question-mirror.ts). This module keeps the wire model (frame
+ * The waterfall is a CLAIM chain (first answer wins, never a broadcast), so the
+ * board never registers its own answerer — it settles the official carrier it
+ * received from the uiSession session-status snapshot, in that session's
+ * `pendingInteraction` field (see question-mirror.ts). This module keeps the wire model (frame
  * normalization, the per-rpcId pending projection, answer assembly and the
  * plan-review grammar) shared by both the legacy tracker path and the mirror
  * path. Framework-free and DOM-free, so the rules unit-test in isolation. The

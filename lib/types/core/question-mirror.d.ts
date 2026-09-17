@@ -1,17 +1,17 @@
 /**
- * Official pending-interaction mirror — the 0.1.5 answer-side read model.
+ * Official pending-interaction read model (the answer side).
  *
- * On dsh 0.1.5 the waterfall (`user-questions/request`) is a CLAIM chain, not
- * a broadcast: the board must never register its own listener (it would race
- * the native composer). The official read-only projection is the uiSession
- * `pendingInteractions` snapshot (`Map<sessionId, interaction>`), where each
- * interaction carries its session, kind and full question batch — AND, on the
- * shipped host, the carrier's own `answer`/`cancel` (the native
- * `PendingQuestion`). The board subscribes to that snapshot for DISPLAY and,
- * when the carrier exposes those actions, settles the request through the
- * very object it received: same claim, no second answerer, so the two
- * surfaces can never disagree about who answered. A carrier without them is
- * display-only and the card degrades to navigate-to-answer.
+ * The waterfall (`user-questions/request`) is a CLAIM chain, not a broadcast:
+ * the board must never register its own listener (it would race the native
+ * composer). The official read-only projection is the uiSession session-status
+ * snapshot, whose per-session `pendingInteraction` field carries the live
+ * request, and each interaction carries its session, kind and full question
+ * batch — AND, on the shipped host, the carrier's own `answer`/`cancel` (the
+ * native `PendingQuestion`). The board subscribes to that snapshot for DISPLAY
+ * and, when the carrier exposes those actions, settles the request through the
+ * very object it received: same claim, no second answerer, so the two surfaces
+ * can never disagree about who answered. A carrier without them is display-only
+ * and the card degrades to navigate-to-answer.
  *
  * Framework-free and DOM-free, so the rules unit-test in isolation (the live
  * subscription and the action calls live in the client adapter).
