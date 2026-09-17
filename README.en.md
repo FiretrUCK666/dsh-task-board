@@ -31,7 +31,7 @@ The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 
 ## Requirements
 
-- DeepSeek Harness `0.1.5-rc.1` or later. `0.1.5-rc.1` is the **verified minimum**: the plugin is known to work there. Later releases are tracked but not individually tested, so they are not guaranteed. If loading fails, follow the Troubleshooting section.
+- DeepSeek Harness `0.1.6-alpha.2` or later. `0.1.6-alpha.2` is the **verified minimum**: the plugin is known to work there. Later releases are tracked but not individually tested, so they are not guaranteed. If loading fails, follow the Troubleshooting section.
 - Node.js `^22.19.0` or `>= 24.0.0`
 - pnpm 10 or newer
 - The DSH `web` profile

@@ -407,7 +407,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 | 维度 | 值 |
 | --- | --- |
-| **插件 id**（行 id / 文件夹名 / 设置命名空间 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 设置卡 slot） | `dsh-task-board` |
+| **插件 id**（行 id / 文件夹名 / 设置命名空间 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 三个 slot 的 id） | `dsh-task-board` |
 | **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / **客户端 bundle 的 `__ModuleLoader__` 注册 id** / `/plugins/<包名>/client.js`） | 以 `package.json` 的 `name` 为准（当前为 `@firetruck666/dsh-task-board`，**含 npm 作用域**） |
 | 设置路由 | `/api/dsh-task-board/settings` |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
@@ -607,8 +607,9 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 6. **生命周期纪律**：订阅/监听/定时器/observer 全部注册 disposer；DOM 失败
    console.error 不抛；`ctx.effect` 内创建的资源随 effect 清理。
 7. **独立自包含**：运行时依赖仅 `schemastery`（host Config schema）；不依赖兄弟
-   插件；DOM 挂载标记由本插件自打（如 layout 自 stamp `data-dsh-frame`），不依赖
-   外部垫片。
+   插件；界面全部经宿主官方 seat（见「宿主契约表」），不依赖任何外部垫片。自打的
+   属性只用来标记**自己的**子树（`data-dsh-taskboard-view` / `data-dsh-taskboard-panel`），
+   不读写 shell 的 DOM 或类名。
 8. **不引入新依赖**：新增依赖需先说明理由并经确认。确认渠道按角色走（见「先确认角色」）：
    维护者在本会话里确认；贡献者先在 Issue 里讨论，再提 PR。
 9. **从机制上解决问题**：遇到新情况先按「行事总纲」的意图与边界推理，而不是等待
