@@ -1,4 +1,0 @@
-### client 半区（浏览器）
-
-- `src/client/index.ts`：inject 六包（slots/sessions/workspaces/locale/remote/uiSession；uiSession 只读 `sessionStatus`，board 永不注册 waterfall）；offline-first 挂载（Synced*Store 常驻 → 接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；提问面 `PendingMirror`；唤醒 `watchSessionActivity`；席位 `(held, proto, bootedAt)` 元组；官方 seat 三处注册（`main` 面板 / `sidebar.panellist` 入口 / `settings.section` 设置页）；宿主面全经 `platform.ts`（`buildApi` 钉端点，`tests/platform.spec.ts` 钉死；导航走 `ctx.uiWorkspace.openSession`，返回会话走 `ctx.layout.selectPanel(null)`；执行会话复用 workspace `sessionIds`，无则新建；翻页 follow 开口 cursor→tail→hook→page，`throughSeq` 全链透传，缺 cut 即拒）。
-- `board-transport.ts`：fetch + EventSource（缺席降纯轮询）。`TaskBoardPanel.tsx`：看板的官方 `main` 面板席位（键盘内缩 + 未就绪占位；**不向 shell DOM 写一个字节**）；`TaskBoardIcon.tsx`：`sidebar.panellist` 图标。

@@ -1,7 +1,0 @@
-### 核心层（`src/core/` 纯逻辑 + 关键职责）
-
-- 模块一行：`tasks`（状态机/车道/`newExternalRound`）· `schedule/scheduler`（cron tick）· `cruise`（窗口 v4）· `presets/run-presets` · `automation`（规则 + 就绪）· `colors/session-list/session-display/comment-thread/question-rpc/store` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）。
-- 唯一推导：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定；归档即时同步）+ `session-lineage`/`session-activity`（**会话活跃度**：`own ∨ descendant`，见下条）。
-- **会话活跃度（「还在工作吗」的唯一判定）**：`session-lineage.ts` 按官方 `indexSubagentDescendants` 逐字卷起子代理后代（`origin==='subagent'` 首闸、沿无中断链逐层计提、按被遍历节点自身 `running` 累加、`seen` 环保护；fork 只写 parentId 不写 origin，天然排除），`session-activity.ts` 给出 `own|descendant|idle|unknown` 并封装为按快照引用缓存的 O(1) 索引（`controller.sessionActiveOf` 是唯一对外查询口：卡片会话点、链接行、会话行、详情/复核 state chip 全读它）。**`unknown`**（列表 `phase==='pending'` 或该行缺席）既不得读作 idle 去写台账，也不得读作 active 去长占；离场侧按既有的「两次规则」处理（`conclusiveLiveState`：首个不完整帧只记账，连续第二帧才允许离场）。**裸值边界（改动即反向卡死）**：`execution.ts`（`waitForCommandWork`/`reconcile`/`watchForSettlement`）、`zombieRoundEvent`、active-run 兜底、`cancelSpuriousExternal`、`reconcileBoundTask` 与外源轮检测（`session-activity.ts` 的 `detectExternalTurns`）一律继续读 `byId[id].running` 原值——卷起值只进活性层，否则轮次永不过期、且会产生幽灵外源轮。
-- 原生活动：`session-activity`（外源轮每运行期恰一轮 + wake 双通道 + 锚点去重 + `reconcileBoundTask` 即时同步；消费只认身份不认覆盖——`inBoardTurnOn` 才消费，`hasOpenRoundOn` 永不消费）。
-- 同步域：`board-doc`（作者声明裁决 + 读态单调 max + section 同构）+ `host-sync`（迁移/去抖/SSE+轮询/租约）；用户意图写走 `userEdit` 单一漏斗。
