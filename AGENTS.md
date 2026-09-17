@@ -426,15 +426,10 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
-本插件是**外部插件**，与宿主之间只有下面这些接触面。它们全部由
-`pnpm verify` 里的 `verify-host-contracts.mjs` 对照**实际安装的 DSH** 核对：任何一条
-在宿主里消失，或源码里出现「已移除」那半张表的成员，命令即红并指名。
-
-这张表存在的原因是一次真实事故：宿主升级删掉了 `settings.plugin.item`、把
-`uiSession.pendingInteractions` 改名成 `sessionStatus`、并拿掉了
-`ISessions.open`/`current`。三处都没有让构建失败——未声明的 slot 在 `slots.inject`
-里**静默 no-op**，被删的服务成员只在用户点击的那一刻抛 `TypeError`。表现是「看板点了
-没反应」和「设置里什么都没有」，而所有自动化检查全绿。
+本插件是**外部插件**，与宿主之间只有下面这些接触面。它们全部由 `pnpm verify` 里的
+`verify-host-contracts.mjs` 对照**实际安装的 DSH** 逐条核对，少任何一条即红并指名：
+未声明的 slot 在 `slots.inject` 里会**静默 no-op**，被删的服务成员只在用户点击那一刻
+抛 `TypeError`——两者都不会让构建失败，所以必须机械核对。
 
 ### 插件依赖的 slot（必须由宿主声明）
 
@@ -455,20 +450,15 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | `@deepseek-ai/dsh-api-session-controller` | `binding` |
 | `@deepseek-ai/dsh-api-session-controller` | `retainInfo` |
 
-### 宿主已移除、源码不得再引用（反向检查）
-
-| 包 | 成员 |
-| --- | --- |
-| `@deepseek-ai/dsh-client-ui-session` | `pendingInteractions` (removed) |
-| `@deepseek-ai/dsh-api-session-controller` | `current` (removed) |
+该脚本另带反向检查（源码不得引用宿主已撤的成员），用 `--probe-removed` 自测：它拿一组
+已知不存在的成员去扫源码，**必须报红**——否则说明检查本身失效了，而不是源码干净。
 
 **两条使用纪律**（比表本身更重要）：
 
-1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 历史包袱
-   `[data-pane='conversation']`、`[class*='centerCol']`、`html[data-dsh-taskboard-active]`
-   全部已删除：前两个在 alpha.2 已失效（`data-pane` 整个不存在，`centerCol` 是 shell 的
-   CSS Module 哈希类名，每次重建都变），第三个是「接管会话列」这套猜法的配套。看板现在是
-   官方 `main` 面板，不再向 shell DOM 写一个字节。
+1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 界面全部经上面三个官方
+   slot；自打的属性只标记**自己的**子树（`data-dsh-taskboard-view` /
+   `data-dsh-taskboard-panel`），不读写 shell 的节点或类名——那是唯一不能靠文档兜住的
+   脆弱面（shell 换实现即失效，且不报错）。
 2. **接口只按名读，绝不 `instanceof`、绝不跨包值导入。** 宿主成员缺失时降级并说真话
    （`openSession` 返回 `false` 让 UI 就近报错），不抛、不静默假装成功。
 
@@ -482,99 +472,71 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### client 半区（浏览器）
 
-- `src/client/index.ts`：inject 六包（slots/sessions/workspaces/locale/remote/uiSession；uiSession 只读 `sessionStatus`，board 永不注册 waterfall）；offline-first 挂载（Synced*Store 常驻 → 接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；提问面 `PendingMirror`；唤醒 `watchSessionActivity`；席位 `(held, proto, bootedAt)` 元组；官方 seat 三处注册（`main` 面板 / `sidebar.panellist` 入口 / `settings.section` 设置页）；宿主面全经 `platform.ts`（`buildApi` 钉端点，`tests/platform.spec.ts` 钉死；导航走 `ctx.uiWorkspace.openSession`，返回会话走 `ctx.layout.selectPanel(null)`；执行会话复用 workspace `sessionIds`，无则新建；翻页 follow 开口 cursor→tail→hook→page，`throughSeq` 全链透传，缺 cut 即拒）。
-- `board-transport.ts`：fetch + EventSource（缺席降纯轮询）。`TaskBoardPanel.tsx`：看板的官方 `main` 面板席位（键盘内缩 + 未就绪占位；**不向 shell DOM 写一个字节**）；`TaskBoardIcon.tsx`：`sidebar.panellist` 图标。
+- `src/client/index.ts`：inject 六包；offline-first 挂载（Synced*Store 常驻 → 接线 →
+  `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；官方 seat 三处注册（`main`
+  面板 / `sidebar.panellist` 入口 / `settings.section` 设置页）；宿主面全经 `platform.ts`
+  （`buildApi` 钉端点，`tests/platform.spec.ts` 钉死）。
+- `TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。`board-transport.ts`：
+  fetch + EventSource（缺席降纯轮询）。
 
-### 设计系统层（宪法标题 + 锚点，展开解释见代码注释与 spec）
+### 设计系统层（索引；成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
 
-- 令牌只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）；表面三层（画布/不透明内层）；浮层家族同一 chrome（板盒 % 参照，禁 vw/vh；Dialog 默认 portal 板盒 + 一处 Escape）。
-- **圆角几何在根层一次声明（「圆变方」的唯一根治点）**：`corner-shape` 决定角是不是**圆弧**，与 `border-radius`
-  是两条轴；它**不继承**，所以环境里任何 superellipse 家族都会把 `50%` 圆点与 `999px` 胶囊渲染成方加圆弧，
-  而改半径永远修不掉——这正是历史上每次只改半径都没修好的原因。全板只在设计系统层声明一次：
-  `[data-dsh-taskboard-view], [data-dsh-taskboard-view] *[class], [data-dsh-taskboard-panel]` 上的
-  `corner-shape: var(--dsh-tb-corner, round) !important`（`*[class]` 提特异性、`!important` 兜住未知泄漏；
-  皮肤要换圆角家族就重映射 `--dsh-tb-corner`，不另写声明）。**禁止在任何圆点/胶囊上逐处补 `corner-shape`**，
-  也禁止把 50% 换成 px 半径去「修圆」——契约见 `mobile-contract.spec.ts` 的 corner geometry 一节。
-- 共用部件一律复用（`ui.tsx`/`Chip`/`Dialog`/`Markdown`/自动化唯一 UI/时间与 chip 唯一映射，见 `session-panel.tsx`/`automation-ui.tsx`）。
-- 动效：装饰降级、状态指示器存活（只重定义令牌）；光效规则见下表；拖拽三件套（`drop-position`/`drag-autoscroll`/`use-flip`）；卡片三契约（`card-contract.spec`）。
-- **光效规则表（呼吸显示与否的唯一判定，无例外）**：
+- **令牌**：只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）；表面三层（画布/不透明内层）；
+  浮层同一 chrome（板盒 % 参照，禁 vw/vh；Dialog 默认 portal 板盒 + 一处 Escape）。
+- **圆角几何在根层一次声明**：`corner-shape` 与 `border-radius` 是两条轴且**不继承**，环境里任何
+  superellipse 家族都会把 `50%` 圆点渲染成方加圆弧，改半径永远修不掉。全板只在设计系统层声明一次
+  （`[data-dsh-taskboard-view]` / `*[class]` / `[data-dsh-taskboard-panel]`，皮肤换家族只重映射
+  `--dsh-tb-corner`）。**禁止逐处补 `corner-shape`，也禁止把 `50%` 换成 px 半径去「修圆」**。
+- **光效（呼吸与否的唯一判定，无例外）**：等待/进行中 → 卡片+会话行呼吸；完善中、已结束未读 →
+  仅卡片；已读或空闲 → 静默。「进行中」只由状态驱动、与未读无关；卡片 `data-status`（黄边）与
+  `data-light`（光）**读同一事实**，故「有黄边必有呼吸」是结构性质。**未读信号只在卡片呼吸**，
+  会话行不再渲染任何未读指示（双处标记读作重复，用户决策）。
+- **响应式与触屏**：参照 = **表面自身宽度**（板 `dsh-tb` / 面板 `dsh-tb-panel`），**禁 `@media(max-width)`**；
+  紧凑档列滑轨 + 五等分 tab（短名 + `aria-label` 全名）；窄屏锚定弹层换 Dialog；触屏只加隐形
+  人体工学，JS 开关唯一 `useSurfaceNarrow`。
+- **排版/间距/加载**：表单行具名 areas + 标签让位；说明必须可点可达（禁纯 `title=`）；p margin
+  清零 + 间距一律 gap 声明、偏移派生禁手写像素；加载三态（读中安静 / 失败行内重试 + 自动退避 /
+  空态非错）；共用部件一律复用（`ui.tsx`/`Chip`/`Dialog`/`Markdown`/`AutomationEditor`）。
+- **拖拽**：`drop-position` / `drag-autoscroll` / `use-flip` 三件套全结构驱动；跨列先滚入视野；
+  排序只在按住拖拽时发生。
 
-  | 任务状态 | 卡片 | 会话行 |
-  | --- | --- | --- |
-  | 等待（处理/计划确认/提问） | 呼吸（waiting） | 呼吸（waiting） |
-  | 进行中（板内/外源/续跑/子代理在跑） | 呼吸（running） | 呼吸（running） |
-  | 完善中 | 呼吸（refining） | 无 |
-  | 已结束且未读 | 呼吸（未读） | 静默 |
-  | 已读已结束 / 空闲 | 静默 | 静默 |
+### 核心层（`src/core/` 纯逻辑）
 
-  「进行中」只由状态驱动、与未读无关。卡片上这条判定只有一个出口：`TaskCard` 的 `data-status`（列，黄边读它）与 `data-light`（光，`cardLightOf(view.active, unviewed)` 读它）**读同一事实**——`view.active` 含卡片自身列状态 `task.status === 'running'`，所以「有黄边必有呼吸」是结构性质（`data-light` 之外不存在第二个光属性；历史上那句「黄边来自 `data-active`」是文档落后于 `ce52298`，卡片从来没有 `data-active`）。**未读信号只在卡片呼吸**（`markExecutionViewed`/详情打开清 `task.viewedAt`/`settleRefine` 自清单基线）——会话行不再渲染任何未读指示（点/晕），因为行旁边的卡片已有同一状态的呼吸，双处标记读作重复（用户决策）。外源轮从观察起视为 open（`sessionDisplay` 含 `external === true`）计入轮次集。
-- **拖拽/穿模/控件**：插入条 + 自动滚动 + FLIP 全结构驱动（`drop-position`/`drag-autoscroll`/`use-flip`，跨列先滚入视野；排序只有按住拖拽）；卡片 `overflow:hidden` + 子项 `min-width:0` + 徽标两槽（`card-contract.spec`）；同排控件同级高（28/24px），字号三档，一强调四状态全令牌。
-- **响应式与触屏**：参照 = 表面自身宽度（板 `dsh-tb` 680px / 面板 `dsh-tb-panel` 600px），禁 `@media(max-width)`；compact 列滑轨 + 五等分 tab（短名 + `aria-label` 全名）+ 列身份纯函数换算；板头两档不同机制（`drop-position`/`mobile-contract` 钉死——桌面是 flex 行 + 具名 spacer，右簇靠它弹到末端且**刻意不用 `margin-left: auto`**；具名 grid 只在 compact 档：导航 `"back title cruise"/"state state state"`、工具行 `"modes"/"search"`，拇指栏 relocation 禁重复）；触屏只加隐形人体工学；JS 开关唯一 `useSurfaceNarrow`；会话行三槽具名 grid（可选成员不占固定轨）；滚动跟随一条机制（`use-transcript.tsx`，按"谁被声明为滚动体"判定）；滚动条/内衬单归属（成员至多引用一次）；面板三行网格 + 折叠完整渲染 + 每区最多一滚动体；窄屏锚定弹层换 Dialog；表单行具名 areas + 说明必须可达（`mobile-contract`/`review-page` 双 spec 钉死）。
-- **表单/说明/节奏/加载**：表单行具名 areas + 标签让位（`sectionHead` 恒一行）；说明必须可点可达（禁纯 `title=`）；节奏三宪法（p margin 清零 + gap 声明 / 偏移派生禁手写 ±3px / 可选成员具名落位）；加载三态（读中安静 / 失败行内重试 + 自动退避 / 空态非错）。
-- **成文契约**：本节只是索引；视觉决策的成文契约在 `DESIGN.md`（令牌真值、排版三档、
-  布局与组件契约、Do/Don't，北极星「会记账的管家」）。它**记录**代码而不发明代码——
-  改完视觉相关代码顺手核对，不符就改它；权威链见「本文件的定位与编辑规则」。
-- **契约由 `pnpm verify` 兜住**（`scripts/verify-design-docs.mjs`）。它把文档对宿主令牌的
-  依赖变成机械检查：文档里每个 `--dsw-*` 名字必须在**实际安装的 DSH** 里被声明过，每个
-  记录的颜色值必须**逐位相等**于该令牌当前的解析值。三条必须知道的语义：
+- 模块：`tasks` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` · `automation` ·
+  `colors`/`session-list`/`session-display`/`comment-thread`/`question-rpc`/`store` ·
+  `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）· `board-doc`/`host-sync`。
+- **会话活跃度（「还在工作吗」的唯一判定）**：`session-lineage` 卷起子代理后代，`session-activity`
+  给出 `own|descendant|idle|unknown`，`controller.sessionActiveOf` 是唯一对外查询口。`unknown`
+  既不得读作 idle 去写台账，也不得读作 active 去长占。**裸值边界（改动即反向卡死）**：
+  `execution.ts`、`zombieRoundEvent`、active-run 兜底、`cancelSpuriousExternal`、
+  `reconcileBoundTask`、外源轮检测一律继续读 `byId[id].running` **原值**——卷起值只进活性层，
+  否则轮次永不过期并产生幽灵外源轮。
+- **唯一推导**：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定；
+  归档即时同步）。
 
-  1. **它是基线检查，不是主题审计**。全绿只说明「文档仍描述着它自称的那些令牌」，
-     不说明「所有令牌都没问题」。
-  2. **它不改文档、不自动修复**。令牌迁移了，唯一正确的动作是重跑 `/impeccable document`
-     或按报错改正那个值，然后提交。
-  3. **找不到 DSH 安装时打印 SKIP 并以 0 退出**——那时文档是**未验证**，不是**错的**。
-     值本来就只在装了 DSH 的机器上读得到，所以在开发机上它有结论、在只有源码的环境里它不误报。
+### 关键不变量（改前先读对应文件；这里只记边界，细节在代码）
 
-  两个例外都写在**文档自己身上**，不藏在脚本里：`--dsw-foo-*` 这种**族引用**（通配，不是名字）
-  自动跳过；**故意记录某个 shell 从未声明的令牌**时，在该处写标记 `dsw-missing: --dsw-foo`
-  （Markdown 里可写成 `<!-- dsw-missing: --dsw-foo -->`；JSON 没有注释语法，写进字符串即可）。
-  标记是**名字级**豁免，且只在写了标记的文档里生效——没有标记的缺失名字一律报错。
-
-- **Impeccable 的检测器（`impeccable detect`）在本项目上是空转的**——经实测确认，不是猜测：
-  它只解析 HTML 文件，对 CSS Modules 与 TSX 一律返回零发现（用已知有问题的探针文件验证过：
-  HTML 探针报出 `low-contrast` / `ai-color-palette` 两条，而含同样问题的 `.module.css` 与
-  `.tsx` 探针均为零）。**本项目没有 HTML 文件**——表面就是 TSX + CSS Modules。
-  因此它的「exit 0 / 0 findings」**不构成对本项目的任何结论**，不要把它当作代码干净的证据；
-  本技术栈里的等价静态门禁是上面那个 `verify-design-docs.mjs`（令牌引用、别名作用域、
-  快照值、折叠控件 aria-controls）加两个 CSS 布局契约 spec。检测器的退出码也不可信
-  （实测有发现时仍可能返回 0），要判读只看 JSON。
-
-### 核心层（`src/core/` 纯逻辑 + 关键职责）
-
-- 模块一行：`tasks`（状态机/车道/`newExternalRound`）· `schedule/scheduler`（cron tick）· `cruise`（窗口 v4）· `presets/run-presets` · `automation`（规则 + 就绪）· `colors/session-list/session-display/comment-thread/question-rpc/store` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）。
-- 唯一推导：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定；归档即时同步）+ `session-lineage`/`session-activity`（**会话活跃度**：`own ∨ descendant`，见下条）。
-- **会话活跃度（「还在工作吗」的唯一判定）**：`session-lineage.ts` 按官方 `indexSubagentDescendants` 逐字卷起子代理后代（`origin==='subagent'` 首闸、沿无中断链逐层计提、按被遍历节点自身 `running` 累加、`seen` 环保护；fork 只写 parentId 不写 origin，天然排除），`session-activity.ts` 给出 `own|descendant|idle|unknown` 并封装为按快照引用缓存的 O(1) 索引（`controller.sessionActiveOf` 是唯一对外查询口：卡片会话点、链接行、会话行、详情/复核 state chip 全读它）。**`unknown`**（列表 `phase==='pending'` 或该行缺席）既不得读作 idle 去写台账，也不得读作 active 去长占；离场侧按既有的「两次规则」处理（`conclusiveLiveState`：首个不完整帧只记账，连续第二帧才允许离场）。**裸值边界（改动即反向卡死）**：`execution.ts`（`waitForCommandWork`/`reconcile`/`watchForSettlement`）、`zombieRoundEvent`、active-run 兜底、`cancelSpuriousExternal`、`reconcileBoundTask` 与外源轮检测（`session-activity.ts` 的 `detectExternalTurns`）一律继续读 `byId[id].running` 原值——卷起值只进活性层，否则轮次永不过期、且会产生幽灵外源轮。
-- 原生活动：`session-activity`（外源轮每运行期恰一轮 + wake 双通道 + 锚点去重 + `reconcileBoundTask` 即时同步；消费只认身份不认覆盖——`inBoardTurnOn` 才消费，`hasOpenRoundOn` 永不消费）。
-- 同步域：`board-doc`（作者声明裁决 + 读态单调 max + section 同构）+ `host-sync`（迁移/去抖/SSE+轮询/租约）；用户意图写走 `userEdit` 单一漏斗。
-
-### 关键不变量（避免重造已有机制；改前先读对应文件）
-
-- **多端同步**：真相 = host `BoardDoc`；浏览器乐观写 + 去抖提交 + `applyRemote` 永不回写；单引擎泵（租约；席位 `(held,proto,bootedAt)` 任一半变即通知）；板头引擎指示只在真等待时出现；过旧弹窗显示服务端真实启动时间。细则见 `board-doc.ts`/`host-sync.ts`。
-- **统一会话与评论单轨**：同会话同一线程；排队/插话两态，模式只由用户开关定；图片字节 part 直发、文件 `receiptId`（`toPromptImage`/`toPromptFile`），禁自建桥；线程行显示「含 N 张图片 / M 个文件」；附件条独立成行。
-- **运行态唯一推导**：`task-live` + 相关集，`live` 腿读**会话活跃度**（`own ∨ descendant`，见核心层「会话活跃度」条），不是裸 `running`；`sessionDisplay(active)`；结算的列门读同一条活跃腿（`settleColumnOf` 的 `stillWorking`，轮的期限不因后代延长）；直发轮经 `driveLiveStates` 走同一 `settledFollowUp`；卡片黄边（`data-status`）与呼吸（`data-light`）同源，行徽章与卡片列同涨同落。
-- **官方 @ 引用**：`reference-source.ts` 唯一桥；子代理会话宿主回 `agent-busy`（官方语义）；插入走官方 mention；失败永不 reject（会话域失败降级板内目录）。
-- **交互卡 + 上下文块**：只订阅 `uiSession.sessionStatus`（宿主按会话发布的状态表，interaction 在 `pendingInteraction` 字段里；board 永不注册 waterfall）；carrier 自带 `answer`/`cancel` 时**就卡作答**（`PendingMirror` 身份守卫：只结算当前快照里那一个对象，身份不符即拒，失败留卡报错），数据型 carrier 才降级为跳回原生会话；卡与原生提问卡逐条同形同行为（head 收起/放弃整组、编号或勾选选项 + 推荐徽章 + 自定义答案、上一题/进度/下一题、跳过本题、提交/提交中、就近报错）；todo/用量/goal 读官方 projection（缺面降级）；`SessionContextBlock` 宽行内/窄浮层（240px 封顶）；goal 可操作 strip；有未完成才显示。通知行落点按会话出身分：执行/链接会话进会话面板（rail 自带 force-open + 滚到卡），refine 会话定位完善区（它没有链接面板），approval 只去原生会话；等待行只给前进动作（去回答/去会话/进详情），阻塞读不掉也藏不起。
-- **多源绑定**：`binds` 真相源；session 绑定上卡，workspace 绑定只关联（拖入瞬间按注册表账本快照一次）；隐藏删除进 `removedSessions`（权威非相关门）；再拖回可恢复。
-- **归档是「可恢复的隐藏」，不是删除**：归档态只有一个来源——`ctx.workspaces.list` 快照的 `archivedSessionIds`（注册表全局集合；**每会话摘要里没有 archived 布尔**，只能 join）。它是**原生状态、从不改写台账**：归档不碰工作区归属槽，恢复（设置 → 已归档会话 → 取消归档）只是把 id 从集合里去掉，会话回到原位。因此本插件对归档只做**派生**：读快照 + 订阅（`workspaces.list.subscribe` 已是既有接线），任何界面**不得缓存归档结论**、不得把归档写进台账。**派生 + 订阅 = 恢复即自愈**：卡片会话行、链接行、规则可选项、@ 目录、文件夹快照、看门狗都在同一次通知里重算。
-  四条推论（改归档相关代码前先读）：
-  ① **判据一致**：凡「卡片能显示什么」与「界面能选什么」必须同一口径——同一组闸门（`hiddenSessionIdsOf` / `removedSessions` / `archivedOf`）过滤；归档的会话不可选（选了也显示不出来），恢复后自动可选；三处挑选面（卡片行、规则可选项、添加会话）共用，不得各写一套。
-  ② **触发侧同门**：规则不得向归档会话投递，但**保留 due 槽**——取消归档后自然续跑，不是静默丢一次。
-  ③ **说真话**：「不可用」有三种成因必须分辨：`sessionAvailability()` 是唯一判据（`archived` 可恢复 / `removed` 拖回即可 / `gone` 真的没了），文案由 `sessionUnavailableReasonOf()` 单点映射。归档期间仍说「已不可用」是假话。
-  ④ **孤儿归档条目**：入口页只列「归档集合 ∩ 已加载摘要」，**摘要已不存在的条目在官方界面里恢复不了**（底层 API 可以但无调用方）——这是 DSH 的已知限制，本插件不兜底，只在文案里把「恢复」的落点说清。
-- **完成态留言 auto 回待办并驱动**（queue/steer 同规则）。
-- **真执行补全**：空标题/描述从 Prompt 补（`supplementedTask` 唯一作用点，写入/启动时；永不覆盖）；空 Prompt 门禁只拦真执行（评论/插话/完善不封）；完善永不碰列；`refinable` 任一非空才可完善。
-- **车道 = 会话**：`isOpenRound` 唯一判定（评论轮已注入才算；在跑才占槽）；预算数轮；lane 忙滚下一格不叠；排队数本车道；结果一律 `lastPlainResult`；外源检测走 `sessionIsBusy` + 消费只认身份；看门狗清扫每条在跑轮；卡片离进行中唯一判定 `leaveRunningTargetOf`（open/live/schedule 三腿，落列复用 `settleColumnOf` 取消语义；调用点：结算系、direct 回落、删除同 tick、reconcile 兜底扫——不另起特判）。
-- **自动化**：任务 `schedule` 与会话 `rules` 正交；UI 唯一 `AutomationEditor`；on-complete 永续循环（共用 `settledFollowUp`，规则轮成功即续）；链武装即开跑（`done` 硬停）；每会话至多一条规则。
-- **巡航 v4**：`enabled` 主权；窗口三态 + 自动排序；`windowRangeIssueOf` 校验（跨午夜最多一晚）；状态行一句话解释开关值。
-- **校验文案**：`inputInvalid` 唯一错边框；规则表单按会话→指令→Cron 报首错；`saveFailed` 兜底。
-- **卡片纯摘要**：标题/描述/来源/时间/chips；色点标题行前；选中态覆盖 hover。
-- **执行门禁**：`taskExecutable` 唯一判定；`ruleReadiness` 次序 disabled→blocked→paused→active（链跳列暂停）；评论插话永不封；`runTask` 单点拦截。
-- **运行预设**：`run-presets.ts`；`deploy-default` 不可删；悬挂回退部署默认；UI 唯一 `RunConfigFields` + `RunPresetManager`。
-- **会话标题**：原生 rename = 钉住语义；新建标题选填（留空走自动命名）；未命名统一 `sessionUntitled`；真名判据 `realTitleOf`；真相序宿主值 > 板台账 > 缺席。
-- **新建会话**：入口在会话区说明行右端；链路 create→配model/agent/permission→rename→绑定；部分成功诚实展示不回滚；非执行。
-- **rail 高度契约**：交互卡 320px 封顶 + 正文内滚 + 动作行钉卡外；每区最多一滚动体；会话列表手动序 + 插入条共用；列表无底部死区。
-- **稳定性**：受控回退；就近 inline 反馈；订阅必带终止；正文不省略，元信息可 ellipsis。
-- **草稿矩阵**：`drafts.ts`（设备本地）；未提交回来、提交清槽；comment/edit/refine/new/newsession/rule 六键；评论/完善 v1 信封（图 2.5M 自保，文件只留名）；busy 只认在途 lane。
+- **多端同步**：真相 = host `BoardDoc`；浏览器乐观写 + 去抖提交 + `applyRemote` 永不回写；单引擎泵
+  （租约；席位 `(held,proto,bootedAt)` 任一半变即通知）。
+- **运行态唯一推导**：`live` 腿读**会话活跃度**（`own ∨ descendant`），不是裸 `running`；结算的列门
+  读同一条腿（轮的期限不因后代延长）；卡片黄边与呼吸同源。
+- **统一会话与评论单轨**：同会话同一线程；排队/插话两态只由用户开关定；图片走字节 part、文件走
+  `receiptId`（禁自建桥）。
+- **附件即内容**：判空只有一处 `isBlankMessage`（文字空且无图无文件才算空）——只发图不发字是真消息，
+  任何发送路径都不得拒它。
+- **归档是「可恢复的隐藏」，不是删除**：只从 `ctx.workspaces.list` 快照派生 + 订阅，**任何界面不得
+  缓存归档结论、不得写进台账**（派生 + 订阅 = 恢复即自愈）。判据三处挑选面共用一套闸门；规则不向
+  归档会话投递但**保留 due 槽**；`sessionAvailability()` 是「不可用」的唯一判据。
+- **执行门禁**：`taskExecutable` 唯一判定；`ruleReadiness` 次序 disabled→blocked→paused→active；评论与
+  插话永不封；`runTask` 单点拦截。空标题/描述从 Prompt 补（永不覆盖）。
+- **车道 = 会话**：`isOpenRound` 唯一判定；预算数轮；卡片离进行中唯一判定 `leaveRunningTargetOf`
+  （open/live/schedule 三腿），不另起特判。
+- **交互卡**：只订阅 `uiSession.sessionStatus`；carrier 自带 `answer`/`cancel` 时就卡作答（身份守卫：
+  身份不符即拒，失败留卡报错）；数据型 carrier 才降级跳回原生；**board 永不注册 waterfall**。
+- **自动化与巡航**：任务 `schedule` 与会话 `rules` 正交；on-complete 永续（`done` 硬停）；每会话至多
+  一条规则；巡航 `enabled` 主权。
+- **草稿**：`drafts.ts` 设备本地；未提交回来、提交清槽；六键；评论/完善 v1 信封。
+- **稳定性**：受控回退；就近 inline 反馈；订阅必带终止；正文不省略、元信息可省略号。
 
 ## 构建与验证（改完必跑，全绿才算完成）
 

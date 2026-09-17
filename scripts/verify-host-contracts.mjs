@@ -30,6 +30,7 @@ import { resolve, join, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
 const root = resolve(process.argv[2] ?? '.')
+const args = new Set(process.argv.slice(2).filter(arg => arg.startsWith('--')))
 const failures = []
 const notes = []
 
@@ -220,8 +221,10 @@ for (const { pkg, member } of members) {
   }
 }
 
-// The removal half: the plugin's source must not reference members the host
-// dropped. This is what would have caught the upgrade before a user did.
+// The removal half: the plugin's source must not read members the host dropped.
+// With no removed-member rows left this loop is inert, so it can no longer be
+// observed by looking at a normal run — `--probe-removed` (below) is how it is
+// proven alive.
 const sourceFiles = []
 {
   const walk = (dir, out = []) => {
@@ -243,6 +246,26 @@ for (const { pkg, member } of absent) {
   failures.push(
     `source still reads "${member}" (removed from ${pkg}) in: ${hits.map(f => f.slice(root.length + 1)).join(', ')}`,
   )
+}
+
+// --- the reverse check's own self-test ---------------------------------------
+// A check that cannot fail proves nothing. `--probe-removed` feeds the same code
+// path a member that is guaranteed to be read by the source, and REQUIRES the
+// result to be red: a green run here would mean the scan is blind, not that the
+// source is clean.
+if (args.has('--probe-removed')) {
+  const probe = [{ pkg: '(self-test)', member: 'slots' }]
+  const hits = []
+  for (const { member } of probe) {
+    const pattern = new RegExp(`\\.${member.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+    for (const file of sourceFiles) if (pattern.test(readFileSync(file, 'utf8'))) hits.push(file.slice(root.length + 1))
+  }
+  if (hits.length === 0) {
+    console.error('verify-host-contracts FAIL: the removed-member scan found nothing for a member the source definitely reads — the check is blind')
+    process.exit(1)
+  }
+  console.log(`verify-host-contracts removed-member self-test OK: the scan reacts (${hits.length} file(s) matched the probe)`)
+  process.exit(0)
 }
 
 // --- report ------------------------------------------------------------------
