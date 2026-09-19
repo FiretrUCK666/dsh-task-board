@@ -30,7 +30,7 @@ pnpm verify      # 静态门禁 + 客户端 bundle 冒烟
 dsh plugin --profile web add .
 ```
 
-改完 host 半区（`src/index.ts`、`src/host/`）要重启 `dsh web`；改 client 半区刷新页面即可——两种都要先 `pnpm build`。
+挂载一次就够了——本地安装是指向工作目录的链接，改完代码不必重跑这条命令。之后的循环是：改代码 → `pnpm build`（运行时读 `lib/`，不读 `src/`）→ 改 client 半区刷新页面即可，改 host 半区（`src/index.ts`、`src/host/`）要重启 `dsh web`。
 
 ## 提交 PR 前
 

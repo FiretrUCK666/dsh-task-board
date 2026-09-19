@@ -70,6 +70,8 @@ dsh plugin --profile web add .
 
 This is the path for changing the code. See "Building from source" below.
 
+A local install links to your working directory rather than copying it, so one install is enough: after changing code, just run `pnpm build` and restart `dsh web` — do not re-run the install command above. Client-half changes need only a page refresh; host-half changes need the restart. See "A code change had no effect" under Troubleshooting.
+
 The first two are installs: each delivers a ready-to-use package containing only the files in the publish list (runtime code, source, the bundle patch, documentation). The third is development: a full checkout you can edit and test.
 
 | | npm | GitHub | Local |
