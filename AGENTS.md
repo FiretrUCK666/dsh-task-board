@@ -413,9 +413,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 | 维度 | 值 |
 | --- | --- |
-| **插件 id**（行 id / 文件夹名 / 设置命名空间 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 三个 slot 的 id） | `dsh-task-board` |
+| **插件 id**（行 id / 文件夹名 / 设置条目 id / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 两个 slot 的 id） | `dsh-task-board` |
 | **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / **客户端 bundle 的 `__ModuleLoader__` 注册 id** / `/plugins/<包名>/client.js`） | 以 `package.json` 的 `name` 为准（当前为 `@firetruck666/dsh-task-board`，**含 npm 作用域**） |
-| 设置路由 | `/api/dsh-task-board/settings`（本插件设置的读取通道；设置的**真相**是 profile 里本插件那条目的 `config`） |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
 | 其余 host 路由 | `/api/dsh-task-board/session-state`、`/api/dsh-task-board/update`、`/api/dsh-task-board/client-report` |
@@ -423,13 +422,23 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 公告 section | `plugin:dsh-task-board`（order 200） |
 | **看板舞台 slot**（面板本体） | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
 | **侧栏入口 slot**（面板图标） | `sidebar.panellist`，`id: dsh-task-board`（**必须等于 `main` 的 key**，shell 靠它把行解析到舞台） |
-| **设置界面 slot** | `settings.section`，`id: dsh-task-board`，order 112 |
 | localStorage 键（现为离线镜像 + 草稿 + 备份） | `dsh.taskBoard.v1` 等（**不得改名**，见「数据键稳定」） |
+
+**设置项没有自己的 slot，也没有自己的路由**：插件在 `Config` schema 里声明字段，插件市场
+（已安装）里这条插件自己的页面把它渲染成表单。一个插件一个设置页，开关与选项就跟插件本体
+放在一起——所以本插件**不再**注册 `settings.section`，**不再**有 `/api/<id>/settings`。
+`enabled` 这个自建开关也一并删掉了：插件市场的启用开关已经是激活状态的唯一真相，
+再来一个布尔值就是同一件事的第二份说法。
 
 挂载：`package.json` 声明 `dsh.bundle.patch` → `cordis.patch.yml`；安装命令
 `dsh plugin --profile web add @firetruck666/dsh-task-board`（本地开发用 `add .` 或
 `link:<本目录>`）。`scripts/dsh-task-board.js` 是本地挂载辅助，会清理改名前的旧
 无作用域键。
+
+**三种安装方式（npm / GitHub / 本地 `link:`）在配置上完全一致，装完不需要任何手工步骤。**
+包内的 `cordis.patch.yml` 由 `dsh.bundle.patch` 指向、安装时自动生效；界面入口与存储单元
+在启动时自动建立；显示名/说明/图标由包内的 `locale/` 与 `icon.svg` 提供。README 的
+「不需要手动配置任何东西」一节是这条承诺的**给人看的版本**，两边必须同时成立。
 
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
@@ -446,7 +455,6 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | --- | --- |
 | `main` | 看板舞台（keyed slot，key = `dsh-task-board`） |
 | `sidebar.panellist` | 侧栏面板图标（id = `dsh-task-board`） |
-| `settings.section` | 「设置」页顶层入口 |
 
 ### 插件按名读的宿主成员（必须存在）
 
@@ -457,8 +465,6 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | `@deepseek-ai/dsh-client-ui-workspace` | `openSession` |
 | `@deepseek-ai/dsh-client-ui-layout` | `selectPanel` |
 | `@deepseek-ai/dsh-api-session-controller` | `binding` |
-| `@deepseek-ai/dsh-settings` | `configure` |
-| `@deepseek-ai/dsh-settings` | `describe` |
 
 ### 插件注入的宿主服务（服务名必须由宿主提供，成员必须存在）
 
@@ -466,10 +472,6 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | --- | --- | --- | --- |
 | host | `webServer` | `register` | `@deepseek-ai/dsh-host-webserver` |
 | host | `systemPrompt` | `section` | `@deepseek-ai/dsh-system-prompt` |
-| host | `settings` | `configure` | `@deepseek-ai/dsh-settings` |
-| host | `settings` | `describe` | `@deepseek-ai/dsh-settings` |
-| host | `settings` | `mutate` | `@deepseek-ai/dsh-settings` |
-| host | `settings` | `writable` | `@deepseek-ai/dsh-settings` |
 | client | `slots` | `inject` | `@deepseek-ai/dsh-client-ui-renderer` |
 | client | `slots` | `register` | `@deepseek-ai/dsh-client-ui-renderer` |
 | client | `sessions` | `list` | `@deepseek-ai/dsh-api-session-controller` |
@@ -479,7 +481,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | client | `locale` | `register` | `@deepseek-ai/dsh-client-locale` |
 | client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
-| client | `configForms` | `get` | `@deepseek-ai/dsh-client-ui-settings` |
+
+宿主把这条目自己的 schema 渲染成设置表单，走的是宿主内部通道（插件市场直接读配置镜像），
+**不需要插件注册任何服务或路由**——所以这里没有 settings 那一节，插件也不该再声明它。
 
 该脚本另带反向检查（源码不得引用宿主已撤的成员），用 `--probe-removed` 自测：它拿一组
 已知不存在的成员去扫源码，**必须报红**——否则说明检查本身失效了，而不是源码干净。
@@ -499,20 +503,20 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### host 半区（DSH 主进程）
 
-- `src/index.ts`：inject webServer/systemPrompt/settings；`ConfigSchema`（两个字段都 `.volatile()`，
-  值一律经 `volatileValue` 读，绝不直接比较）→ 设置页即时生效；设置/权限/看板/会话状态/更新/
-  页面自报六条路由 + 公告 section 联动。**无图片路由**（见关键不变量）。`enabled` 只管
-  「浏览器半区挂不挂载」与「公告发不发」，**不管路由是否注册**——路由是把自己重新打开的通道。
+- `src/index.ts`：inject webServer/systemPrompt/settings；`Config`（导出名 load-bearing，字段 `.volatile()`，
+  值一律经 `volatileValue` 读，绝不直接比较）→ 插件市场详情页即时生效；权限/看板/会话状态/更新/
+  页面自报五条路由 + 公告 section 联动。**无图片路由、无设置路由**（见关键不变量）。
+- `src/host/http-json.ts`：全部路由共用的信封与请求体读取（一个有界实现，禁各写一套）。
 - `src/host/*-route.ts`：纯 `create*Handler`（可注入测试），服务一律 `ctx.get`。
 - `src/host/board-service.ts` + `board-route.ts`：**BoardDoc 真相服务**（持有 + storage hub `KvUnit` 持久化 + 先落盘后应答 + SSE；路由见命名矩阵；缺 hub 则 localStorage 模式）。合并文法见核心层 `board-doc.ts`。
 
 ### client 半区（浏览器）
 
-- `src/client/index.ts`：inject 七服务（含 `configForms`）；offline-first 挂载（Synced*Store 常驻 →
-  接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；官方 seat 三处注册（`main`
-  面板 / `sidebar.panellist` 入口 / `settings.section` 设置页）；宿主面全经 `platform.ts`
-  （`buildApi` 钉端点，`tests/platform.spec.ts` 钉死）。设置卡经 `ctx.configForms.get(id)`
-  读写本插件条目（`route-scope.ts` 已删，不再有自建设置通道）。
+- `src/client/index.ts`：inject 六服务；offline-first 挂载（Synced*Store 常驻 →
+  接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；官方 seat 两处注册（`main`
+  面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`
+  （`buildApi` 钉端点，`tests/platform.spec.ts` 钉死）。**被组合即启用**：条目不激活时
+  客户端半区根本不会被求值，所以这里没有、也不该有第二个开关。
 - `route-base.ts`：**浏览器侧路由的唯一出口**（去掉开头斜杠，交给 `document.baseURI`）。
   host 侧注册路径保持绝对；浏览器侧任何 `/api/...` 都必须经它，`tests/route-base.spec.ts` 扫描源码兜住。
 - `TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。`board-transport.ts`：

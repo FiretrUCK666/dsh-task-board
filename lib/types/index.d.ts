@@ -12,15 +12,15 @@
  * disappears live, without a restart.
  *
  * Settings: the plugin's own profile entry carries the `Config` schema below,
- * and the settings service reads and writes that entry directly. A field is
- * editable from the web surface only when the schema marks it `volatile`, and
- * a volatile field's runtime value is a live reference rather than a plain
- * value — see {@link volatileValue}.
+ * and the plugin manager's detail page renders that schema as a form. A field
+ * is editable only when the schema marks it `volatile`, and a volatile field's
+ * runtime value is a live reference rather than a plain value — see
+ * {@link volatileValue}.
  *
- * `enabled` gates the two USER-VISIBLE halves (the system-prompt announcement
- * and the browser half's seats). It deliberately does NOT gate the HTTP routes:
- * a route table that disappears when the flag turns off would leave no way to
- * turn it back on, and the settings surface itself reads through a route.
+ * There is deliberately no enable switch in this config: the plugin manager
+ * already owns activation for every entry, and a second boolean would be a
+ * second truth about the same thing. Composed IS enabled — an inactive entry is
+ * never evaluated, so nothing here has to check.
  */
 import type { Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
@@ -42,33 +42,32 @@ export interface Config {
      * about it only when the user mentions it.
      */
     announceToAgent?: boolean;
-    /** Master switch for the user-visible halves (browser seats + announcement). */
-    enabled?: boolean;
 }
 /**
- * Plugin config schema. Both fields are `volatile`: a configuration write that
- * touches only volatile fields updates the running instance in place — the
- * plugin is never unloaded, and `apply` is never re-run — so a settings edit
- * takes effect without a restart. `pnpm verify` asserts the schema keeps at
- * least one volatile field, because an entry with none is skipped by the
- * settings service and silently loses its page.
+ * Plugin config schema. The EXPORT NAME is load-bearing: the plugin runtime
+ * reads it as `module.Config`, so renaming this binding to anything else leaves
+ * the loader without a schema — the plugin still loads and every route still
+ * registers, but the settings surface treats the entry as unconfigurable and
+ * silently drops its page. A test pins the name for that reason.
  *
- * Values are read through {@link volatileValue}, never compared directly: each
- * volatile field resolves to a live reference, not a boolean.
+ * The field is `volatile`: a configuration write that touches only volatile
+ * fields updates the running instance in place — the plugin is never unloaded,
+ * and `apply` is never re-run — so a settings edit takes effect without a
+ * restart. `pnpm verify` asserts the schema keeps at least one volatile field,
+ * because an entry with none is skipped by the settings service the same way.
+ *
+ * The declared output type is the plain value shape. A volatile field's
+ * resolved output is a live reference to that value rather than the value
+ * itself, which is why {@link apply} receives {@link ResolvedConfig} and reads
+ * through {@link volatileValue} instead of comparing the field directly.
  */
-export declare const ConfigSchema: z<Schemastery.ObjectS<NoInfer<{
-    announceToAgent: z<boolean, boolean, "volatile-defined">;
-    enabled: z<boolean, boolean, "volatile-defined">;
-}>>, Schemastery.ObjectT<NoInfer<{
-    announceToAgent: z<boolean, boolean, "volatile-defined">;
-    enabled: z<boolean, boolean, "volatile-defined">;
-}>>, "plain">;
+export declare const Config: z<Config>;
 /** The resolved config {@link apply} receives (each volatile field is a live reference). */
-export type ResolvedConfig = ReturnType<typeof ConfigSchema>;
+export type ResolvedConfig = ReturnType<typeof Config>;
 /**
- * Register the board's announcement section, gated on the live `enabled` and
- * `announceToAgent` values. The section is re-registered whenever either
- * changes, so a settings edit takes effect without a restart.
+ * Register the board's announcement section, gated on the live
+ * `announceToAgent` value. The section is re-registered whenever it changes, so
+ * a settings edit takes effect without a restart.
  * @param ctx - the plugin context (systemPrompt injected).
  * @param config - resolved plugin config (schema defaults applied by the loader).
  */

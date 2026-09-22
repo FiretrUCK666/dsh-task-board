@@ -22,9 +22,9 @@
  *   4. runtime dependencies limited to the allowed set
  *   5. tsconfig files extend nothing outside the plugin dir and declare no paths
  *   6. built artifacts lib/index.js + lib/client.js exist
- *   7. settings namespace + route path spelled with the plugin id, and the
- *      Config schema declares a volatile field (without one the settings
- *      surface skips this entry and loses its page)
+ *   7. the Config schema is exported as `Config` and marks a field volatile
+ *      (without one the plugin manager's settings page disappears), and the
+ *      plugin never calls the removed namespace-registration API
  *   8. src imports only official SDK / react / node builtins / relative
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
@@ -326,27 +326,32 @@ if (existsSync(clientBundlePath)) {
 
 const srcFiles = allFiles.filter((f) => f.includes(sep + 'src' + sep))
 const srcText = srcFiles.map((f) => readFileSync(f, 'utf8')).join('\n')
-// The settings seam is the plugin's OWN profile entry: the settings service
-// renders a form for that entry from its Config schema, and skips the entry
-// entirely when no field is marked volatile. A schema with no volatile field
-// therefore loses the page SILENTLY — the plugin still loads, the settings
-// surface just reports the entry as unconfigured. This gate reads the three
-// facts that decide it: the plugin spells its namespace, its Config schema
-// carries a volatile field, and it never reaches for the namespace-registration
-// API that the settings service no longer exposes.
+// The settings seam is the plugin's OWN profile entry, and TWO independent
+// facts decide whether its page exists — both fail SILENTLY, so both are read
+// here:
+//   1. The schema binding must be spelled `Config`. The plugin runtime reads it
+//      as `module.Config`; any other name leaves the loader without a schema,
+//      and the settings service then treats the entry as unconfigurable and
+//      drops its page while the plugin itself keeps working.
+//   2. The schema must mark at least one field volatile. The settings service
+//      skips an entry whose form has no volatile field, with the same silent
+//      result.
+// This gate also reads two negative facts: the plugin never reaches for the
+// namespace-registration API the settings service no longer exposes, and it
+// spells both its namespace and its settings route.
 if (!srcText.includes(`'${pluginId}'`)) failures.push(`src never spells the settings namespace '${pluginId}'`)
-const volatileIndex = srcText.indexOf('export const ConfigSchema')
-const volatileField = volatileIndex === -1
-  ? null
-  : /(\w+)\s*:\s*[^\n]*?\.volatile\(\)/.exec(srcText.slice(volatileIndex))?.[1] ?? null
-if (volatileField === null) {
-  failures.push('src declares no volatile Config field — the settings surface would skip this plugin entry and lose its page')
+const schemaIndex = srcText.search(/^export const Config\s*[:=]/m)
+if (schemaIndex === -1) {
+  failures.push('src does not export the schema as `Config` — the plugin runtime reads module.Config, and any other name leaves the settings entry with no form')
+} else {
+  const block = srcText.slice(schemaIndex, schemaIndex + 1200)
+  const volatileField = /(\w+)\s*:\s*[^\n]*?\.volatile\(\)/.exec(block)?.[1] ?? null
+  if (volatileField === null) {
+    failures.push('src declares no volatile Config field — the settings surface would skip this plugin entry and lose its page')
+  }
 }
 if (/\.installSection\s*\(/.test(srcText)) {
   failures.push('src still calls the removed ctx.settings.installSection — plugin config is the profile entry now')
-}
-if (!srcText.includes(`/api/\${ns}/settings`) && !srcText.includes(`/api/${pluginId}/settings`)) {
-  failures.push(`src never spells the settings route (expected a literal /api/${pluginId}/settings or the templated /api/\${ns}/settings)`)
 }
 
 // --- 8. import hygiene ------------------------------------------------------

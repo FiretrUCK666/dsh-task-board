@@ -8,7 +8,7 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
-import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, SettingsScopeSnapshot, WorkspaceId } from './platform.ts'
+import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
 import { buildApi, sessionDriverOf } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
@@ -36,8 +36,6 @@ import packageJson from '../../package.json'
 
 /** Deployed bundle version (diagnostic only — never rendered in the UI). */
 const BOARD_VERSION = (packageJson as { version?: string }).version ?? 'unknown'
-import { TaskBoardSettingsCardController, TaskBoardSettingsSection, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
-import type { SettingsScopeLike } from './settings-form.ts'
 import { en, t, zh } from './locales.ts'
 
 /** Locale namespace this plugin owns. */
@@ -83,34 +81,6 @@ class TaskBoardStage {
   /** Build the face the panel registration injects (read fresh on every render). */
   inject(): { controller: BoardController | undefined; freshness: BundleFreshnessState | undefined } {
     return { controller: this.controller, freshness: this.freshness }
-  }
-}
-
-/** Settings namespace the settings card edits (the Host plugin registers it). */
-const TASK_BOARD_NS = 'dsh-task-board'
-
-/**
- * A settings scope for a deployment that composes no settings surface. It
- * reports `unavailable` from the first read and accepts no write, which is the
- * truth for that deployment: the card renders its unavailable state in place
- * instead of the board failing to mount.
- * @returns the terminal-unavailable scope.
- */
-function unavailableSettingsScope<T>(): SettingsScopeLike<T> {
-  const snapshot: SettingsScopeSnapshot<T> = {
-    status: 'unavailable',
-    value: undefined,
-    base: undefined,
-    user: undefined,
-    revision: undefined,
-    writable: false,
-    mode: 'memory',
-  }
-  return {
-    getSnapshot: () => snapshot,
-    subscribe: () => () => undefined,
-    set: () => Promise.resolve(false),
-    unset: () => Promise.resolve(false),
   }
 }
 
@@ -321,50 +291,21 @@ export function apply(ctx: ClientContext): void {
     // while the board is open LEAVES it — click to enter, click again to exit.
   }, (props: { size: number; active: boolean }) => TaskBoardIcon({ ...props, onExit: returnToConversation }))), 'dsh-task-board: panel entry')
 
-  // The settings surface's own form for one Host plugin entry: reads the entry's
-  // section and fences every write on that entry's revision, so the board's
-  // settings card cannot overwrite a concurrent edit made elsewhere. The form
-  // itself belongs to the settings provider and outlives this plugin, so there
-  // is nothing to dispose — only the card's own subscription is released below.
-  // A deployment that composes no settings surface leaves the form absent: the
-  // card then reads an unavailable section and reports it in place, while the
-  // board itself still mounts on its composition default.
-  const scope: SettingsScopeLike<TaskBoardSettings> = ctx.configForms?.get<TaskBoardSettings>(TASK_BOARD_NS)
-    ?? unavailableSettingsScope<TaskBoardSettings>()
-  // The settings section's form controller lives exactly as long as this fiber.
-  const settingsCard = new TaskBoardSettingsCardController(scope)
-  ctx.effect(() => {
-    ctx.slots.inject('settings.section', () => ctx.slots.register({
-      name: 'settings.section',
-      id: GROUP.id,
-      order: 112,
-      label: () => t('settings.title'),
-      locale: NS,
-      inject: () => settingsCard.inject(),
-    }, TaskBoardSettingsSection))
-    return () => {
-      settingsCard.dispose()
-    }
-  }, 'dsh-task-board: settings section + scope')
-
-  // The sidebar entry and board view mount once the settings scope settles;
-  // while the scope is still loading, the composition default is unknown, so
-  // nothing mounts yet. Only an unavailable scope (no settings surface served)
-  // falls back to the composition default (enabled).
+  // Settings: the plugin's own entry carries a config schema, and the plugin
+  // manager's detail page renders that schema as a form. There is deliberately
+  // no settings section of this plugin's own — one page per entry keeps the
+  // board's preferences with the board, and turning the board off is the
+  // plugin manager's own enable switch rather than a second boolean here.
+  //
+  // The board mounts as soon as this entry is evaluated: being composed IS the
+  // enabled state. The client half is only evaluated while the entry is active,
+  // so an inactive entry never reaches this code at all.
   let uiDisposer: (() => void) | undefined
   let mounting = false
-  /** The live enabled decision (the mount gate): ready scope → its value,
-   *  unavailable scope → the composition default (true), loading → false. */
-  const currentEnabled = (): boolean => {
-    const snapshot = scope.getSnapshot()
-    return snapshot.status === 'ready'
-      ? snapshot.value?.enabled ?? true
-      : snapshot.status === 'unavailable'
-  }
-  const mountUi = (): void => {
-    if (uiDisposer !== undefined || mounting) return
+  const mountUi = (): Promise<void> | undefined => {
+    if (uiDisposer !== undefined || mounting) return undefined
     mounting = true
-    mountUiBody().catch(error => {
+    return mountUiBody().catch(error => {
       // A failed mount must never strand the gate or surface an unhandled
       // rejection: log it, stay unmounted, the next scope event may retry.
       console.error('[dsh-task-board] mount failed:', error)
@@ -1264,10 +1205,6 @@ export function apply(ctx: ClientContext): void {
       // One permanent diagnostic line: every "didn't sync / didn't change"
       // dispute ends here (version + sync mode + seat, no devtools spelunking).
       console.info(`[dsh-task-board] boot v${BOARD_VERSION} sync=${mode} engine=${sync.isEngine()}`)
-      if (!currentEnabled()) {
-        sync.dispose()
-        return
-      }
       if (mode !== 'synced') return
       // Warm the offline mirror with the host truth so a later reload (or a
       // dropped connection) first-paints the real board, not a stale copy.
@@ -1292,10 +1229,12 @@ export function apply(ctx: ClientContext): void {
       uiDisposer = undefined
     }
   }
-  const syncEnabled = (): void => {
-    if (currentEnabled()) mountUi()
-    else uiDisposer?.()
-  }
-  scope.subscribe(syncEnabled)
-  syncEnabled()
+
+  // The board's whole lifecycle is owned by one effect, so a fiber teardown
+  // (the plugin manager switching this entry off) releases every subscription,
+  // timer and stream the mount created — including the ones that arrive after
+  // the asynchronous mount settles.
+  const mountingDone = mountUi()
+  ctx.effect(() => () => { uiDisposer?.() }, 'dsh-task-board: board lifecycle')
+  void mountingDone
 }

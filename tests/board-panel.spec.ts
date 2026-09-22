@@ -287,34 +287,15 @@ describe('panel inject face (the live state the shell hands the panel)', () => {
   }
 
   /**
-   * The client context the plugin's synchronous mount path reads. The settings
-   * scope stands in for the shell's own: driving its `enabled` value is how the
-   * shell's plugin switch reaches `apply`'s mount gate.
+   * The client context the plugin's synchronous mount path reads. The board
+   * mounts as soon as this entry is evaluated — being composed IS the enabled
+   * state — so the fake carries no settings scope at all.
    */
   function fakeClientContext() {
     const effects: Array<() => void> = []
     const registrations = new Map<string, FakeRegistration>()
-    const scopeListeners = new Set<() => void>()
     const sessionsSnapshot = { ids: [], byId: {}, phase: 'ready' as const }
     const workspacesSnapshot = { items: [], archivedSessionIds: [] }
-    let scopeSnapshot = {
-      status: 'ready' as const,
-      value: { enabled: true as boolean | undefined },
-      base: undefined,
-      user: undefined,
-      revision: 1,
-      writable: true,
-      mode: 'memory' as const,
-    }
-    const scope = {
-      getSnapshot: () => scopeSnapshot,
-      subscribe: (listener: () => void) => {
-        scopeListeners.add(listener)
-        return () => { scopeListeners.delete(listener) }
-      },
-      set: async () => true,
-      unset: async () => false,
-    }
     const ctx = {
       effect: (fn: () => void | (() => void)) => {
         const dispose = fn()
@@ -333,7 +314,6 @@ describe('panel inject face (the live state the shell hands the panel)', () => {
           return () => { registrations.delete(entry.name) }
         },
       },
-      configForms: { get: () => scope },
       get: () => undefined,
       sessions: {
         list: { getSnapshot: () => sessionsSnapshot, subscribe: () => () => {} },
@@ -346,11 +326,6 @@ describe('panel inject face (the live state the shell hands the panel)', () => {
     return {
       ctx,
       registrations,
-      /** The shell's own plugin switch, driving the mount gate. */
-      setEnabled(next: boolean) {
-        scopeSnapshot = { ...scopeSnapshot, value: { enabled: next } }
-        for (const listener of [...scopeListeners]) listener()
-      },
       /** Fiber teardown: every effect the plugin registered, disposed. */
       disposeAll() { for (const dispose of effects.splice(0)) dispose() },
     }
@@ -374,14 +349,13 @@ describe('panel inject face (the live state the shell hands the panel)', () => {
     expect((main!.inject() as TaskBoardPanelProps).freshness).toBe(face.freshness)
     expect(main!.inject()).not.toBe(face)
 
-    // The board is disposed (the user switched the plugin off): the face
-    // publishes nothing, so a late render cannot subscribe to a dead probe.
-    fake.setEnabled(false)
+    // Fiber teardown (the plugin manager switched this entry off, so the whole
+    // client half is disposed): the face publishes nothing, so a late render
+    // cannot subscribe to a dead probe.
+    fake.disposeAll()
     const afterDispose = main!.inject() as TaskBoardPanelProps
     expect(afterDispose.controller).toBeUndefined()
     expect(afterDispose.freshness).toBeUndefined()
-
-    fake.disposeAll()
   })
 })
 

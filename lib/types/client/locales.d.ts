@@ -582,27 +582,6 @@ export declare const zh: {
     'board.update.gitBehind': string;
     'board.update.gitDirty': string;
     'board.update.gitUpToDate': string;
-    'settings.title': string;
-    'settings.description': string;
-    'settings.enabled': string;
-    'settings.enabledHint': string;
-    'settings.announceToAgent': string;
-    'settings.announceToAgentHint': string;
-    'settings.inherit': string;
-    'settings.on': string;
-    'settings.off': string;
-    'settings.overridden': string;
-    'settings.reset': string;
-    'settings.readOnly': string;
-    'settings.expand': string;
-    'settings.collapse': string;
-    'settings.save': string;
-    'settings.saving': string;
-    'settings.discard': string;
-    'settings.unsaved': string;
-    'settings.saveFailed': string;
-    'settings.invalidNumber': string;
-    'settings.unavailable': string;
 };
 /** en dictionary, complete against the zh key set. */
 export declare const en: Record<keyof typeof zh, string>;

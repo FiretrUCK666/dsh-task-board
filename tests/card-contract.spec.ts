@@ -29,8 +29,6 @@ import { withSessionRules } from '../src/core/automation.ts'
 
 const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
 const source = readFileSync(cssPath, 'utf8')
-/** The second stylesheet (the plugin settings surface) — same scale contract. */
-const settingsSource = readFileSync(fileURLToPath(new URL('../src/client/settings-card.module.css', import.meta.url)), 'utf8')
 
 /** The [start, end) character ranges of every conditional block of one kind
  *  (`@media` / `@container`), found by brace-walking — used to prove a rule is
@@ -279,7 +277,6 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     const bad: string[] = []
     for (const [label, text] of [
       ['board.module.css', source],
-      ['settings-card.module.css', settingsSource],
     ] as const) {
       const lines = text.split('\n')
       lines.forEach((line, index) => {

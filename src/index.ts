@@ -12,15 +12,15 @@
  * disappears live, without a restart.
  *
  * Settings: the plugin's own profile entry carries the `Config` schema below,
- * and the settings service reads and writes that entry directly. A field is
- * editable from the web surface only when the schema marks it `volatile`, and
- * a volatile field's runtime value is a live reference rather than a plain
- * value — see {@link volatileValue}.
+ * and the plugin manager's detail page renders that schema as a form. A field
+ * is editable only when the schema marks it `volatile`, and a volatile field's
+ * runtime value is a live reference rather than a plain value — see
+ * {@link volatileValue}.
  *
- * `enabled` gates the two USER-VISIBLE halves (the system-prompt announcement
- * and the browser half's seats). It deliberately does NOT gate the HTTP routes:
- * a route table that disappears when the flag turns off would leave no way to
- * turn it back on, and the settings surface itself reads through a route.
+ * There is deliberately no enable switch in this config: the plugin manager
+ * already owns activation for every entry, and a second boolean would be a
+ * second truth about the same thing. Composed IS enabled — an inactive entry is
+ * never evaluated, so nothing here has to check.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -29,7 +29,6 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { registerPermissionRoute } from './host/permission-route.ts'
 import { registerSessionStateRoute } from './host/session-state-route.ts'
-import { registerSettingsRoute } from './host/settings-route.ts'
 import { registerBoardRoute } from './host/board-route.ts'
 import { registerUpdateRoute } from './host/update-route.ts'
 import { registerClientReportRoute } from './host/client-report-route.ts'
@@ -58,34 +57,35 @@ export interface Config {
    * about it only when the user mentions it.
    */
   announceToAgent?: boolean
-  /** Master switch for the user-visible halves (browser seats + announcement). */
-  enabled?: boolean
 }
 
 /**
- * Plugin config schema. Both fields are `volatile`: a configuration write that
- * touches only volatile fields updates the running instance in place — the
- * plugin is never unloaded, and `apply` is never re-run — so a settings edit
- * takes effect without a restart. `pnpm verify` asserts the schema keeps at
- * least one volatile field, because an entry with none is skipped by the
- * settings service and silently loses its page.
+ * Plugin config schema. The EXPORT NAME is load-bearing: the plugin runtime
+ * reads it as `module.Config`, so renaming this binding to anything else leaves
+ * the loader without a schema — the plugin still loads and every route still
+ * registers, but the settings surface treats the entry as unconfigurable and
+ * silently drops its page. A test pins the name for that reason.
  *
- * Values are read through {@link volatileValue}, never compared directly: each
- * volatile field resolves to a live reference, not a boolean.
+ * The field is `volatile`: a configuration write that touches only volatile
+ * fields updates the running instance in place — the plugin is never unloaded,
+ * and `apply` is never re-run — so a settings edit takes effect without a
+ * restart. `pnpm verify` asserts the schema keeps at least one volatile field,
+ * because an entry with none is skipped by the settings service the same way.
+ *
+ * The declared output type is the plain value shape. A volatile field's
+ * resolved output is a live reference to that value rather than the value
+ * itself, which is why {@link apply} receives {@link ResolvedConfig} and reads
+ * through {@link volatileValue} instead of comparing the field directly.
  */
-export const ConfigSchema = z.object({
+export const Config: z<Config> = z.object({
   announceToAgent: z.boolean().default(true).volatile(),
-  enabled: z.boolean().default(true).volatile(),
-})
+}) as unknown as z<Config>
 
 /** The resolved config {@link apply} receives (each volatile field is a live reference). */
-export type ResolvedConfig = ReturnType<typeof ConfigSchema>
+export type ResolvedConfig = ReturnType<typeof Config>
 
 /** Schema default, re-read for hand-built test contexts (the loader applies them normally). */
 const DEFAULT_ANNOUNCE = true
-
-/** Schema default of the master switch. */
-const DEFAULT_ENABLED = true
 
 /**
  * Read one config field's current value. A schema field marked `volatile`
@@ -107,9 +107,9 @@ function volatileValue(field: unknown, fallback: boolean): boolean {
 }
 
 /**
- * Register the board's announcement section, gated on the live `enabled` and
- * `announceToAgent` values. The section is re-registered whenever either
- * changes, so a settings edit takes effect without a restart.
+ * Register the board's announcement section, gated on the live
+ * `announceToAgent` value. The section is re-registered whenever it changes, so
+ * a settings edit takes effect without a restart.
  * @param ctx - the plugin context (systemPrompt injected).
  * @param config - resolved plugin config (schema defaults applied by the loader).
  */
@@ -127,8 +127,7 @@ export function apply(ctx: Context, config?: ResolvedConfig): void {
       disposeSection()
       disposeSection = undefined
     }
-    const active = volatileValue(current().enabled, DEFAULT_ENABLED)
-    if (!active || !volatileValue(current().announceToAgent, DEFAULT_ANNOUNCE)) return
+    if (!volatileValue(current().announceToAgent, DEFAULT_ANNOUNCE)) return
     disposeSection = ctx.systemPrompt.section({
       name: 'plugin:dsh-task-board',
       order: SECTION_ORDER,
@@ -140,22 +139,6 @@ export function apply(ctx: Context, config?: ResolvedConfig): void {
   // instance running and republishes the values in place, so the section is
   // re-derived from this event rather than from a re-run of apply().
   ctx.on('loader/volatile-update', sync)
-
-  // The settings surface already renders this entry's form from its schema, so
-  // it must not generate a second page for it. Registered against this fiber so
-  // the policy follows the plugin's own lifecycle.
-  ctx.inject(['settings'], child => {
-    child.effect(
-      () => child.settings.configure({ auto: false }, ctx.fiber),
-      'dsh-task-board: settings page policy',
-    )
-  })
-
-  // Serve the settings namespace to the browser half over HTTP.
-  ctx.effect(
-    () => registerSettingsRoute(ctx, 'dsh-task-board'),
-    'dsh-task-board: settings route',
-  )
 
   // Serve the deployment's native permission-preset catalog to the browser
   // half (the new-task form's permission selector reads this).

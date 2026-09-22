@@ -10,10 +10,10 @@
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
  *
- * The handler is a pure function over an injected service face (the
- * settings-route idiom), so the whole protocol is unit-testable without a
- * live server; `registerBoardRoute` wires the real services and owns the
- * service lifecycle (init on register, dispose on unload).
+ * The handler is a pure function over an injected service face, so the whole
+ * protocol is unit-testable without a live server; `registerBoardRoute` wires
+ * the real services and owns the service lifecycle (init on register, dispose
+ * on unload).
  * @module dsh-task-board/host/board-route
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -21,7 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
 import { BoardDataService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
-import { readJsonBody } from './settings-route.ts'
+import { readJsonBody } from './http-json.ts'
 
 /** The commit body size cap: the whole ledger travels per commit. */
 export const BOARD_BODY_LIMIT_BYTES = 8 << 20

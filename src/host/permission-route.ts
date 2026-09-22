@@ -18,7 +18,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { json } from './settings-route.ts'
+import { json } from './http-json.ts'
 
 /** One selectable permission preset, as the task form renders it. */
 export interface PermissionOptionView {

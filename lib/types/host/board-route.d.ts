@@ -10,10 +10,10 @@
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
  *
- * The handler is a pure function over an injected service face (the
- * settings-route idiom), so the whole protocol is unit-testable without a
- * live server; `registerBoardRoute` wires the real services and owns the
- * service lifecycle (init on register, dispose on unload).
+ * The handler is a pure function over an injected service face, so the whole
+ * protocol is unit-testable without a live server; `registerBoardRoute` wires
+ * the real services and owns the service lifecycle (init on register, dispose
+ * on unload).
  * @module dsh-task-board/host/board-route
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';

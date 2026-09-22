@@ -136,7 +136,7 @@ export function createSessionStateHandler(
   }
 }
 
-/** Mount the bridge on the host web surface (mirrors registerSettingsRoute). */
+/** Mount the bridge on the host web surface. */
 export function registerSessionStateRoute(ctx: Context): () => void {
   const webServer = ctx.get('webServer') as { register(options: unknown): () => void } | undefined
   if (webServer === undefined) return () => undefined

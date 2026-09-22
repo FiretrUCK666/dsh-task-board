@@ -268,7 +268,7 @@ for (const [label, text] of DOC_FILES) {
 // paint, so it is a defect by construction.
 {
   const localAliases = new Set()
-  for (const file of ['src/client/board.module.css', 'src/client/settings-card.module.css']) {
+  for (const file of ['src/client/board.module.css']) {
     const p = join(root, file)
     if (!existsSync(p)) continue
     const css = readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')

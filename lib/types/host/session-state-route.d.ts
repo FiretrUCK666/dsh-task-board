@@ -69,5 +69,5 @@ export declare function createSessionStateHandler(faces: SessionStateFaces, read
     writeHead(status: number, headers?: Record<string, string>): void;
     end(body?: string): void;
 }) => Promise<void>;
-/** Mount the bridge on the host web surface (mirrors registerSettingsRoute). */
+/** Mount the bridge on the host web surface. */
 export declare function registerSessionStateRoute(ctx: Context): () => void;
