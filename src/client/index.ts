@@ -8,7 +8,7 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
-import type { ApiFace, BoundSessionFace, ClientContext, ConfigFormFace, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
+import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
 import { buildApi, sessionDriverOf } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
@@ -82,37 +82,6 @@ class TaskBoardStage {
   inject(): { controller: BoardController | undefined; freshness: BundleFreshnessState | undefined } {
     return { controller: this.controller, freshness: this.freshness }
   }
-}
-
-/**
- * The board's settings entry: the same id the host plugin's profile row carries
- * (and the bundle patch inserts), which is the key its config form is filed
- * under. Spelled here rather than imported — the browser half must not depend
- * on a host package.
- */
-const CONFIG_ENTRY_ID = 'dsh-task-board'
-
-/**
- * The board's own switch, read live from this entry's config form.
- *
- * Two details decide the shape of this function. The value is read through
- * `.get()` on every call rather than compared directly, because a schema field
- * marked `volatile` resolves to a live reference to the current value — a
- * direct comparison would read "always truthy" and the switch would never turn
- * the board off. And an absent form (a deployment composing no settings
- * surface) reads as ON: the board is the plugin's whole purpose, so the only
- * thing that may hide it is an explicit request to.
- * @param form - the entry's config form, or undefined when none is served.
- * @returns whether the board should be on screen.
- */
-function boardEnabledNow(form: ConfigFormFace<unknown> | undefined): boolean {
-  if (form === undefined) return true
-  const value = (form.getSnapshot().value ?? {}) as { boardEnabled?: unknown }
-  const field = value.boardEnabled as { get?: () => unknown } | undefined
-  const current = field !== null && typeof field === 'object' && typeof field.get === 'function'
-    ? field.get()
-    : field
-  return current === undefined ? true : current === true
 }
 
 /** localStorage key for the auto-cruise state (toggle + concurrency limit). */
@@ -242,7 +211,7 @@ async function selectModelOf(
  * Navigation is NOT a required service: `ctx.uiWorkspace` is read optionally
  * at call time (see the sessions.open adapter in buildApi).
  */
-export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'uiSession', 'configForms']
+export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'uiSession']
 
 /**
  * Mount the task board.
@@ -322,16 +291,10 @@ export function apply(ctx: ClientContext): void {
     // while the board is open LEAVES it — click to enter, click again to exit.
   }, (props: { size: number; active: boolean }) => TaskBoardIcon({ ...props, onExit: returnToConversation }))), 'dsh-task-board: panel entry')
 
-  // Settings: the plugin's own entry carries a config schema, and the plugin
-  // manager's detail page renders that schema as a form — one page per entry,
-  // so the board's switch lives with the board. There is deliberately no
-  // settings section of this plugin's own.
-  //
-  // The switch is a live gate, not a boot-time read: the form publishes a new
-  // snapshot when the value changes, and the board mounts or releases on it
-  // without a reload. The plugin manager's own enable switch stays the coarser
-  // control (it unloads the plugin, host routes and all).
-  const configForm: ConfigFormFace<unknown> | undefined = ctx.configForms?.get(CONFIG_ENTRY_ID)
+  // No enable gate and no settings section of this plugin's own: being
+  // composed IS the on state. The plugin manager's switch writes the profile
+  // row's `disabled`, the loader unloads the whole entry, and this code simply
+  // stops being evaluated — so nothing here has to ask whether it should run.
   let uiDisposer: (() => void) | undefined
   let mounting = false
   const mountUi = (): Promise<void> | undefined => {
@@ -341,12 +304,7 @@ export function apply(ctx: ClientContext): void {
       // A failed mount must never strand the gate or surface an unhandled
       // rejection: log it, stay unmounted, the next scope event may retry.
       console.error('[dsh-task-board] mount failed:', error)
-    }).finally(() => {
-      mounting = false
-      // The switch may have moved while the mount was in flight; the mount
-      // finishes either way, and the newest decision wins.
-      if (!boardEnabledNow(configForm)) uiDisposer?.()
-    })
+    }).finally(() => { mounting = false })
   }
   const mountUiBody = async (): Promise<void> => {
     if (uiDisposer !== undefined) return
@@ -1267,19 +1225,11 @@ export function apply(ctx: ClientContext): void {
     }
   }
 
-  // The board's whole lifecycle hangs off the entry's config form: a fiber
-  // teardown (the plugin manager switching this entry off) OR the board's own
-  // switch turning off releases every subscription, timer and stream the mount
-  // created — including the ones that arrive after the asynchronous mount
-  // settles.
-  const syncEnabled = (): void => {
-    if (boardEnabledNow(configForm)) mountUi()
-    else uiDisposer?.()
-  }
-  const detachConfig = configForm?.subscribe(syncEnabled) ?? (() => {})
-  ctx.effect(() => () => {
-    detachConfig()
-    uiDisposer?.()
-  }, 'dsh-task-board: board lifecycle')
-  syncEnabled()
+  // The board's whole lifecycle hangs off one effect, so the switch that
+  // matters — the plugin manager unloading this entry — disposes every
+  // subscription, timer and stream the mount created, including the ones that
+  // arrive after the asynchronous mount settles.
+  const mountingDone = mountUi()
+  ctx.effect(() => () => { uiDisposer?.() }, 'dsh-task-board: board lifecycle')
+  void mountingDone
 }

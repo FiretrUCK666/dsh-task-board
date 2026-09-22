@@ -29,57 +29,6 @@ export type SessionId = string & { readonly __sessionId: unique symbol }
 /** Branded workspace id. */
 export type WorkspaceId = string & { readonly __workspaceId: unique symbol }
 
-// ─── Settings scope ─────────────────────────────────────────────────────────
-
-/** The settings scope shape one profile entry's form serves. */
-export type SettingsScopeSnapshot<T> = ConfigFormSnapshot<T>
-
-/**
- * Client-side sync state of one settings entry. Mirrors the official
- * `ConfigFormSnapshot<T>` contract so the card form consumes it unchanged.
- */
-export interface ConfigFormSnapshot<T> {
-  /** `loading` until the first accepted section, `ready` while one stands. */
-  status: 'loading' | 'ready' | 'unavailable'
-  /** Last accepted schema-resolved section; undefined before the first acceptance. */
-  value: T | undefined
-  /** Composition layer the Host resolved `value` over. */
-  base: unknown
-  /** Raw user layer as stored; a field's PRESENCE here marks it overridden. */
-  user: unknown
-  /** Namespace revision fencing the next write. */
-  revision: number | undefined
-  /** Whether the Host document accepts writes. */
-  writable: boolean
-  /** `host` syncs with the Host document; `memory` keeps state process-local. */
-  mode: 'host' | 'memory'
-}
-
-/**
- * The settings surface's per-entry form face, re-declared structurally. Every
- * profile plugin entry carries a config schema; this is the reader/writer for
- * one entry's section, fenced on that entry's revision so a stale editor is
- * refused rather than silently overwriting a concurrent change. Writes report
- * their own outcome; consumers that read the section back may ignore the
- * result.
- */
-export interface ConfigFormFace<T> {
-  /** @returns the current sync snapshot (stable reference until the next change). */
-  getSnapshot(): SettingsScopeSnapshot<T>
-  /** Observe snapshot replacements; returns the disposer. */
-  subscribe(listener: () => void): () => void
-  /** Queue one field write; true when the Host accepted it. */
-  set(field: string, value: unknown): Promise<boolean>
-  /** Queue one field clear so it re-inherits the composition layer. */
-  unset(field: string): Promise<boolean>
-}
-
-/** The settings service as this plugin reads it: one form per profile entry. */
-export interface ConfigFormsFace {
-  /** @param entryId - unique Host plugin entry id. */
-  get<T>(entryId: string): ConfigFormFace<T>
-}
-
 // ─── Snapshot store (dependency-free) ───────────────────────────────────────
 
 /**
@@ -578,13 +527,6 @@ export interface ClientContext {
       select(agent: SessionId, agentPreset: string, signal?: AbortSignal): Promise<RemoteResult<unknown>>
     }
   }
-  /**
-   * The settings surface's per-entry forms. Optional: read through `ctx.get`,
-   * because a deployment may compose no settings surface at all — the board
-   * then mounts on its own composition default and its settings card reports
-   * the section as unavailable instead of failing to render.
-   */
-  configForms?: ConfigFormsFace
 }
 
 // ─── API adapter (alpha.3 mapping) ──────────────────────────────────────────

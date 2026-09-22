@@ -89,23 +89,24 @@ Stop the running `dsh web` and start it again. Refreshing the page is not enough
 
 The entry sits beside DSH's own Plugins panel. Selecting it puts the board in the centre stage; selecting the entry again — or any session in the sidebar — brings the conversation back.
 
-The board's switch lives on the plugin's own page: **sidebar → Plugins → scroll to Installed → Task Board**. Ticking it shows the board; clearing it hides it.
+The plugin has **exactly one switch: on or off.** It appears in two places and they do the same thing — the toggle on the plugin's row under **sidebar → Plugins → Installed**, and the one at the top right of the plugin's own page (click the plugin name). **Off means the plugin is not loaded** (sidebar entry, board and background routes all stop); **on restores it.**
 
 ### Nothing to configure by hand
 
-It works once installed — no config file to edit, no declaration to write. The install command above does all of the registration, and the plugin does the rest:
+It works once installed — no config file to edit, no declaration to write. And **do not add anything to `cordis.patch.yml` yourself**: the plugin's row lives inside the package, and the install command only registers that package in the profile; the two together are the whole setup. Hand-adding a row makes the same plugin appear twice.
 
 | Step | Who does it |
 | --- | --- |
-| Register the plugin in the local profile | The install command |
-| Insert the plugin's profile row (id, package name) | `cordis.patch.yml` inside the package, pointed at by `dsh.bundle.patch` in `package.json`; applies automatically at install |
-| UI entry, board stage, settings form | The plugin registers them into DSH's official extension points at startup |
+| Register the plugin in the local profile | The install command (adds a package name to `dsh.profile.bundles`) |
+| The plugin's row (id, package name) | `cordis.patch.yml` inside the package, pointed at by `dsh.bundle.patch` in `package.json`; applies at composition |
+| UI entry, board stage | The plugin registers them into DSH's official extension points at startup |
 | Where data lives | `~/.dsh/storages/dsh_task_board.json`, created on first run |
 | Display name, description, icon | `locale/` and `icon.svg` in the package, read directly by DSH |
+| Where that switch lives | The plugin manager writes `disabled` on this row (and only when you switch it off) |
 
 The one step you must take is **restarting `dsh web`** (the host half lives in the server process and is not loaded otherwise). All three install routes — npm, GitHub, local — behave identically here.
 
-**There is exactly one setting and it is on by default**, so leaving it alone works fine. Turn it off and the board stops being shown; turn it back on and it returns. **The change takes effect immediately — no page refresh, no restart.** It is not the same thing as the enable switch in the plugin manager: that one unloads the plugin entirely (its routes stop being served), while this one only takes the board off screen, leaving execution and scheduling running in the background.
+This plugin has no settings and needs no settings panel: the board's behavior (tasks, schedules, cruise, rules) is edited directly on the board, and on/off is the switch above.
 
 To remove it:
 
@@ -221,7 +222,7 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 
 The plugin id and the package name are different things. The id names the loader row, the served browser asset, the settings entry, the routes, the storage unit and the two slots above; the package name is only what pnpm installed. A scoped package name never moves the id.
 
-Settings have no slot of their own: the plugin declares its fields in the `Config` schema, and the plugin's own page (sidebar → Plugins → Installed → click the plugin) renders them as a form, so the switch lives beside the plugin itself.
+This plugin has no settings, so it has no settings panel either: the switch in the plugin manager writes the profile row's `disabled` (and only when you turn it off), and the plugin itself declares no setting fields.
 
 ## License
 

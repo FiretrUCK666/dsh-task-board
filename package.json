@@ -1,7 +1,7 @@
 {
   "name": "@firetruck666/dsh-task-board",
   "description": "Task board plugin for the DSH web GUI: a sidebar entry plus a multi-column kanban view with real execution through DSH sessions, schedules, session rules and auto-cruise automation. Board truth lives on the host and syncs to every device over SSE (the browser is an offline-first copy). Standalone plugin, no DSH source changes.",
-  "version": "0.2.146",
+  "version": "0.2.147",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -81,9 +81,7 @@
     "@deepseek-ai/dsh-host-webserver": ">=0.1.7-alpha.1",
     "react": "^18.2.0"
   },
-  "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.3",
     "@deepseek-ai/dsh-client-connection": "^0.1.7-alpha.1",

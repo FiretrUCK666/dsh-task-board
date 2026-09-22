@@ -271,7 +271,11 @@ for (const file of textFiles) {
 
 // --- 4. runtime dependencies ------------------------------------------------
 
-const ALLOWED_DEPS = new Set(['@deepseek-ai/schemastery'])
+// The plugin ships with NO runtime dependency: the host half imports only types,
+// the browser half imports only React (provided by the shell) and its own files,
+// and there is no config schema left to validate. An empty allow-list is the
+// rule stated directly — anything that appears here has to be argued for.
+const ALLOWED_DEPS = new Set()
 if (existsSync(pkgPath)) {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
   for (const name of Object.keys(pkg.dependencies ?? {})) {
@@ -350,36 +354,27 @@ if (existsSync(clientBundlePath)) {
   }
 }
 
-// --- 7. namespace + route spelling ------------------------------------------
+// --- 7. settings seam + route spelling ---------------------------------------
 
 const srcFiles = allFiles.filter((f) => f.includes(sep + 'src' + sep))
 const srcText = srcFiles.map((f) => readFileSync(f, 'utf8')).join('\n')
-// The settings seam is the plugin's OWN profile entry, and TWO independent
-// facts decide whether its page exists — both fail SILENTLY, so both are read
-// here:
-//   1. The schema binding must be spelled `Config`. The plugin runtime reads it
-//      as `module.Config`; any other name leaves the loader without a schema,
-//      and the settings service then treats the entry as unconfigurable and
-//      drops its page while the plugin itself keeps working.
-//   2. The schema must mark at least one field volatile. The settings service
-//      skips an entry whose form has no volatile field, with the same silent
-//      result.
-// This gate also reads two negative facts: the plugin never reaches for the
-// namespace-registration API the settings service no longer exposes, and it
-// spells both its namespace and its settings route.
-if (!srcText.includes(`'${pluginId}'`)) failures.push(`src never spells the settings namespace '${pluginId}'`)
-const schemaIndex = srcText.search(/^export const Config\s*[:=]/m)
-if (schemaIndex === -1) {
-  failures.push('src does not export the schema as `Config` — the plugin runtime reads module.Config, and any other name leaves the settings entry with no form')
-} else {
-  const block = srcText.slice(schemaIndex, schemaIndex + 1200)
-  const volatileField = /(\w+)\s*:\s*[^\n]*?\.volatile\(\)/.exec(block)?.[1] ?? null
-  if (volatileField === null) {
-    failures.push('src declares no volatile Config field — the settings surface would skip this plugin entry and lose its page')
-  }
+// The plugin carries no settings schema of its own, and that is load-bearing in
+// the other direction: its enable switch IS the profile row's `disabled`, which
+// the plugin manager writes and the loader acts on. A `Config` schema would put
+// a settings form back next to that switch for something that has no
+// per-plugin option. So the absence is read here, together with the removal of
+// the namespace-registration API that predates all of this.
+if (/^export const Config\s*[:=]/m.test(srcText)) {
+  failures.push('src exports a Config schema again — the plugin has no per-plugin setting; its switch is the profile row the plugin manager writes')
 }
 if (/\.installSection\s*\(/.test(srcText)) {
   failures.push('src still calls the removed ctx.settings.installSection — plugin config is the profile entry now')
+}
+// The plugin writes nothing into other people's prompts. Asserting the absence
+// of the service, not just of one call, because any import of it is the road
+// back to an announcement section.
+if (/dsh-system-prompt|systemPrompt\s*\.\s*section/.test(srcText)) {
+  failures.push('src reaches for the system-prompt service again — this plugin does not announce itself to agents')
 }
 
 // --- 8. import hygiene ------------------------------------------------------

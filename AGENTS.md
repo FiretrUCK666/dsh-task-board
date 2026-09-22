@@ -166,12 +166,14 @@ pnpm toc    # 改完 README 结构后重跑，目录即与标题同步
   贡献者用 `dsh plugin --profile web add .` 把当前 checkout 挂进自己的 profile 调试即可，
   提交 PR 不需要改动任何人的挂载。
 - `~/.dsh/cordis.patch.yml`：合法状态 = 不存在，或顶层 YAML 数组（存在但为空会令
-  dsh 启动失败）。插件设置**不住在这里**：设置就是插件在激活 profile 里的那条配置项
-  （`profiles/<name>/cordis.patch.yml` 中同 id 的行）的 `config`，Web 设置页直接读写它。
-  字段要在 schema 里标 `.volatile()` 才可编辑，也才即时生效——**一个 volatile 字段都没有
-  的条目会被设置服务整条跳过，页面静默消失**（`verify-standalone.mjs` 兜住这一条）。
+  dsh 启动失败）。它**不属于任何插件**：它是使用者自己的覆盖层，最后叠加，用来覆盖或
+  关掉某一条目。插件的行由插件包自己带（`dsh.bundle.patch` → 包内 `cordis.patch.yml`），
+  安装时由 `dsh plugin add` 把包登记进 `dsh.profile.bundles` 即可，**不需要往这个文件里写
+  任何东西**；插件管理页的开关则按需往它写一条 `- id: <插件id>  disabled: true`。
   旧 `~/.dsh/settings.yaml` 只在首次启动导入一次，导入后改名 `settings.yaml.imported`，
   永不重跑；导入失败的那一节只留一行 warn，不会重试。
+- **本插件没有设置项**：不在 profile 里存 `config`，因此上面那段"字段要标 `.volatile()`"
+  的机制与本插件无关——它是给有设置项的插件用的。本插件的开关是 profile 行的 `disabled`。
 - 兄弟插件：本目录所在 `Plugins` 目录下的平级独立插件（用目录扫描发现）；与本项目
   完全独立、互不依赖、互不引用。
 - 生效规则：host 半区改动需重启 `dsh web`；client 半区改动刷新页面即可。
@@ -419,20 +421,33 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
 | 其余 host 路由 | `/api/dsh-task-board/session-state`、`/api/dsh-task-board/update`、`/api/dsh-task-board/client-report` |
 | host 存储单元名（storage hub json 后端） | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board.json`；平台 `UNIT_NAME_RE` 只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
-| 设置项 | `boardEnabled`（`Config` schema 里唯一的 volatile 布尔，默认开；关掉只是不把看板放上屏幕，插件与路由照常运行） |
+| 启停开关 | profile 里本条目的 `disabled`（插件管理页的开关写它；不写就是默认启用） |
 | **看板舞台 slot**（面板本体） | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
 | **侧栏入口 slot**（面板图标） | `sidebar.panellist`，`id: dsh-task-board`（**必须等于 `main` 的 key**，shell 靠它把行解析到舞台） |
 | localStorage 键（现为离线镜像 + 草稿 + 备份） | `dsh.taskBoard.v1` 等（**不得改名**，见「数据键稳定」） |
 
-**设置项没有自己的 slot，也没有自己的路由**：插件在 `Config` schema 里声明字段，侧边栏
-「插件」页（已安装 → 点插件名）这条插件自己的页面把它渲染成表单——一个插件一个设置页，
-开关跟插件本体放在一起。所以本插件**不**注册 `settings.section`，**不**注册
-`/api/<id>/settings`，浏览器侧经宿主服务 `configForms.get('dsh-task-board')` 读同一个值。
-**入口路径要按界面实际写**（`侧边栏「插件」→ 已安装 → 点插件名`），不要写成「设置 →
-插件市场」一类的推测路径——本项目的文档里已经错过一次。
+**本插件没有设置项，这是有意的**：它的每一个行为都已经是使用者自己的选择——任务、定时、
+巡航、规则都是看板上的数据，在界面里直接编辑；而"这个插件开不开"是插件管理页的开关，
+写的是 profile 行的 `disabled`，不是 schema。再加一个 `Config` schema，就是给同一件事
+再加一个控件，而这已经发生过一次（见「启停机制全貌」）。
 
-**本插件不向 agent 播报任何东西**：没有系统提示 section，因此**不**注入 `systemPrompt`，
-也没有对应的设置项。看板要靠自己出现在界面上被使用者看到，而不是靠往别人的提示词里塞话。
+**本插件不向 agent 播报任何东西**：没有系统提示 section，因此**不**注入 `systemPrompt`。
+看板要靠自己出现在界面上被使用者看到，而不是靠往别人的提示词里塞话。
+
+### 启停机制全貌（外部插件只能这样被开与关，改任何一处之前先读这段）
+
+| 层级 | 谁在写 | 写进哪个文件 | 效果 |
+| --- | --- | --- | --- |
+| 包级（整包） | 插件页右上角的开关 | profile 的 `package.json` → `dsh.profile.bundles`（增删包名） | 整个 bundle 的 patch 层不参与装配，包内所有条目一起消失 |
+| 条目级（单行） | 「已安装」列表里那一行的开关 | profile 的 `cordis.patch.yml` → 匹配 `id` 的行写 `disabled: true/false`；找不到就追加一条只带 id 的新行 | 只关这一行，同一 bundle 的其它条目照常 |
+
+两者都不需要插件配合：插件**不注册**设置页，也**不读**自己的启用状态。加载器只求值处于
+激活状态的行，所以插件被关掉时它一行代码都不会跑——**「被组合即启用」是结构性质，不是
+判断逻辑**。这也是为什么 `src/index.ts` 里既没有 `Config` 也没有 enable 检查。
+
+写这条路径的代码是宿主的 `writePluginEnabled` 与 `reconcile`：前者按 `id`（`name` 可省）
+在 patch 文件末尾往前找最后一条匹配行，后者在安装/卸载后按 `dependencies` 与
+`dsh.bundle.patch` 两个条件增删 `bundles`。
 
 挂载：`package.json` 声明 `dsh.bundle.patch` → `cordis.patch.yml`；安装命令
 `dsh plugin --profile web add @firetruck666/dsh-task-board`（本地开发用 `add .` 或
@@ -484,15 +499,11 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | client | `locale` | `register` | `@deepseek-ai/dsh-client-locale` |
 | client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
-| client | `configForms` | `get` | `@deepseek-ai/dsh-client-ui-settings` |
-
-宿主把这条目自己的 schema 渲染成设置表单，走的是宿主内部通道（插件市场直接读配置镜像），
-**不需要插件注册任何服务或路由**。
 
 **每个注入都是负债**：声明了一个实际不用的服务，会在该服务缺席的部署里白等——那个
 半区永远不激活，什么也注册不出来。所以 `inject` 只列真正用到的：本插件**不**注入
-`settings`（配置由插件市场读写），也**不**注入 `systemPrompt`（本插件不向 agent 播报
-任何东西）。
+`settings`、`configForms`（没有设置项要读写）、也不注入 `systemPrompt`（不向 agent
+播报任何东西）。
 
 该脚本另带反向检查（源码不得引用宿主已撤的成员），用 `--probe-removed` 自测：它拿一组
 已知不存在的成员去扫源码，**必须报红**——否则说明检查本身失效了，而不是源码干净。
@@ -512,21 +523,21 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### host 半区（DSH 主进程）
 
-- `src/index.ts`：inject 只有 `webServer`；`Config`（导出名 load-bearing，唯一字段 `boardEnabled`
-  标 `.volatile()`）→ 插件市场详情页即时生效；权限/看板/会话状态/更新/页面自报五条路由。
-  **不向 agent 播报任何东西、不注入 `systemPrompt`；无图片路由、无设置路由**。
+- `src/index.ts`：inject 只有 `webServer`；五个 `ctx.effect` 各注册一条路由（权限/看板/
+  会话状态/更新/页面自报）。**没有 `Config` schema、没有 enable 检查**——启停是 profile 行
+  的 `disabled`，加载器只求值激活的行（见「启停机制全貌」）；**不向 agent 播报任何东西、
+  不注入 `systemPrompt`；无图片路由、无设置路由**。
 - `src/host/http-json.ts`：全部路由共用的信封与请求体读取（一个有界实现，禁各写一套）。
 - `src/host/*-route.ts`：纯 `create*Handler`（可注入测试），服务一律 `ctx.get`。
 - `src/host/board-service.ts` + `board-route.ts`：**BoardDoc 真相服务**（持有 + storage hub `KvUnit` 持久化 + 先落盘后应答 + SSE；路由见命名矩阵；缺 hub 则 localStorage 模式）。合并文法见核心层 `board-doc.ts`。
 
 ### client 半区（浏览器）
 
-- `src/client/index.ts`：inject 七服务（含 `configForms`，读本插件条目的设置）；offline-first
-  挂载（Synced*Store 常驻 → 接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；
-  官方 seat 两处注册（`main` 面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`
-  （`buildApi` 钉端点，`tests/platform.spec.ts` 钉死）。**看板开关是活的闸门**：订阅
-  `configForms` 的快照，开就挂、关就整块释放（订阅、定时器、SSE 一起走），不必刷新页面；
-  插件市场的启用开关是更粗的一档（连插件一起卸下）。
+- `src/client/index.ts`：inject 六服务；offline-first 挂载（Synced*Store 常驻 → 接线 →
+  `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；官方 seat 两处注册（`main`
+  面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`（`buildApi` 钉端点，
+  `tests/platform.spec.ts` 钉死）。**没有启用判断**：被组合即启用，整个生命周期挂在一个
+  `ctx.effect` 上，插件被关掉时订阅、定时器、SSE 一起释放。
 - `route-base.ts`：**浏览器侧路由的唯一出口**（去掉开头斜杠，交给 `document.baseURI`）。
   host 侧注册路径保持绝对；浏览器侧任何 `/api/...` 都必须经它，`tests/route-base.spec.ts` 扫描源码兜住。
 - `TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。`board-transport.ts`：
@@ -624,11 +635,10 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
    `dsh.taskBoard.preSync.v1`，见「同步域」迁移文法）。
 6. **生命周期纪律**：订阅/监听/定时器/observer 全部注册 disposer；DOM 失败
    console.error 不抛；`ctx.effect` 内创建的资源随 effect 清理。
-7. **独立自包含**：运行时依赖仅 `@deepseek-ai/schemastery`（host Config schema——官方
-   fork 才有 `.volatile()`，不带作用域的那个包停在旧版本、没有这个方法）；不依赖兄弟
-   插件；界面全部经宿主官方 seat（见「宿主契约表」），不依赖任何外部垫片。自打的
-   属性只用来标记**自己的**子树（`data-dsh-taskboard-view` / `data-dsh-taskboard-panel`），
-   不读写 shell 的 DOM 或类名。
+7. **独立自包含**：**运行时没有任何依赖**（`dependencies` 为空；schema 层随设置项一起去掉了，
+   host 只 import 类型）；不依赖兄弟插件；界面全部经宿主官方 seat（见「宿主契约表」），
+   不依赖任何外部垫片。自打的属性只用来标记**自己的**子树（`data-dsh-taskboard-view` /
+   `data-dsh-taskboard-panel`），不读写 shell 的 DOM 或类名。
 8. **不引入新依赖**：新增依赖需先说明理由并经确认。确认渠道按角色走（见「先确认角色」）：
    维护者在本会话里确认；贡献者先在 Issue 里讨论，再提 PR。
 9. **从机制上解决问题**：遇到新情况先按「行事总纲」的意图与边界推理，而不是等待
