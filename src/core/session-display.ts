@@ -7,7 +7,7 @@
  * Pure functions — no side effects, fully unit-testable.
  */
 import type { PendingInteractionKind } from './controller.ts'
-import { isOpenRound, type TaskRecord, type ExecutionRecord } from './tasks.ts'
+import { isOpenRound, plainRunsOf, type TaskRecord, type ExecutionRecord } from './tasks.ts'
 
 /**
  * The live state of an execution's session (aggregating all rounds that share
@@ -268,4 +268,26 @@ export function taskUnviewedCount(task: TaskRecord): number {
     if (executionUnviewed(task, execution)) count += 1
   }
   return count
+}
+
+/**
+ * Whether ONE session of a task still has an unreviewed finish — THE
+ * per-session unread judgment, shared by the detail's session-row glow and
+ * the card's session dot, so the two surfaces can never disagree about which
+ * conversation just finished.
+ *
+ * The representative is the session's LATEST plain run — the exact row the
+ * unified session list shows (`taskSessionsOf` keeps the same last run per
+ * session), so "the row breathes" and "the dot breathes" read one clock:
+ * `executionUnviewed` over that run. It clears through the existing funnels
+ * only (review page open, 标已读, approve, notification per-session open) —
+ * this function never writes. A session with no plain run (a bound external
+ * conversation, a refine session) has no review state and honestly reads
+ * false rather than borrowing another surface's clock.
+ */
+export function sessionUnviewedOf(task: TaskRecord, sessionId: string): boolean {
+  const runs = plainRunsOf(task).filter(run => run.sessionId === sessionId)
+  const latest = runs[runs.length - 1]
+  if (latest === undefined) return false
+  return executionUnviewed(task, latest)
 }

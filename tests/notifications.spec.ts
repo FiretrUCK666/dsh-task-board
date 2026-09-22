@@ -1,10 +1,11 @@
 /**
- * Notification center aggregation (client/board/notifications.ts): one row
- * per waiting session, deduped, newest task first; busy-but-not-waiting is
- * never a notification.
+ * Notification center aggregation (client/board/notifications.ts): ONE row
+ * per waiting session and per settled review session, deduped; busy but not
+ * waiting is never a notification. Rows are THE counting unit (bell badge =
+ * unseen dot = drawer rows).
  */
 import { describe, expect, it } from 'vitest'
-import { arrivalOf, boardDemandOf, foldNotesByTask, noteKeyOf, notificationsExOf, notificationsOf, stampWaitingArrivals, waitingBodyOf, waitingExcerptOf, WAITING_EXCERPT_BUDGET } from '../src/client/board/notifications.ts'
+import { arrivalOf, boardDemandOf, noteKeyOf, noteStatusShapeOf, notificationsExOf, stampWaitingArrivals, waitingBodyOf, waitingExcerptOf, WAITING_EXCERPT_BUDGET, type NotificationItem } from '../src/client/board/notifications.ts'
 import { taskUnviewed } from '../src/core/session-display.ts'
 import { createTask, settleExecution, startExecution } from '../src/core/tasks.ts'
 
@@ -17,11 +18,20 @@ function task(id: string, updatedAt: number, extra: Record<string, unknown> = {}
   }
 }
 
-describe('notificationsOf', () => {
+/** Waiting-only view (the default review gate closed — rows are waiting tier). */
+function waitingRows(
+  tasks: Parameters<typeof notificationsExOf>[0],
+  pending: Parameters<typeof notificationsExOf>[1],
+  titleOf: Parameters<typeof notificationsExOf>[2] = id => id,
+) {
+  return notificationsExOf(tasks, pending, titleOf, () => false)
+}
+
+describe('waiting rows (one per waiting session)', () => {
   it('empty board, or nothing waiting, is no rows', () => {
-    expect(notificationsOf([], () => undefined, id => id)).toEqual([])
+    expect(waitingRows([], () => undefined)).toEqual([])
     const tasks = [task('a', NOW)]
-    expect(notificationsOf(tasks, () => undefined, id => id)).toEqual([])
+    expect(waitingRows(tasks, () => undefined)).toEqual([])
   })
 
   it('one row per waiting session (execution + refine deduplicated)', () => {
@@ -34,7 +44,7 @@ describe('notificationsOf', () => {
     })]
     const pending = (id: string | undefined): 'question' | undefined =>
       id === 's-1' || id === 's-2' ? 'question' : undefined
-    const rows = notificationsOf(tasks, pending, id => `title-${id}`)
+    const rows = waitingRows(tasks, pending, id => `title-${id}`)
     // s-1 named twice (round + refine) waits once.
     expect(rows.map(row => row.sessionId)).toEqual(['s-1', 's-2'])
     expect(rows[0]).toMatchObject({
@@ -48,7 +58,7 @@ describe('notificationsOf', () => {
         { id: 'e1', sessionId: 's-9', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
       ],
     })]
-    expect(notificationsOf(tasks, () => undefined, id => id)).toEqual([])
+    expect(waitingRows(tasks, () => undefined)).toEqual([])
   })
 
   it('newest task first', () => {
@@ -60,10 +70,12 @@ describe('notificationsOf', () => {
         executions: [{ id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
       }),
     ]
-    const rows = notificationsOf(tasks, () => 'approval' as const, id => id)
+    const rows = waitingRows(tasks, () => 'approval' as const)
     expect(rows.map(row => row.taskId)).toEqual(['new', 'old'])
   })
+})
 
+describe('review rows (one per settled session of each unviewed review task)', () => {
   it('review tier: unviewed review tasks notify after waiting (failed first)', () => {
     const base = createTask({ title: 'R', description: '', prompt: 'p' }, NOW, 'r')
     const running = startExecution(base, NOW + 1, 'e1')
@@ -94,6 +106,46 @@ describe('notificationsOf', () => {
     expect(sibling.map(row => `${row.kind}:${row.sessionId}`).sort()).toEqual(['review:s-1', 'waiting:s-2'])
   })
 
+  it('EVERY settled session of a review task gets its own row (the drawer states each lane)', () => {
+    // The old grammar emitted ONE row per task, naming only the newest run's
+    // session — two lanes finishing in different states collapsed into one
+    // line and the drawer could not say which conversation did what.
+    const two = {
+      ...task('r', NOW, { status: 'review' as const }),
+      executions: [
+        { id: 'e1', sessionId: 's-1', startedAt: NOW + 1, endedAt: NOW + 10, result: 'failed' as const, error: 'boom' },
+        { id: 'e2', sessionId: 's-2', startedAt: NOW + 2, endedAt: NOW + 20, result: 'succeeded' as const, error: undefined },
+      ],
+    }
+    const rows = notificationsExOf([two], () => undefined, id => `title-${id}`, () => true)
+    expect(rows.map(row => `${row.kind}:${row.sessionId}`)).toEqual(['review:s-1', 'review:s-2'])
+    expect(rows[0]).toMatchObject({ result: 'failed', at: NOW + 10, sessionTitle: 'title-s-1' })
+    expect(rows[1]).toMatchObject({ result: 'succeeded', at: NOW + 20, sessionTitle: 'title-s-2' })
+    // Failed ranks first (it needs a decision), then settle recency — per row.
+    const cancelled = {
+      ...task('c', NOW + 5, { status: 'review' as const }),
+      executions: [
+        { id: 'e1', sessionId: 's-3', startedAt: NOW + 1, endedAt: NOW + 3, result: 'cancelled' as const, error: undefined },
+      ],
+    }
+    const mixed = notificationsExOf([two, cancelled], () => undefined, id => id, () => true)
+    expect(mixed.map(row => `${row.result}:${row.sessionId}`)).toEqual(['failed:s-1', 'succeeded:s-2', 'cancelled:s-3'])
+  })
+
+  it('a legacy review task whose runs carry no session keeps ONE reachable gate row', () => {
+    const legacy = {
+      ...task('old', NOW + 7, { status: 'review' as const }),
+      executions: [
+        { id: 'e1', sessionId: undefined, startedAt: NOW + 1, endedAt: NOW + 3, result: 'succeeded' as const, error: undefined },
+      ],
+    }
+    const rows = notificationsExOf([legacy], () => undefined, id => id, () => true)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ kind: 'review', sessionId: 'old', result: 'succeeded', at: NOW + 3 })
+  })
+})
+
+describe('bound waiting sessions (no round behind them)', () => {
   it('a bound-but-never-run waiting session notifies (same related set as live)', () => {
     const base = createTask({ title: 'B', description: '', prompt: 'p' }, NOW, 'b')
     const task = { ...base, binds: [{ kind: 'session' as const, sessionId: 's-bound' }] }
@@ -103,49 +155,8 @@ describe('notificationsOf', () => {
   })
 })
 
-describe('foldNotesByTask (one head per task, collapsed counts one)', () => {
-  it('folds same-task rows under the first (waiting-first order kept)', () => {
-    const tasks = [task('a', NOW, {
-      executions: [
-        { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
-        { id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
-      ],
-    })]
-    const rows = notificationsOf(tasks, () => 'question' as const, id => id)
-    expect(rows).toHaveLength(2)
-    const folded = foldNotesByTask(rows)
-    expect(folded).toHaveLength(1)
-    expect(folded[0].head.sessionId).toBe('s-1')
-    expect(folded[0].count).toBe(2)
-  })
-
-  it('keeps different tasks apart and preserves order', () => {
-    const tasks = [
-      task('old', NOW, {
-        executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
-      }),
-      task('new', NOW + 10, {
-        executions: [{ id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
-      }),
-    ]
-    const folded = foldNotesByTask(notificationsOf(tasks, () => 'approval' as const, id => id))
-    expect(folded.map(entry => entry.head.taskId)).toEqual(['new', 'old'])
-    expect(folded.map(entry => entry.count)).toEqual([1, 1])
-  })
-
-  it('folds nothing on an empty list', () => {
-    expect(foldNotesByTask([])).toEqual([])
-  })
-})
-
 describe('noteKeyOf (THE row identity)', () => {
-  it('builds task|session|kind for snooze keys, drawer keys and unseen sets', () => {
-    expect(noteKeyOf({ taskId: 'a', sessionId: 's', kind: 'waiting' })).toBe('a|s|waiting')
-  })
-})
-
-describe('noteKeyOf (THE row identity)', () => {
-  it('builds task|session|kind for snooze keys, drawer keys and unseen sets', () => {
+  it('builds task|session|kind for drawer keys, the arrival map and unseen sets', () => {
     expect(noteKeyOf({ taskId: 'a', sessionId: 's', kind: 'waiting' })).toBe('a|s|waiting')
   })
 })
@@ -285,11 +296,11 @@ describe('waiting body (signal + content + affordance, one derivation)', () => {
     expect(rows[0].answerable).toBe(true)
   })
 
-  it('legacy callers keep signal-only rows (no content face, no arrival map)', () => {
+  it('rows without a content face stay signal-only (no excerpt, no affordance)', () => {
     const tasks = [task('a', NOW, {
       executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
     })]
-    const rows = notificationsOf(tasks, () => 'question' as const, id => id)
+    const rows = waitingRows(tasks, () => 'question' as const)
     expect(rows[0].excerpt).toBeUndefined()
     expect(rows[0].answerable).toBeUndefined()
   })
@@ -302,7 +313,7 @@ describe('waiting moment clock (round activity, never task.updatedAt)', () => {
         { id: 'e1', sessionId: 's-1', startedAt: NOW + 5, endedAt: undefined, result: undefined, error: undefined },
       ],
     })]
-    const rows = notificationsOf(tasks, id => (id === 's-1' ? 'question' : undefined), id => id)
+    const rows = waitingRows(tasks, id => (id === 's-1' ? 'question' : undefined))
     expect(rows).toHaveLength(1)
     expect(rows[0].at).toBe(NOW + 5)
   })
@@ -322,7 +333,7 @@ describe('waiting moment clock (round activity, never task.updatedAt)', () => {
     ]
     const pending = (id: string | undefined): 'question' | undefined =>
       id === 's-1' || id === 's-2' ? 'question' : undefined
-    const rows = notificationsOf(tasks, pending, id => id)
+    const rows = waitingRows(tasks, pending)
     expect(rows.map(row => row.sessionId)).toEqual(['s-1', 's-2'])
   })
 
@@ -342,7 +353,7 @@ describe('waiting moment clock (round activity, never task.updatedAt)', () => {
     const pending = (id: string | undefined): 'question' | undefined =>
       id === 's-1' || id === 's-2' ? 'question' : undefined
     // Same instant: metadata-newest (b-task) must NOT win — key order decides.
-    const rows = notificationsOf(tasks, pending, id => id)
+    const rows = waitingRows(tasks, pending)
     expect(rows.map(row => row.taskId)).toEqual(['a-task', 'b-task'])
   })
 
@@ -355,19 +366,20 @@ describe('waiting moment clock (round activity, never task.updatedAt)', () => {
     })]
     const pending = (id: string | undefined): 'question' | undefined =>
       id === 's-1' || id === 's-2' ? 'question' : undefined
-    const rows = notificationsOf(tasks, pending, id => id)
+    const rows = waitingRows(tasks, pending)
     expect(rows.map(row => row.sessionId)).toEqual(['s-1', 's-2'])
   })
 })
 
 /**
  * The board's demand count: the answer to 「等我做什么」, stated for the whole
- * surface. It exists because the bell counts folded ROWS and a column header
- * counts CARDS — two numbers that measure different things and can never
- * reconcile on screen. The load-bearing rule is that the review half is
- * independent of `viewedAt`: reading a finished run retires the unread GLOW
- * (that message stays honest) but never resolves the decision, and treating
- * "seen" as "done" is exactly how a board stops being safe to leave running.
+ * surface. It exists because the bell counts notification ROWS (one per
+ * session) and a column header counts CARDS — two numbers that measure
+ * different things and can never reconcile on screen. The load-bearing rule
+ * is that the review half is independent of `viewedAt`: reading a finished
+ * run retires the unread GLOW (that message stays honest) but never resolves
+ * the decision, and treating "seen" as "done" is exactly how a board stops
+ * being safe to leave running.
  */
 describe('boardDemandOf', () => {
   it('an idle board owes nothing', () => {
@@ -434,5 +446,40 @@ describe('boardDemandOf', () => {
     })
     const pending = (id: string | undefined): 'approval' | undefined => (id === 's-9' ? 'approval' : undefined)
     expect(boardDemandOf([settled, waiting], pending)).toEqual({ total: 2, waiting: 1, review: 1 })
+  })
+})
+
+describe('noteStatusShapeOf (THE status word per row — many states, one table)', () => {
+  const row = (over: Partial<NotificationItem>): NotificationItem => ({
+    taskId: 'a',
+    taskTitle: 't',
+    sessionId: 's',
+    sessionTitle: 'S',
+    kind: 'waiting',
+    waitingKind: 'question',
+    at: NOW,
+    ...over,
+  })
+
+  it('waiting rows name the interaction they wait on', () => {
+    expect(noteStatusShapeOf(row({ waitingKind: 'approval' }))).toEqual({ kind: 'warn', label: 'waiting.approval' })
+    expect(noteStatusShapeOf(row({ waitingKind: 'plan-review' }))).toEqual({ kind: 'warn', label: 'waiting.plan-review' })
+    expect(noteStatusShapeOf(row({ waitingKind: 'question' }))).toEqual({ kind: 'warn', label: 'waiting.question' })
+    // A waiting row without a kind (hand-built legacy row) still speaks
+    // honestly instead of crashing or borrowing a review word.
+    expect(noteStatusShapeOf(row({ waitingKind: undefined }))).toEqual({ kind: 'warn', label: 'detail.result.running' })
+  })
+
+  it('review rows separate the decision states (failed / cancelled / pending)', () => {
+    expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined, result: 'failed' })))
+      .toEqual({ kind: 'error', label: 'board.notifyReviewFailed' })
+    // Cancelled used to fall through to the green 待审核 word — a decision
+    // that does not exist. It is now its own muted state.
+    expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined, result: 'cancelled' })))
+      .toEqual({ kind: 'muted', label: 'board.notifyCancelled' })
+    expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined, result: 'succeeded' })))
+      .toEqual({ kind: 'success', label: 'board.notifyReview' })
+    expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined })))
+      .toEqual({ kind: 'success', label: 'board.notifyReview' })
   })
 })

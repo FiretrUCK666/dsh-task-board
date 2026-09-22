@@ -1,18 +1,17 @@
 /**
  * Board activity feed (client/board/activity.ts): derived moments, newest
  * first, capped; running/queued rounds ARE moments (their start lights the
- * feed); empty comments stay (the row shows a placeholder).
+ * feed); empty comments stay (the row shows a placeholder). Rows are flat
+ * under their day header — waiting state is the notification drawer's job,
+ * never the feed's.
  */
 import { describe, expect, it } from 'vitest'
-import { ACTIVITY_LIMIT, activityGroupKeyOf, activityOf, clusterOf, freezeFeed, GROUP_ITEM_LIMIT, groupActivityByObjectDay, splitGroupItems } from '../src/client/board/activity.ts'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { ACTIVITY_LIMIT, activityOf, clusterOf, freezeFeed } from '../src/client/board/activity.ts'
 import { createTask } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
-
-/** One synthetic row (the grouping grammar only reads key/taskId/day/kind). */
-function row(key: string, taskId: string, kind: 'created' | 'comment' | 'settled' | 'started' | 'queued' | 'running' | 'direct' | 'external' | 'refined', at: number) {
-  return { key, taskId, taskTitle: taskId, kind, at }
-}
 
 describe('activityOf', () => {
   it('a fresh task contributes exactly its creation', () => {
@@ -95,84 +94,13 @@ describe('clusterOf (fold clusters mirror the filter map)', () => {
   })
 })
 
-describe('groupActivityByObjectDay (object-day folding)', () => {
-  const dayOf = (at: number): string => `day${Math.floor(at / 100)}`
-
-  it('builds keys from THE one constructor (grouping, expansion and remainder agree)', () => {
-    expect(activityGroupKeyOf('a', 'day3', 'comment')).toBe('a|day3|comment')
-  })
-
-  it('folds same task + same day + same cluster, and keys stably', () => {
-    const groups = groupActivityByObjectDay([
-      row('a|3', 'a', 'comment', 302),
-      row('a|2', 'a', 'comment', 301),
-      row('a|1', 'a', 'settled', 300),
-    ], dayOf)
-    // Two comment rows share a group; the settled row stands alone.
-    expect(groups.map(group => group.key)).toEqual(['a|day3|comment', 'a|day3|run'])
-    expect(groups[0].items.map(item => item.key)).toEqual(['a|3', 'a|2'])
-    expect(groups[1].items.map(item => item.key)).toEqual(['a|1'])
-  })
-
-  it('splits across tasks, days, and clusters (never one mega-group)', () => {
-    const groups = groupActivityByObjectDay([
-      row('a|1', 'a', 'comment', 100),
-      row('b|1', 'b', 'comment', 100),
-      row('a|2', 'a', 'comment', 200),
-    ], dayOf)
-    expect(groups.map(group => group.key)).toEqual(['a|day1|comment', 'b|day1|comment', 'a|day2|comment'])
-  })
-
-  it('preserves feed order inside and across groups (grouping never re-sorts)', () => {
-    const groups = groupActivityByObjectDay([
-      row('b|1', 'b', 'created', 350),
-      row('a|2', 'a', 'comment', 320),
-      row('a|1', 'a', 'comment', 310),
-    ], dayOf)
-    expect(groups.map(group => group.taskId)).toEqual(['b', 'a'])
-    expect(groups[1].items.map(item => item.at)).toEqual([320, 310])
-  })
-
-  it('folds nothing on empty or single-row feeds', () => {
-    expect(groupActivityByObjectDay([], dayOf)).toEqual([])
-    const single = groupActivityByObjectDay([row('a|1', 'a', 'created', 100)], dayOf)
-    expect(single).toHaveLength(1)
-    expect(single[0].items).toHaveLength(1)
-  })
-})
-
-describe('splitGroupItems (expanded-group cap)', () => {
-  it('passes short groups through untouched', () => {
-    const items = [row('a|1', 'a', 'comment', 100), row('a|2', 'a', 'comment', 200)]
-    expect(splitGroupItems(items)).toEqual({ shown: items, rest: 0 })
-  })
-
-  it('shows the newest GROUP_ITEM_LIMIT rows and counts the rest', () => {
-    expect(GROUP_ITEM_LIMIT).toBeGreaterThanOrEqual(5)
-    const items = Array.from({ length: GROUP_ITEM_LIMIT + 3 }, (_, index) =>
-      row(`a|${index}`, 'a', 'comment', 100 + index))
-    const split = splitGroupItems(items)
-    expect(split.shown).toHaveLength(GROUP_ITEM_LIMIT)
-    expect(split.shown[0].key).toBe('a|0')
-    expect(split.rest).toBe(3)
-  })
-
-  it('an exact-limit group has no remainder', () => {
-    const items = Array.from({ length: GROUP_ITEM_LIMIT }, (_, index) =>
-      row(`a|${index}`, 'a', 'comment', 100 + index))
-    expect(splitGroupItems(items).rest).toBe(0)
-  })
-
-  it('normalizes illegal limits instead of lying about counts', () => {
-    const items = Array.from({ length: 3 }, (_, index) =>
-      row(`a|${index}`, 'a', 'comment', 100 + index))
-    // Negative → nothing shown, all three counted as rest.
-    expect(splitGroupItems(items, -1)).toEqual({ shown: [], rest: 3 })
-    // NaN → the default cap (short groups pass through untouched).
-    expect(splitGroupItems(items, Number.NaN)).toEqual({ shown: items, rest: 0 })
-    // Fractions floor to whole rows.
-    expect(splitGroupItems(items, 2.7).shown).toHaveLength(2)
-  })
+it('never maps a waiting moment into the feed (state belongs to the drawer)', () => {
+  // `activityOf` skips board-events' live `waiting` rows by construction: the
+  // feed is a journal of what HAPPENED, the drawer is where "waiting on you"
+  // lives. The skip is a one-line gate — pin it so a future refactor cannot
+  // quietly merge the two vocabularies.
+  const source = readFileSync(fileURLToPath(new URL('../src/client/board/activity.ts', import.meta.url)), 'utf8')
+  expect(source).toContain("if (event.kind === 'waiting') continue")
 })
 
 describe('freezeFeed (read-freeze behind the pill)', () => {

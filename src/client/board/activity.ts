@@ -44,9 +44,9 @@ export interface ActivityFilter {
   query?: string
 }
 
-/** Fold cluster: the same three groups the feed filter offers (all/run/
- *  comment/other), so a group never straddles a filter switch — filtering to
- *  `run` drops whole comment/other groups instead of hollowing them out. */
+/** Feed cluster: the same three kinds the feed filter offers (all/run/
+ *  comment/other), so a filter switch keeps or drops whole kinds — it never
+ *  hollows out a row's meaning mid-kind. */
 export type ActivityCluster = 'run' | 'comment' | 'other'
 
 /** The cluster partition, ONE table: `clusterOf` derives from it and the
@@ -65,75 +65,6 @@ export function clusterOf(kind: ActivityItem['kind']): ActivityCluster {
   return 'other'
 }
 
-/** One folded object-day group: same task, same calendar day, same cluster.
- *  Order inside and across groups inherits the feed order (newest first) —
- *  grouping never re-sorts, it only nests. */
-export interface ActivityGroup {
-  /** Stable group key (task + day + cluster, see {@link activityGroupKeyOf}). */
-  key: string
-  taskId: string
-  taskTitle: string
-  day: string
-  cluster: ActivityCluster
-  items: ActivityItem[]
-}
-
-/** THE group-key constructor (`task|day|cluster`): grouping, expansion state
- *  and remainder keys all derive from this one function — never a retyped
- *  template — so folded identity can never disagree with itself. */
-export function activityGroupKeyOf(taskId: string, day: string, cluster: ActivityCluster): string {
-  return `${taskId}|${day}|${cluster}`
-}
-
-/** THE remainder-row key for a folded group: `groupKey + '|rest'` — one
- *  constructor beside the group key, so the two can never drift apart
- *  (notification folds reuse it with their task-scoped key). */
-export function remainderKeyOf(groupKey: string): string {
-  return `${groupKey}|rest`
-}
-
-/**
- * Fold feed rows into object-day groups (GetStream-style aggregation keyed on
- * object × day, with the filter cluster as the third leg). Single-item groups
- * render exactly like unfolded rows, so sparse feeds look byte-identical to
- * before — only genuinely busy object-days gain a header. Pure: no truncation
- * here (caps stay at the feed/window layer), no unread marking (feed rows
- * carry no unread signal by contract — unread breathes on the card only).
- */
-export function groupActivityByObjectDay(
-  items: readonly ActivityItem[],
-  dayOf: (at: number) => string,
-): ActivityGroup[] {
-  const groups: ActivityGroup[] = []
-  const index = new Map<string, ActivityGroup>()
-  for (const item of items) {
-    const day = dayOf(item.at)
-    const cluster = clusterOf(item.kind)
-    const key = activityGroupKeyOf(item.taskId, day, cluster)
-    const existing = index.get(key)
-    if (existing !== undefined) {
-      existing.items.push(item)
-      continue
-    }
-    const group: ActivityGroup = {
-      key,
-      taskId: item.taskId,
-      taskTitle: item.taskTitle,
-      day,
-      cluster,
-      items: [item],
-    }
-    index.set(key, group)
-    groups.push(group)
-  }
-  return groups
-}
-
-/** Cap: an expanded group shows this many newest rows; the rest reads as one
- *  quiet remainder line (navigation stays on the group header's 进详情 — the
- *  remainder is information, never a second toggle). */
-export const GROUP_ITEM_LIMIT = 10
-
 /**
  * Split a live newest-first feed into the frozen window and the queued
  * remainder: the view shows the oldest `base` rows (what was on screen when
@@ -150,24 +81,6 @@ export function freezeFeed<T>(
   if (base < 0) return { frozen: [...live], fresh: 0 }
   const fresh = Math.max(0, live.length - base)
   return { frozen: live.slice(Math.max(0, live.length - base)), fresh }
-}
-
-/**
- * Split a group's rows into the shown head and the folded remainder count.
- * Generic over the row shape (feed rows and notification rows share the cap
- * discipline, never a second copy): the header always counts the full group
- * (the count never lies about the cap). The limit normalizes defensively
- * (non-finite → the default cap, negatives → 0, fractions → floor): an open
- * generic must never lie about counts no matter who calls it next. Pure so
- * the cap unit-tests without rendering.
- */
-export function splitGroupItems<T>(
-  items: readonly T[],
-  limit: number = GROUP_ITEM_LIMIT,
-): { shown: T[]; rest: number } {
-  const capped = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : GROUP_ITEM_LIMIT
-  if (items.length <= capped) return { shown: [...items], rest: 0 }
-  return { shown: items.slice(0, capped), rest: items.length - capped }
 }
 
 /**

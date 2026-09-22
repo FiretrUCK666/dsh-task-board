@@ -11,6 +11,7 @@
  * for the glow, read review stays quiet); idle otherwise.
  */
 import type { PendingInteractionKind } from '../../core/controller.ts'
+import { sessionUnviewedOf } from '../../core/session-display.ts'
 import {
   executing,
   hasOpenRun,
@@ -34,7 +35,9 @@ export type CardPrimary =
 /** One related-session dot (max 3 rendered, +N overflow). */
 export interface CardSessionDot {
   sessionId: string
-  state: 'waiting' | 'running' | 'idle'
+  /** waiting/running = live; unread = a finished run this card has not had
+   *  reviewed yet (same clock as the detail row's glow); idle otherwise. */
+  state: 'waiting' | 'running' | 'unread' | 'idle'
 }
 
 /** Display title: the raw title, or the untitled placeholder when blank.
@@ -68,6 +71,36 @@ export function cardLightOf(active: boolean, unviewed: boolean): CardLight {
   return 'none'
 }
 
+/**
+ * THE session-dot state — one derivation for every dot a card renders, so
+ * the strip can never answer "which conversation is which" differently from
+ * the detail's rows:
+ *
+ *   waiting  — the session is suspended on a question / plan / approval;
+ *   running  — its own turn or a running subagent descendant works now;
+ *   unread   — a finished run on THIS card has not been reviewed yet
+ *              (the per-session clock `sessionUnviewedOf`, the exact clock
+ *              the detail's session-row glow reads);
+ *   idle     — settled and seen (or a session with no run and no read state).
+ *
+ * Live states outrank unread: a conversation that is both working and
+ * unreviewed reads as working — one dot, one loudest truth. Pure: the board
+ * supplies the two live faces, the precedence lives here once.
+ */
+export function cardSessionDotStateOf(
+  task: TaskRecord,
+  sessionId: string,
+  ctx: {
+    pendingInteractionOf: (sessionId: string) => PendingInteractionKind | undefined
+    activeOf: (sessionId: string) => boolean
+  },
+): CardSessionDot['state'] {
+  if (ctx.pendingInteractionOf(sessionId) !== undefined) return 'waiting'
+  if (ctx.activeOf(sessionId)) return 'running'
+  if (sessionUnviewedOf(task, sessionId)) return 'unread'
+  return 'idle'
+}
+
 /** Everything TaskCard renders (no JSX here — testable). */
 export interface CardViewModel {
   primary: CardPrimary
@@ -95,8 +128,6 @@ export interface CardViewModel {
   showingRunning: boolean
   /** Run guard (open-round gate — queued comments never block). */
   running: boolean
-  dots: CardSessionDot[]
-  overflowDots: number
 }
 
 /**
@@ -110,8 +141,8 @@ export interface CardViewModel {
  * answer — the native session `running` flag — disagreed with it in exactly the
  * states the user hit: an externally observed turn keeps a card in 进行中 while
  * no session reports running, so the chip said 进行中 and the light stayed off.
- * `sessionStateOf` only refines the per-session DOTS (waiting > running > idle);
- * absent = no dots.
+ * The per-session DOTS are likewise their own derivation
+ * ({@link cardSessionDotStateOf}) — this view model never carries them.
  */
 export function cardViewModelOf(
   task: TaskRecord,
@@ -119,8 +150,6 @@ export function cardViewModelOf(
     pendingCount?: number
     waiting?: PendingInteractionKind
     unviewedCount?: number
-    sessionStateOf?: (sessionId: string) => 'waiting' | 'running' | 'idle'
-    sessionIds?: readonly string[]
   } = {},
 ): CardViewModel {
   const running = hasOpenRun(task)
@@ -164,22 +193,6 @@ export function cardViewModelOf(
     || primary.kind === 'running'
     || primary.kind === 'refining'
 
-  const dots: CardSessionDot[] = []
-  const ids = opts.sessionIds ?? []
-  const resolve = opts.sessionStateOf
-  if (resolve !== undefined) {
-    const seen = new Set<string>()
-    for (const sessionId of ids) {
-      if (seen.has(sessionId)) continue
-      seen.add(sessionId)
-      dots.push({ sessionId, state: resolve(sessionId) })
-      if (dots.length >= 3) break
-    }
-  }
-  const overflowDots = resolve !== undefined
-    ? Math.max(0, new Set(ids).size - dots.length)
-    : 0
-
   return {
     primary,
     runCount: runs.length,
@@ -190,8 +203,6 @@ export function cardViewModelOf(
     active,
     showingRunning,
     running,
-    dots,
-    overflowDots,
   }
 }
 

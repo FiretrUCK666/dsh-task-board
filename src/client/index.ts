@@ -252,6 +252,20 @@ export function apply(ctx: ClientContext): void {
   // panellist entry id), because that is how the shell resolves a row to its
   // stage. There is deliberately no other sidebar affordance: one surface, one
   // entry point, no second "is the board open" subscription to keep in step.
+  //
+  // THE one way out of the stage: `selectPanel(null)` through the shell's own
+  // layout face, read at call time (the service needs no fiber-inject edge of
+  // its own; an absent one reports and changes nothing). The 返回对话 control
+  // and the entry row's toggle BOTH call this — exit can never mean two
+  // different things on two different surfaces.
+  const returnToConversation = (): void => {
+    const layout = ctx.get<ILayoutFace>('layout')
+    if (layout === undefined) {
+      console.warn('[dsh-task-board] cannot return to the conversation: no layout panel capability')
+      return
+    }
+    layout.selectPanel(null)
+  }
   const stage = new TaskBoardStage()
   ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main',
@@ -267,7 +281,10 @@ export function apply(ctx: ClientContext): void {
     order: 110,
     label: () => t('entry.label'),
     locale: NS,
-  }, TaskBoardIcon)), 'dsh-task-board: panel entry')
+    // The shell's row onClick only ever SELECTS this panel. The glyph gets the
+    // exit injected here (one funnel with 返回对话) so that clicking the entry
+    // while the board is open LEAVES it — click to enter, click again to exit.
+  }, (props: { size: number; active: boolean }) => TaskBoardIcon({ ...props, onExit: returnToConversation }))), 'dsh-task-board: panel entry')
 
   const scope = new RouteSettingsScope<TaskBoardSettings>(TASK_BOARD_NS)
   // The settings section's form controller lives exactly as long as the scope it
@@ -1002,19 +1019,11 @@ export function apply(ctx: ClientContext): void {
       // session itself (typing there), never through the task's dispatcher.
       sessionMessage: sendComment,
       sessionCommand: sendCommand,
-      // The board's 返回: leave the stage for the Conversation through the
-      // shell's own panel API (`selectPanel(null)` is exactly what the shipped
-      // workspace browser does when the user picks a session). Read at call
-      // time: the layout service needs no fiber-inject edge of its own, and an
-      // absent one degrades to "nowhere to go" rather than throwing.
-      showConversation: () => {
-        const layout = ctx.get<ILayoutFace>('layout')
-        if (layout === undefined) {
-          console.warn('[dsh-task-board] cannot return to the conversation: no layout panel capability')
-          return
-        }
-        layout.selectPanel(null)
-      },
+      // The board's 返回: leave the stage for the Conversation — THE one exit
+      // funnel, shared with the panel entry's toggle (see `returnToConversation`
+      // at the seats above; `selectPanel(null)` is exactly what the shipped
+      // workspace browser does when the user picks a session).
+      showConversation: returnToConversation,
       runCatalog: {
         listWorkspaces: () => workspaces.list.getSnapshot().items.map(item => ({
           id: item.workspaceId,

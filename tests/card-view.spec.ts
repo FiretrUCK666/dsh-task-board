@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { cardLightOf, cardNextActionOf, cardViewModelOf, titleOrUntitled } from '../src/client/board/card-view.ts'
+import { cardLightOf, cardNextActionOf, cardSessionDotStateOf, cardViewModelOf, titleOrUntitled } from '../src/client/board/card-view.ts'
 import { createTask, newCommentRound, startExecution, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -118,14 +118,50 @@ describe('cardViewModelOf', () => {
     expect(view.primary).toEqual({ kind: 'queued', count: 1 })
     expect(cardNextActionOf(view, base)).toEqual({ kind: 'queued', count: 1 })
   })
+})
 
-  it('dots cap at 3 with overflow counted', () => {
-    const view = cardViewModelOf(task(), {
-      sessionIds: ['a', 'b', 'c', 'd'],
-      sessionStateOf: () => 'idle',
-    })
-    expect(view.dots).toHaveLength(3)
-    expect(view.overflowDots).toBe(1)
+describe('cardSessionDotStateOf (one dot, one loudest truth)', () => {
+  /** A task whose s-1 finished a run at NOW+5, optionally reviewed after it. */
+  const finished = (viewedAt?: number): TaskRecord => ({
+    ...task(),
+    executions: [{
+      id: 'e1',
+      sessionId: 's-1',
+      startedAt: NOW,
+      endedAt: NOW + 5,
+      result: 'succeeded' as const,
+      error: undefined,
+      ...(viewedAt !== undefined ? { viewedAt } : {}),
+    }],
+  })
+  const faces = (over: { waiting?: boolean; active?: boolean } = {}) => ({
+    pendingInteractionOf: (id: string) => (over.waiting === true && id === 's-1' ? 'question' as const : undefined),
+    activeOf: (id: string) => over.active === true && id === 's-1',
+  })
+
+  it('an unreviewed finish reads unread — the dot answering "which session just finished"', () => {
+    // Opened the review page only AFTER the settle: viewedAt moves past the
+    // round's activity, so the dot goes quiet — the existing read funnel IS
+    // the off switch, no new clock.
+    expect(cardSessionDotStateOf(finished(), 's-1', faces())).toBe('unread')
+    expect(cardSessionDotStateOf(finished(NOW + 10), 's-1', faces())).toBe('idle')
+  })
+
+  it('live states outrank unread (waiting > running > unread > idle)', () => {
+    expect(cardSessionDotStateOf(finished(), 's-1', faces({ waiting: true, active: true }))).toBe('waiting')
+    expect(cardSessionDotStateOf(finished(), 's-1', faces({ active: true }))).toBe('running')
+    expect(cardSessionDotStateOf(finished(), 's-1', faces())).toBe('unread')
+    expect(cardSessionDotStateOf(finished(NOW + 10), 's-1', faces())).toBe('idle')
+  })
+
+  it('a session with no plain run honestly reads idle (no review state to show)', () => {
+    // Bound external conversations and refine sessions never carry a run —
+    // they must not borrow another surface's clock to fake an unread glow.
+    expect(cardSessionDotStateOf(task(), 's-external', faces())).toBe('idle')
+  })
+
+  it('other sessions of the same card are unaffected by s-1 state', () => {
+    expect(cardSessionDotStateOf(finished(), 's-2', faces())).toBe('idle')
   })
 })
 

@@ -104,3 +104,19 @@ export declare function taskUnviewed(task: TaskRecord): boolean;
  * bare "新" instead.
  */
 export declare function taskUnviewedCount(task: TaskRecord): number;
+/**
+ * Whether ONE session of a task still has an unreviewed finish — THE
+ * per-session unread judgment, shared by the detail's session-row glow and
+ * the card's session dot, so the two surfaces can never disagree about which
+ * conversation just finished.
+ *
+ * The representative is the session's LATEST plain run — the exact row the
+ * unified session list shows (`taskSessionsOf` keeps the same last run per
+ * session), so "the row breathes" and "the dot breathes" read one clock:
+ * `executionUnviewed` over that run. It clears through the existing funnels
+ * only (review page open, 标已读, approve, notification per-session open) —
+ * this function never writes. A session with no plain run (a bound external
+ * conversation, a refine session) has no review state and honestly reads
+ * false rather than borrowing another surface's clock.
+ */
+export declare function sessionUnviewedOf(task: TaskRecord, sessionId: string): boolean;

@@ -34,7 +34,9 @@ export type CardPrimary = {
 /** One related-session dot (max 3 rendered, +N overflow). */
 export interface CardSessionDot {
     sessionId: string;
-    state: 'waiting' | 'running' | 'idle';
+    /** waiting/running = live; unread = a finished run this card has not had
+     *  reviewed yet (same clock as the detail row's glow); idle otherwise. */
+    state: 'waiting' | 'running' | 'unread' | 'idle';
 }
 /** Display title: the raw title, or the untitled placeholder when blank.
  *  THE one blank-title judgment — card, board rows, detail header and delete
@@ -58,6 +60,26 @@ export type CardLight = 'none' | 'halo' | 'ring';
  * ONE `data-light` switch, so there is no second rule to fight).
  */
 export declare function cardLightOf(active: boolean, unviewed: boolean): CardLight;
+/**
+ * THE session-dot state — one derivation for every dot a card renders, so
+ * the strip can never answer "which conversation is which" differently from
+ * the detail's rows:
+ *
+ *   waiting  — the session is suspended on a question / plan / approval;
+ *   running  — its own turn or a running subagent descendant works now;
+ *   unread   — a finished run on THIS card has not been reviewed yet
+ *              (the per-session clock `sessionUnviewedOf`, the exact clock
+ *              the detail's session-row glow reads);
+ *   idle     — settled and seen (or a session with no run and no read state).
+ *
+ * Live states outrank unread: a conversation that is both working and
+ * unreviewed reads as working — one dot, one loudest truth. Pure: the board
+ * supplies the two live faces, the precedence lives here once.
+ */
+export declare function cardSessionDotStateOf(task: TaskRecord, sessionId: string, ctx: {
+    pendingInteractionOf: (sessionId: string) => PendingInteractionKind | undefined;
+    activeOf: (sessionId: string) => boolean;
+}): CardSessionDot['state'];
 /** Everything TaskCard renders (no JSX here — testable). */
 export interface CardViewModel {
     primary: CardPrimary;
@@ -85,8 +107,6 @@ export interface CardViewModel {
     showingRunning: boolean;
     /** Run guard (open-round gate — queued comments never block). */
     running: boolean;
-    dots: CardSessionDot[];
-    overflowDots: number;
 }
 /**
  * Derive the card's view-model from the card's OWN facts. Every field is a
@@ -99,15 +119,13 @@ export interface CardViewModel {
  * answer — the native session `running` flag — disagreed with it in exactly the
  * states the user hit: an externally observed turn keeps a card in 进行中 while
  * no session reports running, so the chip said 进行中 and the light stayed off.
- * `sessionStateOf` only refines the per-session DOTS (waiting > running > idle);
- * absent = no dots.
+ * The per-session DOTS are likewise their own derivation
+ * ({@link cardSessionDotStateOf}) — this view model never carries them.
  */
 export declare function cardViewModelOf(task: TaskRecord, opts?: {
     pendingCount?: number;
     waiting?: PendingInteractionKind;
     unviewedCount?: number;
-    sessionStateOf?: (sessionId: string) => 'waiting' | 'running' | 'idle';
-    sessionIds?: readonly string[];
 }): CardViewModel;
 /**
  * One quiet "what's next" sentence for the card (scanning aid, never a

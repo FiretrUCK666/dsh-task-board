@@ -19,7 +19,7 @@ import type { SessionChipShape, SessionRowState } from './session-chip.ts'
 import { Button, Icon } from './ui.tsx'
 
 /** The unified session row (one grammar for every session of a task). */
-export function SessionRow({ state, chip, leading, meta, footer, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle }: {
+export function SessionRow({ state, chip, leading, meta, footer, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle, unviewed }: {
   /** Live session state (execution kind): rendered as data-state/data-waiting. */
   state?: SessionRowState
   /** Status chip on the top line (undefined = no chip). */
@@ -51,13 +51,26 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
   onRename?: (title: string) => Promise<void>
   /** Tooltip of the rename affordance. */
   renameTitle?: string
+  /**
+   * This session has a finished run the user has not reviewed yet (the
+   * per-session read clock — run rows pass `TaskSessionRow.unviewed`). The
+   * row then wears the amber `unread` breath, so "which session just
+   * finished" is answerable inside the list, not only from the card's edge.
+   * Absent = no read state (linked external rows) — quiet, honestly.
+   */
+  unviewed?: boolean
 }) {
-  // ONE state-bound glow: waiting / running rows breathe attention; everything
-  // else is quiet. Settled-unread rows deliberately carry NO per-row indicator
-  // (neither dot nor halo): the board card's own unread breathing already
-  // covers that state, and a second marker right next to the card reads as
-  // duplication.
-  const glow = state === 'waiting' || state === 'running' ? 'attention' : 'none'
+  // ONE state-bound glow, two semantic values, one amber breath:
+  // 'attention' — the session is live right now (waiting / running);
+  // 'unread'    — a finished run awaiting its first review (same clock the
+  //               card's session dot reads), so the row and the dot can
+  //               never disagree about which conversation just finished.
+  // A live state outranks unread — one glow, one loudest truth; read and
+  // idle rows stay quiet. The animation pauses (never cancels) between the
+  // states, so a settle mid-pulse fades instead of tearing a frame.
+  const glow = state === 'waiting' || state === 'running'
+    ? 'attention'
+    : unviewed === true ? 'unread' : 'none'
   // Inline rename state: idle → editing → (saving). The pencil flips the
   // identity slot into a small input prefilled with the current title; the
   // input lives ON the row (no modal), Enter commits, Escape cancels.

@@ -10,10 +10,22 @@
  * shell rebuilds. The board silently stopped appearing, nothing threw, and every
  * automated check stayed green. These assertions pin the STRUCTURE that replaced
  * it, and refuse the old approach by name.
+ *
+ * The entry's TOGGLE (click the open board's row to leave) is also pinned here
+ * as a real mounted behavior — it runs under jsdom, so the file declares that
+ * environment.
  */
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
+import { TaskBoardIcon } from '../src/client/TaskBoardIcon.tsx'
+
+// React's act() asks the environment to opt in — one flag for this file.
+;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const read = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
 
@@ -78,18 +90,31 @@ describe('board stage (official main panel)', () => {
     expect(css).not.toMatch(/@media\s*\(max-width/)
   })
 
-  it('draws only its own glyph and lets the shell own the panel row', () => {
+  it('draws its glyph, owns no row chrome, and reads no selectors (one documented seam)', () => {
     // The shell owns the button, its geometry, hover/active fill, the selected
     // highlight and the label; a second row implementation would drift from the
-    // native entries (the rejected alternative).
+    // native entries (the rejected alternative). The ONE behavior this
+    // component adds — toggling the shell's select when the board is already
+    // open — lives on a listener attached to the button that CONTAINS our
+    // glyph (the slot contract says the shell owns that button), so the bans
+    // below are precise: no selector guessing, no shell DOM writes; the
+    // attach/remove pair is asserted as a matched disposer.
     expect(icon).toContain('size: number')
     expect(icon).toContain('active: boolean')
-    expect(icon).not.toMatch(/addEventListener|querySelector/)
+    expect(icon).toContain('onExit?: () => void')
+    const code = stripComments(icon)
+    expect(code).not.toMatch(/querySelector|getElementsBy|classList|getAttribute|setAttribute|insertBefore|appendChild/)
+    expect(code).toContain("closest('button')")
+    expect(code).toContain('addEventListener')
+    expect(code).toContain('removeEventListener')
   })
 
   it('has no DOM-guessing mount module left in the tree', () => {
-    expect(existsSync(fileURLToPath(new URL('../src/client/board-mount.tsx', import.meta.url)))).toBe(false)
-    expect(existsSync(fileURLToPath(new URL('../src/client/SidebarFooter.tsx', import.meta.url)))).toBe(false)
+    // cwd-relative under jsdom (the same pattern drag-contract uses): a
+    // relative `new URL(..., import.meta.url)` does not survive this
+    // environment's URL wiring, while process.cwd() is the repo root here.
+    expect(existsSync(join(process.cwd(), 'src', 'client', 'board-mount.tsx'))).toBe(false)
+    expect(existsSync(join(process.cwd(), 'src', 'client', 'SidebarFooter.tsx'))).toBe(false)
   })
 
   it('never reads a shell class name or a removed shell attribute (source-level ban)', () => {
@@ -123,5 +148,117 @@ describe('board stage (official main panel)', () => {
     const controller = read('../src/core/controller.ts')
     expect(controller).toContain('showConversation()')
     expect(controller).not.toContain('toggleBoard')
+  })
+})
+
+describe('entry row toggle (click the open board’s row to leave it)', () => {
+  interface MountedRow {
+    button: HTMLButtonElement
+    icon: SVGSVGElement
+    rerender: (active: boolean) => void
+    dispose: () => void
+  }
+
+  /** One mounted shell row: the shell's own button wrapping our glyph. */
+  function mountRow(active: boolean, onExit: () => void, onSelect: () => void): MountedRow {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const row = (isActive: boolean) =>
+      createElement(
+        'button',
+        { type: 'button', onClick: onSelect },
+        createElement(TaskBoardIcon, { size: 16, active: isActive, onExit }),
+      )
+    // Rendering inside act so the glyph's effect (the closest('button')
+    // listener) is attached before any click — the behavior under test IS
+    // that effect.
+    act(() => { root.render(row(active)) })
+    const button = host.querySelector('button')
+    const icon = host.querySelector('svg')
+    if (button === null || icon === null) throw new Error('the row did not mount')
+    return {
+      button,
+      icon,
+      rerender: isActive => { act(() => { root.render(row(isActive)) }) },
+      dispose: () => { act(() => { root.unmount() }); host.remove() },
+    }
+  }
+
+  it('board open: a click anywhere on the row EXITS, and the shell select never fires', () => {
+    // The keyboard path lands here too: Enter on the focused row dispatches a
+    // click whose target IS the button — same listener, same rule. Stopping
+    // the native bubble keeps React's root-delegated handler (the shell's
+    // `selectPanel(id)`) from ever running.
+    const calls: string[] = []
+    const row = mountRow(true, () => calls.push('exit'), () => calls.push('select'))
+    row.button.click()
+    expect(calls).toEqual(['exit'])
+    row.dispose()
+  })
+
+  it('board open: a click on the glyph itself exits by the same rule', () => {
+    const calls: string[] = []
+    const row = mountRow(true, () => calls.push('exit'), () => calls.push('select'))
+    // SVG elements carry no HTMLElement#click — dispatch the real event type
+    // (bubbles up the same path a pointer press would take).
+    row.icon.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(calls).toEqual(['exit'])
+    row.dispose()
+  })
+
+  it('board closed: the click passes through and the shell opens the board', () => {
+    const calls: string[] = []
+    const row = mountRow(false, () => calls.push('exit'), () => calls.push('select'))
+    row.button.click()
+    expect(calls).toEqual(['select'])
+    row.dispose()
+  })
+
+  it('flipping active re-binds the rule (a stale closure can never misfire)', () => {
+    const calls: string[] = []
+    const row = mountRow(true, () => calls.push('exit'), () => calls.push('select'))
+    row.rerender(false)
+    row.button.click()
+    expect(calls, 'after the board closes the same click must select, not exit').toEqual(['select'])
+    row.dispose()
+  })
+
+  it('without a wrapping button the toggle is ABSENT, not broken (safe degradation)', () => {
+    // The failure mode if the shell ever stops rendering the glyph inside a
+    // button: `closest` finds nothing, no listener attaches, the click goes
+    // nowhere — a missing feature, never a thrown page.
+    const calls: string[] = []
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => { root.render(createElement(TaskBoardIcon, { size: 16, active: true, onExit: () => calls.push('exit') })) })
+    const icon = host.querySelector('svg')
+    expect(icon).not.toBeNull()
+    expect(() => icon!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))).not.toThrow()
+    expect(calls).toEqual([])
+    act(() => { root.unmount() })
+    host.remove()
+  })
+
+  it('the listener is a matched add/remove pair (lifecycle discipline, no leaks)', () => {
+    const button = document.createElement('button')
+    document.body.appendChild(button)
+    const wire = button as unknown as {
+      addEventListener: (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => void
+      removeEventListener: (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => void
+    }
+    const added: string[] = []
+    const removed: string[] = []
+    const origAdd = wire.addEventListener.bind(button)
+    const origRemove = wire.removeEventListener.bind(button)
+    wire.addEventListener = (type, listener, options) => { added.push(type); origAdd(type, listener, options) }
+    wire.removeEventListener = (type, listener, options) => { removed.push(type); origRemove(type, listener, options) }
+    const root = createRoot(button)
+    act(() => { root.render(createElement(TaskBoardIcon, { size: 16, active: true, onExit: () => {} })) })
+    expect(added).toContain('click')
+    act(() => { root.unmount() })
+    expect(removed, 'every attached listener must be detached on dispose').toContain('click')
+    button.remove()
   })
 })

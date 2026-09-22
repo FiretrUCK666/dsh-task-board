@@ -518,7 +518,12 @@
   align-items: center;
   gap: 8px;
   flex: 1;
-  min-width: 0;
+  /* Identity floor: [task + session + status] refuses to compress below this
+     — when the row cannot hold the floor BESIDE the action cluster, the
+     cluster wraps to the next line instead of the titles being squeezed into
+     slivers (让位, never 压扁). Capped at the row width so a phone-width
+     drawer still gets one full identity line and the actions below it. */
+  min-width: min(100%, 16rem);
   padding: 0;
   color: inherit;
   background: none;
@@ -534,22 +539,41 @@
   flex: none;
   flex-wrap: wrap;
 }
+/* Row time: a quiet trailing stamp INSIDE the action cluster — every feed
+   row answers WHEN without opening anything (tabular figures keep digits
+   steady). Non-interactive; it wraps WITH the buttons, never alone. */
+.notifyMeta {
+  flex: none;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* THE identity slot order — task first, its session right beside it, status
+   after: the task and the conversation that produced the row read as one
+   unit, and the status sits next to the actions it explains. Task grows into
+   leftover space; both titles ellipsize at their own floors (never to
+   slivers — see the notifyMain floor); the status chip never shrinks. */
 .notifyTask {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: 6em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
 }
 .notifySession {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 4em;
   max-width: 40%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
   color: var(--dsh-tb-text-3);
+}
+.notifyMain .chip {
+  flex: none;
 }
 
 /* Waiting-row excerpt: the quoted question/plan body (or the honest
@@ -1616,6 +1640,15 @@
 }
 .cardSessionDot[data-state='running'] { background: var(--dsw-alias-state-warn-primary); }
 .cardSessionDot[data-state='waiting'] { background: var(--dsw-alias-state-warn-secondary); }
+/* A finished run on this card that has not been reviewed: the same amber,
+   now BREATHING (the outer ring the unread card wears, at dot scale) — the
+   strip answers "which session just finished" instead of only "which card".
+   One dot, one loudest truth: live states above keep their solid colors and
+   the card's own halo already carries the live breath. */
+.cardSessionDot[data-state='unread'] {
+  background: var(--dsw-alias-state-warn-primary);
+  animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
+}
 .cardSessionMore {
   flex: none;
   font-size: 11px;
@@ -3266,10 +3299,12 @@ textarea.input {
 
 /* Row-level attention: ONE state-bound glow — a soft inner halo (no per-row
    border, no flat tint) painted by the row's ::after layer, gated by the
-   STABLE data-glow attribute: waiting / running rows (glow = attention)
-   breathe; settled-unread and idle rows are quiet — the unread signal lives
-   on the board card only (a per-row second marker next to the card's own
-   breathing read as duplication). The animation is paused (not cancelled)
+   STABLE data-glow attribute with two semantic values sharing one amber
+   breath: 'attention' on waiting / running rows (the session works now) and
+   'unread' on a finished run awaiting its first review (the per-session read
+   clock — the same one the card's session dot reads, so the list and the
+   board card answer "which conversation just finished" together). Read and
+   idle rows are quiet. The animation is paused (not cancelled)
    whenever the row is not glowing — the halo's opacity fades smoothly on
    state change and no frame of a running pulse is ever torn out, so a row
    cannot flicker. */
@@ -3286,6 +3321,11 @@ textarea.input {
 }
 
 .sessionRow[data-glow='attention']::after {
+  opacity: 1;
+  animation-play-state: running;
+}
+
+.sessionRow[data-glow='unread']::after {
   opacity: 1;
   animation-play-state: running;
 }

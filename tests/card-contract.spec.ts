@@ -602,3 +602,52 @@ describe('card chip label composition', () => {
     expect(showsSessionBlocked(both)).toBe(true)
   })
 })
+
+describe('session unread glow family (row breath + dot breath, one clock)', () => {
+  it('the card session dot wears the OUTER ring breath in the one attention color', () => {
+    const rule = /\.cardSessionDot\[data-state='unread'\]\s*\{([^}]*)\}/.exec(source)?.[1] ?? ''
+    expect(rule, 'the unread dot must exist as its own rule').not.toBe('')
+    expect(rule).toMatch(/animation:\s*dshTbBreathRing/)
+    expect(rule).toMatch(/background:\s*var\(--dsw-alias-state-warn-primary\)/)
+    // Live dots keep their SOLID colors — one breathing dot state, never a
+    // second animation competing inside the 8px strip.
+    expect(source).toMatch(/\.cardSessionDot\[data-state='running'\]\s*\{[^}]*background/)
+    expect(source).toMatch(/\.cardSessionDot\[data-state='waiting'\]\s*\{[^}]*background/)
+    // The shared keyframe rests transparent (a pulse, not a permanent glow).
+    expect(source).toMatch(/@keyframes dshTbBreathRing \{\s*0%, 100% \{ box-shadow: [^}]*transparent; \}/)
+  })
+
+  it('the session row glows attention OR unread through ONE attribute (two rules, one breath)', () => {
+    expect(source).toMatch(/\.sessionRow\[data-glow='attention'\]::after\s*\{[^}]*opacity:\s*1/)
+    expect(source).toMatch(/\.sessionRow\[data-glow='unread'\]::after\s*\{[^}]*opacity:\s*1/)
+    expect(source).toMatch(/\.sessionRow\[data-glow='unread'\]::after\s*\{[^}]*animation-play-state:\s*running/)
+    // The derivation lives once, on the row, fed by the run rows' read clock.
+    const rowPath = fileURLToPath(new URL('../src/client/board/SessionRow.tsx', import.meta.url))
+    const row = readFileSync(rowPath, 'utf8')
+    expect(row).toContain('unviewed?: boolean')
+    expect(row).toContain("const glow = state === 'waiting' || state === 'running'")
+    expect(row).toContain("unviewed === true ? 'unread' : 'none'")
+    const detail = readFileSync(fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url)), 'utf8')
+    // Exactly ONE call site passes the clock: run rows. Linked external rows
+    // have no read state and honestly pass nothing.
+    expect(detail.match(/unviewed=\{/g)).toHaveLength(1)
+    expect(detail).toContain('unviewed={row.unviewed}')
+  })
+
+  it('the dot derivation is ONE precedence, consumed by the board render (3-dot cap pinned)', () => {
+    const viewPath = fileURLToPath(new URL('../src/client/board/card-view.ts', import.meta.url))
+    const view = readFileSync(viewPath, 'utf8')
+    const waitingAt = view.indexOf("return 'waiting'")
+    const runningAt = view.indexOf("return 'running'")
+    const unreadAt = view.indexOf("return 'unread'")
+    expect(waitingAt).toBeGreaterThan(-1)
+    expect(runningAt).toBeGreaterThan(waitingAt)
+    expect(unreadAt, 'live outranks unread: the precedence order is structural').toBeGreaterThan(runningAt)
+    const board = readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8')
+    expect(board).toContain('cardSessionDotStateOf(task, sessionId')
+    // The strip renders at most 3 dots with the overflow counted — same cap
+    // the (+N) glyph reads.
+    expect(board).toContain('relatedIds.slice(0, 3)')
+    expect(board).toContain('t(\'card.dotUnread\')')
+  })
+})

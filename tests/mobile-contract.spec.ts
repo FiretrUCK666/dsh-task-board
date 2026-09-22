@@ -756,12 +756,13 @@ describe('session row overlap fix', () => {
     expect(compact).not.toMatch(/\.sessionRowLeading \.sessionRowName\s*\{[^}]*flex:\s*1 1 100%/)
   })
 
-  it('no row-level unread badge — the marker machinery is gone (unread breaths on the card only)', () => {
-    // The per-row unread marker (overlay dot + halo) was removed: a row next
-    // to an unread card must not repeat the signal; the card is the ONLY
-    // unread surface. The marker class is gone from the sheet, and the row
-    // geometry still derives from the declared line box (no magic px on an
-    // inherited `normal` line height).
+  it('no row-level unread BADGE — the marker machinery is gone (the glow is a separate mechanism)', () => {
+    // The per-row unread marker (overlay dot + halo class) was removed: a row
+    // next to an unread card must not repeat the signal with a second MARKER.
+    // The row's unread BREATH (data-glow='unread', one halo with the live
+    // states) is a different mechanism — a state light, not a badge — and the
+    // row geometry still derives from the declared line box (no magic px on
+    // an inherited `normal` line height).
     expect(source).not.toMatch(/\.attentionDot\s*\{/)
     expect(source).toMatch(/--dsh-tb-row-line:/)
     expect(ruleOf('sessionRowLeading')).toMatch(/line-height:\s*var\(--dsh-tb-row-line\)/)
@@ -1238,5 +1239,74 @@ describe('template library wiring', () => {
     expect(ruleIn(compact, '.sessionRailHead')).toMatch(/padding-bottom:\s*0/)
     expect(ruleIn(compact, '.sessionRailHead')).toMatch(/border-bottom:\s*none/)
     expect(ruleIn(compact, '.reviewMain')).toMatch(/padding:\s*10px 14px/)
+  })
+})
+
+describe('feed row grammar (notify + activity share one line: give way, never crush)', () => {
+  /** TaskBoard.tsx source (the row builders live there). */
+  const board = readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8')
+
+  it('identity floor: the row wraps its action cluster instead of squeezing titles into slivers', () => {
+    // The floor is what makes wrapping DETERMINISTIC: [task+session+status]
+    // refuses to compress below min(100%, 16rem), so when it cannot sit
+    // beside the buttons the buttons move to the next line (硬性规范 11①:
+    // 让位, never 压扁). The cap at 100% keeps a phone-width row one full
+    // line instead of overflowing.
+    expect(ruleOf('notifyMain')).toMatch(/min-width:\s*min\(100%,\s*16rem\)/)
+    // Both titles ellipsize at their own floors; the status chip never shrinks.
+    expect(ruleOf('notifyTask')).toMatch(/min-width:\s*6em/)
+    expect(ruleOf('notifyTask')).toMatch(/text-overflow:\s*ellipsis/)
+    expect(ruleOf('notifySession')).toMatch(/min-width:\s*4em/)
+    expect(ruleOf('notifySession')).toMatch(/max-width:\s*40%/)
+    expect(source).toMatch(/\.notifyMain \.chip\s*\{[^}]*flex:\s*none/)
+  })
+
+  it('every row answers WHEN: a tabular time stamp rides the action cluster', () => {
+    expect(ruleOf('notifyMeta')).toMatch(/flex:\s*none/)
+    expect(ruleOf('notifyMeta')).toMatch(/font-variant-numeric:\s*tabular-nums/)
+    expect(board).toContain('css.notifyMeta}>{formatTime(note.at)}')
+    expect(board).toContain('css.notifyMeta}>{formatTime(item.at)}')
+  })
+
+  it('identity order is [task][session][status] in BOTH drawers', () => {
+    // The user-facing ask, pinned structurally: the session title sits RIGHT
+    // OF the task (they read as one unit) and the status sits next to the
+    // actions it explains — not between the two titles.
+    const notifyRow = board.slice(board.indexOf('const renderNotifyRow'), board.indexOf('return visibleNotes.map(renderNotifyRow)'))
+    expect(notifyRow.indexOf('css.notifyTask')).toBeGreaterThan(-1)
+    expect(notifyRow.indexOf('css.notifyTask')).toBeLessThan(notifyRow.indexOf('css.notifySession'))
+    expect(notifyRow.indexOf('css.notifySession')).toBeLessThan(notifyRow.indexOf('<Chip'))
+    // Cut BEFORE the day-section wrapper (its aria-label belongs to the day
+    // header, not to a row).
+    const activityRow = board.slice(board.indexOf('const renderActivityRow'), board.indexOf('Queued arrivals'))
+    expect(activityRow.indexOf('css.notifyTask')).toBeLessThan(activityRow.indexOf('css.notifySession'))
+    expect(activityRow.indexOf('css.notifySession')).toBeLessThan(activityRow.indexOf('<Chip'))
+    // No aria-label may override the row's own content (it would silence the
+    // session title, status and excerpt from assistive tech).
+    expect(notifyRow).not.toContain('aria-label=')
+    expect(activityRow).not.toContain('aria-label=')
+  })
+
+  it('the fold machinery is GONE (one row per session is the structure, not a view)', () => {
+    const notifications = readFileSync(fileURLToPath(new URL('../src/client/board/notifications.ts', import.meta.url)), 'utf8')
+    const activity = readFileSync(fileURLToPath(new URL('../src/client/board/activity.ts', import.meta.url)), 'utf8')
+    for (const dead of [
+      'expandedFoldKey', 'foldNotesByTask', 'snoozed', 'splitGroupItems',
+      'remainderKeyOf', 'groupActivityByObjectDay', 'activityGroupKeyOf', 'notificationsOf',
+    ]) {
+      expect(board.includes(dead) || notifications.includes(dead) || activity.includes(dead), `"${dead}" must not survive`).toBe(false)
+    }
+    // The bell badge counts ROWS — the exact unit the drawer opens to.
+    expect(board).toContain('const total = notes.length')
+  })
+
+  it('the row status word comes from ONE table; both dictionaries carry every state', () => {
+    expect(board).toContain('noteStatusShapeOf(note)')
+    expect(board).toContain('{t(status.label)}')
+    const locales = readFileSync(fileURLToPath(new URL('../src/client/locales.ts', import.meta.url)), 'utf8')
+    expect(locales.match(/'board\.notifyCancelled':/g), 'cancelled copy exists in both languages').toHaveLength(2)
+    expect(locales.match(/'card\.dotUnread':/g), 'dot unread copy exists in both languages').toHaveLength(2)
+    // Removed copy stays removed (no orphan keys pointing at dead machinery).
+    expect(locales).not.toContain('board.activityGroupRest')
   })
 })

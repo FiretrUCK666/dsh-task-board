@@ -106,6 +106,10 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
     return (
       <SessionRow
         state={session.state}
+        /* The row's unread breath rides the per-session read clock — the same
+           `executionUnviewed` the card's session dot reads, so "just finished"
+           pulses here and on the board card in lockstep. */
+        unviewed={row.unviewed}
         /* THE chip derivation — ONE vocabulary with the linked rows: a
            settled session reads 已完成 (the run's outcome facts — duration,
            comments, the review page — carry the execution semantics). */

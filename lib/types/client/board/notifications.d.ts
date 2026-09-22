@@ -2,10 +2,10 @@
  * Notification center aggregation: every session across every task that is
  * currently waiting on the user (approval / plan-review / question) plus
  * unviewed review results (failed/succeeded awaiting the human gate) — one
- * row per waiting session / per review task, newest first. Read-only:
- * clicking a row opens the task detail (the detail owns sessions, answers
- * and navigation), so the center never duplicates a surface that already
- * exists.
+ * row per waiting session and per settled review session, newest first.
+ * Read-only: clicking a row opens the task detail (the detail owns sessions,
+ * answers and navigation), so the center never duplicates a surface that
+ * already exists.
  *
  * Three clocks, never mixed:
  * - the ROUND clock (`note.at`): the round's own activity (started→ended) —
@@ -24,13 +24,17 @@
  * SHELL (kind + honest missing-body line + navigate) — never blank silence
  * (see `awaitingOf` in question-mirror.ts, the same backstop one layer down).
  *
+ * Rows are the COUNTING UNIT everywhere: the bell badge, the unseen dot and
+ * the drawer list all count rows, so the number on the bell always equals
+ * the number of rows the drawer opens to (one task with three waiting
+ * sessions is three rows and a 3, never a 1 disagreeing with a 3).
+ *
  * Pure and framework-free (the pending signal arrives as a callback), so the
  * aggregation unit-tests in isolation; TaskBoard supplies the live faces.
- * `notificationsOf` stays waiting-only (legacy callers/tests); the board
- * reads `notificationsExOf` for the full three-tier view.
  */
 import type { PendingInteractionKind } from '../../core/controller.ts';
 import { type TaskRecord } from '../../core/tasks.ts';
+import type { TaskBoardKey } from '../locales.ts';
 /** One notification row (waiting session or unviewed review task). */
 export interface NotificationItem {
     taskId: string;
@@ -63,23 +67,16 @@ export interface NotificationItem {
      *  bell, fake arrivals, or poison the unseen waterline. */
     at: number;
 }
-/** THE row key (`task|session|kind`): snooze stamps, drawer keys and the
+/** THE row key (`task|session|kind`): drawer keys, the arrival map and the
  *  unseen set all derive from this one constructor — never a retyped
  *  template, so the three can never disagree on identity. */
 export declare function noteKeyOf(note: Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>): string;
 /**
- * Collect every waiting session of every task, deduplicated by
- * task+session (an execution round and the refine round can name the same
- * session — it waits once, not twice). A session without a waiting signal
- * is not a notification, however busy it is.
- */
-export declare function notificationsOf(tasks: readonly TaskRecord[], pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, titleOf: (sessionId: string) => string): NotificationItem[];
-/**
  * The waiting body the board can quote on a row: a plan-review batch quotes
- * its plan (detail, falling back to the question line); a question batch
+ * its plan (detail, falling back to its question line); a question batch
  * quotes its first question. THE one excerpt grammar — every waiting row
- * (drawer, folded members) reads the same body the in-board answer card
- * answers, so the row can never promise content the card does not hold.
+ * (drawer included) reads the same body the in-board answer card answers,
+ * so the row can never promise content the card does not hold.
  */
 export interface WaitingBody {
     /** The quoted body (plan detail / plan question / first question). */
@@ -120,22 +117,23 @@ export interface WaitingContentFace {
     answerInPlace?: boolean;
 }
 /**
- * Full three-tier view: waiting sessions first (newest task first), then
- * unviewed review tasks (failed before succeeded, newest settle first).
+ * Full three-tier view: waiting sessions first (newest arrival first), then
+ * unviewed review sessions — ONE row per conversation of each review task
+ * (its latest plain run's own result and settle), failed before succeeded.
  * `isUnviewed` decides the review tier (the board passes `taskUnviewed`);
- * absent/false = waiting-only (legacy behavior). `linkedIdsOf` supplies live
- * linked-session ids per task so a bound-but-never-run waiting session still
- * notifies (same related set as the live state).
+ * absent/false = waiting-only. `linkedIdsOf` supplies live linked-session
+ * ids per task so a bound-but-never-run waiting session still notifies
+ * (same related set as the live state).
  *
  * Waiting rows sort by the ARRIVAL clock when `arrivedAt` is supplied (the
- * board's first-seen map), falling back to the round clock for legacy
- * callers. Review rows always sort by their settle clock.
+ * board's first-seen map), falling back to the round clock for callers
+ * without one. Review rows always sort by their settle clock.
  */
 export declare function notificationsExOf(tasks: readonly TaskRecord[], pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, titleOf: (sessionId: string) => string, isUnviewed?: (task: TaskRecord) => boolean, linkedIdsOf?: (task: TaskRecord) => readonly string[], content?: WaitingContentFace, arrivedAt?: (note: Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>) => number | undefined): NotificationItem[];
 /**
  * What the board owes the user, stated as one fact for the whole surface.
  *
- * The bell's badge counts ROWS (folded by task), and a column header counts
+ * The bell's badge counts ROWS (one per session), and a column header counts
  * CARDS — two numbers that measure different things and, on screen, never
  * reconcile. Neither of them answers the question the board exists to answer
  * (「等我做什么」), and a card that has been glanced at drops out of the bell
@@ -170,19 +168,18 @@ export declare function boardDemandOf(tasks: readonly TaskRecord[], pendingOf: (
 export declare function stampWaitingArrivals(seen: ReadonlyMap<string, number>, notes: readonly Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>[], now: number): Map<string, number>;
 /** Read one row's arrival instant (missing key = unknown, never 0). */
 export declare function arrivalOf(seen: ReadonlyMap<string, number>, note: Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>): number | undefined;
-/** One folded task entry: the head row plus every row sharing its task. */
-export interface FoldedNotification {
-    head: NotificationItem;
-    /** Every row in this head's task (head first). */
-    items: NotificationItem[];
-    /** Rows folded into this head (items.length — 1 is unfolded and renders
-     *  exactly as before). */
-    count: number;
-}
 /**
- * Fold notification rows by task (same-task rows share one head — the first,
- * which the waiting-first ordering already ranked loudest). Pure view-layer
- * grouping: `notificationsExOf` keeps its signature so existing callers and
- * tests never change; the bell badge and the drawer list fold the same way.
+ * THE status chip of one row — kind + locale key in ONE derivation, so the
+ * drawer's status vocabulary can never drift per call site:
+ *
+ *   waiting → 权限审批 / 计划确认 / 提问 (the interaction the agent waits on)
+ *   review  → 待决策 (failed) / 待审核 (succeeded or open) / 已取消 (cancelled)
+ *
+ * Cancelled is its own state: it used to fall through to the green 待审核
+ * word, which promised a decision that did not exist. Returns the KEY (not
+ * the word) so copy stays in the locale dict; the row renders `t(label)`.
  */
-export declare function foldNotesByTask(notes: readonly NotificationItem[]): FoldedNotification[];
+export declare function noteStatusShapeOf(note: NotificationItem): {
+    kind: 'warn' | 'error' | 'success' | 'muted';
+    label: TaskBoardKey;
+};

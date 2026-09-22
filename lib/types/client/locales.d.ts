@@ -286,6 +286,7 @@ export declare const zh: {
     'board.notifyMarkOne': string;
     'board.notifyReview': string;
     'board.notifyReviewFailed': string;
+    'board.notifyCancelled': string;
     'board.thumbBar': string;
     'board.activity': string;
     'board.activityTitle': string;
@@ -309,7 +310,6 @@ export declare const zh: {
     'board.activitySearch': string;
     'board.activityMore': string;
     'board.activityNew': string;
-    'board.activityGroupRest': string;
     'board.activityOpen': string;
     'board.activityPreviewHint': string;
     'board.activityUnviewed': string;
@@ -562,6 +562,7 @@ export declare const zh: {
     'card.keyboardLabel': string;
     'card.sessionsForAt': string;
     'card.awaitingDecisionTitle': string;
+    'card.dotUnread': string;
     'board.demand': string;
     'board.demandTitle': string;
     'prompt.commandList': string;

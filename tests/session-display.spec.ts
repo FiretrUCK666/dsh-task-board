@@ -5,6 +5,7 @@ import {
   executionViewedBaseline,
   sessionDisplay,
   sessionTimes,
+  sessionUnviewedOf,
   taskPendingCount,
   taskUnviewed,
   taskUnviewedCount,
@@ -642,5 +643,36 @@ describe('external rounds are part of the session (the native-turn glow)', () =>
     const display = sessionDisplay(task, exec, undefined)
     expect(display.state).toBe('succeeded')
     expect(display.lastActivity).toBe(140)
+  })
+})
+
+describe('sessionUnviewedOf (the per-session read clock shared by row glow and dot)', () => {
+  it('reads the session’s LATEST plain run: unreviewed finish lights, reviewing kills it', () => {
+    const older = round('e1', { sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded' })
+    const latest = round('e2', { sessionId: 's1', startedAt: 200, endedAt: 250, result: 'succeeded' })
+    // No viewedAt: the baseline is the run's own start, so its settle is NEWER
+    // — "finished but not reviewed" is exactly the unread state.
+    expect(sessionUnviewedOf(taskWith([older, latest]), 's1')).toBe(true)
+    // Opening the review page moves viewedAt past the settle: quiet. That
+    // existing funnel is the ONLY off switch — this function never writes.
+    expect(sessionUnviewedOf(taskWith([older, { ...latest, viewedAt: 300 }]), 's1')).toBe(false)
+  })
+
+  it('comment rounds on the same session count as its content (a newer comment re-lights)', () => {
+    const run = round('e1', { sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded', viewedAt: 160 })
+    const comment = round('c1', { sessionId: 's1', startedAt: 200, endedAt: 260, result: 'succeeded', comment: 'hi', parentExecutionId: 'e1' })
+    expect(sessionUnviewedOf(taskWith([run, comment]), 's1')).toBe(true)
+  })
+
+  it('a session with no plain run honestly reads false (bound external / refine lanes)', () => {
+    expect(sessionUnviewedOf(taskWith([]), 'sx')).toBe(false)
+    const refine = round('r1', { sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded', refine: true })
+    expect(sessionUnviewedOf(taskWith([refine]), 's1')).toBe(false)
+  })
+
+  it('another session of the same card never borrows this one’s clock', () => {
+    const run = round('e1', { sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded' })
+    expect(sessionUnviewedOf(taskWith([run]), 's1')).toBe(true)
+    expect(sessionUnviewedOf(taskWith([run]), 's2')).toBe(false)
   })
 })

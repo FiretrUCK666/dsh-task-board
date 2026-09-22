@@ -87,7 +87,7 @@ An npm install and a GitHub install contain essentially the same files; they dif
 
 Stop the running `dsh web` and start it again. Refreshing the page is not enough: the host half of the plugin loads inside the server process. The **Task Board** entry appears in the sidebar after the restart.
 
-The entry sits beside DSH's own Plugins panel. Selecting it puts the board in the centre stage; selecting any session in the sidebar brings the conversation back. The plugin's settings live in **Settings → Task Board**.
+The entry sits beside DSH's own Plugins panel. Selecting it puts the board in the centre stage; selecting the entry again — or any session in the sidebar — brings the conversation back. The plugin's settings live in **Settings → Task Board**.
 
 To remove it:
 

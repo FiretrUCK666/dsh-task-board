@@ -294,6 +294,7 @@ export const zh = {
   'board.notifyMarkOne': '标已读',
   'board.notifyReview': '待审核',
   'board.notifyReviewFailed': '待决策',
+  'board.notifyCancelled': '已取消',
   'board.thumbBar': '快捷操作',
   'board.activity': '动态',
   'board.activityTitle': '全板近况：新建、开始、完成、留言、外部、直发、完善（只读，点行进任务详情）',
@@ -317,7 +318,6 @@ export const zh = {
   'board.activitySearch': '筛选动态…',
   'board.activityMore': '加载更多（还剩 {n} 条）',
   'board.activityNew': '{n} 条新动态',
-  'board.activityGroupRest': '其余 {n} 条已折叠，进详情看完整',
   'board.activityOpen': '进详情',
   'board.activityPreviewHint': '发生于 {time}，点进详情查看完整上下文',
   'board.activityUnviewed': '仅未读',
@@ -583,10 +583,11 @@ export const zh = {
   'card.keyboardLabel': '{title}，{column}。[ 与 ] 键移到相邻列；回车打开。',
   'card.sessionsForAt': '相关会话 {n} 个：{sessions}',
   'card.awaitingDecisionTitle': '已跑完，等你在待审核列通过或打回；看过之后仍然算未决',
+  'card.dotUnread': '有新完成未看',
   /* Header demand row: the board stating, in words, what it owes the user.
-     The bell badge counts folded notification ROWS and a column header counts
-     CARDS; neither answers 「等我做什么」, so this row states it separately and
-     without a number that could contradict them. */
+     The bell badge counts notification ROWS (one per session) and a column
+     header counts CARDS; neither answers 「等我做什么」, so this row states it
+     separately and without a number that could contradict them. */
   'board.demand': '等你处理 {n} 项 · 待审核 {m} 张',
   'board.demandTitle': '等你处理 = 挂起等你作答的会话；待审核 = 已跑完但还没通过或打回的任务（看过也算）',
   'prompt.commandList': '命令列表',
@@ -924,6 +925,7 @@ export const en: Record<keyof typeof zh, string> = {
   'board.notifyMarkOne': 'Mark read',
   'board.notifyReview': 'Review',
   'board.notifyReviewFailed': 'Decide',
+  'board.notifyCancelled': 'Cancelled',
   'board.thumbBar': 'Quick actions',
   'board.activity': 'Activity',
   'board.activityTitle': 'Board activity: creations, starts, completions, comments, external turns, direct sends, refinements (read-only, rows open the task)',
@@ -947,7 +949,6 @@ export const en: Record<keyof typeof zh, string> = {
   'board.activitySearch': 'Filter activity…',
   'board.activityMore': 'Show more ({n} left)',
   'board.activityNew': '{n} new updates',
-  'board.activityGroupRest': '{n} more folded — open the task for all',
   'board.activityOpen': 'Open task',
   'board.activityPreviewHint': 'Happened at {time}; open the task for full context',
   'board.activityUnviewed': 'Unviewed only',
@@ -1203,6 +1204,7 @@ export const en: Record<keyof typeof zh, string> = {
   'card.keyboardLabel': '{title}, {column}. Press [ or ] to move it one column; Enter opens it.',
   'card.sessionsForAt': '{n} related session(s): {sessions}',
   'card.awaitingDecisionTitle': 'The run finished and is waiting in Review for you to approve or send back; it still counts after you have looked',
+  'card.dotUnread': 'Has an unreviewed finish',
   'board.demand': '{n} need you · {m} in review',
   'board.demandTitle': 'Need you = sessions suspended on your answer. In review = runs that finished and nobody has approved or sent back yet (looked-at ones still count)',
   'prompt.commandList': 'Command list',

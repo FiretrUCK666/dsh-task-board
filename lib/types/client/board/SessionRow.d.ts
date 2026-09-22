@@ -14,7 +14,7 @@
 import { type ReactNode } from 'react';
 import type { SessionChipShape, SessionRowState } from './session-chip.ts';
 /** The unified session row (one grammar for every session of a task). */
-export declare function SessionRow({ state, chip, leading, meta, footer, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle }: {
+export declare function SessionRow({ state, chip, leading, meta, footer, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle, unviewed }: {
     /** Live session state (execution kind): rendered as data-state/data-waiting. */
     state?: SessionRowState;
     /** Status chip on the top line (undefined = no chip). */
@@ -46,4 +46,12 @@ export declare function SessionRow({ state, chip, leading, meta, footer, handle,
     onRename?: (title: string) => Promise<void>;
     /** Tooltip of the rename affordance. */
     renameTitle?: string;
+    /**
+     * This session has a finished run the user has not reviewed yet (the
+     * per-session read clock — run rows pass `TaskSessionRow.unviewed`). The
+     * row then wears the amber `unread` breath, so "which session just
+     * finished" is answerable inside the list, not only from the card's edge.
+     * Absent = no read state (linked external rows) — quiet, honestly.
+     */
+    unviewed?: boolean;
 }): import("react").JSX.Element;
