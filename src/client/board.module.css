@@ -2563,12 +2563,24 @@ textarea.input {
    「运行配置（当前会话）」, whose title landed flush against the token totals
    above it. Declared HERE, once per fold, so no caller has to remember it and
    no second fold can drift (the automation editor and the run-config fold are
-   the same container). */
+   the same container).
+
+   HEIGHT PASS-THROUGH: the body also relays its fold's definite height to the
+   scroll region inside it (`flex: 1 1 auto; min-height: 0`). Without this the
+   body refuses to shrink below its content, the comment box below never
+   receives a bounded height, grows to full content and can never scroll on its
+   own — no scrollbar, no 滑到最新, no follow, while an ancestor block scrolls
+   the whole rail instead. For a content-sized fold (the config head, every
+   task-detail section) the parent height IS the content, so grow/shrink have
+   nothing to act on and the rule is inert — only a height-bounded fold (the
+   comments fold) feels it, which is exactly where it is required. */
 .detailSectionBody {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
 }
 
 /* The shared collapsible-block grammar (Disclosure): chevron + title +
@@ -4672,14 +4684,21 @@ button.interactionOption:focus-visible,
    rail's 14px horizontal content box (the single-scrollbar grammar: the bar
    lands flush on the rail edge, the text keeps the 14px inset); its children
    add NO horizontal padding of their own — a second inset would double-shift
-   them off the line. */
+   them off the line.
+
+   120px FLOOR (same value the conversation region floors at): when a fully
+   rendered config head squeezes this region's share toward zero, the box keeps
+   a usable minimum instead of collapsing to a slit that hides the thread; the
+   overflow it then makes is absorbed by the folds block scrolling as one — the
+   documented last resort for exactly that state. The floor only binds under
+   that squeeze: an unfloored box already stretches to its leftover share. */
 .commentsScroll {
   display: flex;
   flex-direction: column;
   gap: 10px;
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 0;
+  min-height: 120px;
   overflow-y: auto;
   padding: 10px var(--dsh-tb-rail-inset) 10px;
 }

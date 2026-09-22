@@ -231,10 +231,20 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // The comments region absorbs the leftover height and owns the scroller.
     expect(ruleOf('sessionRailComments[data-open=\'true\']')).toMatch(/flex:\s*1 1 auto/)
     expect(ruleOf('sessionRailComments[data-open=\'true\']')).toMatch(/min-height:\s*0/)
+    // THE height pass-through: the Disclosure body relays its fold's definite
+    // height down to the scroll region. Without these two properties the body
+    // refuses to shrink below content, the box grows to full content and can
+    // never scroll on its own — no scrollbar, no 滑到最新, no follow, while an
+    // ancestor block scrolls the whole rail instead (the desktop defect).
+    const foldBody = ruleOf('detailSectionBody')
+    expect(foldBody).toMatch(/flex:\s*1 1 auto/)
+    expect(foldBody).toMatch(/min-height:\s*0/)
     const comments = ruleOf('commentsScroll')
     expect(comments).toMatch(/flex:\s*1 1 auto/)
     expect(comments).toMatch(/overflow-y:\s*auto/)
-    expect(comments).toMatch(/min-height:\s*0/)
+    // The box floors at the conversation region's 120px: a fully rendered
+    // config head may squeeze it, but never to a slit that hides the thread.
+    expect(comments).toMatch(/min-height:\s*120px/)
     // The scroll region owns the rail's content line; segments inside add none.
     expect(comments).toMatch(/padding:\s*10px var\(--dsh-tb-rail-inset\)/)
     expect(ruleOf('sessionFacts')).toMatch(/padding-inline:\s*var\(--dsh-tb-rail-inset\)/)
@@ -548,6 +558,14 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     // the only scrollTop writes are the follow/jump/anchor paths).
     const writes = panelSource.match(/scrollTop\s*=/g) ?? []
     expect(writes.length).toBe(0)
+    // OPEN / NEW ASK = LATEST: opening the comments fold (manual tap or a
+    // pending question force-opening it) and every new ask pin the box to the
+    // newest comment; the old per-open opt-out (`initialToBottom`) is gone —
+    // there is exactly one semantic, not a first-open/re-open fork.
+    expect(panelSource).toMatch(/const openEdgeRef = useRef\(commentsOpen \|\| awaiting\)/)
+    expect(panelSource).toMatch(/if \(awaiting \|\| opened\) jumpComments\(\)/)
+    expect(panelSource).not.toMatch(/initialToBottom/)
+    expect(followSource).not.toMatch(/initialToBottom/)
   })
 
   it('the tail accumulates (poll extends, never replaces) and pages backward natively', () => {

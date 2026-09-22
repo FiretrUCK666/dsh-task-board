@@ -27,7 +27,7 @@
  * here and everything downstream still speaks the carrier vocabulary it
  * always spoke. A future envelope change lands in that function alone.
  */
-import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from '../../core/question-rpc.ts';
+import type { PendingInteractionKind, QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from '../../core/question-rpc.ts';
 import { type MirrorSnapshotLike } from '../../core/question-mirror.ts';
 /**
  * The action half of an official carrier, when the entry has one. Read
@@ -60,6 +60,18 @@ export declare class PendingMirror implements QuestionRpcFace {
      */
     private get entries();
     pendingOf(sessionId: string | undefined): WireQuestion | undefined;
+    /**
+     * The waiting KIND of one session — the signal half of the same official
+     * snapshot the content projection above reads: unwrap the one envelope layer
+     * here ({@link pendingOnly}) and derive the kind with the shared
+     * `mirrorWaitingOf` (plan-review outranks question, approval names itself,
+     * an unknown domain kind reads as not waiting — never a guessed label).
+     *
+     * The content projection deliberately drops approval entries (the native
+     * surface owns approving); the SIGNAL must not drop them — the bell, the
+     * card chips and the session rows show an approval wait.
+     */
+    waitingKindOf(sessionId: string | undefined): PendingInteractionKind | undefined;
     /**
      * Whether ANY live interaction can be settled from here. Read fresh by the
      * card on every render: a data-only snapshot entry (no `answer`/`cancel`)

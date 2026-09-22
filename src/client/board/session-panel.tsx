@@ -813,21 +813,22 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
        to the NEW element (a fold→expand loop used to lose bottom-follow and
        the 滑到最新 button — the review caught it). */
     commentsOpen || awaiting,
-    /* A MANUAL open must NOT pin to the bottom: the immediate scroll pushed
-       the fold head off-screen and the reader had to drag back up to re-fold
-       (「评论一点开直接拉到底」). A pending question keeps the pin (it must be
-       seen — jumpComments below also forces it). */
-    awaiting,
   )
-  // A pending question is the ONE thing in this panel the user must answer for
-  // the session to move at all — so arriving must bring it into view even when
-  // the reader had scrolled up (the follow-while-at-bottom rule deliberately
-  // does not fire for them). The force-opened fold alone is not enough on a
-  // phone: the card can still sit below the capped region's viewport with its
-  // 确认/拒绝 buttons off-screen and no hint that anything is waiting.
+  // OPEN / NEW ASK = LATEST — one grammar at every width: opening the fold
+  // (a manual tap, or a pending question force-opening it) lands on the
+  // newest comment, and a new ask pins again so the question is always the
+  // thing in view (the default-open mount is pinned by the follow effect
+  // itself, atBottom starts true). Answering never moves the reader: only
+  // open edges and a live ask trigger, so scrolling up while reading stays
+  // put. The pin scrolls the comment box itself — the fold head lives
+  // outside that box, so it can never be pushed off-screen by it.
+  const openEdgeRef = useRef(commentsOpen || awaiting)
   useEffect(() => {
-    if (awaiting) jumpComments()
-  }, [awaiting, interaction?.rpcId, shellWaiting, jumpComments])
+    const open = commentsOpen || awaiting
+    const opened = open && !openEdgeRef.current
+    openEdgeRef.current = open
+    if (awaiting || opened) jumpComments()
+  }, [commentsOpen, awaiting, interaction?.rpcId, shellWaiting, jumpComments])
   // The collapsed head still says something: the live context occupancy
   // rides the disclosure summary (zero-omission quietness, same as every
   // other summary — no projection, no line).

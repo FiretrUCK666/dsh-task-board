@@ -74,6 +74,17 @@ export type QuestionFrameIn = {
 };
 /** Plan-review decision a UI can send (see planDecisionAnswers). */
 export type PlanDecision = 'approve' | 'decline';
+/**
+ * The waiting kind of one session — the `kind` discriminator the official
+ * session-status snapshot publishes on a session's `pendingInteraction`:
+ * `question` / `plan-review` from the user-questions domain, `approval` from
+ * the approval domain (plan-review outranks the rest when several domains
+ * wait — the host resolves precedence before publishing). The same three the
+ * native sidebar's amber dot derives from. A kind outside this set is a
+ * domain this board cannot name and reads as "not waiting" rather than
+ * guessing a label.
+ */
+export type PendingInteractionKind = 'approval' | 'plan-review' | 'question';
 /** The controller's thin question surface (implemented by the official mirror
  *  or the legacy tracker; absent when the host wire is unavailable — surfaces
  *  then hide the card). On 0.1.5 the mirror IS able to answer in place
@@ -87,6 +98,14 @@ export interface QuestionRpcFace {
     pendingOf(sessionId: string | undefined): WireQuestion | undefined;
     /** React to pending-question changes (requested/resolved frames). */
     subscribe(listener: () => void): () => void;
+    /**
+     * The waiting kind of one session (the SIGNAL half of the same official
+     * snapshot this face reads — content above, waiting here), absent when the
+     * session is not waiting. This is THE source cards, bells, session rows and
+     * the live state read; a face that cannot observe waiting omits it and the
+     * board honestly shows no waiting state.
+     */
+    waitingKindOf?(sessionId: string | undefined): PendingInteractionKind | undefined;
     /** Whether the board answers in place (false = navigate to answer). */
     readonly answerInPlace?: boolean;
     /** Deliver the whole answer batch; false = refused, stale or unavailable

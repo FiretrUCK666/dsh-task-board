@@ -12,7 +12,7 @@
  * call (question/resolved frame).
  */
 import type { IApiClient } from '../platform.ts';
-import { type QuestionAnswerEntry, type QuestionRpcFace, type WireQuestion } from '../../core/question-rpc.ts';
+import { type PendingInteractionKind, type QuestionAnswerEntry, type QuestionRpcFace, type WireQuestion } from '../../core/question-rpc.ts';
 /** Open lazily on first reader; frames flow only while someone consumes. */
 export declare class QuestionTracker implements QuestionRpcFace {
     private readonly api;
@@ -37,6 +37,12 @@ export declare class QuestionTracker implements QuestionRpcFace {
     private pump;
     private apply;
     pendingOf(sessionId: string | undefined): WireQuestion | undefined;
+    /**
+     * The waiting kind from the legacy wire: question frames only — the old
+     * stream replays questions, so an approval wait has no observation point
+     * here and reads as not waiting (an honest absence, never a guessed label).
+     */
+    waitingKindOf(sessionId: string | undefined): PendingInteractionKind | undefined;
     subscribe(listener: () => void): () => void;
     answer(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>;
     cancel(rpcId: string): Promise<boolean>;

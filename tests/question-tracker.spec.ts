@@ -75,6 +75,15 @@ const requestedFrame = (rpcId: string, sessionId: string): Envelope => ({
   },
 })
 
+/** A plan-review ask: intent-tagged, its body carried in `detail` (the official shape). */
+const planFrame = (rpcId: string, sessionId: string): Envelope => ({
+  rpcId,
+  payload: {
+    type: 'question/requested', sessionId,
+    questions: [{ id: 'p-1', question: '', detail: '## 计划', intent: { kind: 'plan-review', approve: '批准' } }],
+  },
+})
+
 describe('QuestionTracker', () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
@@ -131,5 +140,25 @@ describe('QuestionTracker', () => {
     tracker.dispose()
     await vi.advanceTimersByTimeAsync(5_000)
     expect(api.streams).toBe(1)
+  })
+
+  it('waitingKindOf derives the legacy waiting kind from pending frames', async () => {
+    const api = new FakeApi()
+    const tracker = new QuestionTracker(api as unknown as IApiClient)
+    tracker.subscribe(() => {})
+    expect(tracker.waitingKindOf('s-1')).toBeUndefined()
+    // A plain ask reads as question; an intent-tagged plan reads as plan-review.
+    api.push(requestedFrame('r-1', 's-1'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(tracker.waitingKindOf('s-1')).toBe('question')
+    expect(tracker.waitingKindOf('s-2')).toBeUndefined()
+    api.push(planFrame('r-2', 's-2'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(tracker.waitingKindOf('s-2')).toBe('plan-review')
+    // Resolving the ask releases the wait.
+    api.push({ rpcId: 'r-1', payload: { type: 'question/resolved', questionRpcId: 'r-1' } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(tracker.waitingKindOf('s-1')).toBeUndefined()
+    tracker.dispose()
   })
 })

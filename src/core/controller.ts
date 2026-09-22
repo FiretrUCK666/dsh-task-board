@@ -29,7 +29,7 @@ import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents
 import { LocalStorageTemplateStore, templateFromTask, templateToNewInput } from './task-templates.ts'
 import { LocalStorageRunPresetStore } from './run-presets.ts'
 import { hiddenSessionIdsOf, taskSessionsOf, type TaskSessionRow } from './session-list.ts'
-import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
+import type { PendingInteractionKind, QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVerbs } from './goal-verbs.ts'
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
@@ -46,8 +46,10 @@ export const DEFAULT_CRUISE_LIMIT = 5
  *  keep importing it from the controller. */
 export const MAX_CRUISE_LIMIT = CRUISE_LIMIT_MAX
 
-/** The native session-list "waiting for the user" signal (sidebar amber dot). */
-export type PendingInteractionKind = 'approval' | 'plan-review' | 'question'
+/** Re-export: the waiting-kind union lives beside the question face that
+ *  reads it (the official session-status snapshot's `pendingInteraction.kind`);
+ *  board surfaces keep importing it from the controller. */
+export type { PendingInteractionKind }
 
 /** The sessions face the controller needs (catalog reads + navigation). */
 export interface SessionsControllerFace {
@@ -85,8 +87,6 @@ export interface SessionsControllerFace {
         parentId?: string
         /** Coarse durable origin; `'subagent'` marks an agent-summoned session. */
         origin?: 'subagent'
-        /** User interaction the session is blocked on (approval / plan review / question). */
-        pendingInteraction?: PendingInteractionKind
         /** The session's real workspace root, when the host recorded one. */
         cwd?: string
         /** The workspace id the host attributes the session to, when known. */
@@ -754,6 +754,13 @@ export class BoardController {
     if (this.deps.workspaces !== undefined) {
       this.disposers.push(this.deps.workspaces.list.subscribe(() => { this.notify() }))
     }
+    // The waiting signal lives on the question face's snapshot (the official
+    // session-status map), NOT on the session list — a question / plan review
+    // / approval arriving or settling changes nothing the list publishes, so
+    // without this subscription every surface reading pendingInteractionOf
+    // (cards, bells, rows, live state) would keep its previous verdict.
+    const unsubQuestions = this.deps.questionRpc?.subscribe(() => { this.notify() })
+    if (unsubQuestions !== undefined) this.disposers.push(unsubQuestions)
     // Restore the dispatch queue after a reload: with the cruise on, pick up
     // todo tasks again and inject comment continuations that were waiting
     // (each launch re-validates eligibility, so nothing stale can fire).
@@ -1028,13 +1035,15 @@ export class BoardController {
 
   /**
    * The user interaction an execution session is currently blocked on
-   * (`approval` / `plan-review` / `question`), straight from the native
-   * session-list summary (the same signal as the sidebar's amber dot).
-   * undefined = the session is not waiting (or no longer listed).
+   * (`approval` / `plan-review` / `question`) — THE waiting signal, read from
+   * the official session-status snapshot through the question face (the same
+   * source the native sidebar's amber dot derives; the session LIST never
+   * carries this field). undefined = the session is not waiting (or the face
+   * cannot observe waiting).
    */
   pendingInteractionOf(sessionId: string | undefined): PendingInteractionKind | undefined {
     if (sessionId === undefined) return undefined
-    return this.deps.sessions.list.getSnapshot().byId[sessionId]?.pendingInteraction
+    return this.deps.questionRpc?.waitingKindOf?.(sessionId)
   }
 
   // --- pending native questions (official mirror) -----------------------------
@@ -1659,7 +1668,15 @@ export class BoardController {
         // here so the linked panel, the unified session list and every other
         // row consumer read one derivation instead of their own flag check.
         // The title/workspace/archive derivation above stays what it was.
-        rows.push({ ...row, running: activity.active(row.sessionId) })
+        // `pendingInteraction` rides the same override pattern: the waiting
+        // SIGNAL comes from the session-status snapshot (the question face),
+        // never from the list row.
+        const pendingInteraction = this.pendingInteractionOf(row.sessionId)
+        rows.push({
+          ...row,
+          running: activity.active(row.sessionId),
+          ...pendingInteraction !== undefined ? { pendingInteraction } : {},
+        })
       }
     }
     return rows
@@ -3814,7 +3831,10 @@ export class BoardController {
     // subagent descendant delay the round's release indefinitely — the very
     // reverse deadlock the audit proved for execution.ts's settle paths.
     if (summary.running === true) return undefined
-    if (summary.pendingInteraction !== undefined) return undefined // waiting on a human is evidence
+    // Waiting on a human is evidence too: the turn is suspended, not over —
+    // read through THE waiting signal (the session-status snapshot via the
+    // question face), never the list row (which carries no such field).
+    if (this.pendingInteractionOf(execution.sessionId) !== undefined) return undefined
     return { kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'cancelled', error: 'no turn evidence' }
   }
 
@@ -4073,7 +4093,9 @@ export class BoardController {
     return taskLiveStateOf(
       task,
       sessionId => activity.active(sessionId),
-      sessionId => byId[sessionId]?.pendingInteraction,
+      // THE waiting signal (the session-status snapshot via the question
+      // face) — the list row carries no pendingInteraction field.
+      sessionId => this.pendingInteractionOf(sessionId),
       {
         ...linkedIds !== undefined ? { linkedSessionIds: linkedIds } : {},
         // Readiness is part of "known", stated explicitly: the activity index

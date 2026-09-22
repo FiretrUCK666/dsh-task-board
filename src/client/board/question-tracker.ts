@@ -16,6 +16,7 @@ import type { ClientResponse, RpcError, RpcId } from '../platform.ts'
 import {
   pendingQuestionOf,
   reduceQuestionFrames,
+  type PendingInteractionKind,
   type QuestionAnswerEntry,
   type QuestionRpcFace,
   type WireQuestion,
@@ -111,6 +112,18 @@ export class QuestionTracker implements QuestionRpcFace {
   pendingOf(sessionId: string | undefined): WireQuestion | undefined {
     this.start()
     return pendingQuestionOf(this.pending, sessionId)
+  }
+
+  /**
+   * The waiting kind from the legacy wire: question frames only — the old
+   * stream replays questions, so an approval wait has no observation point
+   * here and reads as not waiting (an honest absence, never a guessed label).
+   */
+  waitingKindOf(sessionId: string | undefined): PendingInteractionKind | undefined {
+    this.start()
+    const question = pendingQuestionOf(this.pending, sessionId)
+    if (question === undefined) return undefined
+    return question.isPlanReview ? 'plan-review' : 'question'
   }
 
   subscribe(listener: () => void): () => void {

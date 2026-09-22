@@ -28,7 +28,7 @@ export declare function resolveScroller(element: HTMLElement | null): HTMLElemen
  * change that moves the scroll elsewhere is still covered. Content-driven
  * re-scrolls stay with the caller's follow effects; this only covers layout.
  */
-export declare function useResizeFollow(scrollRef: React.RefObject<HTMLDivElement>, atBottomRef: React.MutableRefObject<boolean>, remountKey?: unknown, initialToBottom?: boolean): void;
+export declare function useResizeFollow(scrollRef: React.RefObject<HTMLDivElement>, atBottomRef: React.MutableRefObject<boolean>, remountKey?: unknown): void;
 /**
  * One FOLLOW mechanism, shared by every live list (transcript tail, comment
  * thread): measure and pin against the RESOLVED scroller, and see its scroll
@@ -43,11 +43,7 @@ export declare function useFollowScroll(scrollRef: React.RefObject<HTMLDivElemen
  *  its children — the comments Disclosure), the observer + follow effects
  *  must re-bind to the NEW element; passing a value that changes with the
  *  fold (its open state) does that. */
-remountKey?: unknown, 
-/** Whether a remount should pin to the bottom. A MANUAL open of the narrow
- *  comment fold passes false — the reader stays where they were (the head
- *  stays visible); a forced open (pending question) keeps true. */
-initialToBottom?: boolean): {
+remountKey?: unknown): {
     measure: () => void;
     jumpToBottom: () => void;
 };

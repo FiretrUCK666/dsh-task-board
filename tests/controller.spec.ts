@@ -12,6 +12,7 @@ import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
 import { cardLightOf, cardViewModelOf } from '../src/client/board/card-view.ts'
 import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import type { CruiseWindow } from '../src/core/cruise.ts'
+import type { PendingInteractionKind, QuestionRpcFace, WireQuestion } from '../src/core/question-rpc.ts'
 import { createTask, ruleReadiness, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -20,6 +21,34 @@ const uuid = (): string => { nextId += 1; return `id-${nextId}` }
 
 /** Flush pending microtasks (async controller paths). */
 const flush = (): Promise<void> => new Promise(resolve => { setTimeout(resolve, 0) })
+
+/**
+ * Controllable question face: BOTH halves of the official session-status
+ * snapshot as the controller reads them — the waiting SIGNAL (`waitingKindOf`)
+ * and question content (`pendingOf`; none seeded here). Its own listener set
+ * models that snapshot's subscription: a waiting change reaches the board
+ * through THIS face, never through the session list (the host's list rows
+ * carry no waiting field — the fake models that truth too).
+ */
+class FakeQuestions implements QuestionRpcFace {
+  waitingById: Record<string, PendingInteractionKind> = {}
+  private listeners = new Set<() => void>()
+  pendingOf(): WireQuestion | undefined { return undefined }
+  waitingKindOf(sessionId: string | undefined): PendingInteractionKind | undefined {
+    return sessionId === undefined ? undefined : this.waitingById[sessionId]
+  }
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn)
+    return () => { this.listeners.delete(fn) }
+  }
+  async answer(): Promise<boolean> { return false }
+  async cancel(): Promise<boolean> { return false }
+  setWaiting(id: string, waiting: PendingInteractionKind | undefined): void {
+    if (waiting === undefined) delete this.waitingById[id]
+    else this.waitingById[id] = waiting
+    for (const fn of [...this.listeners]) fn()
+  }
+}
 
 /** Controllable sessions face (selection + open + running state). */
 class FakeSessions {
@@ -34,8 +63,6 @@ class FakeSessions {
   order: string[] | undefined = undefined
   /** Host list running flags per session id (absent id = unknown to the list). */
   runningById: Record<string, boolean> = {}
-  /** Host-list pending-interaction signals per session (native amber dot). */
-  waitingById: Record<string, 'approval' | 'plan-review' | 'question'> = {}
   /** Host-list lineage facts per session: the subagent link the activity
    *  derivation rolls up (origin is the first gate; a fork carries only a
    *  parent, which is exactly what this map lets a test express). */
@@ -46,12 +73,15 @@ class FakeSessions {
   titleById: Record<string, string> = {}
   /** Registry-global archive set. */
   archivedIds: Set<string> = new Set()
+  /** The waiting signal's home — the fake's session-status half, wired as the
+   *  controller's question face (the real mirror wraps the same snapshot). */
+  readonly questions = new FakeQuestions()
   private listeners = new Set<() => void>()
   list = {
     getSnapshot: (): {
       phase?: 'pending' | 'ready'
       ids?: readonly string[]
-      byId: Record<string, { running: boolean; parentId?: string; origin?: 'subagent'; pendingInteraction?: 'approval' | 'plan-review' | 'question'; cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string; title?: string }>
+      byId: Record<string, { running: boolean; parentId?: string; origin?: 'subagent'; cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string; title?: string }>
     } => ({
       ...this.phase !== undefined ? { phase: this.phase } : {},
       ...this.order !== undefined ? { ids: [...this.order] } : {},
@@ -59,7 +89,6 @@ class FakeSessions {
         Object.entries(this.runningById).map(([id, running]) => [id, {
           running,
           ...this.lineageById[id] !== undefined ? this.lineageById[id] : {},
-          ...this.waitingById[id] !== undefined ? { pendingInteraction: this.waitingById[id] } : {},
           ...this.infoById[id] !== undefined ? this.infoById[id] : {},
           ...this.titleById[id] !== undefined ? { title: this.titleById[id] } : {},
         }]),
@@ -124,12 +153,13 @@ class FakeSessions {
     delete this.lineageById[id]
     for (const fn of [...this.listeners]) fn()
   }
-  /** Set a session's pending-interaction signal and notify (list change). */
-  setWaiting(id: string, waiting: 'approval' | 'plan-review' | 'question' | undefined): void {
+  /** Set a session's waiting signal through the question face — the official
+   *  snapshot's half, never a list-row field (the host's SessionSummary
+   *  carries none). The row seed below is incidental; the SIGNAL notifies
+   *  via the face alone, so a regression to a list read fails the notify test. */
+  setWaiting(id: string, waiting: PendingInteractionKind | undefined): void {
     this.runningById[id] ??= false
-    if (waiting === undefined) delete this.waitingById[id]
-    else this.waitingById[id] = waiting
-    for (const fn of [...this.listeners]) fn()
+    this.questions.setWaiting(id, waiting)
   }
   /** Set a session's workspace facts and notify (list change). */
   setInfo(id: string, info: { cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string }): void {
@@ -174,6 +204,9 @@ function makeController(stub = new StubExec(), extra: Partial<ControllerDeps> & 
     store,
     exec: stub as unknown as ExecutionService,
     sessions,
+    // The waiting signal rides the question face (the official session-status
+    // snapshot's half) — exactly what the real PendingMirror wraps.
+    questionRpc: sessions.questions,
     now: () => NOW,
     uuid,
     ...extra,
@@ -368,7 +401,7 @@ describe('task mutations', () => {
     expect(store.load()[0].schedule?.enabled).toBe(true)
   })
 
-  it('reads a session pending-interaction signal live from the session list', () => {
+  it('reads the waiting signal from the question face (the session-status snapshot), never the list row', () => {
     const { controller, sessions } = makeController()
     expect(controller.pendingInteractionOf(undefined)).toBeUndefined()
     expect(controller.pendingInteractionOf('s-1')).toBeUndefined()
@@ -376,6 +409,12 @@ describe('task mutations', () => {
     expect(controller.pendingInteractionOf('s-1')).toBe('plan-review')
     sessions.setWaiting('s-1', undefined)
     expect(controller.pendingInteractionOf('s-1')).toBeUndefined()
+    // The host's session list carries NO waiting field (its SessionSummary
+    // never sends one) — the fake models that truth, so a regression to the
+    // list read fails HERE instead of shipping a board with dead signals.
+    const row = sessions.list.getSnapshot().byId['s-1']
+    expect(row).toBeDefined()
+    expect(row !== undefined && 'pendingInteraction' in row).toBe(false)
   })
 
   it('reports the session workspace facts (cwd / agent preset)', () => {
@@ -423,11 +462,14 @@ describe('task mutations', () => {
     expect([...set].sort()).toEqual(['s-bind', 's-refine', 's-run'])
   })
 
-  it('notifies subscribers when the session list changes (wait states surface live)', () => {
+  it('notifies subscribers when the waiting signal changes (the question face, not the list)', () => {
     const { controller, sessions } = makeController()
     controller.openBoard()
     let notified = 0
     controller.subscribe(() => { notified += 1 })
+    // setWaiting reaches the board ONLY through the face's own listeners —
+    // the session list is silent about waiting, so this assertion fails if
+    // the controller ever stops subscribing to the question face.
     sessions.setWaiting('s-1', 'approval')
     expect(notified).toBeGreaterThan(0)
   })
@@ -5306,12 +5348,67 @@ describe('session activity: subagent descendants keep the card live', () => {
     const controller = new BoardController({
       store, exec: stub as unknown as ExecutionService,
       sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+      questionRpc: sessions.questions,
     })
     controller.start()
     await flush()
     await flush()
     expect(controller.liveStateOf('task-desc')).toBe('waiting')
     expect(controller.getSnapshot().tasks[0].status).toBe('running')
+  })
+
+  it('the delivery watchdog never releases a round whose session waits on a human', async () => {
+    let clock = NOW
+    const stub = new StubExec()
+    stub.reconcileResult = undefined // no turn evidence, ever
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false // the turn is suspended, not running
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run', status: 'running' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => clock, uuid, reconcileDebounceMs: 0,
+      questionRpc: sessions.questions,
+    })
+    controller.start()
+    // Past grace AND the watchdog deadline — but the session is blocked on a
+    // human: waiting says the turn is suspended, not over, so the round holds.
+    clock = NOW + 4 * 60_000
+    sessions.setWaiting('s-1', 'question')
+    sessions.setRunning('s-1', false) // the list change that fires a pass
+    await flush()
+    await flush()
+    expect(store.load()[0].executions[0].endedAt).toBeUndefined()
+    // The wait settles → the same pass now has positive evidence and releases.
+    sessions.setWaiting('s-1', undefined)
+    sessions.setRunning('s-1', false)
+    await flush()
+    await flush()
+    expect(store.load()[0].executions[0].result).toBe('cancelled')
+  })
+
+  it('linked rows carry the waiting signal from the question face (the list row carries none)', () => {
+    const sessions = new FakeSessions()
+    sessions.runningById['s-link'] = false
+    sessions.setInfo('s-link', { cwd: '/work/link' })
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{ ...seeded, bind: { kind: 'session', sessionId: 's-link' } }])
+    const controller = new BoardController({
+      store, exec: new StubExec() as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, questionRpc: sessions.questions,
+    })
+    controller.start()
+    const bound = store.load()[0]
+    expect(controller.linkedOf(bound).map(row => row.pendingInteraction)).toEqual([undefined])
+    sessions.setWaiting('s-link', 'plan-review')
+    expect(controller.linkedOf(bound).map(row => row.pendingInteraction)).toEqual(['plan-review'])
+    sessions.setWaiting('s-link', undefined)
+    expect(controller.linkedOf(bound).map(row => row.pendingInteraction)).toEqual([undefined])
   })
 
   it('AC4: a ready list that is missing a related row does NOT leave on the first pass, and leaves on the second', async () => {

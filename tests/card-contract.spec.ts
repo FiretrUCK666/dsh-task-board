@@ -246,6 +246,12 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     // only place that renders it, so no caller can forget it.
     const ui = readFileSync(fileURLToPath(new URL('../src/client/board/ui.tsx', import.meta.url)), 'utf8')
     expect(ui).toContain('className={css.detailSectionBody}')
+    // The body also relays its fold's definite height to the scroll region
+    // inside (grow + shrinkable to zero): a height-bounded fold must be able
+    // to hand its share down, or the scroll box inside grows to full content
+    // and can never scroll on its own (the desktop comments-box defect).
+    expect(body).toMatch(/flex:\s*1 1 auto/)
+    expect(body).toMatch(/min-height:\s*0/)
   })
 
   it('every interface font-size sits on the declared scale', () => {

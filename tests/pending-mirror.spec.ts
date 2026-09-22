@@ -107,6 +107,36 @@ describe('PendingMirror', () => {
     expect(mirror.answerInPlace).toBe(false)
   })
 
+  it('waitingKindOf reads the SIGNAL from the status envelope — all three kinds, unknown reads as none', () => {
+    const ui = new FakeUiSession()
+    ui.snapshot = new Map([
+      ['s-1', status(question('question:1', 's-1', '一')[1])],
+      ['s-2', status(question('plan:1', 's-2', 'p', 'plan-review')[1])],
+      ['s-3', status({ key: 'approval:1', kind: 'approval', sessionId: 's-3' })],
+      ['s-4', status({ key: 'future:1', kind: 'future-domain', sessionId: 's-4' })],
+      ['s-run', idleStatus(true)],
+    ])
+    const mirror = new PendingMirror(ui)
+    expect(mirror.waitingKindOf('s-1')).toBe('question')
+    expect(mirror.waitingKindOf('s-2')).toBe('plan-review')
+    // The SIGNAL keeps approvals the CONTENT projection drops on purpose —
+    // the bell and the card chips must show an approval wait even though the
+    // board never renders an approval card (the native surface owns it).
+    expect(mirror.waitingKindOf('s-3')).toBe('approval')
+    expect(mirror.pendingOf('s-3')).toBeUndefined()
+    // An unknown future domain kind reads as NOT waiting — never a guessed label.
+    expect(mirror.waitingKindOf('s-4')).toBeUndefined()
+    expect(mirror.waitingKindOf('s-run')).toBeUndefined()
+    expect(mirror.waitingKindOf(undefined)).toBeUndefined()
+  })
+
+  it('without a uiSession the face observes no waiting (honest absence)', () => {
+    const mirror = new PendingMirror(undefined)
+    expect(mirror.waitingKindOf('s-1')).toBeUndefined()
+    expect(mirror.pendingOf('s-1')).toBeUndefined()
+    expect(mirror.answerInPlace).toBe(false)
+  })
+
   it('never renders approval carriers', () => {
     const ui = new FakeUiSession()
     ui.snapshot = new Map([

@@ -37,7 +37,6 @@ export interface LinkedSessionSource {
     /** Whether the session is still working (activity: own turn ∨ running
      *  subagent descendant), as resolved by the caller. */
     running: boolean;
-    pendingInteraction?: PendingInteractionKind;
     completed?: boolean;
     updatedAt: number;
 }

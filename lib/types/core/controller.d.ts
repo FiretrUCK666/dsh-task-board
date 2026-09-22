@@ -17,7 +17,7 @@ import { type LinkedSessionRow } from './linked-sessions.ts';
 import { type LatestUserMessage } from './session-activity.ts';
 import { type TaskLiveState } from './task-live.ts';
 import { type TaskSessionRow } from './session-list.ts';
-import type { QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts';
+import type { PendingInteractionKind, QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts';
 import { type GoalActivationChanged, type GoalServiceFace, type GoalVerbs } from './goal-verbs.ts';
 import type { TaskStore } from './store.ts';
 import type { SkipLedger } from './scheduler.ts';
@@ -28,8 +28,10 @@ export declare const DEFAULT_CRUISE_LIMIT = 5;
  *  clamp and reads normalize to one pair). Re-exported so board surfaces
  *  keep importing it from the controller. */
 export declare const MAX_CRUISE_LIMIT = 20;
-/** The native session-list "waiting for the user" signal (sidebar amber dot). */
-export type PendingInteractionKind = 'approval' | 'plan-review' | 'question';
+/** Re-export: the waiting-kind union lives beside the question face that
+ *  reads it (the official session-status snapshot's `pendingInteraction.kind`);
+ *  board surfaces keep importing it from the controller. */
+export type { PendingInteractionKind };
 /** The sessions face the controller needs (catalog reads + navigation). */
 export interface SessionsControllerFace {
     list: {
@@ -66,8 +68,6 @@ export interface SessionsControllerFace {
                 parentId?: string;
                 /** Coarse durable origin; `'subagent'` marks an agent-summoned session. */
                 origin?: 'subagent';
-                /** User interaction the session is blocked on (approval / plan review / question). */
-                pendingInteraction?: PendingInteractionKind;
                 /** The session's real workspace root, when the host recorded one. */
                 cwd?: string;
                 /** The workspace id the host attributes the session to, when known. */
@@ -826,9 +826,11 @@ export declare class BoardController {
     subscribeGoalActivation(sessionId: string, listener: (goal: GoalActivationChanged | undefined) => void): (() => void) | undefined;
     /**
      * The user interaction an execution session is currently blocked on
-     * (`approval` / `plan-review` / `question`), straight from the native
-     * session-list summary (the same signal as the sidebar's amber dot).
-     * undefined = the session is not waiting (or no longer listed).
+     * (`approval` / `plan-review` / `question`) — THE waiting signal, read from
+     * the official session-status snapshot through the question face (the same
+     * source the native sidebar's amber dot derives; the session LIST never
+     * carries this field). undefined = the session is not waiting (or the face
+     * cannot observe waiting).
      */
     pendingInteractionOf(sessionId: string | undefined): PendingInteractionKind | undefined;
     /** The open ask_user_question batch for a session (the interaction card's

@@ -14,7 +14,6 @@ function session(overrides: Partial<LinkedSessionSource> & { title?: string }): 
     cwd: '/work/a',
     blank: false,
     running: false,
-    pendingInteraction: undefined,
     completed: false,
     updatedAt: 100,
     ...overrides,
@@ -51,12 +50,17 @@ describe('deriveLinkedSessions', () => {
     expect(deriveLinkedSessions({ kind: 'workspace', workspaceId: 'gone' }, sources())).toEqual([])
   })
 
-  it('a session bind rides live status through (running / pendingInteraction / completed)', () => {
+  it('a session bind rides live status through (running / completed); waiting is NOT a source field', () => {
     const src = sources()
-    src.byId['s-4'] = session({ title: '进行中', running: false, pendingInteraction: 'question', updatedAt: 40 })
+    src.byId['s-4'] = session({ title: '进行中', running: false, updatedAt: 40 })
     const rows = deriveLinkedSessions({ kind: 'session', sessionId: 's-4' }, src)
     expect(rows).toHaveLength(1)
-    expect(rows[0].pendingInteraction).toBe('question')
+    expect(rows[0].running).toBe(false)
+    expect(rows[0].completed).toBe(false)
+    // The waiting SIGNAL never rides the list-shaped source (the host's rows
+    // carry no such field): controller.linkedOf overrides it from the question
+    // face — covered in controller.spec 「linked rows carry the waiting signal」.
+    expect('pendingInteraction' in rows[0]).toBe(false)
   })
 
   it('the title slot never carries the folder name — an unnamed row keeps the id for the 未命名 grammar', () => {

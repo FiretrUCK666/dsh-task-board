@@ -278,14 +278,12 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
   // Memoized: derivation walks every round, so unrelated local state (typing
   // in a filter box, expanding one row) must not re-walk the ledger.
   //
-  // The question faces ride the same memo: signal (pendingInteraction) and
-  // content (questionPendingOf) arrive on DIFFERENT subscriptions, and the
-  // `questionTick` below re-fires this memo when a batch body lands — without
-  // it the excerpt would freeze at the signal's first frame. `arrivalTick`
-  // re-fires it once per new waiting key so the arrival-sorted list settles
-  // in the same pass the stamp map lands.
-  const [questionTick, setQuestionTick] = useState(0)
-  useEffect(() => controller.subscribeQuestions(() => { setQuestionTick(tick => tick + 1) }), [controller])
+  // Signal (pendingInteraction) and content (questionPendingOf) read the SAME
+  // official session-status snapshot, and the controller subscribes to it —
+  // any change arrives as one notify, handing this memo a fresh `snapshot`.
+  // What the memo still needs locally is `arrivalTick`: it re-fires once per
+  // new waiting key so the arrival-sorted list settles in the same pass the
+  // stamp map lands.
   // The arrival clock (the board's own eyes — memory only, never synced):
   // when THIS browser first saw each waiting row. A wait that fires late in
   // a long turn sorts by this instant, never by the round's start. First
@@ -305,7 +303,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     },
     note => arrivalOf(arrivalSeen, note),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [snapshot.tasks, snapshot, controller, questionTick, arrivalTick, arrivalSeen])
+  ), [snapshot.tasks, snapshot, controller, arrivalTick, arrivalSeen])
   useEffect(() => {
     setArrivalSeen(current => {
       const next = stampWaitingArrivals(current, notes, Date.now())
@@ -1928,7 +1926,8 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   // The task's pending sessions (approval / plan-review /
                   // question) across every execution + the refine session —
                   // read live so cards reflect the moment a session starts
-                  // waiting (the controller notifies on session-list changes).
+                  // waiting (the controller notifies on the question face's
+                  // session-status snapshot — the waiting signal's source).
                   const pending = taskPendingCount(task, sessionId => controller.pendingInteractionOf(sessionId))
                   // ANY session of the card can be the one blocked on a human
                   // now (per-session lanes), so the chip reads the card's
