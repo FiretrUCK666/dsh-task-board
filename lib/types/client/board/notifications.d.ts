@@ -175,9 +175,12 @@ export declare function arrivalOf(seen: ReadonlyMap<string, number>, note: Pick<
  *   waiting → 权限审批 / 计划确认 / 提问 (the interaction the agent waits on)
  *   review  → 待决策 (failed) / 待审核 (succeeded or open) / 已取消 (cancelled)
  *
- * Cancelled is its own state: it used to fall through to the green 待审核
- * word, which promised a decision that did not exist. Returns the KEY (not
- * the word) so copy stays in the locale dict; the row renders `t(label)`.
+ * Two colours, one meaning each: 待审核 wears AMBER — the same "needs you"
+ * language as the waiting chips and the card's 待你决断 badge (green read as
+ * "done", which a run nobody has decided is not); failed is red; cancelled
+ * is muted (it used to fall through to the green 待审核 word, promising a
+ * decision that did not exist). Returns the KEY (not the word) so copy stays
+ * in the locale dict; the row renders `t(label)`.
  */
 export declare function noteStatusShapeOf(note: NotificationItem): {
     kind: 'warn' | 'error' | 'success' | 'muted';

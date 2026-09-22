@@ -12,7 +12,7 @@
  * dragover, read at drop) so the drop always matches the preview; only the
  * indicator rendering goes through state.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
@@ -67,9 +67,10 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
   if (item.kind === 'external') return { kind: 'neutral', label: t('board.activityExternal') }
   return { kind: 'neutral', label: t('board.activityCreated') }
 }
-import { activityOf, freezeFeed, CLUSTER_KINDS, type ActivityItem } from './activity.ts'
+import { activityFoldKeyOf, activityOf, foldFeedByTaskDay, foldRestKeyOf, freezeFeed, sectionFoldBySession, splitFoldItems, CLUSTER_KINDS, type ActivityItem, type ActivityTaskFold } from './activity.ts'
 import { flowSummaryOf } from '../../core/flow-metrics.ts'
 import { Chip } from './Chip.tsx'
+import { FeedRow } from './FeedRow.tsx'
 import { reloadForFreshBundle, type BundleFreshnessState } from '../bundle-freshness.ts'
 import { sendClientReport } from '../client-report.ts'
 
@@ -248,10 +249,15 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
   const [activityUnviewed, setActivityUnviewed] = useState(false)
   const [activityShown, setActivityShown] = useState(30)
   const [expandedActivityKey, setExpandedActivityKey] = useState<string | undefined>(undefined)
+  // 动态任务折叠组（单开；键 = task|day）：开屉时最新组自动展开（最新默认展
+  // —「刚发生了什么」零点击自答），切筛选/关屉即复位，收起后保持收起。
+  const [expandedActivityFold, setExpandedActivityFold] = useState<string | undefined>(undefined)
+  const activityFoldInitRef = useRef(false)
   useEffect(() => {
     if (showActivity) {
       setActivityShown(30)
       setExpandedActivityKey(undefined)
+      setExpandedActivityFold(undefined)
     } else {
       setFailedSession(undefined)
     }
@@ -411,6 +417,18 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
   useEffect(() => {
     if (showActivity) setFeedBase(activityFeed.length)
   }, [showActivity, activityKind, activityQuery, activityUnviewed])
+  // Newest-task-fold auto-expansion (once per open; a user collapse sticks —
+  // the ref only re-arms when the drawer closes).
+  useEffect(() => {
+    if (!showActivity || activityFoldInitRef.current) return
+    activityFoldInitRef.current = true
+    const first = activityFeed[0]
+    if (first === undefined) return
+    setExpandedActivityFold(activityFoldKeyOf(first.taskId, dayBucketOf(first.at)))
+  }, [showActivity, activityFeed])
+  useEffect(() => {
+    if (!showActivity) activityFoldInitRef.current = false
+  }, [showActivity])
   // 多选（Ctrl/Cmd+点击即选，整理模式整选；板头横栏批量换色/删除/全选清选）。
   const [organizing, setOrganizing] = useState(false)
   // The engine-seat note the header chip opens (touch has no hover, so the
@@ -2070,11 +2088,10 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                 {(() => {
                   // ONE row grammar, ONE row per session — no folding, no
                   // hidden members: the drawer answers "what does each
-                  // session of each card owe me" at a glance.
-                  // Identity line order: [task][session][status] — the card
-                  // and its conversation read as one unit, the status sits
-                  // next to the actions it explains; the cluster carries the
-                  // row's time first.
+                  // session of each card owe me" at a glance. The row SKELETON
+                  // is FeedRow (shared with the activity drawer): identity
+                  // [task][session][status] …… [time][actions], optional
+                  // content line below.
                   // WAITING ROW ACTION MATRIX:
                   // - question/plan-review WITH a readable carrier AND an
                   //   interactive host → 「去回答」(lands on the in-board
@@ -2106,114 +2123,109 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       setShowNotify(false)
                       openTaskAtSession(note.taskId, note.sessionId)
                     }
-                    return (
-                      <li key={key}>
-                        <div className={css.notifyRow} data-kind={note.kind}>
+                    const excerpt = note.kind === 'waiting'
+                      && (note.excerpt !== undefined || note.waitingKind === 'approval' || note.answerable !== true)
+                      ? note.excerpt !== undefined && note.excerpt !== ''
+                        ? note.excerpt
+                        : note.waitingKind === 'approval'
+                          ? t('waiting.approvalHint')
+                          : t('review.interactionBodyMissing')
+                      : undefined
+                    const actions = note.kind === 'waiting' ? (
+                      <>
+                        {goAnswer && (
                           <button
                             type="button"
-                            className={css.notifyMain}
-                            title={note.taskTitle}
+                            className={css.feedAction}
                             onClick={goAnswerLanding}
                           >
-                            <span className={css.notifyTask}>{taskTitle}</span>
-                            <span className={css.notifySession} title={note.sessionId}>{note.sessionTitle}</span>
-                            <Chip kind={status.kind} fill={false}>{t(status.label)}</Chip>
+                            {t('board.notifyGoAnswer')}
                           </button>
-                          {(note.kind === 'waiting' && (note.excerpt !== undefined || note.waitingKind === 'approval' || note.answerable !== true)) && (
-                            <p className={css.notifyExcerpt}>
-                              {note.excerpt !== undefined && note.excerpt !== ''
-                                ? note.excerpt
-                                : note.waitingKind === 'approval'
-                                  ? t('waiting.approvalHint')
-                                  : t('review.interactionBodyMissing')}
-                            </p>
-                          )}
-                          <span className={css.notifyActions}>
-                            <span className={css.notifyMeta}>{formatTime(note.at)}</span>
-                            {note.kind === 'waiting' ? (
-                              <>
-                                {goAnswer && (
-                                  <button
-                                    type="button"
-                                    className={css.feedAction}
-                                    onClick={goAnswerLanding}
-                                  >
-                                    {t('board.notifyGoAnswer')}
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className={css.feedAction}
-                                  onClick={() => {
-                                    if (!controller.openSession(note.sessionId)) setFailedSession(note.sessionId)
-                                  }}
-                                >
-                                  {t('board.notifyGoSession')}
-                                </button>
-                              </>
-                            ) : gateBusy ? (
-                              // A busy gate keeps exactly one honest affordance:
-                              // the row that explains why there is nothing to
-                              // decide yet (the detail page owns the decision).
-                              // 通过/打回/标读 all wait for the settle — hiding
-                              // the gate instead of disabling it would read as
-                              // "already decided".
-                              <button
-                                type="button"
-                                className={css.feedAction}
-                                onClick={() => { setShowNotify(false); openTaskAtSession(note.taskId, note.sessionId) }}
-                              >
-                                {t('board.activityOpen')}
-                              </button>
-                            ) : (
-                              <>
-                                {/* The review gate decides a FINISHED run — and only a
-                                    finished one. While any round of this card is still
-                                    in flight there is nothing to 通过/打回 yet: both
-                                    buttons refuse with the same inline reason the
-                                    review page shows (disabled + title + row hint on
-                                    tap), never a silent no-op, never a yank into
-                                    done mid-flight (approveTask guards it too — the
-                                    door, not just the paint). */}
-                                <button
-                                  type="button"
-                                  className={css.feedAction}
-                                  disabled={gateBusy}
-                                  title={t('board.notifyApproveBlocked')}
-                                  onClick={() => {
-                                    if (controller.approveTask(note.taskId)) setApproveBlockedKey(undefined)
-                                    else setApproveBlockedKey(key)
-                                  }}
-                                >
-                                  {t('board.notifyApprove')}
-                                </button>
-                                <button
-                                  type="button"
-                                  className={css.feedAction}
-                                  disabled={gateBusy}
-                                  title={t('review.sendBackTitle')}
-                                  onClick={() => {
-                                    const current = snapshot.tasks.find(candidate => candidate.id === note.taskId)
-                                    if (current === undefined || hasOpenRun(current)) {
-                                      setApproveBlockedKey(key)
-                                      return
-                                    }
-                                    controller.moveTask(note.taskId, 'todo')
-                                  }}
-                                >
-                                  {t('review.sendBack')}
-                                </button>
-                                <button
-                                  type="button"
-                                  className={css.feedAction}
-                                  onClick={() => { controller.markTaskViewed(note.taskId) }}
-                                >
-                                  {t('board.notifyMarkOne')}
-                                </button>
-                              </>
-                            )}
-                          </span>
-                        </div>
+                        )}
+                        <button
+                          type="button"
+                          className={css.feedAction}
+                          onClick={() => {
+                            if (!controller.openSession(note.sessionId)) setFailedSession(note.sessionId)
+                          }}
+                        >
+                          {t('board.notifyGoSession')}
+                        </button>
+                      </>
+                    ) : gateBusy ? (
+                      // A busy gate keeps exactly one honest affordance:
+                      // the row that explains why there is nothing to
+                      // decide yet (the detail page owns the decision).
+                      // 通过/打回/标读 all wait for the settle — hiding
+                      // the gate instead of disabling it would read as
+                      // "already decided".
+                      <button
+                        type="button"
+                        className={css.feedAction}
+                        onClick={() => { setShowNotify(false); openTaskAtSession(note.taskId, note.sessionId) }}
+                      >
+                        {t('board.activityOpen')}
+                      </button>
+                    ) : (
+                      <>
+                        {/* The review gate decides a FINISHED run — and only a
+                            finished one. While any round of this card is still
+                            in flight there is nothing to 通过/打回 yet: both
+                            buttons refuse with the same inline reason the
+                            review page shows (disabled + title + row hint on
+                            tap), never a silent no-op, never a yank into
+                            done mid-flight (approveTask guards it too — the
+                            door, not just the paint). */}
+                        <button
+                          type="button"
+                          className={css.feedAction}
+                          disabled={gateBusy}
+                          title={t('board.notifyApproveBlocked')}
+                          onClick={() => {
+                            if (controller.approveTask(note.taskId)) setApproveBlockedKey(undefined)
+                            else setApproveBlockedKey(key)
+                          }}
+                        >
+                          {t('board.notifyApprove')}
+                        </button>
+                        <button
+                          type="button"
+                          className={css.feedAction}
+                          disabled={gateBusy}
+                          title={t('review.sendBackTitle')}
+                          onClick={() => {
+                            const current = snapshot.tasks.find(candidate => candidate.id === note.taskId)
+                            if (current === undefined || hasOpenRun(current)) {
+                              setApproveBlockedKey(key)
+                              return
+                            }
+                            controller.moveTask(note.taskId, 'todo')
+                          }}
+                        >
+                          {t('review.sendBack')}
+                        </button>
+                        <button
+                          type="button"
+                          className={css.feedAction}
+                          onClick={() => { controller.markTaskViewed(note.taskId) }}
+                        >
+                          {t('board.notifyMarkOne')}
+                        </button>
+                      </>
+                    )
+                    return (
+                      <li key={key}>
+                        <FeedRow
+                          task={taskTitle}
+                          session={note.sessionTitle}
+                          sessionTitle={note.sessionId}
+                          status={{ kind: status.kind, label: t(status.label) }}
+                          {...(excerpt !== undefined ? { excerpt } : {})}
+                          time={formatTime(note.at)}
+                          mainTitle={note.taskTitle}
+                          onMainClick={goAnswerLanding}
+                          actions={actions}
+                        />
                         {failedSession === note.sessionId && (
                           <p className={css.detailHint}>
                             {sessionUnavailableReasonOf(controller.sessionAvailability(note.sessionId)) ?? t('detail.sessionUnavailable')}
@@ -2292,15 +2304,15 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                 if (list !== undefined) list.push(item)
                 else groups.set(day, [item])
               }
-              // ONE row grammar with the notify drawer: [task][session][status]
-              // on the identity line, the moment's text as the second line,
-              // the row's time leading the action cluster. The button takes
-              // NO aria-label — its accessible name IS its content (titles,
-              // session, status, excerpt), which an overriding label would
-              // silence. No unread signal here by contract — unread breathes
-              // on the card / session rows; the filter-level `onlyUnviewed`
-              // still applies.
-              const renderActivityRow = (item: ActivityItem): ReactNode => {
+              // Hierarchy: day → TASK FOLD → session section → row. Rows and
+              // headers share the FeedRow skeleton with the notify drawer
+              // (one widget, never two dialects); inside a fold the TITLES
+              // move to the headers (task on the fold head, session on the
+              // section line), so a member row never repeats them.
+              // No unread signal here by contract — unread breaths on the
+              // card / session rows; the filter-level `onlyUnviewed` still
+              // applies.
+              const renderActivityRow = (item: ActivityItem, inFold: boolean): ReactNode => {
                 const chip = activityChipOf(item)
                 const expanded = expandedActivityKey === item.key
                 const title = titleOrUntitled(item.taskTitle, t('card.untitled'))
@@ -2310,46 +2322,41 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                 const hasText = item.text !== undefined && item.text.trim() !== ''
                 return (
                   <li key={item.key}>
-                    <div className={css.notifyRow} data-kind={item.kind}>
-                      <button
-                        type="button"
-                        className={css.notifyMain}
-                        title={item.taskTitle}
-                        aria-expanded={expanded}
-                        aria-controls={`dsh-tb-activity-${item.key}`}
-                        onClick={() => { setExpandedActivityKey(current => current === item.key ? undefined : item.key) }}
-                      >
-                        <span className={css.notifyTask}>{title}</span>
-                        {sessionTitle !== undefined && (
-                          <span className={css.notifySession} title={item.sessionId}>{sessionTitle}</span>
-                        )}
-                        <Chip kind={chip.kind} fill={false}>{chip.label}</Chip>
-                      </button>
-                      {hasText && (
-                        <p className={css.notifyExcerpt}>{item.text}</p>
-                      )}
-                      <span className={css.notifyActions}>
-                        <span className={css.notifyMeta}>{formatTime(item.at)}</span>
-                        <button
-                          type="button"
-                          className={css.feedAction}
-                          onClick={() => { setShowActivity(false); openTaskAtSession(item.taskId, item.sessionId) }}
-                        >
-                          {t('board.activityOpen')}
-                        </button>
-                        {item.sessionId !== undefined && (
+                    <FeedRow
+                      {...(!inFold ? { task: title } : {})}
+                      {...(!inFold && sessionTitle !== undefined
+                        ? { session: sessionTitle, sessionTitle: item.sessionId }
+                        : {})}
+                      status={chip}
+                      {...(hasText ? { excerpt: item.text } : {})}
+                      time={formatTime(item.at)}
+                      mainTitle={item.taskTitle}
+                      mainExpanded={expanded}
+                      mainControls={`dsh-tb-activity-${item.key}`}
+                      onMainClick={() => { setExpandedActivityKey(current => current === item.key ? undefined : item.key) }}
+                      actions={
+                        <>
                           <button
                             type="button"
                             className={css.feedAction}
-                            onClick={() => {
-                              if (!controller.openSession(item.sessionId!)) setFailedSession(item.sessionId)
-                            }}
+                            onClick={() => { setShowActivity(false); openTaskAtSession(item.taskId, item.sessionId) }}
                           >
-                            {t('board.notifyGoSession')}
+                            {t('board.activityOpen')}
                           </button>
-                        )}
-                      </span>
-                    </div>
+                          {item.sessionId !== undefined && (
+                            <button
+                              type="button"
+                              className={css.feedAction}
+                              onClick={() => {
+                                if (!controller.openSession(item.sessionId!)) setFailedSession(item.sessionId)
+                              }}
+                            >
+                              {t('board.notifyGoSession')}
+                            </button>
+                          )}
+                        </>
+                      }
+                    />
                     {expanded && (
                       <div className={css.feedPreview} id={`dsh-tb-activity-${item.key}`}>
                         <p className={css.detailText}>
@@ -2364,6 +2371,78 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       <p className={css.detailHint}>
                         {sessionUnavailableReasonOf(controller.sessionAvailability(item.sessionId)) ?? t('detail.sessionUnavailable')}
                       </p>
+                    )}
+                  </li>
+                )
+              }
+              // One TASK fold inside a day: a single-moment task stays a bare
+              // row (sparse days look unchanged); a busy task folds behind a
+              // chevron header (title ×N · newest time · 进详情), and opening
+              // it sections the rows BY SESSION (session-less moments sit
+              // headerless under the same rule the whole drawer follows).
+              // The expanded member list is capped — newest first, one quiet
+              // remainder line — so one card's flood cannot bury the day.
+              const renderFold = (fold: ActivityTaskFold): ReactNode => {
+                if (fold.items.length === 1) return renderActivityRow(fold.items[0], false)
+                const open = expandedActivityFold === fold.key
+                const foldId = `dsh-tb-fold-${fold.key}`
+                const head = fold.items[0]
+                const headTitle = titleOrUntitled(fold.taskTitle, t('card.untitled'))
+                const split = splitFoldItems(fold.items)
+                const sections = sectionFoldBySession(split.shown)
+                return (
+                  <li key={fold.key}>
+                    <div className={css.notifyRow}>
+                      <button
+                        type="button"
+                        className={css.feedAction}
+                        aria-expanded={open}
+                        aria-controls={foldId}
+                        aria-label={headTitle}
+                        onClick={() => { setExpandedActivityFold(current => current === fold.key ? undefined : fold.key) }}
+                      >
+                        <Icon name="chevronDown" className={css.detailChevron} />
+                      </button>
+                      <button
+                        type="button"
+                        className={css.notifyMain}
+                        title={fold.taskTitle}
+                        onClick={() => { setShowActivity(false); openTaskAtSession(fold.taskId, head.sessionId) }}
+                      >
+                        <span className={css.notifyTask}>{headTitle}</span>
+                        <Chip kind="neutral" fill={false}>{`×${fold.items.length}`}</Chip>
+                      </button>
+                      <span className={css.notifyActions}>
+                        <span className={css.notifyMeta}>{formatTime(head.at)}</span>
+                        <button
+                          type="button"
+                          className={css.feedAction}
+                          onClick={() => { setShowActivity(false); openTaskAtSession(fold.taskId, head.sessionId) }}
+                        >
+                          {t('board.activityOpen')}
+                        </button>
+                      </span>
+                    </div>
+                    {open && (
+                      <ul className={css.notifyList} id={foldId}>
+                        {sections.map(section => (
+                          <Fragment key={section.sessionId ?? `${fold.key}|task`}>
+                            {section.sessionId !== undefined && (
+                              <li className={css.feedSection}>
+                                {controller.sessionTitle(section.sessionId) ?? section.sessionId}
+                              </li>
+                            )}
+                            {section.items.map(item => renderActivityRow(item, true))}
+                          </Fragment>
+                        ))}
+                        {split.rest > 0 && (
+                          <li key={foldRestKeyOf(fold.key)}>
+                            <p className={css.detailHint}>
+                              {t('board.activityGroupRest', { n: String(split.rest) })}
+                            </p>
+                          </li>
+                        )}
+                      </ul>
                     )}
                   </li>
                 )
@@ -2385,7 +2464,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                     <section key={day} aria-label={dayLabelOf(day, todayBucket)}>
                       <h3 className={css.feedDay}>{dayLabelOf(day, todayBucket)}</h3>
                       <ul className={css.notifyList}>
-                        {items.map(renderActivityRow)}
+                        {foldFeedByTaskDay(items, dayBucketOf).map(renderFold)}
                       </ul>
                     </section>
                   ))}

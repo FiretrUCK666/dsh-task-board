@@ -1264,30 +1264,39 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
   it('every row answers WHEN: a tabular time stamp rides the action cluster', () => {
     expect(ruleOf('notifyMeta')).toMatch(/flex:\s*none/)
     expect(ruleOf('notifyMeta')).toMatch(/font-variant-numeric:\s*tabular-nums/)
-    expect(board).toContain('css.notifyMeta}>{formatTime(note.at)}')
-    expect(board).toContain('css.notifyMeta}>{formatTime(item.at)}')
+    // The stamp lives ONCE — inside the shared row's action cluster — and
+    // both drawers hand it their moment.
+    const feedRowSource = readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8')
+    const actionsAt = feedRowSource.indexOf('css.notifyActions')
+    expect(actionsAt).toBeGreaterThan(-1)
+    expect(feedRowSource.slice(actionsAt)).toContain('css.notifyMeta}>{time}')
+    expect(board).toContain('time={formatTime(note.at)}')
+    expect(board).toContain('time={formatTime(item.at)}')
   })
 
-  it('identity order is [task][session][status] in BOTH drawers', () => {
-    // The user-facing ask, pinned structurally: the session title sits RIGHT
-    // OF the task (they read as one unit) and the status sits next to the
-    // actions it explains — not between the two titles.
-    const notifyRow = board.slice(board.indexOf('const renderNotifyRow'), board.indexOf('return visibleNotes.map(renderNotifyRow)'))
-    expect(notifyRow.indexOf('css.notifyTask')).toBeGreaterThan(-1)
-    expect(notifyRow.indexOf('css.notifyTask')).toBeLessThan(notifyRow.indexOf('css.notifySession'))
-    expect(notifyRow.indexOf('css.notifySession')).toBeLessThan(notifyRow.indexOf('<Chip'))
-    // Cut BEFORE the day-section wrapper (its aria-label belongs to the day
-    // header, not to a row).
-    const activityRow = board.slice(board.indexOf('const renderActivityRow'), board.indexOf('Queued arrivals'))
-    expect(activityRow.indexOf('css.notifyTask')).toBeLessThan(activityRow.indexOf('css.notifySession'))
-    expect(activityRow.indexOf('css.notifySession')).toBeLessThan(activityRow.indexOf('<Chip'))
-    // No aria-label may override the row's own content (it would silence the
-    // session title, status and excerpt from assistive tech).
-    expect(notifyRow).not.toContain('aria-label=')
-    expect(activityRow).not.toContain('aria-label=')
+  it('ONE row skeleton serves both drawers: [task][session][status] …… [time][actions], no aria-label', () => {
+    // 「排版各搞一块」根治的结构保证：身份槽顺序、时间戳、动作簇只住在
+    // FeedRow 里；两个抽屉都渲染它，谁也不许再手拼一行。
+    const feedRow = readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8')
+    expect(feedRow.indexOf('css.notifyTask')).toBeGreaterThan(-1)
+    expect(feedRow.indexOf('css.notifyTask')).toBeLessThan(feedRow.indexOf('css.notifySession'))
+    expect(feedRow.indexOf('css.notifySession')).toBeLessThan(feedRow.indexOf('<Chip'))
+    // The skeleton carries NO aria-label — the row's accessible name IS its
+    // content (titles, session, status, excerpt); an overriding label would
+    // silence exactly the parts users asked to see.
+    expect(feedRow).not.toContain('aria-label=')
+    const notifySlice = board.slice(board.indexOf('const renderNotifyRow'), board.indexOf('return visibleNotes.map(renderNotifyRow)'))
+    const activitySlice = board.slice(board.indexOf('const renderActivityRow'), board.indexOf('const renderFold'))
+    expect(notifySlice).toContain('<FeedRow')
+    expect(activitySlice).toContain('<FeedRow')
+    // ……and neither drawer hand-rolls the identity slots anymore.
+    expect(notifySlice).not.toContain('css.notifyTask')
+    expect(notifySlice).not.toContain('css.notifySession')
+    expect(activitySlice).not.toContain('css.notifyTask')
+    expect(activitySlice).not.toContain('css.notifySession')
   })
 
-  it('the fold machinery is GONE (one row per session is the structure, not a view)', () => {
+  it('the old fold machinery stays dead; the NEW task-fold machinery is wired', () => {
     const notifications = readFileSync(fileURLToPath(new URL('../src/client/board/notifications.ts', import.meta.url)), 'utf8')
     const activity = readFileSync(fileURLToPath(new URL('../src/client/board/activity.ts', import.meta.url)), 'utf8')
     for (const dead of [
@@ -1296,17 +1305,78 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     ]) {
       expect(board.includes(dead) || notifications.includes(dead) || activity.includes(dead), `"${dead}" must not survive`).toBe(false)
     }
+    // The activity drawer folds by TASK × DAY again (the user-decided shape),
+    // sections by session, caps with a remainder — one constructor each.
+    expect(board).toContain('foldFeedByTaskDay')
+    expect(board).toContain('sectionFoldBySession')
+    expect(board).toContain('splitFoldItems')
+    expect(board).toContain('activityFoldKeyOf(')
+    expect(activity).toContain('foldRestKeyOf(')
     // The bell badge counts ROWS — the exact unit the drawer opens to.
     expect(board).toContain('const total = notes.length')
   })
 
   it('the row status word comes from ONE table; both dictionaries carry every state', () => {
     expect(board).toContain('noteStatusShapeOf(note)')
-    expect(board).toContain('{t(status.label)}')
+    // The board resolves the KEY at the call site; FeedRow renders the word.
+    expect(board).toContain('label: t(status.label)')
+    const feedRow = readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8')
+    expect(feedRow).toContain('status.label')
     const locales = readFileSync(fileURLToPath(new URL('../src/client/locales.ts', import.meta.url)), 'utf8')
     expect(locales.match(/'board\.notifyCancelled':/g), 'cancelled copy exists in both languages').toHaveLength(2)
     expect(locales.match(/'card\.dotUnread':/g), 'dot unread copy exists in both languages').toHaveLength(2)
-    // Removed copy stays removed (no orphan keys pointing at dead machinery).
-    expect(locales).not.toContain('board.activityGroupRest')
+    // The task fold's remainder line ships its copy in both languages too
+    // (the feature returned with a user; only its OLD names are banned above).
+    expect(locales.match(/'board\.activityGroupRest':/g)).toHaveLength(2)
+  })
+})
+
+describe('content-box family + interaction-card containment (the desktop truncation roots)', () => {
+  /** Every rule block (selector tail + body) in the sheet. */
+  const rules = [...source.matchAll(/([^{}]+)\{([^}]*)\}/g)].map(match => ({
+    selectors: match[1].trim().split('\n').pop()?.trim() ?? '',
+    body: match[2],
+  }))
+  /** A padding/border value that adds no chrome (empty / none / zeros). */
+  const chromeless = (value: string): boolean => {
+    const cleaned = value.replace(/;/g, '').trim()
+    if (cleaned === '' || cleaned === 'none') return true
+    return cleaned.split(/\s+/).every(token => /^0(px)?$/.test(token))
+  }
+
+  it('every width:100% rule with real padding/border declares border-box (the overflow family)', () => {
+    // THE 「电脑端提问截断/横条」root, generalized: under the host's
+    // content-box default, width:100% + padding/border makes a box WIDER
+    // than its parent; any overflow-y scroller (whose other axis computes to
+    // auto per spec) then shows a horizontal scrollbar. Whole-sheet scan, so
+    // the family can never quietly return.
+    const offenders: string[] = []
+    for (const { selectors, body } of rules) {
+      if (!/(?<!max-)width:\s*100%/.test(body)) continue
+      if (/box-sizing:\s*border-box/.test(body)) continue
+      const padding = /padding:\s*([^;]+)/.exec(body)?.[1]
+      const border = /(?:^|\n)\s*border:\s*([^;]+)/.exec(body)?.[1]
+      const padded = padding !== undefined && !chromeless(padding)
+      const bordered = border !== undefined && !chromeless(border)
+      if (padded || bordered) offenders.push(`${selectors} (padding: ${padding ?? '-'}; border: ${border ?? '-'})`)
+    }
+    expect(offenders, 'these rules overflow their parent by their own chrome — add box-sizing: border-box (or strip the chrome)').toEqual([])
+  })
+
+  it('the interaction card cannot pierce its rails (wrap at every layer, one scrollbar grammar)', () => {
+    // Plan body: the ONLY content wrapper that lacked the break-word law its
+    // siblings carry — a plan's long token overflowed and the implicit
+    // overflow-x scrolled sideways on desktop (「plan 卡也出横条」).
+    expect(ruleOf('interactionPlanBody')).toMatch(/overflow-wrap:\s*break-word/)
+    // Question body rows: chrome stays inside width:100%.
+    expect(ruleOf('interactionOptionButton')).toMatch(/box-sizing:\s*border-box/)
+    expect(ruleOf('interactionCustomRow')).toMatch(/box-sizing:\s*border-box/)
+    // The read-only shell's chips wrap their labels inside their own box.
+    expect(ruleOf('interactionOption')).toMatch(/max-width:\s*100%/)
+    expect(ruleOf('interactionOption')).toMatch(/overflow-wrap:\s*anywhere/)
+    // Both card scrollers ride the ONE scrollbar grammar (their bars look
+    // like every other bar on the board — thin and themed, not the system
+    // default that outed the desktop-only bug).
+    expect(source).toMatch(/:is\([^)]*\.interactionCardBody, \.interactionBody, \.interactionPlanBody[^)]*\)\s*\{/)
   })
 })

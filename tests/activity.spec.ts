@@ -1,14 +1,14 @@
 /**
  * Board activity feed (client/board/activity.ts): derived moments, newest
  * first, capped; running/queued rounds ARE moments (their start lights the
- * feed); empty comments stay (the row shows a placeholder). Rows are flat
- * under their day header — waiting state is the notification drawer's job,
- * never the feed's.
+ * feed); empty comments stay (the row shows a placeholder). The drawer
+ * hierarchy is day → task fold → session section → row — waiting state is
+ * the notification drawer's job, never the feed's.
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { ACTIVITY_LIMIT, activityOf, clusterOf, freezeFeed } from '../src/client/board/activity.ts'
+import { ACTIVITY_LIMIT, FOLD_ITEM_LIMIT, activityFoldKeyOf, activityOf, clusterOf, foldFeedByTaskDay, foldRestKeyOf, freezeFeed, sectionFoldBySession, splitFoldItems } from '../src/client/board/activity.ts'
 import { createTask } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -101,6 +101,56 @@ it('never maps a waiting moment into the feed (state belongs to the drawer)', ()
   // quietly merge the two vocabularies.
   const source = readFileSync(fileURLToPath(new URL('../src/client/board/activity.ts', import.meta.url)), 'utf8')
   expect(source).toContain("if (event.kind === 'waiting') continue")
+})
+
+describe('task × day folds + session sections (the drawer hierarchy)', () => {
+  /** One synthetic row with an optional session (the grammar reads task/session/at). */
+  function sessionRow(key: string, taskId: string, sessionId: string | undefined, at: number) {
+    const base = { key, taskId, taskTitle: taskId, kind: 'comment' as const, at }
+    return sessionId === undefined ? base : { ...base, sessionId }
+  }
+  const dayOf = (at: number): string => `day${Math.floor(at / 100)}`
+
+  it('activityFoldKeyOf / foldRestKeyOf are THE constructors (state, list id and remainder agree)', () => {
+    expect(activityFoldKeyOf('a', 'day3')).toBe('a|day3')
+    expect(foldRestKeyOf('a|day3')).toBe('a|day3|rest')
+  })
+
+  it('folds same task + same day, preserving feed order; other tasks split', () => {
+    const folds = foldFeedByTaskDay([
+      sessionRow('a|3', 'a', 's1', 302),
+      sessionRow('b|1', 'b', 's2', 301),
+      sessionRow('a|2', 'a', 's1', 300),
+    ], dayOf)
+    expect(folds.map(fold => fold.key)).toEqual(['a|day3', 'b|day3'])
+    expect(folds[0]?.items.map(item => item.key)).toEqual(['a|3', 'a|2'])
+    expect(folds[0]?.taskTitle).toBe('a')
+  })
+
+  it('sections a fold BY SESSION in first-appearance order; session-less moments bucket too', () => {
+    const sections = sectionFoldBySession([
+      sessionRow('m1', 'a', 's1', 320),
+      sessionRow('m2', 'a', 's2', 310),
+      sessionRow('m3', 'a', 's1', 305),
+      sessionRow('m4', 'a', undefined, 300),
+    ])
+    expect(sections.map(section => section.sessionId)).toEqual(['s1', 's2', undefined])
+    expect(sections[0]?.items.map(item => item.key)).toEqual(['m1', 'm3'])
+    expect(sections[2]?.items.map(item => item.key)).toEqual(['m4'])
+  })
+
+  it('splitFoldItems caps the newest head and counts the rest (defensive normalize)', () => {
+    const items = Array.from({ length: FOLD_ITEM_LIMIT + 3 }, (_, index) =>
+      sessionRow(`a|${index}`, 'a', 's1', 100 + index))
+    const split = splitFoldItems(items)
+    expect(split.shown).toHaveLength(FOLD_ITEM_LIMIT)
+    expect(split.shown[0]?.key).toBe('a|0')
+    expect(split.rest).toBe(3)
+    expect(splitFoldItems(items.slice(0, 2)).rest).toBe(0)
+    expect(splitFoldItems(items, -1)).toEqual({ shown: [], rest: FOLD_ITEM_LIMIT + 3 })
+    expect(splitFoldItems(items, Number.NaN).shown).toHaveLength(FOLD_ITEM_LIMIT)
+    expect(splitFoldItems(items, 2.7).shown).toHaveLength(2)
+  })
 })
 
 describe('freezeFeed (read-freeze behind the pill)', () => {

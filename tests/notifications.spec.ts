@@ -143,6 +143,41 @@ describe('review rows (one per settled session of each unviewed review task)', (
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ kind: 'review', sessionId: 'old', result: 'succeeded', at: NOW + 3 })
   })
+
+  it('a comment-only session is a lane too (any settled round gets a face; refinement never does)', () => {
+    // The bound-conversation shape: driven natively — comment/observed rounds,
+    // NO plain run — the session still owes the gate a row, honestly without
+    // a run result (待审核) and on its own settle clock.
+    const chatTask = {
+      ...task('c', NOW + 5, { status: 'review' as const }),
+      refineSessionId: 's-refine',
+      executions: [
+        { id: 'c1', sessionId: 's-chat', startedAt: NOW + 1, endedAt: NOW + 4, result: 'succeeded' as const, error: undefined, comment: '你好', viewedAt: NOW + 1 },
+        { id: 'r1', sessionId: 's-refine', startedAt: NOW + 1, endedAt: NOW + 3, result: 'succeeded' as const, error: undefined, refine: true, viewedAt: NOW + 3 },
+      ],
+    }
+    const rows = notificationsExOf([chatTask], () => undefined, id => `title-${id}`, () => true)
+    expect(rows.map(row => row.sessionId)).toEqual(['s-chat'])
+    expect(rows[0]).toMatchObject({ kind: 'review', sessionTitle: 'title-s-chat', at: NOW + 4 })
+    expect(rows[0]?.result).toBeUndefined()
+  })
+
+  it('mixed lanes: each session keeps its OWN result and settle; failed still ranks first', () => {
+    const mixed = {
+      ...task('m', NOW + 9, { status: 'review' as const }),
+      executions: [
+        { id: 'e1', sessionId: 's-run', startedAt: NOW + 1, endedAt: NOW + 6, result: 'failed' as const, error: 'boom' },
+        { id: 'c1', sessionId: 's-chat', startedAt: NOW + 2, endedAt: NOW + 8, result: 'succeeded' as const, error: undefined, comment: '晚安' },
+      ],
+    }
+    const rows = notificationsExOf([mixed], () => undefined, id => id, () => true)
+    expect(rows.map(row => row.sessionId)).toEqual(['s-run', 's-chat'])
+    const runRow = rows.find(row => row.sessionId === 's-run')
+    const chatRow = rows.find(row => row.sessionId === 's-chat')
+    expect(runRow).toMatchObject({ result: 'failed', at: NOW + 6 })
+    expect(chatRow).toMatchObject({ at: NOW + 8 })
+    expect(chatRow?.result).toBeUndefined()
+  })
 })
 
 describe('bound waiting sessions (no round behind them)', () => {
@@ -473,13 +508,16 @@ describe('noteStatusShapeOf (THE status word per row — many states, one table)
   it('review rows separate the decision states (failed / cancelled / pending)', () => {
     expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined, result: 'failed' })))
       .toEqual({ kind: 'error', label: 'board.notifyReviewFailed' })
-    // Cancelled used to fall through to the green 待审核 word — a decision
-    // that does not exist. It is now its own muted state.
+    // Cancelled used to fall through to the pending word — a decision that
+    // does not exist. It is now its own muted state.
     expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined, result: 'cancelled' })))
       .toEqual({ kind: 'muted', label: 'board.notifyCancelled' })
+    // Pending wears AMBER — the same "needs you" language as the waiting
+    // chips and the card's 待你决断 badge (green read as "done", which a run
+    // nobody has decided is not).
     expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined, result: 'succeeded' })))
-      .toEqual({ kind: 'success', label: 'board.notifyReview' })
+      .toEqual({ kind: 'warn', label: 'board.notifyReview' })
     expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined })))
-      .toEqual({ kind: 'success', label: 'board.notifyReview' })
+      .toEqual({ kind: 'warn', label: 'board.notifyReview' })
   })
 })

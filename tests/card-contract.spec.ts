@@ -371,6 +371,12 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     expect(haloPeak, 'the live halo must be an INSET shadow').toMatch(/\binset\b/)
     expect(haloPeak, 'the halo amplitude token is the inset blur').toContain('var(--dsh-tb-breath-halo)')
     expect(haloPeak, 'the halo wears the soft alpha step').toContain('var(--dsh-tb-attention-alpha-soft)')
+    // …and it carries a SOFT OUTER component too: an inset-only pulse has no
+    // edge presence next to the card's static full-strength yellow border —
+    // 「进行中的卡边缘根本不呼吸」, misdiagnosed twice as the judgment. The
+    // ring stays outer-only at full strength, the halo = inset + soft edge;
+    // the two forms remain distinct by strength and inset.
+    expect(haloPeak, 'the halo breathes AT THE EDGE as well').toMatch(/,\s*0 0 var\(--dsh-tb-breath-spread\)/)
     const ringPeak = peakOf('dshTbBreathRing')
     expect(ringPeak, 'the unread ring must be an OUTER shadow').not.toMatch(/\binset\b/)
     expect(ringPeak, 'the ring amplitude token is the outer spread').toContain('var(--dsh-tb-breath-spread)')
@@ -628,10 +634,10 @@ describe('session unread glow family (row breath + dot breath, one clock)', () =
     expect(row).toContain("const glow = state === 'waiting' || state === 'running'")
     expect(row).toContain("unviewed === true ? 'unread' : 'none'")
     const detail = readFileSync(fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url)), 'utf8')
-    // Exactly ONE call site passes the clock: run rows. Linked external rows
-    // have no read state and honestly pass nothing.
-    expect(detail.match(/unviewed=\{/g)).toHaveLength(1)
-    expect(detail).toContain('unviewed={row.unviewed}')
+    // BOTH row families pass the same clock — run rows AND linked rows — and
+    // nothing may hand-roll a different read-state input.
+    expect(detail.match(/unviewed=\{sessionUnviewedOf\(task, sessionId\)\}/g)).toHaveLength(2)
+    expect(detail).not.toContain('row.unviewed')
   })
 
   it('the dot derivation is ONE precedence, consumed by the board render (3-dot cap pinned)', () => {

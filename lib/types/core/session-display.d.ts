@@ -46,6 +46,24 @@ export declare function sessionRoundsOf(task: TaskRecord, execution: ExecutionRe
  */
 export declare function sessionDisplay(task: TaskRecord, execution: ExecutionRecord, waitingKind: PendingInteractionKind | undefined, active?: boolean): SessionDisplay;
 /**
+ * The live state of a LINKED session ON one task — the session-level twin of
+ * {@link sessionDisplay}, for rows whose identity is the binding rather than
+ * an execution. The task's own rounds for that session ARE its activity (the
+ * same plain-by-session read `sessionWindowOf` uses for the meta line): a
+ * bound conversation that just ran reads 已完成 here instead of the stale
+ * 未运行 the host's completed flag alone reported, and an open round or a
+ * live native turn reads running. Priority mirrors `sessionDisplay` —
+ * waiting, open, active, settled — and ONLY a binding with no rounds on this
+ * task falls back to the legacy host flags: there is genuinely nothing in
+ * the ledger to read.
+ *
+ * `rounds` is the plain same-session set (like `sessionWindowOf`), not an
+ * execution's thread: a linked row IS the whole conversation, so every lane
+ * counts — including session-anchored comment rounds an execution thread
+ * deliberately excludes.
+ */
+export declare function linkedSessionDisplay(task: TaskRecord, sessionId: string, waitingKind: PendingInteractionKind | undefined, active: boolean, hostCompleted: boolean): SessionDisplay;
+/**
  * The time range of an execution's session (reflecting all its rounds' activity).
  * - startedAt = earliest round's start.
  * - endedAt = latest settled round's end; undefined if any round is still open.
@@ -105,18 +123,28 @@ export declare function taskUnviewed(task: TaskRecord): boolean;
  */
 export declare function taskUnviewedCount(task: TaskRecord): number;
 /**
- * Whether ONE session of a task still has an unreviewed finish — THE
- * per-session unread judgment, shared by the detail's session-row glow and
- * the card's session dot, so the two surfaces can never disagree about which
- * conversation just finished.
+ * Whether ONE session of a task still owes the user a look — THE per-session
+ * read clock, shared by the detail's session-row glow and the card's session
+ * dot, so the two surfaces can never disagree about which conversation just
+ * finished.
  *
- * The representative is the session's LATEST plain run — the exact row the
- * unified session list shows (`taskSessionsOf` keeps the same last run per
- * session), so "the row breathes" and "the dot breathes" read one clock:
- * `executionUnviewed` over that run. It clears through the existing funnels
- * only (review page open, 标已读, approve, notification per-session open) —
- * this function never writes. A session with no plain run (a bound external
- * conversation, a refine session) has no review state and honestly reads
- * false rather than borrowing another surface's clock.
+ * ONE sentence: the session's LATEST activity is newer than the last time
+ * anything of it was acknowledged. Both edges are maxima over ALL of the
+ * session's rounds — plain runs, saved comments, observed native turns and
+ * direct sends alike — because "this conversation produced something new"
+ * does not care which lane produced it:
+ *
+ *  - activity = max(round.endedAt ?? round.startedAt) — an open round counts
+ *    as its own start, which never beats an equal-or-later acknowledgment;
+ *  - acknowledgment = max(round.viewedAt ?? round.startedAt) — rounds are
+ *    born seen (their creator stamps `viewedAt`; storage backfills old rows
+ *    to their own activity), and the existing funnels move it forward
+ *    (review page open, 标已读 单·组·全部, approve, notification per-session
+ *    open). An unstamped round falls back to its start: activity after an
+ *    acknowledgment nobody recorded is exactly what should glow.
+ *
+ * It never writes; opening the task DETAIL does not clear it (reading the
+ * list is not acknowledging the conversation — the card ring keeps its own,
+ * coarser task-level clock).
  */
 export declare function sessionUnviewedOf(task: TaskRecord, sessionId: string): boolean;

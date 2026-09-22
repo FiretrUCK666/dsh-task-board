@@ -229,8 +229,8 @@
 }
 
 @keyframes dshTbBreathHalo {
-  0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
-  50% { box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)); }
+  0%, 100% { box-shadow: inset 0 0 0 0 transparent, 0 0 0 0 transparent; }
+  50% { box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)), 0 0 var(--dsh-tb-breath-spread) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)); }
 }
 
 /* One-shot arrival replay for the bell's unseen dot: the dot itself is the
@@ -549,14 +549,30 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* The quiet session line inside an expanded activity fold: the fold header
+   carries the TASK, this carries the CONVERSATION — one label, no chrome,
+   never a control (the rows below it are the content). */
+.feedSection {
+  padding: 6px 10px 2px;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* THE identity slot order — task first, its session right beside it, status
    after: the task and the conversation that produced the row read as one
-   unit, and the status sits next to the actions it explains. Task grows into
-   leftover space; both titles ellipsize at their own floors (never to
-   slivers — see the notifyMain floor); the status chip never shrinks. */
+   unit, and the status sits next to the actions it explains. All three
+   SHRINK only (no grow): the slack belongs to the gap before the action
+   cluster, never inside the task title — a short title used to stretch and
+   shove the whole row right (「你好 ……………… 会话 状态」). Both titles
+   ellipsize at their own floors (never to slivers — see the notifyMain
+   floor); the status chip never shrinks. */
 .notifyTask {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 6em;
+  max-width: 10em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -570,7 +586,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  /* Identity, not metadata: the session is WHO produced this row — the
+     secondary ink (not tertiary) keeps it readable beside the task; the
+     row's time stamp stays tertiary. */
+  color: var(--dsh-tb-text-2);
 }
 .notifyMain .chip {
   flex: none;
@@ -1008,6 +1027,10 @@
   flex: 1;
   min-width: 0;
   width: 100%;
+  /* Border-box: width:100% + this horizontal padding under the host's
+     content-box default overflows the row by the chrome (the width:100%
+     family law — see .interactionOptionButton). */
+  box-sizing: border-box;
   height: 30px;
   padding: 0 10px;
   font-size: 12px;
@@ -1474,9 +1497,13 @@
 
    Now: unread wears the OUTER RING at full strength — it is the only state asking
    you to LOOK, and it is the message that must never be silenced. In-flight work
-   wears the INSET HALO at the soft alpha step: you need not do anything about it,
-   so it must not outrank the card that does. Form and intensity differ; the hue
-   stays the single attention colour.
+   wears the INSET HALO at the soft alpha step PLUS a soft outer edge: you need
+   not do anything about it, so it must not outrank the card that does — but an
+   inset-only pulse had no presence at the card's rim next to the static
+   full-strength yellow border, and 「进行中的卡边缘不呼吸」 survived two
+   judgment fixes that were all correct. Intensity still differs (soft edge vs
+   full ring) and the halo alone carries the inset; the hue stays the single
+   attention colour.
 
    The switch is ONE attribute (`data-light`, from cardLightOf in card-view.ts),
    never two independent ones: these two rules set the SAME property, so which
@@ -2197,23 +2224,23 @@
    adding a scroll region means adding its selector here, never re-inventing a
    width or color (the 「滚动条颜色粗细不一套」 fix: every bar on the board
    reads the same). */
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea) {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea) {
   scrollbar-width: thin;
   scrollbar-color: var(--dsw-alias-border-l3) transparent;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-thumb {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-track {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-track {
   background: transparent;
 }
 
@@ -2472,6 +2499,9 @@ textarea.input {
   align-items: center;
   gap: 8px;
   width: 100%;
+  /* Border-box: same width:100% family law as .interactionOptionButton —
+     padding is chrome, chrome must not count as extra width. */
+  box-sizing: border-box;
   padding: 6px 8px;
   font-size: 12px;
   text-align: left;
@@ -3452,6 +3482,9 @@ textarea.input {
   align-items: center;
   gap: 8px;
   width: 100%;
+  /* Border-box: same width:100% family law — padding + border are chrome,
+     never extra width. */
+  box-sizing: border-box;
   min-width: 0;
   padding: 9px 10px;
   background: transparent;
@@ -5610,10 +5643,12 @@ span.interactionOptions {
 }
 /* The option's shape: the pill belongs to the READ-ONLY shell's chips (plain
    text — never clickable). The interactive menu row is its own class, so the
-   pill geometry contract keeps one meaning. */
+   pill geometry contract keeps one meaning. `width` stays auto (content) with
+   the max-width floor so a long label can never pierce the card. */
 .interactionOption {
   display: inline-flex;
   width: auto;
+  max-width: 100%;
   min-height: 0;
   padding: 4px 10px;
   font: inherit;
@@ -5622,6 +5657,8 @@ span.interactionOptions {
   background: var(--dsh-tb-surface-float);
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsh-tb-pill);
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
   cursor: default;
 }
 
@@ -5634,6 +5671,13 @@ span.interactionOptions {
   gap: 8px;
   flex: none;
   width: 100%;
+  /* Border-box is load-bearing: width:100% + this padding/border under the
+     host's content-box default made every option row 18px WIDER than the
+     card, and `.interactionBody` (overflow-y: auto ⇒ the spec turns the other
+     axis into auto) showed it as the desktop-only horizontal scrollbar that
+     shifted the whole question — the 「电脑端提问截断」report. The phone had
+     the same overflow; its overlay scrollbar just hid it. */
+  box-sizing: border-box;
   min-height: 36px;
   padding: 6px 8px;
   font: inherit;
@@ -5749,6 +5793,8 @@ span.interactionOptions {
   align-items: flex-start;
   gap: 8px;
   width: 100%;
+  /* Same content-box trap as the option row above — same fix, same reason. */
+  box-sizing: border-box;
   min-height: 36px;
   padding: 6px 8px;
   border: 1px solid transparent;
@@ -5911,6 +5957,14 @@ span.interactionOptions {
   padding: 10px 12px;
   font-size: 13px;
   line-height: 1.5;
+  /* THE containment every other content wrapper in this sheet already has
+     (`.interactionDetail`, `.reviewCommentText`): a plan is Markdown full of
+     unbreakable tokens (paths, URLs, flags), and WITHOUT this they cannot
+     wrap — they push the block wider than the card, and since
+     `overflow-y: auto` makes the spec turn the other axis into `auto`, the
+     desktop showed the 「plan 卡也出横条」 horizontal scrollbar while the
+     phone's overlay bar hid the same overflow. */
+  overflow-wrap: break-word;
 }
 
 /* The read-only shell's single action row (one navigate affordance). Same

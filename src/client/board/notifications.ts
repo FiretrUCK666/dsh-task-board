@@ -213,9 +213,11 @@ export function notificationsExOf(
   waiting.sort((a, b) => arrivalOf(b) - arrivalOf(a) || compareNoteKey(a, b))
 
   // Review tier: ONE row per SESSION of each review task with unviewed
-  // content (the human gate) — every conversation states its own result and
-  // settle instant, so the drawer answers "what did each session of this
-  // card actually do" instead of naming only the newest one.
+  // content (the human gate) — from ANY settled lane (plain runs, saved
+  // comments, observed native turns): a comment-only conversation is a lane
+  // too, and the drawer owes it a face. Each row carries its session's own
+  // plain-run result for the status word (absent = no run decided anything,
+  // honestly 待审核) and its latest settled instant.
   const review: NotificationItem[] = []
   for (const task of tasks) {
     if (task.status !== 'review' || !isUnviewed(task)) continue
@@ -227,14 +229,26 @@ export function notificationsExOf(
     // waiting row suppresses the review echo only for the SAME session;
     // different sessions keep both rows.
     const runs = plainRunsOf(task)
-    // Latest plain run per session (runs are chronological — last write wins).
-    const latestBySession = new Map<string, ExecutionRecord>()
+    // Latest SETTLED round per session (refinement excluded: a refine turn
+    // is preparation, never a lane of the gate), best settle wins.
+    const latestSettledBySession = new Map<string, ExecutionRecord>()
+    for (const round of task.executions) {
+      if (round.sessionId === undefined || round.endedAt === undefined || round.refine === true) continue
+      const previous = latestSettledBySession.get(round.sessionId)
+      if (previous === undefined || (round.endedAt ?? 0) > (previous.endedAt ?? 0)) {
+        latestSettledBySession.set(round.sessionId, round)
+      }
+    }
+    // The status word of each session: its LATEST plain run's result (runs
+    // are chronological — last write wins; a comment-only session has no
+    // run result and reads 待审核).
+    const plainResultBySession = new Map<string, ExecutionRecord['result']>()
     for (const run of runs) {
       if (run.sessionId === undefined) continue
-      latestBySession.set(run.sessionId, run)
+      plainResultBySession.set(run.sessionId, run.result)
     }
-    if (latestBySession.size === 0) {
-      // Legacy rows whose runs carry no session: the gate still needs ONE
+    if (latestSettledBySession.size === 0) {
+      // Legacy rows whose rounds carry no session: the gate still needs ONE
       // reachable row — the task itself fills the session slot, and the clock
       // stays the RUN's settle (never the task's metadata updatedAt).
       const sessionId = task.executions[task.executions.length - 1]?.sessionId ?? task.id
@@ -251,20 +265,21 @@ export function notificationsExOf(
       })
       continue
     }
-    for (const [sessionId, run] of latestBySession) {
+    for (const [sessionId, round] of latestSettledBySession) {
       if (seen.has(`${task.id}|${sessionId}`)) {
         // The SAME session is already shouting louder (waiting); skip the
         // quieter review echo for that conversation only.
         continue
       }
+      const result = plainResultBySession.get(sessionId)
       review.push({
         taskId: task.id,
         taskTitle: task.title,
         sessionId,
         sessionTitle: titleOf(sessionId),
         kind: 'review',
-        ...(run.result !== undefined ? { result: run.result } : {}),
-        at: run.endedAt ?? task.updatedAt,
+        ...(result !== undefined ? { result } : {}),
+        at: round.endedAt ?? task.updatedAt,
       })
     }
   }
@@ -379,9 +394,12 @@ export function arrivalOf(
  *   waiting → 权限审批 / 计划确认 / 提问 (the interaction the agent waits on)
  *   review  → 待决策 (failed) / 待审核 (succeeded or open) / 已取消 (cancelled)
  *
- * Cancelled is its own state: it used to fall through to the green 待审核
- * word, which promised a decision that did not exist. Returns the KEY (not
- * the word) so copy stays in the locale dict; the row renders `t(label)`.
+ * Two colours, one meaning each: 待审核 wears AMBER — the same "needs you"
+ * language as the waiting chips and the card's 待你决断 badge (green read as
+ * "done", which a run nobody has decided is not); failed is red; cancelled
+ * is muted (it used to fall through to the green 待审核 word, promising a
+ * decision that did not exist). Returns the KEY (not the word) so copy stays
+ * in the locale dict; the row renders `t(label)`.
  */
 export function noteStatusShapeOf(note: NotificationItem): { kind: 'warn' | 'error' | 'success' | 'muted'; label: TaskBoardKey } {
   if (note.kind === 'waiting') {
@@ -392,5 +410,5 @@ export function noteStatusShapeOf(note: NotificationItem): { kind: 'warn' | 'err
   }
   if (note.result === 'failed') return { kind: 'error', label: 'board.notifyReviewFailed' }
   if (note.result === 'cancelled') return { kind: 'muted', label: 'board.notifyCancelled' }
-  return { kind: 'success', label: 'board.notifyReview' }
+  return { kind: 'warn', label: 'board.notifyReview' }
 }

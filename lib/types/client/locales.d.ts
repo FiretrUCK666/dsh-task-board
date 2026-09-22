@@ -310,6 +310,7 @@ export declare const zh: {
     'board.activitySearch': string;
     'board.activityMore': string;
     'board.activityNew': string;
+    'board.activityGroupRest': string;
     'board.activityOpen': string;
     'board.activityPreviewHint': string;
     'board.activityUnviewed': string;

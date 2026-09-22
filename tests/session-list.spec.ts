@@ -137,8 +137,8 @@ describe('sessionRowTitleOf (未命名文法)', () => {
 
 describe('orderedSessionsOf (manual 会话 order)', () => {
   const rows = [
-    { sessionId: 's-run', title: 'a', executionId: 'e-1', display: { state: 'succeeded' as const, lastActivity: NOW, waitingKind: undefined }, updatedAt: NOW, unviewed: false },
-    { sessionId: 's-9', title: 'b', display: { state: 'cancelled' as const, lastActivity: NOW + 2, waitingKind: undefined }, updatedAt: NOW + 5, unviewed: false },
+    { sessionId: 's-run', title: 'a', executionId: 'e-1', display: { state: 'succeeded' as const, lastActivity: NOW, waitingKind: undefined }, updatedAt: NOW },
+    { sessionId: 's-9', title: 'b', display: { state: 'cancelled' as const, lastActivity: NOW + 2, waitingKind: undefined }, updatedAt: NOW + 5 },
   ]
 
   it('defaults to the passed order when the user never reordered', () => {
@@ -148,7 +148,7 @@ describe('orderedSessionsOf (manual 会话 order)', () => {
   it('follows the manual array exactly, and NEW sessions land at the TOP', () => {
     const task = { ...sampleTask(), sessionsOrder: ['s-9', 's-run'] }
     const withNew = [...rows, {
-      sessionId: 's-new', title: 'c', display: { state: 'cancelled' as const, lastActivity: NOW + 9, waitingKind: undefined }, updatedAt: NOW + 9, unviewed: false,
+      sessionId: 's-new', title: 'c', display: { state: 'cancelled' as const, lastActivity: NOW + 9, waitingKind: undefined }, updatedAt: NOW + 9,
     }]
     expect(orderedSessionsOf(task, withNew).map(row => row.sessionId)).toEqual(['s-new', 's-9', 's-run'])
   })
@@ -174,5 +174,55 @@ describe('sessionWindowOf (the linked row derives the same start/end/duration gr
     expect(sessionWindowOf(task, 'nope')).toEqual({})
     expect(sessionWindowOf(task, 's-1')).toEqual({ startedAt: NOW, endedAt: NOW + 1, duration: 1 })
     expect(sessionWindowOf(task, undefined)).toEqual({})
+  })
+})
+
+describe('linked rows read the SAME state derivation as run rows (no second dialect)', () => {
+  /** A task with NO plain runs (so the bind forms the row) and optional rounds. */
+  const bound = (executions: TaskRecord['executions'] = []): TaskRecord => ({
+    ...sampleTask(),
+    executions,
+  })
+
+  it('a settled round on THIS task beats the host flags: 未运行 becomes the real outcome', () => {
+    // The screenshot bug: 开始/结束/耗时40秒 beside a chip reading 未运行 —
+    // the old branch read only the host `completed` flag while the meta line
+    // read the rounds. One derivation now: the rounds decide.
+    const task = bound([
+      { id: 'c1', sessionId: 's-1', startedAt: NOW + 1, endedAt: NOW + 5, result: 'succeeded' as const, error: undefined, comment: '你好' },
+    ])
+    const rows = taskSessionsOf(task, ctx([linkedRow({ completed: false })]))
+    expect(rows[0]?.display.state).toBe('succeeded')
+    expect(rows[0]?.display.lastActivity).toBe(NOW + 5)
+    // A failed observed turn reads failed — the honest outcome, not idle.
+    const failedTask = bound([
+      { id: 'x1', sessionId: 's-1', startedAt: NOW + 1, endedAt: NOW + 5, result: 'failed' as const, error: 'boom', comment: '', sessionAnchor: 's-1', external: true },
+    ])
+    expect(taskSessionsOf(failedTask, ctx([linkedRow({ completed: false })]))[0]?.display.state).toBe('failed')
+  })
+
+  it('open rounds and live activity outrank; only a ledger-empty bind falls back to the host flags', () => {
+    // An observed native turn in flight: external rounds are open from their
+    // observation (they ARE the native turn, never a queue slot).
+    const openTask = bound([
+      { id: 'x1', sessionId: 's-1', startedAt: NOW + 1, endedAt: undefined, result: undefined, error: undefined, comment: '', sessionAnchor: 's-1', external: true },
+    ])
+    expect(taskSessionsOf(openTask, ctx([linkedRow({ completed: false })]))[0]?.display.state).toBe('running')
+    // No rounds + still working (native turn observed elsewhere): running.
+    const activeCtx = {
+      ...ctx([linkedRow({ completed: false })]),
+      sessionActiveOf: () => true,
+    }
+    expect(taskSessionsOf(bound(), activeCtx)[0]?.display.state).toBe('running')
+    // No rounds, not working: the legacy flags are all there is.
+    expect(taskSessionsOf(bound(), ctx([linkedRow({ completed: false })]))[0]?.display.state).toBe('cancelled')
+    expect(taskSessionsOf(bound(), ctx([linkedRow({ completed: true })]))[0]?.display.state).toBe('succeeded')
+  })
+
+  it('waiting outranks everything, same as the run rows', () => {
+    // The waiting signal rides the LINKED ROW itself (the same face
+    // taskSessionsOf has always read), not the context.
+    const display = taskSessionsOf(bound(), ctx([linkedRow({ completed: true, pendingInteraction: 'question' })]))[0]?.display
+    expect(display).toMatchObject({ state: 'waiting', waitingKind: 'question' })
   })
 })

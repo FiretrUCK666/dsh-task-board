@@ -647,27 +647,42 @@ describe('external rounds are part of the session (the native-turn glow)', () =>
 })
 
 describe('sessionUnviewedOf (the per-session read clock shared by row glow and dot)', () => {
-  it('reads the session’s LATEST plain run: unreviewed finish lights, reviewing kills it', () => {
+  it('reads LATEST ACTIVITY vs LATEST ACKNOWLEDGMENT: an unreviewed finish lights, acknowledging quiets', () => {
     const older = round('e1', { sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded' })
     const latest = round('e2', { sessionId: 's1', startedAt: 200, endedAt: 250, result: 'succeeded' })
-    // No viewedAt: the baseline is the run's own start, so its settle is NEWER
-    // — "finished but not reviewed" is exactly the unread state.
+    // No acknowledgment past the settle: "finished after the last time this
+    // conversation was seen" is exactly the unread state.
     expect(sessionUnviewedOf(taskWith([older, latest]), 's1')).toBe(true)
-    // Opening the review page moves viewedAt past the settle: quiet. That
+    // Acknowledging the LATEST content (review page / 标已读 / approve all
+    // move viewedAt forward) quiets the WHOLE session — old runs stay quiet
+    // because their activity never beats the new acknowledgment. That
     // existing funnel is the ONLY off switch — this function never writes.
     expect(sessionUnviewedOf(taskWith([older, { ...latest, viewedAt: 300 }]), 's1')).toBe(false)
   })
 
   it('comment rounds on the same session count as its content (a newer comment re-lights)', () => {
+    // Born seen at save time (the author is looking); its later settle is
+    // then genuinely newer than the acknowledgment.
     const run = round('e1', { sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded', viewedAt: 160 })
-    const comment = round('c1', { sessionId: 's1', startedAt: 200, endedAt: 260, result: 'succeeded', comment: 'hi', parentExecutionId: 'e1' })
+    const comment = round('c1', { sessionId: 's1', startedAt: 200, endedAt: 260, result: 'succeeded', comment: 'hi', parentExecutionId: 'e1', viewedAt: 200 })
     expect(sessionUnviewedOf(taskWith([run, comment]), 's1')).toBe(true)
   })
 
-  it('a session with no plain run honestly reads false (bound external / refine lanes)', () => {
+  it('no rounds reads false; a settle-stamped refine turn is quiet; an unacknowledged external finish glows', () => {
     expect(sessionUnviewedOf(taskWith([]), 'sx')).toBe(false)
-    const refine = round('r1', { sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded', refine: true })
+    // settleRefine stamps the round seen at its own settle — a finished
+    // refinement turn never accumulates unread (完成永亮 protection).
+    const refine = round('r1', { sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded', refine: true, viewedAt: 150 })
     expect(sessionUnviewedOf(taskWith([refine]), 's1')).toBe(false)
+    // An observed native turn that nobody ever acknowledged (no stamp): its
+    // activity beats its own start — activity after an acknowledgment nobody
+    // recorded is exactly what should glow. This is the bound-conversation
+    // case: no plain run anywhere, and the row/dot still know it finished.
+    const external = round('x1', {
+      sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded',
+      external: true, comment: '', sessionAnchor: 's1',
+    })
+    expect(sessionUnviewedOf(taskWith([external]), 's1')).toBe(true)
   })
 
   it('another session of the same card never borrows this one’s clock', () => {

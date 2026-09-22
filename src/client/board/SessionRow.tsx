@@ -52,19 +52,19 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
   /** Tooltip of the rename affordance. */
   renameTitle?: string
   /**
-   * This session has a finished run the user has not reviewed yet (the
-   * per-session read clock — run rows pass `TaskSessionRow.unviewed`). The
-   * row then wears the amber `unread` breath, so "which session just
+   * This session has content the user has not acknowledged yet (the
+   * per-session read clock — every surface passes `sessionUnviewedOf`).
+   * The row then wears the amber `unread` breath, so "which session just
    * finished" is answerable inside the list, not only from the card's edge.
-   * Absent = no read state (linked external rows) — quiet, honestly.
+   * Absent = no read state — quiet, honestly.
    */
   unviewed?: boolean
 }) {
   // ONE state-bound glow, two semantic values, one amber breath:
   // 'attention' — the session is live right now (waiting / running);
-  // 'unread'    — a finished run awaiting its first review (same clock the
-  //               card's session dot reads), so the row and the dot can
-  //               never disagree about which conversation just finished.
+  // 'unread'    — content finished after the last acknowledgment (same
+  //               clock the card's session dot reads), so the row and the
+  //               dot can never disagree about which conversation is new.
   // A live state outranks unread — one glow, one loudest truth; read and
   // idle rows stay quiet. The animation pauses (never cancels) between the
   // states, so a settle mid-pulse fades instead of tearing a frame.

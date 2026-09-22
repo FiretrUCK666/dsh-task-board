@@ -47,11 +47,11 @@ export declare function SessionRow({ state, chip, leading, meta, footer, handle,
     /** Tooltip of the rename affordance. */
     renameTitle?: string;
     /**
-     * This session has a finished run the user has not reviewed yet (the
-     * per-session read clock — run rows pass `TaskSessionRow.unviewed`). The
-     * row then wears the amber `unread` breath, so "which session just
+     * This session has content the user has not acknowledged yet (the
+     * per-session read clock — every surface passes `sessionUnviewedOf`).
+     * The row then wears the amber `unread` breath, so "which session just
      * finished" is answerable inside the list, not only from the card's edge.
-     * Absent = no read state (linked external rows) — quiet, honestly.
+     * Absent = no read state — quiet, honestly.
      */
     unviewed?: boolean;
 }): import("react").JSX.Element;

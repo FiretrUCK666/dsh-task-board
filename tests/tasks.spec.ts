@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
+  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
   settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -461,6 +461,30 @@ describe('newCommentRound', () => {
     expect(command.command).toBe(true)
     const plain = newCommentRound({ id: 'c-4', now: NOW, text: '普通', sessionId: 's-1', parentExecutionId: 'e-1' })
     expect(plain.command).toBeUndefined()
+  })
+})
+
+describe('round factories stamp the read clock at birth (born seen)', () => {
+  it('a saved comment starts viewed — its later injection/settle is then genuinely NEW', () => {
+    const saved = newCommentRound({ id: 'c-9', now: NOW, text: '继续', sessionId: 's-1', parentExecutionId: 'e-1' })
+    expect(saved.viewedAt).toBe(NOW)
+    expect(saved.endedAt).toBeUndefined()
+    // …and storage backfill can never mark it read by accident: the stamp
+    // already exists, so `viewedAt ??= endedAt` (the load normalizer) is a
+    // no-op for it and the per-session clock keeps its own baseline.
+  })
+
+  it('an observed native turn starts viewed at the observation instant', () => {
+    const observed = newExternalRound({ id: 'x-9', now: NOW + 5, sessionId: 's-1', text: '你好' })
+    expect(observed.viewedAt).toBe(NOW + 5)
+    expect(observed.endedAt).toBeUndefined()
+  })
+
+  it('a direct send is settled at birth (its activity can never beat an equal acknowledgment)', () => {
+    const direct = newDirectRound({ id: 'd-9', now: NOW + 9, text: '走', sessionId: 's-1' })
+    expect(direct.startedAt).toBe(NOW + 9)
+    expect(direct.endedAt).toBe(NOW + 9)
+    expect(direct.result).toBe('succeeded')
   })
 })
 

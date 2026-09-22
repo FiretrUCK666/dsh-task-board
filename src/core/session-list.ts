@@ -13,7 +13,7 @@
  */
 import type { PendingInteractionKind } from './controller.ts'
 import type { LinkedSessionRow } from './linked-sessions.ts'
-import { executionUnviewed, sessionDisplay, sessionTimes, type SessionDisplay } from './session-display.ts'
+import { linkedSessionDisplay, sessionDisplay, sessionTimes, type SessionDisplay } from './session-display.ts'
 import { plainRunsOf, type TaskRecord } from './tasks.ts'
 
 /** One displayed session row (one per real session, de-duplicated). */
@@ -31,8 +31,6 @@ export interface TaskSessionRow {
   display: SessionDisplay
   /** When the session last saw activity. */
   updatedAt: number
-  /** Unviewed content (run rows only for now; external has no session-level read state). */
-  unviewed: boolean
 }
 
 /**
@@ -135,7 +133,8 @@ export interface TaskSessionContext {
  * - linked candidates: the live linked rows.
  * - de-duplicate by sessionId, run wins over linked (a session the task both
  *   executed and bound reads as the task's own run — it carries the execution
- *   identity, the quiet run number and the unread state).
+ *   identity and the quiet run number; the per-session unread glow reads
+ *   `sessionUnviewedOf`, never this list).
  * - hidden sessions are dropped; run rows sort by latest activity, then
  *   linked rows in workspace order.
  */
@@ -161,7 +160,6 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
       executionId: execution.id,
       display: sessionDisplay(task, execution, ctx.pendingInteractionOf(sessionId), ctx.sessionActiveOf?.(sessionId) ?? false),
       updatedAt: sessionTimes(task, execution).endedAt ?? execution.startedAt,
-      unviewed: executionUnviewed(task, execution),
     })
   }
   const rows: TaskSessionRow[] = []
@@ -187,19 +185,20 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
       sessionId: linked.sessionId,
       title: linkedTitle,
       ...linked.workspaceLabel !== undefined ? { workspaceLabel: linked.workspaceLabel } : {},
-      display: {
-        state: linked.pendingInteraction !== undefined
-          ? 'waiting'
-          : linked.running
-            ? 'running'
-            : linked.completed
-              ? 'succeeded'
-              : 'cancelled',
-        lastActivity: linked.updatedAt,
-        waitingKind: linked.pendingInteraction,
-      },
+      // The SAME state derivation the run rows use, scoped to the session:
+      // this task's own rounds for the conversation decide 已完成 / 失败 /
+      // 进行中 (the 开始/结束/耗时 meta line beside them reads the same
+      // rounds), waiting and native activity outrank, and only a
+      // ledger-empty binding falls back to the host's legacy flags — one
+      // model, never a second dialect.
+      display: linkedSessionDisplay(
+        task,
+        linked.sessionId,
+        linked.pendingInteraction,
+        ctx.sessionActiveOf?.(linked.sessionId) ?? false,
+        linked.completed,
+      ),
       updatedAt: linked.updatedAt,
-      unviewed: false,
     })
   }
   return orderedSessionsOf(task, rows)

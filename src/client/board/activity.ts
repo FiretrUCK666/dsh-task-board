@@ -65,6 +65,111 @@ export function clusterOf(kind: ActivityItem['kind']): ActivityCluster {
   return 'other'
 }
 
+/** Cap: an expanded task fold shows this many newest rows; the rest reads as
+ *  one quiet remainder line (navigation stays on the fold header — the
+ *  remainder is information, never a second toggle). */
+export const FOLD_ITEM_LIMIT = 10
+
+/** THE fold-key constructor (`task|day`): the fold's expansion state, its
+ *  member-list id and its remainder row all derive from this one function —
+ *  never a retyped template. */
+export function activityFoldKeyOf(taskId: string, day: string): string {
+  return `${taskId}|${day}`
+}
+
+/** THE remainder-row key for one fold: `foldKey + '|rest'`. */
+export function foldRestKeyOf(foldKey: string): string {
+  return `${foldKey}|rest`
+}
+
+/** One task fold inside a day: same task, same calendar day. */
+export interface ActivityTaskFold {
+  /** Stable fold key (`task|day`, see {@link activityFoldKeyOf}). */
+  key: string
+  taskId: string
+  taskTitle: string
+  /** The fold's rows, feed order preserved (newest first). */
+  items: ActivityItem[]
+}
+
+/**
+ * Fold one day's rows by TASK — the drawer's day header already owns the day
+ * leg, so this adds only the object leg ("which cards moved today", one
+ * chevron each). Feed order in, feed order out; grouping never re-sorts, it
+ * only nests. Cluster is deliberately NOT a leg: a filter keeps or drops
+ * whole kinds per row, so a filtered fold can never go hollow. The render
+ * layer shows single-row folds as bare rows (sparse days look unchanged).
+ */
+export function foldFeedByTaskDay(
+  items: readonly ActivityItem[],
+  dayOf: (at: number) => string,
+): ActivityTaskFold[] {
+  const folds: ActivityTaskFold[] = []
+  const index = new Map<string, ActivityTaskFold>()
+  for (const item of items) {
+    const key = activityFoldKeyOf(item.taskId, dayOf(item.at))
+    const existing = index.get(key)
+    if (existing !== undefined) {
+      existing.items.push(item)
+      continue
+    }
+    const fold: ActivityTaskFold = {
+      key,
+      taskId: item.taskId,
+      taskTitle: item.taskTitle,
+      items: [item],
+    }
+    index.set(key, fold)
+    folds.push(fold)
+  }
+  return folds
+}
+
+/** One session's rows inside an expanded fold (undefined = session-less
+ *  moments such as task creation — they render under no header). */
+export interface ActivitySessionSection {
+  sessionId?: string
+  items: ActivityItem[]
+}
+
+/**
+ * Bucket a fold's rows BY SESSION: sessions appear in the order of their
+ * newest row (first appearance in the newest-first feed), rows keep their
+ * order inside each bucket. Session-less moments form their own leading-or-
+ * wherever bucket per the same first-appearance rule — no special case.
+ */
+export function sectionFoldBySession(items: readonly ActivityItem[]): ActivitySessionSection[] {
+  const sections: ActivitySessionSection[] = []
+  const index = new Map<string | undefined, ActivitySessionSection>()
+  for (const item of items) {
+    const existing = index.get(item.sessionId)
+    if (existing !== undefined) {
+      existing.items.push(item)
+      continue
+    }
+    const section: ActivitySessionSection = { items: [item] }
+    if (item.sessionId !== undefined) section.sessionId = item.sessionId
+    index.set(item.sessionId, section)
+    sections.push(section)
+  }
+  return sections
+}
+
+/**
+ * Split a fold's rows into the shown head and the folded remainder count:
+ * the first N newest show, the rest count. The limit normalizes defensively
+ * (non-finite → the cap, negatives → 0, fractions → floor): an open generic
+ * must never lie about counts. Pure so the cap unit-tests without rendering.
+ */
+export function splitFoldItems<T>(
+  items: readonly T[],
+  limit: number = FOLD_ITEM_LIMIT,
+): { shown: T[]; rest: number } {
+  const capped = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : FOLD_ITEM_LIMIT
+  if (items.length <= capped) return { shown: [...items], rest: 0 }
+  return { shown: items.slice(0, capped), rest: items.length - capped }
+}
+
 /**
  * Split a live newest-first feed into the frozen window and the queued
  * remainder: the view shows the oldest `base` rows (what was on screen when

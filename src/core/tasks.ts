@@ -771,6 +771,10 @@ export function newExternalRound(options: {
     comment: options.text ?? '',
     sessionAnchor: options.sessionId,
     external: true,
+    // Born seen at the observation instant (the recorder is looking at the
+    // turn it just captured); the turn's own settlement lands later and is
+    // therefore honestly NEW — the same clock comment rounds read.
+    viewedAt: options.now,
     ...(options.refine === true ? { refine: true } : {}),
     ...options.anchor !== undefined ? { anchor: options.anchor } : {},
     ...options.imageOnly === true ? { imageOnly: true } : {},
@@ -853,6 +857,11 @@ export function newCommentRound(options: {
     ...(options.parentExecutionId !== undefined ? { parentExecutionId: options.parentExecutionId } : {}),
     ...(options.sessionAnchor !== undefined ? { sessionAnchor: options.sessionAnchor } : {}),
     ...(options.ruleId !== undefined ? { ruleId: options.ruleId } : {}),
+    // Born seen: the author is looking at the round they just saved. Its
+    // LATER injection/settle is then genuinely new content (the per-session
+    // read clock in session-display reads activity > acknowledgment), and
+    // storage backfill can never mark a live round as read by accident.
+    viewedAt: options.now,
   }
 }
 

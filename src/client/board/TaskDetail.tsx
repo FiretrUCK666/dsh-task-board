@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, taskBindsOf, taskExecutable, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
-import { sessionDisplay, sessionTimes } from '../../core/session-display.ts'
+import { sessionDisplay, sessionTimes, sessionUnviewedOf } from '../../core/session-display.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
@@ -107,9 +107,10 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
       <SessionRow
         state={session.state}
         /* The row's unread breath rides the per-session read clock — the same
-           `executionUnviewed` the card's session dot reads, so "just finished"
-           pulses here and on the board card in lockstep. */
-        unviewed={row.unviewed}
+           `sessionUnviewedOf` the card's session dot reads (every lane of the
+           conversation counts), so "just finished" pulses here and on the
+           board card in lockstep. */
+        unviewed={sessionUnviewedOf(task, sessionId)}
         /* THE chip derivation — ONE vocabulary with the linked rows: a
            settled session reads 已完成 (the run's outcome facts — duration,
            comments, the review page — carry the execution semantics). */
@@ -177,11 +178,14 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
   const chip = sessionStateChip(row.display.state, row.display.waitingKind, 'detail.linkedDone', 'detail.linkedIdle', 'detail.idleHint')
   // The SAME grammar as a run row: the session's activity window (its rounds
   // on this task — board runs and externally-observed turns alike) plus its
-  // comment thread (count + newest body; the state chip is the row's own).
+  // comment thread (count + newest body; the state chip is the row's own),
+  // and the SAME unread breath — a bound conversation that just finished
+  // glows exactly like a run row.
   const window = sessionWindowOf(task, sessionId)
   return (
     <SessionRow
       state={row.display.state}
+      unviewed={sessionUnviewedOf(task, sessionId)}
       chip={chip}
       leading={
         <span className={css.sessionRowLeading}>

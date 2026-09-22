@@ -30,8 +30,6 @@ export interface TaskSessionRow {
     display: SessionDisplay;
     /** When the session last saw activity. */
     updatedAt: number;
-    /** Unviewed content (run rows only for now; external has no session-level read state). */
-    unviewed: boolean;
 }
 /**
  * The displayed title of one session row: the native title, else the
@@ -100,7 +98,8 @@ export interface TaskSessionContext {
  * - linked candidates: the live linked rows.
  * - de-duplicate by sessionId, run wins over linked (a session the task both
  *   executed and bound reads as the task's own run — it carries the execution
- *   identity, the quiet run number and the unread state).
+ *   identity and the quiet run number; the per-session unread glow reads
+ *   `sessionUnviewedOf`, never this list).
  * - hidden sessions are dropped; run rows sort by latest activity, then
  *   linked rows in workspace order.
  */
