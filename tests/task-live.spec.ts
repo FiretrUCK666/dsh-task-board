@@ -12,7 +12,7 @@ import {
   type TaskLiveState,
 } from '../src/core/task-live.ts'
 
-function taskWith(rounds: Array<{ sessionId: string; comment?: string; direct?: boolean; endedAt?: number }>, refine?: string): TaskRecord {
+function taskWith(rounds: Array<{ sessionId: string; comment?: string; direct?: boolean; endedAt?: number }>): TaskRecord {
   const base = {
     id: 'task-1',
     title: 't',
@@ -27,7 +27,6 @@ function taskWith(rounds: Array<{ sessionId: string; comment?: string; direct?: 
   } as TaskRecord
   return {
     ...base,
-    refineSessionId: refine,
     executions: rounds.map((round, index) => ({
       id: `r-${index}`,
       taskId: 'task-1',
@@ -46,15 +45,13 @@ const runningOf = (running: Record<string, boolean>) => (sessionId: string) => r
 const waitingOf = (waiting: Record<string, string>) => (sessionId: string) => waiting[sessionId] ?? undefined
 
 describe('relatedSessionIdsOf', () => {
-  it('collects refine + every round session, de-duplicated', () => {
+  it('collects every round session, de-duplicated', () => {
     const task = taskWith(
       [{ sessionId: 'a' }, { sessionId: 'b' }, { sessionId: 'a' }],
-      'refine',
     )
     expect(relatedSessionIdsOf(task)).toEqual([
-      { sessionId: 'refine', refine: true },
-      { sessionId: 'a', refine: false },
-      { sessionId: 'b', refine: false },
+      { sessionId: 'a' },
+      { sessionId: 'b' },
     ])
   })
 
@@ -64,8 +61,8 @@ describe('relatedSessionIdsOf', () => {
       binds: [{ kind: 'session' as const, sessionId: 'bound' }],
     }
     expect(relatedSessionIdsOf(task)).toEqual([
-      { sessionId: 'bound', refine: false },
-      { sessionId: 'run', refine: false },
+      { sessionId: 'bound' },
+      { sessionId: 'run' },
     ])
   })
 
@@ -74,22 +71,22 @@ describe('relatedSessionIdsOf', () => {
     // keeps it from being unbound) must NOT be related — otherwise chatting in
     // it drives the card while the row is gone (the reported bug).
     const task = {
-      ...taskWith([{ sessionId: 'run' }], 'refine'),
+      ...taskWith([{ sessionId: 'run' }]),
       binds: [{ kind: 'session' as const, sessionId: 'bound' }, { kind: 'workspace' as const, workspaceId: 'w' }],
-      removedSessions: ['bound', 'refine', 'link-1'],
+      removedSessions: ['bound', 'link-1'],
     }
     expect(relatedSessionIdsOf(task, ['link-1', 'link-2'])).toEqual([
-      { sessionId: 'run', refine: false },
-      { sessionId: 'link-2', refine: false },
+      { sessionId: 'run' },
+      { sessionId: 'link-2' },
     ])
   })
 
   it('appends the injected linked ids (workspace members) after the rounds, de-duplicated', () => {
     const task = taskWith([{ sessionId: 'run' }])
     expect(relatedSessionIdsOf(task, ['link-1', 'run', 'link-2'])).toEqual([
-      { sessionId: 'run', refine: false },
-      { sessionId: 'link-1', refine: false },
-      { sessionId: 'link-2', refine: false },
+      { sessionId: 'run' },
+      { sessionId: 'link-1' },
+      { sessionId: 'link-2' },
     ])
   })
 })
@@ -189,25 +186,6 @@ describe('leave-running judgment (删空即离场的唯一判定)', () => {
     const task = runningTaskWith([{ sessionId: 'a', endedAt: 5 }])
     expect(runningJustificationOf(task, 'idle')).toBeUndefined()
     expect(leaveRunningTargetOf(task, 'idle')).toBe('review')
-  })
-
-  it('a lone open refine round does NOT justify staying (preparation keeps its own column)', () => {
-    const base = runningTaskWith([])
-    const task: TaskRecord = {
-      ...base,
-      refineSessionId: 'refine-1',
-      executions: [{
-        id: 'ref-1',
-        sessionId: 'refine-1',
-        startedAt: 1,
-        endedAt: undefined,
-        result: undefined,
-        error: undefined,
-        refine: true,
-      }],
-    }
-    expect(runningJustificationOf(task, 'idle')).toBeUndefined()
-    expect(leaveRunningTargetOf(task, 'idle')).toBe('todo')
   })
 
   it('an armed chain gap holds the column; ignoreSchedule drops it (deletion is a cancel)', () => {

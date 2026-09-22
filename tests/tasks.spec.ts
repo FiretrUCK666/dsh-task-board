@@ -3,11 +3,10 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, executing, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openExecutionRoundsOf, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, refinable, refineRoundsOf, refining, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
-  settleExecution, settleRefine, startExecution, withRefineSession, withSchedule, withStatus,
+  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
+  settleExecution, startExecution, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
-import { taskUnviewed } from '../src/core/session-display.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -417,17 +416,25 @@ describe('settleExecution', () => {
     expect(settleColumnOf(running, 'succeeded', true, false, false)).toBe('running')
   })
 
-  it('an open refine round never pins a plain settle in running', () => {
+  it('a sibling open lane keeps the card in running through a settle', () => {
     let task = sampleTask()
     const plain = startExecution(task, NOW, 'e-plain')
     task = {
       ...plain.task,
       executions: [
         ...plain.task.executions.map(round => ({ ...round, sessionId: 's-plain' })),
-        { id: 'ref-1', sessionId: 's-refine', startedAt: NOW + 1, endedAt: undefined, result: undefined, error: undefined, refine: true },
+        { id: 'sib-1', sessionId: 's-other', startedAt: NOW + 1, endedAt: undefined, result: undefined, error: undefined },
       ],
     }
-    expect(openExecutionRoundsOf(task).map(round => round.id)).toEqual(['e-plain'])
+    expect(openRoundsOf(task).map(round => round.id)).toEqual(['e-plain', 'sib-1'])
+    const settled = settleExecution(task, 'e-plain', 'succeeded', NOW + 2, undefined)
+    expect(settled.status).toBe('running')
+  })
+
+  it('with no sibling open, a plain settle lands in review', () => {
+    let task = sampleTask()
+    const plain = startExecution(task, NOW, 'e-plain')
+    task = { ...plain.task, executions: plain.task.executions.map(round => ({ ...round, sessionId: 's-plain' })) }
     const settled = settleExecution(task, 'e-plain', 'succeeded', NOW + 2, undefined)
     expect(settled.status).toBe('review')
   })
@@ -762,99 +769,15 @@ describe('plainRunsOf', () => {
     expect(plainRunsOf(task).map(run => run.id)).toEqual(['e1', 'e2'])
   })
 
-  it('excludes refinement rounds alongside comment rounds', () => {
+  it('excludes comment rounds from the run sequence', () => {
     const task = {
       ...withComments(),
       executions: [
         ...withComments().executions,
-        { id: 'r1', sessionId: 's-refine', startedAt: NOW + 6, endedAt: NOW + 7, result: 'succeeded' as const, error: undefined, refine: true },
+        { id: 'c2', sessionId: 's-chat', startedAt: NOW + 6, endedAt: NOW + 7, result: 'succeeded' as const, error: undefined, comment: '继续' },
       ],
     }
     expect(plainRunsOf(task).map(run => run.id)).toEqual(['e1'])
-  })
-})
-
-describe('requirement refinement', () => {
-  function withRefine() {
-    const base = createTask({ title: '想法', description: '', prompt: '', status: 'backlog' }, NOW, 'task-1')
-    return {
-      ...base,
-      refineSessionId: 's-refine',
-      executions: [
-        { id: 'r1', sessionId: 's-refine', startedAt: NOW, endedAt: NOW + 1, result: 'succeeded' as const, error: undefined, refine: true },
-        { id: 'r2', sessionId: 's-refine', startedAt: NOW + 2, endedAt: undefined, result: undefined, error: undefined, refine: true },
-      ],
-    }
-  }
-
-  it('refineRoundsOf returns only refinement rounds in order', () => {
-    const task = withRefine()
-    expect(refineRoundsOf(task).map(round => round.id)).toEqual(['r1', 'r2'])
-    expect(refineRoundsOf(sampleTask())).toEqual([])
-  })
-
-  it('refining is true while a refinement round is open', () => {
-    expect(refining(withRefine())).toBe(true)
-    const settled = { ...withRefine(), executions: withRefine().executions.map(round => ({ ...round, endedAt: NOW + 9 })) }
-    expect(refining(settled)).toBe(false)
-    expect(refining(sampleTask())).toBe(false)
-  })
-
-  it('hasOpenRun treats an open refinement round as an open run', () => {
-    const task = withRefine()
-    // Even though the task sits in backlog (not running), the refine round
-    // occupies the session — a plain run must not start on top.
-    expect(hasOpenRun(task)).toBe(true)
-    const settled = { ...task, executions: task.executions.map(round => ({ ...round, endedAt: NOW + 9 })) }
-    expect(hasOpenRun(settled)).toBe(false)
-  })
-
-  it('refinable needs at least one non-blank field (an all-blank task has nothing to research)', () => {
-    expect(refinable(withRefine())).toBe(true)
-    expect(refinable(createTask({ title: '  ', description: ' ', prompt: '' }, NOW, 'blank'))).toBe(false)
-    expect(refinable(createTask({ title: '', description: '有个想法', prompt: '' }, NOW, 'desc'))).toBe(true)
-  })
-
-  it('executing excludes lone refinement (display truth, never a gate)', () => {
-    // A refining backlog card is preparing, not executing — the card must
-    // read 完善中, never 进行中 (the "一点完善整卡变进行中" bug).
-    expect(executing(withRefine())).toBe(false)
-    const settled = { ...withRefine(), executions: withRefine().executions.map(round => ({ ...round, endedAt: NOW + 9 })) }
-    expect(executing(settled)).toBe(false)
-    const plain = {
-      ...sampleTask(),
-      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
-    }
-    expect(executing(plain)).toBe(true)
-  })
-
-  it('withRefineSession binds the session and stamps the update', () => {
-    const task = withRefineSession(sampleTask(), 's-new', NOW + 5)
-    expect(task.refineSessionId).toBe('s-new')
-    expect(task.updatedAt).toBe(NOW + 5)
-    // Re-binding the same session is a no-op.
-    expect(withRefineSession(task, 's-new', NOW + 6)).toBe(task)
-  })
-
-  it('settleRefine records the outcome without moving the task out of its column', () => {
-    const task = withRefine()
-    const settled = settleRefine(task, 'r2', 'failed', NOW + 8, '调研失败')
-    expect(settled.status).toBe('backlog')
-    expect(settled.executions[1]).toMatchObject({ endedAt: NOW + 8, result: 'failed', error: '调研失败' })
-    expect(settled.updatedAt).toBe(NOW + 8)
-    // Unknown or already-settled rounds are no-ops.
-    expect(settleRefine(task, 'ghost', 'succeeded', NOW + 9, undefined)).toBe(task)
-    expect(settleRefine(settled, 'r1', 'failed', NOW + 10, undefined)).toBe(settled)
-  })
-
-  it('a settled refine round is seen at its own settle (no eternal unread ring)', () => {
-    const task = withRefine()
-    const settled = settleRefine(task, 'r2', 'succeeded', NOW + 8, undefined)
-    const round = settled.executions.find(item => item.id === 'r2')!
-    expect(round.viewedAt).toBe(NOW + 8)
-    // With the task's own baseline at/after the settle, the finished refine
-    // turn never counts as unread — the 完善中 glow was state-bound anyway.
-    expect(taskUnviewed({ ...settled, viewedAt: NOW + 8 })).toBe(false)
   })
 })
 

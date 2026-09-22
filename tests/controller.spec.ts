@@ -8,12 +8,12 @@ import { fileURLToPath } from 'node:url'
 import { BoardController, type ControllerDeps } from '../src/core/controller.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
 import { InMemoryTaskStore } from '../src/core/store.ts'
-import { executionUnviewed, taskUnviewed } from '../src/core/session-display.ts'
+import { executionUnviewed, sessionUnviewedOf, taskUnviewed } from '../src/core/session-display.ts'
 import { cardLightOf, cardViewModelOf } from '../src/client/board/card-view.ts'
 import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import type { CruiseWindow } from '../src/core/cruise.ts'
 import type { PendingInteractionKind, QuestionRpcFace, WireQuestion } from '../src/core/question-rpc.ts'
-import { createTask, ruleReadiness, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, ruleReadiness, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 let nextId = 0
@@ -444,22 +444,18 @@ describe('task mutations', () => {
     expect(controller.sessionTitle('s-2')).toBeUndefined()
   })
 
-  it('relatedSessionIdSet covers binds, execution rounds AND the refine session', () => {
+  it('relatedSessionIdSet covers binds and execution rounds', () => {
     const { controller, sessions } = makeController()
-    sessions.runningById['s-refine'] = false
     sessions.runningById['s-run'] = false
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-bind' })
-    // Give the task a refine session + an execution round (pure task shape).
+    // Give the task an execution round (pure task shape).
     const withExtras: TaskRecord = {
       ...controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!,
-      refineSessionId: 's-refine',
       executions: [{ id: 'e1', sessionId: 's-run', startedAt: NOW, endedAt: NOW, result: 'succeeded', error: undefined }],
     }
-    // The refine session is IN the related set — the old hand-rolled bind+
-    // execution set missed it and let the add-session picker offer to re-bind it.
     const set = controller.relatedSessionIdSet(withExtras)
-    expect([...set].sort()).toEqual(['s-bind', 's-refine', 's-run'])
+    expect([...set].sort()).toEqual(['s-bind', 's-run'])
   })
 
   it('notifies subscribers when the waiting signal changes (the question face, not the list)', () => {
@@ -795,9 +791,15 @@ describe('view state', () => {
     second.fire({ kind: 'settled', taskId: base.id, executionId: second.executionId, outcome: 'succeeded' })
     clock = NOW + 3_000
     controller.markTaskSessionViewed(base.id, 's-1')
-    const rounds = controller.getSnapshot().tasks.find(task => task.id === base.id)!.executions
+    const stampedTask = controller.getSnapshot().tasks.find(task => task.id === base.id)!
+    const rounds = stampedTask.executions
     expect(rounds.find(round => round.id === first.executionId)!.viewedAt).toBe(NOW + 3_000)
     expect(rounds.find(round => round.id === second.executionId)!.viewedAt).not.toBe(NOW + 3_000)
+    // The full chain the surfaces read: stamping s-1 quiets ITS row/dot glow
+    // (sessionUnviewedOf false) while s-2 — settled and never acknowledged —
+    // keeps breathing. Before the stamp both glowed.
+    expect(sessionUnviewedOf(stampedTask, 's-1')).toBe(false)
+    expect(sessionUnviewedOf(stampedTask, 's-2')).toBe(true)
     // Unknown task/session pairs are pure no-ops: the baseline never moves
     // for nothing seen.
     const baseline = controller.getSnapshot().tasks.find(task => task.id === base.id)!.viewedAt
@@ -1966,7 +1968,7 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
 })
 
 describe('referenceSessionOf (官方 @ 菜单的目标会话解析)', () => {
-  it('resolves the task own related session first (refine → execution → linked)', () => {
+  it('resolves the task own related session first (execution → linked)', () => {
     const { controller } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // A bound session makes it the task's own related session.
@@ -2299,141 +2301,6 @@ describe('unified dispatch (one concurrency budget)', () => {
     controller.dispose()
     controller.moveTask(a.id, 'todo')
     expect(exec.runCalls).toHaveLength(1) // no new launch after dispose
-  })
-})
-
-describe('requirement refinement', () => {
-  it('launches a refine round for a backlog task, binds the refine session, and settles in place', async () => {
-    const stub = new StubExec()
-    const store = new InMemoryTaskStore()
-    seedTask(store, { status: 'backlog' })
-    const { controller, stub: exec } = makeController(stub, { store })
-    const taskId = 'task-a'
-    expect(controller.startRefine(taskId)).toBe(true)
-    // A refine round is already open: no second launch.
-    expect(controller.startRefine(taskId)).toBe(false)
-
-    const call = exec.runCalls[0]
-    expect(call.taskId).toBe(taskId)
-    // First round: no session yet — the runner creates and binds one.
-    expect(call.options?.sessionId).toBeUndefined()
-    expect(call.options?.fresh).toBe(true)
-    expect(call.options?.prompt).toContain('最终执行 Prompt')
-
-    call.fire({ kind: 'started', taskId, executionId: call.executionId, sessionId: 's-refine' })
-    expect(store.load()[0].refineSessionId).toBe('s-refine')
-    call.fire({ kind: 'settled', taskId, executionId: call.executionId, outcome: 'succeeded' })
-    const settled = store.load()[0]
-    // Refinement is preparation: the card stays in backlog.
-    expect(settled.status).toBe('backlog')
-    expect(settled.executions[0]).toMatchObject({ refine: true, result: 'succeeded' })
-  })
-
-  it('rejects refine for non-backlog tasks and tasks with an open run', async () => {
-    const stub = new StubExec()
-    const store = new InMemoryTaskStore()
-    seedTask(store, { status: 'todo' })
-    seedTask(store, { id: 'task-b' })
-    const { controller } = makeController(stub, { store })
-    expect(controller.startRefine('task-a')).toBe(false)
-    await controller.runTask('task-b')
-    expect(controller.startRefine('task-b')).toBe(false)
-  })
-
-  it('rejects refine for an all-blank task (no requirement to research)', () => {
-    const stub = new StubExec()
-    const store = new InMemoryTaskStore()
-    const blank = createTask({ title: '  ', description: ' ', prompt: '' }, NOW, 'task-blank')
-    store.save([{ ...blank, status: 'backlog' }])
-    const { controller } = makeController(stub, { store })
-    expect(controller.startRefine('task-blank')).toBe(false)
-    expect(stub.runCalls).toHaveLength(0)
-    expect(store.load()[0].executions).toHaveLength(0)
-  })
-
-  it('a natively-running pre-bind refine session is never recorded as external (no column move)', async () => {
-    // The first refine round is born with sessionId undefined; the native
-    // session appears in the list BEFORE the started event binds it. That
-    // window must not record an out-of-band round (the session is
-    // board-owned from conception) and must never move the column.
-    const stub = new StubExec()
-    const sessions = new FakeSessions()
-    const store = new InMemoryTaskStore()
-    seedTask(store, { status: 'backlog' })
-    const { controller } = makeController(stub, { store, sessions, reconcileDebounceMs: 0 })
-    expect(controller.startRefine('task-a')).toBe(true)
-    sessions.setRunning('s-refine', true)
-    await flush()
-    const mid = store.load()[0]
-    expect(mid.status).toBe('backlog')
-    expect(mid.executions).toHaveLength(1)
-    expect(mid.executions[0].external).not.toBe(true)
-    // The late started event binds the session; the running turn stays
-    // board-owned (busy lane), still no external round, still backlog.
-    const call = stub.runCalls[0]
-    call.fire({ kind: 'started', taskId: 'task-a', executionId: call.executionId, sessionId: 's-refine' })
-    await flush()
-    const bound = store.load()[0]
-    expect(bound.status).toBe('backlog')
-    expect(bound.executions).toHaveLength(1)
-    expect(bound.refineSessionId).toBe('s-refine')
-  })
-
-  it('reuses the bound refine session for answers and delivers them immediately', async () => {
-    const stub = new StubExec()
-    const store = new InMemoryTaskStore()
-    seedTask(store, { status: 'backlog' })
-    const { controller, stub: exec } = makeController(stub, { store })
-    const taskId = 'task-a'
-    controller.startRefine(taskId)
-    const first = exec.runCalls[0]
-    first.fire({ kind: 'started', taskId, executionId: first.executionId, sessionId: 's-refine' })
-    first.fire({ kind: 'settled', taskId, executionId: first.executionId, outcome: 'succeeded' })
-
-    expect(controller.answerRefine(taskId, '  我选 A 方案  ')).toBe(true)
-    const second = exec.runCalls[1]
-    expect(second.options?.sessionId).toBe('s-refine')
-    expect(second.options?.fresh).toBe(false)
-    expect(second.options?.prompt).toBe('我选 A 方案')
-    expect(controller.answerRefine(taskId, '   ')).toBe(false)
-    // Answers never go through the comment FIFO.
-    expect(exec.commentCalls).toHaveLength(0)
-  })
-
-  it('applyRefineResult writes the confirmed prompt onto the task', () => {
-    const stub = new StubExec()
-    const store = new InMemoryTaskStore()
-    seedTask(store, { status: 'backlog' })
-    const { controller } = makeController(stub, { store })
-    expect(controller.applyRefineResult('task-a', '  新的执行 Prompt  ')).toBe(true)
-    expect(store.load()[0].prompt).toBe('新的执行 Prompt')
-    expect(controller.applyRefineResult('task-a', '   ')).toBe(false)
-  })
-
-  it('a settled refine round never triggers a chain hand-off', async () => {
-    const stub = new StubExec()
-    const sessions = new FakeSessions()
-    const store = new InMemoryTaskStore()
-    const task = withSchedule(
-      createTask({ title: 'x', description: '', prompt: 'p', status: 'backlog' }, NOW, 'task-a'),
-      { enabled: true, mode: 'chain', primed: true, cron: '', maxRuns: undefined, runCount: 0 },
-      NOW,
-    )
-    store.save([task])
-    const controller = new BoardController({
-      store,
-      exec: stub as unknown as ExecutionService,
-      sessions,
-      now: () => NOW,
-      uuid,
-    })
-    controller.start()
-    expect(controller.startRefine(task.id)).toBe(true)
-    const call = stub.runCalls[0]
-    call.fire({ kind: 'started', taskId: task.id, executionId: call.executionId, sessionId: 's-refine' })
-    call.fire({ kind: 'settled', taskId: task.id, executionId: call.executionId, outcome: 'succeeded' })
-    // Only the refine round ran — no chain continuation from a refine settle.
-    expect(stub.runCalls).toHaveLength(1)
   })
 })
 
@@ -3437,28 +3304,6 @@ describe('native-activity sync (两端同步)', () => {
     expect(cancelled.status).toBe('review')
     expect(cancelled.executions.find(run => run.id === extId)?.result).toBe('cancelled')
   })
-
-  it('an out-of-band refine turn keeps the column and marks refining', async () => {
-    const stub = new StubExec()
-    const store = new InMemoryTaskStore()
-    const seeded = createTask({ title: 'r', description: '', prompt: 'run' }, NOW, 'task-r')
-    store.save([{ ...seeded, status: 'backlog', refineSessionId: 's-r' }])
-    const sessions = new FakeSessions()
-    const controller = new BoardController({
-      store, exec: stub as unknown as ExecutionService,
-      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
-    })
-    controller.start()
-    await flush()
-    sessions.setRunning('s-r', false)
-    await flush()
-    sessions.setRunning('s-r', true)
-    await flush()
-    await flush()
-    const task = controller.getSnapshot().tasks[0]
-    expect(task.status).toBe('backlog')
-    expect(task.executions.some(run => run.refine === true && run.external === true && run.endedAt === undefined)).toBe(true)
-  })
 })
 
 describe('recordNativeTurn (live turn channel)', () => {
@@ -3604,30 +3449,6 @@ describe('recordNativeTurn (live turn channel)', () => {
     expect(after.executions.some(run => run.external === true)).toBe(false)
     expect(after.executions).toHaveLength(1)
     void stub
-  })
-
-  it('a refine-session turn records a refine round that never moves the column', async () => {
-    const stub = new StubExec()
-    const store = new InMemoryTaskStore()
-    const sessions = new FakeSessions()
-    sessions.setRunning('s-refine', false)
-    // Seed a task whose refine session is bound directly (the refine flow's
-    // persisted shape): the related set marks it refine.
-    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-r')
-    store.save([{ ...seeded, status: 'review', refineSessionId: 's-refine' }])
-    const controller = new BoardController({
-      store, exec: stub as unknown as ExecutionService,
-      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
-    })
-    controller.start()
-    await flush()
-    controller.recordNativeTurn('s-refine', { text: '补充需求', hasImage: false, anchor: 5 })
-    const after = controller.getSnapshot().tasks[0]
-    const ext = after.executions[after.executions.length - 1]
-    expect(ext.external).toBe(true)
-    expect(ext.refine).toBe(true)
-    // A refine round is preparation: the card keeps its column.
-    expect(after.status).toBe('review')
   })
 
   it('a non-engine replica records nothing (the engine records once, sync carries it)', async () => {

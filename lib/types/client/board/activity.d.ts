@@ -1,7 +1,7 @@
 /**
  * Board activity feed: the recent notable moments of every task in one
  * read-only list (creations, starts, settlements, queued/running/settled
- * comments, external observations, direct sends, refine turns — newest
+ * comments, external observations, direct sends — newest
  * first, capped). DERIVED from the snapshot on every render, never stored:
  * a journal would be new synced state (merge grammar, migration), while the
  * moments themselves already live in the ledger (createdAt, startedAt,
@@ -23,10 +23,10 @@ export interface ActivityItem {
     key: string;
     taskId: string;
     taskTitle: string;
-    kind: 'created' | 'settled' | 'comment' | 'refined' | 'started' | 'queued' | 'running' | 'direct' | 'external';
+    kind: 'created' | 'settled' | 'comment' | 'started' | 'queued' | 'running' | 'direct' | 'external';
     /** Settled outcome (only for settled moments). */
     result?: 'succeeded' | 'failed' | 'cancelled';
-    /** Comment/refine/direct text excerpt source. */
+    /** Comment/direct text excerpt source. */
     text?: string;
     at: number;
     /** Lifecycle of the moment (queued/running/settled). */

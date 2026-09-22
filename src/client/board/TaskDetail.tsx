@@ -23,7 +23,6 @@ import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
 import { sessionStateChip, waitingKeyOf } from './session-chip.ts'
 import { indicatorTopOf, insertionGapOf } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
-import { RefineSection } from './RefineSection.tsx'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
 import { NewSessionModal } from './NewSessionModal.tsx'
@@ -268,7 +267,7 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
 }
 
 /** Task detail overlay. */
-export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, requestSessionId, requestSurface, onRequestSessionConsumed }: {
+export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, requestSessionId, onRequestSessionConsumed }: {
   controller: BoardController
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
@@ -282,11 +281,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
    *  so it fires exactly once per request and never reopens on later renders
    *  or task switches. Absent = open no panel (existing behavior). */
   requestSessionId?: string
-  /** Which surface the deep link lands on: `refine` = the task's refinement
-   *  section (a refine session has no linked-session panel); `session` (or
-   *  absent) = the linked-session panel. Decided once by the caller from
-   *  `task.refineSessionId` — never re-derived here. */
-  requestSurface?: 'session' | 'refine'
   /** Fired after a session request has been consumed (parent resets it). */
   onRequestSessionConsumed?: () => void
 }) {
@@ -326,22 +320,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   const [linkedSession, setLinkedSession] = useState<string | undefined>(undefined)
   // One-shot deep link into a session's panel (notification / activity rows
   // land here): consumed exactly once, then the parent resets the request.
-  // A refine-session request never opens a panel — it scrolls the refinement
-  // section into view instead (its InteractionCard lives there; SessionDetail
-  // would degrade to 「会话已不可用」 because linkedOf never lists refine).
-  const refineAnchorRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (requestSessionId !== undefined && requestSurface === 'refine') {
-      refineAnchorRef.current?.scrollIntoView({ block: 'start' })
-      onRequestSessionConsumed?.()
-    }
-  }, [requestSessionId, requestSurface, onRequestSessionConsumed])
-  useEffect(() => {
-    if (requestSessionId !== undefined && requestSurface !== 'refine') {
+    if (requestSessionId !== undefined) {
       setLinkedSession(requestSessionId)
       onRequestSessionConsumed?.()
     }
-  }, [requestSessionId, requestSurface, onRequestSessionConsumed])
+  }, [requestSessionId, onRequestSessionConsumed])
   // The 新建会话 dialog (undefined = closed).
   const [showNewSession, setShowNewSession] = useState(false)
   const [showAddSession, setShowAddSession] = useState(false)
@@ -887,12 +871,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
               )}
             </div>
           </Section>
-
-          {current.status === 'backlog' && (
-            <div ref={refineAnchorRef}>
-              <RefineSection controller={controller} task={current} />
-            </div>
-          )}
 
           <Section title={t('board.status')}>
             <div className={css.moveRow}>

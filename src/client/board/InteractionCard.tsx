@@ -1,8 +1,8 @@
 /**
  * Pending native-interaction card: the plan/question the session's agent is
  * waiting on, rendered IN PLACE over the composer so the user answers right
- * there — in the review page's comment rail, the linked-session panel and the
- * requirement-refinement panel alike (all three read this one component).
+ * there — in the review page's comment rail and the
+ * linked-session panel alike (both read this one component).
  *
  * PARITY WITH THE NATIVE COMPOSER IS THE CONTRACT. The board does not invent
  * its own question UI: it renders the same request the native

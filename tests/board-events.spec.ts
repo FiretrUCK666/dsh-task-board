@@ -38,22 +38,21 @@ describe('boardEventsOf', () => {
     ])
   })
 
-  it('external/direct/refined keep their kinds (never misread as plain runs)', () => {
+  it('external/direct keep their kinds (never misread as plain runs)', () => {
     const base = createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'a')
     const task = {
       ...base,
       executions: [
         newExternalRound({ id: 'ext', now: NOW + 1, sessionId: 's-1', text: 'hi' }),
         newDirectRound({ id: 'dir', now: NOW + 2, text: 'steer', sessionId: 's-1' }),
-        { id: 'ref', sessionId: 's-r', startedAt: NOW + 3, endedAt: NOW + 4, result: 'succeeded' as const, error: undefined, refine: true },
       ],
     }
-    expect(boardEventsOf([task]).map(event => event.kind)).toEqual(['refined', 'direct', 'external', 'created'])
+    expect(boardEventsOf([task]).map(event => event.kind)).toEqual(['direct', 'external', 'created'])
   })
 
   it('waiting moments derive live (one per session, deduped)', () => {
     const base = createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'a')
-    const task = { ...base, refineSessionId: 's-1', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }] }
+    const task = { ...base, executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }] }
     const events = boardEventsOf([task], { pendingOf: id => (id === 's-1' ? 'question' : undefined) })
     expect(events.filter(event => event.kind === 'waiting')).toHaveLength(1)
     expect(boardEventsOf([task], { pendingOf: () => undefined }).some(event => event.kind === 'waiting')).toBe(false)

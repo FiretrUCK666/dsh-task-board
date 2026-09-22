@@ -12,14 +12,13 @@
  *   once injected, settled after; ruleId marks automation);
  * - external: out-of-band native turns (running while observed, settled after);
  * - direct: steer/direct sends (always settled at birth — the record);
- * - refined: requirement-refinement rounds (running/settled, never move columns);
  * - waiting: LIVE derived (pendingInteractionOf) — not ledger history.
  * Pure and framework-free so every consumer unit-tests in isolation.
  */
 import type { PendingInteractionKind } from './controller.ts';
 import { type TaskRecord } from './tasks.ts';
 /** What happened. */
-export type BoardEventKind = 'created' | 'run' | 'comment' | 'external' | 'direct' | 'refined' | 'waiting';
+export type BoardEventKind = 'created' | 'run' | 'comment' | 'external' | 'direct' | 'waiting';
 /** Lifecycle of the moment. */
 export type BoardEventState = 'queued' | 'running' | 'settled';
 /** One feed/notification moment. */
@@ -32,7 +31,7 @@ export interface BoardEvent {
     state: BoardEventState;
     /** Moment instant (createdAt/startedAt/injectedAt/endedAt/task.updatedAt). */
     at: number;
-    /** Settled outcome (run/comment/external/refined only, when settled). */
+    /** Settled outcome (run/comment/external only, when settled). */
     result?: 'succeeded' | 'failed' | 'cancelled';
     /** Comment/direct/external text excerpt source (trimmed, may be empty). */
     text?: string;
@@ -55,7 +54,7 @@ export interface BoardEventContext {
     /** Resolve a session id to its display title (notifications only). */
     titleOf?: (sessionId: string) => string;
     /** Live linked-session ids per task (bound workspace members). When absent,
-     *  waiting falls back to refine + binds + execution rounds (legacy). */
+     *  waiting falls back to binds + execution rounds (legacy). */
     linkedIdsOf?: (task: TaskRecord) => readonly string[];
 }
 /**

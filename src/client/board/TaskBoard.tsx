@@ -59,7 +59,6 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
     return { kind: 'neutral', label: t('board.activitySettled') }
   }
   if (item.kind === 'comment') return { kind: 'neutral', label: t('board.activityComment') }
-  if (item.kind === 'refined') return { kind: 'neutral', label: t('board.activityRefined') }
   if (item.kind === 'started') return { kind: 'neutral', label: t('board.activityStarted') }
   if (item.kind === 'queued') return { kind: 'neutral', label: t('board.activityQueued') }
   if (item.kind === 'running') return { kind: 'neutral', label: t('board.activityRunning') }
@@ -835,20 +834,15 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
   // undefined = gone/never-a-session, e.g. a review row's task-id fallback) —
   // then it degrades to a plain task open, never a panel for a garbage id.
   // LANDING GRAMMAR (one place — every waiting row reads it):
-  // - the task's refine session → the refinement section (its InteractionCard
-  //   lives in RefineSection; a linked-session panel for it would degrade to
-  //   「会话已不可用」, because SessionDetail reads linkedOf, not refine);
   // - any other known session → the linked-session panel (rail force-opens
   //   the awaiting fold and scrolls the card into view by itself).
-  const [detailSessionRequest, setDetailSessionRequest] = useState<{ taskId: string; sessionId: string; surface: 'session' | 'refine' } | undefined>(undefined)
+  const [detailSessionRequest, setDetailSessionRequest] = useState<{ taskId: string; sessionId: string } | undefined>(undefined)
   const openTaskAtSession = (taskId: string, sessionId: string | undefined): void => {
     // Unknown sessions degrade to a plain task open (never a panel for a
     // garbage id) — and to the task-wide clear, so the session-scoped clear
     // below only ever runs for a session the host actually knows.
     const known = sessionId !== undefined && controller.sessionTitle(sessionId) !== undefined
-    const task = snapshot.tasks.find(candidate => candidate.id === taskId)
-    const surface = sessionId !== undefined && task?.refineSessionId === sessionId ? 'refine' as const : 'session' as const
-    setDetailSessionRequest(known && sessionId !== undefined ? { taskId, sessionId, surface } : undefined)
+    setDetailSessionRequest(known && sessionId !== undefined ? { taskId, sessionId } : undefined)
     // Feed/drawer opens clear the viewed session's rounds (unknown sessions
     // fall back to the whole task); pure card clicks keep openTask. ONE funnel.
     controller.openTaskFromNotification(taskId, known ? sessionId : undefined)
@@ -1905,7 +1899,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                 )}
                 {tasks.map(task => {
                   // The task's pending sessions (approval / plan-review /
-                  // question) across every execution + the refine session —
+                  // question) across every execution —
                   // read live so cards reflect the moment a session starts
                   // waiting (the controller notifies on the question face's
                   // session-status snapshot — the waiting signal's source).
@@ -1925,7 +1919,8 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                             kind: t(waitingKeyOf(item.waitingKind)),
                           })
                         }
-                        return t('card.pendingRefine', {
+                        return t('card.pendingItem', {
+                          n: String(0),
                           kind: t(waitingKeyOf(item.waitingKind)),
                         })
                       }).join('；')
@@ -1958,7 +1953,6 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                     switch (nextFact.kind) {
                       case 'waiting': return t('card.nextWaiting')
                       case 'running': return t('card.nextRunning')
-                      case 'refining': return t('card.nextRefining')
                       case 'queued': return t('card.nextQueued', { n: String(nextFact.count ?? 0) })
                       case 'failed': return t('card.nextFailed')
                       case 'review': return t('card.nextReview')
@@ -2026,9 +2020,6 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
           dragSourceRef={dragSourceRef}
           requestSessionId={detailSessionRequest !== undefined && detailSessionRequest.taskId === selected.id
             ? detailSessionRequest.sessionId
-            : undefined}
-          requestSurface={detailSessionRequest !== undefined && detailSessionRequest.taskId === selected.id
-            ? detailSessionRequest.surface
             : undefined}
           onRequestSessionConsumed={() => { setDetailSessionRequest(undefined) }}
         />

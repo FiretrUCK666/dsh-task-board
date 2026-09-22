@@ -12,7 +12,6 @@
  *   once injected, settled after; ruleId marks automation);
  * - external: out-of-band native turns (running while observed, settled after);
  * - direct: steer/direct sends (always settled at birth — the record);
- * - refined: requirement-refinement rounds (running/settled, never move columns);
  * - waiting: LIVE derived (pendingInteractionOf) — not ledger history.
  * Pure and framework-free so every consumer unit-tests in isolation.
  */
@@ -27,7 +26,6 @@ export type BoardEventKind =
   | 'comment'
   | 'external'
   | 'direct'
-  | 'refined'
   | 'waiting'
 
 /** Lifecycle of the moment. */
@@ -43,7 +41,7 @@ export interface BoardEvent {
   state: BoardEventState
   /** Moment instant (createdAt/startedAt/injectedAt/endedAt/task.updatedAt). */
   at: number
-  /** Settled outcome (run/comment/external/refined only, when settled). */
+  /** Settled outcome (run/comment/external only, when settled). */
   result?: 'succeeded' | 'failed' | 'cancelled'
   /** Comment/direct/external text excerpt source (trimmed, may be empty). */
   text?: string
@@ -67,7 +65,7 @@ export interface BoardEventContext {
   /** Resolve a session id to its display title (notifications only). */
   titleOf?: (sessionId: string) => string
   /** Live linked-session ids per task (bound workspace members). When absent,
-   *  waiting falls back to refine + binds + execution rounds (legacy). */
+   *  waiting falls back to binds + execution rounds (legacy). */
   linkedIdsOf?: (task: TaskRecord) => readonly string[]
 }
 
@@ -118,21 +116,6 @@ export function boardEventsOf(
           ...round.comment !== undefined && round.comment.trim() !== '' ? { text: round.comment } : {},
           ...round.sessionId !== undefined ? { sessionId: round.sessionId } : {},
           unviewed: isUnviewed(atOf(round.endedAt ?? round.startedAt)),
-        })
-        continue
-      }
-      if (round.refine === true) {
-        const open = round.endedAt === undefined
-        events.push({
-          key: `${task.id}|${round.id}|refined`,
-          taskId: task.id,
-          taskTitle: task.title,
-          kind: 'refined',
-          state: open ? 'running' : 'settled',
-          at: open ? round.startedAt : (round.endedAt ?? round.startedAt),
-          ...!open && round.result !== undefined ? { result: round.result } : {},
-          ...round.sessionId !== undefined ? { sessionId: round.sessionId } : {},
-          unviewed: isUnviewed(open ? round.startedAt : (round.endedAt ?? round.startedAt)),
         })
         continue
       }
@@ -192,7 +175,7 @@ export function boardEventsOf(
       })
     }
     // LIVE waiting moments (one per waiting RELATED session, deduped) — the
-    // same related set the live state reads (refine + binds + execution
+    // same related set the live state reads (binds + execution
     // rounds + linked ids), so a bound-but-never-run waiting session still
     // lights the bell instead of only breathing the card.
     if (ctx.pendingOf !== undefined) {

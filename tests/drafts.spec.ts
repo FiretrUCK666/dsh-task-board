@@ -14,7 +14,6 @@ import {
   ruleDraftKey,
   saveQuestionDrafts,
   NEW_TASK_DRAFT_KEY,
-  refineDraftKey,
   InMemoryDraftStore,
   LocalStorageDraftStore,
 } from '../src/client/board/drafts.ts'
@@ -37,7 +36,6 @@ describe('draft key construction', () => {
   it('keeps identifiers stable and namespaced per surface', () => {
     expect(commentDraftKey('t-1', 's-9')).toBe('comment:t-1:s-9')
     expect(editDraftKey('t-1')).toBe('edit:t-1')
-    expect(refineDraftKey('t-1')).toBe('refine:t-1')
     expect(NEW_TASK_DRAFT_KEY).toBe('new')
     // The surfaces added late: the new-session dialog (title + config) and the
     // add-mode rule form. An existing rule NEVER has a draft slot in play —
@@ -94,10 +92,10 @@ describe('LocalStorageDraftStore', () => {
 describe('InMemoryDraftStore', () => {
   it('matches the same semantics (set/get/clear, empty clears)', () => {
     const store = new InMemoryDraftStore()
-    store.set('refine:t-2', '回答…')
-    expect(store.get('refine:t-2')).toBe('回答…')
-    store.set('refine:t-2', '')
-    expect(store.get('refine:t-2')).toBeUndefined()
+    store.set('edit:t-2', '回答…')
+    expect(store.get('edit:t-2')).toBe('回答…')
+    store.set('edit:t-2', '')
+    expect(store.get('edit:t-2')).toBeUndefined()
     store.set('a', '1')
     store.set('b', '2')
     store.clear('a')

@@ -1,7 +1,7 @@
 /**
  * Shared session display logic: derive the live state of any execution's
- * underlying session (across all its rounds: the original run + comments +
- * refine rounds). Used by execution rows, task cards, and the reminder
+ * underlying session (across all its rounds: the original run + comments).
+ * Used by execution rows, task cards, and the reminder
  * system so every surface shows the same truth.
  *
  * Pure functions — no side effects, fully unit-testable.
@@ -10,7 +10,7 @@ import type { PendingInteractionKind } from './controller.ts';
 import { type TaskRecord, type ExecutionRecord } from './tasks.ts';
 /**
  * The live state of an execution's session (aggregating all rounds that share
- * the session: the original run, comments, and any refine rounds).
+ * the session: the original run and its comments).
  */
 export interface SessionDisplay {
     /** The session's current state (waiting > running > latest settled). */
@@ -22,8 +22,7 @@ export interface SessionDisplay {
 }
 /**
  * Collect every round belonging to an execution's session:
- * - Rounds with the same sessionId (comments injected into this session,
- *   refine rounds using the same refine session).
+ * - Rounds with the same sessionId (comments injected into this session).
  * - Rounds whose parentExecutionId matches (comments attributed by parent
  *   rather than session — legacy data compatibility).
  * The execution itself is always included.
@@ -41,7 +40,7 @@ export declare function sessionRoundsOf(task: TaskRecord, execution: ExecutionRe
  *   re-derived flag). TRUE means the agent is working, no matter which surface
  *   started the turn (a plain run, a direct steer, a session rule, an
  *   out-of-band native chat) and no matter whose turn holds the session. Board
- *   open rounds and refine rounds keep their own semantics below; this only
+ *   open rounds keep their own semantics below; this only
  *   ADDS the native/lineage truth.
  */
 export declare function sessionDisplay(task: TaskRecord, execution: ExecutionRecord, waitingKind: PendingInteractionKind | undefined, active?: boolean): SessionDisplay;
@@ -75,7 +74,7 @@ export declare function sessionTimes(task: TaskRecord, execution: ExecutionRecor
     duration: number | undefined;
 };
 /**
- * Count how many sessions (executions + refine) are waiting on the user.
+ * Count how many sessions (executions) are waiting on the user.
  * Used by the task card badge to show "N 待处理" when the task has pending
  * interactions across its sessions. ONE row per waiting SESSION (deduped):
  * three executions on the same waiting session wait once, not three times —
@@ -112,13 +111,13 @@ export declare function executionUnviewed(task: TaskRecord, execution: Execution
 export declare function taskViewedBaseline(task: TaskRecord): number;
 /**
  * Whether the task has any unviewed content: any round — a run settling, a
- * comment being injected or settling, a refine turn — with activity newer
+ * comment being injected or settling — with activity newer
  * than the card's viewed baseline. Drives the card's breathing glow.
  */
 export declare function taskUnviewed(task: TaskRecord): boolean;
 /**
  * How many plain-run executions of the task are unviewed — the "新 N" count
- * on the card. Comment/refine-only unread (no unviewed plain runs) shows a
+ * on the card. Comment-only unread (no unviewed plain runs) shows a
  * bare "新" instead.
  */
 export declare function taskUnviewedCount(task: TaskRecord): number;

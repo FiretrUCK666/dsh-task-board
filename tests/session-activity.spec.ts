@@ -19,11 +19,11 @@ function book(): ActivityBook {
   return { running: new Map(), externalSince: new Map(), recorded: new Set() }
 }
 
-function candidate(refine = false, hasOpenRound = false, inBoardTurn = false) {
+function candidate(hasOpenRound = false, inBoardTurn = false) {
   return {
     taskId: TASK,
     candidate: {
-      sessions: [{ sessionId: SESSION, refine }],
+      sessions: [{ sessionId: SESSION }],
       hasOpenRoundOn: () => hasOpenRound,
       inBoardTurnOn: () => inBoardTurn,
     },
@@ -41,7 +41,7 @@ describe('detectExternalTurns', () => {
     // The old edge rule only baselined here — the row showed 进行中 while the
     // card never moved. The state rule fires the round immediately.
     expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true })))
-      .toEqual([{ taskId: TASK, sessionId: SESSION, refine: false }])
+      .toEqual([{ taskId: TASK, sessionId: SESSION }])
     // Idempotent within the run period: the second pass never double-fires.
     expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true }))).toEqual([])
   })
@@ -50,14 +50,14 @@ describe('detectExternalTurns', () => {
     const b = book()
     detectExternalTurns([candidate()], b, byId({ [SESSION]: false }))
     expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true })))
-      .toEqual([{ taskId: TASK, sessionId: SESSION, refine: false }])
+      .toEqual([{ taskId: TASK, sessionId: SESSION }])
     // Still running: consumed.
     expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true }))).toEqual([])
     // Idle: the period ends…
     expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: false }))).toEqual([])
     // …and the NEXT native turn fires again (two flips, two rounds).
     expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true })))
-      .toEqual([{ taskId: TASK, sessionId: SESSION, refine: false }])
+      .toEqual([{ taskId: TASK, sessionId: SESSION }])
   })
 
   it('a lane veto does NOT consume (coverage) but a board turn does (identity)', () => {
@@ -66,19 +66,13 @@ describe('detectExternalTurns', () => {
     // still running, the turn fires. Consuming here is the "card never
     // lights" machine (the veto lifts on settle/cancel, no second edge).
     const b = book()
-    expect(detectExternalTurns([candidate(false, true)], b, byId({ [SESSION]: true }))).toEqual([])
-    expect(detectExternalTurns([candidate(false, false)], b, byId({ [SESSION]: true })))
-      .toEqual([{ taskId: TASK, sessionId: SESSION, refine: false }])
+    expect(detectExternalTurns([candidate(true)], b, byId({ [SESSION]: true }))).toEqual([])
+    expect(detectExternalTurns([candidate()], b, byId({ [SESSION]: true })))
+      .toEqual([{ taskId: TASK, sessionId: SESSION }])
     // Direct-send turn (inBoardTurnOn): identity veto — consumed, never fires.
     const b2 = book()
-    detectExternalTurns([candidate(false, false, true)], b2, byId({ [SESSION]: true }))
+    detectExternalTurns([candidate(false, true)], b2, byId({ [SESSION]: true }))
     expect(detectExternalTurns([candidate()], b2, byId({ [SESSION]: true }))).toEqual([])
-  })
-
-  it('reports refine sessions with the refine flag', () => {
-    const b = book()
-    expect(detectExternalTurns([candidate(true)], b, byId({ [SESSION]: true })))
-      .toEqual([{ taskId: TASK, sessionId: SESSION, refine: true }])
   })
 
   it('a session that disappears (unknown id) never fires and stays unarmed', () => {
@@ -244,7 +238,7 @@ describe('the detector keeps reading the RAW turn flag (activity never feeds it)
     // fabricate a round on the parent (anchored to an old user message) and
     // hold its lane. The detector must see the parent's own flag only.
     const b = book()
-    const parent = { taskId: TASK, candidate: { sessions: [{ sessionId: 'P', refine: false }], hasOpenRoundOn: () => false, inBoardTurnOn: () => false } }
+    const parent = { taskId: TASK, candidate: { sessions: [{ sessionId: 'P' }], hasOpenRoundOn: () => false, inBoardTurnOn: () => false } }
     const byIdRaw = { P: { running: false }, C: { running: true, parentId: 'P', origin: 'subagent' as const } }
     expect(detectExternalTurns([parent], b, byIdRaw)).toEqual([])
   })

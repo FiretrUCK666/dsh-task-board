@@ -444,34 +444,6 @@ describe('taskPendingCount', () => {
     ])
   })
 
-  it('counts refine session waiting', () => {
-    const task: TaskRecord = {
-      ...taskWith([]),
-      refineSessionId: 'refine-s1',
-    }
-    const pendingOf = (sid: string | undefined) =>
-      sid === 'refine-s1' ? 'plan-review' : undefined
-    const result = taskPendingCount(task, pendingOf)
-    expect(result.count).toBe(1)
-    expect(result.items).toEqual([{ sessionId: 'refine-s1', waitingKind: 'plan-review' }])
-  })
-
-  it('counts both execution and refine waiting', () => {
-    const exec = round('exec-1', { startedAt: 100, sessionId: 's1' })
-    const task: TaskRecord = {
-      ...taskWith([exec]),
-      refineSessionId: 'refine-s1',
-    }
-    const pendingOf = (sid: string | undefined) =>
-      sid === 's1' ? 'approval' : sid === 'refine-s1' ? 'question' : undefined
-    const result = taskPendingCount(task, pendingOf)
-    expect(result.count).toBe(2)
-    expect(result.items).toEqual([
-      { executionId: 'exec-1', sessionId: 's1', waitingKind: 'approval' },
-      { sessionId: 'refine-s1', waitingKind: 'question' },
-    ])
-  })
-
   it('ignores executions without sessionId', () => {
     const exec = round('exec-1', { startedAt: 100 }) // no sessionId
     const task = taskWith([exec])
@@ -595,13 +567,12 @@ describe('unviewed reminders', () => {
     expect(taskUnviewedCount(withComment)).toBe(1)
   })
 
-  it('refine-only unread lights the card with a bare 新 (zero unviewed executions)', () => {
+  it('comment-only unread lights the card with a bare 新 (zero unviewed executions)', () => {
     const task: TaskRecord = {
       ...taskWith([]),
       viewedAt: 100,
-      refineSessionId: 's-refine',
       executions: [
-        round('r1', { startedAt: 130, sessionId: 's-refine', endedAt: 160, result: 'succeeded', refine: true }),
+        round('r1', { startedAt: 130, sessionId: 's-chat', endedAt: 160, result: 'succeeded', comment: '补充要求' }),
       ],
     }
     expect(taskUnviewed(task)).toBe(true)
@@ -668,12 +639,8 @@ describe('sessionUnviewedOf (the per-session read clock shared by row glow and d
     expect(sessionUnviewedOf(taskWith([run, comment]), 's1')).toBe(true)
   })
 
-  it('no rounds reads false; a settle-stamped refine turn is quiet; an unacknowledged external finish glows', () => {
+  it('no rounds reads false; an unacknowledged external finish glows', () => {
     expect(sessionUnviewedOf(taskWith([]), 'sx')).toBe(false)
-    // settleRefine stamps the round seen at its own settle — a finished
-    // refinement turn never accumulates unread (完成永亮 protection).
-    const refine = round('r1', { sessionId: 's1', startedAt: 100, endedAt: 150, result: 'succeeded', refine: true, viewedAt: 150 })
-    expect(sessionUnviewedOf(taskWith([refine]), 's1')).toBe(false)
     // An observed native turn that nobody ever acknowledged (no stamp): its
     // activity beats its own start — activity after an acknowledgment nobody
     // recorded is exactly what should glow. This is the bound-conversation

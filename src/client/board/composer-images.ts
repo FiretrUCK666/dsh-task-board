@@ -1,6 +1,6 @@
 /**
  * The composer's attachment ledger — ONE mechanism for every surface that
- * can attach files (the comment composer, the refinement answer, the task's
+ * can attach files (the comment composer, the task's
  * execution prompt): images + staged files, intake from pick / drop / paste
  * + a busy count + the LAST rejection said out loud. A file that cannot be
  * staged is NEVER silently dropped (the old 「电脑端发不了图」 was silent

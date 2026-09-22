@@ -15,7 +15,6 @@
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
 import { isValidCron, nextRunAtMs } from './schedule.ts'
 import { disarmSessionRules, nextSessionRuleAt, withSessionRules } from './automation.ts'
-import { buildRefinePrompt } from './refine.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
@@ -34,7 +33,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, refinable, ruleReadiness, sameBind, sessionIsBusy, settleExecution, settleRefine, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withRefineSession, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -927,7 +926,7 @@ export class BoardController {
    * resolution shared by every board input (the reference RPCs are
    * session-scoped: file discovery uses the session's cwd, session
    * discovery excludes the target itself):
-   * 1. the task's own related session (refine → execution → linked, the
+   * 1. the task's own related session (execution → linked, the
    *    same order every surface reads);
    * 2. the first session of the native list.
    * undefined only when there is no task and no session at all.
@@ -1963,7 +1962,7 @@ export class BoardController {
       // off the CURRENT native snapshot so the column, the border, the chip
       // and the breathing agree in the same frame.
       const deletedOpen = task.executions.some(round =>
-        round.sessionId === sessionId && round.refine !== true && isOpenRound(round))
+        round.sessionId === sessionId && isOpenRound(round))
       // Immediate leave: the deletion may have swept the card's last running
       // evidence (its open external round). Read the post-deletion live state
       // off the CURRENT native snapshot — through the SAME derivation every
@@ -2592,8 +2591,8 @@ export class BoardController {
     if (hasOpenRun(task)) return
     const runs = plainRunsOf(task)
     const latest = runs[runs.length - 1]
-    // Only a succeeded plain run hands off; refinement (preparation) and
-    // comment/native rounds are not the card's own execution completing.
+    // Only a succeeded plain run hands off; comment/native rounds are not
+    // the card's own execution completing.
     if (latest === undefined || latest.endedAt === undefined || latest.result !== 'succeeded') return
     if (schedule.maxRuns !== undefined && schedule.runCount >= schedule.maxRuns) return
     // A hand-off already waiting for a slot IS this link: counting again (and
@@ -3288,116 +3287,6 @@ export class BoardController {
     return true
   }
 
-  // --- requirement refinement ---------------------------------------------------
-
-  /**
-   * Start (or continue) a backlog task's requirement refinement: launch a
-   * refine round in the task's refine session, created lazily through the
-   * same session machinery as executions and inheriting the task's run
-   * configuration (workspace/model/effort/permission — nothing extra to
-   * configure). The first round sends the built-in refine instruction (the
-   * agent researches with its own tools, asks the user anything unclear, and
-   * delivers a ready-to-run prompt); later rounds are the user's answers.
-   * @param taskId - the backlog task to refine.
-   * @param english - whether to write the refine instruction in English.
-   * @returns true when a round was launched.
-   */
-  startRefine(taskId: string, english = false): boolean {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
-    if (task === undefined || task.status !== 'backlog' || hasOpenRun(task)) return false
-    // An all-blank task has no requirement to research (the refine
-    // instruction is built from title/description/prompt) — launching would
-    // burn a run and light the card for nothing. The UI disables the entry
-    // with the same judgment; this is the backstop, never the messenger.
-    if (!refinable(task)) return false
-    const round: ExecutionRecord = {
-      id: this.uuid(),
-      sessionId: task.refineSessionId,
-      startedAt: this.now(),
-      endedAt: undefined,
-      result: undefined,
-      error: undefined,
-      refine: true,
-    }
-    this.tasks = this.tasks.map(candidate => candidate.id === taskId
-      ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
-      : candidate)
-    this.persistAndNotify()
-    this.activeExecutionIds.add(round.id)
-    const launchTask = this.tasks.find(candidate => candidate.id === taskId)
-    if (launchTask === undefined) return true
-    void this.deps.exec.run(launchTask, round, (event) => { this.handleExecutionEvent(event) }, {
-      prompt: buildRefinePrompt(launchTask, english),
-      sessionId: task.refineSessionId,
-      fresh: task.refineSessionId === undefined,
-      renameTo: `${task.title} · 完善需求`,
-    })
-    return true
-  }
-
-  /**
-   * Send the user's answer into the task's refine session (the AI asked and
-   * is waiting): launch a refine round with the answer text, delivered
-   * immediately — the session is already counted in-flight, so answers never
-   * queue behind the cruise gate or the comment FIFO.
-   * @param taskId - the task whose refine session receives the answer.
-   * @param text - the answer text.
-   * @returns true when the answer was launched.
-   */
-  answerRefine(taskId: string, text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]): boolean {
-    const trimmed = text.trim()
-    // Same blank rule as every other path: an answer may be attachments alone.
-    if (isBlankMessage(text, images, files)) return false
-    const task = this.tasks.find(candidate => candidate.id === taskId)
-    if (task === undefined || task.refineSessionId === undefined) return false
-    const round: ExecutionRecord = {
-      id: this.uuid(),
-      sessionId: task.refineSessionId,
-      startedAt: this.now(),
-      endedAt: undefined,
-      result: undefined,
-      error: undefined,
-      refine: true,
-    }
-    this.tasks = this.tasks.map(candidate => candidate.id === taskId
-      ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
-      : candidate)
-    this.persistAndNotify()
-    this.activeExecutionIds.add(round.id)
-    const launchTask = this.tasks.find(candidate => candidate.id === taskId)
-    if (launchTask === undefined) return true
-    void this.deps.exec.run(launchTask, round, (event) => { this.handleExecutionEvent(event) }, {
-      prompt: trimmed,
-      // Freshly-attached answer attachments ride THIS round's prompt (the
-      // refine session's own prompt images belong to the original
-      // instruction).
-      ...(images !== undefined && images.length > 0 ? { images } : {}),
-      ...(files !== undefined && files.length > 0 ? { files } : {}),
-      sessionId: task.refineSessionId,
-      fresh: false,
-      renameTo: `${task.title} · 完善需求`,
-    })
-    return true
-  }
-
-  /**
-   * Write a refined prompt onto the task (the user confirms the text shown
-   * in the refine panel; nothing is ever applied automatically).
-   * @param taskId - the task to update.
-   * @param prompt - the refined execution prompt text.
-   * @returns true when the task was updated.
-   */
-  applyRefineResult(taskId: string, prompt: string): boolean {
-    const trimmed = prompt.trim()
-    const task = this.tasks.find(candidate => candidate.id === taskId)
-    if (task === undefined || trimmed === '') return false
-    this.tasks = this.tasks.map(candidate => candidate.id === taskId
-      ? { ...candidate, prompt: trimmed, updatedAt: this.now() }
-      : candidate)
-    this.persistAndNotify()
-    return true
-  }
-
   // --- auto-cruise --------------------------------------------------------------
 
   /** Turn the auto-cruise on or off (persisted) — a MANUAL toggle: it flips
@@ -3485,16 +3374,6 @@ export class BoardController {
       this.tasks = this.tasks.map(task => task.id === event.taskId
         ? attachSessionId(task, event.executionId, event.sessionId, this.now())
         : task)
-      // The first refine round binds the task's refine session — every later
-      // refine round reuses it, so the whole refinement conversation stays
-      // in one session across refreshes.
-      if (this.tasks.some(task =>
-        task.id === event.taskId && task.executions.some(round =>
-          round.id === event.executionId && round.refine === true))) {
-        this.tasks = this.tasks.map(task => task.id === event.taskId
-          ? withRefineSession(task, event.sessionId, this.now())
-          : task)
-      }
       this.persistAndNotify()
       return
     }
@@ -3521,8 +3400,8 @@ export class BoardController {
     if (this.engine) this.maybeContinueChain(event.taskId)
     this.persistAndNotify()
     // A settled plain TASK RUN is the on-complete appointment for the task's
-    // session rules. Comment rounds carry `comment`, refine rounds carry
-    // `refine: true` — neither is a task run, so an on-complete rule can
+    // session rules. Comment rounds carry `comment` — neither they nor a
+    // direct send is a task run, so an on-complete rule can
     // never re-trigger itself through its own queued comment's settle (no
     // send loops). Fired after the persist so the rule bookkeeping layers on
     // the settled object.
@@ -3537,10 +3416,10 @@ export class BoardController {
    * still keep automation alive ("任务完成了一次却没有任何反应" 正是这个缺口).
    * 1. on-complete rules (fireOnCompleteRules — ANY completion is the
    *    任务完成 appointment: a plain run, a user comment round or a native/
-   *    external turn all landed the card in 「待审核」; refine rounds are
-   *    preparation, never a completion, and the rule's OWN round is excluded
-   *    — its loop is the dedicated fireLoopRule hook, so a settle never
-   *    double-fires; the one-in-flight guard is the second backstop);
+   *    external turn all landed the card in 「待审核」; the rule's OWN round
+   *    is excluded — its loop is the dedicated fireLoopRule hook, so a
+   *    settle never double-fires; the one-in-flight guard is the second
+   *    backstop);
    * 2. the rule's own loop (fireLoopRule — a ruleId round's succeeded settle
    *    continues 完成后继续; failure/cancel never does).
    * The chain hand-off stays OUTSIDE (both call sites run it BEFORE their
@@ -3552,7 +3431,7 @@ export class BoardController {
     taskId: string,
     outcome: 'succeeded' | 'failed' | 'cancelled',
   ): void {
-    if (settledRound?.refine !== true && settledRound?.ruleId === undefined) {
+    if (settledRound?.ruleId === undefined) {
       void this.fireOnCompleteRules(taskId)
     }
     if (settledRound?.ruleId !== undefined && outcome === 'succeeded') {
@@ -3639,16 +3518,13 @@ export class BoardController {
     this.fireRuleRound(task, rule, text)
   }
 
-  /** Settle a round with the rule its kind demands: refine rounds keep the
-   *  task in its column (settlement of a plain run may move the card). */
+  /** Settle a round through the shared column decision. */
   private settleRound(
     task: TaskRecord,
     executionId: string,
     outcome: 'succeeded' | 'failed' | 'cancelled',
     error: string | undefined,
   ): TaskRecord {
-    const round = task.executions.find(candidate => candidate.id === executionId)
-    if (round?.refine === true) return settleRefine(task, executionId, outcome, this.now(), error)
     // The COLUMN leg of a settle: the round always settles on its own turn's
     // evidence (never on a descendant's), but the card must not be written out
     // of 进行中 while a related session is POSITIVELY working — its own turn or
@@ -3860,8 +3736,7 @@ export class BoardController {
       if (this.driveLiveStates(linkedIds)) changed = true
 
       // Stage 1 — reconcile every task with an open round worth settling:
-      // running tasks (plain runs, comment rounds, external rounds) plus any
-      // task with an open refinement round (refinement keeps its column).
+      // running tasks (plain runs, comment rounds, external rounds).
       // An open round is ALSO swept wherever its card now sits: a manual drag
       // out of 进行中 must never orphan it — a zombie round holds a
       // concurrency slot and (via hasOpenRoundOn) swallows every FUTURE
@@ -3873,7 +3748,7 @@ export class BoardController {
         // sessions in flight, and a round that is not the last record would
         // otherwise never be swept — it would hold its slot forever.
         for (const execution of openRoundsOf(task)) {
-          const drivable = task.status === 'running' || execution.refine === true
+          const drivable = task.status === 'running'
           if (!drivable) {
             // Parked card with an open round: no history read (nothing is
             // expected to produce evidence), only the watchdog decides.
@@ -3923,8 +3798,8 @@ export class BoardController {
         }
       }
 
-      // Stage 2 — apply the settled rounds (refine rounds keep the column),
-      // re-reading each record at write time so mid-await changes survive.
+      // Stage 2 — apply the settled rounds, re-reading each record at write
+      // time so mid-await changes survive.
       const continued: string[] = []
       const applied: Array<{ round: ExecutionRecord | undefined; event: Settled }> = []
       for (const { taskId, round, event, externalText } of events) {
@@ -4002,8 +3877,8 @@ export class BoardController {
    * agent works, the task joins 进行中 (like any real execution); when the
    * session stops, the steer's completion is a completion: it lands in
    * 待审核 and goes through the SAME settledFollowUp appointment (on-complete
-   * rules, chain hand-off) as a watched settle. Board-open rounds and
-   * refine/external rounds keep their own event paths; this pass never
+   * rules, chain hand-off) as a watched settle. Board-open and external
+   * rounds keep their own event paths; this pass never
    * settles anything twice (isDirectLike is only true for already-settled
    * direct rounds, and the fallback fires exactly once — status was
    * 'running' before the transition).
@@ -4067,7 +3942,7 @@ export class BoardController {
 
   /** THE live-state question for one task (card breathing source): waiting >
    *  running > unknown > idle — same single derivation for every surface. The
-   *  related set is the task's OWN sessions (refine + explicit binds + execution
+   *  related set is the task's OWN sessions (explicit binds + execution
    *  rounds; a workspace bind contributes none), so the card and its rows
    *  always answer the same question from the same set. */
   liveStateOf(taskId: string): TaskLiveState {
@@ -4171,30 +4046,29 @@ export class BoardController {
   }
 
   /**
-   * Every related session of a task (de-duplicated, refine first) — THE one
+   * Every related session of a task (de-duplicated) — THE one
    * derivation from task-live.ts, consumed by the external-activity scanner,
    * the bound-task reconcile and the '@' reference scoping. The controller
    * only supplies the linked ids (explicit session binds); everything else
-   * (binds, execution rounds, refine session) is pure task shape.
+   * (binds, execution rounds) is pure task shape.
    */
-  private relatedSessionsOf(task: TaskRecord): Array<{ sessionId: string; refine: boolean }> {
+  private relatedSessionsOf(task: TaskRecord): Array<{ sessionId: string }> {
     return relatedSessionIdsOf(task, this.linkedOf(task).map(row => row.sessionId))
   }
 
   /** The ids of every session already RELATED to a task (binds, execution
-   *  rounds, the refine session, live linked members) — the single source for
-   *  "do not offer this session again". The add-session picker filters on this,
-   *  so a refine session (which the old hand-rolled bind+execution set missed)
-   *  never shows as a re-bindable candidate. */
+   *  rounds, live linked members) — the single source for
+   *  "do not offer this session again". The add-session picker filters on
+   *  this, so a session already carrying the task's rounds never shows as a
+   *  re-bindable candidate. */
   relatedSessionIdSet(task: TaskRecord): Set<string> {
     return new Set(this.relatedSessionsOf(task).map(row => row.sessionId))
   }
 
   /**
    * Detect out-of-band activity on related sessions (see session-activity.ts)
-   * and record external rounds: the round enters the session's comment thread,
-   * a non-refine round moves the card to 「进行中」, a refine round keeps the
-   * column but turns `refining` on. The round body is the user's native
+   * and record external rounds: the round enters the session's comment thread
+   * and drives the card to 「进行中」. The round body is the user's native
    * message text captured at observation (so the thread shows what was said)
    * and the round carries the message's seq as its TURN ANCHOR — the dedup
    * key shared with the live frame channel (recordNativeTurn), so the same
@@ -4225,7 +4099,7 @@ export class BoardController {
     for (const turn of turns) {
       const msg = await this.userMessageOf(turn.sessionId)
       if (this.disposed) return changed
-      if (this.recordExternalRound(turn.taskId, turn.sessionId, turn.refine, msg)) changed = true
+      if (this.recordExternalRound(turn.taskId, turn.sessionId, msg)) changed = true
     }
     // Wake evidence: a woken session re-checks through the transcript tail
     // even when the running flag did not move — a turn that started AND
@@ -4235,16 +4109,16 @@ export class BoardController {
     // never doubled; board-owned turns stay suppressed by the same guards.
     for (const sessionId of woken) {
       if (turns.some(turn => turn.sessionId === sessionId)) continue
-      const related: Array<{ taskId: string; refine: boolean }> = []
+      const related: string[] = []
       for (const task of this.tasks) {
         const candidate = this.relatedSessionsOf(task).find(entry => entry.sessionId === sessionId)
-        if (candidate !== undefined) related.push({ taskId: task.id, refine: candidate.refine })
+        if (candidate !== undefined) related.push(task.id)
       }
       if (related.length === 0) continue
       const msg = await this.userMessageOf(sessionId)
       if (this.disposed) return changed
-      for (const { taskId, refine } of related) {
-        if (this.recordExternalRound(taskId, sessionId, refine, msg)) changed = true
+      for (const taskId of related) {
+        if (this.recordExternalRound(taskId, sessionId, msg)) changed = true
       }
     }
     return changed
@@ -4264,13 +4138,12 @@ export class BoardController {
    * The ONE external-round write (both detection channels land here): append
    * the round to the CURRENT record (anchor-dedup re-checked at write time —
    * a stale snapshot is never written over a newer one), drive the card into
-   * 「进行中」 (a refine round keeps its column), promote to the column top and
+   * 「进行中」, promote to the column top and
    * persist. @returns whether the ledger actually moved.
    */
   private recordExternalRound(
     taskId: string,
     sessionId: string,
-    refine: boolean,
     msg: LatestUserMessage | undefined,
   ): boolean {
     const now = this.now()
@@ -4295,17 +4168,16 @@ export class BoardController {
           id: this.uuid(),
           now,
           sessionId,
-          refine,
           ...msg?.text !== undefined ? { text: msg.text } : {},
           ...msg?.anchor !== undefined ? { anchor: msg.anchor } : {},
           ...msg !== undefined && msg.text === undefined && msg.hasImage ? { imageOnly: true } : {},
         })],
       }
-      return refine || withRound.status === 'running' ? withRound : withStatus(withRound, 'running', now)
+      return withRound.status === 'running' ? withRound : withStatus(withRound, 'running', now)
     })
     if (!changed) return false
     this.activityBook.externalSince.set(sessionId, now)
-    if (!refine) this.tasks = promoteToColumnTop(this.tasks, taskId, 'running', now)
+    this.tasks = promoteToColumnTop(this.tasks, taskId, 'running', now)
     this.persistAndNotify()
     return true
   }
@@ -4330,7 +4202,7 @@ export class BoardController {
       // The live frame IS the turn: consume the session's run period (the
       // state backstop must not fire for it again) and baseline it running.
       this.activityBook.recorded.add(sessionId)
-      this.recordExternalRound(task.id, sessionId, candidate.refine, turn)
+      this.recordExternalRound(task.id, sessionId, turn)
     }
     // RAW ON PURPOSE: the baseline mirrors the session's OWN turn — this frame
     // reported a native user turn FOR this session, and the run-period
@@ -4415,7 +4287,6 @@ export class BoardController {
     const now = this.now()
     // The instant-sync facts captured before any await.
     let runningSessionId: string | undefined
-    let runningRefine = false
     // Running sessions the instant sync leaves behind (lane-busy, or past
     // the one-record instant grant below): NOT consumed — the scheduled
     // pass after this records them through the normal channel.
@@ -4448,7 +4319,6 @@ export class BoardController {
         continue
       }
       runningSessionId = session.sessionId
-      runningRefine = session.refine
       this.activityBook.recorded.add(session.sessionId)
     }
     // Leftover running turns re-enter through the scheduled pass (engine-gated
@@ -4459,7 +4329,7 @@ export class BoardController {
     // A dispose may land while the transcript read is in flight — a dead
     // controller must never keep writing into a dropped ledger.
     if (this.disposed) return
-    if (!this.recordExternalRound(taskId, runningSessionId, runningRefine, msg)) return
+    if (!this.recordExternalRound(taskId, runningSessionId, msg)) return
     // Unviewed on purpose: this external round is brand-new content the
     // user has not seen (it happened before/while they bound it).
     this.tasks = this.tasks.map(candidate =>

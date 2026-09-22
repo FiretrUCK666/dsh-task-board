@@ -1,6 +1,6 @@
 /**
  * Composer attachment strip: the file-drag/pick entrance of every composer
- * that attaches files (review page, session panel, refinement, task prompt).
+ * that attaches files (review page, session panel, task prompt).
  * It is PRESENTATION + the picker affordance; the ledger state, intake
  * (image encode/compress + file staging) and the drop/paste wiring live in
  * the shared `useComposerImages` hook, which the composer spreads onto its

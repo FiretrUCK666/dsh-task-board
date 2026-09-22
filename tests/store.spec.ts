@@ -3,6 +3,9 @@
  * handling, invalid-row dropping, and the in-memory backend.
  */
 import { describe, expect, it } from 'vitest'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   InMemoryTaskStore, LocalStorageTaskStore, isTaskRecord, parseLedger,
 } from '../src/core/store.ts'
@@ -140,20 +143,46 @@ describe('parseLedger', () => {
     ])
   })
 
-  it('round-trips refinement rounds and the bound refine session', () => {
-    const task = createTask({ title: 'x', description: '', prompt: '' }, 1, 't-1')
-    task.refineSessionId = 's-refine'
-    task.executions = [
-      { id: 'run-1', sessionId: 's-1', startedAt: 1, endedAt: 10, result: 'succeeded', error: undefined },
-      { id: 'r-1', sessionId: 's-refine', startedAt: 20, endedAt: 30, result: 'succeeded', error: undefined, refine: true },
-      { id: 'r-2', sessionId: 's-refine', startedAt: 40, endedAt: undefined, result: undefined, error: undefined, refine: true },
-    ]
-    const parsed = parseLedger(JSON.stringify([task]))
-    expect(parsed[0].refineSessionId).toBe('s-refine')
-    expect(parsed[0].executions).toEqual(task.executions.map(round => ({
-      ...round,
-      viewedAt: round.endedAt ?? round.startedAt,
-    })))
+  it('strips legacy refinement data (rounds dropped, bound session unbound)', () => {
+    // Both persistence entries funnel here (localStorage directly, host truth
+    // through board-doc's normalizeIncomingTask), so one strip covers every
+    // reader: a leftover refine round would re-enter history as a plain run.
+    const legacy = {
+      id: 't-1', title: 'x', description: '', prompt: '',
+      status: 'backlog', createdAt: 1, updatedAt: 40,
+      refineSessionId: 's-refine',
+      executions: [
+        { id: 'run-1', sessionId: 's-1', startedAt: 1, endedAt: 10, result: 'succeeded', error: undefined },
+        { id: 'r-1', sessionId: 's-refine', startedAt: 20, endedAt: 30, result: 'succeeded', error: undefined, refine: true },
+        { id: 'r-2', sessionId: 's-refine', startedAt: 40, endedAt: undefined, result: undefined, error: undefined, refine: true },
+      ],
+    }
+    const parsed = parseLedger(JSON.stringify([legacy]))
+    expect(parsed).toHaveLength(1)
+    expect((parsed[0] as unknown as Record<string, unknown>).refineSessionId).toBeUndefined()
+    expect(parsed[0].executions.map(round => round.id)).toEqual(['run-1'])
+    expect(parsed[0].executions[0]).toMatchObject({ viewedAt: 10 })
+  })
+
+  it('no refine identifiers anywhere in src except the store.ts strip itself', () => {
+    // The strip above is the ONE sanctioned seam (legacy data cleanup). Every
+    // other occurrence of the removed feature — code, keys, copy, comments —
+    // is residue and fails here instead of rotting quietly.
+    const srcRoot = fileURLToPath(new URL('../src', import.meta.url))
+    const stripPath = join(srcRoot, 'core', 'store.ts')
+    const residue = /refin/i
+    const offenders: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir)) {
+        const path = join(dir, entry)
+        if (statSync(path).isDirectory()) walk(path)
+        else if (/\.(ts|tsx)$/.test(entry) && path !== stripPath) {
+          if (residue.test(readFileSync(path, 'utf8'))) offenders.push(path.slice(srcRoot.length + 1))
+        }
+      }
+    }
+    walk(srcRoot)
+    expect(offenders).toEqual([])
   })
 
   it('round-trips the live bind and the display-hidden row sets', () => {

@@ -13,7 +13,7 @@
  * scrolls internally — the native composer's pattern (resize: none), which
  * eliminates the unreachable resize-handle trap of a bottom-pinned input.
  * Shared by the new-task modal, the detail edit mode, the review page's
- * composer, the session panel, the refine answer and the interaction card.
+ * composer, the session panel and the interaction card.
  */
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type SyntheticEvent } from 'react'
 import type { BoardController, SlashCandidate } from '../../core/controller.ts'

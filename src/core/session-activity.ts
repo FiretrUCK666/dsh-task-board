@@ -156,14 +156,12 @@ function hasImageBlock(content: unknown): boolean {
 export interface DetectedExternalTurn {
   taskId: string
   sessionId: string
-  /** The session is the task's refine session — its round must not move the column. */
-  refine: boolean
 }
 
 /** The per-task facts the detector needs to avoid false positives. */
 export interface ActivityCandidate {
-  /** Every related session: executions + bound sessions + refine (de-duplicated). */
-  sessions: ReadonlyArray<{ sessionId: string; refine: boolean }>
+  /** Every related session (de-duplicated). */
+  sessions: ReadonlyArray<{ sessionId: string }>
   /** Whether the task already has an open round on this session (board-owned or previously detected). */
   hasOpenRoundOn(sessionId: string): boolean
   /** Whether the session's CURRENT turn is board-owned already: the live
@@ -219,7 +217,7 @@ export function detectExternalTurns(
       if (candidate.hasOpenRoundOn(session.sessionId)) continue
       // This running period is now consumed by the round firing below.
       book.recorded.add(session.sessionId)
-      found.push({ taskId, sessionId: session.sessionId, refine: session.refine })
+      found.push({ taskId, sessionId: session.sessionId })
     }
   }
   return found

@@ -245,9 +245,11 @@ function isErrorTurnEnd(data: unknown): boolean {
 
 /** Launch options for {@link ExecutionService.run}. */
 export interface RunOptions {
-  /** The prompt text to send instead of the task's own (refine instructions, …). */
+  /** The prompt text to send instead of the task's own (comment/rule
+   *  instructions, …). */
   prompt?: string
-  /** The session to run in instead of a freshly connected one (refine reuse). */
+  /** The session to run in instead of a freshly connected one (comment
+   *  continuations reuse the lane's session). */
   sessionId?: string
   /** Display name for the session (cosmetic rename; default = task title). */
   renameTo?: string
@@ -260,7 +262,7 @@ export interface RunOptions {
   /**
    * Images to send with the prompt (the official temporary-bytes parts).
    * A plain run omits this and takes the TASK's own persisted prompt images;
-   * a refine answer passes its freshly-attached images instead.
+   * a message that attaches its own images passes them instead.
    */
   images?: readonly { mediaType: string; data: string; name?: string }[]
   /**
@@ -277,8 +279,8 @@ export interface RunOptions {
  * @param task - the task being executed.
  * @param execution - the freshly opened execution record (id + start time).
  * @param onEvent - callback for started/settled events.
- * @param options - launch variant (refine rounds reuse the task's refine
- *   session and send the refine instruction; see {@link RunOptions}).
+ * @param options - launch variant (a comment/rule round reuses its lane's
+ *   session and sends its own instruction; see {@link RunOptions}).
  * @returns resolves when the run settles (or fails to start); never rejects —
  *   every failure path is reported as a settled event.
  */
@@ -432,7 +434,7 @@ export class ExecutionService {
       // Apply the task's configured agent preset before the first prompt: a
       // session may only adopt a preset while it is still blank (no turn has
       // run), so this must happen before any prompt is sent — and only on a
-      // freshly created session (a reused refine session already has turns).
+      // freshly created session (a reused session already has turns).
       // A rejected switch (session no longer blank, preset missing…) fails
       // the run.
       if (fresh && task.agentPreset !== undefined && this.env.selectAgentPreset !== undefined) {
@@ -841,8 +843,8 @@ export class ExecutionService {
     // gate owns the "can this run" judgment; the service sends exactly what
     // it was given so a bypass can never silently execute a title).
     const text = promptOverride ?? task.prompt
-    // The prompt's attachments: an explicit override (a refine answer's fresh
-    // attachments) wins; otherwise the TASK's persisted attachments ride
+    // The prompt's attachments: an explicit override (a message that attaches
+    // its own files) wins; otherwise the TASK's persisted attachments ride
     // EVERY run path (manual / scheduled / cruise / chain / rerun) — one
     // prompt, same attachments, wherever it fires from. Images are the
     // OFFICIAL temporary-bytes shape (the host admits them durably); files

@@ -6,7 +6,7 @@
  * uses. On 0.1.5 the stream is gone and the board settles the official
  * carrier instead (`pending-mirror.ts`); this tracker stays as the fallback
  * while no uiSession face is served. One instance per board mount —
- * every surface (review page, session panel, refine panel) reads the same
+ * every surface (review page, session panel) reads the same
  * projection by session id, so answering on one surface is instantly
  * reflected everywhere, and the card disappears when the host resolves the
  * call (question/resolved frame).

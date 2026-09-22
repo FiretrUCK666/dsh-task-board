@@ -1,8 +1,7 @@
 /**
  * Shared session-panel components: the right-rail building blocks that every
- * session surface composes — the execution review page (ReviewDetail), the
- * linked-session panel (SessionDetail) and the refinement panel
- * (RefineSection). Each block is small and self-contained; the callers own
+ * session surface composes — the execution review page (ReviewDetail) and the
+ * linked-session panel (SessionDetail). Each block is small and self-contained; the callers own
  * their rail layout and their semantic differences (a drive composer vs a
  * direct composer are deliberately NOT shared here — see the two panels).
  *
@@ -125,7 +124,7 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
   atBottom: boolean
   jumpToBottom: () => void
   waiting?: PendingInteractionKind
-  /** Render only the trailing N lines (the refinement panel's cap). */
+  /** Render only the trailing N lines (a capped preview surface's cap). */
   maxLines?: number
   /** The host holds messages older than the loaded window. */
   hasMore?: boolean
@@ -149,7 +148,7 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
 }) {
   const shown = lines === undefined ? undefined : maxLines === undefined ? lines : lines.slice(-maxLines)
   // The native "load earlier" row belongs ABOVE the list (older messages
-  // live above), capped to the uncapped surface — a capped refinement tail
+  // live above), capped to the uncapped surface — a capped tail
   // never pages (its window is a preview, not the log). It renders whenever
   // the host says there IS more — even over an empty window (a misaligned
   // tail that folds to zero lines with hasMore must still offer the way

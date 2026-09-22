@@ -21,7 +21,7 @@ describe('activityOf', () => {
     ])
   })
 
-  it('collects starts, settlements, queued/running/settled comments and refines — newest first', () => {
+  it('collects starts, settlements and queued/running/settled comments — newest first', () => {
     const base = createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'a')
     const tasks = [{
       ...base,
@@ -29,7 +29,6 @@ describe('activityOf', () => {
         { id: 'e-settled', sessionId: 's', startedAt: NOW + 1, endedAt: NOW + 5, result: 'succeeded' as const, error: undefined },
         { id: 'e-comment', sessionId: 's', startedAt: NOW + 2, endedAt: NOW + 6, result: 'succeeded' as const, error: undefined, comment: 'hello' },
         { id: 'e-empty', sessionId: 's', startedAt: NOW + 3, endedAt: NOW + 7, result: 'succeeded' as const, error: undefined, comment: '  ' },
-        { id: 'e-refine', sessionId: 's', startedAt: NOW + 4, endedAt: NOW + 8, result: 'succeeded' as const, error: undefined, refine: true },
         { id: 'e-running', sessionId: 's', startedAt: NOW + 9, endedAt: undefined, result: undefined, error: undefined },
         { id: 'e-queued', sessionId: 's', startedAt: NOW + 10, endedAt: undefined, result: undefined, error: undefined, comment: 'queued' },
       ],
@@ -37,7 +36,7 @@ describe('activityOf', () => {
     const kinds = activityOf(tasks).map(item => item.kind)
     // Queued + running rounds are moments too (their save/start lights the
     // feed); creation oldest.
-    expect(kinds).toEqual(['queued', 'started', 'refined', 'comment', 'comment', 'settled', 'created'])
+    expect(kinds).toEqual(['queued', 'started', 'comment', 'comment', 'settled', 'created'])
     const settled = activityOf(tasks).find(item => item.kind === 'settled')!
     expect(settled.result).toBe('succeeded')
     const comment = activityOf(tasks).find(item => item.kind === 'comment' && item.text === 'hello')!
@@ -88,7 +87,6 @@ describe('clusterOf (fold clusters mirror the filter map)', () => {
     expect(clusterOf('queued')).toBe('comment')
     expect(clusterOf('running')).toBe('comment')
     expect(clusterOf('created')).toBe('other')
-    expect(clusterOf('refined')).toBe('other')
     expect(clusterOf('direct')).toBe('other')
     expect(clusterOf('external')).toBe('other')
   })

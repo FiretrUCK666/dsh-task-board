@@ -269,9 +269,11 @@ export type SessionLaunchResult = {
 export declare const DEFAULT_COMMAND_GRACE_MS = 2000;
 /** Launch options for {@link ExecutionService.run}. */
 export interface RunOptions {
-    /** The prompt text to send instead of the task's own (refine instructions, …). */
+    /** The prompt text to send instead of the task's own (comment/rule
+     *  instructions, …). */
     prompt?: string;
-    /** The session to run in instead of a freshly connected one (refine reuse). */
+    /** The session to run in instead of a freshly connected one (comment
+     *  continuations reuse the lane's session). */
     sessionId?: string;
     /** Display name for the session (cosmetic rename; default = task title). */
     renameTo?: string;
@@ -284,7 +286,7 @@ export interface RunOptions {
     /**
      * Images to send with the prompt (the official temporary-bytes parts).
      * A plain run omits this and takes the TASK's own persisted prompt images;
-     * a refine answer passes its freshly-attached images instead.
+     * a message that attaches its own images passes them instead.
      */
     images?: readonly {
         mediaType: string;
@@ -308,8 +310,8 @@ export interface RunOptions {
  * @param task - the task being executed.
  * @param execution - the freshly opened execution record (id + start time).
  * @param onEvent - callback for started/settled events.
- * @param options - launch variant (refine rounds reuse the task's refine
- *   session and send the refine instruction; see {@link RunOptions}).
+ * @param options - launch variant (a comment/rule round reuses its lane's
+ *   session and sends its own instruction; see {@link RunOptions}).
  * @returns resolves when the run settles (or fails to start); never rejects —
  *   every failure path is reported as a settled event.
  */

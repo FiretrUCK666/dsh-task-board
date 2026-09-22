@@ -120,10 +120,16 @@ export interface WaitingContentFace {
  * Full three-tier view: waiting sessions first (newest arrival first), then
  * unviewed review sessions — ONE row per conversation of each review task
  * (its latest plain run's own result and settle), failed before succeeded.
- * `isUnviewed` decides the review tier (the board passes `taskUnviewed`);
- * absent/false = waiting-only. `linkedIdsOf` supplies live linked-session
- * ids per task so a bound-but-never-run waiting session still notifies
- * (same related set as the live state).
+ *
+ * A review row is gated PER SESSION on the round clock (`sessionUnviewedOf`,
+ * the same clock the row glow and the card's session dots read) — never on
+ * the task-level baseline: opening the CARD only moves that baseline (the
+ * card ring retires) and must not erase rows naming a different conversation
+ * (「点开任务卡片，整卡通知全消失」 was exactly that bug). The session-less
+ * legacy lane keeps `isUnviewed`: a row with no session has no per-session
+ * clock to read. `linkedIdsOf` supplies live linked-session ids per task so
+ * a bound-but-never-run waiting session still notifies (same related set as
+ * the live state).
  *
  * Waiting rows sort by the ARRIVAL clock when `arrivedAt` is supplied (the
  * board's first-seen map), falling back to the round clock for callers

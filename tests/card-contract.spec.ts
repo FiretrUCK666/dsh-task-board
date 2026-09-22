@@ -370,13 +370,21 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     const haloPeak = peakOf('dshTbBreathHalo')
     expect(haloPeak, 'the live halo must be an INSET shadow').toMatch(/\binset\b/)
     expect(haloPeak, 'the halo amplitude token is the inset blur').toContain('var(--dsh-tb-breath-halo)')
-    expect(haloPeak, 'the halo wears the soft alpha step').toContain('var(--dsh-tb-attention-alpha-soft)')
-    // …and it carries a SOFT OUTER component too: an inset-only pulse has no
-    // edge presence next to the card's static full-strength yellow border —
+    expect(haloPeak, 'the halo INSET wears the soft alpha step').toContain('var(--dsh-tb-attention-alpha-soft)')
+    // …and it carries an OUTER component too: an inset-only pulse has no edge
+    // presence next to the card's static full-strength yellow border —
     // 「进行中的卡边缘根本不呼吸」, misdiagnosed twice as the judgment. The
-    // ring stays outer-only at full strength, the halo = inset + soft edge;
-    // the two forms remain distinct by strength and inset.
-    expect(haloPeak, 'the halo breathes AT THE EDGE as well').toMatch(/,\s*0 0 var\(--dsh-tb-breath-spread\)/)
+    // outer component peaks at the FULL 22% step (the same alpha the ring
+    // uses): a soft-edged glow at10% was still invisible against the border,
+    // so visibility itself became part of the contract — the halo stays
+    // distinct from the ring by FORM (3px blur + inset wash vs the ring's
+    // hard spread, ring-only), never by hiding below the visibility floor.
+    expect(haloPeak, 'the halo breathes AT THE EDGE as well').toMatch(
+      /,\s*0 0 var\(--dsh-tb-breath-spread\) var\(--dsh-tb-breath-color, var\(--dsh-tb-attention-alpha\)\)/,
+    )
+    expect(haloPeak, 'the halo edge peaks at the FULL attention alpha (visibility floor)').toContain(
+      'var(--dsh-tb-attention-alpha)',
+    )
     const ringPeak = peakOf('dshTbBreathRing')
     expect(ringPeak, 'the unread ring must be an OUTER shadow').not.toMatch(/\binset\b/)
     expect(ringPeak, 'the ring amplitude token is the outer spread').toContain('var(--dsh-tb-breath-spread)')
@@ -423,7 +431,7 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     // Two structural facts about the card's chip row, both previously wrong in ways
     // no visual review surfaces:
     //
-    // 1. ORDER. `cardViewModelOf` computes a priority (waiting > running > refining
+    // 1. ORDER. `cardViewModelOf` computes a priority (waiting > running
     //    > queued > failed > review > idle) and the render used to emit that winner
     //    LAST, behind every automation badge — the row's reading order contradicted
     //    the view model's own ranking, on the surface whose whole job is a scan.
@@ -447,7 +455,7 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
 
     // 3. The primary group must cover every state the view model can rank, so a
     //    future primary kind cannot silently render as an empty row.
-    for (const key of ['card.awaitingDecision', 'card.pending', 'card.refining', 'card.newContent']) {
+    for (const key of ['card.awaitingDecision', 'card.pending', 'card.newContent']) {
       expect(card, `${key} must still be rendered by the card`).toContain(key)
     }
   })
@@ -538,10 +546,10 @@ describe('card chip label composition', () => {
     expect(runningStateLabel('question')).toBe('Waiting for you · Question')
   })
 
-  it('refining never reads as running: the chip uses display truth, the guard stays on hasOpenRun', () => {
-    // 一点完善整卡变进行中 — the spinner chip must ride display truth
-    // (`executing`, refine excluded, now via card-view.ts) while quick-run
-    // blocking keeps the open-round gate (`hasOpenRun` via view.running).
+  it('an eventless round never reads as running: the chip uses display truth, the guard stays on hasOpenRun', () => {
+    // The spinner chip must ride display truth (`executing` via card-view.ts)
+    // while quick-run blocking keeps the open-round gate (`hasOpenRun` via
+    // view.running) — display and gate are two judgments, one derivation each.
     const cardPath = fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url))
     const card = readFileSync(cardPath, 'utf8')
     const viewPath = fileURLToPath(new URL('../src/client/board/card-view.ts', import.meta.url))

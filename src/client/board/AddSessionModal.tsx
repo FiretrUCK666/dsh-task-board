@@ -22,11 +22,10 @@ export function AddSessionModal({ controller, task, onClose }: {
   onClose: () => void
 }) {
   const [query, setQuery] = useState('')
-  // Every session already RELATED to the task (binds, execution rounds, the
-  // refine session, live linked members) never shows as a candidate — binding a
+  // Every session already RELATED to the task (binds, execution rounds,
+  // live linked members) never shows as a candidate — binding a
   // second time is a no-op the list should not offer. One derivation (the
-  // controller's related set), not a hand-rolled subset that missed the refine
-  // session and offered to re-bind it.
+  // controller's related set), not a hand-rolled subset.
   const bound = controller.relatedSessionIdSet(task)
   const needle = query.trim().toLowerCase()
   const rows = controller.referenceSessionCatalog()

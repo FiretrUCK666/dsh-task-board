@@ -24,7 +24,7 @@ export declare function blockedAutomation(task: TaskRecord): boolean;
 /** One card in a column — a PURE state summary: title, description, source
  *  line (workspace / bound session), the updated stamp, and the status chips
  *  (what the task IS doing: running / waiting / scheduled / chaining / failed
- *  paused / queued / refining / new). The run window (start/end/duration) and
+ *  paused / queued / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
 export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, hasUnviewedRun, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, nextAction, dotTitleOf }: {
@@ -38,11 +38,11 @@ export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleO
     boundTitleOf?: (task: TaskRecord) => string;
     /** The open run's session is blocked on the user (approval / plan review / question). */
     waiting?: PendingInteractionKind;
-    /** How many sessions of this task are waiting on the user (executions + refine). */
+    /** How many sessions of this task are waiting on the user (executions). */
     pendingCount: number;
     /** Tooltip detail listing which execution/session waits on what. */
     pendingTitle: string;
-    /** Whether the task has content (settled run / comment / refine) newer than its last open. */
+    /** Whether the task has content (settled run / comment) newer than its last open. */
     unviewed: boolean;
     /** How many plain-run executions are unviewed (the "新 N" badge figure). */
     unviewedCount: number;

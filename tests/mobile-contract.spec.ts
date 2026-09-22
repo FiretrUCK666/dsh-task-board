@@ -539,11 +539,13 @@ describe('alignment grammar (the OCD contract)', () => {
     // unpadded scroller floats the bar beside the text — the「滚动条贴着文字」
     // complaint on the interaction (question/plan) card.
     const card = ruleOf('interactionCard')
-    // The narrow rail is exactly where the card's cap must be container-bound:
-    // the comments box is 285px on a phone, so a 320px card overflowed it and
-    // its pinned action row landed outside every scrollport (盘点「选项在、
-    // 按钮按不了」). min() keeps the reading ceiling AND the container bound.
-    expect(card).toMatch(/max-height:\s*min\(320px,\s*100%\)/)
+    // The narrow rail is where the cap's box bound matters: the comments box
+    // is ~285px on a phone, so an uncapped 320px card overflowed it (盘点
+    // 「选项在、按钮按不了」). max() keeps the reading ceiling AND the container
+    // bound AND the 290px floor — the floor is what stops a SHORT box from
+    // re-creating that bug by shrinking the card into sliced buttons (see the
+    // HEIGHT CONTRACT in review-page.spec for the measured mechanism).
+    expect(card).toMatch(/max-height:\s*max\(290px,\s*min\(320px,\s*100%\)/)
     // The interactive card's ONE scroller is the question body (detail,
     // options, custom answer field); the read-only shell's plain-text body
     // keeps its own. Both own their horizontal inset.
@@ -1316,6 +1318,24 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     expect(board).toContain('const total = notes.length')
   })
 
+  it('the session section header DRESSES as a header (the 「分不清哪个是标题」 root)', () => {
+    // The fold head carries the task, the section header carries the session,
+    // and every row below ALSO prints the session name inline — at the SAME
+    // 12px/secondary spec the header wore, title and content were visually
+    // identical. The header now differs on all three axes at once: weight,
+    // ink tier, and a hairline above that starts the group. The size stays
+    // 12px (hard rule 11: no shrinking type; the distinction is never made by
+    // hiding or shrinking anything).
+    const section = ruleOf('feedSection')
+    expect(section).toMatch(/font-size:\s*12px/)
+    expect(section).toMatch(/font-weight:\s*600/)
+    expect(section).toMatch(/color:\s*var\(--dsh-tb-text-1\)/)
+    expect(section).toMatch(/border-top:\s*1px solid/)
+    // It stays a quiet label: ellipsis for long session names, never a control.
+    expect(section).toContain('text-overflow: ellipsis')
+    expect(section).toContain('white-space: nowrap')
+  })
+
   it('the row status word comes from ONE table; both dictionaries carry every state', () => {
     expect(board).toContain('noteStatusShapeOf(note)')
     // The board resolves the KEY at the call site; FeedRow renders the word.
@@ -1378,5 +1398,19 @@ describe('content-box family + interaction-card containment (the desktop truncat
     // like every other bar on the board — thin and themed, not the system
     // default that outed the desktop-only bug).
     expect(source).toMatch(/:is\([^)]*\.interactionCardBody, \.interactionBody, \.interactionPlanBody[^)]*\)\s*\{/)
+    // WHICH implementation renders is decided by the @supports gate, measured
+    // on the running Edge: with scrollbar-width declared ungated, Chromium
+    // silences every ::-webkit-scrollbar rule below and draws its native bar
+    // WITH arrow buttons (「电脑端冒出原生箭头」). The gate must therefore own
+    // the ONLY thin+color declaration, and the webkit path must hide its
+    // buttons explicitly — strip the gate and no thin may remain; the button
+    // pseudo must be display:none.
+    const gate = /@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/.exec(source)
+    expect(gate, 'the standard scrollbar props must live behind the webkit gate').not.toBeNull()
+    expect(gate?.[0]).toContain('scrollbar-width: thin')
+    expect(gate?.[0]).toContain('scrollbar-color:')
+    const ungated = source.replace(/@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/, '')
+    expect(ungated, 'no styling scrollbar-width outside the gate — it silences the webkit rules in Chromium').not.toContain('scrollbar-width: thin')
+    expect(source).toMatch(/::-webkit-scrollbar-button\s*\{\s*display:\s*none/)
   })
 })

@@ -3,9 +3,9 @@
  * Pure so the column, the detail badge and tests read the same truth.
  *
  * Priority (matches the breathing-light table — waiting > running >
- * refining > queued > failed-review > unviewed-review > idle):
+ * queued > failed-review > unviewed-review > idle):
  * waiting (pending interaction) outranks everything; running = any related
- * session genuinely working; refining = preparation (never 进行中); queued =
+ * session genuinely working; queued =
  * saved comments waiting for the dispatcher; failed = latest plain run
  * failed in review; review = succeeded awaiting confirmation (unviewed only
  * for the glow, read review stays quiet); idle otherwise.
@@ -18,8 +18,6 @@ export type CardPrimary = {
     waiting: PendingInteractionKind;
 } | {
     kind: 'running';
-} | {
-    kind: 'refining';
 } | {
     kind: 'queued';
     count: number;
@@ -48,8 +46,8 @@ export type CardLight = 'none' | 'halo' | 'ring';
 /**
  * THE card light table, in code (the board's 光效规则表, one row per card):
  *
- *   'halo' — state-bound brightness: the card is working (waiting / running /
- *            refining). Inset and soft: work in flight is not a request;
+ *   'halo' — state-bound brightness: the card is working (waiting / running).
+ *           Inset and soft: work in flight is not a request;
  *   'ring' — unread: a run finished and this content has not been looked at.
  *            Outer and stronger: it IS a request to look;
  *   'none' — read and settled, or idle.
@@ -90,7 +88,7 @@ export interface CardViewModel {
     unviewedCount: number;
     /**
      * Whether the card breathes: a state-bound fact, independent of unread. True
-     * for waiting / running / refining AND for a card sitting in the 进行中
+     * for waiting / running AND for a card sitting in the 进行中
      * column (the same `task.status` the yellow border reads), so the border and
      * the breath are one fact — see {@link cardLightOf}.
      */
@@ -103,15 +101,16 @@ export interface CardViewModel {
      * 「待你决断」 chip and the header demand count.
      */
     awaitingDecision: boolean;
-    /** Display truth splits from the gate: refining never reads as running. */
+    /** Display truth splits from the gate: an eventless round never reads as
+     *  running. */
     showingRunning: boolean;
     /** Run guard (open-round gate — queued comments never block). */
     running: boolean;
 }
 /**
  * Derive the card's view-model from the card's OWN facts. Every field is a
- * reading of the task record (open rounds, pending comments, the refine
- * session), so the chip, the light and the next-action line can never disagree:
+ * reading of the task record (open rounds, pending comments), so the chip,
+ * the light and the next-action line can never disagree:
  * they are one derivation.
  *
  * There is deliberately NO live-state input. The card's "is this working" is
@@ -135,6 +134,6 @@ export declare function cardViewModelOf(task: TaskRecord, opts?: {
  * this returns the structured fact so copy lives in one place.
  */
 export declare function cardNextActionOf(view: CardViewModel, task: TaskRecord): {
-    kind: 'waiting' | 'running' | 'refining' | 'queued' | 'failed' | 'review' | 'scheduled' | 'chain';
+    kind: 'waiting' | 'running' | 'queued' | 'failed' | 'review' | 'scheduled' | 'chain';
     count?: number;
 } | undefined;

@@ -87,15 +87,12 @@ export declare function contentTextOf(content: unknown): string;
 export interface DetectedExternalTurn {
     taskId: string;
     sessionId: string;
-    /** The session is the task's refine session — its round must not move the column. */
-    refine: boolean;
 }
 /** The per-task facts the detector needs to avoid false positives. */
 export interface ActivityCandidate {
-    /** Every related session: executions + bound sessions + refine (de-duplicated). */
+    /** Every related session (de-duplicated). */
     sessions: ReadonlyArray<{
         sessionId: string;
-        refine: boolean;
     }>;
     /** Whether the task already has an open round on this session (board-owned or previously detected). */
     hasOpenRoundOn(sessionId: string): boolean;

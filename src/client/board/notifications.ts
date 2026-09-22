@@ -33,7 +33,7 @@
  * aggregation unit-tests in isolation; TaskBoard supplies the live faces.
  */
 import type { PendingInteractionKind } from '../../core/controller.ts'
-import { taskUnviewed } from '../../core/session-display.ts'
+import { sessionUnviewedOf, taskUnviewed } from '../../core/session-display.ts'
 import { relatedSessionIdsOf } from '../../core/task-live.ts'
 import { lastPlainResult, plainRunsOf, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
 import type { TaskBoardKey } from '../locales.ts'
@@ -146,10 +146,16 @@ export interface WaitingContentFace {
  * Full three-tier view: waiting sessions first (newest arrival first), then
  * unviewed review sessions — ONE row per conversation of each review task
  * (its latest plain run's own result and settle), failed before succeeded.
- * `isUnviewed` decides the review tier (the board passes `taskUnviewed`);
- * absent/false = waiting-only. `linkedIdsOf` supplies live linked-session
- * ids per task so a bound-but-never-run waiting session still notifies
- * (same related set as the live state).
+ *
+ * A review row is gated PER SESSION on the round clock (`sessionUnviewedOf`,
+ * the same clock the row glow and the card's session dots read) — never on
+ * the task-level baseline: opening the CARD only moves that baseline (the
+ * card ring retires) and must not erase rows naming a different conversation
+ * (「点开任务卡片，整卡通知全消失」 was exactly that bug). The session-less
+ * legacy lane keeps `isUnviewed`: a row with no session has no per-session
+ * clock to read. `linkedIdsOf` supplies live linked-session ids per task so
+ * a bound-but-never-run waiting session still notifies (same related set as
+ * the live state).
  *
  * Waiting rows sort by the ARRIVAL clock when `arrivedAt` is supplied (the
  * board's first-seen map), falling back to the round clock for callers
@@ -220,7 +226,9 @@ export function notificationsExOf(
   // honestly 待审核) and its latest settled instant.
   const review: NotificationItem[] = []
   for (const task of tasks) {
-    if (task.status !== 'review' || !isUnviewed(task)) continue
+    // Column only — the unread test moved INTO each row (per session below),
+    // so retiring the card's ring by opening it no longer wipes the rows.
+    if (task.status !== 'review') continue
     // WAITING already covers a conversation — but ONLY the same one. The old
     // grammar suppressed the review echo for the WHOLE task whenever ANY
     // waiting row existed on it, so a finished run's 通过/打回 vanished the
@@ -229,11 +237,10 @@ export function notificationsExOf(
     // waiting row suppresses the review echo only for the SAME session;
     // different sessions keep both rows.
     const runs = plainRunsOf(task)
-    // Latest SETTLED round per session (refinement excluded: a refine turn
-    // is preparation, never a lane of the gate), best settle wins.
+    // Latest SETTLED round per session, best settle wins.
     const latestSettledBySession = new Map<string, ExecutionRecord>()
     for (const round of task.executions) {
-      if (round.sessionId === undefined || round.endedAt === undefined || round.refine === true) continue
+      if (round.sessionId === undefined || round.endedAt === undefined) continue
       const previous = latestSettledBySession.get(round.sessionId)
       if (previous === undefined || (round.endedAt ?? 0) > (previous.endedAt ?? 0)) {
         latestSettledBySession.set(round.sessionId, round)
@@ -250,7 +257,10 @@ export function notificationsExOf(
     if (latestSettledBySession.size === 0) {
       // Legacy rows whose rounds carry no session: the gate still needs ONE
       // reachable row — the task itself fills the session slot, and the clock
-      // stays the RUN's settle (never the task's metadata updatedAt).
+      // stays the RUN's settle (never the task's metadata updatedAt). With no
+      // session identity there is no per-session clock, so this lane alone
+      // still reads the task-level baseline.
+      if (!isUnviewed(task)) continue
       const sessionId = task.executions[task.executions.length - 1]?.sessionId ?? task.id
       if (seen.has(`${task.id}|${sessionId}`)) continue
       const result = lastPlainResult(task)
@@ -271,6 +281,10 @@ export function notificationsExOf(
         // quieter review echo for that conversation only.
         continue
       }
+      // THE row gate: this conversation's own round clock. Acknowledged by
+      // its review page, its notification/panel open, 标已读 or 通过 — never
+      // by a sibling session's traffic and never by the card-level open.
+      if (!sessionUnviewedOf(task, sessionId)) continue
       const result = plainResultBySession.get(sessionId)
       review.push({
         taskId: task.id,
@@ -335,7 +349,7 @@ export function boardDemandOf(
   let review = 0
   for (const task of tasks) {
     // A waiting session is counted once per session, exactly like the bell:
-    // a run round and a refine round can name the same session.
+    // two rounds can name the same session.
     const counted = new Set<string>()
     // `relatedSessionIdsOf` takes the task's linked ids as an ARRAY (it is the
     // live related-set derivation, shared with the card's glow and the bell), so

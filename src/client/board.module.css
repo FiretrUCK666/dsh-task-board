@@ -230,7 +230,13 @@
 
 @keyframes dshTbBreathHalo {
   0%, 100% { box-shadow: inset 0 0 0 0 transparent, 0 0 0 0 transparent; }
-  50% { box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)), 0 0 var(--dsh-tb-breath-spread) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)); }
+  /* Outer edge = the FULL 22% attention step (same alpha the unread ring
+     peaks at, softer only in FORM: a 3px blur vs the ring's hard spread, and
+     the inset keeps its 10% wash). The inset-only halo was invisible next to
+     the card's static full-strength yellow border — two correct judgments of
+     「进行中的卡边缘不呼吸」 still failed on visibility, so visibility is now
+     part of the contract: an in-flight light must clear its own border. */
+  50% { box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)), 0 0 var(--dsh-tb-breath-spread) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha)); }
 }
 
 /* One-shot arrival replay for the bell's unseen dot: the dot itself is the
@@ -550,13 +556,20 @@
   white-space: nowrap;
 }
 
-/* The quiet session line inside an expanded activity fold: the fold header
+/* The session section header inside an expanded activity fold: the fold head
    carries the TASK, this carries the CONVERSATION — one label, no chrome,
-   never a control (the rows below it are the content). */
+   never a control (the rows below it are the content). It must read as a
+   HEADER at a glance: 600 weight + primary ink + a hairline above separate
+   it from the 12px/secondary session NAME that rides inside every row below —
+   same size as those rows was exactly the「分不清哪个是标题」report (title
+   and content were wearing the same clothes). The divider starts the group;
+   the first header keeps it too (it opens the section under the fold head). */
 .feedSection {
-  padding: 6px 10px 2px;
+  padding: 8px 10px 4px;
   font-size: 12px;
-  color: var(--dsh-tb-text-2);
+  font-weight: 600;
+  color: var(--dsh-tb-text-1);
+  border-top: 1px solid var(--dsw-alias-border-l1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2220,28 +2233,48 @@
 
 /* THE single scrollbar grammar for every panel scroll body: a THIN bar that
    sits flush against the surface edge (each of these owns its region's full
-   height, so the bar never floats in a gutter). ONE list, ONE rule pair —
+   height, so the bar never floats in a gutter). ONE list, ONE rule set —
    adding a scroll region means adding its selector here, never re-inventing a
    width or color (the 「滚动条颜色粗细不一套」 fix: every bar on the board
-   reads the same). */
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea) {
-  scrollbar-width: thin;
-  scrollbar-color: var(--dsw-alias-border-l3) transparent;
+   reads the same).
+
+   WHICH IMPLEMENTATION WINS: in Chromium the standard `scrollbar-width` /
+   `scrollbar-color` SILENCE the `::-webkit-scrollbar` pseudo-elements
+   entirely — measured on the running Edge: both declared → the native 10px
+   bar with arrow buttons rendered and every rule below was dead code (the
+   「电脑端冒出原生箭头」 in the plan/question card). So the standard
+   properties are gated behind `@supports not selector(::-webkit-scrollbar)`:
+   engines that speak webkit (Chromium) take the styled path below — 8px,
+   thumb-colored, NO arrow buttons (the button pseudo must be hidden
+   explicitly or the default arrows come back); engines that don't get
+   thin+themed standard bars from the gate. One bar, one look, both engines —
+   never STYLING (thin + color) declarations of scrollbar-width outside this
+   gate; the hide-lists elsewhere (`scrollbar-width: none`) are fine because
+   both implementations agree on the outcome: hidden. */
+@supports not selector(::-webkit-scrollbar) {
+  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dsw-alias-border-l3) transparent;
+  }
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-thumb {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .refineTranscriptArea)::-webkit-scrollbar-track {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-track {
   background: transparent;
+}
+
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-button {
+  display: none;
 }
 
 @keyframes dshTbDialogIn {
@@ -2563,7 +2596,7 @@ textarea.input {
   /* NO container here on purpose: making this box a container would resolve
      the composer textarea's own `height: 100%` against it instead of against
      the auto-height flex item that used to size it, which changes the detail
-     panel's input geometry. The refinement stack therefore keeps the base
+     panel's input geometry. The detail stack therefore keeps the base
      card cap (see .interactionCard). */
 }
 
@@ -4027,42 +4060,8 @@ textarea.input {
   align-self: flex-end;
 }
 
-/* --- requirement refinement (backlog tasks) ---------------------------------- */
-
-.refineSection {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0;
-}
-
-.refineIdle {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 0;
-  align-items: flex-start;
-}
-
-/* The refine panel's status row (chip + round count). The「查看会话」action
-   lives in the Section title row's action slot, so this is a plain status
-   line — NOT a second fake title row (no space-between, no border competing
-   with the section head above it). */
-.refineHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-}
-
-.refineRounds {
-  font-size: 13px;
-  color: var(--dsw-alias-label-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* One shared waiting notice for every surface (review page banner, refine
-   panel): a neutral framed row with a warn chip carrying the semantics —
+/* One shared waiting notice for every surface (review page banner): a neutral
+   framed row with a warn chip carrying the semantics —
    no per-surface amber bars. The border uses the same token as the other
    framed surfaces around it, so every surrounding border stays in sync. */
 .waitingNotice {
@@ -4088,55 +4087,6 @@ textarea.input {
 }
 .waitingNotice .chip {
   flex: none;
-}
-
-/* The refine conversation tail */
-.refineTranscriptArea {
-  min-height: 200px;
-  max-height: 400px;
-  overflow-y: auto;
-  border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-md);
-  background: var(--dsh-tb-surface-sunken);
-  padding: 12px;
-  position: relative;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.refineTail {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.refineTail ul {
-  gap: 8px;
-  flex: 1;
-}
-
-/* Answer input area: the shared PromptInput composer + send button stacked
-   vertically — the same composer grammar as every comment/session surface. */
-.refineInputArea {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-}
-
-/* Apply action area: ONE action, separated by AIR, never by a rule. A
-   `border-top` here drew a full-width line that read as a stray artifact —
-   it belonged to nothing (the section above already ends with its own edge)
-   and it moved with the content. The gap carries the separation. */
-.refineActionArea {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.refineApplyButton {
-  width: 100%;
 }
 
 .moveRow {
@@ -5456,8 +5406,8 @@ button.interactionOption:focus-visible,
    request the native question composer shows (a plan awaiting confirmation or
    an ask_user_question), pinned just above the composer or inside the rail's
    scroll zone. Surfaces live with the real tool lifecycle; one grammar for
-   plan and question, one component for all three surfaces (review rail,
-   session panel, refinement panel).
+   plan and question, one component for both surfaces (review rail,
+   session panel).
 
    PARITY IS THE CONTRACT: the parts, their order and their behaviour mirror
    the native card (head with eyebrow/title + collapse/dismiss icons, the
@@ -5477,18 +5427,24 @@ button.interactionOption:focus-visible,
   flex-direction: column;
   flex: none;
   min-width: 0;
-  /* THE height contract: a card is at most as tall as the box it sits in, and
-     never taller than the 320px reading cap. The 100% half is what keeps the
-     pinned footer reachable — a card that outgrows its scrollport (the
-     comment rail's capped comments box is 285px on a phone) has its action row
-     painted outside every scrollport, under the conversation column: the card
-     looks cut off mid-content and 跳过本题 / 下一题 / 提交 cannot be tapped at
-     all. `min()` needs BOTH halves valid, and its 100% resolves to `auto` in
-     an unbounded container (the refinement stack), where the card simply
-     takes the 320px ceiling and scrolls its own body — so one declaration
-     serves both surfaces. Never a viewport unit here: the board box is not
-     the viewport (see the .modalBackdrop note). */
-  max-height: min(320px, 100%);
+  /* THE height contract: a card is capped by BOTH the 320px reading ceiling and
+     the box holding it — and the cap carries a 290px FLOOR under them, because
+     a floorless cap is exactly how the card destroyed itself in a short box:
+     `min(320px, 100%)` against a ~120px comments box shrank the card to the
+     box, the pinned footer no longer fit inside head+footer+pad and
+     `overflow: hidden` sliced the submit button's bottom edge, while the body
+     collapsed to a sliver that could not show the answer field at all
+     (measured: box 122 → body 16px, field 6px visible, footer 8px past the
+     card's bottom border). With the floor, a short box can no longer starve
+     the card below its natural height: the card keeps head+body+footer
+     intact, and the OVERFLOW the floor creates is absorbed by the outer
+     `.commentsScroll` (overflow-y: auto, with its 滑到最新/follow landing on
+     the card's bottom = the footer) — never clipped, always reachable.
+     `min()` needs BOTH halves valid, and its 100% half still caps the card to
+     its box whenever the box is roomier than 290px, so the wide-rail and
+     stacked tiers behave exactly as before; never a viewport unit here — the
+     board box is not the viewport (see the .modalBackdrop note). */
+  max-height: max(290px, min(320px, 100%));
   overflow: hidden;
   margin: 0 var(--dsh-tb-rail-inset) 2px;
   background: var(--dsh-tb-surface-sunken);
@@ -5502,9 +5458,8 @@ button.interactionOption:focus-visible,
 
 /* Inside the rail's comments scroll region the 14px inset belongs to the
    SCROLLER (the single-scrollbar grammar) — the card adds no margin there, or
-   it would sit 28px from the rail edge while the comments sit 14px. On the
-   refinement surface (an unpadded stack) the base 14px margin still owns the
-   box. */
+   it would sit 28px from the rail edge while the comments sit 14px. On an
+   unpadded stack the base 14px margin still owns the box. */
 .commentsScroll .interactionCard {
   margin: 0 0 2px;
 }
@@ -6177,7 +6132,7 @@ span.interactionOptions {
 
 .sessionContextPanel {
   top: calc(100% + 6px);
-  /* The DEFAULT (refine) popover anchors to the wrap's PADDING box, not its
+  /* The DEFAULT popover anchors to the wrap's PADDING box, not its
      content box — inset by the same 14px content box so the panel spans
      exactly the meter/config/thread width. The header dock variant below
      replaces every line of this anchor math with grid placement. */

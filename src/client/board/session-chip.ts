@@ -53,8 +53,8 @@ export function sessionUnavailableReasonOf(
 /**
  * The result → chip COLOR mapping — the one place that decides an execution
  * result's tint (failed red, succeeded green, cancelled/unknown muted). A
- * surface that carries its OWN settled label (the card's "N 次执行", the
- * refine summary's result word) still takes its color from here, so the tint
+ * surface that carries its OWN settled label (the card's "N 次执行")
+ * still takes its color from here, so the tint
  * can never drift from the state chip's.
  */
 export function resultChipKind(result: 'succeeded' | 'failed' | 'cancelled' | undefined): ChipKind {

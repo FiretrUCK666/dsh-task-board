@@ -759,7 +759,7 @@ export declare class BoardController {
      * resolution shared by every board input (the reference RPCs are
      * session-scoped: file discovery uses the session's cwd, session
      * discovery excludes the target itself):
-     * 1. the task's own related session (refine → execution → linked, the
+     * 1. the task's own related session (execution → linked, the
      *    same order every surface reads);
      * 2. the first session of the native list.
      * undefined only when there is no task and no session at all.
@@ -1595,37 +1595,6 @@ export declare class BoardController {
      * @returns true when the round was removed.
      */
     cancelComment(executionId: string): boolean;
-    /**
-     * Start (or continue) a backlog task's requirement refinement: launch a
-     * refine round in the task's refine session, created lazily through the
-     * same session machinery as executions and inheriting the task's run
-     * configuration (workspace/model/effort/permission — nothing extra to
-     * configure). The first round sends the built-in refine instruction (the
-     * agent researches with its own tools, asks the user anything unclear, and
-     * delivers a ready-to-run prompt); later rounds are the user's answers.
-     * @param taskId - the backlog task to refine.
-     * @param english - whether to write the refine instruction in English.
-     * @returns true when a round was launched.
-     */
-    startRefine(taskId: string, english?: boolean): boolean;
-    /**
-     * Send the user's answer into the task's refine session (the AI asked and
-     * is waiting): launch a refine round with the answer text, delivered
-     * immediately — the session is already counted in-flight, so answers never
-     * queue behind the cruise gate or the comment FIFO.
-     * @param taskId - the task whose refine session receives the answer.
-     * @param text - the answer text.
-     * @returns true when the answer was launched.
-     */
-    answerRefine(taskId: string, text: string, images?: readonly PromptImage[], files?: readonly PromptFile[]): boolean;
-    /**
-     * Write a refined prompt onto the task (the user confirms the text shown
-     * in the refine panel; nothing is ever applied automatically).
-     * @param taskId - the task to update.
-     * @param prompt - the refined execution prompt text.
-     * @returns true when the task was updated.
-     */
-    applyRefineResult(taskId: string, prompt: string): boolean;
     /** Turn the auto-cruise on or off (persisted) — a MANUAL toggle: it flips
      *  `enabled` directly and NEVER writes the scheduled windows, so clicking
      *  开启/关闭 repeatedly cannot accumulate window records. Scheduled window
@@ -1667,10 +1636,10 @@ export declare class BoardController {
      * still keep automation alive ("任务完成了一次却没有任何反应" 正是这个缺口).
      * 1. on-complete rules (fireOnCompleteRules — ANY completion is the
      *    任务完成 appointment: a plain run, a user comment round or a native/
-     *    external turn all landed the card in 「待审核」; refine rounds are
-     *    preparation, never a completion, and the rule's OWN round is excluded
-     *    — its loop is the dedicated fireLoopRule hook, so a settle never
-     *    double-fires; the one-in-flight guard is the second backstop);
+     *    external turn all landed the card in 「待审核」; the rule's OWN round
+     *    is excluded — its loop is the dedicated fireLoopRule hook, so a
+     *    settle never double-fires; the one-in-flight guard is the second
+     *    backstop);
      * 2. the rule's own loop (fireLoopRule — a ruleId round's succeeded settle
      *    continues 完成后继续; failure/cancel never does).
      * The chain hand-off stays OUTSIDE (both call sites run it BEFORE their
@@ -1704,8 +1673,7 @@ export declare class BoardController {
      * 内容不可用即停；用户手写评论（无 ruleId）永不触发。
      */
     fireLoopRule(taskId: string, ruleId: string, sessionId: string): Promise<void>;
-    /** Settle a round with the rule its kind demands: refine rounds keep the
-     *  task in its column (settlement of a plain run may move the card). */
+    /** Settle a round through the shared column decision. */
     private settleRound;
     /**
      * Session-list change: reconcile running tasks and re-render consumers.
@@ -1804,8 +1772,8 @@ export declare class BoardController {
      * agent works, the task joins 进行中 (like any real execution); when the
      * session stops, the steer's completion is a completion: it lands in
      * 待审核 and goes through the SAME settledFollowUp appointment (on-complete
-     * rules, chain hand-off) as a watched settle. Board-open rounds and
-     * refine/external rounds keep their own event paths; this pass never
+     * rules, chain hand-off) as a watched settle. Board-open and external
+     * rounds keep their own event paths; this pass never
      * settles anything twice (isDirectLike is only true for already-settled
      * direct rounds, and the fallback fires exactly once — status was
      * 'running' before the transition).
@@ -1819,7 +1787,7 @@ export declare class BoardController {
     private driveLiveStates;
     /** THE live-state question for one task (card breathing source): waiting >
      *  running > unknown > idle — same single derivation for every surface. The
-     *  related set is the task's OWN sessions (refine + explicit binds + execution
+     *  related set is the task's OWN sessions (explicit binds + execution
      *  rounds; a workspace bind contributes none), so the card and its rows
      *  always answer the same question from the same set. */
     liveStateOf(taskId: string): TaskLiveState;
@@ -1869,24 +1837,23 @@ export declare class BoardController {
      */
     private conclusiveLiveState;
     /**
-     * Every related session of a task (de-duplicated, refine first) — THE one
+     * Every related session of a task (de-duplicated) — THE one
      * derivation from task-live.ts, consumed by the external-activity scanner,
      * the bound-task reconcile and the '@' reference scoping. The controller
      * only supplies the linked ids (explicit session binds); everything else
-     * (binds, execution rounds, refine session) is pure task shape.
+     * (binds, execution rounds) is pure task shape.
      */
     private relatedSessionsOf;
     /** The ids of every session already RELATED to a task (binds, execution
-     *  rounds, the refine session, live linked members) — the single source for
-     *  "do not offer this session again". The add-session picker filters on this,
-     *  so a refine session (which the old hand-rolled bind+execution set missed)
-     *  never shows as a re-bindable candidate. */
+     *  rounds, live linked members) — the single source for
+     *  "do not offer this session again". The add-session picker filters on
+     *  this, so a session already carrying the task's rounds never shows as a
+     *  re-bindable candidate. */
     relatedSessionIdSet(task: TaskRecord): Set<string>;
     /**
      * Detect out-of-band activity on related sessions (see session-activity.ts)
-     * and record external rounds: the round enters the session's comment thread,
-     * a non-refine round moves the card to 「进行中」, a refine round keeps the
-     * column but turns `refining` on. The round body is the user's native
+     * and record external rounds: the round enters the session's comment thread
+     * and drives the card to 「进行中」. The round body is the user's native
      * message text captured at observation (so the thread shows what was said)
      * and the round carries the message's seq as its TURN ANCHOR — the dedup
      * key shared with the live frame channel (recordNativeTurn), so the same
@@ -1903,7 +1870,7 @@ export declare class BoardController {
      * The ONE external-round write (both detection channels land here): append
      * the round to the CURRENT record (anchor-dedup re-checked at write time —
      * a stale snapshot is never written over a newer one), drive the card into
-     * 「进行中」 (a refine round keeps its column), promote to the column top and
+     * 「进行中」, promote to the column top and
      * persist. @returns whether the ledger actually moved.
      */
     private recordExternalRound;

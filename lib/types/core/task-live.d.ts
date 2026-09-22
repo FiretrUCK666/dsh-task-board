@@ -19,8 +19,8 @@
  * module only answers the live question — and the callers pass the activity
  * reader in, never a locally re-derived flag.
  *
- * "Related" is defined ONCE here: the refine session, every bound session
- * source, every execution-round session and every live linked (workspace)
+ * "Related" is defined ONCE here: every bound session source, every
+ * execution-round session and every live linked (workspace)
  * session — one de-duplicated, stable-ordered set. Every surface that asks
  * the live question reads this same set, so a workspace-bound card can never
  * go dark while one of its bound workspace's sessions is genuinely running
@@ -44,14 +44,11 @@ export type TaskLiveState = 'running' | 'waiting' | 'idle' | 'unknown';
 /** The classify facts a caller supplies for the derived set's rows. */
 export interface RelatedSessionFact {
     sessionId: string;
-    /** True only for the task's own refine session. */
-    refine: boolean;
 }
 /**
- * THE related-session set of a task (de-duplicated, stable order — refine
- * first, then binds, then execution rounds, then injected linked ids; the
- * same order every consumer has always read):
- * - the task's refine session,
+ * THE related-session set of a task (de-duplicated, stable order — binds
+ * first, then execution rounds, then injected linked ids; the same order
+ * every consumer has always read):
  * - every bound session source (session binds; a workspace bind contributes
  *   through the linked ids below),
  * - every session an execution round ran in,
@@ -107,8 +104,8 @@ export declare function taskLiveStateOf(task: TaskRecord, isActiveOf: (sessionId
  * first, then decide; the exits here decide on the CURRENT facts only.
  *
  * One three-way justification, read in order:
- * - `'open'` — an in-flight execution round (refinement excluded, same law
- *   as the column gate): real work is still running on this card;
+ * - `'open'` — an in-flight execution round: real work is still running on
+ *   this card;
  * - `'live'` — a related session genuinely working right now (native truth:
  *   its own turn OR a running subagent descendant). `'unknown'` lands here
  *   too, deliberately: with no verdict the card keeps its column (leaving on
@@ -155,8 +152,8 @@ export declare function leaveRunningTargetOf(task: TaskRecord, live: TaskLiveSta
  * Whether a round is "direct-like": a direct steer round is settled at birth
  * and has NO host turn/end settle event — its completion is only visible as
  * the native session flipping back to idle, so the controller's fallback has
- * to judge it. Board execution rounds, injected comment rounds, refinement
- * rounds and externally-observed rounds all have their own event paths and
+ * to judge it. Board execution rounds, injected comment rounds and
+ * externally-observed rounds all have their own event paths and
  * are never fallback material.
  */
 export declare function isDirectLike(round: ExecutionRecord | undefined): boolean;

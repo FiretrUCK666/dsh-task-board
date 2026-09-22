@@ -15,7 +15,8 @@
  *
  * Verified against DSH 0.1.6-alpha.2 (`dsh-web-frontend/dist/assets/index-*.js`,
  * the `__ModuleLoader__` seed built by the `staticModules` factory): that table
- * carries exactly these eight keys. Re-check it whenever the host version moves
+ * carries exactly the keys listed below (react family, cordis, four
+ * `dsh-client-*` modules). Re-check it whenever the host version moves
  * — a rename here that the table does not carry is exactly the drift this list
  * exists to prevent. Note this list must NOT be extended just because a package
  * has a `lib/client.js`: only seeded specifiers may be imported as values.

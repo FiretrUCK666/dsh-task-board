@@ -102,14 +102,6 @@ export interface ExecutionRecord {
      */
     direct?: boolean;
     /**
-     * A requirement-refinement round: one turn in the task's bound refine
-     * session (see `TaskRecord.refineSessionId`) that researches and fleshes
-     * out the task's prompt. Distinct from plain runs and comment rounds: it
-     * never appears in the execution history or the comment thread, and its
-     * settlement never moves the task out of its column.
-     */
-    refine?: boolean;
-    /**
      * An externally-observed round: the task's related session had real
      * activity OUTSIDE the board (a user chatted directly in the native UI,
      * or the agent did something the board did not record) — detected from the
@@ -117,8 +109,7 @@ export interface ExecutionRecord {
      * populated by observation, not submission: it drives the card into 「进行中」
      * and settles to 「待审核」 like a real round, appears in the session's
      * comment thread (its text is filled at settle when history yields it),
-     * but is NEVER queued or injected (it is already running out-of-band), and
-     * a refine-external round keeps the task in its column while `refining`.
+     * but is NEVER queued or injected (it is already running out-of-band).
      */
     external?: boolean;
     /**
@@ -285,19 +276,13 @@ export interface TaskRecord {
     agentPreset?: string;
     /** Permission preset key applied to the execution session before its first prompt (absent = session default). */
     permission?: string;
-    /** The task's bound requirement-refinement session (created lazily on the
-     * first refine round and reused for every later round — the whole
-     * refinement conversation lives in one session). The task's run
-     * configuration applies to it, so nothing needs configuring.
-     */
-    refineSessionId?: string;
     /**
      * Live bindings to native sources — sessions and/or whole workspace folders
      * (dragged in from the sidebar, one ADD at a time). The set decides the
      * source of the card's "链接会话" (linked sessions) section — a pure,
      * live-synced view of every bound source's sessions (same session yields
      * one row) — and nothing else: the card keeps its own title, description,
-     * prompt, run config, scheduling, executions and refinement exactly as a
+     * prompt, run config, scheduling and executions exactly as a
      * plain task. Absent = a plain prompt-driven task (the pre-bind behavior).
      */
     binds?: TaskBind[];
@@ -431,16 +416,15 @@ export type RuleReadiness = {
 /**
  * Whether the task has anything EXECUTABLE to drive: its execution prompt is
  * non-empty (trimmed). THE one judgment every drive path reads — a task with
- * no prompt can never be run, automated, cruised or comment-driven (the
- * refine flow itself is the exception: it PRODUCES the prompt, it does not
- * execute it). Empty means strictly blank; placeholder text is not empty.
+ * no prompt can never be run, automated, cruised or comment-driven.
+ * Empty means strictly blank; placeholder text is not empty.
  */
 export declare function taskExecutable(task: TaskRecord): boolean;
 /**
  * 真执行自动补全（缺则补、填则守、任何执行时刻）：新建任务允许
  * 标题/描述全空——**任何一次**真正执行（手动/重复/接续链/定时/巡航/自动化）
  * 时，缺什么补什么；已存在的字段永不覆盖（用户内容保真——「不会再动」=
- * 已填的不动，缺的补齐）。评论轮/完善轮/外源轮不是任务执行，不触发。
+ * 已填的不动，缺的补齐）。评论轮/外源轮不是任务执行，不触发。
  * 标题缺 → 执行 Prompt 的第一个非空行（trim + 40 字符上限）；
  * 描述缺 → 整个执行 Prompt（trim）。
  * 返回需要补的字段（无则 undefined）。
@@ -544,8 +528,7 @@ export declare function startExecution(task: TaskRecord, now: number, executionI
  * board detected native-side activity on a related session (out-of-band
  * chat). It enters the session's comment thread and drives the task state
  * like a running round, but is never queued/injected — it is already
- * happening. `refine: true` marks a refinement-session round, which keeps
- * the task in its column.
+ * happening.
  */
 export declare function newExternalRound(options: {
     id: string;
@@ -553,7 +536,6 @@ export declare function newExternalRound(options: {
     sessionId: string;
     /** The native user message text observed at creation (the thread body). */
     text?: string;
-    refine?: boolean;
     /** The native seq of the message that started this turn (dedup anchor). */
     anchor?: number;
     /** The observed message carried only image blocks (thread placeholder). */
@@ -624,18 +606,17 @@ export declare function newDirectRound(options: {
 }): ExecutionRecord;
 /**
  * Whether the card already holds completed work awaiting the human gate:
- * any settled non-refine round with a succeeded/failed outcome (plain runs,
+ * any settled round with a succeeded/failed outcome (plain runs,
  * comment continuations, externally-observed turns, direct sends — all are
  * completions the user has not confirmed). Cancelled rounds never count:
- * they are noise/abort, not work. Refine rounds never count: preparation
- * keeps its column by contract (`settleRefine`).
+ * they are noise/abort, not work.
  * Used ONLY to decide where a `cancelled` settle lands (review vs todo) —
  * success/failure always land in review (or stay running for incomplete
  * batches/chains or sibling lanes).
  */
 export declare function hasCompletedWork(task: TaskRecord): boolean;
 /**
- * THE one column decision for every non-refine settle (success/failure/
+ * THE one column decision for every settle (success/failure/
  * cancel). Pure so the whole board — live watches, reconciles, watchdogs,
  * spurious-external sweeps — lands in the same column for the same facts.
  * Priority:
@@ -698,7 +679,6 @@ export declare function settleExecution(task: TaskRecord, executionId: string, o
  * Enumerated by KIND (each category is real, and a comment body does NOT mean
  * "queued" — an observed native turn carries its user text too):
  * - a plain run: in flight from creation until it settles;
- * - a refinement round: in flight while open (its session is working);
  * - an EXTERNAL round (a native turn the board observed): in flight while
  *   open — it is already happening, it is never queued or injected, and its
  *   `comment` is only the thread body;
@@ -713,14 +693,6 @@ export declare function isOpenRound(round: ExecutionRecord): boolean;
  *  "the task's latest execution" is no longer the only thing that can be
  *  running. */
 export declare function openRoundsOf(task: TaskRecord): ExecutionRecord[];
-/**
- * Every in-flight EXECUTION round (refinement excluded). Refinement is
- * preparation inside its own column — it holds a budget slot while working
- * but must never hold the card in 进行中 nor block a plain settle from
- * landing in 待审核 (the display truth `executing` already excludes it;
- * the column gate follows the same law here).
- */
-export declare function openExecutionRoundsOf(task: TaskRecord): ExecutionRecord[];
 /** Whether a given session of the task is busy (an in-flight round anchored
  *  to it). A comment may only inject into a session that is idle, and a
  *  session's own comments always go in order — the lane is the session. */
@@ -729,8 +701,7 @@ export declare function sessionIsBusy(task: TaskRecord, sessionId: string): bool
  * Whether the task is genuinely executing right now: ANY of its rounds is in
  * flight. A pending comment round (saved while the cruise is off, the task
  * not running) is NOT an open run — it must never show a spinner on the card,
- * block a rerun, or block a drag. An open requirement-refinement round IS:
- * the task's session is working, so a plain run must not start on top of it.
+ * block a rerun, or block a drag.
  * One shared judgment for the card, the drop rules and the run guard.
  */
 export declare function hasOpenRun(task: TaskRecord): boolean;
@@ -742,44 +713,18 @@ export declare function hasOpenRun(task: TaskRecord): boolean;
 export declare function pendingCommentCount(task: TaskRecord): number;
 /**
  * The task's plain runs in chronological order — every execution record
- * except comment and refine rounds. The single numbering source for the
+ * except comment rounds. The single numbering source for the
  * execution history list (TaskDetail) and the review page header ("第 N 次
- * 执行"): continuations and refinements are not part of the run sequence.
+ * 执行"): continuations are not part of the run sequence.
  */
 export declare function plainRunsOf(task: TaskRecord): readonly ExecutionRecord[];
 /**
- * The task's requirement-refinement rounds in chronological order (the
- * conversation turns of the task's bound refine session).
- */
-export declare function refineRoundsOf(task: TaskRecord): readonly ExecutionRecord[];
-/** Whether a requirement-refinement round is currently running for the task. */
-export declare function refining(task: TaskRecord): boolean;
-/**
- * Whether the task has anything to refine: title, description or execution
- * prompt — at least one must be non-blank, because the refine instruction is
- * built from exactly these three fields. An all-blank task would send an
- * empty requirement round (a wasted run that only flips the card's lights);
- * the UI disables the entry and says so instead of launching it.
- */
-export declare function refinable(task: TaskRecord): boolean;
-/**
  * Whether the task is genuinely EXECUTING right now (display truth): an open
- * plain run, external round or injected comment — but NOT a lone refinement
- * round. Refining is preparation inside the backlog column (its own 完善中
- * chip + breathing); reading it as 进行中 is the "一点完善整卡变进行中" bug.
+ * plain run, external round or injected comment.
  * Blocking semantics (run guard, concurrency budget, drop rules, reconcile
  * drive) stay on {@link hasOpenRun} — this is display only, never a gate.
  */
 export declare function executing(task: TaskRecord): boolean;
-/** Bind (or re-bind) the task's requirement-refinement session. */
-export declare function withRefineSession(task: TaskRecord, sessionId: string, now: number): TaskRecord;
-/**
- * Settle a requirement-refinement round: record the outcome on the round
- * without moving the task out of its column (refinement is preparation, not
- * execution — the card stays exactly where it is). No-op when the round is
- * unknown or already settled.
- */
-export declare function settleRefine(task: TaskRecord, executionId: string, outcome: 'succeeded' | 'failed' | 'cancelled', now: number, error: string | undefined): TaskRecord;
 /** What a card drop onto a column means (drag-and-drop decision). */
 export type CardDropDecision = {
     kind: 'none';

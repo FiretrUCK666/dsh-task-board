@@ -1,6 +1,6 @@
 /**
  * Card view-model (client/board/card-view.ts): single prioritized summary —
- * waiting > running > refining > queued > failed > review > idle.
+ * waiting > running > queued > failed > review > idle.
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -93,16 +93,14 @@ describe('cardViewModelOf', () => {
     expect(cardLightOf(cardViewModelOf(settledRun, { unviewedCount: 1 }).active, true)).toBe('ring')
   })
 
-  it('the light table: waiting/running/refining pulse, queued/failed/review/idle do not', () => {
-    // The board's 光效规则表 as a table: only these three primaries breathe.
-    // `queued` is deliberately quiet — a card with saved-but-not-injected
-    // comments is waiting on the engine, not working.
+  it('the light table: waiting/running pulse, queued/failed/review/idle do not', () => {
+    // The board's 光效规则表 as a table: only these two primaries breathe
+    // (plus the card's own 进行中 column). `queued` is deliberately quiet —
+    // a card with saved-but-not-injected comments is waiting on the engine,
+    // not working.
     const started = startExecution(task(), NOW, 'e1')
     expect(cardViewModelOf(started.task, { waiting: 'approval' }).active).toBe(true)
     expect(cardViewModelOf(started.task, {}).active).toBe(true)
-    const refine = { ...task(), refineSessionId: 's-refine', executions: [{ id: 'r1', sessionId: 's-refine', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined, refine: true }] }
-    expect(cardViewModelOf(refine, {}).primary).toEqual({ kind: 'refining' })
-    expect(cardViewModelOf(refine, {}).active).toBe(true)
     const comment = newCommentRound({ id: 'c1', now: NOW, text: 'hi', sessionId: 's-1', parentExecutionId: 'e-1' })
     expect(cardViewModelOf({ ...task(), executions: [comment] }, {}).active).toBe(false)
     const failed = { ...task(), status: 'review' as const, executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed' as const, error: undefined }] }
@@ -155,7 +153,7 @@ describe('cardSessionDotStateOf (one dot, one loudest truth)', () => {
   })
 
   it('a session with no plain run honestly reads idle (no review state to show)', () => {
-    // Bound external conversations and refine sessions never carry a run —
+    // Bound external conversations never carry a run —
     // they must not borrow another surface's clock to fake an unread glow.
     expect(cardSessionDotStateOf(task(), 's-external', faces())).toBe('idle')
   })

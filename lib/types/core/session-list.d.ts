@@ -93,8 +93,7 @@ export interface TaskSessionContext {
 /**
  * Order + de-duplicate a task's sessions into the single visible list:
  * - run candidates: the latest plain run per session (comment rounds share
- *   their parent run's session and never create extra rows; refine rounds are
- *   not sessions of the board executions).
+ *   their parent run's session and never create extra rows).
  * - linked candidates: the live linked rows.
  * - de-duplicate by sessionId, run wins over linked (a session the task both
  *   executed and bound reads as the task's own run — it carries the execution

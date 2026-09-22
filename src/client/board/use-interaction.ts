@@ -1,6 +1,6 @@
 /**
  * Pending native question + session context over the composer: the review
- * page, session panel and refinement panel all render one surface while the
+ * page and session panel both render one surface while the
  * session's agent is awaiting a human decision (a plan for confirmation or an
  * ask_user_question), alongside the session's live to-do / goal / subagent
  * readout.
@@ -214,8 +214,8 @@ function useWireQuestion(controller: BoardController, sessionId: string | undefi
  * an honest shell (kind + navigate) instead of blank nothing. The shell is
  * the backstop against carrier-shape drift on any present or future host:
  * a proven wait can never again reach the UI as silence. Every surface with
- * a comment composer reads this one hook (review page, session panel,
- * refinement answers) — never useWireQuestion directly for display.
+ * a comment composer reads this one hook (review page, session panel)
+ * — never useWireQuestion directly for display.
  */
 export function useAwaitingCard(
   controller: BoardController,

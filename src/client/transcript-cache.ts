@@ -1,6 +1,6 @@
 /**
  * The transcript reader's freshness layer — ONE mechanism that every surface
- * (review page, linked-session panel, refinement panel, the external-round
+ * (review page, linked-session panel, the external-round
  * backfill) shares, so a session's history is fetched once and reused, never
  * re-fetched in a burst the moment several panels open or a poll overlaps a
  * reload. This is the root fix for 「评论区加载很久 / 有时加载不出来」:

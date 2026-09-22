@@ -3,8 +3,8 @@
  * backward on demand (the native "load earlier" grammar), poll the tail
  * lightly (watermark-gated, so an idle session costs nothing), and follow
  * the latest output while the user is at the bottom — with a "滑到最新"
- * escape when they scroll up. Used by the review page, the refinement
- * panel, and anywhere else a live session tail is shown, so every surface
+ * escape when they scroll up. Used by the review page and
+ * anywhere else a live session tail is shown, so every surface
  * behaves identically.
  *
  * EMPTY discipline (the 「刷新即暂无对话内容」 fix): the tail window is

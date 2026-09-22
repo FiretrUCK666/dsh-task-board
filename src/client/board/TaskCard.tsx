@@ -7,7 +7,7 @@
 import { useState, type CSSProperties } from 'react'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { cardSourceLabel, latestExecutionOf, plainRunsOf, refining, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
+import { cardSourceLabel, latestExecutionOf, plainRunsOf, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
 import { sessionRuleReadiness } from '../../core/automation.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -69,7 +69,7 @@ export function blockedAutomation(task: TaskRecord): boolean {
 /** One card in a column — a PURE state summary: title, description, source
  *  line (workspace / bound session), the updated stamp, and the status chips
  *  (what the task IS doing: running / waiting / scheduled / chaining / failed
- *  paused / queued / refining / new). The run window (start/end/duration) and
+ *  paused / queued / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
 export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, hasUnviewedRun, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, nextAction, dotTitleOf }: {
@@ -83,11 +83,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   boundTitleOf?: (task: TaskRecord) => string
   /** The open run's session is blocked on the user (approval / plan review / question). */
   waiting?: PendingInteractionKind
-  /** How many sessions of this task are waiting on the user (executions + refine). */
+  /** How many sessions of this task are waiting on the user (executions). */
   pendingCount: number
   /** Tooltip detail listing which execution/session waits on what. */
   pendingTitle: string
-  /** Whether the task has content (settled run / comment / refine) newer than its last open. */
+  /** Whether the task has content (settled run / comment) newer than its last open. */
   unviewed: boolean
   /** How many plain-run executions are unviewed (the "新 N" badge figure). */
   unviewedCount: number
@@ -139,9 +139,8 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   // run several at once), never "the last row is unsettled". A pending comment
   // round (task sitting in review) must never spin.
   const running = view.running
-  // Display truth splits from the gate above: a lone refinement round keeps
-  // the card in its backlog column doing preparation — the chip must read
-  // 完善中 (its own badge below), never 进行中. Quick-run blocking, budget
+  // Display truth splits from the gate above: an eventless round never shows
+  // the in-progress indicator. Quick-run blocking, budget
   // and drop rules stay on `running`.
   const showingRunning = view.showingRunning
   // Comments saved but not yet injected (the task's queue): a quiet warn
@@ -315,7 +314,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
             broken.
 
             (1) The PRIMARY chip comes first. `cardViewModelOf` computes a priority
-            (waiting > running > refining > queued > failed > review > idle) and the
+            (waiting > running > queued > failed > review > idle) and the
             render used to put that winner LAST, behind every automation badge — so
             the row's reading order contradicted the view model's own ranking, on the
             surface whose whole job is a five-second scan.
@@ -349,10 +348,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
                breath belongs to unread alone, so the two can never be confused. */
             <Chip kind="warn" fill={false} title={t('card.awaitingDecisionTitle')}>
               {t('card.awaitingDecision')}
-            </Chip>
-          ) : refining(task) ? (
-            <Chip kind="warn" fill={false} title={t('card.refiningTitle')}>
-              {t('card.refining')}
             </Chip>
           ) : lastPlain !== undefined ? (
             <Chip kind={resultChipKind(lastPlain.result)} fill={false}>

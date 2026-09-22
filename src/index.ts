@@ -118,7 +118,7 @@ export function apply(ctx: Context, config?: Config): void {
   )
 
   // Serve native per-session plan/goal state (a narrow read-only bridge — no
-  // command catalog) to the comment and refine surfaces. Structural reads, so
+  // command catalog) to the comment surfaces. Structural reads, so
   // official plan/goal changes flow in with zero maintenance; any missing
   // native service hides that block.
   ctx.effect(

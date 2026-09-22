@@ -49,8 +49,8 @@ export declare function useSessionContext(controller: BoardController, sessionId
  * an honest shell (kind + navigate) instead of blank nothing. The shell is
  * the backstop against carrier-shape drift on any present or future host:
  * a proven wait can never again reach the UI as silence. Every surface with
- * a comment composer reads this one hook (review page, session panel,
- * refinement answers) — never useWireQuestion directly for display.
+ * a comment composer reads this one hook (review page, session panel)
+ * — never useWireQuestion directly for display.
  */
 export declare function useAwaitingCard(controller: BoardController, sessionId: string | undefined): {
     question: WireQuestion | undefined;

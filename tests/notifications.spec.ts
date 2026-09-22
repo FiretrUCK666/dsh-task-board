@@ -34,18 +34,18 @@ describe('waiting rows (one per waiting session)', () => {
     expect(waitingRows(tasks, () => undefined)).toEqual([])
   })
 
-  it('one row per waiting session (execution + refine deduplicated)', () => {
+  it('one row per waiting session (rounds deduplicated)', () => {
     const tasks = [task('a', NOW, {
-      refineSessionId: 's-1',
       executions: [
         { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
+        { id: 'e1b', sessionId: 's-1', startedAt: NOW + 1, endedAt: undefined, result: undefined, error: undefined },
         { id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
       ],
     })]
     const pending = (id: string | undefined): 'question' | undefined =>
       id === 's-1' || id === 's-2' ? 'question' : undefined
     const rows = waitingRows(tasks, pending, id => `title-${id}`)
-    // s-1 named twice (round + refine) waits once.
+    // s-1 named by two rounds still waits once (one row per SESSION).
     expect(rows.map(row => row.sessionId)).toEqual(['s-1', 's-2'])
     expect(rows[0]).toMatchObject({
       taskId: 'a', taskTitle: 'task-a', sessionTitle: 'title-s-1', waitingKind: 'question',
@@ -83,8 +83,36 @@ describe('review rows (one per settled session of each unviewed review task)', (
     const rows = notificationsExOf([reviewed], () => undefined, id => id, () => true)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ taskId: 'r', kind: 'review', result: 'failed' })
-    // Viewed review tasks stay quiet.
-    expect(notificationsExOf([reviewed], () => undefined, id => id, () => false)).toEqual([])
+    // Opening the CARD moves only the task-level baseline — the row gate is
+    // the SESSION's own round clock, so the row survives (「点开卡片整卡通知
+    // 消失」 was exactly the task-level gate this replaced).
+    expect(notificationsExOf([reviewed], () => undefined, id => id, () => false)).toHaveLength(1)
+    // Acknowledging the SESSION (what the panel/review-page/notification-open
+    // /标已读 funnels write) is what retires its row.
+    const acknowledged = {
+      ...reviewed,
+      executions: reviewed.executions.map(round => ({ ...round, viewedAt: NOW + 10 })),
+    }
+    expect(notificationsExOf([acknowledged], () => undefined, id => id, () => false)).toEqual([])
+  })
+
+  it('per-session gates: stamping ONE session keeps its sibling row', () => {
+    const two = {
+      ...task('r', NOW, { status: 'review' as const }),
+      executions: [
+        { id: 'e1', sessionId: 's-1', startedAt: NOW + 1, endedAt: NOW + 10, result: 'failed' as const, error: 'boom', viewedAt: NOW + 1 },
+        { id: 'e2', sessionId: 's-2', startedAt: NOW + 2, endedAt: NOW + 20, result: 'succeeded' as const, error: undefined, viewedAt: NOW + 2 },
+      ],
+    }
+    expect(notificationsExOf([two], () => undefined, id => id, () => false)).toHaveLength(2)
+    // Stamp s-1 only (its settle moves its ack past its activity): s-1's row
+    // leaves, s-2's stays — rows clear conversation by conversation.
+    const stamped = {
+      ...two,
+      executions: two.executions.map(round => (round.sessionId === 's-1' ? { ...round, viewedAt: NOW + 10 } : round)),
+    }
+    const rows = notificationsExOf([stamped], () => undefined, id => id, () => false)
+    expect(rows.map(row => row.sessionId)).toEqual(['s-2'])
   })
 
   it('a waiting row suppresses the same-SESSION review echo, never a sibling session', () => {
@@ -98,7 +126,7 @@ describe('review rows (one per settled session of each unviewed review task)', (
     // its 通过/打回, the blocked sibling keeps its 去回答. Suppressing the
     // gate here is what hid the decision behind a question on another lane.
     const sibling = notificationsExOf(
-      [{ ...reviewed, refineSessionId: 's-2' }],
+      [{ ...reviewed, executions: [...reviewed.executions, { id: 'e2', sessionId: 's-2', startedAt: NOW + 3, endedAt: undefined, result: undefined, error: undefined }] }],
       id => (id === 's-2' ? 'question' : undefined),
       id => id,
       () => true,
@@ -142,18 +170,19 @@ describe('review rows (one per settled session of each unviewed review task)', (
     const rows = notificationsExOf([legacy], () => undefined, id => id, () => true)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ kind: 'review', sessionId: 'old', result: 'succeeded', at: NOW + 3 })
+    // No session identity = no per-session clock: THIS lane alone still reads
+    // the task-level baseline, so a card-level viewed retires it.
+    expect(notificationsExOf([legacy], () => undefined, id => id, () => false)).toEqual([])
   })
 
-  it('a comment-only session is a lane too (any settled round gets a face; refinement never does)', () => {
+  it('a comment-only session is a lane too (any settled round gets a face)', () => {
     // The bound-conversation shape: driven natively — comment/observed rounds,
     // NO plain run — the session still owes the gate a row, honestly without
     // a run result (待审核) and on its own settle clock.
     const chatTask = {
       ...task('c', NOW + 5, { status: 'review' as const }),
-      refineSessionId: 's-refine',
       executions: [
         { id: 'c1', sessionId: 's-chat', startedAt: NOW + 1, endedAt: NOW + 4, result: 'succeeded' as const, error: undefined, comment: '你好', viewedAt: NOW + 1 },
-        { id: 'r1', sessionId: 's-refine', startedAt: NOW + 1, endedAt: NOW + 3, result: 'succeeded' as const, error: undefined, refine: true, viewedAt: NOW + 3 },
       ],
     }
     const rows = notificationsExOf([chatTask], () => undefined, id => `title-${id}`, () => true)
@@ -424,9 +453,9 @@ describe('boardDemandOf', () => {
 
   it('counts each suspended session once, deduplicated across rounds', () => {
     const tasks = [task('a', NOW, {
-      refineSessionId: 's-1',
       executions: [
         { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
+        { id: 'e1b', sessionId: 's-1', startedAt: NOW + 1, endedAt: undefined, result: undefined, error: undefined },
         { id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
       ],
     })]

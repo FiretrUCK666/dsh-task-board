@@ -1,8 +1,7 @@
 /**
  * Shared session-panel components: the right-rail building blocks that every
- * session surface composes — the execution review page (ReviewDetail), the
- * linked-session panel (SessionDetail) and the refinement panel
- * (RefineSection). Each block is small and self-contained; the callers own
+ * session surface composes — the execution review page (ReviewDetail) and the
+ * linked-session panel (SessionDetail). Each block is small and self-contained; the callers own
  * their rail layout and their semantic differences (a drive composer vs a
  * direct composer are deliberately NOT shared here — see the two panels).
  *
@@ -34,7 +33,7 @@ export declare function SessionTranscript({ lines, error, atBottom, jumpToBottom
     atBottom: boolean;
     jumpToBottom: () => void;
     waiting?: PendingInteractionKind;
-    /** Render only the trailing N lines (the refinement panel's cap). */
+    /** Render only the trailing N lines (a capped preview surface's cap). */
     maxLines?: number;
     /** The host holds messages older than the loaded window. */
     hasMore?: boolean;

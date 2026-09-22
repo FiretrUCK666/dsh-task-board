@@ -1,6 +1,6 @@
 /**
  * Session-state bridge (host): exposes the native per-session PLAN mode,
- * active GOAL and live SUBAGENTS to the board's comment/refine surfaces.
+ * active GOAL and live SUBAGENTS to the board's comment surfaces.
  * This is the narrow read-only bridge — it deliberately DOES NOT carry a
  * command catalog (the command directory was removed from the board): only
  * live session state that the surfaces display. We never hardcode plan/goal/

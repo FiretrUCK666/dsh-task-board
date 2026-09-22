@@ -1,6 +1,6 @@
 /**
  * THE ONE '@' reference bridge of the board — every input box (comments,
- * refine answers, rule instructions, run prompts, interaction answers)
+ * rule instructions, run prompts, interaction answers)
  * reads this module, so the whole board shares the OFFICIAL mechanism the
  * harness's own composer uses (`@deepseek-ai/dsh-client-ui-reference`):
  *

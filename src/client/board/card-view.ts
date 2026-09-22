@@ -3,9 +3,9 @@
  * Pure so the column, the detail badge and tests read the same truth.
  *
  * Priority (matches the breathing-light table — waiting > running >
- * refining > queued > failed-review > unviewed-review > idle):
+ * queued > failed-review > unviewed-review > idle):
  * waiting (pending interaction) outranks everything; running = any related
- * session genuinely working; refining = preparation (never 进行中); queued =
+ * session genuinely working; queued =
  * saved comments waiting for the dispatcher; failed = latest plain run
  * failed in review; review = succeeded awaiting confirmation (unviewed only
  * for the glow, read review stays quiet); idle otherwise.
@@ -18,7 +18,6 @@ import {
   lastPlainResult,
   pendingCommentCount,
   plainRunsOf,
-  refining,
   type TaskRecord,
 } from '../../core/tasks.ts'
 
@@ -26,7 +25,6 @@ import {
 export type CardPrimary =
   | { kind: 'waiting'; waiting: PendingInteractionKind }
   | { kind: 'running' }
-  | { kind: 'refining' }
   | { kind: 'queued'; count: number }
   | { kind: 'failed' }
   | { kind: 'review'; unviewed: boolean }
@@ -54,8 +52,8 @@ export type CardLight = 'none' | 'halo' | 'ring'
 /**
  * THE card light table, in code (the board's 光效规则表, one row per card):
  *
- *   'halo' — state-bound brightness: the card is working (waiting / running /
- *            refining). Inset and soft: work in flight is not a request;
+ *   'halo' — state-bound brightness: the card is working (waiting / running).
+ *           Inset and soft: work in flight is not a request;
  *   'ring' — unread: a run finished and this content has not been looked at.
  *            Outer and stronger: it IS a request to look;
  *   'none' — read and settled, or idle.
@@ -111,7 +109,7 @@ export interface CardViewModel {
   unviewedCount: number
   /**
    * Whether the card breathes: a state-bound fact, independent of unread. True
-   * for waiting / running / refining AND for a card sitting in the 进行中
+   * for waiting / running AND for a card sitting in the 进行中
    * column (the same `task.status` the yellow border reads), so the border and
    * the breath are one fact — see {@link cardLightOf}.
    */
@@ -124,7 +122,8 @@ export interface CardViewModel {
    * 「待你决断」 chip and the header demand count.
    */
   awaitingDecision: boolean
-  /** Display truth splits from the gate: refining never reads as running. */
+  /** Display truth splits from the gate: an eventless round never reads as
+   *  running. */
   showingRunning: boolean
   /** Run guard (open-round gate — queued comments never block). */
   running: boolean
@@ -132,8 +131,8 @@ export interface CardViewModel {
 
 /**
  * Derive the card's view-model from the card's OWN facts. Every field is a
- * reading of the task record (open rounds, pending comments, the refine
- * session), so the chip, the light and the next-action line can never disagree:
+ * reading of the task record (open rounds, pending comments), so the chip,
+ * the light and the next-action line can never disagree:
  * they are one derivation.
  *
  * There is deliberately NO live-state input. The card's "is this working" is
@@ -157,23 +156,21 @@ export function cardViewModelOf(
   const queued = pendingCommentCount(task)
   const runs = plainRunsOf(task)
   const lastResult = lastPlainResult(task)
-  const isRefining = refining(task)
   // THE light is derived from the state the card DISPLAYS, never from a second
   // judgment that can disagree with it. `primary` is computed below from the
   // card's own facts, so binding the pulse to it makes the chip and the light
-  // one fact: a card reading 进行中 / 待你决断 / 完善中 pulses, a card reading
+  // one fact: a card reading 进行中 / 待你决断 pulses, a card reading
   // 已排队 / 待审核 / idle is quiet.
 
   let primary: CardPrimary
   if (opts.waiting !== undefined) primary = { kind: 'waiting', waiting: opts.waiting }
   else if (showingRunning) primary = { kind: 'running' }
-  else if (isRefining) primary = { kind: 'refining' }
   else if (queued > 0) primary = { kind: 'queued', count: queued }
   else if (task.status === 'review' && lastResult === 'failed') primary = { kind: 'failed' }
   else if (task.status === 'review') primary = { kind: 'review', unviewed: (opts.unviewedCount ?? 0) > 0 }
   else primary = { kind: 'idle' }
 
-  // The light table (see the board's 光效规则表): waiting / running / refining
+  // The light table (see the board's 光效规则表): waiting / running
   // breathe; queued, failed, review and idle do not.
   //
   // The card's OWN COLUMN is part of that answer, and it is the SAME fact the
@@ -191,7 +188,6 @@ export function cardViewModelOf(
   const active = columnRunning
     || primary.kind === 'waiting'
     || primary.kind === 'running'
-    || primary.kind === 'refining'
 
   return {
     primary,
@@ -216,11 +212,10 @@ export function cardViewModelOf(
 export function cardNextActionOf(
   view: CardViewModel,
   task: TaskRecord,
-): { kind: 'waiting' | 'running' | 'refining' | 'queued' | 'failed' | 'review' | 'scheduled' | 'chain'; count?: number } | undefined {
+): { kind: 'waiting' | 'running' | 'queued' | 'failed' | 'review' | 'scheduled' | 'chain'; count?: number } | undefined {
   switch (view.primary.kind) {
     case 'waiting': return { kind: 'waiting' }
     case 'running': return { kind: 'running' }
-    case 'refining': return { kind: 'refining' }
     case 'queued': return { kind: 'queued', count: view.primary.count }
     case 'failed': return { kind: 'failed' }
     case 'review': return view.primary.unviewed ? { kind: 'review' } : undefined

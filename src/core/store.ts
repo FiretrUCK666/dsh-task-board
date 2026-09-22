@@ -146,6 +146,15 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     // clear a malformed persisted rule rather than leave it in the row.
     const task: TaskRecord = { ...row, status: normalizeStatus(row.status) }
     task.schedule = normalizeSchedule(row.schedule)
+    // Legacy refinement data is stripped at BOTH persistence entries (this
+    // parse serves localStorage directly and the host truth through
+    // board-doc's normalizeIncomingTask): a leftover refine round would
+    // re-enter history as a plain run (column moves, review rows, chain
+    // hand-offs that never existed) and a stale bound session would keep
+    // driving the card's related set. Dropping the rounds BEFORE the viewed
+    // baseline defaults keeps both clocks about the data that remains.
+    delete (task as unknown as { refineSessionId?: unknown }).refineSessionId
+    task.executions = task.executions.filter(round => (round as unknown as { refine?: unknown }).refine !== true)
     // Legacy rows carry no sort key: assign the array position so the
     // previous relative order is preserved.
     const rawOrder = (row as Record<string, unknown>).order

@@ -1,7 +1,7 @@
 /**
  * Shared session display logic: derive the live state of any execution's
- * underlying session (across all its rounds: the original run + comments +
- * refine rounds). Used by execution rows, task cards, and the reminder
+ * underlying session (across all its rounds: the original run + comments).
+ * Used by execution rows, task cards, and the reminder
  * system so every surface shows the same truth.
  *
  * Pure functions — no side effects, fully unit-testable.
@@ -11,7 +11,7 @@ import { isOpenRound, type TaskRecord, type ExecutionRecord } from './tasks.ts'
 
 /**
  * The live state of an execution's session (aggregating all rounds that share
- * the session: the original run, comments, and any refine rounds).
+ * the session: the original run and its comments).
  */
 export interface SessionDisplay {
   /** The session's current state (waiting > running > latest settled). */
@@ -24,8 +24,7 @@ export interface SessionDisplay {
 
 /**
  * Collect every round belonging to an execution's session:
- * - Rounds with the same sessionId (comments injected into this session,
- *   refine rounds using the same refine session).
+ * - Rounds with the same sessionId (comments injected into this session).
  * - Rounds whose parentExecutionId matches (comments attributed by parent
  *   rather than session — legacy data compatibility).
  * The execution itself is always included.
@@ -60,7 +59,7 @@ export function sessionRoundsOf(task: TaskRecord, execution: ExecutionRecord): r
  *   re-derived flag). TRUE means the agent is working, no matter which surface
  *   started the turn (a plain run, a direct steer, a session rule, an
  *   out-of-band native chat) and no matter whose turn holds the session. Board
- *   open rounds and refine rounds keep their own semantics below; this only
+ *   open rounds keep their own semantics below; this only
  *   ADDS the native/lineage truth.
  */
 export function sessionDisplay(
@@ -75,8 +74,8 @@ export function sessionDisplay(
     return { state: 'cancelled', lastActivity: undefined, waitingKind: undefined }
   }
 
-  // Any round currently open (running in its session)? A plain run or a
-  // refine round is open from its start (they carry no `injectedAt`); a
+  // Any round currently open (running in its session)? A plain run is open
+  // from its start (it carries no `injectedAt`); a
   // comment round is open only once actually injected — a saved/queued
   // comment has not started and must not make the session look live. An
   // EXTERNALLY-observed round is open from its observation (it is the native
@@ -211,7 +210,7 @@ export function sessionTimes(task: TaskRecord, execution: ExecutionRecord): {
 }
 
 /**
- * Count how many sessions (executions + refine) are waiting on the user.
+ * Count how many sessions (executions) are waiting on the user.
  * Used by the task card badge to show "N 待处理" when the task has pending
  * interactions across its sessions. ONE row per waiting SESSION (deduped):
  * three executions on the same waiting session wait once, not three times —
@@ -239,22 +238,13 @@ export function taskPendingCount(
     }
   }
 
-  // Check the refine session (if any and not already counted).
-  if (task.refineSessionId !== undefined && !seen.has(task.refineSessionId)) {
-    const waitingKind = pendingInteractionOf(task.refineSessionId)
-    if (waitingKind !== undefined) {
-      seen.add(task.refineSessionId)
-      items.push({ sessionId: task.refineSessionId, waitingKind })
-    }
-  }
-
   return { count: items.length, items }
 }
 
 // --- unviewed-content reminders ----------------------------------------------
 //
 // Every surface that can hold new content (a settled run, an injected or
-// settled comment, a refine turn) carries a `viewedAt`: the instant the user
+// settled comment) carries a `viewedAt`: the instant the user
 // last opened the surface that reveals it (the task detail for the card, the
 // review page for an execution row). Content whose activity is newer than the
 // baseline counts as unviewed and drives the reminder affordances — the
@@ -304,7 +294,7 @@ export function taskViewedBaseline(task: TaskRecord): number {
 
 /**
  * Whether the task has any unviewed content: any round — a run settling, a
- * comment being injected or settling, a refine turn — with activity newer
+ * comment being injected or settling — with activity newer
  * than the card's viewed baseline. Drives the card's breathing glow.
  */
 export function taskUnviewed(task: TaskRecord): boolean {
@@ -314,13 +304,13 @@ export function taskUnviewed(task: TaskRecord): boolean {
 
 /**
  * How many plain-run executions of the task are unviewed — the "新 N" count
- * on the card. Comment/refine-only unread (no unviewed plain runs) shows a
+ * on the card. Comment-only unread (no unviewed plain runs) shows a
  * bare "新" instead.
  */
 export function taskUnviewedCount(task: TaskRecord): number {
   let count = 0
   for (const execution of task.executions) {
-    if (execution.comment !== undefined || execution.refine === true) continue
+    if (execution.comment !== undefined) continue
     if (executionUnviewed(task, execution)) count += 1
   }
   return count

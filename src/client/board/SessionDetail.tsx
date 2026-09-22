@@ -8,7 +8,7 @@
  * deliver straight to the native session now; a comment on a done task
  * revives it — the message drives the task, never a dead end).
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { type TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
@@ -33,6 +33,17 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   sessionId: string
   onClose: () => void
 }) {
+  // Opening this panel IS reading the conversation: stamp the session's
+  // rounds viewed (mount-only — the panel's identity is its session), the
+  // same acknowledgement the review page gives its execution. Without this
+  // the detail's session rows and the card's session dots kept breathing
+  // while the user sat inside the very thread (「点进评论区还在闪」) — the
+  // per-session clock has no other funnel from this surface.
+  useEffect(() => {
+    controller.markTaskSessionViewed(task.id, sessionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // The live row, re-derived every render from the native snapshots
   // (undefined once the session is hidden, archived or deleted — the panel
   // then degrades to the raw id and disables the composer).

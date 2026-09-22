@@ -14,7 +14,7 @@
  * LAYOUT: one quiet header row (icon + title + progress summary + chevron).
  * The expanded list has two placements, chosen by the host surface via the
  * `className` prop:
- *  - DEFAULT (refine panel): a POPOVER anchored under the head — absolute,
+ *  - DEFAULT: a POPOVER anchored under the head — absolute,
  *    opaque menu surface, its own capped scroll region — so expanding never
  *    pushes the surrounding blocks.
  *  - DOCK (review / session header, `.reviewHeaderContext`): the panel is an
@@ -51,8 +51,7 @@ function TodoGlyph({ status }: { status: 'pending' | 'in_progress' | 'completed'
  *  `className` lets a surface switch the expanded panel from its DEFAULT
  *  popover to the IN-FLOW dock row: the review/session header passes
  *  `.reviewHeaderContext` (the open wrap dissolves so the panel joins the
- *  header grid as its own full-width row); the refine panel keeps the default
- *  popover.
+ *  header grid as its own full-width row).
  *  `sessionId` + `controller` switch the goal row from the read-only legacy
  *  text to the interactive goal strip (pause / resume / edit / clear through
  *  the official verbs); absent = read-only (old hosts without remote.goals). */

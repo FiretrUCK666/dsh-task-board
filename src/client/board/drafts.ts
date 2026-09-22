@@ -1,7 +1,7 @@
 /**
  * Draft persistence: unsent half-written text for every input surface that
  * unmounts when the user switches away (comment composers, the task edit
- * form, the new-task modal, the refine answer box). A small storage seam with
+ * form, the new-task modal). A small storage seam with
  * a localStorage backend, mirroring the task-ledger store: whatever the
  * user typed is restored when they come back, and cleared the moment the
  * text is actually sent / saved / discarded.
@@ -25,11 +25,6 @@ export function commentDraftKey(taskId: string, sessionId: string): string {
 /** Task edit-form draft key (the whole TaskDraft, JSON-encoded). */
 export function editDraftKey(taskId: string): string {
   return `edit:${taskId}`
-}
-
-/** Refinement answer-box draft key. */
-export function refineDraftKey(taskId: string): string {
-  return `refine:${taskId}`
 }
 
 /** New-task modal draft key (one global slot — no task id exists yet). */

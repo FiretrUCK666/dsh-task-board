@@ -49,21 +49,26 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
 
   it('HEIGHT CONTRACT: the interaction card is capped, its body scrolls, its actions stay pinned', () => {
     const card = ruleOf('interactionCard')
-    // THE cap is a two-part min(): never taller than the 320px reading ceiling
-    // AND never taller than the box holding it. The 100% half is the whole fix
-    // for the phone report — a 320px card inside the rail's 285px comments box
-    // overflowed its scrollport, so the pinned action row was painted under the
-    // conversation column and 跳过本题 / 下一题 / 提交 could not be tapped at
-    // all. Still never a viewport unit: the card lives inside a panel sized
-    // against the BOARD box, so `40vh` measured a different box than the one
-    // that has to hold it (and the mobile contract bans viewport units
-    // board-wide — the two tests used to disagree about this line).
-    expect(card).toMatch(/max-height:\s*min\(320px,\s*100%\)/)
+    // THE cap is a three-part max(): never taller than the 320px reading
+    // ceiling, never taller than the box holding it — and never SHORTER than a
+    // 290px floor. The floorless min() destroyed itself in a short box
+    // (measured on a real screenshot + fixture at comments-box height 122px):
+    // the card shrank to the box, head+footer no longer fit inside it, and
+    // overflow:hidden sliced the submit button's bottom edge while the body
+    // collapsed to a sliver that could not show the answer field at all. With
+    // the floor a short box can no longer starve the card; the OVERFLOW the
+    // floor creates is absorbed by the outer comments scroller (with follow
+    // landing on the card's bottom = the footer), never clipped. Still never
+    // a viewport unit: the card lives inside a panel sized against the BOARD
+    // box, so `40vh` measured a different box than the one that has to hold
+    // it (and the mobile contract bans viewport units board-wide — the two
+    // tests used to disagree about this line).
+    expect(card).toMatch(/max-height:\s*max\(290px,\s*min\(320px,\s*100%\)/)
     expect(card).not.toMatch(/\d+(vh|dvh|vw)\b/)
     expect(card).toContain('overflow: hidden')
     // The body is the ONE scroll slot: long plan/question text scrolls inside
     // while the action row stays pinned at the card's bottom edge, always
-    // inside the comments scrollport (never painted past it).
+    // inside the card (never painted past it).
     for (const body of ['interactionBody', 'interactionCardBody']) {
       expect(ruleOf(body), `.${body} must scroll its own content`).toContain('overflow-y: auto')
       expect(ruleOf(body), `.${body} must be allowed to shrink`).toContain('min-height: 0')
@@ -179,14 +184,33 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(shell).toContain('css.interactionActions')
     expect(shell).toContain('review.interactionGoAnswer')
     // Every composer surface reads the one awaiting hook (review page,
-    // session panel, refinement answers) — never the raw wire hook for
+    // session panel) — never the raw wire hook for
     // display. The shared rail takes the folded result as props.
-    for (const file of ['ReviewDetail.tsx', 'SessionDetail.tsx', 'RefineSection.tsx']) {
+    for (const file of ['ReviewDetail.tsx', 'SessionDetail.tsx']) {
       const source = readFileSync(fileURLToPath(new URL(`../src/client/board/${file}`, import.meta.url)), 'utf8')
       expect(source).toContain('useAwaitingCard')
     }
     const hookPath = fileURLToPath(new URL('../src/client/board/use-interaction.ts', import.meta.url))
     expect(readFileSync(hookPath, 'utf8')).toContain('export function useAwaitingCard')
+  })
+
+  it('entering either conversation surface stamps its read clock (mount-only)', () => {
+    // 「点进那个会话的评论区里面了，卡片上的 session 还在闪」: the two
+    // surfaces that REVEAL a conversation must acknowledge it, or the
+    // per-session clock never hears about the visit. Execution review page →
+    // markExecutionViewed; linked session panel → markTaskSessionViewed
+    // (the same funnel a notification row's open uses). Both mount-only:
+    // the surface's identity is its execution/session, and a stamp per
+    // render would re-arm on every live update.
+    const review = readFileSync(fileURLToPath(new URL('../src/client/board/ReviewDetail.tsx', import.meta.url)), 'utf8')
+    expect(review).toMatch(/useEffect\(\(\) => \{\s*controller\.markExecutionViewed\(task\.id, execution\.id\)/)
+    const panel = readFileSync(fileURLToPath(new URL('../src/client/board/SessionDetail.tsx', import.meta.url)), 'utf8')
+    expect(panel).toMatch(/useEffect\(\(\) => \{\s*controller\.markTaskSessionViewed\(task\.id, sessionId\)/)
+    // Mount-only: neither effect carries the ids in a re-run dependency list
+    // (a stamp that re-ran per update would mask genuinely new arrivals
+    // while the panel stays open).
+    expect(panel.slice(panel.indexOf('markTaskSessionViewed') - 200, panel.indexOf('markTaskSessionViewed') + 200))
+      .toContain('}, [])')
   })
 })
 
@@ -372,7 +396,7 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // (display:contents) and the panel joins the header grid as an implicit
     // full-width row BELOW the whole head row — expanding pushes the body
     // down, so overlap is unrepresentable. Capped + internally scrolled at
-    // both widths; the refine surface keeps its own popover grammar.
+    // both widths.
     const blockPath = fileURLToPath(new URL('../src/client/board/SessionContextBlock.tsx', import.meta.url))
     const blockSource = readFileSync(blockPath, 'utf8')
     expect(blockSource).toMatch(/data-open=\{open \? '' : undefined\}/)
@@ -657,7 +681,7 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(composer).toMatch(/busyKindOf\(/)
     const stripPath = fileURLToPath(new URL('../src/client/board/AttachmentStrip.tsx', import.meta.url))
     expect(readFileSync(stripPath, 'utf8')).toMatch(/attachBusyLabel/)
-    for (const name of ['session-panel.tsx', 'RefineSection.tsx', 'TaskForm.tsx']) {
+    for (const name of ['session-panel.tsx', 'TaskForm.tsx']) {
       const caller = readFileSync(fileURLToPath(new URL(`../src/client/board/${name}`, import.meta.url)), 'utf8')
       expect(caller).toContain('attachBusyLabel(attachments.busyKind)')
     }
@@ -691,24 +715,12 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(sheet).toMatch(/\.card:hover \.cardColorBar,\s*\n\.card:focus-within \.cardColorBar \{\s*\n\s*display: flex;/)
   })
 
-  it('the apply action is separated by AIR, never by a stray rule', () => {
-    // The reported 「应用到任务上面有一条线，很奇怪」: a full-width border-top
-    // that belonged to nothing and travelled with the content. The block still
-    // needs separation from the answer area above it, so the gap owns it.
-    const actions = ruleOf('refineActionArea')
-    expect(actions).not.toMatch(/border-top/)
-    expect(actions).toMatch(/margin-top:\s*4px/)
-    expect(actions).toMatch(/gap:\s*8px/)
-    // The apply button itself stays the full-width primary it always was.
-    expect(ruleOf('refineApplyButton')).toMatch(/width:\s*100%/)
-  })
-
-  it('comment + refine drafts persist attachments (text is not the only survivor)', () => {
-    // The reported loss: text came back, staged images/files did not. Both
-    // composers save the full envelope (text + images + file NAMES — bytes
+  it('comment drafts persist attachments (text is not the only survivor)', () => {
+    // The reported loss: text came back, staged images/files did not. The
+    // composer saves the full envelope (text + images + file NAMES — bytes
     // are unrecoverable after unmount, so files come back as a re-add
-    // notice, never as sendable chips) and restore through the hook setters.
-    for (const [name, key] of [['session-panel.tsx', 'commentDraftKey'], ['RefineSection.tsx', 'refineDraftKey']] as const) {
+    // notice, never as sendable chips) and restores through the hook setters.
+    for (const [name, key] of [['session-panel.tsx', 'commentDraftKey']] as const) {
       const caller = readFileSync(fileURLToPath(new URL(`../src/client/board/${name}`, import.meta.url)), 'utf8')
       expect(caller).toContain('encodeCommentDraft(')
       expect(caller).toContain('decodeCommentDraft(')

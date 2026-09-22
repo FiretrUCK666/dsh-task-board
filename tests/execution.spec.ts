@@ -166,9 +166,9 @@ describe('ExecutionService.run', () => {
     ]])
   })
 
-  it('a run-options image override replaces the task prompt images (refine answers)', async () => {
+  it('a run-options image override replaces the task prompt images (message attachments)', async () => {
     const { env, drivers } = makeEnv()
-    drivers.set('s-refine', new FakeDriver())
+    drivers.set('s-alt', new FakeDriver())
     const service = new ExecutionService(env)
     const task = {
       ...sampleTask(),
@@ -177,11 +177,11 @@ describe('ExecutionService.run', () => {
     const { execution } = startExecution(task, NOW, 'exec-1')
     await service.run(task, execution, () => { /* ignore */ }, {
       prompt: '回答文本',
-      sessionId: 's-refine',
+      sessionId: 's-alt',
       fresh: false,
       images: [{ mediaType: 'image/jpeg', data: 'QUJD' }],
     })
-    expect(drivers.get('s-refine')?.promptCalls).toEqual([[
+    expect(drivers.get('s-alt')?.promptCalls).toEqual([[
       { type: 'text', text: '回答文本' },
       { type: 'image', mediaType: 'image/jpeg', data: 'QUJD' },
     ]])
@@ -1161,25 +1161,25 @@ describe('ExecutionService.run slash prompts (native command registry path)', ()
   })
 })
 
-describe('ExecutionService.run options (requirement-refinement rounds)', () => {
+describe('ExecutionService.run options (session reuse + prompt override)', () => {
   it('reuses the provided session, renames it, and sends the prompt override', async () => {
     const { env, drivers, createSessionCalls } = makeEnv({ recentWorkspaceId: 'ws-recent' })
     const driver = new FakeDriver()
-    drivers.set('s-refine', driver)
+    drivers.set('s-reuse', driver)
     const service = new ExecutionService(env)
     const task = sampleTask()
     const { execution } = startExecution(task, NOW, 'exec-1')
     const events: string[] = []
     await service.run(task, execution, event => { events.push(event.kind) }, {
-      sessionId: 's-refine',
-      prompt: '完善指令文本',
+      sessionId: 's-reuse',
+      prompt: '续跑指令文本',
       fresh: false,
-      renameTo: '写个脚本 · 完善需求',
+      renameTo: '写个脚本 · 续跑',
     })
     // The session is reused: no workspace connect happens.
     expect(createSessionCalls).toEqual([])
-    expect(driver.renameCalls).toEqual(['写个脚本 · 完善需求'])
-    expect(driver.promptCalls).toEqual([[{ type: 'text', text: '完善指令文本' }]])
+    expect(driver.renameCalls).toEqual(['写个脚本 · 续跑'])
+    expect(driver.promptCalls).toEqual([[{ type: 'text', text: '续跑指令文本' }]])
     expect(events).toEqual(['started'])
   })
 
