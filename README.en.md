@@ -87,7 +87,9 @@ An npm install and a GitHub install contain essentially the same files; they dif
 
 Stop the running `dsh web` and start it again. Refreshing the page is not enough: the host half of the plugin loads inside the server process. The **Task Board** entry appears in the sidebar after the restart.
 
-The entry sits beside DSH's own Plugins panel. Selecting it puts the board in the centre stage; selecting the entry again — or any session in the sidebar — brings the conversation back. The plugin's settings live on the plugin's own page under **Settings → Plugins (installed) → Task Board**: that page carries this plugin's enable switch and its options.
+The entry sits beside DSH's own Plugins panel. Selecting it puts the board in the centre stage; selecting the entry again — or any session in the sidebar — brings the conversation back.
+
+The board's switch lives on the plugin's own page: **sidebar → Plugins → scroll to Installed → Task Board**. Ticking it shows the board; clearing it hides it.
 
 ### Nothing to configure by hand
 
@@ -181,7 +183,7 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 
 **No sidebar entry after installing.** The host half loads in the server process. Restart `dsh web`; refreshing the page is not enough.
 
-**Upgrading from an older version: the entry and the settings moved.** The board now attaches through DSH's official UI extension points (which is what lets it keep working across interface changes): the entry went from a row at the bottom of the sidebar to a panel icon beside DSH's own Plugins panel, and the plugin's settings went from Settings → Task Board to the plugin's own page under Settings → Plugins (installed) → Task Board, where the enable switch and the options now sit together with the plugin itself. Nothing was removed and no task data changed. If you still see the old locations, this client is running an older front-end bundle — refresh the page.
+**Upgrading from an older version: the entry and the settings moved.** The board now attaches through DSH's official UI extension points (which is what lets it keep working across interface changes): the entry went from a row at the bottom of the sidebar to a panel icon beside DSH's own Plugins panel, and the plugin's settings went from Settings → Task Board to the plugin's own page (sidebar → Plugins → Installed → Task Board), where the switch now sits together with the plugin itself. Nothing was removed and no task data changed. If you still see the old locations, this client is running an older front-end bundle — refresh the page.
 
 **The plugin fails to load after a DeepSeek Harness upgrade (the page says "Failed to load plugins").** DSH's internal interfaces change between releases, and the plugin has to follow. Two steps:
 
@@ -219,7 +221,7 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 
 The plugin id and the package name are different things. The id names the loader row, the served browser asset, the settings entry, the routes, the storage unit and the two slots above; the package name is only what pnpm installed. A scoped package name never moves the id.
 
-Settings have no slot of their own: the plugin declares its fields in the `Config` schema, and the plugin's own page under Settings → Plugins (installed) renders them as a form, so the enable switch and the options live beside the plugin itself.
+Settings have no slot of their own: the plugin declares its fields in the `Config` schema, and the plugin's own page (sidebar → Plugins → Installed → click the plugin) renders them as a form, so the switch lives beside the plugin itself.
 
 ## License
 
