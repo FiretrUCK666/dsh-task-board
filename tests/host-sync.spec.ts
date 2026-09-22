@@ -5,8 +5,8 @@
  * transport/timer/clock seams are faked so every path is driven directly.
  */
 import { describe, expect, it } from 'vitest'
-import { BoardSyncClient, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore, type BoardSyncTransport, type SyncFetchResult, type SyncLedger } from '../src/core/host-sync.ts'
-import { emptyBoardDoc, applyCommit, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView } from '../src/core/board-doc.ts'
+import { BoardSyncClient, SyncedCruiseStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore, type BoardSyncTransport, type SyncFetchResult, type SyncLedger } from '../src/core/host-sync.ts'
+import { emptyBoardDoc, applyCommit, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView, type CruiseValue } from '../src/core/board-doc.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 import { BoardDataService } from '../src/host/board-service.ts'
 
@@ -251,6 +251,47 @@ describe('BoardSyncClient migration', () => {
     await client.start(() => ({ ...local, cruise: { enabled: true, limit: 9, schedule: [] } }))
     expect(backups).toHaveLength(1)
     expect(backups[0].cruise.enabled).toBe(true)
+  })
+
+  it('a switch write landing before start() survives the settle against a non-empty host', async () => {
+    const { client, t } = makeClient()
+    t.setDoc(applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [task('host')] }), T0))
+    // The user flips the switch while boot is still fetching (nothing can be
+    // committed yet). The snapshot start() reads may lag that write, so the
+    // accrued live write — not the snapshot's copy — must ride the commit.
+    client.setCruise({ enabled: true, limit: 4, schedule: [] })
+    expect(await client.start(() => ({
+      tasks: [task('local')],
+      cruise: { enabled: false, limit: 5, schedule: [] },
+      schedulePresets: [],
+      runPresets: { presets: [] },
+    }))).toBe('synced')
+    const sent = t.calls.commit.at(-1)
+    expect(sent?.sectionClaims).toContain('cruise')
+    expect(sent?.cruise.value.enabled).toBe(true)
+    expect(t.getDoc().cruise.value.enabled).toBe(true)
+    expect(client.view().cruise.enabled).toBe(true)
+    // The migration itself still ran: both ledgers are on the shared board.
+    expect(client.view().tasks.map(x => x.id).sort()).toEqual(['host', 'local'])
+  })
+
+  it('an empty host bootstraps the legacy ledger without replacing an accrued switch write', async () => {
+    const { client, t } = makeClient()
+    // The host document was never committed (revision 0) and the snapshot
+    // holds a task, so the bootstrap branch runs. The switch the user just
+    // flipped is strictly newer than that snapshot and must not be replaced.
+    client.setCruise({ enabled: true, limit: 7, schedule: [] })
+    expect(await client.start(() => ({
+      tasks: [task('local')],
+      cruise: { enabled: false, limit: 5, schedule: [] },
+      schedulePresets: [],
+      runPresets: { presets: [] },
+    }))).toBe('synced')
+    const sent = t.calls.commit.at(-1)
+    expect(sent?.sectionClaims).toContain('cruise')
+    expect(sent?.cruise.value.limit).toBe(7)
+    expect(t.getDoc().cruise.value.enabled).toBe(true)
+    expect(t.getDoc().tasks.map(x => x.id)).toEqual(['local'])
   })
 })
 
@@ -811,5 +852,28 @@ describe('synced store seams (offline-first mount)', () => {
       clear: () => {},
     })
     expect(runs.load().presets.map(p => p.id)).toEqual(['r'])
+  })
+
+  it('cruise seam reads the mirror before adoption (the empty doc default never seeds the switch)', () => {
+    const stored: { value: Partial<CruiseValue> | undefined; writes: CruiseValue[] } = {
+      value: { enabled: true, limit: 4, schedule: [] },
+      writes: [],
+    }
+    const mirror = {
+      read: () => stored.value,
+      write: (state: CruiseValue) => { stored.value = state; stored.writes.push(state) },
+    }
+    const offline = new SyncedCruiseStore(ledger({ synced: false, tasks: [] }), mirror)
+    // Before adoption the local key is the truth: the replica's empty document
+    // would answer enabled:false and read as "the user switched cruise off".
+    expect(offline.read()).toEqual({ enabled: true, limit: 4, schedule: [] })
+    // Adopted: the synced view is the freshest source (the mirror stays warm).
+    expect(new SyncedCruiseStore(ledger({ synced: true, tasks: [] }), mirror).read()?.enabled).toBe(false)
+    // No mirror at all (a fresh profile): the view answers, nothing throws.
+    expect(new SyncedCruiseStore(ledger({ synced: false, tasks: [] })).read()?.enabled).toBe(false)
+    // A write warms the mirror (offline first paint) and marks the section.
+    const next: CruiseValue = { enabled: false, limit: 3, schedule: [] }
+    offline.write(next)
+    expect(stored.writes).toEqual([next])
   })
 })

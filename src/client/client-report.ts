@@ -14,6 +14,7 @@
  * the payload carries no board data — just versions and rectangles.
  * @module dsh-task-board/client/client-report
  */
+import { routeUrl } from './route-base.ts'
 
 /** One measured box in CSS pixels (viewport-relative). */
 export interface MeasuredBox {
@@ -114,7 +115,7 @@ export async function sendClientReport(
   const ctrl = new AbortController()
   const timer = setTimeout(() => { ctrl.abort() }, 5_000)
   try {
-    await fetchImpl('/api/dsh-task-board/client-report', {
+    await fetchImpl(routeUrl('/api/dsh-task-board/client-report'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),

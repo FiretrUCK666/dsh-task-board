@@ -248,20 +248,22 @@ export class BoardSyncClient {
       })
       const identical = tasksIdentical && sectionsIdentical
       if (!identical) {
+        // Dirty state accrued BEFORE this settle (a write that landed while
+        // boot was still fetching) is never replaced: the migration assigns
+        // section by section, so a live write keeps its value AND its claim
+        // while the snapshot fills in only the untouched sections.
         if (this.baseline.revision === 0) {
-          this.dirty = {
-            tasks: legacyView.tasks,
-            cruise: { value: legacyView.cruise, at },
-            schedulePresets: { value: legacyView.schedulePresets, at },
-            runPresets: { value: legacyView.runPresets, at },
-          }
+          this.dirty.tasks = legacyView.tasks
+          this.dirty.cruise ??= { value: legacyView.cruise, at }
+          this.dirty.schedulePresets ??= { value: legacyView.schedulePresets, at }
+          this.dirty.runPresets ??= { value: legacyView.runPresets, at }
         } else {
           const merged = new Map(hostIds)
           for (const task of legacyView.tasks) {
             const host = merged.get(task.id)
             if (host === undefined || task.updatedAt > host.updatedAt) merged.set(task.id, task)
           }
-          this.dirty = { tasks: [...merged.values()] }
+          this.dirty.tasks = [...merged.values()]
           this.backupListener?.(legacyView)
         }
         await this.flush()
@@ -854,18 +856,32 @@ export class SyncedRunPresetStore implements RunPresetStore {
 }
 
 /**
+ * The cruise offline mirror: the local cruise key in the browser (`read` feeds
+ * first paint before adoption, `write` keeps the key warm). Structurally the
+ * controller's CruiseStorageFace, declared here so this adapter never imports
+ * the controller.
+ */
+export interface CruiseMirrorFace {
+  read(): Partial<CruiseValue> | undefined
+  write(state: CruiseValue): void
+}
+
+/**
  * A cruise-state store over the synced cruise section (the controller's
  * CruiseStorageFace: read returns the current value, write marks it dirty).
- * The offline mirror (write-only, same discipline as the other synced
- * stores) keeps the local cruise key fresh for fallback-mode first paint.
+ * The mirror serves reads until the host truth is adopted — the same
+ * offline-first discipline as the other synced stores — so a reload
+ * first-paints the cruise the user last set instead of the empty document's
+ * enabled:false default, and the local key stays the fallback-mode truth.
  */
 export class SyncedCruiseStore {
   constructor(
     private readonly sync: SyncLedger,
-    private readonly mirror?: { write(state: CruiseValue): void },
+    private readonly mirror?: CruiseMirrorFace,
   ) {}
 
-  read(): CruiseValue | undefined {
+  read(): Partial<CruiseValue> | undefined {
+    if (!this.sync.isSynced()) return this.mirror?.read() ?? this.sync.view().cruise
     return this.sync.view().cruise
   }
 

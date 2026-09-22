@@ -1,19 +1,3 @@
-/**
- * Client self-report: the running page tells the host which bundle it is and
- * how it actually laid out.
- *
- * The board cannot be diagnosed from the host alone — a page pinned to an old
- * artifact and a page rendering a wrong rule look identical from the outside,
- * and both look identical again in a compressed phone screenshot. This module
- * is the missing channel: one small POST per page load carrying the bundle
- * version and the measured boxes of the landmarks that matter (the search
- * field, the column strip, one pill, the columns), so the host route can hand
- * the truth back to whoever is asking.
- *
- * Diagnostic only: nothing in the board reads it, every failure is silent, and
- * the payload carries no board data — just versions and rectangles.
- * @module dsh-task-board/client/client-report
- */
 /** One measured box in CSS pixels (viewport-relative). */
 export interface MeasuredBox {
     top: number;

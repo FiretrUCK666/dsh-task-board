@@ -193,9 +193,13 @@ describe('wiring (the probe cannot be dropped silently)', () => {
     expect(bootstrap).toContain('bundled: BOARD_VERSION')
     expect(bootstrap).toContain('void freshness.probe()')
     // The verdict reaches the board through the panel registration: the stage
-    // renders TaskBoard with the freshness state (there is no DOM mount to hand
-    // it to any more).
+    // holder publishes it and `inject()` hands it over together with the
+    // controller, which is the ONLY path into the panel's props. Declaring the
+    // prop and rendering it are not enough — a face that omits the field leaves
+    // `freshnessView` undefined forever, with the status line below it dead.
     expect(bootstrap).toContain('new TaskBoardStage()')
+    expect(bootstrap).toContain('stage.bind(controller, freshness)')
+    expect(bootstrap).toMatch(/inject\(\):\s*\{[^}]*freshness/)
     const panel = read('../src/client/TaskBoardPanel.tsx')
     expect(panel).toContain('<TaskBoard controller={controller} freshness={freshness} />')
     // Watching, not just probing: a restart must reach an already-open page.

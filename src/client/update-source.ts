@@ -9,6 +9,7 @@
  * as the board transport's bounded fetch.
  */
 import type { UpdateGitStatus, UpdateInstallMode } from '../core/update-check.ts'
+import { routeUrl } from './route-base.ts'
 import packageJson from '../../package.json'
 
 /** The bundle's own package identity (the host-unreachable fallback). */
@@ -75,7 +76,7 @@ function isMode(value: unknown): value is UpdateInstallMode {
  * @returns the source view, or undefined when unreadable.
  */
 export async function fetchUpdateSource(timeoutMs = 15_000): Promise<UpdateSourceView | undefined> {
-  const body = await boundedJson('/api/dsh-task-board/update', timeoutMs)
+  const body = await boundedJson(routeUrl('/api/dsh-task-board/update'), timeoutMs)
   if (typeof body !== 'object' || body === null) return undefined
   const envelope = body as { ok?: unknown; value?: unknown }
   if (envelope.ok !== true || typeof envelope.value !== 'object' || envelope.value === null) {

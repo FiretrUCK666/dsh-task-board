@@ -14,7 +14,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
-import type { SettingsDescriptor, SettingsProvider } from '@deepseek-ai/dsh-settings'
+import type { SettingsDescriptor, SettingsForms } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 
 /** One settings namespace's JSON view, as the client scope snapshots it. */
@@ -196,7 +196,7 @@ export function registerSettingsRoute(ctx: Context, ns: string): () => void {
   // so the fiber waits for the provider before activating. Either guard alone
   // is enough, both together make the route robust to future refactors.
   const webServer = ctx.get('webServer') as { register(options: unknown): () => void } | undefined
-  const settings = ctx.get('settings') as SettingsProvider | undefined
+  const settings = ctx.get('settings') as SettingsForms | undefined
   if (webServer === undefined || settings === undefined) return () => undefined
   const deps: SettingsRouteDeps = {
     describe: () => settings.describe({ redactSecrets: true }),

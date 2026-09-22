@@ -22,8 +22,10 @@
  *   4. runtime dependencies limited to the allowed set
  *   5. tsconfig files extend nothing outside the plugin dir and declare no paths
  *   6. built artifacts lib/index.js + lib/client.js exist
- *   7. settings namespace + route path spelled with the plugin id
- *   8. src imports only official SDK / react / node builtins / schemastery / relative
+ *   7. settings namespace + route path spelled with the plugin id, and the
+ *      Config schema declares a volatile field (without one the settings
+ *      surface skips this entry and loses its page)
+ *   8. src imports only official SDK / react / node builtins / relative
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
@@ -269,7 +271,7 @@ for (const file of textFiles) {
 
 // --- 4. runtime dependencies ------------------------------------------------
 
-const ALLOWED_DEPS = new Set(['schemastery'])
+const ALLOWED_DEPS = new Set(['@deepseek-ai/schemastery'])
 if (existsSync(pkgPath)) {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
   for (const name of Object.keys(pkg.dependencies ?? {})) {
@@ -324,18 +326,33 @@ if (existsSync(clientBundlePath)) {
 
 const srcFiles = allFiles.filter((f) => f.includes(sep + 'src' + sep))
 const srcText = srcFiles.map((f) => readFileSync(f, 'utf8')).join('\n')
-// The settings seam is a service method on the injected settings service
-// (`ctx.settings.installSection` / `ctx.settings.register`), so the gate reads
-// two facts: the plugin spells its own namespace, and it goes through that
-// seam rather than inventing a private settings channel.
+// The settings seam is the plugin's OWN profile entry: the settings service
+// renders a form for that entry from its Config schema, and skips the entry
+// entirely when no field is marked volatile. A schema with no volatile field
+// therefore loses the page SILENTLY — the plugin still loads, the settings
+// surface just reports the entry as unconfigured. This gate reads the three
+// facts that decide it: the plugin spells its namespace, its Config schema
+// carries a volatile field, and it never reaches for the namespace-registration
+// API that the settings service no longer exposes.
 if (!srcText.includes(`'${pluginId}'`)) failures.push(`src never spells the settings namespace '${pluginId}'`)
-if (!/\.installSection\(|\.settings\.register\(/.test(srcText)) failures.push('src never registers through the official settings seam (ctx.settings.installSection / register)')
-if (!srcText.includes(`/api/${pluginId}/settings`)) failures.push(`src never spells the /api/${pluginId}/settings route`)
+const volatileIndex = srcText.indexOf('export const ConfigSchema')
+const volatileField = volatileIndex === -1
+  ? null
+  : /(\w+)\s*:\s*[^\n]*?\.volatile\(\)/.exec(srcText.slice(volatileIndex))?.[1] ?? null
+if (volatileField === null) {
+  failures.push('src declares no volatile Config field — the settings surface would skip this plugin entry and lose its page')
+}
+if (/\.installSection\s*\(/.test(srcText)) {
+  failures.push('src still calls the removed ctx.settings.installSection — plugin config is the profile entry now')
+}
+if (!srcText.includes(`/api/\${ns}/settings`) && !srcText.includes(`/api/${pluginId}/settings`)) {
+  failures.push(`src never spells the settings route (expected a literal /api/${pluginId}/settings or the templated /api/\${ns}/settings)`)
+}
 
 // --- 8. import hygiene ------------------------------------------------------
 
 const IMPORT_RE = /^import(?:\s+type)?\s+.*?\s+from\s+['"]([^'"]+)['"]/gm
-const ALLOWED_PREFIXES = ['@deepseek-ai/', 'react', 'react-dom', 'node:', 'schemastery', '.', '..']
+const ALLOWED_PREFIXES = ['@deepseek-ai/', 'react', 'react-dom', 'node:', '.', '..']
 for (const file of srcFiles) {
   const rel = relative(root, file)
   const text = readFileSync(file, 'utf8')

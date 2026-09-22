@@ -27,6 +27,16 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Every other gate here exercises the build, the types, the tests and the
+      # bundle — none of them parses the helper scripts, and the release helpers
+      # only ever run on a tag. A syntax error in one of them therefore reaches
+      # the repository and surfaces as a failed publish. Parsing them on every
+      # run moves that failure to the commit that introduced it, and costs
+      # nothing to keep.
+      - name: Script syntax
+        run: |
+          node -e "const { readdirSync } = require('node:fs'); const { execFileSync } = require('node:child_process'); const names = readdirSync('scripts').filter((name) => /\.(mjs|js)$/.test(name)); for (const name of names) execFileSync(process.execPath, ['--check', 'scripts/' + name], { stdio: 'inherit' }); console.log('scripts parsed: ' + names.length);"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

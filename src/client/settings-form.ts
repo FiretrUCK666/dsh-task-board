@@ -11,9 +11,11 @@ import type { SettingsScopeSnapshot, SnapshotStore } from './platform.ts'
 import { createSnapshotStore } from './platform.ts'
 
 /**
- * The minimal settings-scope face the card form needs. A route-backed scope
- * (`RouteSettingsScope`) and the SDK's `SettingsScope<T>` both satisfy it, so
- * the form never depends on a settings-surface package.
+ * The minimal settings-scope face the card form needs. The settings surface's
+ * own `ConfigForm<T>` satisfies it, so the form depends on no settings
+ * implementation of its own. Both write methods report their outcome to the
+ * caller; this form reads the outcome from the section instead, so the returns
+ * are typed as unknown.
  */
 export interface SettingsScopeLike<T> {
   /** @returns the current sync snapshot (stable reference until the next change). */
@@ -21,9 +23,9 @@ export interface SettingsScopeLike<T> {
   /** Observe snapshot replacements; returns the disposer. */
   subscribe(listener: () => void): () => void
   /** Queue one field write. */
-  set(field: string, value: unknown): Promise<void>
+  set(field: string, value: unknown): Promise<unknown>
   /** Queue one field clear, so the field re-inherits the composition layer. */
-  unset(field: string): Promise<void>
+  unset(field: string): Promise<unknown>
 }
 
 /** The write one field's staged text performs when the card is saved. */

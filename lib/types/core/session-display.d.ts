@@ -49,19 +49,18 @@ export declare function sessionDisplay(task: TaskRecord, execution: ExecutionRec
  * {@link sessionDisplay}, for rows whose identity is the binding rather than
  * an execution. The task's own rounds for that session ARE its activity (the
  * same plain-by-session read `sessionWindowOf` uses for the meta line): a
- * bound conversation that just ran reads 已完成 here instead of the stale
- * 未运行 the host's completed flag alone reported, and an open round or a
- * live native turn reads running. Priority mirrors `sessionDisplay` —
- * waiting, open, active, settled — and ONLY a binding with no rounds on this
- * task falls back to the legacy host flags: there is genuinely nothing in
- * the ledger to read.
+ * bound conversation that ran reads its settled outcome, and an open round or
+ * a live native turn reads running. Priority mirrors `sessionDisplay` —
+ * waiting, open, active, settled — and a binding with no rounds on this task
+ * reads 未运行: there is nothing in the ledger to read, and the host session
+ * row carries no outcome of its own.
  *
  * `rounds` is the plain same-session set (like `sessionWindowOf`), not an
  * execution's thread: a linked row IS the whole conversation, so every lane
  * counts — including session-anchored comment rounds an execution thread
  * deliberately excludes.
  */
-export declare function linkedSessionDisplay(task: TaskRecord, sessionId: string, waitingKind: PendingInteractionKind | undefined, active: boolean, hostCompleted: boolean): SessionDisplay;
+export declare function linkedSessionDisplay(task: TaskRecord, sessionId: string, waitingKind: PendingInteractionKind | undefined, active: boolean): SessionDisplay;
 /**
  * The time range of an execution's session (reflecting all its rounds' activity).
  * - startedAt = earliest round's start.

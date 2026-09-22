@@ -24,7 +24,6 @@ export interface SessionsExecutionFace {
             phase: 'pending' | 'ready';
             byId: Record<string, {
                 running: boolean;
-                completed?: boolean;
                 blank?: boolean;
             }>;
         };

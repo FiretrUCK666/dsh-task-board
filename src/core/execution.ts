@@ -28,7 +28,7 @@ export interface SessionsExecutionFace {
     getSnapshot(): {
       /** Baseline arrival lifecycle — 'pending' until the host list has loaded. */
       phase: 'pending' | 'ready'
-      byId: Record<string, { running: boolean; completed?: boolean; blank?: boolean }>
+      byId: Record<string, { running: boolean; blank?: boolean }>
     }
     subscribe(fn: () => void): () => void
   }

@@ -256,17 +256,27 @@ export declare class SyncedRunPresetStore implements RunPresetStore {
     clear(): void;
 }
 /**
+ * The cruise offline mirror: the local cruise key in the browser (`read` feeds
+ * first paint before adoption, `write` keeps the key warm). Structurally the
+ * controller's CruiseStorageFace, declared here so this adapter never imports
+ * the controller.
+ */
+export interface CruiseMirrorFace {
+    read(): Partial<CruiseValue> | undefined;
+    write(state: CruiseValue): void;
+}
+/**
  * A cruise-state store over the synced cruise section (the controller's
  * CruiseStorageFace: read returns the current value, write marks it dirty).
- * The offline mirror (write-only, same discipline as the other synced
- * stores) keeps the local cruise key fresh for fallback-mode first paint.
+ * The mirror serves reads until the host truth is adopted — the same
+ * offline-first discipline as the other synced stores — so a reload
+ * first-paints the cruise the user last set instead of the empty document's
+ * enabled:false default, and the local key stays the fallback-mode truth.
  */
 export declare class SyncedCruiseStore {
     private readonly sync;
     private readonly mirror?;
-    constructor(sync: SyncLedger, mirror?: {
-        write(state: CruiseValue): void;
-    } | undefined);
-    read(): CruiseValue | undefined;
+    constructor(sync: SyncLedger, mirror?: CruiseMirrorFace | undefined);
+    read(): Partial<CruiseValue> | undefined;
     write(state: CruiseValue): void;
 }

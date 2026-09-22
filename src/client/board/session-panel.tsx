@@ -79,13 +79,13 @@ function MessageImage({ controller, sessionId, image }: {
  * the rows whose content actually changed — long transcripts stay smooth.
  */
 const TranscriptRow = memo(function TranscriptRow(props:
-  | { kind: 'context'; plugin: string; summary: string }
+  | { kind: 'context'; producer: string; summary: string }
   | { kind: 'message'; role: 'user' | 'assistant'; text: string; sessionId?: string; controller?: BoardController; images?: TranscriptImage[] }
 ) {
   if (props.kind === 'context') {
     return (
       <li className={css.reviewContext} title={props.summary}>
-        {t('review.contextInjection')} · {props.plugin}
+        {t('review.contextInjection')} · {props.producer}
       </li>
     )
   }
@@ -194,7 +194,7 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
             <TranscriptRow
               key={line.id}
               kind="context"
-              plugin={line.plugin}
+              producer={line.producer}
               summary={line.summary}
             />
           ) : (

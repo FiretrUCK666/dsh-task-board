@@ -37,12 +37,16 @@ export declare function Button({ variant, size, type, className, disabled, press
  * keyboard focus draws a soft ring around the track. Every on/off control on
  * the board (cruise, schedule enable) renders through this component.
  */
-export declare function Switch({ checked, onChange, label, title, disabled }: {
+export declare function Switch({ checked, onChange, label, title, disabled, describedBy }: {
     checked: boolean;
     onChange: (next: boolean) => void;
     label: string;
     title?: string;
     disabled?: boolean;
+    /** Id of the node that states WHY the switch is unusable — the reason has to
+     *  be reachable on touch (there is no hover) and announced to assistive
+     *  technology, so it is a real reference rather than a tooltip. */
+    describedBy?: string;
 }): import("react").JSX.Element;
 /** A titled detail section: one shared title style for every detail module.
  *  `action` is an optional right-aligned affordance on the title row (the

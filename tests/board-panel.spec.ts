@@ -23,6 +23,13 @@ import { fileURLToPath } from 'node:url'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { TaskBoardIcon } from '../src/client/TaskBoardIcon.tsx'
+import { TaskBoardPanel, type TaskBoardPanelProps } from '../src/client/TaskBoardPanel.tsx'
+import { apply } from '../src/client/index.ts'
+import { BundleFreshnessState } from '../src/client/bundle-freshness.ts'
+import { BUNDLED_VERSION } from '../src/client/update-source.ts'
+import { t } from '../src/client/locales.ts'
+import type { BoardController } from '../src/core/controller.ts'
+import type { ClientContext } from '../src/client/platform.ts'
 
 // React's act() asks the environment to opt in — one flag for this file.
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -260,5 +267,240 @@ describe('entry row toggle (click the open board’s row to leave it)', () => {
     act(() => { root.unmount() })
     expect(removed, 'every attached listener must be detached on dispose').toContain('click')
     button.remove()
+  })
+})
+
+/**
+ * The plugin boundary the shell reads: the `main` registration's inject face.
+ *
+ * The panel is contributed at apply time while the board is built behind it, so
+ * that face is the ONLY channel carrying live state into the panel. A value the
+ * panel declares but the face never publishes is invisible at runtime — the
+ * prop is merely never passed, no error anywhere — which is exactly how the
+ * stale-bundle status line went silent while both files stayed green. These
+ * tests drive the REAL `apply` and read the face it registers.
+ */
+describe('panel inject face (the live state the shell hands the panel)', () => {
+  interface FakeRegistration {
+    name: string
+    inject: () => unknown
+  }
+
+  /**
+   * The client context the plugin's synchronous mount path reads. The settings
+   * scope stands in for the shell's own: driving its `enabled` value is how the
+   * shell's plugin switch reaches `apply`'s mount gate.
+   */
+  function fakeClientContext() {
+    const effects: Array<() => void> = []
+    const registrations = new Map<string, FakeRegistration>()
+    const scopeListeners = new Set<() => void>()
+    const sessionsSnapshot = { ids: [], byId: {}, phase: 'ready' as const }
+    const workspacesSnapshot = { items: [], archivedSessionIds: [] }
+    let scopeSnapshot = {
+      status: 'ready' as const,
+      value: { enabled: true as boolean | undefined },
+      base: undefined,
+      user: undefined,
+      revision: 1,
+      writable: true,
+      mode: 'memory' as const,
+    }
+    const scope = {
+      getSnapshot: () => scopeSnapshot,
+      subscribe: (listener: () => void) => {
+        scopeListeners.add(listener)
+        return () => { scopeListeners.delete(listener) }
+      },
+      set: async () => true,
+      unset: async () => false,
+    }
+    const ctx = {
+      effect: (fn: () => void | (() => void)) => {
+        const dispose = fn()
+        if (typeof dispose === 'function') effects.push(dispose)
+        return () => {}
+      },
+      locale: { register: () => () => {} },
+      slots: {
+        inject: (_name: string, contribute: () => void | (() => void)) => {
+          const dispose = contribute()
+          if (typeof dispose === 'function') effects.push(dispose)
+          return () => {}
+        },
+        register: (entry: FakeRegistration) => {
+          registrations.set(entry.name, entry)
+          return () => { registrations.delete(entry.name) }
+        },
+      },
+      configForms: { get: () => scope },
+      get: () => undefined,
+      sessions: {
+        list: { getSnapshot: () => sessionsSnapshot, subscribe: () => () => {} },
+        binding: () => undefined,
+      },
+      workspaces: {
+        list: { getSnapshot: () => workspacesSnapshot, subscribe: () => () => {} },
+      },
+    }
+    return {
+      ctx,
+      registrations,
+      /** The shell's own plugin switch, driving the mount gate. */
+      setEnabled(next: boolean) {
+        scopeSnapshot = { ...scopeSnapshot, value: { enabled: next } }
+        for (const listener of [...scopeListeners]) listener()
+      },
+      /** Fiber teardown: every effect the plugin registered, disposed. */
+      disposeAll() { for (const dispose of effects.splice(0)) dispose() },
+    }
+  }
+
+  it('carries the bundle-freshness state next to the controller, and withdraws both with the board', () => {
+    const fake = fakeClientContext()
+    apply(fake.ctx as unknown as ClientContext)
+    const main = fake.registrations.get('main')
+    expect(main, 'the board panel must be contributed to the main slot').toBeDefined()
+
+    const face = main!.inject() as TaskBoardPanelProps
+    expect(face.controller).toBeDefined()
+    // The verdict source is created at apply time and must ride the same face;
+    // without it TaskBoard's `freshnessView` is undefined forever and the whole
+    // stale status line (with its retry button) can never render.
+    expect(face.freshness).toBeInstanceOf(BundleFreshnessState)
+    expect(face.freshness?.snapshot().bundled).toBe(BUNDLED_VERSION)
+
+    // Read fresh on every call: one live instance, a new face object per render.
+    expect((main!.inject() as TaskBoardPanelProps).freshness).toBe(face.freshness)
+    expect(main!.inject()).not.toBe(face)
+
+    // The board is disposed (the user switched the plugin off): the face
+    // publishes nothing, so a late render cannot subscribe to a dead probe.
+    fake.setEnabled(false)
+    const afterDispose = main!.inject() as TaskBoardPanelProps
+    expect(afterDispose.controller).toBeUndefined()
+    expect(afterDispose.freshness).toBeUndefined()
+
+    fake.disposeAll()
+  })
+})
+
+/**
+ * The stale verdict, rendered: what the user actually sees when the page runs
+ * an older bundle than the host serves. Mounted through the real panel, so the
+ * chain `inject face -> TaskBoardPanel props -> status line` is exercised
+ * rather than asserted about.
+ */
+describe('stale-bundle status line (rendered through the panel)', () => {
+  /** The two browser APIs the mounted board touches that jsdom lacks. */
+  function installBrowserFakes(): void {
+    const g = globalThis as unknown as Record<string, unknown>
+    g.ResizeObserver = g.ResizeObserver ?? class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    if (typeof window.matchMedia !== 'function') {
+      const w = window as unknown as Record<string, unknown>
+      w.matchMedia = (query: string) => ({
+        matches: false, media: query, onchange: null,
+        addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
+        dispatchEvent() { return false },
+      })
+    }
+  }
+
+  /** A controller that answers every member the board's render reads. */
+  function boardStub(): Record<string, unknown> {
+    const snapshot = () => ({
+      tasks: [],
+      boardOpen: true,
+      selectedTaskId: undefined,
+      cruise: { enabled: false, limit: 3, schedule: [] },
+      stats: { running: 0, queued: 0 },
+      skips: { overlap: 0, missed: 0 },
+      heartbeat: { lastOkAt: 0 },
+      engine: { held: true, synced: false, hostProto: 2, bootedAt: undefined },
+    })
+    return new Proxy({} as Record<string, unknown>, {
+      get(_target, key) {
+        if (key === 'getSnapshot') return snapshot
+        if (key === 'subscribe' || key === 'subscribeQuestions') return () => () => {}
+        if (key === 'linkedOf') return () => []
+        if (key === 'relatedSessionIdSet') return () => new Set<string>()
+        if (key === 'liveStateOf') return () => 'idle'
+        if (key === 'sessionActiveOf') return () => false
+        if (key === 'pendingInteractionOf' || key === 'questionPendingOf') return () => undefined
+        if (key === 'sessionTitle') return () => undefined
+        if (key === 'boundSourceTitleOf') return () => ''
+        if (key === 'runCatalog') return () => undefined
+        if (key === 'externalKindOf') return () => undefined
+        if (key === 'canRecheckSeat') return () => false
+        if (key === 'ts') return () => 0
+        return () => undefined
+      },
+    })
+  }
+
+  /** Mount the panel with one freshness source and return its host element. */
+  async function mountPanel(freshness: BundleFreshnessState): Promise<{
+    host: HTMLElement
+    unmount: () => void
+  }> {
+    installBrowserFakes()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => {
+      root.render(createElement(TaskBoardPanel, {
+        controller: boardStub() as unknown as BoardController,
+        freshness,
+      }))
+    })
+    return {
+      host,
+      unmount: () => {
+        act(() => { root.unmount() })
+        host.remove()
+      },
+    }
+  }
+
+  it('states the mismatch in a real, tappable status button', async () => {
+    const freshness = new BundleFreshnessState({
+      bundled: '1.0.0',
+      readHostVersion: async () => '2.0.0',
+      reload: () => {},
+      storage: undefined,
+    })
+    await freshness.probe()
+    const { host, unmount } = await mountPanel(freshness)
+    const warn = host.querySelector('[data-warn="true"]')
+    expect(warn, 'the page-old verdict must render as the warn status button').not.toBeNull()
+    expect(warn!.tagName).toBe('BUTTON')
+    expect(warn!.textContent).toContain(t('board.bundleStale', { c: '1.0.0', s: '2.0.0' }))
+    unmount()
+  })
+
+  it('says nothing while the versions agree, then states a verdict that arrives after mount', async () => {
+    // The production sequence: the board mounts while the probe is still in
+    // flight (or has agreed), and the mismatch is discovered LATER. The line
+    // must appear from the subscription, not only from the first snapshot.
+    let hostVersion = BUNDLED_VERSION
+    const freshness = new BundleFreshnessState({
+      bundled: BUNDLED_VERSION,
+      readHostVersion: async () => hostVersion,
+      reload: () => {},
+      storage: undefined,
+    })
+    await freshness.probe()
+    const { host, unmount } = await mountPanel(freshness)
+    expect(host.querySelector('[data-warn="true"]')).toBeNull()
+    hostVersion = '99.0.0'
+    await act(async () => { await freshness.probe() })
+    const warn = host.querySelector('[data-warn="true"]')
+    expect(warn, 'the late verdict must reach the mounted board').not.toBeNull()
+    expect(warn!.textContent).toContain(t('board.bundleStale', { c: BUNDLED_VERSION, s: '99.0.0' }))
+    unmount()
   })
 })

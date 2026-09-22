@@ -40,7 +40,12 @@ export interface TaskBoardPanelProps {
      * face can hand over an explicitly absent controller without a cast.
      */
     controller: BoardController | undefined;
-    /** Stale-bundle verdict to render as a status line (may be absent). */
+    /**
+     * The live stale-bundle verdict, published on the same inject face as the
+     * controller and withdrawn with it. Optional so a composition that publishes
+     * no verdict still mounts the board; when absent the board renders no status
+     * line (see bundle-freshness.ts).
+     */
     freshness?: BundleFreshnessState;
 }
 /**

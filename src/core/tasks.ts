@@ -513,6 +513,26 @@ export function ruleReadiness(task: TaskRecord): RuleReadiness {
 }
 
 /**
+ * Whether a NEW arm of the task's schedule rule is refused outright. THE one
+ * judgment every arming path reads — the controller's write and the editor's
+ * switch both call it, so "the switch says on" and "the rule is armed" can
+ * never disagree.
+ *
+ * A rule drives its task through the task's own execution prompt, so a task
+ * with no prompt has nothing to run in EITHER mode: cron would fire into a
+ * no-op and chain would never hand off. Arming is therefore refused for both,
+ * and the editor renders the switch as unusable with the reason beside it
+ * rather than accepting an arm that can never fire.
+ *
+ * Disarming is always allowed — a rule already armed before the prompt was
+ * cleared stays visible and dis-armable, and {@link ruleReadiness} reports it
+ * as blocked in the meantime.
+ */
+export function ruleArmingBlocked(task: TaskRecord): boolean {
+  return !taskExecutable(task)
+}
+
+/**
  * Disarm a task's schedule rule for good — the completed-task shut-off. The
  * rule's identity (cron expression, mode, budget, prime, counters) is kept
  * so re-arming it later resumes from the same configured behavior; only

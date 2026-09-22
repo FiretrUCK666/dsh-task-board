@@ -3,6 +3,7 @@ import type { TaskRecord, ExecutionRecord } from '../src/core/tasks.ts'
 import {
   executionUnviewed,
   executionViewedBaseline,
+  linkedSessionDisplay,
   sessionDisplay,
   sessionTimes,
   sessionUnviewedOf,
@@ -306,6 +307,30 @@ describe('sessionDisplay', () => {
       const result = sessionDisplay(task, exec, undefined)
       expect(result.state).toBe('cancelled')
     })
+  })
+})
+
+describe('linkedSessionDisplay (a bound session row)', () => {
+  it('a ledger-empty binding reads idle (未运行): the host session row serves no outcome', () => {
+    // The task's own rounds are the row's only outcome source — with none there
+    // is nothing to read, so the row is idle, never "finished".
+    expect(linkedSessionDisplay(taskWith([]), 's-1', undefined, false))
+      .toEqual({ state: 'cancelled', lastActivity: undefined, waitingKind: undefined })
+  })
+
+  it('waiting, open, active then settled rounds each decide, in that order', () => {
+    const settled = round('c1', { startedAt: 100, endedAt: 200, result: 'succeeded' as const, sessionId: 's-1' })
+    expect(linkedSessionDisplay(taskWith([settled]), 's-1', undefined, false).state).toBe('succeeded')
+    // A live native turn with no ledger round still reads running (observed activity).
+    expect(linkedSessionDisplay(taskWith([]), 's-1', undefined, true).state).toBe('running')
+    // Waiting outranks the settled round; an open round outranks idle activity.
+    expect(linkedSessionDisplay(taskWith([settled]), 's-1', 'question', false))
+      .toMatchObject({ state: 'waiting', waitingKind: 'question' })
+    const open = round('c2', { startedAt: 300, sessionId: 's-1' })
+    expect(linkedSessionDisplay(taskWith([settled, open]), 's-1', undefined, false).state).toBe('running')
+    // Another session's rounds are not this row's activity.
+    const other = round('c3', { startedAt: 100, endedAt: 200, result: 'succeeded' as const, sessionId: 'other' })
+    expect(linkedSessionDisplay(taskWith([other]), 's-1', undefined, false).state).toBe('cancelled')
   })
 })
 

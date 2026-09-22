@@ -3,11 +3,12 @@
  * tail of the conversation, following the native harness folding rules:
  * - `user/message` with `source.kind === 'user'` is a user bubble (the
  *   message's text blocks).
- * - `user/message` with any other source kind (plugin/system injections —
- *   skills, AGENTS.md, runtime context, cron notices…) is a context row:
- *   the native conversation shows these as a weak "context injection" row,
- *   never as a user bubble. The review page renders them the same way,
- *   collapsed (the full text lives in the native session page).
+ * - `user/message` with any other source kind (system and producer
+ *   injections — skills, AGENTS.md, runtime context, cron notices…) is a
+ *   context row labelled by that kind: the native conversation shows these
+ *   as a weak "context injection" row, never as a user bubble. The review
+ *   page renders them the same way, collapsed (the full text lives in the
+ *   native session page).
  * - `assistant/message` carries its message under `data.message` (with
  *   `turn`/`step`/`usage` alongside) — different from the flat
  *   `user/message` shape — and its text/reasoning blocks form the
@@ -48,8 +49,10 @@ export type TranscriptLine =
     kind: 'context'
     /** Fallback identity (the event sequence). */
     id: string
-    /** The injecting plugin's name (native context rows name their source). */
-    plugin: string
+    /** The injection's producer label — its durable source kind, or for the
+     *  three data-bearing kinds the thing it injected (see
+     *  {@link contextProducerOf}); native context rows name their source. */
+    producer: string
     /** One-line account when the injection carries one (notice form). */
     summary: string
     /** Event timestamp (ms epoch); 0 when the event carried none. */
@@ -79,8 +82,51 @@ interface UserMessageShape {
   content?: unknown
   source?: {
     kind?: unknown
-    plugin?: unknown
     summary?: unknown
+    /** `skill-invocation` names the skill it invoked. */
+    name?: unknown
+    /** `session-reference` lists the sessions it snapshotted. */
+    references?: unknown
+    /** `agent-instructions` lists the instruction files it loaded/changed. */
+    changes?: unknown
+  }
+}
+
+/** One non-empty string member of a structural record, else undefined. */
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+/** The distinct non-empty `field` values of one list member, joined in
+ *  appearance order; undefined when the member is absent or carries none. */
+function joinedFieldOf(list: unknown, field: string): string | undefined {
+  if (!Array.isArray(list)) return undefined
+  const seen: string[] = []
+  for (const entry of list) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const value = nonEmptyString((entry as Record<string, unknown>)[field])
+    if (value !== undefined && !seen.includes(value)) seen.push(value)
+  }
+  return seen.length > 0 ? seen.join(', ') : undefined
+}
+
+/**
+ * The producer label of one context source, mirroring the official
+ * `contextProducer` grammar (`dsh-client-ui-trajectory`): the three kinds that
+ * point at the data they injected name THAT — the referenced sessions'
+ * labels, the instruction files' paths, the skill's name — and every other
+ * kind is its own label. A source with no usable kind is the generic
+ * `context` row.
+ */
+function contextProducerOf(source: UserMessageShape['source']): string {
+  if (source === undefined) return 'context'
+  const kind = nonEmptyString(source.kind)
+  if (kind === undefined) return 'context'
+  switch (kind) {
+    case 'session-reference': return joinedFieldOf(source.references, 'label') ?? kind
+    case 'agent-instructions': return joinedFieldOf(source.changes, 'path') ?? kind
+    case 'skill-invocation': return nonEmptyString(source.name) ?? kind
+    default: return kind
   }
 }
 
@@ -107,11 +153,12 @@ export function foldTranscript(events: readonly TranscriptEvent[]): TranscriptLi
       const data = event.data as UserMessageShape | null
       if (typeof data !== 'object' || data === null) continue
       if (data.source?.kind !== 'user') {
-        // System/plugin injection: a context row, never a user bubble.
+        // Not a user bubble: a system/producer injection becomes a context
+        // row labelled by its durable source kind.
         lines.push({
           kind: 'context',
           id: String(data.id ?? fallbackId),
-          plugin: typeof data.source?.plugin === 'string' ? data.source.plugin : 'context',
+          producer: contextProducerOf(data.source),
           summary: typeof data.source?.summary === 'string' ? data.source.summary : '',
           at,
         })

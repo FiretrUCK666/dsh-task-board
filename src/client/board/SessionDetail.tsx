@@ -95,17 +95,16 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   // rules).
   const liveGone = row === undefined
 
-  // The live state row: waiting / running / completed — THE one state-chip
-  // derivation; an idle bound session shows no state row at all (nothing has
-  // happened — the row exists only when the session is actually doing
-  // something or has finished).
+  // The live state row: waiting / running — THE one state-chip derivation. An
+  // idle bound session shows no state row at all: the host session row carries
+  // no outcome of its own, so the panel speaks only while the session is
+  // actually doing something (a settled outcome is read from the task's own
+  // rounds, in the session list's rows).
   const sessionState = waiting !== undefined
     ? 'waiting'
     : row?.running === true
       ? 'running'
-      : row?.completed === true
-        ? 'succeeded'
-        : undefined
+      : undefined
   const stateChip = sessionState !== undefined
     ? sessionStateChip(sessionState, waiting, 'detail.linkedDone', 'detail.linkedIdle', 'detail.idleHint')
     : undefined

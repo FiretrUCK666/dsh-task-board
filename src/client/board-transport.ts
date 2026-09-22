@@ -7,9 +7,11 @@
  */
 import type { BoardSyncTransport, SyncFetchResult } from '../core/host-sync.ts'
 import type { BoardCommit, BoardCommand, BoardEvent, LeaseWire } from '../core/board-doc.ts'
+import { routeUrl } from './route-base.ts'
 
-/** The board route base path (the naming matrix's `/api/dsh-task-board/*`). */
-const ROUTE = '/api/dsh-task-board/board'
+/** The board route base (the naming matrix's `/api/dsh-task-board/*`) as this
+ *  document addresses it: document-relative, so a subpath mount stays reachable. */
+const ROUTE = routeUrl('/api/dsh-task-board/board')
 
 /** The route envelope the board handler answers with. The lease is the WIRE
  *  shape (an older host may answer without `proto`/`bootedAt` — that absence
@@ -129,6 +131,9 @@ export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyn
         close(): void
       } }).EventSource
       if (Source === undefined) return () => undefined
+      // EventSource resolves a relative URL against the document base URL —
+      // the same base `fetch` uses, so `<base href="./">` makes both follow
+      // the deployment's mount instead of the origin root.
       const source = new Source(`${ROUTE}/events?clientId=${encodeURIComponent(clientId)}`)
       source.onopen = () => handlers.onOpen()
       source.onmessage = event => {

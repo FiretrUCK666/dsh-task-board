@@ -19,6 +19,7 @@ import type { BoardController } from '../../core/controller.ts'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import { awaitingOf } from '../../core/question-mirror.ts'
 import type { WireQuestion } from '../../core/question-rpc.ts'
+import { routeUrl } from '../route-base.ts'
 import { latestSessionTodos, type SessionTodo } from './interaction.ts'
 
 /** The goal/subagent readout (structural, degraded). The official `goal`
@@ -55,7 +56,7 @@ export interface SessionContext {
   subagents?: readonly SessionSubagentView[]
 }
 
-const STATE_URL = '/api/dsh-task-board/session-state'
+const STATE_URL = routeUrl('/api/dsh-task-board/session-state')
 
 /** One 3s poll: transcript → todos; bridge → goal + subagents. The board is a
  *  centre-stage PANEL now, so the shell unmounts this whole tree whenever

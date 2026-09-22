@@ -1195,6 +1195,32 @@ describe('scheduling', () => {
     expect(store.load()[0].schedule).toBeUndefined()
   })
 
+  it('refuses to ARM in either mode while the execution prompt is empty', () => {
+    const { controller, store } = makeController()
+    const idle = controller.createTask({ title: 'x', description: '', prompt: '' })!
+    // Cron: nothing to drive, so the arm is refused rather than stored armed
+    // and reported blocked — an interface that offers a switch which can never
+    // fire is the bug this prevents.
+    expect(controller.setSchedule(idle.id, { enabled: true, mode: 'cron', cron: '0 9 * * *' })).toBe(false)
+    expect(controller.setSchedule(idle.id, { enabled: true, mode: 'chain' })).toBe(false)
+    expect(store.load()[0].schedule?.enabled ?? false).toBe(false)
+
+    const runnable = controller.createTask({ title: 'y', description: '', prompt: 'run' })!
+    expect(controller.setSchedule(runnable.id, { enabled: true, mode: 'cron', cron: '0 9 * * *' })).toBe(true)
+    expect(controller.setSchedule(runnable.id, { enabled: true, mode: 'chain' })).toBe(true)
+  })
+
+  it('still allows DISARMING a rule whose prompt was cleared afterwards', () => {
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
+    // Editing the prompt away must not trap the user: the armed rule stays
+    // visible (readiness reports it blocked) and remains switchable off.
+    controller.updateTask(task.id, { prompt: '' })
+    expect(controller.setSchedule(task.id, { enabled: false })).toBe(true)
+    expect(store.load()[0].schedule?.enabled).toBe(false)
+  })
+
   it('disabling a rule clears the next run instant but keeps the cron', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!

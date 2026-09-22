@@ -8,7 +8,7 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
-import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
+import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, SettingsScopeSnapshot, WorkspaceId } from './platform.ts'
 import { buildApi, sessionDriverOf } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
@@ -27,6 +27,7 @@ import { watchSessionActivity } from './board/activity-wake.ts'
 import { nativeTurnOf } from '../core/session-activity.ts'
 import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
+import { routeUrl } from './route-base.ts'
 import { TaskBoardPanel } from './TaskBoardPanel.tsx'
 import { TaskBoardIcon } from './TaskBoardIcon.tsx'
 import { BundleFreshnessState, reloadForFreshBundle } from './bundle-freshness.ts'
@@ -35,8 +36,8 @@ import packageJson from '../../package.json'
 
 /** Deployed bundle version (diagnostic only — never rendered in the UI). */
 const BOARD_VERSION = (packageJson as { version?: string }).version ?? 'unknown'
-import { RouteSettingsScope } from './route-scope.ts'
 import { TaskBoardSettingsCardController, TaskBoardSettingsSection, type TaskBoardSettings } from './TaskBoardSettingsCard.tsx'
+import type { SettingsScopeLike } from './settings-form.ts'
 import { en, t, zh } from './locales.ts'
 
 /** Locale namespace this plugin owns. */
@@ -53,31 +54,65 @@ const NS = 'dsh-task-board'
 const GROUP = { id: 'dsh-task-board' } as const
 
 /**
- * The controller holder behind the panel registration.
+ * The stage holder behind the panel registration.
  *
  * The registration happens at apply time (the slot must be contributed before
- * the shell renders the panel), while the controller is built later in the
- * background settle. One mutable holder bridges the two without inventing a
- * second source of truth: until `bind` runs the stage renders its loading state,
- * and after the board is disposed `unbind` returns it there.
+ * the shell renders the panel), while the board and its stale-bundle verdict
+ * source are built later in the background settle. One mutable holder bridges
+ * the two without inventing a second source of truth: until `bind` runs the
+ * stage renders its loading state, and after the board is disposed `unbind`
+ * returns it there. Both faces travel together — the verdict is rendered INSIDE
+ * the board, so a face published without a board has nothing to show.
  */
 class TaskBoardStage {
   private controller: BoardController | undefined
+  private freshness: BundleFreshnessState | undefined
 
-  /** Publish the live board to the stage. */
-  bind(controller: BoardController): void { this.controller = controller }
+  /** Publish the live board and its verdict source to the stage. */
+  bind(controller: BoardController, freshness: BundleFreshnessState): void {
+    this.controller = controller
+    this.freshness = freshness
+  }
 
-  /** Stop publishing a board (the board is being disposed). */
-  unbind(): void { this.controller = undefined }
+  /** Stop publishing them (the board is being disposed). */
+  unbind(): void {
+    this.controller = undefined
+    this.freshness = undefined
+  }
 
   /** Build the face the panel registration injects (read fresh on every render). */
-  inject(): { controller: BoardController | undefined } {
-    return { controller: this.controller }
+  inject(): { controller: BoardController | undefined; freshness: BundleFreshnessState | undefined } {
+    return { controller: this.controller, freshness: this.freshness }
   }
 }
 
 /** Settings namespace the settings card edits (the Host plugin registers it). */
 const TASK_BOARD_NS = 'dsh-task-board'
+
+/**
+ * A settings scope for a deployment that composes no settings surface. It
+ * reports `unavailable` from the first read and accepts no write, which is the
+ * truth for that deployment: the card renders its unavailable state in place
+ * instead of the board failing to mount.
+ * @returns the terminal-unavailable scope.
+ */
+function unavailableSettingsScope<T>(): SettingsScopeLike<T> {
+  const snapshot: SettingsScopeSnapshot<T> = {
+    status: 'unavailable',
+    value: undefined,
+    base: undefined,
+    user: undefined,
+    revision: undefined,
+    writable: false,
+    mode: 'memory',
+  }
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: () => () => undefined,
+    set: () => Promise.resolve(false),
+    unset: () => Promise.resolve(false),
+  }
+}
 
 /** localStorage key for the auto-cruise state (toggle + concurrency limit). */
 const CRUISE_STORAGE_KEY = 'dsh.taskBoard.cruise.v1'
@@ -206,7 +241,7 @@ async function selectModelOf(
  * Navigation is NOT a required service: `ctx.uiWorkspace` is read optionally
  * at call time (see the sessions.open adapter in buildApi).
  */
-export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'uiSession']
+export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'uiSession', 'configForms']
 
 /**
  * Mount the task board.
@@ -286,10 +321,17 @@ export function apply(ctx: ClientContext): void {
     // while the board is open LEAVES it — click to enter, click again to exit.
   }, (props: { size: number; active: boolean }) => TaskBoardIcon({ ...props, onExit: returnToConversation }))), 'dsh-task-board: panel entry')
 
-  const scope = new RouteSettingsScope<TaskBoardSettings>(TASK_BOARD_NS)
-  // The settings section's form controller lives exactly as long as the scope it
-  // edits, both owned by this fiber. (The old shape rebuilt it inside the inject
-  // callback, which was only safe while that callback ran exactly once.)
+  // The settings surface's own form for one Host plugin entry: reads the entry's
+  // section and fences every write on that entry's revision, so the board's
+  // settings card cannot overwrite a concurrent edit made elsewhere. The form
+  // itself belongs to the settings provider and outlives this plugin, so there
+  // is nothing to dispose — only the card's own subscription is released below.
+  // A deployment that composes no settings surface leaves the form absent: the
+  // card then reads an unavailable section and reports it in place, while the
+  // board itself still mounts on its composition default.
+  const scope: SettingsScopeLike<TaskBoardSettings> = ctx.configForms?.get<TaskBoardSettings>(TASK_BOARD_NS)
+    ?? unavailableSettingsScope<TaskBoardSettings>()
+  // The settings section's form controller lives exactly as long as this fiber.
   const settingsCard = new TaskBoardSettingsCardController(scope)
   ctx.effect(() => {
     ctx.slots.inject('settings.section', () => ctx.slots.register({
@@ -302,7 +344,6 @@ export function apply(ctx: ClientContext): void {
     }, TaskBoardSettingsSection))
     return () => {
       settingsCard.dispose()
-      scope.dispose()
     }
   }, 'dsh-task-board: settings section + scope')
 
@@ -813,11 +854,15 @@ export function apply(ctx: ClientContext): void {
         try {
           const raw = localStorage.getItem(CRUISE_STORAGE_KEY)
           if (raw === null) return undefined
-          const parsed = JSON.parse(raw) as { enabled?: boolean; manual?: boolean; limit?: number }
+          const parsed = JSON.parse(raw) as { enabled?: boolean; manual?: boolean; limit?: number; schedule?: unknown }
           return {
             enabled: parsed.enabled === true,
             ...(parsed.manual === true || parsed.manual === false ? { manual: parsed.manual } : {}),
             limit: parsed.limit,
+            // The scheduled windows must survive the round trip: this face is
+            // the whole offline truth, so dropping them here would let the
+            // next write persist a windowless state over a real plan.
+            schedule: Array.isArray(parsed.schedule) ? parsed.schedule as CruiseValue['schedule'] : [],
           }
         } catch (error) {
           console.error('[dsh-task-board] cruise state read failed', error)
@@ -1069,7 +1114,7 @@ export function apply(ctx: ClientContext): void {
           // hard-coded list, so preset-table changes in the harness show up
           // without a plugin update. Any failure degrades to "no selector".
           try {
-            const response = await fetch('/api/dsh-task-board/permissions', { headers: { accept: 'application/json' } })
+            const response = await fetch(routeUrl('/api/dsh-task-board/permissions'), { headers: { accept: 'application/json' } })
             const envelope = await response.json() as {
               ok: boolean
               value?: { available?: boolean; options?: Array<{ id: string; name?: string; description?: string }> }
@@ -1198,12 +1243,16 @@ export function apply(ctx: ClientContext): void {
     scheduler.start()
 
     // The board is LIVE now: the stage component renders it the moment the user
-    // selects the panel, so all this does is publish the controller to the panel
-    // registration. Nothing mounts into shell DOM, so there is no frame to wait
-    // for and no observer to keep — the one failure mode left is "no controller
-    // yet", which the stage renders as its own loading state.
+    // selects the panel, so all this does is publish the board and its
+    // stale-bundle verdict to the panel registration. The verdict is created at
+    // apply time and rides this same call, because the status line it feeds is
+    // rendered inside the board: publishing them together is what makes "the
+    // board is showing" and "there is a verdict to show" one fact. Nothing
+    // mounts into shell DOM, so there is no frame to wait for and no observer to
+    // keep — the one failure mode left is "no controller yet", which the stage
+    // renders as its own loading state.
     const disposers: Array<() => void> = []
-    stage.bind(controller)
+    stage.bind(controller, freshness)
     disposers.push(() => { stage.unbind() })
     // Host-truth convergence runs in the BACKGROUND: the entry above is
     // already live on the local mirror. When the line allows, the host doc

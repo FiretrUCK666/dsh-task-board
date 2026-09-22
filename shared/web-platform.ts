@@ -13,11 +13,12 @@
  * the intended failure: the module table cannot answer a `require` it never
  * seeded, so the alternative is a runtime throw inside the browser.
  *
- * Verified against DSH 0.1.6-alpha.2 (`dsh-web-frontend/dist/assets/index-*.js`,
- * the `__ModuleLoader__` seed built by the `staticModules` factory): that table
- * carries exactly the keys listed below (react family, cordis, four
- * `dsh-client-*` modules). Re-check it whenever the host version moves
- * — a rename here that the table does not carry is exactly the drift this list
+ * Read from the running shell, never from a remembered version. Locate the seed
+ * by searching the dsh-web-frontend `dist/assets` bundles for the
+ * `__ModuleLoader__` seed built by the `staticModules` factory, and take its
+ * keys: the asset filename is a content hash that changes every release, so the
+ * search is by SYMBOL, never by `index-*.js`. Re-check after any host upgrade
+ * — a rename here that the seed does not carry is exactly the drift this list
  * exists to prevent. Note this list must NOT be extended just because a package
  * has a `lib/client.js`: only seeded specifiers may be imported as values.
  */

@@ -37,7 +37,6 @@ export interface LinkedSessionSource {
     /** Whether the session is still working (activity: own turn ∨ running
      *  subagent descendant), as resolved by the caller. */
     running: boolean;
-    completed?: boolean;
     updatedAt: number;
 }
 /** One linked-session row the board renders. */
@@ -50,7 +49,6 @@ export interface LinkedSessionRow {
     /** Whether the session is still working (see {@link LinkedSessionSource.running}). */
     running: boolean;
     pendingInteraction?: PendingInteractionKind;
-    completed: boolean;
     updatedAt: number;
 }
 /** Inputs the derivation needs from the native domains (read-only snapshots). */

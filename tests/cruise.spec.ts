@@ -14,7 +14,12 @@ import {
   duplicateWindowOf, isWindowActive, normalizeWindow, setCruiseSchedule, sortWindows, tickCruise,
   windowRangeIssueOf, windowSortKeyOf, type CruiseWindow,
 } from '../src/core/cruise.ts'
-import type { CruiseState } from '../src/core/controller.ts'
+import { BoardController, type CruiseState, type SessionsControllerFace } from '../src/core/controller.ts'
+import { BoardSyncClient, SyncedCruiseStore, SyncedTaskStore, type BoardSyncTransport } from '../src/core/host-sync.ts'
+import { applyCommit, emptyBoardDoc, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../src/core/board-doc.ts'
+import type { ExecutionService } from '../src/core/execution.ts'
+import type { TaskStore } from '../src/core/store.ts'
+import type { TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 const HOUR = 3_600_000
@@ -266,5 +271,133 @@ describe('duplicateWindowOf (single write point rejects exact duplicates)', () =
     expect(duplicateWindowOf(windows, { endAt: NOW + HOUR })).toBeDefined()
     expect(duplicateWindowOf(windows, { startAt: NOW, endAt: NOW + HOUR })).toBeUndefined()
     expect(duplicateWindowOf(windows, { startAt: NOW + 1 })).toBeUndefined()
+  })
+})
+
+// ── boot: the local key seeds the switch, the host settles it afterwards ────
+//
+// The client wiring (src/client/index.ts) mounts the board on the localStorage
+// key first and lets the host document converge in the background. These tests
+// drive that composition through the real controller + sync client: an
+// unreachable host must leave the switch exactly as the local key recorded it
+// (the replica's not-yet-settled empty document answers enabled:false), and a
+// reachable host must still hand its own value over on the settle.
+
+const BOOT_NOW = 1_700_000_000_000
+
+/** A transport over one document; `available:false` = an unreachable host. */
+function bootTransport(doc: BoardDoc, available: boolean): { transport: BoardSyncTransport; commits: BoardCommit[] } {
+  const commits: BoardCommit[] = []
+  let current = doc
+  return {
+    commits,
+    transport: {
+      fetch: async () => (available
+        ? { available: true, revision: current.revision, doc: current }
+        : { available: false, revision: 0 }),
+      commit: async commit => {
+        commits.push(commit)
+        current = applyCommit(current, commit, BOOT_NOW + commits.length)
+        return { available: true, revision: current.revision, doc: current }
+      },
+      lease: async () => undefined,
+      command: async () => {},
+      openStream: () => () => {},
+    },
+  }
+}
+
+/** The local browser keys the wiring mirrors into and reads back from. */
+interface LocalKeys {
+  cruise: CruiseValue
+  tasks: TaskRecord[]
+}
+
+/** Mount the board the way src/client/index.ts does: the synced stores over
+ *  the shared client, the cruise face over the local key. */
+function mountBoard(transport: BoardSyncTransport, local: LocalKeys) {
+  const sync = new BoardSyncClient({
+    transport,
+    defer: (fn, ms) => {
+      const timer = setTimeout(fn, ms)
+      return () => clearTimeout(timer)
+    },
+    now: () => BOOT_NOW,
+    uuid: () => 'tab-boot',
+  })
+  const cruiseMirror = {
+    read: () => local.cruise,
+    write: (state: CruiseValue) => { local.cruise = state },
+  }
+  const taskMirror: TaskStore = {
+    load: () => [...local.tasks],
+    save: rows => { local.tasks = [...rows] },
+    clear: () => { local.tasks = [] },
+  }
+  const sessions: SessionsControllerFace = {
+    list: { getSnapshot: () => ({ phase: 'ready' as const, byId: {} }), subscribe: () => () => {} },
+    exists: () => false,
+  }
+  const controller = new BoardController({
+    store: new SyncedTaskStore(sync, taskMirror),
+    exec: { run: async () => {}, commentRun: async () => {}, reconcile: () => undefined } as unknown as ExecutionService,
+    sessions,
+    now: () => BOOT_NOW,
+    uuid: () => 'boot-task',
+    cruiseStorage: new SyncedCruiseStore(sync, cruiseMirror),
+  })
+  controller.start()
+  const readLocalView = (): BoardView => ({
+    tasks: local.tasks,
+    cruise: local.cruise,
+    schedulePresets: [],
+    runPresets: { presets: [] },
+  })
+  return { sync, controller, readLocalView }
+}
+
+describe('cruise boot (local key first, host truth on settle)', () => {
+  it('an unreachable host keeps the mirrored switch ON (never reset to the empty default)', async () => {
+    const { transport, commits } = bootTransport(emptyBoardDoc(BOOT_NOW), false)
+    const { sync, controller, readLocalView } = mountBoard(transport, {
+      cruise: { enabled: true, limit: 6, schedule: [] },
+      tasks: [],
+    })
+    // First paint: the controller's constructor read the local key, not the
+    // replica's not-yet-settled empty document.
+    expect(controller.getSnapshot().cruise.enabled).toBe(true)
+    expect(await sync.start(readLocalView)).toBe('unavailable')
+    // Fallback mode: the switch stays exactly where the user left it, and
+    // nothing was committed against a host that never answered.
+    expect(controller.getSnapshot().cruise.enabled).toBe(true)
+    expect(commits).toHaveLength(0)
+    sync.dispose()
+    controller.dispose()
+  })
+
+  it('a reachable host hands its own cruise over on the settle (the mirror is not the truth)', async () => {
+    const host = applyCommit(emptyBoardDoc(BOOT_NOW), {
+      clientId: 'other',
+      tasks: [],
+      deleted: [],
+      cruise: { value: { enabled: true, limit: 2, schedule: [] }, at: BOOT_NOW },
+      schedulePresets: { value: [], at: BOOT_NOW },
+      runPresets: { value: { presets: [] }, at: BOOT_NOW },
+      sectionClaims: ['cruise'],
+    }, BOOT_NOW + 1)
+    const { transport } = bootTransport(host, true)
+    // The local key says OFF, the host document says ON: adoption wins.
+    const { sync, controller, readLocalView } = mountBoard(transport, {
+      cruise: { enabled: false, limit: 5, schedule: [] },
+      tasks: [],
+    })
+    expect(await sync.start(readLocalView)).toBe('synced')
+    // The wiring's settle: the host view replaces the mirror-loaded state.
+    controller.syncActive = true
+    controller.applyRemote(sync.view())
+    expect(controller.getSnapshot().cruise.enabled).toBe(true)
+    expect(controller.getSnapshot().cruise.limit).toBe(2)
+    sync.dispose()
+    controller.dispose()
   })
 })

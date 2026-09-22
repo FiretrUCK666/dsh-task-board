@@ -33,7 +33,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -2226,11 +2226,12 @@ export class BoardController {
     const cron = patch.cron !== undefined ? patch.cron.trim() : (current?.cron ?? '')
     if (mode === 'cron' && (cron === '' || !isValidCron(cron))) return false
     const enabled = patch.enabled ?? current?.enabled ?? false
-    // Arming 完成后接续 on a card with NO execution prompt is rejected
-    // outright (returns false, nothing persisted): the rule would never run
+    // Arming a rule on a card with NO execution prompt is rejected outright in
+    // EITHER mode (returns false, nothing persisted): the rule would never run
     // and the switch would read "on" silently — the editor surfaces the
-    // blocked reason instead of a dead arm.
-    if (enabled && mode === 'chain' && !taskExecutable(task)) return false
+    // blocked reason instead of a dead arm. Disarming is always allowed, so a
+    // rule armed before the prompt was cleared stays dis-armable.
+    if (enabled && !current?.enabled && ruleArmingBlocked(task)) return false
     const maxRunsChanged = patch.maxRuns !== undefined && patch.maxRuns !== current?.maxRuns
     const maxRuns = patch.maxRuns !== undefined ? patch.maxRuns : current?.maxRuns
     const nextRunAt = enabled && mode === 'cron' ? nextRunAtMs(cron, this.now()) : undefined

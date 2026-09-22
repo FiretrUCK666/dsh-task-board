@@ -27,9 +27,9 @@ import {
 } from '../../core/automation.ts'
 import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
 import {
-  chainUnlimited, lastPlainResult, ruleReadiness, type ScheduleMode, type TaskRecord,
+  chainUnlimited, lastPlainResult, ruleArmingBlocked, ruleReadiness, type ScheduleMode, type TaskRecord,
 } from '../../core/tasks.ts'
-import { t, type TaskBoardKey } from '../locales.ts'
+import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { cronHumanLabel } from './cron-label.ts'
 import { draftStore, ruleDraftKey } from './drafts.ts'
@@ -523,7 +523,7 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
   const [lastTriggeredAt, setLastTriggeredAt] = useState<number | undefined>(schedule?.lastTriggeredAt)
   // The ONE failing field: the cron input or the max-runs input each carry
   // their own inline error; a max-runs error must never light the cron border.
-  const [error, setError] = useState<'cron' | 'runs' | 'promptEmpty' | undefined>(undefined)
+  const [error, setError] = useState<'cron' | 'runs' | 'promptEmpty' | 'refused' | undefined>(undefined)
   const [showPresets, setShowPresets] = useState(false)
   const [presetStore] = useState(() => controller.presetStore())
   // The merged preset list (built-ins + custom); rebuilt when the manager closes.
@@ -576,9 +576,11 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
   const applyEnabled = (next: boolean): void => {
     if (next && mode === 'cron' && cron.trim() !== schedule?.cron) controller.setSchedule(task.id, { cron: cron.trim() })
     if (!controller.setSchedule(task.id, { enabled: next, mode })) {
-      // The one rejected arm: 完成后接续 with an empty execution prompt —
-      // name the reason inline, never a silent dead switch.
-      if (next && mode === 'chain') setError('promptEmpty')
+      // The controller is the authority on whether an arm landed. A refusal is
+      // never swallowed: the reason is named inline, and `armingBlocked` (the
+      // SAME predicate the controller reads) decides whether the switch is
+      // offered at all — so the switch can never sit "on" over an unarmed rule.
+      if (next) setError(ruleArmingBlocked(task) ? 'promptEmpty' : 'refused')
       return
     }
     setEnabled(next)
@@ -658,6 +660,14 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
   }
 
   const readiness = ruleReadiness(task)
+  // The SAME predicate the controller refuses an arm with, so the switch and
+  // the stored rule can never disagree about whether this card can be armed.
+  const armingBlocked = ruleArmingBlocked(task)
+  // Whether the switch is usable at all: a refused arm is not offered, while an
+  // ALREADY armed rule stays switchable off (a rule armed before the prompt was
+  // cleared must remain dis-armable).
+  const armSwitchDisabled = armingBlocked && !enabled
+  const blockReasonId = `dsh-tb-schedule-block-${task.id}`
   const chainRuns = schedule?.runCount ?? 0
   const chainBudget = schedule?.maxRuns
   const lastLabel = lastTriggeredAt === undefined ? '—' : formatDateTime(lastTriggeredAt)
@@ -669,17 +679,17 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
   const canSkip = enabled && mode === 'cron' && readiness.kind === 'active'
     && nextRunAt !== undefined && nextRunAt > Date.now()
   // A paused rule names its blocking status; a review pause caused by a
-  // failed run adds the "because it failed" reason word; a BLOCKED rule (an
-  // empty execution prompt) names the emptiness — one reason-line grammar.
+  // failed run adds the "because it failed" reason word — one reason-line
+  // grammar. A BLOCKED rule states its reason ONCE, and that statement is the
+  // one already attached to the switch ({@link blockReasonId}): repeating it
+  // further down would report a single fact as if it were two.
   const stoppedReason = readiness.kind === 'paused'
     ? {
         extraFailed: readiness.status === 'review'
           && lastPlainResult(task) === 'failed',
         key: PAUSED_REASON_KEY[readiness.status],
       }
-    : readiness.kind === 'blocked'
-      ? { extraFailed: false, key: 'detail.schedule.blocked' as TaskBoardKey }
-      : undefined
+    : undefined
 
   return (
     <>
@@ -703,7 +713,19 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
         checked={enabled}
         onChange={toggleEnabled}
         label={t('detail.schedule.enable')}
+        disabled={armSwitchDisabled}
+        describedBy={armingBlocked ? blockReasonId : undefined}
       />
+      {/* The ONE reason line for an unusable switch, stated immediately under
+          it and referenced by the switch itself — an unusable control that does
+          not say why is worse than no control, and on touch there is no hover
+          to fall back on. It is the same sentence the armed-but-blocked rule
+          carries, so the editor never states the same fact twice. */}
+      {armingBlocked && (
+        <p className={css.scheduleMeta} id={blockReasonId}>
+          {t('detail.schedule.blockedAction')}
+        </p>
+      )}
 
       {/* Driving mode: fixed times (cron) or run-after-completion (chain) —
           the ONE segmented grammar shared with the session-rule trigger. */}
@@ -758,7 +780,11 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
         </div>
       ) : (
         <>
-          <p className={css.scheduleMeta}>{t('detail.schedule.chainNote')}</p>
+          {/* The mode note explains what the chain DOES; it is suppressed while
+              the mode cannot run at all, because "it will continue after each
+              completion" is not true of a card that cannot be armed. The
+              switch's own reason line is the only statement in that state. */}
+          {!armingBlocked && <p className={css.scheduleMeta}>{t('detail.schedule.chainNote')}</p>}
           <div className={css.scheduleActionRow}>
             <span className={css.scheduleMeta}>
               {t('detail.schedule.runsSoFar')} {chainRuns}
@@ -801,7 +827,13 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
         </>
       )}
       {error !== undefined && <p className={css.formError}>
-        {t(error === 'cron' ? 'detail.schedule.invalid' : error === 'runs' ? 'detail.schedule.invalidRuns' : 'detail.promptEmpty')}
+        {t(error === 'cron'
+          ? 'detail.schedule.invalid'
+          : error === 'runs'
+            ? 'detail.schedule.invalidRuns'
+            : error === 'promptEmpty'
+              ? 'detail.schedule.blockedAction'
+              : 'detail.schedule.refused')}
       </p>}
       {mode === 'cron' && (
         <>

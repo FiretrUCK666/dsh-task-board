@@ -128,12 +128,11 @@ function settledStateOf(result: ExecutionRecord['result']): SessionDisplay['stat
  * {@link sessionDisplay}, for rows whose identity is the binding rather than
  * an execution. The task's own rounds for that session ARE its activity (the
  * same plain-by-session read `sessionWindowOf` uses for the meta line): a
- * bound conversation that just ran reads 已完成 here instead of the stale
- * 未运行 the host's completed flag alone reported, and an open round or a
- * live native turn reads running. Priority mirrors `sessionDisplay` —
- * waiting, open, active, settled — and ONLY a binding with no rounds on this
- * task falls back to the legacy host flags: there is genuinely nothing in
- * the ledger to read.
+ * bound conversation that ran reads its settled outcome, and an open round or
+ * a live native turn reads running. Priority mirrors `sessionDisplay` —
+ * waiting, open, active, settled — and a binding with no rounds on this task
+ * reads 未运行: there is nothing in the ledger to read, and the host session
+ * row carries no outcome of its own.
  *
  * `rounds` is the plain same-session set (like `sessionWindowOf`), not an
  * execution's thread: a linked row IS the whole conversation, so every lane
@@ -145,7 +144,6 @@ export function linkedSessionDisplay(
   sessionId: string,
   waitingKind: PendingInteractionKind | undefined,
   active: boolean,
-  hostCompleted: boolean,
 ): SessionDisplay {
   const rounds = task.executions.filter(round => round.sessionId === sessionId)
   if (waitingKind !== undefined) {
@@ -167,15 +165,9 @@ export function linkedSessionDisplay(
   if (latest !== undefined) {
     return { state: settledStateOf(latest.result), lastActivity: latest.endedAt, waitingKind: undefined }
   }
-  if (rounds.length === 0) {
-    return {
-      state: hostCompleted ? 'succeeded' : 'cancelled',
-      lastActivity: undefined,
-      waitingKind: undefined,
-    }
-  }
-  // Rounds exist but none settled and none is open — defensive, same floor
-  // as `sessionDisplay`.
+  // No settled round to read: a binding with no rounds on this task has no
+  // outcome in the ledger (未运行), and rounds that neither settled nor opened
+  // are the same floor — the `sessionDisplay` floor.
   return { state: 'cancelled', lastActivity: undefined, waitingKind: undefined }
 }
 

@@ -56,6 +56,15 @@ const headers = {
 }
 
 /**
+ * One release payload as UTF-8 BYTES. Serializing here is what keeps the notes
+ * out of a shell's reach (see the header): both the create and the update path
+ * send the same form, and neither one builds a body at the call site.
+ */
+function payload(fields) {
+  return Buffer.from(JSON.stringify(fields), 'utf8')
+}
+
+/**
  * Send one request. A non-2xx throws, so callers can treat "absent" as a normal
  * outcome (looking up a release that does not exist yet is expected on a first
  * publish); genuinely unexpected failures still surface with the API's message.
@@ -85,11 +94,10 @@ async function findRelease(tag) {
 try {
   const existing = await findRelease(tag)
   if (existing !== undefined && existing.id !== undefined) {
-    const updated = await call(`${api}/${String(existing.id)}`, { method: 'PATCH', body })
+    const updated = await call(`${api}/${String(existing.id)}`, { method: 'PATCH', body: payload({ body: notes }) })
     console.log(`updated release ${String(updated.name)} (${String(updated.html_url)})`)
   } else {
-    const payload = Buffer.from(JSON.stringify({ tag_name: tag, name: tag, body: notes, draft: false, prerelease: false }), 'utf8')
-    const created = await call(api, { method: 'POST', body: payload })
+    const created = await call(api, { method: 'POST', body: payload({ tag_name: tag, name: tag, body: notes, draft: false, prerelease: false }) })
     console.log(`created release ${String(created.name)} (${String(created.html_url)})`)
   }
 

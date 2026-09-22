@@ -25,8 +25,10 @@ export type TranscriptLine = {
     kind: 'context';
     /** Fallback identity (the event sequence). */
     id: string;
-    /** The injecting plugin's name (native context rows name their source). */
-    plugin: string;
+    /** The injection's producer label — its durable source kind, or for the
+     *  three data-bearing kinds the thing it injected (see
+     *  {@link contextProducerOf}); native context rows name their source. */
+    producer: string;
     /** One-line account when the injection carries one (notice form). */
     summary: string;
     /** Event timestamp (ms epoch); 0 when the event carried none. */

@@ -4,17 +4,27 @@
  * Everything the board does is browser work (DOM, localStorage, driving the
  * client runtime's session services over the wire), so the host half's main
  * behavior is a system-prompt section announcing the plugin to every agent,
- * plus an HTTP settings route that serves the plugin's settings namespace to
- * the browser half. The section registers while this plugin is in the host
- * composition (mount / DSH restart) and disappears when the plugin leaves it
- * (unmount / restart), so agents always know the board exists and how to
- * cooperate with it. The announcement can be turned off through the web
- * settings plugin-configuration surface (`announceToAgent`); the section then
- * disappears live.
+ * plus the HTTP routes the browser half reads. The section registers while
+ * this plugin is in the host composition (mount / DSH restart) and disappears
+ * when the plugin leaves it (unmount / restart), so agents always know the
+ * board exists and how to cooperate with it. The announcement can be turned
+ * off through the web settings surface (`announceToAgent`); the section then
+ * disappears live, without a restart.
+ *
+ * Settings: the plugin's own profile entry carries the `Config` schema below,
+ * and the settings service reads and writes that entry directly. A field is
+ * editable from the web surface only when the schema marks it `volatile`, and
+ * a volatile field's runtime value is a live reference rather than a plain
+ * value — see {@link volatileValue}.
+ *
+ * `enabled` gates the two USER-VISIBLE halves (the system-prompt announcement
+ * and the browser half's seats). It deliberately does NOT gate the HTTP routes:
+ * a route table that disappears when the flag turns off would leave no way to
+ * turn it back on, and the settings surface itself reads through a route.
  */
-
 import type { Context } from '@deepseek-ai/cordis'
-import z from 'schemastery'
+import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { registerPermissionRoute } from './host/permission-route.ts'
@@ -33,11 +43,10 @@ export const inject = ['webServer', 'systemPrompt', 'settings']
 export const TASK_BOARD_GUIDANCE = '本机已安装 dsh-task-board 独立插件（DSH Web GUI 的任务看板，可挂载到 web profile）：侧边栏「任务看板」入口。能力：多列看板管理任务；任务可真实执行（驱动 agent 会话）；任务支持 5 段 cron 定时执行（如 0 23 * * *）；看板数据（任务/巡航/预设）持久化在 DSH host 端（存储单元 dsh_task_board），任意设备任意浏览器打开同一部署看到的都是同一块板，改动经 SSE 实时同步；手机等窄屏为紧凑布局。限制：调度引擎同一时刻只由一个打开的 GUI 端持有（host 租约仲裁，多端同开不会双份执行），至少一个 GUI 标签页保持打开，否则定时/巡航/接续停摆、错过即跳过；执行消耗 API 额度。用户提到「任务看板 / 看板 / 定时任务」时即指本插件，请据此协作。'
 
 /**
- * Settings namespace of the board's announcement capability — the section the
- * web settings surface edits, and the namespace the settings route serves.
- * Spelled here rather than imported: the browser half spells the same value
- * and must not depend on a Host package. The settings service validates the
- * spelling when it registers (a lowercase hyphenated identifier).
+ * Settings namespace of the board's own capabilities. It names the profile
+ * entry this plugin occupies, so it is the same identifier the bundle patch
+ * inserts and the browser half spells. Spelled here rather than imported: the
+ * browser half spells the same value and must not depend on a Host package.
  */
 export const TASK_BOARD_SETTINGS_NAMESPACE = 'dsh-task-board'
 
@@ -49,43 +58,77 @@ export interface Config {
    * about it only when the user mentions it.
    */
   announceToAgent?: boolean
-  /** Master switch for the plugin (browser half + host announcement). */
+  /** Master switch for the user-visible halves (browser seats + announcement). */
   enabled?: boolean
 }
 
-export const Config: z<Config> = z.object({
-  announceToAgent: z.boolean().default(true),
-  enabled: z.boolean().default(true),
+/**
+ * Plugin config schema. Both fields are `volatile`: a configuration write that
+ * touches only volatile fields updates the running instance in place — the
+ * plugin is never unloaded, and `apply` is never re-run — so a settings edit
+ * takes effect without a restart. `pnpm verify` asserts the schema keeps at
+ * least one volatile field, because an entry with none is skipped by the
+ * settings service and silently loses its page.
+ *
+ * Values are read through {@link volatileValue}, never compared directly: each
+ * volatile field resolves to a live reference, not a boolean.
+ */
+export const ConfigSchema = z.object({
+  announceToAgent: z.boolean().default(true).volatile(),
+  enabled: z.boolean().default(true).volatile(),
 })
+
+/** The resolved config {@link apply} receives (each volatile field is a live reference). */
+export type ResolvedConfig = ReturnType<typeof ConfigSchema>
 
 /** Schema default, re-read for hand-built test contexts (the loader applies them normally). */
 const DEFAULT_ANNOUNCE = true
 
+/** Schema default of the master switch. */
+const DEFAULT_ENABLED = true
+
 /**
- * Register the board's announcement section, gated on the composition entry's
- * `announceToAgent` (and the live settings value once the web settings
- * surface is served). The section is re-registered whenever the source
+ * Read one config field's current value. A schema field marked `volatile`
+ * resolves to a stable live reference rather than a plain value, so comparing
+ * it directly would silently read "always truthy" and leave the switch stuck
+ * on. Anything non-volatile (a hand-built test config, a schema that drops the
+ * marker) is already a plain value and passes through.
+ * @param field - the resolved config field.
+ * @param fallback - the schema default, for an absent field.
+ * @returns the current plain value.
+ */
+function volatileValue(field: unknown, fallback: boolean): boolean {
+  if (field === undefined || field === null) return fallback
+  const candidate = field as { get?: unknown }
+  const current = typeof candidate.get === 'function'
+    ? (candidate.get as () => unknown)()
+    : field
+  return typeof current === 'boolean' ? current : fallback
+}
+
+/**
+ * Register the board's announcement section, gated on the live `enabled` and
+ * `announceToAgent` values. The section is re-registered whenever either
  * changes, so a settings edit takes effect without a restart.
  * @param ctx - the plugin context (systemPrompt injected).
  * @param config - resolved plugin config (schema defaults applied by the loader).
  */
-export function apply(ctx: Context, config?: Config): void {
-  // The live source the announcement reads: the settings scope once the
-  // namespace registers, the composition entry otherwise
-  // (installSection swaps it on attach and on detach).
-  let current: () => Config = () => config ?? {}
-  let disposeSection: (() => void) | undefined
+export function apply(ctx: Context, config?: ResolvedConfig): void {
+  // The live source the announcement reads: the resolved entry config, whose
+  // volatile fields are live references the settings service updates in place.
+  const current = (): ResolvedConfig => config ?? ({} as ResolvedConfig)
 
-  // Register (or drop) the announcement to match the current source. The
+  // Register (or drop) the announcement to match the current config. The
   // section is kept under one disposer: re-registering first tears the old
   // one down so a duplicate-name registration never throws.
+  let disposeSection: (() => void) | undefined
   const sync = (): void => {
     if (disposeSection !== undefined) {
       disposeSection()
       disposeSection = undefined
     }
-    if ((current().enabled ?? true) === false) return
-    if ((current().announceToAgent ?? DEFAULT_ANNOUNCE) === false) return
+    const active = volatileValue(current().enabled, DEFAULT_ENABLED)
+    if (!active || !volatileValue(current().announceToAgent, DEFAULT_ANNOUNCE)) return
     disposeSection = ctx.systemPrompt.section({
       name: 'plugin:dsh-task-board',
       order: SECTION_ORDER,
@@ -93,15 +136,19 @@ export function apply(ctx: Context, config?: Config): void {
     })
   }
 
-  // Attach this consumer to the settings service. The composition entry is the
-  // base layer while the service is attached and the fallback when it detaches,
-  // so the board's configured behavior survives a settings service going away.
-  // Called off the injected service (the host half declares 'settings') rather
-  // than through ctx.inject: the settings route below needs the provider
-  // present at registration, so the two share one availability contract.
-  ctx.settings.installSection(ctx, TASK_BOARD_SETTINGS_NAMESPACE, Config, config ?? {}, {
-    setSource: (source) => { current = source },
-    onChange: sync,
+  // A configuration write that touches only volatile fields keeps this
+  // instance running and republishes the values in place, so the section is
+  // re-derived from this event rather than from a re-run of apply().
+  ctx.on('loader/volatile-update', sync)
+
+  // The settings surface already renders this entry's form from its schema, so
+  // it must not generate a second page for it. Registered against this fiber so
+  // the policy follows the plugin's own lifecycle.
+  ctx.inject(['settings'], child => {
+    child.effect(
+      () => child.settings.configure({ auto: false }, ctx.fiber),
+      'dsh-task-board: settings page policy',
+    )
   })
 
   // Serve the settings namespace to the browser half over HTTP.
@@ -155,7 +202,7 @@ export function apply(ctx: Context, config?: Config): void {
     'dsh-task-board: client report route',
   )
 
-  // Initial registration from the composition entry (covers the value the
-  // announcement reads before the settings service first calls its hooks).
+  // Initial registration from the resolved entry config (covers the value the
+  // announcement reads before the first configuration write).
   sync()
 }

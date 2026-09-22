@@ -31,7 +31,7 @@ The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 
 ## Requirements
 
-- DeepSeek Harness `0.1.6-alpha.2` or later. `0.1.6-alpha.2` is the **verified minimum**: the plugin is known to work there. Later releases are tracked but not individually tested, so they are not guaranteed. If loading fails, follow the Troubleshooting section.
+- DeepSeek Harness `0.1.7-alpha.1` or later. `0.1.7-alpha.1` is the **verified minimum**: the plugin is known to work there, and it is the release that carries the settings interface this plugin uses (earlier releases lack it, and the whole host half then fails silently at load). Later releases are tracked but not individually tested, so they are not guaranteed. If loading fails, follow the Troubleshooting section.
 - Node.js `^22.19.0` or `>= 24.0.0`
 - pnpm 10 or newer
 - The DSH `web` profile
@@ -176,6 +176,8 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
    ```
 
 2. If it still fails, the plugin has not caught up with your DSH version yet. Please open an [issue](https://github.com/FiretrUCK666/dsh-task-board/issues) with three things: your DeepSeek Harness version, the plugin version (shown in Settings, installed plugins), and the exact error text from the page. Those three are enough to locate the cause.
+
+**The board opens, but devices do not sync and Settings says the configuration service is unavailable.** That is what a host half which failed to load looks like, and it is the easiest failure to miss after a DSH upgrade: the board still works on the page, but its data stays in that one browser, so another device is not looking at the same board and schedules and cruise never actually fire. Fix it the same way as the entry above — update the plugin, then restart `dsh web`.
 
 **A code change had no effect.** Changes under `src/index.ts` or `src/host/` need a `dsh web` restart; client-side changes only need a page refresh. Run `pnpm build` first in both cases.
 

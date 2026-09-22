@@ -187,15 +187,13 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
       // The SAME state derivation the run rows use, scoped to the session:
       // this task's own rounds for the conversation decide 已完成 / 失败 /
       // 进行中 (the 开始/结束/耗时 meta line beside them reads the same
-      // rounds), waiting and native activity outrank, and only a
-      // ledger-empty binding falls back to the host's legacy flags — one
-      // model, never a second dialect.
+      // rounds), waiting and native activity outrank, and a binding with no
+      // rounds on this task reads 未运行 — one model, never a second dialect.
       display: linkedSessionDisplay(
         task,
         linked.sessionId,
         linked.pendingInteraction,
         ctx.sessionActiveOf?.(linked.sessionId) ?? false,
-        linked.completed,
       ),
       updatedAt: linked.updatedAt,
     })

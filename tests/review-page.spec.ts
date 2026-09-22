@@ -825,21 +825,55 @@ describe('foldTranscript', () => {
     expect(lines[1]).toMatchObject({ kind: 'message', text: '', images: [{ attachmentId: 'att-2' }] })
   })
 
-  it('turns system/plugin injections into context rows, never user bubbles', () => {
+  it('turns non-user injections into context rows, never user bubbles', () => {
     const events: TranscriptEvent[] = [
-      // AGENTS.md / skill / runtime-context injections (plugin source).
-      userMessage('c1', '<system-reminder>instructions…</system-reminder>', 'plugin', { plugin: 'dsh-agent-instructions' }),
-      userMessage('c2', 'Current runtime context…', 'plugin', { plugin: 'dsh-time-context', form: 'snapshot' }),
+      // Runtime-context injection (V4 durable source: a kind + its form).
+      userMessage('c1', 'Current runtime context…', 'time-context', { form: 'snapshot' }),
       // A notice-form injection carries a one-line summary.
-      userMessage('c3', '…', 'plugin', { plugin: 'dsh-cron', form: 'notice', summary: 'cron: 每天 9 点任务已触发' }),
+      userMessage('c2', '…', 'cron', { form: 'notice', summary: 'cron: 每天 9 点任务已触发' }),
       // A real user message still becomes a bubble.
       userMessage('m1', '真正的问题', 'user'),
     ]
     expect(foldTranscript(events)).toEqual([
-      { kind: 'context', id: 'c1', plugin: 'dsh-agent-instructions', summary: '', at: 1000 },
-      { kind: 'context', id: 'c2', plugin: 'dsh-time-context', summary: '', at: 1000 },
-      { kind: 'context', id: 'c3', plugin: 'dsh-cron', summary: 'cron: 每天 9 点任务已触发', at: 1000 },
+      { kind: 'context', id: 'c1', producer: 'time-context', summary: '', at: 1000 },
+      { kind: 'context', id: 'c2', producer: 'cron', summary: 'cron: 每天 9 点任务已触发', at: 1000 },
       { kind: 'message', id: 'm1', role: 'user', text: '真正的问题', at: 1000 },
+    ])
+  })
+
+  it('names each context row from the durable source kind (the official producer grammar)', () => {
+    // The V4 source grammar. Three kinds point at the data they injected, so
+    // the row names THAT (the official `contextProducer` label); every other
+    // kind is its own label. Distinct values are deduped, in appearance order.
+    const events: TranscriptEvent[] = [
+      userMessage('c1', '<system-reminder>instructions…</system-reminder>', 'agent-instructions', {
+        changes: [
+          { scope: 'workspace', action: 'add', path: 'AGENTS.md' },
+          { scope: 'workspace', action: 'add', path: 'AGENTS.md' },
+          { scope: 'user', action: 'add', path: '~/.dsh/AGENTS.md' },
+        ],
+      }),
+      // A baseline injection carries no changes: the kind is the label.
+      userMessage('c2', '…', 'agent-instructions', { baseline: true, changes: [] }),
+      userMessage('c3', '…', 'skill-invocation', { name: 'project-forge', form: 'instructions' }),
+      userMessage('c4', '…', 'session-reference', {
+        references: [{ sessionId: 's-1', label: '看板重构' }, { sessionId: 's-2', label: '看板重构' }],
+      }),
+      // The label never comes from a `plugin` member, and a source with no
+      // usable kind is the generic context row.
+      {
+        ...base,
+        seq: 5,
+        type: 'user/message',
+        data: { id: 'c5', role: 'user', content: [{ type: 'text', text: '…' }], source: { plugin: 'dsh-cron' } },
+      },
+    ]
+    expect(foldTranscript(events)).toEqual([
+      { kind: 'context', id: 'c1', producer: 'AGENTS.md, ~/.dsh/AGENTS.md', summary: '', at: 1000 },
+      { kind: 'context', id: 'c2', producer: 'agent-instructions', summary: '', at: 1000 },
+      { kind: 'context', id: 'c3', producer: 'project-forge', summary: '', at: 1000 },
+      { kind: 'context', id: 'c4', producer: '看板重构', summary: '', at: 1000 },
+      { kind: 'context', id: 'c5', producer: 'context', summary: '', at: 1000 },
     ])
   })
 
@@ -903,7 +937,7 @@ describe('transcript usage', () => {
     const lines = [
       { kind: 'message' as const, id: 'a', role: 'user' as const, text: 'q', at: 0 },
       { kind: 'message' as const, id: 'b', role: 'assistant' as const, text: '1', at: 1, usage: { inputTokens: 10, outputTokens: 5 } },
-      { kind: 'context' as const, id: 'c', plugin: 'x', summary: '', at: 2 },
+      { kind: 'context' as const, id: 'c', producer: 'x', summary: '', at: 2 },
       { kind: 'message' as const, id: 'd', role: 'assistant' as const, text: '2', at: 3, usage: { inputTokens: 4, outputTokens: 1, cacheWriteTokens: 7, reasoningTokens: 2 } },
     ]
     expect(sumUsage(lines)).toEqual({

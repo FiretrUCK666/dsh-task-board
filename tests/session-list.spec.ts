@@ -29,7 +29,6 @@ function linkedRow(overrides: Partial<LinkedSessionRow> = {}): LinkedSessionRow 
     workspaceLabel: 'wk',
     running: false,
     pendingInteraction: undefined,
-    completed: true,
     updatedAt: NOW + 2,
     ...overrides,
   }
@@ -184,45 +183,43 @@ describe('linked rows read the SAME state derivation as run rows (no second dial
     executions,
   })
 
-  it('a settled round on THIS task beats the host flags: 未运行 becomes the real outcome', () => {
-    // The screenshot bug: 开始/结束/耗时40秒 beside a chip reading 未运行 —
-    // the old branch read only the host `completed` flag while the meta line
-    // read the rounds. One derivation now: the rounds decide.
+  it('a settled round on THIS task decides the row outcome (no second dialect)', () => {
+    // 开始/结束/耗时 beside the state chip: both read the rounds. The host
+    // session row serves no outcome of its own, so the ledger IS the outcome.
     const task = bound([
       { id: 'c1', sessionId: 's-1', startedAt: NOW + 1, endedAt: NOW + 5, result: 'succeeded' as const, error: undefined, comment: '你好' },
     ])
-    const rows = taskSessionsOf(task, ctx([linkedRow({ completed: false })]))
+    const rows = taskSessionsOf(task, ctx([linkedRow()]))
     expect(rows[0]?.display.state).toBe('succeeded')
     expect(rows[0]?.display.lastActivity).toBe(NOW + 5)
     // A failed observed turn reads failed — the honest outcome, not idle.
     const failedTask = bound([
       { id: 'x1', sessionId: 's-1', startedAt: NOW + 1, endedAt: NOW + 5, result: 'failed' as const, error: 'boom', comment: '', sessionAnchor: 's-1', external: true },
     ])
-    expect(taskSessionsOf(failedTask, ctx([linkedRow({ completed: false })]))[0]?.display.state).toBe('failed')
+    expect(taskSessionsOf(failedTask, ctx([linkedRow()]))[0]?.display.state).toBe('failed')
   })
 
-  it('open rounds and live activity outrank; only a ledger-empty bind falls back to the host flags', () => {
+  it('open rounds and live activity outrank; a ledger-empty bind reads 未运行', () => {
     // An observed native turn in flight: external rounds are open from their
     // observation (they ARE the native turn, never a queue slot).
     const openTask = bound([
       { id: 'x1', sessionId: 's-1', startedAt: NOW + 1, endedAt: undefined, result: undefined, error: undefined, comment: '', sessionAnchor: 's-1', external: true },
     ])
-    expect(taskSessionsOf(openTask, ctx([linkedRow({ completed: false })]))[0]?.display.state).toBe('running')
+    expect(taskSessionsOf(openTask, ctx([linkedRow()]))[0]?.display.state).toBe('running')
     // No rounds + still working (native turn observed elsewhere): running.
     const activeCtx = {
-      ...ctx([linkedRow({ completed: false })]),
+      ...ctx([linkedRow()]),
       sessionActiveOf: () => true,
     }
     expect(taskSessionsOf(bound(), activeCtx)[0]?.display.state).toBe('running')
-    // No rounds, not working: the legacy flags are all there is.
-    expect(taskSessionsOf(bound(), ctx([linkedRow({ completed: false })]))[0]?.display.state).toBe('cancelled')
-    expect(taskSessionsOf(bound(), ctx([linkedRow({ completed: true })]))[0]?.display.state).toBe('succeeded')
+    // No rounds and not working: nothing in the ledger to read — the idle row.
+    expect(taskSessionsOf(bound(), ctx([linkedRow()]))[0]?.display.state).toBe('cancelled')
   })
 
   it('waiting outranks everything, same as the run rows', () => {
     // The waiting signal rides the LINKED ROW itself (the same face
     // taskSessionsOf has always read), not the context.
-    const display = taskSessionsOf(bound(), ctx([linkedRow({ completed: true, pendingInteraction: 'question' })]))[0]?.display
+    const display = taskSessionsOf(bound(), ctx([linkedRow({ pendingInteraction: 'question' })]))[0]?.display
     expect(display).toMatchObject({ state: 'waiting', waitingKind: 'question' })
   })
 })

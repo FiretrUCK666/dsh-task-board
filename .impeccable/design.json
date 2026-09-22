@@ -161,14 +161,14 @@
         "token": "--dsw-alias-state-business-primary",
         "displayName": "DeepSeek Business Blue",
         "canonical": "#4176e6",
-        "darkValue": "#679efe",
+        "darkValue": "#7aaaff",
         "tonalRamp": [
           "#283142",
           "#34415b",
           "#4868b2",
           "#4176e6",
           "#5686fe",
-          "#679efe",
+          "#7aaaff",
           "#b7c8fe",
           "#d3e2fd",
           "#edf3fe"

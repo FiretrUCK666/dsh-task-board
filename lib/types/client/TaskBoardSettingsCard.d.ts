@@ -5,14 +5,14 @@
  *
  * WHY A SECTION AND NOT A PLUGIN-LIST CARD: the card used to register into
  * `settings.plugin.item`, a slot the built-in plugin-configuration tab declared.
- * The host removed that tab's slot in 0.1.6-alpha.2 — it remains declared by
- * nobody, and `slots.inject` silently no-ops for an undeclared slot, so the form
- * vanished with no error at all. A settings section is declared and rendered by
- * the settings domain itself, so it cannot be removed without the settings panel
- * going with it.
+ * That tab's slot is declared by nobody today — `slots.inject` silently no-ops
+ * for an undeclared slot, so such a form vanishes with no error at all. A
+ * settings section is declared and rendered by the settings domain itself, so
+ * it cannot be removed without the settings panel going with it.
  *
- * It edits the `dsh-task-board` settings namespace through the plugin's own host
- * route (RouteSettingsScope), so the section needs no sibling settings package.
+ * It edits this plugin's own profile entry through the settings surface's
+ * per-entry form (`ctx.configForms`), so the section carries a working form
+ * even on a deployment that serves no other settings page for this plugin.
  */
 import type { InjectFace, PropsLocale, SnapshotSelector } from './platform.ts';
 import type { SnapshotStore } from './platform.ts';

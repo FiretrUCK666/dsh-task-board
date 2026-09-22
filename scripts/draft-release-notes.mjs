@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
  * draft-release-notes.mjs —— 从提交记录起草中文发布说明
- * （与 project-forge skill 同名脚本同源，逻辑一致；两边改动需同步。）
+ *
+ * 本仓库自己的一份实现：只用 Node 内置模块，不 import 本仓库以外的任何文件
+ * （硬性规范 7「独立自包含」）。skill 里的同名脚本会 import 它自己的兄弟模块，
+ * 因此那份不能原样搬进来——两边不是逐字副本，改动不要互相照抄。
  *
  * 存在的理由：`gh release create --generate-notes` 是 GitHub 服务器按英文模板
  * 渲染的（What's Changed + Full Changelog 链接），它不认识中文，产出的说明
@@ -12,8 +15,8 @@
  *   node scripts/draft-release-notes.mjs <标签> [输出文件]
  *
  *   标签必须已存在（先打标签再起草）。输出文件省略时写到 `./<标签>-notes.md`。
- *   正文写进 UTF-8 文件（无 BOM），再由 gh 或 release-notes.mjs 按字节发送——
- *   中文绝不经 shell 传递的那条规则，在这里同样适用。
+ *   正文写进 UTF-8 文件（无 BOM），再由 GitHub API 按字节发送——中文绝不经
+ *   shell 传递的那条规则，在这里同样适用。
  *
  * 退出码：0 = 写好；1 = 失败；2 = 用法或仓库状态错误。
  */
@@ -57,7 +60,7 @@ function main() {
   // 对比链接：能解析出 GitHub 地址才给，给不出就只写区间（不编地址）。
   let compare = `\`${range}\``
   const remote = git(['remote', 'get-url', 'origin'], cwd)
-  const m = remote === undefined ? null : /github\.com[/:]([^/]+)\/([^/.]+)/.exec(remote)
+  const m = remote === undefined ? null : /github\.com[/:]([^/]+)\/(.+?)(?:\.git)?$/.exec(remote)
   if (m !== null) compare = `[${prev ?? '初始'}...${tag}](https://github.com/${m[1]}/${m[2]}/compare/${range})`
 
   const lines = [`## 本次更新`, '']

@@ -1,7 +1,7 @@
 {
   "name": "@firetruck666/dsh-task-board",
   "description": "Task board plugin for the DSH web GUI: a sidebar entry plus a multi-column kanban view with real execution through DSH sessions, schedules, session rules and auto-cruise automation. Board truth lives on the host and syncs to every device over SSE (the browser is an offline-first copy). Standalone plugin, no DSH source changes.",
-  "version": "0.2.143",
+  "version": "0.2.144",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -18,6 +18,7 @@
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
+    "./locale/*.json": "./locale/*.json",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
@@ -27,8 +28,10 @@
   },
   "homepage": "https://github.com/FiretrUCK666/dsh-task-board#readme",
   "bugs": "https://github.com/FiretrUCK666/dsh-task-board/issues",
+  "icon": "./icon.svg",
   "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": ">=0.1.7-alpha.1"
   },
   "keywords": [
     "deepseek-harness",
@@ -53,7 +56,8 @@
         "@deepseek-ai/dsh-api-workspace-controller",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-session"
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
     }
@@ -65,7 +69,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "node scripts/verify-standalone.mjs . && node scripts/smoke-client.mjs . && node scripts/sync-toc.mjs README.md README.en.md --check && node scripts/verify-design-docs.mjs . && node scripts/verify-host-contracts.mjs . && node scripts/verify-host-contracts.mjs . --probe-removed",
+    "verify": "node scripts/verify-standalone.mjs . && node scripts/smoke-client.mjs . && node scripts/sync-toc.mjs README.md README.en.md --check && node scripts/verify-design-docs.mjs . && node scripts/verify-host-contracts.mjs . && node scripts/verify-host-contracts.mjs . --probe-removed && node scripts/verify-host-contracts.mjs . --probe-services",
     "smoke": "node scripts/smoke-client.mjs .",
     "toc": "node scripts/sync-toc.mjs README.md README.en.md",
     "design-docs": "node scripts/verify-design-docs.mjs .",
@@ -73,23 +77,24 @@
     "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test && pnpm verify"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-client-connection": ">=0.1.6-alpha.2",
-    "@deepseek-ai/dsh-host-webserver": ">=0.1.6-alpha.2",
-    "@deepseek-ai/dsh-settings": ">=0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-connection": ">=0.1.7-alpha.1",
+    "@deepseek-ai/dsh-host-webserver": ">=0.1.7-alpha.1",
+    "@deepseek-ai/dsh-settings": ">=0.1.7-alpha.1",
     "react": "^18.2.0"
   },
   "dependencies": {
-    "schemastery": "^3.18.0"
+    "@deepseek-ai/schemastery": "^3.18.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-client-connection": "^0.1.6-alpha.2",
-    "@deepseek-ai/dsh-client-locale": "^0.1.6-alpha.2",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.6-alpha.2",
-    "@deepseek-ai/dsh-host-webserver": "^0.1.6-alpha.2",
-    "@deepseek-ai/dsh-settings": "^0.1.6-alpha.2",
-    "@deepseek-ai/dsh-storage-json": "^0.1.6-alpha.2",
-    "@deepseek-ai/dsh-system-prompt": "^0.1.6-alpha.2",
+    "@deepseek-ai/cordis": "^4.0.3",
+    "@deepseek-ai/cordis-plugin-loader": "^1.0.5",
+    "@deepseek-ai/dsh-client-connection": "^0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-locale": "^0.1.7-alpha.1",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.1.7-alpha.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.7-alpha.1",
+    "@deepseek-ai/dsh-settings": "^0.1.7-alpha.1",
+    "@deepseek-ai/dsh-storage-json": "^0.1.7-alpha.1",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.7-alpha.1",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "^18.3.5",
@@ -97,7 +102,6 @@
     "lightningcss": "1.32.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "schemastery": "^3.18.0",
     "tsdown": "0.22.2",
     "typescript": "~5.7.2",
     "vitest": "^3.0.0"
@@ -108,6 +112,8 @@
     "lib/**/*.d.ts",
     "lib/**/*.d.ts.map",
     "src",
+    "locale",
+    "icon.svg",
     "cordis.patch.yml",
     "README.md",
     "README.en.md"

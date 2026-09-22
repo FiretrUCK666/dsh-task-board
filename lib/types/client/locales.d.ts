@@ -214,6 +214,8 @@ export declare const zh: {
     'detail.promptEmpty': string;
     'detail.schedule.blocked': string;
     'detail.schedule.blockedSession': string;
+    'detail.schedule.blockedAction': string;
+    'detail.schedule.refused': string;
     'delete.title': string;
     'delete.confirm': string;
     'delete.ok': string;

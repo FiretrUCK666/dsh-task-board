@@ -166,7 +166,12 @@ pnpm toc    # 改完 README 结构后重跑，目录即与标题同步
   贡献者用 `dsh plugin --profile web add .` 把当前 checkout 挂进自己的 profile 调试即可，
   提交 PR 不需要改动任何人的挂载。
 - `~/.dsh/cordis.patch.yml`：合法状态 = 不存在，或顶层 YAML 数组（存在但为空会令
-  dsh 启动失败）；`~/.dsh/settings.yaml` 承载插件设置命名空间。
+  dsh 启动失败）。插件设置**不住在这里**：设置就是插件在激活 profile 里的那条配置项
+  （`profiles/<name>/cordis.patch.yml` 中同 id 的行）的 `config`，Web 设置页直接读写它。
+  字段要在 schema 里标 `.volatile()` 才可编辑，也才即时生效——**一个 volatile 字段都没有
+  的条目会被设置服务整条跳过，页面静默消失**（`verify-standalone.mjs` 兜住这一条）。
+  旧 `~/.dsh/settings.yaml` 只在首次启动导入一次，导入后改名 `settings.yaml.imported`，
+  永不重跑；导入失败的那一节只留一行 warn，不会重试。
 - 兄弟插件：本目录所在 `Plugins` 目录下的平级独立插件（用目录扫描发现）；与本项目
   完全独立、互不依赖、互不引用。
 - 生效规则：host 半区改动需重启 `dsh web`；client 半区改动刷新页面即可。
@@ -348,9 +353,10 @@ SDK 版本**必须跟随实际运行的 DSH**──不写死、不靠宽松范�
 `shared/web-platform.ts` 的 `PLATFORM_MODULES` 是浏览器模块表的**镜像**，决定哪些
 import 走 external、哪些必须内联。它与真实 shell 不符时会在运行时炸——两种方向都危险：
 列了一个已被移除的模块（shell 换实现时这类模块会消失），或少列一个新增的。因此
-**每次 DSH 升级都要重新核对**，不要假定这份清单长期有效。**核对方法**：读
-`<dsh>/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-*.js`，搜
-`__ModuleLoader__` 附近的 seed 对象（`react` 家族 + `@deepseek-ai/dsh-client-*`）。
+**每次 DSH 升级都要重新核对**，不要假定这份清单长期有效。**核对方法**：在
+`<dsh>/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/` 下找**含 `__ModuleLoader__`
+的那个 bundle**（文件名是内容哈希，每次发布都会变，所以按符号找、不按文件名找），
+读它附近 `staticModules` 工厂返回的 seed 对象键（`react` 家族 + `@deepseek-ai/dsh-client-*`）。
 
 ### 构建可复现（硬性：产物必须与构建机无关）
 
@@ -409,9 +415,10 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | --- | --- |
 | **插件 id**（行 id / 文件夹名 / 设置命名空间 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 三个 slot 的 id） | `dsh-task-board` |
 | **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / **客户端 bundle 的 `__ModuleLoader__` 注册 id** / `/plugins/<包名>/client.js`） | 以 `package.json` 的 `name` 为准（当前为 `@firetruck666/dsh-task-board`，**含 npm 作用域**） |
-| 设置路由 | `/api/dsh-task-board/settings` |
+| 设置路由 | `/api/dsh-task-board/settings`（本插件设置的读取通道；设置的**真相**是 profile 里本插件那条目的 `config`） |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
+| 其余 host 路由 | `/api/dsh-task-board/session-state`、`/api/dsh-task-board/update`、`/api/dsh-task-board/client-report` |
 | host 存储单元名（storage hub json 后端） | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board.json`；平台 `UNIT_NAME_RE` 只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
 | 公告 section | `plugin:dsh-task-board`（order 200） |
 | **看板舞台 slot**（面板本体） | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
@@ -429,7 +436,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 本插件是**外部插件**，与宿主之间只有下面这些接触面。它们全部由 `pnpm verify` 里的
 `verify-host-contracts.mjs` 对照**实际安装的 DSH** 逐条核对，少任何一条即红并指名：
 未声明的 slot 在 `slots.inject` 里会**静默 no-op**，被删的服务成员只在用户点击那一刻
-抛 `TypeError`——两者都不会让构建失败，所以必须机械核对。
+抛 `TypeError`，缺失的宿主服务让对应半区**永远等不到依赖、什么也注册不出来**——
+三者都不会让构建失败，所以必须机械核对。表分三节：slot、按名读的宿主成员、
+每个半区注入的宿主服务。
 
 ### 插件依赖的 slot（必须由宿主声明）
 
@@ -448,10 +457,34 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | `@deepseek-ai/dsh-client-ui-workspace` | `openSession` |
 | `@deepseek-ai/dsh-client-ui-layout` | `selectPanel` |
 | `@deepseek-ai/dsh-api-session-controller` | `binding` |
-| `@deepseek-ai/dsh-api-session-controller` | `retainInfo` |
+| `@deepseek-ai/dsh-settings` | `configure` |
+| `@deepseek-ai/dsh-settings` | `describe` |
+
+### 插件注入的宿主服务（服务名必须由宿主提供，成员必须存在）
+
+| 半区 | 服务名 | 读取的成员 | 提供包 |
+| --- | --- | --- | --- |
+| host | `webServer` | `register` | `@deepseek-ai/dsh-host-webserver` |
+| host | `systemPrompt` | `section` | `@deepseek-ai/dsh-system-prompt` |
+| host | `settings` | `configure` | `@deepseek-ai/dsh-settings` |
+| host | `settings` | `describe` | `@deepseek-ai/dsh-settings` |
+| host | `settings` | `mutate` | `@deepseek-ai/dsh-settings` |
+| host | `settings` | `writable` | `@deepseek-ai/dsh-settings` |
+| client | `slots` | `inject` | `@deepseek-ai/dsh-client-ui-renderer` |
+| client | `slots` | `register` | `@deepseek-ai/dsh-client-ui-renderer` |
+| client | `sessions` | `list` | `@deepseek-ai/dsh-api-session-controller` |
+| client | `sessions` | `binding` | `@deepseek-ai/dsh-api-session-controller` |
+| client | `sessions` | `models` | `@deepseek-ai/dsh-api-session-controller` |
+| client | `workspaces` | `list` | `@deepseek-ai/dsh-api-workspace-controller` |
+| client | `locale` | `register` | `@deepseek-ai/dsh-client-locale` |
+| client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
+| client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
+| client | `configForms` | `get` | `@deepseek-ai/dsh-client-ui-settings` |
 
 该脚本另带反向检查（源码不得引用宿主已撤的成员），用 `--probe-removed` 自测：它拿一组
 已知不存在的成员去扫源码，**必须报红**——否则说明检查本身失效了，而不是源码干净。
+服务节同样自带自测，用 `--probe-services`：它拿一个不可能存在的服务名与一个不可能存在
+的成员各喂一次，两次都必须报红。
 
 **两条使用纪律**（比表本身更重要）：
 
@@ -466,16 +499,22 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### host 半区（DSH 主进程）
 
-- `src/index.ts`：inject webServer/systemPrompt/settings；设置命名空间 + 设置/权限/看板/会话状态路由 + 公告/section 联动。**无图片路由**（见关键不变量）。
+- `src/index.ts`：inject webServer/systemPrompt/settings；`ConfigSchema`（两个字段都 `.volatile()`，
+  值一律经 `volatileValue` 读，绝不直接比较）→ 设置页即时生效；设置/权限/看板/会话状态/更新/
+  页面自报六条路由 + 公告 section 联动。**无图片路由**（见关键不变量）。`enabled` 只管
+  「浏览器半区挂不挂载」与「公告发不发」，**不管路由是否注册**——路由是把自己重新打开的通道。
 - `src/host/*-route.ts`：纯 `create*Handler`（可注入测试），服务一律 `ctx.get`。
 - `src/host/board-service.ts` + `board-route.ts`：**BoardDoc 真相服务**（持有 + storage hub `KvUnit` 持久化 + 先落盘后应答 + SSE；路由见命名矩阵；缺 hub 则 localStorage 模式）。合并文法见核心层 `board-doc.ts`。
 
 ### client 半区（浏览器）
 
-- `src/client/index.ts`：inject 六包；offline-first 挂载（Synced*Store 常驻 → 接线 →
-  `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；官方 seat 三处注册（`main`
+- `src/client/index.ts`：inject 七服务（含 `configForms`）；offline-first 挂载（Synced*Store 常驻 →
+  接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；官方 seat 三处注册（`main`
   面板 / `sidebar.panellist` 入口 / `settings.section` 设置页）；宿主面全经 `platform.ts`
-  （`buildApi` 钉端点，`tests/platform.spec.ts` 钉死）。
+  （`buildApi` 钉端点，`tests/platform.spec.ts` 钉死）。设置卡经 `ctx.configForms.get(id)`
+  读写本插件条目（`route-scope.ts` 已删，不再有自建设置通道）。
+- `route-base.ts`：**浏览器侧路由的唯一出口**（去掉开头斜杠，交给 `document.baseURI`）。
+  host 侧注册路径保持绝对；浏览器侧任何 `/api/...` 都必须经它，`tests/route-base.spec.ts` 扫描源码兜住。
 - `TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。`board-transport.ts`：
   fetch + EventSource（缺席降纯轮询）。
 
@@ -571,7 +610,8 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
    `dsh.taskBoard.preSync.v1`，见「同步域」迁移文法）。
 6. **生命周期纪律**：订阅/监听/定时器/observer 全部注册 disposer；DOM 失败
    console.error 不抛；`ctx.effect` 内创建的资源随 effect 清理。
-7. **独立自包含**：运行时依赖仅 `schemastery`（host Config schema）；不依赖兄弟
+7. **独立自包含**：运行时依赖仅 `@deepseek-ai/schemastery`（host Config schema——官方
+   fork 才有 `.volatile()`，不带作用域的那个包停在旧版本、没有这个方法）；不依赖兄弟
    插件；界面全部经宿主官方 seat（见「宿主契约表」），不依赖任何外部垫片。自打的
    属性只用来标记**自己的**子树（`data-dsh-taskboard-view` / `data-dsh-taskboard-panel`），
    不读写 shell 的 DOM 或类名。

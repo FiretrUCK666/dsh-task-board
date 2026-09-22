@@ -1,15 +1,17 @@
 /**
- * Host-contract check: every slot and service member this plugin depends on must
- * still be declared by the INSTALLED DSH, and every member the host REMOVED must
- * not be referenced by the plugin's source.
+ * Host-contract check: every slot, injected service and service member this
+ * plugin depends on must still be declared by the INSTALLED DSH, and every
+ * member the host REMOVED must not be referenced by the plugin's source.
  *
- * Why this exists (the failure it prevents): a host upgrade removed
- * `settings.plugin.item`, renamed `uiSession.pendingInteractions` to
- * `sessionStatus`, and dropped `ISessions.open`/`current`. None of those broke the
- * build — the plugin compiled against the previous SDK, `slots.inject` silently
- * no-ops for an undeclared slot, and a removed service member only throws at the
- * moment a user clicks. The result was a board that did not appear and a settings
- * form that did not exist, with nothing failing anywhere the team looks.
+ * Why this exists (the failure it prevents): a host upgrade can remove a slot, a
+ * service member or a whole service without breaking anything this repository
+ * runs. `slots.inject` silently no-ops for an undeclared slot, a removed member
+ * throws only at the moment a user clicks it, and a missing service leaves the
+ * plugin's fiber waiting forever — so a half can compile, typecheck and gate
+ * green while contributing nothing at runtime. The board did exactly that: the
+ * host half called a member the installed service no longer carried, `apply`
+ * threw before registering a single route or prompt section, and this check
+ * stayed green because its contract table named no host service at all.
  *
  * What this proves, and what it deliberately does not:
  *
@@ -24,6 +26,8 @@
  * DSH lives (a dev machine), which is where the contract is readable at all.
  *
  * usage: node scripts/verify-host-contracts.mjs [plugin-dir]
+ *        node scripts/verify-host-contracts.mjs [plugin-dir] --probe-removed
+ *        node scripts/verify-host-contracts.mjs [plugin-dir] --probe-services
  */
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { resolve, join, dirname } from 'node:path'
@@ -100,14 +104,34 @@ if (dsh === null) {
 
 const packagesDir = join(dsh, 'node_modules', '@deepseek-ai')
 
+/**
+ * Cached file text: the member, slot and service checks read the same install
+ * files, and a package body is large enough that reading it once per check would
+ * be the only slow thing here. An unreadable file is an empty string — every
+ * caller treats "no text" as "nothing found", and a path that exists is already
+ * checked separately.
+ */
+const textCache = new Map()
+function textOf(file) {
+  let text = textCache.get(file)
+  if (text === undefined) {
+    try { text = readFileSync(file, 'utf8') } catch { text = '' }
+    textCache.set(file, text)
+  }
+  return text
+}
+
 // --- read the contract declared by AGENTS.md ---------------------------------
 // The table is the plugin's OWN statement of what it depends on. Keeping it in the
 // contract document (rather than in a list buried in this script) is what makes a
 // reviewer see it, and what makes the script unable to quietly agree with itself.
+// Three row shapes are read, one per sub-section: a slot, a member read by name,
+// and an injected service with the member it is read through.
 
 const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8')
 const slots = []
 const members = []
+const services = []
 const absent = []
 {
   const section = agents.indexOf('## 宿主契约表')
@@ -116,6 +140,12 @@ const absent = []
     process.exit(1)
   }
   for (const line of agents.slice(section).split('\n')) {
+    // `| host | \`service\` | \`member\` | \`@pkg\` |` — the injected-service rows.
+    const service = /^\|\s*(host|client)\s*\|\s*`([a-zA-Z][a-zA-Z0-9.]*)`\s*\|\s*`([^`]+)`\s*\|\s*`(@[a-z0-9/-]+)`\s*\|\s*$/.exec(line)
+    if (service !== null) {
+      services.push({ half: service[1], name: service[2], member: service[3], pkg: service[4] })
+      continue
+    }
     // `| \`slot\` | usage |` — the first cell is the slot name. A slot name may be
     // dotless (`main`, `root`), so the pattern must not demand a dot.
     const slot = /^\|\s*`([a-z][a-z0-9]*(?:\.[a-zA-Z0-9]+)*)`\s*\|\s*[^|]+\|\s*$/.exec(line)
@@ -133,19 +163,60 @@ if (slots.length === 0 && members.length === 0 && absent.length === 0) {
   console.error('verify-host-contracts FAIL: the AGENTS.md contract table parsed to zero rows (its shape changed)')
   process.exit(1)
 }
+// The service rows are the only coverage this check has of the HOST half's
+// dependencies; parsing none of them means that coverage silently vanished, which
+// is exactly the state that let a dead host half gate green.
+if (services.length === 0) {
+  console.error('verify-host-contracts FAIL: the AGENTS.md contract table declares no injected services (its shape changed)')
+  process.exit(1)
+}
 
 // --- read what the installed host actually declares --------------------------
-// Slot names are declared in TWO forms, and both are real:
-//   - the typed contract files (`slot-contract.d.ts` / `slots.d.ts`), keys inside
-//     the SlotMap augmentation;
-//   - runtime declaration tables in a plugin's `lib/client.js` (an owner registers
-//     with a `children` table).
-// A slot is usable only when a RUNTIME owner declares it, so both are collected
-// and the runtime set is reported separately for diagnosis. Minified bundles may
-// write a dot as "\u002e", hence the two-pattern scan.
+// A slot is declared in exactly two shapes, and only these two are read:
+//   - a TYPED contract entry: `'name': { kind: ...; scope: ... }` inside the
+//     SlotMap augmentation of a package's `.d.ts` files;
+//   - a RUNTIME declaration: the same object shape as a key of a `children`
+//     table in a plugin's `lib/client.js` (the table the owner registers).
+// Both require `kind` AND `scope`. `kind` alone is not enough: other vocabularies
+// (method descriptors, event names, protocol steps) use it too, and counting
+// those inflates the declared set with names no slot owner ever declared.
 
-const declared = new Set()
-const declaredAtRuntime = new Set()
+/** The body of the object literal whose `{` sits at `open`; skips comments and strings. */
+function objectBody(text, open) {
+  let depth = 0
+  let quote = null
+  for (let i = open; i < text.length; i++) {
+    const c = text[i]
+    if (quote !== null) {
+      if (c === '\\') { i += 1; continue }
+      if (c === quote) quote = null
+      continue
+    }
+    if (c === '/' && text[i + 1] === '/') {
+      const nl = text.indexOf('\n', i)
+      i = nl === -1 ? text.length : nl
+      continue
+    }
+    if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i)
+      i = end === -1 ? text.length : end + 1
+      continue
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; continue }
+    if (c === '{') depth += 1
+    else if (c === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(open + 1, i)
+    }
+  }
+  return undefined
+}
+
+/** Whether an object body is a slot declaration (the two fields such an entry carries). */
+const isSlotEntry = (body) => /\bkind\s*:/.test(body) && /\bscope\s*:/.test(body)
+
+const typedSlots = new Set()
+const runtimeSlots = new Set()
 let scanned = 0
 for (const entry of existsSync(packagesDir) ? readdirSync(packagesDir, { withFileTypes: true }) : []) {
   if (!entry.isDirectory()) continue
@@ -162,26 +233,36 @@ for (const entry of existsSync(packagesDir) ? readdirSync(packagesDir, { withFil
   }
   const typeFiles = walk(join(pkgDir, 'lib', 'types'))
   for (const file of typeFiles) {
-    const text = readFileSync(file, 'utf8')
-    for (const m of text.matchAll(/^\s*'([a-z][a-z0-9.]*\.[a-zA-Z0-9.]+)'\s*:\s*\{/gm)) declared.add(m[1])
+    const text = textOf(file)
+    for (const m of text.matchAll(/^\s*'([a-z][a-z0-9]*(?:\.[a-zA-Z0-9]+)*)'\s*:\s*\{/gm)) {
+      const body = objectBody(text, m.index + m[0].length - 1)
+      if (body === undefined || !isSlotEntry(body)) continue
+      typedSlots.add(m[1])
+    }
   }
   const runtime = join(pkgDir, 'lib', 'client.js')
-  if (existsSync(runtime)) scanned += 1
-  if (existsSync(runtime)) {
-    const text = readFileSync(runtime, 'utf8')
-    // A declaration reads `"<key>": {` followed by `kind: "..."` — possibly after
-    // newlines/indentation, since the emitted table is pretty-printed, so the gap
-    // must allow arbitrary whitespace.
-    for (const m of text.matchAll(/"([a-z][a-z0-9.]*(?:\.[a-zA-Z0-9]+)*)"\s*:\s*\{\s*kind\s*:/g)) {
-      declaredAtRuntime.add(m[1])
-    }
-    // Minified bundles may escape the dot as `\u002e` inside the string literal.
-    for (const m of text.matchAll(/"([a-z][a-z0-9.\\.]*?)\\u002e([a-zA-Z0-9\\\\.]+)"\s*:\s*\{\s*kind\s*:/g)) {
-      declaredAtRuntime.add(`${m[1]}.${m[2]}`.replace(/\\u002e/g, '.'))
+  if (!existsSync(runtime)) continue
+  scanned += 1
+  const text = textOf(runtime)
+  for (const m of text.matchAll(/children\s*:\s*\{/g)) {
+    const table = objectBody(text, m.index + m[0].length - 1)
+    if (table === undefined) continue
+    // A segment after the dot may carry case (`conversation.chat.turnTail`), and a
+    // minified bundle may escape the dot as `\u002e` inside the key literal —
+    // hence two key patterns, both bounded to this children table.
+    const keys = [
+      ...[...table.matchAll(/"([a-z][a-z0-9.]*(?:\.[a-zA-Z0-9]+)*)"\s*:\s*\{/g)].map(match => ({ name: match[1], at: match })),
+      ...[...table.matchAll(/"([a-z][a-z0-9.\\.]*?)\\u002e([a-zA-Z0-9\\\\.]+)"\s*:\s*\{/g)]
+        .map(match => ({ name: `${match[1]}.${match[2]}`.replace(/\\u002e/g, '.'), at: match })),
+    ]
+    for (const { name, at } of keys) {
+      const body = objectBody(table, at.index + at[0].length - 1)
+      if (body === undefined || !isSlotEntry(body)) continue
+      runtimeSlots.add(name)
     }
   }
 }
-for (const name of declaredAtRuntime) declared.add(name)
+const declared = new Set([...typedSlots, ...runtimeSlots])
 
 // --- the checks --------------------------------------------------------------
 
@@ -215,11 +296,66 @@ for (const { pkg, member } of members) {
     failures.push(`package "${pkg}" is not installed under ${packagesDir}`)
     continue
   }
-  const found = packageTextFiles(pkgDir).some(file => readFileSync(file, 'utf8').includes(member))
+  const found = packageTextFiles(pkgDir).some(file => textOf(file).includes(member))
   if (!found) {
     failures.push(`member "${member}" of ${pkg} is not present in the installed DSH`)
   }
 }
+
+// --- the injected services, and the member each is read through ---------------
+// Two independent facts per row, because either one alone leaves the same hole:
+// the service NAME must have a provider declaration in the installed host (a
+// name nobody provides is a fiber that waits forever), and the MEMBER must still
+// be carried by the package the table names (a member that moved away throws at
+// the call site, and only there).
+
+/** Service name -> the packages declaring it as a cordis provider. */
+function providerIndex() {
+  const index = new Map()
+  for (const entry of existsSync(packagesDir) ? readdirSync(packagesDir, { withFileTypes: true }) : []) {
+    if (!entry.isDirectory()) continue
+    const pkg = `@deepseek-ai/${entry.name}`
+    for (const file of packageTextFiles(join(packagesDir, entry.name))) {
+      const text = textOf(file)
+      // `super(ctx, "name")` (a Service subclass) and `provide("name")` are the
+      // two shapes cordis registers a service name with.
+      for (const m of text.matchAll(/(?:super\([^)]{0,80},\s*|provide\(\s*)"([A-Za-z][A-Za-z0-9.]*)"/g)) {
+        if (!index.has(m[1])) index.set(m[1], new Set())
+        index.get(m[1]).add(pkg)
+      }
+    }
+  }
+  return index
+}
+
+/**
+ * Every finding for one set of service rows (empty = the contract holds).
+ * Split out so `--probe-services` can run the SAME code path on rows that cannot
+ * exist and require it to be red.
+ */
+function serviceFailures(rows) {
+  const providers = providerIndex()
+  const found = []
+  for (const { half, name, member, pkg } of rows) {
+    const pkgDir = join(packagesDir, pkg.replace(/^@[a-z0-9-]+\//, ''))
+    if (!existsSync(pkgDir)) {
+      found.push(`${half} half: the package the table names for service "${name}" is not installed (${pkg})`)
+      continue
+    }
+    const declaring = providers.get(name)
+    if (declaring === undefined) {
+      found.push(`${half} half: service "${name}" is injected, but no installed package provides it — the fiber waits forever and nothing this half contributes appears`)
+    } else if (!declaring.has(pkg)) {
+      found.push(`${half} half: service "${name}" is provided by ${[...declaring].sort().join(', ')}, not by ${pkg} as the contract table states`)
+    }
+    if (!packageTextFiles(pkgDir).some(file => textOf(file).includes(member))) {
+      found.push(`${half} half: member "${member}" is not present on service "${name}" in the installed ${pkg}`)
+    }
+  }
+  return found
+}
+
+failures.push(...serviceFailures(services))
 
 // The removal half: the plugin's source must not read members the host dropped.
 // With no removed-member rows left this loop is inert, so it can no longer be
@@ -248,7 +384,7 @@ for (const { pkg, member } of absent) {
   )
 }
 
-// --- the reverse check's own self-test ---------------------------------------
+// --- each self-test, for the checks a normal run cannot observe ---------------
 // A check that cannot fail proves nothing. `--probe-removed` feeds the same code
 // path a member that is guaranteed to be read by the source, and REQUIRES the
 // result to be red: a green run here would mean the scan is blind, not that the
@@ -268,10 +404,31 @@ if (args.has('--probe-removed')) {
   process.exit(0)
 }
 
+// `--probe-services` feeds the service check one name no package provides and one
+// member no package carries, and requires a finding for EACH. A green run means
+// the check cannot see the failure it exists for.
+if (args.has('--probe-services')) {
+  const probe = [
+    { half: 'host', name: 'dsh-task-board-no-such-service', member: 'describe', pkg: '@deepseek-ai/dsh-settings' },
+    { half: 'client', name: 'settings', member: 'dshTaskBoardNoSuchMember', pkg: '@deepseek-ai/dsh-settings' },
+  ]
+  const findings = serviceFailures(probe)
+  const seenName = findings.some(finding => finding.includes('dsh-task-board-no-such-service'))
+  const seenMember = findings.some(finding => finding.includes('dshTaskBoardNoSuchMember'))
+  if (!seenName || !seenMember) {
+    console.error('verify-host-contracts FAIL: the service check missed a service name or a member that cannot exist — the check is blind')
+    for (const finding of findings) console.error(`  - ${finding}`)
+    process.exit(1)
+  }
+  console.log(`verify-host-contracts service self-test OK: the check reacts (${findings.length} findings for a service name and a member that cannot exist)`)
+  process.exit(0)
+}
+
 // --- report ------------------------------------------------------------------
 
 notes.push(`host: ${dsh}`)
-notes.push(`slots declared by host: ${declared.size}; contracts declared by plugin: ${slots.length} slots, ${members.length} members, ${absent.length} removed-member rules`)
+notes.push(`slots declared by host: ${declared.size} (${typedSlots.size} typed contract entries, ${runtimeSlots.size} runtime children tables)`)
+notes.push(`contracts declared by plugin: ${slots.length} slots, ${members.length} members, ${services.length} injected services, ${absent.length} removed-member rules`)
 
 if (failures.length > 0) {
   console.error('verify-host-contracts FAIL')

@@ -61,19 +61,24 @@ export function Button({ variant = 'ghost', size, type = 'button', className, di
  * keyboard focus draws a soft ring around the track. Every on/off control on
  * the board (cruise, schedule enable) renders through this component.
  */
-export function Switch({ checked, onChange, label, title, disabled }: {
+export function Switch({ checked, onChange, label, title, disabled, describedBy }: {
   checked: boolean
   onChange: (next: boolean) => void
   label: string
   title?: string
   disabled?: boolean
+  /** Id of the node that states WHY the switch is unusable — the reason has to
+   *  be reachable on touch (there is no hover) and announced to assistive
+   *  technology, so it is a real reference rather than a tooltip. */
+  describedBy?: string
 }) {
   return (
-    <label className={css.switch} title={title}>
+    <label className={css.switch} title={title} aria-disabled={disabled === true ? true : undefined}>
       <input
         type="checkbox"
         checked={checked}
         disabled={disabled}
+        aria-describedby={describedBy}
         onChange={event => { onChange(event.target.checked) }}
       />
       <span className={css.switchTrack} aria-hidden="true">
