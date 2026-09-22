@@ -419,16 +419,18 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
 | 其余 host 路由 | `/api/dsh-task-board/session-state`、`/api/dsh-task-board/update`、`/api/dsh-task-board/client-report` |
 | host 存储单元名（storage hub json 后端） | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board.json`；平台 `UNIT_NAME_RE` 只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
-| 公告 section | `plugin:dsh-task-board`（order 200） |
+| 设置项 | `boardEnabled`（`Config` schema 里唯一的 volatile 布尔，默认开；关掉只是不把看板放上屏幕，插件与路由照常运行） |
 | **看板舞台 slot**（面板本体） | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
 | **侧栏入口 slot**（面板图标） | `sidebar.panellist`，`id: dsh-task-board`（**必须等于 `main` 的 key**，shell 靠它把行解析到舞台） |
 | localStorage 键（现为离线镜像 + 草稿 + 备份） | `dsh.taskBoard.v1` 等（**不得改名**，见「数据键稳定」） |
 
 **设置项没有自己的 slot，也没有自己的路由**：插件在 `Config` schema 里声明字段，插件市场
-（已安装）里这条插件自己的页面把它渲染成表单。一个插件一个设置页，开关与选项就跟插件本体
-放在一起——所以本插件**不再**注册 `settings.section`，**不再**有 `/api/<id>/settings`。
-`enabled` 这个自建开关也一并删掉了：插件市场的启用开关已经是激活状态的唯一真相，
-再来一个布尔值就是同一件事的第二份说法。
+（已安装）里这条插件自己的页面把它渲染成表单——一个插件一个设置页，开关跟插件本体放在
+一起。所以本插件**不**注册 `settings.section`，**不**注册 `/api/<id>/settings`，浏览器侧
+经宿主服务 `configForms.get('dsh-task-board')` 读同一个值。
+
+**本插件不向 agent 播报任何东西**：没有系统提示 section，因此**不**注入 `systemPrompt`，
+也没有对应的设置项。看板要靠自己出现在界面上被使用者看到，而不是靠往别人的提示词里塞话。
 
 挂载：`package.json` 声明 `dsh.bundle.patch` → `cordis.patch.yml`；安装命令
 `dsh plugin --profile web add @firetruck666/dsh-task-board`（本地开发用 `add .` 或
@@ -471,7 +473,6 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 半区 | 服务名 | 读取的成员 | 提供包 |
 | --- | --- | --- | --- |
 | host | `webServer` | `register` | `@deepseek-ai/dsh-host-webserver` |
-| host | `systemPrompt` | `section` | `@deepseek-ai/dsh-system-prompt` |
 | client | `slots` | `inject` | `@deepseek-ai/dsh-client-ui-renderer` |
 | client | `slots` | `register` | `@deepseek-ai/dsh-client-ui-renderer` |
 | client | `sessions` | `list` | `@deepseek-ai/dsh-api-session-controller` |
@@ -481,9 +482,15 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | client | `locale` | `register` | `@deepseek-ai/dsh-client-locale` |
 | client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
+| client | `configForms` | `get` | `@deepseek-ai/dsh-client-ui-settings` |
 
 宿主把这条目自己的 schema 渲染成设置表单，走的是宿主内部通道（插件市场直接读配置镜像），
-**不需要插件注册任何服务或路由**——所以这里没有 settings 那一节，插件也不该再声明它。
+**不需要插件注册任何服务或路由**。
+
+**每个注入都是负债**：声明了一个实际不用的服务，会在该服务缺席的部署里白等——那个
+半区永远不激活，什么也注册不出来。所以 `inject` 只列真正用到的：本插件**不**注入
+`settings`（配置由插件市场读写），也**不**注入 `systemPrompt`（本插件不向 agent 播报
+任何东西）。
 
 该脚本另带反向检查（源码不得引用宿主已撤的成员），用 `--probe-removed` 自测：它拿一组
 已知不存在的成员去扫源码，**必须报红**——否则说明检查本身失效了，而不是源码干净。
@@ -492,7 +499,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 **两条使用纪律**（比表本身更重要）：
 
-1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 界面全部经上面三个官方
+1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 界面全部经上面两个官方
    slot；自打的属性只标记**自己的**子树（`data-dsh-taskboard-view` /
    `data-dsh-taskboard-panel`），不读写 shell 的节点或类名——那是唯一不能靠文档兜住的
    脆弱面（shell 换实现即失效，且不报错）。
@@ -503,20 +510,21 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### host 半区（DSH 主进程）
 
-- `src/index.ts`：inject webServer/systemPrompt/settings；`Config`（导出名 load-bearing，字段 `.volatile()`，
-  值一律经 `volatileValue` 读，绝不直接比较）→ 插件市场详情页即时生效；权限/看板/会话状态/更新/
-  页面自报五条路由 + 公告 section 联动。**无图片路由、无设置路由**（见关键不变量）。
+- `src/index.ts`：inject 只有 `webServer`；`Config`（导出名 load-bearing，唯一字段 `boardEnabled`
+  标 `.volatile()`）→ 插件市场详情页即时生效；权限/看板/会话状态/更新/页面自报五条路由。
+  **不向 agent 播报任何东西、不注入 `systemPrompt`；无图片路由、无设置路由**。
 - `src/host/http-json.ts`：全部路由共用的信封与请求体读取（一个有界实现，禁各写一套）。
 - `src/host/*-route.ts`：纯 `create*Handler`（可注入测试），服务一律 `ctx.get`。
 - `src/host/board-service.ts` + `board-route.ts`：**BoardDoc 真相服务**（持有 + storage hub `KvUnit` 持久化 + 先落盘后应答 + SSE；路由见命名矩阵；缺 hub 则 localStorage 模式）。合并文法见核心层 `board-doc.ts`。
 
 ### client 半区（浏览器）
 
-- `src/client/index.ts`：inject 六服务；offline-first 挂载（Synced*Store 常驻 →
-  接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；官方 seat 两处注册（`main`
-  面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`
-  （`buildApi` 钉端点，`tests/platform.spec.ts` 钉死）。**被组合即启用**：条目不激活时
-  客户端半区根本不会被求值，所以这里没有、也不该有第二个开关。
+- `src/client/index.ts`：inject 七服务（含 `configForms`，读本插件条目的设置）；offline-first
+  挂载（Synced*Store 常驻 → 接线 → `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；
+  官方 seat 两处注册（`main` 面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`
+  （`buildApi` 钉端点，`tests/platform.spec.ts` 钉死）。**看板开关是活的闸门**：订阅
+  `configForms` 的快照，开就挂、关就整块释放（订阅、定时器、SSE 一起走），不必刷新页面；
+  插件市场的启用开关是更粗的一档（连插件一起卸下）。
 - `route-base.ts`：**浏览器侧路由的唯一出口**（去掉开头斜杠，交给 `document.baseURI`）。
   host 侧注册路径保持绝对；浏览器侧任何 `/api/...` 都必须经它，`tests/route-base.spec.ts` 扫描源码兜住。
 - `TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。`board-transport.ts`：

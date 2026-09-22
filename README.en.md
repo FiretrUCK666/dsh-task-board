@@ -103,7 +103,7 @@ It works once installed — no config file to edit, no declaration to write. The
 
 The one step you must take is **restarting `dsh web`** (the host half lives in the server process and is not loaded otherwise). All three install routes — npm, GitHub, local — behave identically here.
 
-Every setting has a default, so leaving them alone works fine. To stop the board from announcing itself in agent prompts, clear that checkbox on the plugin's own page: the change takes effect immediately, with no restart.
+**There is exactly one setting and it is on by default**, so leaving it alone works fine. Turn it off and the board stops being shown; turn it back on and it returns. **The change takes effect immediately — no page refresh, no restart.** It is not the same thing as the enable switch in the plugin manager: that one unloads the plugin entirely (its routes stop being served), while this one only takes the board off screen, leaving execution and scheduling running in the background.
 
 To remove it:
 
