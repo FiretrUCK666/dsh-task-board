@@ -138,19 +138,23 @@ agent 执行**，不必重复交代流程。三处互不自动同步：`git push
 **停手**（用户说「先别提交 / 只看效果」）：只做到第 6 步，不 commit、不 push。
 **贡献者版闭环**：第 1–6 步相同（含 bump），第 7–8 步改为推自己的分支并开 PR。
 
-### 发版（只有用户明确说「发版 / 发出去」才触发）——在每日闭环基础上追加
+### 发版（只有用户明确说「发版 / 发出去 / npm publish」才触发）——在每日闭环基础上追加
 
-9. `git tag v<版本>` + `git push origin v<版本>`。推 tag 即由 CI 自动构建、测试并发布
-   （`.github/workflows/release.yml`，走 npm Trusted Publisher / OIDC，无需验证码），
-   并从提交记录起草中文更新说明建 Release（已存在则跳过）。
-10. 需要补 Release 说明时用 `scripts/github-release.mjs`
-    （`GITHUB_TOKEN=<pat> node scripts/github-release.mjs <tag> <notes文件> --repo owner/name`）。
-    **正文写进 UTF-8 文件、由脚本按字节发送，不经 shell 拼命令行或请求体**（见硬性规范 10）；
-    脚本写入后回读比对，不一致即报错。
-11. 未配置 Trusted Publisher 时工作流会在 Publish 步骤失败（npm 对权限不足也返回 404），
-    此时退回手动 `npm publish --access public`，需要账号 2FA 验证码，**由账号持有人在自己
-    终端执行**（agent 准备好一切并给出确切命令）。**Publish 红了先看日志是不是 404 类错**，
-    是则先核对 Trusted Publisher 三项（以 `release.yml` 头注释为准），不要先怀疑代码。
+9. `git tag v<版本>` + `git push origin v<版本>`。**发版的剩余步骤全部由
+   `.github/workflows/release.yml` 完成，agent 不手动执行任何一步**：它重跑全 gate
+   （build / typecheck / test / verify）、校验 tag 与 `package.json` 版本一致、经
+   `scripts/draft-release-notes.mjs` 从提交记录起草中文说明（读上一个标签取区间，
+   正文写 UTF-8 文件、按硬性规范 10 不经 shell）并 `gh release create --notes-file`
+   创建 GitHub Release（用内置 `github.token`；已存在则跳过，幂等）、以 OIDC
+   （npm Trusted Publisher）发布，最后回读 registry 确认该版本真的可见（publish 退出 0
+   不等于已上架）。**正常路径不需要 PAT、不需要本机 npm 登录、不需要 gh CLI、
+   不需要 2FA**：不探测 `GITHUB_TOKEN`、不手动建 Release、不手动 `npm publish`；
+   Release 步失败就重跑工作流（幂等），不转手动脚本。
+10. **Publish 红了先看日志是不是 404 / ENEEDAUTH 类错**：那是 npmjs.com 上 Trusted
+    Publisher 未配置或配错（npm 保存时不校验，错字只在发布时暴露）。以 `release.yml`
+    头注释列的三项为准核对，不要先怀疑代码。确认未配置才退回手动
+    `npm publish --access public`：需要账号 2FA 验证码，**由账号持有人在自己终端执行**
+    （agent 准备好一切并给出确切命令）。
 
 ### 版本号与不变量
 
@@ -493,8 +497,9 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
    转义规则各平台不同（内容被吃掉或转义被改写）、行尾被平台改写。
    **做法**：用文件工具（`write` / `edit`）写内容，而不是 shell；确需脚本时让脚本按
    字节处理，并在写入后**回读比对**，不一致即报错。理由与平台无关——一个做法在某个
-   系统上跑通，不代表它在另一个系统上是同一个做法。发版说明已按此规则走（见上），
-   本规范把它提升为全项目通则。
+   系统上跑通，不代表它在另一个系统上是同一个做法。发版说明就按此规则走——起草脚本
+   写 UTF-8 文件、工作流用 `--notes-file` 按文件发送（见发版段），本规范把它提升为
+   全项目通则。
 11. **双端同治（移动端不是一等公民之外的二等公民，而是同一等）**：任何 UI、交互、
     文案、动效改动，**必须同时给出桌面与窄屏（手机）两档的结论**，且只能用
     「换行 / 换列 / 让位 / 短名 / 折叠 / 提高地板」表达——**禁止靠藏掉标签、藏掉
