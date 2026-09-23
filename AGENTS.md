@@ -47,352 +47,205 @@
 
 ## 本文件的定位与编辑规则
 
-**本文件的地位**：随仓库走，是**项目的契约**，不是某一个人的私有笔记。它描述「这个项目
-是什么、要求什么」，而不是「谁在维护它」。这条区分决定了本文能写什么：
+本文件是**项目的契约**（面向 AI），随仓库走，描述「这个项目是什么、要求什么」，不描述
+「谁在维护它」。这条区分决定它写什么：**能写**机制、架构、不变量、硬性规范、构建/测试/
+发布该做什么；**不能写**账号、远端、作用域这类取值，以及一次性的版本号、日期、决定。
 
-| 能写（对任何接手者都成立） | 不能写（随人而变） |
-| --- | --- |
-| 机制、架构、不变量、硬性规范 | 某个账号的用户名、邮箱、npm 作用域 |
-| 构建/测试/发布**该做什么、按什么顺序** | 推送目标、发布目标这些**取值** |
-| 为什么这样要求（意图与边界） | 一次性的版本号、日期、某人当时的决定 |
+**取值一律现场读**：仓库地址、包名、远端、署名都从 `package.json` 的 `name` /
+`repository.url`、`git remote -v`、`git config user.name`、`npm whoami` 取。仓库是这些
+事实的唯一权威来源，改真实配置即可，本文不必跟着改。**这条只管本文**：README 与
+CONTRIBUTING 给人看、要能直接复制粘贴，因此必须写具体命令（易主时改那几处）。
 
-**操作者取值一律现场取**，正文里凡是需要具体值的地方（仓库地址、包名、远端、署名），
-都从仓库自身读：`package.json` 的 `name` / `repository.url`、`git remote -v`、
-`git config user.name`、`npm whoami`。**仓库是这些事实的唯一权威来源**——换人、换
-remote、换 npm 作用域时，改这些真实配置即可，本文不需要跟着改，也不会失准。
+**本文是活的**：与代码不符时以「本文意图 + 代码现状」为准，并修正本文。出现下列情况时
+AI 应直接改本文并提交，而不是绕过它、只做口头约定、或把特殊处理写死进代码：规则过时或
+与代码不符；用户要求调整约定；出现会反复发生而本文覆盖不到的场景；本文表述有歧义。
 
-**这条只管本文，不管给人看的文档**。README 与 CONTRIBUTING 面向的使用者和贡献者，
-要能直接复制粘贴，因此**必须写具体地址与命令**；易主时跟着改一次即可（改动集中在
-安装命令与 Issue 链接几处）。区分标准是**读者是谁**：读者是 AI（需要推理、会读仓库）
-就现场取值，读者是人（需要照做）就给现成命令。
+**编辑本文时**：面向 AI（专业、准确、可执行，不写科普）；与代码一致（改行为就同步描述）；
+写意图不写快照（表达「为什么」与「边界」而不是记录历史）；精炼；遵守硬性规范（禁 emoji）；
+涉及用户可见能力或命令时同步 README。
 
-**别人 fork 之后怎么办**：直接沿用即可。本文的机制与规范描述的是这个项目的做法，对
-任何接手者同样成立；而所有"取值"都是现场读的，会自动指向他自己的仓库与账号。他若想改
-工作方式（例如换分支模型、换 CI），按下面的编辑规则改本文即可——这正是本文"是活的"
-的含义。**因此本文放在仓库里的意义不只是备份**：它是接手者（以及接手者的 AI）理解这个
-项目的最短路径；哪天仓库只剩本文和代码，也不会有"只有原作者才知道"的隐性约定。
+### 几份文档的分工
 
-**本文件是活的**：它随项目演进被更新、增删、重构，不是一份永不变化的快照。
-会话中若发现本文与代码现状不一致，以「本文意图 + 代码现状」为准，并按下面规则修正本文。
+| 文档 | 回答什么 | 权威来源 | 是否随包发出 |
+| --- | --- | --- | --- |
+| `README.md` / `.en.md` | 怎么装、怎么用、坏了怎么办 | 随包发出，面向使用者 | 是，改动即用户可见 |
+| `PRODUCT.md` | 为谁做、做到什么算成功、哪些约束不许破 | 用户确认的产品事实 | 否 |
+| `DESIGN.md` | 长什么样、为什么这样长、新界面怎么不跑偏 | **代码** | 否 |
+| `AGENTS.md`、`CONTRIBUTING.md` | 给 AI 与接手者的说明 | 本文即契约 | 否 |
 
-**AI 有权编辑本文件**。出现以下情况时，AI 应直接更新本文件（并提交到 git），
-而不是绕过它、只做口头约定、或把特殊处理写死进代码：
-
-- 规则过时或与代码行为不符；
-- 用户要求调整项目约定；
-- 发现本文无法覆盖的新场景，且该场景会反复出现；
-- 本文表述不清、导致理解歧义。
-
-**编辑本文件的小规矩**：
-
-- 面向 AI 阅读：专业、准确、可执行；不写面向终端用户的科普内容（用户要求大白话时，
-  在对话中解释，不写进本文件）。
-- 与代码一致：修改项目行为后，若本文描述失准，须同步修正；发现过时描述应主动更新。
-- 写意图不写快照：优先表达「为什么」与「边界」，让未来会话能推理到未覆盖的情形；
-  避免堆砌一次性补丁式的例外条款，避免记录无意义的日期/版本号。
-- 精炼：不重复、不冗余；结构清晰（标题层级 / 表格 / 代码块）。
-- 遵守项目硬性规范（禁 emoji 等）；涉及用户可见能力或命令变化时，同步更新 README。
-
-**文档同步**：README 面向人（能力 / 安装 / 使用 / 命令），本文件面向 AI（机制 / 规范 /
-流程），两者描述同一项目。AI 修改项目或本文件后，应检查 README 是否仍准确，
-不匹配时同步更新并提交。
-
-**产品与视觉文档**：除 README 外还有两份**同时给人看与给 AI 看**的文档——`PRODUCT.md`
-（产品真相：用户、目标、定位、绑定约束、原则）与 `DESIGN.md`（视觉系统：令牌、排版、
-布局、组件契约、Do/Don't）。分工是：
-
-| 文档 | 回答什么 | 权威来源 |
-| --- | --- | --- |
-| `README.md` / `.en.md` | 怎么装、怎么用、坏了怎么办 | 随包发出，面向使用者与贡献者 |
-| `PRODUCT.md` | 为谁做、做到什么算成功、哪些约束不许破 | 用户确认的产品事实 |
-| `DESIGN.md` | 长什么样、为什么这样长、新界面怎么不跑偏 | **代码**（它记录现状，代码是规范源） |
-| `docs/`、`AGENTS.md` | 给 AI 与接手者的说明 | 随人随事，不进包 |
-
-**冲突时以代码为准**：`DESIGN.md` 是**对现状的记录**，不发明新世界。改动使它与代码不符
-时，改 `DESIGN.md` 去对齐代码，而不是让代码迁就文档。`PRODUCT.md` 相反——它是产品真相，
-代码若与它矛盾，是代码该改。
-
-**这两份文档不触发版本号变更**：它们不在 `package.json` 的 `files` 清单里，**不随包
-发出**，按 bump 的判据（使用者会不会看到）不 bump；改完只提交，不抬号。README 相反，
-它随包发出，改一个字都要 bump。
-
-**本文件不复制它们的内容**：本节只记**它们存在、谁是权威、何时同步**；事实本身住在各自
-文件里。本文件是索引，不是副本——把内容抄进来，等于制造两份会漂移的真相。
-
-**这两份文档用中文写**（与本文一致）：它们的第一读者是接手者与 AI，不是终端用户，
-因此不需要英文版，也不随 npm 页面发布。
-
-**双语说明要成对维护**：`README.md` 与 `README.en.md` 是**同一份文档的两个语言版本**，
-不是两份文档，因此：
-
-- **两份都随包发出、都展示在 npm 页面上**，改任何一份都算用户可见变化，都要 bump 版本号。
-- **漂移是这类文档的主要失效方式**——一次改动只更新了一份，两份说着不同的事，而读者
-  不知道自己看的那份是不是最新的。**所以改一份时必须打开另一份一起看。**
-- **中文版是权威**，英文版是它的翻译；两者不一致时以中文版为准，并同步英文版。
-- **不要机械对译**：中英文读者关心的问题不同（安装来源、可用平台、常见报错都可能不一样），
-  逐句翻译会产出一份读起来像翻译腔、又没回答本地读者问题的文档。
-- **改完要能回答一句话**：「另一份同步了吗？」——同步了就说改了哪几处；没同步就说清
-  为什么（例如那条内容只对其中一种语言的读者有意义）。**答不上来，就是漏了。**
-
-**派生内容用工具同步，不手工维护**：两份 README 各有一个**目录**，它完全由各节标题
-决定，因此不手写。用 `scripts/sync-toc.mjs` 生成，插在成对标记之间——
-
-```sh
-pnpm toc    # 改完 README 结构后重跑，目录即与标题同步
-```
-
-**增删或改名任何二级标题之后必须跑一次**，否则 `pnpm verify` 会红（它内含 `--check`，
-因此发版前也拦得住）。不要手工编辑标记之间的内容——下次生成会覆盖它。
-
-锚点由工具按 GitHub 的算法算（中文原样保留、标点去掉、空格变连字符）。手工抄最容易
-出错的两种：**带序号的标题**（`## 1. 安装` 的锚点是 `#1-安装`，中间那个点会消失）、
-**带 emoji 的标题**（emoji 不进锚点）。写错的表现是「点了没反应」，不报错，所以交给工具。
-
-**徽章**同理属于派生内容（由外部服务决定），但**不进自动检查**：它依赖网络，放进去会因
-对方抖动而误报。规则是**写之前先验一遍能显示再写**。已确认：本仓库是私有的，
-**GitHub 系列徽章（星标、许可、发布）全部显示不出来**，所以只用静态徽章与 npm 版本徽章。
-
-`scripts/sync-toc.mjs` 由 `project-forge` skill 提供，为保持本项目**独立自包含**
-（硬性规范 7）而在此留一份副本。升级该工具时以 skill 里的那一份为准，覆盖过来即可。
+- **冲突时以代码为准**：`DESIGN.md` 记录现状，不发明新世界——改它去对齐代码，不让代码迁就它。
+  `PRODUCT.md` 相反：代码与它矛盾时改代码。
+- **不随包发出的文档不 bump 版本**（改完只提交）；README 随包发出，改一个字都要 bump。
+- **中文版是权威**，英文版是它的翻译；两份是同一份文档的两个语言版本，改一份必须打开另一份
+  一起看，且不要机械对译（两种语言的读者关心的问题不同）。改完要能回答「另一份同步了吗」。
+- **本文是索引，不是副本**：只记别的文档存在、谁是权威、何时同步，不抄内容。
+- **派生内容用工具生成**：两份 README 的目录由 `pnpm toc`（`scripts/sync-toc.mjs`）写在
+  成对标记之间——增删或改名任何二级标题后必须重跑，否则 `pnpm verify` 会红（它内含
+  `--check`）。锚点由工具按 GitHub 算法算，手抄最容易错的是带序号与带 emoji 的标题，
+  写错表现为「点了没反应」且不报错，所以不要手写。
+- **徽章依赖外部服务，不进自动检查**（会因对方抖动误报）：写之前先验一遍能显示再写。
+- `scripts/sync-toc.mjs` 由 `project-forge` skill 提供，为保持**独立自包含**（硬性规范 7）
+  在此留一份副本；升级时以 skill 里那份为准，覆盖过来。
 
 ## 环境与上下文（以实际环境为准，不依赖固定值）
 
-- 宿主：DeepSeek Harness (DSH) Web GUI，运行在用户本机。DSH 的一切皆插件；本插件以
-  cordis 插件形态存在。平台与用户名不写死：需要时用命令发现（`process.platform`、
-  `os.homedir()`），不要假设具体值。
-- 项目根：本文件所在目录。DSH 数据根：`$DSH_HOME` 优先，否则主目录下 `.dsh`
-  （由 `os.homedir()` 推导）。激活 profile：`profiles` 下的目录（以实际目录为准）。
-  本插件的挂载方式**按角色不同**（见「先确认角色」）：维护者用 `link:<本目录>` 长期挂载；
-  贡献者用 `dsh plugin --profile web add .` 把当前 checkout 挂进自己的 profile 调试即可，
-  提交 PR 不需要改动任何人的挂载。
-- `~/.dsh/cordis.patch.yml`：合法状态 = 不存在，或顶层 YAML 数组（存在但为空会令
-  dsh 启动失败）。它**不属于任何插件**：它是使用者自己的覆盖层，最后叠加，用来覆盖或
-  关掉某一条目。插件的行由插件包自己带（`dsh.bundle.patch` → 包内 `cordis.patch.yml`），
-  安装时由 `dsh plugin add` 把包登记进 `dsh.profile.bundles` 即可，**不需要往这个文件里写
-  任何东西**；插件管理页的开关则按需往它写一条 `- id: <插件id>  disabled: true`。
-  旧 `~/.dsh/settings.yaml` 只在首次启动导入一次，导入后改名 `settings.yaml.imported`，
-  永不重跑；导入失败的那一节只留一行 warn，不会重试。
-- **本插件没有设置项**：不在 profile 里存 `config`，因此上面那段"字段要标 `.volatile()`"
-  的机制与本插件无关——它是给有设置项的插件用的。本插件的开关是 profile 行的 `disabled`。
-- 兄弟插件：本目录所在 `Plugins` 目录下的平级独立插件（用目录扫描发现）；与本项目
-  完全独立、互不依赖、互不引用。
-- 生效规则：host 半区改动需重启 `dsh web`；client 半区改动刷新页面即可。
+- 宿主：DeepSeek Harness (DSH) Web GUI，本机运行；一切皆插件，本插件以 cordis 插件形态
+  存在。平台与用户名不写死——需要时用 `process.platform`、`os.homedir()` 现场发现。
+- 项目根：本文件所在目录。DSH 数据根：`$DSH_HOME` 优先，否则 `os.homedir()` 下的 `.dsh`；
+  激活 profile 是 `profiles` 下的目录。挂载方式见「先确认角色」。
+- **生效规则**：host 半区改动需重启 `dsh web`；client 半区改动刷新页面即可。
+- 兄弟插件：本目录所在 `Plugins` 下的平级独立插件，与本项目互不依赖、互不引用。
 
 ## 版本管理与发布（必守）
 
-本项目是「本地仓库 + 远端 `origin` + npm 包」三处结构。**维护者只描述需求，git 与发布
-操作由 agent 代为执行**，不必重复交代流程。三处互不自动同步，各自由下面的动作推进。
+本项目是「本地仓库 + 远端 `origin` + npm 包」三处结构。**维护者只描述需求，git 与发布由
+agent 执行**，不必重复交代流程。三处互不自动同步：`git push` 让从 GitHub 源安装的人立刻
+可更新；tag + Release 立版本节点并写更新说明；`npm publish` 更新 npm 上的版本（市场的更新
+提示也读它）。**未发布 ≠ 别人拿不到**——push 之后 GitHub 源安装的人就已经拿到了。
 
 ### 先确认角色（涉及推送/发布前先做一次）
 
-同一份本文，两种人会读：**维护者**（仓库与 npm 包都归他）与**贡献者**（clone 或 fork
-别人的仓库来改）。两者能做的动作不同——**推 main、打 tag、发布这三件事只属于维护者**。
-判断不靠问，靠仓库自身的事实（沿用本文「取值现场取」的同一套原则）：
+**推 main、打 tag、发布只属于维护者**，判断不靠问，靠仓库自身的事实：
 
 | 检查 | 维护者 | 贡献者 |
 | --- | --- | --- |
-| `npm whoami` 与 `package.json` name 的作用域段（`@<scope>/…`） | 一致 → 他是这个包的发布者 | 不一致或未登录 → 发不了 |
-| `git remote get-url origin` 与 `package.json` 的 `repository.url` | 指向正本仓库 → 有写权限 | 指向自己的 fork，或没有 origin → 推不进正本 |
+| `npm whoami` 对得上 `package.json` name 的作用域段 | 是 | 否 |
+| `git remote get-url origin` 与 `package.json` 的 `repository.url` 指向同一正本仓库 | 是 | 否 |
 
-**两项都过 = 维护者**，走本文全部流程，含 tag 与发布。
-**任一不过 = 贡献者**：开发、构建、测试、改文档一律照本文做，但**到此为止**——把改动推到
-自己的分支并开 PR，**不要** tag、不要建 Release、不要 `npm publish`（没有权限，且会搅乱
-正本的版本号）。PR 里的 CI 只跑检查不跑发布（钥匙只在正本仓库的 tag 事件里有，fork 的请求
-天然拿不到——既不泄密，也不会被卡住）。贡献者的清单见 `CONTRIBUTING.md`。
-**判断不了时按贡献者走**：这是更安全的一次错误，代价只是少做一步发布。
+**两项都过 = 维护者**，走全部流程。**任一不过或判断不了 = 贡献者**（更安全的一次错误）：
+开发、构建、测试、改文档照本文做，但**到此为止**——推自己的分支并开 PR，**不** tag、**不**
+建 Release、**不** `npm publish`（没权限，且会搅乱正本的版本号）。清单见 `CONTRIBUTING.md`。
 
-### 三种触发与对应动作
-
-**日常（默认，用户描述需求即触发）**——一次改到远端，不打标签：
+### 日常（默认，用户描述需求即触发）——一次改到远端，不打标签
 
 1. `git status` 确认工作区；有未提交改动先存一个「改前存档点」。
 2. 改代码。
 3. `pnpm typecheck` + `pnpm test`。
-4. 用户可见改动（行为/UI/文案/修复）→ bump `package.json` patch，**只抬号不打标签**，
-   攒到发版里程碑再一次推出去（标签是里程碑，不是提交的附庸）。
-   **判断标准是「使用者会不会看到」**，不是「改的是代码还是字」：
+4. 用户可见改动 → bump `package.json` patch，**只抬号不打标签**（标签是里程碑，不是提交的
+   附庸）。判据是**使用者会不会看到**：
 
    | 要 bump | 不 bump |
    | --- | --- |
-   | 行为、界面、交互、报错文案 | 重构、测试、构建脚本 |
-   | **随包发出的说明**（README、README.en.md——npm 页面上展示的就是它，装完后也在包内） | **不进包的内部文档**（AGENTS.md、CONTRIBUTING.md） |
+   | 行为、界面、交互、报错文案、随包发出的 README | 重构、测试、构建脚本、不进包的内部文档 |
 
-   最容易判错的是最下面一行：同样叫「文档」，README 是**产品表面**（使用者按它判断
-   能不能用、怎么装），改名一个字都算用户可见；AGENTS.md 只是给 AI 的契约，改了不影响
-   使用者。前者不 bump 就会出现「仓库里的说明已经改了，npm 上还是旧的」——已发生过。
+   （同样叫「文档」，README 是产品表面，改一个字都算用户可见；`AGENTS.md` 只是给 AI 的契约。）
 5. `pnpm build`（**版号在 build 时进包**，顺序不能颠倒）。
 6. `pnpm verify`。
-7. `git add -A && git commit`——提交信息简短说明本次改动（中文或英文均可，禁止 emoji）。
-   **`lib/` 与产生它的 src 改动必须同一次提交**。
+7. `git add -A && git commit`——提交信息简短说明本次改动（禁 emoji）。**`lib/` 与产生它的
+   src 改动必须同一次提交**。
 8. `git push origin main`。
 
-**发版（只有用户明确说「发版 / 发出去」才触发）**——在上面的基础上追加：
+**停手**（用户说「先别提交 / 只看效果」）：只做到第 6 步，不 commit、不 push。
+**贡献者版闭环**：第 1–6 步相同（含 bump），第 7–8 步改为推自己的分支并开 PR。
 
-9. `git tag v<版本>` + `git push origin v<版本>`。
-10. 建 GitHub Release，正文写**人话更新说明**（用户看的是这个；市场的新版说明优先读
-    Release，其次提交记录，最后 npm 发布时间。仓库里不放 CHANGELOG.md）。
-    **推 tag 即由 CI 自动建**（`release.yml` 从提交记录起草中文说明，已存在则跳过）。
-    `scripts/github-release.mjs` 只作补漏路径（tag 推得比 job 早、或 job 失败时手动跑：
-    `GITHUB_TOKEN=<pat> node scripts/github-release.mjs <tag> <notes文件> --repo owner/name`）。
-    规则是**非 ASCII 正文不经 shell 传递**：写进
-    UTF-8 文件，由脚本按字节发送。理由与平台无关——shell 的引用与编码规则各不相同（同一条
-    命令在不同系统上行为不同），凡把中文拼进命令行或由 shell 拼请求体，都可能被静默改写；
-    而这类损坏的共性是**API 仍返回 2xx**，只有打开页面才看得出。脚本另在写入后回读比对，
-    不一致即报错。要发英文说明也用同一入口，理由相同：少一条需要分平台验证的路径。
-11. `npm publish --access public`（需要 npm 账号的 2FA 验证码，见下）。
+### 发版（只有用户明确说「发版 / 发出去」才触发）——在每日闭环基础上追加
 
-**停手（用户说「先别提交 / 只看效果」）**——只做到第 6 步，不 commit、不 push。
-这条对两种角色都成立（贡献者本来也只做到这里）。
-
-**贡献者版闭环**：第 1–6 步完全相同（含 bump——PR 里带上版本号是一致的做法，接不接受
-由维护者定），第 7–8 步改为**推自己的分支并开 PR**，不落后面的 tag 与发布。
-
-### 三处各管什么（不要混为一谈）
-
-| 动作 | 效果 | 谁能感知 |
-| --- | --- | --- |
-| `git push` | 远端仓库更新 | 从 GitHub 源安装的人立刻可更新（市场比对 commit） |
-| tag + GitHub Release | 立版本节点 + 写更新说明 | 用户能看到该版本的说明 |
-| `npm publish` | npm 上的版本更新 | 从 npm 源安装的人可更新；市场的更新提示也读 npm 版本号 |
-
-push 之后 npm 不会自动变化，npm 发布之后远端也不会自动变化。**未发布 ≠ 别人拿不到**：
-从 GitHub 源安装的人在你 push 的瞬间就能拿到最新代码。
+9. `git tag v<版本>` + `git push origin v<版本>`。推 tag 即由 CI 自动构建、测试并发布
+   （`.github/workflows/release.yml`，走 npm Trusted Publisher / OIDC，无需验证码），
+   并从提交记录起草中文更新说明建 Release（已存在则跳过）。
+10. 需要补 Release 说明时用 `scripts/github-release.mjs`
+    （`GITHUB_TOKEN=<pat> node scripts/github-release.mjs <tag> <notes文件> --repo owner/name`）。
+    **正文写进 UTF-8 文件、由脚本按字节发送，不经 shell 拼命令行或请求体**（见硬性规范 10）；
+    脚本写入后回读比对，不一致即报错。
+11. 未配置 Trusted Publisher 时工作流会在 Publish 步骤失败（npm 对权限不足也返回 404），
+    此时退回手动 `npm publish --access public`，需要账号 2FA 验证码，**由账号持有人在自己
+    终端执行**（agent 准备好一切并给出确切命令）。**Publish 红了先看日志是不是 404 类错**，
+    是则先核对 Trusted Publisher 三项（以 `release.yml` 头注释为准），不要先怀疑代码。
 
 ### 版本号与不变量
 
 - 三档语义：patch（修补、小改动，日常默认）/ minor（明显新功能）/ major（大改版）。
-- **单调递增，永不复用**：已 `npm publish` 的版本号不能再发第二次。npm 上的已发布版本
-  无法删除，只能发新版本修正。
+- **单调递增，永不复用**：已 `npm publish` 的版本号不能再发第二次（已发布的版本删不掉，
+  只能发新版本修正）。
 - **已推送的历史不改写**：不用 `git push --force`、不 rebase 已推送的提交。
 - 回滚分档：未提交 → 丢弃；已提交未推送 → `git reset --hard <存档点>`；已推送 →
-  `git revert`（不改写历史）；已发 npm → 只能发新版本修回。
-- 用户可见改动完成后，**回复用户只报版号**（用户在已安装插件列表看号，板内任何位置不
-  显示版本号）。（与「文档不记版本号快照」不冲突：那条禁的是文档里写「某版修了某事」，
-  这里管的是包版本号递进。）
+  `git revert`；已发 npm → 只能发新版本。
+- 用户可见改动完成后，**回复用户只报版号**（板内任何位置不显示版本号）。
 
 ### 身份与发布前检查
 
-- **插件 id 与包名是两件事**，见「命名矩阵」。改名只动包身份，不动 id 与数据键。
-- **本文件不绑定具体账号**：仓库与包可能易主、复用或由他人接手，因此本文只写"怎么查"，
-  不写死 GitHub 用户名、npm 作用域或邮箱。需要具体值时现场读 `package.json` 的
-  `name` / `repository.url`（它们是这些身份的唯一权威来源），或 `git config user.name`、
-  `npm whoami`。下面的步骤里凡是出现账号名的地方，都按这个方式取。
-- 提交身份：`user.name` 用仓库所有者的常用署名，`user.email` 用 GitHub 的 noreply 地址
-  （形如 `<id>+<login>@users.noreply.github.com`，从 `package.json` 的仓库地址或
-  `git config` 现场确认，不写死具体值，避免暴露私人邮箱）。
-- 发布前必查：`pnpm verify`（含产物不得出现本机路径、不得出现凭据、无 emoji 三项审计）；
-  `npm pack` 产物装进隔离 profile 能真实加载，不用 `link:` 代替。
-- **发布方式优先可信发布（OIDC）**：仓库已带 `.github/workflows/release.yml`，推 tag 即
-  自动构建、测试并发布，无需人工验证码。前提是该包在 npm 网站上配置了对应的
-  Trusted Publisher（组织/用户名、仓库名、工作流文件名 `release.yml`、允许 `npm publish`）。
-  未配置时工作流会在 Publish 步骤失败（npm 返回 404 ── 权限不足时它不区分"无权"与"不存在"），
-  此时退回手动发布：`npm publish --access public`，需要账号 2FA 的一次性验证码，
-  **由账号持有人在自己终端执行**（agent 准备好一切并给出确切命令）。
-  **Publish 红了先看日志是不是 404 类错**——是则先对 Trusted Publisher 三项（以 `release.yml`
-  头注释为准），不要先怀疑代码。
-- 不提交：`node_modules/`；**`lib/` 必须提交**（安装时不执行构建，缺了别人起不来）。
+- **插件 id 与包名是两件事**（见「命名矩阵」）：改名只动包身份，不动 id 与数据键。
+- 提交身份：`user.name` 用仓库所有者常用署名；`user.email` 用 GitHub noreply 地址
+  （`<id>+<login>@users.noreply.github.com`，从仓库地址或 `git config` 现场确认），
+  不写死具体值，避免暴露私人邮箱。
+- 发布前必查 `pnpm verify`（含产物不得出现本机路径、不得出现凭据、无 emoji 三项审计），
+  并把 `npm pack` 产物装进隔离 profile 真实加载一遍，不用 `link:` 代替。
+- 不提交 `node_modules/`；**`lib/` 必须提交**（安装时不执行构建，缺了别人起不来）。
 
 ### 依赖版本同步（硬性，不必每次交代）
 
-SDK 版本**必须跟随实际运行的 DSH**──不写死、不靠宽松范围蒙过去，每次都在现场查。
-本节只写**规律与查法**，不写具体版本号（版本号会过期，写进来就是下一个坑）。
+**SDK 版本必须跟随实际运行的 DSH**，每次现场查，不写死、也不靠宽松范围蒙过去。两条规律：
 
-两条必须知道的规律：
+- **SDK 与 DSH 本体同号**：`@deepseek-ai/dsh-*` 的版本与正在运行的 DSH 一致；`@deepseek-ai/cordis`
+  走自己的线，不与本体同号。**个别包会停更**，所以每个包都要单独确认目标版本确实存在。
+- **npm 的 `latest` dist-tag 不可信**（可能停在很旧的版本）。**不得用 `npm view <pkg> version`
+  判断最新**，一律 `npm view <pkg> versions --json` 取完整列表，从末尾找目标版本。
 
-- **SDK 与 DSH 本体同号**：`@deepseek-ai/dsh-*` 的版本号与正在运行的 DSH 一致；
-  `@deepseek-ai/cordis` 走自己的一条线，不与本体同号。**个别包会停更**（不再跟随本体
-  出号），所以每个包都要单独确认目标版本确实存在，不能假定"同号"普遍成立。
-- **npm 的 `latest` dist-tag 不可信**：这些包的 `latest` 可能停在很旧的版本，而实际
-  已发布更新的版本。因此**不得用 `npm view <pkg> version` 判断最新**（它读的就是
-  `latest`）。一律用 `npm view <pkg> versions --json` 取完整列表，从末尾找目标版本。
+同步动作（发现或执行 DSH 升级后主动做）：
 
-同步动作（发现或执行 DSH 升级后主动做，不必等要求）：
-
-1. 读**实际运行的** DSH 版本，作为目标版本：
-   `node -p "require('<dsh 安装目录>/package.json').version"`（安装目录用
-   `require.resolve` 或 `npm root -g` 现场求，不要写死）。
-2. 逐个包确认该版本存在（见上「规律」），再写进 `package.json` 的 `devDependencies`
-   （**只动这里**）。**不要顺手改 `peerDependencies` 与 README 的下限**——那是另一个
-   概念，规则见下节。
-3. `pnpm install` —— pnpm 会自动把新版本补进 `pnpm-workspace.yaml` 的
-   `minimumReleaseAgeExclude`（新版本未过发布冷静期，不加会被拦）。
-4. **迁移破坏性变更**：同步后 `pnpm typecheck` + `pnpm test` 必须全绿。跨版本升级
-   常伴随 API 改名/移除，类型报错就是信号──按新契约改写，不要用 `any` 绕过。
-   `pnpm test` 里若有官方文法镜像的 spec，其期望值也要同步（那是逐字镜像，不是偏好）。
-5. 重新构建并**验证运行时可加载**：`lib/index.js` 必须能在该 DSH 上 import 成功
-   （`node -e "import(...)"`），`lib/client.js` 的注册 id 必须等于包名（见下）。
+1. 读**实际运行的**版本作为目标：`node -p "require('<dsh 安装目录>/package.json').version"`
+   （安装目录用 `require.resolve` 或 `npm root -g` 现场求）。
+2. 逐个确认该版本存在，再写进 `package.json` 的 `devDependencies`（**只动这里**，不要顺手改
+   `peerDependencies` 与 README 的下限）。
+3. `pnpm install`（pnpm 会自动把新版本补进 `pnpm-workspace.yaml` 的
+   `minimumReleaseAgeExclude`，未过冷静期不加会被拦）。
+4. **迁移破坏性变更**：`pnpm typecheck` + `pnpm test` 必须全绿。跨版本升级常伴随 API 改名或
+   移除，类型报错就是信号——按新契约改写，不要用 `any` 绕过；测试里的官方文法镜像 spec 是
+   逐字镜像，期望值要跟着同步。
+5. 重新构建并**验证可加载**：`lib/index.js` 能在该 DSH 上 import 成功，`lib/client.js` 的注册
+   id 等于包名。
 6. 用户可见改动 → bump patch，走日常闭环。
 
 ### 最低支持版本（只在真不兼容时上移）
 
-版本在这里是**两个不同的东西**，不要混：
-
 | | 跟随版本 | 最低支持版本 |
 | --- | --- | --- |
-| 是什么 | 构建与类型检查所对的 SDK 版本 | 插件还能加载的最旧 DSH |
-| 写在哪 | `package.json` 的 `devDependencies` | `peerDependencies` 的 `>=` 值 + README「环境要求」那一行 |
-| 何时变 | 每次 DSH 升级都跟上去 | **只在真不兼容时上移** |
-| 谁看得到 | 只有开发者 | 使用者（README 给人看） |
+| 是什么 | 构建与类型检查所对的 SDK | 插件还能加载的最旧 DSH |
+| 写在哪 | `devDependencies` | `peerDependencies` 的 `>=` 值 + README「环境要求」那一行 |
+| 何时变 | 每次 DSH 升级都跟上 | **只在真不兼容时上移**，默认不动 |
 
-**最低支持版本只上移、不下移，且默认不动。** 升级 DSH 后插件照常加载、甚至继续在新版
-上开发，恰恰说明旧的下限依然成立——**这时不要动它，也不要问要不要改成最新版**。只有
-两种情况才上移：
-
-1. 采用了只有新版才有的 API（旧版没有这个符号，加载即失败）；
-2. 在旧版上实测加载失败。
-
-上移时**两处必须一起改**（`peerDependencies` 的 `>=` 值 与 README 那一行）：它们是同一
-事实的两种表达，漏改一处就会出现「README 说支持、装上去却报错」的错配。README 那行必须
-写**具体版本号**（使用者需要一个能判断的数字），不能写成"最新版"这类模糊说法。
-
-**客户端 bundle 的注册 id = 包名**（不是插件 id）。加载器定位行对应的包清单、按
-**包名**给 bundle 定键，注册成别的名字会被拒（报 `loaded without registering <name>`）。
-无作用域时二者相同，加了作用域才会分叉——`tsdown.config.ts` 的 `clientBundle()` 第一个
-参数因此必须是包名。`pnpm verify` 内置此检查，`pnpm smoke` 会真的执行一遍 handshake。
+**「插件在新版上照常工作」恰恰说明旧下限仍成立——这时不要动它。** 只有两种情况才上移：
+用了只有新版才有的 API，或在旧版上实测加载失败。上移时**两处一起改**（漏一处就会出现
+「README 说支持、装上去却报错」），且 README 那行必须写**具体版本号**。
 
 ### 平台模块表跟随 shell
 
-`shared/web-platform.ts` 的 `PLATFORM_MODULES` 是浏览器模块表的**镜像**，决定哪些
-import 走 external、哪些必须内联。它与真实 shell 不符时会在运行时炸——两种方向都危险：
-列了一个已被移除的模块（shell 换实现时这类模块会消失），或少列一个新增的。因此
-**每次 DSH 升级都要重新核对**，不要假定这份清单长期有效。**核对方法**：在
-`<dsh>/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/` 下找**含 `__ModuleLoader__`
-的那个 bundle**（文件名是内容哈希，每次发布都会变，所以按符号找、不按文件名找），
+`shared/web-platform.ts` 的 `PLATFORM_MODULES` 是浏览器模块表的**镜像**，决定哪些 import 走
+external、哪些必须内联；与真实 shell 不符会在运行时炸。**每次 DSH 升级都要重新核对**，不要
+假定它长期有效。**核对方法**：在 `<dsh>/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/`
+下找**含 `__ModuleLoader__` 的那个 bundle**（文件名是内容哈希，所以按符号找、不按文件名找），
 读它附近 `staticModules` 工厂返回的 seed 对象键（`react` 家族 + `@deepseek-ai/dsh-client-*`）。
 
 ### 构建可复现（硬性：产物必须与构建机无关）
 
-`lib/` 是被跟踪的发布产物，且 CI 会在 Linux 上重建并与提交比对。因此**构建结果
-不得依赖构建机的绝对路径、行尾或平台**。已踩过两个坑，现由 CI 与 `pnpm verify` 兜住：
+`lib/` 是被跟踪的发布产物，CI 会在 Linux 上重建并与提交比对，因此**构建结果不得依赖构建机的
+绝对路径、行尾或平台**。三条规则由 CI 与 `pnpm verify` 兜住：
 
-- **不要把绝对路径交给会把它写进产物、或用来派生标识的工具**。lightningcss 的
-  CSS Modules `[hash]_[local]` 前缀取自传给 `transform()` 的 `filename`——传绝对路径
-  会让同一份 CSS 在不同目录（乃至不同系统）下编译出不同类名，`lib/client.js` 于是
-  永远无法在别的机器上复现。构建脚本一律传**仓库相对路径**
-  （`shared/tsdown.client.ts` 的 `portableCssPath()`）。
-- **工作区行尾必须与 `.gitattributes` 一致**。sourcemap 的 `sourcesContent` 内嵌源码
-  原文，工作区残留 CRLF 会被原样写进 `lib/client.js.map`（曾见 16 个源文件、约 8000
-  处差异），而 CI 检出是 LF。修正：`git rm --cached -r . && git reset --hard`
-  按 attributes 重新检出后重建。这条与用哪个系统开发无关：只要检出工具按平台改写行尾，
-  就可能触发。
-- **自检手段**：把仓库复制到另一个绝对路径、装依赖、构建，产物应逐字节相同。
-  CI 的「Committed artifacts match a fresh build」就是这条规则在 Linux 上的常驻检查；
-  它红了先怀疑以上两点，不要急于提交「本机能过」的产物。
+- **绝对路径不得进入产物或用来派生标识**：lightningcss 的 CSS Modules 类名前缀取自传给
+  `transform()` 的 `filename`，传绝对路径会让同一份 CSS 在不同目录编译出不同类名。构建脚本
+  一律传仓库相对路径（`shared/tsdown.client.ts` 的 `portableCssPath()`）。
+- **工作区行尾必须与 `.gitattributes` 一致**：sourcemap 的 `sourcesContent` 内嵌源码原文，
+  残留 CRLF 会被原样写进 `lib/client.js.map`。修正：`git rm --cached -r . && git reset --hard`
+  按 attributes 重新检出后重建。
+- **自检**：把仓库复制到另一个绝对路径、装依赖、构建，产物应逐字节相同（CI 的
+  「Committed artifacts match a fresh build」是常驻检查；它红了先怀疑上面两条）。
 
-### 改名要动哪几处（工具已自动读取，只剩声明处）
+### 改名的声明处
 
-工具链（`scripts/*.mjs`、`scripts/dsh-task-board.js`、npm scripts）**都从 `package.json`
-读身份**，不在代码里重复写名字。因此改名只需改声明处，改完让 `pnpm verify` 自己指出漏改：
+工具链（`scripts/*.mjs`、npm scripts）都从 `package.json` 读身份，不在代码里重复写名字。
+改名只需改声明处，改完让 `pnpm verify` 指出漏改：
 
-| 改什么 | 影响谁 |
+| 改什么 | 影响 |
 | --- | --- |
-| `package.json` 的 `name` | 安装标识；工具据此推导，其余检查以它为基准 |
+| `package.json` 的 `name` | 安装标识；工具据此推导 |
 | `cordis.patch.yml` 行的 `name:` | 加载器按它解析包（漏改则启动找不到模块） |
 | `tsdown.config.ts` 的 `PACKAGE_NAME` | 浏览器 bundle 的注册 id（漏改则界面加载失败） |
-| README / CONTRIBUTING 里的安装命令 | 给人看的现成命令（不进包的内部文档不必改） |
+| README / CONTRIBUTING 的安装命令 | 给人看的现成命令 |
 
-**插件 id 不跟着包名变**：它由文件夹名与 `cordis.patch.yml` 的 `id:` 决定，路由此派生。
-包名带作用域时二者不同，这正是它们必须分开写的原因（见「命名矩阵」）。
+**插件 id 不跟着包名变**（它由文件夹名与 `cordis.patch.yml` 的 `id:` 决定，路由此派生）。
+**客户端 bundle 的注册 id 必须等于包名**（不是插件 id）：加载器按包名给 bundle 定键，注册成
+别的名字会被拒（报 `loaded without registering <name>`）。`pnpm verify` 内置此检查，
+`pnpm smoke` 会真的按加载器协议执行一遍 handshake。
 
 ---
 
@@ -405,86 +258,60 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### 命名矩阵（硬性规范 3，新增标识不得偏离）
 
-**插件 id 与包名是两个身份，不得混用**：id 是加载与数据身份的根，包名只是安装标识。
-包名带作用域不改变任何 id、路由、存储单元或数据键。
-
-**本表是规格，不是账号绑定**：表中的包名必须与 `package.json` 的 `name` 逐字一致
-（改错一个字符就加载不了），所以照抄即可；但它是**从 `package.json` 读出来**的值，
-不是本文"认领"某个账号。若项目易主或换作用域，改 `package.json` 后同步这张表即可，
-本文其余部分不需要跟着变。
+**插件 id 与包名是两个身份，不得混用**：id 是加载与数据身份的根，包名只是安装标识，带作用域
+不改变任何 id、路由、存储单元或数据键。**包名以 `package.json` 的 `name` 为准**（本表照抄它，
+改错一个字符就加载不了）；易主或换作用域时改 `package.json` 再同步这一格即可。
 
 | 维度 | 值 |
 | --- | --- |
-| **插件 id**（行 id / 文件夹名 / 设置条目 id / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 两个 slot 的 id） | `dsh-task-board` |
-| **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / **客户端 bundle 的 `__ModuleLoader__` 注册 id** / `/plugins/<包名>/client.js`） | 以 `package.json` 的 `name` 为准（当前为 `@firetruck666/dsh-task-board`，**含 npm 作用域**） |
+| **插件 id**（行 id / 文件夹名 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 两个 slot 的 id） | `dsh-task-board` |
+| **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / bundle 注册 id / `/plugins/<包名>/client.js`） | 以 `package.json` 的 `name` 为准（当前 `@firetruck666/dsh-task-board`，**含作用域**） |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
-| 其余 host 路由 | `/api/dsh-task-board/session-state`、`/api/dsh-task-board/update`、`/api/dsh-task-board/client-report` |
-| host 存储单元名（storage hub json 后端） | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board.json`；平台 `UNIT_NAME_RE` 只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
-| 启停开关 | profile 里本条目的 `disabled`（插件管理页的开关写它；不写就是默认启用） |
-| **看板舞台 slot**（面板本体） | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
-| **侧栏入口 slot**（面板图标） | `sidebar.panellist`，`id: dsh-task-board`（**必须等于 `main` 的 key**，shell 靠它把行解析到舞台） |
-| localStorage 键（现为离线镜像 + 草稿 + 备份） | `dsh.taskBoard.v1` 等（**不得改名**，见「数据键稳定」） |
+| 其余 host 路由 | `/api/dsh-task-board/session-state`、`/update`、`/client-report` |
+| host 存储单元名 | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board.json`；平台只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
+| 启停开关 | profile 里本条目的 `disabled`（不写 = 默认启用，见「启停机制全貌」） |
+| **看板舞台 slot** | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
+| **侧栏入口 slot** | `sidebar.panellist`，`id: dsh-task-board`（**必须等于 `main` 的 key**，shell 靠它把行解析到舞台） |
+| localStorage 键（同步模式下是离线镜像/草稿/备份） | `dsh.taskBoard.v1` 等（**不得改名**，见硬性规范 5） |
 
-**本插件没有设置项，这是有意的**：它的每一个行为都已经是使用者自己的选择——任务、定时、
-巡航、规则都是看板上的数据，在界面里直接编辑；而"这个插件开不开"是插件管理页的开关，
-写的是 profile 行的 `disabled`，不是 schema。再加一个 `Config` schema，就是给同一件事
-再加一个控件，而这已经发生过一次（见「启停机制全貌」）。
+**本插件没有设置项，这是有意的**：每个行为都已经是使用者自己的选择（任务、定时、巡航、规则
+都是看板上的数据，在界面里直接编辑），而「插件开不开」是插件管理页的开关——再加一个 `Config`
+schema 就是给同一件事再加一个控件。
 
-**本插件不向 agent 播报任何东西**：没有系统提示 section，因此**不**注入 `systemPrompt`。
-看板要靠自己出现在界面上被使用者看到，而不是靠往别人的提示词里塞话。
+**本插件不向 agent 播报任何东西**：不注入 `systemPrompt`，看板靠自己出现在界面上被看到。
 
-### 启停机制全貌（外部插件只能这样被开与关，改任何一处之前先读这段）
+### 启停机制全貌（改任何一处之前先读这段）
 
-| 层级 | 谁在写 | 写进哪个文件 | 效果 |
+装配是**层叠覆盖**：各 bundle 自带的 patch 按 `dsh.profile.bundles` 顺序叠加，然后是 profile 的
+`cordis.patch.yml`，最后是 `--patch`。**后层按 `id` 覆盖前层的同一个 id**。于是有两种关法：
+
+| 层级 | 谁在写 | 写什么 | 装配结果 |
 | --- | --- | --- | --- |
-| 包级（整包） | 插件页右上角的开关 | profile 的 `package.json` → `dsh.profile.bundles`（增删包名） | 整个 bundle 的 patch 层不参与装配，包内所有条目一起消失 |
-| 条目级（单行） | 「已安装」列表里那一行的开关 | profile 的 `cordis.patch.yml` → 匹配 `id` 的行写 `disabled: true/false`；找不到就追加一条只带 id 的新行 | 只关这一行，同一 bundle 的其它条目照常 |
+| 包级 | 插件页右上角开关 | `bundles` 增删包名（profile 的 `package.json`） | 整个 bundle 的层不参与装配，包内所有条目一起消失 |
+| 条目级 | 「已安装」列表里那一行的开关 | profile 的 `cordis.patch.yml` 里 `- id: <插件id>` + `disabled: true` | 该条目仍在，末尾多一行 `disabled`；删掉那行即恢复启用 |
 
-两者都不需要插件配合：插件**不注册**设置页，也**不读**自己的启用状态。加载器只求值处于
-激活状态的行，所以插件被关掉时它一行代码都不会跑——**「被组合即启用」是结构性质，不是
-判断逻辑**。这也是为什么 `src/index.ts` 里既没有 `Config` 也没有 enable 检查。
+**行级开关不需要预埋基准行**——`id` 是覆盖键，所以往 patch 里追加一条只带 id 的行就够了。
+反过来，**patch 里没有我们的行是正常状态**：默认启用就是「什么也不写」。
 
-写这条路径的代码是宿主的 `writePluginEnabled` 与 `reconcile`：前者按 `id`（`name` 可省）
-在 patch 文件末尾往前找最后一条匹配行，没找到就追加一条只带 `id` 的新行；后者在安装/卸载
-后按 `dependencies` 与 `dsh.bundle.patch` 两个条件增删 `bundles`。
+两者都不需要插件配合：插件不注册设置页、也不读自己的启用状态。加载器只求值激活的行，所以
+插件被关掉时它一行代码都不会跑——**「被组合即启用」是结构性质，不是判断逻辑**。
 
-**两个开关的实验结论**（用 `dsh --profile web --dump-config` 对照装配结果验过，改这一节前
-请照做一遍）：
+`cordis.yml` **不是配置文件**，是 profile 的**空根**（内容就是一段注释加 `[]`），由宿主在启动时
+写成这样；`dsh --profile <名字> --dump-config` 渲染的扁平快照是诊断输出，不要把它留在那里。
 
-| 动作 | 写什么 | 装配结果 |
-| --- | --- | --- |
-| 插件页右上角开关关掉 | `bundles` 去掉包名 | 该条目的**所有行消失**（它是整个 bundle 的层，不再参与装配） |
-| 「已安装」列表那一行开关关掉 | patch 里写 `- id: <插件id>\n  disabled: true` | 该条目**仍在**，末尾多一行 `disabled: true`——后来的层按 id 覆盖前一层的同一个 id |
-| 把 patch 里那条删掉 | — | 恢复启用：后层不再覆盖，前层的行照常生效 |
-
-关键点：**行级开关不需要预埋一条基准行**。装配是"后来的层按 id 覆盖前一层"，所以往
-patch 里追加一条只带 id 的行，就足以覆盖 bundle 层插进来的那条。反过来说，**patch 文件里
-没有我们的行是正常状态**——默认启用就是"什么也不写"。
-
-**`cordis.yml` 不是配置文件**：它是 profile 的**空根**（内容就是一段注释加 `[]`），
-每次启动由宿主写成这样；装配后的扁平快照会被 `dsh --profile web --dump-config` 渲染到
-它的临时输出里，**不要**把那个快照留成 `cordis.yml`（会让根从"空"变成一堆重复条目）。
-真相只有三层来源：各 bundle 自带的 patch → profile 的 `cordis.patch.yml` → `--patch` 覆盖。
-
-挂载：`package.json` 声明 `dsh.bundle.patch` → `cordis.patch.yml`；安装命令
-`dsh plugin --profile web add @firetruck666/dsh-task-board`（本地开发用 `add .` 或
-`link:<本目录>`）。`scripts/dsh-task-board.js` 是本地挂载辅助，会清理改名前的旧
-无作用域键。
-
-**三种安装方式（npm / GitHub / 本地 `link:`）在配置上完全一致，装完不需要任何手工步骤。**
-包内的 `cordis.patch.yml` 由 `dsh.bundle.patch` 指向、安装时自动生效；界面入口与存储单元
-在启动时自动建立；显示名/说明/图标由包内的 `locale/` 与 `icon.svg` 提供。README 的
-「不需要手动配置任何东西」一节是这条承诺的**给人看的版本**，两边必须同时成立。
+挂载：包内 `cordis.patch.yml` 由 `package.json` 的 `dsh.bundle.patch` 指向，安装命令
+（`dsh plugin --profile web add <包名或路径>`）只负责把包登记进 `bundles`。**三种安装方式
+（npm / GitHub / 本地 `link:`）在这件事上完全一致，装完不需要任何手工步骤**，也不需要往
+`cordis.patch.yml` 写任何东西（手写会造成同一个插件出现两条）。界面入口与存储单元在启动时
+自动建立；显示名/说明/图标来自包内 `locale/` 与 `icon.svg`。
 
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
-本插件是**外部插件**，与宿主之间只有下面这些接触面。它们全部由 `pnpm verify` 里的
-`verify-host-contracts.mjs` 对照**实际安装的 DSH** 逐条核对，少任何一条即红并指名：
-未声明的 slot 在 `slots.inject` 里会**静默 no-op**，被删的服务成员只在用户点击那一刻
-抛 `TypeError`，缺失的宿主服务让对应半区**永远等不到依赖、什么也注册不出来**——
-三者都不会让构建失败，所以必须机械核对。表分三节：slot、按名读的宿主成员、
-每个半区注入的宿主服务。
+本插件与宿主之间只有下面这些接触面，由 `pnpm verify` 对照**实际安装的 DSH** 逐条核对，
+少任何一条即红并指名。三者都不会让构建失败，所以必须机械核对：未声明的 slot 在
+`slots.inject` 里**静默 no-op**；被删的服务成员只在用户点击那一刻抛 `TypeError`；缺失的
+宿主服务让对应半区**永远等不到依赖、什么也注册不出来**。
 
 ### 插件依赖的 slot（必须由宿主声明）
 
@@ -561,27 +388,25 @@ patch 里追加一条只带 id 的行，就足以覆盖 bundle 层插进来的�
 - `TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。`board-transport.ts`：
   fetch + EventSource（缺席降纯轮询）。
 
-### 设计系统层（索引；成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
+### 设计系统层（成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
 
 - **令牌**：只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）；表面三层（画布/不透明内层）；
-  浮层同一 chrome（板盒 % 参照，禁 vw/vh；Dialog 默认 portal 板盒 + 一处 Escape）。
-- **圆角几何在根层一次声明**：`corner-shape` 与 `border-radius` 是两条轴且**不继承**，环境里任何
-  superellipse 家族都会把 `50%` 圆点渲染成方加圆弧，改半径永远修不掉。全板只在设计系统层声明一次
-  （`[data-dsh-taskboard-view]` / `*[class]` / `[data-dsh-taskboard-panel]`，皮肤换家族只重映射
+  浮层同一 chrome，尺寸按板盒百分比算（**禁 vw/vh**）；Dialog 默认 portal 到板盒，Escape 只在一处管。
+- **圆角几何在根层一次声明**：`corner-shape` 与 `border-radius` 是不继承的两条轴，环境里的
+  superellipse 家族会把 `50%` 圆点渲染成方加圆弧，改半径修不掉。全板只声明一次
+  （`[data-dsh-taskboard-view]` / `*[class]` / `[data-dsh-taskboard-panel]`，换肤只重映射
   `--dsh-tb-corner`）。**禁止逐处补 `corner-shape`，也禁止把 `50%` 换成 px 半径去「修圆」**。
-- **光效（呼吸与否的唯一判定，无例外）**：等待/进行中 → 卡片+会话行呼吸（attention）；已结束未读 →
-  卡片呼吸，且**其未读会话的行与卡片会话点**同呼吸（unread，同一族
-  琥珀）；已读或空闲 → 静默。两口时钟各管各的粒度：卡片光读**任务未读**（打开详情即灭），
-  行/点读**轮次未读**（复核页 / 标已读 / 通过 / 通知按会话进入才灭）——表面只读自己粒度的
-  时钟，不互相重推（`sessionUnviewedOf` 是行与点共用的唯一轮次判据）。「进行中」只由状态驱动、
-  与未读无关；卡片 `data-status`（黄边）与 `data-light`（光）**读同一事实**，故「有黄边必有
-  呼吸」是结构性质。
-- **响应式与触屏**：参照 = **表面自身宽度**（板 `dsh-tb` / 面板 `dsh-tb-panel`），**禁 `@media(max-width)`**；
-  紧凑档列滑轨 + 五等分 tab（短名 + `aria-label` 全名）；窄屏锚定弹层换 Dialog；触屏只加隐形
-  人体工学，JS 开关唯一 `useSurfaceNarrow`。
-- **排版/间距/加载**：表单行具名 areas + 标签让位；说明必须可点可达（禁纯 `title=`）；p margin
-  清零 + 间距一律 gap 声明、偏移派生禁手写像素；加载三态（读中安静 / 失败行内重试 + 自动退避 /
-  空态非错）；共用部件一律复用（`ui.tsx`/`Chip`/`Dialog`/`Markdown`/`AutomationEditor`）。
+- **光效是「呼吸与否」的唯一判定**：等待/进行中 → 卡片 + 会话行呼吸（attention）；已结束未读 →
+  卡片呼吸，其未读会话的行与卡片会话点**同呼吸**（unread，同一族琥珀）；已读或空闲 → 静默。
+  两口时钟各管各的粒度：卡片光读**任务未读**（打开详情即灭），行/点读**轮次未读**（复核页 /
+  标已读 / 通过 / 通知按会话进入才灭），表面只读自己粒度、不互相重推（`sessionUnviewedOf`
+  是行与点共用的唯一轮次判据）。卡片 `data-status`（黄边）与 `data-light`（光）读同一事实。
+- **响应式与触屏**：参照是**表面自身宽度**（板 `dsh-tb` / 面板 `dsh-tb-panel`），**禁
+  `@media(max-width)`**；紧凑档用列滑轨 + 五等分 tab（短名 + `aria-label` 全名）；窄屏锚定
+  弹层换 Dialog；JS 侧唯一开关是 `useSurfaceNarrow`。
+- **排版/间距/加载**：表单行用具名 areas 让标签让位；说明必须可点可达（**禁只挂 `title=`**）；
+  间距一律 gap 声明、偏移由令牌派生（禁手写像素）；加载三态（读中安静 / 失败行内重试 + 自动
+  退避 / 空态非错）；共用部件一律复用 `ui.tsx` / `Chip` / `Dialog` / `Markdown` / `AutomationEditor`。
 - **拖拽**：`drop-position` / `drag-autoscroll` / `use-flip` 三件套全结构驱动；跨列先滚入视野；
   排序只在按住拖拽时发生。
 
@@ -646,11 +471,10 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 3. **命名一致性**：见命名矩阵；不得引入新前缀/新命名空间。
 4. **零历史残留**：项目内不得出现任何历史仓库标识、路径或来源表述；
    `scripts/verify-standalone.mjs` 内置防回归黑名单（其自身文件豁免）。
-5. **数据键稳定**：`dsh.taskBoard.v1` 不得改名。同步模式下这些键是**离线镜
-   像/草稿/preSync 备份**（真相在 host 存储单元）；回退模式下仍是真相——两种
-   模式下用户数据都不因升级丢失（首连 host 空 → 本地整视图 bootstrap；host 已
-   有数据 → 本地记录按 LWW 联合并入、分歧整视图一次性备份到
-   `dsh.taskBoard.preSync.v1`，见「同步域」迁移文法）。
+5. **数据键稳定**：`dsh.taskBoard.v1` 不得改名。同步模式下这些键是**离线镜像 / 草稿 / preSync
+   备份**（真相在 host 存储单元），回退模式下它们就是真相——两种模式下用户数据都不因升级丢失。
+   首次连上 host 时：host 为空则本地整视图 bootstrap；host 有数据则按 LWW 逐记录并入，分歧的
+   整视图一次性备份到 `dsh.taskBoard.preSync.v1`（只此一次，之后不再产生副本）。
 6. **生命周期纪律**：订阅/监听/定时器/observer 全部注册 disposer；DOM 失败
    console.error 不抛；`ctx.effect` 内创建的资源随 effect 清理。
 7. **独立自包含**：**运行时没有任何依赖**（`dependencies` 为空；schema 层随设置项一起去掉了，
@@ -681,8 +505,13 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 
 ## 测试（布局约定）
 
-- **一个 src 模块一个 spec；契约按表面/域分组**（review 页纯逻辑 / card 契约 / host
-  路由 / 拖拽几何 drag-contract / 端到端 controller）；**新增逻辑即配测试**——测试是
-  契约，不是附件；不要随手加文件，先归入对应域的现有 spec。
-- **清单以 `tests/` 目录为准**（一名一个 spec，命名即被测模块/表面）。非显然分工：
-  `host-sync`/`board-doc` = 同步文法与租约全状态机（**席位 (held, proto, bootedAt) 任一半变化都要触发监听**、首租前 proto 为 undefined、双客户端共享真实 `BoardDataService` 收敛）；`board-service` 含 **LeaseState 唯一构造点的机械禁令**，`board-http` 用真实存储 + 真实 http.Server + 真实 SSE 覆盖 fake 测不到的链路（**四种租约应答必带 proto+bootedAt**）；`question-tracker` = mux 问答流自愈；`transcript-cache` = 读取新鲜度层；`controller` 是唯一大文件（端到端，共享 harness 不拆分）；`review-page`/`mobile-contract`/`card-contract` 承载**全部 CSS 布局契约**（见设计系统层）；`file-reference-grammar`/`session-mention` 是官方包逐字镜像（打包门禁禁跨插件值导入）。
+- **一个 src 模块一个 spec，契约按表面/域分组**（review 页纯逻辑 / card 契约 / host 路由 /
+  拖拽几何 / 端到端 controller），清单以 `tests/` 目录为准。**新增逻辑即配测试**——测试是契约，
+  不是附件；不要随手加文件，先归入对应域的现有 spec。
+- **非显然的分工**（细节在各 spec 里）：`host-sync`/`board-doc` 是同步文法与租约全状态机
+  （席位 `(held, proto, bootedAt)` 任一半变化都要触发监听，首租前 proto 为 undefined）；
+  `board-service` 带 **LeaseState 唯一构造点**的机械禁令；`board-http` 用真实存储 + 真实
+  `http.Server` + 真实 SSE，覆盖 fake 测不到的链路（四种租约应答必带 proto + bootedAt）；
+  `controller` 是唯一大文件（端到端，共享 harness 不拆分）；`review-page` / `mobile-contract` /
+  `card-contract` 承载**全部 CSS 布局契约**（见设计系统层）；`file-reference-grammar` /
+  `session-mention` 是官方包逐字镜像（打包门禁禁跨插件值导入）。
