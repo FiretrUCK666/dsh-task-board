@@ -446,8 +446,26 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 判断逻辑**。这也是为什么 `src/index.ts` 里既没有 `Config` 也没有 enable 检查。
 
 写这条路径的代码是宿主的 `writePluginEnabled` 与 `reconcile`：前者按 `id`（`name` 可省）
-在 patch 文件末尾往前找最后一条匹配行，后者在安装/卸载后按 `dependencies` 与
-`dsh.bundle.patch` 两个条件增删 `bundles`。
+在 patch 文件末尾往前找最后一条匹配行，没找到就追加一条只带 `id` 的新行；后者在安装/卸载
+后按 `dependencies` 与 `dsh.bundle.patch` 两个条件增删 `bundles`。
+
+**两个开关的实验结论**（用 `dsh --profile web --dump-config` 对照装配结果验过，改这一节前
+请照做一遍）：
+
+| 动作 | 写什么 | 装配结果 |
+| --- | --- | --- |
+| 插件页右上角开关关掉 | `bundles` 去掉包名 | 该条目的**所有行消失**（它是整个 bundle 的层，不再参与装配） |
+| 「已安装」列表那一行开关关掉 | patch 里写 `- id: <插件id>\n  disabled: true` | 该条目**仍在**，末尾多一行 `disabled: true`——后来的层按 id 覆盖前一层的同一个 id |
+| 把 patch 里那条删掉 | — | 恢复启用：后层不再覆盖，前层的行照常生效 |
+
+关键点：**行级开关不需要预埋一条基准行**。装配是"后来的层按 id 覆盖前一层"，所以往
+patch 里追加一条只带 id 的行，就足以覆盖 bundle 层插进来的那条。反过来说，**patch 文件里
+没有我们的行是正常状态**——默认启用就是"什么也不写"。
+
+**`cordis.yml` 不是配置文件**：它是 profile 的**空根**（内容就是一段注释加 `[]`），
+每次启动由宿主写成这样；装配后的扁平快照会被 `dsh --profile web --dump-config` 渲染到
+它的临时输出里，**不要**把那个快照留成 `cordis.yml`（会让根从"空"变成一堆重复条目）。
+真相只有三层来源：各 bundle 自带的 patch → profile 的 `cordis.patch.yml` → `--patch` 覆盖。
 
 挂载：`package.json` 声明 `dsh.bundle.patch` → `cordis.patch.yml`；安装命令
 `dsh plugin --profile web add @firetruck666/dsh-task-board`（本地开发用 `add .` 或
