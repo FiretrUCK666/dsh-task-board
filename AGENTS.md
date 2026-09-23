@@ -92,7 +92,7 @@ AI 应直接改本文并提交，而不是绕过它、只做口头约定、或�
 - 宿主：DeepSeek Harness (DSH) Web GUI，本机运行；一切皆插件，本插件以 cordis 插件形态
   存在。平台与用户名不写死——需要时用 `process.platform`、`os.homedir()` 现场发现。
 - 项目根：本文件所在目录。DSH 数据根：`$DSH_HOME` 优先，否则 `os.homedir()` 下的 `.dsh`；
-  激活 profile 是 `profiles` 下的目录。挂载方式见「先确认角色」。
+  激活 profile 是 `profiles` 下的目录。挂载方式见「启停机制全貌」。
 - **生效规则**：host 半区改动需重启 `dsh web`；client 半区改动刷新页面即可。
 - 兄弟插件：本目录所在 `Plugins` 下的平级独立插件，与本项目互不依赖、互不引用。
 
@@ -116,9 +116,14 @@ agent 执行**，不必重复交代流程。三处互不自动同步：`git push
 开发、构建、测试、改文档照本文做，但**到此为止**——推自己的分支并开 PR，**不** tag、**不**
 建 Release、**不** `npm publish`（没权限，且会搅乱正本的版本号）。清单见 `CONTRIBUTING.md`。
 
+`npm whoami` 401 / 未登录只是登录态缺失，不改变归属：默认仍按贡献者（本机登录态只影响
+这项证据与手动 publish 兜底，不影响工作流发布）。**用户在本会话主动下达维护者动作
+（推 main、打 tag、发版）即为授权——直接执行，不再重复判定**；agent 不得主动开口求放行。
+
 ### 日常（默认，用户描述需求即触发）——一次改到远端，不打标签
 
-1. `git status` 确认工作区；有未提交改动先存一个「改前存档点」。
+1. `git status` 确认工作区；动手前记下 HEAD（`git rev-parse --short HEAD`）作「改前存档点」，
+   工作区另有未提交改动先 `git stash push` 保存。
 2. 改代码。
 3. `pnpm typecheck` + `pnpm test`。
 4. 用户可见改动 → bump `package.json` patch，**只抬号不打标签**（标签是里程碑，不是提交的
@@ -138,7 +143,7 @@ agent 执行**，不必重复交代流程。三处互不自动同步：`git push
 **停手**（用户说「先别提交 / 只看效果」）：只做到第 6 步，不 commit、不 push。
 **贡献者版闭环**：第 1–6 步相同（含 bump），第 7–8 步改为推自己的分支并开 PR。
 
-### 发版（只有用户明确说「发版 / 发出去 / npm publish」才触发）——在每日闭环基础上追加
+### 发版（只有用户明确说「发版 / 发出去 / npm publish」才触发）——在日常闭环基础上追加
 
 9. `git tag v<版本>` + `git push origin v<版本>`。**发版的剩余步骤全部由
    `.github/workflows/release.yml` 完成，agent 不手动执行任何一步**：它重跑全 gate
