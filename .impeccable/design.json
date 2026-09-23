@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-02-14T00:00:00.000Z",
+  "generatedAt": "2026-09-23T13:32:21.945Z",
   "title": "Design System: 任务看板 (dsh-task-board)",
   "extensions": {
     "colorMeta": {
@@ -154,7 +154,7 @@
           "#61666b",
           "#81858c"
         ],
-        "note": "填充之上的文字。深浅主题自动反转。令牌 --dsw-alias-label-primary-foreground。"
+        "note": "深色填充上的字（品牌主按钮、危险按钮，两个主题都是深底）：白/黑随主题翻转。浅色的强调色填充上的字不用它——那是静态深墨 --dsh-tb-ink-on-fill（--dsw-static-neutral-bluish-1000，两主题同值）；本令牌配浅底会答反一半时间（浅色主题白字对 warn 仅 2.15:1）。详见 DESIGN.md Colors 的「On-Fill 两档墨色」。"
       },
       "accent-business": {
         "role": "primary",
@@ -173,7 +173,7 @@
           "#d3e2fd",
           "#edf3fe"
         ],
-        "note": "唯一强调色，来自 DSH 的 deepseek-500（暗色 deepseek-400）。用于选中双环、聚焦环、运行指示点。令牌 --dsw-alias-state-business-primary。"
+        "note": "唯一强调色，来自 DSH 的 deepseek-500（暗色 deepseek-400）。用于选中双环、聚焦环、运行指示点、选中标签页描边与 10% 填充。它不是品牌色，是动作色。令牌 --dsw-alias-state-business-primary。"
       },
       "state-warn": {
         "role": "tertiary",
@@ -376,7 +376,7 @@
       },
       "body": {
         "displayName": "Body",
-        "purpose": "界面主力（82 处）：卡片标题、会话名、说明与列表行。"
+        "purpose": "界面主力（88 处）：卡片标题、会话名、说明与列表行。"
       },
       "chip": {
         "displayName": "Chip Label",
@@ -384,7 +384,7 @@
       },
       "meta": {
         "displayName": "Meta",
-        "purpose": "时间戳、路径、最小辅助标记（18 处）。"
+        "purpose": "时间戳、路径、最小辅助标记（17 处）。"
       },
       "row-line": {
         "displayName": "Declared Row Line",
@@ -425,7 +425,7 @@
       {
         "name": "level-3",
         "value": "0 0 1px 0 #0003, 0 0 4px 0 #00000005, 0 12px 32px 0 #00000014",
-        "purpose": "真正的浮层：弹窗与锚定弹层。令牌 --dsw-shadow-lv3。"
+        "purpose": "真正的浮层：弹窗、锚定弹层。令牌 --dsw-shadow-lv3。"
       },
       {
         "name": "selection-glow",
@@ -435,19 +435,19 @@
       {
         "name": "breath-ring",
         "value": "0 0 0 3px var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha))",
-        "purpose": "卡片层状态呼吸：未读/在跑时的外环。reduced-motion 下收幅至 2px 而不消失。"
+        "purpose": "卡片层状态呼吸的峰值形状：未读时的外凸硬环。reduced-motion 下收幅至 2px 而不消失。"
       },
       {
         "name": "breath-halo",
-        "value": "inset 0 0 14px var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft))",
-        "purpose": "会话行层状态呼吸：内侧柔晕。reduced-motion 下收幅至 8px。"
+        "value": "inset 0 0 14px var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)), 0 0 3px var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha))",
+        "purpose": "会话行层状态呼吸的峰值形状：10% 软洗内晕 + 22% 外沿（外沿是可见性地板，缺了它内晕贴着满强度静态黄边看不见）。reduced-motion 下收幅。"
       }
     ],
     "motion": [
       {
         "name": "motion",
         "value": "160ms ease",
-        "purpose": "唯一的交互过渡令牌。所有颜色、边框、阴影、位移过渡都引用它，不各写时长。"
+        "purpose": "唯一的标准交互过渡令牌。所有颜色、边框、阴影、位移过渡都引用它，不各写时长（弹层背景与巡航弹层的入场例外，为 140ms）。"
       },
       {
         "name": "breath",
@@ -457,7 +457,7 @@
       {
         "name": "spin",
         "value": "800ms linear infinite",
-        "purpose": "运行中转圈（卡片与会话行共用同一枚 spinner）。"
+        "purpose": "运行中转圈（卡片与会话行共用同一枚 spinner），与呼吸同为常驻的状态消息。"
       },
       {
         "name": "shell-ease",
@@ -465,31 +465,41 @@
         "purpose": "宿主 --ds-ease-in-out，板未直接使用但同族；板用 ease 以保持一致。"
       },
       {
-        "name": "fade-in",
-        "value": "dshTbFadeIn 160ms",
-        "purpose": "遮罩淡入。"
+        "name": "board-in",
+        "value": "dshTbBoardIn 160ms ease",
+        "purpose": "入场第一套：板头与列轨挂载同起一次，新卡片（data-fresh）同语法到达（3px 上浮）。"
       },
       {
         "name": "dialog-in",
-        "value": "dshTbDialogIn 160ms",
-        "purpose": "弹窗入场（位移加淡入）。"
+        "value": "dshTbDialogIn 160ms ease",
+        "purpose": "入场第二套：浮层景深语法（6px 上浮 + scale 0.985），弹窗、详情、复核页同一 chrome。"
       },
       {
-        "name": "select-in",
-        "value": "dshTbSelectIn 160ms ease-out",
-        "purpose": "卡片被选中的入场（0.55 不透明度到 1）。"
+        "name": "fade-in",
+        "value": "dshTbFadeIn 160ms",
+        "purpose": "入场第三套：纯淡入的唯一出口，保留给需要无位移淡入的场合。"
       },
       {
         "name": "reject-flash",
-        "value": "dshTbRejectFlash 一次性",
-        "purpose": "被拒绝的投放：一次性的危险色闪动，不是持久状态。"
+        "value": "dshTbRejectFlash 180ms ease",
+        "purpose": "被拒投放的一次性危险色闪动，不是持久状态。"
+      },
+      {
+        "name": "demand-flash",
+        "value": "dshTbDemandFlash 900ms ease-out",
+        "purpose": "需求行新到达（data-fresh）的一次性闪光，播一次即停。"
+      },
+      {
+        "name": "notify-ping",
+        "value": "dshTbNotifyPing 900ms ease-out",
+        "purpose": "通知铃未见点的「刚到达」时态：按到达代数播一次，回静态点。"
       }
     ],
     "breakpoints": [
       {
         "name": "board-compact",
         "value": "@container dsh-tb (max-width: 680px)",
-        "note": "板的紧凑档：五列变横向 scroll-snap 轨道、板头换行、底部拇指栏出现。参照是板自身宽度，不是视口。"
+        "note": "板的紧凑档：五列变横向自由滑动轨道（刻意无 scroll-snap）、板头换行成两行、底部拇指栏出现。参照是板自身宽度，不是视口。"
       },
       {
         "name": "panel-compact",
@@ -499,17 +509,22 @@
       {
         "name": "board-tight",
         "value": "@container dsh-tb (max-width: 648px)",
-        "note": "板的最紧一档，用于板头最后一层让位。"
+        "note": "板的最紧一档，用于板头最后一层让位；同时是面板内缩后的 600px 地板对应的板宽。"
       },
       {
         "name": "hover-capable",
         "value": "@media (hover: hover)",
-        "note": "唯一允许的媒体查询用途：区分能否悬停（触屏没有 hover），不用于布局。"
+        "note": "区分能否悬停（触屏没有 hover），不用于布局。"
+      },
+      {
+        "name": "touch-coarse",
+        "value": "@media (hover: none) and (pointer: coarse)",
+        "note": "触屏专属：只扩隐形热区、放大输入字号——交互与视觉几何与桌面逐像素一致，不用于布局。"
       },
       {
         "name": "reduced-motion",
         "value": "@media (prefers-reduced-motion: reduce)",
-        "note": "装饰动效降级；状态呼吸减速收幅但不消失。"
+        "note": "装饰动效降级；状态呼吸与转圈减速收幅但不消失。"
       }
     ],
     "tokenPipeline": {
@@ -538,7 +553,7 @@
         {
           "alias": "--dsh-tb-surface-sunken",
           "source": "--dsw-alias-bg-layer-2",
-          "role": "下沉：计数胶囊"
+          "role": "下沉：计数胶囊、隐藏托盘"
         },
         {
           "alias": "--dsh-tb-surface-menu",
@@ -547,8 +562,8 @@
         },
         {
           "alias": "--dsh-tb-chip-fill",
-          "source": "--dsw-specific-input-major",
-          "role": "一切安静控件的同一填充面"
+          "source": "--dsw-specific-input-major (经 --dsh-tb-input-bg)",
+          "role": "一切安静控件的同一填充面——直接消费宿主输入面，皮肤下与原生输入不分家"
         },
         {
           "alias": "--dsh-tb-border",
@@ -562,8 +577,8 @@
         },
         {
           "alias": "--dsh-tb-separator",
-          "source": "(none — see role)",
-          "role": "分隔线。它引用 dsw-missing: --dsw-alias-separator-primary —— 该令牌 shell 从未声明（全安装声明数为 0，只有引用），因此别名无效、三处 border 落到 none：分隔线在当前渲染里并不存在。已确认于 DSH 0.1.5-rc.1；若哪天 shell 补上它，这些分隔线会自行出现。"
+          "source": "(none)",
+          "role": "分隔线。刻意声明为 none：shell 从未声明过分隔线的别名令牌（全安装声明数为 0，只有引用），所以当前渲染确实没有分隔线，三处消费者按 none 诚实工作。shell 哪天补上它，scripts/verify-design-docs.mjs 的令牌引用审计会指出来，届时改回真边框。"
         },
         {
           "alias": "--dsh-tb-text-1",
@@ -611,6 +626,21 @@
           "role": "输入面"
         },
         {
+          "alias": "--dsh-tb-ink-on-fill",
+          "source": "--dsw-static-neutral-bluish-1000",
+          "role": "浅色强调填充上的字色（通知徽标、选中徽标、筛选激活态、会话行把手）；静态色阶，两主题同值"
+        },
+        {
+          "alias": "--dsh-tb-focus-ring",
+          "source": "color-mix(in srgb, --dsw-alias-state-business-primary 22%, transparent)",
+          "role": "聚焦光环——与提醒/选中共用同一条 22% alpha 阶梯，不另造第二条"
+        },
+        {
+          "alias": "--dsh-tb-focus-color",
+          "source": "--dsw-alias-state-business-primary",
+          "role": "聚焦描边"
+        },
+        {
           "alias": "--dsh-tb-shadow-1/2/3",
           "source": "--dsw-shadow-lv1/lv2/lv3",
           "role": "三档阴影"
@@ -643,6 +673,11 @@
           "why": "一切按钮类形状的唯一来源"
         },
         {
+          "token": "--dsh-tb-corner",
+          "value": "round",
+          "why": "角的家族开关：根层一次 corner-shape 声明后全板跟随；换超椭圆家族改这一个值"
+        },
+        {
           "token": "--dsh-tb-button-radius",
           "value": "var(--dsh-tb-pill)",
           "why": "按钮半径单点声明，防止漂移"
@@ -660,7 +695,7 @@
         {
           "token": "--dsh-tb-lead-x",
           "value": "calc(12px + 7px)",
-          "why": "会话行身份列的派生 x"
+          "why": "会话行身份列的派生 x（--dsh-tb-lead-icon + --dsh-tb-lead-gap）"
         },
         {
           "token": "--dsh-tb-row-line / --dsh-tb-hint-line",
@@ -668,9 +703,19 @@
           "why": "声明的行盒，替代随环境漂移的 normal"
         },
         {
+          "token": "--dsh-tb-dot",
+          "value": "6px",
+          "why": "状态小圆点的统一尺寸"
+        },
+        {
           "token": "--dsh-tb-strip-gap",
           "value": "10px",
-          "why": "列导航条与拇指栏留白的单点来源"
+          "why": "列导航条与拇指栏留白的单点来源（条带上下对称取值）"
+        },
+        {
+          "token": "--dsh-tb-dock-x / -dock-b",
+          "value": "12px / 12px",
+          "why": "拇指栏左右下沿出血量的单点声明"
         },
         {
           "token": "--dsh-tb-breath-spread / -halo",
@@ -687,7 +732,7 @@
       "refersTo": "button-primary",
       "description": "确认类动作（新建、执行、提交）。高度与安静按钮同级，避免同排高低不齐。",
       "html": "<button class=\"ds-btn-primary\">执行</button>",
-      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;height:28px;padding:0 14px;font-family:inherit;font-size:13px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;-webkit-appearance:none;color:var(--dsw-alias-label-primary-foreground);background:var(--dsw-alias-button-primary-fill);border:1px solid transparent;border-radius:999px;box-shadow:var(--dsw-shadow-lv1);transition:background 160ms ease,border-color 160ms ease,color 160ms ease,box-shadow 160ms ease,transform 160ms ease}.ds-btn-primary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover);box-shadow:var(--dsw-shadow-lv2)}.ds-btn-primary:active:not(:disabled){transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ds-btn-primary:disabled{opacity:.5;cursor:default}"
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;height:28px;padding:0 14px;font-family:inherit;font-size:13px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;-webkit-appearance:none;color:var(--dsw-alias-label-primary-foreground);background:var(--dsw-alias-button-primary-fill);border:1px solid transparent;border-radius:999px;box-shadow:var(--dsw-shadow-lv1);transition:background 160ms ease,border-color 160ms ease,color 160ms ease,box-shadow 160ms ease,transform 160ms ease}.ds-btn-primary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover);box-shadow:var(--dsw-shadow-lv2)}.ds-btn-primary:active:not(:disabled){transform:translateY(1px);box-shadow:inset 0 1px 2px color-mix(in srgb,var(--dsw-static-neutral-1000) 14%,transparent)}.ds-btn-primary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ds-btn-primary:disabled{opacity:.5;cursor:default}"
     },
     {
       "name": "安静按钮 Ghost Button",
@@ -695,15 +740,15 @@
       "refersTo": "button-ghost",
       "description": "与搜索框、标签页共用同一个填充面。刻意做成填充药丸而非空心描边——细线勾勒的长直边会被眼睛读成方框。",
       "html": "<button class=\"ds-btn-ghost\">整理</button>",
-      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;height:28px;padding:0 12px;font-family:inherit;font-size:12px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;-webkit-appearance:none;color:var(--dsw-alias-label-primary);background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;transition:background 160ms ease,border-color 160ms ease,color 160ms ease}.ds-btn-ghost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l3)}.ds-btn-ghost:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ds-btn-ghost:disabled{opacity:.45;cursor:default}.ds-btn-ghost[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l3)}"
+      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;height:28px;padding:0 12px;font-family:inherit;font-size:12px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;-webkit-appearance:none;color:var(--dsw-alias-label-primary);background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;transition:background 160ms ease,border-color 160ms ease,color 160ms ease}.ds-btn-ghost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l3)}.ds-btn-ghost:active:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.ds-btn-ghost:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ds-btn-ghost:disabled{opacity:.45;cursor:default}.ds-btn-ghost[aria-pressed=true]{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l3)}"
     },
     {
       "name": "危险幽灵按钮 Danger Ghost",
       "kind": "button",
       "refersTo": "button-danger-ghost",
-      "description": "破坏性动作的安静形态：危险量级靠 alpha 递增表达，不靠换形状。",
+      "description": "破坏性动作的安静形态：与安静按钮同密（12px / 0 12px），危险量级靠 alpha 递增表达，不靠换形状。",
       "html": "<button class=\"ds-btn-danger-ghost\">删除</button>",
-      "css": ".ds-btn-danger-ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;height:28px;padding:0 14px;font-family:inherit;font-size:13px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;-webkit-appearance:none;color:var(--dsw-alias-state-error-primary);background:transparent;border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);border-radius:999px;transition:background 160ms ease,border-color 160ms ease,color 160ms ease}.ds-btn-danger-ghost:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);border-color:var(--dsw-alias-state-error-primary)}.ds-btn-danger-ghost:active:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 22%,transparent)}.ds-btn-danger-ghost:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}"
+      "css": ".ds-btn-danger-ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;height:28px;padding:0 12px;font-family:inherit;font-size:12px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;-webkit-appearance:none;color:var(--dsw-alias-state-error-primary);background:transparent;border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);border-radius:999px;transition:background 160ms ease,border-color 160ms ease,color 160ms ease}.ds-btn-danger-ghost:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);border-color:var(--dsw-alias-state-error-primary)}.ds-btn-danger-ghost:active:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 22%,transparent)}.ds-btn-danger-ghost:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ds-btn-danger-ghost:disabled{opacity:.45;cursor:default}"
     },
     {
       "name": "状态 Chip Status Chip",
@@ -717,9 +762,9 @@
       "name": "任务卡片 Task Card",
       "kind": "card",
       "refersTo": "card",
-      "description": "静息只有 1px 细边无阴影；悬停才出现阴影。overflow:hidden 是通用防穿模底线。",
+      "description": "静息只有 1px 细边无阴影；悬停才出现阴影。8px 色点承载用户选定色（--card-tint），背景只被同一个色以 6% 混入做氛围。overflow:hidden 是通用防穿模底线。",
       "html": "<article class=\"ds-card\"><span class=\"ds-card-dot\"></span><h3 class=\"ds-card-title\">接入新的模型供应商</h3><p class=\"ds-card-excerpt\">调研三家供应商的定价与延迟，给出建议。</p></article>",
-      "css": ".ds-card{position:relative;display:flex;flex-direction:column;gap:6px;padding:9px 12px;min-width:0;flex:none;text-align:left;background:color-mix(in srgb,var(--card-tint,transparent) 6%,var(--dsw-alias-bg-layer-1));border:1px solid var(--dsw-alias-border-l2);border-radius:14px;cursor:pointer;color:var(--dsw-alias-label-primary);font-family:inherit;overflow:hidden;transition:box-shadow 160ms ease,border-color 160ms ease,transform 160ms ease,background 160ms ease}.ds-card:hover{box-shadow:var(--dsw-shadow-lv2)}.ds-card:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ds-card-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--dsw-alias-state-business-primary)}.ds-card-title{margin:0;font-size:12px;font-weight:500;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-card-excerpt{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}"
+      "css": ".ds-card{position:relative;display:flex;flex-direction:column;gap:6px;padding:9px 12px;min-width:0;flex:none;text-align:left;background:color-mix(in srgb,var(--card-tint,transparent) 6%,var(--dsw-alias-bg-layer-1));border:1px solid var(--dsw-alias-border-l2);border-radius:14px;cursor:pointer;color:var(--dsw-alias-label-primary);font-family:inherit;overflow:hidden;transition:box-shadow 160ms ease,border-color 160ms ease,transform 160ms ease,background 160ms ease}.ds-card:hover{box-shadow:var(--dsw-shadow-lv2)}.ds-card:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}.ds-card-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--card-tint,var(--dsw-alias-state-business-primary))}.ds-card-title{margin:0;font-size:12px;font-weight:500;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-card-excerpt{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}"
     },
     {
       "name": "文本输入 Text Input",
@@ -733,55 +778,65 @@
       "name": "弹窗 Dialog",
       "kind": "custom",
       "refersTo": "dialog",
-      "description": "最大的圆角档（28px），静态高度封顶，正文内滚，动作行钉在卡外。唯一 Escape 出口。",
+      "description": "最大的圆角档（28px）：宽 min(520px, 100%)、高封顶所在盒，头尾钉住、中段（.modalScroll，gap 16px）内滚，动作行钉在卡外。唯一 Escape 出口。",
       "html": "<div class=\"ds-dialog\"><header class=\"ds-dialog-head\"><h2 class=\"ds-dialog-title\">新建任务</h2><button class=\"ds-dialog-close\" aria-label=\"返回对话\">×</button></header><div class=\"ds-dialog-scroll\"><p>正文在这里，超出时自己滚动。</p></div><footer class=\"ds-dialog-foot\"><button class=\"ds-btn-ghost\">取消</button><button class=\"ds-btn-primary\">新建</button></footer></div>",
-      "css": ".ds-dialog{display:flex;flex-direction:column;max-height:min(720px,calc(100% - 48px));width:min(560px,100%);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:28px;box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);overflow:hidden}.ds-dialog-head{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--dsw-alias-border-l1)}.ds-dialog-title{margin:0;font-size:16px;font-weight:600;line-height:24px}.ds-dialog-close{margin-left:auto;width:28px;height:28px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:16px;line-height:1}.ds-dialog-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.ds-dialog-scroll{overflow-y:auto;padding:14px 18px;font-size:12px;line-height:1.6}.ds-dialog-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--dsw-alias-border-l1)}"
+      "css": ".ds-dialog{display:flex;flex-direction:column;max-height:100%;width:min(520px,100%);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:28px;box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-label-primary);overflow:hidden;animation:ds-dialog-in 160ms ease}.ds-dialog-head{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--dsw-alias-border-l1)}.ds-dialog-title{margin:0;font-size:16px;font-weight:600;line-height:24px;letter-spacing:-0.01em}.ds-dialog-close{margin-left:auto;width:28px;height:28px;border:0;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:16px;line-height:1}.ds-dialog-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}.ds-dialog-scroll{display:flex;flex-direction:column;gap:16px;overflow-y:auto;padding:14px 18px;font-size:12px;line-height:1.6}.ds-dialog-foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--dsw-alias-border-l1)}@keyframes ds-dialog-in{from{opacity:0;transform:translateY(6px) scale(0.985)}to{opacity:1;transform:translateY(0) scale(1)}}"
     },
     {
       "name": "看板列 Column",
       "kind": "custom",
       "refersTo": "column",
-      "description": "20px 圆角，列内卡片列表是该列唯一的滚动体。列与列靠留白分开，不靠分隔线。",
+      "description": "20px 圆角（比卡片的 14px 更外一档），列头与卡片区各有自己的内衬，列与列靠留白分开，不靠分隔线。卡片区是该列唯一的滚动体。",
       "html": "<section class=\"ds-column\"><header class=\"ds-column-head\"><span class=\"ds-column-title\">进行中</span><span class=\"ds-column-count\">3</span></header><div class=\"ds-column-cards\"><article class=\"ds-card\">…</article></div></section>",
-      "css": ".ds-column{display:flex;flex-direction:column;gap:8px;min-width:0;padding:10px;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);border-radius:20px}.ds-column-head{display:flex;align-items:center;gap:6px;padding:0 2px}.ds-column-title{font-size:12px;font-weight:500;color:var(--dsw-alias-label-primary)}.ds-column-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;font-size:11px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-layer-2);border-radius:999px}.ds-column-cards{display:flex;flex-direction:column;gap:8px;min-height:0;overflow-y:auto}"
+      "css": ".ds-column{display:flex;flex-direction:column;min-width:0;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);border-radius:20px;overflow:hidden}.ds-column-head{display:flex;align-items:center;gap:6px;padding:10px 20px}.ds-column-title{margin:0;font-size:12px;font-weight:500;color:var(--dsw-alias-label-primary)}.ds-column-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;font-size:11px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-layer-2);border-radius:999px}.ds-column-cards{display:flex;flex-direction:column;gap:8px;min-height:0;overflow-y:auto;padding:6px 8px 22px}"
     },
     {
       "name": "列导航标签 Column Tab（紧凑档签名件）",
       "kind": "nav",
       "refersTo": "column-tab",
-      "description": "窄屏五等分标签，短名显示、全名进 aria-label。选中态额外带 2px outline，作为窄屏看不清描边时的兜底。",
+      "description": "窄屏五等分标签，短名显示、全名进 aria-label。选中态 = 强调色描边 + 10% 填充 + 更强墨色；2px outline 只在键盘焦点（:focus-visible）出现，不表示选中。",
       "html": "<div class=\"ds-tabs\" role=\"tablist\" aria-label=\"任务看板\"><button class=\"ds-tab\" role=\"tab\" aria-selected=\"true\" aria-label=\"待规划\">待规划</button><button class=\"ds-tab\" role=\"tab\" aria-selected=\"false\" aria-label=\"待办\">待办</button></div>",
-      "css": ".ds-tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.ds-tab{display:inline-flex;align-items:center;justify-content:center;min-width:0;height:28px;padding:0 6px;font-family:inherit;font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary);background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color 160ms ease,border-color 160ms ease}.ds-tab[aria-selected=true]{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent);outline:2px solid var(--dsw-alias-state-business-primary)}.ds-tab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}"
+      "css": ".ds-tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.ds-tab{display:inline-flex;align-items:center;justify-content:center;min-width:0;height:28px;padding:0 6px;font-family:inherit;font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary);background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color 160ms ease,border-color 160ms ease}.ds-tab[aria-selected=true]{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent)}.ds-tab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}"
     },
     {
       "name": "状态呼吸 Ring（状态即装饰）",
       "kind": "custom",
       "refersTo": "card",
-      "description": "系统中唯一的常驻动画，且它本身就是消息（在跑 / 未读）。reduced-motion 下减速收幅，绝不置零——置零会把「活着」读成「卡住」。",
+      "description": "系统中两个常驻动画之一（另一个是运行转圈），且它本身就是消息（在跑 / 未读）。reduced-motion 下减速收幅，绝不置零——置零会把「活着」读成「卡住」。",
       "html": "<article class=\"ds-card ds-card--live\"><span class=\"ds-card-dot\"></span><h3 class=\"ds-card-title\">正在执行</h3></article>",
       "css": "@keyframes ds-breath-ring{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-warn-primary) 22%,transparent)}}.ds-card--live{animation:ds-breath-ring 2.6s ease-in-out infinite}@media (prefers-reduced-motion:reduce){@keyframes ds-breath-ring{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-state-warn-primary) 22%,transparent)}}.ds-card--live{animation-duration:5s}}"
     }
   ],
   "narrative": {
     "northStar": "会记账的管家",
-    "overview": "这套界面是一本账，不是一张海报。管家已经熟悉这栋房子：他知道东西该放哪，做完就记上，只在真有事时才说话。所以这里的视觉语言从头到尾是低音量的准确——没有一个元素在争宠，而每一个状态都毫不含糊。用户来这里不是为了欣赏它，是为了在五秒内知道「现在什么在跑、什么在等我」，然后走开。\n\n它的第一原则是克制的外观：板不拥有颜色、字体、玻璃或深浅主题，全部从 DSH 宿主借来。全部样式里没有一处硬编码颜色（由 pnpm verify 的审计强制），所有颜色、边框、阴影、文本层级与动效常量都从一层别名流向宿主语义令牌。这带来一个罕见的结果：换主题、换皮肤时这块板自动跟着走，零适配。视觉个性的位置因此不在调色板上，而在几何与状态的精确度上。\n\n第二原则是密集但可读。这是操作界面，不是营销页：字号落在 11-14px 区间，按钮 28px 高，卡片内边距 9/12px，节奏靠具名 gap 而不是继承的边距。密度换来的是一屏能装下更多真实信息；可读性则靠四档明确的文本层级（外加标题档）与永不重叠的具名网格来守住，而不是靠放大字号。\n\n第三原则是状态即装饰。这个系统几乎不做装饰性动效——唯一的常态动画是「呼吸」光环，而它本身就是一条消息（在跑 / 未读 / 等你）。因此它不能被静音。",
+    "overview": "这套界面是一本**账**，不是一张海报。管家已经熟悉这栋房子：他知道东西该放哪，做完就记上，只在真有事时才说话。所以这里的视觉语言从头到尾是**低音量的准确**——没有一个元素在争宠，而每一个状态都毫不含糊。用户来这里不是为了欣赏它，是为了在五秒内知道「现在什么在跑、什么在等我」，然后走开。\n\n它的第一原则是**克制的外观**：板不拥有颜色、字体、玻璃或深浅主题，全部从 DSH 宿主借来。全部样式里**没有一处硬编码颜色**（由 `pnpm verify` 的审计强制），所有颜色、边框、阴影、文本层级与动效常量都从一层别名流向宿主语义令牌。这带来一个罕见的结果：换主题、换皮肤时这块板自动跟着走，零适配。视觉个性的位置因此不在调色板上，而在**几何与状态的精确度**上。\n\n第二原则是**密集但可读**。这是操作界面（Operate），不是营销页：字号落在 11–14px 区间，按钮 28px 高，卡片内边距 9/12px，节奏靠具名 gap 而不是继承的边距。密度换来的是一屏能装下更多真实信息；可读性则靠四档明确的文本层级（外加标题档）与永不重叠的具名网格来守住，而不是靠放大字号。",
     "keyCharacteristics": [
       "颜色完全借自宿主令牌，板零所有权，随主题与皮肤自动漂移",
       "密集的 11/12/13/14px 四档层级（外加 16px 标题档），靠层级与对齐而非字号制造清晰",
       "全药丸形状语言：按钮、标签页、chip 一律 999px；只有卡片与面板走圆角阶梯",
-      "唯一常驻动效是状态呼吸，且它是消息而非装饰",
+      "常驻动效只有状态呼吸与运行转圈，两者都是消息而非装饰",
       "响应式参照的是板自身宽度（容器查询），不是窗口宽度",
       "深度靠不透明分层而非模糊：画布可透，内层一律不透明"
     ],
     "rules": [
       {
         "name": "The Borrowed Palette Rule",
-        "body": "板不写颜色值。任何新样式只能消费 --dsh-tb-* 别名，而每个别名必须落在某个 --dsw-* 宿主令牌上。写 hex、rgb 或新造一层近似色都是错误，pnpm verify 会拦下来。",
+        "body": "板不写颜色值。任何新样式只能消费 `--dsh-tb-*` 别名，而每个别名必须落在某个 `--dsw-*` 宿主令牌上。写 hex、rgb 或新造一层近似色都是错误，`pnpm verify` 会拦下来。",
         "section": "colors"
       },
       {
         "name": "The One Attention Color Rule",
-        "body": "「需要注意」只有一种颜色（State Amber）。未读、等待作答、运行中、通知——全部用它，只在形态上区分（外环 / 内晕 / 实心点）。再加第二种提醒色就会让两种提醒互相削弱。",
+        "body": "「需要注意」只有一种颜色（State Amber）。未读、等待作答、运行中、通知——全部用它，只在形态上区分（外环 / 内晕带柔外沿 / 实心点）。再加第二种提醒色就会让两种提醒互相削弱。",
+        "section": "colors"
+      },
+      {
+        "name": "The One Light Rule",
+        "body": "一张卡片同一时刻只戴**一种**光，由卡片自己显示出来的状态决定，判据唯一：`cardLightOf(active, unviewed)`（`card-view.ts`）——`active` 含**卡片自身的列状态**（`task.status === 'running'`，与黄边 `data-status` 是同一个事实）以及等待 / 进行中；在跑的卡戴内晕，未读的卡戴外环，两者都是 `none`。渲染只写**一个**属性 `data-light=\"halo|ring|none\"`，样式表按它分两条规则。",
+        "section": "colors"
+      },
+      {
+        "name": "The Session Activity Rule",
+        "body": "「这个会话还在工作吗」只有一个答案：`own ∨ descendant`——本会话自己的 turn，或它召唤的、`origin === 'subagent'` 的**无中断链**上仍在跑的后代（`session-lineage.ts` 逐字对齐官方侧栏的 `indexSubagentDescendants`：origin 首闸、逐层计提、fork 只写 parentId 不写 origin 所以天然不算）。卡片、会话行、会话点、详情与复核页的 state chip 全读它（`controller.sessionActiveOf`）；而「我发出去的那个 turn 结束了没有」这一类结算 / 看门狗读点继续读**裸** `running`——两者混用会同时造成回合永不过期与幽灵外源轮。列表未就绪（`phase === 'pending'`）或该行缺席时答案是第四档 `unknown`：既不当 idle 去写台账，也不当 active 去长占。",
         "section": "colors"
       },
       {
@@ -790,46 +845,54 @@
         "section": "colors"
       },
       {
-        "name": "The Three-Size Rule",
-        "body": "界面文字只用 11 / 12 / 13px 三档（外加 16px 的标题档）。需要强调时先改字重（500 到 600）或颜色层级，不要新增字号。更多档位不会带来更多清晰，只会带来更多不一致。",
+        "name": "The Four-Size Rule",
+        "body": "界面文字只用 11 / 12 / 13 / 14px 四档（外加 16px 的标题档）。需要强调时先改字重（500 到 600）或颜色层级，不要新增字号。更多档位不会带来更多清晰，只会带来更多不一致。",
+        "section": "typography"
+      },
+      {
+        "name": "The Content-Pass Exemption",
+        "body": "上面这条只管**界面**文字。渲染 Markdown 时用的是另一套字号（15 / 17 / 12.5px、行内代码 0.92em），因为它排的是**内容**而不是界面——内容该有自己的排版节奏，把它压进界面字阶只会让正文读起来像表单。",
         "section": "typography"
       },
       {
         "name": "The Declared Line Box Rule",
-        "body": "行高要么声明成令牌（--dsh-tb-row-line: 20px、--dsh-tb-hint-line: 18px），要么写成无单位倍数。绝不依赖 normal：它随字体与皮肤变化，任何对着它测量的偏移都会在别的环境下漂移。",
+        "body": "行高要么声明成令牌（`--dsh-tb-row-line: 20px`、`--dsh-tb-hint-line: 18px`），要么写成无单位倍数。绝不依赖 `normal`：它随字体与皮肤变化，任何对着它测量的偏移都会在别的环境下漂移。",
         "section": "typography"
       },
       {
         "name": "The Flat-By-Default Rule",
-        "body": "静息态是平的：卡片只有 1px 细边，没有阴影。阴影是状态的响应，不是身份的声明——它只在悬停、选中、浮起时出现。因此一屏里同时有阴影的元素极少，而这些阴影就自动读作「当前焦点」。",
+        "body": "静息态是平的：卡片只有 1px 细边，没有阴影。阴影是**状态的响应**，不是身份的声明——它只在悬停、选中、浮起时出现。因此一屏里同时有阴影的元素极少，而这些阴影就自动读作「当前焦点」。",
         "section": "elevation"
       },
       {
         "name": "The State-Light Rule",
-        "body": "选中态的光晕用强调色的 22% + 10% 双层环比，而不是换一个填充色；呼吸态用琥珀色的 22%（外环）/ 10%（内晕）。两种光都用同一套 alpha 阶梯与同一套动效令牌，所以「选中」与「正在跑」在同一屏里读起来是同一族的光，只是颜色与形态不同。",
+        "body": "选中态的光晕用强调色的 22% + 10% 双层环比，而不是换一个填充色；呼吸态用琥珀色：外环 = 22% 满档硬环，内晕 = 10% 软洗 + **22% 外沿**（可见性地板，见「可见性也是契约的一半」）。两种光都用同一套 alpha 阶梯与同一套动效令牌，所以「选中」与「正在跑」在同一屏里读起来是同一族的光，只是颜色与形态不同。",
         "section": "elevation"
       }
     ],
     "dos": [
-      "Do 消费 --dsh-tb-* 别名，并让每个别名落在 --dsw-* 宿主令牌上。宿主换皮肤时改一处，全板跟着变。",
-      "Do 用板自身宽度做响应式参照：@container dsh-tb（680px）与 @container dsh-tb-panel（600px）。它在侧栏开合、分屏、手机上都是对的。",
-      "Do 让容器装不下时让位：换行、换列、具名区域改排、短名加 aria-label、折叠、提高地板。窄屏与桌面是同一等公民。",
-      "Do 用派生偏移对齐（calc(var(--a) + var(--b))），让「上面有空隙下面紧贴」这类不一致在机制上不可能发生。",
+      "Do 消费 `--dsh-tb-*` 别名，并让每个别名落在 `--dsw-*` 宿主令牌上。宿主换皮肤时改一处，全板跟着变。",
+      "Do 把形状语言交给那**一条**根规则（`corner-shape` 声明处）：新增圆点或胶囊时只写半径，形状会自动覆盖到——不需要、也不允许逐处补 `corner-shape`。",
+      "Do 用**板自身宽度**做响应式参照：`@container dsh-tb`（680px）与 `@container dsh-tb-panel`（600px）。它在侧栏开合、分屏、手机上都是对的。",
+      "Do 让容器装不下时**让位**：换行、换列、具名区域改排、短名 + `aria-label`、折叠、提高地板。窄屏与桌面是同一等公民。",
+      "Do 用派生偏移对齐（`calc(var(--a) + var(--b))`），让「上面有空隙下面紧贴」这类不一致在机制上不可能发生。",
       "Do 给每个控件可 Tab 到的焦点态；Dialog 只留一个 Escape 出口。",
-      "Do 在 prefers-reduced-motion 下削弱状态呼吸（降速 2.6s 到 5s，收幅 3px 到 2px），绝不归零——它是消息，不是装饰。",
-      "Do 让文字永远留在盒内：裁剪只发生在「文字子槽」里，overflow: hidden 是底线。"
+      "Do 在 `prefers-reduced-motion` 下**削弱**状态呼吸（降速 2.6s 到 5s，收幅 3px 到 2px），绝不归零——它是消息，不是装饰。",
+      "Do 让文字永远留在盒内：裁剪只发生在「文字子槽」里，`overflow: hidden` 是底线。"
     ],
     "donts": [
-      "Don't 写颜色字面量。没有 hex、没有 rgb()、没有新造近似色；pnpm verify 会拦。",
-      "Don't 用 @media (max-width) 做布局判断。视口宽度不是这块板的真相。",
+      "Don't 写颜色字面量。没有 hex、没有 `rgb()`、没有新造近似色；`pnpm verify` 会拦。",
+      "Don't 靠改半径去修「不够圆」。半径对、角是方的，是 `corner-shape` 的事；改半径只会把圆点改成圆角方块，问题照旧（历史上反复复发正因如此）。",
+      "Don't 用 `@media (max-width)` 做布局判断。视口宽度不是这块板的真相。",
       "Don't 用藏掉标签、藏掉控件、缩小字号来「省地方」。只在一档验证过的改动视为未完成。",
-      "Don't 增加字号档位。11 / 12 / 13（加 16 标题）之外的新尺寸需要先改这条规则。",
+      "Don't 增加字号档位。11 / 12 / 13（+16 标题）之外的新尺寸需要先改这条规则。",
       "Don't 让两个以上的元素同时带阴影。静息态是平的；阴影是当前焦点的信号。",
       "Don't 引入第二套交互副路径：同一件事在窄屏与桌面必须走同一套组件与同一套机制，不允许为手机另写一个组件。",
-      "Don't 把必要信息挂在 title= 上。触屏没有悬停，说明必须可点可达。",
+      "Don't 把必要信息挂在 `title=` 上。触屏没有悬停，说明必须可点可达。",
       "Don't 把状态指示器（呼吸光环、运行转圈）当作可省略的装饰去掉——它们是界面在说话，去掉等于让界面沉默。",
+      "Don't 为挂载另起一套动效名。入场只有 `dshTbBoardIn`（板头/列轨/新卡同语法）、`dshTbDialogIn`（浮层景深）、`dshTbFadeIn`（纯淡入）三套；交错延迟一律不用——新卡的到达感来自结构印记（`data-fresh`），不来自排队。",
       "Don't 在同一个区里放第二个滚动体。每区至多一个，父子各自滚动会造成互相遮盖。",
-      "Don't 让卡片或面板的内容溢出圆角盒。overflow: hidden 是这个系统唯一的通用防穿模底线。"
+      "Don't 让卡片或面板的内容溢出圆角盒。`overflow: hidden` 是这个系统唯一的通用防穿模底线。"
     ]
   }
 }
