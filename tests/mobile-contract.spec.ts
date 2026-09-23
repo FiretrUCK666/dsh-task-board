@@ -8,7 +8,7 @@
  *      (`container-type: inline-size` + a named container), and the compact
  *      geometry lives in `@container dsh-tb` blocks — never a viewport
  *      `@media` width query for the board's own layout.
- *   2. Compact columns: the five-up grid becomes a horizontal scroll-snap
+ *   2. Compact columns: the five-up grid becomes a horizontal free-scroll
  *      track (each column wide enough to read) below the threshold.
  *   3. Floating panels size to the board box (percentages), not `vh`/`vw`,
  *      and the backdrop can scroll a panel taller than the box.

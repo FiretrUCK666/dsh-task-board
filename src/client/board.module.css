@@ -904,7 +904,7 @@
   border-radius: var(--dsh-tb-radius-lg);
   box-shadow: var(--dsh-tb-shadow-3);
   color: var(--dsh-tb-text-1);
-  animation: dshTbBoardIn 140ms ease;
+  animation: dshTbBoardIn 160ms ease;
 }
 
 .cruisePopoverHead {
@@ -2025,7 +2025,7 @@
 }
 
 .ghostButton:active:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-pressed, var(--dsh-tb-hover));
+  background: var(--dsh-tb-hover);
 }
 
 .ghostButton:disabled {
@@ -2163,7 +2163,7 @@
   width: 38px;
   height: 22px;
   border-radius: var(--dsh-tb-pill);
-  background: var(--dsw-alias-interactive-bg-pressed, var(--dsh-tb-hover));
+  background: var(--dsh-tb-hover);
   border: var(--dsh-tb-border-soft);
   transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
@@ -2228,7 +2228,7 @@
   /* A touch stronger than the native mask-1 so the column lines behind the
      glassy board no longer glimmer through the dialog edges. */
   background: var(--dsh-tb-mask);
-  animation: dshTbBoardIn 140ms ease;
+  animation: dshTbBoardIn 160ms ease;
 }
 
 /* THE single scrollbar grammar for every panel scroll body: a THIN bar that
@@ -2699,7 +2699,7 @@ textarea.input {
   flex: none;
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
-  transition: transform 140ms ease;
+  transition: transform var(--dsh-tb-motion);
 }
 
 .detailDisclosure[aria-expanded='false'] .detailChevron {
@@ -2707,7 +2707,7 @@ textarea.input {
 }
 
 /* Folded feed-group headers reuse the disclosure chevron law verbatim (same
-   11px tertiary glyph, same 140ms turn): collapsed reads right, expanded
+   11px tertiary glyph, same standard turn): collapsed reads right, expanded
    reads down. Scoped to feed toggles carrying a chevron — row toggles have
    none, so their look is untouched. */
 .notifyMain[aria-expanded='false'] .detailChevron {
@@ -3273,6 +3273,13 @@ textarea.input {
 
 .sessionDropZone[data-flash] {
   animation: dshTbDropConfirm 180ms ease;
+}
+
+/* One-shot accept ring on a successful session drop: the same 2px accent ring
+   the reduced-motion block parks statically, flashed once. */
+@keyframes dshTbDropConfirm {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 2px var(--dsh-tb-accent); }
 }
 
 /* Hidden-session tray: the per-session restore list inside the 会话 section.
@@ -6703,9 +6710,9 @@ span.interactionOptions {
    COMPACT LAYOUT — one mechanism, board-box relative (@container dsh-tb).
    The board's own width (not the window) is the truth: it is correct under a
    collapsed/expanded sidebar, a split-screen, and a phone alike. Below the
-   threshold the five-column grid becomes a horizontal scroll-snap track (each
+   threshold the five-column grid becomes a horizontal free-scroll track (each
    column wide enough to read), the header rows wrap, and every floating panel
-   sizes to the board box instead of the viewport. Nothing is hidden — only
+   sizes to the board box instead of the viewport. Nothing is lost (actions relocate to the thumb bar and column header) — only
    the geometry changes. Colors stay on the --dsh-tb-* tokens (no new literals).
    ══════════════════════════════════════════════════════════════════════════ */
 @container dsh-tb (max-width: 680px) {
