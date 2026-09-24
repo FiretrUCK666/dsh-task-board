@@ -309,6 +309,12 @@ export interface SessionListSummary {
   origin?: 'subagent'
   /** Host "never started" flag: only a blank session may be reused for a run. */
   blank?: boolean
+  /** Host-computed projection values retained by the current session service. */
+  projectionValues?: {
+    /** The Agent preset this Session actually runs; null when none is composed. */
+    agentPreset?: string | null
+    [key: string]: unknown
+  }
   /** List-activity stamp: advances on every durable user message (the 0.1.5
    *  `api-session/activity` projection — the wake channel's list face). */
   updatedAt?: number

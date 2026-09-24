@@ -734,15 +734,18 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(panel).not.toMatch(/draftStore\.set\(storeKey, next\)/)
   })
 
-  it('the Agent row reads served-truth first, the applied ledger second (never a ghost field)', () => {
-    // The host serves no preset read-back (no list field, no models-API
-    // field, no projection) — a row reading only the host field shows
-    // "部署默认" forever, however the session actually runs. The board
-    // records every successful switch into the ledger; the row prefers a
-    // served value when a future host serves one.
+  it('the Agent row reads the official projection and renders the selected name', () => {
+    // The Host's session projection is the applied identity; the roster maps
+    // that stable id to the name the user selected. The device ledger remains
+    // only the compatibility path when a Host exposes no projection.
     const corePath = fileURLToPath(new URL('../src/core/controller.ts', import.meta.url))
     const core = readFileSync(corePath, 'utf8')
-    expect(core).toMatch(/summary\.agentPreset \?\? applied/)
+    expect(core).toContain('summary.projectionValues?.agentPreset')
+    expect(core).toContain('projected === null')
+    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
+    const panel = readFileSync(panelPath, 'utf8')
+    expect(panel).toContain('catalog.listAgentPresets()')
+    expect(panel).toContain('agentPresetLabelOf(info.agentPreset, agentPresets)')
     const execPath = fileURLToPath(new URL('../src/core/execution.ts', import.meta.url))
     const exec = readFileSync(execPath, 'utf8')
     // Both apply sites report success (failures never fire — the session

@@ -12,6 +12,7 @@
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController, PendingInteractionKind, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
 import type { WireQuestion } from '../../core/question-rpc.ts'
+import { agentPresetLabelOf, type AgentPresetLabelSource } from '../../core/session-agents.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
@@ -233,8 +234,12 @@ export function SessionWaitingNotice({ waiting }: { waiting: PendingInteractionK
  * the same box geometry as a select, so the read-only meaning is carried by
  * the absence of a dropdown affordance, never by prose.
  */
-export function SessionFacts({ info }: { info: { cwd?: string; agentPreset?: string } | undefined }) {
+export function SessionFacts({ info, agentPresets = [] }: {
+  info: { cwd?: string; agentPreset?: string } | undefined
+  agentPresets?: readonly AgentPresetLabelSource[]
+}) {
   if (info === undefined) return null
+  const agentPreset = agentPresetLabelOf(info.agentPreset, agentPresets)
   return (
     <>
       <span className={css.reviewConfigRow}>
@@ -245,8 +250,8 @@ export function SessionFacts({ info }: { info: { cwd?: string; agentPreset?: str
       </span>
       <span className={css.reviewConfigRow}>
         <span className={css.reviewConfigLabel}>{t('review.sessionAgent')}</span>
-        <span className={css.reviewConfigValue} title={info.agentPreset ?? undefined}>
-          {info.agentPreset !== undefined ? info.agentPreset : t('review.sessionDefaultAgent')}
+        <span className={css.reviewConfigValue} title={agentPreset}>
+          {agentPreset ?? t('review.sessionDefaultAgent')}
         </span>
       </span>
     </>
@@ -424,7 +429,10 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
   reloadKey?: unknown
 }) {
   const sessionConfig = controller.sessionConfig()
+  const catalog = controller.runCatalog()
   const [sessionModels, setSessionModels] = useState<{ current: SessionModelChoice; groups: readonly SessionModelGroup[] } | undefined>(undefined)
+  /** Roster rows resolve the Host's stable preset id to the user's chosen name. */
+  const [agentPresetRows, setAgentPresetRows] = useState<readonly AgentPresetLabelSource[]>([])
   // THREE states, never two: "still loading" and "the read failed" are
   // different facts, and showing the first as the red error line is how a
   // slow phone link read as a broken session (「会话经常加载不了」).
@@ -457,16 +465,24 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
     }
   }, [permissionValue, chosen, configBusy])
 
-  // The native permission-preset directory for the permission switcher
-  // (same catalog as the new-task form; absent = no switcher).
+  // The native Agent and permission directories for the read-only facts and
+  // permission switcher. Agent ids are stable identities; the roster carries
+  // the user-facing names chosen for them.
   useEffect(() => {
+    if (catalog === undefined) return
     let alive = true
     void (async () => {
-      const rows = await controller.runCatalog()?.listPermissions()
-      if (alive) setPermissionRows(rows)
+      const [presets, permissions] = await Promise.all([
+        catalog.listAgentPresets(),
+        catalog.listPermissions(),
+      ])
+      if (alive) {
+        setAgentPresetRows(presets)
+        setPermissionRows(permissions)
+      }
     })()
     return () => { alive = false }
-  }, [controller])
+  }, [catalog])
 
   /** Re-read the live session panel (model selection + directory). */
   const reloadPanel = useCallback((): void => {
@@ -600,7 +616,7 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
               run-config field order: workspace → agent → model → effort →
               permission. Read-only rows are plain value boxes (no dropdown
               affordance); the selects apply instantly. */}
-          <SessionFacts info={controller.sessionInfo(sessionId)} />
+          <SessionFacts info={controller.sessionInfo(sessionId)} agentPresets={agentPresetRows} />
           <span className={css.reviewConfigRow}>
             <span className={css.reviewConfigLabel}>{t('review.model')}</span>
             <span className={css.selectWrap}>

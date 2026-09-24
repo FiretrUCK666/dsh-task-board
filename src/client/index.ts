@@ -534,10 +534,9 @@ export function apply(ctx: ClientContext): void {
           ? { ok: true as const }
           : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
       },
-      // Applied-preset ledger (the Agent row's fallback — the host offers no
-      // preset read-back, so the board remembers what it composed each
-      // session from; the execution service fires this on every successful
-      // switch, both paths). One store instance, shared with the
+      // Applied-preset ledger: compatibility truth for Hosts without the
+      // session Agent projection. The execution service fires this on every
+      // successful switch, both paths. One store instance, shared with the
       // controller's display side below.
       onAgentApplied: (sessionId, preset) => {
         const ledger = sessionAgentStore.load()

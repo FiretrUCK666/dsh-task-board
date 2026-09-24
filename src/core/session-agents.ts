@@ -1,19 +1,15 @@
 /**
- * Applied-preset ledger: which agent preset the board last successfully
- * composed each session from. The host offers a preset SWITCH (`select`)
- * but no read-back — no list field, no models-API field, no projection
- * carries a session's composed preset — so a display that reads "the
- * session's preset" from the host reads a ghost field (always undefined,
- * always "部署默认"). The board, on the other hand, knows exactly what it
- * applied where (every `selectAgentPreset.ok` flows through the execution
- * service): recording that is the only honest source.
+ * Agent-preset identity helpers plus a device-local ledger of applications
+ * made by this board.
  *
- * Device-local localStorage (like drafts): a display hint, not board truth
- * — the shared document is untouched, so no migration and no merge grammar.
- * Read priority stays host-first (`sessionInfo` prefers a served
- * `summary.agentPreset` when a future host serves one); the ledger is the
- * fallback, "部署默认" the last resort. Pure functions + a storage seam, so
- * everything unit-tests in isolation.
+ * The Host's `projectionValues.agentPreset` is authoritative for the Session's
+ * composition. The ledger covers Hosts that do not expose that projection and
+ * records only successful applications, so a failed switch can never be
+ * reported as the Session's real Agent. It is a display fallback in localStorage
+ * (like drafts), not shared board state: the board document stays untouched.
+ *
+ * Pure functions plus a storage seam keep identity resolution and persistence
+ * independently testable.
  */
 
 /** The localStorage key for the applied-preset ledger (never renamed). */
@@ -23,6 +19,27 @@ export const SESSION_AGENT_STORAGE_KEY = 'dsh.taskBoard.sessionAgents.v1'
 export interface AppliedPreset {
   preset: string
   at: number
+}
+
+/** The roster fields needed to render an Agent preset's user-facing name. */
+export interface AgentPresetLabelSource {
+  id: string
+  name?: string
+}
+
+/** One roster row's display name, with its stable id as the honest fallback. */
+export function agentPresetNameOf(preset: AgentPresetLabelSource): string {
+  return preset.name !== undefined && preset.name !== '' ? preset.name : preset.id
+}
+
+/** Resolve one applied id to its roster name; an unknown id remains visible. */
+export function agentPresetLabelOf(
+  preset: string | undefined,
+  roster: readonly AgentPresetLabelSource[],
+): string | undefined {
+  if (preset === undefined || preset === '') return undefined
+  const row = roster.find(candidate => candidate.id === preset)
+  return row === undefined ? preset : agentPresetNameOf(row)
 }
 
 /** Persistence seam for the ledger. */

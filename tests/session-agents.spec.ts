@@ -1,10 +1,12 @@
 /**
- * Applied-preset ledger (core/session-agents.ts): record/query/normalize,
- * failures never recorded, host truth wins at read time.
+ * Agent-preset identity and applied-ledger contract: display-name resolution,
+ * record/query/normalize, failures never recorded, Host projection wins.
  */
 import { describe, expect, it } from 'vitest'
 import { BoardController } from '../src/core/controller.ts'
 import {
+  agentPresetLabelOf,
+  agentPresetNameOf,
   appliedOf,
   appliedPresetOf,
   LocalStorageSessionAgentStore,
@@ -23,6 +25,29 @@ describe('recordApplied / appliedOf', () => {
 
   it('blank presets are never recorded (nothing applied, nothing claimed)', () => {
     expect(recordApplied({}, 's-1', '   ', 100)).toEqual({})
+  })
+})
+
+describe('Agent preset labels', () => {
+  const roster = [
+    { id: 'space-bunny', name: 'Space Bunny' },
+    { id: 'butler', name: '' },
+  ]
+
+  it('resolves the applied id to the selected Agent name', () => {
+    expect(agentPresetLabelOf('space-bunny', roster)).toBe('Space Bunny')
+    expect(agentPresetLabelOf('butler', roster)).toBe('butler')
+  })
+
+  it('keeps an unknown id visible and treats no selection as no label', () => {
+    expect(agentPresetLabelOf('custom-agent', roster)).toBe('custom-agent')
+    expect(agentPresetLabelOf(undefined, roster)).toBeUndefined()
+    expect(agentPresetLabelOf('', roster)).toBeUndefined()
+  })
+
+  it('uses the same published-name-or-id rule for roster rows', () => {
+    expect(agentPresetNameOf({ id: 'named', name: 'Named Agent' })).toBe('Named Agent')
+    expect(agentPresetNameOf({ id: 'fallback' })).toBe('fallback')
   })
 })
 
@@ -91,7 +116,7 @@ describe('controller sessionInfo (display truth order)', () => {
     return controller
   }
 
-  it('falls back to the applied ledger when the host serves nothing (the reported bug)', () => {
+  it('falls back to the applied ledger when the host does not project a preset', () => {
     const controller = controllerWith(
       { 's-1': { running: false } },
       { 's-1': { preset: 'butler', at: 1 } },
@@ -99,12 +124,20 @@ describe('controller sessionInfo (display truth order)', () => {
     expect(controller.sessionInfo('s-1')).toMatchObject({ agentPreset: 'butler' })
   })
 
-  it('a served host value still wins over the ledger', () => {
+  it('uses the host projection as the authoritative applied id', () => {
     const controller = controllerWith(
-      { 's-1': { running: false, agentPreset: 'host-preset' } },
+      { 's-1': { running: false, projectionValues: { agentPreset: 'space-bunny' } } },
       { 's-1': { preset: 'butler', at: 1 } },
     )
-    expect(controller.sessionInfo('s-1')).toMatchObject({ agentPreset: 'host-preset' })
+    expect(controller.sessionInfo('s-1')).toMatchObject({ agentPreset: 'space-bunny' })
+  })
+
+  it('an explicit null projection means deployment default, not a stale ledger value', () => {
+    const controller = controllerWith(
+      { 's-1': { running: false, projectionValues: { agentPreset: null } } },
+      { 's-1': { preset: 'butler', at: 1 } },
+    )
+    expect(controller.sessionInfo('s-1')).not.toHaveProperty('agentPreset')
   })
 
   it('unknown sessions stay unknown (honest 部署默认, never a guess)', () => {

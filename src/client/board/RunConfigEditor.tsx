@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AgentPresetRow, BoardController, ModelGroupRow, PermissionRow } from '../../core/controller.ts'
 import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
+import { agentPresetNameOf } from '../../core/session-agents.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -89,7 +90,7 @@ export function RunConfigEditor({ value, onChange, controller }: {
                 value={preset.id}
                 title={preset.description ?? preset.id}
               >
-                {preset.name ?? preset.id}
+                {agentPresetNameOf(preset)}
                 {preset.isDefault === true ? ` (${t('new.agentPresetDefaultTag')})` : ''}
               </option>
             ))}

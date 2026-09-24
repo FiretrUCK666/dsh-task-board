@@ -68,7 +68,12 @@ class FakeSessions {
    *  parent, which is exactly what this map lets a test express). */
   lineageById: Record<string, { parentId?: string; origin?: 'subagent' }> = {}
   /** Host-list workspace facts per session. */
-  infoById: Record<string, { cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string }> = {}
+  infoById: Record<string, {
+    cwd?: string
+    workspaceId?: string
+    blank?: boolean
+    projectionValues?: { agentPreset?: string | null; [key: string]: unknown }
+  }> = {}
   /** Host-list durable title per session (absent = the host has not named it). */
   titleById: Record<string, string> = {}
   /** Registry-global archive set. */
@@ -81,7 +86,16 @@ class FakeSessions {
     getSnapshot: (): {
       phase?: 'pending' | 'ready'
       ids?: readonly string[]
-      byId: Record<string, { running: boolean; parentId?: string; origin?: 'subagent'; cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string; title?: string }>
+      byId: Record<string, {
+        running: boolean
+        parentId?: string
+        origin?: 'subagent'
+        cwd?: string
+        workspaceId?: string
+        blank?: boolean
+        projectionValues?: { agentPreset?: string | null; [key: string]: unknown }
+        title?: string
+      }>
     } => ({
       ...this.phase !== undefined ? { phase: this.phase } : {},
       ...this.order !== undefined ? { ids: [...this.order] } : {},
@@ -162,7 +176,12 @@ class FakeSessions {
     this.questions.setWaiting(id, waiting)
   }
   /** Set a session's workspace facts and notify (list change). */
-  setInfo(id: string, info: { cwd?: string; workspaceId?: string; blank?: boolean; agentPreset?: string }): void {
+  setInfo(id: string, info: {
+    cwd?: string
+    workspaceId?: string
+    blank?: boolean
+    projectionValues?: { agentPreset?: string | null; [key: string]: unknown }
+  }): void {
     this.runningById[id] ??= false
     this.infoById[id] = info
     for (const fn of [...this.listeners]) fn()
@@ -421,8 +440,8 @@ describe('task mutations', () => {
     const { controller, sessions } = makeController()
     expect(controller.sessionInfo(undefined)).toBeUndefined()
     expect(controller.sessionInfo('s-1')).toBeUndefined()
-    sessions.setInfo('s-1', { cwd: 'C:\\work\\proj', agentPreset: 'butler' })
-    expect(controller.sessionInfo('s-1')).toEqual({ cwd: 'C:\\work\\proj', agentPreset: 'butler' })
+    sessions.setInfo('s-1', { cwd: 'C:\\work\\proj', projectionValues: { agentPreset: 'space-bunny' } })
+    expect(controller.sessionInfo('s-1')).toEqual({ cwd: 'C:\\work\\proj', agentPreset: 'space-bunny' })
   })
 
   it('a durable title equal to the workspace basename is the host auto-name, not a real name (→ 未命名)', () => {

@@ -12,6 +12,7 @@
 import { type ReactNode } from 'react';
 import type { BoardController, PendingInteractionKind, TranscriptProjectionsShape } from '../../core/controller.ts';
 import type { WireQuestion } from '../../core/question-rpc.ts';
+import { type AgentPresetLabelSource } from '../../core/session-agents.ts';
 import type { TaskRecord } from '../../core/tasks.ts';
 import { type TranscriptLine } from './review-transcript.ts';
 import { type ChipKind } from './Chip.tsx';
@@ -67,11 +68,12 @@ export declare function SessionWaitingNotice({ waiting }: {
  * the same box geometry as a select, so the read-only meaning is carried by
  * the absence of a dropdown affordance, never by prose.
  */
-export declare function SessionFacts({ info }: {
+export declare function SessionFacts({ info, agentPresets }: {
     info: {
         cwd?: string;
         agentPreset?: string;
     } | undefined;
+    agentPresets?: readonly AgentPresetLabelSource[];
 }): import("react").JSX.Element | null;
 /** Sum of the transcript's token accounting (the meter's fallback strip). */
 interface SessionUsage {
