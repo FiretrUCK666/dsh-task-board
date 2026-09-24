@@ -74,8 +74,11 @@ export interface SessionsControllerFace {
                 workspaceId?: string;
                 /** Host "never started" flag (a blank session is a slot, not a conversation). */
                 blank?: boolean;
-                /** The agent preset the session's agent was composed from, when known. */
-                agentPreset?: string;
+                /** Host-computed values for this Session; `agentPreset` is its real composition. */
+                projectionValues?: {
+                    agentPreset?: string | null;
+                    [key: string]: unknown;
+                };
                 /** The session's display title, when the host recorded one (execution-row identity). */
                 title?: string;
             }>;
@@ -486,10 +489,8 @@ export interface ControllerDeps {
     /** Run-preset persistence; same synced/local split as {@link presetStore}. */
     runPresetStore?: import('./run-presets.ts').RunPresetStore;
     /**
-     * Applied-preset ledger (device-local display hint — which preset the
-     * board last composed each session from). Absent = the localStorage
-     * default. The host offers no preset read-back, so without this the
-     * session's Agent row can only ever read "部署默认".
+     * Applied-preset ledger (device-local compatibility hint for Hosts without
+     * the session Agent projection). Absent = the localStorage default.
      */
     sessionAgentStore?: import('./session-agents.ts').SessionAgentStore;
     /**
@@ -850,15 +851,12 @@ export declare class BoardController {
     answerQuestion(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>;
     /** Reject the whole ask (the model sees ASK_CANCELLED and continues). */
     cancelQuestion(rpcId: string): Promise<boolean>;
-    /** The session's real workspace root + composed agent preset.
+    /** The session's real workspace root + composed Agent preset.
      *
-     *  Truth order (the "显示的必须是生效的" law): the host's served
-     *  `summary.agentPreset` first (a future host may serve it — costs nothing
-     *  to prefer), then the board's applied-preset ledger (what THIS board
-     *  successfully composed the session from — the only source that knows
-     *  today), else absent ("部署默认"). Reading the host field alone is how
-     *  the row lied 100% of the time: the field is declared "when known" but
-     *  no host serves it.
+     * `projectionValues.agentPreset` is the Host's authoritative composition:
+     * a string names the preset in use, while `null` explicitly means that the
+     * deployment composes none. When an older Host does not project this value,
+     * the board's successful-application ledger remains a compatibility fallback.
      */
     sessionInfo(sessionId: string | undefined): {
         cwd?: string;
