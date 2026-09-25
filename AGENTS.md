@@ -338,6 +338,7 @@ schema 就是给同一件事再加一个控件。
 | `@deepseek-ai/dsh-client-ui-workspace` | `openSession` |
 | `@deepseek-ai/dsh-client-ui-layout` | `selectPanel` |
 | `@deepseek-ai/dsh-api-session-controller` | `binding` |
+| `@deepseek-ai/dsh-api-session-controller` | `retain` |
 
 ### 插件注入的宿主服务（服务名必须由宿主提供，成员必须存在）
 
@@ -431,6 +432,19 @@ schema 就是给同一件事再加一个控件。
   按数组顺序显示）。**留在原栏的结算不重排**；**用户手动拖动的位置永不被覆盖**
   （人工路径是 `moveTask`/`applyCardOrder`，与提升互不相干）。新卡出生（create/copy/
   instantiate）直接调 `promoteToColumnTop`，语义不同，不并进漏斗。
+- **会话落地（同一个漏斗的另一半）**：同一落里让某个会话**开始工作或结束工作**的轮次
+  （新生 / 拿到会话 / 被注入 / 结算），把那个会话顶到卡片会话列的**最上方**——判据是
+  `tasks.startedOrSettledSessions` 的台账 diff，实现在 `tasks.promoteSessionsToTop`。
+  它与卡片顶格同律同空转判据（已在首位就一个字段都不碰），手动排列整体让位而不被打乱；
+  `sessionsOrder` 因此从「用户拖过的位置」升级为「当前显示顺序」这一支。
+  **`viewedAt` 不在生命周期指纹里**（标已读不是工作），删除轮次也不触发。
+  **轮次记录只经 `land` 进台账**：绕过它直接写 `this.tasks` 的地方，漏斗看见的落位前后
+  一模一样，顶格与卡片提升双双空转（外部旁听轮次那条路曾经如此）。
+  直发轮出生即结算，所以**它的完成在台账里没有字段可改**——`driveLiveStates` 的降级
+  分支是唯一一处显式点名的会话顶格。
+- **会话列的排序键**是 `session-display.sessionActivityOf`（`max(round.endedAt ?? startedAt)`），
+  与每会话未读时钟的 activity 腿**同一份推导**；链入行再与宿主的 `updatedAt` 取大，
+  所以「在这张卡上干过活」永远比「宿主最后碰过它」新。
 - **同步戳与显示口径必须分离**：`task.updatedAt` 是同步合并的 LWW 键，让位的同门
   必须盖章（漏盖即两台设备顺序漂移）；但屏上「更新于」读 `cardUpdatedAtOf(task)`
   （卡片自己的工作推进），否则一次顶格会让整栏同门一起写「刚刚」。
@@ -458,6 +472,13 @@ schema 就是给同一件事再加一个控件。
   归档会话投递但**保留 due 槽**；`sessionAvailability()` 是「不可用」的唯一判据。
 - **执行门禁**：`taskExecutable` 唯一判定；`ruleReadiness` 次序 disabled→blocked→paused→active；评论与
   插话永不封；`runTask` 单点拦截。空标题/描述从 Prompt 补（永不覆盖）。
+- **借用必持有**：宿主只在**有人持有**某个会话代次时才借出驱动（`sessions.binding` 文档原文：
+  "or undefined without a retained generation"；`create()` 的文档原文：先 retain 再借）。所以
+  凡是**拥有**一段工作的一次运行、一次续跑、一次新建会话配置，一律经
+  `execution.sessions.hold` 借到**结算为止**（`platform.sessionHoldFactory` 是唯一实现，
+  引用来源标签走 `SessionReferenceSourceMap` 声明合并，不传裸字符串）；`binding` 只留给
+  不得比持有者活得久的读（目标条目的即时投影、结算 reconcile 的一次探测、重命名降级）。
+  借不到就诚实失败：开不了会话按 `configError`/结算失败带着宿主给的原因上报，绝不静默。
 - **自动化不许有「上着却跑不起来」的规则**（死臂）：任务级排期与**会话规则**同一条律，
   读侧（`ruleReadiness` / `sessionRuleReadiness` 报 blocked）与写侧（`setSchedule` 拒绝
   上臂、`controller.deadArmedRule` 三条会话写入路径共用）缺一不可。发送方式留空是另一
@@ -546,3 +567,6 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
   自己那条外来键当守卫）；`review-page` / `mobile-contract` /
   `card-contract` 承载**全部 CSS 布局契约**（见设计系统层）；`file-reference-grammar` /
   `session-mention` 是官方包逐字镜像（打包门禁禁跨插件值导入）。
+- **`execution.spec.ts` 的假环境必须如实模拟宿主的持有语义**：`binding` 只对**被持有**的
+  会话返回驱动（`hold` 才是入口）。一个从 Map 里直接发驱动的假面会让整份 suite 在线上
+  全线失败时依然全绿——这类「假面比现实宽容」的测试比没有测试更危险。

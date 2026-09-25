@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openRoundsOf, pendingCommentCount, plainRunsOf, promoteManyToColumnTop, promoteToColumnTop, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
+  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openRoundsOf, pendingCommentCount, plainRunsOf, promoteManyToColumnTop, promoteSessionsToTop, promoteToColumnTop, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, startedOrSettledSessions, supplementLaunchFields, taskExecutable,
   settleExecution, startExecution, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -294,6 +294,107 @@ describe('promoteManyToColumnTop (the batch is the same law, not a second one)',
     const [a, b] = review(['a', 'b'], [0, 1])
     const out = promoteManyToColumnTop([todo, a, b], [{ id: 'b', status: 'review' }], NOW + 1)
     expect(out.find(task => task.id === 't')).toBe(todo)
+  })
+})
+
+describe('the session list reads the same law, one column down', () => {
+  /** One task with an open round per named session. */
+  function withRounds(rounds: Array<{ id: string; sessionId?: string; startedAt: number; injectedAt?: number; endedAt?: number; result?: 'succeeded' | 'failed' | 'cancelled'; viewedAt?: number }>): TaskRecord {
+    return {
+      ...createTask({ title: 't', description: '', prompt: 'p' }, NOW, 't'),
+      executions: rounds.map(round => ({
+        id: round.id,
+        sessionId: round.sessionId,
+        startedAt: round.startedAt,
+        endedAt: round.endedAt,
+        result: round.result,
+        error: undefined,
+        ...round.injectedAt !== undefined ? { injectedAt: round.injectedAt } : {},
+        ...round.viewedAt !== undefined ? { viewedAt: round.viewedAt } : {},
+      })),
+    }
+  }
+
+  describe('startedOrSettledSessions (what counts as work starting or finishing)', () => {
+    it('names a session that gained a round, one that gained its session, one injected, one settled', () => {
+      const before = withRounds([{ id: 'r1', sessionId: 's-1', startedAt: 1 }])
+      const after = withRounds([
+        { id: 'r1', sessionId: 's-1', startedAt: 1, endedAt: 5, result: 'succeeded' },
+        { id: 'r2', sessionId: 's-2', startedAt: 2 },
+        { id: 'r3', startedAt: 3 },
+        { id: 'r4', sessionId: 's-4', startedAt: 4 },
+      ])
+      const withSession = { ...after, executions: after.executions.map(r => r.id === 'r3' ? { ...r, sessionId: 's-3' } : r) }
+      expect(startedOrSettledSessions(before, withSession)).toEqual(['s-1', 's-2', 's-3', 's-4'])
+    })
+
+    it('an injected round counts (that is the moment a queued comment starts working)', () => {
+      const before = withRounds([{ id: 'r1', sessionId: 's-1', startedAt: 1 }])
+      const after = withRounds([{ id: 'r1', sessionId: 's-1', startedAt: 1, injectedAt: 2 }])
+      expect(startedOrSettledSessions(before, after)).toEqual(['s-1'])
+    })
+
+    it('marking a round read is NOT work — the list must not shuffle on a glance', () => {
+      const before = withRounds([{ id: 'r1', sessionId: 's-1', startedAt: 1 }])
+      const after = withRounds([{ id: 'r1', sessionId: 's-1', startedAt: 1, viewedAt: 9 }])
+      expect(startedOrSettledSessions(before, after)).toEqual([])
+    })
+
+    it('deleting a session is NOT work either (the round is gone from after, not added)', () => {
+      const before = withRounds([
+        { id: 'r1', sessionId: 's-1', startedAt: 1 },
+        { id: 'r2', sessionId: 's-2', startedAt: 2 },
+      ])
+      const after = withRounds([{ id: 'r1', sessionId: 's-1', startedAt: 1 }])
+      expect(startedOrSettledSessions(before, after)).toEqual([])
+    })
+
+    it('a round with no session yet is skipped (a plain run before its started event)', () => {
+      const before = withRounds([])
+      const after = withRounds([{ id: 'r1', startedAt: 1 }])
+      expect(startedOrSettledSessions(before, after)).toEqual([])
+    })
+
+    it('one session named twice keeps only its LAST occurrence (that is the newest)', () => {
+      const before = withRounds([{ id: 'r1', sessionId: 's-1', startedAt: 1 }])
+      const after = withRounds([
+        { id: 'r2', sessionId: 's-1', startedAt: 2 },
+        { id: 'r3', sessionId: 's-1', startedAt: 3, endedAt: 4, result: 'succeeded' },
+      ])
+      expect(startedOrSettledSessions(before, after)).toEqual(['s-1'])
+    })
+  })
+
+  describe('promoteSessionsToTop', () => {
+    it('puts a promoted session first and shifts the rest, keeping their relative order', () => {
+      const task = { ...createTask({ title: 't', description: '', prompt: 'p' }, NOW, 't'), sessionsOrder: ['s-1', 's-2', 's-3'] }
+      const out = promoteSessionsToTop(task, ['s-2'], NOW + 1)
+      expect(out.sessionsOrder).toEqual(['s-2', 's-1', 's-3'])
+      expect(out.updatedAt).toBe(NOW + 1)
+    })
+
+    it('several promoted sessions land newest-first (entries are in occurrence order)', () => {
+      const task = { ...createTask({ title: 't', description: '', prompt: 'p' }, NOW, 't'), sessionsOrder: ['s-1'] }
+      const out = promoteSessionsToTop(task, ['s-1', 's-2', 's-3'], NOW + 1)
+      expect(out.sessionsOrder).toEqual(['s-3', 's-2', 's-1'])
+    })
+
+    it('a session already on top changes nothing at all (no stamp, no sync churn)', () => {
+      const task = { ...createTask({ title: 't', description: '', prompt: 'p' }, NOW, 't'), sessionsOrder: ['s-1', 's-2'] }
+      expect(promoteSessionsToTop(task, ['s-1'], NOW + 1)).toBe(task)
+      expect(promoteSessionsToTop(task, [], NOW + 1)).toBe(task)
+    })
+
+    it('creates the arrangement when the card never had one', () => {
+      const task = createTask({ title: 't', description: '', prompt: 'p' }, NOW, 't')
+      const out = promoteSessionsToTop(task, ['s-1'], NOW + 1)
+      expect(out.sessionsOrder).toEqual(['s-1'])
+    })
+
+    it('an empty id is never promoted into the arrangement', () => {
+      const task = createTask({ title: 't', description: '', prompt: 'p' }, NOW, 't')
+      expect(promoteSessionsToTop(task, [''], NOW + 1)).toBe(task)
+    })
   })
 })
 

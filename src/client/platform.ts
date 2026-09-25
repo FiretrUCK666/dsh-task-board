@@ -19,7 +19,8 @@
  * @module dsh-task-board/client/platform
  */
 
-import type { SessionDriver } from '../core/execution.ts'
+import type { SessionReferenceSource } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionDriver, SessionHold } from '../core/execution.ts'
 
 // ─── Branded identifiers ────────────────────────────────────────────────────
 
@@ -380,6 +381,18 @@ export interface SessionBinding {
   readonly session: BoundSessionFace
 }
 
+/**
+ * The reference the sessions service hands out for a RETAINED generation: the
+ * live binding plus the shared open wait. `ready` rejects with the host's own
+ * reason when the conversation would not open; `release` is idempotent, so a
+ * caller may hand the borrow over and still keep a safety-net release.
+ */
+export interface SessionReferenceFace {
+  readonly binding: SessionBinding
+  readonly ready: Promise<unknown>
+  release(): void
+}
+
 /** The narrow `ctx.sessions` service face this plugin reads.
  *
  *  NAVIGATION IS DELIBERATELY ABSENT. The host used to expose `open(id)` /
@@ -389,13 +402,26 @@ export interface SessionBinding {
  *  `ctx.layout.selectPanel`). Reading a removed member would fail at runtime
  *  with nothing but a `TypeError` on the first click, so a face that never
  *  declares one is the structural guard.
+ *
+ *  `binding` IS the trap this face has to keep honest: the host resolves it
+ *  only for a generation someone currently retains ("or undefined without a
+ *  retained generation"). Anything that owns work in a session for longer than
+ *  an instant borrows through `retain` instead — see `sessionHoldFactory`.
  */
 export interface ISessionsFace {
   list: ObservableSnapshot<SessionListState>
   create(opts?: { workspaceId?: WorkspaceId; cwd?: string; sessionId?: SessionId }): Promise<SessionId>
   /**
+   * Retain a generation: the host starts the shared initial open and hands
+   * back a reference the caller releases. The documented order is create →
+   * retain → borrow, and skipping the middle step is why a board-created
+   * session used to resolve no driver at all.
+   */
+  retain(id: SessionId, options: { source: SessionReferenceSource; signal?: AbortSignal }): SessionReferenceFace
+  /**
    * Resolve the stable session binding (scope-addressed assembly feed). Pure
-   * resolution — undefined for a session neither listed nor already scoped.
+   * resolution — undefined UNLESS a consumer currently retains that
+   * generation. Reads only; never a run.
    */
   binding(id: SessionId): SessionBinding | undefined
 }
@@ -893,6 +919,74 @@ export function sessionDriverOf(session: BoundSessionFace): {
       subscribe: fn => session.subscribe(fn),
     },
     dispose,
+  }
+}
+
+/**
+ * The label every borrow the board owns is retained under. It shows up in the
+ * host's own retention bookkeeping (`retainInfo`), so a session held by a
+ * board run is distinguishable from one the user happens to have open.
+ *
+ * Declared through the host's own merge table (not a bare string): the label
+ * set is an interface the host extends per consumer, so a plugin that invents
+ * one without declaring it is invisible to every other package reading the
+ * bookkeeping. Type-only — the runtime contract is unchanged.
+ */
+export const SESSION_HOLD_SOURCE = 'taskBoardRun'
+
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+  interface SessionReferenceSourceMap {
+    /** A session generation the board borrows for a run or a continuation. */
+    taskBoardRun: unknown
+  }
+}
+
+/**
+ * Build the ONE borrow path the execution service uses: retain a generation,
+ * hand back its driver and the host's open wait, release on the caller's word.
+ *
+ * Why a factory and not a bare `retain` at each site: the driver adapter
+ * installs a permanent subscription on the session object (see
+ * {@link sessionDriverOf}), and a session object the board created is garbage
+ * once the last reference goes away. So adapters are pooled per session object
+ * and reference-counted by live borrows — the last release disposes the
+ * subscription AND drops the map entry, or a page open for days would pile up
+ * one live subscription per run it ever launched.
+ *
+ * @param retain - the host's retain face (bound to this plugin's service).
+ * @returns the borrow function the execution environment is wired with.
+ */
+export function sessionHoldFactory(retain: (id: SessionId) => SessionReferenceFace): (id: string) => SessionHold {
+  // Session object -> its pooled driver adapter and the count of live borrows.
+  const pool = new Map<BoundSessionFace, { entry: { driver: SessionDriver; dispose: () => void }; borrows: number }>()
+  return (id: string): SessionHold => {
+    // Throws when the host refuses the borrow (disposed controller, unresolvable
+    // target); callers turn that into a settled failure carrying this message.
+    const reference = retain(id as SessionId)
+    const session = reference.binding.session
+    let pooled = pool.get(session)
+    if (pooled === undefined) {
+      pooled = { entry: sessionDriverOf(session), borrows: 0 }
+      pool.set(session, pooled)
+    }
+    const owned = pooled
+    owned.borrows += 1
+    let released = false
+    return {
+      driver: owned.entry.driver,
+      ready: reference.ready.then(() => undefined),
+      release: () => {
+        // Idempotent: a handover plus a safety-net release is a normal pair.
+        if (released) return
+        released = true
+        owned.borrows -= 1
+        if (owned.borrows === 0) {
+          owned.entry.dispose()
+          pool.delete(session)
+        }
+        reference.release()
+      },
+    }
   }
 }
 

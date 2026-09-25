@@ -1603,8 +1603,7 @@ export declare class BoardController {
      *   task/execution, execution not settled).
      */
     submitComment(taskId: string, executionId: string, text: string, command?: boolean, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined;
-    /** A comment on a completed task revives it: moving the task back to 待办 is
-     *  the SAME column transition as a drag (the schedule re-arms per column
+    /** A comment on a completed task revives it: moving the task back to 待办 is   *  the SAME column transition as a drag (the schedule re-arms per column
      *  rules), so the comment drives the task instead of hitting a dead end. */
     private reviveTaskIfDone;
     /**
@@ -1732,18 +1731,25 @@ export declare class BoardController {
     /** Settle a round through the shared column decision. */
     private settleRound;
     /**
-     * 引擎派生的换栏落地——**唯一**的落点。写入新记录，并把它顶到目标栏的
-     * 最上方（「最新状态在前」这条律），让「刚完成的是哪一张」一眼可见。
+     * Engine-derived column landing — **THE** one landing point. Writes the new
+     * record, promotes the card to the top of the column it landed in (「最新
+     * 状态在前」), and promotes every session this landing started or finished
+     * work in to the top of the card's session list (the same law, one column
+     * down). Four semantics, all fixed:
      *
-     * 换栏的历史由 `settleRound` / `withStatus` 那一步追加；本方法只负责把
-     * 记录落进台账并排好序。三条语义定死：
-     *
-     * 1. **只有真的换了栏才重排**。留在原栏的结算（链式/批量未完、插话后仍有
-     *    别的会话在跑）只写记录，不动该栏其他卡片的顺序。
-     * 2. **用户拖动的位置永不被覆盖**。人工重排走 `moveTask` /
-     *    `applyCardOrder`，是另一条独立路径，提升逻辑碰不到它。
-     * 3. **写入的是调用方给的新记录**，不重新推导。旧栏位由本方法自己从台账
-     *    里读，所以调用方传一个过期的 `before` 也不会让提升漏判。
+     * 1. **只有真的换了栏才重排卡片**. A settlement that stays in its column
+     *    (chain/batch unfinished, a steer while another session still runs) only
+     *    writes the record and leaves the column's other cards alone.
+     * 2. **用户拖动的位置永不被覆盖**. Manual reordering goes through
+     *    `moveTask` / `applyCardOrder` / `reorderTaskSession`, which are separate
+     *    paths no promotion can reach.
+     * 3. **写入的是调用方给的新记录**, never re-derived. The old column is read
+     *    from the ledger here, so a stale `before` from the caller cannot make a
+     *    promotion misjudge.
+     * 4. **会话顶格只认轮次生命周期的变化** (`startedOrSettledSessions`): a new
+     *    round, one that just got its session, one just injected, one just
+     *    settled. Marking a round read is not a change, and neither is deleting
+     *    a session.
      */
     private land;
     /**

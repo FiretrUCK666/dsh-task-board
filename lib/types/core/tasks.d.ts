@@ -817,3 +817,34 @@ export declare function promoteManyToColumnTop(tasks: readonly TaskRecord[], ent
  * 套做法，只是把 entries 排成一串。
  */
 export declare function promoteToColumnTop(tasks: readonly TaskRecord[], movedId: string, targetStatus: TaskStatus, now: number): TaskRecord[];
+/**
+ * 这一落里「刚刚开始工作或刚刚结束」的会话，按发生顺序（旧的在前）。
+ *
+ * 判据是台账里**轮次生命周期的新增与变化**，不是数组位置、也不是「卡在跑」。
+ * 两个方向都要看清：
+ *
+ * - **新生 / 变化的轮次**才是事件。一条纯删除不算——被删的轮次不在 `after`
+ *   里，删掉一个会话因此不会把谁顶上来。
+ * - `sessionId` 为 undefined 的轮次还没有归属（普通运行在 `started` 事件
+ *   之前就是这种），跳过；它拿到会话的那一落自然会把它算进去。
+ */
+export declare function startedOrSettledSessions(before: TaskRecord | undefined, after: TaskRecord): string[];
+/**
+ * 把若干个会话顶到卡片会话列的**最上方**——卡片那条「最新状态在前」律在
+ * 会话上的对偶，一个会话开始工作或刚刚结束，就该一眼看见是哪一个。
+ *
+ * `sessionIds` 按**发生顺序**给出（旧的在前，调用方自己掌握先后），所以倒过来
+ * 前插就是「最新发生的在最上」，与逐个顶格完全一致。其余会话保持原有相对
+ * 次序整体下移——**用户手动拖过的排列不会被顶格打乱**（它只是整体让位），
+ * 与卡片的手动次序同一条律。
+ *
+ * 三条语义与 {@link promoteManyToColumnTop} 完全一致：
+ *
+ * 1. **已经在最上就不动**（同一个空转律）：一个记录都不碰，不刷新
+ *    `updatedAt`、不产生同步抖动。
+ * 2. **确实改了才盖章**：同步合并按 `updatedAt` 排序，漏盖就是两台设备
+ *    顺序漂移——这与被让位的会话整体下移是同一次写入。
+ * 3. **不隐藏任何行**：数组里没有的名字由 `orderedSessionsOf` 按活动倒序
+ *    浮到最上，两条律各管各的。
+ */
+export declare function promoteSessionsToTop(task: TaskRecord, sessionIds: readonly string[], now: number): TaskRecord;

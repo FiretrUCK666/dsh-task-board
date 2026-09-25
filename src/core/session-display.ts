@@ -251,6 +251,24 @@ function roundActivity(round: ExecutionRecord): number {
 }
 
 /**
+ * 「这个会话最后一次有动静」的时刻 —— 会话列的排序键与每会话未读时钟的
+ * **同一份**推导（`max(round.endedAt ?? round.startedAt)`，开轮算它自己的开始），
+ * 两条读数因此不可能互相矛盾。
+ *
+ * 它对**这个任务**记录的所有轮次取最大值——普通运行、保存中的评论、旁听到的
+ * 原生对话、直发，一视同仁：「这段对话又产出新东西了」不关心是哪条车道产出
+ * 的。会话没有轮次时返回 0（读作「没有动过」，调用方自己拿宿主时间兜底）。
+ */
+export function sessionActivityOf(task: TaskRecord, sessionId: string): number {
+  let activity = 0
+  for (const round of task.executions) {
+    if (round.sessionId !== sessionId) continue
+    activity = Math.max(activity, roundActivity(round))
+  }
+  return activity
+}
+
+/**
  * The viewed baseline of an execution row: when the user last opened its
  * review page; absent, the run's own start (every created/normalized run
  * carries a viewedAt, so this only guards test fixtures). A stable anchor —
@@ -322,6 +340,7 @@ export function taskUnviewedCount(task: TaskRecord): number {
  *
  *  - activity = max(round.endedAt ?? round.startedAt) — an open round counts
  *    as its own start, which never beats an equal-or-later acknowledgment;
+ *    {@link sessionActivityOf} is that reading, named once for both callers;
  *  - acknowledgment = max(round.viewedAt ?? round.startedAt) — rounds are
  *    born seen (their creator stamps `viewedAt`; storage backfills old rows
  *    to their own activity), and the existing funnels move it forward
@@ -334,14 +353,11 @@ export function taskUnviewedCount(task: TaskRecord): number {
  * coarser task-level clock).
  */
 export function sessionUnviewedOf(task: TaskRecord, sessionId: string): boolean {
-  let activity = 0
+  const activity = sessionActivityOf(task, sessionId)
   let acknowledged = 0
-  let seen = false
   for (const round of task.executions) {
     if (round.sessionId !== sessionId) continue
-    seen = true
-    activity = Math.max(activity, roundActivity(round))
     acknowledged = Math.max(acknowledged, round.viewedAt ?? round.startedAt)
   }
-  return seen && activity > acknowledged
+  return activity > 0 && activity > acknowledged
 }

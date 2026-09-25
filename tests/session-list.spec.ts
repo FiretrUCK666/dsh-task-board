@@ -104,6 +104,33 @@ describe('taskSessionsOf (统一会话列表)', () => {
     expect(rows[2].sessionId).toBe('s-9') // linked group after the run group
   })
 
+  it('a session NOT in the arrangement floats by the work it did on this card', () => {
+    // The trap this pins: a row's key used to be the host's `updatedAt` for a
+    // linked conversation, so a bound session you had just chatted with — whose
+    // turn the board observed onto this very card — sorted as if nothing had
+    // happened, and stayed buried under the arranged rows. The key is now the
+    // session's own activity on this card, whichever source is newer.
+    const task = { ...withOneRun(), sessionsOrder: ['s-1'] } // arranged: s-1 only
+    const observed = { ...task, executions: [...task.executions, newExternalRound({
+      id: 'x-1', now: NOW + 5, sessionId: 's-2', text: '看一眼',
+    })] }
+    const rows = taskSessionsOf(observed, ctx([
+      // Bound, with a much older host touch than the observed turn.
+      linkedRow({ sessionId: 's-2', updatedAt: NOW - 10_000 }),
+    ]))
+    expect(rows.map(row => row.sessionId)).toEqual(['s-2', 's-1'])
+    expect(rows[0].updatedAt).toBe(NOW + 5)
+  })
+
+  it('a bound session with no work on this card keeps the host touch as its key', () => {
+    const task = { ...withOneRun(), sessionsOrder: ['s-1'] }
+    const rows = taskSessionsOf(task, ctx([
+      linkedRow({ sessionId: 's-9', updatedAt: NOW + 999 }),
+    ]))
+    expect(rows.map(row => row.sessionId)).toEqual(['s-9', 's-1'])
+    expect(rows[0].updatedAt).toBe(NOW + 999)
+  })
+
   it('shows 未命名 for a title-less run session (never the task title, never a raw id)', () => {
     const task = sampleTask()
     const { task: running } = startExecution(task, NOW, 'e-1')

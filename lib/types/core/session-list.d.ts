@@ -99,15 +99,20 @@ export interface TaskSessionContext {
  *   executed and bound reads as the task's own run — it carries the execution
  *   identity and the quiet run number; the per-session unread glow reads
  *   `sessionUnviewedOf`, never this list).
- * - hidden sessions are dropped; run rows sort by latest activity, then
- *   linked rows in workspace order.
+ * - hidden sessions are dropped; run rows sort by their own latest activity
+ *   (the row's display reading, so a running session ranks by when it started
+ *   and a settled one by when it ended), then linked rows in workspace order.
  */
 export declare function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskSessionRow[];
 /**
- * The displayed order of the unified list: the user's manual array first
- * (rows inside it follow its exact order), then every other row — a session
- * that arrived after the reorder (a new bind, a fresh run, a rerun) lands at
- * the TOP, newest-activity first. A manual order never hides a row; it only
- * overrides the default sort.
+ * The displayed order of the unified list: the current arrangement first (rows
+ * inside it follow its exact order), then every row that is not in it — a
+ * session that arrived after the last arrangement (a new bind, a fresh run)
+ * lands at the TOP, newest-activity first.
+ *
+ * The arrangement array is written by two hands and read by neither: the user
+ * drags (`reorderTaskSession`) and the engine promotes a session that just
+ * started or finished work (`promoteSessionsToTop`). An arrangement never
+ * hides a row; it only fixes the order of the rows it names.
  */
 export declare function orderedSessionsOf(task: TaskRecord, rows: readonly TaskSessionRow[]): TaskSessionRow[];

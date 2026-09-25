@@ -53,6 +53,31 @@ class FakeDriver implements SessionDriver {
   }
 }
 
+/**
+ * The retention faces of a one-driver env: the host lends the generation out
+ * and the peek finds it while the borrow is live. Every hand-built env in this
+ * spec composes these, so "a run borrows, it does not peek" is stated once
+ * instead of per test — and an env that cannot lend is spelled `refusal`.
+ */
+function retention(driver: FakeDriver): Pick<ExecutionEnvironment['sessions'], 'hold' | 'binding'> {
+  const held = { live: false }
+  return {
+    hold: () => {
+      held.live = true
+      return { driver, ready: Promise.resolve(), release: () => { held.live = false } }
+    },
+    binding: () => (held.live ? { session: driver } : undefined),
+  }
+}
+
+/** A host that refuses every borrow, with the reason it gives. */
+function refusal(reason: string): Pick<ExecutionEnvironment['sessions'], 'hold' | 'binding'> {
+  return {
+    hold: () => { throw new Error(reason) },
+    binding: () => undefined,
+  }
+}
+
 /** Fake env: workspace list, session creation, and one driver per session id. */
 function makeEnv(overrides: {
   recentWorkspaceId?: string | undefined
@@ -64,6 +89,10 @@ function makeEnv(overrides: {
   /** Pre-register the workspace session as host-blank (reusable). "Session
    *  vanished" cases pass false so the id stays absent from the list. */
   blankSummary?: boolean
+  /** The host refuses to retain this session (a closed controller). */
+  holdThrows?: string
+  /** The host could not open the conversation it just retained. */
+  openFails?: string
 } = {}) {
   const drivers = new Map<string, FakeDriver>()
   const summaries = new Map<string, { running: boolean; blank?: boolean }>()
@@ -82,6 +111,15 @@ function makeEnv(overrides: {
   // blank:true; a "session vanished" case opts out (blankSummary:false).
   drivers.set('s-1', makeDriver())
   if (overrides.blankSummary !== false) summaries.set('s-1', { running: false, blank: true })
+  /**
+   * Retention, modelled the way the HOST behaves rather than the way the old
+   * fake did: a driver exists only for a generation somebody currently
+   * retains, so `binding` (the peek) answers undefined for a session nobody
+   * holds. The old fake handed out a driver from a plain map lookup, which is
+   * why the whole suite stayed green while every real run died at
+   * "session is not ready". `held` records the borrows in flight.
+   */
+  const held = new Set<string>()
   const env: ExecutionEnvironment = {
     ...overrides.commandGraceMs !== undefined ? { commandGraceMs: overrides.commandGraceMs } : {},
     sessions: {
@@ -92,7 +130,21 @@ function makeEnv(overrides: {
           return () => { listListeners.delete(fn) }
         },
       },
+      hold: (id: string) => {
+        if (overrides.holdThrows !== undefined) throw new Error(overrides.holdThrows)
+        const driver = drivers.get(id)
+        if (driver === undefined) throw new Error(`no such session "${id}"`)
+        held.add(id)
+        return {
+          driver,
+          ready: overrides.openFails !== undefined
+            ? Promise.reject(new Error(overrides.openFails))
+            : Promise.resolve(),
+          release: () => { held.delete(id) },
+        }
+      },
       binding: (id: string) => {
+        if (!held.has(id)) return undefined
         const driver = drivers.get(id)
         return driver === undefined ? undefined : { session: driver }
       },
@@ -119,7 +171,7 @@ function makeEnv(overrides: {
     summaries.set(id, { running })
     for (const fn of [...listListeners]) fn()
   }
-  return { env, drivers, summaries, createSessionCalls, setSummary }
+  return { env, drivers, summaries, createSessionCalls, setSummary, held }
 }
 
 function sampleTask() {
@@ -127,6 +179,49 @@ function sampleTask() {
 }
 
 describe('ExecutionService.run', () => {
+  it('BORROWS the session for the whole run and releases it on settlement', async () => {
+    // The regression this pins: the host hands out a driver only for a
+    // generation somebody retains, so a run that PEEKS gets nothing and dies
+    // at "session is not ready" before a single event reaches the session.
+    // The borrow must therefore exist from launch to settlement — and the
+    // peek must be blind outside it, exactly as on the live host.
+    const { env, drivers, held } = makeEnv({ recentWorkspaceId: 'ws-recent' })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    const events: string[] = []
+    const promise = service.run(task, execution, event => { events.push(event.kind) })
+
+    await promise
+    expect(events).toEqual(['started'])
+    // Mid-flight: the session is the board's, so the peek finds it.
+    expect([...held]).toEqual(['s-1'])
+    expect(env.sessions.binding('s-1')).toEqual({ session: drivers.get('s-1') })
+    expect(drivers.get('s-1')?.promptCalls).toHaveLength(1)
+
+    drivers.get('s-1')?.setSnapshot({ running: true, turns: 0 })
+    expect(held.has('s-1')).toBe(true)
+    drivers.get('s-1')?.setSnapshot({ running: false, turns: 1 })
+    expect(events).toEqual(['started', 'settled'])
+    // Settled: the board owns the session no more, and the peek is blind again.
+    expect(held.has('s-1')).toBe(false)
+    expect(env.sessions.binding('s-1')).toBeUndefined()
+  })
+
+  it('settles failed with the host reason when the conversation would not open', async () => {
+    // An open failure is a real, reportable outcome — never a silent no-driver.
+    const { env, held } = makeEnv({ openFails: 'history window could not be opened' })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { execution } = startExecution(task, NOW, 'exec-1')
+    const events: Array<{ kind: string; outcome?: string; error?: string }> = []
+    await service.run(task, execution, event => { events.push(event) })
+    expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'failed' })
+    expect(events.at(-1)?.error).toContain('could not be opened')
+    // A run that never got its session open must not keep holding it.
+    expect(held.size).toBe(0)
+  })
+
   it('creates a session in the recent workspace, sends the task prompt, and settles succeeded on turn completion', async () => {
     const { env, drivers, createSessionCalls } = makeEnv({ recentWorkspaceId: 'ws-recent' })
     const service = new ExecutionService(env)
@@ -352,7 +447,7 @@ describe('ExecutionService.run', () => {
     const env: ExecutionEnvironment = {
       sessions: {
         list: { getSnapshot: () => ({ phase: 'ready', byId: { 's-1': { running: false, blank: true } } }), subscribe: () => () => {} },
-        binding: () => ({ session: connected }),
+        ...retention(connected),
       },
       workspaces: {
         list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
@@ -382,11 +477,15 @@ describe('ExecutionService.run', () => {
     expect(events.at(-1)?.error).toContain('workspace')
   })
 
-  it('settles failed when the execution session never becomes ready', async () => {
+  it('settles failed with the host\'s reason when the session cannot be borrowed', async () => {
+    // The host refuses the retain (closed controller / unresolvable target).
+    // The run must report it — the old shape of this case ("binding answers
+    // undefined") is not a thing a run can hit any more, and pretending
+    // otherwise is what let every real run die silently at this step.
     const env: ExecutionEnvironment = {
       sessions: {
         list: { getSnapshot: () => ({ phase: 'ready', byId: { 's-1': { running: false, blank: true } } }), subscribe: () => () => {} },
-        binding: () => undefined,
+        ...refusal('Session Controller is disposed'),
       },
       workspaces: {
         list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
@@ -395,14 +494,18 @@ describe('ExecutionService.run', () => {
     const service = new ExecutionService(env)
     const task = sampleTask()
     const { execution } = startExecution(task, NOW, 'exec-1')
-    const events: Array<{ kind: string; outcome?: string }> = []
+    const events: Array<{ kind: string; outcome?: string; error?: string }> = []
     await service.run(task, execution, event => { events.push(event) })
     expect(events.at(-1)).toMatchObject({ kind: 'settled', outcome: 'failed' })
+    expect(events.at(-1)?.error).toContain('disposed')
   })
 
   it('never rejects — thrown wiring failures become settled-failed events', async () => {
     const env: ExecutionEnvironment = {
-      sessions: { list: { getSnapshot: () => ({ phase: 'ready', byId: {} }), subscribe: () => () => {} }, binding: () => undefined },
+      sessions: {
+        list: { getSnapshot: () => ({ phase: 'ready', byId: {} }), subscribe: () => () => {} },
+        ...refusal('no session available to run the task in'),
+      },
       workspaces: {
         list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: [] }], recentWorkspaceId: undefined }) },
       },
@@ -432,7 +535,7 @@ describe('ExecutionService.run', () => {
             return () => { listeners.delete(fn) }
           },
         },
-        binding: () => ({ session: connected }),
+        ...retention(connected),
       },
       workspaces: {
         list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
@@ -471,7 +574,7 @@ describe('ExecutionService.run', () => {
           getSnapshot: () => ({ phase: 'ready', byId: Object.fromEntries(summaries) }),
           subscribe: () => () => {},
         },
-        binding: () => ({ session: connected }),
+        ...retention(connected),
       },
       workspaces: {
         list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
@@ -507,7 +610,7 @@ describe('ExecutionService.run', () => {
             return () => { listeners.delete(fn) }
           },
         },
-        binding: () => ({ session: connected }),
+        ...retention(connected),
       },
       workspaces: {
         list: { getSnapshot: () => ({ items: [{ workspaceId: 'ws-1', sessionIds: ['s-1'] }], recentWorkspaceId: undefined }) },
@@ -533,6 +636,28 @@ describe('ExecutionService.run', () => {
 })
 
 describe('ExecutionService.createSession (新建会话)', () => {
+  it('BORROWS the fresh session to compose it, then lets it go', async () => {
+    // 新建会话 had the same defect: it peeked for a driver on a session it had
+    // just created, so it could only ever report "not ready".
+    const { env, held } = makeEnv()
+    const service = new ExecutionService(env)
+    const result = await service.createSession({ workspaceId: 'ws-1' })
+    expect(result).toEqual({ ok: true, sessionId: 's-1' })
+    expect(held.size).toBe(0)
+  })
+
+  it('keeps the created session and reports the open failure as a config error', async () => {
+    // The session EXISTS on the host, so an open problem is a partial success —
+    // the caller must keep the session instead of pretending nothing happened.
+    const { env, held } = makeEnv({ openFails: 'history window could not be opened' })
+    const service = new ExecutionService(env)
+    const result = await service.createSession({ workspaceId: 'ws-1' })
+    expect(result.ok).toBe(true)
+    expect(result).toMatchObject({ sessionId: 's-1' })
+    expect(result.ok && result.configError).toContain('could not be opened')
+    expect(held.size).toBe(0)
+  })
+
   it('creates a FRESH session via the createSession face (never blank-reuse) and applies no config when none given', async () => {
     const { env, drivers, createSessionCalls } = makeEnv()
     const createdWorkspaces: Array<string | undefined> = []
@@ -640,9 +765,13 @@ describe('ExecutionService.renameSession (会话重命名)', () => {
   })
 
   it('degrades to the binding driver when no face is wired', async () => {
-    const { env, drivers } = makeEnv()
+    const { env, drivers, held } = makeEnv()
     const driver = new FakeDriver()
     drivers.set('s-9', driver)
+    // The fallback peeks, so it only finds a session somebody is holding — a
+    // run of this board on that conversation, or the user having it open.
+    env.sessions.hold('s-9').release()
+    held.add('s-9')
     const service = new ExecutionService(env)
     const result = await service.renameSession('s-9', '驱动改名')
     expect(result).toEqual({ ok: true })
@@ -671,10 +800,14 @@ describe('ExecutionService.reconcile', () => {
   })
 
   it('settles a finished session by its agent error (warm snapshot)', async () => {
-    const { env, drivers, summaries } = makeEnv()
+    const { env, drivers, summaries, held } = makeEnv()
     drivers.set('s-1', new FakeDriver())
     summaries.set('s-1', { running: false, blank: true })
     drivers.get('s-1')!.setSnapshot({ running: false, lastAgentError: 'x', turns: 1 })
+    // The warm-snapshot probe peeks, so the agent-error verdict needs the
+    // generation retained — which is exactly the state a run this page owns
+    // leaves behind while it is still in flight.
+    held.add('s-1')
     const service = new ExecutionService(env)
     const task = sampleTask()
     const { task: running } = startExecution(task, NOW, 'exec-1')
@@ -796,6 +929,27 @@ describe('ExecutionService.reconcile', () => {
 })
 
 describe('ExecutionService.commentRun', () => {
+  it('BORROWS the session for the round and releases it on settlement', async () => {
+    // A continuation drives a conversation the page may hold no reference to;
+    // the watch needs the live snapshot, so the borrow spans the round.
+    const { env, held, setSummary } = makeEnv()
+    env.sendComment = async () => ({ ok: true })
+    const service = new ExecutionService(env)
+    const task = sampleTask()
+    const { task: running } = startExecution(task, NOW, 'exec-1')
+    const round = { ...running.executions[0], sessionId: 's-1', comment: '继续' }
+    const events: ExecutionEvent[] = []
+    const promise = service.commentRun(running, round, 's-1', '继续', event => { events.push(event) })
+    await promise
+    expect(held.has('s-1')).toBe(true)
+    setSummary('s-1', false)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    setSummary('s-1', false)
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    expect(events.at(-1)).toMatchObject({ kind: 'settled' })
+    expect(held.has('s-1')).toBe(false)
+  })
+
   it('sends the comment and settles as cancelled when the session vanishes', async () => {
     const { env, setSummary } = makeEnv({ blankSummary: false })
     env.sendComment = async () => ({ ok: true })
@@ -883,8 +1037,9 @@ describe('ExecutionService.commentRun', () => {
 
   it('settles a no-driver no-history comment on the second consecutive idle pass (never wedges the lane)', async () => {
     const { env, setSummary, drivers } = makeEnv()
-    // No client binding for the linked session, no history face wired.
-    drivers.delete('s-linked')
+    // A driver with no history face and a host that never reports the turn:
+    // the legacy optimistic fallback must still free the lane.
+    drivers.set('s-linked', new FakeDriver())
     env.sendComment = async () => ({ ok: true })
     const service = new ExecutionService(env)
     const task = sampleTask()
