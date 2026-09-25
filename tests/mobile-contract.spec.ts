@@ -1263,9 +1263,13 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     expect(source).toMatch(/\.notifyMain \.chip\s*\{[^}]*flex:\s*none/)
   })
 
-  it('every row answers WHEN: a tabular time stamp rides the action cluster', () => {
+  it('every row answers WHEN: a fixed time slot keeps action placement stable', () => {
     expect(ruleOf('notifyMeta')).toMatch(/flex:\s*none/)
+    expect(ruleOf('notifyMeta')).toMatch(/min-width:\s*10ch/)
+    expect(ruleOf('notifyMeta')).toMatch(/text-align:\s*right/)
     expect(ruleOf('notifyMeta')).toMatch(/font-variant-numeric:\s*tabular-nums/)
+    // The slot reserves the full compact-date width, so `21h` and
+    // `2026-09-24` cannot make otherwise identical rows wrap differently.
     // The stamp lives ONCE — inside the shared row's action cluster — and
     // both drawers hand it their moment.
     const feedRowSource = readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8')

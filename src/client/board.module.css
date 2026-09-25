@@ -481,7 +481,8 @@
 }
 
 /* 通知列表：一行一条（主区进任务详情 + 行内 triage 动作）。主区与动作区
-   同行，窄屏换列为两行（主区上、动作下），控件数量不变、字号不变。 */
+   同行，窄屏或内容确实放不下时整组换行（主区上、动作下）；时间槽宽度固定，
+   不会因为「21h」与「2026-09-24」长短不同而让同类行忽上忽下。 */
 .notifyList {
   display: flex;
   flex-direction: column;
@@ -547,9 +548,14 @@
 }
 /* Row time: a quiet trailing stamp INSIDE the action cluster — every feed
    row answers WHEN without opening anything (tabular figures keep digits
-   steady). Non-interactive; it wraps WITH the buttons, never alone. */
+   steady). The slot reserves the widest compact date (`YYYY-MM-DD`) so a
+   recent `21h` and an older `2026-09-24` have the same width; otherwise the
+   string length decides whether the whole action cluster wraps, making rows
+   jump between one and two lines for no content reason. */
 .notifyMeta {
   flex: none;
+  min-width: 10ch;
+  text-align: right;
   font-size: 12px;
   color: var(--dsh-tb-text-3);
   font-variant-numeric: tabular-nums;
