@@ -12,6 +12,7 @@
  *    the workspace raises the card's own voice and not only the bell's.
  */
 import { describe, expect, it } from 'vitest'
+import { taskUnviewed } from '../src/core/session-display.ts'
 import {
   boardDemandOf,
   gateOf,
@@ -98,9 +99,28 @@ describe('gateOf — the card owes a decision only while all three hold', () => 
     expect(gateOf(commentFinished('s-1')).state).toBe('unseen')
   })
 
-  it('the same card after the conversation is read is SEEN — looking retires it', () => {
-    // The read stamp the session panel writes on open.
+  it('the same card after the conversation is read is SEEN — opening it retires the demand', () => {
+    // The read stamp the SESSION panel writes on open. This is the only thing
+    // that may retire a review row: opening the card is a summary, and a
+    // summary is not the conversation.
     expect(gateOf(commentFinished('s-1', 'succeeded', NOW + 3)).state).toBe('seen')
+  })
+
+  it('the card baseline is a DIFFERENT clock, and cannot stand in for the session one', () => {
+    // A card that HAS been opened (its own `viewedAt` past the settle) still
+    // owes a decision about a conversation nobody opened. Folding the two
+    // clocks together is what made 「点开卡片，通知就没了」 — so they are pinned
+    // apart: this card reads the ring as seen and the gate as unseen, on
+    // purpose, because they answer two different questions.
+    const opened = { ...commentFinished('s-1'), viewedAt: NOW + 9 }
+    expect(taskUnviewed(opened)).toBe(false)
+    expect(gateOf(opened).state).toBe('unseen')
+    // …and only the session's own stamp moves the gate.
+    const readSession: TaskRecord = {
+      ...opened,
+      executions: opened.executions.map(round => ({ ...round, viewedAt: NOW + 9 })),
+    }
+    expect(gateOf(readSession).state).toBe('seen')
   })
 
   it('a card that is not in 待审核 owes nothing, finished or not', () => {

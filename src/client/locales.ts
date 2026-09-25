@@ -585,7 +585,7 @@ export const zh = {
   'card.newCommentTitle': '这条卡片有没看过的评论',
   'card.keyboardLabel': '{title}，{column}。[ 与 ] 键移到相邻列；回车打开。',
   'card.sessionsForAt': '相关会话 {n} 个：{sessions}',
-  'card.awaitingDecisionTitle': '已经跑完，等你在待审核列通过或打回。点开看过就不再提醒，但只有通过或打回才会把它移走。',
+  'card.awaitingDecisionTitle': '这个会话跑完了，你还没看过它、也还没裁决。点开卡片只是看摘要——要让这条消失，得进那个会话的评论区，或者直接通过 / 打回。',
   'card.dotUnread': '有新完成未看',
   'card.pendingItemSession': '会话「{session}」：{kind}',
   /* Header demand row: the board stating, in words, what it owes the user.
@@ -594,7 +594,7 @@ export const zh = {
      a card and the row in the drawer are one fact, and looking retires all
      three together. */
   'board.demand': '等你处理 {n} 项 · 待审核 {m} 张',
-  'board.demandTitle': '等你处理 = 挂起等你作答的会话；待审核 = 已经跑完、你还没看过也还没通过或打回的卡片',
+  'board.demandTitle': '等你处理 = 有会话挂起等你作答；待审核 = 有卡片跑完了、你还没看过那个会话、也还没通过或打回。点开卡片只是看摘要，要让提醒消失请进那个会话的评论区。',
   'prompt.commandList': '命令列表',
   'prompt.noCommands': '无匹配命令',
   'prompt.noReferences': '没有匹配的文件或会话',
@@ -1185,11 +1185,11 @@ export const en: Record<keyof typeof zh, string> = {
   'card.newCommentTitle': 'This card has comments you have not read',
   'card.keyboardLabel': '{title}, {column}. Press [ or ] to move it one column; Enter opens it.',
   'card.sessionsForAt': '{n} related session(s): {sessions}',
-  'card.awaitingDecisionTitle': 'Finished and waiting in Review for you to approve or send back. Opening it stops the reminder, but only approving or sending back moves the card',
+  'card.awaitingDecisionTitle': 'That conversation finished and you have neither read it nor ruled on it. Opening the card only shows a summary — to clear this, open that session, or approve / send it back.',
   'card.dotUnread': 'Has an unreviewed finish',
   'card.pendingItemSession': 'Session "{session}": {kind}',
   'board.demand': '{n} need you · {m} in review',
-  'board.demandTitle': 'Need you = sessions suspended on your answer. In review = cards whose work finished and that you have neither looked at nor approved or sent back',
+  'board.demandTitle': 'Need you = a session is suspended on your answer. In review = a card finished and you have neither opened that session nor approved or sent it back. Opening the card only shows a summary; to clear a reminder, open the session.',
   'prompt.commandList': 'Command list',
   'prompt.noCommands': 'No matching commands',
   'prompt.noReferences': 'No matching files or sessions',

@@ -1230,15 +1230,25 @@ export class BoardController {
 
   openTask(id: string): void {
     if (!this.tasks.some(task => task.id === id)) return
-    // Opening the detail clears the card's unread reminder AND its gate's
-    // "haven't looked at it" half. BOTH must move together: the card ring read
-    // the card baseline while the 待你决断 chip read the per-round read clock,
-    // so stamping only the baseline left the chip asking about work the user
-    // was looking at — the one leak that made 「看过之后还在催」 structural
-    // rather than accidental. One write, one persist, one funnel
-    // (`markTaskViewed`): the round-level stamp is the same call the
-    // notification drawer's 标已读 makes.
-    this.markTaskViewed(id)
+    // Opening the card clears the CARD-level unread reminder only — the ring,
+    // the「新 N」chip, the 未运行 dots. It is a summary: reading the card is not
+    // reading the conversation, so it must NOT touch the per-round read clock.
+    //
+    // The gate (待你决断) and the notification rows read the per-SESSION clock
+    // (`sessionUnviewedOf`), and the only things that move it are the ones that
+    // actually reveal a conversation: its panel (`markTaskSessionViewed`), its
+    // review page (`markExecutionViewed`), or an explicit 标已读. Collapsing
+    // the card-level baseline into the round-level one is what made 「点开卡片
+    // 通知就没了」 — the card opening can never stand in for opening the
+    // conversation it is about.
+    const at = this.now()
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== id || task.viewedAt === at) return task
+      changed = true
+      return { ...task, viewedAt: at }
+    })
+    if (changed) this.persistAndNotify()
     this.selectedTaskId = id
     this.notify()
   }

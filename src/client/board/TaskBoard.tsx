@@ -2082,7 +2082,18 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
           <div className={css.modalScroll}>
             <div className={css.feedTools} role="group" aria-label={t('board.notify')}>
               <span className={css.feedFilterGroup}>
-                {(['all', 'waiting', 'review'] as const).map(kind => (
+                {/* THE classification, and its sizes, in one place. The three
+                   chips partition the rows exactly: 等你处理 (a conversation
+                   suspended on an answer) + 待审核 (a finished result nobody has
+                   looked at) = 全部, and the two halves are the SAME numbers the
+                   header's demand line states — so the bell, the header and this
+                   drawer can never tell three different stories, and a filter
+                   that would show nothing says 0 instead of hiding itself. */}
+                {([
+                  ['all', notes.length],
+                  ['waiting', notes.filter(note => note.kind === 'waiting').length],
+                  ['review', notes.filter(note => note.kind === 'review').length],
+                ] as const).map(([kind, size]) => (
                   <button
                     key={kind}
                     type="button"
@@ -2092,6 +2103,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                     onClick={() => { setNotifyFilter(kind) }}
                   >
                     {t(`board.notifyFilter.${kind}`)}
+                    <span className={css.feedFilterCount} aria-hidden="true">{String(size)}</span>
                   </button>
                 ))}
               </span>

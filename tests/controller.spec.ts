@@ -693,6 +693,39 @@ describe('view state', () => {
     expect(taskUnviewed(controller.getSnapshot().tasks[0])).toBe(false)
   })
 
+  it('opening the CARD clears the card ring but NEVER stamps a round', async () => {
+    // The reported regression: clicking a card made its 待你决断 chip and its
+    // notification row vanish, as if the card were the conversation. A card is
+    // a SUMMARY. The gate and the notification rows read the PER-ROUND clock,
+    // so the contract is structural: `openTask` moves `task.viewedAt` and
+    // nothing else. The only things that may stamp a round are the ones that
+    // reveal a conversation — its panel, its review page, 标已读.
+    let clock = NOW
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub, { now: () => clock })
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'p' })!
+    clock = NOW + 1_000
+    await controller.runTask(task.id)
+    clock = NOW + 1_500
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    const executionId = exec.runCalls[0].executionId
+    const stampBefore = controller.getSnapshot().tasks[0].executions.find(round => round.id === executionId)!.viewedAt
+    expect(taskUnviewed(controller.getSnapshot().tasks[0])).toBe(true)
+
+    clock = NOW + 2_000
+    controller.openTask(task.id)
+    const opened = controller.getSnapshot().tasks[0]
+    // The card ring retires…
+    expect(opened.viewedAt).toBe(NOW + 2_000)
+    expect(taskUnviewed(opened)).toBe(false)
+    // …and not one round is touched, so every per-conversation clock stands.
+    expect(opened.executions.find(round => round.id === executionId)!.viewedAt).toBe(stampBefore)
+    // Revealing the conversation is a DIFFERENT call, and it does stamp.
+    controller.markExecutionViewed(task.id, executionId)
+    expect(controller.getSnapshot().tasks[0].executions.find(round => round.id === executionId)!.viewedAt)
+      .toBe(NOW + 2_000)
+  })
+
   it('markExecutionViewed clears a row unread and persists', async () => {
     let clock = NOW
     const stub = new StubExec()
