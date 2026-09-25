@@ -458,6 +458,14 @@ schema 就是给同一件事再加一个控件。
   归档会话投递但**保留 due 槽**；`sessionAvailability()` 是「不可用」的唯一判据。
 - **执行门禁**：`taskExecutable` 唯一判定；`ruleReadiness` 次序 disabled→blocked→paused→active；评论与
   插话永不封；`runTask` 单点拦截。空标题/描述从 Prompt 补（永不覆盖）。
+- **自动化不许有「上着却跑不起来」的规则**（死臂）：任务级排期与**会话规则**同一条律，
+  读侧（`ruleReadiness` / `sessionRuleReadiness` 报 blocked）与写侧（`setSchedule` 拒绝
+  上臂、`controller.deadArmedRule` 三条会话写入路径共用）缺一不可。发送方式留空是另一
+  条独立的失败。**送达闸门同理唯一**：`controller.ruleDeliverable`（在场且未归档）由
+  cron 心跳、`fireOnCompleteRules`、`fireLoopRule` 三条路径共用——归档是「可恢复的隐藏」，
+  往收起来的对话发消息等于把它从原生侧边栏的视角里复活。跳过/暂停的档期一律**前滚到
+  下一个匹配**（与任务级排期同一分支），且**不盖 `lastAt`**：那个戳记的是「真的发出去
+  过」，跳过不是发送。
 - **车道 = 会话**：`isOpenRound` 唯一判定；预算数轮；卡片离进行中唯一判定 `leaveRunningTargetOf`
   （open/live/schedule 三腿），不另起特判。
 - **交互卡**：只订阅 `uiSession.sessionStatus`；carrier 自带 `answer`/`cancel` 时就卡作答（身份守卫：
