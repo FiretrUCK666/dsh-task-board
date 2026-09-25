@@ -1566,6 +1566,7 @@ describe('session config face', () => {
       readModels: async () => ({ current: { provider: 'p', model: 'm' }, groups: [] }),
       selectModel: async () => ({ ok: true as const }),
       setPermission: async () => ({ ok: true as const }),
+      readPermission: async () => undefined,
     }
     const { controller: wired } = makeController(new StubExec(), { sessionConfig: face })
     expect(wired.sessionConfig()).toBe(face)
@@ -5189,7 +5190,7 @@ describe('session activity: subagent descendants keep the card live', () => {
     expect(controller.liveStateOf(task.id)).toBe('running')
     // The light reads the same fact as the border (`data-status`), so a card in
     // the running column MUST pulse — this is the reported 有黄边、没呼吸 bug.
-    const view = cardViewModelOf(task, { pendingCount: 0, unviewedCount: 0 })
+    const view = cardViewModelOf(task)
     expect(view.active).toBe(true)
     expect(cardLightOf(view.active, false)).toBe('halo')
   })

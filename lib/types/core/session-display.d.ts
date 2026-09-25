@@ -21,48 +21,42 @@ export interface SessionDisplay {
     waitingKind: PendingInteractionKind | undefined;
 }
 /**
- * Collect every round belonging to an execution's session:
- * - Rounds with the same sessionId (comments injected into this session).
- * - Rounds whose parentExecutionId matches (comments attributed by parent
- *   rather than session — legacy data compatibility).
- * The execution itself is always included.
+ * THE EXECUTION'S REVIEW THREAD: the execution plus the comments submitted
+ * FROM its review page, plus legacy rows attributed by `parentExecutionId`.
+ *
+ * This is deliberately NOT the conversation. A session-anchored drive comment
+ * belongs to the linked conversation's thread and must never make an
+ * execution's review page read as live. EXCEPTION: externally-observed rounds
+ * (a native-side turn recorded onto the task) keep their thread slot AND count
+ * as the execution's unread, because they are that run's own turn happening out
+ * of band.
+ *
+ * A surface asking "what state is this conversation in" reads
+ * {@link conversationRoundsOf}; a surface asking "is there unread content on
+ * THIS review page" reads this one.
  */
-export declare function sessionRoundsOf(task: TaskRecord, execution: ExecutionRecord): readonly ExecutionRecord[];
+export declare function executionThreadOf(task: TaskRecord, execution: ExecutionRecord): readonly ExecutionRecord[];
 /**
- * Derive the live state of an execution's session from its rounds.
- * @param task - the task owning the execution.
- * @param execution - the execution whose session we're displaying.
- * @param waitingKind - the interaction kind if the session is waiting on the
- *   user (from the controller's pendingInteractionOf); undefined otherwise.
- * @param active - whether the session is still working right now: its own
- *   native turn OR a running subagent descendant it summoned (the controller's
- *   single activity derivation, session-activity.ts — never a locally
- *   re-derived flag). TRUE means the agent is working, no matter which surface
- *   started the turn (a plain run, a direct steer, a session rule, an
- *   out-of-band native chat) and no matter whose turn holds the session. Board
- *   open rounds keep their own semantics below; this only
- *   ADDS the native/lineage truth.
+ * The live state of an execution's SESSION, for a row whose identity is that
+ * execution. A session-scoped read of the one conversation derivation: a
+ * conversation the task both ran in and later drove from a linked panel is
+ * still one conversation, and its row must show what it just did rather than
+ * the outcome of the run that opened the row. (Session-less legacy rows read
+ * their own execution, which is all they have.)
  */
 export declare function sessionDisplay(task: TaskRecord, execution: ExecutionRecord, waitingKind: PendingInteractionKind | undefined, active?: boolean): SessionDisplay;
 /**
- * The live state of a LINKED session ON one task — the session-level twin of
- * {@link sessionDisplay}, for rows whose identity is the binding rather than
- * an execution. The task's own rounds for that session ARE its activity (the
- * same plain-by-session read `sessionWindowOf` uses for the meta line): a
- * bound conversation that ran reads its settled outcome, and an open round or
- * a live native turn reads running. Priority mirrors `sessionDisplay` —
- * waiting, open, active, settled — and a binding with no rounds on this task
- * reads 未运行: there is nothing in the ledger to read, and the host session
- * row carries no outcome of its own.
- *
- * `rounds` is the plain same-session set (like `sessionWindowOf`), not an
- * execution's thread: a linked row IS the whole conversation, so every lane
- * counts — including session-anchored comment rounds an execution thread
- * deliberately excludes.
+ * The live state of a LINKED session on one task — the same derivation
+ * {@link sessionDisplay} uses, addressed by session id. Two entry points into
+ * ONE body on purpose: they used to be separate implementations with different
+ * round sets, and the narrower one always won for a session that was both run
+ * and bound, so the row reported an outcome that had already been superseded.
  */
 export declare function linkedSessionDisplay(task: TaskRecord, sessionId: string, waitingKind: PendingInteractionKind | undefined, active: boolean): SessionDisplay;
 /**
- * The time range of an execution's session (reflecting all its rounds' activity).
+ * The time window of a conversation on this task (all its rounds, every lane —
+ * the same set the state chip and the order key read, so the 开始/结束/耗时
+ * line can never describe a different stretch of time than the chip above it).
  * - startedAt = earliest round's start.
  * - endedAt = latest settled round's end; undefined if any round is still open.
  * - duration = endedAt - startedAt; undefined if the session is still open.
@@ -71,21 +65,6 @@ export declare function sessionTimes(task: TaskRecord, execution: ExecutionRecor
     startedAt: number;
     endedAt: number | undefined;
     duration: number | undefined;
-};
-/**
- * Count how many sessions (executions) are waiting on the user.
- * Used by the task card badge to show "N 待处理" when the task has pending
- * interactions across its sessions. ONE row per waiting SESSION (deduped):
- * three executions on the same waiting session wait once, not three times —
- * the same session-keyed law the notification center already uses.
- */
-export declare function taskPendingCount(task: TaskRecord, pendingInteractionOf: (sessionId: string | undefined) => PendingInteractionKind | undefined): {
-    count: number;
-    items: Array<{
-        executionId?: string;
-        sessionId: string;
-        waitingKind: PendingInteractionKind;
-    }>;
 };
 /**
  * 「这个会话最后一次有动静」的时刻 —— 会话列的排序键与每会话未读时钟的

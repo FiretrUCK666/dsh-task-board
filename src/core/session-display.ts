@@ -29,38 +29,115 @@ export interface SessionDisplay {
  *   rather than session — legacy data compatibility).
  * The execution itself is always included.
  */
-export function sessionRoundsOf(task: TaskRecord, execution: ExecutionRecord): readonly ExecutionRecord[] {
+/**
+ * THE CONVERSATION: every round this task recorded in that session, whatever
+ * lane produced it (a run, an injected comment, an observed native turn, a
+ * direct steer, a rule instruction). It answers "what has happened in this
+ * conversation on this card" — the state chip, the activity window, the unread
+ * clock. One set and no lane filter, because a conversation that was driven
+ * from a linked panel or steered straight into the native UI is the SAME
+ * conversation: a row that cannot see those rounds reports an outcome that
+ * stopped happening minutes ago.
+ */
+function conversationRoundsOf(task: TaskRecord, sessionId: string | undefined): readonly ExecutionRecord[] {
+  if (sessionId === undefined) return []
+  return task.executions.filter(round => round.sessionId === sessionId)
+}
+
+/**
+ * THE EXECUTION'S REVIEW THREAD: the execution plus the comments submitted
+ * FROM its review page, plus legacy rows attributed by `parentExecutionId`.
+ *
+ * This is deliberately NOT the conversation. A session-anchored drive comment
+ * belongs to the linked conversation's thread and must never make an
+ * execution's review page read as live. EXCEPTION: externally-observed rounds
+ * (a native-side turn recorded onto the task) keep their thread slot AND count
+ * as the execution's unread, because they are that run's own turn happening out
+ * of band.
+ *
+ * A surface asking "what state is this conversation in" reads
+ * {@link conversationRoundsOf}; a surface asking "is there unread content on
+ * THIS review page" reads this one.
+ */
+export function executionThreadOf(task: TaskRecord, execution: ExecutionRecord): readonly ExecutionRecord[] {
   const id = execution.id
   const sid = execution.sessionId
   return task.executions.filter(round =>
     round.id === id ||
-    // Session-anchored rounds (submitted from a linked-session panel) belong
-    // to that session's own thread, never to an execution's review page —
-    // even when the anchored session id coincides with an execution's.
-    // EXCEPTION: externally-observed rounds (a native-side turn recorded onto
-    // the task) are deliberately part of the session's activity — they keep
-    // their thread slot, but the session's live state/unread MUST see them
-    // (without this an out-of-band turn stays invisible to the row: the
-    // "进行中不闪、光效不往下走" bug).
     (sid !== undefined && round.sessionId === sid && (round.sessionAnchor === undefined || round.external === true)) ||
     round.parentExecutionId === id
   )
 }
 
+/** The result → settled-state table (succeeded / failed, everything else
+ *  honestly cancelled) — one mapping for every derivation in this module. */
+function settledStateOf(result: ExecutionRecord['result']): SessionDisplay['state'] {
+  return result === 'succeeded' ? 'succeeded' : result === 'failed' ? 'failed' : 'cancelled'
+}
+
+/** The latest start among a set (a conversation's most recent word). */
+function lastStartOf(rounds: readonly ExecutionRecord[]): number | undefined {
+  let latest: number | undefined
+  for (const round of rounds) latest = latest === undefined ? round.startedAt : Math.max(latest, round.startedAt)
+  return latest
+}
+
 /**
- * Derive the live state of an execution's session from its rounds.
- * @param task - the task owning the execution.
- * @param execution - the execution whose session we're displaying.
- * @param waitingKind - the interaction kind if the session is waiting on the
- *   user (from the controller's pendingInteractionOf); undefined otherwise.
- * @param active - whether the session is still working right now: its own
- *   native turn OR a running subagent descendant it summoned (the controller's
- *   single activity derivation, session-activity.ts — never a locally
- *   re-derived flag). TRUE means the agent is working, no matter which surface
- *   started the turn (a plain run, a direct steer, a session rule, an
- *   out-of-band native chat) and no matter whose turn holds the session. Board
- *   open rounds keep their own semantics below; this only
- *   ADDS the native/lineage truth.
+ * THE live state of ONE conversation on this task, over its whole round set
+ * (`conversationRoundsOf` — every lane). Priority: waiting (the human turn is
+ * first) > an open round > the native activity leg > the newest settled
+ * outcome. A conversation with nothing settled and nothing open reads 未运行:
+ * there is nothing in the ledger to read, and the host session row carries no
+ * outcome of its own.
+ *
+ * `active` is the NATIVE truth, supplied by the caller and never re-derived
+ * here: this session's own turn OR a running subagent descendant it summoned
+ * (session-activity.ts). TRUE means the agent is working no matter which
+ * surface started the turn (a plain run, an injected comment, a direct steer,
+ * a session rule, an out-of-band native chat) and no matter whose turn holds
+ * the session. It only ADDS the native truth; a board round keeps its own
+ * semantics above.
+ */
+function conversationDisplayOf(
+  task: TaskRecord,
+  waitingKind: PendingInteractionKind | undefined,
+  active: boolean,
+  sessionId: string | undefined,
+): SessionDisplay {
+  const rounds = conversationRoundsOf(task, sessionId)
+  if (waitingKind !== undefined) {
+    return { state: 'waiting', lastActivity: lastStartOf(rounds), waitingKind }
+  }
+  // An open round is real work in flight. A plain run is open from its start
+  // (it carries no `injectedAt`); a comment round is open only once actually
+  // injected — a saved/queued comment has not started and must never make the
+  // conversation look live. An EXTERNAL round is open from its observation (it
+  // IS the native turn, never a queued comment).
+  const open = rounds.filter(isOpenRound)
+  if (open.length > 0) {
+    return { state: 'running', lastActivity: lastStartOf(open), waitingKind: undefined }
+  }
+  if (active) {
+    return { state: 'running', lastActivity: lastStartOf(rounds), waitingKind: undefined }
+  }
+  let latest: ExecutionRecord | undefined
+  for (const round of rounds) {
+    if (round.endedAt === undefined) continue
+    if (latest === undefined || (round.endedAt ?? 0) > (latest.endedAt ?? 0)) latest = round
+  }
+  if (latest !== undefined) {
+    return { state: settledStateOf(latest.result), lastActivity: latest.endedAt, waitingKind: undefined }
+  }
+  return { state: 'cancelled', lastActivity: undefined, waitingKind: undefined }
+}
+
+/**
+ * The live state of an execution's SESSION, for a row whose identity is that
+ * execution. A session-scoped read of the one conversation derivation: a
+ * conversation the task both ran in and later drove from a linked panel is
+ * still one conversation, and its row must show what it just did rather than
+ * the outcome of the run that opened the row. (Session-less legacy rows read
+ * their own execution, which is all they have.)
  */
 export function sessionDisplay(
   task: TaskRecord,
@@ -68,76 +145,15 @@ export function sessionDisplay(
   waitingKind: PendingInteractionKind | undefined,
   active = false,
 ): SessionDisplay {
-  const rounds = sessionRoundsOf(task, execution)
-  if (rounds.length === 0) {
-    // Shouldn't happen (execution itself is always in the list), but defensive.
-    return { state: 'cancelled', lastActivity: undefined, waitingKind: undefined }
-  }
-
-  // Any round currently open (running in its session)? A plain run is open
-  // from its start (it carries no `injectedAt`); a
-  // comment round is open only once actually injected — a saved/queued
-  // comment has not started and must not make the session look live. An
-  // EXTERNALLY-observed round is open from its observation (it is the native
-  // turn itself, never a queued comment): its comment field is a thread body,
-  // not a queue marker. The displayed activity is the most recently opened
-  // round's start.
-  const open = rounds.filter(r => isOpenRound(r))
-  if (open.length > 0) {
-    const openRound = open.reduce((latest, r) => (r.startedAt > latest.startedAt ? r : latest))
-    // Session is live.
-    if (waitingKind !== undefined) {
-      return { state: 'waiting', lastActivity: openRound.startedAt, waitingKind }
-    }
-    return { state: 'running', lastActivity: openRound.startedAt, waitingKind: undefined }
-  }
-
-  // All rounds settled — but the agent is genuinely working right now
-  // (native truth: this session's turn, or a subagent descendant it summoned
-  // whose turn is still running). A direct-steer round is settled at birth, so
-  // without this the session would read as finished while its turn ran.
-  // A pending interaction still outranks (the human turn is first).
-  if (waitingKind !== undefined) {
-    return { state: 'waiting', lastActivity: rounds[0].startedAt, waitingKind }
-  }
-  if (active) {
-    return { state: 'running', lastActivity: rounds[0].startedAt, waitingKind: undefined }
-  }
-
-  // All rounds settled. Use the latest settled round's state.
-  const settled = [...rounds]
-    .filter(r => r.endedAt !== undefined)
-    .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
-  const latest = settled[0]
-  if (latest === undefined) {
-    // No settled rounds and no open rounds — shouldn't happen, but defensive.
-    return { state: 'cancelled', lastActivity: undefined, waitingKind: undefined }
-  }
-
-  return { state: settledStateOf(latest.result), lastActivity: latest.endedAt, waitingKind: undefined }
-}
-
-/** THE result → settled-state table (succeeded / failed, everything else
- *  honestly cancelled) — one mapping for every derivation in this module. */
-function settledStateOf(result: ExecutionRecord['result']): SessionDisplay['state'] {
-  return result === 'succeeded' ? 'succeeded' : result === 'failed' ? 'failed' : 'cancelled'
+  return conversationDisplayOf(task, waitingKind, active, execution.sessionId)
 }
 
 /**
- * The live state of a LINKED session ON one task — the session-level twin of
- * {@link sessionDisplay}, for rows whose identity is the binding rather than
- * an execution. The task's own rounds for that session ARE its activity (the
- * same plain-by-session read `sessionWindowOf` uses for the meta line): a
- * bound conversation that ran reads its settled outcome, and an open round or
- * a live native turn reads running. Priority mirrors `sessionDisplay` —
- * waiting, open, active, settled — and a binding with no rounds on this task
- * reads 未运行: there is nothing in the ledger to read, and the host session
- * row carries no outcome of its own.
- *
- * `rounds` is the plain same-session set (like `sessionWindowOf`), not an
- * execution's thread: a linked row IS the whole conversation, so every lane
- * counts — including session-anchored comment rounds an execution thread
- * deliberately excludes.
+ * The live state of a LINKED session on one task — the same derivation
+ * {@link sessionDisplay} uses, addressed by session id. Two entry points into
+ * ONE body on purpose: they used to be separate implementations with different
+ * round sets, and the narrower one always won for a session that was both run
+ * and bound, so the row reported an outcome that had already been superseded.
  */
 export function linkedSessionDisplay(
   task: TaskRecord,
@@ -145,34 +161,13 @@ export function linkedSessionDisplay(
   waitingKind: PendingInteractionKind | undefined,
   active: boolean,
 ): SessionDisplay {
-  const rounds = task.executions.filter(round => round.sessionId === sessionId)
-  if (waitingKind !== undefined) {
-    return { state: 'waiting', lastActivity: rounds[rounds.length - 1]?.startedAt, waitingKind }
-  }
-  const open = rounds.filter(round => isOpenRound(round))
-  if (open.length > 0) {
-    const opened = open.reduce((latest, round) => (round.startedAt > latest.startedAt ? round : latest))
-    return { state: 'running', lastActivity: opened.startedAt, waitingKind: undefined }
-  }
-  if (active) {
-    const last = rounds[rounds.length - 1]
-    return { state: 'running', lastActivity: last?.startedAt, waitingKind: undefined }
-  }
-  const settled = rounds
-    .filter(round => round.endedAt !== undefined)
-    .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
-  const latest = settled[0]
-  if (latest !== undefined) {
-    return { state: settledStateOf(latest.result), lastActivity: latest.endedAt, waitingKind: undefined }
-  }
-  // No settled round to read: a binding with no rounds on this task has no
-  // outcome in the ledger (未运行), and rounds that neither settled nor opened
-  // are the same floor — the `sessionDisplay` floor.
-  return { state: 'cancelled', lastActivity: undefined, waitingKind: undefined }
+  return conversationDisplayOf(task, waitingKind, active, sessionId)
 }
 
 /**
- * The time range of an execution's session (reflecting all its rounds' activity).
+ * The time window of a conversation on this task (all its rounds, every lane —
+ * the same set the state chip and the order key read, so the 开始/结束/耗时
+ * line can never describe a different stretch of time than the chip above it).
  * - startedAt = earliest round's start.
  * - endedAt = latest settled round's end; undefined if any round is still open.
  * - duration = endedAt - startedAt; undefined if the session is still open.
@@ -182,7 +177,7 @@ export function sessionTimes(task: TaskRecord, execution: ExecutionRecord): {
   endedAt: number | undefined
   duration: number | undefined
 } {
-  const rounds = sessionRoundsOf(task, execution)
+  const rounds = conversationRoundsOf(task, execution.sessionId)
   if (rounds.length === 0) {
     return { startedAt: execution.startedAt, endedAt: undefined, duration: undefined }
   }
@@ -199,38 +194,6 @@ export function sessionTimes(task: TaskRecord, execution: ExecutionRecord): {
   const duration = endedAt !== undefined ? endedAt - startedAt : undefined
 
   return { startedAt, endedAt, duration }
-}
-
-/**
- * Count how many sessions (executions) are waiting on the user.
- * Used by the task card badge to show "N 待处理" when the task has pending
- * interactions across its sessions. ONE row per waiting SESSION (deduped):
- * three executions on the same waiting session wait once, not three times —
- * the same session-keyed law the notification center already uses.
- */
-export function taskPendingCount(
-  task: TaskRecord,
-  pendingInteractionOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
-): { count: number; items: Array<{ executionId?: string; sessionId: string; waitingKind: PendingInteractionKind }> } {
-  const items: Array<{ executionId?: string; sessionId: string; waitingKind: PendingInteractionKind }> = []
-  const seen = new Set<string>()
-
-  // Check every execution's session (first waiting execution names the row).
-  for (const execution of task.executions) {
-    if (execution.sessionId === undefined || seen.has(execution.sessionId)) continue
-    const waitingKind = pendingInteractionOf(execution.sessionId)
-    if (waitingKind !== undefined) {
-      seen.add(execution.sessionId)
-      // `sessionId` is carried because the caller that turns this into a row needs
-      // to point AT the conversation. It was known here all along and dropped, so
-      // the only way to recover it downstream was to re-walk the executions and
-      // re-test each session — a second implementation of the same judgment, which
-      // is how "which session is waiting" drifts.
-      items.push({ executionId: execution.id, sessionId: execution.sessionId, waitingKind })
-    }
-  }
-
-  return { count: items.length, items }
 }
 
 // --- unviewed-content reminders ----------------------------------------------
@@ -287,7 +250,7 @@ export function executionViewedBaseline(execution: ExecutionRecord): number {
  */
 export function executionUnviewed(task: TaskRecord, execution: ExecutionRecord): boolean {
   const baseline = executionViewedBaseline(execution)
-  return sessionRoundsOf(task, execution).some(round => roundActivity(round) > baseline)
+  return executionThreadOf(task, execution).some(round => roundActivity(round) > baseline)
 }
 
 /**

@@ -1060,11 +1060,12 @@ export function sessionIsBusy(task: TaskRecord, sessionId: string): boolean {
 }
 
 /**
- * Whether the task is genuinely executing right now: ANY of its rounds is in
- * flight. A pending comment round (saved while the cruise is off, the task
- * not running) is NOT an open run — it must never show a spinner on the card,
- * block a rerun, or block a drag.
- * One shared judgment for the card, the drop rules and the run guard.
+ * Whether the task is EXECUTING right now. There is deliberately no second
+ * spelling of this: the display used to read `executing` and the gates read
+ * `hasOpenRun`, with a comment claiming they were a "display / gate" split —
+ * but both were the same predicate over the same set, so the split existed
+ * only in the prose. ONE judgment, one name, and the card's light cannot
+ * disagree with the run guard because there is nothing to disagree with.
  */
 export function hasOpenRun(task: TaskRecord): boolean {
   return openRoundsOf(task).length > 0
@@ -1093,16 +1094,6 @@ export function pendingCommentCount(task: TaskRecord): number {
  */
 export function plainRunsOf(task: TaskRecord): readonly ExecutionRecord[] {
   return task.executions.filter(execution => execution.comment === undefined)
-}
-
-/**
- * Whether the task is genuinely EXECUTING right now (display truth): an open
- * plain run, external round or injected comment.
- * Blocking semantics (run guard, concurrency budget, drop rules, reconcile
- * drive) stay on {@link hasOpenRun} — this is display only, never a gate.
- */
-export function executing(task: TaskRecord): boolean {
-  return task.executions.some(isOpenRound)
 }
 
 /** What a card drop onto a column means (drag-and-drop decision). */

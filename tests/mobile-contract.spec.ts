@@ -1357,8 +1357,13 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     const feedRow = readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8')
     expect(feedRow).toContain('status.label')
     const locales = readFileSync(fileURLToPath(new URL('../src/client/locales.ts', import.meta.url)), 'utf8')
-    expect(locales.match(/'board\.notifyCancelled':/g), 'cancelled copy exists in both languages').toHaveLength(2)
+    expect(locales.match(/'board\.notifyReviewFailed':/g), 'the decision word exists in both languages').toHaveLength(2)
     expect(locales.match(/'card\.dotUnread':/g), 'dot unread copy exists in both languages').toHaveLength(2)
+    // A CANCELLED run has no row to word: the drawer's review tier is gated on
+    // the human gate, and an abort is not something a person rules on. The
+    // word was removed rather than left unreachable, so it must not come back
+    // as a third "decision" state beside 待审核 / 待决策.
+    expect(locales).not.toMatch(/'board\.notifyCancelled':/)
     // The task fold's remainder line ships its copy in both languages too
     // (the feature returned with a user; only its OLD names are banned above).
     expect(locales.match(/'board\.activityGroupRest':/g)).toHaveLength(2)

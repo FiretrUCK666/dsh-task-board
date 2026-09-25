@@ -416,13 +416,9 @@ export function ContextMeterPanel({ projections, usage }: {
  * loads the model directory on mount and refreshes after every change; the
  * caller may bump `reloadKey` to force a re-read.
  */
-export function SessionConfigEditor({ sessionId, controller, permissionValue, permissionOptions, onChanged, reloadKey }: {
+export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKey }: {
   sessionId: string
   controller: BoardController
-  /** Projection-backed permission value (authoritative when present). */
-  permissionValue?: string
-  /** Projection-backed permission options; absent = the route catalog. */
-  permissionOptions?: readonly { id: string; name?: string; description?: string }[]
   /** Fired after a successful change (the caller refreshes its transcript). */
   onChanged?: () => void
   /** A value whose change forces a full re-read of the model directory. */
@@ -439,48 +435,57 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
   const [configFailed, setConfigFailed] = useState(false)
   const [configBusy, setConfigBusy] = useState(false)
   const [configMessage, setConfigMessage] = useState<string | undefined>(undefined)
-  const [permissionRows, setPermissionRows] = useState<readonly { id: string; name?: string; description?: string }[] | undefined>(undefined)
-  // The permission select's local fallback: the last permission the user
-  // chose (and applied). A controlled select bound only to the projection
-  // snaps back to the old value the moment a choice is made — with no
-  // projection (or a still-stale one) the local choice is the only truth
-  // we have, so it must hold until the projection confirms it.
-  const [chosen, setChosen] = useState<string | undefined>(undefined)
+  /**
+   * The session's LIVE permission selection — read from the host's own
+   * `permissions` projection, which is the value the harness's permission
+   * selector displays. `undefined` = not read yet, `null` = the host does not
+   * serve it.
+   *
+   * This used to be two sources: the `permissions` block riding a history page
+   * (a snapshot of past EVENTS — and `/permission` never opens a turn, so that
+   * copy stayed frozen at whatever it said before the user changed anything)
+   * plus a component-local optimistic `chosen` that died on remount, arbitrated
+   * by an effect that read a projection value of '' as "no information". That
+   * is how a panel showed 「默认」 over a session the user had just set. There is
+   * now ONE value, from ONE read, and the panel says so when it cannot read it.
+   */
+  const [permission, setPermission] = useState<{
+    value: string
+    options: readonly { value: string; name?: string; description?: string }[]
+  } | null | undefined>(undefined)
   // Alive guard: every async handler (panel reload, model/effort/permission
   // applies) must not touch state after the panel unmounted — the panel can
   // close while a read/apply is still in flight, and a late `.then` must
   // not repaint a dead surface.
   const aliveRef = useRef(true)
   useEffect(() => () => { aliveRef.current = false }, [])
+  // The retry nonce both live reads watch (a failure bumps it, never a
+  // boolean-per-source pair).
+  const [retryNonce, setRetryNonce] = useState(0)
 
-  // The projection is the session's live truth: when it reports a value that
-  // differs from our local choice, the choice is stale (the permission was
-  // changed elsewhere) and the projection takes over. The session's default
-  // ('') never clears the choice — that is exactly the no-projection case.
-  // While an apply is in flight (configBusy) the arbitration is paused so a
-  // stale projection can never interrupt the user's in-flight selection.
-  useEffect(() => {
-    if (!configBusy && permissionValue !== undefined && permissionValue !== '' && permissionValue !== chosen) {
-      setChosen(undefined)
-    }
-  }, [permissionValue, chosen, configBusy])
+  /** Re-read the LIVE permission selection. */
+  const readPermission = useCallback((): void => {
+    if (sessionConfig === undefined) return
+    void sessionConfig.readPermission(sessionId).then(result => {
+      if (!aliveRef.current) return
+      setPermission(result ?? null)
+    })
+  }, [sessionConfig, sessionId])
 
-  // The native Agent and permission directories for the read-only facts and
-  // permission switcher. Agent ids are stable identities; the roster carries
-  // the user-facing names chosen for them.
+  // On open, and whenever the caller forces a re-read: the value is a current
+  // fact, so it is READ, never inherited from a stale render.
+  useEffect(() => { readPermission() }, [readPermission, reloadKey, retryNonce])
+
+  // The native Agent directory for the read-only facts. (The permission
+  // catalog is no longer read here: the live projection carries both the
+  // session's value AND the options the host itself offers, so a deployment's
+  // preset table cannot disagree with the value it is displaying.)
   useEffect(() => {
     if (catalog === undefined) return
     let alive = true
-    void (async () => {
-      const [presets, permissions] = await Promise.all([
-        catalog.listAgentPresets(),
-        catalog.listPermissions(),
-      ])
-      if (alive) {
-        setAgentPresetRows(presets)
-        setPermissionRows(permissions)
-      }
-    })()
+    void catalog.listAgentPresets().then(presets => {
+      if (alive) setAgentPresetRows(presets)
+    })
     return () => { alive = false }
   }, [catalog])
 
@@ -498,7 +503,6 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
   }, [sessionConfig, sessionId])
 
   // Load on open + whenever the caller forces a re-read (+ the retry nonce).
-  const [retryNonce, setRetryNonce] = useState(0)
   useEffect(() => { reloadPanel() }, [reloadPanel, reloadKey, retryNonce])
 
   // SELF-HEALING failure: a transient read failure (flaky phone link, the
@@ -568,33 +572,24 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
   }
 
   /** Apply a permission preset to the session. */
-  const applyPermission = (permission: string): void => {
-    if (sessionConfig === undefined || permission === '') return
+  const applyPermission = (value: string): void => {
+    if (sessionConfig === undefined) return
     setConfigBusy(true)
     setConfigMessage(undefined)
-    void sessionConfig.setPermission(sessionId, permission).then(result => {
+    void sessionConfig.setPermission(sessionId, value).then(result => {
       if (!aliveRef.current) return
       setConfigBusy(false)
       setConfigMessage(result.ok ? t('review.configApplied') : result.error)
-      if (result.ok) {
-        // The session's real permission changed through the native command;
-        // refresh so the projection-backed select shows the new value.
-        reloadPanel()
-        onChanged?.()
-      } else {
-        // The switch failed — the session's permission is unchanged; drop
-        // the optimistic choice so the select shows the previous truth.
-        setChosen(undefined)
-      }
+      // Re-read the live value either way: on success it is the new one, and
+      // on a refusal it is the old one — which is exactly what the select must
+      // show. There is no optimistic local copy to drop, because there is no
+      // second truth to keep in step with.
+      readPermission()
+      if (result.ok) onChanged?.()
     })
   }
 
   if (sessionConfig === undefined) return null
-
-  const options = permissionOptions ?? permissionRows
-  // Display truth: the user's local choice first (it is newest), then the
-  // projection's value when it has confirmed one, then the default option.
-  const value = chosen ?? permissionValue ?? ''
 
   return (
     <section className={css.reviewConfig}>
@@ -662,26 +657,33 @@ export function SessionConfigEditor({ sessionId, controller, permissionValue, pe
               </span>
             )
           })()}
-          {options !== undefined && (
+          {permission === undefined ? null : permission === null ? (
+            /* No live read, or a host that does not serve the projection. Say
+               so: a select sitting on a fabricated 「默认」 is a lie the user
+               cannot detect, and the whole point of the row is to state what
+               the session IS doing. */
+            <span className={css.reviewConfigRow}>
+              <span className={css.reviewConfigLabel}>{t('review.permission')}</span>
+              <span className={css.reviewConfigUnavailable}>{t('review.permissionUnreadable')}</span>
+            </span>
+          ) : (
+            /* The session's real selection, read from the host. There is
+               deliberately NO empty-value option: a session always HAS a
+               permission, `/permission` has no "unset" verb, and the old
+               「默认（会话默认权限）」 entry silently did nothing when chosen.
+               (「默认」 still belongs in the run-config form, where it means
+               "don't write a preset for the next run" — a different fact.) */
             <span className={css.reviewConfigRow}>
               <span className={css.reviewConfigLabel}>{t('review.permission')}</span>
               <span className={css.selectWrap}>
                 <select
                   className={css.input}
-                  value={value}
+                  value={permission.value}
                   disabled={configBusy}
-                  onChange={event => {
-                    // Optimistic local choice: the select must hold the
-                    // user's selection even before the projection confirms
-                    // it — otherwise a controlled select with no local
-                    // fallback snaps back to the old value immediately.
-                    setChosen(event.target.value)
-                    applyPermission(event.target.value)
-                  }}
+                  onChange={event => { applyPermission(event.target.value) }}
                 >
-                  <option value="">{t('new.permissionDefault')}</option>
-                  {options.map(row => (
-                    <option key={row.id} value={row.id}>{permissionLabel(row.id, row.name)}</option>
+                  {permission.options.map(option => (
+                    <option key={option.value} value={option.value}>{permissionLabel(option.value, option.name)}</option>
                   ))}
                 </select>
               </span>
@@ -715,16 +717,11 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
   // Without a session there is nothing to show (the caller keeps its rail
   // empty, exactly like the pre-refactor gating on sessionId).
   if (sessionId === undefined) return null
-  // The permission switcher's truth: the session's live permission select
-  // from the native `permissions` projection (the same value the harness
-  // PermissionSelect reads) — never the task card's permission field, which
-  // only configures the next fresh run. Without a projection the editor
-  // falls back to the route-backed preset catalog + its local choice.
-  const livePermission = projections?.permissions
-  const permissionOptions = livePermission !== undefined
-    ? livePermission.options.map(option => ({ id: option.value, name: option.name, ...option.description !== undefined ? { description: option.description } : {} }))
-    : undefined
-  const permissionValue = livePermission !== undefined ? livePermission.currentValue : undefined
+  // The permission switcher is NOT mapped from these projections: it reads the
+  // session's live `permissions` projection itself (see SessionConfigEditor).
+  // A per-session setting is a current fact, and the history-page copy of it
+  // never refreshes — the panel used to sit on that frozen copy and show
+  // 「默认」 over a session the user had just re-permissioned.
   return (
     <>
       <ContextMeterPanel projections={projections} usage={sumUsage(lines ?? [])} />
@@ -733,8 +730,6 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
         controller={controller}
         onChanged={onChanged}
         reloadKey={reloadKey}
-        permissionValue={permissionValue}
-        permissionOptions={permissionOptions}
       />
     </>
   )

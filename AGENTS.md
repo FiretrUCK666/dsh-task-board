@@ -418,13 +418,36 @@ schema 就是给同一件事再加一个控件。
   间距一律 gap 声明、偏移由令牌派生（禁手写像素）；加载三态（读中安静 / 失败行内重试 + 自动
   退避 / 空态非错）；共用部件一律复用 `ui.tsx` / `Chip` / `Dialog` / `Markdown` / `AutomationEditor`。
 - **拖拽**：`drop-position` / `drag-autoscroll` / `use-flip` 三件套全结构驱动；跨列先滚入视野；
-  排序只在按住拖拽时发生。
+  排序只在按住拖拽时发生。**已知能力缺口（触屏）**：卡片换栏走的是浏览器自带的 HTML5 拖放
+  （`draggable` + `dataTransfer`），触屏上不触发；**从工作区把会话拖进看板的接收端也用同一套**
+  ——而且那一半的**发起端在宿主**（`dsh-client-ui-workspace` 的会话行也是 `draggable`），
+  所以手机上传不进来的那一半不是本插件能修的。要给触屏补齐换栏能力，方向是把卡片拖拽换成
+  Pointer Events（桌面手机同一份实现，列内排序一并恢复），并保留现有 HTML5 落点只用于接收
+  宿主的侧栏拖拽；这是一件独立的、有意推迟的事，不要顺手加「第二个拖拽实现」或给窄屏另写
+  一条换栏路径。
 
 ### 核心层（`src/core/` 纯逻辑）
 
-- 模块：`tasks` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` · `automation` ·
+- 模块：`tasks` · `task-demand` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` ·
+  `automation` ·
   `colors`/`session-list`/`session-display`/`session-groups`/`comment-thread`/`question-rpc`/`store` ·
   `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）· `board-doc`/`host-sync`。
+- **门 = 三个子句，一条推导**（`task-demand.ts`）：一张卡欠人一个决断，当且仅当
+  **在待审核 ∧ 有已结算的成败 ∧ 用户还没看过那件事**。`gateOf`（整卡）/`sessionGateOf`（单会话）
+  是唯一实现，卡片的「待你决断」芯片、板顶诉求行的待审核计数、通知抽屉的审核行**三处同读**，
+  所以同一个卡片不可能在三处给出三个答案。**看过即消**（读钟 = `sessionUnviewedOf`，与「新 N」/
+  呼吸同钟），**通过/打回即消**（移栏）；两者之外的任何东西都不消——包括「打开卡片」本身，
+  所以 `openTask` 必须经 `markTaskViewed` 同时盖轮次戳。
+- **轮次集合只有两份，且各有其问**：**会话**（`round.sessionId === id`，全车道）回答
+  「这段对话在这张卡上发生过什么」——状态芯片、活动窗口、未读钟、会话排序键都读它；
+  **执行复核线程**（`executionThreadOf`，执行本身 + 从它那页提交的评论 + 老数据按
+  `parentExecutionId` 归属，排除会话锚定轮）回答「这一页复核页上有什么没看的」。曾经有第五份
+  （按车道过滤的 `sessionRoundsOf`），它让「既跑过又绑定」的会话永远显示较旧的那次结果。
+  **取消的轮次不是工作**：`cancelled` 不进任何门、任何通知行，只留在评论线程与动态流里。
+- **「等你处理」只有一个会话集合**：`waitingSessionsOf` 走 `relatedSessionIdsOf`（绑定 + 轮次 +
+  工作区当前成员 − 已删除），不是「恰好在这张卡上有轮次的会话」——从工作区拖进来的会话从被绑定的
+  那一刻起就归这张卡管，**卡片自己必须出声**，不能只让小铃铛和圆点出声（圆点在触屏上不可见）。
+  「第 N 次执行」只在会话**真有编号运行**时说；没有就说会话名（曾有一支会打印「第 0 次执行」）。
 - **换栏落地**：引擎派生的换栏一律把卡片顶到**目标栏最上方**（按发生时间，最新在上），
   唯一落点是 `controller.land`/`landMany`，`promoteManyToColumnTop` 是排序层的唯一实现
   （`promoteToColumnTop` 是它的单张入口）。空转判据读**落位后的「栏位 + 键」赋值**，
@@ -472,6 +495,17 @@ schema 就是给同一件事再加一个控件。
   归档会话投递但**保留 due 槽**；`sessionAvailability()` 是「不可用」的唯一判据。
 - **执行门禁**：`taskExecutable` 唯一判定；`ruleReadiness` 次序 disabled→blocked→paused→active；评论与
   插话永不封；`runTask` 单点拦截。空标题/描述从 Prompt 补（永不覆盖）。
+- **卡片是 view-model 的投影，不是第二个判断者**：`cardViewModelOf.primary` 就是那颗主芯片
+  （组件不再另排一次序，也不再自己算运行数/末次结果/接续/暂停失败）。「下一句话」行读同一个
+  `primary`，所以一张卡不可能在相邻两行说两件事。`executing` 与 `hasOpenRun` 曾是两个名字
+  同一个谓词（注释却宣称它们是「显示/门禁」之分）——现在只留 `hasOpenRun`。
+- **当前值与历史值必须分开读**（这是权限那一类 bug 的根）：**历史页捎带的 projections 是
+  「这个会话当时做过什么」**（待办、token、上下文压力），**描述会话「现在是什么设置」的
+  一律走活投影读**（`SessionConfigFace.readPermission` → `remote.session.projections`）。
+  `/permission` 不开新一轮对话，所以历史页里那份拷贝永远不会刷新——面板曾一直显示改动前的
+  预设。**活值读不到就说读不到**（`review.permissionUnreadable`），绝不拿「默认」顶替：
+  「默认」本身就是一个关于会话状态的说法。**实时选择器里不得有「取消设置」项**（`/permission`
+  没有这个动作，选了等于没选）；运行配置表单里的「默认」含义不同（本次运行不写预设），留在那里。
 - **借用必持有**：宿主只在**有人持有**某个会话代次时才借出驱动（`sessions.binding` 文档原文：
   "or undefined without a retained generation"；`create()` 的文档原文：先 retain 再借）。所以
   凡是**拥有**一段工作的一次运行、一次续跑、一次新建会话配置，一律经
@@ -570,3 +604,7 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 - **`execution.spec.ts` 的假环境必须如实模拟宿主的持有语义**：`binding` 只对**被持有**的
   会话返回驱动（`hold` 才是入口）。一个从 Map 里直接发驱动的假面会让整份 suite 在线上
   全线失败时依然全绿——这类「假面比现实宽容」的测试比没有测试更危险。
+- **`task-demand.spec.ts` 钉的是「三处同读一个门」**：`gateOf` / `sessionGateOf` /
+  `boardDemandOf` 的每条用例都是一处曾经互相矛盾的表面对；**任何把它退回单条车道的改动
+  （加回 `comment === undefined` 过滤）都必须让这里变红**。`session-permission.spec.ts` 同理
+  钉住「权限只读活投影、没有本地副本、选择器里没有取消项」。

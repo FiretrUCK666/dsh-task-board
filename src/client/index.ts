@@ -13,7 +13,7 @@ import { buildApi, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } fr
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
 import { BoardController, type PromptFile, type PromptImage, type ReferenceRemoteFace, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptPage } from '../core/controller.ts'
-import { pickTranscriptProjections } from '../core/projections.ts'
+import { pickTranscriptProjections, readPermissionProjectionOf } from '../core/projections.ts'
 import { UNTITLED_SESSION_KEY } from '../core/session-list.ts'
 import { ExecutionService, type ExecutionHistoryEvent, type SessionDriver } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
@@ -997,6 +997,15 @@ export function apply(ctx: ClientContext): void {
             console.warn('[dsh-task-board] permission switch failed:', error)
             return { ok: false as const, error: String(error) }
           }
+        },
+        // The LIVE permission read. A per-session setting is a current fact,
+        // not a historical one, so it is read from the session's projection
+        // baseline on demand — never from the `permissions` block riding a
+        // history page, which `/permission` never refreshes (it opens no turn).
+        readPermission: async sessionId => {
+          const response = await api.sessions.projections({ sessionId: sessionId as SessionId })
+          if (!response.result.ok) return undefined
+          return readPermissionProjectionOf(response.result.value?.values) ?? undefined
         },
       } satisfies SessionConfigFace,
       // Linked-session panel's direct composer: the exact same host

@@ -179,6 +179,24 @@ export interface ApiFace {
       reasoningEffort?: string
     }): Promise<{ result: RemoteResult<{ selected: ModelSelection }> }>
     create(request: { workspaceId: WorkspaceId }): Promise<{ result: RemoteResult<{ sessionId: SessionId }> }>
+    /**
+     * The session's LIVE projection baseline — every registered projection for
+     * one session, read on demand.
+     *
+     * This is deliberately NOT the `projections` block that rides a history
+     * page. That block is a snapshot of a page of EVENTS, so it is the right
+     * source for what a session had already said (todos, token accounting) and
+     * the wrong source for what a session IS right now. A per-session setting
+     * like the permission preset is written by a command that never opens a
+     * turn, so no new event ever appears and the page-scoped copy stays frozen
+     * at whatever it was when the page was written — the panel would show the
+     * permission from before the user changed it, indefinitely. The harness's
+     * own permission selector reads the live face; this reads the same value
+     * through the same host contract, without borrowing a retained generation.
+     */
+    projections(request: { sessionId: SessionId }): Promise<{
+      result: RemoteResult<{ values?: Record<string, unknown> } | null>
+    }>
     history(request: {
       sessionId: SessionId
       maxMessages: number
@@ -531,8 +549,9 @@ export interface ClientContext {
    * exactly these methods per namespace (verified against the shipped
    * Typert manifests): `session` = attachment / cancel / canOpenWorkspacePath
    * / control / create / follow / fork / list / modelCatalog /
-   * openWorkspacePath / page / prompt / rename / search / selectModel /
-   * updateQueue; `skills` = list; `agentPresets` = copy / deletePreset / list
+   * openWorkspacePath / page / prompt / projections / rename / search /
+   * selectModel / updateQueue; `skills` = list; `agentPresets` = copy /
+   * deletePreset / list
    * / read / select; `llm` = discoverModels / listConfigurableProviders /
    * listProviders. Anything else is a gateway miss — this face only declares
    * what the host actually serves.
@@ -541,6 +560,7 @@ export interface ClientContext {
     session: {
       prompt(request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
       selectModel(request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
+      projections(request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
       create(request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
       rename(request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
       attachment(request: unknown, signal?: AbortSignal): Promise<RemoteResult<unknown>>
@@ -655,6 +675,13 @@ export function buildApi(ctx: ClientContext): ApiFace {
       create: async request => {
         const sessionId = await sessionsService.create({ workspaceId: request.workspaceId })
         return { result: { ok: true as const, value: { sessionId } } }
+      },
+      projections: request => {
+        const call = methodOf('session', 'projections', remoteSession?.projections)
+        if (call === undefined) return unavailable('session.projections')
+        return asResult<{ values?: Record<string, unknown> } | null>('session.projections', call({
+          sessionId: request.sessionId,
+        }))
       },
       history: async request => {
         // The cold-history read is the one-shot `session.follow` snapshot

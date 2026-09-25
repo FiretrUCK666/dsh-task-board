@@ -338,22 +338,6 @@ export interface ContextBreakdownShape {
   messageTokens: number
 }
 
-/** One permission-preset option the session's select can switch to (native PermissionSelect). */
-export interface PermissionOptionShape {
-  value: string
-  name: string
-  description?: string
-}
-
-/** The session's real permission select (native `permissions` projection): the
- *  effective current value plus the switchable options — the authority the
- *  review page's permission switcher must read (the task card's permission
- *  field only configures the next fresh run). */
-export interface PermissionSelectShape {
-  options: readonly PermissionOptionShape[]
-  currentValue: string
-}
-
 /** The native todo item shape (the official `todos` projection's row — the
  *  same `TodoItem` the harness's own TodoPanel renders; read structurally so
  *  future reshapes degrade, never crash). */
@@ -402,11 +386,18 @@ export interface SessionGoalShape {
   updatedAt: number
 }
 
-/** The projection slice the review page reads (the history tail page's block). */
+/**
+ * The projection slice the transcript tail page carries.
+ *
+ * These are PAGE-SCOPED facts — what the session had recorded by the time the
+ * page was written. Anything that describes a session's CURRENT setting is
+ * deliberately absent and read live instead (see
+ * `SessionConfigFace.readPermission`): `/permission` never opens a turn, so no
+ * new event would ever refresh a page-scoped copy of it.
+ */
 export interface TranscriptProjectionsShape {
   contextPressure?: ContextPressureShape
   contextBreakdown?: ContextBreakdownShape
-  permissions?: PermissionSelectShape
   /** The agent's whole todo list (the official `todos` projection, last-write
    *  wins); absent when the domain package/deployment does not serve it. */
   todos?: readonly SessionTodoShape[]
@@ -477,6 +468,21 @@ export interface SessionConfigFace {
   ): Promise<{ ok: true } | { ok: false; error: string }>
   /** Apply a permission preset through the native `/permission` command. */
   setPermission(sessionId: string, permission: string): Promise<{ ok: true } | { ok: false; error: string }>
+  /**
+   * Read the session's LIVE permission selection (the native `permissions`
+   * projection — the same value the harness's own selector reads).
+   *
+   * It is a READ, and it is the only one the panel is allowed to display: the
+   * `permissions` block that rides a history page is a snapshot of past events,
+   * and `/permission` never opens a turn, so that copy never updates and the
+   * select would show the value from before the user changed it. `undefined` =
+   * the host does not serve the projection (an old deployment) — the caller
+   * then says so instead of inventing a default.
+   */
+  readPermission(sessionId: string): Promise<{
+    value: string
+    options: readonly { value: string; name?: string; description?: string }[]
+  } | undefined>
 }
 
 /** Controller dependencies (all swappable in tests). */
@@ -1223,21 +1229,18 @@ export class BoardController {
   }
 
   openTask(id: string): void {
-    if (this.tasks.some(task => task.id === id)) {
-      // Opening the detail clears the card's unread reminder: the latest
-      // content is now visible (per-row unread dots stay until each review
-      // page is opened). Persisted so a refresh keeps the cleared state.
-      const at = this.now()
-      let changed = false
-      this.tasks = this.tasks.map(task => {
-        if (task.id !== id || task.viewedAt === at) return task
-        changed = true
-        return { ...task, viewedAt: at }
-      })
-      if (changed) this.persistAndNotify()
-      this.selectedTaskId = id
-      this.notify()
-    }
+    if (!this.tasks.some(task => task.id === id)) return
+    // Opening the detail clears the card's unread reminder AND its gate's
+    // "haven't looked at it" half. BOTH must move together: the card ring read
+    // the card baseline while the 待你决断 chip read the per-round read clock,
+    // so stamping only the baseline left the chip asking about work the user
+    // was looking at — the one leak that made 「看过之后还在催」 structural
+    // rather than accidental. One write, one persist, one funnel
+    // (`markTaskViewed`): the round-level stamp is the same call the
+    // notification drawer's 标已读 makes.
+    this.markTaskViewed(id)
+    this.selectedTaskId = id
+    this.notify()
   }
 
   /**

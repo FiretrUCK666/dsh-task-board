@@ -1,18 +1,29 @@
 /**
- * Card view-model (client/board/card-view.ts): single prioritized summary —
- * waiting > running > queued > failed > review > idle.
+ * Card view-model (client/board/card-view.ts): ONE prioritized summary, and
+ * the component renders exactly it. Priority: waiting > running > queued >
+ * gate (unlooked-at finished work) > runs (history) > idle.
+ *
+ * The load-bearing cases are the LANE ones: a card worked on through a comment,
+ * an observed native turn, a direct steer or a session rule must reach the same
+ * verdicts as one that ran, because every one of those lanes lands a card in
+ * 待审核 and the plain-run filter used to be the only thing the chip read.
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { cardLightOf, cardNextActionOf, cardSessionDotStateOf, cardViewModelOf, titleOrUntitled } from '../src/client/board/card-view.ts'
-import { createTask, newCommentRound, startExecution, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
+import type { WaitingSession } from '../src/core/task-demand.ts'
+import { createTask, newCommentRound, newDirectRound, newExternalRound, startExecution, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 
 function task() {
   return createTask({ title: 't', description: '', prompt: 'p' }, NOW, 'task-1')
 }
+
+/** The board's live block, shaped the way `waitingSessionsOf` returns it. */
+const waitingOn = (waiting: 'question' | 'approval' | 'plan-review', count = 1): readonly WaitingSession[] =>
+  Array.from({ length: count }, (_, index) => ({ sessionId: `s-${index}`, waitingKind: waiting }))
 
 describe('titleOrUntitled (the one blank-title judgment)', () => {
   it('reads the title, or the placeholder when blank', () => {
@@ -32,9 +43,15 @@ describe('cardViewModelOf', () => {
 
   it('waiting outranks running', () => {
     const started = startExecution(task(), NOW, 'e1')
-    const view = cardViewModelOf(started.task, { waiting: 'question', pendingCount: 1 })
-    expect(view.primary).toEqual({ kind: 'waiting', waiting: 'question' })
+    const view = cardViewModelOf(started.task, { waiting: waitingOn('question') })
+    expect(view.primary).toEqual({ kind: 'waiting', waiting: 'question', count: 1 })
     expect(view.active).toBe(true)
+  })
+
+  it('several blocked conversations say so in one word, not a list', () => {
+    const view = cardViewModelOf(task(), { waiting: waitingOn('question', 3) })
+    expect(view.primary).toEqual({ kind: 'waiting', waiting: 'question', count: 3 })
+    expect(cardNextActionOf(view, task())).toEqual({ kind: 'waiting', count: 3 })
   })
 
   it('an OPEN round lights the card, whether or not a session reports running', () => {
@@ -89,24 +106,107 @@ describe('cardViewModelOf', () => {
     // Quiet rows: everything settled and out of the column.
     const settledRun = { ...task(), status: 'review' as const, executions: [{ ...openRound, endedAt: NOW, result: 'succeeded' as const }] }
     expect(cardViewModelOf(settledRun, {}).active).toBe(false)
-    expect(cardViewModelOf(settledRun, { unviewedCount: 1 }).active, 'unread alone is the RING, never the halo').toBe(false)
-    expect(cardLightOf(cardViewModelOf(settledRun, { unviewedCount: 1 }).active, true)).toBe('ring')
+    expect(cardViewModelOf(settledRun, {}).active, 'unread alone is the RING, never the halo').toBe(false)
+    expect(cardLightOf(cardViewModelOf(settledRun, {}).active, true)).toBe('ring')
   })
 
-  it('the light table: waiting/running pulse, queued/failed/review/idle do not', () => {
+  it('the light table: waiting/running pulse, queued/gate/runs/idle do not', () => {
     // The board's 光效规则表 as a table: only these two primaries breathe
     // (plus the card's own 进行中 column). `queued` is deliberately quiet —
     // a card with saved-but-not-injected comments is waiting on the engine,
-    // not working.
+    // not working. The gate is quiet for the same reason the unread chip is
+    // the only breathing amber: a demand is not work in flight.
     const started = startExecution(task(), NOW, 'e1')
-    expect(cardViewModelOf(started.task, { waiting: 'approval' }).active).toBe(true)
+    expect(cardViewModelOf(started.task, { waiting: waitingOn('approval') }).active).toBe(true)
     expect(cardViewModelOf(started.task, {}).active).toBe(true)
     const comment = newCommentRound({ id: 'c1', now: NOW, text: 'hi', sessionId: 's-1', parentExecutionId: 'e-1' })
     expect(cardViewModelOf({ ...task(), executions: [comment] }, {}).active).toBe(false)
-    const failed = { ...task(), status: 'review' as const, executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed' as const, error: undefined }] }
-    expect(cardViewModelOf(failed, {}).primary).toEqual({ kind: 'failed' })
+    const failed = { ...task(), status: 'review' as const, executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed' as const, error: undefined, viewedAt: NOW }] }
+    expect(cardViewModelOf(failed, {}).primary).toEqual({ kind: 'gate', failed: true })
     expect(cardViewModelOf(failed, {}).active).toBe(false)
     expect(cardViewModelOf(task(), {}).active).toBe(false)
+  })
+
+  it('THE GATE: finished work, every lane, until the user has looked at it', () => {
+    // Each lane lands a card in 待审核, so each must raise the card's voice.
+    // The chip used to read `plainRunsOf`, which sees only the first of these.
+    const finished: Array<[string, TaskRecord]> = [
+      ['a plain run', {
+        ...task(), status: 'review' as const,
+        executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 5, result: 'succeeded' as const, error: undefined, viewedAt: NOW }],
+      }],
+      ['a comment', {
+        ...task(), status: 'review' as const,
+        executions: [{ ...newCommentRound({ id: 'c1', now: NOW, text: '继续', sessionId: 's-1' }), endedAt: NOW + 5, result: 'succeeded' as const }],
+      }],
+      ['an observed native turn', {
+        ...task(), status: 'review' as const,
+        executions: [{ ...newExternalRound({ id: 'x1', now: NOW, sessionId: 's-1' }), endedAt: NOW + 5, result: 'succeeded' as const }],
+      }],
+      ['a direct steer + the observed reply it produced', {
+        ...task(), status: 'review' as const,
+        executions: [
+          newDirectRound({ id: 'd1', now: NOW, text: '做', sessionId: 's-1' }),
+          { ...newExternalRound({ id: 'x1', now: NOW + 1, sessionId: 's-1' }), viewedAt: NOW + 1, endedAt: NOW + 5, result: 'succeeded' as const },
+        ],
+      }],
+    ]
+    for (const [what, card] of finished) {
+      const view = cardViewModelOf(card, {})
+      expect(view.primary, `${what} finished and is unlooked-at → the gate`).toEqual({ kind: 'gate', failed: false })
+      expect(view.gate, `${what} owes a decision`).toBe('unseen')
+      expect(cardNextActionOf(view, card), `${what} says what to do`).toEqual({ kind: 'review' })
+    }
+  })
+
+  it('the steer itself is born read — the reply it produced is what the gate names', () => {
+    // A direct steer is the USER's own message, so it carries no read stamp to
+    // be behind and is never "unread content". What a steer owes is the reply:
+    // the observed native turn. Pinned so a future change cannot make the
+    // user's own words into a thing demanding a decision.
+    const steerOnly: TaskRecord = {
+      ...task(), status: 'review' as const,
+      executions: [newDirectRound({ id: 'd1', now: NOW, text: '做', sessionId: 's-1' })],
+    }
+    expect(cardViewModelOf(steerOnly, {}).gate).toBe('seen')
+  })
+
+  it('looking at the work retires the chip; deciding does too', () => {
+    const base = {
+      ...task(), status: 'review' as const,
+      executions: [{ ...newCommentRound({ id: 'c1', now: NOW, text: '继续', sessionId: 's-1' }), viewedAt: NOW, endedAt: NOW + 5, result: 'succeeded' as const }],
+    }
+    expect(cardViewModelOf(base, {}).primary).toEqual({ kind: 'gate', failed: false })
+    // The read stamp the session panel writes on open.
+    const read: TaskRecord = { ...base, executions: base.executions.map(round => ({ ...round, viewedAt: NOW + 6 })) }
+    const afterLook = cardViewModelOf(read, {})
+    expect(afterLook.gate).toBe('seen')
+    expect(afterLook.primary, 'a read review card is history, not a request').toEqual({ kind: 'idle' })
+    // 通过 / 打回 move the card; the column is the other half of the gate.
+    expect(cardViewModelOf({ ...base, status: 'done' }, {}).gate).toBe('none')
+  })
+
+  it('a failure names itself on the card, whatever lane carried it', () => {
+    for (const lane of [
+      { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 5, result: 'failed' as const, error: 'boom', viewedAt: NOW },
+      { ...newCommentRound({ id: 'c1', now: NOW, text: '继续', sessionId: 's-1' }), viewedAt: NOW, endedAt: NOW + 5, result: 'failed' as const, error: 'boom' },
+    ]) {
+      const card: TaskRecord = { ...task(), status: 'review' as const, executions: [lane] }
+      const view = cardViewModelOf(card, {})
+      expect(view.primary, 'a failure must never read as a success waiting to be confirmed').toEqual({ kind: 'gate', failed: true })
+      expect(view.lastResult).toBe('failed')
+      expect(cardNextActionOf(view, card)).toEqual({ kind: 'failed' })
+    }
+  })
+
+  it('a CANCELLED run is not a decision, so the card asks for nothing', () => {
+    const cancelled: TaskRecord = {
+      ...task(), status: 'review' as const,
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 5, result: 'cancelled' as const, error: undefined, viewedAt: NOW }],
+    }
+    // It still shows its run count — the history is real — but it demands nothing.
+    expect(cardViewModelOf(cancelled, {}).primary).toEqual({ kind: 'runs', count: 1, failed: false })
+    expect(cardViewModelOf(cancelled, {}).gate).toBe('none')
   })
 
   it('queued comments surface with their count', () => {
