@@ -422,8 +422,18 @@ schema 就是给同一件事再加一个控件。
 ### 核心层（`src/core/` 纯逻辑）
 
 - 模块：`tasks` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` · `automation` ·
-  `colors`/`session-list`/`session-display`/`comment-thread`/`question-rpc`/`store` ·
+  `colors`/`session-list`/`session-display`/`session-groups`/`comment-thread`/`question-rpc`/`store` ·
   `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）· `board-doc`/`host-sync`。
+- **换栏落地**：引擎派生的换栏一律把卡片顶到**目标栏最上方**（按发生时间，最新在上），
+  唯一落点是 `controller.land`/`landMany`，`promoteManyToColumnTop` 是排序层的唯一实现
+  （`promoteToColumnTop` 是它的单张入口）。空转判据读**落位后的「栏位 + 键」赋值**，
+  绝不读卡片自己那条来自上一栏的键——那会让跨栏落地整体空转（顶格失效、键相同时
+  按数组顺序显示）。**留在原栏的结算不重排**；**用户手动拖动的位置永不被覆盖**
+  （人工路径是 `moveTask`/`applyCardOrder`，与提升互不相干）。新卡出生（create/copy/
+  instantiate）直接调 `promoteToColumnTop`，语义不同，不并进漏斗。
+- **同步戳与显示口径必须分离**：`task.updatedAt` 是同步合并的 LWW 键，让位的同门
+  必须盖章（漏盖即两台设备顺序漂移）；但屏上「更新于」读 `cardUpdatedAtOf(task)`
+  （卡片自己的工作推进），否则一次顶格会让整栏同门一起写「刚刚」。
 - **会话活跃度（「还在工作吗」的唯一判定）**：`session-lineage` 卷起子代理后代，`session-activity`
   给出 `own|descendant|idle|unknown`，`controller.sessionActiveOf` 是唯一对外查询口。`unknown`
   既不得读作 idle 去写台账，也不得读作 active 去长占。**裸值边界（改动即反向卡死）**：
@@ -522,6 +532,9 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
   （席位 `(held, proto, bootedAt)` 任一半变化都要触发监听，首租前 proto 为 undefined）；
   `board-service` 带 **LeaseState 唯一构造点**的机械禁令；`board-http` 用真实存储 + 真实
   `http.Server` + 真实 SSE，覆盖 fake 测不到的链路（四种租约应答必带 proto + bootedAt）；
-  `controller` 是唯一大文件（端到端，共享 harness 不拆分）；`review-page` / `mobile-contract` /
+  `controller` 是唯一大文件（端到端，共享 harness 不拆分）；`session-groups` 是会话选择器
+  名单的**唯一**规则处（子代理/空白槽/归档的排除、工作区归属账本、未分组尾组，官方
+  `sessionVisible` 逐字镜像），`tasks` 带换栏落地的碰撞回归用例（跨栏落地不得读卡片
+  自己那条外来键当守卫）；`review-page` / `mobile-contract` /
   `card-contract` 承载**全部 CSS 布局契约**（见设计系统层）；`file-reference-grammar` /
   `session-mention` 是官方包逐字镜像（打包门禁禁跨插件值导入）。

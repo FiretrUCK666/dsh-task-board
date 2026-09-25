@@ -3552,6 +3552,16 @@ textarea.input {
   outline-offset: 1px;
 }
 
+/* Picked state: the SAME accent wash the column tabs wear when selected (one
+   selected idiom board-wide, not a second one) — ink brightens, the border
+   takes the accent, and a faint accent fill marks the row. The icon swaps to a
+   check in the markup, so the state is never colour-only. */
+.addSessionRow[data-selected] {
+  color: var(--dsh-tb-text-1);
+  border-color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+}
+
 .addSessionLabel {
   flex: 1;
   min-width: 0;
@@ -3560,9 +3570,28 @@ textarea.input {
   white-space: nowrap;
 }
 
-.addSessionChevron {
-  flex: none;
+/* The folder a row belongs to, shown only in the picker's 未分组 group (where
+   the heading cannot say it). Content-width, shrinkable, ellipsized — it must
+   never push the session title into a sliver. */
+.addSessionFolder {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
   color: var(--dsh-tb-text-3);
+}
+
+/* The picker's footer count: it owns the free space so the actions sit right
+   without a `margin-left:auto` (an auto margin right-aligns whichever item
+   happens to start a wrapped line — the banned spelling board-wide). */
+.pickerCount {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
 }
 
 /* Right-aligned action group of a session row (查看会话 / 处理 / 隐藏): the

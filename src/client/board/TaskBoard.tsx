@@ -31,6 +31,7 @@ import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, n
 import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime, formatTime } from './format-time.ts'
 import { dayBucketOf } from '../../core/board-events.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
+import { SessionPickerDialog } from './SessionPickerDialog.tsx'
 import { STATUS_KEY, STATUS_SHORT_KEY } from './status.ts'
 import { TaskCard } from './TaskCard.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
@@ -221,6 +222,8 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
   }, [snapshot.boardOpen])
   const [filter, setFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
+  // 会话建卡弹层：挑若干已有会话（可跨工作区多选）造一张新卡片。
+  const [showCardFromSessions, setShowCardFromSessions] = useState(false)
   // 自动化总览弹层（板顶统一管理任务级 schedule + 会话级规则）。
   const [showAutomation, setShowAutomation] = useState(false)
   // 通知中心弹层：等你处理的会话 + 未读待审，一行一会话（行内 triage，点主区进详情）。
@@ -988,7 +991,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
       : { kind: 'workspace' as const, workspaceId: drag.id }
     // The landing column is the column the item was dropped into — all five
     // columns are respected (a drop on 进行中 / 待审核 / 已完成 stays there).
-    controller.createBoundTask(bind, {
+    controller.createBoundTask([bind], {
       title: controller.boundSourceTitleOf(bind),
       description: '',
       prompt: '',
@@ -1469,6 +1472,20 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
               onClick={() => { setShowAutomation(true) }}
             >
               {t('board.automation')}
+            </Button>
+            {/* 会话建卡：挑若干个已有会话（可跨工作区多选）直接造一张新卡片。
+                它与「新建任务」的区别只有来源：那个从空白开始，这个带着选中的
+                对话开始，所以放在模式组这一排安静按钮里，而不是抢主行动。
+
+                为什么在模式组而不是导航行：紧凑档的导航行被契约钉死成
+                back + 板名 + 巡航（主按钮已搬到拇指栏），再加一个按钮就必然
+                破约；模式组两个宽度都在，一个 DOM 节点就够了，不需要孪生节点。 */}
+            <Button
+              variant="ghost"
+              title={t('board.newFromSessionsTitle')}
+              onClick={() => { setShowCardFromSessions(true) }}
+            >
+              {t('board.newFromSessions')}
             </Button>
             {/* 动态：全板近况聚合（只读 — 点行进任务详情，派生自台账，不同步）。
                 拇指栏里有同一个入口（同一处理器）：窄屏下这里隐藏，归属见
@@ -2034,6 +2051,26 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
         <AutomationPanel
           controller={controller}
           onClose={() => { setShowAutomation(false) }}
+        />
+      )}
+      {showCardFromSessions && (
+        <SessionPickerDialog
+          controller={controller}
+          title={t('board.newFromSessionsTitle')}
+          submitLabel={t('board.newFromSessionsSubmit')}
+          onSubmit={sessionIds => {
+            // The card is BORN from the selection: no title, no description, no
+            // execution prompt, no run configuration — the board's one blank
+            // grammar renders it (未命名任务 / 暂无内容) and the first real run
+            // supplements what the user later fills in. It lands in 待规划,
+            // never auto-opened, exactly like a card created by a sidebar drop.
+            controller.createBoundTask(
+              sessionIds.map(sessionId => ({ kind: 'session' as const, sessionId })),
+              { title: '', description: '', prompt: '', status: 'backlog' },
+            )
+            setShowCardFromSessions(false)
+          }}
+          onClose={() => { setShowCardFromSessions(false) }}
         />
       )}
       {showNotify && (

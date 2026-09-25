@@ -11,6 +11,9 @@ export declare const zh: {
     'board.title': string;
     'board.close': string;
     'board.new': string;
+    'board.newFromSessions': string;
+    'board.newFromSessionsTitle': string;
+    'board.newFromSessionsSubmit': string;
     'board.search': string;
     'board.filterClear': string;
     'board.filterRemove': string;
@@ -197,6 +200,11 @@ export declare const zh: {
     'detail.addSessionTitle': string;
     'detail.addSessionSearch': string;
     'detail.addSessionEmpty': string;
+    'detail.addSessionNoMatch': string;
+    'detail.addSessionUngrouped': string;
+    'detail.addSessionGroupCount': string;
+    'detail.addSessionSelected': string;
+    'detail.addSessionSubmit': string;
     'detail.sessionNewHint': string;
     'detail.sessionNewSubmit': string;
     'detail.sessionNewTitleLabel': string;

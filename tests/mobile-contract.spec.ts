@@ -497,6 +497,16 @@ describe('board header and navigator legibility', () => {
     expect(compact).toMatch(/\.boardModes \.notifyBell\s*\{[^}]*display:\s*none/)
     expect(compact).toMatch(/\.boardModes \.modeDynamic\s*\{[^}]*display:\s*none/)
     expect(board).toContain('css.modeDynamic')
+    // 会话建卡 rides the modes cluster at BOTH widths — one DOM node, no
+    // compact twin. The nav row cannot host it: that line's arithmetic is
+    // pinned above (28 + 132 + 96 + 24 = 280 of a 296px phone), and the
+    // modes cluster is already a declared grid track at both tiers.
+    expect(toolsRow).toContain('css.boardModes')
+    expect(board).toContain("t('board.newFromSessions')")
+    expect(board).toContain('setShowCardFromSessions(true)')
+    // No twin: nothing hides or re-shows it per width.
+    expect(compact).not.toMatch(/\.boardModes \.newFromSessions/)
+    expect(board).not.toMatch(/thumbBar[\s\S]{0,400}newFromSessions/)
   })
 
   it('feed rows keep their box AND land on the session thread (no right-bleed, no stuck hover, no bare task open)', () => {

@@ -46,6 +46,25 @@ export function titleOrUntitled(title: string, untitled: string): string {
   return title.trim() === '' ? untitled : title
 }
 
+/**
+ * 卡片「更新于」的时刻：这张卡**自己的工作推进**——创建，以及每一轮的开始与
+ * 结束（跑起来的会话、完成的一轮）。
+ *
+ * 为什么不直接读 `task.updatedAt`：那是**同步戳**，不是「这张卡什么时候动过」。
+ * 改一次列内顺序（一次顶格、一次手动拖动）会给**同栏每一张被让位的卡片**盖上
+ * 新的 `updatedAt`——同步合并按它排序，漏盖就是两台设备顺序漂移，所以这个戳
+ * 去掉不得。可一旦直接显示它，一次顶格就会让整栏几百张卡一起写「刚刚」，
+ * 恰好把「哪个先完成」这个信号抹平。于是显示口径与同步口径在这里分家：
+ * 戳照盖，屏上读的是这张卡自己的进展。
+ */
+export function cardUpdatedAtOf(task: TaskRecord): number {
+  let latest = task.createdAt
+  for (const round of task.executions) {
+    latest = Math.max(latest, round.endedAt ?? round.startedAt)
+  }
+  return latest
+}
+
 /** Which light a card wears. ONE light at a time — see {@link cardLightOf}. */
 export type CardLight = 'none' | 'halo' | 'ring'
 
