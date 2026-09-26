@@ -14,7 +14,7 @@
  */
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
 import { isValidCron, nextRunAtMs } from './schedule.ts'
-import { disarmSessionRules, nextSessionRuleAt, withSessionRules } from './automation.ts'
+import { disarmSessionRules, nextSessionRuleAt, sessionRuleReadiness, withSessionRules } from './automation.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
@@ -34,7 +34,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteManyToColumnTop, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteManyToColumnTop, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, supplementLaunchFields, taskBindsOf, taskExecutable, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -2907,6 +2907,8 @@ export class BoardController {
     usePrompt?: boolean
     send: 'queue' | 'steer'
   }): import('./automation.ts').SessionRule | undefined {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return undefined
     const instruction = input.instruction.trim()
     const usePrompt = input.usePrompt === true
     if (instruction === '' && !usePrompt) return undefined
@@ -2914,8 +2916,7 @@ export class BoardController {
     const cron = trigger === 'cron' ? input.cron.trim() : ''
     const nextAt = trigger === 'cron' ? nextRunAtMs(cron, this.now()) : undefined
     if (trigger === 'cron' && (cron === '' || nextAt === undefined)) return undefined
-    const existing = this.tasks.find(task => task.id === taskId)
-    if (existing?.rules?.some(rule => rule.sessionId === input.sessionId)) return undefined
+    if (task.rules?.some(rule => rule.sessionId === input.sessionId)) return undefined
     const rule: import('./automation.ts').SessionRule = {
       id: this.uuid(),
       sessionId: input.sessionId,
@@ -2927,9 +2928,16 @@ export class BoardController {
       enabled: true,
       ...nextAt !== undefined ? { nextAt } : {},
     }
-    const created = this.userEdit(taskId, task => {
-      if (task.rules?.some(candidate => candidate.sessionId === input.sessionId) === true) return task
-      return withSessionRules(task, [...(task.rules ?? []), rule])
+    // A rule is born ARMED, so creating one that cannot ever run is refused
+    // outright — the same law the task-level schedule follows when it refuses
+    // an arm on a card with no execution prompt. The read side already reports
+    // such a rule (`sessionRuleReadiness` → blocked); this is the write side,
+    // and the two halves are one law. A custom-instruction rule is untouched by
+    // it: its content is its own and never reads the task's prompt.
+    if (this.deadArmedRule(rule, task)) return undefined
+    const created = this.userEdit(taskId, candidate => {
+      if (candidate.rules?.some(rule => rule.sessionId === input.sessionId) === true) return candidate
+      return withSessionRules(candidate, [...(candidate.rules ?? []), rule])
     })
     return created ? rule : undefined
   }
@@ -2983,11 +2991,33 @@ export class BoardController {
         if (updated.sessionId === rule.sessionId && updated.instruction === rule.instruction
           && updated.trigger === rule.trigger && updated.usePrompt === rule.usePrompt
           && updated.cron === rule.cron && updated.send === rule.send && updated.nextAt === rule.nextAt) return rule
+        // The one transition that creates a DEAD ARM is refused (the same law
+        // the task-level schedule follows): turning a rule INTO a
+        // prompt-sender on a card whose execution prompt is empty would arm
+        // something that can never run. An edit of a rule that is ALREADY in
+        // that state is always allowed — refusing it would strand the rule
+        // with no way to repair it, and switching it to a custom instruction is
+        // exactly that repair.
+        if (!this.deadArmedRule(rule, task) && this.deadArmedRule(updated, task)) return rule
         touched = true
         return updated
       })
       return touched ? withSessionRules(task, rules) : task
     })
+  }
+
+  /**
+   * 一条会话规则**现在**是不是「上着却跑不起来」的（THE dead-arm judgment，
+   * 写入侧三处共用）：它已启用、它发送的是**任务的执行 Prompt**，而那个 Prompt
+   * 是空的。自定义指令规则自带内容，永远不是——它根本不看任务的 Prompt。
+   *
+   * 与任务级排期是同一条律（`setSchedule` 拒绝给空 Prompt 的卡片上自动化）：
+   * 上着却永远不跑、开关却显示「开」，比「保存不了」更坏。读侧
+   * （`sessionRuleReadiness`）已经会说「已阻止」，这里是写入侧，两半合起来
+   * 才是一条完整的律。
+   */
+  private deadArmedRule(rule: import('./automation.ts').SessionRule, task: TaskRecord): boolean {
+    return rule.enabled && rule.usePrompt === true && ruleArmingBlocked(task)
   }
 
   /** Toggle a session rule's enabled state (the row's live switch). Switching
@@ -3005,6 +3035,9 @@ export class BoardController {
         if (rule.id !== ruleId) return rule
         if (rule.enabled === enabled) return rule
         if (!enabled) return { ...rule, enabled, nextAt: undefined, lastAt: undefined }
+        // The one arming transition the dead-arm law refuses; turning a dead
+        // arm OFF above is never refused, so it always stays dis-armable.
+        if (this.deadArmedRule({ ...rule, enabled }, task)) return rule
         if (rule.trigger !== 'cron') return { ...rule, enabled }
         // Re-arming recomputes the appointment from now (a disarmed rule
         // carries no slot — resuming a stale one would surprise-fire). An
@@ -3029,15 +3062,35 @@ export class BoardController {
   }
 
   /**
+   * 这条规则现在**能不能送达**（THE deliverable gate）：目标会话在场，且没有
+   * 被归档。
+   *
+   * 归档是「可恢复的隐藏」：往一个收起来的对话里发消息，等于把它从原生侧边栏
+   * 的视角里**复活**，而用户明确把它收走了。三条触发路径（cron 心跳 / 任务完成
+   * 后 / 完成后继续）必须共用这一道闸——曾经只有心跳守了，另外两条不守，于是
+   * 「完成后」规则能把消息塞进已归档的对话。缺席或归档的会话一律不送达。
+   * @param byId - 会话列表快照（调用方一次读出，逐条复用）。
+   */
+  private ruleDeliverable(sessionId: string, byId: Readonly<Record<string, unknown>>): boolean {
+    return byId[sessionId] !== undefined && !this.archivedOf(sessionId)
+  }
+
+  /**
    * The minute heartbeat for CRON session rules (the scheduler's
    * sessionRulesTick): for every enabled cron rule whose due instant has
    * passed, send its preset instruction to the target session (slash-aware;
    * the sent line is recorded as a direct round so it shows in the session's
-   * thread), then roll forward to the next cron match. A session that is
-   * gone is skipped (its due slot is kept — it fires when the session
-   * returns); an unparseable expression auto-disables the rule (错过即跳过),
-   * never re-fires forever. On-complete rules have no due slot — they fire
-   * at run settle (fireOnCompleteRules), never here.
+   * thread), then roll forward to the next cron match. On-complete rules have
+   * no due slot — they fire at run settle (fireOnCompleteRules), never here.
+   *
+   * 活性判定读 {@link sessionRuleReadiness}（**唯一**那份语义，与任务级排期
+   * 同律）。停用、暂停（列）、阻断（空 Prompt）三条各走各的：停用没有档期可言；
+   * 暂停与阻断都是**跳过并把档期前滚**——到点的档期被跳过、滚到下一个匹配，
+   * 恢复后从下一个匹配继续，**绝不补发**——与任务级排期 `scheduler.ts` 的同一
+   * 分支逐条对齐。曾经这里自己又写了一遍「内容为空 = 阻断」，两处的处理还**正好
+   * 相反**（阻断前滚、暂停不前滚），于是暂停中的规则永远挂着一个早已到点的档期，
+   * 行上「下次」一直显示过去时刻；而且跳过与在途两个分支都给 `lastAt` 盖章——
+   * 那个戳记的是「上一次真的发出去了」，一条没发过的规则盖上它就是一条假账。
    */
   async tickSessionRules(now: number): Promise<void> {
     const byId = this.deps.sessions.list.getSnapshot().byId
@@ -3049,44 +3102,42 @@ export class BoardController {
       for (const rule of rules) {
         if (!rule.enabled || rule.trigger !== 'cron') continue
         if (rule.nextAt === undefined) continue // defensive: no due slot → skip
-        if (byId[rule.sessionId] === undefined) continue // session gone: keep due slot
-        // An ARCHIVED session is put away: the same gate the picker and the
-        // card's rows apply. Firing into it would light the card up (the round
-        // lands on a conversation the user cannot see) and un-archive it from
-        // the native sidebar's point of view — a rule must never resurrect a
-        // conversation the user put away. The due slot is kept, so
-        // un-archiving resumes the schedule.
-        if (this.archivedOf(rule.sessionId)) continue
-        // The SAME readiness semantics as the task-level schedule: a rule is
-        // active only while the task sits in a drivable column. A paused rule
-        // keeps its due slot (the pause is a hold, never a drop) and is NOT
-        // retried every tick — the across-status skip is what a pause means.
-        if (!taskColumnAllowsAutomation(task)) continue
-        if (rule.nextAt > now) continue
-        // A usePrompt rule has nothing to send while the task's execution
-        // prompt is empty (blocked); a custom rule's content is its own.
-        // Blocked rolls forward like every other hold (task-level blocked
-        // slots roll too) — filling the prompt later resumes from the future,
-        // never backfills the missed slot.
-        const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
-        if (text === '') {
+        // ONE readiness, ONE meaning (the task-level scheduler's branch, clause
+        // for clause). A rule the task cannot drive right now — its COLUMN is
+        // not drivable, or a usePrompt rule has no prompt to send — SKIPS the
+        // due instant and rolls it forward, so a resumed rule continues from
+        // the next match instead of firing at once. Nothing else is recorded:
+        // `lastAt` means "the last time this actually sent", and a rule that
+        // never fired must never carry that stamp.
+        if (sessionRuleReadiness(task, rule).kind !== 'active') {
+          if (rule.nextAt > now) continue
           const rolled = nextSessionRuleAt(rule)
-          rule.lastAt = now
-          rule.nextAt = rolled ?? rule.nextAt
-          rule.enabled = rolled === undefined ? false : rule.enabled
+          // A roll that cannot be computed (an unparseable expression, only
+          // reachable through hand-edited data) switches the rule off rather
+          // than retrying the same due instant every tick forever.
+          if (rolled === undefined) {
+            rule.enabled = false
+            taskChanged = true
+            continue
+          }
+          rule.nextAt = rolled
           taskChanged = true
           continue
         }
+        if (!this.ruleDeliverable(rule.sessionId, byId)) continue
+        if (rule.nextAt > now) continue
+        const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
+        if (text === '') continue
         // ONE due instant, ONE round. A queue-mode rule instruction that is
         // still waiting (its session is busy — the common case now that a lane
         // can be held by a long conversation) already honours this due slot;
         // appending another copy every minute would stack identical
         // instructions onto the same session. Roll the schedule forward
         // instead — the same one-in-flight discipline the on-complete loop
-        // enforces in `fireRuleRound`.
+        // enforces in `fireRuleRound`. `lastAt` stays untouched: nothing was
+        // sent, and the stamp records sends, not skips.
         if (task.executions.some(round => round.ruleId === rule.id && round.endedAt === undefined)) {
           const rolled = nextSessionRuleAt(rule)
-          rule.lastAt = now
           rule.nextAt = rolled ?? rule.nextAt
           rule.enabled = rolled === undefined ? false : rule.enabled
           taskChanged = true
@@ -3510,10 +3561,11 @@ export class BoardController {
 
   /**
    * 任务一次执行结算时触发其 on-complete 会话规则（"完成后续跑"——永续循环：
-   * 规则轮成功结算后继续下一轮，直到关闭/删除/会话消失/内容不可用）。发送文法
+   * 规则轮成功结算后继续下一轮，直到关闭/删除/会话不可送达/内容不可用）。发送文法
    * = 一条 ruleId 标记的观察轮（queue/steer，与巡航无关）；判定 = 规则启用 +
    * 内容可得（usePrompt 规则要求任务执行 Prompt 非空；自定义规则内容自带）+
-   * 目标会话在场；每次结算每个规则至多一次（lastAt 由 fireRuleRound 记录）。
+   * 目标会话**可送达**（在场且未归档，与 cron 心跳同一道闸）；每次结算每个规则至多
+   * 一次（lastAt 由 fireRuleRound 记录）。
    * 列暂停不适用：结算瞬间任务刚被移动，这里的"完成"才是约定本身。
    */
   async fireOnCompleteRules(taskId: string): Promise<void> {
@@ -3527,7 +3579,7 @@ export class BoardController {
       if (rule.trigger !== 'on-complete' || !rule.enabled) continue
       const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
       if (text === '') continue // usePrompt + 空 Prompt = blocked, nothing to send
-      if (byId[rule.sessionId] === undefined) continue
+      if (!this.ruleDeliverable(rule.sessionId, byId)) continue
       due.push({ rule, text })
     }
     for (const { rule, text } of [...due].sort((a, b) =>
@@ -3538,7 +3590,7 @@ export class BoardController {
 
   /**
    * 完成后续跑：规则自己的指令轮（ruleId 标记）**成功**结算后的再触发——同一
-   * 规则再发一条，一轮接一轮；失败/取消不续（错误不风暴）、规则被关/会话消失/
+   * 规则再发一条，一轮接一轮；失败/取消不续（错误不风暴）、规则被关/会话不可送达/
    * 内容不可用即停；用户手写评论（无 ruleId）永不触发。
    */
   async fireLoopRule(taskId: string, ruleId: string, sessionId: string): Promise<void> {
@@ -3549,7 +3601,7 @@ export class BoardController {
     const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
     if (text === '') return
     const byId = this.deps.sessions.list.getSnapshot().byId
-    if (byId[sessionId] === undefined) return
+    if (!this.ruleDeliverable(sessionId, byId)) return
     this.fireRuleRound(task, rule, text)
   }
 

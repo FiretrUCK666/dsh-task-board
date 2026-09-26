@@ -1521,6 +1521,17 @@ export declare class BoardController {
         cron?: string;
         send?: 'queue' | 'steer';
     }): boolean;
+    /**
+     * 一条会话规则**现在**是不是「上着却跑不起来」的（THE dead-arm judgment，
+     * 写入侧三处共用）：它已启用、它发送的是**任务的执行 Prompt**，而那个 Prompt
+     * 是空的。自定义指令规则自带内容，永远不是——它根本不看任务的 Prompt。
+     *
+     * 与任务级排期是同一条律（`setSchedule` 拒绝给空 Prompt 的卡片上自动化）：
+     * 上着却永远不跑、开关却显示「开」，比「保存不了」更坏。读侧
+     * （`sessionRuleReadiness`）已经会说「已阻止」，这里是写入侧，两半合起来
+     * 才是一条完整的律。
+     */
+    private deadArmedRule;
     /** Toggle a session rule's enabled state (the row's live switch). Switching
      *  a cron rule back on recomputes its due slot from now (a disarmed rule
      *  carries no appointment — resuming from a stale slot would surprise-fire).
@@ -1531,15 +1542,32 @@ export declare class BoardController {
     /** Remove a session rule. */
     deleteSessionRule(taskId: string, ruleId: string): void;
     /**
+     * 这条规则现在**能不能送达**（THE deliverable gate）：目标会话在场，且没有
+     * 被归档。
+     *
+     * 归档是「可恢复的隐藏」：往一个收起来的对话里发消息，等于把它从原生侧边栏
+     * 的视角里**复活**，而用户明确把它收走了。三条触发路径（cron 心跳 / 任务完成
+     * 后 / 完成后继续）必须共用这一道闸——曾经只有心跳守了，另外两条不守，于是
+     * 「完成后」规则能把消息塞进已归档的对话。缺席或归档的会话一律不送达。
+     * @param byId - 会话列表快照（调用方一次读出，逐条复用）。
+     */
+    private ruleDeliverable;
+    /**
      * The minute heartbeat for CRON session rules (the scheduler's
      * sessionRulesTick): for every enabled cron rule whose due instant has
      * passed, send its preset instruction to the target session (slash-aware;
      * the sent line is recorded as a direct round so it shows in the session's
-     * thread), then roll forward to the next cron match. A session that is
-     * gone is skipped (its due slot is kept — it fires when the session
-     * returns); an unparseable expression auto-disables the rule (错过即跳过),
-     * never re-fires forever. On-complete rules have no due slot — they fire
-     * at run settle (fireOnCompleteRules), never here.
+     * thread), then roll forward to the next cron match. On-complete rules have
+     * no due slot — they fire at run settle (fireOnCompleteRules), never here.
+     *
+     * 活性判定读 {@link sessionRuleReadiness}（**唯一**那份语义，与任务级排期
+     * 同律）。停用、暂停（列）、阻断（空 Prompt）三条各走各的：停用没有档期可言；
+     * 暂停与阻断都是**跳过并把档期前滚**——到点的档期被跳过、滚到下一个匹配，
+     * 恢复后从下一个匹配继续，**绝不补发**——与任务级排期 `scheduler.ts` 的同一
+     * 分支逐条对齐。曾经这里自己又写了一遍「内容为空 = 阻断」，两处的处理还**正好
+     * 相反**（阻断前滚、暂停不前滚），于是暂停中的规则永远挂着一个早已到点的档期，
+     * 行上「下次」一直显示过去时刻；而且跳过与在途两个分支都给 `lastAt` 盖章——
+     * 那个戳记的是「上一次真的发出去了」，一条没发过的规则盖上它就是一条假账。
      */
     tickSessionRules(now: number): Promise<void>;
     /** The raw host send for a direct line (slash-aware, no recording).
@@ -1687,16 +1715,17 @@ export declare class BoardController {
     private fireRuleRound;
     /**
      * 任务一次执行结算时触发其 on-complete 会话规则（"完成后续跑"——永续循环：
-     * 规则轮成功结算后继续下一轮，直到关闭/删除/会话消失/内容不可用）。发送文法
+     * 规则轮成功结算后继续下一轮，直到关闭/删除/会话不可送达/内容不可用）。发送文法
      * = 一条 ruleId 标记的观察轮（queue/steer，与巡航无关）；判定 = 规则启用 +
      * 内容可得（usePrompt 规则要求任务执行 Prompt 非空；自定义规则内容自带）+
-     * 目标会话在场；每次结算每个规则至多一次（lastAt 由 fireRuleRound 记录）。
+     * 目标会话**可送达**（在场且未归档，与 cron 心跳同一道闸）；每次结算每个规则至多
+     * 一次（lastAt 由 fireRuleRound 记录）。
      * 列暂停不适用：结算瞬间任务刚被移动，这里的"完成"才是约定本身。
      */
     fireOnCompleteRules(taskId: string): Promise<void>;
     /**
      * 完成后续跑：规则自己的指令轮（ruleId 标记）**成功**结算后的再触发——同一
-     * 规则再发一条，一轮接一轮；失败/取消不续（错误不风暴）、规则被关/会话消失/
+     * 规则再发一条，一轮接一轮；失败/取消不续（错误不风暴）、规则被关/会话不可送达/
      * 内容不可用即停；用户手写评论（无 ruleId）永不触发。
      */
     fireLoopRule(taskId: string, ruleId: string, sessionId: string): Promise<void>;

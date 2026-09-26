@@ -103,6 +103,43 @@ export function CronField({ value, presets, onChange, onCommit, onPreset, onMana
   )
 }
 
+/**
+ * 「最多运行次数」这一个控件（THE budget field）：数字输入 + 已运行计数。
+ * 按时间表与完成后接续**共用**这一份——它从前被写了两遍，只差计数那行文案，
+ * 于是两处的校验与计数口径迟早会分家。提交时机仍由调用方决定（Enter / 失焦）。
+ */
+function MaxRunsField({ value, invalid, runCount, maxRuns, onChange, onCommit }: {
+  value: string
+  invalid: boolean
+  /** The stored budget readout beside the input (the schedule record's own). */
+  runCount: number
+  maxRuns: number | undefined
+  onChange: (value: string) => void
+  onCommit: (value: string) => void
+}) {
+  return (
+    <span className={css.scheduleMaxRow}>
+      <input
+        className={`${css.input} ${css.scheduleMaxInput}${invalid ? ` ${css.inputInvalid}` : ''}`}
+        value={value}
+        type="number"
+        min={1}
+        placeholder="∞"
+        spellCheck={false}
+        aria-label={t('detail.schedule.maxRuns')}
+        aria-invalid={invalid ? true : undefined}
+        onChange={event => { onChange(event.target.value) }}
+        onBlur={() => { onCommit(value) }}
+        onKeyDown={event => { if (event.key === 'Enter') onCommit(value) }}
+      />
+      <span className={css.scheduleMeta}>
+        {t('detail.schedule.runsSoFar')} {runCount}
+        {maxRuns !== undefined && ` / ${maxRuns}`}
+      </span>
+    </span>
+  )
+}
+
 /** The target session's display title (falls back to the raw id). */
 function ruleSessionTitle(controller: BoardController, task: TaskRecord, sessionId: string): string {
   const label = controller.sessionLabelsOf(task.id).find(item => item.sessionId === sessionId)
@@ -164,12 +201,13 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           <Icon name="link" className={css.autoMetaIcon} />
           <span className={css.autoRuleSessionTitle} title={title}>{title}</span>
         </span>
-        {/* 排队/插话 labels the SEND MODE, never a queueing state — the row
-            carries a real readiness glyph below; the tooltip says it plainly.
-            Renders through the shared Chip (the board's ONE badge grammar) —
-            a hand-rolled pill here would drift from every other badge. */}
+        {/* 发送方式带「发送：」前缀：裸「排队」在这个位置读起来像**状态**（「它
+            正在排队」），而它其实是**设置**（这条规则怎么把话送出去）。两枚
+            规则级的 chip 一左一右（一个说怎么发、一个说现在怎么样），前缀是让
+            它们不再打架的那两个字。真正的状态在下面那几个 chip 上。
+            触屏够不着 title，所以这个区分不能只写在 title 里。 */}
         <Chip kind="muted" title={t(row.send === 'queue' ? 'review.sendQueueTitle' : 'review.sendSteerTitle')}>
-          {t(row.send === 'queue' ? 'review.sendQueue' : 'review.sendSteer')}
+          {`${t('auto.rule.send')} ${t(row.send === 'queue' ? 'review.sendQueue' : 'review.sendSteer')}`}
         </Chip>
         {/* An armed on-complete rule has NOTHING queued yet: it waits for the
             NEXT completion (驱动一次/留言一次). The chip names the REAL state
@@ -270,8 +308,11 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
   const [steer, setSteer] = useState(existing?.send === 'steer')
   // The ONE failing field at a time (first failure wins): the message renders
   // inline next to that field and only that field wears the red border — a
-  // combined "instruction AND cron" error names nothing.
-  const [error, setError] = useState<'session' | 'instruction' | 'cron' | 'save' | undefined>(undefined)
+  // combined "instruction AND cron" error names nothing. `promptEmpty` is its
+  // own kind: a prompt-sending rule on a card whose execution prompt is empty
+  // is a rule that could never run, and the controller refuses to save it — so
+  // the form says WHY instead of letting the save fail with a generic line.
+  const [error, setError] = useState<'session' | 'instruction' | 'cron' | 'promptEmpty' | 'save' | undefined>(undefined)
   const [presetStore] = useState(() => controller.presetStore())
   const [presets, setPresets] = useState(() => mergedPresets(presetStore))
   const [showPresets, setShowPresets] = useState(false)
@@ -299,6 +340,14 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
     }
     if (!usePrompt && trimmedInstruction === '') {
       setError('instruction')
+      return
+    }
+    // The same law the controller enforces on save, checked here FIRST so the
+    // refusal arrives as a sentence about the actual cause instead of a generic
+    // 「保存失败」. One predicate, two places: the form must never disagree with
+    // the write path about what can be armed.
+    if (usePrompt && ruleArmingBlocked(task)) {
+      setError('promptEmpty')
       return
     }
     if (trigger === 'cron' && !isValidCron(trimmedCron)) {
@@ -398,7 +447,15 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
               {error === 'instruction' && <span className={css.formError}>{t('auto.form.invalidInstruction')}</span>}
             </label>
           ) : (
-            <p className={css.detailHint}>{t('auto.form.usePromptHint')}</p>
+            // The prompt-reading mode states its precondition up front rather
+            // than letting 保存 fail: a rule that sends the task's prompt cannot
+            // be armed while that prompt is empty, and 「保存失败」 would name
+            // nothing. The reason line replaces the generic hint only in that
+            // state — a workable card still gets the explanation of what the
+            // mode DOES.
+            ruleArmingBlocked(task)
+              ? <p className={css.formError}>{t('auto.form.promptEmpty')}</p>
+              : <p className={css.detailHint}>{t('auto.form.usePromptHint')}</p>
           )}
           {trigger === 'cron' && (
             <label className={css.autoField}>
@@ -693,16 +750,11 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
 
   return (
     <>
-      {/* Task-level automation and session rules are the TWO halves of the
-          same editor. On the board overview each half keeps its own section
-          header; EMBEDDED (inside the detail's automation disclosure) the
-          disclosure itself is「任务自动化」, so the schedule half renders as a
-          plain group — never a repeated header (the 「自动化/任务自动化」 noise). */}
-      {/* Task-level automation and session rules are the TWO halves of the
-          same editor. On the board overview each half keeps its own section
-          header; EMBEDDED (inside the detail's automation disclosure) the
-          disclosure itself is「任务自动化」, so the schedule half renders with
-          no repeated header (the 「自动化/任务自动化 双标题」 noise).
+      {/* Task-level automation and session rules are the TWO halves of the same
+          editor. On the board overview each half keeps its own section header;
+          EMBEDDED (inside the detail's automation disclosure) the disclosure
+          itself is「任务自动化」, so the schedule half renders with no repeated
+          header (the 「自动化/任务自动化 双标题」 noise).
           The task-schedule control family is ONE group: the section's 16px
           governs head→group and group→group, the 8px inside binds each label
           to its own control (两级节奏 — otherwise every field reads at the same
@@ -758,25 +810,14 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
             label={t('detail.schedule.cron')}
           />
           <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
-          <span className={css.scheduleMaxRow}>
-            <input
-              className={`${css.input} ${css.scheduleMaxInput}${error === 'runs' ? ` ${css.inputInvalid}` : ''}`}
-              value={maxRuns}
-              type="number"
-              min={1}
-              placeholder="∞"
-              spellCheck={false}
-              aria-label={t('detail.schedule.maxRuns')}
-              aria-invalid={error === 'runs' ? true : undefined}
-              onChange={event => { setMaxRuns(event.target.value); setError(undefined) }}
-              onBlur={() => { saveMaxRuns(maxRuns) }}
-              onKeyDown={event => { if (event.key === 'Enter') saveMaxRuns(maxRuns) }}
-            />
-            <span className={css.scheduleMeta}>
-              {t('detail.schedule.runsSoFar')} {schedule?.runCount ?? 0}
-              {schedule?.maxRuns !== undefined && ` / ${schedule.maxRuns}`}
-            </span>
-          </span>
+          <MaxRunsField
+            value={maxRuns}
+            invalid={error === 'runs'}
+            runCount={schedule?.runCount ?? 0}
+            maxRuns={schedule?.maxRuns}
+            onChange={next => { setMaxRuns(next); setError(undefined) }}
+            onCommit={saveMaxRuns}
+          />
         </div>
       ) : (
         <>
@@ -804,25 +845,14 @@ export function AutomationEditor({ controller, task, embedded = false }: { contr
           )}
           <div className={css.scheduleGrid}>
             <span className={css.scheduleLabel}>{t('detail.schedule.maxRuns')}</span>
-            <span className={css.scheduleMaxRow}>
-              <input
-                className={`${css.input} ${css.scheduleMaxInput}${error === 'runs' ? ` ${css.inputInvalid}` : ''}`}
-                value={maxRuns}
-                type="number"
-                min={1}
-                placeholder="∞"
-                spellCheck={false}
-                aria-label={t('detail.schedule.maxRuns')}
-                aria-invalid={error === 'runs' ? true : undefined}
-                onChange={event => { setMaxRuns(event.target.value); setError(undefined) }}
-                onBlur={() => { saveMaxRuns(maxRuns) }}
-                onKeyDown={event => { if (event.key === 'Enter') saveMaxRuns(maxRuns) }}
-              />
-              <span className={css.scheduleMeta}>
-                {t('detail.schedule.runsSoFar')} {schedule?.runCount ?? 0}
-                {schedule?.maxRuns !== undefined && ` / ${schedule.maxRuns}`}
-              </span>
-            </span>
+            <MaxRunsField
+              value={maxRuns}
+              invalid={error === 'runs'}
+              runCount={schedule?.runCount ?? 0}
+              maxRuns={schedule?.maxRuns}
+              onChange={next => { setMaxRuns(next); setError(undefined) }}
+              onCommit={saveMaxRuns}
+            />
           </div>
         </>
       )}

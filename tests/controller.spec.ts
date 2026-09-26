@@ -3907,6 +3907,35 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect((store.load()[0].executions ?? []).length).toBe(1)
   })
 
+  it('an on-complete rule never fires into an ARCHIVED session either (one gate, three paths)', async () => {
+    // The cron heartbeat kept this gate; the two completion paths did not, so a
+    // 「任务完成后」 rule could message a conversation the user had put away —
+    // the same revival, through the other trigger. One judgment, three callers.
+    const sessions = new FakeSessions()
+    sessions.runningById['s-1'] = false
+    sessions.titleById['s-1'] = 'target'
+    const archive = new FakeWorkspaces()
+    archive.archivedSessionIds = ['s-1']
+    const store = new InMemoryTaskStore()
+    const seeded = createTask({ title: 'x', description: '', prompt: 'run' }, NOW, 'task-a')
+    store.save([{
+      ...seeded,
+      status: 'todo',
+      rules: [{ id: 'r1', sessionId: 's-1', instruction: '继续', trigger: 'on-complete', cron: '', send: 'queue', enabled: true }],
+    }])
+    const controller = new BoardController({
+      store, exec: new StubExec() as unknown as ExecutionService,
+      sessions, workspaces: archive as never, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await controller.fireOnCompleteRules('task-a')
+    expect(store.load()[0].executions ?? [], 'an archived target takes no round').toHaveLength(0)
+    // Un-archived: the same rule fires.
+    archive.archivedSessionIds = []
+    await controller.fireOnCompleteRules('task-a')
+    expect((store.load()[0].executions ?? []).length).toBe(1)
+  })
+
   it('a bound RUNNING session settles to 待审核 when the native turn finishes', async () => {    const stub = new StubExec()
     const store = new InMemoryTaskStore()
     const sessions = new FakeSessions()
@@ -4443,18 +4472,73 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(sent).toEqual([['s-a', 'hello']])
   })
 
-  it('a blocked usePrompt rule rolls its due slot forward (hold, not drop)', async () => {
+  it('a usePrompt rule can NEVER be armed on a card with no execution prompt', () => {
+    // The dead-arm law, all three write sites. A prompt-sending rule on a
+    // promptless card is a rule that is born enabled, never fires, and reads
+    // as a live switch — so it is refused outright, exactly as arming the
+    // task-level schedule on such a card is (setSchedule's ruleArmingBlocked
+    // gate). The read side still explains a rule whose prompt was cleared
+    // AFTER it was armed (the next test).
+    const { controller } = ruleHarness(['s-a'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    // Create: refused.
+    expect(controller.createSessionRule(task.id, {
+      sessionId: 's-a', instruction: '', usePrompt: true, cron: '* * * * *', send: 'steer',
+    })).toBeUndefined()
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules).toBeUndefined()
+    // The escape hatch stays open: a CUSTOM instruction never reads the task's
+    // prompt, so the same card can still automate a session.
+    expect(controller.createSessionRule(task.id, {
+      sessionId: 's-a', instruction: 'ping', cron: '* * * * *', send: 'steer',
+    })).toBeDefined()
+  })
+
+  it('a rule whose prompt was cleared AFTER it was armed stays editable and switchable OFF, but cannot be re-armed', () => {
+    // The read side reports `blocked`, so the write side must not strand it:
+    // every repair (turn it off, switch it to a custom instruction) is
+    // allowed, and re-arming is the one transition refused.
+    const { controller } = ruleHarness(['s-a'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const rule = controller.createSessionRule(task.id, {
+      sessionId: 's-a', instruction: '', usePrompt: true, cron: '* * * * *', send: 'steer',
+    })!
+    controller.updateTask(task.id, { prompt: '' })
+    const id = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].id
+    // Re-arming is refused (the rule is already off, and on would be a dead arm).
+    controller.toggleSessionRule(task.id, id, false)
+    controller.toggleSessionRule(task.id, id, true)
+    expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].enabled).toBe(false)
+    // The repair works: a custom instruction is content of its own.
+    expect(controller.updateSessionRule(task.id, id, { usePrompt: false, instruction: 'ping' })).toBe(true)
+    const repaired = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0]
+    expect(repaired.usePrompt).toBeUndefined()
+    expect(repaired.instruction).toBe('ping')
+    // Turning a dead arm INTO a prompt rule is refused (it would arm a dead one).
+    const promptRule = controller.createSessionRule(task.id, {
+      sessionId: 's-b', instruction: '', usePrompt: true, cron: '* * * * *', send: 'steer',
+    })
+    expect(promptRule).toBeUndefined()
+    expect(rule.id).toBe(id)
+  })
+
+  it('a blocked usePrompt rule rolls its due slot forward (skip, never catch up)', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
-    const task = controller.createTask({ title: 't', description: '', prompt: '' })!
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '', usePrompt: true, cron: '* * * * *', send: 'steer' })!
+    // The prompt is cleared after the rule was armed — the only way a blocked
+    // rule exists at all.
+    controller.updateTask(task.id, { prompt: '' })
     const before = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].nextAt!
     await controller.tickSessionRules(NOW + 120_000)
     // Blocked: nothing sent, but the due slot advances like every other hold
-    // (filling the prompt later resumes from the future, never backfills).
+    // (filling the prompt later resumes from the future, never backfills) —
+    // the same law the task-level scheduler follows.
     expect(sent).toHaveLength(0)
-    const after = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0].nextAt!
-    expect(after).toBeGreaterThan(before)
+    const after = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules![0]
+    expect(after.nextAt!).toBeGreaterThan(before)
+    // A rule that never fired must never carry a "last sent" stamp.
+    expect(after.lastAt).toBeUndefined()
   })
 
   it('slash instructions route through the command registry (steer)', async () => {
@@ -4493,21 +4577,26 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(intact.instruction).toBe('nightly check')
   })
 
-  it('a rule on a shelved column stays paused: never fires, keeps its slot, resumes', async () => {
+  it('a rule on a shelved column stays paused: never fires, and its due slot rolls like the task schedule', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     const rule = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hello', cron: '* * * * *', send: 'steer' })!
     controller.moveTask(task.id, 'backlog')
     await controller.tickSessionRules(NOW + 120_000)
-    expect(sent).toHaveLength(0) // paused on backlog: the due slot is a hold, never a retry storm
+    expect(sent).toHaveLength(0) // paused on backlog: the due slot is skipped, never a retry storm
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.rules![0].enabled).toBe(true)
-    expect(row.rules![0].nextAt).toBe(rule.nextAt)
+    // SKIP AND ROLL, exactly like the task-level scheduler: while the card is
+    // shelved the appointment is never caught up, it is skipped and rolled to
+    // the following match. (It used to HOLD the stale slot here while the task
+    // schedule rolled — two answers to one question, and the row then showed a
+    // due instant permanently in the past.)
+    expect(row.rules![0].nextAt!).toBeGreaterThan(rule.nextAt!)
     expect(row.rules![0].lastAt).toBeUndefined()
     // Moving the task back to a drivable column resumes the rule.
     controller.moveTask(task.id, 'todo')
-    await controller.tickSessionRules(NOW + 120_000)
+    await controller.tickSessionRules(NOW + 200_000)
     expect(sent).toEqual([['s-a', 'hello']])
   })
 

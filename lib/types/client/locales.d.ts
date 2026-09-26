@@ -326,6 +326,8 @@ export declare const zh: {
     'auto.cron': string;
     'auto.rule.enable': string;
     'auto.rule.off': string;
+    'auto.rule.send': string;
+    'auto.form.promptEmpty': string;
     'auto.rule.edit': string;
     'auto.rule.editTitle': string;
     'auto.rule.next': string;
