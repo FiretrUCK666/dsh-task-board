@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openRoundsOf, pendingCommentCount, plainRunsOf, promoteToColumnTop, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
+  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openRoundsOf, pendingCommentCount, plainRunsOf, promoteManyToColumnTop, promoteToColumnTop, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, supplementLaunchFields, taskExecutable,
   settleExecution, startExecution, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -205,6 +205,33 @@ describe('promoteToColumnTop', () => {
     expect(keyed(out)).toEqual({ a: 0, b: 1 })
   })
 
+  it('a cross-column landing never reads its OWN key as the guard (the collision case)', () => {
+    // The regression this exists for: a card that sat at the TOP of 待办
+    // (key 0) lands in a column that already has a key-0 card. The old guard
+    // asked "is the moved card's own key 0?" — it always was, because the key
+    // belongs to the column it just LEFT — so it early-returned, nothing
+    // shifted, and the two key-0 cards rendered in ledger order. The card
+    // looked like it never floated to the top.
+    const [a] = column(['a'])
+    const b = createTask({ title: 'b', description: '', prompt: '' }, NOW, 'b', 0)
+    const out = promoteToColumnTop([a, b], 'a', 'todo', NOW + 1)
+    // 'a' is the only member of the target column: its key normalizes to 0.
+    expect(keyed(out)).toEqual({ a: 0, b: 1 })
+  })
+
+  it('a settled card enters 待审核 above the card already sitting there', () => {
+    // The user-visible shape of the same bug: two review cards, the newcomer
+    // must be the one ON TOP no matter which key it carried in 进行中.
+    const running = { ...createTask({ title: 'r', description: '', prompt: 'p' }, NOW, 'r', 0), status: 'running' as const }
+    const reviewed = { ...createTask({ title: 'v', description: '', prompt: 'p' }, NOW - 9, 'v', 0), status: 'review' as const }
+    const settled = { ...running, status: 'review' as const }
+    const out = promoteToColumnTop([running, reviewed], 'r', 'review', NOW)
+    // Rendered order, not keys: the newcomer reads first.
+    const rendered = out.filter(task => task.status === 'review').sort((a, b) => a.order - b.order).map(task => task.id)
+    expect(rendered).toEqual(['r', 'v'])
+    expect(settled.status).toBe('review')
+  })
+
   it('applyCardOrder returns untouched rows for a same-spot drop (no churn)', () => {
     const [a, b, c] = column(['a', 'b', 'c'])
     const out = applyCardOrder([a, b, c], 'b', 'todo', 'c', NOW + 1)
@@ -212,6 +239,61 @@ describe('promoteToColumnTop', () => {
     expect(out.map(task => task.id)).toEqual(['a', 'b', 'c'])
     expect(out[1]).toBe(b)
     expect(out[1]?.updatedAt).toBe(NOW)
+  })
+})
+
+describe('promoteManyToColumnTop (the batch is the same law, not a second one)', () => {
+  function review(ids: string[], orders: number[]) {
+    return ids.map((id, index) => ({
+      ...createTask({ title: id, description: '', prompt: 'p' }, NOW, id, orders[index]),
+      status: 'review' as const,
+    }))
+  }
+
+  it('lands k cards newest-completion-on-top, renumbering each column once', () => {
+    // entries are in COMPLETION order (oldest first), so the column reads
+    // exactly as if they had landed one by one.
+    const [a, b, c] = review(['a', 'b', 'c'], [0, 1, 2])
+    const out = promoteManyToColumnTop([a, b, c], [
+      { id: 'b', status: 'review' },
+      { id: 'c', status: 'review' },
+    ], NOW + 1)
+    const rendered = out.sort((x, y) => x.order - y.order).map(task => task.id)
+    expect(rendered).toEqual(['c', 'b', 'a'])
+    // Dense keys, one pass: 0/1/2 with no gaps for the next insert to trip on.
+    expect(out.map(task => task.order)).toEqual([0, 1, 2])
+  })
+
+  it('is a no-op when every landed card is already the rendered top of its column', () => {
+    const [a, b] = review(['a', 'b'], [0, 1])
+    const out = promoteManyToColumnTop([a, b], [{ id: 'a', status: 'review' }], NOW + 1)
+    expect(out[0]).toBe(a)
+    expect(out[1]).toBe(b)
+  })
+
+  it('ignores ids the ledger does not carry rather than inventing a column for them', () => {
+    const [a, b] = review(['a', 'b'], [0, 1])
+    const out = promoteManyToColumnTop([a, b], [{ id: 'ghost', status: 'review' }], NOW + 1)
+    expect(out[0]).toBe(a)
+    expect(out[1]).toBe(b)
+  })
+
+  it('keeps a shifted sibling stamped (an un-stamped order write loses the sync merge)', () => {
+    const [a, b] = review(['a', 'b'], [0, 1])
+    const out = promoteManyToColumnTop([a, b], [{ id: 'b', status: 'review' }], NOW + 1)
+    const moved = out.find(task => task.id === 'b')
+    const shifted = out.find(task => task.id === 'a')
+    expect(moved?.order).toBe(0)
+    expect(moved?.updatedAt).toBe(NOW + 1)
+    expect(shifted?.order).toBe(1)
+    expect(shifted?.updatedAt).toBe(NOW + 1)
+  })
+
+  it('leaves every other column completely untouched', () => {
+    const todo = createTask({ title: 't', description: '', prompt: 'p' }, NOW, 't', 7)
+    const [a, b] = review(['a', 'b'], [0, 1])
+    const out = promoteManyToColumnTop([todo, a, b], [{ id: 'b', status: 'review' }], NOW + 1)
+    expect(out.find(task => task.id === 't')).toBe(todo)
   })
 })
 

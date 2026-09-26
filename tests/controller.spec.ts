@@ -200,6 +200,9 @@ class StubExec {
   runCalls: Array<{ task: TaskRecord; taskId: string; executionId: string; options?: { prompt?: string; sessionId?: string; fresh?: boolean; renameTo?: string }; fire: (event: ExecutionEvent) => void }> = []
   commentCalls: Array<{ taskId: string; executionId: string; sessionId: string; text: string; fire: (event: ExecutionEvent) => void }> = []
   reconcileResult: ExecutionEvent | undefined = undefined
+  /** Per-task reconcile answers (a multi-settle pass asks about several tasks
+   *  in one go); consulted before the single `reconcileResult`. */
+  reconcileByTaskId: Record<string, ExecutionEvent> = {}
   async run(
     task: TaskRecord,
     execution: { id: string },
@@ -211,8 +214,8 @@ class StubExec {
   async commentRun(task: TaskRecord, execution: { id: string }, sessionId: string, text: string, onEvent: (event: ExecutionEvent) => void): Promise<void> {
     this.commentCalls.push({ taskId: task.id, executionId: execution.id, sessionId, text, fire: onEvent })
   }
-  reconcile(): ExecutionEvent | undefined {
-    return this.reconcileResult
+  reconcile(task: { id: string }): ExecutionEvent | undefined {
+    return this.reconcileByTaskId[task.id] ?? this.reconcileResult
   }
 }
 
@@ -467,7 +470,7 @@ describe('task mutations', () => {
     const { controller, sessions } = makeController()
     sessions.runningById['s-run'] = false
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-bind' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-bind' }])
     // Give the task an execution round (pure task shape).
     const withExtras: TaskRecord = {
       ...controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!,
@@ -2017,7 +2020,7 @@ describe('referenceSessionOf (官方 @ 菜单的目标会话解析)', () => {
     const { controller } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // A bound session makes it the task's own related session.
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 'bound-1' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 'bound-1' }])
     expect(controller.referenceSessionOf(task.id)).toBe('bound-1')
   })
 
@@ -2389,7 +2392,7 @@ describe('linked sessions & bind', () => {
     controller.start()
     await flush()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
     await flush()
     const current = () => controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current()).map(row => row.sessionId)).toEqual(['s-1'])
@@ -2434,7 +2437,7 @@ describe('linked sessions & bind', () => {
 
   it('createBoundTask creates a bound task, persists it, and lands in the chosen column', () => {
     const { controller, store } = makeController()
-    const created = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
+    const created = controller.createBoundTask([{ kind: 'session', sessionId: 's-1' }], {
       title: '会话一', description: '', prompt: 'run', status: 'todo',
     })
     expect(created).toBeDefined()
@@ -2443,7 +2446,7 @@ describe('linked sessions & bind', () => {
     expect(store.load()[0].binds).toEqual([{ kind: 'session', sessionId: 's-1' }])
     // A blank title with a PRESENT prompt fills at once (缺则补 — the card
     // never reads empty-headed when the content was already there).
-    const blank = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+    const blank = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], {
       title: '  ', description: '', prompt: 'run', status: 'todo',
     })!
     expect(blank.title).toBe('run')
@@ -2451,13 +2454,13 @@ describe('linked sessions & bind', () => {
   })
 
   it('createBoundTask honors any landing column (external drops stay where dropped)', () => {    const { controller } = makeController()
-    const running = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
+    const running = controller.createBoundTask([{ kind: 'session', sessionId: 's-1' }], {
       title: 'r', description: '', prompt: 'run', status: 'running',
     })!
-    const review = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+    const review = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], {
       title: 'v', description: '', prompt: 'run', status: 'review',
     })!
-    const done = controller.createBoundTask({ kind: 'session', sessionId: 's-2' }, {
+    const done = controller.createBoundTask([{ kind: 'session', sessionId: 's-2' }], {
       title: 'd', description: '', prompt: 'run', status: 'done',
     })!
     expect(running.status).toBe('running')
@@ -2475,7 +2478,7 @@ describe('linked sessions & bind', () => {
         { id: 's-blank', blank: true },
       ],
     })
-    const created = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+    const created = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], {
       title: 'w', description: '', prompt: 'run', status: 'todo',
     })!
     // The workspace bind stays first (source association); live members join
@@ -2493,7 +2496,7 @@ describe('linked sessions & bind', () => {
 
   it('createBoundTask on an empty workspace still creates the card (zero snapshot rows)', () => {
     const { controller } = makeWorkspaceController({ workspaceId: 'w-empty', members: [] })
-    const created = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-empty' }, {
+    const created = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-empty' }], {
       title: 'w', description: '', prompt: 'run', status: 'todo',
     })!
     expect(created.binds).toEqual([{ kind: 'workspace', workspaceId: 'w-empty' }])
@@ -2505,7 +2508,7 @@ describe('linked sessions & bind', () => {
       workspaceId: 'w-a',
       members: [{ id: 's-live-1' }],
     })
-    const created = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+    const created = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], {
       title: 'w', description: '', prompt: 'run', status: 'todo',
     })!
     expect(created.binds).toEqual([
@@ -2532,7 +2535,7 @@ describe('linked sessions & bind', () => {
     })
     harness.sessions.setRunning('s-stranger', false)
     harness.sessions.setInfo('s-stranger', { workspaceId: 'w-other', cwd: '/data/proj' })
-    const created = harness.controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+    const created = harness.controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], {
       title: 'w', description: '', prompt: 'run', status: 'todo',
     })!
     expect(created.binds).toEqual([
@@ -2550,7 +2553,7 @@ describe('linked sessions & bind', () => {
     harness.sessions.workspaceItems = [{
       id: 'w-a', title: 'w-a', sessionIds: ['s-live-1', 's-gone'],
     }]
-    const created = harness.controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, {
+    const created = harness.controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], {
       title: 'w', description: '', prompt: 'run', status: 'todo',
     })!
     expect(created.binds).toEqual([
@@ -2562,7 +2565,7 @@ describe('linked sessions & bind', () => {
   it('hideTaskSession / unhideTaskSessions manage a per-session hide set (persisted)', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    const run = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, {
+    const run = controller.createBoundTask([{ kind: 'session', sessionId: 's-1' }], {
       title: 'x', description: '', prompt: 'run', status: 'todo',
     })!
     // Hiding a session records it universally: a session that is also a run
@@ -2630,19 +2633,19 @@ describe('linked sessions & bind', () => {
     const { controller, store } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     // A plain task gains a live binding.
-    expect(controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(true)
+    expect(controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])).toBe(true)
     expect(store.load()[0].binds).toEqual([{ kind: 'session', sessionId: 's-1' }])
     // Dragging the SAME source again is an idempotent no-op — never a replace.
-    expect(controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(false)
+    expect(controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])).toBe(false)
     expect(store.load()[0].binds).toHaveLength(1)
     // A different source JOINS the multi-source set (drag-in = add).
-    expect(controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(true)
+    expect(controller.addTaskSources(task.id, [{ kind: 'workspace', workspaceId: 'w-a' }])).toBe(true)
     expect(store.load()[0].binds).toEqual([
       { kind: 'session', sessionId: 's-1' },
       { kind: 'workspace', workspaceId: 'w-a' },
     ])
     // Unknown task: rejected.
-    expect(controller.addTaskSource('nope', { kind: 'session', sessionId: 's-1' })).toBe(false)
+    expect(controller.addTaskSources('nope', [{ kind: 'session', sessionId: 's-1' }])).toBe(false)
   })
 
   it('a folder bound onto an existing task NEVER surfaces folder sessions (the flood is sealed)', () => {
@@ -2659,7 +2662,7 @@ describe('linked sessions & bind', () => {
       uuid,
     })
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })
+    controller.addTaskSources(task.id, [{ kind: 'workspace', workspaceId: 'w-a' }])
     // The bind is persisted (it is the card's source association)…
     const bound = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(bound.binds).toEqual([{ kind: 'workspace', workspaceId: 'w-a' }])
@@ -2672,7 +2675,7 @@ describe('linked sessions & bind', () => {
     wss.notify()
     expect(controller.sessionsOf(bound).map(row => row.sessionId)).toEqual([])
     // An explicit session bind DOES surface its row.
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-2' }])
     const withSession = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(withSession).map(row => row.sessionId)).toEqual(['s-2'])
   })
@@ -2834,7 +2837,7 @@ describe('linked sessions & bind', () => {
 
   it('removeTaskSession removes the session records, clears its hide state and unbinds a sole session source', () => {
     const { controller, store } = makeController()
-    const task = controller.createBoundTask({ kind: 'session', sessionId: 's-1' }, { title: 't', description: '', prompt: 'run' })!
+    const task = controller.createBoundTask([{ kind: 'session', sessionId: 's-1' }], { title: 't', description: '', prompt: 'run' })!
     controller.hideTaskSession(task.id, 's-1')
     // The task has no rounds for the session, but it IS hidden — removal
     // clears the hide state + unbinds the sole session source.
@@ -2897,8 +2900,8 @@ describe('linked sessions & bind', () => {
       uuid,
     })
     const task = controller.createTask({ title: 't', description: '', prompt: '' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-2' }])
     // A manual order is in effect before the removal: dropping s-2 BEFORE s-1
     // persists ['s-2', 's-1'] — the removal must also strip its slot.
     expect(controller.reorderTaskSession(task.id, 's-2', 's-1')).toBe(true)
@@ -2918,7 +2921,7 @@ describe('linked sessions & bind', () => {
     expect(current.sessionsOrder).toEqual(['s-2'])
     // Re-adding the workspace never resurrects the removed session (folder
     // membership is not derived at all).
-    expect(controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(true)
+    expect(controller.addTaskSources(task.id, [{ kind: 'workspace', workspaceId: 'w-a' }])).toBe(true)
     current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).toEqual(['s-2'])
     controller.hideTaskSession(task.id, 's-2')
@@ -2943,8 +2946,8 @@ describe('linked sessions & bind', () => {
       uuid,
     })
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-2' }])
     const before = controller.sessionsOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)
       .map(row => row.sessionId)
     expect(before).toContain('s-1')
@@ -2980,8 +2983,8 @@ describe('linked sessions & bind', () => {
       uuid,
     })
     const task = controller.createTask({ title: 't', description: '', prompt: '' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-2' }])
     controller.hideTaskSession(task.id, 's-1')
     expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
     let current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
@@ -2989,7 +2992,7 @@ describe('linked sessions & bind', () => {
     // Removal stays passive-immune (no workspace re-add resurrects it), but
     // the USER dragging the session back is the restore gesture: it shows
     // again and leaves the removed set.
-    expect(controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })).toBe(true)
+    expect(controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])).toBe(true)
     current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).toContain('s-1')
     expect(current.removedSessions ?? []).not.toContain('s-1')
@@ -3009,15 +3012,15 @@ describe('linked sessions & bind', () => {
       now: () => NOW,
       uuid,
     })
-    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 't', description: '', prompt: '' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-2' })
+    const task = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], { title: 't', description: '', prompt: '' })!
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-2' }])
     controller.hideTaskSession(task.id, 's-1')
     expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
     // Re-dragging the SAME folder is a pure no-op now: the bind exists and a
     // folder carries no restorable membership (the old same-source re-add
     // restored members — membership is no longer derived at all).
-    expect(controller.addTaskSource(task.id, { kind: 'workspace', workspaceId: 'w-a' })).toBe(false)
+    expect(controller.addTaskSources(task.id, [{ kind: 'workspace', workspaceId: 'w-a' }])).toBe(false)
     const current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).not.toContain('s-1')
     expect(current.removedSessions).toContain('s-1')
@@ -3365,7 +3368,7 @@ describe('recordNativeTurn (live turn channel)', () => {
     controller.start()
     await flush()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
     await flush()
     return { controller, sessions, stub }
   }
@@ -3507,7 +3510,7 @@ describe('recordNativeTurn (live turn channel)', () => {
   it('two tasks sharing one bound session each get their own round', async () => {
     const { controller } = await boundHarness()
     const second = controller.createTask({ title: 'y', description: '', prompt: 'run' })!
-    controller.addTaskSource(second.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSources(second.id, [{ kind: 'session', sessionId: 's-1' }])
     await flush()
     controller.recordNativeTurn('s-1', { text: '共同会话', hasImage: false, anchor: 11 })
     const tasks = controller.getSnapshot().tasks
@@ -3533,7 +3536,7 @@ describe('recordNativeTurn (live turn channel)', () => {
     controller.start()
     await flush()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
     await flush()
     // A stale (non-advancing) wake never re-schedules, never records.
     controller.recordActivityWake('s-1', 100)
@@ -3563,7 +3566,7 @@ describe('recordNativeTurn (live turn channel)', () => {
     controller.start()
     await flush()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
     await flush()
     controller.recordActivityWake('s-1', 100)
     sessions.setRunning('s-1', true)
@@ -3586,7 +3589,7 @@ describe('recordNativeTurn (live turn channel)', () => {
     controller.start()
     await flush()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
     await flush()
     controller.recordActivityWake('s-stranger', 300)
     await flush()
@@ -3606,7 +3609,7 @@ describe('recordNativeTurn (live turn channel)', () => {
     controller.start()
     await flush()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
     await flush()
     controller.setEngine(false)
     controller.recordActivityWake('s-1', 200)
@@ -3679,8 +3682,8 @@ describe('user-intent writes carry freshness (userEdit funnel)', () => {
   it('binding a source and RESTORING a removed one both advance updatedAt (the swallowed-restore bug)', () => {
     const { controller, stamp, advance } = funnelHarness()
     advance()
-    controller.addTaskSource('task-a', { kind: 'session', sessionId: 's-1' })
-    controller.addTaskSource('task-a', { kind: 'session', sessionId: 's-2' })
+    controller.addTaskSources('task-a', [{ kind: 'session', sessionId: 's-1' }])
+    controller.addTaskSources('task-a', [{ kind: 'session', sessionId: 's-2' }])
     // The real removal path: hide, then 删除 from the hidden tray — the bind
     // stays (two binds), s-1 lands in removedSessions.
     controller.hideTaskSession('task-a', 's-1')
@@ -3689,7 +3692,7 @@ describe('user-intent writes carry freshness (userEdit funnel)', () => {
     const before = stamp()
     // Re-dragging s-1 hits the RESTORE branch (the bind is still there): the
     // old code cleared removedSessions without a stamp — sync swallowed it.
-    expect(controller.addTaskSource('task-a', { kind: 'session', sessionId: 's-1' })).toBe(true)
+    expect(controller.addTaskSources('task-a', [{ kind: 'session', sessionId: 's-1' }])).toBe(true)
     expect(stamp()).toBeGreaterThan(before)
     expect(controller.getSnapshot().tasks[0].removedSessions ?? []).not.toContain('s-1')
   })
@@ -3759,7 +3762,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     controller.start()
     await flush()
     const task = controller.createBoundTask(
-      { kind: 'session', sessionId: 's-live' },
+      [{ kind: 'session', sessionId: 's-live' }],
       { title: 'live', description: '', prompt: 'run' },
     )!
     await flush() // the bind sync captures the running turn (async transcript read)
@@ -3787,7 +3790,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     controller.start()
     await flush()
     const task = controller.createBoundTask(
-      { kind: 'session', sessionId: 's-idle' },
+      [{ kind: 'session', sessionId: 's-idle' }],
       { title: 'idle', description: '', prompt: 'run', status: 'todo' },
     )!
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
@@ -3807,13 +3810,13 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     await flush()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     sessions.setRunning('s-live', true)
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-live' }])
     await flush() // the add-sync is async (transcript read)
     let row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.status).toBe('running')
     expect(row.executions.filter(round => round.external === true).length).toBe(1)
     // Adding the same live source again must not double-record.
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-live' }])
     await flush()
     row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.executions.filter(round => round.external === true).length).toBe(1)
@@ -3914,7 +3917,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     })
     controller.start()
     await flush()
-    const task = controller.createBoundTask({ kind: 'session', sessionId: 's-live' }, { title: 'live', description: '', prompt: 'run' })!
+    const task = controller.createBoundTask([{ kind: 'session', sessionId: 's-live' }], { title: 'live', description: '', prompt: 'run' })!
     await flush() // the bind sync appends the external round asynchronously
     const extId = controller.getSnapshot().tasks[0].executions[0].id
     stub.reconcileResult = { kind: 'settled', taskId: task.id, executionId: extId, outcome: 'succeeded' }
@@ -3937,7 +3940,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     })
     controller.start()
     await flush()
-    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: '' })!
+    const task = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], { title: 'w', description: '', prompt: '' })!
     await flush()
     // The user creates a new session in the folder and chats: the folder is a
     // source association, NOT a conversation subscription — the card stays
@@ -3953,7 +3956,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     // The same session EXPLICITLY bound (the user's own gesture) keeps the
     // 首聊根因 fix: born running with no observable flip is still recorded
     // (the add itself triggers the instant sync).
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-new' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-new' }])
     await flush()
     await flush()
     row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
@@ -3978,7 +3981,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     })
     controller.start()
     await flush()
-    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: '' })!
+    const task = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], { title: 'w', description: '', prompt: '' })!
     await flush()
     // The folder member joined as an explicit bind at creation (ownership
     // snapshot) — idle member, idle card.
@@ -4024,8 +4027,8 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     await flush()
     // The user's scenario: the whole workspace folder is bound, AND a session
     // inside it is explicitly bound (so it shows as a row and rides live state).
-    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: '' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-x' })
+    const task = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], { title: 'w', description: '', prompt: '' })!
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-x' }])
     await flush()
     await flush()
     expect(controller.liveStateOf(task.id)).toBe('running')
@@ -4064,7 +4067,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     controller.start()
     await flush()
     // Drag the whole workspace in (the snapshot binds the running member).
-    const task = controller.createBoundTask({ kind: 'workspace', workspaceId: 'w-a' }, { title: 'w', description: '', prompt: 'run' })!
+    const task = controller.createBoundTask([{ kind: 'workspace', workspaceId: 'w-a' }], { title: 'w', description: '', prompt: 'run' })!
     await flush()
     await flush()
     expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.status).toBe('running')
@@ -4089,7 +4092,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect(controller.liveStateOf(task.id)).toBe('idle')
     expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.status).toBe('todo')
     // …but the user dragging it back restores the row AND the live truth.
-    expect(controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-live' })).toBe(true)
+    expect(controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-live' }])).toBe(true)
     await flush()
     await flush()
     const restored = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
@@ -4113,7 +4116,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     controller.start()
     await flush()
     const task = controller.createTask({ title: 'w', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-run' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-run' }])
     await controller.runTask(task.id, 'manual')
     const runId = stub.runCalls[0].executionId
     stub.runCalls[0].fire({ kind: 'started', taskId: task.id, executionId: runId, sessionId: 's-run' })
@@ -4123,7 +4126,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     // Bind the live session only now (after the success settled): its native
     // turn is fresh activity that re-lights the card through instant sync.
     sessions.setRunning('s-live', true)
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-live' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-live' }])
     await flush()
     await flush()
     expect(controller.getSnapshot().tasks[0].status).toBe('running')
@@ -4147,7 +4150,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     })
     controller.start()
     await flush()
-    const task = controller.createBoundTask({ kind: 'session', sessionId: 's-live' }, { title: 'w', description: '', prompt: 'run' })!
+    const task = controller.createBoundTask([{ kind: 'session', sessionId: 's-live' }], { title: 'w', description: '', prompt: 'run' })!
     await flush()
     await flush()
     // Arm an unlimited chain on the running card.
@@ -4283,7 +4286,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     }
     const { controller } = makeController(stub as unknown as StubExec)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
     expect(await controller.renameTaskSession(task.id, 's-1', ' 新名 ')).toEqual({ ok: true })
     expect(renames).toEqual([['s-1', '新名']])
   })
@@ -4295,7 +4298,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     stub.renameSession = async () => ({ ok: true as const })
     const { controller } = makeController(stub as unknown as StubExec)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    controller.addTaskSource(task.id, { kind: 'session', sessionId: 's-1' })
+    controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])
     expect(await controller.renameTaskSession(task.id, 's-other', '名')).toMatchObject({ ok: false })
     expect(await controller.renameTaskSession(task.id, 's-1', '   ')).toMatchObject({ ok: false })
     expect(await controller.renameTaskSession('nope', 's-1', '名')).toMatchObject({ ok: false })
@@ -5155,7 +5158,7 @@ describe('session activity: subagent descendants keep the card live', () => {
     })
     controller.start()
     await flush()
-    const task = controller.createBoundTask({ kind: 'session', sessionId: 'P' }, { title: '绑定', description: '', prompt: 'p' })!
+    const task = controller.createBoundTask([{ kind: 'session', sessionId: 'P' }], { title: '绑定', description: '', prompt: 'p' })!
     await flush()
     // The linked row carries the activity answer, not the bare flag.
     const linked = controller.linkedOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)
@@ -5362,7 +5365,7 @@ describe('session activity: subagent descendants keep the card live', () => {
     })
     controller.start()
     await flush()
-    const task = controller.createBoundTask({ kind: 'session', sessionId: 'P' }, { title: '绑定', description: '', prompt: 'p' })!
+    const task = controller.createBoundTask([{ kind: 'session', sessionId: 'P' }], { title: '绑定', description: '', prompt: 'p' })!
     await flush()
     await flush()
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
@@ -5432,4 +5435,191 @@ describe('session activity: subagent descendants keep the card live', () => {
 /** Build a task with a bind (test helper). */
 function taskWithBind(bind: NonNullable<TaskRecord['bind']>): TaskRecord {
   return { id: 'task-b', title: 'T', description: '', prompt: 'run', status: 'todo', order: 0, createdAt: 0, updatedAt: 0, executions: [], bind }
+}
+
+/**
+ * 换栏落地：引擎动作导致的换栏一律落到目标栏最上方，按发生时间，最新在上。
+ *
+ * 这组用例钉的是「闭环」而不是某个函数：任务跑完 → 卡片顶到最上面 → 一眼看见
+ * 是哪一张。它从前是坏的，而且坏法不止一种——一次跨栏落地因为拿「卡片自己那
+ * 条来自上一栏的键」当守卫而整体空转；恢复结算、插话完成、伪外源轮撤销这三
+ * 条落地路径压根不调用提升。所以每条路径各有一个用例，少一条就退回原样。
+ */
+describe('landing order (a card that changes column floats to the top of the column it landed in)', () => {
+  /** 渲染顺序（本栏自上而下）：键排序，键相同保持台账顺序，与渲染层一致。 */
+  const rendered = (controller: BoardController, status: TaskRecord['status']) =>
+    controller.getSnapshot().tasks
+      .filter(task => task.status === status)
+      .sort((a, b) => a.order - b.order)
+      .map(task => task.id)
+
+  it('a card that was at the TOP of 进行中 still lands ABOVE the cards already in 待审核', async () => {
+    // The collision that defeated the old guard: the newcomer's key is 0 —
+    // it was the top of the column it is LEAVING — and 待审核 already has a
+    // key-0 card. Reading its own key as "already on top" skipped the whole
+    // promotion, and the two key-0 cards then rendered in ledger order.
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seated = { ...seedTask(store, { id: 'seated' }), status: 'review' as const, order: 0 }
+    const running = { ...seedTask(store, { id: 'runner' }), status: 'running' as const, order: 0 }
+    store.save([running, seated])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions: new FakeSessions(), now: () => NOW, uuid,
+    })
+    controller.start()
+    const round = await launchRound(controller, 'runner', stub)
+    stub.runCalls[0].fire({ kind: 'settled', taskId: 'runner', executionId: round, outcome: 'succeeded' })
+    expect(rendered(controller, 'review')).toEqual(['runner', 'seated'])
+  })
+
+  it('a RECONCILED settle (found after a reload, a missed list flip, a cold session) floats too', async () => {
+    // The path that used to write the settled record and nothing else — the
+    // card landed in 待审核 at whatever key it carried out of 进行中.
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const seated = { ...seedTask(store, { id: 'seated' }), status: 'review' as const, order: 0 }
+    const running = {
+      ...seedTask(store, { id: 'runner' }),
+      status: 'running' as const,
+      order: 0,
+      executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+    }
+    // The seated card is written FIRST on purpose: with no promotion at all
+    // both rows would carry key 0 and the stable render would keep this ledger
+    // order, so the assertion below can only pass if the reconcile path really
+    // floated the newcomer.
+    store.save([seated, running])
+    const sessions = new FakeSessions()
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    expect(rendered(controller, 'review')).toEqual(['seated'])
+    stub.reconcileResult = { kind: 'settled', taskId: 'runner', executionId: 'e1', outcome: 'succeeded' }
+    sessions.setCurrent('s-new')
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks.find(task => task.id === 'runner')?.status).toBe('review')
+    expect(rendered(controller, 'review')).toEqual(['runner', 'seated'])
+  })
+
+  it('launching a card that sat at the top of 待办 puts it on top of 进行中', () => {
+    // Entering 进行中 from any other column: 待办 / 待审核 / 已完成 / 待规划.
+    // Its key in the SOURCE column is irrelevant to the landing — that is the
+    // whole point of the fixed guard.
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    store.save([
+      { ...seedTask(store, { id: 'top-of-todo' }), order: 0 },
+      { ...seedTask(store, { id: 'busy' }), status: 'running' as const, order: 0 },
+    ])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions: new FakeSessions(), now: () => NOW, uuid,
+    })
+    controller.start()
+    void launchRound(controller, 'top-of-todo', stub)
+    expect(rendered(controller, 'running')).toEqual(['top-of-todo', 'busy'])
+  })
+
+  it('a card that settles but STAYS in 进行中 does not reshuffle that column', async () => {
+    // Chain / batch still to come: the card is not the newest arrival yet, so
+    // promoting it would reshuffle 进行中 for nothing.
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const batch = {
+      ...seedTask(store, { id: 'batch' }),
+      status: 'running' as const,
+      order: 1,
+      executions: [{ id: 'e1', sessionId: undefined, startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+      schedule: { enabled: true, mode: 'cron' as const, cron: '0 0 1 1 *', runCount: 1, maxRuns: 3, primed: true, nextRunAt: NOW + 10_000_000, lastTriggeredAt: NOW },
+    }
+    store.save([
+      {
+        ...seedTask(store, { id: 'front' }),
+        status: 'running' as const,
+        order: 0,
+        // An open round, so the orphan sweep has a reason to keep it here.
+        executions: [{ id: 'ef', sessionId: undefined, startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
+      },
+      batch,
+    ])
+    const sessions = new FakeSessions()
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    stub.reconcileResult = { kind: 'settled', taskId: 'batch', executionId: 'e1', outcome: 'succeeded' }
+    sessions.setCurrent('s-new')
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks.find(task => task.id === 'batch')?.status).toBe('running')
+    expect(rendered(controller, 'running')).toEqual(['front', 'batch'])
+  })
+
+  it('k reconciled settles in one pass read newest-completion-on-top', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    // A stepping clock, so the three settles land at three DIFFERENT instants
+    // and the assertion is about completion order rather than about a tie.
+    let clock = NOW - 1000
+    const open = (id: string): TaskRecord => ({
+      ...seedTask(store, { id }),
+      status: 'running' as const,
+      order: 0,
+      executions: [{ id: `e-${id}`, sessionId: undefined, startedAt: NOW - 500, endedAt: undefined, result: undefined, error: undefined }],
+    })
+    // Ledger order is the OPPOSITE of completion order, so a pass that never
+    // promotes cannot accidentally produce the expected column.
+    store.save([
+      { ...seedTask(store, { id: 'seated' }), status: 'review' as const, order: 0 },
+      open('first'), open('second'), open('third'),
+    ])
+    stub.reconcileByTaskId = {
+      first: { kind: 'settled', taskId: 'first', executionId: 'e-first', outcome: 'succeeded' },
+      second: { kind: 'settled', taskId: 'second', executionId: 'e-second', outcome: 'succeeded' },
+      third: { kind: 'settled', taskId: 'third', executionId: 'e-third', outcome: 'succeeded' },
+    }
+    const sessions = new FakeSessions()
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => (clock += 10), uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    sessions.setCurrent('s-new')
+    await flush()
+    await flush()
+    expect(rendered(controller, 'review')).toEqual(['third', 'second', 'first', 'seated'])
+  })
+
+  it('a manual reorder sticks until the card changes column again', () => {
+    // The user is never fighting the board: promotion only rides ENGINE-derived
+    // column changes, so a hand-placed position holds.
+    const stub = new StubExec()
+    const { controller } = makeController(stub)
+    const a = controller.createTask({ title: 'A', description: '', prompt: 'p' })!
+    const b = controller.createTask({ title: 'B', description: '', prompt: 'p' })!
+    const c = controller.createTask({ title: 'C', description: '', prompt: 'p' })!
+    const [A, B, C] = [a.id, b.id, c.id]
+    // Every birth lands on top, so the newest is first.
+    expect(rendered(controller, 'todo')).toEqual([C, B, A])
+    // "Drop before A": the card leaves the list, then re-enters ahead of A.
+    controller.moveTask(C, 'todo', A)
+    expect(rendered(controller, 'todo')).toEqual([B, C, A])
+    // An unrelated edit must not reshuffle the column.
+    controller.updateTask(B, { title: 'B2' })
+    expect(rendered(controller, 'todo')).toEqual([B, C, A])
+  })
+})
+
+/** Start a run on `taskId` and return its execution id. */
+async function launchRound(controller: BoardController, taskId: string, stub: StubExec): Promise<string> {
+  await controller.runTask(taskId)
+  return stub.runCalls[stub.runCalls.length - 1]?.executionId ?? ''
 }

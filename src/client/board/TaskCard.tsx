@@ -12,7 +12,7 @@ import { sessionRuleReadiness } from '../../core/automation.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
-import { cardLightOf, cardViewModelOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
+import { cardLightOf, cardUpdatedAtOf, cardViewModelOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
 import { Chip } from './Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { STATUS_KEY } from './status.ts'
@@ -306,8 +306,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
               <span className={css.cardWorkspaceName}>{sourceLabel}</span>
             </span>
           )}
-          <span className={css.cardTime} title={formatDateTime(task.updatedAt)}>
-            {t('board.updated')} {formatTime(task.updatedAt)}
+          <span
+            className={css.cardTime}
+            title={formatDateTime(cardUpdatedAtOf(task))}
+          >
+            {t('board.updated')} {formatTime(cardUpdatedAtOf(task))}
           </span>
         </span>
         {/* Row 2: the card's chips. Two rules govern this row, and both used to be

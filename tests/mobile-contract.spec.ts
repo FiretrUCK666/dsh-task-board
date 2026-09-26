@@ -497,6 +497,16 @@ describe('board header and navigator legibility', () => {
     expect(compact).toMatch(/\.boardModes \.notifyBell\s*\{[^}]*display:\s*none/)
     expect(compact).toMatch(/\.boardModes \.modeDynamic\s*\{[^}]*display:\s*none/)
     expect(board).toContain('css.modeDynamic')
+    // 会话建卡 rides the modes cluster at BOTH widths — one DOM node, no
+    // compact twin. The nav row cannot host it: that line's arithmetic is
+    // pinned above (28 + 132 + 96 + 24 = 280 of a 296px phone), and the
+    // modes cluster is already a declared grid track at both tiers.
+    expect(toolsRow).toContain('css.boardModes')
+    expect(board).toContain("t('board.newFromSessions')")
+    expect(board).toContain('setShowCardFromSessions(true)')
+    // No twin: nothing hides or re-shows it per width.
+    expect(compact).not.toMatch(/\.boardModes \.newFromSessions/)
+    expect(board).not.toMatch(/thumbBar[\s\S]{0,400}newFromSessions/)
   })
 
   it('feed rows keep their box AND land on the session thread (no right-bleed, no stuck hover, no bare task open)', () => {
@@ -1263,9 +1273,13 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     expect(source).toMatch(/\.notifyMain \.chip\s*\{[^}]*flex:\s*none/)
   })
 
-  it('every row answers WHEN: a tabular time stamp rides the action cluster', () => {
+  it('every row answers WHEN: a fixed time slot keeps action placement stable', () => {
     expect(ruleOf('notifyMeta')).toMatch(/flex:\s*none/)
+    expect(ruleOf('notifyMeta')).toMatch(/min-width:\s*10ch/)
+    expect(ruleOf('notifyMeta')).toMatch(/text-align:\s*right/)
     expect(ruleOf('notifyMeta')).toMatch(/font-variant-numeric:\s*tabular-nums/)
+    // The slot reserves the full compact-date width, so `21h` and
+    // `2026-09-24` cannot make otherwise identical rows wrap differently.
     // The stamp lives ONCE — inside the shared row's action cluster — and
     // both drawers hand it their moment.
     const feedRowSource = readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8')

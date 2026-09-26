@@ -783,9 +783,28 @@ export declare function resolveCardDrop(task: TaskRecord, target: TaskStatus): C
  * wrong gap, defeats the same-spot check (phantom updatedAt churn on every
  * sibling → sync storms and whole-column FLIP flashes), and scrambles the
  * column on the next drag. Both lists below are key-sorted first — the same
- * law promoteToColumnTop already follows.
+ * law the promotion below already follows.
  */
 export declare function applyCardOrder(tasks: readonly TaskRecord[], movedId: string, targetStatus: TaskStatus, beforeId: string | undefined, now: number): TaskRecord[];
+/**
+ * 把若干张卡片顶到各自那一栏的最上方——「最新状态在前」这条律的唯一实现。
+ *
+ * 单张（{@link promoteToColumnTop}）与批量是同一个函数：批量只是把 entries
+ * 排成一串，一次把整栏重排一次号。分批提升会让同门被反复改写 k 次——1000 张
+ * 卡的栏里一次落 20 张，同门就被改写两万次，同步载荷暴涨。
+ *
+ * `entries` 按**发生顺序**给出（旧的在前，调用方自己掌握先后），所以倒过来
+ * 就是「最新发生的在最上」：一次落 k 张，屏幕上从上到下读作「后完成的在上」，
+ * 与逐张提升的结果完全一致。一张卡在一次调用里只出现一次。
+ *
+ * 落地与排序都在这里收口：落地卡经 `withStatus` 换栏（跨栏时由它追加历史），
+ * 被让位的同门只改键。两者都算「记录变了」，都盖章——同步合并按 updatedAt
+ * 排序，漏盖就是两台设备顺序漂移。别的栏一根键都不碰。
+ */
+export declare function promoteManyToColumnTop(tasks: readonly TaskRecord[], entries: ReadonlyArray<{
+    id: string;
+    status: TaskStatus;
+}>, now: number): TaskRecord[];
 /**
  * Promote a card to the TOP of its column — the "newest state first" rule:
  * a task that just entered a column (freshly created, newly bound from the
@@ -793,5 +812,8 @@ export declare function applyCardOrder(tasks: readonly TaskRecord[], movedId: st
  * of that column. Existing cards shift down, preserving their relative
  * order; a manual reorder later overrides the promotion. Only the target
  * column's orders are rewritten.
+ *
+ * 单张入口，实现就是 {@link promoteManyToColumnTop} 的一次调用——批量不是第二
+ * 套做法，只是把 entries 排成一串。
  */
 export declare function promoteToColumnTop(tasks: readonly TaskRecord[], movedId: string, targetStatus: TaskStatus, now: number): TaskRecord[];

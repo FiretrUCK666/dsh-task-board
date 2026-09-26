@@ -28,12 +28,13 @@ import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents
 import { LocalStorageTemplateStore, templateFromTask, templateToNewInput } from './task-templates.ts'
 import { LocalStorageRunPresetStore } from './run-presets.ts'
 import { hiddenSessionIdsOf, taskSessionsOf, type TaskSessionRow } from './session-list.ts'
+import { offerableSessionGroups } from './session-groups.ts'
 import type { PendingInteractionKind, QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
 import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVerbs } from './goal-verbs.ts'
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteManyToColumnTop, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, supplementLaunchFields, taskBindsOf, taskColumnAllowsAutomation, taskExecutable, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -971,6 +972,37 @@ export class BoardController {
   }
 
   /**
+   * The sessions a picker may OFFER, grouped by workspace — the ONE list both
+   * session pickers read (the task detail's 添加会话 and the board's 会话建卡).
+   * Derived fresh from the two native snapshots on every call: membership and
+   * the archive set move natively, so a picker that cached either would offer
+   * a session that can no longer be bound, or hide one that can (the archive
+   * set is derived + subscribed everywhere else for exactly this reason).
+   *
+   * The rules (subagent / blank / archived exclusion, registry-ownership
+   * grouping, the ungrouped tail) live in session-groups.ts, not here — this
+   * method only feeds it the two snapshots and the two display labels.
+   * @param exclude - sessions the surface must not offer (a card's own related
+   * set). undefined at the board level, where nothing is bound yet.
+   */
+  offerableSessionGroups(
+    exclude?: ReadonlySet<string>,
+  ): import('./session-groups.ts').SessionGroup[] {
+    const state = this.deps.sessions.list.getSnapshot()
+    const workspaces = this.deps.workspaces?.list.getSnapshot()
+    return offerableSessionGroups({
+      byId: state.byId,
+      ids: state.ids,
+      workspaces: workspaces?.items ?? [],
+      archivedSessionIds: workspaces?.archivedSessionIds ?? [],
+    }, {
+      ...exclude !== undefined ? { exclude } : {},
+      untitledLabel: this.untitledSessionLabel ?? '',
+      ungroupedLabel: this.ungroupedSessionsLabel ?? '',
+    })
+  }
+
+  /**
    * Read a session's recent history events for the review page's transcript
    * (the fold happens in the UI), together with the native projection
    * baseline (context pressure / breakdown) riding the history tail page.
@@ -1147,6 +1179,10 @@ export class BoardController {
    *  the host has not titled yet (set by the client wiring; undefined in
    *  tests = legacy task-title fallback). */
   untitledSessionLabel?: string
+  /** The localized label of the 「未分组会话」 group in the session picker
+   *  (the sessions no workspace accounts for — see session-groups.ts). Set by
+   *  the client wiring; it is a DISPLAY label, the core never invents copy. */
+  ungroupedSessionsLabel?: string
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn)
     return () => { this.listeners.delete(fn) }
@@ -1387,10 +1423,15 @@ export class BoardController {
   }
 
   /**
-   * Create a task bound to a live native source (a session or a whole
-   * workspace folder dragged in from the sidebar). The bind wires the card's
-   * "链接会话" section; everything else behaves like a plain task — title is
-   * optional like any new task (the first real run supplements it).
+   * Create a task bound to live native source(s) — a sidebar session or a
+   * whole workspace folder dragged in, or a multi-workspace batch picked in
+   * the board's session picker. The binds wire the card's "链接会话" section;
+   * everything else behaves like a plain task — title is optional like any
+   * new task (the first real run supplements it).
+   *
+   * One argument, one meaning: "these are the card's sources". A single drag
+   * passes one bind, a multi-select passes many; there is no second creation
+   * path for the picker, so the two can never drift.
    *
    * Workspace snapshot semantics: a workspace bind is a source association,
    * but at CREATION the card also snapshots the workspace's CURRENT live
@@ -1398,23 +1439,26 @@ export class BoardController {
    * the user dragged the folder "with what's in it", not an empty shell.
    * Later sessions never auto-join (no flooding); archived sessions leave
    * the rows at once (see linkedOf).
-   * @param bind - the live binding.
+   * @param binds - the live sources, in the order they joined.
    * @param input - title/description/prompt/landing column.
-   * @returns the created task, or undefined for a bad bind.
+   * @returns the created task, or undefined for an empty bind set.
    */
-  createBoundTask(bind: TaskBind, input: NewTaskInput): TaskRecord | undefined {
-    if (bind === undefined) return undefined
+  createBoundTask(binds: readonly TaskBind[], input: NewTaskInput): TaskRecord | undefined {
+    if (binds.length === 0) return undefined
     const task = this.supplementedTask(createTask(input, this.now(), this.uuid(), this.nextOrder()))
-    const binds = bind.kind === 'workspace'
-      ? [bind, ...this.snapshotWorkspaceSessions(bind.workspaceId).map(sessionId => ({ kind: 'session' as const, sessionId }))]
-      : [bind]
-    const boundTask: TaskRecord = { ...task, binds }
+    const boundTask: TaskRecord = {
+      ...task,
+      binds: binds.flatMap(bind => bind.kind === 'workspace'
+        ? [bind, ...this.snapshotWorkspaceSessions(bind.workspaceId).map(sessionId => ({ kind: 'session' as const, sessionId }))]
+        : [bind]),
+    }
     this.tasks = promoteToColumnTop([...this.tasks, boundTask], boundTask.id, boundTask.status, this.now())
     this.persistAndNotify()
     // A freshly bound source may be RUNNING right now (the user dragged in a
-    // session/workspace mid-conversation): reflect that instantly — the card
-    // jumps to 「进行中」 and the running turn is recorded as an external
-    // round; it settles to 「待审核」 when the native turn ends.
+    // session/workspace mid-conversation, or picked a live conversation into
+    // a new card): reflect that instantly — the card jumps to 「进行中」 and
+    // the running turn is recorded as an external round; it settles to
+    // 「待审核」 when the native turn ends.
     void this.reconcileBoundTask(boundTask.id)
     return boundTask
   }
@@ -1805,7 +1849,7 @@ export class BoardController {
       const renamed = await this.deps.exec.renameSession?.(result.sessionId, title)
       if (renamed !== undefined && !renamed.ok) titleError = renamed.error
     }
-    this.addTaskSource(taskId, { kind: 'session', sessionId: result.sessionId })
+    this.addTaskSources(taskId, [{ kind: 'session', sessionId: result.sessionId }])
     return { ...result, ...titleError !== undefined ? { titleError } : {} }
   }
 
@@ -1843,8 +1887,13 @@ export class BoardController {
   }
 
   /**
-   * ADD a live source (a sidebar session or workspace folder) to an EXISTING
-   * task — the "drag a folder/session into the open task's 会话 area" path.
+   * ADD live sources (sidebar sessions / workspace folders, or a batch picked
+   * in the session picker) to an EXISTING task — the "drag a folder/session
+   * into the open task's 会话 area" and the picker's submit path.
+   *
+   * One write for the whole batch: a multi-select across workspaces is ONE
+   * user action, so it lands as one edit and one persist rather than N.
+   *
    * NEVER replaces: an already-bound identical source is an idempotent no-op,
    * anything else joins the multi-source set. Persisted. A session bind
    * surfaces its session as a linked row; a workspace bind is a source
@@ -1854,35 +1903,30 @@ export class BoardController {
    * An explicit re-add is also the RESTORE gesture: a session bind re-added
    * leaves the removed set (the hidden tray's 删除 is reversible BY THE
    * USER'S HAND — dragging the session back shows it again).
-   * @returns true when the binding was added or anything was restored, false
-   * for a pure no-op / unknown task.
+   * @returns true when anything was added or restored, false for a pure
+   * no-op / unknown task.
    */
-  addTaskSource(taskId: string, bind: TaskBind): boolean {
+  addTaskSources(taskId: string, binds: readonly TaskBind[]): boolean {
     const changed = this.userEdit(taskId, task => {
-      const current = taskBindsOf(task)
-      const isSame = current.some(existing => sameBind(existing, bind))
-      const removed = task.removedSessions
       let next: TaskRecord = task
-      let restored = false
-      if (removed !== undefined && removed.length > 0) {
+      for (const bind of binds) {
+        const current = taskBindsOf(next)
+        if (!current.some(existing => sameBind(existing, bind))) {
+          next = { ...next, binds: [...current, bind] }
+        }
+        const removed = next.removedSessions
+        if (removed === undefined || removed.length === 0) continue
         const carried = this.sourceMemberIdsOf(bind)
         const kept = carried.length > 0
           ? removed.filter(id => !carried.includes(id))
           : removed
-        if (kept.length !== removed.length) {
-          restored = true
-          next = { ...next }
-          if (kept.length > 0) {
-            next.removedSessions = kept
-          } else {
-            delete next.removedSessions
-          }
-        }
+        if (kept.length === removed.length) continue
+        const freed = { ...next }
+        if (kept.length > 0) freed.removedSessions = kept
+        else delete freed.removedSessions
+        next = freed
       }
-      if (!isSame) {
-        next = { ...next, binds: [...taskBindsOf(next), bind] }
-      }
-      return restored || !isSame ? next : task
+      return next === task ? task : next
     })
     if (changed) {
       // A newly added / restored source's state joins the card instantly.
@@ -1976,20 +2020,19 @@ export class BoardController {
       const target = leaveRunningTargetOf(shaped, live, { ignoreSchedule: deletedOpen })
       if (target === undefined) return shaped
       // Column changes funnel through withStatus (status history appends).
-      // Promotion (landed-column re-sort) happens AFTER the edit commits
-      // (see below): userEdit owns the array, and a mutate closure must not
-      // rewrite siblings — re-sorting other cards here would be silently
-      // dropped by the funnel's map-back. userEdit stamps the record once on
-      // the way out.
+      // The landed-column re-sort happens AFTER the edit commits (see below):
+      // userEdit owns the array, and a mutate closure must not rewrite
+      // siblings — re-sorting other cards here would be silently dropped by
+      // the funnel's map-back. userEdit stamps the record once on the way out.
       return withStatus(shaped, target, this.now())
     })
     if (!changed) return false
-    // The whole delete+leave is one user edit (one persist for the deletion,
-    // one for the promotion — same as every other status move): the moved row
+    // The whole delete+leave is one user edit (one persist for the deletion);
+    // the leave then goes through the one landing funnel, so the moved row
     // reads as newest of its landed column.
     const landed = this.tasks.find(candidate => candidate.id === taskId)
     if (landed !== undefined && landed.status !== 'running') {
-      this.tasks = promoteToColumnTop(this.tasks, taskId, landed.status, this.now())
+      this.land(taskId, landed, this.now())
       this.persistAndNotify()
     }
     // The session is gone from this card: its transient detection state must
@@ -2479,8 +2522,7 @@ export class BoardController {
   private launchTask(task: TaskRecord): void {
     const launch = this.supplementedTask(task)
     const { task: next, execution } = startExecution(launch, this.now(), this.uuid())
-    const withExecution = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
-    this.tasks = promoteToColumnTop(withExecution, task.id, 'running', this.now())
+    this.land(task.id, next, this.now())
     this.persistAndNotify()
     this.activeExecutionIds.add(execution.id)
     void this.deps.exec.run(next, execution, (event) => { this.handleExecutionEvent(event) })
@@ -2501,12 +2543,7 @@ export class BoardController {
       ...task,
       executions: task.executions.map(candidate => candidate.id === round.id ? marked : candidate),
     }, 'running', this.now())
-    this.tasks = promoteToColumnTop(
-      this.tasks.map(candidate => candidate.id === task.id ? running : candidate),
-      task.id,
-      'running',
-      this.now(),
-    )
+    this.land(task.id, running, this.now())
     this.persistAndNotify()
     this.activeExecutionIds.add(round.id)
     void this.deps.exec.commentRun(
@@ -2693,10 +2730,10 @@ export class BoardController {
       // trigger the armed-chain auto-run next to the manual run below.)
       this.moveTask(id, 'todo')
     } else if (task.status !== 'running') {
-      // Promote (never a bare withStatus): a rerun reads as the newest of
-      // its column like every other birth/arrival — sinking to the bottom
+      // The one landing funnel, not a bare withStatus: a rerun reads as the
+      // newest of its column like every other arrival — sinking to the bottom
       // would hide the run a user just asked for.
-      this.tasks = promoteToColumnTop(this.tasks, id, 'todo', this.now())
+      this.land(id, withStatus(task, 'todo', this.now()), this.now())
       this.persistAndNotify()
     }
     return await this.runTask(id, 'manual')
@@ -3382,14 +3419,10 @@ export class BoardController {
     this.activeExecutionIds.delete(event.executionId)
     const before = this.tasks.find(task => task.id === event.taskId)
     const settledRound = before?.executions.find(round => round.id === event.executionId)
-    this.tasks = this.tasks.map(task => task.id === event.taskId
-      ? this.settleRound(task, event.executionId, event.outcome, event.error)
-      : task)
-    // A just-settled card ranks newest at the top of its landed column
-    // (待审核 on success/failure — the settlement moved it there).
-    const after = this.tasks.find(task => task.id === event.taskId)
-    if (before !== undefined && after !== undefined && before.status !== after.status) {
-      this.tasks = promoteToColumnTop(this.tasks, event.taskId, after.status, this.now())
+    if (before !== undefined) {
+      // The one landing funnel: a just-settled card ranks newest at the top of
+      // the column it landed in (待审核 on success/failure).
+      this.land(event.taskId, this.settleRound(before, event.executionId, event.outcome, event.error), this.now())
     }
     // A settled run hands off to the next chained run synchronously, so the
     // scheduler's recovery tick can never interleave a duplicate launch.
@@ -3554,8 +3587,51 @@ export class BoardController {
     return next
   }
 
-  // --- internals ---------------------------------------------------------------
+  /**
+   * 引擎派生的换栏落地——**唯一**的落点。写入新记录，并把它顶到目标栏的
+   * 最上方（「最新状态在前」这条律），让「刚完成的是哪一张」一眼可见。
+   *
+   * 换栏的历史由 `settleRound` / `withStatus` 那一步追加；本方法只负责把
+   * 记录落进台账并排好序。三条语义定死：
+   *
+   * 1. **只有真的换了栏才重排**。留在原栏的结算（链式/批量未完、插话后仍有
+   *    别的会话在跑）只写记录，不动该栏其他卡片的顺序。
+   * 2. **用户拖动的位置永不被覆盖**。人工重排走 `moveTask` /
+   *    `applyCardOrder`，是另一条独立路径，提升逻辑碰不到它。
+   * 3. **写入的是调用方给的新记录**，不重新推导。旧栏位由本方法自己从台账
+   *    里读，所以调用方传一个过期的 `before` 也不会让提升漏判。
+   */
+  private land(id: string, after: TaskRecord, now: number): void {
+    this.landMany([{ id, after }], now)
+  }
 
+  /**
+   * {@link land} 的批量形态。`entries` 按**发生顺序**给出（旧的在前，调用方
+   * 自己掌握先后——恢复结算那一趟按各轮的 endedAt 排），所以一次落 k 张时，
+   * 屏幕上从上到下读作「后完成的在上」，与逐张提升完全一致。
+   *
+   * 批量不是第二套做法，是规模上的必需品：逐张提升会把目标栏的同门反复改写
+   * k 次——1000 张卡的栏里一次落 20 张，同门就被改写两万次，同步载荷暴涨。
+   * 这里每个涉及的栏只重排一次号。
+   */
+  private landMany(entries: ReadonlyArray<{ id: string; after: TaskRecord }>, now: number): void {
+    if (entries.length === 0) return
+    // 只有换栏的那些参与重排；留在原栏的记录照写不误。
+    const moved = entries.filter(entry => {
+      const current = this.tasks.find(task => task.id === entry.id)
+      return current !== undefined && current.status !== entry.after.status
+    })
+    const records = new Map(entries.map(entry => [entry.id, entry.after]))
+    this.tasks = this.tasks.map(task => records.get(task.id) ?? task)
+    if (moved.length === 0) return
+    this.tasks = promoteManyToColumnTop(
+      this.tasks,
+      moved.map(entry => ({ id: entry.id, status: entry.after.status })),
+      now,
+    )
+  }
+
+  // --- internals ---------------------------------------------------------------
   /**
    * Session-list change: reconcile running tasks and re-render consumers.
    *
@@ -3804,6 +3880,7 @@ export class BoardController {
       // time so mid-await changes survive.
       const continued: string[] = []
       const applied: Array<{ round: ExecutionRecord | undefined; event: Settled }> = []
+      const landings: Array<{ id: string; after: TaskRecord; at: number }> = []
       for (const { taskId, round, event, externalText } of events) {
         const current = this.tasks.find(candidate => candidate.id === taskId)
         if (current === undefined) continue
@@ -3817,11 +3894,26 @@ export class BoardController {
             ? { ...candidate, comment: externalText }
             : candidate),
         }
-        this.tasks = this.tasks.map(candidate => candidate.id === taskId ? settled : candidate)
+        // The records are written in ONE pass below, not one by one here: a
+        // reload can settle dozens of cards at once, and promoting them one
+        // by one would re-stamp the whole landed column dozens of times over
+        // (a 1000-card column landing 20 cards ⇒ 20k sibling writes). The
+        // loop is synchronous, so collecting first loses nothing — the
+        // "re-read at write time" discipline is about the awaits ABOVE, and
+        // `current` is still read from the live ledger right here.
+        landings.push({
+          id: taskId,
+          after: settled,
+          at: settled.executions.find(round => round.id === event.executionId)?.endedAt ?? this.now(),
+        })
         changed = true
         continued.push(taskId)
         applied.push({ round, event })
       }
+      // Completion time is the landing order: the column then reads "newest
+      // completion on top" exactly as if the cards had landed one by one.
+      landings.sort((a, b) => a.at - b.at)
+      this.landMany(landings.map(entry => ({ id: entry.id, after: entry.after })), this.now())
       // A reconciled settle hands off to the next chained run like a live one
       // (the chain request precedes the persist so the freed slot is
       // booked before any comment/cruise work competes for it).
@@ -3908,12 +4000,7 @@ export class BoardController {
       const now = this.now()
       if (live === 'running') {
         if (task.status !== 'running') {
-          this.tasks = promoteToColumnTop(
-            this.tasks.map(candidate => candidate.id === task.id ? withStatus(candidate, 'running', now) : candidate),
-            task.id,
-            'running',
-            now,
-          )
+          this.land(task.id, withStatus(task, 'running', now), now)
           changed = true
         }
       } else if (live === 'idle' && task.status === 'running' && !hasOpenRun(task)) {
@@ -3933,8 +4020,7 @@ export class BoardController {
         if (this.directFallbackRounds.get(task.id) === latest.id) continue
         this.directFallbackRounds.set(task.id, latest.id)
         const target = leaveRunningTargetOf(task, live, { ignoreSchedule: true }) ?? DIRECT_FALLBACK_STATUS
-        const next = withStatus(task, target, now)
-        this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
+        this.land(task.id, withStatus(task, target, now), now)
         changed = true
         if (!this.disposed) this.settledFollowUp(latest, task.id, 'succeeded')
       }
@@ -4179,7 +4265,10 @@ export class BoardController {
     })
     if (!changed) return false
     this.activityBook.externalSince.set(sessionId, now)
-    this.tasks = promoteToColumnTop(this.tasks, taskId, 'running', now)
+    // The observed turn joined the card's session set, so the funnel re-reads
+    // the row it just wrote (it is the one landing: newest of 进行中).
+    const landed = this.tasks.find(candidate => candidate.id === taskId)
+    if (landed !== undefined) this.land(taskId, landed, now)
     this.persistAndNotify()
     return true
   }
@@ -4373,13 +4462,7 @@ export class BoardController {
       const live = this.conclusiveLiveState(task.id, this.liveStateFor(task, linkedIdsOf(task.id)))
       const target = leaveRunningTargetOf(task, live)
       if (target === undefined) continue
-      const next = withStatus(task, target, now)
-      this.tasks = promoteToColumnTop(
-        this.tasks.map(candidate => candidate.id === task.id ? next : candidate),
-        task.id,
-        target,
-        now,
-      )
+      this.land(task.id, withStatus(task, target, now), now)
       changed = true
     }
     return changed
@@ -4420,7 +4503,7 @@ export class BoardController {
         if (summary.running === true || now - since <= EXTERNAL_SETTLE_GRACE_MS) continue
         const next = this.settleRound(task, latest.id, 'cancelled', undefined)
         if (next !== task) {
-          this.tasks = this.tasks.map(candidate => candidate.id === task.id ? next : candidate)
+          this.land(task.id, next, now)
           changed = true
         }
       }

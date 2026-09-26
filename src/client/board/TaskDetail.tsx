@@ -26,7 +26,7 @@ import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { ReviewDetail } from './ReviewDetail.tsx'
 import { SessionDetail } from './SessionDetail.tsx'
 import { NewSessionModal } from './NewSessionModal.tsx'
-import { AddSessionModal } from './AddSessionModal.tsx'
+import { SessionPickerDialog } from './SessionPickerDialog.tsx'
 import { SessionRow } from './SessionRow.tsx'
 import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
@@ -495,7 +495,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
     const bind = external.kind === 'session'
       ? { kind: 'session' as const, sessionId: external.id }
       : { kind: 'workspace' as const, workspaceId: external.id }
-    controller.addTaskSource(current.id, bind)
+    controller.addTaskSources(current.id, [bind])
     setBindDropFlash(true)
     if (bindDropTimer.current !== undefined) clearTimeout(bindDropTimer.current)
     bindDropTimer.current = setTimeout(() => { setBindDropFlash(false) }, 600)
@@ -1010,9 +1010,20 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
         />
       )}
       {showAddSession && (
-        <AddSessionModal
+        <SessionPickerDialog
           controller={controller}
-          task={current}
+          exclude={controller.relatedSessionIdSet(current)}
+          title={t('detail.addSessionTitle')}
+          submitLabel={t('detail.addSessionSubmit')}
+          onSubmit={sessionIds => {
+            controller.addTaskSources(current.id, sessionIds.map(sessionId => ({ kind: 'session' as const, sessionId })))
+            // The same confirm flash a sidebar bind drop plays: the new rows
+            // are visible at the top of the list, the section says so once.
+            setBindDropFlash(true)
+            if (bindDropTimer.current !== undefined) clearTimeout(bindDropTimer.current)
+            bindDropTimer.current = setTimeout(() => { setBindDropFlash(false) }, 600)
+            setShowAddSession(false)
+          }}
           onClose={() => { setShowAddSession(false) }}
         />
       )}

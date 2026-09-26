@@ -481,7 +481,8 @@
 }
 
 /* 通知列表：一行一条（主区进任务详情 + 行内 triage 动作）。主区与动作区
-   同行，窄屏换列为两行（主区上、动作下），控件数量不变、字号不变。 */
+   同行，窄屏或内容确实放不下时整组换行（主区上、动作下）；时间槽宽度固定，
+   不会因为「21h」与「2026-09-24」长短不同而让同类行忽上忽下。 */
 .notifyList {
   display: flex;
   flex-direction: column;
@@ -547,9 +548,14 @@
 }
 /* Row time: a quiet trailing stamp INSIDE the action cluster — every feed
    row answers WHEN without opening anything (tabular figures keep digits
-   steady). Non-interactive; it wraps WITH the buttons, never alone. */
+   steady). The slot reserves the widest compact date (`YYYY-MM-DD`) so a
+   recent `21h` and an older `2026-09-24` have the same width; otherwise the
+   string length decides whether the whole action cluster wraps, making rows
+   jump between one and two lines for no content reason. */
 .notifyMeta {
   flex: none;
+  min-width: 10ch;
+  text-align: right;
   font-size: 12px;
   color: var(--dsh-tb-text-3);
   font-variant-numeric: tabular-nums;
@@ -3546,6 +3552,16 @@ textarea.input {
   outline-offset: 1px;
 }
 
+/* Picked state: the SAME accent wash the column tabs wear when selected (one
+   selected idiom board-wide, not a second one) — ink brightens, the border
+   takes the accent, and a faint accent fill marks the row. The icon swaps to a
+   check in the markup, so the state is never colour-only. */
+.addSessionRow[data-selected] {
+  color: var(--dsh-tb-text-1);
+  border-color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+}
+
 .addSessionLabel {
   flex: 1;
   min-width: 0;
@@ -3554,9 +3570,28 @@ textarea.input {
   white-space: nowrap;
 }
 
-.addSessionChevron {
-  flex: none;
+/* The folder a row belongs to, shown only in the picker's 未分组 group (where
+   the heading cannot say it). Content-width, shrinkable, ellipsized — it must
+   never push the session title into a sliver. */
+.addSessionFolder {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
   color: var(--dsh-tb-text-3);
+}
+
+/* The picker's footer count: it owns the free space so the actions sit right
+   without a `margin-left:auto` (an auto margin right-aligns whichever item
+   happens to start a wrapped line — the banned spelling board-wide). */
+.pickerCount {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
 }
 
 /* Right-aligned action group of a session row (查看会话 / 处理 / 隐藏): the

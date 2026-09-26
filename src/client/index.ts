@@ -1118,6 +1118,10 @@ export function apply(ctx: ClientContext): void {
     // the host has not titled yet (the host names it automatically from the
     // first real message).
     controller.untitledSessionLabel = t(UNTITLED_SESSION_KEY)
+    // The session picker's tail group: the sessions no workspace accounts for
+    // (the derivation never drops them — it only refuses to guess a home for
+    // them). A display label, so it is wired here like the 未命名 one.
+    controller.ungroupedSessionsLabel = t('detail.addSessionUngrouped')
 
     // Sync wiring: every remote document lands in the controller + refreshes
     // the offline mirror; the seat and relayed launches follow the host's

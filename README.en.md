@@ -118,7 +118,8 @@ A restart is required here too. Your task data is not deleted.
 
 ## What it does
 
-- **Five columns** — To plan, To do, In progress, Needs review, Done. Cards carry a summary only; the execution window and the comment timeline live in the detail view. Every session that finishes lands in Needs review.
+- **Five columns** — To plan, To do, In progress, Needs review, Done. Cards carry a summary only; the execution window and the comment timeline live in the detail view. Every session that finishes lands in Needs review. A card floats to the top of the column it lands in, newest arrival first, so the one that just finished is obvious at a glance; a position you dragged by hand is never pushed aside, and only re-sorts when that card changes column again.
+- **Card from sessions** — The header's "Card from Sessions" button takes a pick of existing sessions (any number, across workspaces) and creates one new task card carrying them, in the To plan column, with title, description, prompt and run configuration all left blank for you to fill. The task detail's "Add Session" and this button share ONE picker: grouped by workspace, collapsed by default, listing only sessions that are unarchived and addable right now.
 - **Real execution** — Pressing Run starts a real DSH session, visible in the native session list. An execution prompt that begins with `/` runs as a native command, so `/plan ...` enters plan mode for real.
 - **Multi-device sync** — The board's source of truth is the host, stored at `~/.dsh/storages/dsh_task_board.json`. The browser is an optimistic copy: the board opens instantly, works while offline, and catches up afterwards. Concurrent edits merge per record and do not depend on device clocks.
 - **One engine at a time** — Scheduled runs, cruise and follow-ups are arbitrated by a host lease, so only one open GUI executes them. The device in the foreground holds the engine seat and takes over when it becomes visible.

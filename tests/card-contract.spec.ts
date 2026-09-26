@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runningStateLabel, settledChipLabel, blockedAutomation, showsBlockedChip, showsSessionBlocked } from '../src/client/board/TaskCard.tsx'
+import { cardUpdatedAtOf } from '../src/client/board/card-view.ts'
 import { createTask, withSchedule } from '../src/core/tasks.ts'
 import { withSessionRules } from '../src/core/automation.ts'
 
@@ -660,5 +661,111 @@ describe('session unread glow family (row breath + dot breath, one clock)', () =
     // the (+N) glyph reads.
     expect(board).toContain('relatedIds.slice(0, 3)')
     expect(board).toContain('t(\'card.dotUnread\')')
+  })
+})
+
+/**
+ * 会话选择器面板的契约（两处入口共用那一个面板）。
+ *
+ * 钉的是「不许退回旧样子」的几件事：折叠必须走全板那一个 Disclosure 折叠文法
+ * （第二个手写折叠就是箭头像不转的那一类 bug）；页脚不许用 auto-margin 靠右；
+ * 选中的行不许自己造一套颜色；以及那份名单只能由核心推导产出，界面不得再摊平
+ * 全量会话目录。
+ */
+describe('session picker contract', () => {
+  const pickerPath = fileURLToPath(new URL('../src/client/board/SessionPickerDialog.tsx', import.meta.url))
+  // Comments stripped: prose may NAME the banned thing while explaining why
+  // it is banned, and only CODE counts as an occurrence (same law as
+  // locales.spec.ts). A regression reintroduces the expression, not the note.
+  const picker = readFileSync(pickerPath, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+
+  it('the group fold is the board ONE Disclosure, not a second hand-rolled fold', () => {
+    expect(picker).toContain('<Disclosure')
+    expect(picker).toContain('open={open}')
+    expect(picker).toContain('onToggle={onToggle}')
+    // A foldable the picker owns would carry its own chevron / aria-expanded.
+    expect(picker).not.toContain('aria-expanded')
+    expect(picker).not.toMatch(/chevron/i)
+  })
+
+  it('the footer count owns the free space; no auto-margin right-alignment', () => {
+    expect(picker).toContain('css.pickerCount')
+    expect(picker).not.toMatch(/marginLeft|margin-left/)
+    const rule = ruleOf('pickerCount')
+    expect(rule).toMatch(/flex:\s*1 1 auto/)
+    expect(rule).toMatch(/min-width:\s*0/)
+  })
+
+  it('the selected row reuses the board accent idiom, not a new colour', () => {
+    const selected = /\.addSessionRow\[data-selected\]\s*\{([^}]*)\}/.exec(source)?.[1] ?? ''
+    expect(selected).toContain('--dsh-tb-accent')
+    // The state is never colour-only: the icon swaps and aria-pressed states it.
+    expect(picker).toContain("data-selected={on ? '' : undefined}")
+    expect(picker).toContain('aria-pressed={on}')
+    expect(picker).toContain("name={on ? 'check' : 'link'}")
+  })
+
+  it('every session row is a border-box member (the board overflow family)', () => {
+    expect(ruleOf('addSessionRow')).toMatch(/box-sizing:\s*border-box/)
+  })
+
+  it('the list is the CORE derivation, never a flattened catalog re-filtered in the view', () => {
+    expect(picker).toContain('controller.offerableSessionGroups(exclude)')
+    // The old implementation's two defects, frozen so they cannot come back.
+    expect(picker).not.toContain('referenceSessionCatalog')
+    expect(picker).not.toMatch(/\.slice\(0,\s*\d+\)/)
+  })
+
+  it('both entry points mount the SAME component (one picker, two submit actions)', () => {
+    const detail = readFileSync(fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url)), 'utf8')
+    const board = readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8')
+    expect(detail).toContain('<SessionPickerDialog')
+    expect(board).toContain('<SessionPickerDialog')
+    expect(detail).toContain('controller.addTaskSources(current.id,')
+    expect(board).toContain('controller.createBoundTask(')
+    // The superseded single-session modal is gone, not merely unused.
+    expect(() => readFileSync(fileURLToPath(new URL('../src/client/board/AddSessionModal.tsx', import.meta.url)), 'utf8')).toThrow()
+  })
+
+  it('a card born from picked sessions is blank: no title, no content, no run config, lands in 待规划', () => {
+    const board = readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8')
+    expect(board).toMatch(/createBoundTask\(\s*\n?\s*sessionIds\.map[\s\S]*\{\s*title:\s*'',\s*description:\s*'',\s*prompt:\s*'',\s*status:\s*'backlog'\s*\}/)
+  })
+})
+
+/**
+ * 卡片的「更新于」与同步戳必须分开。
+ *
+ * `task.updatedAt` 是**同步戳**：改一次列内顺序（一次顶格、一次手动拖动）会给
+ * 被让位的同门每张都盖上新戳——同步合并按它排序，漏盖就是两台设备顺序漂移。
+ * 可它一旦直接上屏，一次顶格就会让整栏几百张卡一起写「刚刚」，恰好把「哪个
+ * 先完成」这个信号抹平。所以屏上读的是卡片自己的工作推进。
+ */
+describe('the card 更新于 clock is the card own progress, not the sync stamp', () => {
+  it('the meta line reads the derivation, never task.updatedAt', () => {
+    const card = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+    expect(card).toContain('formatTime(cardUpdatedAtOf(task))')
+    expect(card).toContain('formatDateTime(cardUpdatedAtOf(task))')
+    expect(card).not.toMatch(/\{t\('board\.updated'\)\} \{formatTime\(task\.updatedAt\)\}/)
+  })
+
+  it('the derivation reads the rounds, and a column re-sort cannot move it', () => {
+    const base = createTask({ title: 't', description: '', prompt: 'p' }, 1000, 't', 0)
+    // A fresh card: its own birth.
+    expect(cardUpdatedAtOf(base)).toBe(1000)
+    // A run that has not ended yet still counts at its start.
+    const started = { ...base, executions: [{ id: 'e1', sessionId: undefined, startedAt: 2000, endedAt: undefined, result: undefined, error: undefined }] }
+    expect(cardUpdatedAtOf(started)).toBe(2000)
+    // Ending it moves the reading forward — the card itself advanced.
+    const ended = { ...started, executions: [{ ...started.executions[0]!, endedAt: 3000, result: 'succeeded' as const }] }
+    expect(cardUpdatedAtOf(ended)).toBe(3000)
+    // A promotion stamps `updatedAt` all over the column; the reading must not
+    // budge, or every sibling would claim to be 「刚刚」.
+    const reshuffled = { ...ended, order: 0, updatedAt: 999_999 }
+    expect(cardUpdatedAtOf(reshuffled)).toBe(3000)
   })
 })

@@ -787,6 +787,21 @@ export declare class BoardController {
         label: string;
     }>;
     /**
+     * The sessions a picker may OFFER, grouped by workspace — the ONE list both
+     * session pickers read (the task detail's 添加会话 and the board's 会话建卡).
+     * Derived fresh from the two native snapshots on every call: membership and
+     * the archive set move natively, so a picker that cached either would offer
+     * a session that can no longer be bound, or hide one that can (the archive
+     * set is derived + subscribed everywhere else for exactly this reason).
+     *
+     * The rules (subagent / blank / archived exclusion, registry-ownership
+     * grouping, the ungrouped tail) live in session-groups.ts, not here — this
+     * method only feeds it the two snapshots and the two display labels.
+     * @param exclude - sessions the surface must not offer (a card's own related
+     * set). undefined at the board level, where nothing is bound yet.
+     */
+    offerableSessionGroups(exclude?: ReadonlySet<string>): import('./session-groups.ts').SessionGroup[];
+    /**
      * Read a session's recent history events for the review page's transcript
      * (the fold happens in the UI), together with the native projection
      * baseline (context pressure / breakdown) riding the history tail page.
@@ -895,6 +910,10 @@ export declare class BoardController {
      *  the host has not titled yet (set by the client wiring; undefined in
      *  tests = legacy task-title fallback). */
     untitledSessionLabel?: string;
+    /** The localized label of the 「未分组会话」 group in the session picker
+     *  (the sessions no workspace accounts for — see session-groups.ts). Set by
+     *  the client wiring; it is a DISPLAY label, the core never invents copy. */
+    ungroupedSessionsLabel?: string;
     subscribe(fn: () => void): () => void;
     /**
      * The board is showing (driven by the stage component's mount lifetime — see
@@ -969,10 +988,15 @@ export declare class BoardController {
     private supplementedTask;
     createTask(input: NewTaskInput): TaskRecord | undefined;
     /**
-     * Create a task bound to a live native source (a session or a whole
-     * workspace folder dragged in from the sidebar). The bind wires the card's
-     * "链接会话" section; everything else behaves like a plain task — title is
-     * optional like any new task (the first real run supplements it).
+     * Create a task bound to live native source(s) — a sidebar session or a
+     * whole workspace folder dragged in, or a multi-workspace batch picked in
+     * the board's session picker. The binds wire the card's "链接会话" section;
+     * everything else behaves like a plain task — title is optional like any
+     * new task (the first real run supplements it).
+     *
+     * One argument, one meaning: "these are the card's sources". A single drag
+     * passes one bind, a multi-select passes many; there is no second creation
+     * path for the picker, so the two can never drift.
      *
      * Workspace snapshot semantics: a workspace bind is a source association,
      * but at CREATION the card also snapshots the workspace's CURRENT live
@@ -980,11 +1004,11 @@ export declare class BoardController {
      * the user dragged the folder "with what's in it", not an empty shell.
      * Later sessions never auto-join (no flooding); archived sessions leave
      * the rows at once (see linkedOf).
-     * @param bind - the live binding.
+     * @param binds - the live sources, in the order they joined.
      * @param input - title/description/prompt/landing column.
-     * @returns the created task, or undefined for a bad bind.
+     * @returns the created task, or undefined for an empty bind set.
      */
-    createBoundTask(bind: TaskBind, input: NewTaskInput): TaskRecord | undefined;
+    createBoundTask(binds: readonly TaskBind[], input: NewTaskInput): TaskRecord | undefined;
     /**
      * The workspace's CURRENT live session snapshot for a folder drop.
      * Membership comes from the registry's OWN ownership account (`sessionIds`
@@ -1122,8 +1146,13 @@ export declare class BoardController {
         error: string;
     }>;
     /**
-     * ADD a live source (a sidebar session or workspace folder) to an EXISTING
-     * task — the "drag a folder/session into the open task's 会话 area" path.
+     * ADD live sources (sidebar sessions / workspace folders, or a batch picked
+     * in the session picker) to an EXISTING task — the "drag a folder/session
+     * into the open task's 会话 area" and the picker's submit path.
+     *
+     * One write for the whole batch: a multi-select across workspaces is ONE
+     * user action, so it lands as one edit and one persist rather than N.
+     *
      * NEVER replaces: an already-bound identical source is an idempotent no-op,
      * anything else joins the multi-source set. Persisted. A session bind
      * surfaces its session as a linked row; a workspace bind is a source
@@ -1133,10 +1162,10 @@ export declare class BoardController {
      * An explicit re-add is also the RESTORE gesture: a session bind re-added
      * leaves the removed set (the hidden tray's 删除 is reversible BY THE
      * USER'S HAND — dragging the session back shows it again).
-     * @returns true when the binding was added or anything was restored, false
-     * for a pure no-op / unknown task.
+     * @returns true when anything was added or restored, false for a pure
+     * no-op / unknown task.
      */
-    addTaskSource(taskId: string, bind: TaskBind): boolean;
+    addTaskSources(taskId: string, binds: readonly TaskBind[]): boolean;
     /** The sessions a re-added bind contributes to the display set: a session
      *  bind is itself (its removal is reversible by dragging it back); a
      *  workspace bind contributes none — it surfaces no session rows at all. */
@@ -1673,6 +1702,31 @@ export declare class BoardController {
     fireLoopRule(taskId: string, ruleId: string, sessionId: string): Promise<void>;
     /** Settle a round through the shared column decision. */
     private settleRound;
+    /**
+     * 引擎派生的换栏落地——**唯一**的落点。写入新记录，并把它顶到目标栏的
+     * 最上方（「最新状态在前」这条律），让「刚完成的是哪一张」一眼可见。
+     *
+     * 换栏的历史由 `settleRound` / `withStatus` 那一步追加；本方法只负责把
+     * 记录落进台账并排好序。三条语义定死：
+     *
+     * 1. **只有真的换了栏才重排**。留在原栏的结算（链式/批量未完、插话后仍有
+     *    别的会话在跑）只写记录，不动该栏其他卡片的顺序。
+     * 2. **用户拖动的位置永不被覆盖**。人工重排走 `moveTask` /
+     *    `applyCardOrder`，是另一条独立路径，提升逻辑碰不到它。
+     * 3. **写入的是调用方给的新记录**，不重新推导。旧栏位由本方法自己从台账
+     *    里读，所以调用方传一个过期的 `before` 也不会让提升漏判。
+     */
+    private land;
+    /**
+     * {@link land} 的批量形态。`entries` 按**发生顺序**给出（旧的在前，调用方
+     * 自己掌握先后——恢复结算那一趟按各轮的 endedAt 排），所以一次落 k 张时，
+     * 屏幕上从上到下读作「后完成的在上」，与逐张提升完全一致。
+     *
+     * 批量不是第二套做法，是规模上的必需品：逐张提升会把目标栏的同门反复改写
+     * k 次——1000 张卡的栏里一次落 20 张，同门就被改写两万次，同步载荷暴涨。
+     * 这里每个涉及的栏只重排一次号。
+     */
+    private landMany;
     /**
      * Session-list change: reconcile running tasks and re-render consumers.
      *

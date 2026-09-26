@@ -1150,6 +1150,42 @@ export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropD
 }
 
 /**
+ * 本栏当前的渲染顺序（自上而下）：按 `order` 键排序，键相同时保持台账数组
+ * 顺序——渲染层用的是稳定排序 `sort((a, b) => a.order - b.order)`，所以键序
+ * 就是屏幕上的顺序。**唯一**读法：数组位置不是顺序，`order` 键才是。
+ */
+function renderedColumnIds(tasks: readonly TaskRecord[], status: TaskStatus): string[] {
+  return tasks
+    .filter(task => task.status === status)
+    .sort((a, b) => a.order - b.order)
+    .map(task => task.id)
+}
+
+/** 一次改顺序之后的落位结果：哪个栏、哪张卡、排第几。 */
+type OrderPlan = ReadonlyMap<TaskStatus, ReadonlyArray<{ id: string; order: number }>>
+
+/**
+ * 空转判据：动作后的「栏位 + 键」赋值与动作前一模一样，就一个记录都不碰——
+ * 不刷新 `updatedAt`、不抢作者归属、不产生同步抖动。两个改顺序的函数共用这
+ * 一条律。
+ *
+ * 它看的是**赋值**，不是某张卡的键是不是 0。这一点是命门：一次跨栏落地时，
+ * 落地卡手里攥着的键来自它**原来那一栏**（刚被顶到「进行中」顶部的卡，键就
+ * 是 0）。拿自己的键当守卫，跨栏必然误判成空转——卡片不落顶格，同栏位也不
+ * 让位，键相同时由数组顺序决定，看起来就是「顶了个寂寞」。
+ */
+function orderUnchanged(tasks: readonly TaskRecord[], plan: OrderPlan): boolean {
+  const byId = new Map(tasks.map(task => [task.id, task]))
+  for (const [status, rows] of plan) {
+    for (const row of rows) {
+      const current = byId.get(row.id)
+      if (current === undefined || current.status !== status || current.order !== row.order) return false
+    }
+  }
+  return true
+}
+
+/**
  * Move a card into a column at a given position, renumbering the target
  * column's sort keys. `beforeId` inserts before that card (undefined =
  * column tail); a same-column move removes the card first, so the insertion
@@ -1163,7 +1199,7 @@ export function resolveCardDrop(task: TaskRecord, target: TaskStatus): CardDropD
  * wrong gap, defeats the same-spot check (phantom updatedAt churn on every
  * sibling → sync storms and whole-column FLIP flashes), and scrambles the
  * column on the next drag. Both lists below are key-sorted first — the same
- * law promoteToColumnTop already follows.
+ * law the promotion below already follows.
  */
 export function applyCardOrder(
   tasks: readonly TaskRecord[],
@@ -1186,14 +1222,8 @@ export function applyCardOrder(
   const ordered = [...target.slice(0, position), moved, ...target.slice(position)]
   // Same-spot drop: the target column reads identically with the card in
   // place — return untouched (no updatedAt bump, no authorship claim, no
-  // sync churn for a no-op). Same law as promoteToColumnTop's early return.
-  // Compared in RENDER order (key-sorted), never in array order.
-  const currentOrder = tasks
-    .filter(task => task.status === targetStatus)
-    .sort((a, b) => a.order - b.order)
-    .map(task => task.id)
-  if (currentOrder.length === ordered.length
-    && currentOrder.every((id, index) => ordered[index]?.id === id)) {
+  // sync churn for a no-op). Same law, same judgment as the promotion below.
+  if (orderUnchanged(tasks, new Map([[targetStatus, ordered.map((row, order) => ({ id: row.id, order }))]]))) {
     return [...tasks]
   }
   return tasks.map(task => {
@@ -1218,12 +1248,73 @@ export function applyCardOrder(
 }
 
 /**
+ * 把若干张卡片顶到各自那一栏的最上方——「最新状态在前」这条律的唯一实现。
+ *
+ * 单张（{@link promoteToColumnTop}）与批量是同一个函数：批量只是把 entries
+ * 排成一串，一次把整栏重排一次号。分批提升会让同门被反复改写 k 次——1000 张
+ * 卡的栏里一次落 20 张，同门就被改写两万次，同步载荷暴涨。
+ *
+ * `entries` 按**发生顺序**给出（旧的在前，调用方自己掌握先后），所以倒过来
+ * 就是「最新发生的在最上」：一次落 k 张，屏幕上从上到下读作「后完成的在上」，
+ * 与逐张提升的结果完全一致。一张卡在一次调用里只出现一次。
+ *
+ * 落地与排序都在这里收口：落地卡经 `withStatus` 换栏（跨栏时由它追加历史），
+ * 被让位的同门只改键。两者都算「记录变了」，都盖章——同步合并按 updatedAt
+ * 排序，漏盖就是两台设备顺序漂移。别的栏一根键都不碰。
+ */
+export function promoteManyToColumnTop(
+  tasks: readonly TaskRecord[],
+  entries: ReadonlyArray<{ id: string; status: TaskStatus }>,
+  now: number,
+): TaskRecord[] {
+  const known = new Set(tasks.map(task => task.id))
+  // 落地卡按栏分组，保持 entries 的先后（= 发生顺序）。
+  const landedByColumn = new Map<TaskStatus, string[]>()
+  for (const entry of entries) {
+    if (!known.has(entry.id)) continue
+    const landed = landedByColumn.get(entry.status)
+    if (landed === undefined) landedByColumn.set(entry.status, [entry.id])
+    else if (!landed.includes(entry.id)) landed.push(entry.id)
+  }
+  if (landedByColumn.size === 0) return [...tasks]
+
+  // 目标顺序 = 落地卡（发生时间倒序，所以最新完成的在最上）+ 其余成员保持原有
+  // 相对顺序跟在后面。
+  const plan = new Map<TaskStatus, ReadonlyArray<{ id: string; order: number }>>()
+  for (const [status, landed] of landedByColumn) {
+    const current = renderedColumnIds(tasks, status)
+    const next = [...landed].reverse().concat(current.filter(id => !landed.includes(id)))
+    plan.set(status, next.map((id, order) => ({ id, order })))
+  }
+  // 落位后与落位前的赋值一模一样 = 整件事没发生：一个记录都不碰。
+  if (orderUnchanged(tasks, plan)) return [...tasks]
+
+  const rank = new Map<TaskStatus, Map<string, number>>()
+  for (const [status, rows] of plan) rank.set(status, new Map(rows.map(row => [row.id, row.order])))
+  const landedStatus = new Map<string, TaskStatus>()
+  for (const [status, landed] of landedByColumn) for (const id of landed) landedStatus.set(id, status)
+  return tasks.map(task => {
+    // 落地的那张：换栏走 withStatus（换栏历史在这里追加，状态没变时只刷新
+    // updatedAt），键落到它在本栏的新名次。
+    const to = landedStatus.get(task.id)
+    if (to !== undefined) return withStatus({ ...task, order: rank.get(to)?.get(task.id) ?? 0 }, to, now)
+    // 被让位的同门：键的内容变了，所以也盖章（漏盖就是两台设备顺序漂移）。
+    const order = rank.get(task.status)?.get(task.id)
+    if (order === undefined || order === task.order) return task
+    return { ...task, order, updatedAt: now }
+  })
+}
+
+/**
  * Promote a card to the TOP of its column — the "newest state first" rule:
  * a task that just entered a column (freshly created, newly bound from the
  * workspace, or passing through a status change) reads as the newest item
  * of that column. Existing cards shift down, preserving their relative
  * order; a manual reorder later overrides the promotion. Only the target
  * column's orders are rewritten.
+ *
+ * 单张入口，实现就是 {@link promoteManyToColumnTop} 的一次调用——批量不是第二
+ * 套做法，只是把 entries 排成一串。
  */
 export function promoteToColumnTop(
   tasks: readonly TaskRecord[],
@@ -1231,24 +1322,5 @@ export function promoteToColumnTop(
   targetStatus: TaskStatus,
   now: number,
 ): TaskRecord[] {
-  const moved = tasks.find(task => task.id === movedId)
-  if (moved === undefined) return [...tasks]
-  if (moved.status === targetStatus && moved.order === 0) return [...tasks]
-  const others = tasks
-    .filter(task => task.id !== movedId && task.status === targetStatus)
-    .sort((a, b) => a.order - b.order)
-  return tasks.map(task => {
-    if (task.id === movedId) {
-      // Column changes funnel through withStatus (same law as applyCardOrder:
-      // a same-column promotion only refreshes updatedAt, a real move appends).
-      return withStatus({ ...task, order: 0 }, targetStatus, now)
-    }
-    if (task.status === targetStatus) {
-      // Shifted siblings carry the stamp too (see applyCardOrder's rule: an
-      // order change IS a record change).
-      const order = others.findIndex(row => row.id === task.id) + 1
-      return order === task.order ? task : { ...task, order, updatedAt: now }
-    }
-    return task
-  })
+  return promoteManyToColumnTop(tasks, [{ id: movedId, status: targetStatus }], now)
 }
