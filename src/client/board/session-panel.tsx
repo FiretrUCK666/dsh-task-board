@@ -436,7 +436,7 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
   const [configBusy, setConfigBusy] = useState(false)
   const [configMessage, setConfigMessage] = useState<string | undefined>(undefined)
   /**
-   * The session's LIVE permission selection — read from the host's own
+   * The session's LIVE permission value — read from the host's own
    * `permissions` projection, which is the value the harness's permission
    * selector displays. `undefined` = not read yet, `null` = the host does not
    * serve it.
@@ -448,11 +448,13 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
    * by an effect that read a projection value of '' as "no information". That
    * is how a panel showed 「默认」 over a session the user had just set. There is
    * now ONE value, from ONE read, and the panel says so when it cannot read it.
+   *
+   * The CHOICES are a separate fact and come from where the host keeps them —
+   * the permission-preset catalog — exactly as the harness's own selector joins
+   * the two. The projection carries the value alone.
    */
-  const [permission, setPermission] = useState<{
-    value: string
-    options: readonly { value: string; name?: string; description?: string }[]
-  } | null | undefined>(undefined)
+  const [permissionValue, setPermissionValue] = useState<string | null | undefined>(undefined)
+  const [permissionOptions, setPermissionOptions] = useState<readonly { id: string; name?: string; description?: string }[]>([])
   // Alive guard: every async handler (panel reload, model/effort/permission
   // applies) must not touch state after the panel unmounted — the panel can
   // close while a read/apply is still in flight, and a late `.then` must
@@ -463,12 +465,12 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
   // boolean-per-source pair).
   const [retryNonce, setRetryNonce] = useState(0)
 
-  /** Re-read the LIVE permission selection. */
+  /** Re-read the LIVE permission value. */
   const readPermission = useCallback((): void => {
     if (sessionConfig === undefined) return
     void sessionConfig.readPermission(sessionId).then(result => {
       if (!aliveRef.current) return
-      setPermission(result ?? null)
+      setPermissionValue(result ?? null)
     })
   }, [sessionConfig, sessionId])
 
@@ -476,16 +478,21 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
   // fact, so it is READ, never inherited from a stale render.
   useEffect(() => { readPermission() }, [readPermission, reloadKey, retryNonce])
 
-  // The native Agent directory for the read-only facts. (The permission
-  // catalog is no longer read here: the live projection carries both the
-  // session's value AND the options the host itself offers, so a deployment's
-  // preset table cannot disagree with the value it is displaying.)
+  // The CHOICES, from the deployment's native preset catalog (the host keeps
+  // them apart from the projection on purpose: the table is deployment-wide,
+  // the value is per-session). Same join the harness's own selector makes.
   useEffect(() => {
     if (catalog === undefined) return
     let alive = true
-    void catalog.listAgentPresets().then(presets => {
-      if (alive) setAgentPresetRows(presets)
-    })
+    void (async () => {
+      const [presets, permissions] = await Promise.all([
+        catalog.listAgentPresets(),
+        catalog.listPermissions(),
+      ])
+      if (!alive) return
+      setAgentPresetRows(presets)
+      setPermissionOptions(permissions ?? [])
+    })()
     return () => { alive = false }
   }, [catalog])
 
@@ -657,33 +664,39 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
               </span>
             )
           })()}
-          {permission === undefined ? null : permission === null ? (
-            /* No live read, or a host that does not serve the projection. Say
-               so: a select sitting on a fabricated 「默认」 is a lie the user
-               cannot detect, and the whole point of the row is to state what
-               the session IS doing. */
+          {permissionValue === undefined ? null : permissionValue === null || permissionOptions.length === 0 ? (
+            /* No live read, a host that does not serve the projection, or no
+               catalog to choose from. Say so: a select sitting on a fabricated
+               「默认」 is a lie the user cannot detect, and the whole point of
+               the row is to state what the session IS doing. */
             <span className={css.reviewConfigRow}>
               <span className={css.reviewConfigLabel}>{t('review.permission')}</span>
               <span className={css.reviewConfigUnavailable}>{t('review.permissionUnreadable')}</span>
             </span>
           ) : (
-            /* The session's real selection, read from the host. There is
-               deliberately NO empty-value option: a session always HAS a
-               permission, `/permission` has no "unset" verb, and the old
-               「默认（会话默认权限）」 entry silently did nothing when chosen.
-               (「默认」 still belongs in the run-config form, where it means
-               "don't write a preset for the next run" — a different fact.) */
+            /* The session's real value, read live; the choices from the
+               deployment's catalog. There is deliberately NO empty-value
+               option: a session always HAS a permission, `/permission` has no
+               "unset" verb, and the old 「默认（会话默认权限）」 entry silently
+               did nothing when chosen. (「默认」 still belongs in the run-config
+               form, where it means "don't write a preset for the next run" —
+               a different fact, in a different place.) A value the catalog does
+               not list is still shown, under its own id, rather than being
+               silently rewritten to whatever the first option happens to be. */
             <span className={css.reviewConfigRow}>
               <span className={css.reviewConfigLabel}>{t('review.permission')}</span>
               <span className={css.selectWrap}>
                 <select
                   className={css.input}
-                  value={permission.value}
+                  value={permissionValue}
                   disabled={configBusy}
                   onChange={event => { applyPermission(event.target.value) }}
                 >
-                  {permission.options.map(option => (
-                    <option key={option.value} value={option.value}>{permissionLabel(option.value, option.name)}</option>
+                  {permissionOptions.some(option => option.id === permissionValue)
+                    ? null
+                    : <option value={permissionValue}>{permissionLabel(permissionValue, permissionValue)}</option>}
+                  {permissionOptions.map(option => (
+                    <option key={option.id} value={option.id}>{permissionLabel(option.id, option.name)}</option>
                   ))}
                 </select>
               </span>

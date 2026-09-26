@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url'
 
 const panel = readFileSync(fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url)), 'utf8')
 const projections = readFileSync(fileURLToPath(new URL('../src/core/projections.ts', import.meta.url)), 'utf8')
+const core = readFileSync(fileURLToPath(new URL('../src/core/projections.ts', import.meta.url)), 'utf8')
 const client = readFileSync(fileURLToPath(new URL('../src/client/index.ts', import.meta.url)), 'utf8')
 
 describe('the permission row reads ONE live source', () => {
@@ -34,7 +35,7 @@ describe('the permission row reads ONE live source', () => {
     // The panel asks the controller; the controller asks the host's live
     // baseline. No prop, no second copy.
     expect(panel).toContain('sessionConfig.readPermission(sessionId)')
-    expect(panel).not.toMatch(/permissionValue|permissionOptions/)
+    expect(panel).not.toMatch(/permissionValue=|permissionOptions=/)
     // The optimistic local copy and its arbitration effect are both gone: with
     // one live read there is nothing to arbitrate between.
     expect(panel).not.toMatch(/setChosen/)
@@ -53,6 +54,17 @@ describe('the permission row reads ONE live source', () => {
   it('the live read is a real host call, guarded like its siblings', () => {
     expect(client).toContain('readPermission: async sessionId =>')
     expect(client).toContain('api.sessions.projections')
+  })
+
+  it('the value and the CHOICES come from the two places the host keeps them', () => {
+    // The host publishes the value on the `permissions` projection and the
+    // preset table from a separate catalog; the harness's own selector joins
+    // them exactly this way. Demanding an option list inside the projection
+    // is what turned a good value into 「读不到当前权限」.
+    expect(core).toMatch(/readPermissionValueOf/)
+    expect(core).not.toMatch(/record\.options|Array\.isArray\(record\.options\)/)
+    // …and the panel reads the catalog for the choices, again.
+    expect(panel).toContain('catalog.listPermissions()')
   })
 })
 

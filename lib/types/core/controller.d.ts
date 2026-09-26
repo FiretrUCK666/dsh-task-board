@@ -440,24 +440,20 @@ export interface SessionConfigFace {
         error: string;
     }>;
     /**
-     * Read the session's LIVE permission selection (the native `permissions`
+     * Read the session's LIVE permission value (the native `permissions`
      * projection — the same value the harness's own selector reads).
      *
-     * It is a READ, and it is the only one the panel is allowed to display: the
+     * It is a READ, and it is the only one the panel may display: the
      * `permissions` block that rides a history page is a snapshot of past events,
      * and `/permission` never opens a turn, so that copy never updates and the
-     * select would show the value from before the user changed it. `undefined` =
-     * the host does not serve the projection (an old deployment) — the caller
-     * then says so instead of inventing a default.
+     * select would show the value from before the user changed it. The CHOICES
+     * are not here — the host serves them from the permission-preset catalog, and
+     * the projection carries the value alone.
+     *
+     * `undefined` = the host does not serve the projection (an old deployment) —
+     * the caller then says so instead of inventing a default.
      */
-    readPermission(sessionId: string): Promise<{
-        value: string;
-        options: readonly {
-            value: string;
-            name?: string;
-            description?: string;
-        }[];
-    } | undefined>;
+    readPermission(sessionId: string): Promise<string | undefined>;
 }
 /** Controller dependencies (all swappable in tests). */
 export interface ControllerDeps {

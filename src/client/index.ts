@@ -13,7 +13,7 @@ import { buildApi, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } fr
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
 import { BoardController, type PromptFile, type PromptImage, type ReferenceRemoteFace, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptPage } from '../core/controller.ts'
-import { pickTranscriptProjections, readPermissionProjectionOf } from '../core/projections.ts'
+import { pickTranscriptProjections, readPermissionValueOf } from '../core/projections.ts'
 import { UNTITLED_SESSION_KEY } from '../core/session-list.ts'
 import { ExecutionService, type ExecutionHistoryEvent, type SessionDriver } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
@@ -1005,7 +1005,7 @@ export function apply(ctx: ClientContext): void {
         readPermission: async sessionId => {
           const response = await api.sessions.projections({ sessionId: sessionId as SessionId })
           if (!response.result.ok) return undefined
-          return readPermissionProjectionOf(response.result.value?.values) ?? undefined
+          return readPermissionValueOf(response.result.value?.values)
         },
       } satisfies SessionConfigFace,
       // Linked-session panel's direct composer: the exact same host

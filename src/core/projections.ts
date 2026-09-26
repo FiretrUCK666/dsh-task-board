@@ -179,49 +179,32 @@ export function pickTranscriptProjections(
     : {}
 }
 
-/** The session's LIVE permission selection, as the panel displays it. */
-export interface LivePermissionShape {
-  value: string
-  options: readonly { value: string; name?: string; description?: string }[]
-}
-
 /**
- * The session's live permission selection, read from a projection BASELINE
- * (the host's own `permissions` projection — the same value its permission
- * selector displays).
+ * The session's LIVE permission value, read from a projection BASELINE (the
+ * host's own `permissions` projection — the same value its permission selector
+ * displays).
  *
- * This is the panel's ONLY source, and it is deliberately not
+ * This is the panel's ONLY source for the value, and it is deliberately not
  * {@link pickTranscriptProjections}: that one reads a history page, which is a
  * snapshot of past events. `/permission` opens no turn, so no new event ever
  * appears and a page-scoped copy of this value never refreshes — the panel read
  * it and showed the preset from before the user changed anything, for as long
- * as the panel stayed open. The live read is one explicit call, so it answers
- * "what is it NOW" and answers it again after every write.
+ * as the panel stayed open.
+ *
+ * TWO things the host keeps apart, and so does this: the projection carries
+ **only** `currentValue` (its wire shape is exactly `{ currentValue: string }`),
+ * while the CHOICES come from the separate permission-preset catalog — the
+ * harness's own selector joins them the same way. Reading an option list out of
+ * the projection is how a perfectly good value reads as "unavailable".
  *
  * `undefined` = the host does not serve the projection, or serves it in a
  * shape this plugin cannot read honestly. The caller then SAYS SO; it must
  * never substitute a default, because 「默认」 is itself a claim about the
  * session's state.
  */
-export function readPermissionProjectionOf(values: Record<string, unknown> | undefined): LivePermissionShape | undefined {
+export function readPermissionValueOf(values: Record<string, unknown> | undefined): string | undefined {
   const permissions = values?.permissions
   if (typeof permissions !== 'object' || permissions === null) return undefined
-  const record = permissions as { currentValue?: unknown; options?: unknown }
-  if (typeof record.currentValue !== 'string') return undefined
-  if (!Array.isArray(record.options)) return undefined
-  const options = record.options.flatMap(raw => {
-    if (typeof raw !== 'object' || raw === null) return []
-    const option = raw as { value?: unknown; name?: unknown; description?: unknown }
-    if (typeof option.value !== 'string') return []
-    return [{
-      value: option.value,
-      ...typeof option.name === 'string' ? { name: option.name } : {},
-      ...typeof option.description === 'string' ? { description: option.description } : {},
-    }]
-  })
-  // An option list that does not contain the current value would render a
-  // select sitting on a blank entry — the same lie in a new place.
-  if (options.length === 0) return undefined
-  if (!options.some(option => option.value === record.currentValue)) return undefined
-  return { value: record.currentValue, options }
+  const currentValue = (permissions as { currentValue?: unknown }).currentValue
+  return typeof currentValue === 'string' ? currentValue : undefined
 }

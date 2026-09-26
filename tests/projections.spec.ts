@@ -4,7 +4,7 @@
  * domain never hides the others. Capability absence is key absence.
  */
 import { describe, expect, it } from 'vitest'
-import { pickTranscriptProjections, readPermissionProjectionOf } from '../src/core/projections.ts'
+import { pickTranscriptProjections, readPermissionValueOf } from '../src/core/projections.ts'
 
 const goalValue = {
   goal: {
@@ -101,52 +101,38 @@ describe('pickTranscriptProjections', () => {
   })
 })
 
-describe('readPermissionProjectionOf (the live permission read)', () => {
-  const baseline = (currentValue: string) => ({
-    permissions: {
-      currentValue,
-      options: [
-        { value: 'read-only', name: '只读' },
-        { value: 'workspace-write', name: '工作区可写' },
-      ],
-    },
+describe('readPermissionValueOf (the live permission read)', () => {
+  it('reads the CURRENT value the host publishes — and nothing else', () => {
+    // The wire shape is EXACTLY `{ currentValue: string }`. The CHOICES come
+    // from the separate preset catalog; a reader that demands an `options`
+    // array the host never sends turns a perfectly good value into
+    // 「读不到当前权限」.
+    expect(readPermissionValueOf({ permissions: { currentValue: 'read-only' } })).toBe('read-only')
+    expect(readPermissionValueOf({ permissions: { currentValue: 'workspace-write' } })).toBe('workspace-write')
   })
 
-  it('returns the session\'s real selection, with the host\'s own options', () => {
-    expect(readPermissionProjectionOf(baseline('workspace-write'))).toEqual({
-      value: 'workspace-write',
-      options: [
-        { value: 'read-only', name: '只读' },
-        { value: 'workspace-write', name: '工作区可写' },
-      ],
-    })
+  it('absent, malformed, or non-string baselines answer "I cannot read this"', () => {
+    expect(readPermissionValueOf(undefined)).toBeUndefined()
+    expect(readPermissionValueOf({})).toBeUndefined()
+    expect(readPermissionValueOf({ permissions: 'nope' })).toBeUndefined()
+    expect(readPermissionValueOf({ permissions: { currentValue: 7 } })).toBeUndefined()
+    expect(readPermissionValueOf({ permissions: {} })).toBeUndefined()
   })
 
-  it('a value absent from the baseline is never dressed up as a default', () => {
-    // It would render a select sitting on a blank entry — the same lie in a
-    // new place: a select that looks like it knows the answer and does not.
-    expect(readPermissionProjectionOf(baseline('auto'))).toBeUndefined()
+  it('a value the preset catalog does not list is still a value', () => {
+    // The harness's own selector labels an unlisted current value by its own
+    // id rather than rewriting it, so the panel must not drop it either.
+    expect(readPermissionValueOf({ permissions: { currentValue: 'auto' } })).toBe('auto')
   })
 
-  it('absent, malformed, or option-less baselines answer "I cannot read this"', () => {
-    expect(readPermissionProjectionOf(undefined)).toBeUndefined()
-    expect(readPermissionProjectionOf({})).toBeUndefined()
-    expect(readPermissionProjectionOf({ permissions: 'nope' })).toBeUndefined()
-    expect(readPermissionProjectionOf({ permissions: { options: [], currentValue: '' } })).toBeUndefined()
-    // A missing `name` is honest data, not a failure: the label falls back.
-    expect(readPermissionProjectionOf({ permissions: { currentValue: 'x', options: [{ value: 'x' }] } }))
-      .toEqual({ value: 'x', options: [{ value: 'x' }] })
-  })
-
-  it('reads the CURRENT value, which is the whole difference from the page', () => {
-    // The reported bug as the difference between two channels: a history page
-    // written before the user switched keeps reporting the old preset, and
-    // reading it again returns the old preset again — because `/permission`
-    // opens no turn, so no new event would ever refresh it. The live baseline
-    // moves the moment the write lands.
-    expect(readPermissionProjectionOf(baseline('read-only'))?.value).toBe('read-only')
-    expect(readPermissionProjectionOf(baseline('workspace-write'))?.value).toBe('workspace-write')
-    expect((pickTranscriptProjections(baseline('read-only')) as { projections?: Record<string, unknown> })
+  it('the page-scoped reader has no permission to answer with at all', () => {
+    // The difference between the two channels, stated: a history page written
+    // before the user switched keeps reporting the old preset — and reading it
+    // again returns the old preset again, because `/permission` opens no turn.
+    // The live read moves the moment the write lands.
+    expect(readPermissionValueOf({ permissions: { currentValue: 'read-only' } })).toBe('read-only')
+    expect(readPermissionValueOf({ permissions: { currentValue: 'workspace-write' } })).toBe('workspace-write')
+    expect((pickTranscriptProjections({ permissions: { currentValue: 'read-only' } }) as { projections?: Record<string, unknown> })
       .projections?.permissions).toBeUndefined()
   })
 })

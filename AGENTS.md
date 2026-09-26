@@ -507,9 +507,13 @@ schema 就是给同一件事再加一个控件。
   「这个会话当时做过什么」**（待办、token、上下文压力），**描述会话「现在是什么设置」的
   一律走活投影读**（`SessionConfigFace.readPermission` → `remote.session.projections`）。
   `/permission` 不开新一轮对话，所以历史页里那份拷贝永远不会刷新——面板曾一直显示改动前的
-  预设。**活值读不到就说读不到**（`review.permissionUnreadable`），绝不拿「默认」顶替：
-  「默认」本身就是一个关于会话状态的说法。**实时选择器里不得有「取消设置」项**（`/permission`
-  没有这个动作，选了等于没选）；运行配置表单里的「默认」含义不同（本次运行不写预设），留在那里。
+  预设。**宿主把两件事分开存**（照着 `dsh-api-session-controller` 的 typert 契约抄，不要凭印象）：
+  `permissions` 投影的线上形状**只有 `{ currentValue: string }`**，候选项来自**另一个**
+  `permissionPresets` 目录（`catalog.listPermissions()`）——向投影索要一个 `options` 数组，
+  就会把一个好好的值判成「读不到」。**活值读不到就说读不到**（`review.permissionUnreadable`），
+  绝不拿「默认」顶替：「默认」本身就是一个关于会话状态的说法。**实时选择器里不得有「取消设置」项**
+  （`/permission` 没有这个动作，选了等于没选）；运行配置表单里的「默认」含义不同（本次运行不写
+  预设），留在那里。目录里没有的当前值**照原样显示**，不许悄悄改写成列表里第一项。
 - **借用必持有**：宿主只在**有人持有**某个会话代次时才借出驱动（`sessions.binding` 文档原文：
   "or undefined without a retained generation"；`create()` 的文档原文：先 retain 再借）。所以
   凡是**拥有**一段工作的一次运行、一次续跑、一次新建会话配置，一律经
