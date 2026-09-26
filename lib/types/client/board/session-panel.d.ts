@@ -104,17 +104,9 @@ export declare function ContextMeterPanel({ projections, usage }: {
  * loads the model directory on mount and refreshes after every change; the
  * caller may bump `reloadKey` to force a re-read.
  */
-export declare function SessionConfigEditor({ sessionId, controller, permissionValue, permissionOptions, onChanged, reloadKey }: {
+export declare function SessionConfigEditor({ sessionId, controller, onChanged, reloadKey }: {
     sessionId: string;
     controller: BoardController;
-    /** Projection-backed permission value (authoritative when present). */
-    permissionValue?: string;
-    /** Projection-backed permission options; absent = the route catalog. */
-    permissionOptions?: readonly {
-        id: string;
-        name?: string;
-        description?: string;
-    }[];
     /** Fired after a successful change (the caller refreshes its transcript). */
     onChanged?: () => void;
     /** A value whose change forces a full re-read of the model directory. */

@@ -110,10 +110,12 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
            conversation counts), so "just finished" pulses here and on the
            board card in lockstep. */
         unviewed={sessionUnviewedOf(task, sessionId)}
-        /* THE chip derivation — ONE vocabulary with the linked rows: a
-           settled session reads 已完成 (the run's outcome facts — duration,
-           comments, the review page — carry the execution semantics). */
-        chip={sessionStateChip(session.state, session.waitingKind, 'detail.linkedDone', 'detail.result.cancelled')}
+        /* THE chip derivation — ONE vocabulary with the linked rows AND the
+           review page: a settled conversation reads 成功 / 失败, the same pair
+           the review page shows for the very same round. It used to read 已完成
+           here and 成功 there, so one state had two words depending on which
+           door the user came through. */
+        chip={sessionStateChip(session.state, session.waitingKind, 'detail.result.succeeded', 'detail.result.cancelled')}
         leading={
           <span className={css.sessionRowLeading} title={row.title}>
             {/* The SAME leading grammar as a linked row: a kind icon (play =
@@ -174,7 +176,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
   // ONE chip grammar with the run rows: every linked row carries a state chip
   // (waiting / running / completed / idle) — a row never reads as "no state"
   // next to a run row that always has one.
-  const chip = sessionStateChip(row.display.state, row.display.waitingKind, 'detail.linkedDone', 'detail.linkedIdle', 'detail.idleHint')
+  const chip = sessionStateChip(row.display.state, row.display.waitingKind, 'detail.result.succeeded', 'detail.linkedIdle', 'detail.idleHint')
   // The SAME grammar as a run row: the session's activity window (its rounds
   // on this task — board runs and externally-observed turns alike) plus its
   // comment thread (count + newest body; the state chip is the row's own),

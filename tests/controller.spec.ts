@@ -693,6 +693,39 @@ describe('view state', () => {
     expect(taskUnviewed(controller.getSnapshot().tasks[0])).toBe(false)
   })
 
+  it('opening the CARD clears the card ring but NEVER stamps a round', async () => {
+    // The reported regression: clicking a card made its 待你决断 chip and its
+    // notification row vanish, as if the card were the conversation. A card is
+    // a SUMMARY. The gate and the notification rows read the PER-ROUND clock,
+    // so the contract is structural: `openTask` moves `task.viewedAt` and
+    // nothing else. The only things that may stamp a round are the ones that
+    // reveal a conversation — its panel, its review page, 标已读.
+    let clock = NOW
+    const stub = new StubExec()
+    const { controller, stub: exec } = makeController(stub, { now: () => clock })
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'p' })!
+    clock = NOW + 1_000
+    await controller.runTask(task.id)
+    clock = NOW + 1_500
+    exec.runCalls[0].fire({ kind: 'settled', taskId: task.id, executionId: exec.runCalls[0].executionId, outcome: 'succeeded' })
+    const executionId = exec.runCalls[0].executionId
+    const stampBefore = controller.getSnapshot().tasks[0].executions.find(round => round.id === executionId)!.viewedAt
+    expect(taskUnviewed(controller.getSnapshot().tasks[0])).toBe(true)
+
+    clock = NOW + 2_000
+    controller.openTask(task.id)
+    const opened = controller.getSnapshot().tasks[0]
+    // The card ring retires…
+    expect(opened.viewedAt).toBe(NOW + 2_000)
+    expect(taskUnviewed(opened)).toBe(false)
+    // …and not one round is touched, so every per-conversation clock stands.
+    expect(opened.executions.find(round => round.id === executionId)!.viewedAt).toBe(stampBefore)
+    // Revealing the conversation is a DIFFERENT call, and it does stamp.
+    controller.markExecutionViewed(task.id, executionId)
+    expect(controller.getSnapshot().tasks[0].executions.find(round => round.id === executionId)!.viewedAt)
+      .toBe(NOW + 2_000)
+  })
+
   it('markExecutionViewed clears a row unread and persists', async () => {
     let clock = NOW
     const stub = new StubExec()
@@ -1566,6 +1599,7 @@ describe('session config face', () => {
       readModels: async () => ({ current: { provider: 'p', model: 'm' }, groups: [] }),
       selectModel: async () => ({ ok: true as const }),
       setPermission: async () => ({ ok: true as const }),
+      readPermission: async () => undefined,
     }
     const { controller: wired } = makeController(new StubExec(), { sessionConfig: face })
     expect(wired.sessionConfig()).toBe(face)
@@ -5189,7 +5223,7 @@ describe('session activity: subagent descendants keep the card live', () => {
     expect(controller.liveStateOf(task.id)).toBe('running')
     // The light reads the same fact as the border (`data-status`), so a card in
     // the running column MUST pulse — this is the reported 有黄边、没呼吸 bug.
-    const view = cardViewModelOf(task, { pendingCount: 0, unviewedCount: 0 })
+    const view = cardViewModelOf(task)
     expect(view.active).toBe(true)
     expect(cardLightOf(view.active, false)).toBe('halo')
   })
@@ -5704,6 +5738,103 @@ describe('landing order (a card that changes column floats to the top of the col
     // An unrelated edit must not reshuffle the column.
     controller.updateTask(B, { title: 'B2' })
     expect(rendered(controller, 'todo')).toEqual([B, C, A])
+  })
+})
+
+/**
+ * 会话列的顶格：卡片那条「最新发生的在最上」律在会话上的对偶。
+ *
+ * 这组用例钉的是同一个漏斗（`land`）上的另一半：会话**开始工作**或**结束工作**
+ * 时顶到会话列最上方。它从前完全没有触发器——`sessionsOrder` 一旦被拖拽写满
+ * 就永久冻结，而没拖过的卡又拿「代表轮次的开始时间」当排序键，于是正在跑的会
+ * 话排在刚结束的后面。每条触发路径各有用例：运行开始 / 运行结束 / 评论注入 /
+ * 旁听到的原生对话 / 直发插话，以及一条「标已读不许重排」的反向用例。
+ */
+describe('session order (a conversation that starts or finishes work floats to the top of the card\'s session list)', () => {
+  /** 卡片上当前的会话排列（`orderedSessionsOf` 读的就是它）。 */
+  const sessionsOf = (controller: BoardController, taskId: string): string[] =>
+    controller.getSnapshot().tasks.find(task => task.id === taskId)?.sessionsOrder ?? []
+
+  /** 一张卡：每个会话都有一轮已结算的活，排列就是传入的顺序。 */
+  function cardWith(store: InMemoryTaskStore, id: string, sessionIds: string[]): TaskRecord {
+    return {
+      ...seedTask(store, { id }),
+      executions: sessionIds.map((sessionId, index) => ({
+        id: `e-${index}`, sessionId, startedAt: NOW + index, endedAt: NOW + index + 1, result: 'succeeded' as const, error: undefined,
+      })),
+      sessionsOrder: [...sessionIds],
+    }
+  }
+
+  function cardController(store: InMemoryTaskStore, stub: StubExec, extra: Partial<ControllerDeps> = {}): BoardController {
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions: new FakeSessions(), now: () => NOW, uuid, ...extra,
+    })
+    controller.start()
+    return controller
+  }
+
+  it('a run starting promotes its session; a second run on another session floats above it', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    store.save([cardWith(store, 'card', ['s-1', 's-2'])])
+    const controller = cardController(store, stub)
+    expect(sessionsOf(controller, 'card')).toEqual(['s-1', 's-2'])
+
+    // s-2 starts working: the round learns which session it runs in on the
+    // `started` event — the first ledger fact that names a session for a run.
+    const first = await launchRound(controller, 'card', stub)
+    stub.runCalls[0].fire({ kind: 'started', taskId: 'card', executionId: first, sessionId: 's-2' })
+    expect(sessionsOf(controller, 'card')).toEqual(['s-2', 's-1'])
+
+    // s-1's lane starts: it floats above s-2, and s-2 keeps the slot below.
+    // The first lane settles first (a card may only run one round at a time).
+    stub.runCalls[0].fire({ kind: 'settled', taskId: 'card', executionId: first, outcome: 'succeeded' })
+    const second = await launchRound(controller, 'card', stub)
+    expect(second).not.toBe('')
+    stub.runCalls[1].fire({ kind: 'started', taskId: 'card', executionId: second, sessionId: 's-1' })
+    expect(sessionsOf(controller, 'card')).toEqual(['s-1', 's-2'])
+  })
+
+  it('a settle on a session that was NOT on top floats it — the finished conversation is the newest news', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    // s-2 first, so a settle on s-1 has somewhere to climb to.
+    store.save([cardWith(store, 'card', ['s-2', 's-1'])])
+    const controller = cardController(store, stub)
+    expect(sessionsOf(controller, 'card')).toEqual(['s-2', 's-1'])
+
+    const round = await launchRound(controller, 'card', stub)
+    stub.runCalls[0].fire({ kind: 'started', taskId: 'card', executionId: round, sessionId: 's-1' })
+    expect(sessionsOf(controller, 'card')).toEqual(['s-1', 's-2'])
+    stub.runCalls[0].fire({ kind: 'settled', taskId: 'card', executionId: round, outcome: 'succeeded' })
+    expect(sessionsOf(controller, 'card')).toEqual(['s-1', 's-2'])
+    expect(controller.getSnapshot().tasks.find(task => task.id === 'card')?.status).toBe('review')
+  })
+
+  it('a steer into a bound session floats it', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    store.save([{ ...cardWith(store, 'card', ['s-1', 's-2']), status: 'todo' as const }])
+    const controller = cardController(store, stub, { sessionMessage: async () => ({ ok: true as const }) })
+    expect(sessionsOf(controller, 'card')).toEqual(['s-1', 's-2'])
+    // The direct-send round is born through the funnel, so the lane that just
+    // received a message is the newest thing on the card.
+    await controller.sendSessionMessage('card', 's-2', '看一眼这个')
+    expect(sessionsOf(controller, 'card')).toEqual(['s-2', 's-1'])
+  })
+
+  it('marking a round read NEVER reorders the list', () => {
+    // The trap this pins: the lifecycle fingerprint must exclude `viewedAt`, or
+    // a glance at a conversation reshuffles the whole card.
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    store.save([cardWith(store, 'card', ['s-1', 's-2'])])
+    const controller = cardController(store, stub)
+    const before = sessionsOf(controller, 'card')
+    controller.markExecutionViewed('card', 'e-0')
+    expect(sessionsOf(controller, 'card')).toEqual(before)
   })
 })
 

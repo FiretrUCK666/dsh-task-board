@@ -13,7 +13,7 @@
  */
 import type { PendingInteractionKind } from './controller.ts'
 import type { LinkedSessionRow } from './linked-sessions.ts'
-import { linkedSessionDisplay, sessionDisplay, sessionTimes, type SessionDisplay } from './session-display.ts'
+import { linkedSessionDisplay, sessionActivityOf, sessionDisplay, type SessionDisplay } from './session-display.ts'
 import { plainRunsOf, type TaskRecord } from './tasks.ts'
 
 /** One displayed session row (one per real session, de-duplicated). */
@@ -134,8 +134,9 @@ export interface TaskSessionContext {
  *   executed and bound reads as the task's own run — it carries the execution
  *   identity and the quiet run number; the per-session unread glow reads
  *   `sessionUnviewedOf`, never this list).
- * - hidden sessions are dropped; run rows sort by latest activity, then
- *   linked rows in workspace order.
+ * - hidden sessions are dropped; run rows sort by their own latest activity
+ *   (the row's display reading, so a running session ranks by when it started
+ *   and a settled one by when it ended), then linked rows in workspace order.
  */
 export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskSessionRow[] {
   const hidden = hiddenSessionIdsOf(task)
@@ -153,12 +154,17 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
     if (execution.sessionId === undefined) continue
     const sessionId = execution.sessionId
     if (removed.includes(sessionId) || isArchived(sessionId)) continue
+    const display = sessionDisplay(task, execution, ctx.pendingInteractionOf(sessionId), ctx.sessionActiveOf?.(sessionId) ?? false)
     runBySession.set(sessionId, {
       sessionId,
       title: sessionRowTitleOf(ctx.titleOf(sessionId), ctx.untitledLabel ?? task.title),
       executionId: execution.id,
-      display: sessionDisplay(task, execution, ctx.pendingInteractionOf(sessionId), ctx.sessionActiveOf?.(sessionId) ?? false),
-      updatedAt: sessionTimes(task, execution).endedAt ?? execution.startedAt,
+      display,
+      // THE order key is the session's own latest activity — the same reading
+      // the unread clock takes, and the same one a run row and a linked row
+      // both use. An open round counts as its own start (that is when the work
+      // began), a settled one by its end.
+      updatedAt: sessionActivityOf(task, sessionId) || execution.startedAt,
     })
   }
   const rows: TaskSessionRow[] = []
@@ -180,6 +186,12 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
     const linkedTitle = linked.title !== linked.sessionId
       ? linked.title
       : sessionRowTitleOf(ctx.titleOf(linked.sessionId), ctx.untitledLabel ?? linked.sessionId)
+    const display = linkedSessionDisplay(
+      task,
+      linked.sessionId,
+      linked.pendingInteraction,
+      ctx.sessionActiveOf?.(linked.sessionId) ?? false,
+    )
     rows.push({
       sessionId: linked.sessionId,
       title: linkedTitle,
@@ -189,24 +201,28 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
       // 进行中 (the 开始/结束/耗时 meta line beside them reads the same
       // rounds), waiting and native activity outrank, and a binding with no
       // rounds on this task reads 未运行 — one model, never a second dialect.
-      display: linkedSessionDisplay(
-        task,
-        linked.sessionId,
-        linked.pendingInteraction,
-        ctx.sessionActiveOf?.(linked.sessionId) ?? false,
-      ),
-      updatedAt: linked.updatedAt,
+      display,
+      // Same order key as a run row, from the same derivation: the session's
+      // own rounds AND the native `updatedAt` it is bound to, whichever is
+      // newer. A bound conversation that worked on THIS task is newer news than
+      // the host's last touch, and a conversation that only ever worked in the
+      // native UI is not demoted by having no rounds here.
+      updatedAt: Math.max(sessionActivityOf(task, linked.sessionId), linked.updatedAt),
     })
   }
   return orderedSessionsOf(task, rows)
 }
 
 /**
- * The displayed order of the unified list: the user's manual array first
- * (rows inside it follow its exact order), then every other row — a session
- * that arrived after the reorder (a new bind, a fresh run, a rerun) lands at
- * the TOP, newest-activity first. A manual order never hides a row; it only
- * overrides the default sort.
+ * The displayed order of the unified list: the current arrangement first (rows
+ * inside it follow its exact order), then every row that is not in it — a
+ * session that arrived after the last arrangement (a new bind, a fresh run)
+ * lands at the TOP, newest-activity first.
+ *
+ * The arrangement array is written by two hands and read by neither: the user
+ * drags (`reorderTaskSession`) and the engine promotes a session that just
+ * started or finished work (`promoteSessionsToTop`). An arrangement never
+ * hides a row; it only fixes the order of the rows it names.
  */
 export function orderedSessionsOf(task: TaskRecord, rows: readonly TaskSessionRow[]): TaskSessionRow[] {
   const order = task.sessionsOrder ?? []

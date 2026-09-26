@@ -1,5 +1,5 @@
 /**
- * Structural projection pick: read the official session-projection values
+ * Structural projection pick: read the PAGE-SCOPED session-projection values
  * riding the history tail page into the board's `TranscriptProjectionsShape`.
  *
  * `values` is typed as `Partial<SessionProjectionMap>`, a merge table whose
@@ -9,11 +9,17 @@
  * dropped (the key's absence is handled gracefully downstream: capability
  * absence is key absence, never a crash, never a fake zero).
  *
+ * WHAT DOES NOT BELONG HERE: a value describing what a session IS right now
+ * rather than what it had recorded. The `permissions` projection is the case
+ * that proved it — `/permission` opens no turn, so this page's copy of it
+ * never refreshed and the panel displayed the value from before the user
+ * changed anything. Current settings are read live instead (see
+ * `SessionConfigFace.readPermission`).
+ *
  * Pure and framework-free, so the pick matrix unit-tests in isolation; the
  * client wiring (`index.ts`) only calls it.
  */
 import type {
-  PermissionOptionShape,
   SessionGoalShape,
   SessionStatsShape,
   SessionTodoShape,
@@ -61,25 +67,13 @@ export function pickTranscriptProjections(
       projections.contextBreakdown = { systemTokens, toolsTokens, messageTokens }
     }
   }
-  const permissions = values.permissions
-  if (isRecord(permissions)) {
-    const options = permissions.options
-    const currentValue = permissions.currentValue
-    if (Array.isArray(options) && typeof currentValue === 'string') {
-      const rows: PermissionOptionShape[] = []
-      for (const option of options) {
-        if (!isRecord(option)) continue
-        if (typeof option.value === 'string' && typeof option.name === 'string') {
-          rows.push({
-            value: option.value,
-            name: option.name,
-            ...typeof option.description === 'string' ? { description: option.description } : {},
-          })
-        }
-      }
-      if (rows.length > 0) projections.permissions = { options: rows, currentValue }
-    }
-  }
+  // NOT lifted here: the `permissions` projection. This block is the one riding
+  // a HISTORY PAGE, i.e. a snapshot of past events — right for what a session
+  // HAD SAID (todos, token accounting, context pressure), wrong for what a
+  // session IS. A per-session setting like the permission preset is changed by
+  // a command that never opens a turn, so no new event appears and this copy
+  // never refreshes; the panel read it and showed a stale value forever. It
+  // now comes from the live projection read (`SessionConfigFace.readPermission`).
   // The official `todos` projection (the harness's own TodoPanel reads the
   // same host-computed whole list) — structural pick, no typing imports.
   const todos = values.todos
@@ -178,9 +172,39 @@ export function pickTranscriptProjections(
     }
   }
   return projections.contextPressure !== undefined || projections.contextBreakdown !== undefined
-    || projections.permissions !== undefined || projections.todos !== undefined
+    || projections.todos !== undefined
     || projections.tokenUsage !== undefined || projections.sessionStats !== undefined
     || projections.goal !== undefined
     ? { projections }
     : {}
+}
+
+/**
+ * The session's LIVE permission value, read from a projection BASELINE (the
+ * host's own `permissions` projection — the same value its permission selector
+ * displays).
+ *
+ * This is the panel's ONLY source for the value, and it is deliberately not
+ * {@link pickTranscriptProjections}: that one reads a history page, which is a
+ * snapshot of past events. `/permission` opens no turn, so no new event ever
+ * appears and a page-scoped copy of this value never refreshes — the panel read
+ * it and showed the preset from before the user changed anything, for as long
+ * as the panel stayed open.
+ *
+ * TWO things the host keeps apart, and so does this: the projection carries
+ **only** `currentValue` (its wire shape is exactly `{ currentValue: string }`),
+ * while the CHOICES come from the separate permission-preset catalog — the
+ * harness's own selector joins them the same way. Reading an option list out of
+ * the projection is how a perfectly good value reads as "unavailable".
+ *
+ * `undefined` = the host does not serve the projection, or serves it in a
+ * shape this plugin cannot read honestly. The caller then SAYS SO; it must
+ * never substitute a default, because 「默认」 is itself a claim about the
+ * session's state.
+ */
+export function readPermissionValueOf(values: Record<string, unknown> | undefined): string | undefined {
+  const permissions = values?.permissions
+  if (typeof permissions !== 'object' || permissions === null) return undefined
+  const currentValue = (permissions as { currentValue?: unknown }).currentValue
+  return typeof currentValue === 'string' ? currentValue : undefined
 }

@@ -7,7 +7,6 @@ import {
   sessionDisplay,
   sessionTimes,
   sessionUnviewedOf,
-  taskPendingCount,
   taskUnviewed,
   taskUnviewedCount,
 } from '../src/core/session-display.ts'
@@ -425,67 +424,6 @@ describe('sessionTimes', () => {
     expect(result.startedAt).toBe(100)
     expect(result.endedAt).toBe(380)
     expect(result.duration).toBe(280)
-  })
-})
-
-describe('taskPendingCount', () => {
-  it('returns 0 when no sessions are waiting', () => {
-    const exec = round('exec-1', {
-      startedAt: 100,
-      sessionId: 's1',
-      endedAt: 150,
-      result: 'succeeded',
-    })
-    const task = taskWith([exec])
-    const pendingOf = () => undefined
-    const result = taskPendingCount(task, pendingOf)
-    expect(result.count).toBe(0)
-    expect(result.items).toEqual([])
-  })
-
-  it('counts waiting execution sessions', () => {
-    const exec = round('exec-1', { startedAt: 100, sessionId: 's1' })
-    const task = taskWith([exec])
-    const pendingOf = (sid: string | undefined) =>
-      sid === 's1' ? 'approval' : undefined
-    const result = taskPendingCount(task, pendingOf)
-    expect(result.count).toBe(1)
-    expect(result.items).toEqual([
-      { executionId: 'exec-1', sessionId: 's1', waitingKind: 'approval' },
-    ])
-  })
-
-  it('counts multiple waiting sessions', () => {
-    const exec1 = round('exec-1', { startedAt: 100, sessionId: 's1' })
-    const exec2 = round('exec-2', { startedAt: 200, sessionId: 's2' })
-    const task = taskWith([exec1, exec2])
-    const pendingOf = (sid: string | undefined) =>
-      sid === 's1' ? 'approval' : sid === 's2' ? 'question' : undefined
-    const result = taskPendingCount(task, pendingOf)
-    expect(result.count).toBe(2)
-    expect(result.items).toEqual([
-      { executionId: 'exec-1', sessionId: 's1', waitingKind: 'approval' },
-      { executionId: 'exec-2', sessionId: 's2', waitingKind: 'question' },
-    ])
-  })
-
-  it('ignores executions without sessionId', () => {
-    const exec = round('exec-1', { startedAt: 100 }) // no sessionId
-    const task = taskWith([exec])
-    const pendingOf = (_sessionId: string | undefined) => 'approval' as const
-    const result = taskPendingCount(task, pendingOf)
-    expect(result.count).toBe(0)
-  })
-
-  it('dedupes three executions on the same waiting session to one row', () => {
-    const task = taskWith([
-      round('exec-1', { startedAt: 100, sessionId: 's1' }),
-      round('exec-2', { startedAt: 200, sessionId: 's1' }),
-      round('exec-3', { startedAt: 300, sessionId: 's1' }),
-    ])
-    const result = taskPendingCount(task, () => 'question' as const)
-    expect(result.count).toBe(1)
-    expect(result.items).toEqual([{ executionId: 'exec-1', sessionId: 's1', waitingKind: 'question' }])
   })
 })
 

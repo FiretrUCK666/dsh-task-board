@@ -34,7 +34,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteManyToColumnTop, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, supplementLaunchFields, taskBindsOf, taskExecutable, withSchedule, withStatus,
+  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteManyToColumnTop, promoteSessionsToTop, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, startedOrSettledSessions, supplementLaunchFields, taskBindsOf, taskExecutable, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -338,22 +338,6 @@ export interface ContextBreakdownShape {
   messageTokens: number
 }
 
-/** One permission-preset option the session's select can switch to (native PermissionSelect). */
-export interface PermissionOptionShape {
-  value: string
-  name: string
-  description?: string
-}
-
-/** The session's real permission select (native `permissions` projection): the
- *  effective current value plus the switchable options — the authority the
- *  review page's permission switcher must read (the task card's permission
- *  field only configures the next fresh run). */
-export interface PermissionSelectShape {
-  options: readonly PermissionOptionShape[]
-  currentValue: string
-}
-
 /** The native todo item shape (the official `todos` projection's row — the
  *  same `TodoItem` the harness's own TodoPanel renders; read structurally so
  *  future reshapes degrade, never crash). */
@@ -402,11 +386,18 @@ export interface SessionGoalShape {
   updatedAt: number
 }
 
-/** The projection slice the review page reads (the history tail page's block). */
+/**
+ * The projection slice the transcript tail page carries.
+ *
+ * These are PAGE-SCOPED facts — what the session had recorded by the time the
+ * page was written. Anything that describes a session's CURRENT setting is
+ * deliberately absent and read live instead (see
+ * `SessionConfigFace.readPermission`): `/permission` never opens a turn, so no
+ * new event would ever refresh a page-scoped copy of it.
+ */
 export interface TranscriptProjectionsShape {
   contextPressure?: ContextPressureShape
   contextBreakdown?: ContextBreakdownShape
-  permissions?: PermissionSelectShape
   /** The agent's whole todo list (the official `todos` projection, last-write
    *  wins); absent when the domain package/deployment does not serve it. */
   todos?: readonly SessionTodoShape[]
@@ -477,6 +468,21 @@ export interface SessionConfigFace {
   ): Promise<{ ok: true } | { ok: false; error: string }>
   /** Apply a permission preset through the native `/permission` command. */
   setPermission(sessionId: string, permission: string): Promise<{ ok: true } | { ok: false; error: string }>
+  /**
+   * Read the session's LIVE permission value (the native `permissions`
+   * projection — the same value the harness's own selector reads).
+   *
+   * It is a READ, and it is the only one the panel may display: the
+   * `permissions` block that rides a history page is a snapshot of past events,
+   * and `/permission` never opens a turn, so that copy never updates and the
+   * select would show the value from before the user changed it. The CHOICES
+   * are not here — the host serves them from the permission-preset catalog, and
+   * the projection carries the value alone.
+   *
+   * `undefined` = the host does not serve the projection (an old deployment) —
+   * the caller then says so instead of inventing a default.
+   */
+  readPermission(sessionId: string): Promise<string | undefined>
 }
 
 /** Controller dependencies (all swappable in tests). */
@@ -1223,21 +1229,28 @@ export class BoardController {
   }
 
   openTask(id: string): void {
-    if (this.tasks.some(task => task.id === id)) {
-      // Opening the detail clears the card's unread reminder: the latest
-      // content is now visible (per-row unread dots stay until each review
-      // page is opened). Persisted so a refresh keeps the cleared state.
-      const at = this.now()
-      let changed = false
-      this.tasks = this.tasks.map(task => {
-        if (task.id !== id || task.viewedAt === at) return task
-        changed = true
-        return { ...task, viewedAt: at }
-      })
-      if (changed) this.persistAndNotify()
-      this.selectedTaskId = id
-      this.notify()
-    }
+    if (!this.tasks.some(task => task.id === id)) return
+    // Opening the card clears the CARD-level unread reminder only — the ring,
+    // the「新 N」chip, the 未运行 dots. It is a summary: reading the card is not
+    // reading the conversation, so it must NOT touch the per-round read clock.
+    //
+    // The gate (待你决断) and the notification rows read the per-SESSION clock
+    // (`sessionUnviewedOf`), and the only things that move it are the ones that
+    // actually reveal a conversation: its panel (`markTaskSessionViewed`), its
+    // review page (`markExecutionViewed`), or an explicit 标已读. Collapsing
+    // the card-level baseline into the round-level one is what made 「点开卡片
+    // 通知就没了」 — the card opening can never stand in for opening the
+    // conversation it is about.
+    const at = this.now()
+    let changed = false
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== id || task.viewedAt === at) return task
+      changed = true
+      return { ...task, viewedAt: at }
+    })
+    if (changed) this.persistAndNotify()
+    this.selectedTaskId = id
+    this.notify()
   }
 
   /**
@@ -2777,18 +2790,21 @@ export class BoardController {
       // The turn this direct-send starts is already recorded as a direct
       // round — keep the running flip from ALSO becoming an external round.
       this.directGraceUntil.set(sessionId, this.now() + DIRECT_GRACE_MS)
-      this.tasks = this.tasks.map(task => task.id === taskId
-        ? {
-            ...task,
-            updatedAt: this.now(),
-            executions: [...task.executions, newDirectRound({
-              id: this.uuid(),
-              now: this.now(),
-              text: trimmed,
-              sessionId,
-            })],
-          }
-        : task)
+      const card = this.tasks.find(task => task.id === taskId)
+      if (card !== undefined) {
+        // Through the landing funnel: the round is born, so the session list
+        // reads "this conversation just started working" on the same pass.
+        this.land(taskId, {
+          ...card,
+          updatedAt: this.now(),
+          executions: [...card.executions, newDirectRound({
+            id: this.uuid(),
+            now: this.now(),
+            text: trimmed,
+            sessionId,
+          })],
+        }, this.now())
+      }
       this.persistAndNotify()
       return result
     })
@@ -2872,18 +2888,21 @@ export class BoardController {
       // The direct-sent turn is already what the steer created — keep the
       // running flip from ALSO becoming an external round.
       this.directGraceUntil.set(sessionId, this.now() + DIRECT_GRACE_MS)
-      this.tasks = this.tasks.map(task => task.id === taskId
-        ? {
-            ...task,
-            updatedAt: this.now(),
-            executions: [...task.executions, newDirectRound({
-              id: this.uuid(),
-              now: this.now(),
-              text: trimmed,
-              sessionId,
-            })],
-          }
-        : task)
+      const card = this.tasks.find(task => task.id === taskId)
+      if (card !== undefined) {
+        // Through the landing funnel: the round is born, so the session list
+        // reads "this conversation just started working" on the same pass.
+        this.land(taskId, {
+          ...card,
+          updatedAt: this.now(),
+          executions: [...card.executions, newDirectRound({
+            id: this.uuid(),
+            now: this.now(),
+            text: trimmed,
+            sessionId,
+          })],
+        }, this.now())
+      }
       this.persistAndNotify()
       return { ok: true as const }
     })
@@ -3263,15 +3282,25 @@ export class BoardController {
       ...(images !== undefined && images.length > 0 ? { images } : {}),
       ...(files !== undefined && files.length > 0 ? { files } : {}),
     })
-    this.tasks = this.tasks.map(candidate => candidate.id === taskId
-      ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
-      : candidate)
+    // A saved comment is not work yet: it is queued, not injected, so it starts
+    // nothing in any session. The round is still written through the landing
+    // funnel — that is the one place round records enter the ledger, so the
+    // card's session list is judged by the same law whether the round was born
+    // queued here or injected later. The column does not move: the revival
+    // above already moved it, and a same-column landing promotes no card.
+    const queued = this.tasks.find(candidate => candidate.id === taskId)
+    if (queued !== undefined) {
+      this.land(taskId, {
+        ...queued,
+        updatedAt: this.now(),
+        executions: [...queued.executions, round],
+      }, this.now())
+    }
     this.persistAndNotify()
     return round
   }
 
-  /** A comment on a completed task revives it: moving the task back to 待办 is
-   *  the SAME column transition as a drag (the schedule re-arms per column
+  /** A comment on a completed task revives it: moving the task back to 待办 is   *  the SAME column transition as a drag (the schedule re-arms per column
    *  rules), so the comment drives the task instead of hitting a dead end. */
   private reviveTaskIfDone(taskId: string): void {
     const task = this.tasks.find(candidate => candidate.id === taskId)
@@ -3348,9 +3377,17 @@ export class BoardController {
       // FIRST is what makes the steer launch single-shot).
       ...injectedAt !== undefined ? { injectedAt } : {},
     }
-    this.tasks = this.tasks.map(candidate => candidate.id === taskId
-      ? { ...candidate, updatedAt: this.now(), executions: [...candidate.executions, round] }
-      : candidate)
+    // Same one-door rule as every other round (see `submitComment`): a steer
+    // rule round is born already injected, so THIS landing is the moment that
+    // session started working and the card's session list promotes it.
+    const current = this.tasks.find(candidate => candidate.id === taskId)
+    if (current !== undefined) {
+      this.land(taskId, {
+        ...current,
+        updatedAt: this.now(),
+        executions: [...current.executions, round],
+      }, this.now())
+    }
     this.persistAndNotify()
     return round
   }
@@ -3461,9 +3498,14 @@ export class BoardController {
     // never mutate the closed controller — no state writes after teardown.
     if (this.disposed) return
     if (event.kind === 'started') {
-      this.tasks = this.tasks.map(task => task.id === event.taskId
-        ? attachSessionId(task, event.executionId, event.sessionId, this.now())
-        : task)
+      // The round learned which session it runs in — the ledger's first
+      // "this session started working" fact for it. It goes through the
+      // landing funnel so the card's session list promotes that conversation
+      // (a same-column landing promotes no card, so the column is untouched).
+      const before = this.tasks.find(task => task.id === event.taskId)
+      if (before !== undefined) {
+        this.land(event.taskId, attachSessionId(before, event.executionId, event.sessionId, this.now()), this.now())
+      }
       this.persistAndNotify()
       return
     }
@@ -3640,18 +3682,25 @@ export class BoardController {
   }
 
   /**
-   * 引擎派生的换栏落地——**唯一**的落点。写入新记录，并把它顶到目标栏的
-   * 最上方（「最新状态在前」这条律），让「刚完成的是哪一张」一眼可见。
+   * Engine-derived column landing — **THE** one landing point. Writes the new
+   * record, promotes the card to the top of the column it landed in (「最新
+   * 状态在前」), and promotes every session this landing started or finished
+   * work in to the top of the card's session list (the same law, one column
+   * down). Four semantics, all fixed:
    *
-   * 换栏的历史由 `settleRound` / `withStatus` 那一步追加；本方法只负责把
-   * 记录落进台账并排好序。三条语义定死：
-   *
-   * 1. **只有真的换了栏才重排**。留在原栏的结算（链式/批量未完、插话后仍有
-   *    别的会话在跑）只写记录，不动该栏其他卡片的顺序。
-   * 2. **用户拖动的位置永不被覆盖**。人工重排走 `moveTask` /
-   *    `applyCardOrder`，是另一条独立路径，提升逻辑碰不到它。
-   * 3. **写入的是调用方给的新记录**，不重新推导。旧栏位由本方法自己从台账
-   *    里读，所以调用方传一个过期的 `before` 也不会让提升漏判。
+   * 1. **只有真的换了栏才重排卡片**. A settlement that stays in its column
+   *    (chain/batch unfinished, a steer while another session still runs) only
+   *    writes the record and leaves the column's other cards alone.
+   * 2. **用户拖动的位置永不被覆盖**. Manual reordering goes through
+   *    `moveTask` / `applyCardOrder` / `reorderTaskSession`, which are separate
+   *    paths no promotion can reach.
+   * 3. **写入的是调用方给的新记录**, never re-derived. The old column is read
+   *    from the ledger here, so a stale `before` from the caller cannot make a
+   *    promotion misjudge.
+   * 4. **会话顶格只认轮次生命周期的变化** (`startedOrSettledSessions`): a new
+   *    round, one that just got its session, one just injected, one just
+   *    settled. Marking a round read is not a change, and neither is deleting
+   *    a session.
    */
   private land(id: string, after: TaskRecord, now: number): void {
     this.landMany([{ id, after }], now)
@@ -3673,7 +3722,24 @@ export class BoardController {
       const current = this.tasks.find(task => task.id === entry.id)
       return current !== undefined && current.status !== entry.after.status
     })
-    const records = new Map(entries.map(entry => [entry.id, entry.after]))
+    // 同一落里，会话列的顶格与卡片的顶格是同一条律的两半：这一落让哪个会话
+    // **开始工作或结束工作**（台账里轮次生命周期的新增/变化），它就顶到会话列
+    // 最上方。判据读落位**前**的台账，所以调用方传一份已经写好的记录（外部
+    // 旁听轮次那条路）就等于什么都没发生——那正是那几处必须改走本方法的原因。
+    const promoted = new Map<string, string[]>()
+    for (const entry of entries) {
+      const current = this.tasks.find(task => task.id === entry.id)
+      if (current === undefined) continue
+      const started = startedOrSettledSessions(current, entry.after)
+      if (started.length > 0) promoted.set(entry.id, started)
+    }
+    const records = new Map(entries.map(entry => {
+      const sessions = promoted.get(entry.id)
+      const after = sessions === undefined
+        ? entry.after
+        : promoteSessionsToTop(entry.after, sessions, now)
+      return [entry.id, after]
+    }))
     this.tasks = this.tasks.map(task => records.get(task.id) ?? task)
     if (moved.length === 0) return
     this.tasks = promoteManyToColumnTop(
@@ -4072,7 +4138,20 @@ export class BoardController {
         if (this.directFallbackRounds.get(task.id) === latest.id) continue
         this.directFallbackRounds.set(task.id, latest.id)
         const target = leaveRunningTargetOf(task, live, { ignoreSchedule: true }) ?? DIRECT_FALLBACK_STATUS
-        this.land(task.id, withStatus(task, target, now), now)
+        // THE one session promotion the ledger cannot report: a direct-steer
+        // round is settled at birth, so the turn that actually ends here left
+        // no field to change — the ledger diff in `land` sees nothing. This
+        // edge IS that lane's completion, so the lane is promoted here, and the
+        // only place in the controller that names a session for promotion
+        // outside the funnel.
+        const demoted = withStatus(task, target, now)
+        this.land(
+          task.id,
+          latest.sessionId !== undefined
+            ? promoteSessionsToTop(demoted, [latest.sessionId], now)
+            : demoted,
+          now,
+        )
         changed = true
         if (!this.disposed) this.settledFollowUp(latest, task.id, 'succeeded')
       }
@@ -4288,8 +4367,8 @@ export class BoardController {
   ): boolean {
     const now = this.now()
     let changed = false
-    this.tasks = this.tasks.map(task => {
-      if (task.id !== taskId) return task
+    for (const task of this.tasks) {
+      if (task.id !== taskId) continue
       // Re-check every guard on the CURRENT record (the transcript read and
       // the live frame both await; another channel may have recorded meanwhile).
       // "Busy" here is the SAME lane judgment the dispatcher uses: a round is
@@ -4297,9 +4376,9 @@ export class BoardController {
       // saved-and-queued must never swallow a native turn — the user chatting
       // in the workspace is real activity that belongs in the thread, and the
       // queued comment then waits for it (one session, in order).
-      if (sessionIsBusy(task, sessionId)) return task
-      if (msg?.anchor !== undefined && task.executions.some(round => round.sessionId === sessionId && round.anchor === msg.anchor)) return task
-      if (this.inBoardTurnOn(task, sessionId, now)) return task
+      if (sessionIsBusy(task, sessionId)) continue
+      if (msg?.anchor !== undefined && task.executions.some(round => round.sessionId === sessionId && round.anchor === msg.anchor)) continue
+      if (this.inBoardTurnOn(task, sessionId, now)) continue
       changed = true
       const withRound: TaskRecord = {
         ...task,
@@ -4313,14 +4392,14 @@ export class BoardController {
           ...msg !== undefined && msg.text === undefined && msg.hasImage ? { imageOnly: true } : {},
         })],
       }
-      return withRound.status === 'running' ? withRound : withStatus(withRound, 'running', now)
-    })
+      // The funnel writes this record — it must NOT be written here first, or
+      // the landing would compare the ledger against itself and see no change
+      // (no card promotion, no session promotion).
+      this.land(taskId, withRound.status === 'running' ? withRound : withStatus(withRound, 'running', now), now)
+      break
+    }
     if (!changed) return false
     this.activityBook.externalSince.set(sessionId, now)
-    // The observed turn joined the card's session set, so the funnel re-reads
-    // the row it just wrote (it is the one landing: newest of 进行中).
-    const landed = this.tasks.find(candidate => candidate.id === taskId)
-    if (landed !== undefined) this.land(taskId, landed, now)
     this.persistAndNotify()
     return true
   }

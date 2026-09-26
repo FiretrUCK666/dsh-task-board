@@ -2,32 +2,56 @@
  * Card view-model: THE one prioritized summary every task card renders.
  * Pure so the column, the detail badge and tests read the same truth.
  *
- * Priority (matches the breathing-light table — waiting > running >
- * queued > failed-review > unviewed-review > idle):
- * waiting (pending interaction) outranks everything; running = any related
- * session genuinely working; queued =
- * saved comments waiting for the dispatcher; failed = latest plain run
- * failed in review; review = succeeded awaiting confirmation (unviewed only
- * for the glow, read review stays quiet); idle otherwise.
+ * WHY THIS FILE IS THE WHOLE ANSWER
+ *
+ * The card used to have TWO priority chains: `cardViewModelOf` ranked
+ * waiting > running > queued > failed > review > idle, and the component then
+ * rendered a DIFFERENT one (running → pending → awaiting-decision → run
+ * count). The model's own primary word therefore never reached the screen: a
+ * queued card showed no primary at all, and a failed one showed 待你决断 on one
+ * line and 失败待决策 on the next. And the component re-derived four more facts
+ * of its own (the run list, the last result, the chain/paused words) from
+ * `plainRunsOf`, which cannot see a comment, an observed native turn, a direct
+ * steer or a rule instruction — the four lanes a card is actually worked on
+ * through.
+ *
+ * So the rule now: `primary` below is the chip. Everything the card shows is a
+ * field computed here from the card's OWN facts, and the component renders
+ * fields. There is no second chain to drift, and no lane the model cannot see.
  */
 import type { PendingInteractionKind } from '../../core/controller.ts'
-import { sessionUnviewedOf } from '../../core/session-display.ts'
+import { blockedCauseOf, type RuleBlockedCause } from '../../core/automation.ts'
+import { sessionUnviewedOf, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
+import { gateOf, latestCompletedOf, type GateState, type WaitingSession } from '../../core/task-demand.ts'
 import {
-  executing,
   hasOpenRun,
-  lastPlainResult,
   pendingCommentCount,
   plainRunsOf,
   type TaskRecord,
 } from '../../core/tasks.ts'
 
-/** The card's primary line (one emphasis). */
+/**
+ * The card's primary line — one emphasis, one priority. Rendered verbatim as
+ * the first chip; the next-action line below reads the SAME value, so a card
+ * can never say two different things about itself one line apart.
+ *
+ *   waiting — a session of this card is suspended on the user right now
+ *            (approval / plan review / question). The human's turn outranks
+ *            everything, including work still in flight.
+ *   running — the card or one of its conversations is working.
+ *   queued  — comments are saved and waiting for the dispatcher.
+ *   gate    — work finished, nobody has looked at it yet, nobody has ruled on
+ *            it (`failed` names the outcome). This is the only loud thing a
+ *            settled card has to say.
+ *   runs    — the settled-run counter. Quiet: it is history, not a request.
+ *   idle    — nothing to say.
+ */
 export type CardPrimary =
-  | { kind: 'waiting'; waiting: PendingInteractionKind }
+  | { kind: 'waiting'; waiting: PendingInteractionKind; count: number }
   | { kind: 'running' }
   | { kind: 'queued'; count: number }
-  | { kind: 'failed' }
-  | { kind: 'review'; unviewed: boolean }
+  | { kind: 'gate'; failed: boolean }
+  | { kind: 'runs'; count: number; failed: boolean }
   | { kind: 'idle' }
 
 /** One related-session dot (max 3 rendered, +N overflow). */
@@ -89,9 +113,9 @@ export function cardLightOf(active: boolean, unviewed: boolean): CardLight {
 }
 
 /**
- * THE session-dot state — one derivation for every dot a card renders, so
- * the strip can never answer "which conversation is which" differently from
- * the detail's rows:
+ * THE session-dot state — one derivation for every dot a card renders, so the
+ * strip can never answer "which conversation is which" differently from the
+ * detail's rows:
  *
  *   waiting  — the session is suspended on a question / plan / approval;
  *   running  — its own turn or a running subagent descendant works now;
@@ -120,110 +144,132 @@ export function cardSessionDotStateOf(
 
 /** Everything TaskCard renders (no JSX here — testable). */
 export interface CardViewModel {
+  /**
+   * The card's one loudest line, and the chip the component renders. There is
+   * no second ranking anywhere in the card.
+   */
   primary: CardPrimary
-  /** Secondary meta chips (chain progress, cron next-run, N 次执行, 新 N). */
-  runCount: number
-  lastResult: 'succeeded' | 'failed' | 'cancelled' | undefined
-  queued: number
-  unviewedCount: number
   /**
-   * Whether the card breathes: a state-bound fact, independent of unread. True
-   * for waiting / running AND for a card sitting in the 进行中
-   * column (the same `task.status` the yellow border reads), so the border and
-   * the breath are one fact — see {@link cardLightOf}.
+   * The human gate, in the card's own words: 'unseen' means finished work the
+   * user has neither looked at nor ruled on. This is the SAME state the
+   * header's 待审核 count and the notification drawer's rows read
+   * (`task-demand.gateOf`), so the chip, the number and the row can never
+   * disagree about whether this card is waiting for a person.
    */
-  active: boolean
-  /**
-   * A task in review whose plain run has settled: the human gate owes an
-   * answer. Deliberately NOT `unviewed` — reading a card retires the unread
-   * glow (that message stays honest) but never resolves the decision, so this
-   * keeps counting after the card has been looked at. Drives the static
-   * 「待你决断」 chip and the header demand count.
-   */
-  awaitingDecision: boolean
-  /** Display truth splits from the gate: an eventless round never reads as
-   *  running. */
-  showingRunning: boolean
+  gate: GateState
   /** Run guard (open-round gate — queued comments never block). */
   running: boolean
+  /** Whether the card breathes: a state-bound fact, independent of unread. */
+  active: boolean
+  /** Unread content on the card at all (drives the ring and the 新 chip). */
+  unviewed: boolean
+  /** How many unviewed NUMBERED runs sit behind 新 N (vs a bare 新留言). */
+  unviewedRunCount: number
+  /** Total numbered runs (the 执行 sequence — plain runs, by definition). */
+  runCount: number
+  /** Saved comments waiting for the dispatcher. */
+  queued: number
+  /** Whether a rule is armed and cannot drive anything, and which one (empty
+   *  prompt). undefined = nothing blocked, so the schedule/batch chips keep
+   *  their own wording. */
+  autoBlocked: RuleBlockedCause | undefined
+  /** A chain run is in flight right now (the 接续中 chip). */
+  chaining: boolean
+  /** Automation paused specifically BECAUSE the last work failed. */
+  autoPausedFailed: boolean
+  /** The newest finished work's outcome, or undefined when nothing finished. */
+  lastResult?: 'succeeded' | 'failed'
 }
 
 /**
  * Derive the card's view-model from the card's OWN facts. Every field is a
- * reading of the task record (open rounds, pending comments), so the chip,
- * the light and the next-action line can never disagree:
- * they are one derivation.
+ * reading of the task record (open rounds, pending comments) or of the ONE
+ * shared gate derivation, so the chip, the light, the next-action line and the
+ * header's number can never disagree: they are one derivation.
  *
- * There is deliberately NO live-state input. The card's "is this working" is
- * already answered by its own unfinished round (`executing`), and a second
- * answer — the native session `running` flag — disagreed with it in exactly the
- * states the user hit: an externally observed turn keeps a card in 进行中 while
- * no session reports running, so the chip said 进行中 and the light stayed off.
- * The per-session DOTS are likewise their own derivation
+ * The ONLY live input is `waiting` — the related-session set's live block,
+ * computed by the board (`waitingSessionsOf`, the same call the demand row and
+ * the bell make) and handed in as data so this function stays pure. It is the
+ * RELATED set, not "sessions that happen to own a round here", so a session
+ * dragged in from the workspace raises the card's own voice instead of only
+ * lighting a dot the user cannot see on a touch screen.
+ *
+ * There is deliberately NO second "is this working" input. The card's work is
+ * already answered by its own unfinished round (`hasOpenRun`) and by its own
+ * column; a second answer is how a card ends up saying 进行中 with the light
+ * off. The per-session DOTS are their own derivation
  * ({@link cardSessionDotStateOf}) — this view model never carries them.
  */
 export function cardViewModelOf(
   task: TaskRecord,
   opts: {
-    pendingCount?: number
-    waiting?: PendingInteractionKind
-    unviewedCount?: number
+    /** Sessions of this card suspended on the user (the related set). */
+    waiting?: readonly WaitingSession[]
   } = {},
 ): CardViewModel {
+  const waitingSessions = opts.waiting ?? []
   const running = hasOpenRun(task)
-  const showingRunning = executing(task)
   const queued = pendingCommentCount(task)
   const runs = plainRunsOf(task)
-  const lastResult = lastPlainResult(task)
-  // THE light is derived from the state the card DISPLAYS, never from a second
-  // judgment that can disagree with it. `primary` is computed below from the
-  // card's own facts, so binding the pulse to it makes the chip and the light
-  // one fact: a card reading 进行中 / 待你决断 pulses, a card reading
-  // 已排队 / 待审核 / idle is quiet.
+  const lastRun = runs[runs.length - 1]
+  const gate = gateOf(task)
+  const lastResult = latestCompletedOf(task)?.result
+  const unviewed = taskUnviewed(task)
+  const unviewedRunCount = taskUnviewedCount(task)
+  const blocked = blockedCauseOf(task)
+  const chaining = task.schedule?.enabled === true
+    && task.schedule.mode === 'chain'
+    && task.status === 'running'
+  // Automation paused by a failure reads the same newest-work fact the gate
+  // does, so the 失败 word and the 待你决断 chip can never disagree about it.
+  const autoPausedFailed = task.status === 'review' && lastResult === 'failed'
 
+  // ONE chain, in the order a person scanning the board needs it.
   let primary: CardPrimary
-  if (opts.waiting !== undefined) primary = { kind: 'waiting', waiting: opts.waiting }
-  else if (showingRunning) primary = { kind: 'running' }
-  else if (queued > 0) primary = { kind: 'queued', count: queued }
-  else if (task.status === 'review' && lastResult === 'failed') primary = { kind: 'failed' }
-  else if (task.status === 'review') primary = { kind: 'review', unviewed: (opts.unviewedCount ?? 0) > 0 }
-  else primary = { kind: 'idle' }
+  if (waitingSessions.length > 0) {
+    primary = { kind: 'waiting', waiting: waitingSessions[0].waitingKind, count: waitingSessions.length }
+  } else if (running) {
+    primary = { kind: 'running' }
+  } else if (queued > 0) {
+    primary = { kind: 'queued', count: queued }
+  } else if (gate.state === 'unseen') {
+    primary = { kind: 'gate', failed: gate.work?.result === 'failed' }
+  } else if (lastRun !== undefined) {
+    primary = { kind: 'runs', count: runs.length, failed: lastRun.result === 'failed' }
+  } else {
+    primary = { kind: 'idle' }
+  }
 
-  // The light table (see the board's 光效规则表): waiting / running
-  // breathe; queued, failed, review and idle do not.
+  // The light table: waiting / running breathe; queued, gate and idle do not.
   //
   // The card's OWN COLUMN is part of that answer, and it is the SAME fact the
   // yellow border reads (`data-status={task.status}`): a card in the 进行中
-  // column wears the halo no matter which leg holds it there — an in-flight
-  // round, an armed schedule's gap, or (once the activity derivation landed) a
-  // related session whose own turn paused while the subagent it summoned still
-  // works. Binding the light to the column makes "has the yellow border ⇒ has
-  // the breath" a structural property; the two attributes can no longer
-  // disagree, which is exactly the state the user hit (border on, light off —
-  // the light used to read `executing(task)`, i.e. only ONE of the ways a card
-  // reaches 进行中). Keep this the ONLY place the mapping lives — a second copy
-  // is how the chip and the light drift.
-  const columnRunning = task.status === 'running'
-  const active = columnRunning
+  // column wears the halo no matter which leg holds it there. Binding the
+  // light to the column makes "has the yellow border ⇒ has the breath" a
+  // structural property. Keep this the ONLY place the mapping lives.
+  const active = task.status === 'running'
     || primary.kind === 'waiting'
     || primary.kind === 'running'
 
   return {
     primary,
-    runCount: runs.length,
-    lastResult,
-    queued,
-    unviewedCount: opts.unviewedCount ?? 0,
-    awaitingDecision: task.status === 'review' && lastResult !== undefined,
-    active,
-    showingRunning,
+    gate: gate.state,
     running,
+    active,
+    unviewed,
+    unviewedRunCount,
+    runCount: runs.length,
+    queued,
+    autoBlocked: blocked,
+    chaining,
+    autoPausedFailed,
+    ...lastResult !== undefined ? { lastResult } : {},
   }
 }
 
 /**
  * One quiet "what's next" sentence for the card (scanning aid, never a
- * second status system — it names the same primary the chips already show,
+ * second status system — it names the same primary the chip already shows,
  * plus the schedule horizon when armed). Returns undefined for idle cards
  * with nothing scheduled (no noise). The caller localizes the template;
  * this returns the structured fact so copy lives in one place.
@@ -233,11 +279,11 @@ export function cardNextActionOf(
   task: TaskRecord,
 ): { kind: 'waiting' | 'running' | 'queued' | 'failed' | 'review' | 'scheduled' | 'chain'; count?: number } | undefined {
   switch (view.primary.kind) {
-    case 'waiting': return { kind: 'waiting' }
+    case 'waiting': return { kind: 'waiting', count: view.primary.count }
     case 'running': return { kind: 'running' }
     case 'queued': return { kind: 'queued', count: view.primary.count }
-    case 'failed': return { kind: 'failed' }
-    case 'review': return view.primary.unviewed ? { kind: 'review' } : undefined
+    case 'gate': return view.primary.failed ? { kind: 'failed' } : { kind: 'review' }
+    case 'runs': return undefined
     case 'idle':
       if (task.schedule?.enabled === true) {
         return task.schedule.mode === 'chain' ? { kind: 'chain' } : { kind: 'scheduled' }

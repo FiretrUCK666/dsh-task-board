@@ -23,7 +23,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { runningStateLabel, settledChipLabel, blockedAutomation, showsBlockedChip, showsSessionBlocked } from '../src/client/board/TaskCard.tsx'
+import { primaryChipLabel, settledChipLabel } from '../src/client/board/TaskCard.tsx'
+import { blockedCauseOf } from '../src/core/automation.ts'
 import { cardUpdatedAtOf } from '../src/client/board/card-view.ts'
 import { createTask, withSchedule } from '../src/core/tasks.ts'
 import { withSessionRules } from '../src/core/automation.ts'
@@ -526,35 +527,52 @@ describe('card chip label composition', () => {
 
   it('running state: plain running keeps a short one-word label (zh)', () => {
     useLanguage('zh')
-    expect(runningStateLabel(undefined)).toBe('进行中')
+    expect(primaryChipLabel({ kind: 'running' })).toBe('进行中')
   })
 
   it('running state: each user-blocking kind is named (zh)', () => {
     useLanguage('zh')
-    expect(runningStateLabel('approval')).toBe('等待回应 · 权限审批')
-    expect(runningStateLabel('plan-review')).toBe('等待回应 · 计划确认')
-    expect(runningStateLabel('question')).toBe('等待回应 · 提问')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'approval', count: 1 })).toBe('等待回应 · 权限审批')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'plan-review', count: 1 })).toBe('等待回应 · 计划确认')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 1 })).toBe('等待回应 · 提问')
+  })
+
+  it('several blocked conversations say so in one word, not a list', () => {
+    useLanguage('zh')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 3 })).toBe('待处理 3')
+    useLanguage('en')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 3 })).toBe('Pending 3')
+  })
+
+  it('the gate names its outcome, and the run counter is history (zh)', () => {
+    useLanguage('zh')
+    expect(primaryChipLabel({ kind: 'gate', failed: false })).toBe('待你决断')
+    expect(primaryChipLabel({ kind: 'gate', failed: true })).toBe('失败待决断')
+    expect(primaryChipLabel({ kind: 'runs', count: 3, failed: false })).toBe('3 次执行')
   })
 
   it('running state: english mirror', () => {
     useLanguage('en')
-    expect(runningStateLabel(undefined)).toBe('Running')
-    expect(runningStateLabel('approval')).toBe('Waiting for you · Approval')
-    expect(runningStateLabel('plan-review')).toBe('Waiting for you · Plan review')
-    expect(runningStateLabel('question')).toBe('Waiting for you · Question')
+    expect(primaryChipLabel({ kind: 'running' })).toBe('Running')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'approval', count: 1 })).toBe('Waiting for you · Approval')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'plan-review', count: 1 })).toBe('Waiting for you · Plan review')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 1 })).toBe('Waiting for you · Question')
   })
 
-  it('an eventless round never reads as running: the chip uses display truth, the guard stays on hasOpenRun', () => {
-    // The spinner chip must ride display truth (`executing` via card-view.ts)
-    // while quick-run blocking keeps the open-round gate (`hasOpenRun` via
-    // view.running) — display and gate are two judgments, one derivation each.
-    const cardPath = fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url))
-    const card = readFileSync(cardPath, 'utf8')
-    const viewPath = fileURLToPath(new URL('../src/client/board/card-view.ts', import.meta.url))
-    const view = readFileSync(viewPath, 'utf8')
-    expect(card).toMatch(/showingRunning \?/)
-    expect(view).toMatch(/executing\(task\)/)
+  it('the chip is the model\'s primary, not a second chain beside it', () => {
+    // The card used to rank its chips in the component while the view model
+    // ranked `primary` separately, so the model's own winner never reached the
+    // screen (a queued card showed no primary; a failed one named itself twice).
+    // The render now reads `view.primary` and the next-action line reads the
+    // same value — one ranking, two renderings of it.
+    const card = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
+    const view = readFileSync(fileURLToPath(new URL('../src/client/board/card-view.ts', import.meta.url)), 'utf8')
+    expect(card).toMatch(/const primary = view\.primary/)
+    expect(card).not.toMatch(/plainRunsOf|lastPlain|ruleReadiness/)
+    expect(view).toMatch(/let primary: CardPrimary/)
+    // ONE open-round judgment, not a display/gate pair that never differed.
     expect(view).toMatch(/hasOpenRun\(task\)/)
+    expect(view).not.toMatch(/executing\(task\)/)
   })
 
   it('settled count label (zh / en)', () => {
@@ -572,13 +590,13 @@ describe('card chip label composition', () => {
       createTask({ title: 'A', description: '', prompt: '' }, at, 'a'),
       { enabled: true, cron: '* * * * *', nextRunAt: undefined }, at,
     )
-    expect(showsBlockedChip(armedEmpty)).toBe(true)
+    expect(blockedCauseOf(armedEmpty)).toBe('schedule')
     const armedReady = withSchedule(
       createTask({ title: 'A', description: '', prompt: 'run' }, at, 'a'),
       { enabled: true, cron: '* * * * *', nextRunAt: undefined }, at,
     )
-    expect(showsBlockedChip(armedReady)).toBe(false)
-    expect(showsBlockedChip(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'))).toBe(false)
+    expect(blockedCauseOf(armedReady)).toBeUndefined()
+    expect(blockedCauseOf(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'))).toBeUndefined()
   })
 
   it('session-blocked: an enabled usePrompt rule with an empty prompt blocks, custom text never does', () => {
@@ -588,18 +606,16 @@ describe('card chip label composition', () => {
       trigger: 'cron' as const, cron: '* * * * *', send: 'queue' as const, enabled: true,
     }
     const blocked = withSessionRules(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'), [usePromptRule])
-    expect(showsSessionBlocked(blocked)).toBe(true)
-    expect(blockedAutomation(blocked)).toBe(true)
+    expect(blockedCauseOf(blocked)).toBe('session')
     const customRule = {
       id: 'r1', sessionId: 's-1', instruction: 'do it', trigger: 'cron' as const,
       cron: '* * * * *', send: 'queue' as const, enabled: true,
     }
     const custom = withSessionRules(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'), [customRule])
-    expect(showsSessionBlocked(custom)).toBe(false)
-    expect(blockedAutomation(custom)).toBe(false)
+    expect(blockedCauseOf(custom)).toBeUndefined()
     const off = withSessionRules(createTask({ title: 'A', description: '', prompt: '' }, at, 'a'),
       [{ ...usePromptRule, enabled: false }])
-    expect(showsSessionBlocked(off)).toBe(false)
+    expect(blockedCauseOf(off)).toBeUndefined()
   })
 
   it('blocked automation owns the slot: one cause, one chip', () => {
@@ -608,10 +624,8 @@ describe('card chip label composition', () => {
       createTask({ title: 'A', description: '', prompt: '' }, at, 'a'),
       { enabled: true, mode: 'chain', cron: '', nextRunAt: undefined }, at,
     ), [{ id: 'r1', sessionId: 's-1', instruction: '', usePrompt: true, trigger: 'cron' as const, cron: '* * * * *', send: 'queue' as const, enabled: true }])
-    // Task-level AND session-level blocked agree — still a single slot.
-    expect(blockedAutomation(both)).toBe(true)
-    expect(showsBlockedChip(both)).toBe(true)
-    expect(showsSessionBlocked(both)).toBe(true)
+    // Task-level AND session-level blocked are NAMED, and still one slot.
+    expect(blockedCauseOf(both)).toBe('both')
   })
 })
 

@@ -14,6 +14,13 @@
  * Deliberately framework-free: the runtime faces are declared structurally
  * (a narrow slice of the real `ctx.sessions` / `ctx.workspaces` contracts)
  * so tests drive it with plain fakes.
+ *
+ * THE borrow law: the host hands out a session driver only for a generation
+ * some consumer currently RETAINS — creating a session catalogs it and
+ * nothing more. So every run, continuation and session setup here BORROWS one
+ * through {@link SessionsExecutionFace.hold} and keeps it until the round is
+ * over; peeking ({@link SessionsExecutionFace.binding}) is reserved for reads
+ * that must not outlive whoever holds the session.
  */
 import type { ExecutionRecord, TaskFile, TaskImage, TaskRecord } from './tasks.ts'
 
@@ -32,7 +39,36 @@ export interface SessionsExecutionFace {
     }
     subscribe(fn: () => void): () => void
   }
+  /**
+   * BORROW A GENERATION, for longer than an instant. The host hands out a
+   * driver only for a session some consumer currently RETAINS (`create()` on
+   * its own returns a catalogued identity and nothing else), so every borrow
+   * the board owns goes through here — this is the borrow law, not a second
+   * way to do the same thing.
+   */
+  hold(id: string): SessionHold
+  /**
+   * Borrow WITHOUT owning a lifetime: the driver of whatever generation
+   * someone else is holding right now, or undefined when nobody is. Only for
+   * reads that must not outlive the holder (the settle reconcile's one-shot
+   * probe, the rename fallback) — never for a run.
+   */
   binding(id: string): { session: SessionDriver } | undefined
+}
+
+/** One owned borrow of a session generation (the host's `retain` + its open wait). */
+export interface SessionHold {
+  /** The behavior verbs — available the moment the borrow exists. */
+  readonly driver: SessionDriver
+  /**
+   * Settles once the host finished opening the conversation; rejects with the
+   * host's own reason when it cannot. A run waits for this BEFORE its first
+   * verb, so "the session would not open" is a reportable failure instead of a
+   * silent one.
+   */
+  readonly ready: Promise<void>
+  /** End the borrow. Idempotent, so a handover and a safety-net release can both call it. */
+  release(): void
 }
 
 /** The narrow workspaces face the service needs. */
@@ -316,13 +352,22 @@ export class ExecutionService {
    * nothing happened. Never rejects.
    */
   async createSession(config: SessionLaunchConfig): Promise<SessionLaunchResult> {
+    let sessionId: string
     try {
-      const sessionId = await this.resolveNewSessionId(config.workspaceId)
-      const driver = this.driverOf(sessionId)
-      if (driver === undefined) {
-        return { ok: true, sessionId, configError: 'execution session is not ready' }
-      }
-      let configError: string | undefined
+      sessionId = await this.resolveNewSessionId(config.workspaceId)
+    } catch (error) {
+      return { ok: false, error: messageOf(error) }
+    }
+    // Past this line the session EXISTS on the host, so nothing below may
+    // report a hard failure: an open or a configuration problem comes back as
+    // `configError` and the caller keeps the session it just made. The borrow
+    // is released on every path — this call is over the moment the chain ends.
+    let configError: string | undefined
+    let hold: SessionHold | undefined
+    try {
+      hold = this.holdOf(sessionId)
+      await hold.ready
+      const driver = hold.driver
       if (config.provider !== undefined && config.model !== undefined && this.env.selectModel !== undefined) {
         const selection = await this.env.selectModel(sessionId, {
           provider: config.provider,
@@ -340,10 +385,12 @@ export class ExecutionService {
         const applied = await this.applyPermission(driver, config.permission)
         if (!applied.ok) configError = applied.error
       }
-      return { ok: true, sessionId, ...configError !== undefined ? { configError } : {} }
     } catch (error) {
-      return { ok: false, error: messageOf(error) }
+      configError = configError ?? `session open failed: ${messageOf(error)}`
+    } finally {
+      hold?.release()
     }
+    return { ok: true, sessionId, ...configError !== undefined ? { configError } : {} }
   }
 
   /**
@@ -409,84 +456,105 @@ export class ExecutionService {
       const sessionId = options?.sessionId ?? await this.connectSession(task.workspaceId)
       const fresh = options?.fresh ?? true
       onEvent({ kind: 'started', taskId: task.id, executionId: execution.id, sessionId })
-      const driver = this.driverOf(sessionId)
-      if (driver === undefined) {
-        onEvent({ kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed', error: 'execution session is not ready' })
-        return
-      }
-      // Best-effort rename so the execution is recognizable in the session list.
-      await driver.rename(options?.renameTo ?? task.title).catch(() => { /* rename is cosmetic */ })
-      // Apply the task's configured model route before the first prompt.
-      if (task.provider !== undefined && task.model !== undefined && this.env.selectModel !== undefined) {
-        const selection = await this.env.selectModel(sessionId, {
-          provider: task.provider,
-          model: task.model,
-          ...task.reasoningEffort !== undefined ? { reasoningEffort: task.reasoningEffort } : {},
-        })
-        if (!selection.ok) {
+      // THE borrow law (see {@link SessionsExecutionFace.hold}): the run OWNS
+      // this session from here to its settlement. `handedOver` marks the one
+      // point where ownership passes to the settlement watch — until then the
+      // `finally` releases, and after it the watch does.
+      const hold = this.holdOf(sessionId)
+      let handedOver = false
+      try {
+        // Open the conversation before the first verb. A session that cannot be
+        // opened now fails with the host's own reason instead of a bare
+        // "not ready", and the watch below gets a live snapshot to read.
+        await hold.ready
+        const driver = hold.driver
+        // Best-effort rename so the execution is recognizable in the session list.
+        await driver.rename(options?.renameTo ?? task.title).catch(() => { /* rename is cosmetic */ })
+        // Apply the task's configured model route before the first prompt.
+        if (task.provider !== undefined && task.model !== undefined && this.env.selectModel !== undefined) {
+          const selection = await this.env.selectModel(sessionId, {
+            provider: task.provider,
+            model: task.model,
+            ...task.reasoningEffort !== undefined ? { reasoningEffort: task.reasoningEffort } : {},
+          })
+          if (!selection.ok) {
+            onEvent({
+              kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
+              error: `model selection failed: ${selection.error}`,
+            })
+            return
+          }
+        }
+        // Apply the task's configured agent preset before the first prompt: a
+        // session may only adopt a preset while it is still blank (no turn has
+        // run), so this must happen before any prompt is sent — and only on a
+        // freshly created session (a reused session already has turns).
+        // A rejected switch (session no longer blank, preset missing…) fails
+        // the run.
+        if (fresh && task.agentPreset !== undefined && this.env.selectAgentPreset !== undefined) {
+          const applied = await this.env.selectAgentPreset(sessionId, task.agentPreset)
+          if (!applied.ok) {
+            onEvent({
+              kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
+              error: `agent preset switch failed: ${applied.error}`,
+            })
+            return
+          }
+          this.env.onAgentApplied?.(sessionId, task.agentPreset)
+        }
+        // Apply the task's configured permission preset through the native
+        // `/permission` command — the same write path the GUI's permission
+        // picker uses — before the first prompt, while the session is still
+        // blank. An unrecognized preset or a host without the command fails the
+        // run like a rejected agent-preset switch.
+        if (task.permission !== undefined) {
+          const applied = await this.applyPermission(driver, task.permission)
+          if (!applied.ok) {
+            onEvent({
+              kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
+              error: applied.error,
+            })
+            return
+          }
+        }
+        // Resolve the delivery line first: a slash line routes through the
+        // native command registry — the composer's '/' path, never the plain
+        // prompt, which would deliver the line to the model as text (the
+        // "command doesn't work" symptom). The registry path owns its own
+        // baseline and settlement watch; a fallback means the line goes out as
+        // plain text with the normal watch below.
+        const line = this.promptLine(task, options?.prompt)
+        if (this.env.sendCommand !== undefined && line.trimStart().startsWith('/')) {
+          const routed = await this.deliverCommandLine(hold, task, execution, sessionId, line.trim(), onEvent, false)
+          if (routed !== 'fallback') {
+            // 'watched' already handed the borrow to the settlement watch;
+            // 'settled' owes nothing and falls through to the release below.
+            if (routed === 'watched') handedOver = true
+            return
+          }
+        }
+        // Baseline the turn counter BEFORE the prompt round-trip: a turn that
+        // completes while prompt is in flight must still advance past this
+        // baseline, or the watch below would never observe it settle.
+        const baseline = driver.getSnapshot().turnEnds.size
+        const accepted = await this.sendPrompt(driver, task, options?.prompt, options?.images, options?.files)
+        if (!accepted.ok) {
           onEvent({
             kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
-            error: `model selection failed: ${selection.error}`,
+            error: messageOf(accepted.error),
           })
           return
         }
-      }
-      // Apply the task's configured agent preset before the first prompt: a
-      // session may only adopt a preset while it is still blank (no turn has
-      // run), so this must happen before any prompt is sent — and only on a
-      // freshly created session (a reused session already has turns).
-      // A rejected switch (session no longer blank, preset missing…) fails
-      // the run.
-      if (fresh && task.agentPreset !== undefined && this.env.selectAgentPreset !== undefined) {
-        const applied = await this.env.selectAgentPreset(sessionId, task.agentPreset)
-        if (!applied.ok) {
-          onEvent({
-            kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
-            error: `agent preset switch failed: ${applied.error}`,
-          })
-          return
-        }
-        this.env.onAgentApplied?.(sessionId, task.agentPreset)
-      }
-      // Apply the task's configured permission preset through the native
-      // `/permission` command — the same write path the GUI's permission
-      // picker uses — before the first prompt, while the session is still
-      // blank. An unrecognized preset or a host without the command fails the
-      // run like a rejected agent-preset switch.
-      if (task.permission !== undefined) {
-        const applied = await this.applyPermission(driver, task.permission)
-        if (!applied.ok) {
-          onEvent({
-            kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
-            error: applied.error,
-          })
-          return
-        }
-      }
-      // Resolve the delivery line first: a slash line routes through the
-      // native command registry — the composer's '/' path, never the plain
-      // prompt, which would deliver the line to the model as text (the
-      // "command doesn't work" symptom). The registry path owns its own
-      // baseline and settlement watch; a fallback means the line goes out as
-      // plain text with the normal watch below.
-      const line = this.promptLine(task, options?.prompt)
-      if (this.env.sendCommand !== undefined && line.trimStart().startsWith('/')) {
-        const routed = await this.deliverCommandLine(task, execution, sessionId, line.trim(), onEvent, false)
-        if (routed !== 'fallback') return
-      }
-      // Baseline the turn counter BEFORE the prompt round-trip: a turn that
-      // completes while prompt is in flight must still advance past this
-      // baseline, or the watch below would never observe it settle.
-      const baseline = driver.getSnapshot().turnEnds.size
-      const accepted = await this.sendPrompt(driver, task, options?.prompt, options?.images, options?.files)
-      if (!accepted.ok) {
+        this.watchForSettlement(hold, task.id, execution.id, sessionId, onEvent, baseline)
+        handedOver = true
+      } catch (error) {
         onEvent({
           kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
-          error: messageOf(accepted.error),
+          error: messageOf(error),
         })
-        return
+      } finally {
+        if (!handedOver) hold.release()
       }
-      this.watchForSettlement(driver, task.id, execution.id, sessionId, onEvent, baseline)
     } catch (error) {
       onEvent({
         kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
@@ -499,10 +567,11 @@ export class ExecutionService {
    * Continue an existing execution session with a comment: send the text to
    * the session's agent (a fresh turn) and watch it settle like a plain run.
    * The comment round carries the same session — no new session is created.
-   * Settlement uses the host session list + raw history signals, which work
-   * for sessions that are not the currently staged one; when a binding
-   * driver is available its snapshot watch is used as an additional fast
-   * path. Never rejects: every failure path reports a settled event.
+   * The session is BORROWED for the round's whole life (see
+   * {@link SessionsExecutionFace.hold}), so the watch reads its live
+   * conversation snapshot; the host session list plus the raw history tail stay
+   * as the settlement authority behind it. Never rejects: every failure path
+   * reports a settled event.
    *
    * A round flagged `command` is a slash command, not necessarily just a
    * turn: the line is executed through the native command registry (never
@@ -523,21 +592,28 @@ export class ExecutionService {
     onEvent: (event: ExecutionEvent) => void,
     mode: 'queue' | 'steer' = 'queue',
   ): Promise<void> {
+    // Same borrow law as a plain run: a continuation drives work in a session
+    // this page may hold nobody's reference to, and the watch needs its live
+    // snapshot to tell a real turn end from a queue blip.
+    const hold = this.holdOf(sessionId)
+    let handedOver = false
     try {
       if (execution.command === true) {
-        const routed = await this.deliverCommandLine(task, execution, sessionId, text, onEvent, true)
+        const routed = await this.deliverCommandLine(hold, task, execution, sessionId, text, onEvent, true)
         if (routed === 'fallback') {
           // Unknown command (or no registry): the native default-sink —
-          // deliver the line as text, never drop the user's input.
+          // deliver the line as text, never drop the user's input. This call
+          // borrows its own reference; end this one first.
+          hold.release()
           await this.commentRun(task, { ...execution, command: false }, sessionId, text, onEvent, mode)
+          return
         }
+        if (routed === 'watched') handedOver = true
         return
       }
-      const driver = this.driverOf(sessionId)
+      const driver = hold.driver
       const send = this.env.sendComment
-        ?? (async (id, content, m = 'queue' as const, imgs?: readonly TaskImage[], files?: readonly TaskFile[]) => {
-          const bound = this.driverOf(id)
-          if (bound === undefined) return { ok: false as const, error: 'comment session is not ready' }
+        ?? (async (_id, content, m = 'queue' as const, imgs?: readonly TaskImage[], files?: readonly TaskFile[]) => {
           const parts: unknown[] = []
           if (content.trim() !== '') parts.push({ type: 'text', text: content })
           for (const image of imgs ?? []) {
@@ -546,7 +622,7 @@ export class ExecutionService {
           for (const file of files ?? []) {
             parts.push({ type: 'file', receiptId: file.receiptId })
           }
-          return bound.prompt(parts, m)
+          return driver.prompt(parts, m)
         })
       // A queued comment carries its pictures AND files on the round: text +
       // attachments go out together when the dispatcher injects it (the send
@@ -560,16 +636,19 @@ export class ExecutionService {
         })
         return
       }
-      const baseline = driver !== undefined ? driver.getSnapshot().turnEnds.size : 0
+      const baseline = driver.getSnapshot().turnEnds.size
       // The session already exists (it ran the reviewed execution), so its
       // disappearance from the host list means it was deleted/archived —
       // that is a cancellation, never a wait-forever.
-      this.watchForSettlement(driver, task.id, execution.id, sessionId, onEvent, baseline, true)
+      this.watchForSettlement(hold, task.id, execution.id, sessionId, onEvent, baseline, true)
+      handedOver = true
     } catch (error) {
       onEvent({
         kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
         error: messageOf(error),
       })
+    } finally {
+      if (!handedOver) hold.release()
     }
   }
 
@@ -590,6 +669,7 @@ export class ExecutionService {
    * Never rejects: every failure path reports a settled event or 'fallback'.
    */
   private async deliverCommandLine(
+    hold: SessionHold,
     task: TaskRecord,
     execution: ExecutionRecord,
     sessionId: string,
@@ -611,8 +691,8 @@ export class ExecutionService {
     // The registry recognized the line: it always logs its lifecycle and the
     // command may additionally have started a real turn. Decide by observing
     // the session — never by the match alone.
-    const driver = this.driverOf(sessionId)
-    const baseline = driver !== undefined ? driver.getSnapshot().turnEnds.size : 0
+    const driver = hold.driver
+    const baseline = driver.getSnapshot().turnEnds.size
     const outcome = result.outcome
     if (outcome?.kind === 'error') {
       onEvent({
@@ -622,12 +702,12 @@ export class ExecutionService {
       return 'settled'
     }
     const startedTurn = await this.waitForCommandWork(
-      sessionId, baseline, this.env.commandGraceMs ?? DEFAULT_COMMAND_GRACE_MS)
+      sessionId, driver, baseline, this.env.commandGraceMs ?? DEFAULT_COMMAND_GRACE_MS)
     if (startedTurn) {
       // Real work: watch the session until that turn truly settles. A plan
       // review wait keeps the session `running`, so the round stays open
       // through the wait exactly like a plain turn awaiting the user.
-      this.watchForSettlement(driver, task.id, execution.id, sessionId, onEvent, baseline, sessionKnown)
+      this.watchForSettlement(hold, task.id, execution.id, sessionId, onEvent, baseline, sessionKnown)
       return 'watched'
     }
     // Pure configuration command: no turn opened. Settle immediately; the
@@ -653,7 +733,12 @@ export class ExecutionService {
    * @returns true = a turn started (the caller watches to its end); false =
    *   the command settled by itself (the caller settles the round at once).
    */
-  private waitForCommandWork(sessionId: string, baseline: number, graceMs: number): Promise<boolean> {
+  private waitForCommandWork(
+    sessionId: string,
+    driver: SessionDriver,
+    baseline: number,
+    graceMs: number,
+  ): Promise<boolean> {
     return new Promise(resolve => {
       let done = false
       const disposers: Array<() => void> = []
@@ -676,15 +761,11 @@ export class ExecutionService {
         // deadlock (lane + concurrency slot held).
         const summary = this.env.sessions.list.getSnapshot().byId[sessionId]
         if (summary !== undefined && summary.running) { finish(true); return }
-        const driver = this.driverOf(sessionId)
-        if (driver !== undefined) {
-          const snapshot = driver.getSnapshot()
-          if (snapshot.running || snapshot.turnEnds.size > baseline) { finish(true); return }
-        }
+        const snapshot = driver.getSnapshot()
+        if (snapshot.running || snapshot.turnEnds.size > baseline) { finish(true); return }
       }
       disposers.push(this.env.sessions.list.subscribe(check))
-      const driver = this.driverOf(sessionId)
-      if (driver !== undefined) disposers.push(driver.subscribe(check))
+      disposers.push(driver.subscribe(check))
       check()
     })
   }
@@ -832,6 +913,18 @@ export class ExecutionService {
     return this.env.sessions.binding(sessionId)?.session
   }
 
+  /**
+   * Borrow a session generation the board OWNS for the length of one run: the
+   * host hands out a driver only for a session some consumer retains, so this
+   * is the only way a run gets one (peeking with {@link driverOf} finds nothing
+   * for a session this board just created, which is every plain run). Throws
+   * only when the host itself refuses the borrow; callers turn that into a
+   * settled failure with the host's own words.
+   */
+  private holdOf(sessionId: string): SessionHold {
+    return this.env.sessions.hold(sessionId)
+  }
+
   private async sendPrompt(
     driver: SessionDriver,
     task: TaskRecord,
@@ -902,6 +995,10 @@ export class ExecutionService {
    * the session is no longer running). Never settles while the session is
    * still running; unsubscribes on settle.
    *
+   * The watch takes OWNERSHIP of the borrow: it releases the hold on the one
+   * settle, which is why a run's session stays retained (and its conversation
+   * snapshot warm) for exactly as long as the round is in flight.
+   *
    * The execution session is usually NOT the UI's current session, so its
    * conversation snapshot stays cold (the runtime only maintains the window
    * for the staged/current session) and the driver watch above would never
@@ -913,7 +1010,7 @@ export class ExecutionService {
    * started (queue window) must not settle.
    */
   private watchForSettlement(
-    driver: SessionDriver | undefined,
+    hold: SessionHold,
     taskId: string,
     executionId: string,
     sessionId: string,
@@ -924,6 +1021,7 @@ export class ExecutionService {
      *  cancellation, never a creation-in-flight wait. */
     sessionKnown = false,
   ): void {
+    const driver = hold.driver
     let settled = false
     let unsubscribe: Array<() => void> = []
     // Consecutive passes that missed a known session (same two-pass rule as
@@ -943,9 +1041,12 @@ export class ExecutionService {
         outcome,
         error,
       })
+      // The round is over, so the board no longer owns the session: end the
+      // borrow last, after every reader above is done with the driver.
+      hold.release()
     }
     const check = (): void => {
-      if (settled || driver === undefined) return
+      if (settled) return
       const snapshot = driver.getSnapshot()
       if (snapshot.running || snapshot.turnEnds.size <= baseline) return
       settle(snapshot.lastAgentError !== null ? 'failed' : 'succeeded', snapshot.lastAgentError ?? undefined)
@@ -976,15 +1077,15 @@ export class ExecutionService {
         idleStreak = 0
         return
       }
-      const snapshot = driver?.getSnapshot()
-      if (snapshot !== undefined && snapshot.turnEnds.size > baseline) {
+      const snapshot = driver.getSnapshot()
+      if (snapshot.turnEnds.size > baseline) {
         settle(snapshot.lastAgentError !== null ? 'failed' : 'succeeded', snapshot.lastAgentError ?? undefined)
         return
       }
       // No driver and no history face: turn evidence can never arrive. Settle
       // optimistically on the SECOND consecutive finished pass (the first may
       // be the pre-turn idle blip right after send).
-      if (driver === undefined && this.env.history === undefined) {
+      if (this.env.history === undefined) {
         idleStreak += 1
         if (idleStreak >= 2) settle('succeeded')
         return
@@ -996,8 +1097,7 @@ export class ExecutionService {
         }
       })
     }
-    unsubscribe = [this.env.sessions.list.subscribe(checkList)]
-    if (driver !== undefined) unsubscribe.push(driver.subscribe(check))
+    unsubscribe = [this.env.sessions.list.subscribe(checkList), driver.subscribe(check)]
     // A turn can complete during the prompt round-trip (before subscribe):
     // re-check immediately so a fast turn is never missed.
     check()

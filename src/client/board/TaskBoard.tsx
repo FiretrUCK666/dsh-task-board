@@ -18,7 +18,8 @@ import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
 import { isHeartbeatStale } from '../../core/scheduler.ts'
 import { adjacentStatus, COLUMNS, hasOpenRun, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
-import { taskPendingCount, taskUnviewed, taskUnviewedCount, taskViewedBaseline } from '../../core/session-display.ts'
+import { taskUnviewed, taskViewedBaseline } from '../../core/session-display.ts'
+import { boardDemandOf, waitingSessionsOf } from '../../core/task-demand.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
@@ -47,18 +48,24 @@ import { taskBindsOf } from '../../core/tasks.ts'
 
 import { applyCompletion, completeBoardQuery, matchTask, removeFilterToken, splitFilterTokens } from './task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
-import { arrivalOf, boardDemandOf, noteKeyOf, noteStatusShapeOf, notificationsExOf, stampWaitingArrivals, type NotificationItem } from './notifications.ts'
+import { arrivalOf, noteKeyOf, noteStatusShapeOf, notificationsExOf, stampWaitingArrivals, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'
 import { cardNextActionOf, cardSessionDotStateOf, cardViewModelOf, titleOrUntitled } from './card-view.ts'
 
-/** The activity feed's chip: success greens, failure reds, everything else quiet. */
+/**
+ * The activity feed's chip: success greens, failure reds, everything else quiet.
+ *
+ * The outcome wins wherever the event carries one, on EVERY lane. The four
+ * lanes below used to name only the ACTION (留言 / 外部对话 / 直发) and drop the
+ * result `board-events` had already carried, so a comment round that failed and
+ * a comment round that succeeded produced the same line — and neither matched
+ * the word the same round wore in the card's chip or the thread.
+ */
 function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'error' | 'muted'; label: string } {
-  if (item.kind === 'settled') {
-    if (item.result === 'succeeded') return { kind: 'success', label: t('board.activitySucceeded') }
-    if (item.result === 'failed') return { kind: 'error', label: t('board.activityFailed') }
-    if (item.result === 'cancelled') return { kind: 'muted', label: t('board.activityCancelled') }
-    return { kind: 'neutral', label: t('board.activitySettled') }
-  }
+  if (item.result === 'succeeded') return { kind: 'success', label: t('board.activitySucceeded') }
+  if (item.result === 'failed') return { kind: 'error', label: t('board.activityFailed') }
+  if (item.result === 'cancelled') return { kind: 'muted', label: t('board.activityCancelled') }
+  if (item.kind === 'settled') return { kind: 'neutral', label: t('board.activitySettled') }
   if (item.kind === 'comment') return { kind: 'neutral', label: t('board.activityComment') }
   if (item.kind === 'started') return { kind: 'neutral', label: t('board.activityStarted') }
   if (item.kind === 'queued') return { kind: 'neutral', label: t('board.activityQueued') }
@@ -288,7 +295,6 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     snapshot.tasks,
     sessionId => controller.pendingInteractionOf(sessionId),
     sessionId => controller.sessionTitle(sessionId) ?? sessionId,
-    task => taskUnviewed(task),
     task => controller.linkedOf(task).map(row => row.sessionId),
     {
       questionOf: sessionId => controller.questionPendingOf(sessionId),
@@ -315,12 +321,12 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
       return next
     })
   }, [notes])
-  // What the board owes the user, stated once for the whole surface. Separate
-  // from the bell on purpose: the bell counts notification ROWS (one per
-  // session), a column header counts CARDS, and a card that has merely been
-  // looked at leaves the bell entirely — so neither can answer 「等我做什么」.
-  // This one is independent of `viewedAt` and never debates the bell, because
-  // it counts sessions for the waiting half and tasks for the gate half.
+  // What the board owes the user, stated once for the whole surface. It is
+  // the SAME derivation the card's 待你决断 chip and the drawer's rows read
+  // (`task-demand`): waiting conversations come from the related-session set
+  // and the gate half comes from `gateOf`, so the number in this line, the
+  // chip on a card and the row in the drawer are one fact with three
+  // renderings — and looking at a card retires all three together.
   const demand = useMemo(() => boardDemandOf(
     snapshot.tasks,
     sessionId => controller.pendingInteractionOf(sessionId),
@@ -894,7 +900,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
     const task = snapshot.tasks.find(candidate => candidate.id === id)
     const waitingSessionId = task === undefined
       ? undefined
-      : taskPendingCount(task, sessionId => controller.pendingInteractionOf(sessionId)).items[0]?.sessionId
+      : waitingSessionsOf(task, sessionId => controller.pendingInteractionOf(sessionId), candidate => controller.linkedOf(candidate).map(row => row.sessionId))[0]?.sessionId
     if (waitingSessionId !== undefined && controller.sessionTitle(waitingSessionId) !== undefined) {
       openTaskAtSession(id, waitingSessionId)
       return
@@ -1920,27 +1926,32 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   // read live so cards reflect the moment a session starts
                   // waiting (the controller notifies on the question face's
                   // session-status snapshot — the waiting signal's source).
-                  const pending = taskPendingCount(task, sessionId => controller.pendingInteractionOf(sessionId))
-                  // ANY session of the card can be the one blocked on a human
-                  // now (per-session lanes), so the chip reads the card's
-                  // pending set — not the newest record's session, which is
-                  // routinely a different conversation.
-                  const waiting = pending.items[0]?.waitingKind
-                  const pendingTitle = pending.items.length === 0
+                  // The RELATED set, not "sessions with a round here": a
+                  // conversation dragged in from the workspace is this card's
+                  // business from the moment it is bound, so a question it
+                  // asks has to raise the card's own voice and not only a dot
+                  // the user cannot read on a touch screen.
+                  const waitingSessions = waitingSessionsOf(
+                    task,
+                    sessionId => controller.pendingInteractionOf(sessionId),
+                    candidate => controller.linkedOf(candidate).map(row => row.sessionId),
+                  )
+                  // The tooltip names each blocked conversation by what it is:
+                  // a numbered run when the conversation carried one, otherwise
+                  // the conversation itself. It used to fall through to a
+                  // branch that printed 「第 0 次执行」 for every session whose
+                  // first waiting round was a comment.
+                  const pendingTitle = waitingSessions.length === 0
                     ? ''
-                    : pending.items.map(item => {
-                        if (item.executionId !== undefined) {
-                          const index = plainRunsOf(task).findIndex(run => run.id === item.executionId) + 1
-                          return t('card.pendingItem', {
-                            n: String(index),
-                            kind: t(waitingKeyOf(item.waitingKind)),
-                          })
-                        }
-                        return t('card.pendingItem', {
-                          n: String(0),
-                          kind: t(waitingKeyOf(item.waitingKind)),
-                        })
-                      }).join('；')
+                    : waitingSessions.map(item => item.executionId !== undefined
+                      ? t('card.pendingItem', {
+                        n: String(plainRunsOf(task).findIndex(run => run.id === item.executionId) + 1),
+                        kind: t(waitingKeyOf(item.waitingKind)),
+                      })
+                      : t('card.pendingItemSession', {
+                        session: controller.sessionTitle(item.sessionId) ?? item.sessionId,
+                        kind: t(waitingKeyOf(item.waitingKind)),
+                      })).join('；')
                   // Session dots: related sessions (deduped, stable order) with
                   // ONE derivation (cardSessionDotStateOf): waiting > running >
                   // unread (a finished run this card has not had reviewed) >
@@ -1957,18 +1968,16 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                     })
                   const dots = relatedIds.slice(0, 3).map(sessionId => ({ sessionId, state: dotStateOf(sessionId) }))
                   const overflowDots = Math.max(0, relatedIds.length - dots.length)
-                  // One quiet next-action sentence (same primary the chips show).
-                  // No live-state input: the card's light and its chip are one
-                  // derivation from the card's own facts (see card-view.ts).
-                  const view = cardViewModelOf(task, {
-                    pendingCount: pending.count,
-                    ...(waiting !== undefined ? { waiting } : {}),
-                    unviewedCount: taskUnviewedCount(task),
-                  })
+                  // One quiet next-action sentence, derived from the SAME
+                  // `view.primary` the chip above renders — so the two lines
+                  // can never name different states one line apart.
+                  const view = cardViewModelOf(task, { waiting: waitingSessions })
                   const nextFact = cardNextActionOf(view, task)
                   const nextAction = nextFact === undefined ? undefined : (() => {
                     switch (nextFact.kind) {
-                      case 'waiting': return t('card.nextWaiting')
+                      case 'waiting': return nextFact.count !== undefined && nextFact.count > 1
+                        ? t('card.nextWaitingMany', { n: String(nextFact.count) })
+                        : t('card.nextWaiting')
                       case 'running': return t('card.nextRunning')
                       case 'queued': return t('card.nextQueued', { n: String(nextFact.count ?? 0) })
                       case 'failed': return t('card.nextFailed')
@@ -1986,13 +1995,8 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                         return binds.length > 0 ? controller.boundSourceTitleOf(binds[0]) : ''
                       }}
                       workspaceTitleOf={workspaceTitleOf}
-                      waiting={waiting}
-                      pendingCount={pending.count}
                       pendingTitle={pendingTitle}
-                      unviewed={taskUnviewed(task)}
-                      unviewedCount={taskUnviewedCount(task)}
-                      hasUnviewedRun={taskUnviewedCount(task) > 0}
-                      awaitingDecision={view.awaitingDecision}
+                      view={view}
                       onMoveStep={direction => { stepCard(task, direction) }}
                       selected={selectedCards.includes(task.id)}
                       onClick={event => { cardClick(task.id, event) }}
@@ -2078,7 +2082,18 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
           <div className={css.modalScroll}>
             <div className={css.feedTools} role="group" aria-label={t('board.notify')}>
               <span className={css.feedFilterGroup}>
-                {(['all', 'waiting', 'review'] as const).map(kind => (
+                {/* THE classification, and its sizes, in one place. The three
+                   chips partition the rows exactly: 等你处理 (a conversation
+                   suspended on an answer) + 待审核 (a finished result nobody has
+                   looked at) = 全部, and the two halves are the SAME numbers the
+                   header's demand line states — so the bell, the header and this
+                   drawer can never tell three different stories, and a filter
+                   that would show nothing says 0 instead of hiding itself. */}
+                {([
+                  ['all', notes.length],
+                  ['waiting', notes.filter(note => note.kind === 'waiting').length],
+                  ['review', notes.filter(note => note.kind === 'review').length],
+                ] as const).map(([kind, size]) => (
                   <button
                     key={kind}
                     type="button"
@@ -2088,6 +2103,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                     onClick={() => { setNotifyFilter(kind) }}
                   >
                     {t(`board.notifyFilter.${kind}`)}
+                    <span className={css.feedFilterCount} aria-hidden="true">{String(size)}</span>
                   </button>
                 ))}
               </span>

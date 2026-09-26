@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   buildApi,
   sessionDriverOf,
+  sessionHoldFactory,
   type ApiFace,
   type ClientContext,
   type BoundSessionFace,
@@ -348,5 +349,81 @@ describe('sessionDriverOf', () => {
     notify({ running: false, lastAgentError: null })
     expect(driver.getSnapshot().turnEnds.size).toBe(0)
     dispose()
+  })
+})
+
+describe('sessionHoldFactory (the borrow law)', () => {
+  function fakeReference(session: BoundSessionFace, open: Promise<unknown>) {
+    const released = { count: 0 }
+    return {
+      reference: {
+        binding: { session },
+        ready: open,
+        release: () => { released.count += 1 },
+      },
+      released,
+    }
+  }
+
+  it('retains, maps the driver, passes the open wait through, and releases on demand', async () => {
+    const session: BoundSessionFace = {
+      prompt: vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } })),
+      rename: vi.fn(async () => ({ ok: true as const })),
+      command: vi.fn(async () => ({ ok: true as const, value: { matched: true } })),
+      getSnapshot: () => ({ running: false, lastAgentError: null }),
+      subscribe: () => () => {},
+    }
+    const { reference, released } = fakeReference(session, Promise.resolve('opened'))
+    const retain = vi.fn(() => reference)
+    const hold = sessionHoldFactory(retain as never)
+    const borrowed = hold('s-1')
+    expect(retain).toHaveBeenCalledWith('s-1')
+    expect(borrowed.driver.getSnapshot().running).toBe(false)
+    await expect(borrowed.ready).resolves.toBeUndefined()
+    expect(released.count).toBe(0)
+    borrowed.release()
+    expect(released.count).toBe(1)
+  })
+
+  it('pools one driver adapter per session and disposes it with the LAST borrow', () => {
+    // The adapter installs a permanent subscription; a page open for days would
+    // otherwise pile up one per run it ever launched, each pinning a session
+    // object the host has already torn down.
+    const subscribes: number[] = []
+    const session: BoundSessionFace = {
+      prompt: vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } })),
+      rename: vi.fn(async () => ({ ok: true as const })),
+      command: vi.fn(async () => ({ ok: true as const, value: { matched: true } })),
+      getSnapshot: () => ({ running: false, lastAgentError: null }),
+      subscribe: () => { subscribes.push(1); return () => {} },
+    }
+    const a = fakeReference(session, Promise.resolve())
+    const b = fakeReference(session, Promise.resolve())
+    const hold = sessionHoldFactory(((id: string) => (id === 's-1' ? a.reference : b.reference)) as never)
+    const first = hold('s-1')
+    const second = hold('s-2')
+    expect(subscribes).toHaveLength(1)
+    expect(second.driver).toBe(first.driver)
+    first.release()
+    expect(subscribes).toHaveLength(1)
+    second.release()
+    // Last release disposes the adapter AND ends the host reference.
+    expect(a.released.count).toBe(1)
+    expect(b.released.count).toBe(1)
+  })
+
+  it('release is idempotent — a handover plus a safety net is one borrow', () => {
+    const session: BoundSessionFace = {
+      prompt: vi.fn(async () => ({ ok: true as const, value: { accepted: true as const } })),
+      rename: vi.fn(async () => ({ ok: true as const })),
+      command: vi.fn(async () => ({ ok: true as const, value: { matched: true } })),
+      getSnapshot: () => ({ running: false, lastAgentError: null }),
+      subscribe: () => () => {},
+    }
+    const { reference, released } = fakeReference(session, Promise.resolve())
+    const borrowed = sessionHoldFactory((() => reference) as never)('s-1')
+    borrowed.release()
+    borrowed.release()
+    expect(released.count).toBe(1)
   })
 })

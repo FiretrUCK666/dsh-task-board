@@ -45,8 +45,12 @@ export interface NotificationItem {
     waitingKind?: PendingInteractionKind;
     /** Tier: waiting outranks review (the bell counts both, waiting first). */
     kind: 'waiting' | 'review';
-    /** Review outcome (review rows only). */
-    result?: 'succeeded' | 'failed' | 'cancelled';
+    /** Outcome of the work the review row is about (review rows only). Read from
+     *  the same gate the card's 待你决断 chip reads, over every lane — so a
+     *  failure that arrived as a comment or an observed native turn says 待决策
+     *  instead of borrowing the succeeded word. Cancelled never appears: a
+     *  cancel is an abort, not a decision. */
+    result?: 'succeeded' | 'failed';
     /**
      * One-line content preview of the wait (waiting rows only): a plan's body
      * (detail, falling back to its question line) or a question batch's first
@@ -117,53 +121,24 @@ export interface WaitingContentFace {
     answerInPlace?: boolean;
 }
 /**
- * Full three-tier view: waiting sessions first (newest arrival first), then
- * unviewed review sessions — ONE row per conversation of each review task
- * (its latest plain run's own result and settle), failed before succeeded.
+ * THE notification center's rows: waiting conversations first (newest arrival
+ * first), then the conversations sitting in the human gate, failed before
+ * succeeded.
  *
- * A review row is gated PER SESSION on the round clock (`sessionUnviewedOf`,
- * the same clock the row glow and the card's session dots read) — never on
- * the task-level baseline: opening the CARD only moves that baseline (the
- * card ring retires) and must not erase rows naming a different conversation
- * (「点开任务卡片，整卡通知全消失」 was exactly that bug). The session-less
- * legacy lane keeps `isUnviewed`: a row with no session has no per-session
- * clock to read. `linkedIdsOf` supplies live linked-session ids per task so
- * a bound-but-never-run waiting session still notifies (same related set as
- * the live state).
+ * A review row is gated by `sessionGateOf` — THE per-session gate (finished
+ * work + the card is in 待审核 + the user has not looked at that conversation),
+ * the same derivation the card's 待你决断 chip and the header's 待审核 count
+ * read. So a row exists for exactly the conversations the board is shouting
+ * about, and its status word names the real outcome whatever lane produced it.
+ * `linkedIdsOf` supplies the task's live linked-session ids, so a
+ * bound-but-never-run waiting session still notifies (same related set as the
+ * live state and the card's own voice).
  *
  * Waiting rows sort by the ARRIVAL clock when `arrivedAt` is supplied (the
  * board's first-seen map), falling back to the round clock for callers
  * without one. Review rows always sort by their settle clock.
  */
-export declare function notificationsExOf(tasks: readonly TaskRecord[], pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, titleOf: (sessionId: string) => string, isUnviewed?: (task: TaskRecord) => boolean, linkedIdsOf?: (task: TaskRecord) => readonly string[], content?: WaitingContentFace, arrivedAt?: (note: Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>) => number | undefined): NotificationItem[];
-/**
- * What the board owes the user, stated as one fact for the whole surface.
- *
- * The bell's badge counts ROWS (one per session), and a column header counts
- * CARDS — two numbers that measure different things and, on screen, never
- * reconcile. Neither of them answers the question the board exists to answer
- * (「等我做什么」), and a card that has been glanced at drops out of the bell
- * entirely. This derivation is that answer, and it is deliberately independent
- * of `viewedAt`:
- *
- *  - `waiting` is a live block: an agent suspended on approval / plan / question.
- *  - `review` is the human gate: a task sitting in review with a settled run.
- *    Once looked at it stops BREATHING (that is the unread signal, and it stays
- *    honest) but it is not resolved until a human passes or sends it back — so
- *    it keeps counting here. This is the split the board was missing: five
- *    cards can wait in review while the only visible demand is an 11px digit.
- *
- * Pure, so the header row and the tests read the same number.
- */
-export interface BoardDemand {
-    /** Total items awaiting a human: waiting sessions + review tasks. */
-    total: number;
-    /** Sessions currently suspended on a question / approval / plan. */
-    waiting: number;
-    /** Tasks in review whose latest plain run has settled. */
-    review: number;
-}
-export declare function boardDemandOf(tasks: readonly TaskRecord[], pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, linkedIdsOf?: (task: TaskRecord) => readonly string[]): BoardDemand;
+export declare function notificationsExOf(tasks: readonly TaskRecord[], pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, titleOf: (sessionId: string) => string, linkedIdsOf?: (task: TaskRecord) => readonly string[], content?: WaitingContentFace, arrivedAt?: (note: Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>) => number | undefined): NotificationItem[];
 /**
  * The arrival clock's pure half (TaskBoard owns the memory map; this owns
  * the merge grammar): stamp every unseen waiting key at `now`, drop keys
@@ -179,14 +154,16 @@ export declare function arrivalOf(seen: ReadonlyMap<string, number>, note: Pick<
  * drawer's status vocabulary can never drift per call site:
  *
  *   waiting → 权限审批 / 计划确认 / 提问 (the interaction the agent waits on)
- *   review  → 待决策 (failed) / 待审核 (succeeded or open) / 已取消 (cancelled)
+ *   review  → 待决策 (failed) / 待审核 (succeeded)
  *
  * Two colours, one meaning each: 待审核 wears AMBER — the same "needs you"
  * language as the waiting chips and the card's 待你决断 badge (green read as
- * "done", which a run nobody has decided is not); failed is red; cancelled
- * is muted (it used to fall through to the green 待审核 word, promising a
- * decision that did not exist). Returns the KEY (not the word) so copy stays
- * in the locale dict; the row renders `t(label)`.
+ * "done", which a run nobody has decided is not); failed is red, because a
+ * failure is the one outcome that also changes what the user should DO next.
+ * There is no third state word: a row exists only for a conversation whose
+ * work finished and is still unlooked-at, so 「已取消」 never had a row of its
+ * own to describe. Returns the KEY (not the word) so copy stays in the locale
+ * dict; the row renders `t(label)`.
  */
 export declare function noteStatusShapeOf(note: NotificationItem): {
     kind: 'warn' | 'error' | 'success' | 'muted';

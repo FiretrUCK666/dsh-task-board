@@ -5,8 +5,7 @@
  * unseen dot = drawer rows).
  */
 import { describe, expect, it } from 'vitest'
-import { arrivalOf, boardDemandOf, noteKeyOf, noteStatusShapeOf, notificationsExOf, stampWaitingArrivals, waitingBodyOf, waitingExcerptOf, WAITING_EXCERPT_BUDGET, type NotificationItem } from '../src/client/board/notifications.ts'
-import { taskUnviewed } from '../src/core/session-display.ts'
+import { arrivalOf, noteKeyOf, noteStatusShapeOf, notificationsExOf, stampWaitingArrivals, waitingBodyOf, waitingExcerptOf, WAITING_EXCERPT_BUDGET, type NotificationItem } from '../src/client/board/notifications.ts'
 import { createTask, settleExecution, startExecution } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
@@ -18,13 +17,14 @@ function task(id: string, updatedAt: number, extra: Record<string, unknown> = {}
   }
 }
 
-/** Waiting-only view (the default review gate closed — rows are waiting tier). */
+/** Waiting-only view: the gate is driven by the rounds' own read stamps, so a
+ *  fixture with none is simply "not looked at yet". */
 function waitingRows(
   tasks: Parameters<typeof notificationsExOf>[0],
   pending: Parameters<typeof notificationsExOf>[1],
   titleOf: Parameters<typeof notificationsExOf>[2] = id => id,
 ) {
-  return notificationsExOf(tasks, pending, titleOf, () => false)
+  return notificationsExOf(tasks, pending, titleOf)
 }
 
 describe('waiting rows (one per waiting session)', () => {
@@ -80,20 +80,20 @@ describe('review rows (one per settled session of each unviewed review task)', (
     const base = createTask({ title: 'R', description: '', prompt: 'p' }, NOW, 'r')
     const running = startExecution(base, NOW + 1, 'e1')
     const reviewed = settleExecution({ ...running.task, executions: running.task.executions.map(round => ({ ...round, sessionId: 's-1' })) }, 'e1', 'failed', NOW + 2, 'boom')
-    const rows = notificationsExOf([reviewed], () => undefined, id => id, () => true)
+    const rows = notificationsExOf([reviewed], () => undefined, id => id)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ taskId: 'r', kind: 'review', result: 'failed' })
     // Opening the CARD moves only the task-level baseline — the row gate is
     // the SESSION's own round clock, so the row survives (「点开卡片整卡通知
     // 消失」 was exactly the task-level gate this replaced).
-    expect(notificationsExOf([reviewed], () => undefined, id => id, () => false)).toHaveLength(1)
+    expect(notificationsExOf([reviewed], () => undefined, id => id)).toHaveLength(1)
     // Acknowledging the SESSION (what the panel/review-page/notification-open
     // /标已读 funnels write) is what retires its row.
     const acknowledged = {
       ...reviewed,
       executions: reviewed.executions.map(round => ({ ...round, viewedAt: NOW + 10 })),
     }
-    expect(notificationsExOf([acknowledged], () => undefined, id => id, () => false)).toEqual([])
+    expect(notificationsExOf([acknowledged], () => undefined, id => id)).toEqual([])
   })
 
   it('per-session gates: stamping ONE session keeps its sibling row', () => {
@@ -104,14 +104,14 @@ describe('review rows (one per settled session of each unviewed review task)', (
         { id: 'e2', sessionId: 's-2', startedAt: NOW + 2, endedAt: NOW + 20, result: 'succeeded' as const, error: undefined, viewedAt: NOW + 2 },
       ],
     }
-    expect(notificationsExOf([two], () => undefined, id => id, () => false)).toHaveLength(2)
+    expect(notificationsExOf([two], () => undefined, id => id)).toHaveLength(2)
     // Stamp s-1 only (its settle moves its ack past its activity): s-1's row
     // leaves, s-2's stays — rows clear conversation by conversation.
     const stamped = {
       ...two,
       executions: two.executions.map(round => (round.sessionId === 's-1' ? { ...round, viewedAt: NOW + 10 } : round)),
     }
-    const rows = notificationsExOf([stamped], () => undefined, id => id, () => false)
+    const rows = notificationsExOf([stamped], () => undefined, id => id)
     expect(rows.map(row => row.sessionId)).toEqual(['s-2'])
   })
 
@@ -120,7 +120,7 @@ describe('review rows (one per settled session of each unviewed review task)', (
     const running = startExecution(base, NOW + 1, 'e1')
     const reviewed = settleExecution({ ...running.task, executions: running.task.executions.map(round => ({ ...round, sessionId: 's-1' })) }, 'e1', 'succeeded', NOW + 2, undefined)
     // Same session waits too → the louder waiting row stands alone.
-    const same = notificationsExOf([reviewed], id => (id === 's-1' ? 'question' : undefined), id => id, () => true)
+    const same = notificationsExOf([reviewed], id => (id === 's-1' ? 'question' : undefined), id => id)
     expect(same.map(row => row.kind)).toEqual(['waiting'])
     // An UNRELATED session waits → both rows stand: the finished run keeps
     // its 通过/打回, the blocked sibling keeps its 去回答. Suppressing the
@@ -129,7 +129,6 @@ describe('review rows (one per settled session of each unviewed review task)', (
       [{ ...reviewed, executions: [...reviewed.executions, { id: 'e2', sessionId: 's-2', startedAt: NOW + 3, endedAt: undefined, result: undefined, error: undefined }] }],
       id => (id === 's-2' ? 'question' : undefined),
       id => id,
-      () => true,
     )
     expect(sibling.map(row => `${row.kind}:${row.sessionId}`).sort()).toEqual(['review:s-1', 'waiting:s-2'])
   })
@@ -145,50 +144,60 @@ describe('review rows (one per settled session of each unviewed review task)', (
         { id: 'e2', sessionId: 's-2', startedAt: NOW + 2, endedAt: NOW + 20, result: 'succeeded' as const, error: undefined },
       ],
     }
-    const rows = notificationsExOf([two], () => undefined, id => `title-${id}`, () => true)
+    const rows = notificationsExOf([two], () => undefined, id => `title-${id}`)
     expect(rows.map(row => `${row.kind}:${row.sessionId}`)).toEqual(['review:s-1', 'review:s-2'])
     expect(rows[0]).toMatchObject({ result: 'failed', at: NOW + 10, sessionTitle: 'title-s-1' })
     expect(rows[1]).toMatchObject({ result: 'succeeded', at: NOW + 20, sessionTitle: 'title-s-2' })
     // Failed ranks first (it needs a decision), then settle recency — per row.
+    // A CANCELLED lane joins none of them: an abort is not something a person
+    // rules on, so it earns no row (pinned in the gate describe below).
     const cancelled = {
       ...task('c', NOW + 5, { status: 'review' as const }),
       executions: [
         { id: 'e1', sessionId: 's-3', startedAt: NOW + 1, endedAt: NOW + 3, result: 'cancelled' as const, error: undefined },
       ],
     }
-    const mixed = notificationsExOf([two, cancelled], () => undefined, id => id, () => true)
-    expect(mixed.map(row => `${row.result}:${row.sessionId}`)).toEqual(['failed:s-1', 'succeeded:s-2', 'cancelled:s-3'])
+    const mixed = notificationsExOf([two, cancelled], () => undefined, id => id)
+    expect(mixed.map(row => `${row.result}:${row.sessionId}`)).toEqual(['failed:s-1', 'succeeded:s-2'])
   })
 
   it('a legacy review task whose runs carry no session keeps ONE reachable gate row', () => {
+    // Driven through the REAL read clock, not an injected predicate: a card
+    // whose baseline predates the settle owes the gate, and the same card with
+    // the baseline moved past it does not.
     const legacy = {
-      ...task('old', NOW + 7, { status: 'review' as const }),
+      ...task('old', NOW, { status: 'review' as const }),
       executions: [
         { id: 'e1', sessionId: undefined, startedAt: NOW + 1, endedAt: NOW + 3, result: 'succeeded' as const, error: undefined },
       ],
     }
-    const rows = notificationsExOf([legacy], () => undefined, id => id, () => true)
+    const rows = notificationsExOf([legacy], () => undefined, id => id)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ kind: 'review', sessionId: 'old', result: 'succeeded', at: NOW + 3 })
-    // No session identity = no per-session clock: THIS lane alone still reads
-    // the task-level baseline, so a card-level viewed retires it.
-    expect(notificationsExOf([legacy], () => undefined, id => id, () => false)).toEqual([])
+    // No session identity = no per-session clock: THIS lane alone reads the
+    // card-level baseline, so looking at the card retires it.
+    expect(notificationsExOf([{ ...legacy, viewedAt: NOW + 8 }], () => undefined, id => id)).toEqual([])
   })
 
-  it('a comment-only session is a lane too (any settled round gets a face)', () => {
+  it('a comment-only session is a lane too, and it names its REAL outcome', () => {
     // The bound-conversation shape: driven natively — comment/observed rounds,
-    // NO plain run — the session still owes the gate a row, honestly without
-    // a run result (待审核) and on its own settle clock.
+    // NO plain run. It owed a row but borrowed a resultless 「待审核」, so a
+    // comment that FAILED read as a success waiting to be confirmed. The gate
+    // reads the work, not the run sequence.
     const chatTask = {
       ...task('c', NOW + 5, { status: 'review' as const }),
       executions: [
         { id: 'c1', sessionId: 's-chat', startedAt: NOW + 1, endedAt: NOW + 4, result: 'succeeded' as const, error: undefined, comment: '你好', viewedAt: NOW + 1 },
       ],
     }
-    const rows = notificationsExOf([chatTask], () => undefined, id => `title-${id}`, () => true)
+    const rows = notificationsExOf([chatTask], () => undefined, id => `title-${id}`)
     expect(rows.map(row => row.sessionId)).toEqual(['s-chat'])
-    expect(rows[0]).toMatchObject({ kind: 'review', sessionTitle: 'title-s-chat', at: NOW + 4 })
-    expect(rows[0]?.result).toBeUndefined()
+    expect(rows[0]).toMatchObject({ kind: 'review', sessionTitle: 'title-s-chat', at: NOW + 4, result: 'succeeded' })
+    const failedChat = {
+      ...chatTask,
+      executions: [{ ...chatTask.executions[0], result: 'failed' as const, error: 'boom' }],
+    }
+    expect(notificationsExOf([failedChat], () => undefined, id => id)[0]?.result).toBe('failed')
   })
 
   it('mixed lanes: each session keeps its OWN result and settle; failed still ranks first', () => {
@@ -199,13 +208,12 @@ describe('review rows (one per settled session of each unviewed review task)', (
         { id: 'c1', sessionId: 's-chat', startedAt: NOW + 2, endedAt: NOW + 8, result: 'succeeded' as const, error: undefined, comment: '晚安' },
       ],
     }
-    const rows = notificationsExOf([mixed], () => undefined, id => id, () => true)
+    const rows = notificationsExOf([mixed], () => undefined, id => id)
     expect(rows.map(row => row.sessionId)).toEqual(['s-run', 's-chat'])
     const runRow = rows.find(row => row.sessionId === 's-run')
     const chatRow = rows.find(row => row.sessionId === 's-chat')
     expect(runRow).toMatchObject({ result: 'failed', at: NOW + 6 })
-    expect(chatRow).toMatchObject({ at: NOW + 8 })
-    expect(chatRow?.result).toBeUndefined()
+    expect(chatRow).toMatchObject({ at: NOW + 8, result: 'succeeded' })
   })
 })
 
@@ -213,7 +221,7 @@ describe('bound waiting sessions (no round behind them)', () => {
   it('a bound-but-never-run waiting session notifies (same related set as live)', () => {
     const base = createTask({ title: 'B', description: '', prompt: 'p' }, NOW, 'b')
     const task = { ...base, binds: [{ kind: 'session' as const, sessionId: 's-bound' }] }
-    const rows = notificationsExOf([task], id => (id === 's-bound' ? 'approval' : undefined), id => `title-${id}`, () => false)
+    const rows = notificationsExOf([task], id => (id === 's-bound' ? 'approval' : undefined), id => `title-${id}`)
     expect(rows.map(row => row.sessionId)).toEqual(['s-bound'])
     expect(rows[0]).toMatchObject({ kind: 'waiting', waitingKind: 'approval' })
   })
@@ -251,7 +259,7 @@ describe('waiting arrival clock (first-seen, never the round clock)', () => {
       ['early|s-old|waiting', NOW + 5_000],
       ['late|s-new|waiting', NOW + 1_000],
     ])
-    const arrived = notificationsExOf(tasks, pending, id => id, () => false, () => [], {}, arrival(seen))
+    const arrived = notificationsExOf(tasks, pending, id => id, () => [], {}, arrival(seen))
     expect(arrived.map(row => row.sessionId)).toEqual(['s-old', 's-new'])
   })
 
@@ -280,7 +288,7 @@ describe('waiting arrival clock (first-seen, never the round clock)', () => {
     const tasks = [task('a', NOW, {
       executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
     })]
-    const rows = notificationsExOf(tasks, () => 'approval' as const, id => id, () => false, () => [], {}, arrival(new Map()))
+    const rows = notificationsExOf(tasks, () => 'approval' as const, id => id, () => [], {}, arrival(new Map()))
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ kind: 'waiting', waitingKind: 'approval' })
     expect(rows[0].excerpt).toBeUndefined()
@@ -335,12 +343,12 @@ describe('waiting body (signal + content + affordance, one derivation)', () => {
     const pending = (id: string | undefined): 'question' | undefined =>
       id === 's-1' ? 'question' : undefined
     // Readable carrier + interactive host = content row with 去回答.
-    const content = notificationsExOf(tasks, pending, id => id, () => false, () => [],
+    const content = notificationsExOf(tasks, pending, id => id, () => [],
       { questionOf: () => questionBatch, answerInPlace: true })
     expect(content[0].excerpt).toBe('要继续吗？')
     expect(content[0].answerable).toBe(true)
     // Same carrier, display-only host = content WITHOUT the affordance.
-    const degraded = notificationsExOf(tasks, pending, id => id, () => false, () => [],
+    const degraded = notificationsExOf(tasks, pending, id => id, () => [],
       { questionOf: () => questionBatch, answerInPlace: false })
     expect(degraded[0].excerpt).toBe('要继续吗？')
     expect(degraded[0].answerable).toBeUndefined()
@@ -354,7 +362,7 @@ describe('waiting body (signal + content + affordance, one derivation)', () => {
     const tasks = [task('a', NOW, {
       executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
     })]
-    const rows = notificationsExOf(tasks, () => 'plan-review' as const, id => id, () => false, () => [],
+    const rows = notificationsExOf(tasks, () => 'plan-review' as const, id => id, () => [],
       { questionOf: () => planBatch, answerInPlace: true })
     expect(rows[0].excerpt).toBe(waitingExcerptOf('## 计划 1. 先做 A 2. 再做 B'))
     expect(rows[0].answerable).toBe(true)
@@ -436,80 +444,105 @@ describe('waiting moment clock (round activity, never task.updatedAt)', () => {
 })
 
 /**
- * The board's demand count: the answer to 「等我做什么」, stated for the whole
- * surface. It exists because the bell counts notification ROWS (one per
- * session) and a column header counts CARDS — two numbers that measure
- * different things and can never reconcile on screen. The load-bearing rule
- * is that the review half is independent of `viewedAt`: reading a finished
- * run retires the unread GLOW (that message stays honest) but never resolves
- * the decision, and treating "seen" as "done" is exactly how a board stops
- * being safe to leave running.
+ * The review tier is THE human gate, per conversation, and it is read from
+ * `task-demand.sessionGateOf` — the same derivation the card's 待你决断 chip
+ * and the header's 待审核 count read. These cases pin that agreement, because
+ * the two used to be separate questions with separate answers: a row existed
+ * for any settled round while its WORD came from the plain-run lane, and the
+ * card's chip came from a THIRD question (the plain-run lane again).
  */
-describe('boardDemandOf', () => {
-  it('an idle board owes nothing', () => {
-    expect(boardDemandOf([], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
-    expect(boardDemandOf([task('a', NOW)], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
+describe('review rows (the gate, per conversation, every lane)', () => {
+  /** A settled comment round in `s-1` — the lane `plainRunsOf` cannot see. */
+  const commentFinished = {
+    id: 'c1',
+    sessionId: 's-1',
+    startedAt: NOW,
+    injectedAt: NOW,
+    endedAt: NOW + 100,
+    result: 'succeeded' as const,
+    error: undefined,
+    comment: '继续做',
+    viewedAt: NOW,
+  }
+
+  it('a card whose only finished work is a comment still owes a decision', () => {
+    const card = { ...task('a', NOW, { status: 'review', executions: [commentFinished] }) }
+    const rows = notificationsExOf([card], () => undefined, id => id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ kind: 'review', sessionId: 's-1', result: 'succeeded' })
   })
 
-  it('counts each suspended session once, deduplicated across rounds', () => {
-    const tasks = [task('a', NOW, {
-      executions: [
-        { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
-        { id: 'e1b', sessionId: 's-1', startedAt: NOW + 1, endedAt: undefined, result: undefined, error: undefined },
-        { id: 'e2', sessionId: 's-2', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined },
-      ],
-    })]
-    const pending = (id: string | undefined): 'question' | undefined =>
-      id === 's-1' || id === 's-2' ? 'question' : undefined
-    expect(boardDemandOf(tasks, pending)).toEqual({ total: 2, waiting: 2, review: 0 })
+  it('a FAILED comment round says 待决策, not a success waiting to be confirmed', () => {
+    const card = {
+      ...task('a', NOW, {
+        status: 'review',
+        executions: [{ ...commentFinished, result: 'failed' as const, error: 'boom' }],
+      }),
+    }
+    const row = notificationsExOf([card], () => undefined, id => id)[0]
+    expect(row?.result).toBe('failed')
+    expect(noteStatusShapeOf({ ...row!, kind: 'review' }))
+      .toEqual({ kind: 'error', label: 'board.notifyReviewFailed' })
   })
 
-  it('counts a settled review task regardless of whether it was looked at', () => {
-    const base = createTask({ title: 'R', description: '', prompt: 'p' }, NOW, 'r')
-    const running = startExecution(base, NOW + 1, 'e1')
-    const settled = settleExecution(running.task, 'e1', 'succeeded', NOW + 2, undefined)
-    // Looked at (viewedAt past the settle): the bell goes quiet, the gate does not.
-    const looked = { ...settled, viewedAt: NOW + 3 }
-    expect(taskUnviewed(looked)).toBe(false)
-    expect(boardDemandOf([looked], () => undefined)).toEqual({ total: 1, waiting: 0, review: 1 })
-    // Never looked at: same verdict on the gate, and the glow is a separate signal.
-    expect(boardDemandOf([settled], () => undefined)).toEqual({ total: 1, waiting: 0, review: 1 })
-    expect(taskUnviewed(settled)).toBe(true)
+  it('an observed native turn that finished is the gate too', () => {
+    const card = {
+      ...task('a', NOW, {
+        status: 'review',
+        executions: [{
+          id: 'x1', sessionId: 's-1', startedAt: NOW, injectedAt: NOW, endedAt: NOW + 100,
+          result: 'succeeded' as const, error: undefined, comment: '', sessionAnchor: 's-1',
+          external: true, viewedAt: NOW,
+        }],
+      }),
+    }
+    expect(notificationsExOf([card], () => undefined, id => id)).toHaveLength(1)
   })
 
-  it('does not count a task still running, nor one that never ran', () => {
-    const base = createTask({ title: 'X', description: '', prompt: 'p' }, NOW, 'x')
-    const running = startExecution(base, NOW + 1, 'e1').task
-    expect(boardDemandOf([running], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
-    expect(boardDemandOf([base], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
+  it('a CANCELLED round is not a decision, so it produces no row at all', () => {
+    const card = {
+      ...task('a', NOW, {
+        status: 'review',
+        executions: [{ ...commentFinished, result: 'cancelled' as const }],
+      }),
+    }
+    expect(notificationsExOf([card], () => undefined, id => id)).toEqual([])
   })
 
-  it('counts a bound-but-never-run waiting session, like the bell and the glow', () => {
-    const base = createTask({ title: 'B', description: '', prompt: 'p' }, NOW, 'b')
-    const bound = { ...base, binds: [{ kind: 'session' as const, sessionId: 's-bound' }] }
-    // The session bind alone puts it in the related set, with no round behind it —
-    // the same path the bell and the card glow read.
-    const pending = (id: string | undefined): 'approval' | undefined => (id === 's-bound' ? 'approval' : undefined)
-    expect(boardDemandOf([bound], pending)).toEqual({ total: 1, waiting: 1, review: 0 })
-    // And it is the waiting SIGNAL that counts, not the bind: no signal, no demand.
-    expect(boardDemandOf([bound], () => undefined)).toEqual({ total: 0, waiting: 0, review: 0 })
+  it('looking at the conversation retires its row (the read clock, not the column)', () => {
+    const unread = { ...task('a', NOW, { status: 'review', executions: [commentFinished] }) }
+    expect(notificationsExOf([unread], () => undefined, id => id)).toHaveLength(1)
+    // The per-session read stamp, moved past the settle — what opening the
+    // session panel writes.
+    const read = {
+      ...unread,
+      executions: [unread.executions[0], { id: 'c2', sessionId: 's-1', startedAt: NOW + 200, endedAt: NOW + 200, result: 'succeeded' as const, error: undefined, comment: '看到这了', injectedAt: NOW + 200, viewedAt: NOW + 300 }],
+    }
+    expect(notificationsExOf([read], () => undefined, id => id)).toEqual([])
   })
 
-  it('sums the two halves into the headline total', () => {
-    const base = createTask({ title: 'R', description: '', prompt: 'p' }, NOW, 'r')
-    const running = startExecution(base, NOW + 1, 'e1')
-    const settled = settleExecution(
-      { ...running.task, executions: running.task.executions.map(round => ({ ...round, sessionId: 's-1' })) },
-      'e1',
-      'failed',
-      NOW + 2,
-      'boom',
-    )
-    const waiting = task('w', NOW, {
-      executions: [{ id: 'e9', sessionId: 's-9', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
-    })
-    const pending = (id: string | undefined): 'approval' | undefined => (id === 's-9' ? 'approval' : undefined)
-    expect(boardDemandOf([settled, waiting], pending)).toEqual({ total: 2, waiting: 1, review: 1 })
+  it('a card moved out of 待审核 owes nothing, whatever it finished', () => {
+    const approved = { ...task('a', NOW, { status: 'done', executions: [commentFinished] }) }
+    expect(notificationsExOf([approved], () => undefined, id => id)).toEqual([])
+  })
+
+  it('one waiting row and one review row can coexist on DIFFERENT conversations', () => {
+    const card = {
+      ...task('a', NOW, {
+        status: 'review',
+        executions: [commentFinished, {
+          id: 'c3', sessionId: 's-2', startedAt: NOW, injectedAt: NOW, endedAt: NOW + 50,
+          result: 'succeeded' as const, error: undefined, comment: 'ok', viewedAt: NOW,
+        }],
+      }),
+    }
+    const pending = (id: string | undefined): 'question' | undefined => (id === 's-2' ? 'question' : undefined)
+    const rows = notificationsExOf([card], pending, id => id)
+    // s-2 is already shouting louder (waiting), so its review echo yields; the
+    // gate on s-1 keeps its own row.
+    expect(rows).toHaveLength(2)
+    expect(rows.filter(row => row.kind === 'waiting').map(row => row.sessionId)).toEqual(['s-2'])
+    expect(rows.filter(row => row.kind === 'review').map(row => row.sessionId)).toEqual(['s-1'])
   })
 })
 
@@ -534,18 +567,16 @@ describe('noteStatusShapeOf (THE status word per row — many states, one table)
     expect(noteStatusShapeOf(row({ waitingKind: undefined }))).toEqual({ kind: 'warn', label: 'detail.result.running' })
   })
 
-  it('review rows separate the decision states (failed / cancelled / pending)', () => {
+  it('review rows name the two decision states, and there is no third', () => {
     expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined, result: 'failed' })))
       .toEqual({ kind: 'error', label: 'board.notifyReviewFailed' })
-    // Cancelled used to fall through to the pending word — a decision that
-    // does not exist. It is now its own muted state.
-    expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined, result: 'cancelled' })))
-      .toEqual({ kind: 'muted', label: 'board.notifyCancelled' })
-    // Pending wears AMBER — the same "needs you" language as the waiting
+    // Succeeded wears AMBER — the same "needs you" language as the waiting
     // chips and the card's 待你决断 badge (green read as "done", which a run
     // nobody has decided is not).
     expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined, result: 'succeeded' })))
       .toEqual({ kind: 'warn', label: 'board.notifyReview' })
+    // A row with no result at all (hand-built legacy row) still speaks
+    // honestly instead of borrowing the failure word.
     expect(noteStatusShapeOf(row({ kind: 'review', waitingKind: undefined })))
       .toEqual({ kind: 'warn', label: 'board.notifyReview' })
   })

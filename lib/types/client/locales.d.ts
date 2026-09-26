@@ -185,7 +185,6 @@ export declare const zh: {
     'detail.sessionRemoveTitle': string;
     'detail.sessionRemoveConfirm': string;
     'detail.sessionRemoveOk': string;
-    'detail.linkedDone': string;
     'detail.linkedIdle': string;
     'detail.idleHint': string;
     'detail.sessionPanel': string;
@@ -286,7 +285,6 @@ export declare const zh: {
     'board.notifyMarkOne': string;
     'board.notifyReview': string;
     'board.notifyReviewFailed': string;
-    'board.notifyCancelled': string;
     'board.thumbBar': string;
     'board.activity': string;
     'board.activityTitle': string;
@@ -396,6 +394,7 @@ export declare const zh: {
     'review.effort': string;
     'review.effortDefault': string;
     'review.permission': string;
+    'review.permissionUnreadable': string;
     'review.usage': string;
     'review.usageTotal': string;
     'review.usageInput': string;
@@ -548,6 +547,7 @@ export declare const zh: {
     'card.commentQueueTitle': string;
     'card.commentQueueDone': string;
     'card.nextWaiting': string;
+    'card.nextWaitingMany': string;
     'card.nextRunning': string;
     'card.nextQueued': string;
     'card.nextFailed': string;
@@ -555,12 +555,14 @@ export declare const zh: {
     'card.nextScheduled': string;
     'card.nextChain': string;
     'card.awaitingDecision': string;
+    'card.awaitingDecisionFailed': string;
     'card.newComment': string;
     'card.newCommentTitle': string;
     'card.keyboardLabel': string;
     'card.sessionsForAt': string;
     'card.awaitingDecisionTitle': string;
     'card.dotUnread': string;
+    'card.pendingItemSession': string;
     'board.demand': string;
     'board.demandTitle': string;
     'prompt.commandList': string;

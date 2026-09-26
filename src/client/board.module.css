@@ -539,19 +539,35 @@
   text-align: left;
   font: inherit;
 }
+/* The action line: buttons on the row's LEFT edge, the stamp on its RIGHT, and
+   the row itself carries the gap. The stamp used to LEAD the cluster inside its
+   reserved slot, which pushed the buttons a whole slot to the right and opened
+   a hole under the task name — the row's own left edge was not where its
+   controls were. `width: 100%` + `space-between` is the whole fix, at every
+   width, with no width special case. */
 .notifyActions {
-  display: inline-flex;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+/* The buttons themselves: they wrap as a cluster, so a narrow surface stacks
+   them instead of squeezing the stamp off the row. */
+.notifyActionCluster {
+  display: flex;
   align-items: center;
   gap: 6px;
-  flex: none;
   flex-wrap: wrap;
+  min-width: 0;
 }
-/* Row time: a quiet trailing stamp INSIDE the action cluster — every feed
-   row answers WHEN without opening anything (tabular figures keep digits
-   steady). The slot reserves the widest compact date (`YYYY-MM-DD`) so a
-   recent `21h` and an older `2026-09-24` have the same width; otherwise the
-   string length decides whether the whole action cluster wraps, making rows
-   jump between one and two lines for no content reason. */
+/* Row time: a quiet trailing stamp — every feed row answers WHEN without
+   opening anything (tabular figures keep digits steady). The slot reserves the
+   widest compact date (`YYYY-MM-DD`) so a recent `21h` and an older `2026-09-24`
+   have the same width; otherwise the string length decides whether the whole
+   action cluster wraps, making rows jump between one and two lines for no
+   content reason. */
 .notifyMeta {
   flex: none;
   min-width: 10ch;
@@ -1786,6 +1802,9 @@
   opacity: 1;
 }
 .feedFilter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: none;
   height: 24px;
   padding: 0 10px;
@@ -1795,6 +1814,15 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
+}
+/* The partition's own size, inside the chip: the number is what makes the
+   classification legible without toggling anything, and it sits in the same
+   weight and colour as its label (it is a count, not a second emphasis) so the
+   chip never looks like a badge about the chip. The group already wraps, so a
+   third chip never pushes anything out of the row on a narrow surface. */
+.feedFilterCount {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
 }
 .feedFilter[data-active] {
   /* Dark ink on a light accent fill (see --dsh-tb-ink-on-fill). */

@@ -5,14 +5,12 @@
  * through resolveCardDrop.
  */
 import { useState, type CSSProperties } from 'react'
-import type { PendingInteractionKind } from '../../core/controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { cardSourceLabel, latestExecutionOf, plainRunsOf, ruleReadiness, taskBindsOf } from '../../core/tasks.ts'
-import { sessionRuleReadiness } from '../../core/automation.ts'
+import { cardSourceLabel, taskBindsOf } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
-import { cardLightOf, cardUpdatedAtOf, cardViewModelOf, titleOrUntitled, type CardSessionDot } from './card-view.ts'
+import { cardLightOf, cardUpdatedAtOf, titleOrUntitled, type CardPrimary, type CardSessionDot, type CardViewModel } from './card-view.ts'
 import { Chip } from './Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { STATUS_KEY } from './status.ts'
@@ -23,47 +21,39 @@ import { formatDateTime, formatTime } from './format-time.ts'
  *  detail's disclosure and the overview) — honest about the rule's readiness:
  *  chain reports its run budget, cron its next due instant, paused its
  *  blocking status, blocked its cause (plus the failure word when the last
- *  run failed — two orthogonal causes, both named). */
+ *  work failed — two orthogonal causes, both named). */
 function scheduleChipTitle(task: TaskRecord): string {
   return scheduleSummary(task)
 }
 
-/** The open run's state text: either working ("进行中") or blocked on the
- *  user ("等待回应 · 计划确认"). Pure so the chip composition is testable. */
-export function runningStateLabel(waiting: PendingInteractionKind | undefined): string {
-  return waiting !== undefined
-    ? `${t('card.waiting')} · ${t(waitingKeyOf(waiting))}`
-    : t('detail.result.running')
+/**
+ * The primary chip's words — THE label grammar for the card's one loudest
+ * line. One function so 「等待回应 · 提问」 and 「待处理 3」 (several
+ * conversations blocked at once) cannot be spelled two ways, and so a surface
+ * that needs the same words without the chip gets them from here.
+ */
+export function primaryChipLabel(primary: CardPrimary): string {
+  switch (primary.kind) {
+    case 'waiting':
+      return primary.count > 1
+        ? `${t('card.pending')} ${String(primary.count)}`
+        : `${t('card.waiting')} · ${t(waitingKeyOf(primary.waiting))}`
+    case 'running':
+      return t('detail.result.running')
+    case 'queued':
+      return `${t('card.commentQueue')} ${String(primary.count)}`
+    case 'gate':
+      return primary.failed ? t('card.awaitingDecisionFailed') : t('card.awaitingDecision')
+    case 'runs':
+      return settledChipLabel(primary.count)
+    case 'idle':
+      return ''
+  }
 }
 
 /** The settled-run count label: "N 次执行" / "N runs". */
 export function settledChipLabel(runs: number): string {
   return `${runs} ${t('board.runs')}`
-}
-
-/** Whether the card shows the blocked-automation chip: an armed rule that
- *  cannot drive anything (empty prompt — a reason, not a pause). Pure so the
- *  badge composition is testable; the title reuses the schedule summary
- *  grammar, which already names the blocking reason. */
-export function showsBlockedChip(task: TaskRecord): boolean {
-  return task.schedule?.enabled === true && ruleReadiness(task).kind === 'blocked'
-}
-
-/** Whether any ENABLED session rule is blocked on the empty prompt (the
- *  session-rule twin of {@link showsBlockedChip}): a custom-instruction rule
- *  carries its own content and never reads the prompt, so only `usePrompt`
- *  rules count — read through the rule's own readiness, never re-derived. */
-export function showsSessionBlocked(task: TaskRecord): boolean {
-  if (task.rules === undefined) return false
-  return task.rules.some(rule => sessionRuleReadiness(task, rule).kind === 'blocked')
-}
-
-/** Whether the automation slot collapses to the single blocked chip: any
- *  blocked automation (task schedule or session rule) owns the slot — the
- *  schedule/chain/progress text yields instead of stacking four chips for
- *  one cause. THE priority table for the card's automation badges. */
-export function blockedAutomation(task: TaskRecord): boolean {
-  return showsBlockedChip(task) || showsSessionBlocked(task)
 }
 
 /** One card in a column — a PURE state summary: title, description, source
@@ -72,7 +62,7 @@ export function blockedAutomation(task: TaskRecord): boolean {
  *  paused / queued / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiting, pendingCount, pendingTitle, unviewed, unviewedCount, hasUnviewedRun, awaitingDecision, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -81,25 +71,15 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   /** Resolve a bound session's display title (session-bound tasks show their
    *  session identity, not the default workspace label). */
   boundTitleOf?: (task: TaskRecord) => string
-  /** The open run's session is blocked on the user (approval / plan review / question). */
-  waiting?: PendingInteractionKind
-  /** How many sessions of this task are waiting on the user (executions). */
-  pendingCount: number
-  /** Tooltip detail listing which execution/session waits on what. */
+  /** Tooltip detail listing which conversation waits on what. */
   pendingTitle: string
-  /** Whether the task has content (settled run / comment) newer than its last open. */
-  unviewed: boolean
-  /** How many plain-run executions are unviewed (the "新 N" badge figure). */
-  unviewedCount: number
-  /** Whether at least one of those unviewed items is a plain RUN (as opposed to
-   *  comment-only activity). The card states a count only when a run is behind
-   *  it, so "新 2" can never mean "two comments". Computed by the caller from the
-   *  same source as `unviewedCount`, so the two can never disagree. */
-  hasUnviewedRun?: boolean
-  /** A review task whose run has settled and no human has passed or sent it
-   *  back: the plateau the board used to hide. Unlike `unviewed` it does not
-   *  clear when the card is opened — reading is not deciding. */
-  awaitingDecision?: boolean
+  /**
+   * THE card summary (card-view.ts): every chip, the breath and the run guard
+   * read fields from it. The component derives nothing of its own — that split
+   * is what let the card's own priority ranking and its rendered ranking drift
+   * apart, and let a failure the model could not see print no word at all.
+   */
+  view: CardViewModel
   onClick: (event: React.MouseEvent) => void
   /** Optional hover quick-action: run the task right from the card (rerun
    *  semantics, same run guard; disabled while a run is open). */
@@ -121,37 +101,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
   dotTitleOf?: (sessionId: string) => string
 }) {
   const [dragging, setDragging] = useState(false)
-  const latest = latestExecutionOf(task)
-  // Single derivation for the card's live summary (see card-view.ts) — the
-  // chips below still read the same fields so the view-model never drifts
-  // from the render.
-  const view = cardViewModelOf(task, {
-    pendingCount,
-    ...(waiting !== undefined ? { waiting } : {}),
-    unviewedCount,
-  })
-  // Plain-run count (comment continuation rounds are not executions): the
-  // single numbering source shared with the detail list and review badge.
-  const runs = plainRunsOf(task)
-  const lastPlain = runs[runs.length - 1]
-  // Only a genuinely open round shows the in-progress indicator, and "open"
-  // is the shared judgment: ANY of this card's sessions in flight (a card can
-  // run several at once), never "the last row is unsettled". A pending comment
-  // round (task sitting in review) must never spin.
-  const running = view.running
-  // Display truth splits from the gate above: an eventless round never shows
-  // the in-progress indicator. Quick-run blocking, budget
-  // and drop rules stay on `running`.
-  const showingRunning = view.showingRunning
-  // Comments saved but not yet injected (the task's queue): a quiet warn
-  // badge so a card waiting for the dispatcher is never mistaken for idle.
-  const queuedComments = view.queued
-  // A live chain run: the "接续中" chip names the automation mode BEHIND the running
-  // state, and it survives a blocked rule — a live run and a blocked rule are
-  // orthogonal causes, so hiding progress would lie about what is actually moving.
-  const chaining = task.schedule?.enabled === true
-    && task.schedule.mode === 'chain'
-    && task.status === 'running'
   // The card's source line — one derivation for every card (see
   // cardSourceLabel): the bound session's title when it differs from the
   // task title, else the workspace label. Empty = no source line.
@@ -160,18 +109,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
     taskBindsOf(task).some(bind => bind.kind === 'session') ? boundTitleOf?.(task) ?? '' : '',
     task.workspaceId !== undefined ? workspaceTitleOf(task.workspaceId) : '',
   )
-  // Automation paused because the latest plain run failed (the "failure
-  // pauses the rule" signal), vs. a review pause for a successful run.
-  const readiness = ruleReadiness(task)
-  const pausedFailed = readiness.kind === 'paused' && readiness.status === 'review'
-    && lastPlain !== undefined && lastPlain.result === 'failed'
-  // Breathing is owned by the view-model (same priority as the primary chip):
-  // the component never re-derives it, so the light can never drift from the
-  // text it accompanies.
-  // ONE light at a time, decided in the view model (cardLightOf): a card that
-  // is working AND unread wears the in-flight halo — never both, and never a
+  // The breath is owned by the view model (same priority as the primary chip);
+  // ONE light at a time, decided in one place (cardLightOf): a card that is
+  // working AND unread wears the in-flight halo — never both, and never a
   // winner left to stylesheet order.
-  const light = cardLightOf(view.active, unviewed)
+  const light = cardLightOf(view.active, view.unviewed)
   return (
     /* A card is a clickable REGION, never a <button>: the color swatches and
        the quick-run control inside are real interactive elements, and a
@@ -245,16 +187,16 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
           className={css.cardQuickRun}
           data-ghost-hide=""
           role="button"
-          tabIndex={running ? -1 : 0}
+          tabIndex={view.running ? -1 : 0}
           title={t('card.quickRun')}
-          aria-disabled={running ? true : undefined}
+          aria-disabled={view.running ? true : undefined}
           onClick={event => {
-            if (running) return
+            if (view.running) return
             event.stopPropagation()
             onQuickRun()
           }}
           onKeyDown={event => {
-            if (running) return
+            if (view.running) return
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault()
               event.stopPropagation()
@@ -313,58 +255,54 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
             {t('board.updated')} {formatTime(cardUpdatedAtOf(task))}
           </span>
         </span>
-        {/* Row 2: the card's chips. Two rules govern this row, and both used to be
-            broken.
-
-            (1) The PRIMARY chip comes first. `cardViewModelOf` computes a priority
-            (waiting > running > queued > failed > review > idle) and the
-            render used to put that winner LAST, behind every automation badge — so
-            the row's reading order contradicted the view model's own ranking, on the
-            surface whose whole job is a five-second scan.
-
-            (2) The row must render whenever there is ANYTHING to say. Its gate used
-            to be `schedule?.enabled === true || latest !== undefined`, which is false
-            for a card that has never run and has no schedule — and that is exactly
-            the shape of "somebody just made this card and the agent is asking a
-            question". The view model reported `primary: waiting` while the gate hid
-            the entire row, so the one signal that asks the user to act was
-            unrenderable precisely when it mattered. Each chip below already carries
-            its own condition, so the row needs no gate of its own. */}
+        {/* Row 2: the card's chips, straight off the view model.
+            (1) The PRIMARY chip IS `view.primary` — the same value the
+            next-action line above reads. The model and the render used to be
+            TWO chains, which is why a queued card showed no primary at all and
+            a failed one named itself twice on one card.
+            (2) The row renders whenever there is ANYTHING to say. Each chip
+            below already carries its own condition, so the row needs no gate
+            of its own — a gate here once hid the whole row for a card whose
+            session was asking a question, i.e. exactly when the one signal
+            that asks the user to act was unrenderable. */}
         {(() => {
-          const primaryChip = showingRunning ? (
-            <Chip kind="warn" fill={false} title={waiting !== undefined
-              ? t('card.waitingTitle', { kind: t(waitingKeyOf(waiting)) })
-              : undefined}
-              icon={<span className={css.spinner} aria-hidden="true" />}>
-              {runningStateLabel(waiting)}
+          const primary = view.primary
+          const primaryChip = primary.kind === 'waiting' ? (
+            <Chip kind="warn" fill={false} title={pendingTitle !== ''
+              ? pendingTitle
+              : t('card.waitingTitle', { kind: t(waitingKeyOf(primary.waiting)) })}>
+              {primaryChipLabel(primary)}
             </Chip>
-          ) : pendingCount > 0 ? (
-            <Chip kind="warn" fill={false} title={pendingTitle}>
-              {t('card.pending')} {pendingCount}
+          ) : primary.kind === 'running' ? (
+            <Chip kind="warn" fill={false} icon={<span className={css.spinner} aria-hidden="true" />}>
+              {primaryChipLabel(primary)}
             </Chip>
-          ) : awaitingDecision === true ? (
+          ) : primary.kind === 'queued' ? (
+            <Chip kind="warn" fill={false} title={t('card.commentQueueTitle', { n: String(primary.count) })}>
+              {primaryChipLabel(primary)}
+            </Chip>
+          ) : primary.kind === 'gate' ? (
             /* The human gate, stated as a FACT rather than as an unread state.
-               `unviewed` retires the moment the card is opened; this does not,
-               because reading a finished run is not the same as passing or sending
-               it back — a card that has been glanced at used to become
-               indistinguishable from a filed one. STATIC (no breathing): the amber
-               breath belongs to unread alone, so the two can never be confused. */
+               It retires in exactly two ways — the user LOOKS (the same read
+               clock as 新 and the ring) or DECIDES (通过/打回 move the card).
+               There is no third, and none of them is the other. STATIC (no
+               breathing): the amber breath belongs to unread alone. */
             <Chip kind="warn" fill={false} title={t('card.awaitingDecisionTitle')}>
-              {t('card.awaitingDecision')}
+              {primaryChipLabel(primary)}
             </Chip>
-          ) : lastPlain !== undefined ? (
-            <Chip kind={resultChipKind(lastPlain.result)} fill={false}>
-              {settledChipLabel(runs.length)}
+          ) : primary.kind === 'runs' ? (
+            <Chip kind={resultChipKind(primary.failed ? 'failed' : 'succeeded')} fill={false}>
+              {primaryChipLabel(primary)}
             </Chip>
           ) : undefined
           const automationChips = (
             <>
-              {task.schedule?.enabled === true && !blockedAutomation(task) && (
+              {task.schedule?.enabled === true && view.autoBlocked === undefined && (
                 <Chip fill={false} title={scheduleChipTitle(task)}>
                   {task.schedule.mode === 'chain' ? t('card.chain') : t('card.scheduled')}
                 </Chip>
               )}
-              {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && !blockedAutomation(task) && (
+              {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && view.autoBlocked === undefined && (
                 <Chip kind="muted" fill={false} title={t('card.batchProgress')}>
                   {task.schedule.runCount}/{task.schedule.maxRuns}
                 </Chip>
@@ -372,13 +310,13 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
               {/* Blocked automation owns the wording slot (task schedule or any
                   session rule): one cause, one chip — the schedule/batch text yields
                   instead of stacking four chips for it. Live progress is orthogonal
-                  and survives (see chaining). */}
-              {blockedAutomation(task) && (
+                  and survives (see view.chaining). */}
+              {view.autoBlocked !== undefined && (
                 <Chip kind="error" fill={false} title={scheduleChipTitle(task)}>
                   {t('card.autoBlocked')}
                 </Chip>
               )}
-              {chaining && (
+              {view.chaining && (
                 <Chip kind="warn" fill={false} title={t('card.chainingTitle')}>
                   {t('card.chaining')}
                 </Chip>
@@ -386,36 +324,28 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, waiti
               {/* Automation paused by a failed run: the review column reads "failure
                   stopped the rule" at a glance, distinct from "success awaiting
                   confirmation". */}
-              {pausedFailed && (
+              {view.autoPausedFailed && (
                 <Chip kind="error" fill={false} title={t('card.autoPausedFailedTitle')}>
                   {t('card.autoPausedFailed')}
                 </Chip>
               )}
-              {queuedComments > 0 && (
-                <Chip kind="warn" fill={false} title={t('card.commentQueueTitle')}>
-                  {t('card.commentQueue')} {queuedComments}
-                </Chip>
-              )}
-              {unviewed && (
+              {view.unviewed && (
                 /* Two different facts used to render identically: "a run settled and
                    you have not looked" and "only a comment arrived". Only the first
                    means a round is finished and the card may be ready to move; the
                    second means somebody said something. Stating the count only when a
                    run is behind it keeps the number meaningful — a bare new-comment
                    label is the comment-only case. */
-                <Chip kind="warn" fill={false} title={t(hasUnviewedRun ? 'card.newContentTitle' : 'card.newCommentTitle')}>
-                  {hasUnviewedRun ? `${t('card.newContent')} ${unviewedCount}` : t('card.newComment')}
+                <Chip kind="warn" fill={false} title={t(view.unviewedRunCount > 0 ? 'card.newContentTitle' : 'card.newCommentTitle')}>
+                  {view.unviewedRunCount > 0 ? `${t('card.newContent')} ${view.unviewedRunCount}` : t('card.newComment')}
                 </Chip>
               )}
             </>
           )
           const hasAnything = primaryChip !== undefined
             || task.schedule?.enabled === true
-            || latest !== undefined
-            || queuedComments > 0
-            || unviewed
-            || pausedFailed
-            || chaining
+            || view.unviewed
+            || view.chaining
           if (!hasAnything) return null
           return (
             <span className={css.cardBadges}>

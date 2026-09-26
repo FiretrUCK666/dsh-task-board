@@ -106,7 +106,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
       ? 'running'
       : undefined
   const stateChip = sessionState !== undefined
-    ? sessionStateChip(sessionState, waiting, 'detail.linkedDone', 'detail.linkedIdle', 'detail.idleHint')
+    ? sessionStateChip(sessionState, waiting, 'detail.result.succeeded', 'detail.linkedIdle', 'detail.idleHint')
     : undefined
   const updatedAt = row !== undefined ? formatDateTime(row.updatedAt) : undefined
 

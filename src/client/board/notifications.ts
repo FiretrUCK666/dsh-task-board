@@ -33,9 +33,10 @@
  * aggregation unit-tests in isolation; TaskBoard supplies the live faces.
  */
 import type { PendingInteractionKind } from '../../core/controller.ts'
-import { sessionUnviewedOf, taskUnviewed } from '../../core/session-display.ts'
 import { relatedSessionIdsOf } from '../../core/task-live.ts'
-import { lastPlainResult, plainRunsOf, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
+import { taskUnviewed } from '../../core/session-display.ts'
+import { latestCompletedOf, sessionGateOf } from '../../core/task-demand.ts'
+import { type TaskRecord } from '../../core/tasks.ts'
 import type { TaskBoardKey } from '../locales.ts'
 import { waitingKeyOf } from './session-chip.ts'
 
@@ -49,8 +50,12 @@ export interface NotificationItem {
   waitingKind?: PendingInteractionKind
   /** Tier: waiting outranks review (the bell counts both, waiting first). */
   kind: 'waiting' | 'review'
-  /** Review outcome (review rows only). */
-  result?: 'succeeded' | 'failed' | 'cancelled'
+  /** Outcome of the work the review row is about (review rows only). Read from
+   *  the same gate the card's 待你决断 chip reads, over every lane — so a
+   *  failure that arrived as a comment or an observed native turn says 待决策
+   *  instead of borrowing the succeeded word. Cancelled never appears: a
+   *  cancel is an abort, not a decision. */
+  result?: 'succeeded' | 'failed'
   /**
    * One-line content preview of the wait (waiting rows only): a plan's body
    * (detail, falling back to its question line) or a question batch's first
@@ -143,19 +148,18 @@ export interface WaitingContentFace {
 }
 
 /**
- * Full three-tier view: waiting sessions first (newest arrival first), then
- * unviewed review sessions — ONE row per conversation of each review task
- * (its latest plain run's own result and settle), failed before succeeded.
+ * THE notification center's rows: waiting conversations first (newest arrival
+ * first), then the conversations sitting in the human gate, failed before
+ * succeeded.
  *
- * A review row is gated PER SESSION on the round clock (`sessionUnviewedOf`,
- * the same clock the row glow and the card's session dots read) — never on
- * the task-level baseline: opening the CARD only moves that baseline (the
- * card ring retires) and must not erase rows naming a different conversation
- * (「点开任务卡片，整卡通知全消失」 was exactly that bug). The session-less
- * legacy lane keeps `isUnviewed`: a row with no session has no per-session
- * clock to read. `linkedIdsOf` supplies live linked-session ids per task so
- * a bound-but-never-run waiting session still notifies (same related set as
- * the live state).
+ * A review row is gated by `sessionGateOf` — THE per-session gate (finished
+ * work + the card is in 待审核 + the user has not looked at that conversation),
+ * the same derivation the card's 待你决断 chip and the header's 待审核 count
+ * read. So a row exists for exactly the conversations the board is shouting
+ * about, and its status word names the real outcome whatever lane produced it.
+ * `linkedIdsOf` supplies the task's live linked-session ids, so a
+ * bound-but-never-run waiting session still notifies (same related set as the
+ * live state and the card's own voice).
  *
  * Waiting rows sort by the ARRIVAL clock when `arrivedAt` is supplied (the
  * board's first-seen map), falling back to the round clock for callers
@@ -165,7 +169,6 @@ export function notificationsExOf(
   tasks: readonly TaskRecord[],
   pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
   titleOf: (sessionId: string) => string,
-  isUnviewed: (task: TaskRecord) => boolean = taskUnviewed,
   linkedIdsOf: (task: TaskRecord) => readonly string[] = () => [],
   content: WaitingContentFace = {},
   arrivedAt: (note: Pick<NotificationItem, 'taskId' | 'sessionId' | 'kind'>) => number | undefined = () => undefined,
@@ -218,83 +221,68 @@ export function notificationsExOf(
     arrivedAt({ taskId: note.taskId, sessionId: note.sessionId, kind: note.kind }) ?? note.at
   waiting.sort((a, b) => arrivalOf(b) - arrivalOf(a) || compareNoteKey(a, b))
 
-  // Review tier: ONE row per SESSION of each review task with unviewed
-  // content (the human gate) — from ANY settled lane (plain runs, saved
-  // comments, observed native turns): a comment-only conversation is a lane
-  // too, and the drawer owes it a face. Each row carries its session's own
-  // plain-run result for the status word (absent = no run decided anything,
-  // honestly 待审核) and its latest settled instant.
+  // Review tier: ONE row per CONVERSATION that owes a look — from ANY settled
+  // lane (plain runs, saved comments, observed native turns, direct steers,
+  // rule instructions): a comment-only conversation is a lane too, and the
+  // drawer owes it a face.
+  //
+  // The row's EXISTENCE and its WORD both come from `sessionGateOf` — the one
+  // per-session gate the card's own 待你决断 chip and the header's 待审核
+  // count read. Before, existence walked every settled round while the word
+  // came from the plain-run lane alone, so a card whose work arrived as a
+  // comment produced a row that said 待审核 for a failure nothing on the card
+  // could see, and a cancelled run produced a row that said 已取消 while the
+  // card said 待你决断 and the header said 待审核 1 张 — three answers for one
+  // card. Cancelled rounds no longer produce rows at all: a cancel is an abort,
+  // not something a person has to rule on, so the drawer has no word for it.
   const review: NotificationItem[] = []
+  const emitted = new Set<string>()
   for (const task of tasks) {
-    // Column only — the unread test moved INTO each row (per session below),
-    // so retiring the card's ring by opening it no longer wipes the rows.
     if (task.status !== 'review') continue
-    // WAITING already covers a conversation — but ONLY the same one. The old
-    // grammar suppressed the review echo for the WHOLE task whenever ANY
-    // waiting row existed on it, so a finished run's 通过/打回 vanished the
-    // moment an unrelated sibling session asked a question: the gate and the
-    // block shared one row, and the row only offered the gate's action. A
-    // waiting row suppresses the review echo only for the SAME session;
-    // different sessions keep both rows.
-    const runs = plainRunsOf(task)
-    // Latest SETTLED round per session, best settle wins.
-    const latestSettledBySession = new Map<string, ExecutionRecord>()
-    for (const round of task.executions) {
-      if (round.sessionId === undefined || round.endedAt === undefined) continue
-      const previous = latestSettledBySession.get(round.sessionId)
-      if (previous === undefined || (round.endedAt ?? 0) > (previous.endedAt ?? 0)) {
-        latestSettledBySession.set(round.sessionId, round)
-      }
-    }
-    // The status word of each session: its LATEST plain run's result (runs
-    // are chronological — last write wins; a comment-only session has no
-    // run result and reads 待审核).
-    const plainResultBySession = new Map<string, ExecutionRecord['result']>()
-    for (const run of runs) {
-      if (run.sessionId === undefined) continue
-      plainResultBySession.set(run.sessionId, run.result)
-    }
-    if (latestSettledBySession.size === 0) {
-      // Legacy rows whose rounds carry no session: the gate still needs ONE
-      // reachable row — the task itself fills the session slot, and the clock
-      // stays the RUN's settle (never the task's metadata updatedAt). With no
-      // session identity there is no per-session clock, so this lane alone
-      // still reads the task-level baseline.
-      if (!isUnviewed(task)) continue
-      const sessionId = task.executions[task.executions.length - 1]?.sessionId ?? task.id
-      if (seen.has(`${task.id}|${sessionId}`)) continue
-      const result = lastPlainResult(task)
+    for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task))) {
+      const key = `${task.id}|${sessionId}`
+      if (emitted.has(key)) continue
+      const gate = sessionGateOf(task, sessionId)
+      if (gate.state !== 'unseen' || gate.work === undefined) continue
+      emitted.add(key)
+      // WAITING already covers a conversation — but ONLY the same one. The
+      // old grammar suppressed the review echo for the WHOLE task whenever ANY
+      // waiting row existed on it, so a finished run's 通过/打回 vanished the
+      // moment an unrelated sibling session asked a question: the gate and the
+      // block shared one row, and the row only offered the gate's action.
+      // Different sessions keep both rows.
+      if (seen.has(key)) continue
       review.push({
         taskId: task.id,
         taskTitle: task.title,
         sessionId,
         sessionTitle: titleOf(sessionId),
         kind: 'review',
-        ...(result !== undefined ? { result } : {}),
-        at: runs[runs.length - 1]?.endedAt ?? task.updatedAt,
+        result: gate.work.result,
+        at: gate.work.endedAt,
       })
-      continue
     }
-    for (const [sessionId, round] of latestSettledBySession) {
-      if (seen.has(`${task.id}|${sessionId}`)) {
-        // The SAME session is already shouting louder (waiting); skip the
-        // quieter review echo for that conversation only.
-        continue
+    // Legacy rows whose rounds carry no session: the gate still needs ONE
+    // reachable row — the task itself fills the session slot, and the clock
+    // stays the WORK's settle (never the task's metadata updatedAt). With no
+    // session identity there is no per-session clock, so this lane alone reads
+    // the card-level baseline (`taskUnviewed`) — the one honest stand-in, and
+    // the reason it is written down rather than left implicit.
+    const work = latestCompletedOf(task)
+    if (work !== undefined && work.sessionId === undefined && taskUnviewed(task)) {
+      const sessionId = task.id
+      if (!emitted.has(`${task.id}|${sessionId}`) && !seen.has(`${task.id}|${sessionId}`)) {
+        emitted.add(`${task.id}|${sessionId}`)
+        review.push({
+          taskId: task.id,
+          taskTitle: task.title,
+          sessionId,
+          sessionTitle: titleOf(sessionId),
+          kind: 'review',
+          result: work.result,
+          at: work.endedAt,
+        })
       }
-      // THE row gate: this conversation's own round clock. Acknowledged by
-      // its review page, its notification/panel open, 标已读 or 通过 — never
-      // by a sibling session's traffic and never by the card-level open.
-      if (!sessionUnviewedOf(task, sessionId)) continue
-      const result = plainResultBySession.get(sessionId)
-      review.push({
-        taskId: task.id,
-        taskTitle: task.title,
-        sessionId,
-        sessionTitle: titleOf(sessionId),
-        kind: 'review',
-        ...(result !== undefined ? { result } : {}),
-        at: round.endedAt ?? task.updatedAt,
-      })
     }
   }
   // Prove ordering from the shared event model (one derivation, not two):
@@ -302,70 +290,13 @@ export function notificationsExOf(
   // the sort below is newest-first (then rank, then key) with failed work
   // ranked first (it needs a decision).
   review.sort((a, b) => {
-    const rank = (result: NotificationItem['result']): number =>
-      result === 'failed' ? 0 : result === 'succeeded' ? 1 : result === 'cancelled' ? 2 : 3
+    const rank = (result: NotificationItem['result']): number => result === 'failed' ? 0 : 1
     const rankDiff = rank(a.result) - rank(b.result)
     if (rankDiff !== 0) return rankDiff
     if (b.at !== a.at) return b.at - a.at
     return compareNoteKey(a, b)
   })
   return [...waiting, ...review]
-}
-
-/**
- * What the board owes the user, stated as one fact for the whole surface.
- *
- * The bell's badge counts ROWS (one per session), and a column header counts
- * CARDS — two numbers that measure different things and, on screen, never
- * reconcile. Neither of them answers the question the board exists to answer
- * (「等我做什么」), and a card that has been glanced at drops out of the bell
- * entirely. This derivation is that answer, and it is deliberately independent
- * of `viewedAt`:
- *
- *  - `waiting` is a live block: an agent suspended on approval / plan / question.
- *  - `review` is the human gate: a task sitting in review with a settled run.
- *    Once looked at it stops BREATHING (that is the unread signal, and it stays
- *    honest) but it is not resolved until a human passes or sends it back — so
- *    it keeps counting here. This is the split the board was missing: five
- *    cards can wait in review while the only visible demand is an 11px digit.
- *
- * Pure, so the header row and the tests read the same number.
- */
-export interface BoardDemand {
-  /** Total items awaiting a human: waiting sessions + review tasks. */
-  total: number
-  /** Sessions currently suspended on a question / approval / plan. */
-  waiting: number
-  /** Tasks in review whose latest plain run has settled. */
-  review: number
-}
-
-export function boardDemandOf(
-  tasks: readonly TaskRecord[],
-  pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
-  linkedIdsOf: (task: TaskRecord) => readonly string[] = () => [],
-): BoardDemand {
-  let waiting = 0
-  let review = 0
-  for (const task of tasks) {
-    // A waiting session is counted once per session, exactly like the bell:
-    // two rounds can name the same session.
-    const counted = new Set<string>()
-    // `relatedSessionIdsOf` takes the task's linked ids as an ARRAY (it is the
-    // live related-set derivation, shared with the card's glow and the bell), so
-    // the callback is invoked here — passing the callback itself would iterate
-    // the function's characters instead of the ids.
-    for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task))) {
-      if (sessionId === undefined || counted.has(sessionId)) continue
-      if (pendingOf(sessionId) === undefined) continue
-      counted.add(sessionId)
-      waiting += 1
-    }
-    // The human gate. `lastPlainResult !== undefined` means a plain run has
-    // settled; the task is still in review, so nobody has decided yet.
-    if (task.status === 'review' && lastPlainResult(task) !== undefined) review += 1
-  }
-  return { total: waiting + review, waiting, review }
 }
 
 /**
@@ -406,14 +337,16 @@ export function arrivalOf(
  * drawer's status vocabulary can never drift per call site:
  *
  *   waiting → 权限审批 / 计划确认 / 提问 (the interaction the agent waits on)
- *   review  → 待决策 (failed) / 待审核 (succeeded or open) / 已取消 (cancelled)
+ *   review  → 待决策 (failed) / 待审核 (succeeded)
  *
  * Two colours, one meaning each: 待审核 wears AMBER — the same "needs you"
  * language as the waiting chips and the card's 待你决断 badge (green read as
- * "done", which a run nobody has decided is not); failed is red; cancelled
- * is muted (it used to fall through to the green 待审核 word, promising a
- * decision that did not exist). Returns the KEY (not the word) so copy stays
- * in the locale dict; the row renders `t(label)`.
+ * "done", which a run nobody has decided is not); failed is red, because a
+ * failure is the one outcome that also changes what the user should DO next.
+ * There is no third state word: a row exists only for a conversation whose
+ * work finished and is still unlooked-at, so 「已取消」 never had a row of its
+ * own to describe. Returns the KEY (not the word) so copy stays in the locale
+ * dict; the row renders `t(label)`.
  */
 export function noteStatusShapeOf(note: NotificationItem): { kind: 'warn' | 'error' | 'success' | 'muted'; label: TaskBoardKey } {
   if (note.kind === 'waiting') {
@@ -423,6 +356,5 @@ export function noteStatusShapeOf(note: NotificationItem): { kind: 'warn' | 'err
     }
   }
   if (note.result === 'failed') return { kind: 'error', label: 'board.notifyReviewFailed' }
-  if (note.result === 'cancelled') return { kind: 'muted', label: 'board.notifyCancelled' }
   return { kind: 'warn', label: 'board.notifyReview' }
 }

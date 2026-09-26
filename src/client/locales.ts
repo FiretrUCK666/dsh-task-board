@@ -66,7 +66,7 @@ export const zh = {
   'board.empty': '暂无任务',
   'board.status.backlog': '待规划',
   'board.statusRunning': '正在跑 {n}',
-  'board.statusQueued': '排队 {n}',
+  'board.statusQueued': '待启动 {n}',
   'board.statusSkipped': '跳过 {n}',
   'board.heartbeatStale': '心跳停止 · 自 {time} 无调度',
   'board.status': '状态',
@@ -186,7 +186,6 @@ export const zh = {
   'detail.sessionRemoveTitle': '移除「{name}」的全部记录？',
   'detail.sessionRemoveConfirm': '该会话在本任务中的评论与执行记录将被永久删除，且不可恢复；任务与其余会话不受影响。',
   'detail.sessionRemoveOk': '移除',
-  'detail.linkedDone': '已完成',
   'detail.linkedIdle': '未运行',
   'detail.idleHint': '会话当前没有进行中的对话',
   'detail.sessionPanel': '会话详情',
@@ -269,7 +268,7 @@ export const zh = {
   'board.automation': '自动化',
   'board.automationTitle': '统一管理任务级自动执行与会话级规则',
   'board.notify': '通知',
-  'board.notifyCount': '通知 · {n} 条未读',
+  'board.notifyCount': '通知 · {n} 项',
   'board.notifyNew': '{base}，其中 {n} 条是刚到的',
   'board.notifyEmpty': '暂无等你处理的事项',
   'board.notifyFilter.all': '全部',
@@ -294,7 +293,6 @@ export const zh = {
   'board.notifyMarkOne': '标已读',
   'board.notifyReview': '待审核',
   'board.notifyReviewFailed': '待决策',
-  'board.notifyCancelled': '已取消',
   'board.thumbBar': '快捷操作',
   'board.activity': '动态',
   'board.activityTitle': '全板近况：新建、开始、完成、留言、外部、直发（只读，点行进任务详情）',
@@ -405,6 +403,7 @@ export const zh = {
   'review.effort': '思考程度',
   'review.effortDefault': '默认（模型默认）',
   'review.permission': '权限',
+  'review.permissionUnreadable': '读不到当前权限',
   'review.usage': '用量',
   'review.usageTotal': '累计用量',
   'review.usageInput': '输入 {n}',
@@ -566,28 +565,36 @@ export const zh = {
   'card.commentQueueTitle': '已保存 {n} 条评论，等待注入（自动巡航开启且有空闲槽位时按顺序执行）',
   'card.commentQueueDone': '已保存 {n} 条评论：任务已完成不会运行它们，移回「待办」后才会按顺序注入',
   'card.nextWaiting': '需你处理 · 点开前往会话',
+  'card.nextWaitingMany': '{n} 个会话在等你 · 点开逐个处理',
   'card.nextRunning': 'Agent 工作中 · 无需操作',
   'card.nextQueued': '已排队 {n} 条 · 巡航开启后按序注入',
   'card.nextFailed': '失败待决策 · 留言或重跑',
   'card.nextReview': '待你确认完成',
   'card.nextScheduled': '已排程 · 到点自动运行',
   'card.nextChain': '接续中 · 完成后自动下一轮',
-  /* The static gate marker. Distinct from the amber unread chip on purpose:
-     reading a card retires 「新」, but only a decision retires this one. It is
-     never a breathing state — the breath belongs to unread alone. */
+  /* The static gate marker. It reads the ONE shared gate (task-demand): a
+     card owes a decision when work finished on it, it sits in 待审核, and the
+     user has not looked at that conversation yet. Looking retires it (the
+     same read clock as 新 and the ring); 通过/打回 retire it by moving the
+     card. Never a breathing state — the breath belongs to unread alone. The
+     failed variant names the outcome so a failure can never read as a
+     success waiting to be confirmed. */
   'card.awaitingDecision': '待你决断',
+  'card.awaitingDecisionFailed': '失败待决断',
   'card.newComment': '新留言',
   'card.newCommentTitle': '这条卡片有没看过的评论',
   'card.keyboardLabel': '{title}，{column}。[ 与 ] 键移到相邻列；回车打开。',
   'card.sessionsForAt': '相关会话 {n} 个：{sessions}',
-  'card.awaitingDecisionTitle': '已跑完，等你在待审核列通过或打回；看过之后仍然算未决',
+  'card.awaitingDecisionTitle': '这个会话跑完了，你还没看过它、也还没裁决。点开卡片只是看摘要——要让这条消失，得进那个会话的评论区，或者直接通过 / 打回。',
   'card.dotUnread': '有新完成未看',
+  'card.pendingItemSession': '会话「{session}」：{kind}',
   /* Header demand row: the board stating, in words, what it owes the user.
-     The bell badge counts notification ROWS (one per session) and a column
-     header counts CARDS; neither answers 「等我做什么」, so this row states it
-     separately and without a number that could contradict them. */
+     Both halves are counted by `task-demand`, the same derivation the card's
+     待你决断 chip and the drawer's rows read — so the number here, the chip on
+     a card and the row in the drawer are one fact, and looking retires all
+     three together. */
   'board.demand': '等你处理 {n} 项 · 待审核 {m} 张',
-  'board.demandTitle': '等你处理 = 挂起等你作答的会话；待审核 = 已跑完但还没通过或打回的任务（看过也算）',
+  'board.demandTitle': '等你处理 = 有会话挂起等你作答；待审核 = 有卡片跑完了、你还没看过那个会话、也还没通过或打回。点开卡片只是看摘要，要让提醒消失请进那个会话的评论区。',
   'prompt.commandList': '命令列表',
   'prompt.noCommands': '无匹配命令',
   'prompt.noReferences': '没有匹配的文件或会话',
@@ -680,7 +687,7 @@ export const en: Record<keyof typeof zh, string> = {
   'board.empty': 'Empty',
   'board.status.backlog': 'Backlog',
   'board.statusRunning': 'Running {n}',
-  'board.statusQueued': 'Queued {n}',
+  'board.statusQueued': 'Launching {n}',
   'board.statusSkipped': 'Skipped {n}',
   'board.heartbeatStale': 'Heartbeat stale · none since {time}',
   'board.status': 'Status',
@@ -800,7 +807,6 @@ export const en: Record<keyof typeof zh, string> = {
   'detail.sessionRemoveTitle': 'Remove every record of "{name}"?',
   'detail.sessionRemoveConfirm': 'This session\'s comments and run records on this task will be deleted permanently and cannot be recovered; the task and its other sessions stay untouched.',
   'detail.sessionRemoveOk': 'Remove',
-  'detail.linkedDone': 'Done',
   'detail.linkedIdle': 'Idle',
   'detail.idleHint': 'The session has no active conversation',
   'detail.sessionPanel': 'Session detail',
@@ -883,7 +889,7 @@ export const en: Record<keyof typeof zh, string> = {
   'board.automation': 'Automation',
   'board.automationTitle': 'Manage task-level auto-run and session rules in one place',
   'board.notify': 'Notifications',
-  'board.notifyCount': 'Notifications · {n} unread',
+  'board.notifyCount': 'Notifications · {n}',
   'board.notifyNew': '{base}, {n} of them just arrived',
   'board.notifyEmpty': 'Nothing waiting on you',
   'board.notifyFilter.all': 'All',
@@ -901,7 +907,6 @@ export const en: Record<keyof typeof zh, string> = {
   'board.notifyMarkOne': 'Mark read',
   'board.notifyReview': 'Review',
   'board.notifyReviewFailed': 'Decide',
-  'board.notifyCancelled': 'Cancelled',
   'board.thumbBar': 'Quick actions',
   'board.activity': 'Activity',
   'board.activityTitle': 'Board activity: creations, starts, completions, comments, external turns, direct sends (read-only, rows open the task)',
@@ -1012,6 +1017,7 @@ export const en: Record<keyof typeof zh, string> = {
   'review.effort': 'Reasoning Effort',
   'review.effortDefault': 'Default (model default)',
   'review.permission': 'Permission',
+  'review.permissionUnreadable': 'Cannot read the current permission',
   'review.usage': 'Usage',
   'review.usageTotal': 'Total usage',
   'review.usageInput': 'in {n}',
@@ -1166,6 +1172,7 @@ export const en: Record<keyof typeof zh, string> = {
   'card.commentQueueTitle': '{n} saved comments waiting to be injected (they run in order once auto cruise is on and a slot is free)',
   'card.commentQueueDone': '{n} saved comments: the task is done so they will not run — move the task back to To Do to inject them in order',
   'card.nextWaiting': 'Needs you · open to handle',
+  'card.nextWaitingMany': '{n} sessions need you · open to handle them one by one',
   'card.nextRunning': 'Agent working · nothing to do',
   'card.nextQueued': 'Queued {n} · injects in order when cruise is on',
   'card.nextFailed': 'Failed · steer with a comment or rerun',
@@ -1173,14 +1180,16 @@ export const en: Record<keyof typeof zh, string> = {
   'card.nextScheduled': 'Scheduled · runs automatically',
   'card.nextChain': 'Chaining · next round after completion',
   'card.awaitingDecision': 'Awaiting your decision',
+  'card.awaitingDecisionFailed': 'Failed · awaiting your decision',
   'card.newComment': 'New comment',
   'card.newCommentTitle': 'This card has comments you have not read',
   'card.keyboardLabel': '{title}, {column}. Press [ or ] to move it one column; Enter opens it.',
   'card.sessionsForAt': '{n} related session(s): {sessions}',
-  'card.awaitingDecisionTitle': 'The run finished and is waiting in Review for you to approve or send back; it still counts after you have looked',
+  'card.awaitingDecisionTitle': 'That conversation finished and you have neither read it nor ruled on it. Opening the card only shows a summary — to clear this, open that session, or approve / send it back.',
   'card.dotUnread': 'Has an unreviewed finish',
+  'card.pendingItemSession': 'Session "{session}": {kind}',
   'board.demand': '{n} need you · {m} in review',
-  'board.demandTitle': 'Need you = sessions suspended on your answer. In review = runs that finished and nobody has approved or sent back yet (looked-at ones still count)',
+  'board.demandTitle': 'Need you = a session is suspended on your answer. In review = a card finished and you have neither opened that session nor approved or sent it back. Opening the card only shows a summary; to clear a reminder, open the session.',
   'prompt.commandList': 'Command list',
   'prompt.noCommands': 'No matching commands',
   'prompt.noReferences': 'No matching files or sessions',

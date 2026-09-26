@@ -1273,21 +1273,30 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     expect(source).toMatch(/\.notifyMain \.chip\s*\{[^}]*flex:\s*none/)
   })
 
-  it('every row answers WHEN: a fixed time slot keeps action placement stable', () => {
+  it('every row answers WHEN, on the row\'s RIGHT: a fixed time slot keeps action placement stable', () => {
     expect(ruleOf('notifyMeta')).toMatch(/flex:\s*none/)
     expect(ruleOf('notifyMeta')).toMatch(/min-width:\s*10ch/)
     expect(ruleOf('notifyMeta')).toMatch(/text-align:\s*right/)
     expect(ruleOf('notifyMeta')).toMatch(/font-variant-numeric:\s*tabular-nums/)
     // The slot reserves the full compact-date width, so `21h` and
     // `2026-09-24` cannot make otherwise identical rows wrap differently.
-    // The stamp lives ONCE — inside the shared row's action cluster — and
-    // both drawers hand it their moment.
+    // The stamp lives ONCE — inside the shared row — and both drawers hand it
+    // their moment.
     const feedRowSource = readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8')
     const actionsAt = feedRowSource.indexOf('css.notifyActions')
     expect(actionsAt).toBeGreaterThan(-1)
     expect(feedRowSource.slice(actionsAt)).toContain('css.notifyMeta}>{time}')
     expect(board).toContain('time={formatTime(note.at)}')
     expect(board).toContain('time={formatTime(item.at)}')
+    // The action line's own left edge is the row's left edge: the buttons
+    // lead and the stamp trails, with the row carrying the gap. The stamp
+    // used to LEAD the cluster inside its reserved slot, which pushed the
+    // buttons a whole slot right and opened a hole under the task name.
+    const line = feedRowSource.slice(actionsAt)
+    expect(line.indexOf('css.notifyActionCluster')).toBeLessThan(line.indexOf('css.notifyMeta'))
+    expect(ruleOf('notifyActions')).toMatch(/justify-content:\s*space-between/)
+    expect(ruleOf('notifyActions')).toMatch(/width:\s*100%/)
+    expect(ruleOf('notifyActionCluster')).toMatch(/flex-wrap:\s*wrap/)
   })
 
   it('ONE row skeleton serves both drawers: [task][session][status] …… [time][actions], no aria-label', () => {
@@ -1357,8 +1366,13 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     const feedRow = readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8')
     expect(feedRow).toContain('status.label')
     const locales = readFileSync(fileURLToPath(new URL('../src/client/locales.ts', import.meta.url)), 'utf8')
-    expect(locales.match(/'board\.notifyCancelled':/g), 'cancelled copy exists in both languages').toHaveLength(2)
+    expect(locales.match(/'board\.notifyReviewFailed':/g), 'the decision word exists in both languages').toHaveLength(2)
     expect(locales.match(/'card\.dotUnread':/g), 'dot unread copy exists in both languages').toHaveLength(2)
+    // A CANCELLED run has no row to word: the drawer's review tier is gated on
+    // the human gate, and an abort is not something a person rules on. The
+    // word was removed rather than left unreachable, so it must not come back
+    // as a third "decision" state beside 待审核 / 待决策.
+    expect(locales).not.toMatch(/'board\.notifyCancelled':/)
     // The task fold's remainder line ships its copy in both languages too
     // (the feature returned with a user; only its OLD names are banned above).
     expect(locales.match(/'board\.activityGroupRest':/g)).toHaveLength(2)

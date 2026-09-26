@@ -9,11 +9,11 @@
  * plugin must not take the GUI down.
  */
 import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
-import { buildApi, sessionDriverOf } from './platform.ts'
+import { buildApi, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
 import { BoardController, type PromptFile, type PromptImage, type ReferenceRemoteFace, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptPage } from '../core/controller.ts'
-import { pickTranscriptProjections } from '../core/projections.ts'
+import { pickTranscriptProjections, readPermissionValueOf } from '../core/projections.ts'
 import { UNTITLED_SESSION_KEY } from '../core/session-list.ts'
 import { ExecutionService, type ExecutionHistoryEvent, type SessionDriver } from '../core/execution.ts'
 import { SchedulerService } from '../core/scheduler.ts'
@@ -444,11 +444,15 @@ export function apply(ctx: ClientContext): void {
         return { ok: false as const, error: String(error) }
       }
     }
-    // One driver adapter per bound session object: alpha.3's sessions service
-    // exposes session bindings (`sessions.binding(id)` — lazily minted,
-    // scope-addressed) and `sessionDriverOf` maps the bound Session onto the
-    // core SessionDriver face. Adapters are cached per session object and
-    // disposed with this fiber.
+    // THE borrow path (see platform.sessionHoldFactory): a driver adapter per
+    // bound session object, pooled and reference-counted by live borrows, so
+    // the last release disposes the subscription instead of leaving one per
+    // run this page ever launched. `hold` is what every run borrows through —
+    // the host resolves a driver only for a generation somebody retains, so
+    // peeking `sessions.binding` is not enough to run a board-created session.
+    const holdSession = sessionHoldFactory(id => sessions.retain(id, { source: SESSION_HOLD_SOURCE }))
+    // The peek adapter (goal strip's live projection read, the rename
+    // fallback): whatever generation someone else is holding right now.
     const driverEntries = new Map<BoundSessionFace, { driver: SessionDriver; dispose: () => void }>()
     ctx.effect(() => () => {
       for (const { dispose } of driverEntries.values()) dispose()
@@ -468,6 +472,7 @@ export function apply(ctx: ClientContext): void {
     const exec = new ExecutionService({
       sessions: {
         list: sessions.list,
+        hold: holdSession,
         binding: id => {
           const entry = sessionDriverEntry(id as SessionId)
           return entry === undefined ? undefined : { session: entry.driver }
@@ -992,6 +997,15 @@ export function apply(ctx: ClientContext): void {
             console.warn('[dsh-task-board] permission switch failed:', error)
             return { ok: false as const, error: String(error) }
           }
+        },
+        // The LIVE permission read. A per-session setting is a current fact,
+        // not a historical one, so it is read from the session's projection
+        // baseline on demand — never from the `permissions` block riding a
+        // history page, which `/permission` never refreshes (it opens no turn).
+        readPermission: async sessionId => {
+          const response = await api.sessions.projections({ sessionId: sessionId as SessionId })
+          if (!response.result.ok) return undefined
+          return readPermissionValueOf(response.result.value?.values)
         },
       } satisfies SessionConfigFace,
       // Linked-session panel's direct composer: the exact same host

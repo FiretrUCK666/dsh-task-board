@@ -4,7 +4,7 @@
  * domain never hides the others. Capability absence is key absence.
  */
 import { describe, expect, it } from 'vitest'
-import { pickTranscriptProjections } from '../src/core/projections.ts'
+import { pickTranscriptProjections, readPermissionValueOf } from '../src/core/projections.ts'
 
 const goalValue = {
   goal: {
@@ -20,17 +20,27 @@ describe('pickTranscriptProjections', () => {
     expect(pickTranscriptProjections({})).toEqual({})
   })
 
-  it('picks the legacy four keys unchanged', () => {
+  it('picks the page-scoped keys unchanged', () => {
     const out = pickTranscriptProjections({
       contextPressure: { projectedTokens: 100, contextWindow: 1000 },
       contextBreakdown: { systemTokens: 1, toolsTokens: 2, messageTokens: 3 },
-      permissions: { options: [{ value: 'a', name: 'A' }], currentValue: 'a' },
       todos: [{ content: 'x', status: 'in_progress' }],
     })
     expect(out.projections?.contextPressure).toEqual({ projectedTokens: 100, contextWindow: 1000 })
     expect(out.projections?.contextBreakdown).toEqual({ systemTokens: 1, toolsTokens: 2, messageTokens: 3 })
-    expect(out.projections?.permissions?.currentValue).toBe('a')
     expect(out.projections?.todos).toEqual([{ content: 'x', status: 'in_progress' }])
+  })
+
+  it('does NOT lift the permission projection: it is a current fact, not a page fact', () => {
+    // `/permission` never opens a turn, so a page-scoped copy of this value
+    // would never refresh — the panel read it and displayed a stale preset
+    // forever. It is read live now (SessionConfigFace.readPermission), and its
+    // absence here is the contract, not an oversight.
+    const out = pickTranscriptProjections({
+      permissions: { options: [{ value: 'a', name: 'A' }], currentValue: 'a' },
+    }) as { projections?: Record<string, unknown> }
+    expect(out.projections?.permissions).toBeUndefined()
+    expect(out.projections).toBeUndefined()
   })
 
   it('picks whole-log tokenUsage only when all four buckets are numbers', () => {
@@ -88,5 +98,41 @@ describe('pickTranscriptProjections', () => {
     expect(out.projections?.tokenUsage).toBeUndefined()
     expect(out.projections?.todos).toEqual([{ content: 'x', status: 'pending' }])
     expect(out.projections?.goal).toMatchObject({ id: 'g-1' })
+  })
+})
+
+describe('readPermissionValueOf (the live permission read)', () => {
+  it('reads the CURRENT value the host publishes — and nothing else', () => {
+    // The wire shape is EXACTLY `{ currentValue: string }`. The CHOICES come
+    // from the separate preset catalog; a reader that demands an `options`
+    // array the host never sends turns a perfectly good value into
+    // 「读不到当前权限」.
+    expect(readPermissionValueOf({ permissions: { currentValue: 'read-only' } })).toBe('read-only')
+    expect(readPermissionValueOf({ permissions: { currentValue: 'workspace-write' } })).toBe('workspace-write')
+  })
+
+  it('absent, malformed, or non-string baselines answer "I cannot read this"', () => {
+    expect(readPermissionValueOf(undefined)).toBeUndefined()
+    expect(readPermissionValueOf({})).toBeUndefined()
+    expect(readPermissionValueOf({ permissions: 'nope' })).toBeUndefined()
+    expect(readPermissionValueOf({ permissions: { currentValue: 7 } })).toBeUndefined()
+    expect(readPermissionValueOf({ permissions: {} })).toBeUndefined()
+  })
+
+  it('a value the preset catalog does not list is still a value', () => {
+    // The harness's own selector labels an unlisted current value by its own
+    // id rather than rewriting it, so the panel must not drop it either.
+    expect(readPermissionValueOf({ permissions: { currentValue: 'auto' } })).toBe('auto')
+  })
+
+  it('the page-scoped reader has no permission to answer with at all', () => {
+    // The difference between the two channels, stated: a history page written
+    // before the user switched keeps reporting the old preset — and reading it
+    // again returns the old preset again, because `/permission` opens no turn.
+    // The live read moves the moment the write lands.
+    expect(readPermissionValueOf({ permissions: { currentValue: 'read-only' } })).toBe('read-only')
+    expect(readPermissionValueOf({ permissions: { currentValue: 'workspace-write' } })).toBe('workspace-write')
+    expect((pickTranscriptProjections({ permissions: { currentValue: 'read-only' } }) as { projections?: Record<string, unknown> })
+      .projections?.permissions).toBeUndefined()
   })
 })

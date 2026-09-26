@@ -139,13 +139,27 @@ export declare function hasLiveAutomation(task: TaskRecord): boolean;
  *  Due slots clear with the switch (a re-armed rule recomputes from now —
  *  a stale slot must never surprise-fire on resume, task-level disarm law). */
 export declare function disarmSessionRules(task: TaskRecord): TaskRecord;
+/** Which automation is blocked on the empty prompt — the NAMED cause, so a
+ *  surface can say which one it was (and the card's chip, the detail
+ *  disclosure and the overview row all read the one predicate below). */
+export type RuleBlockedCause = 'schedule' | 'session' | 'both';
 /** Which automation is blocked on the empty prompt (THE cause predicate —
  *  card chips, tooltips, the detail disclosure and the overview row all read
  *  this, so the explanation can never name a different cause than the badge).
  *  `both` reads schedule-first (the task rule is the louder signal); session
  *  rules keep their own cause word downstream. */
-export declare function blockedCauseOf(task: TaskRecord): 'schedule' | 'session' | 'both' | undefined;
-/** Whether the last plain run failed while its task waits in review (THE
- *  failure word — card tooltip, detail disclosure and overview row read this
- *  instead of each computing "failed?" their own way). */
+export declare function blockedCauseOf(task: TaskRecord): RuleBlockedCause | undefined;
+/**
+ * Whether the last work on a task FAILED while the task waits in review — the
+ * reason a rule is paused *because of a failure* (the card tooltip, the detail
+ * disclosure and the overview row read this instead of each computing "failed?"
+ * their own way).
+ *
+ * It reads the newest finished work over EVERY lane, not the last NUMBERED
+ * run: a card that failed because a comment round or an observed native turn
+ * failed is just as paused, and a failure the board cannot see is a rule that
+ * silently stops for a reason nothing on screen names. `lastPlainResult` still
+ * exists for the run sequence (`N 次执行`) — the two are different questions
+ * and this one is the work, not the counter.
+ */
 export declare function pausedFailedOf(task: TaskRecord): boolean;

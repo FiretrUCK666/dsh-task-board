@@ -14,6 +14,13 @@
  * Deliberately framework-free: the runtime faces are declared structurally
  * (a narrow slice of the real `ctx.sessions` / `ctx.workspaces` contracts)
  * so tests drive it with plain fakes.
+ *
+ * THE borrow law: the host hands out a session driver only for a generation
+ * some consumer currently RETAINS — creating a session catalogs it and
+ * nothing more. So every run, continuation and session setup here BORROWS one
+ * through {@link SessionsExecutionFace.hold} and keeps it until the round is
+ * over; peeking ({@link SessionsExecutionFace.binding}) is reserved for reads
+ * that must not outlive whoever holds the session.
  */
 import type { ExecutionRecord, TaskFile, TaskImage, TaskRecord } from './tasks.ts';
 /** The narrow sessions face the service needs. */
@@ -29,9 +36,37 @@ export interface SessionsExecutionFace {
         };
         subscribe(fn: () => void): () => void;
     };
+    /**
+     * BORROW A GENERATION, for longer than an instant. The host hands out a
+     * driver only for a session some consumer currently RETAINS (`create()` on
+     * its own returns a catalogued identity and nothing else), so every borrow
+     * the board owns goes through here — this is the borrow law, not a second
+     * way to do the same thing.
+     */
+    hold(id: string): SessionHold;
+    /**
+     * Borrow WITHOUT owning a lifetime: the driver of whatever generation
+     * someone else is holding right now, or undefined when nobody is. Only for
+     * reads that must not outlive the holder (the settle reconcile's one-shot
+     * probe, the rename fallback) — never for a run.
+     */
     binding(id: string): {
         session: SessionDriver;
     } | undefined;
+}
+/** One owned borrow of a session generation (the host's `retain` + its open wait). */
+export interface SessionHold {
+    /** The behavior verbs — available the moment the borrow exists. */
+    readonly driver: SessionDriver;
+    /**
+     * Settles once the host finished opening the conversation; rejects with the
+     * host's own reason when it cannot. A run waits for this BEFORE its first
+     * verb, so "the session would not open" is a reportable failure instead of a
+     * silent one.
+     */
+    readonly ready: Promise<void>;
+    /** End the borrow. Idempotent, so a handover and a safety-net release can both call it. */
+    release(): void;
 }
 /** The narrow workspaces face the service needs. */
 export interface WorkspacesExecutionFace {
@@ -369,10 +404,11 @@ export declare class ExecutionService {
      * Continue an existing execution session with a comment: send the text to
      * the session's agent (a fresh turn) and watch it settle like a plain run.
      * The comment round carries the same session — no new session is created.
-     * Settlement uses the host session list + raw history signals, which work
-     * for sessions that are not the currently staged one; when a binding
-     * driver is available its snapshot watch is used as an additional fast
-     * path. Never rejects: every failure path reports a settled event.
+     * The session is BORROWED for the round's whole life (see
+     * {@link SessionsExecutionFace.hold}), so the watch reads its live
+     * conversation snapshot; the host session list plus the raw history tail stay
+     * as the settlement authority behind it. Never rejects: every failure path
+     * reports a settled event.
      *
      * A round flagged `command` is a slash command, not necessarily just a
      * turn: the line is executed through the native command registry (never
@@ -454,6 +490,15 @@ export declare class ExecutionService {
     private historyTurnEndSignal;
     private connectSession;
     private driverOf;
+    /**
+     * Borrow a session generation the board OWNS for the length of one run: the
+     * host hands out a driver only for a session some consumer retains, so this
+     * is the only way a run gets one (peeking with {@link driverOf} finds nothing
+     * for a session this board just created, which is every plain run). Throws
+     * only when the host itself refuses the borrow; callers turn that into a
+     * settled failure with the host's own words.
+     */
+    private holdOf;
     private sendPrompt;
     /**
      * Apply a task's permission preset to the execution session through the
@@ -467,6 +512,10 @@ export declare class ExecutionService {
      * turn completes (turn counter advanced past the acceptance baseline and
      * the session is no longer running). Never settles while the session is
      * still running; unsubscribes on settle.
+     *
+     * The watch takes OWNERSHIP of the borrow: it releases the hold on the one
+     * settle, which is why a run's session stays retained (and its conversation
+     * snapshot warm) for exactly as long as the round is in flight.
      *
      * The execution session is usually NOT the UI's current session, so its
      * conversation snapshot stays cold (the runtime only maintains the window

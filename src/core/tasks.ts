@@ -1060,11 +1060,12 @@ export function sessionIsBusy(task: TaskRecord, sessionId: string): boolean {
 }
 
 /**
- * Whether the task is genuinely executing right now: ANY of its rounds is in
- * flight. A pending comment round (saved while the cruise is off, the task
- * not running) is NOT an open run — it must never show a spinner on the card,
- * block a rerun, or block a drag.
- * One shared judgment for the card, the drop rules and the run guard.
+ * Whether the task is EXECUTING right now. There is deliberately no second
+ * spelling of this: the display used to read `executing` and the gates read
+ * `hasOpenRun`, with a comment claiming they were a "display / gate" split —
+ * but both were the same predicate over the same set, so the split existed
+ * only in the prose. ONE judgment, one name, and the card's light cannot
+ * disagree with the run guard because there is nothing to disagree with.
  */
 export function hasOpenRun(task: TaskRecord): boolean {
   return openRoundsOf(task).length > 0
@@ -1093,16 +1094,6 @@ export function pendingCommentCount(task: TaskRecord): number {
  */
 export function plainRunsOf(task: TaskRecord): readonly ExecutionRecord[] {
   return task.executions.filter(execution => execution.comment === undefined)
-}
-
-/**
- * Whether the task is genuinely EXECUTING right now (display truth): an open
- * plain run, external round or injected comment.
- * Blocking semantics (run guard, concurrency budget, drop rules, reconcile
- * drive) stay on {@link hasOpenRun} — this is display only, never a gate.
- */
-export function executing(task: TaskRecord): boolean {
-  return task.executions.some(isOpenRound)
 }
 
 /** What a card drop onto a column means (drag-and-drop decision). */
@@ -1323,4 +1314,94 @@ export function promoteToColumnTop(
   now: number,
 ): TaskRecord[] {
   return promoteManyToColumnTop(tasks, [{ id: movedId, status: targetStatus }], now)
+}
+
+// ─── 会话列的顶格（卡片那条律在会话上的对偶） ──────────────────────────────────
+
+/**
+ * 一轮「工作生命周期」的指纹：会话**开始工作**或**结束工作**只会改这几个
+ * 字段——轮次新生、拿到自己的会话（`started` 事件才带回来）、被注入、结算。
+ *
+ * `viewedAt` 刻意**不在**里面：「标已读」会改它，漏掉这一条，「看一眼对话」
+ * 就会把整个会话列重排一遍。`error` 同理：它是结算的附注，不是生命周期。
+ */
+function roundLifeKey(round: ExecutionRecord): string {
+  return [
+    round.id,
+    round.sessionId ?? '',
+    round.startedAt,
+    round.injectedAt ?? '',
+    round.endedAt ?? '',
+    round.result ?? '',
+  ].join(' ')
+}
+
+/**
+ * 这一落里「刚刚开始工作或刚刚结束」的会话，按发生顺序（旧的在前）。
+ *
+ * 判据是台账里**轮次生命周期的新增与变化**，不是数组位置、也不是「卡在跑」。
+ * 两个方向都要看清：
+ *
+ * - **新生 / 变化的轮次**才是事件。一条纯删除不算——被删的轮次不在 `after`
+ *   里，删掉一个会话因此不会把谁顶上来。
+ * - `sessionId` 为 undefined 的轮次还没有归属（普通运行在 `started` 事件
+ *   之前就是这种），跳过；它拿到会话的那一落自然会把它算进去。
+ */
+export function startedOrSettledSessions(
+  before: TaskRecord | undefined,
+  after: TaskRecord,
+): string[] {
+  if (before === undefined) return []
+  const known = new Map(before.executions.map(round => [round.id, roundLifeKey(round)]))
+  const promoted: string[] = []
+  for (const round of after.executions) {
+    if (round.sessionId === undefined) continue
+    if (known.get(round.id) === roundLifeKey(round)) continue
+    // 同一落里同一个会话只算一次，并且保留**最后一次**出现的位置：那才是
+    // 最新的那次发生。
+    const at = promoted.indexOf(round.sessionId)
+    if (at >= 0) promoted.splice(at, 1)
+    promoted.push(round.sessionId)
+  }
+  return promoted
+}
+
+/**
+ * 把若干个会话顶到卡片会话列的**最上方**——卡片那条「最新状态在前」律在
+ * 会话上的对偶，一个会话开始工作或刚刚结束，就该一眼看见是哪一个。
+ *
+ * `sessionIds` 按**发生顺序**给出（旧的在前，调用方自己掌握先后），所以倒过来
+ * 前插就是「最新发生的在最上」，与逐个顶格完全一致。其余会话保持原有相对
+ * 次序整体下移——**用户手动拖过的排列不会被顶格打乱**（它只是整体让位），
+ * 与卡片的手动次序同一条律。
+ *
+ * 三条语义与 {@link promoteManyToColumnTop} 完全一致：
+ *
+ * 1. **已经在最上就不动**（同一个空转律）：一个记录都不碰，不刷新
+ *    `updatedAt`、不产生同步抖动。
+ * 2. **确实改了才盖章**：同步合并按 `updatedAt` 排序，漏盖就是两台设备
+ *    顺序漂移——这与被让位的会话整体下移是同一次写入。
+ * 3. **不隐藏任何行**：数组里没有的名字由 `orderedSessionsOf` 按活动倒序
+ *    浮到最上，两条律各管各的。
+ */
+export function promoteSessionsToTop(
+  task: TaskRecord,
+  sessionIds: readonly string[],
+  now: number,
+): TaskRecord {
+  const order = task.sessionsOrder ?? []
+  const landed: string[] = []
+  for (const sessionId of sessionIds) {
+    if (sessionId === '') continue
+    if (landed.includes(sessionId)) continue
+    if (sessionId === order[0]) continue
+    landed.push(sessionId)
+  }
+  if (landed.length === 0) return task
+  const kept = order.filter(id => !landed.includes(id))
+  return {
+    ...task,
+    sessionsOrder: [...landed.reverse(), ...kept],
+    updatedAt: now,
+  }
 }
