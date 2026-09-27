@@ -64,6 +64,15 @@ function face(overrides: Partial<ToolCommitFace> = {}): FakeFace {
 }
 
 let seq = 0
+/** A minimal card: enough for the relay to find it and name it. */
+function card(title: string, now = NOW): BoardDoc['tasks'][number] {
+  return { id: `t-${title}`, title, description: '', prompt: 'p', status: 'todo', order: 0, createdAt: now, updatedAt: now, executions: [] }
+}
+/** Live faces over a fixed set of session statuses; anything else is
+ *  `unknown`, which is what a host that cannot see a session must say. */
+function runningSources(running: Record<string, 'running' | 'idle'>): ToolDeps['sources'] {
+  return { agents: () => ({ get: (id: string) => (id in running ? { status: running[id] } : undefined) }) }
+}
 function deps(board: ToolCommitFace | undefined = face()): ToolDeps {
   return {
     board: () => board,
@@ -71,6 +80,7 @@ function deps(board: ToolCommitFace | undefined = face()): ToolDeps {
       sessionId: 's', running: { value: false }, archived: { value: false },
       awaitingApproval: { value: false }, awaitingAnswer: { value: false },
     }),
+    sources: runningSources({}),
     now: () => NOW,
     uuid: () => `id-${++seq}`,
   }
@@ -198,6 +208,91 @@ describe('the batch laws', () => {
     expect(result.ok).toBe(false)
     expect(result.summary).toContain('存储不可用')
     expect(board.writes).toEqual([])
+  })
+})
+
+describe('the receipt a card renders', () => {
+  it('carries the batch in the tool\'s own words, with a kind per op', async () => {
+    const board = face()
+    const result = await runBatch(deps(board), {
+      ops: [
+        { op: 'item.create', payload: { body: '一' } },
+        { op: 'item.create', payload: { body: '二' } },
+        { op: 'item.update', payload: { of: '#1', title: '改过的' } },
+      ],
+    })
+    expect(result.counts.created).toBe(2)
+    expect(result.counts.updated).toBe(1)
+    // The kinds come from the catalog's verb, so a card and the model read the
+    // same classification.
+    expect(result.reports.map(r => r.kind)).toEqual(['created', 'created', 'updated'])
+  })
+
+  it('a dry run says NOTHING WAS WRITTEN, in the words a card can render', async () => {
+    const result = await runBatch(deps(face()), { ops: [{ op: 'item.create', payload: { body: '演练' } }], dry_run: true })
+    const meta = toolNamed('taskboard_execute').output.presentationMeta!({}, result)
+    expect(meta.dryRun).toBe(true)
+    // The one word that must never be wrong: a rehearsal that renders as
+    // "added" tells the person something was written that was not.
+    expect(meta.persisted).toBe(false)
+    expect(meta.counts).toMatchObject({ created: 1 })
+  })
+
+  it('an engine op with no seat reads as ACCEPTED, not as executed', async () => {
+    const board = face({ submitCommand: () => ({ queued: true }) } as Partial<ToolCommitFace>)
+    board.getDoc = () => ({ ...emptyBoardDoc(NOW), tasks: [{ id: 't-1', title: '跑一下', description: '', prompt: 'p', status: 'todo', order: 0, createdAt: NOW, updatedAt: NOW, executions: [] }] })
+    const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: '跑一下' } }] })
+    expect(result.enginePending).toEqual(['跑一下'])
+    const meta = toolNamed('taskboard_execute').output.presentationMeta!({}, result)
+    expect(meta.enginePending).toEqual(['跑一下'])
+    expect(String(meta.summary)).toContain('引擎')
+  })
+})
+
+describe('the relay only carries what it can actually carry', () => {
+  it('an engine action whose effect IS a run is relayed with no per-action code', async () => {
+    const board = face()
+    const relayed: string[] = []
+    board.getDoc = () => ({ ...emptyBoardDoc(NOW), tasks: [card('跑一下')] })
+    board.submitCommand = (command) => { relayed.push(command.type); return { queued: true } }
+    const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: '跑一下' } }] })
+    expect(relayed).toEqual(['run'])
+    expect(result.enginePending).toEqual(['跑一下'])
+  })
+
+  it('an engine action that is NOT a run is refused, never relayed as one', async () => {
+    // The relay can only say "run this card". Forwarding a rename or a create
+    // to it would RUN THE CARD instead of doing what was asked — a silently
+    // wrong write, which is worse than a refusal a model can see and work
+    // around. This is the case the structural shortcut has to refuse.
+    const board = face()
+    const relayed: string[] = []
+    board.getDoc = () => ({ ...emptyBoardDoc(NOW), tasks: [card('要改名的卡')] })
+    board.submitCommand = (command) => { relayed.push(command.type); return { queued: true } }
+    const result = await runBatch(deps(board), { ops: [{ op: 'session.rename', payload: { of: '要改名的卡', session: 's-1', title: '新名字' } }] })
+    expect(relayed).toEqual([])
+    expect(result.ok).toBe(false)
+    expect(result.reports[0]?.detail).toContain('跑错东西')
+  })
+})
+
+describe('steps without an id are repaired, never dropped', () => {
+  it('mints an id per step and says so instead of losing rows', async () => {
+    const result = await runBatch(deps(face()), {
+      ops: [{ op: 'item.create', payload: { body: '带步骤', steps: ['第一步', { text: '第二步' }] } }],
+    })
+    const receipt = result.reports[0]
+    // Two steps arrived without ids; the row grammar would have dropped both.
+    expect(result.changed?.items).toHaveLength(1)
+    expect(receipt?.detail).toContain('铸号')
+    expect(receipt?.detail).toContain('2')
+  })
+
+  it('a step that already has an id is left alone', async () => {
+    const result = await runBatch(deps(face()), {
+      ops: [{ op: 'item.create', payload: { body: '有 id', steps: [{ id: 's-1', text: '第一步', done: false }] } }],
+    })
+    expect(result.reports[0]?.detail).not.toContain('铸号')
   })
 })
 

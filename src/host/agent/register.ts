@@ -45,9 +45,13 @@ export function registerTaskboardAgentSurface(ctx: Context): () => void {
   // ONE service, so the model and the browser write through the same handle.
   const documentService = new DocumentService({ openUnit: storageHubOpener(() => ctx.get('storage')) })
   void documentService.ensureInit()
+  const sources = postureSources(ctx)
   const deps: ToolDeps = {
     board: () => documentService,
-    posture: (sessionId: string) => sessionPostureOf(postureSources(ctx), questionWaits, sessionId),
+    posture: (sessionId: string) => sessionPostureOf(sources, questionWaits, sessionId),
+    // The SAME live faces the posture derivation reads, so a decision the model
+    // triggers asks the board's derivation rather than a second one.
+    sources,
     now: () => Date.now(),
     uuid: () => crypto.randomUUID(),
   }

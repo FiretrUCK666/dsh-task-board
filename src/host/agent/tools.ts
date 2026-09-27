@@ -68,8 +68,10 @@ import { type BoardCommit, type BoardDoc, type BoardView } from '../../core/boar
 import { applyItemsCommit, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
 import { createTask, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { armSchedule, moveTaskToStatus, removeSessionFromTask, type TransitionResult } from '../../core/task-transitions.ts'
-import type { ItemRecord } from '../../core/item.ts'
-import type { SessionPosture } from '../session-state.ts'
+import type { ItemRecord, ItemStep } from '../../core/item.ts'
+import type { SessionPosture, SessionPostureSources } from '../session-state.ts'
+import { sessionRunningOf } from '../session-state.ts'
+import { relatedSessionIdsOf, type TaskLiveState } from '../../core/task-live.ts'
 
 /* ── the host faces this tool reads ────────────────────────────────────────
  * Structural and late-bound: the same discipline as session-state.ts. Nothing
@@ -89,6 +91,10 @@ export interface ToolCommitFace {
 export interface ToolDeps {
   board: () => ToolCommitFace | undefined
   posture: (sessionId: string) => Promise<SessionPosture>
+  /** The live host faces, so a decision that needs to know whether a session
+   *  is still working asks the SAME derivation the board does — never a second
+   *  one written here. */
+  sources: SessionPostureSources
   now: () => number
   uuid: () => string
 }
@@ -105,6 +111,9 @@ export interface ToolDefinitionLike {
   readonly output: {
     readonly schema: ToolParameterSchema
     render(args: unknown, value: unknown): { type: 'text'; text: string }[]
+    /** The tool's own vocabulary, persisted verbatim for the card to narrow —
+     *  the host's contract, and the same words the model reads. */
+    presentationMeta?(args: unknown, value: unknown): Record<string, unknown>
   }
   execute(args: unknown, exec?: { signal?: AbortSignal }): Promise<unknown>
 }
@@ -227,10 +236,46 @@ function itemRow(item: ItemRecord): ItemRow {
 
 /* ── op resolution: the catalog decides what exists and who may do it ────── */
 
+/** The kind a report is filed under, read from the CATALOG's verb — the one
+ *  classification in this system. A hand-written op→kind map would be a
+ *  second place to forget a new verb. */
+function kindOf(id: string, ok: boolean, unchanged: boolean): OpReport['kind'] {
+  if (!ok) return 'failed'
+  if (unchanged) return 'unchanged'
+  const verb = ACTIONS[id as ActionId]?.verb
+  if (verb === 'create') return 'created'
+  if (verb === 'delete') return 'deleted'
+  if (verb === 'move') return 'moved'
+  return 'updated'
+}
+
+/** The batch in the tool's OWN vocabulary, for the tool card to narrow. Not an
+ *  envelope: it is the same words the model reads, so the person and the model
+ *  cannot be told two different stories about the same batch. */
+function presentationOf(result: ExecuteResult): Record<string, unknown> {
+  return {
+    dryRun: result.dryRun,
+    // The single most important word here: a rehearsal that renders as "added
+    // 3 items" tells the person something was written that was not.
+    persisted: !result.dryRun,
+    ok: result.ok,
+    summary: result.summary,
+    counts: result.counts,
+    items: result.changed?.items ?? [],
+    tasks: result.changed?.tasks ?? [],
+    // Accepted, not executed — a card that renders these as "已执行" lies.
+    enginePending: result.enginePending,
+    reports: result.reports,
+  }
+}
+
 export interface OpReport {
   /** The op's own words back, so a report points at something. */
   readonly op: string
   readonly ok: boolean
+  /** Which kind of change this was, from the catalog's verb — the only
+   *  classification in the system, so a card and the model read one thing. */
+  readonly kind: 'created' | 'updated' | 'moved' | 'deleted' | 'unchanged' | 'failed' | 'skipped'
   /** The short number and title this op touched, when it touched one. */
   readonly ref?: string
   readonly title?: string
@@ -297,6 +342,13 @@ export interface ExecuteResult {
   readonly itemsRevision: number
   /** Only on a real run: the boards that moved, with their short numbers. */
   readonly changed?: { readonly tasks: readonly TaskRow[]; readonly items: readonly ItemRow[] }
+  /** The batch in the tool's OWN vocabulary, so a card can render it without
+   *  re-reading prose. The kinds come from the catalog's `verb`, never from a
+   *  name list written here. */
+  readonly counts: Readonly<Record<'created' | 'updated' | 'moved' | 'deleted' | 'unchanged' | 'failed' | 'skipped', number>>
+  /** Rows this op handed to the engine while no replica held the seat. They
+   *  are ACCEPTED, not done — a card that renders them as "已执行" is lying. */
+  readonly enginePending: readonly string[]
 }
 
 /**
@@ -309,13 +361,17 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
   const board = deps.board()
   const reports: OpReport[] = []
   if (board === undefined || !board.available) {
+    const refused: OpReport = { op: '(batch)', kind: 'failed', ok: false, detail: '看板存储不可用，这次写操作一个字节都没落。换一次连接或重启宿主再试。' }
+    reports.push(refused)
     return {
       dryRun: request.dry_run === true,
       ok: false,
-      reports: [{ op: '(batch)', ok: false, detail: '看板存储不可用，这次写操作一个字节都没落。换一次连接或重启宿主再试。' }],
+      reports,
       summary: '没有执行：存储不可用。',
       boardRevision: 0,
       itemsRevision: 0,
+      counts: { created: 0, updated: 0, moved: 0, deleted: 0, unchanged: 0, failed: 1, skipped: 0 },
+      enginePending: [],
     }
   }
 
@@ -325,35 +381,54 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
   let items: ItemsDoc = board.getItemsDoc()
   const changedTasks: TaskRecord[] = []
   const changedItems: ItemRecord[] = []
+  const enginePending: string[] = []
+  const raw: Array<Omit<OpReport, 'kind'>> = []
   let failed = false
 
   for (const step of request.ops) {
     if (failed) {
-      reports.push({ op: step.op, ok: false, detail: '未执行：上一条失败后本批停止。' })
+      raw.push({ op: step.op, ok: false, detail: '未执行：上一条失败后本批停止。' })
       continue
     }
     const id = step.op as ActionId
     if (!TOOL_ACTION_IDS.includes(id)) {
       const refusal = refuseOp(step.op)
-      reports.push({ op: step.op, ok: false, detail: refusal.detail })
+      raw.push({ op: step.op, ok: false, detail: refusal.detail })
       failed = true
       continue
     }
     const payload = (step.payload ?? {}) as Record<string, unknown>
     const problem = checkParams(id, payload)
     if (problem !== undefined) {
-      reports.push({ op: step.op, ok: false, detail: problem })
+      raw.push({ op: step.op, ok: false, detail: problem })
       failed = true
       continue
     }
     const spec = ACTIONS[id]
     if (spec.lane === 'engine') {
+      // The relay carries exactly ONE thing: "run this card". Every engine
+      // action whose effect IS a run goes through here with no per-action
+      // code — that is the structural part, and it is already true.
+      //
+      // An engine action whose effect is NOT a run must NOT fall through to
+      // this relay: it would run the card instead of doing what was asked, and
+      // a silently wrong write is worse than a refusal the model can see. So
+      // the one guard is here, keyed on the CATALOG, never on a name list.
+      if (id !== 'task.run') {
+        raw.push({
+          op: step.op,
+          ok: false,
+          detail: `「${id}」要走引擎的另一条通道（不是「跑一次这张卡」），本刀还没接上。转发它会跑错东西，所以这里明确拒绝。`,
+        })
+        failed = true
+        continue
+      }
       // Engine ops are requests, not writes: say which, and whether a seat is
       // holding. A relayed run that nobody executes yet is accepted, not done.
       const target = String(payload.of ?? '')
       const found = doc.tasks.find(task => task.id === target || task.title === target)
       if (found === undefined) {
-        reports.push({
+        raw.push({
           op: step.op,
           ok: false,
           detail: `卡 ${target} 不存在。看板上现在有：${doc.tasks.slice(0, 20).map(taskRow).map(row => row.title).join('，') || '（一张卡都没有）'}`,
@@ -362,11 +437,11 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
         continue
       }
       if (request.dry_run === true) {
-        reports.push({ op: step.op, ok: true, title: found.title, detail: '会经引擎执行一次。' })
+        raw.push({ op: step.op, ok: true, title: found.title, detail: '会经引擎执行一次。' })
         continue
       }
       const { queued } = board.submitCommand({ type: 'run', taskId: found.id, trigger: 'manual', clientId: 'model' })
-      reports.push({
+      raw.push({
         op: step.op,
         ok: true,
         title: found.title,
@@ -379,7 +454,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
     // same lane every device writes through.
     const next = applyOne(doc, items, id, payload, deps, now)
     if (typeof next === 'string') {
-      reports.push({ op: step.op, ok: false, detail: next })
+      raw.push({ op: step.op, ok: false, detail: next })
       failed = true
       continue
     }
@@ -393,15 +468,29 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
     }
     if (task !== undefined && next.unchanged !== true) changedTasks.push(task)
     if (item !== undefined) changedItems.push(item)
-    reports.push({
+    raw.push({
       op: step.op,
       ok: true,
       ...(task === undefined ? {} : { title: task.title }),
       ...(item === undefined ? {} : { ref: `#${item.ref}`, title: item.title }),
       // A transition that moved nothing is a real answer, not a silent one.
-      detail: next.unchanged === true ? '这一条已经是这样了，没有改动。' : '已生效。',
+      detail: `${next.unchanged === true ? '这一条已经是这样了，没有改动。' : '已生效。'}${next.note ?? ''}`,
     })
   }
+
+  // The kind is the catalog's word for the op, not a name list written here,
+  // so a new verb cannot be missing from it.
+  reports.push(...raw.map(report => ({
+    ...report,
+    kind: report.detail.startsWith('未执行') ? 'skipped' as const : kindOf(report.op, report.ok, report.detail.startsWith('这一条已经是这样了')),
+  })))
+  // The engine-pending set is read BEFORE the summary is written, because the
+  // summary must not call an accepted run an effect.
+  for (const report of reports) {
+    if (report.ok && report.title !== undefined && report.detail.includes('已受理')) enginePending.push(report.title)
+  }
+  const counts = { created: 0, updated: 0, moved: 0, deleted: 0, unchanged: 0, failed: 0, skipped: 0 }
+  for (const report of reports) counts[report.kind] += 1
 
   const done = reports.filter(report => report.ok)
   const firstFailure = reports.find(report => !report.ok && report.detail.startsWith('未执行') === false)
@@ -409,7 +498,9 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
   const summary = request.dry_run === true
     ? `演练：${done.length} 条会生效${ok ? '' : `，第 ${reports.indexOf(firstFailure!) + 1} 条过不去：${firstFailure!.detail}`}。没有落盘。`
     : ok
-      ? `${done.length} 条已生效。`
+      // An accepted-but-unexecuted run is NOT an effect: saying "生效" for a
+      // row that is only queued is the one sentence this tool must never say.
+      ? `${done.length - enginePending.length} 条已生效${enginePending.length > 0 ? `，${enginePending.length} 条已受理（${enginePending.join('、')}）但引擎当前不在线，将在引擎上线后执行` : ''}。`
       : `前 ${done.length} 条已生效，第 ${reports.indexOf(firstFailure!) + 1} 条失败：${firstFailure!.detail}。已生效的不回滚。`
   return {
     dryRun: request.dry_run === true,
@@ -418,6 +509,8 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
     summary,
     boardRevision: doc.revision,
     itemsRevision: items.revision,
+    counts,
+    enginePending,
     ...(request.dry_run === true ? {} : { changed: { tasks: changedTasks.map(taskRow), items: changedItems.map(itemRow) } }),
   }
 }
@@ -460,7 +553,7 @@ function applyOne(
   payload: Record<string, unknown>,
   deps: ToolDeps,
   now: number,
-): { doc: BoardDoc; items: ItemsDoc; task?: TaskRecord; item?: ItemRecord; unchanged?: true } | string {
+): { doc: BoardDoc; items: ItemsDoc; task?: TaskRecord; item?: ItemRecord; unchanged?: true; note?: string } | string {
   const edited = (task: TaskRecord): TaskRecord => ({ ...task, updatedAt: now })
   const findTask = (): TaskRecord | undefined => doc.tasks.find(task => task.id === payload.of || task.title === payload.of)
   const findItem = (): ItemRecord | undefined => {
@@ -498,12 +591,14 @@ function applyOne(
     case 'session.remove': {
       last = findTask()
       if (last === undefined) return `卡 ${String(payload.of)} 不存在。`
-      // The shared function asks whether the session is still working. The
-      // host has no live-state derivation on this path yet, and `unknown` is
-      // the honest answer: it may not be read as idle (which would let a
-      // running session be dropped) nor as active (which would block a real
-      // removal). The function's own refusal is what the model is told.
-      const removed = through(removeSessionFromTask(last, String(payload.session ?? ''), now, () => 'unknown'))
+      // The shared function asks whether the row it PRODUCED still has working
+      // sessions left, so the reader is handed that row and answers from the
+      // board's own session derivation — never a second activity rule here.
+      // The three answers stay distinct: nothing running is `idle`, something
+      // running is `running`, and a session this host cannot see is `unknown`
+      // (which may not be read as idle, or a live session would be droppable).
+      const removed = through(removeSessionFromTask(last, String(payload.session ?? ''), now, (current) =>
+        livenessOf(deps.sources, current)))
       if (typeof removed === 'string') return removed
       const tasks = doc.tasks.map(task => (task.id === last!.id ? removed.task : task))
       return removed.unchanged === true ? { doc, items, task: last, unchanged: true } : { doc: { ...doc, tasks }, items, task: removed.task }
@@ -532,17 +627,28 @@ function applyOne(
     case 'item.create': {
       // The row arrives with no number at all: the document mints it, which is
       // the only thing that may hand one out.
-      const created = createItemFrom(payload, deps, now)
-      const merged = applyItemsCommit(items, { clientId: 'model', items: [...items.items, created], deleted: [] }, now)
-      const stored = merged.items.find(item => item.id === created.id) ?? created
-      return { doc, items: merged, item: stored }
+      const made = createItemFrom(payload, deps, now)
+      const merged = applyItemsCommit(items, { clientId: 'model', items: [...items.items, made.item], deleted: [] }, now)
+      const stored = merged.items.find(item => item.id === made.item.id) ?? made.item
+      return { doc, items: merged, item: stored, note: mintedNote(made.mintedSteps) }
     }
     case 'item.update': {
       const found = findItem()
       if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
       const patch = payload as Partial<ItemRecord>
-      const next: ItemRecord = { ...found, title: patch.title ?? found.title, body: patch.body ?? found.body, notes: patch.notes ?? found.notes, updatedAt: now }
-      return { doc, items: { ...items, items: items.items.map(item => (item.id === found.id ? next : item)) }, item: next }
+      const steps = payload.steps === undefined ? undefined : readSteps(payload.steps, deps)
+      const next: ItemRecord = {
+        ...found,
+        title: patch.title ?? found.title,
+        body: patch.body ?? found.body,
+        notes: patch.notes ?? found.notes,
+        ...(steps === undefined ? {} : { steps: steps.steps }),
+        updatedAt: now,
+      }
+      const note = steps === undefined ? undefined : mintedNote(steps.minted)
+      return note === undefined
+        ? { doc, items: { ...items, items: items.items.map(item => (item.id === found.id ? next : item)) }, item: next }
+        : { doc, items: { ...items, items: items.items.map(item => (item.id === found.id ? next : item)) }, item: next, note }
     }
     case 'item.delete': {
       const found = findItem()
@@ -557,14 +663,73 @@ function applyOne(
   }
 }
 
-function createItemFrom(payload: Record<string, unknown>, deps: ToolDeps, now: number): ItemRecord {
+/**
+ * Is this row still working? Read through the ONE session derivation
+ * (`sessionRunningOf`) and the ONE related-session set (`relatedSessionIdsOf`)
+ * — the same two the board reads, so a decision taken for the model and one
+ * taken for a person can never disagree.
+ *
+ * `unknown` is a real answer, not a fallback: a host that cannot see a session
+ * may not conclude that nothing is running, and the shared transition decides
+ * what to do with that rather than this module guessing.
+ */
+function livenessOf(sources: SessionPostureSources, task: TaskRecord): TaskLiveState {
+  const sessions = relatedSessionIdsOf(task).map(fact => fact.sessionId)
+  if (sessions.length === 0) return 'idle'
+  const seen = sessions.map(id => sessionRunningOf(sources, id).value)
+  if (seen.some(value => value === true)) return 'running'
+  if (seen.some(value => value === 'unknown')) return 'unknown'
+  return 'idle'
+}
+
+/**
+ * Read a step list the way the document stores one: `{ id, text, done }`.
+ *
+ * A step without an `id` is DROPPED SILENTLY by the row grammar — so a model
+ * that writes three steps and gets one back would never know two of them
+ * vanished. Each missing id is therefore minted here, in order, and the fact
+ * is reported back: a repaired row is fine, a silently shortened one is not.
+ */
+function readSteps(raw: unknown, deps: ToolDeps): { steps: ItemStep[]; minted: number } {
+  if (raw === undefined || raw === null) return { steps: [], minted: 0 }
+  if (!Array.isArray(raw)) return { steps: [], minted: 0 }
+  const steps: ItemStep[] = []
+  let minted = 0
+  for (const entry of raw) {
+    if (typeof entry === 'string') {
+      steps.push({ id: deps.uuid(), text: entry, done: false })
+      minted += 1
+      continue
+    }
+    if (typeof entry !== 'object' || entry === null) continue
+    const step = entry as { id?: unknown; text?: unknown; done?: unknown }
+    if (typeof step.text !== 'string' || step.text.trim() === '') continue
+    if (typeof step.id === 'string' && step.id !== '') {
+      steps.push({ id: step.id, text: step.text, done: step.done === true })
+      continue
+    }
+    steps.push({ id: deps.uuid(), text: step.text, done: step.done === true })
+    minted += 1
+  }
+  return { steps, minted }
+}
+
+/** The sentence a caller shows when steps had to be given ids. */
+function mintedNote(minted: number): string | undefined {
+  return minted === 0 ? undefined : `（${minted} 个步骤没有 id，已按顺序铸号，没有丢）`
+}
+
+function createItemFrom(payload: Record<string, unknown>, deps: ToolDeps, now: number): { item: ItemRecord; mintedSteps: number } {
+  const { steps, minted } = readSteps(payload.steps, deps)
   return {
+    mintedSteps: minted,
+    item: {
     id: deps.uuid(),
     ref: 0,
     title: String(payload.title ?? ''),
     body: String(payload.body ?? ''),
     notes: String(payload.notes ?? ''),
-    steps: [],
+    steps,
     status: (payload.status as ItemRecord['status']) ?? 'open',
     priority: (payload.priority as ItemRecord['priority']) ?? 'normal',
     tags: [],
@@ -575,6 +740,7 @@ function createItemFrom(payload: Record<string, unknown>, deps: ToolDeps, now: n
     origin: { source: 'ai', at: now },
     createdAt: now,
     updatedAt: now,
+    },
   }
 }
 
@@ -649,7 +815,11 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinitionLik
       required: ['ops'],
       additionalProperties: false,
     },
-    output: { schema: { type: 'object' }, render: (_args, value) => jsonResult(value) },
+    output: {
+      schema: { type: 'object' },
+      render: (_args, value) => jsonResult(value),
+      presentationMeta: (_args, value) => presentationOf(value as ExecuteResult),
+    },
     execute: async (args) => runBatch(deps, (args ?? {}) as ExecuteRequest),
   }
 
