@@ -54,12 +54,18 @@ export interface ItemRowView {
     /** The single right-aligned value; two candidates never both win. */
     readonly meta: ItemRowMeta;
 }
-/** Why a row carries its badge. */
-export type ItemRowMeta = {
-    readonly kind: 'none';
-}
+/**
+ * Why a row carries its badge.
+ *
+ * Three shapes and no fourth: a row either has a date worth saying out loud, a
+ * step count worth saying out loud, or nothing worth saying. There is no "none"
+ * variant here on purpose — an arm of the union that nothing ever builds is a
+ * branch the next reader has to reason about for nothing, and "quiet" already
+ * says it.
+ */
+export type ItemRowMeta = 
 /** `3/8` — a step count, shown next to the bar and never inside it. */
- | {
+{
     readonly kind: 'steps';
     readonly done: number;
     readonly total: number;
@@ -93,9 +99,11 @@ export declare function itemRowViewOf(item: ItemRecord, linkedRunning: boolean, 
  *
  * The reader is scanning, not auditing, so the order is: what is happening
  * now, what is waiting, what is stuck, what is finished — and inside a group,
- * the reader's own manual order (`order`) first, then the nearest deadline,
- * then the newest. Nothing here is stored; it is a pure function of the
- * document.
+ * the nearest deadline first, then the most recently touched. Nothing here is
+ * stored; it is a pure function of the document. There is deliberately no
+ * reader-movable order: `ItemRecord` has no `order` field, because a list in
+ * a 300px column cannot offer a drag affordance honestly, and a stored order
+ * nobody can move is a lie about who arranged it.
  * @param items - every item in the document.
  * @param filter - what to keep.
  * @param linkedRunning - per-item running flag, keyed by the board card id.
@@ -143,6 +151,74 @@ export declare function toggleItemStep(items: readonly ItemRecord[], id: string,
  * @returns the next list, or the very same one when it was not there.
  */
 export declare function removeItem(items: readonly ItemRecord[], id: string): readonly ItemRecord[];
+/**
+ * A fresh row, ready to be appended.
+ *
+ * The id is MINTED HERE and the short number is NOT. That split is the whole
+ * point: the merge grammar keys on the id, and a client-minted uuid cannot
+ * collide with another device's. The short number is the document's to hand
+ * out — `assignItemRefs` fills in anything missing or already taken — so this
+ * row arrives as `ref: 0`, meaning "nobody has numbered me yet", and the
+ * number the reader sees is the one the host settled on. Minting a number here
+ * would be two devices picking the same one and the host having to undo it.
+ * @param input - what the reader typed.
+ * @param now - the creation clock.
+ * @param id - the identity, minted by the caller.
+ * @returns a row the document will accept.
+ */
+export declare function newItem(input: Pick<ItemRecord, 'title' | 'body' | 'notes' | 'status' | 'priority'> & Partial<Pick<ItemRecord, 'steps' | 'tags'>>, now: number, id: string): ItemRecord;
+/**
+ * Mint a row identity.
+ *
+ * `crypto.randomUUID` is a secure-context API and the harness is served from
+ * a loopback origin, so this is the path that always runs; the composed
+ * fallback exists so a row is never left without an identity rather than
+ * failing a note-taking gesture over a browser quirk.
+ * @returns a fresh identity.
+ */
+export declare function newItemId(): string;
+/**
+ * Append one fresh row, or refuse an empty one.
+ *
+ * A note with no words in it is not a note, and the empty state promises you
+ * can write down a thought — so the gesture that creates the row is the same
+ * gesture that writes the first words. Returning the SAME array on refusal is
+ * the same no-op discipline every other edit here follows.
+ * @param items - the current list.
+ * @param input - what the reader typed.
+ * @param now - the creation clock.
+ * @returns the next list and the row that was added.
+ */
+export declare function addItem(items: readonly ItemRecord[], input: Pick<ItemRecord, 'title' | 'body' | 'notes' | 'status' | 'priority'>, now: number): {
+    readonly items: readonly ItemRecord[];
+    readonly added: ItemRecord | undefined;
+};
+/**
+ * Format a deadline the way the rest of this product formats one.
+ *
+ * `toLocaleDateString()` with no options is a different answer per machine —
+ * `2026/9/28` here, `28/09/2026` there, and a 300px column has no room for
+ * either. This goes through the same `isEnglish()` switch the board uses, so a
+ * Chinese reader gets 年月日 and an English reader gets a short date, in BOTH
+ * the panel and the board. One rule, one answer, in both places.
+ * @param at - the moment, in milliseconds.
+ * @param english - whether the active UI language is English.
+ * @returns a short human date.
+ */
+export declare function formatItemDate(at: number, english: boolean): string;
+/**
+ * Parse a `yyyy-mm-dd` field back into a moment, or `undefined` when blank.
+ *
+ * The inputs are date fields, so they speak a date and not a clock. Building the
+ * moment in local time is the whole point: a deadline typed as 28 September must
+ * land on 28 September for the person who typed it, whatever timezone the
+ * browser happens to be in.
+ * @param value - the field's value.
+ * @returns the moment, or undefined for an empty field.
+ */
+export declare function parseItemDate(value: string): number | undefined;
+/** Render a moment for a `yyyy-mm-dd` date field. */
+export declare function toItemDateField(at: number | undefined): string;
 /**
  * The reader's chosen row height, remembered across sessions.
  *

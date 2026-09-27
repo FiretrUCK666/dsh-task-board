@@ -18,6 +18,12 @@ import type { ItemRecord } from '../src/core/item.ts'
 import { ItemListPanel, ItemRow, storedStatusFor } from '../src/client/item/panel.tsx'
 import { PRESENTATION_FIELDS } from '../src/client/chat/tool-views.tsx'
 import {
+  ListOpenButton,
+  listLauncher,
+  makeListLauncher,
+  publishListLauncher,
+} from '../src/client/item/launcher.tsx'
+import {
   addItem,
   editItem,
   formatItemDate,
@@ -406,6 +412,104 @@ describe('the panel tells the truth about what it can see', () => {
     const html = renderPanel([item({ title: 'still here' })], { hostLost: true })
     expect(html).toContain('正在用本机的副本')
     expect(html).toContain('still here')
+  })
+})
+
+describe('opening the list from anywhere, honestly', () => {
+  /** A sidebar stand-in whose seat presence the test decides. */
+  function fakeSidebar(mounted: string | undefined) {
+    const opened: string[] = []
+    let listeners: (() => void)[] = []
+    return {
+      opened,
+      face: {
+        mounted: {
+          getSnapshot: () => mounted,
+          subscribe: (fn: () => void) => {
+            listeners.push(fn)
+            return () => { listeners = listeners.filter(l => l !== fn) }
+          },
+        },
+        openTab: (kind: string) => { opened.push(kind) },
+      },
+    }
+  }
+
+  it('opens it when a seat is on screen — exactly once, with the right kind', () => {
+    const { face, opened } = fakeSidebar('session-1')
+    const launcher = makeListLauncher(face)
+    expect(launcher.available()).toBe(true)
+    expect(launcher.open()).toBe(true)
+    expect(opened).toEqual(['task-list'])
+  })
+
+  it('DOES NOT call openTab when there is no seat — and says so', () => {
+    // THE core assertion of this round, and the easiest thing for a later
+    // refactor to "simplify" away. A click that does nothing and says
+    // nothing is undiagnosable from the outside; refusing is the only
+    // answer that names the reason.
+    const { face, opened } = fakeSidebar(undefined)
+    const launcher = makeListLauncher(face)
+    expect(launcher.available()).toBe(false)
+    expect(launcher.open()).toBe(false)
+    expect(opened).toEqual([])
+  })
+
+  it('refuses the same way when the sidebar is not composed at all', () => {
+    const launcher = makeListLauncher(undefined)
+    expect(launcher.available()).toBe(false)
+    expect(launcher.open()).toBe(false)
+  })
+
+  it('renders NO button when there is no seat, rather than a dead one', () => {
+    const { face } = fakeSidebar(undefined)
+    const restore = publishListLauncher(face)
+    try {
+      expect(renderToStaticMarkup(createElement(ListOpenButton))).toBe('')
+    } finally {
+      restore()
+    }
+  })
+
+  it('renders a real button when there IS a seat', () => {
+    const { face, opened } = fakeSidebar('session-1')
+    const restore = publishListLauncher(face)
+    try {
+      const html = renderToStaticMarkup(createElement(ListOpenButton))
+      expect(html).toContain('任务清单')
+      expect(html).toContain('<button')
+    } finally {
+      restore()
+    }
+    expect(opened).toEqual([])
+  })
+
+  it('is published only while the plugin is composed', () => {
+    const { face } = fakeSidebar('session-1')
+    const restore = publishListLauncher(face)
+    expect(listLauncher().available()).toBe(true)
+    restore()
+    // After withdrawal the honest default returns: nothing opens, and nothing
+    // pretends it can.
+    expect(listLauncher().available()).toBe(false)
+    expect(listLauncher().open()).toBe(false)
+  })
+
+  it('keeps the list resident, and the board offers the same way in', () => {
+    const tabSource = readFileSync(
+      fileURLToPath(new URL('../src/client/item/register.tsx', import.meta.url)),
+      'utf8',
+    )
+    // Unmounting on a tab switch is what made a reader re-find the list
+    // every time; it is for keeping an eye on, not for walking past.
+    expect(tabSource).toMatch(/keepMounted:\s*true/)
+    // …and the board is reachable, which it was not: no conversation header
+    // sits above it.
+    const board = readFileSync(
+      fileURLToPath(new URL('../src/client/TaskBoardPanel.tsx', import.meta.url)),
+      'utf8',
+    )
+    expect(board).toContain('ListOpenButton')
   })
 })
 

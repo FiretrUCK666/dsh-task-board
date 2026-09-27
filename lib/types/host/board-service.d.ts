@@ -137,26 +137,6 @@ export interface BoardServiceDeps {
     /** Diagnostic sink; defaults to console. */
     log?: (message: string, error?: unknown) => void;
 }
-/**
- * The host-side truth: documents + lease + relay. Every mutation to every
- * document runs on ONE serialized write lane (the storage domain's
- * single-write-chain discipline — the unit serializes nothing and says so),
- * so commits from many replicas interleave in arrival order and each
- * document's merge grammar resolves them. One lane, not one per document: the
- * two disciplines it buys are "the merge runs against the newest in-memory
- * document" and "one write in flight at a time", and both are pinned by tests.
- *
- * THE LEASE AND THE RELAY ARE UNIT-LEVEL ARBITRATIONS, not board facts, and
- * they ride in this class because of the one thing they cannot route around:
- * the backend gives a unit exactly one live handle, so everything that
- * arbitrates or moves data in this unit has to be reachable from the one
- * object holding it. Concretely — one engine drives time-based automation over
- * BOTH documents, and a command relayed from a non-engine replica is executed
- * by whichever replica holds the seat, whoever wrote the row. Reading the
- * lease as "the board's lease" is the mistake this paragraph exists to
- * prevent: it is the seat for the unit, and its state never mentions a
- * document.
- */
 export declare class DocumentService {
     private readonly deps;
     private doc;

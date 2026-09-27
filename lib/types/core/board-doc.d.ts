@@ -17,14 +17,59 @@ export type BoardSection<T> = MergeSection<T>;
 /** The deletions a client observed since its baseline, with the stamp each
  *  delete was computed against. */
 export type BoardDelete = MergeDelete;
-/** One relayed user action: run this task with this trigger (the engine
- *  executes; a non-engine replica forwards the request through the host). */
-export interface BoardCommand {
+/**
+ * One relayed user action: something the ENGINE must perform on a replica's
+ * behalf (a non-engine replica forwards the request through the host). It is a
+ * discriminated union rather than one shape with optional fields, because the
+ * carriers carry DIFFERENT payloads: a run needs a trigger, a comment needs a
+ * session and a line of text, a rename needs only a title. One shape with
+ * everything optional would let a rename arrive with no title and a comment with
+ * no text, and each of those would fail somewhere downstream instead of here.
+ *
+ * `clientId` is on EVERY variant on purpose: it is "who asked", and a relay has
+ * to be able to answer somebody on every one of its trips.
+ *
+ * WHICH PAYLOAD BELONGS TO WHICH ACTION IS NOT DECIDED HERE. It is the action
+ * catalog's `relay` field that says which action rides which carrier, and the
+ * HOST's job is to switch on `command.type` and dispatch — it must not know the
+ * set of carriers from this file, and it must never decide by reading an action
+ * NAME. A variant added here without a matching `relay` in the catalog is a
+ * carrier nothing can select; an action marked `relay` without a variant here
+ * is a request with nowhere to go. Both are gaps the coverage gate reports.
+ */
+export type BoardCommand = {
     type: 'run';
     taskId: string;
     trigger: 'manual' | 'schedule' | 'chain';
-    /** The replica the user acted on (informational; the engine executes). */
     clientId: string;
+} | {
+    type: 'comment';
+    taskId: string;
+    sessionId: string;
+    text: string;
+    clientId: string;
+} | {
+    type: 'session.create';
+    taskId: string;
+    config: BoardCommandConfig;
+    clientId: string;
+} | {
+    type: 'session.rename';
+    sessionId: string;
+    title: string;
+    clientId: string;
+};
+/** The run configuration a created session is composed with (every field
+ *  optional: an omitted one is resolved by the host's own default chain). It
+ *  mirrors the run-config fields a task carries, so a reader comparing the two
+ *  does not have to guess which is which. */
+export interface BoardCommandConfig {
+    workspaceId?: string;
+    provider?: string;
+    model?: string;
+    reasoningEffort?: string;
+    agentPreset?: string;
+    permission?: string;
 }
 /**
  * Everything an SSE subscriber receives; plain JSON, one line per frame.

@@ -7907,3 +7907,16 @@ textarea.itemInput {
   line-height: 18px;
   color: var(--dsh-tb-text-3);
 }
+/* A rail for the board panel's own tools. It is its own row rather than a
+   button floating over the board: the board lays out from the top, and an
+   overlay there would sit on the header the reader is trying to read.
+   Empty when the right-sidebar seat is unmounted — the host does that while a
+   global panel is in front — and an empty flex row costs one line, not a lie. */
+.panelStageTools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: none;
+  min-height: 24px;
+  padding: 2px var(--dsh-tb-rail-inset) 0;
+}

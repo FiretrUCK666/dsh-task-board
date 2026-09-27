@@ -25,7 +25,7 @@ import type { ChecklistReplica } from '../../core/host-sync.ts'
 import type { BoardController } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import { ItemListPanel, type ItemListPanelProps } from './panel.tsx'
-import css from '../board.module.css'
+import { ListOpenButton, publishListLauncher, type ListOpenerFace } from './launcher.tsx'
 
 /** This implementation's identity; also the key the body registers under. */
 const LIST_ID = '@firetruck666/dsh-task-board'
@@ -90,8 +90,7 @@ interface TabRegistryFace {
 }
 
 /** The right-sidebar controller, read by name for the same reason. */
-interface SidebarControllerFace {
-  openTab(kind: string, options?: Record<string, unknown>): void
+interface SidebarControllerFace extends ListOpenerFace {
   close(tabId: string): void
 }
 
@@ -169,9 +168,12 @@ export function registerItemList(ctx: Context, stage: ItemListStage): () => void
     disposers.push(ctx.effect(() => registry.register({
       id: LIST_ID,
       kind: LIST_KIND,
-      // The panel is cheap to re-open and holds no unsaved state of its own
-      // once an edit is committed, so there is nothing to keep alive.
-      keepMounted: false,
+      // Resident, not "open and leave". The list is the thing being kept an
+      // eye on, so switching away from its tab and back must not hand back an
+      // empty column. The price is a live subscription and a clock — and both
+      // are already paid for correctly: the subscription hangs on the host's
+      // own `signal`, and a tab nobody is looking at does not run its clock.
+      keepMounted: true,
       title: () => t('itemTab.title'),
       guide: [{
         id: 'list',
@@ -190,9 +192,16 @@ export function registerItemList(ctx: Context, stage: ItemListStage): () => void
     )) as unknown as ComponentType<never>))
   }), 'dsh-task-board: item list body'))
 
-  // ③ the entry button in the conversation header. `scope: 'session'` means it
-  // only mounts where there IS a session, so no session means no dead button.
+  // ③ the entry button in the conversation header, AND the launcher the board's
+  // own header button uses. Both go through `ListOpenButton`, so there is one
+  // implementation of "can this be opened right now" and not two that drift.
+  //
+  // The launcher is published HERE and withdrawn on dispose, which is the whole
+  // lifetime it needs. `scope: 'session'` on the header seat means it only
+  // mounts where there IS a session; the board's button does not live on that
+  // seat at all, and says nothing when the seat itself is gone.
   const sidebar = ctx.get('sidebarRight') as SidebarControllerFace | undefined
+  disposers.push(publishListLauncher(sidebar))
   if (sidebar !== undefined) {
     disposers.push(ctx.effect(() => slots.inject('conversation.session.header.actions', () => {
       disposers.push(slots.register({
@@ -201,21 +210,7 @@ export function registerItemList(ctx: Context, stage: ItemListStage): () => void
         order: 40,
         locale: NS,
       }, (() => (
-        <button
-          type="button"
-          className={css.itemListOpenButton}
-          onClick={() => {
-            try {
-              sidebar.openTab(LIST_KIND)
-            } catch (error) {
-              // A page type the shell cannot open is a missing capability, not
-              // a broken one; say so instead of throwing inside its handler.
-              console.error('[dsh-task-board] could not open the task list', error)
-            }
-          }}
-        >
-          {t('itemTab.open')}
-        </button>
+        <ListOpenButton />
       )) as unknown as ComponentType<never>))
     }), 'dsh-task-board: item list entry button'))
   }

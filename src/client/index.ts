@@ -1172,7 +1172,16 @@ export function apply(ctx: ClientContext): void {
       controller.setHostBoot(sync.hostBootTime())
       controller.setEngine(held)
     })
-    sync.onCommand(command => { void controller.runTask(command.taskId, command.trigger) })
+    // A relayed command: the replica holding the seat performs it. ONLY the
+    // `run` carrier maps onto a controller call here — `taskId` and `trigger`
+    // exist on that variant alone, and the others (a comment, creating a
+    // session, renaming one) are the engine's work, not a board run. Narrowing
+    // is the honest read: reading those fields off the union would claim every
+    // carrier is a run.
+    sync.onCommand(command => {
+      if (command.type !== 'run') return
+      void controller.runTask(command.taskId, command.trigger)
+    })
 
     // Scheduled runs: a browser-side heartbeat that triggers due tasks through
     // the same run path as the manual Run button. The first tick is gated on

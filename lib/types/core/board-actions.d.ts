@@ -42,10 +42,43 @@ export type ActionSurface = 'ui' | 'ui+ai' | 'ai-only';
 export interface ParamSpec {
     /** One line, written for whoever has to fill it in (usually a model). */
     readonly about: string;
-    /** A closed set, when there is one. Keeps a renderer from inventing values. */
+    /**
+     * THE VALUE SHAPES, FIVE OF THEM, DELIBERATELY NOT ONE.
+     *
+     * One "allowed values" field that could hold an enum, a boolean and a range
+     * would be the exact shape that invites the mistake this table already made
+     * once: declaring something stricter than the truth and handing a model a
+     * confidently wrong answer. Each shape gets its own field so none can be read
+     * as another — a boolean can no longer be spelled as two strings.
+     */
+    /** A closed set of STRING values. Never a boolean, never a number. */
     readonly oneOf?: readonly string[];
+    /** The value is a boolean. Not `oneOf: ['true','false']` — that is a lie about
+     *  the type, and the host would read the string as truthy or reject it. */
+    readonly boolean?: true;
+    /** A closed numeric interval, inclusive on both ends. */
+    readonly range?: {
+        readonly min: number;
+        readonly max: number;
+    };
+    /** The value is an object with exactly these keys. A key the DOCUMENT owns is
+     *  deliberately not among them, so the model is never asked to mint an id. */
+    readonly object?: readonly string[];
+    /** The value is a list: `'string'`, `'object'`, or a {@link ParamSpec}
+     *  describing ONE element. Declaring the element is not optional politeness —
+     *  an undeclared element shape is how a list of strings silently loses every
+     *  row it is given. */
+    readonly list?: 'string' | 'object' | ParamSpec;
+    /** What an ABSENT key means, in one sentence. Needed whenever the default is
+     *  not the obvious one — a parameter whose "not given" case means something
+     *  surprising (here: switching something OFF) must say so, or the reader
+     *  infers the opposite. */
+    readonly default?: string;
     readonly optional?: true;
-    /** Required only under this condition — stated, never left to be inferred. */
+    /** Required only under this condition — stated, never left to be inferred.
+     *  When the condition names an OPTIONAL parameter, say what that parameter
+     *  defaults to: "trigger is cron" is unreadable when `trigger` was omitted
+     *  and the effective value is cron anyway. */
     readonly requiredWhen?: string;
     /** Meaningless unless this holds — so a model does not invent it. */
     readonly appliesWhen?: string;
@@ -79,6 +112,25 @@ export interface ActionShape {
     readonly summary: string;
     readonly params: Readonly<Record<string, ParamSpec>>;
     readonly surface: ActionSurface;
+    /**
+     * The CARRIER this action's effect travels on when a non-engine replica has
+     * to ask the engine for it — the carrier's name, and with it what that carrier
+     * MEANS: `run` runs the card named by `of`; `comment` puts a line of text into
+     * a named session; `session.create` opens a session and binds it; and so on.
+     *
+     * WHOSE FACT THIS IS: the engine owns the carriers, and the catalog owns which
+     * actions ride which one. A relay that decides by reading action NAMES is a
+     * relay that will one day forward an action onto a carrier that cannot carry
+     * it — and that day is silent: a comment forwarded as a run spends a run and
+     * delivers no text. So "which carrier" is a field in this table, and the host
+     * only switches on it.
+     *
+     * OPTIONAL ON PURPOSE, and its absence is a statement rather than a gap: an
+     * action with NO `relay` cannot be relayed at all, whatever its lane. That
+     * covers both "the engine does this itself" and "this writes a document
+     * instead" — and it is the one thing a host must refuse rather than guess.
+     */
+    readonly relay?: 'run' | 'comment' | 'session.create' | 'session.rename';
     /** Set when the action has meaning beyond its field writes, so the UI and the
      *  tool must share one implementation. Then `semanticOf` is required. */
     readonly semantic?: true;
@@ -140,8 +192,9 @@ export declare const ACTIONS: {
                 readonly appliesWhen: "只在同一栏内排序时需要";
             };
             readonly bind: {
-                readonly about: "建卡时直接挂上的会话或工作区（可多项）";
+                readonly about: "建卡时直接挂上的来源（可多项）：kind 是 session 时给 { kind, sessionId }，是 workspace 时给 { kind, workspaceId }";
                 readonly optional: true;
+                readonly list: "object";
             };
         };
     };
@@ -241,7 +294,7 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "guarded";
         readonly surface: "ui+ai";
-        readonly summary: "通过一张待审核的卡：标已读并移到「已完成」。有轮次在跑时拒绝，状态原样不动。";
+        readonly summary: "通过一张待审核的卡：一次动作做两件事——把已读钟推到此刻，并把它移到「已完成」（动词是 move，但读状态也一起变了，所以别拿它当纯移栏用）。真有轮次还在跑时整条拒绝，状态与已读都不动；这时候该做的是等这次运行结算完再来，而不是换个动作绕过去。";
         readonly semantic: true;
         readonly semanticOf: "moveTaskToStatus";
         readonly params: {
@@ -279,15 +332,18 @@ export declare const ACTIONS: {
             readonly enabled: {
                 readonly about: "上膛还是解甲";
                 readonly optional: true;
+                readonly boolean: true;
+                readonly default: "不传 = 沿用这张卡现在的上膛状态；卡上还没有规则时不传等于关";
             };
             readonly mode: {
                 readonly about: "cron 定时 / chain 完成后接续";
                 readonly optional: true;
                 readonly oneOf: readonly ["cron", "chain"];
+                readonly default: "不传 = cron";
             };
             readonly cron: {
                 readonly about: "五段 cron 表达式";
-                readonly requiredWhen: "mode 是 cron（上膛时必填；解甲不必给）";
+                readonly requiredWhen: "mode 是 cron（mode 不传时有效值就是 cron）；解甲不必给";
             };
             readonly maxRuns: {
                 readonly about: "最多跑几次";
@@ -302,6 +358,7 @@ export declare const ACTIONS: {
         readonly lane: "engine";
         readonly danger: "guarded";
         readonly surface: "ui+ai";
+        readonly relay: "run";
         readonly summary: "立刻跑一次这张卡。会真开会话、真花 token；没有浏览器持席位时只能排队，引擎上线才补发。";
         readonly params: {
             readonly of: {
@@ -320,7 +377,8 @@ export declare const ACTIONS: {
         readonly lane: "engine";
         readonly danger: "guarded";
         readonly surface: "ui+ai";
-        readonly summary: "对这张卡的某个会话发一条消息，接着上次的对话继续。排队还是插话由用户的开关定，不接受指定。";
+        readonly relay: "comment";
+        readonly summary: "对某个会话说一句话，接着上次的对话继续。它骑的是**发言**那条载波，不是 run 载波——**走 run 中继只会白跑一次卡，那句话一个字也发不出去**。排队还是插话由用户的开关定，不接受指定。";
         readonly params: {
             readonly of: {
                 readonly about: "目标卡";
@@ -335,7 +393,7 @@ export declare const ACTIONS: {
             readonly command: {
                 readonly about: "这是一条斜杠命令而不是一句话";
                 readonly optional: true;
-                readonly oneOf: readonly ["true", "false"];
+                readonly boolean: true;
             };
         };
     };
@@ -367,7 +425,8 @@ export declare const ACTIONS: {
             readonly scope: {
                 readonly about: "标到哪一层";
                 readonly optional: true;
-                readonly oneOf: readonly ["task", "session", "round"];
+                readonly oneOf: readonly ["task", "session", "round", "all"];
+                readonly default: "不传 = 整张卡（等价于 markAllViewed 那一路）";
             };
             readonly session: {
                 readonly about: "会话轮";
@@ -403,10 +462,17 @@ export declare const ACTIONS: {
             readonly enabled: {
                 readonly about: "开还是关";
                 readonly optional: true;
+                readonly boolean: true;
+                readonly default: "不传 = 保持现在的开关状态";
             };
             readonly limit: {
-                readonly about: "同时跑几条（1..20）";
+                readonly about: "同时跑几条";
                 readonly optional: true;
+                readonly range: {
+                    readonly min: 1;
+                    readonly max: 20;
+                };
+                readonly default: "不传 = 保持现在的上限；超出 1..20 会被夹到边界";
             };
         };
     };
@@ -443,19 +509,21 @@ export declare const ACTIONS: {
                 readonly about: "cron 定时 / on-complete 每次跑完";
                 readonly optional: true;
                 readonly oneOf: readonly ["cron", "on-complete"];
+                readonly default: "不传 = cron";
             };
             readonly cron: {
                 readonly about: "五段 cron 表达式";
-                readonly requiredWhen: "trigger 是 cron";
+                readonly requiredWhen: "trigger 是 cron（trigger 不传时有效值就是 cron，所以照样要给）";
             };
             readonly usePrompt: {
                 readonly about: "送这张卡当前的执行 Prompt，而不是自定义文本";
                 readonly optional: true;
-                readonly oneOf: readonly ["true", "false"];
+                readonly boolean: true;
+                readonly default: "不传 = 送自定义文本（也就是要一起给 instruction）";
             };
             readonly instruction: {
                 readonly about: "要定时送出去的话";
-                readonly requiredWhen: "usePrompt 是 false";
+                readonly requiredWhen: "usePrompt 是 false（usePrompt 不传时有效值就是 false，所以照样要给）";
             };
             readonly send: {
                 readonly about: "排队还是插话";
@@ -480,24 +548,28 @@ export declare const ACTIONS: {
             readonly enabled: {
                 readonly about: "上膛还是解甲";
                 readonly optional: true;
+                readonly boolean: true;
+                readonly default: "不传 = 这次不动它的上膛状态";
             };
             readonly trigger: {
                 readonly about: "cron 定时 / on-complete 每次跑完";
                 readonly optional: true;
                 readonly oneOf: readonly ["cron", "on-complete"];
+                readonly default: "不传 = 沿用这条规则现在的触发方式";
             };
             readonly cron: {
                 readonly about: "五段 cron 表达式";
-                readonly requiredWhen: "trigger 是 cron";
+                readonly requiredWhen: "trigger 是 cron（trigger 不传时有效值沿用当前，当前是 cron 就仍然要给）";
             };
             readonly usePrompt: {
                 readonly about: "送执行 Prompt 而不是自定义文本";
                 readonly optional: true;
-                readonly oneOf: readonly ["true", "false"];
+                readonly boolean: true;
+                readonly default: "不传 = 送自定义文本（也就是要一起给 instruction）";
             };
             readonly instruction: {
                 readonly about: "要定时送出去的话";
-                readonly requiredWhen: "usePrompt 是 false";
+                readonly requiredWhen: "usePrompt 是 false（usePrompt 不传时有效值就是 false）";
             };
             readonly send: {
                 readonly about: "排队还是插话";
@@ -528,7 +600,8 @@ export declare const ACTIONS: {
         readonly lane: "engine";
         readonly danger: "guarded";
         readonly surface: "ui+ai";
-        readonly summary: "按给定的运行配置建一条新的原生会话，并挂到这张卡上——这正是「开一个新 session 让它调用任务看板」要做的事。卡本身不动：不产生执行记录、不进派发队列、不碰任何自动化。会话是原生侧真实存在的东西，绑定可以摘掉，关掉它要用户自己在原生界面做。会话创建在宿主缺席时直接失败，不会假装排队。";
+        readonly relay: "session.create";
+        readonly summary: "按给定的运行配置建一条新的原生会话，**并且同时把它挂到这张卡上**——所以这条既是 create 也是 bind，不给 of 就没法用（要挂来源但不想建会话，去 session.bind）。它骑的是**建会话**那条载波，不是 run 载波——**走 run 中继同样只会白跑一次卡，会话不会被建出来**。卡本身不动：不产生执行记录、不进派发队列、不碰任何自动化。会话是原生侧真实存在的东西，绑定可以摘掉，关掉它要用户自己在原生界面做。会话创建在宿主缺席时直接失败，不会假装排队。";
         readonly params: {
             readonly of: {
                 readonly about: "要挂到哪张卡上";
@@ -576,18 +649,18 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "reversible";
         readonly surface: "ui+ai";
-        readonly summary: "给卡挂一个来源：一个会话，或一个整个工作区。一次加一个。";
+        readonly summary: "给卡挂一个来源：一个会话，或一个整个工作区。一次加一个（两个参数二选一，不是都填）。";
         readonly params: {
             readonly of: {
                 readonly about: "目标卡";
             };
             readonly session: {
                 readonly about: "要挂的会话";
-                readonly requiredWhen: "没给 workspace 时必填";
+                readonly requiredWhen: "没给 workspace 时必填（与 workspace 二选一）";
             };
             readonly workspace: {
                 readonly about: "要挂的工作区";
-                readonly requiredWhen: "没给 session 时必填";
+                readonly requiredWhen: "没给 session 时必填（与 session 二选一）";
             };
         };
     };
@@ -615,13 +688,11 @@ export declare const ACTIONS: {
         readonly lane: "engine";
         readonly danger: "guarded";
         readonly surface: "ui+ai";
-        readonly summary: "给这个会话改个显示用的名字。";
+        readonly relay: "session.rename";
+        readonly summary: "给一个会话改它的显示名——改的是**原生侧那条会话**的名字，不是插件里这张卡的标题（卡标题走 task.update 的 title）。**不用先知道是哪张卡**：这条动作的目标就是那条会话，而它会不会出现在某张卡上由那张卡的 binds 决定，与改名无关（为改个名字先去查一遍卡，是凭空多一轮）。动词是 update，宾语却在插件之外。它骑的是**改名**那条载波，不是 run 载波——**改名字不触发任何执行，走 run 中继同样只会白跑一次卡，名字不会改**。";
         readonly params: {
-            readonly of: {
-                readonly about: "目标卡";
-            };
             readonly session: {
-                readonly about: "要改名的会话";
+                readonly about: "要改名的会话（会话 id）";
             };
             readonly title: {
                 readonly about: "新名字";
@@ -634,7 +705,7 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "reversible";
         readonly surface: "ui+ai";
-        readonly summary: "调整卡上会话列表的顺序。";
+        readonly summary: "调整卡上会话列表的显示顺序（只改顺序，一个字段都不改）。";
         readonly params: {
             readonly of: {
                 readonly about: "目标卡";
@@ -660,17 +731,21 @@ export declare const ACTIONS: {
             readonly of: {
                 readonly about: "目标卡";
             };
+            readonly scope: {
+                readonly about: "动的是哪一行";
+                readonly oneOf: readonly ["session", "round"];
+            };
             readonly session: {
                 readonly about: "要收起的会话";
-                readonly requiredWhen: "动的是会话行";
+                readonly requiredWhen: "scope 是 session";
             };
             readonly round: {
                 readonly about: "要收起的轮次";
-                readonly requiredWhen: "动的是轮次行";
+                readonly requiredWhen: "scope 是 round";
             };
             readonly hidden: {
                 readonly about: "收起还是恢复";
-                readonly oneOf: readonly ["true", "false"];
+                readonly boolean: true;
             };
         };
     };
@@ -707,8 +782,9 @@ export declare const ACTIONS: {
                 readonly requiredWhen: "kind 是 schedule";
             };
             readonly config: {
-                readonly about: "运行配置（模型 / 思考档 / 权限预设…）";
+                readonly about: "运行配置（只给要钉住的那几项，其余走默认）";
                 readonly requiredWhen: "kind 是 run";
+                readonly object: readonly ["workspaceId", "provider", "model", "reasoningEffort", "agentPreset", "permission"];
             };
         };
     };
@@ -733,14 +809,15 @@ export declare const ACTIONS: {
                 readonly appliesWhen: "只对排期预设";
             };
             readonly config: {
-                readonly about: "新的运行配置";
+                readonly about: "新的运行配置（只给要改的那几项）";
                 readonly optional: true;
                 readonly appliesWhen: "只对运行配置预设";
+                readonly object: readonly ["workspaceId", "provider", "model", "reasoningEffort", "agentPreset", "permission"];
             };
             readonly makeDefault: {
                 readonly about: "设为默认 / 取消默认";
                 readonly optional: true;
-                readonly oneOf: readonly ["true", "false"];
+                readonly boolean: true;
                 readonly appliesWhen: "只对运行配置预设";
             };
         };
@@ -780,6 +857,10 @@ export declare const ACTIONS: {
             readonly steps: {
                 readonly about: "勾选清单（只有一层）";
                 readonly optional: true;
+                readonly list: {
+                    readonly about: "一步：text 是那行字，done 是勾没勾；id 由文档分配，不要自己编";
+                    readonly object: readonly ["text", "done"];
+                };
             };
             readonly status: {
                 readonly about: "开放 / 受阻 / 完成";
@@ -794,6 +875,7 @@ export declare const ACTIONS: {
             readonly tags: {
                 readonly about: "自由标签";
                 readonly optional: true;
+                readonly list: "string";
             };
             readonly startsAfter: {
                 readonly about: "最早开始（毫秒时间戳）";
@@ -822,7 +904,7 @@ export declare const ACTIONS: {
         readonly summary: "改一条清单条目（用 #编号 指它）。只改传了的字段；编号与来源不可写。";
         readonly params: {
             readonly of: {
-                readonly about: "要改的条目编号（#12 那个号）";
+                readonly about: "要改的条目编号：填那个数字本身（12），不要带 # 号——# 只是它显示时的样子";
             };
             readonly title: {
                 readonly about: "一行标题";
@@ -839,6 +921,10 @@ export declare const ACTIONS: {
             readonly steps: {
                 readonly about: "勾选清单（整份替换，只有一层）";
                 readonly optional: true;
+                readonly list: {
+                    readonly about: "一步：text 是那行字，done 是勾没勾；id 由文档分配，不要自己编";
+                    readonly object: readonly ["text", "done"];
+                };
             };
             readonly status: {
                 readonly about: "开放 / 受阻 / 完成（「进行中」是派生的，不可写）";
@@ -853,6 +939,7 @@ export declare const ACTIONS: {
             readonly tags: {
                 readonly about: "自由标签（整份替换）";
                 readonly optional: true;
+                readonly list: "string";
             };
             readonly startsAfter: {
                 readonly about: "最早开始";
@@ -881,7 +968,7 @@ export declare const ACTIONS: {
         readonly summary: "删一条清单条目。走墓碑，所以能恢复；但没有撤销层，删之前值得先说一句。";
         readonly params: {
             readonly of: {
-                readonly about: "要删的条目编号";
+                readonly about: "要删的条目编号：填那个数字本身（12），不要带 # 号";
             };
         };
     };

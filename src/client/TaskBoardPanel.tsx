@@ -34,6 +34,7 @@ import type { BundleFreshnessState } from './bundle-freshness.ts'
 import { t } from './locales.ts'
 import { TaskBoard } from './board/TaskBoard.tsx'
 import { watchKeyboardInset } from './board/keyboard-inset.ts'
+import { ListOpenButton } from './item/launcher.tsx'
 import css from './board.module.css'
 
 /** Props the shell's `main` slot renderer binds for this panel. */
@@ -79,6 +80,15 @@ export function TaskBoardPanel({ controller, freshness }: TaskBoardPanelProps) {
 
   return (
     <div className={css.panelStage} data-dsh-taskboard-view="">
+      {/* The list is reachable from HERE as well as from the conversation
+          header — otherwise the board, which is where work gets looked at, is
+          the one surface that cannot get to it. The button is the SAME
+          component the header uses, and it renders nothing when the sidebar
+          seat is not on screen (a global panel in front unmounts it), so what
+          the board offers and what a conversation offers cannot drift apart. */}
+      <div className={css.panelStageTools}>
+        <ListOpenButton />
+      </div>
       {controller === undefined
         ? <p className={css.panelLoading} role="status">{t('board.loading')}</p>
         : <TaskBoard controller={controller} freshness={freshness} />}

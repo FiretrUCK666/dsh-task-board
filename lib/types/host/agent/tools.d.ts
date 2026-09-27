@@ -52,21 +52,18 @@
  * 引擎当前不在线，将在引擎上线后执行". Pretending it ran is the failure mode.
  */
 import { type ActionDanger, type ActionDomain, type ActionLane, type ActionSurface } from '../../core/board-actions.ts';
-import { type BoardCommit, type BoardDoc } from '../../core/board-doc.ts';
+import { type BoardCommand, type BoardCommit, type BoardDoc } from '../../core/board-doc.ts';
 import { type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts';
-import type { SessionPosture } from '../session-state.ts';
+import type { SessionPosture, SessionPostureSources } from '../session-state.ts';
 export interface ToolCommitFace {
     getDoc(): BoardDoc;
     getItemsDoc(): ItemsDoc;
     commit(commit: BoardCommit): Promise<BoardDoc>;
     commitItems(commit: ItemsCommit): Promise<ItemsDoc>;
-    /** Relay one run to whichever replica holds the seat. `queued` = no engine. */
-    submitCommand(command: {
-        type: 'run';
-        taskId: string;
-        trigger: 'manual' | 'schedule' | 'chain';
-        clientId: string;
-    }): {
+    /** Relay one command to whichever replica holds the seat. `queued` = no
+     *  engine. The whole union: the catalog decides which carrier an action
+     *  rides, and the relay carries it as-is. */
+    submitCommand(command: BoardCommand): {
         queued: boolean;
     };
     available: boolean;
@@ -74,6 +71,10 @@ export interface ToolCommitFace {
 export interface ToolDeps {
     board: () => ToolCommitFace | undefined;
     posture: (sessionId: string) => Promise<SessionPosture>;
+    /** The live host faces, so a decision that needs to know whether a session
+     *  is still working asks the SAME derivation the board does — never a second
+     *  one written here. */
+    sources: SessionPostureSources;
     now: () => number;
     uuid: () => string;
 }
@@ -91,6 +92,9 @@ export interface ToolDefinitionLike {
             type: 'text';
             text: string;
         }[];
+        /** The tool's own vocabulary, persisted verbatim for the card to narrow —
+         *  the host's contract, and the same words the model reads. */
+        presentationMeta?(args: unknown, value: unknown): Record<string, unknown>;
     };
     execute(args: unknown, exec?: {
         signal?: AbortSignal;
@@ -151,6 +155,9 @@ export interface OpReport {
     /** The op's own words back, so a report points at something. */
     readonly op: string;
     readonly ok: boolean;
+    /** Which kind of change this was, from the catalog's verb — the only
+     *  classification in the system, so a card and the model read one thing. */
+    readonly kind: 'created' | 'updated' | 'moved' | 'deleted' | 'unchanged' | 'failed' | 'skipped';
     /** The short number and title this op touched, when it touched one. */
     readonly ref?: string;
     readonly title?: string;
@@ -184,12 +191,14 @@ export interface ExecuteResult {
         readonly tasks: readonly TaskRow[];
         readonly items: readonly ItemRow[];
     };
+    /** The batch in the tool's OWN vocabulary, so a card can render it without
+     *  re-reading prose. The kinds come from the catalog's `verb`, never from a
+     *  name list written here. */
+    readonly counts: Readonly<Record<'created' | 'updated' | 'moved' | 'deleted' | 'unchanged' | 'failed' | 'skipped', number>>;
+    /** Rows this op handed to the engine while no replica held the seat. They
+     *  are ACCEPTED, not done — a card that renders them as "已执行" is lying. */
+    readonly enginePending: readonly string[];
 }
-/**
- * Run a batch. Order, stop-at-first-failure, no rollback, report every op —
- * and `dry_run` rehearses the SAME code path against a clone, so a rehearsal
- * that disagrees with the real thing cannot happen.
- */
 export declare function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise<ExecuteResult>;
 /** Build the three tool definitions. Registration is the caller's job, so this
  *  stays a pure function of the catalog and the host faces. */
