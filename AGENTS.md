@@ -340,11 +340,16 @@ schema 就是给同一件事再加一个控件。
 | --- | --- |
 | `main` | 看板舞台（keyed slot，key = `dsh-task-board`） |
 | `sidebar.panellist` | 侧栏面板图标（id = `dsh-task-board`） |
-| `sidebar.right.pane.tab` | 任务清单正文（keyed，key = 包名） |
-| `sidebar.right.pane.tab.title` | 清单标签页标题（keyed，同 key） |
-| `sidebar.right.tab.guide.entry` | 右栏引导页的清单入口（keyed，同 key） |
-| `conversation.session.header.actions` | 会话头部的「打开清单」按钮（list） |
+| `shell.overlay` | 任务清单抽屉的承载位（官方的「盖过每一列的整屏表面」） |
+| `conversation.session.header.actions` | 会话头部的清单开关按钮（list）——抽屉的第二个出口 |
 | `tool.call.toolview` | AI 动作在对话里的呈现（keyed，按工具名） |
+
+**清单不是官方右栏的一个标签页。** 它曾经是（`sidebar.right.pane.tab` 与它的标题、
+`sidebar.right.tab.guide.entry` 三行），而那套注册**已经删掉**：官方右栏按**会话**记住整张
+表面（「一个会话的初始表面是：收起的、单窗格、无标签页」），所以标签页永远给不了真正要的那件事
+——**打开一次、就地留下、下个会话还在**。清单现在是我们自己的抽屉，不在乎你在哪个会话。
+**列出已经不再用的座位是最坏的一种过时**：这张表是机械门禁的输入（表 → 宿主），它列着一个
+不存在的使用者，等于让这张表对真正缺的那几条失去分辨力。
 
 ### 插件按名读的宿主成员（必须存在）
 
@@ -374,14 +379,17 @@ schema 就是给同一件事再加一个控件。
 | client | `locale` | `register` | `@deepseek-ai/dsh-client-locale` |
 | client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
-| client | `sidebarRightTabs` | `register` | `@deepseek-ai/dsh-client-ui-sidebar-right` |
-| client | `sidebarRight` | `openTab` / `close` / `focus` | `@deepseek-ai/dsh-client-ui-sidebar-right` |
+| client | `sidebarRight` | `isExpanded`（只读）/ `close` | `@deepseek-ai/dsh-client-ui-sidebar-right` |
 
 **每个注入都是负债**：声明了一个实际不用的服务，会在该服务缺席的部署里白等——那个
 半区永远不激活，什么也注册不出来。所以 `inject` 只列真正用到的：本插件**不**注入
-`settings` / `configForms`（没有设置项要读写）。**右栏那两个服务是表里唯一「按名读、
-不进 inject」的**——它们缺席时只让清单面板整体不出现，**绝不连累看板**；缺席即面板不存在，
-不是半截 UI。
+`settings` / `configForms`（没有设置项要读写），**也不注入右栏那个服务**。
+
+**右栏那个服务我们只读不注册。** 抽屉是我们自己的表面，官方右栏是要避开的按会话地盘；
+读它只为一件事——**我们打开时把它收起来**。所以表里只列 `isExpanded` 与 `close`，
+一个 `register` / `openTab` 都不列。**它缺席时只少掉「顺手收起官方右栏」这一件，
+清单照常工作，绝不连累看板。** 曾经用过的 `sidebarRightTabs`（标签页注册）随那套注册一起
+删掉了，**表里也不留**：留一行没有使用者的服务，和留一个没有使用者的座位是同一种过时。
 
 该脚本另带反向检查（源码不得引用宿主已撤的成员），用 `--probe-removed` 自测：它拿一组
 已知不存在的成员去扫源码，**必须报红**——否则说明检查本身失效了，而不是源码干净。
@@ -442,13 +450,7 @@ schema 就是给同一件事再加一个控件。
   host 侧注册路径保持绝对；浏览器侧任何 `/api/...` 都必须经它，`tests/route-base.spec.ts` 扫描源码兜住。
 - `TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。`board-transport.ts`：
   fetch + EventSource（缺席降纯轮询）。
-- `src/client/item/`：右栏的任务清单面板。**右栏那两个服务按名读、不进 inject**——它们缺席时
-  面板整体不出现，**看板照常工作**；缺席即面板不存在，不是半截 UI。右栏整条链**没有**
-  `container-type`，所以面板根自己声明并按约 300px 一档设计；宿主不给任何 padding，内距全部自给。
-  面板**一律不用 Dialog**（`boardBox()` 取的是第一个板盒，在右栏用弹层会锚到看板上去），
-  第 1 级就地展开。AI 正在写时显示 pending 态并可取消——取消是「剩余操作不再执行」，
-  **已生效的不回滚**，面板要说明这一点。`hostLostItems()` 为真时说「host 读不到」，
-  不能显示成「你一条都没有」。
+- `src/client/item/`：**清单抽屉**（`shell.overlay`）+ 会话头部的开关按钮（`conversation.session.header.actions`）+ 右栏服务（按名读、只用于「打开时把它收起来」）。**它是常驻边缘上的自己的表面，不按会话记住自己的展开状态**——这正是它不再做成官方右栏标签页的原因（官方右栏按会话记忆，标签页永远给不了「打开一次、就地留下、下个会话还在」）。宽度是 `min(width, 100%)` 一条声明，没有断点、没有 `@media`。面板**一律不用 Dialog**（`boardBox()` 取第一个板盒，会锚到看板上去），第 1 级就地展开。AI 正在写时显示 pending 态并可取消——取消是「剩余操作不再执行」，**已生效的不回滚**，面板要说明这一点。`hostLostItems()` 为真时说「host 读不到」，不能显示成「你一条都没有」。
 
 ### 设计系统层（成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
 
@@ -636,6 +638,16 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
       同一个默认值，门禁与渲染器都读得到。**「说清」只解决了「人读到没读到」，而门禁与渲染器
       读的是字段——散文里那句话对它们等于不存在。** 所以任何要跨表面同步的判定，都必须落在
       字段上（「不传 = cron」要写成 `default`，不是写在 `summary` 里）。
+13. **共享接线的参数签名就是接口，改它等于改别人的文件。** 模块之间靠参数传递的形状
+    （`registerItemList(ctx, itemStage)` 这类）是**接口**，调用方是别人：把两个参数改成一个，
+    不会让调用方「顺带更新」，只会让它在自己的时刻坏掉。**要改签名，先把所有调用点找出来**；
+    改不动就加一个新入口、把旧的留着。
+14. **一个不看上下文的检查器，会逼着人改对的东西来迁就它。** CSS 断言第一版把注释里的
+    字样当成了「令牌使用」，于是正确的修法变成了改注释躲开扫描；真正的修法是**让扫描先剥
+    注释再匹配**。遇到一条让实现变得不如以前的检查，先怀疑检查的读法，别先怀疑实现。
+15. **「我没查过」和「我查过」在报告里长得一模一样。** 报告里写过「核了 X、核了 Y」，
+    就意味着没核的那几处不会有人替你核——而它们常常正是地基。**核过的逐条列出来，没核的
+    明说没核**：含糊的肯定比一句「这条我没看」贵得多。
 
 ## 测试（布局约定）
 
