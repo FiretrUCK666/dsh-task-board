@@ -111,10 +111,44 @@ export type ActionSurface = 'ui' | 'ui+ai' | 'ai-only'
 export interface ParamSpec {
   /** One line, written for whoever has to fill it in (usually a model). */
   readonly about: string
-  /** A closed set, when there is one. Keeps a renderer from inventing values. */
+
+  /**
+   * THE VALUE SHAPES, FIVE OF THEM, DELIBERATELY NOT ONE.
+   *
+   * One "allowed values" field that could hold an enum, a boolean and a range
+   * would be the exact shape that invites the mistake this table already made
+   * once: declaring something stricter than the truth and handing a model a
+   * confidently wrong answer. Each shape gets its own field so none can be read
+   * as another — a boolean can no longer be spelled as two strings.
+   */
+
+  /** A closed set of STRING values. Never a boolean, never a number. */
   readonly oneOf?: readonly string[]
+  /** The value is a boolean. Not `oneOf: ['true','false']` — that is a lie about
+   *  the type, and the host would read the string as truthy or reject it. */
+  readonly boolean?: true
+  /** A closed numeric interval, inclusive on both ends. */
+  readonly range?: { readonly min: number; readonly max: number }
+  /** The value is an object with exactly these keys. A key the DOCUMENT owns is
+   *  deliberately not among them, so the model is never asked to mint an id. */
+  readonly object?: readonly string[]
+  /** The value is a list: `'string'`, `'object'`, or a {@link ParamSpec}
+   *  describing ONE element. Declaring the element is not optional politeness —
+   *  an undeclared element shape is how a list of strings silently loses every
+   *  row it is given. */
+  readonly list?: 'string' | 'object' | ParamSpec
+
+  /** What an ABSENT key means, in one sentence. Needed whenever the default is
+   *  not the obvious one — a parameter whose "not given" case means something
+   *  surprising (here: switching something OFF) must say so, or the reader
+   *  infers the opposite. */
+  readonly default?: string
+
   readonly optional?: true
-  /** Required only under this condition — stated, never left to be inferred. */
+  /** Required only under this condition — stated, never left to be inferred.
+   *  When the condition names an OPTIONAL parameter, say what that parameter
+   *  defaults to: "trigger is cron" is unreadable when `trigger` was omitted
+   *  and the effective value is cron anyway. */
   readonly requiredWhen?: string
   /** Meaningless unless this holds — so a model does not invent it. */
   readonly appliesWhen?: string
@@ -224,7 +258,11 @@ export const ACTIONS = {
       description: { about: '详情正文', optional: true },
       status: { about: '落哪一栏', optional: true, oneOf: MOVABLE, appliesWhen: '只能落在人手能拖过去的栏；「进行中」「待审核」归执行器' },
       beforeId: { about: '插到这张卡前面', optional: true, appliesWhen: '只在同一栏内排序时需要' },
-      bind: { about: '建卡时直接挂上的会话或工作区（可多项）', optional: true },
+      bind: {
+        about: '建卡时直接挂上的来源（可多项）：kind 是 session 时给 { kind, sessionId }，是 workspace 时给 { kind, workspaceId }',
+        optional: true,
+        list: 'object',
+      },
     },
   },
   'task.duplicate': {
@@ -280,7 +318,7 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'guarded',
     surface: 'ui+ai',
-    summary: '通过一张待审核的卡：标已读并移到「已完成」。有轮次在跑时拒绝，状态原样不动。',
+    summary: '通过一张待审核的卡：一次动作做两件事——把已读钟推到此刻，并把它移到「已完成」（动词是 move，但读状态也一起变了，所以别拿它当纯移栏用）。真有轮次还在跑时整条拒绝，状态与已读都不动；这时候该做的是等这次运行结算完再来，而不是换个动作绕过去。',
     semantic: true,
     semanticOf: 'moveTaskToStatus',
     params: {
@@ -309,9 +347,15 @@ export const ACTIONS = {
     semanticOf: 'armSchedule',
     params: {
       of: { about: '要排期的卡' },
-      enabled: { about: '上膛还是解甲', optional: true },
-      mode: { about: 'cron 定时 / chain 完成后接续', optional: true, oneOf: ['cron', 'chain'] },
-      cron: { about: '五段 cron 表达式', requiredWhen: 'mode 是 cron（上膛时必填；解甲不必给）' },
+      enabled: {
+        about: '上膛还是解甲',
+        optional: true,
+        boolean: true,
+        // The surprising one: not passing it does NOT mean "on".
+        default: '不传 = 沿用这张卡现在的上膛状态；卡上还没有规则时不传等于关',
+      },
+      mode: { about: 'cron 定时 / chain 完成后接续', optional: true, oneOf: ['cron', 'chain'], default: '不传 = cron' },
+      cron: { about: '五段 cron 表达式', requiredWhen: 'mode 是 cron（mode 不传时有效值就是 cron）；解甲不必给' },
       maxRuns: { about: '最多跑几次', optional: true, appliesWhen: '留空 = 不限次' },
     },
   },
@@ -338,7 +382,7 @@ export const ACTIONS = {
       of: { about: '目标卡' },
       session: { about: '目标会话', requiredWhen: '这张卡挂了不止一个会话时必须指明' },
       text: { about: '要发的话' },
-      command: { about: '这是一条斜杠命令而不是一句话', optional: true, oneOf: ['true', 'false'] },
+      command: { about: '这是一条斜杠命令而不是一句话', optional: true, boolean: true },
     },
   },
   'task.cancelComment': {
@@ -361,7 +405,9 @@ export const ACTIONS = {
     summary: '已读钟。属于人：模型替人标已读会直接消掉「待你决断」那道门，所以工具不提供它。',
     params: {
       of: { about: '要标已读的卡', requiredWhen: 'scope 不是 all' },
-      scope: { about: '标到哪一层', optional: true, oneOf: ['task', 'session', 'round'] },
+      // 'all' was missing from the range while the reason on `of` named it —
+      // a table that cites a value its own range excludes reads as broken.
+      scope: { about: '标到哪一层', optional: true, oneOf: ['task', 'session', 'round', 'all'] },
       session: { about: '会话轮', requiredWhen: 'scope 是 session' },
       round: { about: '轮次', requiredWhen: 'scope 是 round' },
     },
@@ -385,8 +431,8 @@ export const ACTIONS = {
     surface: 'ui+ai',
     summary: '巡航总开关与并发上限。巡航关着时排队的评论不会注入——这时发消息等于什么都没发生，所以如实说清。',
     params: {
-      enabled: { about: '开还是关', optional: true },
-      limit: { about: '同时跑几条（1..20）', optional: true },
+      enabled: { about: '开还是关', optional: true, boolean: true, default: '不传 = 保持现在的开关状态' },
+      limit: { about: '同时跑几条', optional: true, range: { min: 1, max: 20 }, default: '不传 = 保持现在的上限；超出 1..20 会被夹到边界' },
     },
   },
   'board.navigate': {
@@ -413,9 +459,14 @@ export const ACTIONS = {
       of: { about: '目标卡' },
       session: { about: '要被自动化的会话' },
       trigger: { about: 'cron 定时 / on-complete 每次跑完', optional: true, oneOf: ['cron', 'on-complete'] },
-      cron: { about: '五段 cron 表达式', requiredWhen: 'trigger 是 cron' },
-      usePrompt: { about: '送这张卡当前的执行 Prompt，而不是自定义文本', optional: true, oneOf: ['true', 'false'] },
-      instruction: { about: '要定时送出去的话', requiredWhen: 'usePrompt 是 false' },
+      cron: { about: '五段 cron 表达式', requiredWhen: 'trigger 是 cron（trigger 不传时有效值就是 cron）' },
+      usePrompt: {
+        about: '送这张卡当前的执行 Prompt，而不是自定义文本',
+        optional: true,
+        boolean: true,
+        default: '不传 = 送自定义文本（也就是要一起给 instruction）',
+      },
+      instruction: { about: '要定时送出去的话', requiredWhen: 'usePrompt 是 false（usePrompt 不传时有效值就是 false）' },
       send: { about: '排队还是插话', oneOf: ['queue', 'steer'] },
     },
   },
@@ -429,11 +480,16 @@ export const ACTIONS = {
     params: {
       of: { about: '目标卡' },
       rule: { about: '要改的规则' },
-      enabled: { about: '上膛还是解甲', optional: true },
-      trigger: { about: 'cron 定时 / on-complete 每次跑完', optional: true, oneOf: ['cron', 'on-complete'] },
-      cron: { about: '五段 cron 表达式', requiredWhen: 'trigger 是 cron' },
-      usePrompt: { about: '送执行 Prompt 而不是自定义文本', optional: true, oneOf: ['true', 'false'] },
-      instruction: { about: '要定时送出去的话', requiredWhen: 'usePrompt 是 false' },
+      enabled: { about: '上膛还是解甲', optional: true, boolean: true, default: '不传 = 这次不动它的上膛状态' },
+      trigger: { about: 'cron 定时 / on-complete 每次跑完', optional: true, oneOf: ['cron', 'on-complete'], default: '不传 = 沿用这条规则现在的触发方式' },
+      cron: { about: '五段 cron 表达式', requiredWhen: 'trigger 是 cron（trigger 不传时有效值沿用当前，当前是 cron 就仍然要给）' },
+      usePrompt: {
+        about: '送执行 Prompt 而不是自定义文本',
+        optional: true,
+        boolean: true,
+        default: '不传 = 送自定义文本（也就是要一起给 instruction）',
+      },
+      instruction: { about: '要定时送出去的话', requiredWhen: 'usePrompt 是 false（usePrompt 不传时有效值就是 false）' },
       send: { about: '排队还是插话', optional: true, oneOf: ['queue', 'steer'] },
     },
   },
@@ -457,7 +513,7 @@ export const ACTIONS = {
     lane: 'engine',
     danger: 'guarded',
     surface: 'ui+ai',
-    summary: '按给定的运行配置建一条新的原生会话，并挂到这张卡上——这正是「开一个新 session 让它调用任务看板」要做的事。卡本身不动：不产生执行记录、不进派发队列、不碰任何自动化。会话是原生侧真实存在的东西，绑定可以摘掉，关掉它要用户自己在原生界面做。会话创建在宿主缺席时直接失败，不会假装排队。',
+    summary: '按给定的运行配置建一条新的原生会话，**并且同时把它挂到这张卡上**——所以这条既是 create 也是 bind，不给 of 就没法用（要挂来源但不想建会话，去 session.bind）。卡本身不动：不产生执行记录、不进派发队列、不碰任何自动化。会话是原生侧真实存在的东西，绑定可以摘掉，关掉它要用户自己在原生界面做。会话创建在宿主缺席时直接失败，不会假装排队。',
     params: {
       of: { about: '要挂到哪张卡上' },
       title: {
@@ -479,11 +535,11 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'reversible',
     surface: 'ui+ai',
-    summary: '给卡挂一个来源：一个会话，或一个整个工作区。一次加一个。',
+    summary: '给卡挂一个来源：一个会话，或一个整个工作区。一次加一个（两个参数二选一，不是都填）。',
     params: {
       of: { about: '目标卡' },
-      session: { about: '要挂的会话', requiredWhen: '没给 workspace 时必填' },
-      workspace: { about: '要挂的工作区', requiredWhen: '没给 session 时必填' },
+      session: { about: '要挂的会话', requiredWhen: '没给 workspace 时必填（与 workspace 二选一）' },
+      workspace: { about: '要挂的工作区', requiredWhen: '没给 session 时必填（与 session 二选一）' },
     },
   },
   'session.remove': {
@@ -506,7 +562,7 @@ export const ACTIONS = {
     lane: 'engine',
     danger: 'guarded',
     surface: 'ui+ai',
-    summary: '给这个会话改个显示用的名字。',
+    summary: '给这个会话改个显示用的名字——改的是**原生侧那条会话**的名字，不是插件里这张卡的标题（卡标题走 task.update 的 title）。动词是 update，宾语却在插件之外。',
     params: {
       of: { about: '目标卡' },
       session: { about: '要改名的会话' },
@@ -519,7 +575,7 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'reversible',
     surface: 'ui+ai',
-    summary: '调整卡上会话列表的顺序。',
+    summary: '调整卡上会话列表的显示顺序（只改顺序，一个字段都不改）。',
     params: {
       of: { about: '目标卡' },
       session: { about: '要移动的会话' },
@@ -535,9 +591,12 @@ export const ACTIONS = {
     summary: '把某几行收进隐藏格（可一键恢复，不是删除）。纯显示选择，工具不代劳。',
     params: {
       of: { about: '目标卡' },
-      session: { about: '要收起的会话', requiredWhen: '动的是会话行' },
-      round: { about: '要收起的轮次', requiredWhen: '动的是轮次行' },
-      hidden: { about: '收起还是恢复', oneOf: ['true', 'false'] },
+      // The discriminator: two conditionally-required parameters with nothing to
+      // choose between them is a condition set no caller can satisfy.
+      scope: { about: '动的是哪一行', oneOf: ['session', 'round'] },
+      session: { about: '要收起的会话', requiredWhen: 'scope 是 session' },
+      round: { about: '要收起的轮次', requiredWhen: 'scope 是 round' },
+      hidden: { about: '收起还是恢复', boolean: true },
     },
   },
   'session.navigate': {
@@ -564,7 +623,11 @@ export const ACTIONS = {
       kind: { about: '哪一种预设', oneOf: ['schedule', 'run'] },
       label: { about: '预设名' },
       cron: { about: '五段 cron 表达式', requiredWhen: 'kind 是 schedule' },
-      config: { about: '运行配置（模型 / 思考档 / 权限预设…）', requiredWhen: 'kind 是 run' },
+      config: {
+        about: '运行配置（只给要钉住的那几项，其余走默认）',
+        requiredWhen: 'kind 是 run',
+        object: ['workspaceId', 'provider', 'model', 'reasoningEffort', 'agentPreset', 'permission'],
+      },
     },
   },
   'preset.update': {
@@ -578,8 +641,13 @@ export const ACTIONS = {
       of: { about: '要改的预设' },
       label: { about: '新名字', optional: true },
       cron: { about: '新的五段 cron 表达式', optional: true, appliesWhen: '只对排期预设' },
-      config: { about: '新的运行配置', optional: true, appliesWhen: '只对运行配置预设' },
-      makeDefault: { about: '设为默认 / 取消默认', optional: true, oneOf: ['true', 'false'], appliesWhen: '只对运行配置预设' },
+      config: {
+        about: '新的运行配置（只给要改的那几项）',
+        optional: true,
+        appliesWhen: '只对运行配置预设',
+        object: ['workspaceId', 'provider', 'model', 'reasoningEffort', 'agentPreset', 'permission'],
+      },
+      makeDefault: { about: '设为默认 / 取消默认', optional: true, boolean: true, appliesWhen: '只对运行配置预设' },
     },
   },
   'preset.delete': {
@@ -606,10 +674,17 @@ export const ACTIONS = {
       body: { about: '正文，Markdown' },
       title: { about: '一行标题', optional: true },
       notes: { about: '给接手的人或模型看的上下文备注', optional: true },
-      steps: { about: '勾选清单（只有一层）', optional: true },
+      // The element shape is declared because guessing it loses data: a plain
+      // string list has no id, and an id-less entry is dropped by the inbound
+      // grammar — taking the whole item with it, while reporting success.
+      steps: {
+        about: '勾选清单（只有一层）',
+        optional: true,
+        list: { about: '一步：text 是那行字，done 是勾没勾；id 由文档分配，不要自己编', object: ['text', 'done'] },
+      },
       status: { about: '开放 / 受阻 / 完成', optional: true, oneOf: ITEM_STATUS_VALUES },
       priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
-      tags: { about: '自由标签', optional: true },
+      tags: { about: '自由标签', optional: true, list: 'string' },
       startsAfter: { about: '最早开始（毫秒时间戳）', optional: true },
       dueAt: { about: '截止（毫秒时间戳）', optional: true },
       hardDueAt: { about: '硬期限（毫秒时间戳）', optional: true },
@@ -624,14 +699,18 @@ export const ACTIONS = {
     surface: 'ui+ai',
     summary: '改一条清单条目（用 #编号 指它）。只改传了的字段；编号与来源不可写。',
     params: {
-      of: { about: '要改的条目编号（#12 那个号）' },
+      of: { about: '要改的条目编号：填那个数字本身（12），不要带 # 号——# 只是它显示时的样子' },
       title: { about: '一行标题', optional: true },
       body: { about: '正文，Markdown', optional: true },
       notes: { about: '上下文备注', optional: true },
-      steps: { about: '勾选清单（整份替换，只有一层）', optional: true },
+      steps: {
+        about: '勾选清单（整份替换，只有一层）',
+        optional: true,
+        list: { about: '一步：text 是那行字，done 是勾没勾；id 由文档分配，不要自己编', object: ['text', 'done'] },
+      },
       status: { about: '开放 / 受阻 / 完成（「进行中」是派生的，不可写）', optional: true, oneOf: ITEM_STATUS_VALUES },
       priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
-      tags: { about: '自由标签（整份替换）', optional: true },
+      tags: { about: '自由标签（整份替换）', optional: true, list: 'string' },
       startsAfter: { about: '最早开始', optional: true },
       dueAt: { about: '截止', optional: true },
       hardDueAt: { about: '硬期限', optional: true },
@@ -646,7 +725,7 @@ export const ACTIONS = {
     surface: 'ui+ai',
     summary: '删一条清单条目。走墓碑，所以能恢复；但没有撤销层，删之前值得先说一句。',
     params: {
-      of: { about: '要删的条目编号' },
+      of: { about: '要删的条目编号：填那个数字本身（12），不要带 # 号' },
     },
   },
 } as const satisfies Record<string, ActionShape>
