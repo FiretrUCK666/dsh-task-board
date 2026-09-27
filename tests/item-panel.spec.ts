@@ -17,12 +17,7 @@ import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
 import { ItemListPanel, ItemRow, storedStatusFor } from '../src/client/item/panel.tsx'
 import { PRESENTATION_FIELDS } from '../src/client/chat/tool-views.tsx'
-import {
-  ListOpenButton,
-  listLauncher,
-  makeListLauncher,
-  publishListLauncher,
-} from '../src/client/item/launcher.tsx'
+import { bindSidebar, yieldToSidebar, ListOpenPill } from '../src/client/item/launcher.tsx'
 import {
   addItem,
   editItem,
@@ -264,25 +259,12 @@ function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; s
   }
 }
 
-/** The tab hook exactly as the slot hands it over. */
-const fakeTabInfo = () => ({
-  tabId: 'tab-1',
-  title: false,
-  active: true,
-  fullscreen: false,
-  signal: new AbortController().signal,
-  actions: { openTab: () => undefined, close: () => undefined },
-  tab: { id: 'tab-1', kind: 'task-list', title: 'Task list', visible: true },
-  sidebar: { expanded: true, fullscreen: false },
-  panel: { id: 'pane-1' },
-})
-
 function renderPanel(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}): string {
   return renderToStaticMarkup(createElement(ItemListPanel, {
     // The real shape — a fake typed as `unknown` is how this round started,
     // and a test using one would have kept the panel from ever reaching for
     // the host's own signal.
-    useTabInfo: fakeTabInfo,
+    signal: new AbortController().signal,
     face: { replica: fakeReplica(items, over) as never, controller: undefined },
   }))
 }
@@ -404,6 +386,150 @@ describe('a note you can fill in and hang on a card', () => {
   })
 })
 
+describe('the pill takes its shape from the host, not from a guess', () => {
+  it('takes its shape from the host, not from a guess', () => {
+    // The claim is NOT "we render something called Pill". It is that the
+    // contract is the host's: rename or drop a prop upstream and 	sc says
+    // so, instead of our copy quietly accepting a call the host would reject.
+    // A hand-written interface would keep compiling, which is the failure
+    // this whole arrangement exists to prevent.
+    const ours = renderToStaticMarkup(createElement(ListOpenPill))
+    expect(ours).toContain('任务清单')
+    // And the class is ours, which PLACES it; the shell's token is what
+    // colours it. Those are different jobs and the row needs both.
+    expect(ours).toContain('itemListPill')
+  })
+})
+
+describe('the chip reads the shell’s tokens, not ours', () => {
+  const css = readFileSync(
+    fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)),
+    'utf8',
+  )
+  /** Every rule of one selector, hover and focus included, COMMENTS STRIPPED. */
+  function rulesOf(selector: string): string {
+    // A comment is prose, not a token use. These rules explain WHY this chip
+    // avoids the board aliases, and scanning prose would flag the very
+    // sentence that documents the rule.
+    const code = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    const out: string[] = []
+    const pattern = new RegExp(`\\${selector}(?![a-zA-Z0-9_-])[^{}]*\\{[^{}]*\\}`, 'g')
+    for (const hit of code.matchAll(pattern)) out.push(hit[0])
+    return out.join('\n')
+  }
+
+  it('consumes --dsw-* and NOT ONE --dsh-tb-*', () => {
+    // THE assertion for this round. A skin is expected to reach the shell's
+    // own surface; it is not expected to reach our board. If a board alias
+    // ever creeps in here, "换皮肤" silently becomes "换我们的设计" — and
+    // then the fact lives only in someone's judgement, which is exactly what
+    // a test is for.
+    const rules = rulesOf('.itemListPill')
+    expect(rules.length).toBeGreaterThan(0)
+    expect(rules).toMatch(/--dsw-/)
+    expect(rules, 'a skin cannot reach a board alias').not.toMatch(/--dsh-tb-/)
+  })
+
+  it('writes no colour literal, so our styling can never override a skin', () => {
+    expect(rulesOf('.itemListPill')).not.toMatch(/#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\(/)
+  })
+
+  it('covers hover AND focus, because touch has neither', () => {
+    const rules = rulesOf('.itemListPill')
+    expect(rules).toMatch(/:hover/)
+    expect(rules).toMatch(/:focus-visible/)
+  })
+
+  it('keeps a reachable floor and a visible focus ring', () => {
+    const rules = rulesOf('.itemListPill')
+    expect(rules).toMatch(/min-height:\s*24px/)
+    expect(rules).toMatch(/outline:/)
+  })
+})
+
+describe('taking the right edge from the official sidebar', () => {
+  /** A sidebar whose seat presence AND expansion the test decides. */
+  function fakeSidebar(state: { mounted?: string; expanded?: boolean }) {
+    const toggles: number[] = []
+    return {
+      toggles,
+      face: {
+        mounted: { getSnapshot: () => state.mounted, subscribe: () => () => undefined },
+        isExpanded: () => state.expanded === true,
+        toggleExpanded: () => { toggles.push(1) },
+      },
+    }
+  }
+
+  it('collapses the official column when we are opened', () => {
+    // The half of "never coexist" that IS available, and it is guaranteed.
+    const { face, toggles } = fakeSidebar({ mounted: 's-1', expanded: true })
+    bindSidebar(face)
+    try {
+      expect(yieldToSidebar()).toBe(true)
+      expect(toggles).toHaveLength(1)
+    } finally {
+      bindSidebar(undefined)
+    }
+  })
+
+  it('does not touch it when it is already collapsed', () => {
+    const { face, toggles } = fakeSidebar({ mounted: 's-1', expanded: false })
+    bindSidebar(face)
+    try {
+      expect(yieldToSidebar()).toBe(false)
+      expect(toggles).toHaveLength(0)
+    } finally {
+      bindSidebar(undefined)
+    }
+  })
+
+  it('does not touch it when there is no seat', () => {
+    // No seat, no column, nothing to take. Asking anyway is how a click ends
+    // up doing nothing and saying nothing.
+    const { face, toggles } = fakeSidebar({ expanded: true })
+    bindSidebar(face)
+    try {
+      expect(yieldToSidebar()).toBe(false)
+      expect(toggles).toHaveLength(0)
+    } finally {
+      bindSidebar(undefined)
+    }
+  })
+
+  it('does not touch it when the sidebar is not composed at all', () => {
+    bindSidebar(undefined)
+    expect(yieldToSidebar()).toBe(false)
+  })
+})
+
+describe('the list is a drawer, not a sidebar tab', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('../src/client/item/register.tsx', import.meta.url)),
+    'utf8',
+  )
+
+  it('contributes the surface to the shell overlay, not as a tab', () => {
+    // A per-session tab can never promise "open once, stay put, still here in
+    // the next session", which is the whole reason this changed.
+    expect(source).toContain("slots.inject('shell.overlay'")
+    expect(source).not.toContain('sidebarRightTabs')
+    expect(source).not.toContain('sidebar.right.pane.tab')
+  })
+
+  it('offers the pill as the second outlet of the SAME state', () => {
+    expect(source).toContain("slots.inject('conversation.session.header.actions'")
+  })
+
+  it('remembers what the reader last had open, in our own key', () => {
+    const drawer = readFileSync(
+      fileURLToPath(new URL('../src/client/item/drawer.tsx', import.meta.url)),
+      'utf8',
+    )
+    expect(drawer).toContain('dsh.taskBoard.drawer.v1')
+  })
+})
+
 describe('the panel tells the truth about what it can see', () => {
   it('keeps the list on screen when the host copy is unreachable', () => {
     // The local mirror is whole and usable. Covering it would be a worse
@@ -412,97 +538,6 @@ describe('the panel tells the truth about what it can see', () => {
     const html = renderPanel([item({ title: 'still here' })], { hostLost: true })
     expect(html).toContain('正在用本机的副本')
     expect(html).toContain('still here')
-  })
-})
-
-describe('opening the list from anywhere, honestly', () => {
-  /** A sidebar stand-in whose seat presence the test decides. */
-  function fakeSidebar(mounted: string | undefined) {
-    const opened: string[] = []
-    let listeners: (() => void)[] = []
-    return {
-      opened,
-      face: {
-        mounted: {
-          getSnapshot: () => mounted,
-          subscribe: (fn: () => void) => {
-            listeners.push(fn)
-            return () => { listeners = listeners.filter(l => l !== fn) }
-          },
-        },
-        openTab: (kind: string) => { opened.push(kind) },
-      },
-    }
-  }
-
-  it('opens it when a seat is on screen — exactly once, with the right kind', () => {
-    const { face, opened } = fakeSidebar('session-1')
-    const launcher = makeListLauncher(face)
-    expect(launcher.available()).toBe(true)
-    expect(launcher.open()).toBe(true)
-    expect(opened).toEqual(['task-list'])
-  })
-
-  it('DOES NOT call openTab when there is no seat — and says so', () => {
-    // THE core assertion of this round, and the easiest thing for a later
-    // refactor to "simplify" away. A click that does nothing and says
-    // nothing is undiagnosable from the outside; refusing is the only
-    // answer that names the reason.
-    const { face, opened } = fakeSidebar(undefined)
-    const launcher = makeListLauncher(face)
-    expect(launcher.available()).toBe(false)
-    expect(launcher.open()).toBe(false)
-    expect(opened).toEqual([])
-  })
-
-  it('refuses the same way when the sidebar is not composed at all', () => {
-    const launcher = makeListLauncher(undefined)
-    expect(launcher.available()).toBe(false)
-    expect(launcher.open()).toBe(false)
-  })
-
-  it('renders NO button when there is no seat, rather than a dead one', () => {
-    const { face } = fakeSidebar(undefined)
-    const restore = publishListLauncher(face)
-    try {
-      expect(renderToStaticMarkup(createElement(ListOpenButton))).toBe('')
-    } finally {
-      restore()
-    }
-  })
-
-  it('renders a real button when there IS a seat', () => {
-    const { face, opened } = fakeSidebar('session-1')
-    const restore = publishListLauncher(face)
-    try {
-      const html = renderToStaticMarkup(createElement(ListOpenButton))
-      expect(html).toContain('任务清单')
-      expect(html).toContain('<button')
-    } finally {
-      restore()
-    }
-    expect(opened).toEqual([])
-  })
-
-  it('is published only while the plugin is composed', () => {
-    const { face } = fakeSidebar('session-1')
-    const restore = publishListLauncher(face)
-    expect(listLauncher().available()).toBe(true)
-    restore()
-    // After withdrawal the honest default returns: nothing opens, and nothing
-    // pretends it can.
-    expect(listLauncher().available()).toBe(false)
-    expect(listLauncher().open()).toBe(false)
-  })
-
-  it('keeps the list resident across a tab switch', () => {
-    const tabSource = readFileSync(
-      fileURLToPath(new URL('../src/client/item/register.tsx', import.meta.url)),
-      'utf8',
-    )
-    // Unmounting on a tab switch is what made a reader re-find the list
-    // every time; it is for keeping an eye on, not for walking past.
-    expect(tabSource).toMatch(/keepMounted:\s*true/)
   })
 })
 

@@ -1,140 +1,99 @@
 /**
- * ONE way to open the task list, from any surface.
+ * The one rule about the official right sidebar, and the pill that opens the list.
  *
- * THE PROBLEM THIS SOLVES. The list lives in the shell's right sidebar, and a
- * sidebar tab is remembered PER SESSION — so a new session starts with no tab
- * and the reader has to go looking again. The answer is a button that works
- * from wherever the reader already is: the conversation header, and the board's
- * own header (which has no conversation header above it, and was therefore
- * unreachable).
- *
- * WHY THERE IS ONE FUNCTION AND NOT TWO. Two call sites means two
- * implementations means two behaviours the day someone fixes one of them. So
- * both buttons call `openList()`, and `openList()` is the only code in this
- * plugin that knows the rule below.
- *
- * THE RULE: never call `openTab` unless a seat is on screen. The host
- * unmounts the whole sidebar seat while a global panel is in front (the board
- * is exactly that), and `openTab` against a seat that is not there either
- * throws or does nothing at all. `mounted` is the only honest question to ask,
- * and answering it wrong is the one failure a person cannot diagnose: the
- * button looks real, the click does nothing, and nothing anywhere says why.
- *
- * WHY A MODULE HOLDER. The board panel gets its props through the `main`
- * slot, whose face belongs to the board; the conversation header's button gets
- * its own. Threading one launcher through both would mean editing the shared
- * wiring, and the surface this must not disturb. So the launcher is published
- * once when the list is registered and withdrawn when it is disposed — a
- * singleton with a real lifetime, not a module-cache accident. The default is
- * the honest one: no launcher, nothing opens, no pretend.
+ * There is exactly ONE place that knows "the official sidebar is in the way",
+ * and it is `yieldToSidebar()`. Every outlet goes through it, so no two of them
+ * can drift, and the rule is written once instead of being re-decided per
+ * button.
  */
-import { useSyncExternalStore } from 'react'
+import type { ComponentProps } from 'react'
+import type { Pill as ShellPill } from '@deepseek-ai/dsh-client-ui-primitives'
 import { t } from '../locales.ts'
+import { openDrawer } from './drawer.tsx'
 import css from '../board.module.css'
 
-/** The page type this contribution opens — the wire name, shared with the tab type. */
-const LIST_KIND = 'task-list'
+/*
+ * The pill's CONTRACT is the host's own type, and only the contract. The value
+ * is deliberately never imported: that package declares no runtime
+ * dependencies at all — everything it needs sits in its devDependencies — so
+ * it is built for the shell's own use, not for an outside plugin to pull
+ * values from. Re-creating its look from its class names is the other thing we
+ * may not do: guessing the shell's DOM or classes is the one fragile surface
+ * no document backs up.
+ *
+ * So the shape is checked by `tsc` and the appearance comes from the shell's
+ * own tokens — which is what a skin actually rewrites. That is why
+ * `.itemListPill` reads `--dsw-*` and never `--dsh-tb-*`: the board's aliases
+ * are how WE read the shell's tokens, and this chip is not the board.
+ */
 
-/** The narrow face of the right sidebar's controller that opening needs. */
-export interface ListOpenerFace {
+/**
+ * The narrow face of the official sidebar this rule needs.
+ *
+ * `mounted` is the seat's liveness. `isExpanded` is NOT a subscription and the
+ * package emits no event, so it is a one-time read BY DESIGN — which is why
+ * `yieldToSidebar` is called at the moment the reader asks for us, and not
+ * watched continuously: the read is only ever worth taking while the answer
+ * can still act on it.
+ */
+export interface SidebarYieldFace {
   readonly mounted: { getSnapshot(): string | undefined; subscribe(fn: () => void): () => void }
-  openTab(kind: string, options?: Record<string, unknown>): void
+  isExpanded(): boolean
+  toggleExpanded(): void
 }
 
-/** How a surface asks the question. */
-export interface ListLauncher {
-  /** True only while a sidebar seat is actually on screen. */
-  available(): boolean
-  /** Open the list. `false` means there was no seat — never a pretend success. */
-  open(): boolean
-  /** Follow the seat, so a button can appear and disappear with it. */
-  subscribe(onChange: () => void): () => void
-}
-
-/** What a surface gets when nothing has published a launcher. */
-const NO_SEAT: ListLauncher = {
-  available: () => false,
-  open: () => false,
-  subscribe: () => () => undefined,
-}
-
-let published: ListLauncher = NO_SEAT
+let sidebar: SidebarYieldFace | undefined
 
 /**
- * Build the real launcher over one sidebar controller.
+ * Take the right edge, if the official sidebar is holding it.
  *
- * Exported so a test can drive it without a shell, and so the rule lives in
- * exactly one place.
- * @param sidebar - the controller, or undefined when it is not composed.
- * @returns a launcher that refuses when there is no seat.
+ * This is the half of "never coexist" that is actually available. Collapsing
+ * it is guaranteed and asserted. Noticing when THEY open is not available at
+ * all, so that half is a named gap rather than a rule — the reader resolves it
+ * by collapsing us, and the README says so in as many words.
+ * @returns true when the official column was collapsed for us.
  */
-export function makeListLauncher(sidebar: ListOpenerFace | undefined): ListLauncher {
-  if (sidebar === undefined) return NO_SEAT
-  return {
-    available: () => sidebar.mounted.getSnapshot() !== undefined,
-    open: () => {
-      // The whole point, in one line: no seat, no call. A click that does
-      // nothing and says nothing is worse than no button at all.
-      if (sidebar.mounted.getSnapshot() === undefined) return false
-      sidebar.openTab(LIST_KIND)
-      return true
-    },
-    // The seat decides when a button may exist, so the seat is what a button
-    // watches. Deriving it from a mount effect or a guess about which panel is
-    // open is how a button ends up offering something that cannot happen.
-    subscribe: (onChange: () => void) => sidebar.mounted.subscribe(onChange),
+export function yieldToSidebar(): boolean {
+  if (sidebar === undefined) return false
+  if (sidebar.mounted.getSnapshot() === undefined) return false
+  if (!sidebar.isExpanded()) return false
+  sidebar.toggleExpanded()
+  return true
+}
+
+/** Publish the sidebar face while this plugin is composed. */
+export function bindSidebar(face: SidebarYieldFace | undefined): void {
+  sidebar = face
+}
+
+/**
+ * The list's glyph, in the SHELL's own pill.
+ *
+ * A hand-rolled `<button>` is why this used to look out of place and why no
+ * third-party skin could reach it. `Pill` is on the platform module list, so it
+ * takes the shell's own tokens and a skin follows it for free.
+ *
+ * The glyph is our own `icon.svg` redrawn inline rather than imported: an SVG
+ * import would be a bundler contract this plugin has no precedent for, and
+ * three bars in `currentColor` carry the same silhouette while following the
+ * pill's colour instead of freezing the brand hex into the UI.
+ * @returns the pill.
+ */
+export function ListOpenPill() {
+  // The props are the host's own type, so satisfying them IS the check: a
+  // prop the shell renames or drops fails here, not in production.
+  const props: ComponentProps<typeof ShellPill> = {
+    className: css.itemListPill,
+    'aria-label': t('itemTab.open'),
+    onClick: () => { yieldToSidebar(); openDrawer() },
   }
-}
-
-/** Publish the launcher while this plugin is composed. */
-export function publishListLauncher(sidebar: ListOpenerFace | undefined): () => void {
-  published = makeListLauncher(sidebar)
-  return () => { published = NO_SEAT }
-}
-
-/** The current launcher, without a subscription. */
-export function listLauncher(): ListLauncher {
-  return published
-}
-
-/**
- * The launcher, subscribed to the seat it depends on.
- *
- * Re-renders exactly when the seat appears or goes: that is the moment the
- * button has to appear and disappear. The snapshot is a number rather than the
- * session id on purpose — `useSyncExternalStore` compares it, and a session id
- * that changed without changing the seat would re-render for nothing.
- */
-export function useListLauncher(): ListLauncher {
-  const launcher = published
-  const read = (): number => (launcher.available() ? 1 : 0)
-  // The third argument is the server-render read, and it is REQUIRED rather
-  // than optional: without it React throws the moment this component renders
-  // outside a browser — which is exactly what a test does.
-  useSyncExternalStore((onChange: () => void) => launcher.subscribe(onChange), read, read)
-  return launcher
-}
-
-/**
- * The button both surfaces render.
- *
- * It renders NOTHING when there is no seat. That is the deliberate answer to
- * "grey it out and say why on hover": a button that cannot work, offering
- * itself anyway, is a small lie — and on a touch surface the explanation
- * would be unreachable by definition.
- * @param className - extra class for the surface placing it.
- * @returns the button, or nothing.
- */
-export function ListOpenButton(props: { readonly className?: string } = {}) {
-  const launcher = useListLauncher()
-  if (!launcher.available()) return null
   return (
-    <button
-      type="button"
-      className={props.className === undefined ? css.itemListOpenButton : `${css.itemListOpenButton} ${props.className}`}
-      onClick={() => { launcher.open() }}
-    >
-      {t('itemTab.open')}
-    </button>
+    <span {...props}>
+      <svg width="16" height="16" viewBox="0 0 36 36" fill="none" aria-hidden="true" className={css.itemListPillIcon}>
+        <rect x="5" y="6" width="7.5" height="24" rx="2.4" fill="currentColor" />
+        <rect x="14.25" y="6" width="7.5" height="16" rx="2.4" fill="currentColor" opacity="0.65" />
+        <rect x="23.5" y="6" width="7.5" height="21" rx="2.4" fill="currentColor" opacity="0.4" />
+      </svg>
+    </span>
   )
 }

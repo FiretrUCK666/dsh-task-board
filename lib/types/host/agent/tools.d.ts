@@ -78,28 +78,17 @@ export interface ToolDeps {
     now: () => number;
     uuid: () => string;
 }
-interface ToolParameterSchema {
-    readonly [key: string]: unknown;
-}
-/** The tool registration shape (structural — no SDK import). */
-export interface ToolDefinitionLike {
-    readonly name: string;
-    readonly description: string;
-    readonly parameters: ToolParameterSchema;
-    readonly output: {
-        readonly schema: ToolParameterSchema;
-        render(args: unknown, value: unknown): {
-            type: 'text';
-            text: string;
-        }[];
-        /** The tool's own vocabulary, persisted verbatim for the card to narrow —
-         *  the host's contract, and the same words the model reads. */
-        presentationMeta?(args: unknown, value: unknown): Record<string, unknown>;
-    };
-    execute(args: unknown, exec?: {
-        signal?: AbortSignal;
-    }): Promise<unknown>;
-}
+/**
+ * The tools below are the HOST's `ToolDefinition`, imported — a hand-written
+ * copy of it compiles against itself and then fails on the first real
+ * registration, which is what happened: `output` was simply absent, and
+ * nothing in the tree could say so.
+ *
+ * Types only: `dependencies` stays empty, and the runtime the plugin loads
+ * against is the host's own.
+ */
+export type { ToolDefinition, ToolOutputDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
+import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools';
 /** One action as the model reads it: what it is, what it costs, who may do it,
  *  and every parameter with its own condition spelled out. */
 export interface CapabilityAction {
@@ -199,8 +188,7 @@ export interface ExecuteResult {
      *  are ACCEPTED, not done — a card that renders them as "已执行" is lying. */
     readonly enginePending: readonly string[];
 }
-export declare function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise<ExecuteResult>;
+export declare function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: ToolRunContext): Promise<ExecuteResult>;
 /** Build the three tool definitions. Registration is the caller's job, so this
  *  stays a pure function of the catalog and the host faces. */
-export declare function createTaskboardTools(deps: ToolDeps): readonly ToolDefinitionLike[];
-export {};
+export declare function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[];

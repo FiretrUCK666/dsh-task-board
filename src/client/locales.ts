@@ -664,6 +664,8 @@ export const zh = {
   'item.field.noCard': '不关联卡片',
   'item.field.linked': '已挂在「{title}」这张卡上',
   'item.field.cardGone': '它挂的那张卡已经不在了。',
+  'itemDrawer.close': '收起任务清单',
+  'itemDrawer.closeGlyph': '收起',
 
   // ── AI 动作在对话里的呈现 ───────────────────────────────────────────────
   'toolCard.rehearsed': '演练：{what}（未写入）',
@@ -1328,6 +1330,8 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.noCard': 'Not linked',
   'item.field.linked': 'Linked to “{title}”',
   'item.field.cardGone': 'The card it hung off is gone.',
+  'itemDrawer.close': 'Close the task list',
+  'itemDrawer.closeGlyph': 'Close',
 
   // ── How the model's work reads in the conversation ─────────────────────
   'toolCard.rehearsed': 'Rehearsal: {what} (not written)',

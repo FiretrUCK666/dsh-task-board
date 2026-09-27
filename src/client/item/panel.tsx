@@ -46,7 +46,7 @@ import {
   type ItemFilter,
   type ItemGroup,
 } from './model.ts'
-import type { ItemListFace, ItemTabHookContext } from './register.tsx'
+import type { ItemListFace } from './register.tsx'
 import css from '../board.module.css'
 
 /**
@@ -81,10 +81,17 @@ const DENSITY_KEYS: Readonly<Record<ItemDensity, TaskBoardKey>> = {
   comfy: 'item.density.comfy',
 }
 
-/** The panel's props: the slot's own tab hook plus the face we inject. */
+/**
+ * The panel's props: the face we publish, and OUR OWN lifetime.
+ *
+ * There is no tab hook here any more, because this is no longer a tab body.
+ * The signal is the drawer's, so every timer and subscription below hangs on
+ * the surface that actually owns them rather than on a host contract that no
+ * longer applies.
+ */
 export interface ItemListPanelProps {
-  useTabInfo: () => ItemTabHookContext
-  face: ItemListFace
+  readonly face: ItemListFace
+  readonly signal: AbortSignal
 }
 
 /** Whether a board card is running, keyed by card id. */
@@ -363,19 +370,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
     }
   }, [replica])
 
-  // The host's own lifetime for this tab. It aborts when the record goes away
-  // or the plugin unloads — NOT on hide or a session switch — so it is the one
-  // handle a timer may hang on, and the one that outlives neither.
-  const info = props.useTabInfo()
-  const lifetime = info.signal
-  const watching = info.active && info.tab.visible
+  // Our own lifetime, handed down by the drawer that owns this panel. The
+  // minute clock hangs on it, so the clock cannot outlive the surface that
+  // started it — the discipline a resource outliving its owner breaks.
+  const lifetime = props.signal
 
-  // Deadlines age in front of the reader, and only while the reader is looking:
-  // a clock ticking behind another tab is the reader's battery spent on a
-  // picture nobody can see. The interval also stops on the host's own signal,
-  // which is the discipline a resource outliving its owner breaks.
+  // Deadlines age in front of the reader, and only while the panel is on
+  // screen: a clock ticking for a surface nobody is looking at spends the
+  // reader's battery on a picture they cannot see.
   useEffect(() => {
-    if (!watching) return
     const tick = (): void => setNow(Date.now())
     const timer = window.setInterval(tick, 60_000)
     const stop = (): void => window.clearInterval(timer)
@@ -384,7 +387,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
       stop()
       lifetime.removeEventListener('abort', stop)
     }
-  }, [lifetime, watching])
+  }, [lifetime])
 
   // The arrival flash is a moment, not a state — and it is not a moment the
   // reader misses behind another tab.
