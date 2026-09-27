@@ -92,6 +92,61 @@ interface TabRegistryFace {
 /** The right-sidebar controller, read by name for the same reason. */
 interface SidebarControllerFace {
   openTab(kind: string, options?: Record<string, unknown>): void
+  close(tabId: string): void
+}
+
+/**
+ * What the slot hands a tab body: the host's own tab hook.
+ *
+ * The shape is declared here, by hand and by name, rather than imported from
+ * the shell's package — the same discipline as every other face in this file (a
+ * cross-package VALUE import is banned, and a type-only one would drag the
+ * package into the build for no runtime gain).
+ *
+ * Typing it as `() => unknown` was worse than useless: it reads as "there is
+ * nothing here to reach for", so nobody ever reaches, and the panel quietly
+ * loses the host's own lifecycle. These members are the ones that matter:
+ *
+ * - `signal` — the host's lifetime for this tab. It aborts when the record
+ *   goes away or the plugin unloads, and NOT on hide or a session switch, so
+ *   it is the one handle every timer and subscription in this panel hangs its
+ *   disposer on. A resource outliving its owner is the bug it exists to catch.
+ * - `active` — whether this tab is the one being looked at. A panel that keeps
+ *   working behind another tab spends the reader's battery on a picture nobody
+ *   can see.
+ * - `tab.visible` — the same question for a docked body, which stays mounted
+ *   while the column is collapsed or another pane has focus.
+ *
+ * WHERE IT WAS CHECKED, because nothing will shout if DSH renames it. Against
+ * the installed `@deepseek-ai/dsh-client-ui-sidebar-right@0.1.7-rc.2`, in
+ * `lib/types/client/contract/slots.d.ts` (where the `useTabInfo` slot-hook is
+ * declared) and `lib/types/client/tab-info.d.ts` (the `TabHookContext`
+ * fields). Re-read those two after every host upgrade. This is the same
+ * situation as `PLATFORM_MODULES` and it has NO gate: a rename upstream would
+ * leave this declaration quietly wrong rather than loudly broken, and the
+ * symptom would be a panel that keeps ticking after its owner is gone.
+ */
+export interface ItemTabHookContext {
+  readonly tabId: string
+  /** Which of the two registrations this is: the body, or the chip's title. */
+  readonly title: boolean
+  readonly active: boolean
+  readonly fullscreen: boolean
+  readonly signal: AbortSignal
+  /** What this tab may do to itself, always inside its own session. */
+  readonly actions: {
+    openTab(kind: string, options?: Record<string, unknown>): void
+    close(): void
+  }
+  readonly tab: {
+    readonly id: string
+    readonly kind: string
+    readonly title: string
+    /** Only the foreground session's tab is visible. */
+    readonly visible: boolean
+  }
+  readonly sidebar: { readonly expanded: boolean; readonly fullscreen: boolean }
+  readonly panel: { readonly id: string }
 }
 
 /**

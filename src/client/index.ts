@@ -30,6 +30,7 @@ import { createBoardTransport } from './board-transport.ts'
 import { routeUrl } from './route-base.ts'
 import { TaskBoardPanel } from './TaskBoardPanel.tsx'
 import { ItemListStage, registerItemList } from './item/register.tsx'
+import { registerToolViews } from './chat/tool-views.tsx'
 import { TaskBoardIcon } from './TaskBoardIcon.tsx'
 import { BundleFreshnessState, reloadForFreshBundle } from './bundle-freshness.ts'
 import { fetchUpdateSource } from './update-source.ts'
@@ -279,6 +280,12 @@ export function apply(ctx: ClientContext): void {
   // own holder because it is mounted by a different surface than the board.
   const itemStage = new ItemListStage()
   ctx.effect(() => registerItemList(ctx as never, itemStage), 'dsh-task-board: item list registration')
+  // How the model's work reads in the transcript. Keyed by the WIRE tool name,
+  // so a name that never travels simply never renders.
+  ctx.effect(() => ctx.slots.inject('tool.call.toolview', () => registerToolViews(
+    (_slot, key, component) => ctx.slots.register({ name: 'tool.call.toolview', key, locale: NS } as never, component as never) as unknown as () => void,
+    NS,
+  )), 'dsh-task-board: tool call views')
   ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main',
     key: GROUP.id,

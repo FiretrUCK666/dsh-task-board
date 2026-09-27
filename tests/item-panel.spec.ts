@@ -15,16 +15,20 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
-import { ItemListPanel } from '../src/client/item/panel.tsx'
+import { ItemListPanel, ItemRow, storedStatusFor } from '../src/client/item/panel.tsx'
+import { PRESENTATION_FIELDS } from '../src/client/chat/tool-views.tsx'
 import {
   addItem,
   editItem,
+  formatItemDate,
   groupOpenByDefault,
   itemGroupSlicesOf,
   itemRowViewOf,
   ITEM_GROUPS,
   newItem,
+  parseItemDate,
   removeItem,
+  toItemDateField,
   toggleItemStep,
   NO_ITEM_FILTER,
 } from '../src/client/item/model.ts'
@@ -254,9 +258,25 @@ function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; s
   }
 }
 
+/** The tab hook exactly as the slot hands it over. */
+const fakeTabInfo = () => ({
+  tabId: 'tab-1',
+  title: false,
+  active: true,
+  fullscreen: false,
+  signal: new AbortController().signal,
+  actions: { openTab: () => undefined, close: () => undefined },
+  tab: { id: 'tab-1', kind: 'task-list', title: 'Task list', visible: true },
+  sidebar: { expanded: true, fullscreen: false },
+  panel: { id: 'pane-1' },
+})
+
 function renderPanel(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}): string {
   return renderToStaticMarkup(createElement(ItemListPanel, {
-    useTabInfo: () => undefined,
+    // The real shape — a fake typed as `unknown` is how this round started,
+    // and a test using one would have kept the panel from ever reaching for
+    // the host's own signal.
+    useTabInfo: fakeTabInfo,
     face: { replica: fakeReplica(items, over) as never, controller: undefined },
   }))
 }
@@ -304,6 +324,80 @@ describe('the composer can always be found', () => {
   })
 })
 
+describe('a note you can fill in and hang on a card', () => {
+  const card = (id: string, title: string) => ({ id, title })
+  const openRow = (item: ItemRecord, cards: readonly { id: string; title: string }[] = []) =>
+    renderToStaticMarkup(createElement(ItemRow, {
+      view: itemRowViewOf(item, false, T0),
+      density: 'compact',
+      english: false,
+      expanded: true,
+      fresh: false,
+      panelId: 'item',
+      onToggle: () => undefined,
+      onEdit: () => undefined,
+      onToggleStep: () => undefined,
+      onRemove: () => undefined,
+      cards,
+      linkedCardTitle: cards.find(c => c.id === item.taskId)?.title,
+    }))
+
+  it('names the card it hangs off — linking used to be invisible', () => {
+    const cards = [card('t-9', '画廊第二版')]
+    const html = openRow(item({ id: 'i-1', ref: 1, taskId: 't-9' }), cards)
+    // Both halves: a control that can set it, and a line that reports it.
+    expect(html).toContain('关联看板卡片')
+    expect(html).toContain('画廊第二版')
+    expect(html).toContain('已挂在')
+  })
+
+  it('does not leave a note claiming a link to a card that is gone', () => {
+    const cards = [card('t-9', '画廊第二版')]
+    const html = openRow(item({ id: 'i-1', ref: 1, taskId: 't-gone' }), cards)
+    // A deleted card must not leave the note pointing at nothing, and must
+    // not claim it is still hung on something either: it says so plainly.
+    expect(html).toContain('它挂的那张卡已经不在了')
+    expect(html).not.toContain('已挂在')
+  })
+
+  it('offers all three dates and tags — the model could set them and you could not', () => {
+    const html = openRow(item({ id: 'i-1', ref: 1 }))
+    for (const label of ['最早开始', '截止', '硬期限', '标签']) {
+      expect(html, `no control labelled ${label}`).toContain(label)
+    }
+    // Three DISTINCT dates, not one field wearing three labels.
+    expect((html.match(/type="date"/g) ?? []).length).toBe(3)
+  })
+
+  it('round-trips a date through the field without drifting a day', () => {
+    const at = new Date(2026, 8, 28).getTime()
+    expect(toItemDateField(at)).toBe('2026-09-28')
+    expect(parseItemDate('2026-09-28')).toBe(at)
+    expect(parseItemDate('')).toBeUndefined()
+    expect(parseItemDate('not a date')).toBeUndefined()
+  })
+
+  it('speaks the reader’s language, not the machine’s', () => {
+    // `toLocaleDateString()` with no options answers differently per machine,
+    // and a 300px column has no room for either. The panel and the board must
+    // go through the same switch or they read as two products.
+    const at = new Date(2026, 8, 28).getTime()
+    expect(formatItemDate(at, false)).toBe('2026年9月28日')
+    expect(formatItemDate(at, true)).toBe('Sep 28')
+  })
+
+  it('says which state the reader picked, and what the stored one is', () => {
+    // The derived state is what the control offers, so it can never disagree
+    // with the group the row header sits in.
+    expect(openRow(item({ id: 'i-1', ref: 1 }))).toContain('进行中')
+    // The line explaining the gap appears ONLY when the two actually differ:
+    // a note hanging off nothing has no gap to explain.
+    expect(openRow(item({ id: 'i-1', ref: 1 }))).not.toContain('不是单独存的状态')
+    expect(storedStatusFor('inProgress')).toBe('open')
+    expect(storedStatusFor('done')).toBe('done')
+  })
+})
+
 describe('the panel tells the truth about what it can see', () => {
   it('keeps the list on screen when the host copy is unreachable', () => {
     // The local mirror is whole and usable. Covering it would be a worse
@@ -313,6 +407,48 @@ describe('the panel tells the truth about what it can see', () => {
     expect(html).toContain('正在用本机的副本')
     expect(html).toContain('still here')
   })
+})
+
+describe('the tool card reads the producer, not a memory of it', () => {
+  // THE POINT. "A field I cannot read is not drawn" is right for a missing
+  // OPTIONAL thing and a disaster for a TYPO: the card comes out empty with no
+  // error anywhere — the same disease the `as TaskBoardKey` cast had, a
+  // checker told to stay quiet. So the names the card depends on are named
+  // once, exported, and checked HERE against the producer's source. Rename a
+  // field upstream and this goes red instead of quietly emptying a card.
+  const producer = readFileSync(
+    fileURLToPath(new URL('../src/host/agent/tools.ts', import.meta.url)),
+    'utf8',
+  )
+  const presentation = /function presentationOf\([\s\S]*?\n\}/.exec(producer)?.[0] ?? ''
+
+  it('names every field the card reads, and the producer still publishes each one', () => {
+    for (const field of PRESENTATION_FIELDS) {
+      expect(
+        presentation.includes(field),
+        `the tool no longer publishes "${field}" — this card would draw nothing and say nothing`,
+      ).toBe(true)
+    }
+  })
+
+  it('reads the SHORT NUMBER of an affected note, because that is how it is named', () => {
+    // `#12`, not a uuid: a line naming a note the reader cannot point at is a
+    // line about nothing.
+    expect(producer).toContain('ref: `#${item.ref}`')
+  })
+
+  it('keeps "written" and "not written" as SEPARATE fields', () => {
+    // Collapse these into one and a rehearsal starts reading as a change.
+    expect(presentation).toMatch(/dryRun:/)
+    expect(presentation).toMatch(/persisted:/)
+  })
+
+  it('keeps "accepted" and "executed" as SEPARATE fields', () => {
+    expect(presentation).toMatch(/enginePending:/)
+  })
+})
+
+describe('what the tool card does with them', () => {
 
   it('says so when a filter matched nothing, instead of showing a blank column', () => {
     const rows = [item({ id: 'a', ref: 1, title: 'only this' })]

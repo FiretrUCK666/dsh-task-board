@@ -23,19 +23,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ItemRecord } from '../../core/item.ts'
 import { ITEM_PRIORITIES, ITEM_STATUSES } from '../../core/item.ts'
-import { t, type TaskBoardKey } from '../locales.ts'
+import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import { Button, Icon } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
 import {
   addItem,
   editItem,
+  formatItemDate,
   groupOpenByDefault,
   ITEM_GROUPS,
   itemGroupSlicesOf,
   itemRowViewOf,
   NO_ITEM_FILTER,
+  parseItemDate,
   readItemDensity,
   removeItem,
+  toItemDateField,
   toggleItemStep,
   writeItemDensity,
   type ItemDensity,
@@ -43,7 +46,7 @@ import {
   type ItemFilter,
   type ItemGroup,
 } from './model.ts'
-import type { ItemListFace } from './register.tsx'
+import type { ItemListFace, ItemTabHookContext } from './register.tsx'
 import css from '../board.module.css'
 
 /**
@@ -61,11 +64,6 @@ const GROUP_KEYS: Readonly<Record<ItemGroup, TaskBoardKey>> = {
   open: 'item.group.open',
   blocked: 'item.group.blocked',
   done: 'item.group.done',
-}
-const STATUS_KEYS: Readonly<Record<ItemRecord['status'], TaskBoardKey>> = {
-  open: 'item.status.open',
-  blocked: 'item.status.blocked',
-  done: 'item.status.done',
 }
 const PRIORITY_KEYS: Readonly<Record<ItemRecord['priority'], TaskBoardKey>> = {
   low: 'item.priority.low',
@@ -85,7 +83,7 @@ const DENSITY_KEYS: Readonly<Record<ItemDensity, TaskBoardKey>> = {
 
 /** The panel's props: the slot's own tab hook plus the face we inject. */
 export interface ItemListPanelProps {
-  useTabInfo: () => unknown
+  useTabInfo: () => ItemTabHookContext
   face: ItemListFace
 }
 
@@ -115,10 +113,19 @@ function groupLabel(group: ItemGroup): string {
   return t(GROUP_KEYS[group])
 }
 
-/** One row of the list. Clicking it opens level 1 in place. */
-function ItemRow(props: {
+/**
+ * One row of the list. Clicking it opens level 1 in place.
+ *
+ * Exported so the detail — the part a reader can actually fill in — can be
+ * rendered with it OPEN in a test. Asserting "this control exists" against a
+ * collapsed row proves nothing: the control is not in the DOM at all until the
+ * row is open, and a test that pretended otherwise would have been testing a
+ * fiction.
+ */
+export function ItemRow(props: {
   readonly view: ReturnType<typeof itemRowViewOf>
   readonly density: ItemDensity
+  readonly english: boolean
   readonly expanded: boolean
   readonly fresh: boolean
   readonly panelId: string
@@ -126,8 +133,12 @@ function ItemRow(props: {
   readonly onEdit: (edit: ItemEdit) => void
   readonly onToggleStep: (stepId: string) => void
   readonly onRemove: () => void
+  /** The board cards this item may hang off, already titled. */
+  readonly cards: readonly { readonly id: string; readonly title: string }[]
+  /** The title of the card it currently hangs off, or undefined if it has none. */
+  readonly linkedCardTitle: string | undefined
 }) {
-  const { view, density, expanded, fresh, panelId, onToggle, onEdit, onToggleStep, onRemove } = props
+  const { view, density, english, expanded, fresh, panelId, onToggle, onEdit, onToggleStep, onRemove, cards, linkedCardTitle } = props
   const { item, ref, title, status, progress, meta } = view
   const regionId = `${panelId}-${item.id}`
   return (
@@ -150,7 +161,7 @@ function ItemRow(props: {
         <span className={css.itemTitle}>{title}</span>
         {meta.kind === 'due' && (
           <span className={css.itemDue} data-overdue={meta.overdue ? '' : undefined} data-hard={meta.hard ? '' : undefined}>
-            {t(meta.overdue ? 'item.due.overdue' : 'item.due.upcoming', { when: new Date(meta.at).toLocaleDateString() })}
+            {t(meta.overdue ? 'item.due.overdue' : 'item.due.upcoming', { when: formatItemDate(meta.at, english) })}
           </span>
         )}
         {meta.kind === 'steps' && (
@@ -216,12 +227,19 @@ function ItemRow(props: {
           </ItemField>
           <div className={css.itemFieldRow}>
             <ItemField label={t('item.field.status')}>
+              {/* The select shows the DERIVED state, not the stored one. The row
+                  header groups by "in progress" while the stored value says
+                  "to do", and two panels disagreeing inside one card reads as
+                  a bug. So the control says what the reader sees, and the line
+                  under it says why the two can differ. */}
               <select
                 className={css.itemInput}
-                value={item.status}
-                onChange={e => onEdit({ status: e.target.value as ItemRecord['status'] })}
+                value={status}
+                onChange={e => onEdit({ status: storedStatusFor(e.target.value) })}
               >
-                {ITEM_STATUSES.map(status => <option key={status} value={status}>{t(STATUS_KEYS[status])}</option>)}
+                {(['inProgress', ...ITEM_STATUSES] as const).map(option => (
+                  <option key={option} value={option}>{t(GROUP_KEYS[option])}</option>
+                ))}
               </select>
             </ItemField>
             <ItemField label={t('item.field.priority')}>
@@ -234,6 +252,62 @@ function ItemRow(props: {
               </select>
             </ItemField>
           </div>
+          {status === 'inProgress' && (
+            <p className={css.itemHint}>{t('item.status.derived')}</p>
+          )}
+          <div className={css.itemFieldRow}>
+            <ItemField label={t('item.field.startsAfter')}>
+              <input
+                type="date"
+                className={css.itemInput}
+                value={toItemDateField(item.startsAfter)}
+                onChange={e => onEdit({ startsAfter: parseItemDate(e.target.value) })}
+              />
+            </ItemField>
+            <ItemField label={t('item.field.dueAt')}>
+              <input
+                type="date"
+                className={css.itemInput}
+                value={toItemDateField(item.dueAt)}
+                onChange={e => onEdit({ dueAt: parseItemDate(e.target.value) })}
+              />
+            </ItemField>
+            <ItemField label={t('item.field.hardDueAt')}>
+              <input
+                type="date"
+                className={css.itemInput}
+                value={toItemDateField(item.hardDueAt)}
+                onChange={e => onEdit({ hardDueAt: parseItemDate(e.target.value) })}
+              />
+            </ItemField>
+          </div>
+          <ItemField label={t('item.field.tags')}>
+            <input
+              className={css.itemInput}
+              value={item.tags.join('、')}
+              placeholder={t('item.field.tagsHint')}
+              onChange={e => onEdit({ tags: e.target.value.split(/[、,]/).map(tag => tag.trim()).filter(tag => tag !== '') })}
+            />
+          </ItemField>
+          <ItemField label={t('item.field.taskId')}>
+            <select
+              className={css.itemInput}
+              value={item.taskId ?? ''}
+              onChange={e => onEdit({ taskId: e.target.value === '' ? undefined : e.target.value })}
+            >
+              <option value="">{t('item.field.noCard')}</option>
+              {cards.map(card => (
+                <option key={card.id} value={card.id}>{card.title}</option>
+              ))}
+            </select>
+          </ItemField>
+          {item.taskId !== undefined && (
+            <p className={css.itemHint}>
+              {linkedCardTitle === undefined
+                ? t('item.field.cardGone')
+                : t('item.field.linked', { title: linkedCardTitle })}
+            </p>
+          )}
           <div className={css.itemActions}>
             <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>
               {t(ORIGIN_KEYS[item.origin.source])}
@@ -244,6 +318,11 @@ function ItemRow(props: {
       )}
     </li>
   )
+}
+
+/** The stored value behind a status the reader picked. */
+export function storedStatusFor(picked: string): ItemRecord['status'] {
+  return picked === 'inProgress' ? 'open' : picked as ItemRecord['status']
 }
 
 /** One labelled field; the label is the control's name, not decoration. */
@@ -270,6 +349,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<ItemGroup>>(() => new Set())
   const [density, chooseDensity] = useDensity()
   const [now, setNow] = useState(() => Date.now())
+  const english = isEnglish()
   const seen = useRef<Set<string>>(new Set())
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set())
 
@@ -283,13 +363,31 @@ export function ItemListPanel(props: ItemListPanelProps) {
     }
   }, [replica])
 
-  // Deadlines age in front of the reader; nothing else does.
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 60_000)
-    return () => window.clearInterval(timer)
-  }, [])
+  // The host's own lifetime for this tab. It aborts when the record goes away
+  // or the plugin unloads — NOT on hide or a session switch — so it is the one
+  // handle a timer may hang on, and the one that outlives neither.
+  const info = props.useTabInfo()
+  const lifetime = info.signal
+  const watching = info.active && info.tab.visible
 
-  // The arrival flash is a moment, not a state.
+  // Deadlines age in front of the reader, and only while the reader is looking:
+  // a clock ticking behind another tab is the reader's battery spent on a
+  // picture nobody can see. The interval also stops on the host's own signal,
+  // which is the discipline a resource outliving its owner breaks.
+  useEffect(() => {
+    if (!watching) return
+    const tick = (): void => setNow(Date.now())
+    const timer = window.setInterval(tick, 60_000)
+    const stop = (): void => window.clearInterval(timer)
+    lifetime.addEventListener('abort', stop, { once: true })
+    return () => {
+      stop()
+      lifetime.removeEventListener('abort', stop)
+    }
+  }, [lifetime, watching])
+
+  // The arrival flash is a moment, not a state — and it is not a moment the
+  // reader misses behind another tab.
   useEffect(() => {
     if (fresh.size === 0) return
     const timer = window.setTimeout(() => setFresh(new Set()), 900)
@@ -300,6 +398,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const running = useMemo(
     () => runningMapOf(face),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the snapshot changes drive it
+    [controller, items],
+  )
+
+  // The cards a note may hang off. One list, read from the board — the list is
+  // never assembled here, so a card that appears on the board appears here in
+  // the same breath.
+  const cards = useMemo<readonly { readonly id: string; readonly title: string }[]>(
+    () => (controller?.getSnapshot().tasks ?? [])
+      .map(task => ({ id: task.id, title: task.title.trim() === '' ? task.description.trim().slice(0, 40) : task.title.trim() }))
+      .filter(card => card.title !== ''),
     [controller, items],
   )
 
@@ -488,6 +596,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
                         key={item.id}
                         view={itemRowViewOf(item, running.get(item.taskId ?? '') === true, now)}
                         density={density}
+                        english={english}
                         expanded={openRow === item.id}
                         fresh={fresh.has(item.id)}
                         panelId="item"
@@ -495,6 +604,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
                         onEdit={edit => apply(editItem(items, item.id, edit, Date.now()))}
                         onToggleStep={stepId => apply(toggleItemStep(items, item.id, stepId, Date.now()))}
                         onRemove={() => apply(removeItem(items, item.id))}
+                        cards={cards}
+                        linkedCardTitle={item.taskId === undefined ? undefined : cards.find(c => c.id === item.taskId)?.title}
                       />
                     ))}
                   </ul>

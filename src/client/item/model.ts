@@ -67,9 +67,16 @@ export interface ItemRowView {
   readonly meta: ItemRowMeta
 }
 
-/** Why a row carries its badge. */
+/**
+ * Why a row carries its badge.
+ *
+ * Three shapes and no fourth: a row either has a date worth saying out loud, a
+ * step count worth saying out loud, or nothing worth saying. There is no "none"
+ * variant here on purpose — an arm of the union that nothing ever builds is a
+ * branch the next reader has to reason about for nothing, and "quiet" already
+ * says it.
+ */
 export type ItemRowMeta =
-  | { readonly kind: 'none' }
   /** `3/8` — a step count, shown next to the bar and never inside it. */
   | { readonly kind: 'steps'; readonly done: number; readonly total: number }
   /** An overdue or near deadline wins over a step count. */
@@ -348,6 +355,53 @@ export function addItem(
   if (input.title.trim() === '' && input.body.trim() === '') return { items, added: undefined }
   const added = newItem(input, now, newItemId())
   return { items: [...items, added], added }
+}
+
+/**
+ * Format a deadline the way the rest of this product formats one.
+ *
+ * `toLocaleDateString()` with no options is a different answer per machine —
+ * `2026/9/28` here, `28/09/2026` there, and a 300px column has no room for
+ * either. This goes through the same `isEnglish()` switch the board uses, so a
+ * Chinese reader gets 年月日 and an English reader gets a short date, in BOTH
+ * the panel and the board. One rule, one answer, in both places.
+ * @param at - the moment, in milliseconds.
+ * @param english - whether the active UI language is English.
+ * @returns a short human date.
+ */
+export function formatItemDate(at: number, english: boolean): string {
+  const date = new Date(at)
+  return english
+    ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+/**
+ * Parse a `yyyy-mm-dd` field back into a moment, or `undefined` when blank.
+ *
+ * The inputs are date fields, so they speak a date and not a clock. Building the
+ * moment in local time is the whole point: a deadline typed as 28 September must
+ * land on 28 September for the person who typed it, whatever timezone the
+ * browser happens to be in.
+ * @param value - the field's value.
+ * @returns the moment, or undefined for an empty field.
+ */
+export function parseItemDate(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (trimmed === '') return undefined
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
+  if (parts === null) return undefined
+  const [year, month, day] = parts.slice(1).map(Number) as [number, number, number]
+  const at = new Date(year, month - 1, day).getTime()
+  return Number.isFinite(at) ? at : undefined
+}
+
+/** Render a moment for a `yyyy-mm-dd` date field. */
+export function toItemDateField(at: number | undefined): string {
+  if (at === undefined) return ''
+  const date = new Date(at)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 /** The storage key for the reader's chosen density. */
