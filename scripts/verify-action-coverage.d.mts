@@ -20,6 +20,8 @@ export interface CoverageInput {
   catalogText: string
   /** The text of src/core/controller.ts. */
   controllerText: string
+  /** The text of src/host/agent/tools.ts — the model-facing execution paths. */
+  agentToolsText: string
   /** The scanned sources: src/client/** and the controller itself. */
   scanFiles: { path: string; text: string }[]
   /** Every exported name across src/core, the set a `semanticOf` must hit. */
@@ -37,6 +39,9 @@ export interface CoverageInput {
   foreign?: Record<string, string>
   /** The receiver names that ARE a board controller. */
   receivers?: Set<string>
+  /** Action id -> why the catalog promises it before the tool performs it.
+   *  This is the ledger, not an allow-list: a paid entry is a finding. */
+  pendingExecution?: Record<string, string>
 }
 
 /** Every gap found, one sentence each. Empty means this run found nothing —

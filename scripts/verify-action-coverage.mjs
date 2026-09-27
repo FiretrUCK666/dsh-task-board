@@ -165,7 +165,7 @@ const INTERNAL = {
   sessionConfig: '读投影：会话当前配置（活投影）',
   sessionLabelsOf: '读投影：工作区归属标签',
   sessionActiveOf: '读投影：会话是否还在工作（活性层）',
-  liveStateOf: '读投影：这张卡此刻的状态（活性层唯一推导）。任务清单用它回答「挂在它上面的那条是不是在跑」——同一个问题只许有一个答案，任务清单不得自己另算一份',
+  liveStateOf: '读投影：这张卡此刻的活性判决（三值，panel 只在明确 `running` 时显示进行中，看不见的 `unknown` 不写成在跑）。任务清单的「在不在跑」只从这里取——同一个问题只许有一个答案。',
   sessionAvailability: '读投影：会话是否可用（唯一判据）',
   pendingInteractionOf: '读投影：挂起的交互',
   questionPendingOf: '读投影：待作答的问题',
@@ -216,6 +216,51 @@ const INTERNAL = {
   uploadFile: NOT_FOR_MODEL + '上传附件：对应 `TASK_FIELDS` 里 `promptImages` / `promptFiles` 的 `forbidden` 裁决——模型手里没有上传通道，凭空的图片或文件引用等于一条画不出来的内容。',
   answerQuestion: NOT_FOR_MODEL + '作答挂起的问题：作答是「人看过」的陈述，模型替人作答等于替人关掉自己的门——与 `task.ack`（标已读钟）是同一族判断，都是人的动作。',
   cancelQuestion: NOT_FOR_MODEL + '取消挂起的问题：与作答同一族——它替人撤回一句已经说出口的话，人做得到不等于该交给模型。',
+}
+
+/**
+ * Model-reachable actions that have NO execution path yet — the SECOND
+ * direction, and the one the first gate cannot see.
+ *
+ * The first gate asks "did the UI grow something the model was never told
+ * about". This one asks the opposite: "the model was told, and it still cannot
+ * do it". A model learns from the catalog, so an action listed there with no
+ * line of code behind it is a promise the tool will break at the moment
+ * somebody tries it — and a model that has been told it can do something will
+ * try.
+ *
+ * HOW "EXISTS" IS DECIDED, and why it is this crude: the gate reads the agent
+ * tool's `case '<id>':` literals. That is deliberately literal — it asks "is
+ * there a line of code that handles this id", not "is there probably a handler
+ * somewhere". A cleverer inference would be a second opinion about intent, and
+ * a second opinion is exactly the kind of thing that stays green forever.
+ *
+ * The marker is its own word, deliberately NOT `DEBT:`. That one means "we
+ * forgot to put this action in the catalog"; this one means "it IS in the
+ * catalog and the host has not wired it yet". Same direction of debt, opposite
+ * ends of the pipeline, and merging the two counts would hide both.
+ *
+ * The table is meant to SHRINK. A paid entry is a finding, not a silent pass:
+ * that is the difference between a ledger and a permanent allow-list, which is
+ * what a table nobody has to prune inevitably becomes.
+ */
+const NO_EXECUTION = 'NO-EXECUTION: '
+const PENDING_EXECUTION = {
+  'task.duplicate': NO_EXECUTION + '目录已承诺模型能复制一张卡，host 的执行路径还没接上',
+  'task.run': NO_EXECUTION + '目录已承诺模型能触发一次执行，host 的执行路径还没接上',
+  'task.comment': NO_EXECUTION + '目录已承诺模型能对某个会话发言，host 的执行路径还没接上',
+  'task.cancelComment': NO_EXECUTION + '目录已承诺模型能撤掉排队的评论轮次，host 的执行路径还没接上',
+  'board.cruise': NO_EXECUTION + '目录已承诺模型能开关巡航与并发上限，host 的执行路径还没接上',
+  'rule.create': NO_EXECUTION + '目录已承诺模型能建会话规则，host 的执行路径还没接上',
+  'rule.update': NO_EXECUTION + '目录已承诺模型能改会话规则，host 的执行路径还没接上',
+  'rule.delete': NO_EXECUTION + '目录已承诺模型能删会话规则，host 的执行路径还没接上',
+  'session.create': NO_EXECUTION + '目录已承诺模型能按运行配置新建会话，host 的执行路径还没接上',
+  'session.bind': NO_EXECUTION + '目录已承诺模型能挂来源会话/工作区，host 的执行路径还没接上',
+  'session.rename': NO_EXECUTION + '目录已承诺模型能给会话改名，host 的执行路径还没接上',
+  'session.reorder': NO_EXECUTION + '目录已承诺模型能调会话列顺序，host 的执行路径还没接上',
+  'preset.create': NO_EXECUTION + '目录已承诺模型能存预设，host 的执行路径还没接上',
+  'preset.update': NO_EXECUTION + '目录已承诺模型能改预设或设默认，host 的执行路径还没接上',
+  'preset.delete': NO_EXECUTION + '目录已承诺模型能删预设，host 的执行路径还没接上',
 }
 
 /** Scan roots: the UI half plus the controller, because the controller calls
@@ -376,6 +421,13 @@ function methodBindings(ids, bindings) {
   return claimedBy
 }
 
+/** Every action id the agent tool has a `case` for — the execution paths that
+ *  really exist. Literal on purpose (see {@link PENDING_EXECUTION}). */
+function executedActionIds(toolsSource) {
+  if (toolsSource.trim() === '') return null
+  return new Set([...toolsSource.matchAll(/case\s+'([a-z]+\.[A-Za-z]+)'\s*:/g)].map(m => m[1]))
+}
+
 /**
  * Everything the gate believes, in one pure function. No fs, no process.
  *
@@ -393,6 +445,7 @@ export function actionCoverageFindings(input) {
   const internal = input.internal ?? INTERNAL
   const foreign = input.foreign ?? FOREIGN_CALLS
   const receivers = input.receivers ?? CONTROLLER_RECEIVERS
+  const pendingExecution = input.pendingExecution ?? PENDING_EXECUTION
 
   const catalog = readCatalog(input.catalogText)
   if (catalog === null) {
@@ -493,6 +546,44 @@ export function actionCoverageFindings(input) {
     }
   }
 
+  // 1b. the OTHER direction: model -> execution. The gate above asks whether the
+  // UI grew something the catalog does not mention; this one asks whether the
+  // catalog promises the model something no line of code performs.
+  const executed = executedActionIds(input.agentToolsText ?? '')
+  if (executed === null) {
+    fail('cannot read the agent tool source — src/host/agent/tools.ts was empty or missing, so every "the model can do it" check below would have passed on an empty input. This is a FINDING, not a skip')
+    return failures.slice()
+  }
+  const modelReachable = catalog.actions.filter(a => a.surface !== 'ui').map(a => a.id)
+  const unexecuted = []
+  for (const id of modelReachable) {
+    if (executed.has(id)) continue
+    unexecuted.push(id)
+    // A missing execution path is a FINDING whether or not the debt is written
+    // down. Logging it is not a waiver: the model was told it can do this, and
+    // it will try. The table exists to name the debt and count it, not to make
+    // it stop being a defect.
+    const logged = pendingExecution[id]
+    const tail = logged === undefined
+      ? 'and it is not recorded as a debt — record it in PENDING_EXECUTION with a reason, or implement it'
+      : `logged debt: ${logged.slice(NO_EXECUTION.length)}`
+    fail(`${id}: the catalog tells the model it can do this (surface "${catalog.actions.find(a => a.id === id).surface}"), but no \`case '${id}':\` exists in the agent tool — the model will try it and hit the "not wired to an execution path yet" branch. ${tail}`)
+  }
+  // The table is a ledger, not an allow-list: a paid entry must be deleted, and
+  // an entry for an id the model cannot reach is a stale line either way.
+  for (const [id, reason] of Object.entries(pendingExecution)) {
+    if (executed.has(id)) {
+      fail(`PENDING_EXECUTION["${id}"] is paid — the agent tool now has \`case '${id}':\`. Delete the entry; a table nobody prunes is indistinguishable from an allow-list, which is the thing this gate exists to prevent`)
+    } else if (!modelReachable.includes(id)) {
+      fail(`PENDING_EXECUTION["${id}"] names an action the catalog does not offer the model (either it is not in the catalog or its surface is 'ui') — the entry can never be earned, so it is a line that reads like a debt and is not one`)
+    }
+    if (reason.trim() === NO_EXECUTION.trim()) {
+      fail(`PENDING_EXECUTION["${id}"] carries no reason after the marker — the marker is the verdict, the sentence after it is the debt; a bare one records a debt without saying what is owed`)
+    } else if (!reason.startsWith(NO_EXECUTION)) {
+      fail(`PENDING_EXECUTION["${id}"] does not start with "${NO_EXECUTION}" — this table is its own verdict and must not be confused with the catalog debt, which is the opposite end of the pipeline`)
+    }
+  }
+
   // 4. doc/code agreement
   const mentionsCatalog = /board-actions\.ts/.test(input.agentsText)
   const catalogPresent = input.presentFiles.includes('src/core/board-actions.ts')
@@ -519,6 +610,8 @@ export function actionCoverageFindings(input) {
   notes.push(`coverage: ${used.size} controller method(s) called across ${input.scanFiles.length} file(s); ${claimedBy.size} bound to a catalog action, ${plain} plain non-action(s) (reads, view switches, wiring)`)
   notes.push(`decided not-for-the-model: ${notForModel.length} real action(s) deliberately kept out of the catalog — a product decision, NOT an omission: ${notForModel.join(', ') || 'none'}`)
   notes.push(`catalog debt: ${debt.length} real action(s) the catalog does not carry yet — FORGOTTEN, and the fix is to add the row: ${debt.join(', ') || 'none'}`)
+  notes.push(`model -> execution: ${modelReachable.length} action(s) the catalog offers the model, ${modelReachable.length - unexecuted.length} with a \`case\` in the agent tool, ${unexecuted.length} without one`)
+  notes.push(`no-execution debt: ${unexecuted.length} action(s) the model is told about that the tool does not perform yet — a host-side wiring debt, NOT a missing catalog row; ${unexecuted.filter(id => pendingExecution[id] !== undefined).length} of them recorded in the ledger: ${unexecuted.join(', ') || 'none'}`)
   notes.push(`semantic: ${catalog.actions.filter(a => a.semantic).length} semantic action(s) checked against ${input.coreExportNames.length} core export(s)`)
   return failures.slice()
 }
@@ -553,6 +646,7 @@ export function readRepo(root) {
   return {
     catalogText: existsSync(coreDir) ? (readdirSync(coreDir).includes('board-actions.ts') ? read('src/core/board-actions.ts') : '') : '',
     controllerText: existsSync(at('src', 'core', 'controller.ts')) ? read('src/core/controller.ts') : '',
+    agentToolsText: existsSync(at('src', 'host', 'agent', 'tools.ts')) ? read('src/host/agent/tools.ts') : '',
     scanFiles,
     coreExportNames: [...coreExports(coreFiles)],
     agentsText: existsSync(at('AGENTS.md')) ? readFileSync(at('AGENTS.md'), 'utf8') : '',

@@ -76,6 +76,10 @@ const BASE = {
   foreign: { 'sync.start': 'the host-sync engine' },
   receivers: new Set(['controller', 'this']),
   controllerText: CONTROLLER,
+  // The model-facing execution paths. The synthetic catalog offers two actions
+  // to the model, so a green baseline has a `case` for each of them.
+  agentToolsText: `function applyOne(id: string) {\n  switch (id) {\n    case 'task.create':\n    case 'task.move':\n      return 1\n    default:\n      return 0\n  }\n}\n`,
+  pendingExecution: {},
   coreExportNames: ['moveTaskToStatus', 'resolveCardDrop'],
   agentsText: '新增动作必须进 src/core/board-actions.ts。',
   presentFiles: ['src/core/board-actions.ts'],
@@ -191,8 +195,73 @@ describe('1 — coverage, both directions', () => {
   })
 })
 
-describe('2 — semantic honesty, including the direction that must stay quiet', () => {
-  it('catches a semantic action naming a function src/core does not export', () => {
+describe('1b — the OTHER direction: the model was told, and it cannot do it', () => {
+  it('catches a model-reachable action with no execution path', () => {
+    // The case the first gate cannot see. The catalog promises it, the model
+    // learns from the catalog, and it will try — so the missing `case` is a
+    // defect whether or not anyone wrote it down.
+    const out = findings({ agentToolsText: "case 'task.create':\n" })
+    expect(out).toContain("task.move: the catalog tells the model it can do this")
+    expect(out).toContain("no `case 'task.move':` exists in the agent tool")
+    expect(out).toContain('is not recorded as a debt')
+  })
+
+  it('still reports it when the debt IS written down — logging is not a waiver', () => {
+    // The whole point of the ledger: it names and counts the debt, it does not
+    // stop the debt from being a finding. A gate that went green here would be
+    // the allow-list this whole mechanism exists to avoid.
+    const out = findings({
+      agentToolsText: "case 'task.create':\n",
+      pendingExecution: { 'task.move': 'NO-EXECUTION: host has not wired it yet' },
+    })
+    expect(out).toContain("task.move: the catalog tells the model it can do this")
+    expect(out).toContain('logged debt: host has not wired it yet')
+  })
+
+  it('catches a paid debt entry and demands it be deleted', () => {
+    // A table nobody prunes IS an allow-list. The moment the code lands, the
+    // line has to go — that is what makes the ledger shrink instead of accrete.
+    expect(findings({ pendingExecution: { 'task.create': 'NO-EXECUTION: stale' } }))
+      .toContain('PENDING_EXECUTION["task.create"] is paid')
+  })
+
+  it('catches a debt entry for an action the model cannot reach', () => {
+    expect(findings({ pendingExecution: { 'task.typo': 'NO-EXECUTION: never earnable' } }))
+      .toContain('names an action the catalog does not offer the model')
+  })
+
+  it('catches a debt entry with no reason after the marker', () => {
+    expect(findings({ pendingExecution: { 'task.move': 'NO-EXECUTION: ' } }))
+      .toContain('carries no reason after the marker')
+  })
+
+  it('catches a debt entry wearing the wrong marker', () => {
+    // This debt is "in the catalog, no code"; the catalog debt is the opposite
+    // end of the pipeline. Sharing a marker would merge the two counts.
+    expect(findings({ pendingExecution: { 'task.move': 'DEBT: the wrong marker' } }))
+      .toContain('does not start with "NO-EXECUTION: "')
+  })
+
+  it('does not demand an execution path for a ui-only action', () => {
+    // An action the model is never offered cannot be a broken promise to it.
+    expect(run({
+      catalogText: catalog({ surface: 'ui' }),
+      agentToolsText: "case 'task.move':\n",
+    })).toEqual([])
+  })
+
+  it('reports an unreadable tool source instead of passing on it', () => {
+    expect(findings({ agentToolsText: '' }))
+      .toContain('cannot read the agent tool source')
+  })
+
+  it('accepts a real execution path for every offered action', () => {
+    // The other half: once the `case` exists, nothing here fires.
+    expect(run()).toEqual([])
+  })
+})
+
+describe('2 — semantic honesty, including the direction that must stay quiet', () => {  it('catches a semantic action naming a function src/core does not export', () => {
     expect(findings({ catalogText: catalog({ semantic: true, semanticOf: 'notARealFunction' }) }))
       .toContain('which src/core/ does not export')
   })
