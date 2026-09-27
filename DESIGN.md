@@ -323,9 +323,12 @@ active 去长占。
   换句话说：**具名区域是窄屏才需要的东西**（那时一行装不下，必须确定性地换行），
   桌面的 flex + spacer 已经够用，且它的失败模式被这行 spacer 关掉了。
 - **响应式的参照是板自身的盒子宽度，永远不是视口。** 板声明
-  `container-type: inline-size; container-name: dsh-tb`，所有紧凑规则都是
-  `@container dsh-tb (max-width: 680px)`。会话面板同理，声明 `dsh-tb-panel`（600px）。
+  `container-type: inline-size; container-name: dsh-tb`，紧凑档规则是
+  `@container dsh-tb (max-width: 680px)`。会话面板则声明 `dsh-tb-panel`（600px）。
   这样在侧栏收起/展开、分屏、手机上都是对的；而 `@media (max-width)` 会在侧栏展开时误判。
+  **面板量不到自己**（声明处 `.review` 就是那个盒子），所以它的宽度与高度内缩挂在板档上：
+  弹层内衬左右各 24px，面板 = 板 − 48，于是**板 648px 正好对应面板 600px**——这是同一个
+  地板的两种量法，**不是第三档**。
 - **紧凑档（< 680px）**：五列变成一个**横向自由滑动**的轨道（单列宽 `clamp(200px, 46cqw, 320px)`），
   配一排五等分的列导航标签（短名 + `aria-label` 全名）；板头换行成确定的两行；底部出现拇指栏
   （新建、通知、动态）。**信息与动作不缺席——只有几何会变，或者整件搬到该在的位置**：
