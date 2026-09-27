@@ -165,6 +165,7 @@ const INTERNAL = {
   sessionConfig: '读投影：会话当前配置（活投影）',
   sessionLabelsOf: '读投影：工作区归属标签',
   sessionActiveOf: '读投影：会话是否还在工作（活性层）',
+  liveStateOf: '读投影：这张卡此刻的状态（活性层唯一推导）。任务清单用它回答「挂在它上面的那条是不是在跑」——同一个问题只许有一个答案，任务清单不得自己另算一份',
   sessionAvailability: '读投影：会话是否可用（唯一判据）',
   pendingInteractionOf: '读投影：挂起的交互',
   questionPendingOf: '读投影：待作答的问题',

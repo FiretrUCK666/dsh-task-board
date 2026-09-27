@@ -909,7 +909,7 @@
    panel — they differ by design (cruise = float/lg/shadow-3, menus =
    menu/md) — so only the truly shared position + border live here. The
    slashMenu literal border is the same computed value as --dsh-tb-border. */
-:is(.cruisePopover, .slashMenu, .sessionContextPanel) {
+:is(.cruisePopover, .slashMenu, .sessionContextPanel, .itemScroll) {
   position: absolute;
   border: var(--dsh-tb-border);
 }
@@ -2286,28 +2286,28 @@
    gate; the hide-lists elsewhere (`scrollbar-width: none`) are fine because
    both implementations agree on the outcome: hidden. */
 @supports not selector(::-webkit-scrollbar) {
-  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel) {
+  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll) {
     scrollbar-width: thin;
     scrollbar-color: var(--dsw-alias-border-l3) transparent;
   }
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll)::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-thumb {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll)::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-track {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll)::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-button {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll)::-webkit-scrollbar-button {
   display: none;
 }
 
@@ -7358,3 +7358,382 @@ span.interactionOptions {
 }
 
 
+
+/* ── 任务清单（右栏页面）──────────────────────────────────────────────────
+   THE LIST IS A SCANNING SURFACE, NOT A SECOND BOARD.
+   A 300px column cannot show what a five-column board shows, and trying is
+   how a panel becomes furniture. So the row carries three things and no more:
+   what it is called, what state it is in, and the single fact that matters
+   most (a missed date beats a step count, because a missed date is a fact and
+   a step count is progress someone chose to report). Everything else is one
+   click away in place — never a dialog, because `boardBox()` resolves to the
+   BOARD panel and a dialog opened from here would float over the wrong thing.
+
+   The root declares its own container. The right-Sidebar chain declares
+   none — verified by exhaustive scan — so every width decision below is made
+   against THIS box (about 300px) and never against the viewport. */
+
+.itemRoot {
+  container-type: inline-size;
+  container-name: dsh-tb-item;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  /* The host gives this box no padding at all, so every inset is declared
+     here. The token is the same one-rail-inset the board uses. */
+  padding: var(--dsh-tb-rail-inset);
+  gap: 8px;
+  color: var(--dsh-tb-text-1);
+}
+
+.itemHeader {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: 8px;
+}
+
+.itemSearch {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+  background: var(--dsh-tb-input-bg);
+  color: var(--dsh-tb-text-1);
+  font-size: 13px;
+}
+
+.itemFilterRow,
+.itemHeaderRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.itemHeaderRow {
+  justify-content: space-between;
+}
+
+.itemCount,
+.itemState {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsh-tb-text-2);
+  margin: 0;
+}
+
+.itemState {
+  color: var(--dsh-tb-text-3);
+}
+
+.itemDensity {
+  display: flex;
+  gap: 2px;
+}
+
+/* One scroll container, and it is in the scrollbar whitelist with the rest of
+   the panel family. Without that entry Chromium draws its own arrows and the
+   panel stops looking like part of this product. */
+.itemScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Sections are separated by SPACE, not by rules: a rule in a 300px column
+     reads as a table, and a list is not a table. */
+}
+
+.itemGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.itemGroupHead {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.itemGroupToggle {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 24px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--dsh-tb-text-2);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.itemGroupChevron {
+  flex: none;
+  transition: transform var(--dsh-tb-motion);
+}
+
+.itemGroupToggle[aria-expanded='false'] .itemGroupChevron {
+  /* The chevron points at what the click opens: down while open, aside while
+     closed. A chevron that never turns reads as a broken button. */
+  transform: rotate(-90deg);
+}
+
+.itemGroupCount {
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemRow {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--dsh-tb-radius-sm);
+}
+
+.itemRow[data-open] {
+  background: var(--dsh-tb-surface-float);
+  border: 1px solid var(--dsh-tb-border-soft);
+}
+
+.itemRow[data-fresh] {
+  animation: dshTbFadeIn var(--dsh-tb-motion);
+}
+
+.itemRowMain {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--dsh-tb-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.itemRowMain[data-density='comfy'] {
+  min-height: 40px;
+}
+
+.itemRowMain[data-density='compact'] {
+  min-height: 32px;
+}
+
+.itemRef {
+  flex: none;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The text slot is the only place truncation is allowed to happen; the ref and
+   the meta beside it keep their own width so a long title never eats them. */
+.itemTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--dsh-tb-text-1);
+}
+
+.itemDue,
+.itemSteps {
+  flex: none;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemDue[data-overdue] {
+  color: var(--dsh-tb-danger);
+}
+
+.itemDue[data-hard]:not([data-overdue]) {
+  color: var(--dsh-tb-attention);
+}
+
+/* Progress is a bar and a count, never a number inside a bar. Four pixels is
+   the side-panel thickness; it is not stretched to fill the column, because a
+   full-width bar stops being readable as a ratio. An item with no steps has
+   no element here at all — see model.ts. */
+.itemProgress {
+  display: block;
+  height: 4px;
+  margin: 0 6px 4px;
+  max-inline-size: 160px;
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-border-soft);
+  overflow: hidden;
+}
+
+.itemProgressFill {
+  display: block;
+  block-size: 100%;
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-accent);
+}
+
+.itemDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 6px 10px;
+}
+
+.itemProgressText {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemStepList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.itemStep {
+  display: flex;
+  align-items: start;
+  gap: 6px;
+  /* The checkbox is 13px; the ROW it sits in is what has to be reachable, so
+     the hit area is grown here rather than the control made bigger. */
+  min-height: 24px;
+  padding: 2px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.itemStep input {
+  margin: 0;
+  inline-size: 13px;
+  block-size: 13px;
+  flex: none;
+}
+
+.itemStep span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.itemStep span[data-done] {
+  color: var(--dsh-tb-text-3);
+}
+
+.itemField {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.itemFieldRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.itemFieldRow > .itemField {
+  flex: 1 1 120px;
+  min-inline-size: 0;
+}
+
+.itemFieldLabel {
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+}
+
+.itemInput {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 6px;
+  border: 1px solid var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+  background: var(--dsh-tb-input-bg);
+  color: var(--dsh-tb-text-1);
+  font: inherit;
+  font-size: 13px;
+}
+
+textarea.itemInput {
+  resize: vertical;
+  line-height: 18px;
+}
+
+.itemActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The entry button lives in the CONVERSATION HEADER, outside the panel's
+   token scope, so it carries no board colour at all: it inherits the header's
+   own and only fixes its own geometry. The 24px floor is the accessibility
+   minimum and it is a floor, not a preference. */
+.itemListOpenButton {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--dsh-tb-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* The tight case is the normal case here: about 300px. When the reader docks
+   the sidebar to a second pane the column can fall to roughly half that, and
+   the meta value gives way rather than the title losing its only words. */
+@container dsh-tb-item (max-width: 320px) {
+  .itemSteps {
+    display: none;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  /* Touch has no hover, so the things a pointer would reveal are revealed
+     instead of being absent. */
+  .itemListOpenButton,
+  .itemGroupToggle {
+    min-height: 44px;
+  }
+
+  .itemRowMain[data-density='compact'] {
+    min-height: 44px;
+  }
+}
