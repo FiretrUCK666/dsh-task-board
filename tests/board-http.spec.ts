@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
 import {
-  BoardDataService,
+  DocumentService,
   BOARD_UNIT_DESCRIPTOR,
   BOARD_UNIT_NAME,
   BOARD_UNIT_VERSION,
@@ -39,7 +39,7 @@ const T0 = 1_700_000_000_000
 
 let root: string
 let backend: JsonStorageBackend
-let service: BoardDataService
+let service: DocumentService
 let server: Server
 let origin: string
 
@@ -47,20 +47,22 @@ function openUnit(backend: JsonStorageBackend) {
   return backend.kv.open(BOARD_UNIT_DESCRIPTOR)
 }
 
-function makeService(backend: JsonStorageBackend): BoardDataService {
-  const service = new BoardDataService({
+function makeService(backend: JsonStorageBackend): DocumentService {
+  const service = new DocumentService({
     openUnit: async () => openUnit(backend),
     log: () => undefined,
   })
   return service
 }
 
-function depsFor(service: BoardDataService): BoardRouteDeps {
+function depsFor(service: DocumentService): BoardRouteDeps {
   return {
     ready: () => service.ensureInit(),
     available: () => service.available,
     doc: () => service.getDoc(),
     commit: commit => service.commit(commit),
+    itemsDoc: () => service.getItemsDoc(),
+    commitItems: commit => service.commitItems(commit),
     acquireLease: (clientId, ttlMs) => service.acquireLease(clientId, ttlMs),
     releaseLease: clientId => service.releaseLease(clientId),
     noteActivity: clientId => service.noteActivity(clientId),
@@ -462,7 +464,7 @@ describe('board route over a real HTTP server', () => {
 
       // A restart finds the marker, so it never looks for the old file again.
       const restartBackend = new JsonStorageBackend(join(home, 'storages'))
-      const restarted = new BoardDataService({
+      const restarted = new DocumentService({
         now: () => 2_000,
         openUnit: async descriptor => restartBackend.kv.open(descriptor) as never,
         log: () => undefined,
@@ -478,5 +480,78 @@ describe('board route over a real HTTP server', () => {
       else process.env.DSH_HOME = saved
       rmSync(home, { recursive: true, force: true })
     }
+  })
+
+  // The checklist's own tail, over a REAL socket. What the fake-req spec
+  // cannot show: the shared CSRF guard and the shared `since` rule holding on
+  // the wire, and an item write leaving the board's file and the board's
+  // revision exactly where they were.
+  it('serves and commits the checklist at /board/items, without touching the board', async () => {
+    const ITEMS = `${origin}${BASE}/items`
+    const boardFile = join(root, BOARD_UNIT_NAME, BOARD_UNIT_TABLE, `${BOARD_DOCUMENT}.json`)
+    const boardBytesBefore = readFileSync(boardFile, 'utf8')
+    const boardRevisionBefore = service.getDoc().revision
+    const itemsBefore = service.getItemsDoc()
+    const nextRef = itemsBefore.nextRef
+
+    // A watcher socket, so a frame the write SHOULD NOT send would be visible.
+    const stream = await fetch(`${origin}${BASE}/events?clientId=items-watcher`)
+    expect(stream.body).not.toBeNull()
+
+    // A first GET carries the whole document.
+    const first = await fetch(`${ITEMS}?clientId=phone`)
+    expect(first.status).toBe(200)
+    const firstEnvelope = await first.json() as { ok: boolean; value: { available: boolean; revision: number; doc?: { items: { id: string }[] }; unchanged?: boolean } }
+    expect(firstEnvelope.value.available).toBe(true)
+    expect(firstEnvelope.value.revision).toBe(itemsBefore.revision)
+    expect(firstEnvelope.value.unchanged).toBeUndefined()
+    expect(firstEnvelope.value.doc?.items).toHaveLength(itemsBefore.items.length)
+
+    // The shared CSRF guard: a text/plain commit never reaches the merge.
+    const refused = await fetch(ITEMS, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: JSON.stringify({ clientId: 'x' }) })
+    expect(refused.status).toBe(415)
+    // A malformed envelope answers the shared error shape, not a throw.
+    const malformed = await fetch(ITEMS, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clientId: '' }) })
+    expect((await malformed.json() as { ok: boolean }).ok).toBe(false)
+
+    // The commit itself: over the wire, through the real merge, onto disk.
+    const committed = await fetch(ITEMS, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(itemsCommitOf({ clientId: 'phone', items: [row({ id: 'i-wire', ref: 0, title: '线上写入', updatedAt: T0 + 1 })] })),
+    })
+    const envelope = await committed.json() as { ok: boolean; value: { revision: number; doc: ItemsDoc } }
+    expect(envelope.ok).toBe(true)
+    expect(envelope.value.revision).toBe(itemsBefore.revision + 1)
+    // The document minted the number, not the replica (which sent ref 0).
+    expect(envelope.value.doc.items.find(i => i.id === 'i-wire')?.ref).toBe(nextRef)
+    expect(envelope.value.doc.nextRef).toBe(nextRef + 1)
+
+    // The board did not move: not its revision, not its file, not its frames.
+    expect(service.getDoc().revision).toBe(boardRevisionBefore)
+    expect(readFileSync(boardFile, 'utf8')).toBe(boardBytesBefore)
+    expect(await readFrames(stream.body as ReadableStream<Uint8Array>, 1, 600)).toHaveLength(0)
+
+    // A no-op commit answers the same revision and rewrites nothing.
+    const itemsBytes = readFileSync(join(root, BOARD_UNIT_NAME, BOARD_UNIT_TABLE, `${ITEMS_DOCUMENT}.json`), 'utf8')
+    const again = await fetch(ITEMS, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(itemsCommitOf({ clientId: 'phone', items: [row({ id: 'i-wire', ref: 0, title: '线上写入', updatedAt: T0 + 1 })] })),
+    })
+    const againEnvelope = await again.json() as { value: { revision: number } }
+    expect(againEnvelope.value.revision).toBe(itemsBefore.revision + 1)
+    expect(readFileSync(join(root, BOARD_UNIT_NAME, BOARD_UNIT_TABLE, `${ITEMS_DOCUMENT}.json`), 'utf8')).toBe(itemsBytes)
+    expect(readFileSync(boardFile, 'utf8')).toBe(boardBytesBefore)
+
+    // The shared `since` rule, on the checklist's OWN counter.
+    const probe = await fetch(`${ITEMS}?since=${againEnvelope.value.revision}`)
+    const probeEnvelope = await probe.json() as { value: { unchanged?: boolean; doc?: unknown; revision: number } }
+    expect(probeEnvelope.value.unchanged).toBe(true)
+    expect(probeEnvelope.value.doc).toBeUndefined()
+    expect(probeEnvelope.value.revision).toBe(againEnvelope.value.revision)
+    // The board's counter is a different question: it has not moved at all.
+    const boardProbe = await fetch(`${origin}${BASE}?since=${boardRevisionBefore}`)
+    expect((await boardProbe.json() as { value: { unchanged?: boolean } }).value.unchanged).toBe(true)
   })
 })

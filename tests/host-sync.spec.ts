@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { BoardSyncClient, SyncedCruiseStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore, type BoardSyncTransport, type SyncFetchResult, type SyncLedger } from '../src/core/host-sync.ts'
 import { emptyBoardDoc, applyCommit, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView, type CruiseValue } from '../src/core/board-doc.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
-import { BoardDataService } from '../src/host/board-service.ts'
+import { DocumentService } from '../src/host/board-service.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -606,7 +606,7 @@ describe('BoardSyncClient requestLaunch + dispose', () => {
 
 // ── end-to-end convergence over the REAL host service ──────────────────────
 //
-// Two sync clients share one BoardDataService (a service-direct transport,
+// Two sync clients share one DocumentService (a service-direct transport,
 // no HTTP): this exercises the whole loop — commit → merge → persist → SSE
 // broadcast → coalesced resync → adopt — exactly as two browsers would, and
 // pins the guarantees the multi-device fix rests on: writes converge both
@@ -614,7 +614,7 @@ describe('BoardSyncClient requestLaunch + dispose', () => {
 // and concurrent edits to different rows coexist.
 
 /** A transport that calls the real service directly (shared-clock harness). */
-function serviceTransport(service: BoardDataService): BoardSyncTransport {
+function serviceTransport(service: DocumentService): BoardSyncTransport {
   return {
     async fetch(_clientId, since) {
       await service.ensureInit()
@@ -638,7 +638,7 @@ function serviceTransport(service: BoardDataService): BoardSyncTransport {
   }
 }
 
-function makeNode(service: BoardDataService, timers: ReturnType<typeof fakeTimers>, id: string): BoardSyncClient {
+function makeNode(service: DocumentService, timers: ReturnType<typeof fakeTimers>, id: string): BoardSyncClient {
   return new BoardSyncClient({
     transport: serviceTransport(service),
     defer: timers.defer,
@@ -659,7 +659,7 @@ async function settle(timers: ReturnType<typeof fakeTimers>): Promise<void> {
 describe('two replicas over one host service', () => {
   async function twoNodes() {
     const timers = fakeTimers()
-    const service = new BoardDataService({ now: timers.now, openUnit: async () => new FakeUnit(), log: () => undefined })
+    const service = new DocumentService({ now: timers.now, openUnit: async () => new FakeUnit(), log: () => undefined })
     await service.init()
     const a = makeNode(service, timers, 'A')
     const b = makeNode(service, timers, 'B')

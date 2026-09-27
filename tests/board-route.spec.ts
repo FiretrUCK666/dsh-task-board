@@ -3,6 +3,11 @@
  * GET/commit/lease/command envelopes, the CSRF and malformed-body guards,
  * the unchanged probe, and the SSE stream lifecycle (frames, unsubscribe,
  * disconnect note).
+ *
+ * The checklist rides the same prefix as a second tail, so the guards it
+ * inherits are part of its contract: one CSRF rule, one body reader, one
+ * envelope, one `since` rule — asserted here per tail, because "it worked for
+ * the board" is exactly the assumption that lets a second dialect grow.
  */
 import { EventEmitter } from 'node:events'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -10,11 +15,36 @@ import { describe, expect, it } from 'vitest'
 import { emptyBoardDoc, type BoardCommit, type BoardDoc } from '../src/core/board-doc.ts'
 import { createTask } from '../src/core/tasks.ts'
 import { applyCommit } from '../src/core/board-doc.ts'
-import { createBoardHandler, parseBoardCommit, type BoardRouteDeps } from '../src/host/board-route.ts'
+import { applyItemsCommit, emptyItemsDoc, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
+import type { ItemRecord } from '../src/core/item.ts'
+import { createBoardHandler, parseBoardCommit, parseItemsCommit, type BoardRouteDeps } from '../src/host/board-route.ts'
 import type { BoardCommand, BoardEvent, LeaseState } from '../src/host/board-service.ts'
 
 const T0 = 1_700_000_000_000
 const BASE = '/api/dsh-task-board/board'
+
+/** One checklist row, with only what a test cares about overridden. */
+function row(patch: Partial<ItemRecord> = {}): ItemRecord {
+  return {
+    id: 'i-1',
+    ref: 1,
+    title: 'a thing',
+    body: '',
+    notes: '',
+    steps: [],
+    status: 'open',
+    priority: 'normal',
+    tags: [],
+    startsAfter: undefined,
+    dueAt: undefined,
+    hardDueAt: undefined,
+    taskId: undefined,
+    origin: { source: 'human', at: T0 },
+    createdAt: T0,
+    updatedAt: T0,
+    ...patch,
+  }
+}
 
 /** A fake response capturing status/body/writes; emits 'close' on demand. */
 function fakeRes(): ServerResponse & { state: { status: number; body: string; headers: Record<string, string>; writes: string[]; close(): void } } {
@@ -62,6 +92,7 @@ function fakeReq(method: string, url: string, body?: unknown, contentType = 'app
 /** A fake service face backed by a live document + lease + listener set. */
 function fakeDeps() {
   let doc: BoardDoc = emptyBoardDoc(T0)
+  let items: ItemsDoc = emptyItemsDoc(T0)
   // A complete LeaseState: the type requires `proto` + `bootedAt` precisely so
   // a fake (or a real branch) cannot quietly answer without them.
   const leaseOf = (held: boolean, holder?: string): LeaseState => ({
@@ -84,6 +115,11 @@ function fakeDeps() {
     commit: async commit => {
       doc = applyCommit(doc, commit, T0 + 1)
       return doc
+    },
+    itemsDoc: () => items,
+    commitItems: async commit => {
+      items = applyItemsCommit(items, commit, T0 + 1)
+      return items
     },
     acquireLease: clientId => {
       lease = leaseOf(true, clientId)
@@ -110,6 +146,7 @@ function fakeDeps() {
     deps,
     setAvailable: (value: boolean) => { available = value },
     seedCommit: (commit: BoardCommit) => { doc = applyCommit(doc, commit, T0) },
+    seedItems: (commit: ItemsCommit) => { items = applyItemsCommit(items, commit, T0) },
     commands,
     disconnects,
     activities,
@@ -209,6 +246,134 @@ describe('POST /board (commit)', () => {
   })
 })
 
+describe('GET /board/items', () => {
+  it('serves the authoritative checklist and its OWN revision', async () => {
+    const h = fakeDeps()
+    h.seedCommit({ clientId: 'c', tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')], deleted: [], cruise: { value: { enabled: false, limit: 5, schedule: [] }, at: 0 }, schedulePresets: { value: [], at: 0 }, runPresets: { value: { presets: [] }, at: 0 } })
+    h.seedItems({ clientId: 'c', items: [row({ id: 'i-a', ref: 1, title: 'A' })], deleted: [] })
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('GET', `${BASE}/items`), res)
+    const envelope = JSON.parse(res.state.body)
+    expect(envelope.ok).toBe(true)
+    expect(envelope.value.available).toBe(true)
+    expect(envelope.value.revision).toBe(1)
+    expect(envelope.value.doc.items.map((i: { id: string }) => i.id)).toEqual(['i-a'])
+    // The board's own revision is a different counter that this tail never
+    // reports: one document's answer cannot answer for the other.
+    expect(h.deps.doc().revision).toBe(1)
+    expect(envelope.value.doc).not.toHaveProperty('tasks')
+  })
+
+  it('answers unchanged for a since probe at or above the checklist revision', async () => {
+    const h = fakeDeps()
+    h.seedItems({ clientId: 'c', items: [row({ id: 'i-a', ref: 1, title: 'A' })], deleted: [] })
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('GET', `${BASE}/items?since=1`), res)
+    const envelope = JSON.parse(res.state.body)
+    expect(envelope.value.unchanged).toBe(true)
+    expect(envelope.value.doc).toBeUndefined()
+    expect(envelope.value.revision).toBe(1)
+  })
+
+  it('serves the whole body when `since` is absent (the initial-fetch trap)', async () => {
+    const h = fakeDeps()
+    h.seedItems({ clientId: 'c', items: [row({ id: 'i-a', ref: 1, title: 'A' })], deleted: [] })
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('GET', `${BASE}/items`), res)
+    const envelope = JSON.parse(res.state.body)
+    expect(envelope.value.unchanged).toBeUndefined()
+    expect(envelope.value.doc).toBeDefined()
+  })
+
+  it('renews the unit-level seat on a checklist read', async () => {
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    await handler(fakeReq('GET', `${BASE}/items?clientId=phone`), fakeRes())
+    expect(h.activities).toContain('phone')
+  })
+
+  it('reports available:false without a document when the service is unavailable', async () => {
+    const h = fakeDeps()
+    h.setAvailable(false)
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('GET', `${BASE}/items`), res)
+    expect(JSON.parse(res.state.body).value.available).toBe(false)
+  })
+})
+
+describe('POST /board/items (commit)', () => {
+  const commit = { clientId: 'c-1', items: [row({ id: 'i-a', ref: 1, title: 'A' })], deleted: [] }
+
+  it('applies the commit and returns the fresh checklist', async () => {
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items`, commit), res)
+    const envelope = JSON.parse(res.state.body)
+    expect(envelope.ok).toBe(true)
+    expect(envelope.value.revision).toBe(1)
+    expect(envelope.value.doc.items).toHaveLength(1)
+  })
+
+  it('moves the CHECKLIST revision only — the board never learns about it', async () => {
+    const h = fakeDeps()
+    h.seedCommit({ clientId: 'c', tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')], deleted: [], cruise: { value: { enabled: false, limit: 5, schedule: [] }, at: 0 }, schedulePresets: { value: [], at: 0 }, runPresets: { value: { presets: [] }, at: 0 } })
+    const boardRevision = h.deps.doc().revision
+    const handler = createBoardHandler(h.deps, BASE)
+    await handler(fakeReq('POST', `${BASE}/items`, commit), fakeRes())
+    expect(h.deps.itemsDoc().revision).toBe(1)
+    expect(h.deps.doc().revision).toBe(boardRevision)
+    // …and the other way round: a board commit must not bump the checklist.
+    await handler(fakeReq('POST', BASE, { clientId: 'c', tasks: [createTask({ title: 'B', description: '', prompt: '' }, T0, 't-b')], deleted: [], cruise: { value: { enabled: false, limit: 5, schedule: [] }, at: 0 }, schedulePresets: { value: [], at: 0 }, runPresets: { value: { presets: [] }, at: 0 } }), fakeRes())
+    expect(h.deps.itemsDoc().revision).toBe(1)
+  })
+
+  it('a no-op commit answers the SAME revision and document', async () => {
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    await handler(fakeReq('POST', `${BASE}/items`, commit), fakeRes())
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items`, commit), res)
+    const envelope = JSON.parse(res.state.body)
+    expect(envelope.value.revision).toBe(1)
+    expect(envelope.value.doc).toEqual(h.deps.itemsDoc())
+  })
+
+  it('rejects a malformed body with the error envelope', async () => {
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: '' }), res)
+    expect(JSON.parse(res.state.body).ok).toBe(false)
+  })
+
+  it('rejects a non-JSON content type with 415 — the guard is the SHARED one', async () => {
+    // The CSRF check sits above the tail dispatch, so the second document
+    // inherits it rather than restating it. A `text/plain` (or absent) content
+    // type must never reach the items merge.
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items`, commit, 'text/plain'), res)
+    expect(res.state.status).toBe(415)
+    expect(h.deps.itemsDoc().items).toEqual([])
+  })
+
+  it('answers available:false without applying when the service is unavailable', async () => {
+    const h = fakeDeps()
+    h.setAvailable(false)
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items`, commit), res)
+    expect(JSON.parse(res.state.body).value.available).toBe(false)
+    expect(h.deps.itemsDoc().revision).toBe(0)
+  })
+})
+
 describe('POST /board/lease', () => {
   it('acquires and reports the lease', async () => {
     const h = fakeDeps()
@@ -303,5 +468,32 @@ describe('parseBoardCommit', () => {
     expect(parseBoardCommit({ clientId: '', tasks: [] })).toBeUndefined()
     expect(parseBoardCommit({ clientId: 'x'.repeat(65), tasks: [] })).toBeUndefined()
     expect(parseBoardCommit(null)).toBeUndefined()
+  })
+})
+
+describe('parseItemsCommit', () => {
+  it('accepts a well-formed commit and filters junk, on the same rules as the board', () => {
+    const parsed = parseItemsCommit({
+      clientId: 'c',
+      items: [row()],
+      changed: ['i-1', '', 5],
+      deleted: [{ id: 'a', baseUpdatedAt: 1 }, { id: '' }, 'junk', 5],
+    })
+    expect(parsed?.clientId).toBe('c')
+    expect(parsed?.items).toHaveLength(1)
+    expect(parsed?.changed).toEqual(['i-1'])
+    expect(parsed?.deleted).toEqual([{ id: 'a', baseUpdatedAt: 1 }])
+  })
+
+  it('defaults absent arrays rather than inventing rows', () => {
+    const parsed = parseItemsCommit({ clientId: 'c' })
+    expect(parsed).toEqual({ clientId: 'c', items: [], changed: [], deleted: [] })
+  })
+
+  it('rejects a missing or oversized clientId, exactly like the board parser', () => {
+    expect(parseItemsCommit({ clientId: '', items: [] })).toBeUndefined()
+    expect(parseItemsCommit({ clientId: 'x'.repeat(65), items: [] })).toBeUndefined()
+    expect(parseItemsCommit(null)).toBeUndefined()
+    expect(parseItemsCommit({ clientId: 'c', items: 'not an array' })?.items).toEqual([])
   })
 })

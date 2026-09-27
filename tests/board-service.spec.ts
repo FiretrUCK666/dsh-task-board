@@ -15,7 +15,7 @@ import { createTask } from '../src/core/tasks.ts'
 import { applyItemsCommit, emptyItemsDoc, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
 import type { ItemRecord } from '../src/core/item.ts'
 import {
-  BoardDataService,
+  DocumentService,
   clampLeaseTtl,
   BOARD_DOCUMENT,
   BOARD_UNIT_TABLE,
@@ -92,7 +92,7 @@ class FakeUnit implements KvUnitLike {
 
 function makeService(unit: FakeUnit | undefined, clock = { t: T0 }) {
   const events: BoardEvent[] = []
-  const service = new BoardDataService({
+  const service = new DocumentService({
     now: () => clock.t,
     openUnit: async () => unit,
     log: () => undefined,
@@ -140,9 +140,9 @@ function itemsCommitOf(overrides: Partial<ItemsCommit> = {}): ItemsCommit {
   return { clientId: 'c-1', items: [], deleted: [], ...overrides }
 }
 
-describe('BoardDataService init', () => {
+describe('DocumentService init', () => {
   it('is unavailable when there is no persistence opener', async () => {
-    const service = new BoardDataService({ now: () => T0, log: () => undefined })
+    const service = new DocumentService({ now: () => T0, log: () => undefined })
     await service.init()
     expect(service.available).toBe(false)
   })
@@ -182,7 +182,7 @@ describe('BoardDataService init', () => {
   })
 })
 
-describe('BoardDataService commit', () => {
+describe('DocumentService commit', () => {
   it('persists and broadcasts a real change; a no-op neither persists nor broadcasts', async () => {
     const unit = new FakeUnit()
     const { service } = makeService(unit)
@@ -227,7 +227,7 @@ describe('BoardDataService commit', () => {
   })
 })
 
-describe('BoardDataService lease', () => {
+describe('DocumentService lease', () => {
   it('grants a free lease, holds it for the holder, refuses others', async () => {
     const { service, clock } = makeService(new FakeUnit())
     await service.init()
@@ -377,7 +377,7 @@ describe('BoardDataService lease', () => {
   })
 })
 
-describe('BoardDataService command relay', () => {
+describe('DocumentService command relay', () => {
   it('broadcasts to a live engine immediately', async () => {
     const { service } = makeService(new FakeUnit())
     await service.init()
@@ -426,7 +426,7 @@ describe('clampLeaseTtl', () => {
   })
 })
 
-describe('BoardDataService dispose', () => {
+describe('DocumentService dispose', () => {
   it('closes the unit and stops broadcasting', async () => {
     const unit = new FakeUnit()
     const { service } = makeService(unit)
@@ -571,7 +571,7 @@ describe('openBoardUnit layout migration', () => {
   })
 })
 
-describe('BoardDataService checklist (the second document)', () => {
+describe('DocumentService checklist (the second document)', () => {
   it('restores the checklist from the medium on init, beside the board', async () => {
     const unit = new FakeUnit()
     unit.items = applyItemsCommit(emptyItemsDoc(T0), itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' }), row({ id: 'i-b', ref: 2, title: 'B' })] }), T0 + 1)

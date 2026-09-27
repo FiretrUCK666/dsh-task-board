@@ -6,9 +6,18 @@
  *                                     (?since=N answers unchanged for N >= revision)
  *   POST /api/<ns>/board            → commit {clientId, tasks, deleted, sections}
  *                                     → the authoritative document after the merge
+ *   GET  /api/<ns>/board/items      → the checklist document + its own revision
+ *                                     (?since=N answers unchanged for N >= revision)
+ *   POST /api/<ns>/board/items      → ItemsCommit {clientId, items, changed, deleted}
+ *                                     → the authoritative checklist after the merge
  *   POST /api/<ns>/board/lease      → {clientId, ttlMs?, release?} → lease state
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
+ *
+ * ONE route file, ONE envelope discipline, ONE CSRF guard: every POST tail
+ * passes the same `application/json` check before its body is even read, and a
+ * second document is a second TAIL of the same prefix — not a second handler,
+ * a second envelope, or a second content-type rule.
  *
  * The handler is a pure function over an injected service face, so the whole
  * protocol is unit-testable without a live server; `registerBoardRoute` wires
@@ -19,6 +28,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts';
+import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
 import { type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts';
 /** The commit body size cap: the whole ledger travels per commit. */
 export declare const BOARD_BODY_LIMIT_BYTES: number;
@@ -40,11 +50,29 @@ export interface BoardRouteView {
         queued: boolean;
     };
 }
-/** Success envelope carrying a board view. */
-export interface BoardRouteOk {
-    ok: true;
-    value: BoardRouteView;
+/** The checklist view — the same envelope, a document of its own.
+ *
+ *  `revision` is the CHECKLIST's revision, never the board's: a replica that
+ *  polls this tail watches a counter that only item writes move, so writing an
+ *  item never makes every device resync a board that did not change. */
+export interface ItemsRouteView {
+    /** False while the host serves no synced documents (replicas fall back). */
+    available: boolean;
+    revision: number;
+    /** The authoritative checklist (absent on `unchanged` probes). */
+    doc?: ItemsDoc;
+    /** True when `since` already covers the current revision. */
+    unchanged?: boolean;
 }
+/** Success envelope carrying a route's value. */
+export interface RouteOk<T> {
+    ok: true;
+    value: T;
+}
+/** Success envelope carrying a board view. */
+export type BoardRouteOk = RouteOk<BoardRouteView>;
+/** Success envelope carrying a checklist view. */
+export type ItemsRouteOk = RouteOk<ItemsRouteView>;
 /** Failure envelope carrying a stable business error code. */
 export interface BoardRouteFail {
     ok: false;
@@ -54,13 +82,19 @@ export interface BoardRouteFail {
     };
 }
 export type BoardRouteEnvelope = BoardRouteOk | BoardRouteFail;
-/** The service face the route needs (the real service or a test fake). */
+export type ItemsRouteEnvelope = ItemsRouteOk | BoardRouteFail;
+/** The service face the route needs (the real service or a test fake).
+ *
+ *  `itemsDoc` / `commitItems` are the SECOND document's two ends, beside the
+ *  board's two. The lease and the relay are UNIT-level and stay single. */
 export interface BoardRouteDeps {
     /** Settle the one-time storage init before any read/write. */
     ready(): Promise<void>;
     available(): boolean;
     doc(): BoardDoc;
     commit(commit: BoardCommit): Promise<BoardDoc>;
+    itemsDoc(): ItemsDoc;
+    commitItems(commit: ItemsCommit): Promise<ItemsDoc>;
     acquireLease(clientId: string, ttlMs?: number, active?: boolean): LeaseState;
     releaseLease(clientId: string): LeaseState;
     noteActivity(clientId: string | undefined): void;
@@ -75,12 +109,27 @@ export interface BoardRouteDeps {
  *  merge grammar normalizes every row/section, so this only checks the
  *  envelope shape (arrays/strings), never the data. */
 export declare function parseBoardCommit(body: unknown): BoardCommit | undefined;
+/** Extract a checklist commit from an untrusted body; undefined when unusable.
+ *
+ *  This document has NO sections — the checklist carries none — so its commit
+ *  is rows + claims + deletions and nothing else. Lifting the board's three
+ *  section fields onto it would be inventing state the document does not have,
+ *  and the same envelope rule (clientId, claims, deletes) is what both parsers
+ *  share above. */
+export declare function parseItemsCommit(body: unknown): ItemsCommit | undefined;
 /** The pure request processor (one prefix route, dispatched by path tail). */
 export declare function createBoardHandler(deps: BoardRouteDeps, base: string): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 /**
  * Register the board route (prefix) and own the service lifecycle: open the
  * persistence unit through the platform storage hub, serve once initialized,
  * dispose the unit on unload.
+ *
+ * ONE service serves the prefix, and it holds BOTH documents — the board at
+ * the root tail, the checklist at `/items`. The lease and the command relay
+ * ride along because they arbitrate the unit (one engine drives every
+ * document), not the board: their answers are carried on the board's view
+ * because that is the tail every replica bootstraps from, not because they
+ * belong to the board's document.
  * @param ctx - context carrying the webServer and storage services.
  * @param ns - the plugin namespace this route serves.
  * @returns the disposer removing the route and closing the service.

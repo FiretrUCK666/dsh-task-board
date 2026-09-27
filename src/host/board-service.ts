@@ -123,7 +123,7 @@ export const LEGACY_UNIT_DESCRIPTOR: BoardUnitDescriptor = {
  *  used to answer with the board alone, and the checklist was gone. So the
  *  value is what the medium holds and the caller picks its own document out of
  *  it; the next document needs a constant, not a change here. */
-export interface OpenedBoard {
+export interface OpenedDocuments {
   /** The live document-tree handle; every later write goes through it. */
   readonly unit: KvUnitLike
   /** Every record the declared table holds, by document name. */
@@ -177,7 +177,7 @@ export async function openBoardUnit(
   now: number,
   log: (message: string, error?: unknown) => void,
   retire: (options: RetireOptions) => Promise<RetireOutcome> = retireLegacyUnitFile,
-): Promise<OpenedBoard | undefined> {
+): Promise<OpenedDocuments | undefined> {
   let unit = await openUnit(BOARD_UNIT_DESCRIPTOR)
   if (unit === undefined) return undefined
   let documents = documentsOf(await unit.loadAll())
@@ -260,8 +260,19 @@ export interface BoardServiceDeps {
  * document's merge grammar resolves them. One lane, not one per document: the
  * two disciplines it buys are "the merge runs against the newest in-memory
  * document" and "one write in flight at a time", and both are pinned by tests.
+ *
+ * THE LEASE AND THE RELAY ARE UNIT-LEVEL ARBITRATIONS, not board facts, and
+ * they ride in this class because of the one thing they cannot route around:
+ * the backend gives a unit exactly one live handle, so everything that
+ * arbitrates or moves data in this unit has to be reachable from the one
+ * object holding it. Concretely — one engine drives time-based automation over
+ * BOTH documents, and a command relayed from a non-engine replica is executed
+ * by whichever replica holds the seat, whoever wrote the row. Reading the
+ * lease as "the board's lease" is the mistake this paragraph exists to
+ * prevent: it is the seat for the unit, and its state never mentions a
+ * document.
  */
-export class BoardDataService {
+export class DocumentService {
   private doc: BoardDoc = emptyBoardDoc(0)
   private items: ItemsDoc = emptyItemsDoc(0)
   private unit: KvUnitLike | undefined

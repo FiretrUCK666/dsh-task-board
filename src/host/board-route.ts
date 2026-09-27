@@ -6,9 +6,18 @@
  *                                     (?since=N answers unchanged for N >= revision)
  *   POST /api/<ns>/board            → commit {clientId, tasks, deleted, sections}
  *                                     → the authoritative document after the merge
+ *   GET  /api/<ns>/board/items      → the checklist document + its own revision
+ *                                     (?since=N answers unchanged for N >= revision)
+ *   POST /api/<ns>/board/items      → ItemsCommit {clientId, items, changed, deleted}
+ *                                     → the authoritative checklist after the merge
  *   POST /api/<ns>/board/lease      → {clientId, ttlMs?, release?} → lease state
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
+ *
+ * ONE route file, ONE envelope discipline, ONE CSRF guard: every POST tail
+ * passes the same `application/json` check before its body is even read, and a
+ * second document is a second TAIL of the same prefix — not a second handler,
+ * a second envelope, or a second content-type rule.
  *
  * The handler is a pure function over an injected service face, so the whole
  * protocol is unit-testable without a live server; `registerBoardRoute` wires
@@ -20,7 +29,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
-import { BoardDataService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
+import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
+import { DocumentService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
 import { readJsonBody } from './http-json.ts'
 
 /** The commit body size cap: the whole ledger travels per commit. */
@@ -44,11 +54,32 @@ export interface BoardRouteView {
   command?: { queued: boolean }
 }
 
-/** Success envelope carrying a board view. */
-export interface BoardRouteOk {
-  ok: true
-  value: BoardRouteView
+/** The checklist view — the same envelope, a document of its own.
+ *
+ *  `revision` is the CHECKLIST's revision, never the board's: a replica that
+ *  polls this tail watches a counter that only item writes move, so writing an
+ *  item never makes every device resync a board that did not change. */
+export interface ItemsRouteView {
+  /** False while the host serves no synced documents (replicas fall back). */
+  available: boolean
+  revision: number
+  /** The authoritative checklist (absent on `unchanged` probes). */
+  doc?: ItemsDoc
+  /** True when `since` already covers the current revision. */
+  unchanged?: boolean
 }
+
+/** Success envelope carrying a route's value. */
+export interface RouteOk<T> {
+  ok: true
+  value: T
+}
+
+/** Success envelope carrying a board view. */
+export type BoardRouteOk = RouteOk<BoardRouteView>
+
+/** Success envelope carrying a checklist view. */
+export type ItemsRouteOk = RouteOk<ItemsRouteView>
 
 /** Failure envelope carrying a stable business error code. */
 export interface BoardRouteFail {
@@ -57,23 +88,31 @@ export interface BoardRouteFail {
 }
 
 export type BoardRouteEnvelope = BoardRouteOk | BoardRouteFail
+export type ItemsRouteEnvelope = ItemsRouteOk | BoardRouteFail
 
 /** The shared malformed-request failure (same shape as the settings route). */
 const MALFORMED: BoardRouteFail = { ok: false, error: { code: 'internal', message: 'malformed request' } }
 
-/** Write one JSON envelope response (same discipline as the settings route). */
-function json(res: ServerResponse, envelope: BoardRouteEnvelope, status = 200): void {
+/** Write one JSON envelope response, for either document (same discipline as
+ *  the settings route): ONE writer, generic over the value it carries, so a
+ *  second document cannot grow a second response dialect. */
+function json<T>(res: ServerResponse, envelope: RouteOk<T> | BoardRouteFail, status = 200): void {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
   res.end(JSON.stringify(envelope))
 }
 
-/** The service face the route needs (the real service or a test fake). */
+/** The service face the route needs (the real service or a test fake).
+ *
+ *  `itemsDoc` / `commitItems` are the SECOND document's two ends, beside the
+ *  board's two. The lease and the relay are UNIT-level and stay single. */
 export interface BoardRouteDeps {
   /** Settle the one-time storage init before any read/write. */
   ready(): Promise<void>
   available(): boolean
   doc(): BoardDoc
   commit(commit: BoardCommit): Promise<BoardDoc>
+  itemsDoc(): ItemsDoc
+  commitItems(commit: ItemsCommit): Promise<ItemsDoc>
   acquireLease(clientId: string, ttlMs?: number, active?: boolean): LeaseState
   releaseLease(clientId: string): LeaseState
   noteActivity(clientId: string | undefined): void
@@ -83,35 +122,50 @@ export interface BoardRouteDeps {
   subscribe(listener: (event: BoardEvent) => void): () => void
 }
 
+/** The caller id every commit body must carry. One rule, both documents. */
+function clientIdOf(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined
+  const id = (body as Record<string, unknown>).clientId
+  return typeof id === 'string' && id !== '' && id.length <= 64 ? id : undefined
+}
+
+/** The deletions a replica observed, with the stamp each was computed against.
+ *  Shared by both documents' parsers: a delete means the same thing to a task
+ *  ledger and to a checklist, and one rule cannot be right in one place and
+ *  wrong in the other. */
+function parseDeletes(raw: unknown): ItemsCommit['deleted'] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((entry): { id: string; baseUpdatedAt: number } | undefined => {
+      if (typeof entry !== 'object' || entry === null) return undefined
+      const del = entry as Record<string, unknown>
+      if (typeof del.id !== 'string' || del.id === '') return undefined
+      const baseUpdatedAt = typeof del.baseUpdatedAt === 'number' && Number.isFinite(del.baseUpdatedAt) ? del.baseUpdatedAt : 0
+      return { id: del.id, baseUpdatedAt }
+    })
+    .filter((entry): entry is { id: string; baseUpdatedAt: number } => entry !== undefined)
+}
+
+/** Authorship claims: a plain id list (the grammar itself re-checks every
+ *  row; a claim can only vouch for content this replica carries anyway).
+ *  Shared by both documents' parsers, like {@link parseDeletes}. */
+function parseChangedIds(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string' && id !== '') : []
+}
+
 /** Extract a commit from an untrusted body; undefined when unusable. The
  *  merge grammar normalizes every row/section, so this only checks the
  *  envelope shape (arrays/strings), never the data. */
 export function parseBoardCommit(body: unknown): BoardCommit | undefined {
-  if (typeof body !== 'object' || body === null) return undefined
+  const clientId = clientIdOf(body)
+  if (clientId === undefined) return undefined
   const row = body as Record<string, unknown>
-  if (typeof row.clientId !== 'string' || row.clientId === '' || row.clientId.length > 64) return undefined
   const section = (value: unknown): { value: unknown; at: number } => {
     if (typeof value !== 'object' || value === null) return { value: undefined, at: 0 }
     const entry = value as Record<string, unknown>
     const at = typeof entry.at === 'number' && Number.isFinite(entry.at) ? entry.at : 0
     return { value: entry.value, at }
   }
-  const deleted = Array.isArray(row.deleted)
-    ? row.deleted
-      .map((entry): { id: string; baseUpdatedAt: number } | undefined => {
-        if (typeof entry !== 'object' || entry === null) return undefined
-        const del = entry as Record<string, unknown>
-        if (typeof del.id !== 'string' || del.id === '') return undefined
-        const baseUpdatedAt = typeof del.baseUpdatedAt === 'number' && Number.isFinite(del.baseUpdatedAt) ? del.baseUpdatedAt : 0
-        return { id: del.id, baseUpdatedAt }
-      })
-      .filter((entry): entry is { id: string; baseUpdatedAt: number } => entry !== undefined)
-    : []
-  // Authorship claims: a plain id list (the grammar itself re-checks every
-  // row; a claim can only vouch for content this replica carries anyway).
-  const changed = Array.isArray(row.changed)
-    ? row.changed.filter((id): id is string => typeof id === 'string' && id !== '')
-    : []
   // Section claims: PRESENT (even empty) = the claim protocol; ABSENT =
   // legacy LWW. Only the three known keys survive the filter.
   const sectionClaims = Array.isArray(row.sectionClaims)
@@ -121,14 +175,33 @@ export function parseBoardCommit(body: unknown): BoardCommit | undefined {
     )
     : undefined
   return {
-    clientId: row.clientId,
+    clientId,
     tasks: Array.isArray(row.tasks) ? row.tasks as BoardCommit['tasks'] : [],
-    changed,
+    changed: parseChangedIds(row.changed),
     sectionClaims,
-    deleted,
+    deleted: parseDeletes(row.deleted),
     cruise: section(row.cruise) as BoardCommit['cruise'],
     schedulePresets: section(row.schedulePresets) as BoardCommit['schedulePresets'],
     runPresets: section(row.runPresets) as BoardCommit['runPresets'],
+  }
+}
+
+/** Extract a checklist commit from an untrusted body; undefined when unusable.
+ *
+ *  This document has NO sections — the checklist carries none — so its commit
+ *  is rows + claims + deletions and nothing else. Lifting the board's three
+ *  section fields onto it would be inventing state the document does not have,
+ *  and the same envelope rule (clientId, claims, deletes) is what both parsers
+ *  share above. */
+export function parseItemsCommit(body: unknown): ItemsCommit | undefined {
+  const clientId = clientIdOf(body)
+  if (clientId === undefined) return undefined
+  const row = body as Record<string, unknown>
+  return {
+    clientId,
+    items: Array.isArray(row.items) ? row.items as ItemsCommit['items'] : [],
+    changed: parseChangedIds(row.changed),
+    deleted: parseDeletes(row.deleted),
   }
 }
 
@@ -159,6 +232,36 @@ function parseCommandBody(body: unknown): { clientId: string; command?: BoardCom
   return { clientId: row.clientId, command: { type: 'run', taskId: command.taskId, trigger, clientId: row.clientId } }
 }
 
+/** The revision a `?since=` probe claims to already hold, or NaN when the
+ *  param is absent.
+ *
+ *  `since` absent (Number(null) === 0 — the initial-fetch trap) vs a real
+ *  revision: only an explicit param may short-circuit a body. BOTH documents
+ *  read it through here, because "unchanged means unchanged" is one rule — a
+ *  replica that learned it twice would learn one of them wrong. */
+function sinceOf(url: URL): number {
+  const raw = url.searchParams.get('since')
+  return raw === null ? Number.NaN : Number(raw)
+}
+
+/** The view one document GET answers with: availability, that document's OWN
+ *  revision, the document itself, or the unchanged short-circuit.
+ *
+ *  ONE builder, both documents. A second copy of "is this probe already
+ *  covered?" would be a second answer to the same question, and the copy that
+ *  drifts is the one a replica trusts — so the probe that must not short-
+ *  circuit is the one that has to be right. */
+function documentGetView<T extends { revision: number }>(deps: BoardRouteDeps, url: URL, doc: T):
+    | { available: boolean; revision: number; unchanged: true }
+    | { available: boolean; revision: number; doc: T } {
+  const available = deps.available()
+  const since = sinceOf(url)
+  if (Number.isFinite(since) && since >= doc.revision) {
+    return { available, revision: doc.revision, unchanged: true }
+  }
+  return { available, revision: doc.revision, doc }
+}
+
 /** The pure request processor (one prefix route, dispatched by path tail). */
 export function createBoardHandler(
   deps: BoardRouteDeps,
@@ -183,21 +286,15 @@ export function createBoardHandler(
       return
     }
 
-    if (req.method === 'GET' && tail === '') {
-      // `since` is absent (Number(null) === 0 — the initial-fetch trap) vs a
-      // real revision: only an explicit param may short-circuit the body.
-      const sinceParam = url.searchParams.get('since')
-      const since = sinceParam === null ? Number.NaN : Number(sinceParam)
-      const doc = deps.doc()
-      const clientId = url.searchParams.get('clientId') ?? undefined
-      deps.noteActivity(clientId)
-      if (Number.isFinite(since) && since >= doc.revision) {
-        const view: BoardRouteView = { available: deps.available(), revision: doc.revision, unchanged: true }
-        json(res, { ok: true as const, value: view })
-        return
-      }
-      const view: BoardRouteView = { available: deps.available(), revision: doc.revision, doc }
-      json(res, { ok: true as const, value: view })
+    // ── GET: one document per tail, one since rule ──────────────────────────
+    if (req.method === 'GET' && (tail === '' || tail === '/items')) {
+      // The seat is UNIT-level, so a checklist read renews it exactly like a
+      // board read does: one engine, one lease, any document's traffic.
+      deps.noteActivity(url.searchParams.get('clientId') ?? undefined)
+      json(res, {
+        ok: true as const,
+        value: tail === '' ? documentGetView(deps, url, deps.doc()) : documentGetView(deps, url, deps.itemsDoc()),
+      })
       return
     }
 
@@ -207,6 +304,9 @@ export function createBoardHandler(
       return
     }
     // The CSRF discipline every plugin route shares: JSON content-type only.
+    // It sits ABOVE the tail dispatch on purpose — every POST tail of this
+    // prefix passes this one check, and a second document cannot grow a second
+    // content-type rule (nor a second body reader).
     const contentType = req.headers['content-type'] ?? ''
     if (!contentType.toLowerCase().startsWith('application/json')) {
       json(res, MALFORMED, 415)
@@ -228,6 +328,22 @@ export function createBoardHandler(
       const doc = await deps.commit(commit)
       const view: BoardRouteView = { available: true, revision: doc.revision, doc }
       json(res, { ok: true as const, value: view })
+      return
+    }
+
+    if (tail === '/items') {
+      const commit = parseItemsCommit(payload)
+      if (commit === undefined) {
+        json(res, MALFORMED)
+        return
+      }
+      if (!deps.available()) {
+        json(res, { ok: true as const, value: { available: false, revision: 0 } satisfies ItemsRouteView })
+        return
+      }
+      deps.noteActivity(commit.clientId)
+      const doc = await deps.commitItems(commit)
+      json(res, { ok: true as const, value: { available: true, revision: doc.revision, doc } satisfies ItemsRouteView })
       return
     }
 
@@ -304,6 +420,13 @@ function serveEvents(deps: BoardRouteDeps, url: URL, res: ServerResponse): void 
  * Register the board route (prefix) and own the service lifecycle: open the
  * persistence unit through the platform storage hub, serve once initialized,
  * dispose the unit on unload.
+ *
+ * ONE service serves the prefix, and it holds BOTH documents — the board at
+ * the root tail, the checklist at `/items`. The lease and the command relay
+ * ride along because they arbitrate the unit (one engine drives every
+ * document), not the board: their answers are carried on the board's view
+ * because that is the tail every replica bootstraps from, not because they
+ * belong to the board's document.
  * @param ctx - context carrying the webServer and storage services.
  * @param ns - the plugin namespace this route serves.
  * @returns the disposer removing the route and closing the service.
@@ -315,13 +438,15 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
   // ctx.get('storage') after boot settlement), never via inject: a
   // composition without the hub degrades to fallback mode, it must not
   // wedge the whole plugin.
-  const service = new BoardDataService({ openUnit: storageHubOpener(() => ctx.get('storage')) })
+  const service = new DocumentService({ openUnit: storageHubOpener(() => ctx.get('storage')) })
   void service.ensureInit()
   const deps: BoardRouteDeps = {
     ready: () => service.ensureInit(),
     available: () => service.available,
     doc: () => service.getDoc(),
     commit: commit => service.commit(commit),
+    itemsDoc: () => service.getItemsDoc(),
+    commitItems: commit => service.commitItems(commit),
     acquireLease: (clientId, ttlMs, active) => service.acquireLease(clientId, ttlMs, active),
     releaseLease: clientId => service.releaseLease(clientId),
     noteActivity: clientId => service.noteActivity(clientId),
