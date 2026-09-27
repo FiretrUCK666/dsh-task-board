@@ -497,7 +497,11 @@ schema 就是给同一件事再加一个控件。
 - **活性**（`session-lineage.ts` / `session-activity.ts`）：「还在工作吗」的唯一判定是
   `own ∨ descendant`，`unknown` 既不得读作 idle 去写台账、也不得读作 active 去长占。
   **裸值边界（改动即反向卡死）**：结算与看门狗（`execution.ts`、`zombieRoundEvent`、active-run
-  兜底、`cancelSpuriousExternal`、`reconcileBoundTask`、外源轮检测）一律继续读 `running` **原值**。
+  兜底、`cancelSpuriousExternal`、`reconcileBoundTask`、外源轮检测）一律继续读**原生会话表那
+  一份 `running`**——**局部变量名常是 `summary`，它就是 `byId[id]`**（`execution.ts` 写成
+  `const summary = sessions.list.getSnapshot().byId[sessionId]`，于是读的是 `summary.running`）。
+  按本条去搜 `byId[id].running` 只会搜到两处：**先搜 `summary.running` 与 `byId[…].running`**——
+  搜不到就等于没有那条例外。
 - **唯一推导**：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定；
   归档即时同步）。
 
@@ -622,6 +626,10 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
       没有理由的豁免与漏掉一个没有区别。`INTERNAL` 里以 `DEBT: ` 开头的理由是**如实记下的
       欠账**（人能在界面上做、目录还没收），每次运行都把笔数打出来，让缺口不会烂在看不见的
       地方。**新写的方法、改名的属性**：两个方向都报红，别把门禁降级成提醒。
+    - **说清不等于说得进去**：一句写在散文里的默认值，门禁读不到；`ParamSpec.default` 里的
+      同一个默认值，门禁与渲染器都读得到。**「说清」只解决了「人读到没读到」，而门禁与渲染器
+      读的是字段——散文里那句话对它们等于不存在。** 所以任何要跨表面同步的判定，都必须落在
+      字段上（「不传 = cron」要写成 `default`，不是写在 `summary` 里）。
 
 ## 测试（布局约定）
 

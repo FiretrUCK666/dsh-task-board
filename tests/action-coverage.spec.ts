@@ -21,7 +21,9 @@ import type { CoverageInput } from '../scripts/verify-action-coverage.mjs'
 
 const TWELVE = `'create', 'update', 'move', 'delete', 'run', 'speak', 'bind', 'automate', 'cruise', 'ack', 'navigate', 'query',`
 
-/** A two-action catalog: enough structure to be parsed, small enough to poison. */
+/** A two-action catalog: enough structure to be parsed, small enough to poison.
+ *  `params` replaces the whole params block, so a test can declare exactly the
+ *  parameter shapes it is about. */
 function catalog(overrides: Record<string, unknown> = {}) {
   const verb = overrides?.verb ?? 'create'
   const surface = overrides?.surface ?? 'ui+ai'
@@ -29,28 +31,31 @@ function catalog(overrides: Record<string, unknown> = {}) {
   const semanticOf = overrides?.semanticOf === undefined ? '' : `\n    semanticOf: '${overrides.semanticOf}',`
   const optional = overrides?.optional === true ? `, optional: true` : ''
   const requiredWhen = overrides?.requiredWhen === undefined ? '' : `, requiredWhen: '${overrides.requiredWhen}'`
+  const createParams = (overrides?.params as string | undefined)
+    ?? `\n      prompt: { about: '执行 Prompt'${optional}${requiredWhen} },`
+  const moveParams = (overrides?.moveParams as string | undefined)
+    ?? `\n      of: { about: '要移的卡' },`
+  const lane = overrides?.lane ?? 'document'
   return `
 export const ACTIONS = {
   'task.create': {
     verb: '${verb}',
     domain: 'board',
-    lane: 'document',
+    lane: '${lane}',
     danger: 'reversible',
     surface: '${surface}',
     summary: '建一张新卡。',
-    params: {
-      prompt: { about: '执行 Prompt'${optional}${requiredWhen} },
+    params: {${createParams}
     },${semantic}${semanticOf}
   },
   'task.move': {
     verb: 'move',
     domain: 'board',
-    lane: 'document',
+    lane: '${lane}',
     danger: 'guarded',
     surface: 'ui+ai',
     summary: '移栏。',
-    params: {
-      of: { about: '要移的卡' },
+    params: {${moveParams}
     },
   },
 } as const satisfies Record<string, ActionShape>
@@ -77,8 +82,9 @@ const BASE = {
   receivers: new Set(['controller', 'this']),
   controllerText: CONTROLLER,
   // The model-facing execution paths. The synthetic catalog offers two actions
-  // to the model, so a green baseline has a `case` for each of them.
-  agentToolsText: `function applyOne(id: string) {\n  switch (id) {\n    case 'task.create':\n    case 'task.move':\n      return 1\n    default:\n      return 0\n  }\n}\n`,
+  // to the model, so a green baseline has a `case` for each of them — and the
+  // engine branch needs a per-action gate, or the relay check fires.
+  agentToolsText: tools("    if (id !== 'task.run') { return 'refused' }\n    return relay()"),
   pendingExecution: {},
   coreExportNames: ['moveTaskToStatus', 'resolveCardDrop'],
   agentsText: '新增动作必须进 src/core/board-actions.ts。',
@@ -87,6 +93,13 @@ const BASE = {
     { path: 'src/client/board/Board.tsx', text: 'controller.createTask("a")\ncontroller.moveTask("a", "todo")\ncontroller.getSnapshot()\n' },
     { path: 'src/client/index.ts', text: 'sync.start()\n' },
   ],
+}
+
+/** An agent-tool source. `engineBranch` is the slice between the engine-lane
+ *  condition and the document-lane one, and `documentBody` is what the
+ *  document lane does — the two `case` lines the execution gate needs. */
+function tools(engineBranch: string, documentBody = "switch (id) {\n      case 'task.create':\n      case 'task.move':\n        return 1\n      default:\n        return 0\n    }") {
+  return `function applyOne(id: string) {\n  if (spec.lane === 'engine') {\n${engineBranch}\n  } else if (spec.lane === 'document') {\n    ${documentBody}\n  }\n}\n`
 }
 
 const input = (overrides: Partial<CoverageInput> = {}): CoverageInput => ({ catalogText: catalog(), ...BASE, ...overrides })
@@ -246,7 +259,7 @@ describe('1b — the OTHER direction: the model was told, and it cannot do it', 
     // An action the model is never offered cannot be a broken promise to it.
     expect(run({
       catalogText: catalog({ surface: 'ui' }),
-      agentToolsText: "case 'task.move':\n",
+      agentToolsText: tools("    if (id !== 'task.run') { return 'refused' }\n    return relay()", "switch (id) {\n      case 'task.move':\n        return 1\n      default:\n        return 0\n    }"),
     })).toEqual([])
   })
 
@@ -261,7 +274,139 @@ describe('1b — the OTHER direction: the model was told, and it cannot do it', 
   })
 })
 
-describe('2 — semantic honesty, including the direction that must stay quiet', () => {  it('catches a semantic action naming a function src/core does not export', () => {
+describe('1c — the relay must not forward a non-run as a run', () => {
+  it('catches an engine branch with no per-action gate at all', () => {
+    // The shape that actually shipped: generalised on `lane`, so creating a
+    // session, renaming one and speaking into one were all forwarded as "run
+    // this card". No `case` was missing, so the execution gate stayed green.
+    const out = findings({
+      catalogText: catalog({ lane: 'engine' }),
+      agentToolsText: tools('    return relay()'),
+    })
+    expect(out).toContain('the relay branch has NO per-action test')
+    expect(out).toContain("task.create: its lane is 'engine'")
+  })
+
+  it('catches an engine action recognised by name, even when the guard is fail-closed', () => {
+    // `id !== 'task.run'` refuses everything it does not name, so it cannot
+    // cause the incident today. It is still the shape that regrows it: add an
+    // engine action, forget the line, and it is forwarded as a run again. The
+    // fix is to decide from a catalog field, and the gate says so while the
+    // name-keyed guard is still in the file.
+    const out = findings({
+      catalogText: catalog({ lane: 'engine' }),
+      agentToolsText: tools("    if (id !== 'task.create') { return 'refused' }\n    return relay()"),
+    })
+    expect(out).toContain('recognises this engine action BY NAME')
+    expect(out).toContain('Decide from a catalog field instead')
+  })
+
+  it('accepts a guard keyed on a catalog field', () => {
+    expect(run({
+      catalogText: catalog({ lane: 'engine' }),
+      agentToolsText: tools("    if (ACTIONS[id].verb !== 'run') { return 'refused' }\n    return relay()"),
+    })).toEqual([])
+  })
+
+  it('follows the lane, not a list of names: a document-lane action is out of scope', () => {
+    // The negative test that matters. Nothing names `task.create` anywhere, so
+    // if the verdict came from a name list rather than from `lane`, moving the
+    // action to the document lane would change nothing — and it changes
+    // everything: the action leaves the engine set the check walks.
+    expect(run({
+      catalogText: catalog({ lane: 'document' }),
+      agentToolsText: tools('    return relay()'),
+    })).toEqual([])
+  })
+
+  it('reports an engine branch it cannot find instead of passing', () => {
+    expect(findings({ agentToolsText: 'function applyOne() { return 0 }' }))
+      .toContain('cannot find the engine lane branch')
+  })
+})
+
+describe('3 — parameter declarations, fields only', () => {
+  it('catches a boolean spelled as two strings', () => {
+    // The regression fingerprint: `oneOf: ['true','false']` reaches the host as
+    // a string, and the model reads an enum where there is a boolean.
+    const out = findings({
+      catalogText: catalog({ params: "\n      flag: { about: '开关', optional: true, oneOf: ['true', 'false'] }," }),
+    })
+    expect(out).toContain('oneOf lists \'true\'')
+    expect(out).toContain('Use `boolean: true`')
+  })
+
+  it('accepts the same parameter declared as a boolean', () => {
+    expect(run({
+      catalogText: catalog({ params: "\n      flag: { about: '开关', optional: true, boolean: true }," }),
+    })).toEqual([])
+  })
+
+  it('catches two conditional parameters with nothing that chooses between them', () => {
+    // The `session.hide` shape: "required when it is a session row" and
+    // "required when it is a round row", with no way to say which is true.
+    const out = findings({
+      catalogText: catalog({
+        params: "\n      session: { about: '会话', requiredWhen: '动的是会话行' },\n      round: { about: '轮次', requiredWhen: '动的是轮次行' },\n      title: { about: '标题', optional: true },",
+      }),
+    })
+    expect(out).toContain('are all conditionally required and no declared parameter discriminates')
+    // Once per ACTION, not once per parameter — the same unsatisfiable set
+    // repeated per param is noise that trains people to ignore the output.
+    expect(out.split('no declared parameter discriminates').length - 1).toBe(1)
+  })
+
+  it('accepts two conditional parameters that a declared parameter discriminates', () => {
+    expect(run({
+      catalogText: catalog({
+        params: "\n      kind: { about: '动哪一行', oneOf: ['session', 'round'] },\n      session: { about: '会话', requiredWhen: 'kind 是 session' },\n      round: { about: '轮次', requiredWhen: 'kind 是 round' },",
+      }),
+    })).toEqual([])
+  })
+
+  it('catches a condition naming an optional parameter whose absent case is unwritten', () => {
+    // The mode/cron case: omitting `mode` still means cron, and the literal
+    // reading of the enum does not say that.
+    const out = findings({
+      catalogText: catalog({
+        params: "\n      mode: { about: '模式', optional: true, oneOf: ['cron', 'chain'] },\n      cron: { about: '五段 cron', requiredWhen: 'mode 是 cron' },",
+      }),
+    })
+    expect(out).toContain('but mode is optional and has no `default`')
+  })
+
+  it('accepts the same pair once the absent case is declared', () => {
+    expect(run({
+      catalogText: catalog({
+        params: "\n      mode: { about: '模式', optional: true, oneOf: ['cron', 'chain'], default: '不传 = cron' },\n      cron: { about: '五段 cron', requiredWhen: 'mode 是 cron' },",
+      }),
+    })).toEqual([])
+  })
+
+  it('applies the same rule to appliesWhen, not just requiredWhen', () => {
+    // `appliesWhen` is the same load-bearing fact in different words: this
+    // parameter only means anything under a condition, so its absent case is
+    // just as much a question the fields have to answer.
+    const out = findings({
+      catalogText: catalog({
+        params: "\n      scope: { about: '标到哪一层', optional: true, oneOf: ['task', 'all'] },\n      who: { about: '对谁', appliesWhen: 'scope 不是 all' },",
+      }),
+    })
+    expect(out).toContain('appliesWhen "scope 不是 all"')
+    expect(out).toContain('but scope is optional and has no `default`')
+  })
+
+  it('accepts an appliesWhen whose named optional parameter states its absent case', () => {
+    expect(run({
+      catalogText: catalog({
+        params: "\n      scope: { about: '标到哪一层', optional: true, oneOf: ['task', 'all'], default: '不传 = task' },\n      who: { about: '对谁', appliesWhen: 'scope 不是 all' },",
+      }),
+    })).toEqual([])
+  })
+})
+
+describe('2 — semantic honesty, including the direction that must stay quiet', () => {
+  it('catches a semantic action naming a function src/core does not export', () => {
     expect(findings({ catalogText: catalog({ semantic: true, semanticOf: 'notARealFunction' }) }))
       .toContain('which src/core/ does not export')
   })

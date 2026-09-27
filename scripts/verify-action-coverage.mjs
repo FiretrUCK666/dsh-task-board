@@ -243,21 +243,33 @@ const INTERNAL = {
  * The table is meant to SHRINK. A paid entry is a finding, not a silent pass:
  * that is the difference between a ledger and a permanent allow-list, which is
  * what a table nobody has to prune inevitably becomes.
+ *
+ * ── A `case` THAT ONLY REFUSES IS NOT AN EXECUTION PATH ─────────────────────
+ * This gate counts a `case` as the action being executable, and that judgment
+ * is right — but it is easy to fool from the other side. Three engine actions
+ * each got a `case` whose entire body was a refusal, and the gate promptly
+ * reported their debt as PAID while the actions were still unusable. A refusal
+ * is a third kind of line, and it was a duplicate one: the fall-through already
+ * refuses everything the relay does not carry, so those cases said the same
+ * thing twice — and the duplicate is what the gate misread as progress.
+ *
+ * So before writing a `case`, ask what that line actually DOES: a document
+ * change, a relay, or a refusal? **Only the first two are a `case`; the refusal
+ * belongs to the fall-through.** The judgment was NOT changed to suit that
+ * incident — "is there a line of code deciding how this action goes" is the
+ * right question, and a case that only says no does not answer it. It simply
+ * should not have been written.
  */
 const NO_EXECUTION = 'NO-EXECUTION: '
 const PENDING_EXECUTION = {
   'task.duplicate': NO_EXECUTION + '目录已承诺模型能复制一张卡，host 的执行路径还没接上',
-  'task.run': NO_EXECUTION + '目录已承诺模型能触发一次执行，host 的执行路径还没接上',
-  'task.comment': NO_EXECUTION + '目录已承诺模型能对某个会话发言，host 的执行路径还没接上',
+  'task.comment': NO_EXECUTION + 'host 侧的执行路径还没接上；这条动作的效果不是一次运行，工具不会把它转发给引擎',
   'task.cancelComment': NO_EXECUTION + '目录已承诺模型能撤掉排队的评论轮次，host 的执行路径还没接上',
-  'board.cruise': NO_EXECUTION + '目录已承诺模型能开关巡航与并发上限，host 的执行路径还没接上',
   'rule.create': NO_EXECUTION + '目录已承诺模型能建会话规则，host 的执行路径还没接上',
   'rule.update': NO_EXECUTION + '目录已承诺模型能改会话规则，host 的执行路径还没接上',
-  'rule.delete': NO_EXECUTION + '目录已承诺模型能删会话规则，host 的执行路径还没接上',
-  'session.create': NO_EXECUTION + '目录已承诺模型能按运行配置新建会话，host 的执行路径还没接上',
+  'session.create': NO_EXECUTION + 'host 侧的执行路径还没接上；这条动作的效果不是一次运行，工具不会把它转发给引擎',
   'session.bind': NO_EXECUTION + '目录已承诺模型能挂来源会话/工作区，host 的执行路径还没接上',
-  'session.rename': NO_EXECUTION + '目录已承诺模型能给会话改名，host 的执行路径还没接上',
-  'session.reorder': NO_EXECUTION + '目录已承诺模型能调会话列顺序，host 的执行路径还没接上',
+  'session.rename': NO_EXECUTION + 'host 侧的执行路径还没接上；这条动作的效果不是一次运行，工具不会把它转发给引擎',
   'preset.create': NO_EXECUTION + '目录已承诺模型能存预设，host 的执行路径还没接上',
   'preset.update': NO_EXECUTION + '目录已承诺模型能改预设或设默认，host 的执行路径还没接上',
   'preset.delete': NO_EXECUTION + '目录已承诺模型能删预设，host 的执行路径还没接上',
@@ -320,6 +332,7 @@ function readCatalog(source) {
     const block = table.slice(from, to)
     const verb = /^\s{4}verb:\s*'([^']*)'/m.exec(block)
     const surface = /^\s{4}surface:\s*'([^']*)'/m.exec(block)
+    const lane = /^\s{4}lane:\s*'([^']*)'/m.exec(block)
     const semantic = /^\s{4}semantic:\s*true\b/m.test(block)
     const semanticOf = /^\s{4}semanticOf:\s*'([^']*)'/m.exec(block)
     const paramsAt = /^\s{4}params:\s*\{/m.exec(block)
@@ -349,6 +362,12 @@ function readCatalog(source) {
           params.push({
             name: entries[p][1],
             optional: /\boptional:\s*true\b/.test(spec),
+            boolean: /\bboolean:\s*true\b/.test(spec),
+            hasRange: /\brange:\s*\{/.test(spec),
+            hasObject: /\bobject:\s*\[/.test(spec),
+            hasList: /\blist:\s*(?:'|object|\{)/.test(spec),
+            oneOf: oneOfValues(spec),
+            default: /\bdefault:\s*'([^']*)'/.exec(spec)?.[1],
             requiredWhen: /\brequiredWhen:\s*'([^']*)'/.exec(spec)?.[1],
             appliesWhen: /\bappliesWhen:\s*'([^']*)'/.exec(spec)?.[1],
           })
@@ -359,6 +378,7 @@ function readCatalog(source) {
       id: idLines[i][1],
       verb: verb === null ? undefined : verb[1],
       surface: surface === null ? undefined : surface[1],
+      lane: lane === null ? undefined : lane[1],
       semantic,
       semanticOf: semanticOf === null ? undefined : semanticOf[1],
       params,
@@ -384,6 +404,16 @@ function coreExports(files) {
     }
   }
   return names
+}
+
+/** The string values of a `oneOf`, or undefined when the param declares none.
+ *  The array can be a reference (`oneOf: MOVABLE`) rather than a literal, and
+ *  that counts as "declared a closed set" — the fake-boolean check only needs
+ *  to see the two boolean spellings when they are written out. */
+function oneOfValues(spec) {
+  const at = /\boneOf:\s*\[([^\]]*)\]/.exec(spec)
+  if (at === null) return undefined
+  return [...at[1].matchAll(/'([^']*)'/g)].map(m => m[1])
 }
 
 /** Every `receiver.method(` call in the scan roots, restricted to methods that
@@ -420,6 +450,51 @@ function methodBindings(ids, bindings) {
   }
   return claimedBy
 }
+
+/**
+ * The engine-relay branch — the one place an action that is NOT a run can be
+ * silently forwarded as one. Returns the slice, or null if it cannot be found
+ * (which is a finding, never a skip).
+ */
+function engineBranch(toolsSource) {
+  const at = toolsSource.search(/lane\s*===\s*'engine'/)
+  if (at === -1) return null
+  const after = toolsSource.indexOf("lane === 'document'", at)
+  const end = after === -1 ? Math.min(toolsSource.length, at + 2000) : after
+  return toolsSource.slice(at, end)
+}
+
+/**
+ * Two things this gate KNOWS IT CANNOT CHECK, and why. Both were looked for
+ * and both are real gaps; neither has a field-level detector, and inventing one
+ * that guesses at prose would be worse than the gap (a gate that reports a
+ * confident wrong answer is how a correct catalog loses its protection).
+ *
+ * ── 1. "SUMMARY PROMISES SOMETHING THE PARAMS CANNOT DELIVER" ────────────────
+ * The real instance: `task.schedule` said 「上/解排期」 while `enabled` was
+ * optional with no stated absent case, so the model could not tell what omitting
+ * it meant. The machine-readable half of that promise is the `default` field,
+ * and 3c/3d above now police it. The prose half cannot be policed: deciding
+ * that a sentence "promises a switch" means deciding what a switch is, in a
+ * language this script does not parse. What would make it gateable: a declared
+ * field that carries the promise instead of the sentence — e.g. a
+ * `capabilities: string[]` the renderer prints, so the promise has a shape.
+ *
+ * ── 2. VERB SEMANTIC OVERLAP (`update` covering four kinds of change,
+ *        `create` quietly containing `bind`, `move` quietly also marking read)
+ *        ────────────────────────────────────────────────────────────────────
+ * `semantic: true` already means "this action means more than its field writes,
+ * and the UI and the tool must share one implementation", and the semanticOf
+ * check above holds that to a real exported function. But the overlap INSIDE a
+ * verb family has no field at all: `task.approve` is a move that also marks
+ * read, and the ONLY place that says so is its `summary` ("动词是 move，但读
+ * 状态也一起变了"). Rewrite that sentence and nothing here rings — there is
+ * nothing left to read. What would make it gateable: a declared field such as
+ * `alsoDoes?: string[]` naming the extra effect, at which point the check is
+ * one line and the summary becomes a human convenience rather than the only
+ * authority. Until then: **this is disambiguated by prose, and prose is not
+ * checkable.**
+ */
 
 /** Every action id the agent tool has a `case` for — the execution paths that
  *  really exist. Literal on purpose (see {@link PENDING_EXECUTION}). */
@@ -603,6 +678,98 @@ export function actionCoverageFindings(input) {
   // "we decided that" is exactly the verdict that must never read as "we
   // forgot" — the difference decides whether the fix is to add a row or to
   // change nothing.
+  // 3. parameter declarations. Fields only: every one of these reads a DECLARED
+  // shape, never a sentence's meaning. A gate that guesses at prose is how you
+  // get a confident wrong answer with a green light.
+  for (const action of catalog.actions) {
+    const names = new Set(action.params.map(p => p.name))
+    // 3b is a property of the ACTION, not of a parameter — running it inside
+    // the per-param loop reported the same unsatisfiable set once per param.
+    //
+    // SCOPE, WRITTEN DOWN SO THE NEXT PERSON DOES NOT ASSUME MORE: this asks
+    // "NOT ONE conditionally-required parameter here is discriminated". It is
+    // NOT "every cluster of conditional parameters needs its own
+    // discriminator". An action may legitimately mix two discriminated
+    // families, and the stricter reading fires on exactly that case. Tightening
+    // was considered and refused on purpose: a false positive gets the whole
+    // gate switched off, while a miss only leaves it incomplete — and a gate
+    // that is switched off protects nothing at all. Gap beats noise here.
+    const conditional = action.params.filter(p => p.requiredWhen !== undefined)
+    if (conditional.length >= 2) {
+      const discriminated = conditional.some(c =>
+        [...names].some(name => name !== c.name && new RegExp(`\\b${name}\\b`).test(c.requiredWhen)))
+      if (!discriminated) {
+        fail(`${action.id}: ${conditional.map(c => c.name).join(' and ')} are all conditionally required and no declared parameter discriminates between them — the caller has no way to say which condition holds, so the condition set is unsatisfiable. Add the parameter that chooses (e.g. a oneOf of what is being acted on) and name it in the conditions`)
+      }
+    }
+    for (const param of action.params) {
+      // 3a. A boolean spelled as two strings is a lie about the type: the host
+      // reads the string (truthy, or refused) and the model reads an enum.
+      for (const value of param.oneOf ?? []) {
+        if (value === 'true' || value === 'false') {
+          fail(`${action.id}.${param.name}: oneOf lists '${value}' — that is a boolean wearing an enum's clothes. Use \`boolean: true\`; a string here reaches the host as a string`)
+        }
+      }
+      // 3c. A condition that names an OPTIONAL parameter whose "not given" case
+      // is not the obvious one: omitting it silently means something the literal
+      // reading does not say. `appliesWhen` gets the same treatment as
+      // `requiredWhen` (3d) because it is the same field-level fact wearing a
+      // different word: this parameter only means anything under a condition,
+      // so its absent case is exactly as load-bearing.
+      for (const name of names) {
+        if (name === param.name) continue
+        for (const [field, text] of [['requiredWhen', param.requiredWhen], ['appliesWhen', param.appliesWhen]]) {
+          if (text === undefined || !new RegExp(`\\b${name}\\b`).test(text)) continue
+          const named = action.params.find(p => p.name === name)
+          if (named?.optional === true && named.default === undefined) {
+            fail(`${action.id}.${param.name}: ${field} "${text}" — but ${name} is optional and has no \`default\`, so what omitting it means is unwritten. Say it in ${name}.default (the absent case can differ from the literal reading)`)
+          }
+        }
+      }
+    }
+  }
+
+  // 1c. the relay's own routing. An engine action that is not a run must never
+  // be forwarded as one. The shape that caused the incident had no per-action
+  // test at all — generalised on `lane`, so creating a session, renaming one
+  // and speaking into one were all forwarded as "run this card" — and because
+  // no `case` was missing, the execution gate above stayed green through it.
+  // The fault was a WRONG DEFAULT, not a missing line.
+  //
+  // Two rules, both mechanical:
+  //   1. the branch must test the action at all. No test = every engine action
+  //      is relayed, which is the incident exactly.
+  //   2. an engine action must not be RECOGNISED BY ITS NAME. A name is a line
+  //      someone has to remember; the moment a new engine action appears and
+  //      nobody adds the line, it is relayed as a run again. Keying the
+  //      decision on a catalog field is what keeps the branch right on its own.
+  // Both are findings: a name-keyed guard is safe TODAY (it refuses what it does
+  // not name) but it is the shape that regrows the bug, and a guard that is
+  // being moved to the structural form should be told so while it is still here.
+  const engine = catalog.actions.filter(a => a.lane === 'engine').map(a => a.id)
+  const branch = engineBranch(input.agentToolsText ?? '')
+  if (branch === null) {
+    fail('cannot find the engine lane branch in src/host/agent/tools.ts — the "route engine actions here" condition was not found, so the relay routing cannot be checked. This is a FINDING, not a skip')
+  } else {
+    // A per-action test, in either shape: a comparison against `id`, a switch on
+    // it, a set membership test, OR a catalog lookup keyed by it. The last one
+    // matters — `ACTIONS[id].verb !== 'run'` IS a per-action gate, and a check
+    // that failed to see it would report the correct implementation as broken.
+    const gated = /\bid\s*(?:!==|===)|switch\s*\(\s*id\s*\)|\.has\(\s*id\s*\)|ACTIONS\s*\[\s*id\s*\]/.test(branch)
+    if (!gated) {
+      for (const id of engine) {
+        fail(`${id}: its lane is 'engine', and the relay branch has NO per-action test — every engine action is forwarded as "run this card", so anything that is not a run (a session, a rename, a message) is silently relayed as one. Add a per-action gate that refuses the ones the relay does not carry`)
+      }
+    }
+    for (const id of engine) {
+      if (new RegExp(`'${id}'`).test(branch)) {
+        fail(`${id}: the relay branch recognises this engine action BY NAME ('${id}'). A name is a line someone has to remember — add an engine action, forget the line, and it is forwarded as a run again. Decide from a catalog field instead (the verb, or a lane the relay does not carry)`)
+      }
+    }
+  }
+
+  notes.push(`engine lane: ${engine.length} action(s) the catalog routes through the engine: ${engine.join(', ') || 'none'}`)
+
   const debt = Object.entries(internal).filter(([, reason]) => reason.startsWith(DEBT)).map(([m]) => m)
   const notForModel = Object.entries(internal).filter(([, reason]) => reason.startsWith(NOT_FOR_MODEL)).map(([m]) => m)
   const plain = Object.keys(internal).length - debt.length - notForModel.length
