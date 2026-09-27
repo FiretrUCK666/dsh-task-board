@@ -416,7 +416,12 @@ describe('board route over a real HTTP server', () => {
     const command = frames.find(f => f.type === 'command')
     expect(command).toBeDefined()
     if (command?.type === 'command') {
-      expect(command.command.taskId).toBe('t-smoke')
+      // Narrows on the carrier: the relay carries four kinds of command, and
+      // only `run` names a task. A reader that assumed otherwise would read a
+      // rename as a task id.
+      if (command.command.type === 'run') {
+        expect(command.command.taskId).toBe('t-smoke')
+      }
     }
   })
 

@@ -4411,6 +4411,44 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
     expect(await controller.renameTaskSession(task.id, 's-1', '   ')).toMatchObject({ ok: false })
     expect(await controller.renameTaskSession('nope', 's-1', '名')).toMatchObject({ ok: false })
   })
+
+  it('renameSession renames the session itself, with no card in the question', async () => {
+    // The second question, not a second copy: renameTaskSession asks "what is
+    // the session hanging on THIS card called" and refuses a session unrelated
+    // to it; this asks "what is this session called", which is the only
+    // question when the caller holds no card — a session bound to two cards has
+    // two card-scoped answers and exactly one session-scoped one.
+    const calls: Array<[string, string]> = []
+    const stub = new StubExec() as StubExec & {
+      renameSession?: (sessionId: string, title: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    }
+    stub.renameSession = async (sessionId, title) => {
+      calls.push([sessionId, title])
+      return { ok: true as const }
+    }
+    const { controller } = makeController(stub as unknown as StubExec)
+    // Deliberately NOT bound to any card: a rename must not need one.
+    expect(await controller.renameSession('s-free', ' 新名 ')).toEqual({ ok: true })
+    expect(calls).toEqual([['s-free', '新名']])
+  })
+
+  it('renameSession refuses a blank title, and says so when no channel exists', async () => {
+    const stub = new StubExec() as StubExec & {
+      renameSession?: (sessionId: string, title: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    }
+    stub.renameSession = async () => ({ ok: true as const })
+    const { controller } = makeController(stub as unknown as StubExec)
+    // A session cannot be UN-titled, only re-titled — the same native contract
+    // the card-scoped path honours, because both land on the same write.
+    expect(await controller.renameSession('s-1', '   ')).toMatchObject({ ok: false, error: 'empty title' })
+
+    const bare = new StubExec() as StubExec & {
+      renameSession?: (sessionId: string, title: string) => Promise<{ ok: true } | { ok: false; error: string }>
+    }
+    delete bare.renameSession
+    const without = makeController(bare as unknown as StubExec)
+    expect(await without.controller.renameSession('s-1', '名')).toMatchObject({ ok: false })
+  })
 })
 
 describe('session automation rules (给会话定时发指令)', () => {

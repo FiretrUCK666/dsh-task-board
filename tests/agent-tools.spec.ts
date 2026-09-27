@@ -274,19 +274,33 @@ describe('the relay only carries what it can actually carry', () => {
     expect(result.enginePending).toEqual(['跑一下'])
   })
 
-  it('an engine action that is NOT a run is refused, never relayed as one', async () => {
-    // The relay can only say "run this card". Forwarding a rename or a create
-    // to it would RUN THE CARD instead of doing what was asked — a silently
-    // wrong write, which is worse than a refusal a model can see and work
-    // around. This is the case the structural shortcut has to refuse.
+  it('an engine action rides the carrier the CATALOG names, never a guessed one', async () => {
+    // The catalog says which carrier each action rides; this file only builds
+    // what that carrier asks for. Forwarding a rename as a run would RUN THE
+    // CARD instead of renaming anything — a silently wrong action, which is
+    // worse than a refusal. So: the command's own `type` must be the carrier
+    // the action declared, and the payload must carry that carrier's fields.
     const board = face()
-    const relayed: string[] = []
+    const relayed: unknown[] = []
     board.seed({ ...emptyBoardDoc(NOW), tasks: [card('要改名的卡')] })
-    board.submitCommand = (command) => { relayed.push(command.type); return { queued: true } }
-    const result = await runBatch(deps(board), { ops: [{ op: 'session.rename', payload: { of: '要改名的卡', session: 's-1', title: '新名字' } }] })
-    expect(relayed).toEqual([])
-    expect(result.ok).toBe(false)
-    expect(result.reports[0]?.detail).toContain('跑错东西')
+    board.submitCommand = (command) => { relayed.push(command); return { queued: true } }
+    const renamed = await runBatch(deps(board), { ops: [{ op: 'session.rename', payload: { of: '要改名的卡', session: 's-1', title: '新名字' } }] })
+    expect(renamed.ok).toBe(true)
+    // `of` is the catalog's ADDRESSING (which card this belongs to); the
+    // carrier's own fields are the session and the name. The tool passes what
+    // the carrier asks for and does not invent a field for it.
+    expect(relayed).toEqual([{ type: 'session.rename', sessionId: 's-1', title: '新名字', clientId: 'model' }])
+    // The receipt names what the engine was asked to do, so a queued request
+    // never reads as a finished one.
+    expect(renamed.reports[0]?.detail).toContain('改会话名')
+    expect(renamed.enginePending).toEqual(['新名字'])
+
+    // A comment carries its own fields, and refuses without the ones it needs.
+    const commented = await runBatch(deps(board), { ops: [{ op: 'task.comment', payload: { of: '要改名的卡', session: 's-1', text: '接着说' } }] })
+    expect(commented.ok).toBe(true)
+    expect(relayed[1]).toEqual({ type: 'comment', taskId: 't-要改名的卡', sessionId: 's-1', text: '接着说', clientId: 'model' })
+    const empty = await runBatch(deps(board), { ops: [{ op: 'task.comment', payload: { of: '要改名的卡', session: 's-1', text: '  ' } }] })
+    expect(empty.reports[0]?.detail).toContain('是空的')
   })
 })
 

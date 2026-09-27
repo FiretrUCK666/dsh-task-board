@@ -1891,6 +1891,40 @@ export class BoardController {
     if (!related.some(entry => entry.sessionId === sessionId)) {
       return { ok: false, error: 'session does not belong to this task' }
     }
+    return this.writeSessionTitle(sessionId, trimmed)
+  }
+
+  /**
+   * Rename the native session ITSELF, with no card in the question.
+   *
+   * WHY THIS IS A SECOND METHOD AND NOT A DUPLICATE. The two ask different
+   * questions. {@link renameTaskSession} asks "what is the session hanging on
+   * THIS card called", and it earns its `taskId` by refusing a session that is
+   * not related to that card — a card-scoped question with a card-scoped guard.
+   * This one asks "what is this session called", full stop, which is the only
+   * question when the caller has no card: a session dragged into two cards at
+   * once has two card-scoped answers and exactly one session-scoped one, and
+   * picking a card to satisfy a rename would be inventing a question nobody
+   * asked. Both land on the same write.
+   *
+   * The rename is a property of the native session, not of this plugin: it is
+   * the OFFICIAL user-title write, so the native sidebar, every board row and
+   * every future reload read one durable title.
+   */
+  async renameSession(sessionId: string, title: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    return this.writeSessionTitle(sessionId, title.trim())
+  }
+
+  /**
+   * The one write both rename paths share, so the accepted-title contract (the
+   * native rename normalizes a blank title to invalid — a session cannot be
+   * UN-titled, only re-titled) lives in exactly one place. The blank check is
+   * repeated in {@link renameTaskSession} on purpose: the ORDER of that method's
+   * refusals is part of its contract, and this one is the shared gate rather
+   * than a second rule.
+   */
+  private async writeSessionTitle(sessionId: string, trimmed: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (trimmed === '') return { ok: false, error: 'empty title' }
     const renamed = await this.deps.exec.renameSession?.(sessionId, trimmed)
     if (renamed === undefined) return { ok: false, error: 'rename channel unavailable' }
     if (!renamed.ok) return renamed

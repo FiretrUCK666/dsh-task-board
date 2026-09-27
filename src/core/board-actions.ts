@@ -186,22 +186,24 @@ export interface ActionShape {
   readonly params: Readonly<Record<string, ParamSpec>>
   readonly surface: ActionSurface
   /**
-   * The CARRIER this action's effect travels on when the engine has to perform
-   * it, and what that carrier MEANS. `run` = "run the card named by `of`, once".
+   * The CARRIER this action's effect travels on when a non-engine replica has
+   * to ask the engine for it — the carrier's name, and with it what that carrier
+   * MEANS: `run` runs the card named by `of`; `comment` puts a line of text into
+   * a named session; `session.create` opens a session and binds it; and so on.
    *
-   * WHOSE FACT THIS IS: the engine owns the carrier, and the catalog owns which
+   * WHOSE FACT THIS IS: the engine owns the carriers, and the catalog owns which
    * actions ride which one. A relay that decides by reading action NAMES is a
-   * relay that will one day forward an action whose effect is not a run — and
-   * that day is silent: the write lands where nobody looks. So "may this be
-   * relayed as a run" is a field in this table, not a string comparison in the
-   * host.
+   * relay that will one day forward an action onto a carrier that cannot carry
+   * it — and that day is silent: a comment forwarded as a run spends a run and
+   * delivers no text. So "which carrier" is a field in this table, and the host
+   * only switches on it.
    *
-   * OPTIONAL ON PURPOSE, and its absence is a statement rather than a gap:
-   * `lane: 'engine'` WITHOUT a `relay` means "the engine performs this, and its
-   * effect is NOT a run" — a comment, a session rename, creating a session. That
-   * is a decision, and it is what the name-based relay used to wave through.
+   * OPTIONAL ON PURPOSE, and its absence is a statement rather than a gap: an
+   * action with NO `relay` cannot be relayed at all, whatever its lane. That
+   * covers both "the engine does this itself" and "this writes a document
+   * instead" — and it is the one thing a host must refuse rather than guess.
    */
-  readonly relay?: 'run'
+  readonly relay?: 'run' | 'comment' | 'session.create' | 'session.rename'
   /** Set when the action has meaning beyond its field writes, so the UI and the
    *  tool must share one implementation. Then `semanticOf` is required. */
   readonly semantic?: true
@@ -382,10 +384,7 @@ export const ACTIONS = {
     lane: 'engine',
     danger: 'guarded',
     surface: 'ui+ai',
-    // The one action whose effect IS a run, and the only one that says so. The
-    // other engine actions (comment, session rename, session create) perform
-    // engine work whose effect is not a run, and they say nothing — which is a
-    // decision, not an omission.
+    // The one action whose carrier is a run.
     relay: 'run',
     summary: '立刻跑一次这张卡。会真开会话、真花 token；没有浏览器持席位时只能排队，引擎上线才补发。',
     params: {
@@ -399,7 +398,10 @@ export const ACTIONS = {
     lane: 'engine',
     danger: 'guarded',
     surface: 'ui+ai',
-    summary: '对这张卡的某个会话发一条消息，接着上次的对话继续。排队还是插话由用户的开关定，不接受指定。',
+    // A comment rides its OWN carrier, not the run one: it has to reach a
+    // session, and forwarded as a run it would spend a run and deliver no text.
+    relay: 'comment',
+    summary: '对某个会话说一句话，接着上次的对话继续。它骑的是**发言**那条载波，不是 run 载波——**走 run 中继只会白跑一次卡，那句话一个字也发不出去**。排队还是插话由用户的开关定，不接受指定。',
     params: {
       of: { about: '目标卡' },
       session: { about: '目标会话', requiredWhen: '这张卡挂了不止一个会话时必须指明' },
@@ -543,7 +545,10 @@ export const ACTIONS = {
     lane: 'engine',
     danger: 'guarded',
     surface: 'ui+ai',
-    summary: '按给定的运行配置建一条新的原生会话，**并且同时把它挂到这张卡上**——所以这条既是 create 也是 bind，不给 of 就没法用（要挂来源但不想建会话，去 session.bind）。卡本身不动：不产生执行记录、不进派发队列、不碰任何自动化。会话是原生侧真实存在的东西，绑定可以摘掉，关掉它要用户自己在原生界面做。会话创建在宿主缺席时直接失败，不会假装排队。',
+    // Opening a session is not running a card; it rides the carrier that opens a
+    // session, and forwarded as a run it would build no session at all.
+    relay: 'session.create',
+    summary: '按给定的运行配置建一条新的原生会话，**并且同时把它挂到这张卡上**——所以这条既是 create 也是 bind，不给 of 就没法用（要挂来源但不想建会话，去 session.bind）。它骑的是**建会话**那条载波，不是 run 载波——**走 run 中继同样只会白跑一次卡，会话不会被建出来**。卡本身不动：不产生执行记录、不进派发队列、不碰任何自动化。会话是原生侧真实存在的东西，绑定可以摘掉，关掉它要用户自己在原生界面做。会话创建在宿主缺席时直接失败，不会假装排队。',
     params: {
       of: { about: '要挂到哪张卡上' },
       title: {
@@ -592,10 +597,16 @@ export const ACTIONS = {
     lane: 'engine',
     danger: 'guarded',
     surface: 'ui+ai',
-    summary: '给这个会话改个显示用的名字——改的是**原生侧那条会话**的名字，不是插件里这张卡的标题（卡标题走 task.update 的 title）。动词是 update，宾语却在插件之外。',
+    // Renaming is not running: it rides the rename carrier, and forwarded as a
+    // run it would cost a run and change no name.
+    relay: 'session.rename',
+    summary: '给一个会话改它的显示名——改的是**原生侧那条会话**的名字，不是插件里这张卡的标题（卡标题走 task.update 的 title）。**不用先知道是哪张卡**：这条动作的目标就是那条会话，而它会不会出现在某张卡上由那张卡的 binds 决定，与改名无关（为改个名字先去查一遍卡，是凭空多一轮）。动词是 update，宾语却在插件之外。它骑的是**改名**那条载波，不是 run 载波——**改名字不触发任何执行，走 run 中继同样只会白跑一次卡，名字不会改**。',
     params: {
-      of: { about: '目标卡' },
-      session: { about: '要改名的会话' },
+      // No `of`: a required parameter with nowhere to sit in the carrier is a
+      // parameter that can never be satisfied, and the tool must not invent a
+      // field to satisfy it. What gets renamed is the session; which cards show
+      // it is their binds' business, not this action's.
+      session: { about: '要改名的会话（会话 id）' },
       title: { about: '新名字' },
     },
   },

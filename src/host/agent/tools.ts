@@ -64,7 +64,7 @@ import {
   type ParamSpec,
 } from '../../core/board-actions.ts'
 import { QUALIFIER_KEYS, completeBoardQuery } from '../../core/task-search.ts'
-import { clampCruiseLimit, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
+import { clampCruiseLimit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
 import { applyItemsCommit, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
 import { createTask, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import type { SessionRule } from '../../core/automation.ts'
@@ -101,8 +101,10 @@ export interface ToolCommitFace {
   getItemsDoc(): ItemsDoc
   commit(commit: BoardCommit): Promise<BoardDoc>
   commitItems(commit: ItemsCommit): Promise<ItemsDoc>
-  /** Relay one run to whichever replica holds the seat. `queued` = no engine. */
-  submitCommand(command: { type: 'run'; taskId: string; trigger: 'manual' | 'schedule' | 'chain'; clientId: string }): { queued: boolean }
+  /** Relay one command to whichever replica holds the seat. `queued` = no
+   *  engine. The whole union: the catalog decides which carrier an action
+   *  rides, and the relay carries it as-is. */
+  submitCommand(command: BoardCommand): { queued: boolean }
   available: boolean
 }
 
@@ -380,6 +382,68 @@ export interface ExecuteResult {
  * and `dry_run` rehearses the SAME code path against a clone, so a rehearsal
  * that disagrees with the real thing cannot happen.
  */
+/** The four carriers, as the CATALOG names them. Read structurally so the tool
+ *  never has to name an action to know what to build. */
+type RelayKind = 'run' | 'comment' | 'session.create' | 'session.rename'
+
+/** What each carrier does, for the receipt — a receipt that says "已交给引擎"
+ *  alone is what made a queued request read as a finished one. */
+const RELAY_VERB: Record<RelayKind, string> = {
+  'run': '执行一次',
+  'comment': '发一条话',
+  'session.create': '建一条会话',
+  'session.rename': '改会话名',
+}
+
+/**
+ * Build the command the CATALOG asked for, from the payload the model sent.
+ * Dispatch is by `relay` and `command.type` alone: if the two ever disagree
+ * that is a real inconsistency, and the refusal says so rather than guessing
+ * which one to believe.
+ */
+function buildRelay(
+  relay: RelayKind,
+  payload: Record<string, unknown>,
+  doc: BoardDoc,
+): { command: BoardCommand; title: string } | string {
+  const of = String(payload.of ?? '')
+  const findCard = (): TaskRecord | undefined => doc.tasks.find(task => task.id === of || task.title === of)
+  const card = (): TaskRecord | undefined => {
+    const found = findCard()
+    return found ?? undefined
+  }
+  const missingCard = `卡 ${of} 不存在。看板上现在有：${doc.tasks.slice(0, 20).map(taskRow).map(row => row.title).join('，') || '（一张卡都没有）'}`
+  const clientId = 'model'
+  switch (relay) {
+    case 'run': {
+      const found = card()
+      if (found === undefined) return missingCard
+      return { command: { type: 'run', taskId: found.id, trigger: 'manual', clientId }, title: found.title }
+    }
+    case 'comment': {
+      const found = card()
+      if (found === undefined) return missingCard
+      const sessionId = String(payload.session ?? '')
+      if (sessionId === '') return '要跟哪个会话说话？给一个 session。'
+      const text = String(payload.text ?? '').trim()
+      if (text === '') return '要发的话是空的。'
+      return { command: { type: 'comment', taskId: found.id, sessionId, text, clientId }, title: found.title }
+    }
+    case 'session.create': {
+      const found = card()
+      if (found === undefined) return missingCard
+      return { command: { type: 'session.create', taskId: found.id, config: readRunConfig(payload), clientId }, title: found.title }
+    }
+    case 'session.rename': {
+      const sessionId = String(payload.session ?? '')
+      if (sessionId === '') return '要改名的会话是哪个？给一个 session。'
+      const title = String(payload.title ?? '').trim()
+      if (title === '') return '新名字不能是空的。'
+      return { command: { type: 'session.rename', sessionId, title, clientId }, title }
+    }
+  }
+}
+
 export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise<ExecuteResult> {
   const now = deps.now()
   const board = deps.board()
@@ -429,53 +493,55 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
       continue
     }
     const spec = ACTIONS[id]
-    if (spec.lane === 'engine') {
-      // WHICH CARRIER carries an engine action is CATALOG state (`spec.relay`),
-      // never a comparison of the action's name: the engine holds the
-      // carriers, the catalog says which action rides which, and a relay that
-      // decides by string is one rename away from forwarding something as a
-      // run when it is not. An engine action with no `relay` is a statement
-      // ("perform this some other way"), not a gap.
-      if ((spec as { relay?: 'run' }).relay !== 'run') {
-        raw.push({ op: step.op, ok: false, detail: `「${id}」不走「跑一次这张卡」这条通道，目录也没给它派发一种，所以这里明确拒绝——转发它会跑错东西。` })
-        failed = true
-        continue
-      }
-      // Engine ops are requests, not writes: say which, and whether a seat is
-      // holding. A relayed run that nobody executes yet is accepted, not done.
-      const target = String(payload.of ?? '')
-      const found = doc.tasks.find(task => task.id === target || task.title === target)
-      if (found === undefined) {
-        raw.push({
-          op: step.op,
-          ok: false,
-          detail: `卡 ${target} 不存在。看板上现在有：${doc.tasks.slice(0, 20).map(taskRow).map(row => row.title).join('，') || '（一张卡都没有）'}`,
-        })
-        failed = true
-        continue
-      }
-      if (request.dry_run === true) {
-        raw.push({ op: step.op, ok: true, title: found.title, detail: '会经引擎执行一次。' })
-        continue
-      }
-      const { queued } = board.submitCommand({ type: 'run', taskId: found.id, trigger: 'manual', clientId: 'model' })
-      raw.push({
-        op: step.op,
-        ok: true,
-        title: found.title,
-        detail: queued ? '已受理，引擎当前不在线，将在引擎上线后执行。' : '已交给引擎。',
-      })
-      continue
-    }
-
-    // Document lane: build the next document through the merge grammar, the
-    // same lane every device writes through.
+    // Engine actions are REQUESTS, never document writes: the engine holds the
+    // carriers and performs them, and whatever they change lands on the board
+    // from there. So they are decided in ONE place — `applyOne` — and every
+    // carrier shares one body, because "what does this action do" is a
+    // question only the catalog can answer (`spec.relay`), and four copies of
+    // the same request would be four places to keep in step.
     const next = applyOne(doc, items, id, payload, deps, now)
     if (typeof next === 'string') {
       raw.push({ op: step.op, ok: false, detail: next })
       failed = true
       continue
     }
+    if (next.relay === true) {
+      // WHICH CARRIER carries this action is CATALOG state (`spec.relay`).
+      // Which action maps to which payload is the catalog's business, NOT this
+      // file's: there is no "if the action is task.comment" here, only "build
+      // what `relay` asks for and hand it to `command.type`". A host that knew
+      // the action names would own a second copy of that mapping, and the two
+      // copies drift the first time the catalog moves a carrier.
+      const relay = (spec as { relay?: RelayKind }).relay
+      if (relay === undefined) {
+        raw.push({ op: step.op, ok: false, detail: `「${id}」在目录里没有 relay 派发，所以这里明确拒绝——转发它会跑错东西。` })
+        failed = true
+        continue
+      }
+      const built = buildRelay(relay, payload, doc)
+      if (typeof built === 'string') {
+        raw.push({ op: step.op, ok: false, detail: built })
+        failed = true
+        continue
+      }
+      if (request.dry_run === true) {
+        raw.push({ op: step.op, ok: true, title: built.title, detail: `会经引擎${RELAY_VERB[relay]}。` })
+        continue
+      }
+      const { queued } = board.submitCommand(built.command)
+      raw.push({
+        op: step.op,
+        ok: true,
+        title: built.title,
+        // Accepted is not executed: the receipt names WHICH action was
+        // accepted, or a queued request reads as a finished one.
+        detail: queued ? `已受理（${RELAY_VERB[relay]}），引擎当前不在线，将在引擎上线后执行。` : `已交给引擎${RELAY_VERB[relay]}。`,
+      })
+      continue
+    }
+
+    // Everything that is not a relay arrives here as a document change, and it
+    // travels the same merge grammar every device writes through.
     const { doc: nextDoc, items: nextItems, task, item } = next
     if (request.dry_run !== true) {
       if (nextDoc !== doc) doc = await board.commit(boardCommitOf(doc, nextDoc))
@@ -671,19 +737,18 @@ function applyOne(
       const next: TaskRecord = { ...last, sessionsOrder: order, updatedAt: now }
       return { doc: { ...doc, tasks: doc.tasks.map(task => (task.id === last!.id ? next : task)) }, items, task: next }
     }
-    case 'task.run': {
-      // The ONE action the catalog marks `relay: 'run'`. Whether a card can
-      // be found is the relay's business, not this function's.
-      //
-      // The other engine actions deliberately have NO case here: the catalog
-      // marks them `lane: 'engine'` with no `relay`, and the batch runner
-      // refuses them off that field. A third copy of the same refusal — one
-      // per action — is what made the coverage gate read a refusal as a
-      // working execution path. The model learns WHY from the catalog summary
-      // before it acts, which is a better place than a wall it hits later.
-      last = findTask()
-      if (last === undefined) return `卡 ${String(payload.of)} 不存在。`
-      return { doc, items, relay: true, task: last }
+    case 'task.run':
+    case 'task.comment':
+    case 'session.create':
+    case 'session.rename': {
+      // ONE body for every relayed action, because it is the same request: the
+      // engine holds the carriers and performs it, so nothing here writes a
+      // document. WHICH carrier this one rides is `spec.relay`, read by the
+      // caller — naming an action in here to decide anything would put the
+      // catalog's mapping into this file a second time, and the two copies
+      // drift the first time a carrier moves. The card a carrier names, if it
+      // names one at all, is the caller's question, not this case's.
+      return { doc, items, relay: true }
     }
     case 'task.cancelComment': {
       // The three preconditions are THREE FIELDS, not a "state" value: a

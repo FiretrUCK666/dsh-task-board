@@ -272,6 +272,22 @@ export interface BoardServiceDeps {
  * prevent: it is the seat for the unit, and its state never mentions a
  * document.
  */
+/**
+ * The dedup key of a parked command: its carrier plus whatever it targets.
+ *
+ * This deliberately does NOT narrow on `command.type`, and does not know which
+ * carriers exist: it derives an IDENTITY, not a route. Narrowing here would put
+ * a list of carriers into the service, and a carrier added to the union later
+ * would need this file edited to keep its own commands from colliding. Reading
+ * whichever id the command carries keeps this correct for carriers that do not
+ * exist yet.
+ */
+function commandKeyOf(command: BoardCommand): string {
+  return 'taskId' in command
+    ? `${command.type}:${command.taskId}`
+    : `${command.type}:${command.sessionId}`
+}
+
 export class DocumentService {
   private doc: BoardDoc = emptyBoardDoc(0)
   private items: ItemsDoc = emptyItemsDoc(0)
@@ -581,7 +597,7 @@ export class DocumentService {
       const oldest = this.pendingCommands.keys().next()
       if (!oldest.done) this.pendingCommands.delete(oldest.value)
     }
-    this.pendingCommands.set(`${command.type}:${command.taskId}`, command)
+    this.pendingCommands.set(commandKeyOf(command), command)
   }
 
   private drainPendingCommands(): void {

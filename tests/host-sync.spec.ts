@@ -102,7 +102,10 @@ function fakeTransport() {
         : leaseHeld ? { held: false, holder: 'other', expiresAt: T0 + 99999 } : { held: true, holder: clientId, expiresAt: T0 + 99999 }
       return { ...base, ...(leaseProto !== undefined ? { proto: leaseProto } : {}) }
     },
-    command: async (_clientId, command) => { calls.command.push(command.taskId) },
+    // `command` is a discriminated union: only the `run` variant carries a
+    // taskId, so the reader narrows instead of pretending every carrier is a
+    // run. These cases all exercise runs, which is what the relay used to be.
+    command: async (_clientId, command) => { calls.command.push(command.type === 'run' ? command.taskId : command.type) },
     openStream: (_clientId, handlers) => {
       streamHandler = handlers
       return () => { streamHandler = undefined }
@@ -505,7 +508,9 @@ describe('BoardSyncClient watch', () => {
     const { client, t } = makeClient()
     await client.start()
     const got: string[] = []
-    client.onCommand(c => got.push(c.taskId))
+    // Narrows on the carrier: the command union is not all runs, and a reader
+    // that assumes it is would read a `session.rename` as a task id.
+    client.onCommand(c => { if (c.type === 'run') got.push(c.taskId) })
     t.emit({ type: 'command', command: { type: 'run', taskId: 'a', trigger: 'manual', clientId: 'x' } })
     expect(got).toEqual(['a'])
   })
