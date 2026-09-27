@@ -1225,11 +1225,12 @@ export declare class BoardController {
      * keys are renumbered; a same-column move is reorder-only.
      *
      * Moving a card to 'done' is the completion hand-off: any armed schedule
-     * rule is disarmed outright ({@link disarmSchedule}) and every session rule
-     * switches off ({@link disarmSessionRules}) — a completed task's
-     * timer/chain must never fire again. Moving it back out of done (manual
-     * drag or comment revive — one law, whichever hand) resets the spent run
-     * budget but leaves the rules OFF until the user re-arms them.
+     * rule is disarmed outright and every session rule switches off — a completed
+     * task's timer/chain must never fire again. Moving it back out of done
+     * (manual drag or comment revive — one law, whichever hand) resets the spent
+     * run budget but leaves the rules OFF until the user re-arms them. Both
+     * halves are {@link moveTaskToStatus}, which is also what the model calls, so
+     * there is one implementation of that sentence rather than two.
      *
      * Automation never locks a card in place (see resolveCardDrop); leaving
      * the lane speaks its own language: a chain hand-off happens ONLY at a

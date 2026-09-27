@@ -13,8 +13,9 @@
  * orchestration is unit-testable with fakes.
  */
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
-import { isValidCron, nextRunAtMs } from './schedule.ts'
-import { disarmSessionRules, nextSessionRuleAt, sessionRuleReadiness, withSessionRules } from './automation.ts'
+import { nextRunAtMs } from './schedule.ts'
+import { nextSessionRuleAt, sessionRuleReadiness, withSessionRules } from './automation.ts'
+import { armSchedule, moveTaskToStatus, removeSessionFromTask } from './task-transitions.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
@@ -34,7 +35,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, disarmSchedule, hasOpenRun, isBlankMessage, isOpenRound, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteManyToColumnTop, promoteSessionsToTop, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, startedOrSettledSessions, supplementLaunchFields, taskBindsOf, taskExecutable, withSchedule, withStatus,
+  applyCardOrder, createTask, hasOpenRun, isBlankMessage, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteManyToColumnTop, promoteSessionsToTop, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, startedOrSettledSessions, supplementLaunchFields, taskBindsOf, taskExecutable, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -1973,71 +1974,20 @@ export class BoardController {
    *  never a batch gap). Hiding stays display-only and never re-derives.
    *  @returns true when anything was removed. */
   removeTaskSession(taskId: string, sessionId: string): boolean {
+    // One call, both halves: the row edits AND the same-frame leave out of
+    // 进行中. `readLive` is this controller's own live-state derivation, handed
+    // over as a READER because the row it must judge is the one the transition
+    // produces — asking earlier would describe a card that no longer exists.
     const changed = this.userEdit(taskId, task => {
-      const kept = task.executions.filter(round => round.sessionId !== sessionId)
-      const wasHidden = task.hidden?.sessions?.includes(sessionId) === true
-      if (kept.length === task.executions.length && !wasHidden) return task
-      const removed = task.removedSessions ?? []
-      const next: TaskRecord = {
-        ...task,
-        executions: kept,
-        ...!removed.includes(sessionId) ? { removedSessions: [...removed, sessionId] } : {},
-      }
-      const hidden = task.hidden
-      if (hidden !== undefined) {
-        const sessions = (hidden.sessions ?? []).filter(id => id !== sessionId)
-        const executions = (hidden.executions ?? []).filter(id =>
-          task.executions.find(round => round.id === id && round.sessionId === sessionId) === undefined)
-        if (sessions.length > 0 || executions.length > 0) {
-          next.hidden = {
-            ...(sessions.length > 0 ? { sessions } : {}),
-            ...(executions.length > 0 ? { executions } : {}),
-          }
-        } else {
-          delete next.hidden
-        }
-      }
-      // A removed session cannot stay in the manual order either (it can never
-      // rejoin the list) — its slot is gone for good.
-      const order = task.sessionsOrder
-      if (order !== undefined) {
-        const keptOrder = order.filter(id => id !== sessionId)
-        if (keptOrder.length > 0) next.sessionsOrder = keptOrder
-        else delete next.sessionsOrder
-      }
-      // A live binding that points ONLY at this session cannot stay: its
-      // source no longer exists on the task.
-      const binds = taskBindsOf(next)
-      const unbound = binds.length === 1 && binds[0].kind === 'session' && binds[0].sessionId === sessionId
-      const shaped: TaskRecord = !unbound ? next : (() => {
-        const freed: TaskRecord = { ...next }
-        delete freed.bind
-        delete freed.binds
-        return freed
-      })()
-      // Immediate leave: the deletion may have swept the card's last running
-      // evidence (its open external round). Read the post-deletion live state
-      // off the CURRENT native snapshot so the column, the border, the chip
-      // and the breathing agree in the same frame.
-      const deletedOpen = task.executions.some(round =>
-        round.sessionId === sessionId && isOpenRound(round))
-      // Immediate leave: the deletion may have swept the card's last running
-      // evidence (its open external round). Read the post-deletion live state
-      // off the CURRENT native snapshot — through the SAME derivation every
-      // other surface reads (activity: own ∨ subagent descendant), so the
-      // column, the border, the chip and the breathing agree in the same
-      // frame. This is a user edit, not a background pass: it reads the
-      // three-valued state directly (no two-pass discipline here — the user
-      // just acted, and an incomplete verdict still keeps the card).
-      const live = this.liveStateFor(shaped, this.linkedOf(shaped).map(row => row.sessionId))
-      const target = leaveRunningTargetOf(shaped, live, { ignoreSchedule: deletedOpen })
-      if (target === undefined) return shaped
-      // Column changes funnel through withStatus (status history appends).
-      // The landed-column re-sort happens AFTER the edit commits (see below):
-      // userEdit owns the array, and a mutate closure must not rewrite
-      // siblings — re-sorting other cards here would be silently dropped by
-      // the funnel's map-back. userEdit stamps the record once on the way out.
-      return withStatus(shaped, target, this.now())
+      const result = removeSessionFromTask(
+        task,
+        sessionId,
+        this.now(),
+        current => this.liveStateFor(current, this.linkedOf(current).map(row => row.sessionId)),
+      )
+      // A refusal is this method's `false`: there was nothing of that session on
+      // the card, so there is nothing to say and nothing to do.
+      return result.ok ? result.task : task
     })
     if (!changed) return false
     // The whole delete+leave is one user edit (one persist for the deletion);
@@ -2176,11 +2126,12 @@ export class BoardController {
    * keys are renumbered; a same-column move is reorder-only.
    *
    * Moving a card to 'done' is the completion hand-off: any armed schedule
-   * rule is disarmed outright ({@link disarmSchedule}) and every session rule
-   * switches off ({@link disarmSessionRules}) — a completed task's
-   * timer/chain must never fire again. Moving it back out of done (manual
-   * drag or comment revive — one law, whichever hand) resets the spent run
-   * budget but leaves the rules OFF until the user re-arms them.
+   * rule is disarmed outright and every session rule switches off — a completed
+   * task's timer/chain must never fire again. Moving it back out of done
+   * (manual drag or comment revive — one law, whichever hand) resets the spent
+   * run budget but leaves the rules OFF until the user re-arms them. Both
+   * halves are {@link moveTaskToStatus}, which is also what the model calls, so
+   * there is one implementation of that sentence rather than two.
    *
    * Automation never locks a card in place (see resolveCardDrop); leaving
    * the lane speaks its own language: a chain hand-off happens ONLY at a
@@ -2191,26 +2142,28 @@ export class BoardController {
   moveTask(id: string, status: TaskStatus, beforeId?: string): void {
     const previous = this.tasks.find(task => task.id === id)
     if (previous === undefined) return
-    const moved = applyCardOrder(this.tasks, id, status, beforeId, this.now())
+    // One gesture, one instant: both halves below must stamp the same moment,
+    // or a stepping clock would give the row two different "now"s.
+    const now = this.now()
+    const moved = applyCardOrder(this.tasks, id, status, beforeId, now)
     // Same-spot no-op: the pure layer returns identical element refs when
     // nothing moved — skip disarm checks AND persistence (no authorship, no
     // dirty commit, no SSE churn for a drop that changed nothing).
     if (moved.find(task => task.id === id) === previous) return
-    this.tasks = moved
-    this.tasks = this.tasks.map(task => {
+    // The column, AND what the column means, are the shared transition's job.
+    // It is handed the row as it was BEFORE the move, which is what lets it see
+    // both the disarm-on-done and the rebirth-on-leaving.
+    const transitioned = moveTaskToStatus(previous, status, now)
+    // TWO HALVES, AND EACH OWNS A DISJOINT PART OF THE ROW. The board owns the
+    // SLOT and the FRESHNESS — applyCardOrder renumbers the column and stamps
+    // every row whose position moved, because an unstamped row loses every
+    // merge on every other replica. The transition owns the CONTENT. So the row
+    // that lands is the transition's own row carrying the board's slot and
+    // stamp: a same-column reorder changes no content at all (the transition
+    // hands its row straight back), and the drag must still leave its mark.
+    this.tasks = moved.map(task => {
       if (task.id !== id) return task
-      // Completion is a hard stop, not a pause. The rule's configuration
-      // survives, so re-arming from the detail editor resumes the schedule.
-      // Session rules shut off with it (done = full terminal for automation).
-      if (status === 'done') return disarmSessionRules(disarmSchedule(task, this.now()))
-      // Rebirth is a new life, whichever hand moves it (comment revive,
-      // manual drag, rerun): leaving done resets the spent run budget so
-      // re-arming resumes the same rule from zero. The rule itself stays
-      // disarmed — only the counter clears, never the config.
-      if (previous.status === 'done' && task.schedule !== undefined) {
-        return { ...task, schedule: { ...task.schedule, runCount: 0 } }
-      }
-      return task
+      return { ...(transitioned.ok ? transitioned.task : task), order: task.order, updatedAt: task.updatedAt }
     })
     // An armed-but-never-run chain leaving backlog for todo starts its first
     // run (arming already covers any column; this stays as the idempotent
@@ -2275,41 +2228,22 @@ export class BoardController {
   setSchedule(id: string, patch: { enabled?: boolean; cron?: string; maxRuns?: number; mode?: ScheduleMode }): boolean {
     const task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return false
-    const current = task.schedule
-    const mode = patch.mode ?? current?.mode ?? 'cron'
-    // The cron expression is only ever replaced by an explicit patch: chain
-    // mode merely stops consuming it, it never clears the stored expression
-    // (so switching back to cron keeps the last valid value).
-    const cron = patch.cron !== undefined ? patch.cron.trim() : (current?.cron ?? '')
-    if (mode === 'cron' && (cron === '' || !isValidCron(cron))) return false
-    const enabled = patch.enabled ?? current?.enabled ?? false
-    // Arming a rule on a card with NO execution prompt is rejected outright in
-    // EITHER mode (returns false, nothing persisted): the rule would never run
-    // and the switch would read "on" silently — the editor surfaces the
-    // blocked reason instead of a dead arm. Disarming is always allowed, so a
-    // rule armed before the prompt was cleared stays dis-armable.
-    if (enabled && !current?.enabled && ruleArmingBlocked(task)) return false
-    const maxRunsChanged = patch.maxRuns !== undefined && patch.maxRuns !== current?.maxRuns
-    const maxRuns = patch.maxRuns !== undefined ? patch.maxRuns : current?.maxRuns
-    const nextRunAt = enabled && mode === 'cron' ? nextRunAtMs(cron, this.now()) : undefined
-    this.tasks = this.tasks.map(candidate =>
-      candidate.id === id
-        ? withSchedule(candidate, {
-            enabled,
-            mode,
-            cron,
-            nextRunAt,
-            ...maxRunsChanged ? { maxRuns, runCount: 0 } : {},
-          }, this.now())
-        : candidate)
+    // The arm itself — the dead-arm law, cron validity, the budget reset and the
+    // due instant — is {@link armSchedule}, the same function the model calls.
+    // A refusal stays this method's `false`: the interface reads nothing from
+    // it, while the tool layer surfaces the reason the transition wrote.
+    const armed = armSchedule(task, patch, this.now())
+    if (!armed.ok) return false
+    const next = armed.task.schedule
+    this.tasks = this.tasks.map(candidate => candidate.id === id ? armed.task : candidate)
     this.persistAndNotify()
     // "完成后接续" arms AND starts: an enabled chain launches its first run
     // at once whenever the prompt is executable and no run is open — ANY
     // column (a review/done card armed by the user means "keep it running",
     // never "wait for a manual re-run"); an empty prompt was already rejected
     // above (never a silent dead arm). Cron waits for its due instant via the
-    // scheduler tick.
-    if (enabled && mode === 'chain' && taskExecutable(task) && !hasOpenRun(task)) {
+    // scheduler tick. Starting a run is an ENGINE act, so it stays here.
+    if (next?.enabled === true && next.mode === 'chain' && taskExecutable(task) && !hasOpenRun(task)) {
       void this.runTask(id, 'chain')
     }
     return true

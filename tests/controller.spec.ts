@@ -14,6 +14,7 @@ import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import type { CruiseWindow } from '../src/core/cruise.ts'
 import type { PendingInteractionKind, QuestionRpcFace, WireQuestion } from '../src/core/question-rpc.ts'
 import { createTask, ruleReadiness, withStatus, type TaskRecord } from '../src/core/tasks.ts'
+import { moveTaskToStatus } from '../src/core/task-transitions.ts'
 
 const NOW = 1_700_000_000_000
 let nextId = 0
@@ -401,6 +402,50 @@ describe('task mutations', () => {
     expect(kept.status).toBe('running')
     expect(kept.schedule?.enabled).toBe(true)
     expect(controller.approveTask('unknown-id')).toBe(false)
+  })
+
+  it('the interface path lands the SHARED transition\'s own row, not a hand-rolled copy', () => {
+    // The proof that "one implementation" is true and not merely intended: an
+    // input where writing the field alone gives a DIFFERENT answer (a card with
+    // an armed schedule and an armed session rule), and the row the interface
+    // produces is compared field-for-field with what the shared function returns
+    // for the same input. A hand-written inline move would differ on the
+    // schedule, on the rule, and on the status history — and this goes red.
+    const { controller, store } = makeController()
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
+    controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'hi', cron: '* * * * *', send: 'queue' })
+
+    const before = store.load()[0]!
+    const expected = moveTaskToStatus(before, 'done', NOW)
+    expect(expected.ok).toBe(true)
+
+    controller.moveTask(task.id, 'done')
+    const after = store.load()[0]!
+
+    // The two facts a field-only write would have got wrong.
+    expect(after.status).toBe('done')
+    expect(after.schedule?.enabled).toBe(false)
+    expect(after.rules?.[0]?.enabled).toBe(false)
+    // …and the whole row is the transition's, with only the SLOT (the board's
+    // half, which needs the whole board to answer) left to the board.
+    if (expected.ok) expect({ ...after, order: expected.task.order }).toEqual(expected.task)
+  })
+
+  it('the semantic laws live in the shared module, not in this controller', () => {
+    // The row comparison above proves the interface's ANSWER is the shared
+    // function's. It cannot prove the interface CALLS it — a faithful copy of
+    // the same logic would answer identically. So this checks the wiring from
+    // the other side: the helpers that used to inline these laws are no longer
+    // imported, and the shared module is. Re-inlining a law means re-importing
+    // one of them, and this goes red.
+    const source = readFileSync(fileURLToPath(new URL('../src/core/controller.ts', import.meta.url)), 'utf8')
+    expect(source).toContain("from './task-transitions.ts'")
+    for (const inlined of ['disarmSchedule', 'disarmSessionRules', 'isValidCron']) {
+      expect(source, `${inlined} is one of the laws that moved into task-transitions`).not.toMatch(
+        new RegExp(`import[^;]*\\b${inlined}\\b[^;]*from`),
+      )
+    }
   })
 
   it('a done-disarmed rule stays off when the task moves back to a live column', () => {

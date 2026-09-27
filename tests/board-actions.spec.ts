@@ -166,18 +166,20 @@ describe('the catalog gate', () => {
   })
 
   it('catches a semantic action naming a function that does not exist', () => {
+    // A renamed or misspelled function is the case this whole check is for.
     const findings = actionCatalogFindings({
-      actions: poison('task.move', { semantic: true, semanticOf: 'moveTaskToStatus' }),
+      actions: poison('task.move', { semantic: true, semanticOf: 'moveTaskToStatusButRenamed' }),
     })
     expect(findings.join('\n')).toContain('not a shared core function that exists')
   })
 
   it('accepts a semantic action once the shared function really exists', () => {
     // The other half of the check: it must not fire on a declaration that is
-    // true, or the fix for a finding would be to delete the finding.
+    // true, or the fix for a finding would be to delete the finding. The
+    // registry is read from the transitions module, so this passes because the
+    // function is really there — not because a list was updated to agree.
     expect(actionCatalogFindings({
-      actions: poison('task.move', { semantic: true, semanticOf: 'moveTaskToStatus' }),
-      semantic: { moveTaskToStatus: true },
+      actions: poison('item.update', { semantic: true, semanticOf: 'moveTaskToStatus' }),
     })).toEqual([])
   })
 

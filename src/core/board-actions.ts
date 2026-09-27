@@ -45,6 +45,7 @@
  */
 import { MANUAL_STATUSES } from './tasks.ts'
 import type { TaskUpdatePatch } from './controller.ts'
+import * as taskTransitions from './task-transitions.ts'
 import { ITEM_FIELDS, ITEM_PRIORITIES, ITEM_STATUSES, type FieldSpec } from './item.ts'
 
 // The field-verdict vocabulary belongs to the models (item.ts), not here: this
@@ -265,6 +266,8 @@ export const ACTIONS = {
     danger: 'guarded',
     surface: 'ui+ai',
     summary: '把卡移到另一栏。移到「已完成」会同时解甲排期与全部会话规则；这一栏真有轮次在跑时移动被拒。',
+    semantic: true,
+    semanticOf: 'moveTaskToStatus',
     params: {
       of: { about: '要移动的卡' },
       status: { about: '目标栏', oneOf: MOVABLE },
@@ -278,6 +281,8 @@ export const ACTIONS = {
     danger: 'guarded',
     surface: 'ui+ai',
     summary: '通过一张待审核的卡：标已读并移到「已完成」。有轮次在跑时拒绝，状态原样不动。',
+    semantic: true,
+    semanticOf: 'moveTaskToStatus',
     params: {
       of: { about: '要通过的卡' },
     },
@@ -300,6 +305,8 @@ export const ACTIONS = {
     danger: 'guarded',
     surface: 'ui+ai',
     summary: '给卡上/解排期。给没有执行 Prompt 的卡上膛会被拒（规则永远跑不起来，开关却显示已开）。',
+    semantic: true,
+    semanticOf: 'armSchedule',
     params: {
       of: { about: '要排期的卡' },
       enabled: { about: '上膛还是解甲', optional: true },
@@ -486,6 +493,8 @@ export const ACTIONS = {
     danger: 'guarded',
     surface: 'ui+ai',
     summary: '把一个会话从卡上永久摘掉（连它的轮次一起）。这是删除，不是隐藏。',
+    semantic: true,
+    semanticOf: 'removeSessionFromTask',
     params: {
       of: { about: '目标卡' },
       session: { about: '要摘掉的会话' },
@@ -689,9 +698,20 @@ export interface CatalogChecks {
 }
 
 /**
- * What the catalog itself guarantees. Mechanical, so it costs nothing to keep
- * honest: the coverage gate runs this over the real table, and the tests run it
- * over deliberately broken copies to prove it is not a rubber stamp.
+ * The shared semantic implementations that really exist, READ FROM THE MODULE
+ * rather than from a second list beside it. A list would be a thing to keep in
+ * step with the code: rename a function and the list keeps vouching for a name
+ * that no longer resolves. Read from the module, a rename simply stops existing
+ * and the action that named it goes red on its own — which is the whole point
+ * of `semantic` in the first place.
+ */
+const SEMANTIC_FUNCTIONS: Record<string, true> = Object.fromEntries(
+  Object.keys(taskTransitions).map(name => [name, true]),
+)
+
+/** What the catalog itself guarantees. Mechanical, so it costs nothing to keep
+ *  honest: the coverage gate runs this over the real table, and the tests run it
+ *  over deliberately broken copies to prove it is not a rubber stamp.
  *
  * The load-bearing check is the one that ties the two halves of this file
  * together: a parameter whose name is a model field must be WRITABLE in that
@@ -702,7 +722,7 @@ export interface CatalogChecks {
  */
 export function actionCatalogFindings(checks: CatalogChecks = {}): string[] {
   const table: Readonly<Record<string, ActionShape>> = checks.actions ?? ACTIONS
-  const semantic = checks.semantic ?? {}
+  const semantic = checks.semantic ?? SEMANTIC_FUNCTIONS
   const verdictsByDomain: Partial<Record<ActionDomain, Readonly<Record<string, FieldSpec>>>> = {
     board: checks.taskFields ?? TASK_FIELDS,
     item: checks.itemFields ?? ITEM_FIELDS,

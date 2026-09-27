@@ -218,6 +218,8 @@ export declare const ACTIONS: {
         readonly danger: "guarded";
         readonly surface: "ui+ai";
         readonly summary: "把卡移到另一栏。移到「已完成」会同时解甲排期与全部会话规则；这一栏真有轮次在跑时移动被拒。";
+        readonly semantic: true;
+        readonly semanticOf: "moveTaskToStatus";
         readonly params: {
             readonly of: {
                 readonly about: "要移动的卡";
@@ -240,6 +242,8 @@ export declare const ACTIONS: {
         readonly danger: "guarded";
         readonly surface: "ui+ai";
         readonly summary: "通过一张待审核的卡：标已读并移到「已完成」。有轮次在跑时拒绝，状态原样不动。";
+        readonly semantic: true;
+        readonly semanticOf: "moveTaskToStatus";
         readonly params: {
             readonly of: {
                 readonly about: "要通过的卡";
@@ -266,6 +270,8 @@ export declare const ACTIONS: {
         readonly danger: "guarded";
         readonly surface: "ui+ai";
         readonly summary: "给卡上/解排期。给没有执行 Prompt 的卡上膛会被拒（规则永远跑不起来，开关却显示已开）。";
+        readonly semantic: true;
+        readonly semanticOf: "armSchedule";
         readonly params: {
             readonly of: {
                 readonly about: "要排期的卡";
@@ -592,6 +598,8 @@ export declare const ACTIONS: {
         readonly danger: "guarded";
         readonly surface: "ui+ai";
         readonly summary: "把一个会话从卡上永久摘掉（连它的轮次一起）。这是删除，不是隐藏。";
+        readonly semantic: true;
+        readonly semanticOf: "removeSessionFromTask";
         readonly params: {
             readonly of: {
                 readonly about: "目标卡";
@@ -912,10 +920,9 @@ export interface CatalogChecks {
     /** The checklist row's field verdicts. */
     readonly itemFields?: Readonly<Record<string, FieldSpec>>;
 }
-/**
- * What the catalog itself guarantees. Mechanical, so it costs nothing to keep
- * honest: the coverage gate runs this over the real table, and the tests run it
- * over deliberately broken copies to prove it is not a rubber stamp.
+/** What the catalog itself guarantees. Mechanical, so it costs nothing to keep
+ *  honest: the coverage gate runs this over the real table, and the tests run it
+ *  over deliberately broken copies to prove it is not a rubber stamp.
  *
  * The load-bearing check is the one that ties the two halves of this file
  * together: a parameter whose name is a model field must be WRITABLE in that
