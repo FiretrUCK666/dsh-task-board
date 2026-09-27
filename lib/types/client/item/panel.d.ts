@@ -1,10 +1,17 @@
 import type { ItemRecord } from '../../core/item.ts';
 import { itemRowViewOf, type ItemDensity, type ItemEdit } from './model.ts';
-import type { ItemListFace, ItemTabHookContext } from './register.tsx';
-/** The panel's props: the slot's own tab hook plus the face we inject. */
+import type { ItemListFace } from './register.tsx';
+/**
+ * The panel's props: the face we publish, and OUR OWN lifetime.
+ *
+ * There is no tab hook here any more, because this is no longer a tab body.
+ * The signal is the drawer's, so every timer and subscription below hangs on
+ * the surface that actually owns them rather than on a host contract that no
+ * longer applies.
+ */
 export interface ItemListPanelProps {
-    useTabInfo: () => ItemTabHookContext;
-    face: ItemListFace;
+    readonly face: ItemListFace;
+    readonly signal: AbortSignal;
 }
 /**
  * One row of the list. Clicking it opens level 1 in place.

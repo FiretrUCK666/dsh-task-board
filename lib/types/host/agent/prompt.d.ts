@@ -47,14 +47,14 @@ export declare const PROMPT_SECTION_ORDER = 3050;
  *  5. DESTRUCTIVE FIRST, DRY. A `danger: irreversible` action cannot be undone
  *     by any tool, so it is rehearsed before it is done.
  */
+import type { PromptSection } from '@deepseek-ai/dsh-system-prompt';
 export declare const PROMPT_SECTION_TEXT: string;
-/** The structural face of the prompt registry (no SDK import). */
+/** What this module needs from the prompt registry: one method, taking the
+ *  host's OWN {@link PromptSection}. A local copy of that interface would
+ *  compile against itself and drift on the next host upgrade without anyone
+ *  noticing — this file's TEXT is fixed, but its SHAPE is the host's. */
 export interface PromptSectionTarget {
-    section(section: {
-        name: string;
-        order: number;
-        text: string;
-    }): () => void;
+    section(section: PromptSection): () => void;
 }
 /**
  * Register the section. @returns the disposer, so an effect that owns it also

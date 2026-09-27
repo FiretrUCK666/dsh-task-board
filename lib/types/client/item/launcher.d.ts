@@ -1,52 +1,43 @@
-/** The narrow face of the right sidebar's controller that opening needs. */
-export interface ListOpenerFace {
+/**
+ * The narrow face of the official sidebar this rule needs.
+ *
+ * `mounted` is the seat's liveness. `isExpanded` is NOT a subscription and the
+ * package emits no event, so it is a one-time read BY DESIGN — which is why
+ * `yieldToSidebar` is called at the moment the reader asks for us, and not
+ * watched continuously: the read is only ever worth taking while the answer
+ * can still act on it.
+ */
+export interface SidebarYieldFace {
     readonly mounted: {
         getSnapshot(): string | undefined;
         subscribe(fn: () => void): () => void;
     };
-    openTab(kind: string, options?: Record<string, unknown>): void;
-}
-/** How a surface asks the question. */
-export interface ListLauncher {
-    /** True only while a sidebar seat is actually on screen. */
-    available(): boolean;
-    /** Open the list. `false` means there was no seat — never a pretend success. */
-    open(): boolean;
-    /** Follow the seat, so a button can appear and disappear with it. */
-    subscribe(onChange: () => void): () => void;
+    isExpanded(): boolean;
+    toggleExpanded(): void;
 }
 /**
- * Build the real launcher over one sidebar controller.
+ * Take the right edge, if the official sidebar is holding it.
  *
- * Exported so a test can drive it without a shell, and so the rule lives in
- * exactly one place.
- * @param sidebar - the controller, or undefined when it is not composed.
- * @returns a launcher that refuses when there is no seat.
+ * This is the half of "never coexist" that is actually available. Collapsing
+ * it is guaranteed and asserted. Noticing when THEY open is not available at
+ * all, so that half is a named gap rather than a rule — the reader resolves it
+ * by collapsing us, and the README says so in as many words.
+ * @returns true when the official column was collapsed for us.
  */
-export declare function makeListLauncher(sidebar: ListOpenerFace | undefined): ListLauncher;
-/** Publish the launcher while this plugin is composed. */
-export declare function publishListLauncher(sidebar: ListOpenerFace | undefined): () => void;
-/** The current launcher, without a subscription. */
-export declare function listLauncher(): ListLauncher;
+export declare function yieldToSidebar(): boolean;
+/** Publish the sidebar face while this plugin is composed. */
+export declare function bindSidebar(face: SidebarYieldFace | undefined): void;
 /**
- * The launcher, subscribed to the seat it depends on.
+ * The list's glyph, in the SHELL's own pill.
  *
- * Re-renders exactly when the seat appears or goes: that is the moment the
- * button has to appear and disappear. The snapshot is a number rather than the
- * session id on purpose — `useSyncExternalStore` compares it, and a session id
- * that changed without changing the seat would re-render for nothing.
- */
-export declare function useListLauncher(): ListLauncher;
-/**
- * The button both surfaces render.
+ * A hand-rolled `<button>` is why this used to look out of place and why no
+ * third-party skin could reach it. `Pill` is on the platform module list, so it
+ * takes the shell's own tokens and a skin follows it for free.
  *
- * It renders NOTHING when there is no seat. That is the deliberate answer to
- * "grey it out and say why on hover": a button that cannot work, offering
- * itself anyway, is a small lie — and on a touch surface the explanation
- * would be unreachable by definition.
- * @param className - extra class for the surface placing it.
- * @returns the button, or nothing.
+ * The glyph is our own `icon.svg` redrawn inline rather than imported: an SVG
+ * import would be a bundler contract this plugin has no precedent for, and
+ * three bars in `currentColor` carry the same silhouette while following the
+ * pill's colour instead of freezing the brand hex into the UI.
+ * @returns the pill.
  */
-export declare function ListOpenButton(props?: {
-    readonly className?: string;
-}): import("react").JSX.Element | null;
+export declare function ListOpenPill(): import("react").JSX.Element;

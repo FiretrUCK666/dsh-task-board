@@ -632,6 +632,8 @@ export declare const zh: {
     'item.field.noCard': string;
     'item.field.linked': string;
     'item.field.cardGone': string;
+    'itemDrawer.close': string;
+    'itemDrawer.closeGlyph': string;
     'toolCard.rehearsed': string;
     'toolCard.dryRunNote': string;
     'toolCard.notWrittenNote': string;
