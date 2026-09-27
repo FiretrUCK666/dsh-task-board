@@ -87,6 +87,7 @@ const FOREIGN_CALLS = {
   'sync.isEngine': 'the host-sync engine',
   'sync.start': 'the host-sync engine',
   'uiWorkspace.openSession': 'the host workspace service',
+  'launcher.subscribe': 'the task-list launcher (a store the list panel subscribes to; the board controller has a `subscribe` of the same name and they are unrelated)',
 }
 
 /**
@@ -122,7 +123,21 @@ const ACTION_METHODS = {
   'session.bind': ['addTaskSources'],
   'session.create': ['createTaskSession'],
   'session.remove': ['removeTaskSession'],
-  'session.rename': ['renameTaskSession'],
+  // Two methods, ONE action, and the reason they are not a duplicate: they ask
+  // two different questions that happen to land on the same private write.
+  // `renameTaskSession` asks "what is the session hanging on THIS card called",
+  // and it earns its `taskId` only by refusing a session unrelated to that card
+  // (renaming through a card the session does not belong to would be a
+  // confusing surface). `renameSession` asks "what is this session called",
+  // full stop — the only form available when the caller has no card, since a
+  // session on two cards has two card-scoped answers and exactly one
+  // session-scoped one. The write itself only ever eats `sessionId` and the
+  // trimmed title.
+  //
+  // BOTH are listed because this gate's job is the UI->model direction: it walks
+  // the methods the interface calls, so dropping the one the interface uses would
+  // report the card-scoped rename as uncatalogued.
+  'session.rename': ['renameTaskSession', 'renameSession'],
   'session.reorder': ['reorderTaskSession'],
   'session.hide': ['hideTaskSession', 'unhideTaskSession', 'unhideTaskSessions'],
   'session.navigate': ['openSession'],
@@ -254,6 +269,22 @@ const INTERNAL = {
  * that is the difference between a ledger and a permanent allow-list, which is
  * what a table nobody has to prune inevitably becomes.
  *
+ *   HOW TO USE THIS LEDGER (a template, not data — the table itself always
+ *   states today's facts, which right now means: nothing is owed):
+ *     1. an action the catalog offers the model, or a relay it declares, whose
+ *        execution path the tool does not have yet
+ *        → add a row:  'that.action': NO_EXECUTION + 'why it is not wired yet'
+ *     2. the execution path lands
+ *        → DELETE the row. Forget, and the gate names it: "is paid".
+ *   Logging is NOT a waiver. A missing execution path is a finding either way;
+ *   logging only decides whether the sentence ends with "a recorded debt" or
+ *   with "a debt nobody recorded". Note also what a row may NOT be: an example
+ *   of an already-paid action would sit there forever, and "paid and not
+ *   deleted" is itself a finding — a red light left burning on purpose, in a
+ *   check whose output people are supposed to keep reading. So the examples
+ *   live in these comments, where they teach the shape without lighting
+ *   anything up.
+ *
  * ── A `case` THAT ONLY REFUSES IS NOT AN EXECUTION PATH ─────────────────────
  * This gate counts a `case` as the action being executable, and that judgment
  * is right — but it is easy to fool from the other side. Three engine actions
@@ -272,9 +303,9 @@ const INTERNAL = {
  */
 const NO_EXECUTION = 'NO-EXECUTION: '
 const PENDING_EXECUTION = {
-  'task.comment': NO_EXECUTION + 'host 侧的执行路径还没接上；这条动作的效果不是一次运行，工具不会把它转发给引擎',
-  'session.create': NO_EXECUTION + 'host 侧的执行路径还没接上；这条动作的效果不是一次运行，工具不会把它转发给引擎',
-  'session.rename': NO_EXECUTION + 'host 侧的执行路径还没接上；这条动作的效果不是一次运行，工具不会把它转发给引擎',
+  // Empty on purpose while the last engine paths land. The mechanism stays: a
+  // new action that is not yet executable goes here with a reason, and the
+  // count is printed on every run.
 }
 
 /** Scan roots: the UI half plus the controller, because the controller calls
@@ -335,6 +366,7 @@ function readCatalog(source) {
     const verb = /^\s{4}verb:\s*'([^']*)'/m.exec(block)
     const surface = /^\s{4}surface:\s*'([^']*)'/m.exec(block)
     const lane = /^\s{4}lane:\s*'([^']*)'/m.exec(block)
+    const relay = /^\s{4}relay:\s*'([^']*)'/m.exec(block)
     const semantic = /^\s{4}semantic:\s*true\b/m.test(block)
     const semanticOf = /^\s{4}semanticOf:\s*'([^']*)'/m.exec(block)
     const paramsAt = /^\s{4}params:\s*\{/m.exec(block)
@@ -381,6 +413,7 @@ function readCatalog(source) {
       verb: verb === null ? undefined : verb[1],
       surface: surface === null ? undefined : surface[1],
       lane: lane === null ? undefined : lane[1],
+      relay: relay === null ? undefined : relay[1],
       semantic,
       semanticOf: semanticOf === null ? undefined : semanticOf[1],
       params,
@@ -390,7 +423,29 @@ function readCatalog(source) {
 
   const verbsAt = /BOARD_VERBS:\s*readonly BoardVerb\[\]\s*=\s*\[([\s\S]*?)\]/.exec(source)
   const verbs = verbsAt === null ? [] : [...verbsAt[1].matchAll(/'([^']+)'/g)].map(m => m[1]).sort()
-  return { actions, verbs, ids: actions.map(a => a.id) }
+  // The carrier names the catalog DECLARES, read off the field's own type — not
+  // off the actions that happen to use one, and never a list written down here.
+  const relayAt = /readonly relay\?:([^;\n]*)/.exec(source)
+  const declaredRelays = relayAt === null ? null : [...relayAt[1].matchAll(/'([^']*)'/g)].map(m => m[1])
+  return { actions, verbs, ids: actions.map(a => a.id), declaredRelays }
+}
+
+/**
+ * The carrier variants the engine's command union can actually carry. Read from
+ * the union's own `type:` literals, because a hand-written list of carrier names
+ * here would be exactly the list this check exists to keep honest — a carrier
+ * added to the core and not to the catalog would simply never be mentioned.
+ */
+function boardCommandVariants(docText) {
+  const at = docText.indexOf('export type BoardCommand')
+  if (at === -1) return null
+  const variants = []
+  for (const line of docText.slice(at).split('\n').slice(1)) {
+    const isUnionMember = /^\s*\|/.test(line) || /^\s{2}\*\s/.test(line) || line.trim() === ''
+    if (!isUnionMember) break
+    for (const m of line.matchAll(/type:\s*'([^']*)'/g)) variants.push(m[1])
+  }
+  return variants.length === 0 ? null : variants
 }
 
 /** Exported names across the core layer — what a `semanticOf` must resolve to. */
@@ -454,16 +509,46 @@ function methodBindings(ids, bindings) {
 }
 
 /**
- * The engine-relay branch — the one place an action that is NOT a run can be
- * silently forwarded as one. Returns the slice, or null if it cannot be found
- * (which is a finding, never a skip).
+ * The region where the tool decides that an action is a relay rather than a
+ * document write. Returns the slice, or null when it cannot be found (a
+ * finding, never a skip).
+ *
+ * There are two correct ways to write that decision and BOTH are accepted,
+ * because a gate that red on one correct implementation is a gate that gets
+ * switched off:
+ *   - an `if (spec.lane === 'engine') { … }` branch that gates per action (the
+ *     shape the host used first), or
+ *   - a shared body that reads the action's CARRIER out of the catalog and
+ *     refuses when the catalog has none — the shape it moved to, where every
+ *     carrier shares one body because "what does this action do" is a question
+ *     only the catalog can answer.
+ *
+ * The slice is BRACE-MATCHED, not cut at a phrase. It used to stop at the next
+ * `lane === 'document'`, which was correct until the branches stopped being
+ * written that way: the boundary phrase vanished, the slice ran to a character
+ * cap, and it swept in an unrelated switch further down the file. A heuristic
+ * boundary does not fail loudly when the code moves — it starts measuring the
+ * wrong thing, which is worse.
  */
-function engineBranch(toolsSource) {
-  const at = toolsSource.search(/lane\s*===\s*'engine'/)
-  if (at === -1) return null
-  const after = toolsSource.indexOf("lane === 'document'", at)
-  const end = after === -1 ? Math.min(toolsSource.length, at + 2000) : after
-  return toolsSource.slice(at, end)
+function relayDecisionRegion(toolsSource) {
+  const braceMatched = from => {
+    const open = toolsSource.indexOf('{', from)
+    if (open === -1) return null
+    let depth = 0
+    for (let i = open; i < toolsSource.length; i++) {
+      if (toolsSource[i] === '{') depth++
+      else if (toolsSource[i] === '}') {
+        depth--
+        if (depth === 0) return toolsSource.slice(from, i + 1)
+      }
+    }
+    return null
+  }
+  const byLane = /if\s*\([^{}]*lane\s*===\s*'engine'[^{}]*\)\s*\{/.exec(toolsSource)
+  if (byLane !== null) return braceMatched(byLane.index)
+  const byCarrier = /if\s*\([^{}]*\brelay\s*===\s*true[^{}]*\)\s*\{/.exec(toolsSource)
+  if (byCarrier !== null) return braceMatched(byCarrier.index)
+  return null
 }
 
 /**
@@ -731,6 +816,65 @@ export function actionCoverageFindings(input) {
     }
   }
 
+  // 3e. carriers, both directions. The catalog says which carrier an action's
+  // effect travels on; the core's command union is what the engine can carry.
+  //
+  // WHY THIS ONE CANNOT BE SKIPPED, and why the next person's instinct to skip
+  // it is the one that costs: the natural assumption is "carriers are the core's
+  // business and the catalog is a separate thing". That is exactly where it
+  // drifts. A variant added to the union and not to the catalog leaves a carrier
+  // nobody can ever ride — and **nothing rings**: no test, no type error, no
+  // runtime path is ever taken. The sibling dimension (1b) fails loudly, because
+  // a missing `case` is a wall the model hits. This one fails SILENTLY, because a
+  // request with nowhere to go is not a request anybody ever makes.
+  //
+  // Both sides are read from the code and compared against each other. Neither
+  // list is written down here: a list would be the very "forgot to add one" table
+  // this check exists to catch.
+  //
+  // WHERE IT CAME FROM, because the reasoning matters more than the rule. It is
+  // NOT derived from "carriers ought to correspond" — it was derived the other
+  // way round, from **host does not invent fields**. First there was "do not
+  // invent a carrier field just to satisfy a parameter"; from THAT came "every
+  // required parameter must have a seat in the payload". The two misalignments
+  // are the two ends of one root cause: the catalog offers a parameter the
+  // payload has no seat for (a condition nobody can ever satisfy), and the
+  // payload asks for a field the catalog never gives (a request with nowhere to
+  // go). One rule about who is allowed to invent a field produces both, so
+  // checking one without the other would leave half the root cause unguarded.
+  const variants = boardCommandVariants(input.boardDocText ?? '')
+  if (variants === null) {
+    fail('cannot read the carrier variants out of the BoardCommand union in src/core/board-doc.ts — no `type:` literals were found, so every carrier check below would have passed on an empty input. This is a FINDING, not a skip')
+  } else if (catalog.declaredRelays === null) {
+    fail('cannot read the declared carrier names off ActionShape in src/core/board-actions.ts (`readonly relay?: ...`) — if that field is gone then no action can be relayed at all, and the checks below would pass on nothing. If the field was removed on purpose, delete this check with it rather than leaving it vacuous')
+  } else {
+    const carriers = new Set(variants)
+    const declared = new Set(catalog.declaredRelays)
+    for (const name of declared) {
+      if (!carriers.has(name)) {
+        fail(`the catalog declares the carrier "${name}" but the BoardCommand union has no \`type: '${name}'\`: any action riding it is a request with nowhere to go — the model will send it and the host will refuse`)
+      }
+    }
+    for (const name of carriers) {
+      if (!declared.has(name)) {
+        fail(`the engine can carry \`type: '${name}'\` but the catalog does not name it — the carrier exists and the host can build it, yet no action can select it, so it is dead weight waiting to be guessed at`)
+      }
+    }
+    const ridden = new Set(catalog.actions.map(a => a.relay).filter(v => v !== undefined))
+    for (const action of catalog.actions) {
+      if (action.relay === undefined) continue
+      if (!declared.has(action.relay)) {
+        fail(`${action.id}: relay "${action.relay}" is not one the catalog declares (${[...declared].join(', ') || 'none'}) — the carrier name this action asks for does not exist in the catalog's own vocabulary`)
+      }
+    }
+    for (const name of carriers) {
+      if (!ridden.has(name)) {
+        fail(`the carrier "${name}" is in both the catalog and the engine, but NO action declares \`relay: '${name}'\`: a carrier nobody rides is a request nobody can make, and it will look like a feature that works`)
+      }
+    }
+    notes.push(`carriers: ${declared.size} declared in the catalog, ${carriers.size} in the BoardCommand union, ${ridden.size} with at least one action riding them`)
+  }
+
   // 1c. the relay's own routing. An engine action that is not a run must never
   // be forwarded as one. The shape that caused the incident had no per-action
   // test at all — generalised on `lane`, so creating a session, renaming one
@@ -749,23 +893,28 @@ export function actionCoverageFindings(input) {
   // not name) but it is the shape that regrows the bug, and a guard that is
   // being moved to the structural form should be told so while it is still here.
   const engine = catalog.actions.filter(a => a.lane === 'engine').map(a => a.id)
-  const branch = engineBranch(input.agentToolsText ?? '')
+  const branch = relayDecisionRegion(input.agentToolsText ?? '')
   if (branch === null) {
-    fail('cannot find the engine lane branch in src/host/agent/tools.ts — the "route engine actions here" condition was not found, so the relay routing cannot be checked. This is a FINDING, not a skip')
+    fail('cannot find where src/host/agent/tools.ts decides that an action is a relay rather than a document write — neither a `lane === \'engine\'` branch nor a `relay === true` block was found, so whether an unroutable engine action gets refused cannot be checked. This is a FINDING, not a skip')
   } else {
-    // A per-action test, in either shape: a comparison against `id`, a switch on
-    // it, a set membership test, OR a catalog lookup keyed by it. The last one
-    // matters — `ACTIONS[id].verb !== 'run'` IS a per-action gate, and a check
-    // that failed to see it would report the correct implementation as broken.
-    const gated = /\bid\s*(?:!==|===)|switch\s*\(\s*id\s*\)|\.has\(\s*id\s*\)|ACTIONS\s*\[\s*id\s*\]/.test(branch)
-    if (!gated) {
+    // SAFE IN EITHER OF TWO SHAPES, and the point is that neither is preferred:
+    //   a) read the carrier from the catalog and refuse when there is none
+    //      (`const relay = spec.relay; if (relay === undefined) refuse`), or
+    //   b) name the actions the relay carries and refuse everything else.
+    // Both make an unroutable engine action fail closed. The shape that this
+    // check exists against is the one with NEITHER: a branch generalised on
+    // `lane`, forwarding everything to "run this card", where a session, a
+    // rename and a message are all silently spent as runs.
+    const readsCarrier = /\.relay\b/.test(branch) && /relay\s*===\s*undefined/.test(branch)
+    const namesActions = /\bid\s*(?:!==|===)|switch\s*\(\s*id\s*\)|\.has\(\s*id\s*\)|ACTIONS\s*\[\s*id\s*\]/.test(branch)
+    if (!readsCarrier && !namesActions) {
       for (const id of engine) {
-        fail(`${id}: its lane is 'engine', and the relay branch has NO per-action test — every engine action is forwarded as "run this card", so anything that is not a run (a session, a rename, a message) is silently relayed as one. Add a per-action gate that refuses the ones the relay does not carry`)
+        fail(`${id}: its lane is 'engine', and the relay decision has NO per-action test — nothing reads the catalog's carrier for it and nothing refuses it, so every engine action is forwarded as one thing: a session, a rename or a message silently spent as a run. Read \`spec.relay\` and refuse when the catalog has none, or name the actions the relay carries`)
       }
     }
     for (const id of engine) {
       if (new RegExp(`'${id}'`).test(branch)) {
-        fail(`${id}: the relay branch recognises this engine action BY NAME ('${id}'). A name is a line someone has to remember — add an engine action, forget the line, and it is forwarded as a run again. Decide from a catalog field instead (the verb, or a lane the relay does not carry)`)
+        fail(`${id}: the relay decision recognises this engine action BY NAME ('${id}'). A name is a line someone has to remember — add an engine action, forget the line, and it is forwarded again. Decide from the catalog's \`relay\` field instead`)
       }
     }
   }
@@ -816,6 +965,7 @@ export function readRepo(root) {
     catalogText: existsSync(coreDir) ? (readdirSync(coreDir).includes('board-actions.ts') ? read('src/core/board-actions.ts') : '') : '',
     controllerText: existsSync(at('src', 'core', 'controller.ts')) ? read('src/core/controller.ts') : '',
     agentToolsText: existsSync(at('src', 'host', 'agent', 'tools.ts')) ? read('src/host/agent/tools.ts') : '',
+    boardDocText: existsSync(at('src', 'core', 'board-doc.ts')) ? read('src/core/board-doc.ts') : '',
     scanFiles,
     coreExportNames: [...coreExports(coreFiles)],
     agentsText: existsSync(at('AGENTS.md')) ? readFileSync(at('AGENTS.md'), 'utf8') : '',

@@ -36,7 +36,17 @@ function catalog(overrides: Record<string, unknown> = {}) {
   const moveParams = (overrides?.moveParams as string | undefined)
     ?? `\n      of: { about: '要移的卡' },`
   const lane = overrides?.lane ?? 'document'
+  // Both synthetic actions ride a carrier, so the baseline's two sides agree.
+  const relayCreate = `\n    relay: '${(overrides?.relay as string | undefined) ?? 'alpha.run'}',`
+  const relayMove = `\n    relay: '${(overrides?.moveRelay as string | undefined) ?? 'alpha.move'}',`
+  // The declared carrier vocabulary. It is written HERE in the fixture only
+  // because a test has no other source for it; the gate itself reads this out of
+  // the real catalog and never from a list of its own.
+  const declared = (overrides?.declaredRelays as string[] | undefined) ?? ['alpha.run', 'alpha.move']
   return `
+export interface ActionShape {
+  readonly relay?: ${declared.map(d => `'${d}'`).join(' | ')}
+}
 export const ACTIONS = {
   'task.create': {
     verb: '${verb}',
@@ -46,7 +56,7 @@ export const ACTIONS = {
     surface: '${surface}',
     summary: '建一张新卡。',
     params: {${createParams}
-    },${semantic}${semanticOf}
+    },${semantic}${semanticOf}${relayCreate}
   },
   'task.move': {
     verb: 'move',
@@ -56,7 +66,7 @@ export const ACTIONS = {
     surface: 'ui+ai',
     summary: '移栏。',
     params: {${moveParams}
-    },
+    },${relayMove}
   },
 } as const satisfies Record<string, ActionShape>
 
@@ -86,6 +96,12 @@ const BASE = {
   // engine branch needs a per-action gate, or the relay check fires.
   agentToolsText: tools("    if (id !== 'task.run') { return 'refused' }\n    return relay()"),
   pendingExecution: {},
+  // The engine's carriers. The synthetic catalog declares two and both actions
+  // ride one, so the two sides agree until a test makes them disagree.
+  boardDocText: `export type BoardCommand =
+  | { type: 'alpha.run'; taskId: string; clientId: string }
+  | { type: 'alpha.move'; taskId: string; clientId: string }
+`,
   coreExportNames: ['moveTaskToStatus', 'resolveCardDrop'],
   agentsText: '新增动作必须进 src/core/board-actions.ts。',
   presentFiles: ['src/core/board-actions.ts'],
@@ -283,29 +299,59 @@ describe('1c — the relay must not forward a non-run as a run', () => {
       catalogText: catalog({ lane: 'engine' }),
       agentToolsText: tools('    return relay()'),
     })
-    expect(out).toContain('the relay branch has NO per-action test')
+    expect(out).toContain('the relay decision has NO per-action test')
     expect(out).toContain("task.create: its lane is 'engine'")
   })
 
   it('catches an engine action recognised by name, even when the guard is fail-closed', () => {
-    // `id !== 'task.run'` refuses everything it does not name, so it cannot
+    // `id !== 'task.create'` refuses everything it does not name, so it cannot
     // cause the incident today. It is still the shape that regrows it: add an
-    // engine action, forget the line, and it is forwarded as a run again. The
-    // fix is to decide from a catalog field, and the gate says so while the
+    // engine action, forget the line, and it is forwarded again. The fix is to
+    // decide from the catalog's carrier, and the gate says so while the
     // name-keyed guard is still in the file.
     const out = findings({
       catalogText: catalog({ lane: 'engine' }),
       agentToolsText: tools("    if (id !== 'task.create') { return 'refused' }\n    return relay()"),
     })
     expect(out).toContain('recognises this engine action BY NAME')
-    expect(out).toContain('Decide from a catalog field instead')
+    expect(out).toContain("Decide from the catalog's `relay` field instead")
   })
 
-  it('accepts a guard keyed on a catalog field', () => {
+  it('accepts a guard that names the actions the relay carries', () => {
+    // One of the two safe shapes. It is accepted rather than preferred, because
+    // a gate that red on a correct implementation is a gate that gets switched
+    // off.
     expect(run({
       catalogText: catalog({ lane: 'engine' }),
-      agentToolsText: tools("    if (ACTIONS[id].verb !== 'run') { return 'refused' }\n    return relay()"),
-    })).toEqual([])
+      agentToolsText: tools("    if (id !== 'task.create') { return 'refused' }\n    return relay()"),
+      // The name check is about the RELAY decision, so this case is covered by
+      // the case above; here the point is that the shape is not rejected.
+    }).filter(f => f.includes('NO per-action test'))).toEqual([])
+  })
+
+  it('accepts the other safe shape: read the carrier and refuse when it is absent', () => {
+    // The shape the host actually moved to — no `lane` branch at all, one
+    // shared body, and the decision made from the catalog field.
+    const shared = `function applyOne(doc, id, payload) {
+  switch (id) {
+    case 'task.create':
+      return { relay: true, carrier: spec.relay }
+    case 'task.move':
+      return { doc }
+  }
+}
+function execute(doc, items, id, payload) {
+  const next = applyOne(doc, id, payload)
+  if (typeof next === 'string') return { ok: false }
+  if (next.relay === true) {
+    const relay = spec.relay
+    if (relay === undefined) return { ok: false, detail: 'no carrier' }
+    return { ok: true }
+  }
+  return { ok: true }
+}
+`
+    expect(run({ catalogText: catalog({ lane: 'engine' }), agentToolsText: shared })).toEqual([])
   })
 
   it('follows the lane, not a list of names: a document-lane action is out of scope', () => {
@@ -319,9 +365,9 @@ describe('1c — the relay must not forward a non-run as a run', () => {
     })).toEqual([])
   })
 
-  it('reports an engine branch it cannot find instead of passing', () => {
+  it('reports a relay decision it cannot find instead of passing', () => {
     expect(findings({ agentToolsText: 'function applyOne() { return 0 }' }))
-      .toContain('cannot find the engine lane branch')
+      .toContain('cannot find where src/host/agent/tools.ts decides that an action is a relay')
   })
 })
 
@@ -402,6 +448,54 @@ describe('3 — parameter declarations, fields only', () => {
         params: "\n      scope: { about: '标到哪一层', optional: true, oneOf: ['task', 'all'], default: '不传 = task' },\n      who: { about: '对谁', appliesWhen: 'scope 不是 all' },",
       }),
     })).toEqual([])
+  })
+})
+
+describe('3e — carriers, both directions', () => {
+  it('is quiet when the catalog and the engine agree', () => {
+    // The green case IS the invariant: every declared carrier is carried, and
+    // every carried variant is named and ridden. Asserted as a property, never
+    // as a count of either side.
+    expect(run()).toEqual([])
+  })
+
+  it('catches an action asking for a carrier the catalog does not declare', () => {
+    const out = findings({ catalogText: catalog({ relay: 'nonexistent' }) })
+    expect(out).toContain('relay "nonexistent" is not one the catalog declares')
+  })
+
+  it('catches a carrier the engine can carry but the catalog does not name', () => {
+    const out = findings({
+      boardDocText: "export type BoardCommand =\n  | { type: 'alpha.run'; taskId: string }\n  | { type: 'alpha.move'; taskId: string }\n  | { type: 'task.archive'; taskId: string }\n",
+    })
+    expect(out).toContain("the engine can carry `type: 'task.archive'` but the catalog does not name it")
+  })
+
+  it('catches a declared carrier the engine cannot carry at all', () => {
+    // The dead half: a name the catalog promises and no variant can carry, so
+    // anything riding it is a request with nowhere to go.
+    const out = findings({ catalogText: catalog({ declaredRelays: ['alpha.run', 'alpha.move', 'task.detach'] }) })
+    expect(out).toContain("the catalog declares the carrier \"task.detach\" but the BoardCommand union has no")
+  })
+
+  it('catches a carrier nobody rides', () => {
+    // A carrier on both sides that no action selects is a request nobody can
+    // make — and it reads, from the outside, like a feature that works.
+    const out = findings({ catalogText: catalog({ moveRelay: 'alpha.run' }) })
+    expect(out).toContain('but NO action declares')
+    expect(out).toContain('a carrier nobody rides is a request nobody can make')
+  })
+
+  it('reports a command union it cannot read instead of passing', () => {
+    expect(findings({ boardDocText: 'export const nothing = 1\n' }))
+      .toContain('cannot read the carrier variants')
+  })
+
+  it('reports a catalog with no relay vocabulary instead of passing vacuously', () => {
+    // If the field is deleted on purpose this check must be deleted with it —
+    // a check that quietly stops checking is worse than no check.
+    const stripped = catalog().replace(/export interface ActionShape \{[\s\S]*?\}\n/, '')
+    expect(findings({ catalogText: stripped })).toContain('cannot read the declared carrier names')
   })
 })
 

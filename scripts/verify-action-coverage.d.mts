@@ -22,6 +22,8 @@ export interface CoverageInput {
   controllerText: string
   /** The text of src/host/agent/tools.ts — the model-facing execution paths. */
   agentToolsText: string
+  /** The text of src/core/board-doc.ts — the BoardCommand union's carriers. */
+  boardDocText: string
   /** The scanned sources: src/client/** and the controller itself. */
   scanFiles: { path: string; text: string }[]
   /** Every exported name across src/core, the set a `semanticOf` must hit. */
