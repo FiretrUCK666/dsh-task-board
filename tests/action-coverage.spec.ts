@@ -116,6 +116,27 @@ describe('1 — coverage, both directions', () => {
     expect(findings({ internal: { getSnapshot: '   ' } })).toContain('has an empty reason')
   })
 
+  it('catches a bare verdict marker with no decision after it', () => {
+    // A marker alone is the worst case: it asserts a verdict and documents
+    // nothing, so the next reader inherits "we decided" with no decision.
+    expect(findings({ internal: { getSnapshot: 'DEBT: ' } }))
+      .toContain('is marked "DEBT" with no reason after the marker')
+    expect(findings({ internal: { getSnapshot: 'NOT-FOR-THE-MODEL: ' } }))
+      .toContain('is marked "NOT-FOR-THE-MODEL" with no reason after the marker')
+  })
+
+  it('catches a verdict written mid-reason instead of as a prefix', () => {
+    // The counts read the PREFIX, so a verdict buried in prose silently counts
+    // as a plain non-action and the decision disappears from the report.
+    expect(findings({ internal: { getSnapshot: 'a read projection, and NOT-FOR-THE-MODEL on top' } }))
+      .toContain('does not START with the marker')
+  })
+
+  it('accepts either marker once it carries its decision', () => {
+    expect(run({ internal: { getSnapshot: 'DEBT: the catalog does not carry this one yet' } })).toEqual([])
+    expect(run({ internal: { getSnapshot: 'NOT-FOR-THE-MODEL: a product decision, not an omission' } })).toEqual([])
+  })
+
   it('catches a call the UI made through a receiver it does not recognize', () => {
     // The renamed prop: `board.createTask(` would stop being checked silently
     // if unknown receivers were simply ignored.

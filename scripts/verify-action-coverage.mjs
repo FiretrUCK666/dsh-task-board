@@ -120,6 +120,7 @@ const ACTION_METHODS = {
   'rule.update': ['updateSessionRule', 'toggleSessionRule'],
   'rule.delete': ['deleteSessionRule'],
   'session.bind': ['addTaskSources'],
+  'session.create': ['createTaskSession'],
   'session.remove': ['removeTaskSession'],
   'session.rename': ['renameTaskSession'],
   'session.reorder': ['reorderTaskSession'],
@@ -135,13 +136,25 @@ const ACTION_METHODS = {
  * difference between "the model was never told, on purpose" and "nobody
  * noticed".
  *
- * A reason that starts with DEBT marks a method that IS a user-facing change the
- * catalog does not carry yet. Those are the honest gaps: a board feature a
- * person can use and the model cannot, parked here with a reason instead of
- * being quietly filed under "not an action". Every run prints how many there
- * are, so the count cannot rot into invisibility.
+ * A reason's PREFIX is the verdict, and the two marked ones must never be
+ * confused — that confusion is the whole cost of parking a real action here:
+ *
+ *   (no prefix)          it is not an action at all: a read projection, a view
+ *                        switch, a subscription, sync or engine wiring.
+ *   DEBT:                it IS a user-facing action the catalog does not carry
+ *                        YET — we FORGOT. The thing to do is add it.
+ *   NOT-FOR-THE-MODEL:   it IS a user-facing action and we have DECIDED the
+ *                        model does not get it. The thing to do is nothing.
+ *
+ * Every run prints the two marked groups separately, with their counts, and
+ * never as one number: a decision and an oversight summed together read as
+ * "somebody forgot", and a deliberate product call should never look like that.
+ * The mechanism is kept even while the count is zero, because zero is a
+ * statement about today and the next action added without a catalog entry
+ * lands right back in it.
  */
 const DEBT = 'DEBT: '
+const NOT_FOR_MODEL = 'NOT-FOR-THE-MODEL: '
 const INTERNAL = {
   // --- read projections: they change nothing, so they are not actions ---------
   getSnapshot: '读投影：整份看板快照',
@@ -192,12 +205,16 @@ const INTERNAL = {
   sendSessionMessage: '底层投递：评论与规则共用它，界面不直接调用',
   recordNativeTurn: '观测记账：原生侧跑完一轮（不是人点的动作）',
   recordActivityWake: '观测记账：原生侧活动唤醒（不是人点的动作）',
-  // --- catalog debt: real user-facing changes the catalog does not carry yet --
-  createTaskSession: DEBT + '按运行配置新建一条会话：人能在「新建会话」里做，目录还没有对应条目',
-  answerQuestion: DEBT + '作答挂起的问题：人能在交互卡里做，目录还没有对应条目',
-  cancelQuestion: DEBT + '取消挂起的问题：人能在交互卡里做，目录还没有对应条目',
-  recheckSeat: DEBT + '检查更新并安装：人能在板头做，目录还没有对应条目',
-  uploadFile: DEBT + '上传附件：模型手里没有上传通道（与图片字段 forbidden 同源）',
+  // --- deliberately NOT offered to the model: real actions, product decisions -
+  // Each one IS a thing a person can do from the board, and none of them is in
+  // the catalog. That is a decision, not an oversight, and the reason has to
+  // survive the next person who reads the table: the tempting fix for "the
+  // catalog is missing this" is to invent a verb for it, and an invented verb
+  // teaches the next reader a false thing about that verb.
+  recheckSeat: NOT_FOR_MODEL + '检查更新并安装：十二个动词里没有一个是真的——塞进 `run` 等于教下一个读表的人「run 不等于跑卡」。诚实的错配比一个会骗人的动词好。',
+  uploadFile: NOT_FOR_MODEL + '上传附件：对应 `TASK_FIELDS` 里 `promptImages` / `promptFiles` 的 `forbidden` 裁决——模型手里没有上传通道，凭空的图片或文件引用等于一条画不出来的内容。',
+  answerQuestion: NOT_FOR_MODEL + '作答挂起的问题：作答是「人看过」的陈述，模型替人作答等于替人关掉自己的门——与 `task.ack`（标已读钟）是同一族判断，都是人的动作。',
+  cancelQuestion: NOT_FOR_MODEL + '取消挂起的问题：与作答同一族——它替人撤回一句已经说出口的话，人做得到不等于该交给模型。',
 }
 
 /** Scan roots: the UI half plus the controller, because the controller calls
@@ -209,6 +226,9 @@ const failures = []
 const notes = []
 
 const fail = message => failures.push(message)
+
+/** The verdict a reason carries, or undefined for a plain non-action. */
+const markerOf = reason => [DEBT, NOT_FOR_MODEL].find(marker => reason.startsWith(marker))
 
 /** Read the public method names off a controller class. The method set is a
  *  FACT read from the code, not a hand-typed list: a list would need editing
@@ -444,6 +464,16 @@ export function actionCoverageFindings(input) {
       fail(`${site.file}:${site.line}: controller.${site.method}() is neither an action in src/core/board-actions.ts nor an INTERNAL entry with a reason — this is the "the UI grew something the model was never told about" case. Add it to the catalog as an action, or to INTERNAL with the reason it is not one`)
     } else if (reason.trim() === '') {
       fail(`INTERNAL.${site.method} has an empty reason — an unexplained exclusion is indistinguishable from a forgotten one`)
+    } else if (markerOf(reason) !== undefined && reason.slice(markerOf(reason).length).trim() === '') {
+      // A bare marker is the worst case of all: it asserts a verdict while
+      // saying nothing, so it reads as a decision but documents no decision.
+      const kind = markerOf(reason) === DEBT ? 'DEBT' : 'NOT-FOR-THE-MODEL'
+      fail(`INTERNAL.${site.method} is marked "${kind}" with no reason after the marker — the marker is the verdict, the sentence after it is the decision; a bare one says "we decided" without saying what was decided`)
+    } else if (reason.includes('NOT-FOR-THE-MODEL') && markerOf(reason) === undefined) {
+      // Matched on the bare word, not the marker with its colon and space: the
+      // mistake being caught is a verdict written into prose, and prose rarely
+      // reproduces the punctuation.
+      fail(`INTERNAL.${site.method} mentions NOT-FOR-THE-MODEL in the middle of its reason but does not START with the marker — the prefix is what the counts read, so an unmarked mention counts as a plain non-action`)
     }
   }
   // A method cannot be both an action and a declared non-action: the two
@@ -475,12 +505,20 @@ export function actionCoverageFindings(input) {
     notes.push('AGENTS.md says nothing about the action catalog, so the doc/code agreement check has nothing to compare')
   }
 
-  const debt = Object.entries(internal).filter(([, reason]) => reason.startsWith(DEBT)).length
   const paramCount = catalog.actions.reduce((sum, a) => sum + a.params.length, 0)
+  // The two marked groups, counted and named SEPARATELY. Summing them would
+  // make a deliberate product call indistinguishable from an oversight, and
+  // "we decided that" is exactly the verdict that must never read as "we
+  // forgot" — the difference decides whether the fix is to add a row or to
+  // change nothing.
+  const debt = Object.entries(internal).filter(([, reason]) => reason.startsWith(DEBT)).map(([m]) => m)
+  const notForModel = Object.entries(internal).filter(([, reason]) => reason.startsWith(NOT_FOR_MODEL)).map(([m]) => m)
+  const plain = Object.keys(internal).length - debt.length - notForModel.length
   notes.push(`catalog: ${catalog.actions.length} actions, ${catalog.verbs.length} verbs, ${paramCount} parameters read, ${publicMethods.length} public controller methods`)
-  notes.push(`coverage: ${used.size} controller method(s) called across ${input.scanFiles.length} file(s); ${claimedBy.size} bound to an action, ${Object.keys(internal).length} INTERNAL (${debt} marked catalog debt)`)
+  notes.push(`coverage: ${used.size} controller method(s) called across ${input.scanFiles.length} file(s); ${claimedBy.size} bound to a catalog action, ${plain} plain non-action(s) (reads, view switches, wiring)`)
+  notes.push(`decided not-for-the-model: ${notForModel.length} real action(s) deliberately kept out of the catalog — a product decision, NOT an omission: ${notForModel.join(', ') || 'none'}`)
+  notes.push(`catalog debt: ${debt.length} real action(s) the catalog does not carry yet — FORGOTTEN, and the fix is to add the row: ${debt.join(', ') || 'none'}`)
   notes.push(`semantic: ${catalog.actions.filter(a => a.semantic).length} semantic action(s) checked against ${input.coreExportNames.length} core export(s)`)
-  if (debt > 0) notes.push(`catalog debt: ${debt} user-facing method(s) are parked in INTERNAL with a DEBT reason — visible on every run so the gap cannot rot into invisibility`)
   return failures.slice()
 }
 
