@@ -63,6 +63,33 @@ if (process.argv.includes('--probe-encoding')) {
   process.exit(0)
 }
 
+if (process.argv.includes('--probe-deps')) {
+  // Self-test for the "present AND empty" rule, run against the same function
+  // the real gate uses. All four states are checked, because a gate that only
+  // knows how to complain is half a check: the exempt case and the correct case
+  // have to be pinned too, or the check drifts into noise nobody reads.
+  const cases = [
+    { label: 'field absent', pkg: { name: 'x' }, expect: 'has no `dependencies` field at all' },
+    { label: 'field not an object', pkg: { dependencies: ['a'] }, expect: 'is not an object' },
+    { label: 'field not empty', pkg: { dependencies: { 'left-pad': '1.0.0' } }, expect: 'is not in the allowed set' },
+    { label: 'present and empty', pkg: { dependencies: {} }, expect: null },
+  ]
+  for (const c of cases) {
+    const found = dependencyFieldFindings(c.pkg).join('\n')
+    if (c.expect === null) {
+      if (found !== '') {
+        console.error(`verify-standalone PROBE FAILED: "present and empty" was reported — ${found}`)
+        process.exit(1)
+      }
+    } else if (!found.includes(c.expect)) {
+      console.error(`verify-standalone PROBE FAILED: "${c.label}" did not report ${JSON.stringify(c.expect)} — it does not bite, so it is not a check`)
+      process.exit(1)
+    }
+  }
+  console.log(`verify-standalone deps probe OK: the dependency field is required present and empty, and all ${cases.length} states behave (3 rejected, 1 accepted)`)
+  process.exit(0)
+}
+
 const [dirArg, pluginIdArg, packageNameArg] = process.argv.slice(2)
 if (!dirArg) {
   console.error('usage: node verify-standalone.mjs <plugin-dir> [plugin-id] [package-name]')
@@ -110,6 +137,13 @@ const FORBIDDEN = [
   'web-ui-settings',
   'web-ui-compat',
 ]
+
+/** Runtime dependencies this plugin may declare. Empty BY RULE: the host half
+ *  imports only types, the browser half imports only React (provided by the
+ *  shell) and its own files, and there is no config schema left to validate. An
+ *  empty allow-list states that directly — anything that appears here has to be
+ *  argued for. */
+const ALLOWED_DEPS = new Set()
 
 // --- walk helpers -----------------------------------------------------------
 
@@ -359,16 +393,45 @@ notes.push(`encoding audit: ${textFiles.length} text file(s) checked for U+FFFD,
 // the browser half imports only React (provided by the shell) and its own files,
 // and there is no config schema left to validate. An empty allow-list is the
 // rule stated directly — anything that appears here has to be argued for.
-const ALLOWED_DEPS = new Set()
+/**
+ * The whole "present AND empty" rule, as a pure function of the parsed
+ * manifest. The self-test drives this one rather than a copy of it: a probe that
+ * tests its own re-implementation proves nothing about the code that runs.
+ *
+ * The allow-list is a PARAMETER, not a module constant, so the probe can call
+ * this before anything else in the file has been initialised — a self-test that
+ * only works when run second is a self-test people stop running.
+ */
+export function dependencyFieldFindings(pkg, allowed = new Set()) {
+  const out = []
+  if (pkg.dependencies === undefined) {
+    out.push('package.json has no `dependencies` field at all — hard rule 7 states that the runtime dependency surface is EMPTY, and the empty object is what carries that statement; a rewrite that drops the key leaves the rule standing and the carrier gone, and nothing else here would notice. Restore `"dependencies": {}`')
+  } else if (typeof pkg.dependencies !== 'object' || pkg.dependencies === null || Array.isArray(pkg.dependencies)) {
+    out.push(`package.json \`dependencies\` is not an object (found ${JSON.stringify(pkg.dependencies)}) — it must be present and empty; see the note above on why "absent" is not good enough`)
+  }
+  for (const name of Object.keys(pkg.dependencies ?? {})) {
+    if (!allowed.has(name)) out.push(`runtime dependency "${name}" is not in the allowed set`)
+  }
+  return out
+}
+
 if (existsSync(pkgPath)) {
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-  for (const name of Object.keys(pkg.dependencies ?? {})) {
-    if (!ALLOWED_DEPS.has(name)) failures.push(`runtime dependency "${name}" is not in the allowed set`)
-  }
+  // A RULE THAT SAYS "EMPTY" HAS TO BE WRITTEN AS "PRESENT AND EMPTY".
+  //
+  // In JSON, "there is no such key" and "that key is an empty object" are two
+  // different things — and the missing one reads like "there was never any
+  // dependency to declare", which is exactly why deleting it is the dangerous
+  // direction: hard rule 7 says the runtime dependency surface is EMPTY, the
+  // empty object is what CARRIES that sentence, and a package-manager rewrite
+  // that drops the key leaves the rule standing with the carrier gone. Nothing
+  // else in this gate would notice, and the plugin would still install and run.
+  failures.push(...dependencyFieldFindings(pkg, ALLOWED_DEPS))
   const devDeps = pkg.devDependencies ?? {}
   for (const name of Object.keys(devDeps)) {
     if (name.startsWith('@linxin666')) failures.push(`devDependency "${name}" forbidden`)
   }
+  notes.push(`runtime dependencies: the field is present with ${Object.keys(pkg.dependencies ?? {}).length} entr(ies); allowed set is empty by rule`)
 }
 
 // --- 5. tsconfig hygiene ----------------------------------------------------
@@ -454,11 +517,65 @@ if (/^export const Config\s*[:=]/m.test(srcText)) {
 if (/\.installSection\s*\(/.test(srcText)) {
   failures.push('src still calls the removed ctx.settings.installSection — plugin config is the profile entry now')
 }
-// The plugin writes nothing into other people's prompts. Asserting the absence
-// of the service, not just of one call, because any import of it is the road
-// back to an announcement section.
-if (/dsh-system-prompt|systemPrompt\s*\.\s*section/.test(srcText)) {
-  failures.push('src reaches for the system-prompt service again — this plugin does not announce itself to agents')
+// ── THE SYSTEM-PROMPT SECTION MUST BE A CONSTANT ───────────────────────────
+//
+// This used to ban the service outright: "src reaches for the system-prompt
+// service again — this plugin does not announce itself to agents". That sentence
+// described a world which has ended — talking to the agent IS the product now —
+// and it became a false red on code that is correct on purpose.
+//
+// DELETING it would have been easy and wrong: the position it guards would sit
+// empty, and the next person could hand-roll a capability list back into the
+// prompt. So the intent is restated in the shape it has today, and the new rule
+// is MECHANICAL where the old one was not about the text at all:
+//
+//   the section is FIXED TEXT. A single byte that changes per turn invalidates
+//   the prompt cache for every conversation carrying it. And a capability list
+//   in the prompt is a second copy of the catalog, which the catalog exists to
+//   prevent — a stale list is worse than no list, because the model trusts it.
+//   Everything live is reachable through `taskboard_capabilities` instead.
+//
+// So: no interpolation in the section's text. `${` or `{{` there means the
+// section is being assembled per turn, which is the thing this rule is for.
+const SECTION_TEXT_NAME = 'PROMPT_SECTION_TEXT'
+/** The declared value of the section text, bracket-matched out of its file. */
+function sectionTextRegion(text) {
+  const at = text.indexOf(SECTION_TEXT_NAME)
+  if (at === -1) return null
+  const valueStart = text.slice(at + SECTION_TEXT_NAME.length).search(/[['"`]/)
+  if (valueStart === -1) return null
+  const from = at + SECTION_TEXT_NAME.length + valueStart
+  const open = text[from]
+  const close = open === '[' ? ']' : open === '{' ? '}' : null
+  if (close === null) return text.slice(from, text.indexOf('\n', from) === -1 ? text.length : text.indexOf('\n', from))
+  let depth = 0
+  for (let i = from; i < text.length; i++) {
+    if (text[i] === open) depth++
+    else if (text[i] === close) {
+      depth--
+      if (depth === 0) return text.slice(from, i + 1)
+    }
+  }
+  return null
+}
+
+const sectionHolders = srcFiles.filter(file => {
+  try { return readFileSync(file, 'utf8').includes(SECTION_TEXT_NAME) } catch { return false }
+})
+if (sectionHolders.length === 0) {
+  failures.push(`cannot find where the system-prompt section text is declared — nothing under src/ mentions \`${SECTION_TEXT_NAME}\`, so "is that section still a constant?" cannot be answered. A finding, not a skip`)
+}
+for (const file of sectionHolders) {
+  const text = readFileSync(file, 'utf8')
+  const region = sectionTextRegion(text)
+  if (region === null) {
+    failures.push(`${relative(root, file).split(sep).join('/')}: found \`${SECTION_TEXT_NAME}\` but could not delimit its value — the section text must be a literal, so report this rather than skipping the check`)
+    continue
+  }
+  const interpolated = /\$\{|\{\{/.exec(region)
+  if (interpolated !== null) {
+    failures.push(`${relative(root, file).split(sep).join('/')}: the system-prompt section is INTERPOLATED (${JSON.stringify(interpolated[0])}) — that section must be fixed text. It is assembled on every turn, so a single changing byte invalidates the prompt cache for every conversation that carries it; and a capability list belongs in \`taskboard_capabilities\` (looked up on demand), never in the prompt, because a second copy of the catalog goes stale and the model trusts it`)
+  }
 }
 
 // --- 8. import hygiene ------------------------------------------------------
