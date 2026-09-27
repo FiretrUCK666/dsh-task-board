@@ -64,7 +64,7 @@ import {
   type ParamSpec,
 } from '../../core/board-actions.ts'
 import { QUALIFIER_KEYS, completeBoardQuery } from '../../core/task-search.ts'
-import { type BoardCommit, type BoardDoc, type BoardView } from '../../core/board-doc.ts'
+import { clampCruiseLimit, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
 import { applyItemsCommit, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
 import { createTask, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { armSchedule, moveTaskToStatus, removeSessionFromTask, type TransitionResult } from '../../core/task-transitions.ts'
@@ -406,20 +406,14 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
     }
     const spec = ACTIONS[id]
     if (spec.lane === 'engine') {
-      // The relay carries exactly ONE thing: "run this card". Every engine
-      // action whose effect IS a run goes through here with no per-action
-      // code — that is the structural part, and it is already true.
-      //
-      // An engine action whose effect is NOT a run must NOT fall through to
-      // this relay: it would run the card instead of doing what was asked, and
-      // a silently wrong write is worse than a refusal the model can see. So
-      // the one guard is here, keyed on the CATALOG, never on a name list.
-      if (id !== 'task.run') {
-        raw.push({
-          op: step.op,
-          ok: false,
-          detail: `「${id}」要走引擎的另一条通道（不是「跑一次这张卡」），本刀还没接上。转发它会跑错东西，所以这里明确拒绝。`,
-        })
+      // WHICH CARRIER carries an engine action is CATALOG state (`spec.relay`),
+      // never a comparison of the action's name: the engine holds the
+      // carriers, the catalog says which action rides which, and a relay that
+      // decides by string is one rename away from forwarding something as a
+      // run when it is not. An engine action with no `relay` is a statement
+      // ("perform this some other way"), not a gap.
+      if ((spec as { relay?: 'run' }).relay !== 'run') {
+        raw.push({ op: step.op, ok: false, detail: `「${id}」不走「跑一次这张卡」这条通道，目录也没给它派发一种，所以这里明确拒绝——转发它会跑错东西。` })
         failed = true
         continue
       }
@@ -528,7 +522,13 @@ function boardCommitOf(before: BoardDoc, after: BoardDoc): BoardCommit {
   return {
     clientId: 'model',
     tasks: after.tasks,
-    changed: after.tasks.filter(task => before.tasks.find(prev => prev.id === task.id)?.updatedAt !== task.updatedAt).map(task => task.id),
+    // Claims are decided by OBJECT IDENTITY, not by a timestamp comparison: an
+    // op that produced a new row is this op's edit even when the two stamps
+    // happen to be equal (the same clock reading is not "unchanged"), and a
+    // timestamp diff quietly drops exactly those claims — after which the
+    // merge keeps the host's copy and the op reports success over a write
+    // that never happened.
+    changed: after.tasks.filter(task => before.tasks.find(prev => prev.id === task.id) !== task).map(task => task.id),
     deleted: before.tasks.filter(task => !after.tasks.some(next => next.id === task.id)).map(task => ({ id: task.id, baseUpdatedAt: task.updatedAt })),
     cruise: { value: view.cruise, at: after.cruise.at },
     schedulePresets: { value: view.schedulePresets, at: after.schedulePresets.at },
@@ -540,7 +540,7 @@ function itemsCommitOf(before: ItemsDoc, after: ItemsDoc): ItemsCommit {
   return {
     clientId: 'model',
     items: after.items,
-    changed: after.items.filter(item => before.items.find(prev => prev.id === item.id)?.updatedAt !== item.updatedAt).map(item => item.id),
+    changed: after.items.filter(item => before.items.find(prev => prev.id === item.id) !== item).map(item => item.id),
     deleted: before.items.filter(item => !after.items.some(next => next.id === item.id)).map(item => ({ id: item.id, baseUpdatedAt: item.updatedAt })),
   }
 }
@@ -553,7 +553,7 @@ function applyOne(
   payload: Record<string, unknown>,
   deps: ToolDeps,
   now: number,
-): { doc: BoardDoc; items: ItemsDoc; task?: TaskRecord; item?: ItemRecord; unchanged?: true; note?: string } | string {
+): { doc: BoardDoc; items: ItemsDoc; task?: TaskRecord; item?: ItemRecord; unchanged?: true; note?: string; relay?: true } | string {
   const edited = (task: TaskRecord): TaskRecord => ({ ...task, updatedAt: now })
   const findTask = (): TaskRecord | undefined => doc.tasks.find(task => task.id === payload.of || task.title === payload.of)
   const findItem = (): ItemRecord | undefined => {
@@ -602,6 +602,64 @@ function applyOne(
       if (typeof removed === 'string') return removed
       const tasks = doc.tasks.map(task => (task.id === last!.id ? removed.task : task))
       return removed.unchanged === true ? { doc, items, task: last, unchanged: true } : { doc: { ...doc, tasks }, items, task: removed.task }
+    }
+    case 'board.cruise': {
+      // The cruise section: a switch and a concurrency budget. The bound is
+      // the board's OWN clamp — a second bound here is a second answer to
+      // "how many may run at once", and the first one to drift is the one the
+      // engine reads.
+      const current = doc.cruise.value
+      const next: CruiseValue = {
+        ...current,
+        ...(payload.enabled === undefined ? {} : { enabled: payload.enabled === true || payload.enabled === 'true' }),
+        ...(payload.limit === undefined ? {} : { limit: clampCruiseLimit(Number(payload.limit)) }),
+      }
+      const same = current.enabled === next.enabled && current.limit === next.limit
+      return same
+        ? { doc, items, unchanged: true }
+        : { doc: { ...doc, cruise: { value: next, at: now } }, items }
+    }
+    case 'rule.delete': {
+      last = findTask()
+      if (last === undefined) return `卡 ${String(payload.of)} 不存在。`
+      const rules = last.rules ?? []
+      const target = String(payload.rule ?? '')
+      const kept = rules.filter(rule => rule.id !== target)
+      if (kept.length === rules.length) {
+        // A refusal has to be actionable, not a wall: say where to look.
+        return `这张卡上没有 id 为 ${target} 的会话规则。用 taskboard_query 先看这张卡挂了哪些会话。`
+      }
+      const next: TaskRecord = { ...last, rules: kept, updatedAt: now }
+      return { doc: { ...doc, tasks: doc.tasks.map(task => (task.id === last!.id ? next : task)) }, items, task: next }
+    }
+    case 'session.reorder': {
+      last = findTask()
+      if (last === undefined) return `卡 ${String(payload.of)} 不存在。`
+      const session = String(payload.session ?? '')
+      const order = (last.sessionsOrder ?? []).filter(id => id !== session)
+      const before = payload.beforeId === undefined ? undefined : String(payload.beforeId)
+      const at = before === undefined ? order.length : order.indexOf(before)
+      // No `beforeId` means the tail, and an unknown one means the tail too —
+      // both are "put it last", never "drop it".
+      order.splice(at < 0 ? order.length : at, 0, session)
+      const same = (last.sessionsOrder ?? []).join('|') === order.join('|')
+      if (same) return { doc, items, task: last, unchanged: true }
+      const next: TaskRecord = { ...last, sessionsOrder: order, updatedAt: now }
+      return { doc: { ...doc, tasks: doc.tasks.map(task => (task.id === last!.id ? next : task)) }, items, task: next }
+    }
+    case 'task.run': {
+      // The ONE action the catalog marks `relay: 'run'`. Whether a card can
+      // be found is the relay's business, not this function's.
+      //
+      // The other engine actions deliberately have NO case here: the catalog
+      // marks them `lane: 'engine'` with no `relay`, and the batch runner
+      // refuses them off that field. A third copy of the same refusal — one
+      // per action — is what made the coverage gate read a refusal as a
+      // working execution path. The model learns WHY from the catalog summary
+      // before it acts, which is a better place than a wall it hits later.
+      last = findTask()
+      if (last === undefined) return `卡 ${String(payload.of)} 不存在。`
+      return { doc, items, relay: true, task: last }
     }
     case 'task.update': {
       const found = findTask()

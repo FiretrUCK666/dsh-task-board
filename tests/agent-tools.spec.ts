@@ -12,8 +12,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ACTIONS, TOOL_ACTION_IDS } from '../src/core/board-actions.ts'
-import { emptyBoardDoc, type BoardDoc } from '../src/core/board-doc.ts'
-import { emptyItemsDoc, type ItemsDoc } from '../src/core/items-doc.ts'
+import { emptyBoardDoc, applyCommit, type BoardDoc } from '../src/core/board-doc.ts'
+import { emptyItemsDoc, applyItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
 import { QUALIFIER_KEYS } from '../src/core/task-search.ts'
 import {
   capabilityView,
@@ -34,8 +34,20 @@ import {
 
 const NOW = 1_700_000_000_000
 
-/** A commit face over fixed documents, recording every write. */
-interface FakeFace extends ToolCommitFace { writes: string[]; commits: number }
+/** A commit face whose stored documents are the MERGED truth.
+ *
+ *  It writes through the real merge grammar (`applyCommit` / `applyItemsCommit`)
+ *  rather than assembling an object by hand, and `getDoc` reads back exactly
+ *  what that grammar produced. That is the whole point: a fake that hands a
+ *  document straight to the reader cannot tell a semantic transition that works
+ *  from one that was faked into existence, and a test written against it is
+ *  green on a machine where the real thing is broken. */
+interface FakeFace extends ToolCommitFace {
+  writes: string[]
+  commits: number
+  seed(doc: BoardDoc): void
+  seedItems(items: ItemsDoc): void
+}
 function face(overrides: Partial<ToolCommitFace> = {}): FakeFace {
   const box: FakeFace & { doc: BoardDoc; items: ItemsDoc } = {
     doc: emptyBoardDoc(NOW),
@@ -43,18 +55,20 @@ function face(overrides: Partial<ToolCommitFace> = {}): FakeFace {
     writes: [],
     commits: 0,
     available: true,
+    seed(doc) { box.doc = doc },
+    seedItems(items) { box.items = items },
     getDoc: () => box.doc,
     getItemsDoc: () => box.items,
     async commit(commit) {
       box.writes.push('board')
       box.commits += 1
-      box.doc = { ...box.doc, tasks: [...commit.tasks], revision: box.doc.revision + 1 }
+      box.doc = applyCommit(box.doc, commit, NOW + 1)
       return box.doc
     },
     async commitItems(commit) {
       box.writes.push('items')
       box.commits += 1
-      box.items = { ...box.items, items: [...commit.items], revision: box.items.revision + 1 }
+      box.items = applyItemsCommit(box.items, commit, NOW + 1)
       return box.items
     },
     submitCommand: () => ({ queued: false }),
@@ -196,7 +210,7 @@ describe('the batch laws', () => {
 
   it('says the engine is absent instead of pretending a run happened', async () => {
     const board = face({ submitCommand: () => ({ queued: true }) } as Partial<ToolCommitFace>)
-    board.getDoc = () => ({ ...emptyBoardDoc(NOW), tasks: [{ ...emptyBoardDoc(NOW).tasks[0] } as never] })
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...emptyBoardDoc(NOW).tasks[0] } as never] })
     const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: 'nope' } }] })
     expect(result.reports[0]?.ok).toBe(false)
     expect(result.reports[0]?.detail).toContain('不存在')
@@ -240,7 +254,7 @@ describe('the receipt a card renders', () => {
 
   it('an engine op with no seat reads as ACCEPTED, not as executed', async () => {
     const board = face({ submitCommand: () => ({ queued: true }) } as Partial<ToolCommitFace>)
-    board.getDoc = () => ({ ...emptyBoardDoc(NOW), tasks: [{ id: 't-1', title: '跑一下', description: '', prompt: 'p', status: 'todo', order: 0, createdAt: NOW, updatedAt: NOW, executions: [] }] })
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ id: 't-1', title: '跑一下', description: '', prompt: 'p', status: 'todo', order: 0, createdAt: NOW, updatedAt: NOW, executions: [] }] })
     const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: '跑一下' } }] })
     expect(result.enginePending).toEqual(['跑一下'])
     const meta = toolNamed('taskboard_execute').output.presentationMeta!({}, result)
@@ -253,7 +267,7 @@ describe('the relay only carries what it can actually carry', () => {
   it('an engine action whose effect IS a run is relayed with no per-action code', async () => {
     const board = face()
     const relayed: string[] = []
-    board.getDoc = () => ({ ...emptyBoardDoc(NOW), tasks: [card('跑一下')] })
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [card('跑一下')] })
     board.submitCommand = (command) => { relayed.push(command.type); return { queued: true } }
     const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: '跑一下' } }] })
     expect(relayed).toEqual(['run'])
@@ -267,7 +281,7 @@ describe('the relay only carries what it can actually carry', () => {
     // around. This is the case the structural shortcut has to refuse.
     const board = face()
     const relayed: string[] = []
-    board.getDoc = () => ({ ...emptyBoardDoc(NOW), tasks: [card('要改名的卡')] })
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [card('要改名的卡')] })
     board.submitCommand = (command) => { relayed.push(command.type); return { queued: true } }
     const result = await runBatch(deps(board), { ops: [{ op: 'session.rename', payload: { of: '要改名的卡', session: 's-1', title: '新名字' } }] })
     expect(relayed).toEqual([])
@@ -293,6 +307,45 @@ describe('steps without an id are repaired, never dropped', () => {
       ops: [{ op: 'item.create', payload: { body: '有 id', steps: [{ id: 's-1', text: '第一步', done: false }] } }],
     })
     expect(result.reports[0]?.detail).not.toContain('铸号')
+  })
+})
+
+describe('the four simple document actions, proven through the merge grammar', () => {
+  it('board.cruise writes the section, and reads it back clamped', async () => {
+    const board = face()
+    await runBatch(deps(board), { ops: [{ op: 'board.cruise', payload: { enabled: true, limit: 99 } }] })
+    // Read the MERGED document back, not the return value: the bound is the
+    // board's own clamp, and a hand-assembled fake would happily accept 99.
+    const cruise = board.getDoc().cruise.value
+    expect(cruise.enabled).toBe(true)
+    expect(cruise.limit).toBe(20)
+  })
+
+  it('rule.delete removes exactly that rule and names where to look when it is not there', async () => {
+    const board = face()
+    board.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{ ...card('带规则的卡'), rules: [
+        { id: 'r-1', sessionId: 's-1', instruction: '每天看一眼', trigger: 'cron', cron: '0 9 * * *', send: 'queue', enabled: true },
+        { id: 'r-2', sessionId: 's-2', instruction: '跑完看一眼', trigger: 'on-complete', cron: '', send: 'queue', enabled: true },
+      ] }],
+    })
+    await runBatch(deps(board), { ops: [{ op: 'rule.delete', payload: { of: '带规则的卡', rule: 'r-1' } }] })
+    expect(board.getDoc().tasks[0]?.rules?.map(rule => rule.id)).toEqual(['r-2'])
+
+    const missed = await runBatch(deps(board), { ops: [{ op: 'rule.delete', payload: { of: '带规则的卡', rule: 'nope' } }] })
+    expect(missed.ok).toBe(false)
+    // The refusal is a next step, not a wall.
+    expect(missed.reports[0]?.detail).toContain('taskboard_query')
+  })
+
+  it('session.reorder moves the row, and an unknown beforeId puts it last rather than dropping it', async () => {
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('有序的卡'), sessionsOrder: ['s-1', 's-2'] }] })
+    await runBatch(deps(board), { ops: [{ op: 'session.reorder', payload: { of: '有序的卡', session: 's-2', beforeId: 's-1' } }] })
+    expect(board.getDoc().tasks[0]?.sessionsOrder).toEqual(['s-2', 's-1'])
+    await runBatch(deps(board), { ops: [{ op: 'session.reorder', payload: { of: '有序的卡', session: 's-1', beforeId: 'not-a-session' } }] })
+    expect(board.getDoc().tasks[0]?.sessionsOrder).toEqual(['s-2', 's-1'])
   })
 })
 
