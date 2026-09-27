@@ -1,9 +1,11 @@
 /**
- * Browser transport for the board sync client: the four board-route calls
- * over fetch, and the SSE change stream over EventSource. Every failure
- * degrades to `undefined` (the sync client treats it as "host unreachable"
- * and keeps the last known truth), so a dropped packet or a proxy hiccup can
- * never take the board down — the poll + EventSource auto-reconnect recover.
+ * Browser transport for the sync client: the six board-route calls over
+ * fetch — the ledger's read/write, the checklist's read/write, and the
+ * lease/command relay — plus the SSE change stream over EventSource. Every
+ * failure degrades to `undefined` (the sync client treats it as "host
+ * unreachable" and keeps the last known truth), so a dropped packet or a proxy
+ * hiccup can never take the board down — the poll + EventSource
+ * auto-reconnect recover.
  */
 import type { BoardSyncTransport } from '../core/host-sync.ts';
 /**

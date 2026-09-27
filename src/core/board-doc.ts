@@ -73,9 +73,25 @@ export interface BoardCommand {
   clientId: string
 }
 
-/** Everything an SSE subscriber receives; plain JSON, one line per frame. */
+/**
+ * Everything an SSE subscriber receives; plain JSON, one line per frame.
+ *
+ * `document` NAMES WHICH DOCUMENT moved, and it is required rather than
+ * defaulted: a frame that does not say which document it is talking about is
+ * the second judgement we are removing — the unit now holds two of them, so a
+ * subscriber that assumed "a commit means the board" would resync the board
+ * when the checklist changed and read the two documents' revisions as one
+ * number. There is no sensible default to fall back on, and a default is
+ * exactly the kind of quiet answer that hides this until two devices disagree.
+ *
+ * THE OTHER TWO FRAMES CARRY NO `document`, AND THAT IS THE POINT. The lease
+ * says which replica is driving the engine, and the command relays a run to it:
+ * both belong to the STORAGE UNIT, not to any one document. A seat is not one
+ * document's — one browser holds the lease and drives runs for both — so a
+ * document name on those frames would be a lie that happens to be true today.
+ */
 export type BoardEvent =
-  | { type: 'commit'; revision: number; clientId: string }
+  | { type: 'commit'; document: 'board' | 'items'; revision: number; clientId: string }
   | { type: 'lease'; holder: string | undefined; expiresAt: number | undefined }
   | { type: 'command'; command: BoardCommand }
 

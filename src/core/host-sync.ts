@@ -1,29 +1,60 @@
 /**
- * Board sync client (browser half): makes this tab an optimistic replica of
- * the host-owned board document.
+ * The browser half of sync: makes this tab an optimistic replica of the
+ * host-owned documents.
  *
- * Responsibilities (and nothing else):
- * - boot: fetch the authoritative document (a few retries; persistent
+ * A SESSION holds N document replicas. Today that is two — the board ledger
+ * and the checklist — and the split is structural, not cosmetic:
+ *
+ * - SESSION-SCOPED (shared, because they are about this TAB, not about any one
+ *   document): the client id, the mode, the loops, the SSE stream, the poll,
+ *   tab visibility, and the ENGINE LEASE. The seat answers "which device is
+ *   driving the engine", so it belongs to the tab and to no document; two
+ *   replicas must never compete for it, and nothing here may be generalized
+ *   into a per-document count.
+ * - REPLICA-SCOPED (one set per document, and the two sets share NOTHING):
+ *   baseline, dirty state, the in-flight snapshot, authorship claims, accrued
+ *   deletions, the debounce lane, the backoff lane and the retry budget. The
+ *   ack clears a replica's claims when THAT replica's rows came back clean and
+ *   for no other reason — a shared pair would be emptied by the other
+ *   document's ack the moment it went quiet, and the quieter document's
+ *   un-acked edits would demote themselves to plain LWW and be overwritten.
+ *   A replica losing its queue in silence is the exact failure the accrual
+ *   discipline exists to prevent, so the isolation is the design, not a
+ *   precaution.
+ *
+ * Responsibilities of the session (and nothing else):
+ * - boot: fetch the authoritative documents (a few retries; persistent
  *   failure or an unavailable host yields `unavailable` — the wiring then
  *   keeps the plain localStorage mode, so the board never depends on this
- *   path to exist);
- * - migration: an empty host document plus a non-empty local ledger uploads
- *   the ledger once (bootstrap); a non-empty host with a diverging local
- *   ledger keeps the host truth and hands the local copy to the backup sink
+ *   path to exist). A host that does not serve a document at all leaves THAT
+ *   replica mirroring locally and says so; the others are untouched;
+ * - migration, per document: an empty host document plus a non-empty local
+ *   copy uploads it once (bootstrap); a non-empty host with a diverging local
+ *   copy keeps the host truth and hands the local copy to the backup sink
  *   (nothing is ever silently dropped);
- * - commit: every local change marks the view dirty and a debounced,
- *   serialized lane posts the full view + observed deletions; the response
- *   is the authoritative document, so every replica converges on it (the
- *   merge grammar lives in board-doc.ts, not here);
- * - watch: the SSE change stream drives coalesced resyncs, lease events
- *   drive engine state, command frames reach the engine only; a slow poll
- *   and every stream reopen resync as the safety net (SSE loss — proxies,
- *   mobile backgrounding — degrades latency, never correctness);
- * - lease: one heartbeat renews (or takes) the engine lease; `onEngine`
- *   tells the wiring when to start/stop the scheduler and gate the pump.
+ * - commit, per document: every local change marks that document's view
+ *   dirty and its own debounced, serialized lane posts the full view +
+ *   observed deletions; the response is the authoritative document, so every
+ *   replica converges on it (the merge grammars live in board-doc.ts and
+ *   items-doc.ts, not here);
+ * - watch: the SSE change stream drives coalesced resyncs ROUTED BY THE
+ *   DOCUMENT THE FRAME NAMES — a note typed on a phone must not make every
+ *   device re-pull the whole ledger; lease events drive engine state, command
+ *   frames reach the engine only; a slow poll and every stream reopen resync
+ *   as the safety net (SSE loss — proxies, mobile backgrounding — degrades
+ *   latency, never correctness);
+ * - lease: one heartbeat renews (or takes) the engine lease; `onEngine` tells
+ *   the wiring when to start/stop the scheduler and gate the pump.
  *
  * Framework-free: all transport, clocks and timers are injected faces, so
  * tests drive every path without a browser or a server.
+ *
+ * KNOWN DEBT (do not mistake it for a finished design): the board replica's
+ * state is still inline in `BoardSyncClient` rather than routed through the
+ * same shape the checklist replica uses. Correctness does not depend on that
+ * split — the two hold disjoint state either way, and both behaviours are
+ * pinned by falsified tests — but the shape is duplicated. Collect it when it
+ * actually becomes a burden, not before.
  */
 import type { BoardDoc, BoardView } from './board-doc.ts'
 import { boardViewOf, changedIdsOf, emptyBoardDoc, DEFAULT_CRUISE_VALUE } from './board-doc.ts'
@@ -35,6 +66,9 @@ import type {
   CruiseValue,
   LeaseWire,
 } from './board-doc.ts'
+import { emptyItemsDoc, ITEM_ROW_OPS } from './items-doc.ts'
+import type { ItemsCommit, ItemsDoc } from './items-doc.ts'
+import type { ItemRecord } from './item.ts'
 import type { RunPresetStore, RunPresetsDocument } from './run-presets.ts'
 import type { PresetStore, SchedulePreset } from './presets.ts'
 import type { TaskRecord } from './tasks.ts'
@@ -48,10 +82,26 @@ export interface SyncFetchResult {
   unchanged?: boolean
 }
 
+/** The same envelope for the SECOND document (the checklist), whose body is
+ *  an `ItemsDoc` rather than a `BoardDoc`. Two shapes, one envelope — the
+ *  route answers both tails with `{ ok, value }`. */
+export interface ItemsSyncFetchResult {
+  available: boolean
+  revision: number
+  doc?: ItemsDoc
+  unchanged?: boolean
+}
+
 /** The board-route transport (the wiring implements it with fetch + EventSource). */
 export interface BoardSyncTransport {
   fetch(clientId: string, since: number | undefined): Promise<SyncFetchResult | undefined>
   commit(commit: BoardCommit): Promise<SyncFetchResult | undefined>
+  /** The checklist's read end. Absent on a host that predates the second
+   *  document: the session treats it exactly like an unreachable host for
+   *  that document alone — the board keeps syncing untouched. */
+  itemsFetch?(clientId: string, since: number | undefined): Promise<ItemsSyncFetchResult | undefined>
+  /** The checklist's write end (absent together with {@link itemsFetch}). */
+  itemsCommit?(commit: ItemsCommit): Promise<ItemsSyncFetchResult | undefined>
   lease(clientId: string, options: { ttlMs?: number; release?: boolean; active?: boolean }): Promise<LeaseWire | undefined>
   command(clientId: string, command: BoardCommand): Promise<void>
   /** Open the SSE change stream for this replica; the returned disposer closes it. */
@@ -89,6 +139,10 @@ export interface BoardSyncDeps {
     onVisible(cb: () => void): () => void
     onHidden(cb: () => void): () => void
   }
+  /** The checklist's offline mirror (the wiring: a localStorage key). Also the
+   *  evidence that lets the replica say "the host cannot read it" instead of
+   *  rendering an empty list as if the person had written nothing. */
+  checklistMirror?: ChecklistMirrorFace
   log?: (message: string, error?: unknown) => void
 }
 
@@ -138,6 +192,11 @@ function hasLegacyContent(view: BoardView): boolean {
 export class BoardSyncClient {
   /** Identity of this tab for lease/relay purposes (stable per instance). */
   readonly clientId: string
+
+  /** The SECOND document's replica, owned outright by this session. It rides
+   *  the same loops, the same SSE stream and the same lease; what it does NOT
+   *  share is a single byte of replica state with the board. */
+  private readonly checklist: ChecklistReplica
 
   private mode: SyncMode = 'unavailable'
   private baseline: BoardDoc
@@ -193,6 +252,29 @@ export class BoardSyncClient {
     this.resyncCoalesceMs = deps.resyncCoalesceMs ?? 120
     this.log = deps.log ?? ((message, error) => (error === undefined ? console.error(message) : console.error(message, error)))
     this.baseline = emptyBaseline(this.now())
+    this.checklist = new ChecklistReplica({
+      clientId: this.clientId,
+      transport: deps.transport,
+      defer: deps.defer,
+      now: this.now,
+      commitDebounceMs: this.commitDebounceMs,
+      resyncCoalesceMs: this.resyncCoalesceMs,
+      mirror: deps.checklistMirror,
+      log: this.log,
+    })
+  }
+
+  /** The checklist's replica — the wiring mounts the panel on it. */
+  checklistReplica(): ChecklistReplica {
+    return this.checklist
+  }
+
+  onChecklistRemote(listener: (items: readonly ItemRecord[], revision: number) => void): void {
+    this.checklist.onRemote(listener)
+  }
+
+  onChecklistBackup(listener: (items: readonly ItemRecord[]) => void): void {
+    this.checklist.onBackup(listener)
   }
 
   // --- lifecycle -------------------------------------------------------------
@@ -283,7 +365,12 @@ export class BoardSyncClient {
       },
     }))
     this.loopCancels.push(this.every(this.leaseRenewMs, () => this.renewLease()))
-    this.loopCancels.push(this.every(this.pollMs, () => this.poll()))
+    this.loopCancels.push(this.every(this.pollMs, async () => {
+      await this.poll()
+      // The checklist polls on the same cadence but on its OWN revision and its
+      // OWN fetch — one slow document must not delay the other.
+      await this.checklist.poll()
+    }))
     // Foreground/background transitions act IMMEDIATELY in both directions:
     // - visible: take/keep the seat and catch up NOW (the heartbeat/poll
     //   cadences would otherwise leave a woken tab staring at a stale board —
@@ -307,6 +394,9 @@ export class BoardSyncClient {
     // The first lease probe is part of starting: by the time the wiring is
     // told "synced", the engine state of this tab is already known.
     await this.renewLease()
+    // The checklist settles on its own: a host without the second document
+    // leaves it mirroring locally and says so, and the board is untouched.
+    await this.checklist.start()
     return this.mode
   }
 
@@ -320,6 +410,7 @@ export class BoardSyncClient {
     this.backoffCancel = undefined
     this.resyncCancel?.()
     for (const cancel of this.loopCancels.splice(0)) cancel()
+    this.checklist.dispose()
     if (this.mode === 'synced') {
       void this.deps.transport.lease(this.clientId, { release: true }).catch(() => undefined)
     }
@@ -484,8 +575,15 @@ export class BoardSyncClient {
     this.lastFrameAt = this.now()
     this.streamDeathNoted = false
     if (event.type === 'commit') {
-      // Own commits arrive via the response; remote ones need a resync.
-      if (event.clientId !== this.clientId) this.scheduleResync()
+      // THE ROUTING RULE. A commit frame names the document it moved. Routing
+      // it to the wrong replica is not a cosmetic waste: the board's resync
+      // re-fetches and re-derives the whole ledger, so a note typed on a phone
+      // would make every other device re-pull the board on every keystroke's
+      // round trip. Each document is woken by its own frames and stays asleep
+      // during the other's.
+      if (event.clientId === this.clientId) return // own commits arrive via the response
+      if (event.document === 'items') this.checklist.onRemoteFrame(event.clientId)
+      else this.scheduleResync()
       return
     }
     if (event.type === 'lease') {
@@ -760,6 +858,347 @@ export class BoardSyncClient {
   }
 }
 
+// --- the checklist replica ------------------------------------------------
+//
+// The second document's replica. It follows the SAME laws as the board's rows
+// (authorship claims, accrued deletions, one in-flight commit, a debounce lane
+// and a backoff lane that never overwrite each other, a bounded retry budget
+// that parks rather than spins) — and it owns EVERY ONE OF THEM ITSELF.
+//
+// THAT OWNERSHIP IS THE WHOLE POINT, and it is not stylistic. An ack clears
+// this replica's claims only when THIS replica's rows are clean. A shared pair
+// would be cleared by the board's ack the moment the board went quiet, so an
+// un-acked checklist edit would silently demote itself to plain LWW on a slow
+// device and get overwritten — the replica would lose its queue in silence,
+// which is the exact failure mode the board's accrual discipline exists to
+// prevent. One replica, one queue, one ack.
+
+/** Which rows THIS replica moved, by CONTENT. Read state is not content, and
+ *  the fingerprint comes from the items document's own row ops — so `ref`
+ *  (the short number) stays out of it exactly as it stays out of a claim there.
+ *  A replica that merely renumbered nothing never claims a row. */
+function changedItemIds(baseline: readonly ItemRecord[], next: readonly ItemRecord[]): string[] {
+  const key = ITEM_ROW_OPS.authorshipKey
+  const before = new Map(baseline.map(item => [item.id, key(item)]))
+  const changed: string[] = []
+  for (const item of next) {
+    const previous = before.get(item.id)
+    if (previous === undefined || previous !== key(item)) changed.push(item.id)
+  }
+  return changed
+}
+
+/** The offline mirror for the checklist (the wiring backs it with a
+ *  localStorage key). Reads feed first paint before adoption; writes keep the
+ *  key warm AND are the evidence that a non-empty host view is suspicious. */
+export interface ChecklistMirrorFace {
+  load(): ItemRecord[]
+  save(items: readonly ItemRecord[]): void
+  clear(): void
+}
+
+/** One user-intended checklist deletion, stamped at edit time exactly as the
+ *  board's are (recomputing against a newer baseline turns every park-period
+ *  remote arrival into a phantom delete). */
+interface ItemDeletion {
+  id: string
+  baseUpdatedAt: number
+}
+
+/** Everything the replica needs from the session, injected so tests drive it
+ *  without a browser or a server. */
+export interface ChecklistReplicaDeps {
+  clientId: string
+  transport: BoardSyncTransport
+  defer(fn: () => void, ms: number): () => void
+  now?: () => number
+  commitDebounceMs?: number
+  /** Remote-change coalescing before a resync fetch (same default as the session). */
+  resyncCoalesceMs?: number
+  mirror?: ChecklistMirrorFace
+  log?: (message: string, error?: unknown) => void
+}
+
+/** The checklist as one browser-side replica of the host's second document. */
+export class ChecklistReplica {
+  private doc: ItemsDoc
+  /** Un-acked rows (undefined = identical to the baseline). */
+  private dirty: readonly ItemRecord[] | undefined
+  /** The exact array in flight, identity-compared on ack. */
+  private inFlight: readonly ItemRecord[] | undefined
+  private readonly claims = new Set<string>()
+  private deleted: ItemDeletion[] = []
+  private refire = false
+  private commitAttempts = 0
+  private commitCancel: (() => void) | undefined
+  private backoffCancel: (() => void) | undefined
+  private resyncCancel: (() => void) | undefined
+  private disposed = false
+  /** Set once the host has answered for this document at least once. */
+  private reachable = false
+
+  private readonly now: () => number
+  private readonly defer: (fn: () => void, ms: number) => () => void
+  private readonly commitDebounceMs: number
+  private readonly resyncCoalesceMs: number
+  private readonly log: (message: string, error?: unknown) => void
+
+  private remoteListener: ((items: readonly ItemRecord[], revision: number) => void) | undefined
+  private backupListener: ((items: readonly ItemRecord[]) => void) | undefined
+
+  constructor(private readonly deps: ChecklistReplicaDeps) {
+    this.now = deps.now ?? (() => Date.now())
+    this.defer = deps.defer
+    this.commitDebounceMs = deps.commitDebounceMs ?? 250
+    this.resyncCoalesceMs = deps.resyncCoalesceMs ?? 120
+    this.log = deps.log
+      ?? ((message, error) => (error === undefined ? console.error(message) : console.error(message, error)))
+    this.doc = emptyItemsDoc(this.now())
+  }
+
+  /** Adopt the host's first view and run the same migration probe the board
+   *  runs: an empty host document plus a non-empty local mirror uploads once. */
+  async start(): Promise<void> {
+    const result = await this.fetchDoc(undefined).catch(() => undefined)
+    if (result === undefined || !result.available || result.doc === undefined) {
+      // A host that has no second document (or an unreachable one) leaves this
+      // replica on the mirror. The board is untouched by that.
+      this.log('[dsh-task-board] checklist document not served (mirroring locally)')
+      return
+    }
+    this.reachable = true
+    this.doc = result.doc
+    const legacy = this.deps.mirror?.load() ?? []
+    if (legacy.length > 0) {
+      const hostIds = new Map(result.doc.items.map(item => [item.id, item]))
+      const identical = legacy.length === result.doc.items.length
+        && legacy.every(item => hostIds.get(item.id)?.updatedAt === item.updatedAt)
+      if (!identical) {
+        if (result.doc.revision === 0) {
+          this.dirty = legacy
+        } else {
+          // Union per record, host wins ties: nothing a person made is hidden
+          // behind "first origin wins". The diverging local copy goes to the
+          // backup sink for forensics.
+          const merged = new Map(hostIds)
+          for (const item of legacy) {
+            const host = merged.get(item.id)
+            if (host === undefined || item.updatedAt > host.updatedAt) merged.set(item.id, item)
+          }
+          this.dirty = [...merged.values()]
+          this.backupListener?.(legacy)
+        }
+        await this.flush()
+      }
+    }
+  }
+
+  /** Whether the host truth is adopted for the checklist. */
+  isSynced(): boolean {
+    return this.reachable
+  }
+
+  /**
+   * TRUE when the host is answering but reports an empty checklist while the
+   * local mirror still holds rows.
+   *
+   * The platform reads a malformed or stale-versioned per-record document as
+   * ABSENT (it never bricks the unit), so a damaged `items.json` restores as an
+   * empty checklist — and "the host cannot read it" is indistinguishable from
+   * "you have nothing" on the wire. The host deliberately does not guess. This
+   * is the exit it left: the replica is the only side that can still see the
+   * local evidence, so it is the only side that may say so. A panel rendering
+   * this as "你一条都没有" would be telling the user a falsehood about their own
+   * data, which is worse than the failure it hides.
+   */
+  hostLostItems(): boolean {
+    return this.reachable && this.doc.items.length === 0 && (this.deps.mirror?.load().length ?? 0) > 0
+  }
+
+  /** The effective local view: baseline overlaid with un-acked rows, with
+   *  accrued deletions excluded on both sides (same law as the board's rows —
+   *  the dirty array keeps its order, baseline-only rows append read-only). */
+  view(): readonly ItemRecord[] {
+    const base = this.doc.items
+    const deletedIds = new Set(this.deleted.map(entry => entry.id))
+    if (this.dirty === undefined) {
+      return deletedIds.size === 0 ? base : base.filter(item => !deletedIds.has(item.id))
+    }
+    const dirtyIds = new Set(this.dirty.map(item => item.id))
+    return [
+      ...this.dirty.filter(item => !deletedIds.has(item.id)),
+      ...base.filter(item => !dirtyIds.has(item.id) && !deletedIds.has(item.id)),
+    ]
+  }
+
+  baselineRevision(): number {
+    return this.doc.revision
+  }
+
+  /** Mark the checklist dirty and queue a commit. */
+  setItems(items: readonly ItemRecord[]): void {
+    if (this.dirty === items) return
+    // Claim exactly the rows THIS edit moved against the view this replica was
+    // serving — not against a baseline remote frames may have advanced since.
+    const previous = this.view()
+    for (const id of changedItemIds(previous, items)) this.claims.add(id)
+    const kept = new Set(items.map(item => item.id))
+    for (const id of [...this.claims]) {
+      if (!kept.has(id)) this.claims.delete(id)
+    }
+    // Deletion accrual AT EDIT TIME, stamped with the baseline the drop was
+    // computed against. Rows the baseline never held need no tombstone; rows
+    // that reappear drop their accrued delete.
+    const stamps = new Map(this.doc.items.map(item => [item.id, item.updatedAt]))
+    const accrued = new Map(this.deleted.map(entry => [entry.id, entry.baseUpdatedAt]))
+    for (const row of previous) {
+      if (kept.has(row.id)) continue
+      if (accrued.has(row.id)) continue
+      const stamp = stamps.get(row.id)
+      if (stamp !== undefined) accrued.set(row.id, stamp)
+    }
+    for (const id of accrued.keys()) {
+      if (kept.has(id)) accrued.delete(id)
+    }
+    this.deleted = [...accrued].map(([id, baseUpdatedAt]) => ({ id, baseUpdatedAt }))
+    this.dirty = items
+    this.scheduleCommit()
+  }
+
+  onRemote(listener: (items: readonly ItemRecord[], revision: number) => void): void {
+    this.remoteListener = listener
+  }
+
+  onBackup(listener: (items: readonly ItemRecord[]) => void): void {
+    this.backupListener = listener
+  }
+
+  /** A remote checklist frame: own commits arrive via the response, remote ones
+   *  need a resync. This is what keeps a phone-side note from resyncing the
+   *  whole board. */
+  onRemoteFrame(clientId: string): void {
+    if (this.disposed) return
+    if (clientId === this.deps.clientId) return
+    this.scheduleResync()
+  }
+
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    this.commitCancel?.()
+    this.commitCancel = undefined
+    this.backoffCancel?.()
+    this.backoffCancel = undefined
+    this.resyncCancel?.()
+    this.remoteListener = undefined
+    this.backupListener = undefined
+  }
+
+  // --- internals ----------------------------------------------------------
+
+  private scheduleCommit(): void {
+    if (this.disposed) return
+    this.commitAttempts = 0
+    this.commitCancel?.()
+    this.commitCancel = this.defer(() => {
+      this.commitCancel = undefined
+      void this.flush()
+    }, this.commitDebounceMs)
+  }
+
+  /** Send the current dirty view (one in flight at a time, trailing refire). */
+  async flush(): Promise<void> {
+    if (this.disposed) return
+    const send = this.deps.transport.itemsCommit
+    if (send === undefined || this.deps.transport.itemsFetch === undefined) return
+    this.backoffCancel?.()
+    this.backoffCancel = undefined
+    if (this.inFlight !== undefined) {
+      this.refire = true
+      return
+    }
+    const items = this.dirty ?? this.doc.items
+    const snapshot = this.dirty
+    this.inFlight = snapshot
+    const commit: ItemsCommit = {
+      clientId: this.deps.clientId,
+      items,
+      changed: [...this.claims],
+      deleted: this.deleted.map(entry => ({ id: entry.id, baseUpdatedAt: entry.baseUpdatedAt })),
+    }
+    const result = await send.call(this.deps.transport, commit).catch((error: unknown) => {
+      this.log('[dsh-task-board] checklist commit transport failed', error)
+      return undefined
+    })
+    this.inFlight = undefined
+    if (this.disposed) return
+    if (result === undefined || !result.available || result.doc === undefined) {
+      this.refire = false
+      this.commitAttempts += 1
+      if (this.commitAttempts > MAX_COMMIT_ATTEMPTS) {
+        if (this.commitAttempts === MAX_COMMIT_ATTEMPTS + 1) {
+          this.log('[dsh-task-board] checklist commit retry budget spent (keeping dirty state parked)')
+        }
+        return
+      }
+      const delay = Math.min(COMMIT_RETRY_BASE_MS * 2 ** (this.commitAttempts - 1), COMMIT_RETRY_CAP_MS)
+      this.backoffCancel = this.defer(() => {
+        this.backoffCancel = undefined
+        void this.flush()
+      }, delay)
+      return
+    }
+    this.commitAttempts = 0
+    this.reachable = true
+    this.adopt(result.doc)
+    // Cleared ONLY when this replica's own rows came back clean. Nothing about
+    // the board's state can reach in here.
+    if (snapshot !== undefined && this.dirty === snapshot) this.dirty = undefined
+    if (this.dirty === undefined) {
+      this.claims.clear()
+      this.deleted = []
+    }
+    const refire = this.refire
+    this.refire = false
+    if (refire || this.dirty !== undefined) this.scheduleCommit()
+  }
+
+  /** Adopt an authoritative checklist (never backwards) and notify the replica. */
+  private adopt(doc: ItemsDoc): void {
+    if (doc.revision < this.doc.revision) return
+    if (doc === this.doc) return
+    this.doc = doc
+    this.deps.mirror?.save(this.view())
+    this.remoteListener?.(this.view(), doc.revision)
+  }
+
+  private scheduleResync(): void {
+    if (this.resyncCancel !== undefined) return
+    this.resyncCancel = this.defer(() => {
+      this.resyncCancel = undefined
+      void this.poll()
+    }, this.resyncCoalesceMs)
+  }
+
+  /** Fetch only when the host's checklist revision moved past the baseline. */
+  async poll(): Promise<void> {
+    if (this.disposed) return
+    const result = await this.fetchDoc(this.doc.revision).catch(() => undefined)
+    if (result === undefined) {
+      this.log('[dsh-task-board] checklist resync failed (keeping the last known truth)')
+      return
+    }
+    if (!result.available || result.unchanged || result.doc === undefined) return
+    this.adopt(result.doc)
+  }
+
+  private async fetchDoc(since: number | undefined): Promise<ItemsSyncFetchResult | undefined> {
+    const fetchDoc = this.deps.transport.itemsFetch
+    if (fetchDoc === undefined) return undefined
+    return fetchDoc.call(this.deps.transport, this.deps.clientId, since)
+  }
+}
+
 // --- store seams over the synced document ---------------------------------
 //
 // The controller and the preset managers consume synchronous stores (the
@@ -888,5 +1327,43 @@ export class SyncedCruiseStore {
   write(state: CruiseValue): void {
     this.mirror?.write(state)
     this.sync.setCruise(state)
+  }
+}
+
+/** A synchronous checklist store over the synced second document, with the
+ *  same offline-first discipline as the task store: reads come from the mirror
+ *  until the host truth is adopted (first paint never waits on the network),
+ *  writes warm the mirror AND mark the replica dirty.
+ *
+ *  The mirror's key is the checklist's OWN (`dsh.taskBoard.items.v1`). Hard
+ *  rule 5 freezes the existing keys' NAMES; it does not forbid a new document
+ *  from carrying its own — and it must, because a shared key would make one
+ *  document's mirror overwrite the other's. */
+export class SyncedItemsStore {
+  constructor(
+    private readonly replica: ChecklistReplica,
+    private readonly mirror?: ChecklistMirrorFace,
+  ) {}
+
+  load(): readonly ItemRecord[] {
+    if (!this.replica.isSynced()) return this.mirror?.load() ?? this.replica.view()
+    return this.replica.view()
+  }
+
+  save(items: readonly ItemRecord[]): void {
+    this.mirror?.save(items)
+    this.replica.setItems(items)
+  }
+
+  clear(): void {
+    this.mirror?.clear()
+    this.replica.setItems([])
+  }
+
+  /** Whether the host is answering but its checklist reads empty while the
+   *  mirror still holds rows — a damaged document, which must be SAID, never
+   *  rendered as "you have nothing". */
+  hostLostItems(): boolean {
+    return this.replica.hostLostItems()
   }
 }

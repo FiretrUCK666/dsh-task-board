@@ -5,8 +5,10 @@
  * transport/timer/clock seams are faked so every path is driven directly.
  */
 import { describe, expect, it } from 'vitest'
-import { BoardSyncClient, SyncedCruiseStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore, type BoardSyncTransport, type SyncFetchResult, type SyncLedger } from '../src/core/host-sync.ts'
+import { BoardSyncClient, ChecklistReplica, SyncedCruiseStore, SyncedItemsStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore, type BoardSyncTransport, type SyncFetchResult, type SyncLedger } from '../src/core/host-sync.ts'
 import { emptyBoardDoc, applyCommit, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView, type CruiseValue } from '../src/core/board-doc.ts'
+import { applyItemsCommit, emptyItemsDoc, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
+import { parseItems, type ItemRecord } from '../src/core/item.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 import { DocumentService } from '../src/host/board-service.ts'
 
@@ -470,7 +472,7 @@ describe('BoardSyncClient watch', () => {
     t.setDoc(remote)
     const seen: number[] = []
     client.onRemote((_v, rev) => seen.push(rev))
-    t.emit({ type: 'commit', revision: remote.revision, clientId: 'other' })
+    t.emit({ type: 'commit', document: 'board', revision: remote.revision, clientId: 'other' })
     await timers.advance(200)
     expect(client.view().tasks.map(x => x.id)).toEqual(['x'])
     expect(seen).toContain(remote.revision)
@@ -480,7 +482,7 @@ describe('BoardSyncClient watch', () => {
     const { client, t, timers } = makeClient()
     await client.start()
     const before = t.calls.fetch
-    t.emit({ type: 'commit', revision: 5, clientId: 'tab-1' })
+    t.emit({ type: 'commit', document: 'board', revision: 5, clientId: 'tab-1' })
     await timers.advance(200)
     expect(t.calls.fetch).toBe(before)
   })
@@ -881,5 +883,270 @@ describe('synced store seams (offline-first mount)', () => {
     const next: CruiseValue = { enabled: false, limit: 3, schedule: [] }
     offline.write(next)
     expect(stored.writes).toEqual([next])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The SECOND document. Its own replica, on the same session.
+//
+// The existing suite above runs against a transport WITHOUT `itemsFetch`/
+// `itemsCommit` — i.e. a host that predates the checklist. Every one of those
+// cases still passes, which is the proof that a missing second document leaves
+// the board completely untouched rather than half-wired.
+// ---------------------------------------------------------------------------
+
+describe('the checklist replica', () => {
+  /** An item built through the real inbound grammar, so nothing here invents a
+   *  row shape the medium would reject. The grammar demands `steps` to be an
+   *  array and `origin` to be a real stamp, so both are spelled out rather than
+   *  assumed optional. */
+  const item = (id: string, title: string, updatedAt = T0): ItemRecord =>
+    parseItems(JSON.stringify([{
+      id,
+      title,
+      body: '',
+      notes: '',
+      steps: [],
+      status: 'open',
+      priority: 'normal',
+      tags: [],
+      origin: { source: 'human', at: updatedAt },
+      createdAt: updatedAt,
+      updatedAt,
+    }]), () => 1)[0]
+
+  /** A transport that serves BOTH documents, so the routing and the isolation
+   *  can be driven together. */
+  function dualTransport() {
+    const t = fakeTransport()
+    const items = {
+      fetch: 0,
+      commit: [] as ItemsCommit[],
+      doc: emptyItemsDoc(T0),
+      served: true,
+      commitFails: false,
+    }
+    const transport: BoardSyncTransport = {
+      ...t.transport,
+      itemsFetch: async (_clientId, since) => {
+        items.fetch += 1
+        if (!items.served) return { available: false, revision: 0 }
+        if (since !== undefined && since >= items.doc.revision) {
+          return { available: true, revision: items.doc.revision, unchanged: true }
+        }
+        return { available: true, revision: items.doc.revision, doc: items.doc }
+      },
+      itemsCommit: async commit => {
+        items.commit.push(commit)
+        if (items.commitFails) return undefined
+        items.doc = applyItemsCommit(items.doc, commit, T0 + items.commit.length)
+        return { available: true, revision: items.doc.revision, doc: items.doc }
+      },
+    }
+    return { t, items, transport }
+  }
+
+  function dualClient() {
+    const timers = fakeTimers()
+    const { t, items, transport } = dualTransport()
+    const logs: string[] = []
+    const client = new BoardSyncClient({
+      transport,
+      defer: timers.defer,
+      now: timers.now,
+      uuid: () => 'tab-1',
+      commitDebounceMs: 250,
+      leaseRenewMs: 7_000,
+      pollMs: 30_000,
+      resyncCoalesceMs: 120,
+      log: msg => logs.push(msg),
+    })
+    return { client, timers, t, items, logs }
+  }
+
+  it('routes a remote checklist frame to the checklist and leaves the board asleep', async () => {
+    const { client, timers, t, items } = dualClient()
+    await client.start()
+    const boardFetches = t.calls.fetch
+    const itemFetches = items.fetch
+    // A note typed on a phone must not make every device re-pull the board.
+    t.emit({ type: 'commit', document: 'items', revision: 1, clientId: 'other' })
+    await timers.advance(200)
+    expect(t.calls.fetch).toBe(boardFetches)
+    expect(items.fetch).toBeGreaterThan(itemFetches)
+  })
+
+  it('routes a remote board frame to the board and leaves the checklist asleep', async () => {
+    const { client, timers, t, items } = dualClient()
+    await client.start()
+    const itemFetches = items.fetch
+    t.emit({ type: 'commit', document: 'board', revision: 1, clientId: 'other' })
+    await timers.advance(200)
+    expect(t.calls.fetch).toBeGreaterThan(0)
+    expect(items.fetch).toBe(itemFetches)
+  })
+
+  it("never resyncs either document for the replica's own commit frame", async () => {
+    const { client, timers, t, items } = dualClient()
+    await client.start()
+    const boardFetches = t.calls.fetch
+    const itemFetches = items.fetch
+    t.emit({ type: 'commit', document: 'board', revision: 9, clientId: 'tab-1' })
+    t.emit({ type: 'commit', document: 'items', revision: 9, clientId: 'tab-1' })
+    await timers.advance(200)
+    expect(t.calls.fetch).toBe(boardFetches)
+    expect(items.fetch).toBe(itemFetches)
+  })
+
+  it('sends its own commit with claims and accrued deletions', async () => {
+    const { client, timers, items } = dualClient()
+    await client.start()
+    const store = new SyncedItemsStore(client.checklistReplica())
+    const a = item('i-a', 'A')
+    const b = item('i-b', 'B')
+    store.save([a, b])
+    await timers.advance(300)
+    expect(items.commit).toHaveLength(1)
+    // Dropping a row the baseline never held needs no tombstone; the claim set
+    // is the rows this edit actually moved.
+    expect([...(items.commit[0].changed ?? [])].sort()).toEqual(['i-a', 'i-b'])
+    expect(items.commit[0].deleted).toEqual([])
+    // A second edit that drops a host-held row does accrue a deletion.
+    items.doc = applyItemsCommit(items.doc, { clientId: 'x', items: [a], changed: ['i-a'], deleted: [] }, T0)
+    await client.checklistReplica().poll()
+    store.save([b])
+    await timers.advance(300)
+    const last = items.commit[items.commit.length - 1]
+    expect(last.deleted.map(entry => entry.id)).toEqual(['i-a'])
+  })
+
+  it('collapses a re-save of the same array while one is still un-acked into a single commit', async () => {
+    const { client, timers, items } = dualClient()
+    await client.start()
+    const store = new SyncedItemsStore(client.checklistReplica())
+    const rows = [item('i-a', 'A')]
+    // The identity guard, the same law the task rows follow: while an array is
+    // still un-acked, handing the SAME array back has changed nothing. That is
+    // the anti-spam case — a store that saves on every render must not turn
+    // one keystroke into a queue of commits. (A save AFTER the ack is a real
+    // write again; the no-op that costs no revision is settled by the host's
+    // own equality predicate, not by guessing on this side.)
+    store.save(rows)
+    store.save(rows)
+    store.save(rows)
+    await timers.advance(300)
+    expect(items.commit).toHaveLength(1)
+  })
+
+  // THE case this whole split exists for.
+  it("the board's ack does NOT clear the checklist's un-acked authorship claims", async () => {
+    const { client, timers, items } = dualClient()
+    await client.start()
+    // The checklist's commit cannot reach the host (parked, claims pending).
+    items.commitFails = true
+    const store = new SyncedItemsStore(client.checklistReplica())
+    store.save([item('i-a', 'A'), item('i-b', 'B')])
+    await timers.advance(300)
+    expect(items.commit.length).toBeGreaterThan(0)
+    // Meanwhile the board goes quiet: its own commit is acked end to end.
+    client.setTasks([task('t-1')])
+    await timers.advance(300)
+    // The host comes back for the checklist. Its NEXT commit must still carry
+    // both claims. If the two documents shared one claim set, the board's ack
+    // would have emptied it the moment the board went quiet, and these two
+    // edits would silently demote themselves to plain LWW — on a slow device
+    // that is the checklist quietly losing a person's writing.
+    items.commitFails = false
+    await timers.advance(60_000)
+    const last = items.commit[items.commit.length - 1]
+    expect([...(last.changed ?? [])].sort()).toEqual(['i-a', 'i-b'])
+  })
+
+  it('keeps its own offline mirror, separate from the board keys', async () => {
+    const written: ItemRecord[][] = []
+    const mirror = {
+      load: (): ItemRecord[] => [],
+      save: (rows: readonly ItemRecord[]) => { written.push([...rows]) },
+      clear: () => { written.length = 0 },
+    }
+    const replica = new ChecklistReplica({
+      clientId: 'tab-1',
+      transport: { ...fakeTransport().transport, itemsFetch: async () => undefined, itemsCommit: async () => undefined },
+      defer: () => () => undefined,
+      now: () => T0,
+      mirror,
+    })
+    await replica.start()
+    const store = new SyncedItemsStore(replica, mirror)
+    store.save([item('i-a', 'A')])
+    expect(written.at(-1)?.map(row => row.id)).toEqual(['i-a'])
+    // Before adoption the mirror answers, so first paint never waits on the wire.
+    const offline = new SyncedItemsStore(replica, { ...mirror, load: () => [item('i-x', 'X')] })
+    expect(offline.load().map(row => row.id)).toEqual(['i-x'])
+  })
+
+  it('says the host lost the checklist instead of rendering an empty list as yours', async () => {
+    const local: ItemRecord[] = [item('i-a', 'A')]
+    // The damage arrives AFTER a healthy boot, so the union probe is long past
+    // and the empty view is the host's own claim at a higher revision.
+    let doc: ItemsDoc = { ...emptyItemsDoc(T0), revision: 1, items: local, nextRef: 2 }
+    const replica = new ChecklistReplica({
+      clientId: 'tab-1',
+      transport: {
+        ...fakeTransport().transport,
+        itemsFetch: async () => ({ available: true, revision: doc.revision, doc }),
+        itemsCommit: async () => undefined,
+      },
+      defer: () => () => undefined,
+      now: () => T0,
+      mirror: { load: () => local, save: () => undefined, clear: () => undefined },
+    })
+    await replica.start()
+    const store = new SyncedItemsStore(replica, { load: () => local, save: () => undefined, clear: () => undefined })
+    expect(store.load().map(row => row.id)).toEqual(['i-a'])
+    expect(store.hostLostItems()).toBe(false)
+    // The file the host was serving stops parsing, and the platform reads a
+    // damaged record as ABSENT rather than bricking the unit. The host answers
+    // honestly — with an empty checklist.
+    doc = { ...emptyItemsDoc(T0), revision: 2 }
+    await replica.poll()
+    expect(store.load()).toEqual([])
+    // The mirror still holds a row, so this is a DAMAGED document, not an empty
+    // list — and the panel must be able to say so rather than telling the user
+    // they wrote nothing.
+    expect(store.hostLostItems()).toBe(true)
+  })
+
+  it('leaves the checklist mirroring locally on a host that has no second document', async () => {
+    const timers = fakeTimers()
+    const t = fakeTransport()
+    const logs: string[] = []
+    const client = new BoardSyncClient({
+      transport: t.transport, // no itemsFetch/itemsCommit
+      defer: timers.defer,
+      now: timers.now,
+      uuid: () => 'tab-1',
+      commitDebounceMs: 250,
+      log: msg => logs.push(msg),
+    })
+    expect(await client.start()).toBe('synced')
+    await timers.advance(300)
+    // The board is fully live...
+    expect(client.view().tasks).toEqual([])
+    expect(client.isSynced()).toBe(true)
+    // ...and the checklist says so instead of throwing or half-initialising.
+    expect(client.checklistReplica().isSynced()).toBe(false)
+    expect(logs.some(line => line.includes('checklist document not served'))).toBe(true)
+  })
+
+  it('tears the checklist replica down with the session', async () => {
+    const { client, timers, items } = dualClient()
+    await client.start()
+    const store = new SyncedItemsStore(client.checklistReplica())
+    store.save([item('i-a', 'A')])
+    client.dispose()
+    const before = items.commit.length
+    await timers.advance(60_000)
+    expect(items.commit).toHaveLength(before)
   })
 })

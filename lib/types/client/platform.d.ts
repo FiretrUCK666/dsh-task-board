@@ -20,6 +20,7 @@
  */
 import type { SessionReferenceSource } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { SessionDriver, SessionHold } from '../core/execution.ts';
+import type { ChecklistMirrorFace } from '../core/host-sync.ts';
 /** Branded session id (the host brands its wire ids the same way). */
 export type SessionId = string & {
     readonly __sessionId: unique symbol;
@@ -325,6 +326,24 @@ export type PageResult = {
     }[];
     readonly hasMore: boolean;
 };
+/** The checklist's offline mirror key.
+ *
+ *  Hard rule 5 freezes the NAMES of the existing keys; it does not forbid a new
+ *  document from carrying its own. It must: a shared key would let one
+ *  document's mirror overwrite the other's, and the two would silently trade
+ *  places on every write. */
+export declare const CHECKLIST_MIRROR_KEY = "dsh.taskBoard.items.v1";
+/** Build the checklist's localStorage mirror: the offline first-paint source
+ *  and, just as importantly, the LOCAL EVIDENCE that a non-empty host view is
+ *  suspicious. A damaged document restores as absent (the platform reads a
+ *  malformed record that way), so the wire cannot tell "the host cannot read
+ *  it" from "you wrote nothing" — the mirror is the only side that can, and
+ *  the panel says so rather than showing an empty list as fact.
+ *
+ *  Read discipline matches the task ledger's: bad JSON starts empty and says
+ *  why (console.error, never throw — a corrupted cache must not take the panel
+ *  down), and a write that fails leaves the previous bytes alone. */
+export declare function createChecklistMirror(storage?: Storage): ChecklistMirrorFace;
 /** The oldest event seq covered by one record window (undefined when empty). */
 export declare function floorSeqOf(records: readonly {
     event: unknown;

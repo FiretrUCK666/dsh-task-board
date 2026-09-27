@@ -1,5 +1,5 @@
 /**
- * Board data service tests: document load/persist through a fake KV unit,
+ * Document service tests: document load/persist through a fake KV unit,
  * commit serialization + broadcast, lease acquire/renew/disconnect-grace/
  * takeover, and the command relay (live-engine broadcast vs parked replay).
  *
@@ -193,7 +193,10 @@ describe('DocumentService commit', () => {
     const doc = await service.commit(commitOf({ tasks: [task] }))
     expect(doc.revision).toBe(1)
     expect(unit.putCount).toBe(1)
-    expect(events).toEqual([{ type: 'commit', revision: 1, clientId: 'c-1' }])
+    // The frame NAMES its document: two documents share one stream, so a
+    // frame that does not say which one moved is a frame two devices can read
+    // two different ways.
+    expect(events).toEqual([{ type: 'commit', document: 'board', revision: 1, clientId: 'c-1' }])
     // Re-commit the same content: nothing moves.
     const again = await service.commit(commitOf({ tasks: [task] }))
     expect(again.revision).toBe(1)
@@ -387,6 +390,24 @@ describe('DocumentService command relay', () => {
     const { queued } = service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
     expect(queued).toBe(false)
     expect(events).toEqual([{ type: 'command', command: { type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' } }])
+  })
+
+  it('the lease and command frames name NO document — a seat belongs to the unit', async () => {
+    // The type says it; nothing checked it. A `document` key on either frame
+    // would read as true today (one holder drives both documents) and as a
+    // lie the day a second engine or a document-scoped seat appears, so the
+    // guarantee has to be measured on what actually goes out on the wire.
+    const { service } = makeService(new FakeUnit())
+    await service.init()
+    const seen: BoardEvent[] = []
+    service.subscribe(e => seen.push(e))
+    service.acquireLease('a', 20_000)
+    service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
+    service.releaseLease('a')
+    expect(seen.map(frame => frame.type)).toEqual(['lease', 'command', 'lease'])
+    for (const frame of seen) {
+      expect(JSON.parse(JSON.stringify(frame)) as Record<string, unknown>).not.toHaveProperty('document')
+    }
   })
 
   it('parks when no engine holds the lease and replays on the next grant', async () => {

@@ -18,6 +18,7 @@ import {
   sameBoardDocs,
   TOMBSTONE_TTL_MS,
   type BoardCommit,
+  type BoardEvent,
 } from '../src/core/board-doc.ts'
 import { createTask } from '../src/core/tasks.ts'
 
@@ -417,5 +418,31 @@ describe('changedIdsOf', () => {
     expect(changedIdsOf([withRound], [{ ...withRound, executions: [{ ...round, viewedAt: T0 + 9 }] }])).toEqual([])
     // A real content move still claims.
     expect(changedIdsOf([withRound], [{ ...withRound, executions: [{ ...round, endedAt: T0 + 2 }] }])).toEqual(['t-a'])
+  })
+})
+
+describe('BoardEvent', () => {
+  /** The commit frame, extracted the way a consumer extracting it would. */
+  type CommitFrame = Extract<BoardEvent, { type: 'commit' }>
+
+  it('names the document on a commit frame, and only on a commit frame', () => {
+    const board: CommitFrame = { type: 'commit', document: 'board', revision: 1, clientId: 'c-1' }
+    const items: CommitFrame = { type: 'commit', document: 'items', revision: 4, clientId: 'c-2' }
+    // The lease and the command carry NO document, and that is deliberate: the
+    // seat and the run relay belong to the STORAGE UNIT, not to one document —
+    // one browser holds the lease and drives runs for both, so a document name
+    // on those two frames would be a lie that happens to hold today.
+    const lease: BoardEvent = { type: 'lease', holder: 'c-1', expiresAt: T0 }
+    const command: BoardEvent = { type: 'command', command: { type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'c-1' } }
+
+    // @ts-expect-error `document` is REQUIRED on a commit frame, with no default to fall back on: a frame that does not say which document moved is the second judgement this field exists to remove, and a default would hide it until two devices disagree.
+    const nameless: BoardEvent = { type: 'commit', revision: 1, clientId: 'c-1' }
+
+    // Plain JSON, one line per frame, and the name survives the trip both ways.
+    expect([board.document, items.document]).toEqual(['board', 'items'])
+    const overTheWire = JSON.parse(JSON.stringify([board, items, lease, command, nameless]))
+    expect(overTheWire.map((frame: { type: string }) => frame.type)).toEqual(['commit', 'commit', 'lease', 'command', 'commit'])
+    expect(overTheWire[1].document).toBe('items')
+    expect('document' in overTheWire[2]).toBe(false)
   })
 })

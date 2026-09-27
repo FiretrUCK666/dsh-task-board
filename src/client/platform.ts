@@ -21,6 +21,8 @@
 
 import type { SessionReferenceSource } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionDriver, SessionHold } from '../core/execution.ts'
+import type { ChecklistMirrorFace } from '../core/host-sync.ts'
+import { parseItems, type ItemRecord } from '../core/item.ts'
 
 // ─── Branded identifiers ────────────────────────────────────────────────────
 
@@ -284,6 +286,78 @@ export type FollowFrame =
 export type PageResult = {
   readonly records: readonly { readonly type: 'event'; readonly event: unknown }[]
   readonly hasMore: boolean
+}
+
+/** The checklist's offline mirror key.
+ *
+ *  Hard rule 5 freezes the NAMES of the existing keys; it does not forbid a new
+ *  document from carrying its own. It must: a shared key would let one
+ *  document's mirror overwrite the other's, and the two would silently trade
+ *  places on every write. */
+export const CHECKLIST_MIRROR_KEY = 'dsh.taskBoard.items.v1'
+
+/** Build the checklist's localStorage mirror: the offline first-paint source
+ *  and, just as importantly, the LOCAL EVIDENCE that a non-empty host view is
+ *  suspicious. A damaged document restores as absent (the platform reads a
+ *  malformed record that way), so the wire cannot tell "the host cannot read
+ *  it" from "you wrote nothing" — the mirror is the only side that can, and
+ *  the panel says so rather than showing an empty list as fact.
+ *
+ *  Read discipline matches the task ledger's: bad JSON starts empty and says
+ *  why (console.error, never throw — a corrupted cache must not take the panel
+ *  down), and a write that fails leaves the previous bytes alone. */
+export function createChecklistMirror(storage?: Storage): ChecklistMirrorFace {
+  let store: Storage | undefined = storage
+  if (store === undefined) {
+    try {
+      store = globalThis.localStorage
+    } catch {
+      store = undefined
+    }
+  }
+  if (store === undefined) {
+    return { load: () => [], save: () => undefined, clear: () => undefined }
+  }
+  const safe = store
+  return {
+    load(): ItemRecord[] {
+      let raw: string | null = null
+      try {
+        raw = safe.getItem(CHECKLIST_MIRROR_KEY)
+      } catch (error) {
+        console.error('[dsh-task-board] checklist mirror read failed; starting empty', error)
+        return []
+      }
+      if (raw === null) return []
+      try {
+        const parsed = parseItems(raw, () => 1)
+        if (parsed.length === 0 && raw.trim() !== '[]') {
+          console.error('[dsh-task-board] persisted checklist is not valid JSON; starting empty')
+          return []
+        }
+        return parsed
+      } catch (error) {
+        console.error('[dsh-task-board] persisted checklist is not valid JSON; starting empty', error)
+        return []
+      }
+    },
+    save(items: readonly ItemRecord[]): void {
+      try {
+        safe.setItem(CHECKLIST_MIRROR_KEY, JSON.stringify(items))
+      } catch (error) {
+        // A full or unavailable store must never break the write the replica is
+        // about to make to the host.
+        console.error('[dsh-task-board] checklist mirror write failed (persistence skipped)', error)
+      }
+    },
+    clear(): void {
+      try {
+        safe.removeItem(CHECKLIST_MIRROR_KEY)
+      } catch (error) {
+        console.error('[dsh-task-board] checklist mirror clear failed', error)
+      }
+    },
+  }
 }
 
 /** The oldest event seq covered by one record window (undefined when empty). */

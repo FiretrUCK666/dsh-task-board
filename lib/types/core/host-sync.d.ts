@@ -1,32 +1,65 @@
 /**
- * Board sync client (browser half): makes this tab an optimistic replica of
- * the host-owned board document.
+ * The browser half of sync: makes this tab an optimistic replica of the
+ * host-owned documents.
  *
- * Responsibilities (and nothing else):
- * - boot: fetch the authoritative document (a few retries; persistent
+ * A SESSION holds N document replicas. Today that is two — the board ledger
+ * and the checklist — and the split is structural, not cosmetic:
+ *
+ * - SESSION-SCOPED (shared, because they are about this TAB, not about any one
+ *   document): the client id, the mode, the loops, the SSE stream, the poll,
+ *   tab visibility, and the ENGINE LEASE. The seat answers "which device is
+ *   driving the engine", so it belongs to the tab and to no document; two
+ *   replicas must never compete for it, and nothing here may be generalized
+ *   into a per-document count.
+ * - REPLICA-SCOPED (one set per document, and the two sets share NOTHING):
+ *   baseline, dirty state, the in-flight snapshot, authorship claims, accrued
+ *   deletions, the debounce lane, the backoff lane and the retry budget. The
+ *   ack clears a replica's claims when THAT replica's rows came back clean and
+ *   for no other reason — a shared pair would be emptied by the other
+ *   document's ack the moment it went quiet, and the quieter document's
+ *   un-acked edits would demote themselves to plain LWW and be overwritten.
+ *   A replica losing its queue in silence is the exact failure the accrual
+ *   discipline exists to prevent, so the isolation is the design, not a
+ *   precaution.
+ *
+ * Responsibilities of the session (and nothing else):
+ * - boot: fetch the authoritative documents (a few retries; persistent
  *   failure or an unavailable host yields `unavailable` — the wiring then
  *   keeps the plain localStorage mode, so the board never depends on this
- *   path to exist);
- * - migration: an empty host document plus a non-empty local ledger uploads
- *   the ledger once (bootstrap); a non-empty host with a diverging local
- *   ledger keeps the host truth and hands the local copy to the backup sink
+ *   path to exist). A host that does not serve a document at all leaves THAT
+ *   replica mirroring locally and says so; the others are untouched;
+ * - migration, per document: an empty host document plus a non-empty local
+ *   copy uploads it once (bootstrap); a non-empty host with a diverging local
+ *   copy keeps the host truth and hands the local copy to the backup sink
  *   (nothing is ever silently dropped);
- * - commit: every local change marks the view dirty and a debounced,
- *   serialized lane posts the full view + observed deletions; the response
- *   is the authoritative document, so every replica converges on it (the
- *   merge grammar lives in board-doc.ts, not here);
- * - watch: the SSE change stream drives coalesced resyncs, lease events
- *   drive engine state, command frames reach the engine only; a slow poll
- *   and every stream reopen resync as the safety net (SSE loss — proxies,
- *   mobile backgrounding — degrades latency, never correctness);
- * - lease: one heartbeat renews (or takes) the engine lease; `onEngine`
- *   tells the wiring when to start/stop the scheduler and gate the pump.
+ * - commit, per document: every local change marks that document's view
+ *   dirty and its own debounced, serialized lane posts the full view +
+ *   observed deletions; the response is the authoritative document, so every
+ *   replica converges on it (the merge grammars live in board-doc.ts and
+ *   items-doc.ts, not here);
+ * - watch: the SSE change stream drives coalesced resyncs ROUTED BY THE
+ *   DOCUMENT THE FRAME NAMES — a note typed on a phone must not make every
+ *   device re-pull the whole ledger; lease events drive engine state, command
+ *   frames reach the engine only; a slow poll and every stream reopen resync
+ *   as the safety net (SSE loss — proxies, mobile backgrounding — degrades
+ *   latency, never correctness);
+ * - lease: one heartbeat renews (or takes) the engine lease; `onEngine` tells
+ *   the wiring when to start/stop the scheduler and gate the pump.
  *
  * Framework-free: all transport, clocks and timers are injected faces, so
  * tests drive every path without a browser or a server.
+ *
+ * KNOWN DEBT (do not mistake it for a finished design): the board replica's
+ * state is still inline in `BoardSyncClient` rather than routed through the
+ * same shape the checklist replica uses. Correctness does not depend on that
+ * split — the two hold disjoint state either way, and both behaviours are
+ * pinned by falsified tests — but the shape is duplicated. Collect it when it
+ * actually becomes a burden, not before.
  */
 import type { BoardDoc, BoardView } from './board-doc.ts';
 import type { BoardCommit, BoardCommand, BoardEvent, CruiseValue, LeaseWire } from './board-doc.ts';
+import type { ItemsCommit, ItemsDoc } from './items-doc.ts';
+import type { ItemRecord } from './item.ts';
 import type { RunPresetStore, RunPresetsDocument } from './run-presets.ts';
 import type { PresetStore, SchedulePreset } from './presets.ts';
 import type { TaskRecord } from './tasks.ts';
@@ -38,10 +71,25 @@ export interface SyncFetchResult {
     doc?: BoardDoc;
     unchanged?: boolean;
 }
+/** The same envelope for the SECOND document (the checklist), whose body is
+ *  an `ItemsDoc` rather than a `BoardDoc`. Two shapes, one envelope — the
+ *  route answers both tails with `{ ok, value }`. */
+export interface ItemsSyncFetchResult {
+    available: boolean;
+    revision: number;
+    doc?: ItemsDoc;
+    unchanged?: boolean;
+}
 /** The board-route transport (the wiring implements it with fetch + EventSource). */
 export interface BoardSyncTransport {
     fetch(clientId: string, since: number | undefined): Promise<SyncFetchResult | undefined>;
     commit(commit: BoardCommit): Promise<SyncFetchResult | undefined>;
+    /** The checklist's read end. Absent on a host that predates the second
+     *  document: the session treats it exactly like an unreachable host for
+     *  that document alone — the board keeps syncing untouched. */
+    itemsFetch?(clientId: string, since: number | undefined): Promise<ItemsSyncFetchResult | undefined>;
+    /** The checklist's write end (absent together with {@link itemsFetch}). */
+    itemsCommit?(commit: ItemsCommit): Promise<ItemsSyncFetchResult | undefined>;
     lease(clientId: string, options: {
         ttlMs?: number;
         release?: boolean;
@@ -81,12 +129,20 @@ export interface BoardSyncDeps {
         onVisible(cb: () => void): () => void;
         onHidden(cb: () => void): () => void;
     };
+    /** The checklist's offline mirror (the wiring: a localStorage key). Also the
+     *  evidence that lets the replica say "the host cannot read it" instead of
+     *  rendering an empty list as if the person had written nothing. */
+    checklistMirror?: ChecklistMirrorFace;
     log?: (message: string, error?: unknown) => void;
 }
 export declare class BoardSyncClient {
     private readonly deps;
     /** Identity of this tab for lease/relay purposes (stable per instance). */
     readonly clientId: string;
+    /** The SECOND document's replica, owned outright by this session. It rides
+     *  the same loops, the same SSE stream and the same lease; what it does NOT
+     *  share is a single byte of replica state with the board. */
+    private readonly checklist;
     private mode;
     private baseline;
     private dirty;
@@ -129,6 +185,10 @@ export declare class BoardSyncClient {
     private readonly resyncCoalesceMs;
     private readonly log;
     constructor(deps: BoardSyncDeps);
+    /** The checklist's replica — the wiring mounts the panel on it. */
+    checklistReplica(): ChecklistReplica;
+    onChecklistRemote(listener: (items: readonly ItemRecord[], revision: number) => void): void;
+    onChecklistBackup(listener: (items: readonly ItemRecord[]) => void): void;
     /**
      * Fetch the authoritative document (bounded retries), run the migration
      * probe, then wire the watch/lease/poll loops.
@@ -212,6 +272,96 @@ export declare class BoardSyncClient {
     /** A self-rescheduling loop (first step after `ms`; cancel stops it). */
     private every;
 }
+/** The offline mirror for the checklist (the wiring backs it with a
+ *  localStorage key). Reads feed first paint before adoption; writes keep the
+ *  key warm AND are the evidence that a non-empty host view is suspicious. */
+export interface ChecklistMirrorFace {
+    load(): ItemRecord[];
+    save(items: readonly ItemRecord[]): void;
+    clear(): void;
+}
+/** Everything the replica needs from the session, injected so tests drive it
+ *  without a browser or a server. */
+export interface ChecklistReplicaDeps {
+    clientId: string;
+    transport: BoardSyncTransport;
+    defer(fn: () => void, ms: number): () => void;
+    now?: () => number;
+    commitDebounceMs?: number;
+    /** Remote-change coalescing before a resync fetch (same default as the session). */
+    resyncCoalesceMs?: number;
+    mirror?: ChecklistMirrorFace;
+    log?: (message: string, error?: unknown) => void;
+}
+/** The checklist as one browser-side replica of the host's second document. */
+export declare class ChecklistReplica {
+    private readonly deps;
+    private doc;
+    /** Un-acked rows (undefined = identical to the baseline). */
+    private dirty;
+    /** The exact array in flight, identity-compared on ack. */
+    private inFlight;
+    private readonly claims;
+    private deleted;
+    private refire;
+    private commitAttempts;
+    private commitCancel;
+    private backoffCancel;
+    private resyncCancel;
+    private disposed;
+    /** Set once the host has answered for this document at least once. */
+    private reachable;
+    private readonly now;
+    private readonly defer;
+    private readonly commitDebounceMs;
+    private readonly resyncCoalesceMs;
+    private readonly log;
+    private remoteListener;
+    private backupListener;
+    constructor(deps: ChecklistReplicaDeps);
+    /** Adopt the host's first view and run the same migration probe the board
+     *  runs: an empty host document plus a non-empty local mirror uploads once. */
+    start(): Promise<void>;
+    /** Whether the host truth is adopted for the checklist. */
+    isSynced(): boolean;
+    /**
+     * TRUE when the host is answering but reports an empty checklist while the
+     * local mirror still holds rows.
+     *
+     * The platform reads a malformed or stale-versioned per-record document as
+     * ABSENT (it never bricks the unit), so a damaged `items.json` restores as an
+     * empty checklist — and "the host cannot read it" is indistinguishable from
+     * "you have nothing" on the wire. The host deliberately does not guess. This
+     * is the exit it left: the replica is the only side that can still see the
+     * local evidence, so it is the only side that may say so. A panel rendering
+     * this as "你一条都没有" would be telling the user a falsehood about their own
+     * data, which is worse than the failure it hides.
+     */
+    hostLostItems(): boolean;
+    /** The effective local view: baseline overlaid with un-acked rows, with
+     *  accrued deletions excluded on both sides (same law as the board's rows —
+     *  the dirty array keeps its order, baseline-only rows append read-only). */
+    view(): readonly ItemRecord[];
+    baselineRevision(): number;
+    /** Mark the checklist dirty and queue a commit. */
+    setItems(items: readonly ItemRecord[]): void;
+    onRemote(listener: (items: readonly ItemRecord[], revision: number) => void): void;
+    onBackup(listener: (items: readonly ItemRecord[]) => void): void;
+    /** A remote checklist frame: own commits arrive via the response, remote ones
+     *  need a resync. This is what keeps a phone-side note from resyncing the
+     *  whole board. */
+    onRemoteFrame(clientId: string): void;
+    dispose(): void;
+    private scheduleCommit;
+    /** Send the current dirty view (one in flight at a time, trailing refire). */
+    flush(): Promise<void>;
+    /** Adopt an authoritative checklist (never backwards) and notify the replica. */
+    private adopt;
+    private scheduleResync;
+    /** Fetch only when the host's checklist revision moved past the baseline. */
+    poll(): Promise<void>;
+    private fetchDoc;
+}
 /** The slice of the sync client the adapters use (easy to fake in tests). */
 export interface SyncLedger {
     /** Whether the host truth is adopted (see {@link BoardSyncClient.isSynced}). */
@@ -279,4 +429,25 @@ export declare class SyncedCruiseStore {
     constructor(sync: SyncLedger, mirror?: CruiseMirrorFace | undefined);
     read(): Partial<CruiseValue> | undefined;
     write(state: CruiseValue): void;
+}
+/** A synchronous checklist store over the synced second document, with the
+ *  same offline-first discipline as the task store: reads come from the mirror
+ *  until the host truth is adopted (first paint never waits on the network),
+ *  writes warm the mirror AND mark the replica dirty.
+ *
+ *  The mirror's key is the checklist's OWN (`dsh.taskBoard.items.v1`). Hard
+ *  rule 5 freezes the existing keys' NAMES; it does not forbid a new document
+ *  from carrying its own — and it must, because a shared key would make one
+ *  document's mirror overwrite the other's. */
+export declare class SyncedItemsStore {
+    private readonly replica;
+    private readonly mirror?;
+    constructor(replica: ChecklistReplica, mirror?: ChecklistMirrorFace | undefined);
+    load(): readonly ItemRecord[];
+    save(items: readonly ItemRecord[]): void;
+    clear(): void;
+    /** Whether the host is answering but its checklist reads empty while the
+     *  mirror still holds rows — a damaged document, which must be SAID, never
+     *  rendered as "you have nothing". */
+    hostLostItems(): boolean;
 }

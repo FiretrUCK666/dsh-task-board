@@ -21,8 +21,15 @@ import { type TaskRecord } from './tasks.ts';
 export type BoardEventKind = 'created' | 'run' | 'comment' | 'external' | 'direct' | 'waiting';
 /** Lifecycle of the moment. */
 export type BoardEventState = 'queued' | 'running' | 'settled';
-/** One feed/notification moment. */
-export interface BoardEvent {
+/** One feed/notification moment.
+ *
+ *  Named `ActivityEvent` and not `BoardEvent`: the SSE frame union in
+ *  board-doc.ts owns that name, and two exported types with one name in the
+ *  same folder means a search for either one returns both, with the reader
+ *  having to work out which is which. `BoardEventKind` / `BoardEventState` /
+ *  `BoardEventContext` kept their names — they never collided, and renaming
+ *  them would reach into the client half for no gain. */
+export interface ActivityEvent {
     /** Stable row key (task + moment + state). */
     key: string;
     taskId: string;
@@ -64,14 +71,14 @@ export interface BoardEventContext {
  * comment bodies are kept as moments (the row shows a placeholder) except
  * when the caller filters them — the derivation never drops facts.
  */
-export declare function boardEventsOf(tasks: readonly TaskRecord[], ctx?: BoardEventContext): BoardEvent[];
+export declare function boardEventsOf(tasks: readonly TaskRecord[], ctx?: BoardEventContext): ActivityEvent[];
 /** Day bucket key (local calendar day) for activity grouping — pure. */
 export declare function dayBucketOf(at: number): string;
 /**
  * Group events into day buckets (newest day first, events newest-first
  * inside). Pure — the view renders one section per bucket.
  */
-export declare function groupEventsByDay(events: readonly BoardEvent[]): Array<{
+export declare function groupEventsByDay(events: readonly ActivityEvent[]): Array<{
     day: string;
-    items: BoardEvent[];
+    items: ActivityEvent[];
 }>;

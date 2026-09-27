@@ -1,12 +1,15 @@
 /**
- * Browser transport for the board sync client: the four board-route calls
- * over fetch, and the SSE change stream over EventSource. Every failure
- * degrades to `undefined` (the sync client treats it as "host unreachable"
- * and keeps the last known truth), so a dropped packet or a proxy hiccup can
- * never take the board down — the poll + EventSource auto-reconnect recover.
+ * Browser transport for the sync client: the six board-route calls over
+ * fetch — the ledger's read/write, the checklist's read/write, and the
+ * lease/command relay — plus the SSE change stream over EventSource. Every
+ * failure degrades to `undefined` (the sync client treats it as "host
+ * unreachable" and keeps the last known truth), so a dropped packet or a proxy
+ * hiccup can never take the board down — the poll + EventSource
+ * auto-reconnect recover.
  */
-import type { BoardSyncTransport, SyncFetchResult } from '../core/host-sync.ts'
+import type { BoardSyncTransport, ItemsSyncFetchResult, SyncFetchResult } from '../core/host-sync.ts'
 import type { BoardCommit, BoardCommand, BoardEvent, LeaseWire } from '../core/board-doc.ts'
+import type { ItemsCommit } from '../core/items-doc.ts'
 import { routeUrl } from './route-base.ts'
 
 /** The board route base (the naming matrix's `/api/dsh-task-board/*`) as this
@@ -85,6 +88,37 @@ export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyn
           return undefined
         }
       })
+    },
+    async itemsFetch(clientId, since) {
+      return bounded(async signal => {
+        try {
+          const params = new URLSearchParams({ clientId })
+          if (since !== undefined) params.set('since', String(since))
+          const response = await fetch(`${ROUTE}/items?${params.toString()}`, { headers: { accept: 'application/json' }, signal })
+          if (!response.ok) return undefined
+          const envelope = await response.json() as { ok: boolean; value?: ItemsSyncFetchResult }
+          return envelope.ok ? envelope.value : undefined
+        } catch {
+          return undefined
+        }
+      }) as Promise<ItemsSyncFetchResult | undefined>
+    },
+    async itemsCommit(commit: ItemsCommit) {
+      return bounded(async signal => {
+        try {
+          const response = await fetch(`${ROUTE}/items`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(commit),
+            signal,
+          })
+          if (!response.ok) return undefined
+          const envelope = await response.json() as { ok: boolean; value?: ItemsSyncFetchResult }
+          return envelope.ok ? envelope.value : undefined
+        } catch {
+          return undefined
+        }
+      }) as Promise<ItemsSyncFetchResult | undefined>
     },
     async lease(clientId, options) {
       return bounded(async signal => {

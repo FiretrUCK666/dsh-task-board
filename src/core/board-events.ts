@@ -31,8 +31,15 @@ export type BoardEventKind =
 /** Lifecycle of the moment. */
 export type BoardEventState = 'queued' | 'running' | 'settled'
 
-/** One feed/notification moment. */
-export interface BoardEvent {
+/** One feed/notification moment.
+ *
+ *  Named `ActivityEvent` and not `BoardEvent`: the SSE frame union in
+ *  board-doc.ts owns that name, and two exported types with one name in the
+ *  same folder means a search for either one returns both, with the reader
+ *  having to work out which is which. `BoardEventKind` / `BoardEventState` /
+ *  `BoardEventContext` kept their names — they never collided, and renaming
+ *  them would reach into the client half for no gain. */
+export interface ActivityEvent {
   /** Stable row key (task + moment + state). */
   key: string
   taskId: string
@@ -79,8 +86,8 @@ export interface BoardEventContext {
 export function boardEventsOf(
   tasks: readonly TaskRecord[],
   ctx: BoardEventContext = {},
-): BoardEvent[] {
-  const events: BoardEvent[] = []
+): ActivityEvent[] {
+  const events: ActivityEvent[] = []
   // Waiting moments ride the round's own activity clock (started→ended),
   // exactly like the notification rows: two derivations of "when is this
   // wait from" must never disagree, even though no view consumes this branch
@@ -216,8 +223,8 @@ export function dayBucketOf(at: number): string {
  * Group events into day buckets (newest day first, events newest-first
  * inside). Pure — the view renders one section per bucket.
  */
-export function groupEventsByDay(events: readonly BoardEvent[]): Array<{ day: string; items: BoardEvent[] }> {
-  const buckets = new Map<string, BoardEvent[]>()
+export function groupEventsByDay(events: readonly ActivityEvent[]): Array<{ day: string; items: ActivityEvent[] }> {
+  const buckets = new Map<string, ActivityEvent[]>()
   for (const event of events) {
     const day = dayBucketOf(event.at)
     const list = buckets.get(day)

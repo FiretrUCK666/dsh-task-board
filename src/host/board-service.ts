@@ -380,7 +380,7 @@ export class DocumentService {
           this.log('[dsh-task-board] board document persist failed (memory keeps serving)', error)
         }
       }
-      this.broadcast({ type: 'commit', revision: next.revision, clientId: commit.clientId })
+      this.broadcast({ type: 'commit', document: BOARD_DOCUMENT, revision: next.revision, clientId: commit.clientId })
       return next
     })
   }
@@ -389,13 +389,18 @@ export class DocumentService {
    * Apply one replica commit to the CHECKLIST through its own merge grammar —
    * the same lane, the same durability-before-ack order, the same no-op rule,
    * and its own document file. A checklist change does not touch the board's
-   * revision, the board's record, or the board's change frame: two documents,
-   * two revisions, and one write lane.
+   * revision or the board's record: two documents, two revisions, and one
+   * write lane.
    *
-   * It broadcasts nothing, and that is the document's own fact rather than a
-   * gap: an SSE frame says WHAT changed, and saying which document changed is
-   * part of the frame's own shape (a board frame is about the board). No
-   * replica watches the checklist yet, so there is nothing to wake.
+   * IT BROADCASTS NOTHING, and the reason is the CONSUMER, not the frame: a
+   * `commit` frame now names its document, so announcing a checklist write is
+   * a well-formed frame — but every stream consumer still reads a commit as
+   * "the board moved" and schedules a board resync (see
+   * `BoardSyncClient.onStreamEvent`). Announcing item writes before the
+   * consumers sort the two documents apart would make one checklist edit
+   * resync the board on every device, which is the exact thing the second
+   * document's own revision exists to prevent. The write is durable and
+   * durable-before-ack either way; only the announcement waits.
    * @returns the authoritative checklist after the commit.
    */
   commitItems(commit: ItemsCommit): Promise<ItemsDoc> {

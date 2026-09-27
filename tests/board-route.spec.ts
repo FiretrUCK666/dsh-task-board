@@ -425,8 +425,11 @@ describe('GET /board/events (SSE)', () => {
     expect(res.state.headers['content-type']).toContain('text/event-stream')
     expect(res.state.writes[0]).toContain('retry:')
     expect(h.listenerCount()).toBe(1)
-    h.broadcast({ type: 'commit', revision: 7, clientId: 'c-1' })
+    h.broadcast({ type: 'commit', document: 'board', revision: 7, clientId: 'c-1' })
     expect(res.state.writes.some(w => w.includes('"revision":7'))).toBe(true)
+    // The frame must name its document ON THE WIRE: a subscriber that cannot
+    // tell the two documents apart would resync the wrong one.
+    expect(res.state.writes.some(w => w.includes('"document":"board"'))).toBe(true)
     res.state.close()
     expect(h.listenerCount()).toBe(0)
     expect(h.disconnects).toContain('sse-1')
