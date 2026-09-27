@@ -477,6 +477,9 @@ schema 就是给同一件事再加一个控件。
   `automation` ·
   `colors`/`session-list`/`session-display`/`session-groups`/`comment-thread`/`question-rpc`/`store` ·
   `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）· `board-doc`/`host-sync`。
+- 第二份文档与它共用的东西：`board-merge-core`（合并文法核，**两份文档共用一份**）·
+  `items-doc`（清单文档）· `item`（清单一行的模型）· `board-actions`（动作目录，界面与 AI 的
+  唯一同步面，见硬性规范 12）· `task-transitions`（语义层，界面与 AI 调同一套纯函数）。
 - **要决的门**（`task-demand.ts`）：三个子句一条推导——**在待审核 ∧ 有已结算的成败 ∧ 用户还没看过
   那个会话**；`gateOf`/`sessionGateOf` 是唯一实现，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**。
   **「看过」只能由真正打开对话的动作给出**，`openTask`（点卡片）绝不动轮次戳——卡片是摘要，

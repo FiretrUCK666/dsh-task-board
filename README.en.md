@@ -143,10 +143,13 @@ A restart is required here too. Your task data is not deleted.
 - **Drag and drop** — Reorder within a column, move between columns, auto-scroll at the edges, and drag sessions or workspaces in from the sidebar. Dragging is mouse/trackpad only: it uses the browser's built-in drag-and-drop, which touch screens do not raise. Dragging a session in from the sidebar is likewise host-driven and not available on a phone; on a touch screen, move a card with the `[` and `]` keys on a keyboard, or from the card detail's Status section.
 - **Templates and run presets** — Save a task as a template; store run configurations (agent, workspace, model, reasoning effort, permissions) as presets and set one as the default, with a fallback to the deployment default.
 - **Notifications and activity** — An inbox aggregating sessions waiting on you plus unread tasks with review pending, and a board-wide activity feed grouped by day.
+- **A task list in the right sidebar** — A second document, not a view over the board. It lives in DSH's own right sidebar because that sidebar is present in every session: the list is for the thought that arrives while you are already talking to the model, and it needs no click on the board first. Two entries, both in DSH's chrome: the Open-list button in a session header, and the list entry on the right sidebar's guide page. They open the same panel. The list and the board coexist — an item does not have to become a card, and when it hangs off one it reads that card's live state rather than judging it for itself. Each item carries a title, Markdown body, notes, one-level steps, a status, four priority tiers, tags, and three INDEPENDENT times: earliest start, due, and hard deadline. Progress is derived, so an item with no steps shows no progress bar at all. Every item has a short number (`#12`) that both people and models say out loud; it is minted by a counter on the document and is never writable, so a replica cannot renumber the list under you. Creating, editing and deleting all work by hand in the panel, and deleting goes through a tombstone — items are recoverable, unlike cards. The panel's read state is three-valued, not a boolean: quiet while loading, syncing with the host, and "cannot reach the host copy right now, showing this device's copy" — that last one must never be rendered as "you have nothing", because turning "cannot read" into "there is none" is a lie about the system's state. The list needs DSH's right sidebar: on a host without it the panel simply does not exist, and the board is unaffected.
+- **Two slash commands** — Both act in the session you are already talking in. `/task <what you want written down>` hands that one sentence to the current session's model, which can already see this conversation's whole context, so "write down the three things we just discussed" needs nothing relayed. `/task-continue` asks the model to read the outstanding items, list them, and then ask which one to start with rather than picking for you. `/task` works whenever you like in a conversation, early or late, and the model reads the context as it stands at that moment. How many items to write, whether to amend an old one, whether to open a board card — that is the model's own judgement; this plugin fixes no workflow, because a fixed workflow here would be a second set of rules to keep in step with the board. The command is a door: it takes your words, hands them over, and says nothing else.
+- **What the agent can do** — It looks the capability list up on demand instead of carrying it in its prompt, so the list can never go stale; the fixed text in the system prompt is behaviour, not inventory, because a capability list copied into a prompt is a second copy of the catalog and a stale one is worse than none. What the agent does and what you do in the interface are the SAME implementation, so the same thing cannot produce two results. A batch runs in order, stops at the first failure, rolls back nothing, and reports item by item. Actions the interface locks down are locked down for the agent too, and it will say why rather than refusing vaguely — marking a card read is the clearest case, because it clears the very gate that is waiting on you, so an agent doing it would close your own gate on your behalf. Attachments are the other boundary: there is no upload channel on the model side, and an invented reference to a file is content that cannot be drawn.
 
 ## Data locations
 
-- Board source of truth: the `~/.dsh/storages/dsh_task_board/` directory, where `documents/board.json` holds the task ledger, cruise, schedule presets, run presets and deletion tombstones. One human-readable file per data kind, written atomically; back the directory up directly, or delete it to clear the board.
+- Board source of truth: the `~/.dsh/storages/dsh_task_board/` directory. Under `documents/` there is one file per data kind: `board.json` holds the task ledger, cruise, schedule presets, run presets and deletion tombstones, and `items.json` holds the task list. Human-readable, written atomically; back the directory up directly, or delete it to clear both board and list.
 - Browser `localStorage` holds the offline mirror: `dsh.taskBoard.v1`, `dsh.taskBoard.cruise.v1`, `dsh.taskBoard.presets.v1`, `dsh.taskBoard.runPresets.v1`. Drafts in `dsh.taskBoard.drafts.v1` are device-local and deliberately not synchronised.
 - On the first connection, diverging local data is backed up to `dsh.taskBoard.preSync.v1` and the host wins.
 - Without a storage backend on the host, the board falls back to a pure `localStorage` mode.
@@ -207,13 +210,17 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 
 2. If it still fails, the plugin has not caught up with your DSH version yet. Please open an [issue](https://github.com/FiretrUCK666/dsh-task-board/issues) with three things: your DeepSeek Harness version, the plugin version (shown in Settings, installed plugins), and the exact error text from the page. Those three are enough to locate the cause.
 
-**The board opens, but devices do not sync and Settings says the configuration service is unavailable.** That is what a host half which failed to load looks like, and it is the easiest failure to miss after a DSH upgrade: the board still works on the page, but its data stays in that one browser, so another device is not looking at the same board and schedules and cruise never actually fire. Fix it the same way as the entry above — update the plugin, then restart `dsh web`.
+**The board opens, but devices do not sync and the task list stays empty.** That is what a host half which failed to load looks like, and it is the easiest failure to miss after a DSH upgrade: the board still works on the page, but its data stays in that one browser, so another device is not looking at the same board and schedules and cruise never actually fire. In this state the task list says "cannot reach the host copy right now, showing this device's copy" rather than pretending you have nothing. Fix it the same way as the entry above — update the plugin, then restart `dsh web`.
+
+**The board changed shape after opening the right sidebar.** That is the responsive layout working, not a fault. DSH's right sidebar takes about 45% of the viewport with a 300px floor, and the centre column keeps 400px, so opening it makes **the board's own box narrower**. The board responds to the width of its own box rather than the window, so once the box crosses the compact threshold the five columns become a horizontally scrolling track with an evenly divided tab strip. Closing the sidebar restores it.
 
 **A code change had no effect.** Changes under `src/index.ts` or `src/host/` need a `dsh web` restart; client-side changes only need a page refresh. Run `pnpm build` first in both cases.
 
 **Scheduled work runs twice with two devices open.** It should not: scheduling, cruise and follow-ups are arbitrated by a host lease. If the header shows a stale-server notice, open it to see the start time of the server process you are connected to; an old timestamp means a different, un-restarted instance is serving that address.
 
 **Moving to another machine.** Copy the `~/.dsh/storages/dsh_task_board/` directory. The browser `localStorage` is only a mirror.
+
+**No entry for the task list.** Two things hide it: a host build without the right sidebar, or a page still serving an older bundle (the list lives in DSH's right sidebar, on the button in a session header). The second is fixed by refreshing. Neither affects the board — the list's entry is optional, and a host that does not offer it gets no registration at all, so the panel does not exist rather than half existing.
 
 **`dsh plugin` cannot find pnpm.** Install pnpm (`npm install -g pnpm`) and re-run.
 
@@ -223,15 +230,18 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 | --- | --- |
 | Plugin id | `dsh-task-board` |
 | npm package | `@firetruck666/dsh-task-board` |
-| Settings route | `/api/dsh-task-board/settings` |
 | Permission preset route | `/api/dsh-task-board/permissions` |
-| Board data route | `/api/dsh-task-board/board` (`/lease`, `/command`, `/events`) |
-| Host storage unit | `dsh_task_board` |
+| Board data route | `/api/dsh-task-board/board` (`/items`, `/lease`, `/command`, `/events`) |
+| Other host routes | `/api/dsh-task-board/session-state`, `/update`, `/client-report` |
+| Host storage unit | `dsh_task_board` (one file per data kind under `documents/`) |
 | Board stage slot | `main` (`key: dsh-task-board`) |
 | Sidebar entry slot | `sidebar.panellist` (`id: dsh-task-board`) |
+| Task list slots | `sidebar.right.pane.tab`, `conversation.session.header.actions` |
 | `localStorage` keys | `dsh.taskBoard.v1` and friends |
 
-The plugin id and the package name are different things. The id names the loader row, the served browser asset, the settings entry, the routes, the storage unit and the two slots above; the package name is only what pnpm installed. A scoped package name never moves the id.
+The plugin id and the package name are different things. The id names the loader row, the served browser asset, the routes, the storage unit and the extension points above; the package name is only what pnpm installed. A scoped package name never moves the id.
+
+The plugin has no settings of its own, so there is no settings route and no settings page: the switch in the plugin marketplace writes `disabled` on the profile row, and the plugin declares no setting fields.
 
 This plugin has no settings, so it has no settings panel either: the switch in the plugin manager writes the profile row's `disabled` (and only when you turn it off), and the plugin itself declares no setting fields.
 

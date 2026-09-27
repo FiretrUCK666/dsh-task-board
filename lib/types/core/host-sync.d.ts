@@ -213,7 +213,6 @@ export declare class BoardSyncClient {
      *  append read-only — a parked replica keeps READING convergence even
      *  though its writes wait. Accrued deletions stay excluded on both sides. */
     view(): BoardView;
-    baselineRevision(): number;
     setTasks(tasks: readonly TaskRecord[]): void;
     setCruise(value: CruiseValue): void;
     setSchedulePresets(value: SchedulePreset[]): void;
@@ -342,7 +341,6 @@ export declare class ChecklistReplica {
      *  accrued deletions excluded on both sides (same law as the board's rows —
      *  the dirty array keeps its order, baseline-only rows append read-only). */
     view(): readonly ItemRecord[];
-    baselineRevision(): number;
     /** Mark the checklist dirty and queue a commit. */
     setItems(items: readonly ItemRecord[]): void;
     onRemote(listener: (items: readonly ItemRecord[], revision: number) => void): void;

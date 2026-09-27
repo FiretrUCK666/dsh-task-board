@@ -24,7 +24,6 @@ import {
 } from '../src/core/board-doc.ts'
 import {
   armSchedule,
-  canMoveTaskManually,
   moveTaskToStatus,
   removeSessionFromTask,
   type TransitionResult,
@@ -115,16 +114,17 @@ describe('moveTaskToStatus', () => {
     expect(next.rules?.[0]?.enabled).toBe(false)
   })
 
-  it('does NOT judge the move — that question lives in canMoveTaskManually', () => {
+  it('does NOT judge the move — that question has its own homes', () => {
     // The migration is the migration: it moves whatever it is told to, exactly
     // as the interface's own path does. A guard buried in here would leave the
-    // interface with one verdict and the model with another for one question.
+    // interface one verdict and the model another for one question. Whether a
+    // person may move this card by hand is answered by the action catalog
+    // (`task.move`'s status is fenced to MANUAL_STATUSES), by the interface's
+    // own rendering of that same list, and by the engine's resolveCardDrop —
+    // three needs, one shared constant, and deliberately no fourth expression.
     const task = card()
     const moved = taskOf(moveTaskToStatus(task, 'running', T0 + 10))
     expect(moved.status).toBe('running')
-    // …and the judgment is then one function both callers can read.
-    expect(canMoveTaskManually(task)).toBe(true)
-    expect(canMoveTaskManually(moved)).toBe(false)
   })
 
   it('a redundant move is the SAME object (no stamp, no sync churn)', () => {
@@ -132,24 +132,6 @@ describe('moveTaskToStatus', () => {
     const result = moveTaskToStatus(task, 'todo', T0 + 10)
     expect(taskOf(result)).toBe(task)
     expect(result.ok && result.task.updatedAt).toBe(T0)
-  })
-})
-
-describe('canMoveTaskManually', () => {
-  it('allows a card in a column a person owns, with nothing running on it', () => {
-    expect(canMoveTaskManually(card({ status: 'todo', executions: [settledRound()] }))).toBe(true)
-    expect(canMoveTaskManually(card({ status: 'backlog' }))).toBe(true)
-  })
-
-  it('refuses while the runner owns the card', () => {
-    // 进行中 and 待审核 are the runner's: a hand that moves a card out from
-    // under a live run is not a move, and the interface already says so.
-    expect(canMoveTaskManually(card({ status: 'running' }))).toBe(false)
-    expect(canMoveTaskManually(card({ status: 'review' }))).toBe(false)
-  })
-
-  it('refuses a card that still has an open round, whatever column it sits in', () => {
-    expect(canMoveTaskManually(card({ status: 'todo', executions: [openRound()] }))).toBe(false)
   })
 })
 

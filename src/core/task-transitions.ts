@@ -60,9 +60,7 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import { leaveRunningTargetOf, type TaskLiveState } from './task-live.ts'
 import {
   disarmSchedule,
-  hasOpenRun,
   isOpenRound,
-  MANUAL_STATUSES,
   ruleArmingBlocked,
   taskBindsOf,
   withSchedule,
@@ -128,11 +126,15 @@ export interface SchedulePatch {
  *   as the SAME object.
  *
  * This function does NOT judge whether the move is one a person may make. That
- * judgment is {@link canMoveTaskManually}, and it is a separate question on
- * purpose: a guard buried in here would give the interface one answer (it
- * decides at its own doors) and the model another (this one), which is the very
- * thing this module exists to prevent. One migration, one judgment, both read
- * by both callers.
+ * question has its own named homes and this module is deliberately not one of
+ * them: the action catalog limits `task.move`'s `status` to `MANUAL_STATUSES`,
+ * so the model's path is already fenced by the very constant the interface
+ * renders its buttons from, and the engine goes through `resolveCardDrop`.
+ * Three needs, one shared list — a fourth expression here would be a stricter
+ * one than the board really is (it would refuse a settled 待审核 card, whose
+ * move buttons are enabled today and should be), with no caller to keep it
+ * honest. A guard buried in this function would be worse still: the interface
+ * one answer, the model another, for one question.
  *
  * @param now - the instant this move happens (never read from the clock).
  * @returns the new row. The POSITION of the card within its column is not
@@ -147,23 +149,6 @@ export function moveTaskToStatus(task: TaskRecord, status: TaskStatus, now: numb
     return applied({ ...moved, schedule: { ...moved.schedule, runCount: 0 } })
   }
   return applied(moved)
-}
-
-/**
- * Whether a person may move THIS card by hand right now.
- *
- * Two questions, both already answered elsewhere and both read rather than
- * rewritten here: the card must sit in a column a person owns (the runner owns
- * the other two), and nothing may still be running on it — a drag that yanks a
- * card out from under a live run is not a move, and the interface already
- * refuses it. Keeping this OUT of {@link moveTaskToStatus} is what stops the
- * interface and the model from ending up with two verdicts on one question.
- *
- * The TARGET column is the caller's other half of the question, answered by the
- * same manual-column list.
- */
-export function canMoveTaskManually(task: TaskRecord): boolean {
-  return MANUAL_STATUSES.includes(task.status) && !hasOpenRun(task)
 }
 
 /**

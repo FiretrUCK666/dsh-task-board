@@ -37,11 +37,15 @@ export interface SchedulePatch {
  *   as the SAME object.
  *
  * This function does NOT judge whether the move is one a person may make. That
- * judgment is {@link canMoveTaskManually}, and it is a separate question on
- * purpose: a guard buried in here would give the interface one answer (it
- * decides at its own doors) and the model another (this one), which is the very
- * thing this module exists to prevent. One migration, one judgment, both read
- * by both callers.
+ * question has its own named homes and this module is deliberately not one of
+ * them: the action catalog limits `task.move`'s `status` to `MANUAL_STATUSES`,
+ * so the model's path is already fenced by the very constant the interface
+ * renders its buttons from, and the engine goes through `resolveCardDrop`.
+ * Three needs, one shared list — a fourth expression here would be a stricter
+ * one than the board really is (it would refuse a settled 待审核 card, whose
+ * move buttons are enabled today and should be), with no caller to keep it
+ * honest. A guard buried in this function would be worse still: the interface
+ * one answer, the model another, for one question.
  *
  * @param now - the instant this move happens (never read from the clock).
  * @returns the new row. The POSITION of the card within its column is not
@@ -49,20 +53,6 @@ export interface SchedulePatch {
  *  and needs the whole board to answer.
  */
 export declare function moveTaskToStatus(task: TaskRecord, status: TaskStatus, now: number): TransitionResult;
-/**
- * Whether a person may move THIS card by hand right now.
- *
- * Two questions, both already answered elsewhere and both read rather than
- * rewritten here: the card must sit in a column a person owns (the runner owns
- * the other two), and nothing may still be running on it — a drag that yanks a
- * card out from under a live run is not a move, and the interface already
- * refuses it. Keeping this OUT of {@link moveTaskToStatus} is what stops the
- * interface and the model from ending up with two verdicts on one question.
- *
- * The TARGET column is the caller's other half of the question, answered by the
- * same manual-column list.
- */
-export declare function canMoveTaskManually(task: TaskRecord): boolean;
 /**
  * Remove a session from a card, with everything that removal MEANS: the rounds
  * really go, the hide tray forgets it, the workspace can never derive it back,
@@ -105,21 +95,3 @@ export declare function removeSessionFromTask(task: TaskRecord, sessionId: strin
  * @returns the new row, or a refusal saying what is wrong with the request.
  */
 export declare function armSchedule(task: TaskRecord, patch: SchedulePatch, now: number): TransitionResult;
-/**
- * Deleting a card is not a transition, and this seam exists to say so out loud.
- *
- * A board card's deletion is IRREVERSIBLE — the checklist's rows go through a
- * tombstone and can be restored, and this one cannot. What stops a stale
- * replica from bringing the card back afterwards is the merge grammar, not a
- * function here: the tombstone is stamped one millisecond above the newest
- * `updatedAt` the host ever saw for that id, so it outranks every copy another
- * device still holds while a genuinely newer edit (a concurrent revive) still
- * wins. That arithmetic belongs to board-merge-core.ts and is exercised
- * through it in the tests, so there is no second implementation to drift.
- *
- * @param _now - accepted so a caller's write funnel can pass its instant
- *  uniformly. Deliberately unused: stamping a row on its way OUT would move
- *  the tombstone the host derives from it, and the host is the authority on
- *  that stamp.
- */
-export declare function deleteTaskFromDoc(task: TaskRecord, _now: number): TaskRecord;
