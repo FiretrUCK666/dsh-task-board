@@ -408,104 +408,93 @@ schema 就是给同一件事再加一个控件。
 ## 架构（索引：职责与入口，机制细节以代码注释为准，不复述）
 
 这一节是**索引**，只回答「有什么、归谁、去哪读」：**机制只有一份，写在它所属的模块注释里**，
-下面出现的每个文件与函数名就是那个位置。同一律若在别处另有成文表述，以代码为准。
+下面出现的每个文件与函数名就是那个位置。**已经成文的规则不在这里重写一遍**——`关键不变量`、
+`DESIGN.md`、硬性规范里各有一份，重复的第三份只会在其中一份改动时变成谎话。
 
 ### host 半区（DSH 主进程）
 
-- `src/index.ts`：inject 是 `webServer` 加 `tools`/`commands`/`systemPrompt`；六条 `ctx.effect`
-  各注册一条路由或注册那套 agent 面。**没有 `Config` schema、没有 enable 检查**——启停是
-  profile 行的 `disabled`（见「启停机制全貌」）；无图片路由、无设置路由。
+- `src/index.ts`：inject 是 `webServer` 加 `tools`/`commands`/`systemPrompt`；`ctx.effect` 各注册
+  一条路由或注册那套 agent 面。**没有 `Config` schema、没有 enable 检查**——启停是 profile 行
+  的 `disabled`（见「启停机制全貌」）；无图片路由、无设置路由。
 - `src/host/agent/`：三个工具（能力查询 / 查询 / 执行）、两条斜杠命令、系统提示那一节。
-  **动作目录是它们的唯一权威**：`actions` 枚举按构造取自目录，筛选词表取自 `task-search.ts`
-  的注册表，一个字都不抄。写工具走 `core/task-transitions.ts` 的共享纯函数——**界面与 AI
-  调同一套语义实现，同一件事两种结果即破**。批量是顺序执行、第一个失败即停、**不回滚**、
-  逐条报告；`dry_run` 跑同一套文法的克隆，一个字节不落盘。**引擎缺席就明说引擎缺席**。
-- `src/host/session-state.ts`：会话态势推导（在不在跑 / 归档 / 等批准 / 等回答），
-  **看板与 AI 读同一份**。答案三态而非布尔：`unknown` 是「这台机器能看多远」，不是「没人在等」。
-  纯读取模块，测试直接扫源码禁掉它有任何写路径。
-- `src/host/http-json.ts`：全部路由共用的信封与请求体读取（一个有界实现，禁各写一套）。
-- `src/host/*-route.ts`：纯 `create*Handler`（可注入测试），服务一律 `ctx.get`。
+  **动作目录是它们的唯一权威**（`actions` 枚举按构造取自目录，筛选词表取自 `task-search.ts` 的
+  注册表，一个字都不抄）；写工具走 `core/task-transitions.ts` 的共享纯函数——**界面与 AI 调同一套
+  语义实现**。批量顺序执行、首个失败即停、**不回滚**、逐条报告；`dry_run` 跑同一套文法的克隆。
+  **引擎缺席就明说引擎缺席**。
+- `src/host/session-state.ts`：会话态势推导（看板与 AI 读同一份）。答案三态而非布尔：`unknown`
+  是「这台机器能看多远」。纯读取模块，测试扫源码禁掉它有任何写路径。
+- `src/host/http-json.ts` / `src/host/*-route.ts`：路由共用的信封与请求体读取（禁各写一套）；
+  纯 `create*Handler`（可注入测试），服务一律 `ctx.get`。
 - `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**
-  （持有 + storage hub 持久化 + 先落盘后应答 + SSE；缺 hub 则 localStorage 模式）。两份文档由同一
-  个 service 持有，因为同名单元同时只能有一个活句柄、写车道也只有一条；合并文法见核心层。
-  存储单元是 `per-record` 文档树（见命名矩阵）。**KvUnit 不是键值对接口**，是 `table + key` +
-  「声明过的」global 槽：`loadAll` / `putRecord` / `deleteRecord` / `backupRecord?` /
-  `setGlobal` / `close`。`openBoardUnit` 是单元打开与一次性布局迁移的唯一入口，旧整体文件与新
-  文档树**必须顺序开关**；迁移只对**完全空树**发生（判据是「这棵树写没写过」，不是「某个文档在
-  不在」），**所以删掉数据根仍是一次真正的重置**。
-- `src/host/data-root.ts`：**全插件唯一自己碰介质的地方**，只做一件事——把布局迁移前的旧整体
-  文件改名让位。三道守卫缺一不可（数据已在新位置、文件确属本单元那个版本、目标名没被占）；
-  **改名不是删除**（字节留着，就是这次迁移的备份），新名字不以 `.json` 结尾，存储层与后续开机都
-  不再读它。路径全部现场发现，不写死。新增任何直接读写数据根的代码都要先想清楚为什么不能经
-  `ctx.storage`。
+  （持有 + 持久化 + 先落盘后应答 + SSE；缺 hub 则 localStorage 模式）。两份文档由同一个 service
+  持有：同名单元同时只能有一个活句柄。存储单元是 `per-record` 文档树（见命名矩阵），
+  `openBoardUnit` 是单元打开与**一次性**布局迁移的唯一入口，旧文件与新文档树**必须顺序开关**；
+  迁移只对**完全空树**发生（判据是「这棵树写没写过」），**所以删掉数据根仍是一次真正的重置**。
+  `KvUnit` 的形状以类型为准。
+- `src/host/data-root.ts`：**全插件唯一自己碰介质的地方**，只做一件事——把迁移前的旧整体文件改名
+  让位。三道守卫缺一不可（数据已在新位置、文件确属本单元那个版本、目标名没被占）；**改名不是
+  删除**，新名字不以 `.json` 结尾。路径全部现场发现。新增任何直接读写数据根的代码都要先想清楚
+  为什么不能经 `ctx.storage`。
 
 ### client 半区（浏览器）
 
-- `src/client/index.ts`：inject 六服务；offline-first 挂载（Synced*Store 常驻 → 接线 →
-  `controller.start()` 即时可用 → 后台 `sync.start()` 收敛）；官方 seat 两处注册（`main`
-  面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`（`buildApi` 钉端点，
-  `tests/platform.spec.ts` 钉死）。**没有启用判断**：被组合即启用，整个生命周期挂在一个
-  `ctx.effect` 上，插件被关掉时订阅、定时器、SSE 一起释放。
-- `route-base.ts`：**浏览器侧路由的唯一出口**（去掉开头斜杠，交给 `document.baseURI`）。
-  host 侧注册路径保持绝对；浏览器侧任何 `/api/...` 都必须经它，`tests/route-base.spec.ts` 扫描源码兜住。
-- `TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。`board-transport.ts`：
-  fetch + EventSource（缺席降纯轮询）。
-- `src/client/item/`：**清单抽屉**（`shell.overlay`）+ 会话头部的开关按钮（`conversation.session.header.actions`）+ 右栏服务（按名读、只用于「打开时把它收起来」）。**它是常驻边缘上的自己的表面，不按会话记住自己的展开状态**——这正是它不再做成官方右栏标签页的原因（官方右栏按会话记忆，标签页永远给不了「打开一次、就地留下、下个会话还在」）。宽度是 `min(width, 100%)` 一条声明，没有断点、没有 `@media`。面板**一律不用 Dialog**（`boardBox()` 取第一个板盒，会锚到看板上去），第 1 级就地展开。AI 正在写时显示 pending 态并可取消——取消是「剩余操作不再执行」，**已生效的不回滚**，面板要说明这一点。`hostLostItems()` 为真时说「host 读不到」，不能显示成「你一条都没有」。
+- `src/client/index.ts`：inject 六服务；offline-first 挂载（副本常驻 → 接线 → 即时可用 → 后台
+  收敛）；官方 seat 两处注册（`main` 面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`。
+  **没有启用判断**：被组合即启用，生命周期挂在一个 `ctx.effect` 上。
+- `route-base.ts`：**浏览器侧路由的唯一出口**（交给 `document.baseURI`）；host 侧注册路径保持绝对，
+  浏览器侧任何 `/api/...` 都必须经它。`TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方
+  seat 组件。`board-transport.ts`：fetch + EventSource（缺席降纯轮询）。
+- `src/client/item/`：**清单抽屉**（`shell.overlay`）+ 会话头部的开关按钮
+  （`conversation.session.header.actions`）+ 右栏服务（按名读、只用于「打开时把它收起来」）。
+  **它是常驻边缘上自己的表面，不按会话记住展开状态**——这正是它不再做成官方右栏标签页的原因；
+  宽度是 `min(width, 100%)` 一条声明，没有断点、没有 `@media`。面板**一律不用 Dialog**
+  （`boardBox()` 取第一个板盒，会锚到看板上去），第 1 级就地展开。取消是「剩余操作不再执行」，
+  **已生效的不回滚**。`hostLostItems()` 为真时说「host 读不到」，**不能显示成「你一条都没有」**。
 
 ### 设计系统层（成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
 
-- **令牌**：只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）；表面三层（画布/不透明内层）；
-  浮层同一 chrome，尺寸按板盒百分比算（**禁 vw/vh**）；Dialog 默认 portal 到板盒，Escape 只在一处管。
-- **圆角几何在根层一次声明**：`corner-shape` 与 `border-radius` 是不继承的两条轴，全板只声明
-  一次（换肤只重映射 `--dsh-tb-corner`）。**禁止逐处补 `corner-shape`，也禁止把 `50%` 换成 px
-  半径去「修圆」**——半径从来不是问题。
-- **光效的判定与形态见 `DESIGN.md`**；这里只记两条各管各的：等待/进行中呼吸（attention）、
-  已结束未读同族琥珀（unread），已读或空闲静默。**两口钟各读各的粒度**——卡片光读**任务未读**
-  （打开详情即灭），行/点读**轮次未读**（`sessionUnviewedOf` 是行与点共用的唯一判据），表面只读
+- **令牌**：只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）；表面三层；浮层同一 chrome，尺寸按
+  板盒百分比算（**禁 vw/vh**）；Dialog 默认 portal 到板盒，Escape 只在一处管。
+- **圆角几何在根层一次声明**（`corner-shape` 与 `border-radius` 是不继承的两条轴，换肤只重映射
+  `--dsh-tb-corner`）。**禁止逐处补 `corner-shape`，也禁止把 `50%` 换成 px 半径去「修圆」**——
+  半径从来不是问题。
+- **光效**：判定与形态见 `DESIGN.md`；这里只留跨表面的一半——**两口钟各读各的粒度**：卡片光读
+  **任务未读**（打开详情即灭），行/点读**轮次未读**（`sessionUnviewedOf` 是唯一判据），表面只读
   自己不互相重推。
 - **响应式与触屏**：参照是**表面自身宽度**（板 `dsh-tb` / 面板 `dsh-tb-panel`），**禁
-  `@media(max-width)`**；紧凑档用列滑轨 + 五等分 tab（短名 + `aria-label` 全名）；窄屏锚定
-  弹层换 Dialog；JS 侧唯一开关是 `useSurfaceNarrow`。
+  `@media(max-width)`**；JS 侧唯一开关是 `useSurfaceNarrow`。
 - **排版/间距/加载**：表单行用具名 areas 让标签让位；说明必须可点可达（**禁只挂 `title=`**）；
-  间距一律 gap 声明、偏移由令牌派生（禁手写像素）；加载三态见 `DESIGN.md`；共用部件一律复用
+  间距一律 gap 声明、偏移由令牌派生（禁手写像素）；加载三态见 `DESIGN.md`；共用部件复用
   `ui.tsx` / `Chip` / `Dialog` / `Markdown` / `AutomationEditor`。
 - **拖拽**：`drop-position` / `drag-autoscroll` / `use-flip` 三件套与整条投放契约见 `DESIGN.md`。
-  **已知缺口（触屏）**：换栏走浏览器自带的 HTML5 拖放，触屏不触发；**从工作区拖会话进看板的
-  接收端是同一套**，而那一半的**发起端在宿主**，本插件修不了（补齐方向见 `DESIGN.md`）。
+  **已知缺口（触屏）**：换栏走 HTML5 拖放，触屏不触发，而**从工作区拖会话进看板的接收端是同一套**、
+  那一半的**发起端在宿主**，本插件修不了。
 
 ### 核心层（`src/core/` 纯逻辑）
 
 - 模块：`tasks` · `task-demand` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` ·
-  `automation` ·
-  `colors`/`session-list`/`session-display`/`session-groups`/`comment-thread`/`question-rpc`/`store` ·
-  `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）· `board-doc`/`host-sync`。
-- 第二份文档与它共用的东西：`board-merge-core`（合并文法核，**两份文档共用一份**）·
-  `items-doc`（清单文档）· `item`（清单一行的模型）· `board-actions`（动作目录，界面与 AI 的
-  唯一同步面，见硬性规范 12）· `task-transitions`（语义层，界面与 AI 调同一套纯函数）。
-- **要决的门**（`task-demand.ts`）：三个子句一条推导——**在待审核 ∧ 有已结算的成败 ∧ 用户还没看过
-  那个会话**；`gateOf`/`sessionGateOf` 是唯一实现，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**。
-  **「看过」只能由真正打开对话的动作给出**，`openTask`（点卡片）绝不动轮次戳——卡片是摘要，
-  摘要不是对话；`task.viewedAt` 是另一口钟。抽屉的分类就是「等你处理 + 待审核」两类，同一个推导
-  四处渲染（`notifications.ts`）。
+  `automation` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）·
+  `board-doc`/`host-sync` · `board-merge-core`（合并文法核，**两份文档共用一份**）· `items-doc`
+  （清单文档）· `item`（清单一行的模型）· `board-actions`（动作目录，界面与 AI 的唯一同步面，见
+  硬性规范 12）· `task-transitions`（语义层，界面与 AI 调同一套纯函数）· `colors`/`session-list`/
+  `session-display`/`session-groups`/`comment-thread`/`question-rpc`/`store`。
+- **要决的门**在 `task-demand.ts`：三个子句一条推导，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**，
+  抽屉的分类就是那两类（`notifications.ts`）。两处不要写错的地方在代码注释里：`openTask`
+  （点卡片）**绝不动轮次戳**——卡片是摘要不是对话；「第 N 次执行」只在真有编号运行时说。
 - **轮次集合只有两份**（`session-display.ts` / `execution.ts`）：**会话**回答「这段对话在这张卡上
   发生过什么」，**执行复核线程**回答「这一页复核页上有什么没看的」；`cancelled` 不是工作，不进任何
-  门。「等你处理」的唯一集合走 `relatedSessionIdsOf`（绑定 + 轮次 + 工作区当前成员 − 已删除），
-  拖进来的会话从绑定起归这张卡管且**卡片自己必须出声**（圆点在触屏上不可见）；「第 N 次执行」只在
-  真有编号运行时说。
-- **落位**（`tasks.ts`）：引擎派生的换栏与「会话开始或结束工作」都把对象顶到目标列**最上方**，
-  唯一落点是 `controller.land`/`landMany`；**留在原栏的结算不重排，用户手动拖动的位置永不被覆盖**；
-  **轮次记录只经 `land` 进台账**。屏上「更新于」读 `cardUpdatedAtOf(task)`（卡片自己的工作推进）
-  而不是同步戳 `task.updatedAt`，否则一次顶格会让整栏写「刚刚」。
-- **活性**（`session-lineage.ts` / `session-activity.ts`）：「还在工作吗」的唯一判定是
-  `own ∨ descendant`，`unknown` 既不得读作 idle 去写台账、也不得读作 active 去长占。
-  **裸值边界（改动即反向卡死）**：结算与看门狗（`execution.ts`、`zombieRoundEvent`、active-run
-  兜底、`cancelSpuriousExternal`、`reconcileBoundTask`、外源轮检测）一律继续读**原生会话表那
-  一份 `running`**——**局部变量名常是 `summary`，它就是 `byId[id]`**（`execution.ts` 写成
-  `const summary = sessions.list.getSnapshot().byId[sessionId]`，于是读的是 `summary.running`）。
-  按本条去搜 `byId[id].running` 只会搜到两处：**先搜 `summary.running` 与 `byId[…].running`**——
-  搜不到就等于没有那条例外。
-- **唯一推导**：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定；
-  归档即时同步）。
+  门。「等你处理」的唯一集合走 `relatedSessionIdsOf`（绑定 + 轮次 + 工作区当前成员 − 已删除）；
+  拖进来的会话从绑定起归这张卡管，且**卡片自己必须出声**（圆点在触屏上不可见）。
+- **落位**（`tasks.ts`）：引擎派生的换栏与「会话开始或结束工作」都把对象顶到目标列**最上方**，唯一
+  落点是 `controller.land`/`landMany`；**留在原栏的结算不重排，用户手动拖动的位置永不被覆盖**；
+  **轮次记录只经 `land` 进台账**。屏上「更新于」读 `cardUpdatedAtOf(task)` 而不是同步戳
+  `task.updatedAt`，否则一次顶格会让整栏写「刚刚」。
+- **活性**（`session-lineage.ts` / `session-activity.ts`）：判定与 `unknown` 的两面见「关键不变量」的
+  运行态一条。**裸值边界（改动即反向卡死）**：结算与看门狗（`execution.ts`、`zombieRoundEvent`、
+  active-run 兜底、`cancelSpuriousExternal`、`reconcileBoundTask`、外源轮检测）一律继续读**原生会话表
+  那一份 `running`**——**局部变量名常是 `summary`，它就是 `byId[id]`**。按本条去搜 `byId[id].running`
+  只会搜到两处：**先搜 `summary.running` 与 `byId[…].running`**——搜不到就等于没有那条例外。
+- **唯一推导**：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定）。
 
 ### 关键不变量（改前先读对应文件；这里只记边界，细节在代码）
 
