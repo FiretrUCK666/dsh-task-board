@@ -3,13 +3,17 @@
  * browser replica syncs against, plus the two arbitrations multi-device
  * correctness needs — the engine lease and the launch-command relay.
  *
- * The document persists through the platform storage hub's `json` backend
- * (one human-readable file under the harness home's storage root, atomic
- * whole-file rewrites, durable before ack). The hub is read structurally
- * (`ctx.get('storage')`) exactly like every other host route reads its
- * service: when the deployment composes no storage hub, or the medium fails
- * to open, the service reports `available:false` and the browser half falls
- * back to its localStorage mode — a degraded board, never a broken one.
+ * The document persists through the platform storage hub's `json` backend.
+ * The unit is opened in the `per-record` layout, so everything this plugin
+ * owns lives in ONE directory under the harness home's storage root with one
+ * human-readable JSON document per data kind — today the board, and any later
+ * data kind beside it without disturbing this one. The hub owns the root, the
+ * naming rules and the atomic publish; this plugin only names its unit and its
+ * documents. The hub is read structurally (`ctx.get('storage')`) exactly like
+ * every other host route reads its service: when the deployment composes no
+ * storage hub, or the medium fails to open, the service reports `available:false`
+ * and the browser half falls back to its localStorage mode — a degraded board,
+ * never a broken one.
  *
  * The engine lease: exactly one browser drives time-based automation
  * (scheduler ticks, the dispatch pump, reconciliation, external-turn
@@ -23,28 +27,162 @@
  * no live engine the request parks in a small deduped queue and replays when
  * the next lease is granted.
  */
+import { join } from 'node:path'
 import { applyCommit, emptyBoardDoc, normalizeBoardDoc } from '../core/board-doc.ts'
 import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts'
+import { retireLegacyUnitFile, unitDirectoryPath, type RetireOptions, type RetireOutcome } from './data-root.ts'
 
 // The wire types live in the shared core (the client sync layer reads the
 // same shapes); re-exported here so host callers keep one import surface.
 export type { BoardCommand, BoardEvent, LeaseState } from '../core/board-doc.ts'
 
-/** Structural face of the storage hub's opened KV unit (no SDK import). */
+/** Structural face of the storage hub's opened KV unit (no SDK import).
+ *
+ *  The real unit is `table + key` plus a DECLARED global slot, not a key-value
+ *  pair store: `loadAll` returns every table's records plus the global, and a
+ *  write is addressed by table and key. This unit declares no global, so the
+ *  board is one record in one table and `setGlobal` is deliberately absent —
+ *  the backend throws for that call on a unit without the global slot. */
 export interface KvUnitLike {
-  loadAll(): Promise<{ global: unknown }>
-  setGlobal(value: unknown): Promise<void>
+  loadAll(): Promise<{ tables?: Record<string, Record<string, unknown>>; global?: unknown }>
+  putRecord(table: string, key: string, value: unknown): Promise<void>
   close(): Promise<void>
 }
 
-/** Opens the board unit over the platform storage hub; undefined = no hub. */
-export type KvUnitOpener = () => Promise<KvUnitLike | undefined>
+/** The unit descriptor the hub's `kv.open` takes (structural, no SDK import). */
+export interface BoardUnitDescriptor {
+  readonly name: string
+  readonly version: number
+  readonly tables: readonly string[]
+  readonly hasGlobal: boolean
+  readonly layout?: 'single' | 'per-record'
+}
+
+/** Opens one unit over the platform storage hub; undefined = no hub.
+ *
+ *  The descriptor is a parameter so the one-time layout migration can open the
+ *  old whole-unit shape and the new document tree in sequence: the backend
+ *  allows exactly one live handle per unit NAME, so those two opens can never
+ *  overlap and the descriptor is the only thing that says which is which. */
+export type KvUnitOpener = (descriptor: BoardUnitDescriptor) => Promise<KvUnitLike | undefined>
 
 /** The unit identity stamped on the medium (name must be file-safe: the
  * platform's UNIT_NAME_RE is `^[a-z][a-z0-9_]*$` — underscores, not hyphens). */
 export const BOARD_UNIT_NAME = 'dsh_task_board'
-/** The document grammar version this build reads and writes. */
-export const BOARD_UNIT_VERSION = 1
+/** The unit format version this build writes: 2 is the document tree. */
+export const BOARD_UNIT_VERSION = 2
+/** The unit version the pre-tree whole-unit file carried. Read once by the
+ *  one-time migration, and never looked for again after that. */
+export const LEGACY_UNIT_VERSION = 1
+/** The one declared table; every document this plugin owns is a record in it. */
+export const BOARD_UNIT_TABLE = 'documents'
+/** The document name holding the board truth. */
+export const BOARD_DOCUMENT = 'board'
+/** The document name holding migration bookkeeping — the marker that lets a
+ *  boot know it must never go looking for the legacy file again. */
+export const META_DOCUMENT = 'meta'
+/** The document tree this build opens. In the `per-record` layout the unit
+ *  NAME is also its directory name, which is why this plugin's data root reads
+ *  `dsh_task_board` and can never be a hyphenated directory: UNIT_NAME_RE. */
+export const BOARD_UNIT_DESCRIPTOR: BoardUnitDescriptor = {
+  name: BOARD_UNIT_NAME,
+  version: BOARD_UNIT_VERSION,
+  tables: [BOARD_UNIT_TABLE],
+  hasGlobal: false,
+  layout: 'per-record',
+}
+/** The pre-tree whole-unit shape, opened only while migrating. */
+export const LEGACY_UNIT_DESCRIPTOR: BoardUnitDescriptor = {
+  name: BOARD_UNIT_NAME,
+  version: LEGACY_UNIT_VERSION,
+  tables: [],
+  hasGlobal: true,
+  layout: 'single',
+}
+
+/** What opening the unit produced. */
+export interface OpenedBoard {
+  /** The live document-tree handle; every later write goes through it. */
+  readonly unit: KvUnitLike
+  /** The board document as read from the medium; absent means an empty board. */
+  readonly board: unknown
+  /** Present only on the boot that ran the layout migration. */
+  readonly retired?: RetireOutcome
+}
+
+/** The records of the declared table, or an empty view when it holds none. */
+function documentsOf(snapshot: { tables?: Record<string, Record<string, unknown>> }): Record<string, unknown> {
+  const table = snapshot.tables?.[BOARD_UNIT_TABLE]
+  return typeof table === 'object' && table !== null ? table : {}
+}
+
+/**
+ * Open the board unit, migrating the pre-tree whole-unit file exactly once.
+ *
+ * The migration must SEQUENCE two opens of one unit name, because the backend
+ * gives a name exactly one live handle. It runs only when the tree carries no
+ * `meta` marker, so every later boot reads the tree and never the old file:
+ * without that marker a boot would re-read the whole old document on every
+ * start, and a user who DELETES the data directory to reset would find the old
+ * data coming back. The board document is written BEFORE the marker, so a crash
+ * mid-migration repeats a probe that is idempotent rather than skipping one
+ * that is not.
+ * @param openUnit - the hub opener.
+ * @param now - clock for the migration stamps.
+ * @param log - diagnostic sink.
+ * @param retire - the legacy-file retirement step; injected so the migration
+ *  is testable without a filesystem, and so the production path stays the only
+ *  caller of the real one.
+ * @returns the open unit and the board it holds, or undefined when no hub.
+ */
+export async function openBoardUnit(
+  openUnit: KvUnitOpener,
+  now: number,
+  log: (message: string, error?: unknown) => void,
+  retire: (options: RetireOptions) => Promise<RetireOutcome> = retireLegacyUnitFile,
+): Promise<OpenedBoard | undefined> {
+  let unit = await openUnit(BOARD_UNIT_DESCRIPTOR)
+  if (unit === undefined) return undefined
+  const documents = documentsOf(await unit.loadAll())
+  if (documents.board !== undefined || documents.meta !== undefined) {
+    return { unit, board: documents.board }
+  }
+
+  // ── one-time layout migration ───────────────────────────────────────────
+  await unit.close()
+  const legacy = await openUnit(LEGACY_UNIT_DESCRIPTOR)
+  let legacyBoard: unknown
+  try {
+    legacyBoard = legacy === undefined ? undefined : (await legacy.loadAll()).global
+  } finally {
+    await legacy?.close()
+  }
+  unit = await openUnit(BOARD_UNIT_DESCRIPTOR)
+  if (unit === undefined) return undefined
+
+  const imported = legacyBoard !== undefined && legacyBoard !== null
+  if (imported) {
+    await unit.putRecord(BOARD_UNIT_TABLE, BOARD_DOCUMENT, legacyBoard)
+  }
+  await unit.putRecord(BOARD_UNIT_TABLE, META_DOCUMENT, {
+    schemaVersion: BOARD_UNIT_VERSION,
+    legacyImported: imported,
+    legacyProbedAt: now,
+  })
+  if (!imported) return { unit, board: undefined }
+
+  const retired = await retire({
+    unitName: BOARD_UNIT_NAME,
+    legacyVersion: LEGACY_UNIT_VERSION,
+    migratedPath: join(unitDirectoryPath(BOARD_UNIT_NAME), BOARD_UNIT_TABLE, `${BOARD_DOCUMENT}.json`),
+    now,
+    log,
+  })
+  if (retired.status === 'retired') {
+    log(`[dsh-task-board] layout migration: legacy unit document moved to ${retired.retiredPath}`)
+  }
+  return { unit, board: legacyBoard, retired }
+}
 
 /** Lease tuning: the client renews well inside the TTL; a dropped stream
  *  shortens the holder's lease to the grace window. */
@@ -118,9 +256,10 @@ export class BoardDataService {
   }
 
   /**
-   * Open the persistence unit and load the document. Failure to open or read
-   * leaves the service unavailable (replicas fall back); a corrupt medium is
-   * normalized, never fatal.
+   * Open the persistence unit and load the document, running the one-time
+   * layout migration when the data root has never been written. Failure to
+   * open or read leaves the service unavailable (replicas fall back); a corrupt
+   * medium is normalized, never fatal.
    */
   async init(): Promise<void> {
     if (this.started) return
@@ -130,14 +269,13 @@ export class BoardDataService {
       return
     }
     try {
-      const unit = await this.deps.openUnit()
-      if (unit === undefined) {
+      const opened = await openBoardUnit(this.deps.openUnit, this.now(), this.log)
+      if (opened === undefined) {
         this.log('[dsh-task-board] board storage unavailable: no json backend on the storage hub')
         return
       }
-      this.unit = unit
-      const snapshot = await unit.loadAll()
-      this.doc = normalizeBoardDoc(snapshot.global, this.now())
+      this.unit = opened.unit
+      this.doc = normalizeBoardDoc(opened.board, this.now())
       this.available = true
     } catch (error) {
       this.unit = undefined
@@ -175,7 +313,7 @@ export class BoardDataService {
       this.doc = next
       if (this.unit !== undefined) {
         try {
-          await this.unit.setGlobal(next)
+          await this.unit.putRecord(BOARD_UNIT_TABLE, BOARD_DOCUMENT, next)
         } catch (error) {
           // Memory moved; the medium lags one commit. The board stays live
           // (the next commit persists both), and a restart replays from the
@@ -384,18 +522,18 @@ export function clampLeaseTtl(ttlMs: number | undefined): number {
 /**
  * Wire the service onto the platform storage hub: resolve `ctx.storage` at
  * open time (boot settlement has passed by the first browser request), take
- * the `json` backend's KV facet, and open the board unit. A missing hub or
- * backend yields undefined (the service then reports unavailable — fallback
- * mode, never a throw).
+ * the `json` backend's KV facet, and open the unit the descriptor names. A
+ * missing hub or backend yields undefined (the service then reports
+ * unavailable — fallback mode, never a throw).
  */
 export function storageHubOpener(storage: () => unknown): KvUnitOpener {
-  return async () => {
+  return async (descriptor: BoardUnitDescriptor) => {
     const hub = storage() as {
       backend?: { get?: (name: string) => { kv?: { open?: (descriptor: unknown) => Promise<KvUnitLike> } } | undefined }
     } | undefined
     const backend = hub?.backend?.get?.('json')
     const kv = backend?.kv
     if (kv?.open === undefined) return undefined
-    return kv.open({ name: BOARD_UNIT_NAME, version: BOARD_UNIT_VERSION, tables: [], hasGlobal: true })
+    return kv.open(descriptor)
   }
 }

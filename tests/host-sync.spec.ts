@@ -12,14 +12,20 @@ import { BoardDataService } from '../src/host/board-service.ts'
 
 const T0 = 1_700_000_000_000
 
-/** A minimal in-memory KV unit (the real service persists through it). */
+/** A minimal in-memory KV unit over the real document tree (the real service
+ *  persists through it). Seeded with the `meta` marker so it behaves like an
+ *  already-migrated medium and never runs the layout probe. */
 class FakeUnit {
-  private global: unknown = undefined
-  async loadAll(): Promise<{ global: unknown }> {
-    return { global: this.global }
+  private tables: Record<string, Record<string, unknown>> = {
+    documents: { meta: { schemaVersion: 2, legacyImported: false, legacyProbedAt: 0 } },
   }
-  async setGlobal(value: unknown): Promise<void> {
-    this.global = JSON.parse(JSON.stringify(value))
+  async loadAll(): Promise<{ tables: Record<string, Record<string, unknown>> }> {
+    return { tables: this.tables }
+  }
+  async putRecord(table: string, key: string, value: unknown): Promise<void> {
+    const records = this.tables[table] ?? {}
+    records[key] = JSON.parse(JSON.stringify(value))
+    this.tables[table] = records
   }
   async close(): Promise<void> { /* no-op */ }
 }

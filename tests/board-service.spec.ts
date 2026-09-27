@@ -11,6 +11,11 @@ import { createTask } from '../src/core/tasks.ts'
 import {
   BoardDataService,
   clampLeaseTtl,
+  BOARD_DOCUMENT,
+  BOARD_UNIT_TABLE,
+  BOARD_UNIT_VERSION,
+  META_DOCUMENT,
+  openBoardUnit,
   LEASE_DEFAULT_TTL_MS,
   LEASE_DISCONNECT_GRACE_MS,
   LEASE_PROTOCOL_ACTIVE,
@@ -18,26 +23,49 @@ import {
   LEASE_MAX_TTL_MS,
   LEASE_MIN_TTL_MS,
   type BoardEvent,
+  type BoardUnitDescriptor,
   type KvUnitLike,
 } from '../src/host/board-service.ts'
+import type { RetireOptions, RetireOutcome } from '../src/host/data-root.ts'
 
 const T0 = 1_700_000_000_000
 
-/** A fake KV unit: in-memory global + a load counter + a throwing mode. */
+/** A fake KV unit over the real document tree: in-memory records per table, a
+ *  load counter, a write counter, and a throwing mode.
+ *
+ *  It starts ALREADY MIGRATED (the tree carries the `meta` marker), so tests
+ *  that are not about the layout migration do not pay for its probe. A test
+ *  that IS about it empties the tree with `unit.tables = {}`. */
 class FakeUnit implements KvUnitLike {
-  global: unknown = undefined
-  loadCount = 0
-  setCount = 0
-  throwOnSet = false
-  closed = false
-  async loadAll(): Promise<{ global: unknown }> {
-    this.loadCount += 1
-    return { global: this.global }
+  tables: Record<string, Record<string, unknown>> = {
+    [BOARD_UNIT_TABLE]: { [META_DOCUMENT]: { schemaVersion: BOARD_UNIT_VERSION, legacyImported: false, legacyProbedAt: 0 } },
   }
-  async setGlobal(value: unknown): Promise<void> {
-    if (this.throwOnSet) throw new Error('disk full')
-    this.setCount += 1
-    this.global = JSON.parse(JSON.stringify(value))
+  loadCount = 0
+  putCount = 0
+  throwOnWrite = false
+  closed = false
+  /** The board record, or undefined when the tree holds none. */
+  get board(): unknown {
+    return this.tables[BOARD_UNIT_TABLE]?.[BOARD_DOCUMENT]
+  }
+  set board(value: unknown) {
+    this.record(BOARD_DOCUMENT, value)
+  }
+  private record(key: string, value: unknown): void {
+    const table = this.tables[BOARD_UNIT_TABLE] ?? {}
+    table[key] = JSON.parse(JSON.stringify(value))
+    this.tables[BOARD_UNIT_TABLE] = table
+  }
+  async loadAll(): Promise<{ tables: Record<string, Record<string, unknown>> }> {
+    this.loadCount += 1
+    return { tables: this.tables }
+  }
+  async putRecord(table: string, key: string, value: unknown): Promise<void> {
+    if (this.throwOnWrite) throw new Error('disk full')
+    this.putCount += 1
+    const records = this.tables[table] ?? {}
+    records[key] = JSON.parse(JSON.stringify(value))
+    this.tables[table] = records
   }
   async close(): Promise<void> {
     this.closed = true
@@ -90,9 +118,9 @@ describe('BoardDataService init', () => {
 
   it('restores a persisted document from the medium', async () => {
     const unit = new FakeUnit()
-    unit.global = emptyBoardDoc(T0)
-    const seeded = applyCommit(unit.global as BoardDoc, commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] }), T0 + 1)
-    unit.global = seeded
+    unit.board = emptyBoardDoc(T0)
+    const seeded = applyCommit(unit.board as BoardDoc, commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] }), T0 + 1)
+    unit.board = seeded
     const { service } = makeService(unit)
     await service.init()
     expect(service.getDoc().tasks.map(t => t.id)).toEqual(['t-a'])
@@ -118,12 +146,12 @@ describe('BoardDataService commit', () => {
     const task = createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')
     const doc = await service.commit(commitOf({ tasks: [task] }))
     expect(doc.revision).toBe(1)
-    expect(unit.setCount).toBe(1)
+    expect(unit.putCount).toBe(1)
     expect(events).toEqual([{ type: 'commit', revision: 1, clientId: 'c-1' }])
     // Re-commit the same content: nothing moves.
     const again = await service.commit(commitOf({ tasks: [task] }))
     expect(again.revision).toBe(1)
-    expect(unit.setCount).toBe(1)
+    expect(unit.putCount).toBe(1)
     expect(events).toHaveLength(1)
   })
 
@@ -146,7 +174,7 @@ describe('BoardDataService commit', () => {
     const unit = new FakeUnit()
     const { service } = makeService(unit)
     await service.init()
-    unit.throwOnSet = true
+    unit.throwOnWrite = true
     const doc = await service.commit(commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] }))
     expect(doc.tasks).toHaveLength(1)
     expect(service.getDoc().tasks).toHaveLength(1)
@@ -364,5 +392,104 @@ describe('BoardDataService dispose', () => {
     expect(service.available).toBe(false)
     await service.commit(commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] }))
     expect(events).toHaveLength(0)
+  })
+})
+
+describe('openBoardUnit layout migration', () => {
+  /** Two mediums in one — the document tree and the pre-tree whole-unit file
+   *  — with the backend's one-live-handle-per-unit-name rule ENFORCED, so an
+   *  implementation that overlapped the two opens fails here instead of on the
+   *  user's disk. */
+  class FakeMedium {
+    tree: Record<string, Record<string, unknown>> = {}
+    legacyGlobal: unknown = undefined
+    openCount = 0
+    live = false
+    writes: { table: string; key: string }[] = []
+    readonly opener = async (descriptor: BoardUnitDescriptor): Promise<KvUnitLike> => {
+      if (this.live) throw new Error(`unit '${descriptor.name}' is already open`)
+      this.live = true
+      this.openCount += 1
+      const medium = this
+      return {
+        loadAll: async () => (descriptor.layout === 'single'
+          ? { global: medium.legacyGlobal }
+          : { tables: medium.tree }),
+        putRecord: async (table, key, value) => {
+          const records = medium.tree[table] ?? {}
+          records[key] = JSON.parse(JSON.stringify(value))
+          medium.tree[table] = records
+          medium.writes.push({ table, key })
+        },
+        close: async () => { medium.live = false },
+      }
+    }
+    /** A process restart: the previous boot's handle is gone, the medium is not. */
+    restart(): void { this.live = false }
+  }
+
+  const noopRetire = async (options: RetireOptions): Promise<RetireOutcome> =>
+    ({ status: 'retired', legacyPath: options.unitName, retiredPath: `${options.unitName}.migrated` })
+
+  it('imports the pre-tree document, marks the tree, and retires the old file', async () => {
+    const medium = new FakeMedium()
+    medium.legacyGlobal = applyCommit(
+      emptyBoardDoc(T0),
+      commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] }),
+      T0 + 1,
+    )
+    const retired: RetireOptions[] = []
+    const opened = await openBoardUnit(medium.opener, T0, () => undefined, async (options) => {
+      retired.push(options)
+      return noopRetire(options)
+    })
+    expect((opened?.board as BoardDoc).tasks.map(t => t.id)).toEqual(['t-a'])
+    expect(medium.tree[BOARD_UNIT_TABLE]?.[META_DOCUMENT]).toMatchObject({
+      schemaVersion: BOARD_UNIT_VERSION,
+      legacyImported: true,
+      legacyProbedAt: T0,
+    })
+    expect(retired).toHaveLength(1)
+    // Three opens: the tree, the legacy whole-unit file, the tree again —
+    // never two at once, because one unit name has one live handle.
+    expect(medium.openCount).toBe(3)
+  })
+
+  it('never probes the legacy file again once the marker exists', async () => {
+    const medium = new FakeMedium()
+    medium.legacyGlobal = emptyBoardDoc(T0)
+    await openBoardUnit(medium.opener, T0, () => undefined, noopRetire)
+    expect(medium.openCount).toBe(3)
+    // The old file is gone (it was retired), and the marker means this boot
+    // never looks for it: without the marker every boot would re-read it, and
+    // a user who DELETES the data root to reset would watch the old board
+    // come straight back.
+    medium.restart()
+    medium.legacyGlobal = undefined
+    const again = await openBoardUnit(medium.opener, T0 + 1, () => undefined, noopRetire)
+    expect(medium.openCount).toBe(4)
+    expect(again?.board).toBeDefined()
+  })
+
+  it('marks a virgin tree as probed even when there is nothing to import', async () => {
+    const medium = new FakeMedium()
+    const opened = await openBoardUnit(medium.opener, T0, () => undefined, noopRetire)
+    expect(opened?.board).toBeUndefined()
+    expect(medium.tree[BOARD_UNIT_TABLE]?.[META_DOCUMENT]).toMatchObject({ legacyImported: false })
+    expect(medium.writes.map(w => w.key)).toEqual([META_DOCUMENT])
+  })
+
+  it('skips the whole probe when the tree already carries a board', async () => {
+    const medium = new FakeMedium()
+    medium.tree = { [BOARD_UNIT_TABLE]: { [BOARD_DOCUMENT]: emptyBoardDoc(T0) } }
+    medium.legacyGlobal = emptyBoardDoc(T0)
+    const opened = await openBoardUnit(medium.opener, T0, () => undefined, noopRetire)
+    expect(medium.openCount).toBe(1)
+    expect(opened?.board).toBeDefined()
+  })
+
+  it('reports no unit when the deployment composes no storage hub', async () => {
+    const opened = await openBoardUnit(async () => undefined, T0, () => undefined, noopRetire)
+    expect(opened).toBeUndefined()
   })
 })

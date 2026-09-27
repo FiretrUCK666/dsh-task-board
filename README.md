@@ -100,7 +100,7 @@ dsh plugin --profile web add .
 | 把插件登记进本机 profile | 安装命令（往 `dsh.profile.bundles` 加一个包名） |
 | 插件那一行（id、包名） | 插件包里的 `cordis.patch.yml`，由 `package.json` 的 `dsh.bundle.patch` 指向，装配时自动生效 |
 | 界面入口、看板舞台 | 插件自己注册到 DSH 的官方扩展点，启动时自动完成 |
-| 数据存哪 | 自动使用 `~/.dsh/storages/dsh_task_board.json`，第一次运行时创建 |
+| 数据存哪 | 自动使用 `~/.dsh/storages/dsh_task_board/` 目录，第一次运行时创建 |
 | 插件显示的名字、说明、图标 | 包里的 `locale/` 与 `icon.svg`，DSH 直接读取 |
 | 那个开关的位置 | 插件管理页的开关写 profile 里这一行的 `disabled`（关掉时才会写上） |
 
@@ -170,7 +170,7 @@ dsh plugin --profile web remove @firetruck666/dsh-task-board
 
 ### 多端同步
 
-看板真相在 host，落在 `~/.dsh/storages/dsh_task_board.json`，单文件、人可读、可以直接备份。浏览器是乐观副本：入口点开即进，不等网络，断线时看板照常可用，恢复后自动追平。
+看板真相在 host，落在 `~/.dsh/storages/dsh_task_board/` 目录里，人可读、可以直接备份。浏览器是乐观副本：入口点开即进，不等网络，断线时看板照常可用，恢复后自动追平。
 
 两端并发编辑按记录合并，不依赖设备时钟。首次升级时各设备旧的 localStorage 数据会并入 host，不会丢。
 
@@ -231,7 +231,7 @@ agent 挂起时（计划确认、提问）评论区会实时出现交互卡，**
 
 ## 数据保存在哪里
 
-- 看板真相：`~/.dsh/storages/dsh_task_board.json`（任务台账、巡航、定时预设、运行配置预设、删除墓碑）。单文件原子写入，可以直接备份；删除这个文件等于清空看板。
+- 看板真相：`~/.dsh/storages/dsh_task_board/` 目录，其中 `documents/board.json` 是任务台账、巡航、定时预设、运行配置预设与删除墓碑。每种数据一个文件，人可读、原子写入，可以直接整目录备份；删除这个目录等于清空看板。
 - 浏览器 localStorage 保存离线镜像和本地状态：`dsh.taskBoard.v1`、`dsh.taskBoard.cruise.v1`、`dsh.taskBoard.presets.v1`、`dsh.taskBoard.runPresets.v1`；草稿 `dsh.taskBoard.drafts.v1` 是设备本地的未发送输入，刻意不跨设备同步。
 - 第一次连接时如果本地数据与 host 有分歧，本地副本备份到 `dsh.taskBoard.preSync.v1`，host 为准。
 - host 没有挂载存储后端时，看板自动退回纯 localStorage 模式。
@@ -312,7 +312,7 @@ DeepSeek Harness 的内部接口会随版本变化，本插件需要跟着改。
 不会。定时、巡航、接续这类行为由 host 租约仲裁，同一时刻只有一个界面在执行，另一台设备切到前台后会接管并补上期间漏掉的状态。
 
 **任务数据在哪，换电脑会丢吗。**
-在 `~/.dsh/storages/dsh_task_board.json`。换电脑时把这个文件拷过去即可；浏览器里的 localStorage 只是离线镜像。
+在 `~/.dsh/storages/dsh_task_board/` 目录。换电脑时把整个目录拷过去即可；浏览器里的 localStorage 只是离线镜像。
 
 **`dsh plugin` 报错找不到 pnpm。**
 先安装 pnpm（`npm install -g pnpm`），再重新执行安装命令。

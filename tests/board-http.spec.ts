@@ -8,14 +8,22 @@
  * disk. It is the runtime contract the multi-device sync rests on.
  */
 import { createServer, type Server } from 'node:http'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
-import { BoardDataService, BOARD_UNIT_NAME, BOARD_UNIT_VERSION } from '../src/host/board-service.ts'
+import {
+  BoardDataService,
+  BOARD_UNIT_DESCRIPTOR,
+  BOARD_UNIT_NAME,
+  BOARD_UNIT_VERSION,
+  BOARD_UNIT_TABLE,
+  BOARD_DOCUMENT,
+  openBoardUnit,
+} from '../src/host/board-service.ts'
 import { createBoardHandler, type BoardRouteDeps } from '../src/host/board-route.ts'
-import type { BoardCommit, BoardEvent } from '../src/core/board-doc.ts'
+import { applyCommit, emptyBoardDoc, type BoardCommit, type BoardEvent } from '../src/core/board-doc.ts'
 import { createTask } from '../src/core/tasks.ts'
 
 const BASE = '/api/dsh-task-board/board'
@@ -27,7 +35,7 @@ let server: Server
 let origin: string
 
 function openUnit(backend: JsonStorageBackend) {
-  return backend.kv.open({ name: BOARD_UNIT_NAME, version: BOARD_UNIT_VERSION, tables: [], hasGlobal: true })
+  return backend.kv.open(BOARD_UNIT_DESCRIPTOR)
 }
 
 function makeService(backend: JsonStorageBackend): BoardDataService {
@@ -145,11 +153,13 @@ describe('board route over a real HTTP server', () => {
     const frames = await readFrames(body as ReadableStream<Uint8Array>, 1)
     expect(frames.some(f => f.type === 'commit' && f.revision === 1)).toBe(true)
 
-    // The real platform backend wrote the real file with the unit header.
-    const raw = JSON.parse(readFileSync(join(root, `${BOARD_UNIT_NAME}.json`), 'utf8')) as { unit: { name: string; version: number }; global: { tasks: { id: string }[] } }
-    expect(raw.unit.name).toBe(BOARD_UNIT_NAME)
-    expect(raw.unit.version).toBe(BOARD_UNIT_VERSION)
-    expect(raw.global.tasks.map(t => t.id)).toEqual(['t-smoke'])
+    // The real platform backend wrote the real document: the unit is a
+    // DIRECTORY now, with one version-stamped file per data kind.
+    const raw = JSON.parse(readFileSync(join(root, BOARD_UNIT_NAME, BOARD_UNIT_TABLE, `${BOARD_DOCUMENT}.json`), 'utf8')) as { version: number; record: { tasks: { id: string }[] } }
+    expect(raw.version).toBe(BOARD_UNIT_VERSION)
+    expect(raw.record.tasks.map(t => t.id)).toEqual(['t-smoke'])
+    // The old whole-unit file shape must not linger at the storage root.
+    expect(existsSync(join(root, `${BOARD_UNIT_NAME}.json`))).toBe(false)
   })
 
   it('a restart over the same files restores the document (fresh service, same root)', async () => {
@@ -210,6 +220,68 @@ describe('board route over a real HTTP server', () => {
     expect(command).toBeDefined()
     if (command?.type === 'command') {
       expect(command.command.taskId).toBe('t-smoke')
+    }
+  })
+
+  // The layout migration is the one path where the REAL platform backend, the
+  // REAL filesystem and the REAL retirement all meet. The unit specs stub one
+  // side or the other, so the lossless claim only holds if it is exercised here.
+  it('migrates a real pre-tree whole-unit file into the document tree, losslessly, once', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'dsh-board-migrate-'))
+    const saved = process.env.DSH_HOME
+    process.env.DSH_HOME = home
+    try {
+      mkdirSync(join(home, 'storages'), { recursive: true })
+      const legacyPath = join(home, 'storages', `${BOARD_UNIT_NAME}.json`)
+      const document = emptyBoardDoc(1)
+      const seeded = applyCommit(document, {
+        clientId: 'seed',
+        tasks: [createTask({ title: '迁移前就在这', description: 'd', prompt: 'p' }, 1, 't-old')],
+        deleted: [],
+        cruise: { value: { enabled: false, limit: 3, schedule: [] }, at: 1 },
+        schedulePresets: { value: [{ id: 'sp', label: 'L', cron: '0 9 * * *' }], at: 1 },
+        runPresets: { value: { presets: [] }, at: 1 },
+      }, 2)
+      // The exact shape the platform's `single` layout writes.
+      writeFileSync(legacyPath, JSON.stringify({ unit: { name: BOARD_UNIT_NAME, version: 1 }, global: seeded, tables: {} }), 'utf8')
+      const before = readFileSync(legacyPath, 'utf8')
+
+      const migrationBackend = new JsonStorageBackend(join(home, 'storages'))
+      const opened = await openBoardUnit(
+        async descriptor => migrationBackend.kv.open(descriptor) as never,
+        1_000,
+        () => undefined,
+      )
+      expect(opened).toBeDefined()
+      // Every field survives, not just the task list.
+      expect(opened?.board).toEqual(seeded)
+      expect(existsSync(join(home, 'storages', BOARD_UNIT_NAME, 'documents', 'board.json'))).toBe(true)
+      expect(existsSync(join(home, 'storages', BOARD_UNIT_NAME, 'documents', 'meta.json'))).toBe(true)
+      // Moved aside, not deleted: the bytes are the migration's own backup.
+      expect(existsSync(legacyPath)).toBe(false)
+      const retired = readdirSync(join(home, 'storages')).filter(n => n.startsWith(`${BOARD_UNIT_NAME}.json.migrated-`))
+      expect(retired).toHaveLength(1)
+      expect(readFileSync(join(home, 'storages', retired[0]), 'utf8')).toBe(before)
+      await opened?.unit.close()
+      await migrationBackend.close()
+
+      // A restart finds the marker, so it never looks for the old file again.
+      const restartBackend = new JsonStorageBackend(join(home, 'storages'))
+      const restarted = new BoardDataService({
+        now: () => 2_000,
+        openUnit: async descriptor => restartBackend.kv.open(descriptor) as never,
+        log: () => undefined,
+      })
+      await restarted.ensureInit()
+      expect(restarted.available).toBe(true)
+      expect(restarted.getDoc().tasks.map(t => t.id)).toEqual(['t-old'])
+      expect(restarted.getDoc().revision).toBe(seeded.revision)
+      await restarted.dispose()
+      await restartBackend.close()
+    } finally {
+      if (saved === undefined) delete process.env.DSH_HOME
+      else process.env.DSH_HOME = saved
+      rmSync(home, { recursive: true, force: true })
     }
   })
 })

@@ -100,7 +100,7 @@ It works once installed — no config file to edit, no declaration to write. And
 | Register the plugin in the local profile | The install command (adds a package name to `dsh.profile.bundles`) |
 | The plugin's row (id, package name) | `cordis.patch.yml` inside the package, pointed at by `dsh.bundle.patch` in `package.json`; applies at composition |
 | UI entry, board stage | The plugin registers them into DSH's official extension points at startup |
-| Where data lives | `~/.dsh/storages/dsh_task_board.json`, created on first run |
+| Where data lives | `~/.dsh/storages/dsh_task_board/`, created on first run |
 | Display name, description, icon | `locale/` and `icon.svg` in the package, read directly by DSH |
 | Where that switch lives | The plugin manager writes `disabled` on this row (and only when you switch it off) |
 
@@ -131,7 +131,7 @@ A restart is required here too. Your task data is not deleted.
   - The notification centre holds exactly two kinds, and the three filter chips each carry their own count: **Need you** (a conversation suspended on your answer) + **In review** (finished, session unopened) = **All**. The bell badge, the header's two halves and the drawer's three chips are one classification rendered four times, so they always agree.
   - A **cancelled** run is not a decision, so it never asks for one; it only appears in the comment thread and the activity feed.
 - **Real execution** — Pressing Run starts a real DSH session, visible in the native session list. An execution prompt that begins with `/` runs as a native command, so `/plan ...` enters plan mode for real.
-- **Multi-device sync** — The board's source of truth is the host, stored at `~/.dsh/storages/dsh_task_board.json`. The browser is an optimistic copy: the board opens instantly, works while offline, and catches up afterwards. Concurrent edits merge per record and do not depend on device clocks.
+- **Multi-device sync** — The board's source of truth is the host, stored under `~/.dsh/storages/dsh_task_board/`. The browser is an optimistic copy: the board opens instantly, works while offline, and catches up afterwards. Concurrent edits merge per record and do not depend on device clocks.
 - **One engine at a time** — Scheduled runs, cruise and follow-ups are arbitrated by a host lease, so only one open GUI executes them. The device in the foreground holds the engine seat and takes over when it becomes visible.
 - **Comments and conversation** — Each session row opens a panel with the live transcript on one side and usage, run configuration, the comment thread and the composer on the other. Messages queue by default or can be steered immediately. `@` mentions and `/` commands use the same mechanisms as the main composer. Images are compressed in the browser; other files upload byte for byte.
 - **Attachments are content** — Send an image or a file with no words at all; the message is not required to carry text. Images are compressed in the browser, other files upload as their exact bytes. If a send is ever refused, the composer says so and keeps your draft instead of quietly handing the content back.
@@ -146,7 +146,7 @@ A restart is required here too. Your task data is not deleted.
 
 ## Data locations
 
-- Board source of truth: `~/.dsh/storages/dsh_task_board.json` (task ledger, cruise, schedule presets, run presets, deletion tombstones). Atomic single-file write; back it up directly, or delete it to clear the board.
+- Board source of truth: the `~/.dsh/storages/dsh_task_board/` directory, where `documents/board.json` holds the task ledger, cruise, schedule presets, run presets and deletion tombstones. One human-readable file per data kind, written atomically; back the directory up directly, or delete it to clear the board.
 - Browser `localStorage` holds the offline mirror: `dsh.taskBoard.v1`, `dsh.taskBoard.cruise.v1`, `dsh.taskBoard.presets.v1`, `dsh.taskBoard.runPresets.v1`. Drafts in `dsh.taskBoard.drafts.v1` are device-local and deliberately not synchronised.
 - On the first connection, diverging local data is backed up to `dsh.taskBoard.preSync.v1` and the host wins.
 - Without a storage backend on the host, the board falls back to a pure `localStorage` mode.
@@ -213,7 +213,7 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 
 **Scheduled work runs twice with two devices open.** It should not: scheduling, cruise and follow-ups are arbitrated by a host lease. If the header shows a stale-server notice, open it to see the start time of the server process you are connected to; an old timestamp means a different, un-restarted instance is serving that address.
 
-**Moving to another machine.** Copy `~/.dsh/storages/dsh_task_board.json`. The browser `localStorage` is only a mirror.
+**Moving to another machine.** Copy the `~/.dsh/storages/dsh_task_board/` directory. The browser `localStorage` is only a mirror.
 
 **`dsh plugin` cannot find pnpm.** Install pnpm (`npm install -g pnpm`) and re-run.
 

@@ -1,20 +1,86 @@
 import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts';
+import { type RetireOptions, type RetireOutcome } from './data-root.ts';
 export type { BoardCommand, BoardEvent, LeaseState } from '../core/board-doc.ts';
-/** Structural face of the storage hub's opened KV unit (no SDK import). */
+/** Structural face of the storage hub's opened KV unit (no SDK import).
+ *
+ *  The real unit is `table + key` plus a DECLARED global slot, not a key-value
+ *  pair store: `loadAll` returns every table's records plus the global, and a
+ *  write is addressed by table and key. This unit declares no global, so the
+ *  board is one record in one table and `setGlobal` is deliberately absent —
+ *  the backend throws for that call on a unit without the global slot. */
 export interface KvUnitLike {
     loadAll(): Promise<{
-        global: unknown;
+        tables?: Record<string, Record<string, unknown>>;
+        global?: unknown;
     }>;
-    setGlobal(value: unknown): Promise<void>;
+    putRecord(table: string, key: string, value: unknown): Promise<void>;
     close(): Promise<void>;
 }
-/** Opens the board unit over the platform storage hub; undefined = no hub. */
-export type KvUnitOpener = () => Promise<KvUnitLike | undefined>;
+/** The unit descriptor the hub's `kv.open` takes (structural, no SDK import). */
+export interface BoardUnitDescriptor {
+    readonly name: string;
+    readonly version: number;
+    readonly tables: readonly string[];
+    readonly hasGlobal: boolean;
+    readonly layout?: 'single' | 'per-record';
+}
+/** Opens one unit over the platform storage hub; undefined = no hub.
+ *
+ *  The descriptor is a parameter so the one-time layout migration can open the
+ *  old whole-unit shape and the new document tree in sequence: the backend
+ *  allows exactly one live handle per unit NAME, so those two opens can never
+ *  overlap and the descriptor is the only thing that says which is which. */
+export type KvUnitOpener = (descriptor: BoardUnitDescriptor) => Promise<KvUnitLike | undefined>;
 /** The unit identity stamped on the medium (name must be file-safe: the
  * platform's UNIT_NAME_RE is `^[a-z][a-z0-9_]*$` — underscores, not hyphens). */
 export declare const BOARD_UNIT_NAME = "dsh_task_board";
-/** The document grammar version this build reads and writes. */
-export declare const BOARD_UNIT_VERSION = 1;
+/** The unit format version this build writes: 2 is the document tree. */
+export declare const BOARD_UNIT_VERSION = 2;
+/** The unit version the pre-tree whole-unit file carried. Read once by the
+ *  one-time migration, and never looked for again after that. */
+export declare const LEGACY_UNIT_VERSION = 1;
+/** The one declared table; every document this plugin owns is a record in it. */
+export declare const BOARD_UNIT_TABLE = "documents";
+/** The document name holding the board truth. */
+export declare const BOARD_DOCUMENT = "board";
+/** The document name holding migration bookkeeping — the marker that lets a
+ *  boot know it must never go looking for the legacy file again. */
+export declare const META_DOCUMENT = "meta";
+/** The document tree this build opens. In the `per-record` layout the unit
+ *  NAME is also its directory name, which is why this plugin's data root reads
+ *  `dsh_task_board` and can never be a hyphenated directory: UNIT_NAME_RE. */
+export declare const BOARD_UNIT_DESCRIPTOR: BoardUnitDescriptor;
+/** The pre-tree whole-unit shape, opened only while migrating. */
+export declare const LEGACY_UNIT_DESCRIPTOR: BoardUnitDescriptor;
+/** What opening the unit produced. */
+export interface OpenedBoard {
+    /** The live document-tree handle; every later write goes through it. */
+    readonly unit: KvUnitLike;
+    /** The board document as read from the medium; absent means an empty board. */
+    readonly board: unknown;
+    /** Present only on the boot that ran the layout migration. */
+    readonly retired?: RetireOutcome;
+}
+/**
+ * Open the board unit, migrating the pre-tree whole-unit file exactly once.
+ *
+ * The migration must SEQUENCE two opens of one unit name, because the backend
+ * gives a name exactly one live handle. It runs only when the tree carries no
+ * `meta` marker, so every later boot reads the tree and never the old file:
+ * without that marker a boot would re-read the whole old document on every
+ * start, and a user who DELETES the data directory to reset would find the old
+ * data coming back. The board document is written BEFORE the marker, so a crash
+ * mid-migration repeats a probe that is idempotent rather than skipping one
+ * that is not.
+ * @param openUnit - the hub opener.
+ * @param now - clock for the migration stamps.
+ * @param log - diagnostic sink.
+ * @param retire - the legacy-file retirement step; injected so the migration
+ *  is testable without a filesystem, and so the production path stays the only
+ *  caller of the real one.
+ * @returns the open unit and the board it holds, or undefined when no hub.
+ */
+export declare function openBoardUnit(openUnit: KvUnitOpener, now: number, log: (message: string, error?: unknown) => void, retire?: (options: RetireOptions) => Promise<RetireOutcome>): Promise<OpenedBoard | undefined>;
 /** Lease tuning: the client renews well inside the TTL; a dropped stream
  *  shortens the holder's lease to the grace window. */
 export declare const LEASE_DEFAULT_TTL_MS = 20000;
@@ -76,9 +142,10 @@ export declare class BoardDataService {
     readonly bootedAt: number;
     constructor(deps?: BoardServiceDeps);
     /**
-     * Open the persistence unit and load the document. Failure to open or read
-     * leaves the service unavailable (replicas fall back); a corrupt medium is
-     * normalized, never fatal.
+     * Open the persistence unit and load the document, running the one-time
+     * layout migration when the data root has never been written. Failure to
+     * open or read leaves the service unavailable (replicas fall back); a corrupt
+     * medium is normalized, never fatal.
      */
     init(): Promise<void>;
     /**
@@ -156,8 +223,8 @@ export declare function clampLeaseTtl(ttlMs: number | undefined): number;
 /**
  * Wire the service onto the platform storage hub: resolve `ctx.storage` at
  * open time (boot settlement has passed by the first browser request), take
- * the `json` backend's KV facet, and open the board unit. A missing hub or
- * backend yields undefined (the service then reports unavailable — fallback
- * mode, never a throw).
+ * the `json` backend's KV facet, and open the unit the descriptor names. A
+ * missing hub or backend yields undefined (the service then reports
+ * unavailable — fallback mode, never a throw).
  */
 export declare function storageHubOpener(storage: () => unknown): KvUnitOpener;
