@@ -24,8 +24,9 @@ import { registerSessionStateRoute } from './host/session-state-route.ts'
 import { registerBoardRoute } from './host/board-route.ts'
 import { registerUpdateRoute } from './host/update-route.ts'
 import { registerClientReportRoute } from './host/client-report-route.ts'
+import { registerTaskboardAgentSurface } from './host/agent/register.ts'
 
-export const inject = ['webServer']
+export const inject = ['webServer', 'tools', 'commands', 'systemPrompt']
 
 /** Declared entry point: the board's host routes, one effect per route. */
 export function apply(ctx: Context): void {
@@ -72,6 +73,15 @@ export function apply(ctx: Context): void {
   ctx.effect(
     () => registerClientReportRoute(ctx, 'dsh-task-board'),
     'dsh-task-board: client report route',
+  )
+
+  // The model's whole surface on this plugin: three tools, two slash commands
+  // and one prompt section. Registered as ONE effect on purpose — each injected
+  // service is a liability (a deployment that composes none of them must wait
+  // on none of them), and half a surface is worse than none.
+  ctx.effect(
+    () => registerTaskboardAgentSurface(ctx),
+    'dsh-task-board: agent surface',
   )
 }
 

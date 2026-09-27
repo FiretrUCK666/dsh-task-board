@@ -1,13 +1,20 @@
 /**
- * Contract tests for the host loader entry: what `apply` registers, and the two
+ * Contract tests for the host loader entry: what `apply` registers, and the
  * absences that are easy to undo by accident — no `Config` schema (every
  * behavior this plugin has is already the user's own choice in the UI) and no
- * system-prompt announcement (a plugin that silently writes into other people's
- * prompts is not a plugin).
+ * loader event subscriptions while registering.
+ *
+ * The system-prompt fact CHANGED with the agent surface and the test says so:
+ * the plugin now contributes exactly ONE section, with fixed text, and only
+ * when the host composes the service. What must stay true is the shape of that
+ * contribution — one section, not a system-prompt override, and never one that
+ * interpolates live state (a per-turn prompt change busts the cache for every
+ * conversation that carries it).
  */
 import { describe, expect, it } from 'vitest'
 import * as host from '../src/index.ts'
 import { apply } from '../src/index.ts'
+import { PROMPT_SECTION_NAME, PROMPT_SECTION_TEXT } from '../src/host/agent/prompt.ts'
 
 /** A context double recording what the entry registers and what it reaches for. */
 function fakeCtx() {
@@ -27,11 +34,12 @@ function fakeCtx() {
 }
 
 describe('host entry apply', () => {
-  it('registers one effect per host route and nothing else', () => {
+  it('registers one effect per host surface and nothing else', () => {
     const fake = fakeCtx()
     expect(() => apply(fake.ctx as never)).not.toThrow()
-    // permissions, session state, board, update, page self-report.
-    expect(fake.registrations.filter(r => r === 'effect')).toHaveLength(5)
+    // permissions, session state, board, update, page self-report, agent
+    // surface (tools + commands + the one prompt section, as ONE effect).
+    expect(fake.registrations.filter(r => r === 'effect')).toHaveLength(6)
   })
 
   it('carries no config schema', () => {
@@ -42,13 +50,24 @@ describe('host entry apply', () => {
     expect(Object.keys(host).filter(key => key.toLowerCase().includes('config'))).toEqual([])
   })
 
-  it('never announces itself in a system prompt', () => {
-    // Importing the system-prompt service at all is how the announcement used
-    // to come back, so both halves of that fact are pinned.
-    expect(host.inject).toEqual(['webServer'])
-    const fake = fakeCtx()
-    apply(fake.ctx as never)
-    expect(fake.reached).not.toContain('systemPrompt.section')
+  it('contributes exactly ONE fixed system-prompt section, and only if the host has one', () => {
+    expect(host.inject).toEqual(['webServer', 'tools', 'commands', 'systemPrompt'])
+    // The host composes none of the three services in this double, so the whole
+    // surface stays off: a half-registered agent surface is worse than none.
+    const without = fakeCtx()
+    apply(without.ctx as never)
+    expect(without.reached).not.toContain('systemPrompt.section')
+
+    // With the service present: one section, fixed text, and not a `complete`
+    // override (which would replace the deployment's whole prompt).
+    const withPrompt = fakeCtx()
+    const sections: { name: string; text: string; complete?: boolean }[] = []
+    const ctx = { ...withPrompt.ctx, get: (name: string) => (name === 'systemPrompt' ? { section: (s: never) => { sections.push(s); return () => undefined } } : undefined) }
+    apply(ctx as never)
+    expect(sections).toHaveLength(1)
+    expect(sections[0]?.name).toBe(PROMPT_SECTION_NAME)
+    expect(sections[0]?.text).toBe(PROMPT_SECTION_TEXT)
+    expect(sections[0]?.complete).toBeUndefined()
   })
 
   it('subscribes to no loader event while registering', () => {

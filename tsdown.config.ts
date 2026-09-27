@@ -25,5 +25,9 @@ import { clientBundle } from './shared/tsdown.client.ts'
 const PACKAGE_NAME = '@firetruck666/dsh-task-board'
 
 export default clientBundle(PACKAGE_NAME, ['src/index.ts', 'src/invariant.ts'], {
-  libExternal: ['@deepseek-ai/dsh-settings'],
+  // `dsh-llm` is external, not inlined: the slash command builds a real
+  // UserMessage, and a second inlined copy of that model would be a DIFFERENT
+  // type from the host's — the harness's own `instanceof` checks would never
+  // match. Same reason cordis is external.
+  libExternal: ['@deepseek-ai/dsh-settings', '@deepseek-ai/dsh-llm'],
 })
