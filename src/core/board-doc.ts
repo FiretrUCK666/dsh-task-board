@@ -32,6 +32,8 @@
  * Framework-free pure logic: host and client share this one grammar; tests
  * drive it directly.
  */
+import { applyRowCommit, maxSeen, mergeSection, sameMergeState } from './board-merge-core.ts'
+import type { MergeDelete, MergeRowOps, MergeSection, MergeTombstone } from './board-merge-core.ts'
 import { isCruiseWindow, normalizeWindow, sortWindows } from './cruise.ts'
 import type { CruiseWindow } from './cruise.ts'
 import { normalizeRunPresetDocument } from './run-presets.ts'
@@ -41,6 +43,10 @@ import type { TaskRecord } from './tasks.ts'
 import { parsePresets } from './presets.ts'
 import type { SchedulePreset } from './presets.ts'
 
+// The grammar's laws and constants live in the kernel; this document re-exports
+// the names it has always exported, so every importer keeps one path to them.
+export { TOMBSTONE_TTL_MS } from './board-merge-core.ts'
+
 /** The cruise section value (structurally the controller's CruiseState). */
 export interface CruiseValue {
   enabled: boolean
@@ -49,18 +55,13 @@ export interface CruiseValue {
   schedule: CruiseWindow[]
 }
 
-/** One synced section: the value plus the client write stamp (LWW key). */
-export interface BoardSection<T> {
-  value: T
-  at: number
-}
+/** One synced section: the value plus the client write stamp (LWW key). The
+ *  shape is the kernel's; this document only names it. */
+export type BoardSection<T> = MergeSection<T>
 
 /** The deletions a client observed since its baseline, with the stamp each
  *  delete was computed against. */
-export interface BoardDelete {
-  id: string
-  baseUpdatedAt: number
-}
+export type BoardDelete = MergeDelete
 
 /** One relayed user action: run this task with this trigger (the engine
  *  executes; a non-engine replica forwards the request through the host). */
@@ -103,11 +104,8 @@ export interface LeaseState {
 export type LeaseWire = Partial<Omit<LeaseState, 'held'>> & Pick<LeaseState, 'held'>
 
 /** One tombstone: the logical stamp a newer edit must beat, plus the host
- *  wall time it was written (pruning key). */
-export interface Tombstone {
-  at: number
-  seenAt: number
-}
+ *  wall time it was written (pruning key). The shape is the kernel's. */
+export type Tombstone = MergeTombstone
 
 /** The full authoritative document the host owns and persists. */
 export interface BoardDoc {
@@ -152,10 +150,6 @@ export interface BoardCommit {
   schedulePresets: BoardSection<SchedulePreset[]>
   runPresets: BoardSection<RunPresetsDocument>
 }
-
-/** Tombstones older than this are pruned (a delete this old cannot still be
- *  contested by a realistic offline replica). */
-export const TOMBSTONE_TTL_MS = 30 * 86_400_000
 
 /** The default cruise section value of a never-written board. */
 export const DEFAULT_CRUISE_VALUE: CruiseValue = { enabled: false, limit: 5, schedule: [] }
@@ -300,13 +294,6 @@ function authorshipKey(task: TaskRecord): string {
   })
 }
 
-/** The larger of two optional read stamps (undefined = never seen). */
-function maxSeen(a: number | undefined, b: number | undefined): number | undefined {
-  if (a === undefined) return b
-  if (b === undefined) return a
-  return a >= b ? a : b
-}
-
 /**
  * Fold the incoming row's READ STATE into the content winner: task.viewedAt
  * and each execution's viewedAt move forward only (matched by round id; a
@@ -326,16 +313,55 @@ function mergeReadState(winner: TaskRecord, incoming: TaskRecord): TaskRecord {
   return { ...winner, viewedAt, executions: rounds }
 }
 
+/** Where a row lands: host rows keep their slots, rows the host lacked append
+ *  (their `order` field carries the real column position). The array is the
+ *  document's own order, so this is where a second document's ordering lives. */
+function sortBoardTasks(
+  hostRows: readonly TaskRecord[],
+  incoming: readonly TaskRecord[],
+  resolved: ReadonlyMap<string, TaskRecord>,
+): TaskRecord[] {
+  const tasks = hostRows.filter(task => resolved.has(task.id)).map(task => resolved.get(task.id)!)
+  const seen = new Set(hostRows.map(task => task.id))
+  for (const task of incoming) {
+    const merged = resolved.get(task.id)
+    if (merged !== undefined && !seen.has(task.id)) {
+      tasks.push(merged)
+      seen.add(task.id)
+    }
+  }
+  return tasks
+}
+
+/** The board's half of the grammar: the four answers only a task ledger can
+ *  give. Everything else the merge does is the kernel's. */
+const TASK_ROW_OPS: MergeRowOps<TaskRecord> = {
+  normalize: normalizeIncomingTask,
+  authorshipKey,
+  mergeReadState,
+  sortRows: sortBoardTasks,
+}
+
 /** Structural equality of two documents (the "did anything move" test that
- *  keeps a no-op commit from bumping the revision and storming replicas). */
+ *  keeps a no-op commit from bumping the revision and storming replicas).
+ *  Composed from the kernel's part plus this document's own sections — and it
+ *  is deliberately the BOARD's predicate, not a shared one: one predicate
+ *  shared across two documents reads one document's unchanged state as the
+ *  other's change. */
 export function sameBoardDocs(a: BoardDoc, b: BoardDoc): boolean {
-  return JSON.stringify({ t: a.tasks, c: a.cruise, p: a.schedulePresets, r: a.runPresets, x: a.tombstones })
-    === JSON.stringify({ t: b.tasks, c: b.cruise, p: b.schedulePresets, r: b.runPresets, x: b.tombstones })
+  return sameMergeState({ rows: a.tasks, tombstones: a.tombstones }, { rows: b.tasks, tombstones: b.tombstones })
+    && JSON.stringify({ c: a.cruise, p: a.schedulePresets, r: a.runPresets })
+      === JSON.stringify({ c: b.cruise, p: b.schedulePresets, r: b.runPresets })
 }
 
 /**
  * Apply one client commit to the authoritative document and return the new
- * truth (the input is never mutated). The merge is the whole sync contract:
+ * truth (the input is never mutated). This function is the BOARD's assembly of
+ * the sync contract: the rows go through the merge kernel with the four
+ * answers from {@link TASK_ROW_OPS}, the three sections through the kernel's
+ * section protocol. The laws themselves live in board-merge-core.ts.
+ *
+ * The shape of the whole contract, for anyone reading it here:
  *
  * - put: a record the host lacks is inserted unless a tombstone outranks it
  *   (then the delete stands); a record the host has is replaced when the
@@ -347,125 +373,32 @@ export function sameBoardDocs(a: BoardDoc, b: BoardDoc): boolean {
  * - delete: honored only when the host copy is not newer than the baseline
  *   stamp the delete was computed against; the tombstone lands one ms above
  *   the newest `updatedAt` ever seen for the id (skew-proof).
- * - sections: replaced when the incoming write stamp is >= the stored one
- *   (host order decides ties — the later commit wins, deterministically).
+ * - sections: a claimed section is taken unconditionally and re-stamped with
+ *   the host clock; an unclaimed one is skipped; a pre-claim client falls back
+ *   to LWW on its own stamp.
  * - unchanged result → the same document object (no revision bump, no
  *   persist, no broadcast).
  */
 export function applyCommit(doc: BoardDoc, commit: BoardCommit, now: number): BoardDoc {
-  const byId = new Map(doc.tasks.map(task => [task.id, task]))
-  const tombstones = { ...doc.tombstones }
-  const stamps = { ...doc.stamps }
-  const result = new Map(byId)
-  const claimed = new Set(commit.changed ?? [])
-
-  // 1) puts — the client's full array (absence is NOT a delete; deletes are
-  // the explicit list below, so remote rows the client never saw survive).
-  for (const task of commit.tasks) {
-    const incoming = normalizeIncomingTask(task)
-    if (incoming === undefined) continue
-    const host = result.get(incoming.id)
-    if (host === undefined) {
-      const tomb = tombstones[incoming.id]
-      if (tomb !== undefined && incoming.updatedAt <= tomb.at) continue
-      delete tombstones[incoming.id]
-      result.set(incoming.id, incoming)
-      stamps[incoming.id] = now
-      continue
-    }
-    let winner: TaskRecord | undefined
-    if (claimed.has(incoming.id)) {
-      // The replica vouches for this content: accepted unconditionally
-      // (host-serialized last-write-wins — the phone-clock class of bugs
-      // cannot flip it). A content-equal claim is a no-op.
-      if (authorshipKey(host) !== authorshipKey(incoming)) winner = incoming
-    } else if (incoming.updatedAt > host.updatedAt) {
-      winner = incoming
-    }
-    // READ STATE IS A MONOTONE JOIN, never a register: whichever row wins the
-    // CONTENT, "has the human seen it" only ever moves forward — so a viewer
-    // that merely opened a card propagates its viewedAt without ever being
-    // able to clobber another replica's newer content.
-    const merged = mergeReadState(winner ?? host, incoming)
-    if (winner !== undefined) {
-      result.set(incoming.id, merged)
-      stamps[incoming.id] = now
-    } else if (merged !== host) {
-      result.set(incoming.id, merged)
-    }
-  }
-
-  // 2) deletes — honored against the host copy's freshness.
-  for (const del of commit.deleted) {
-    const host = result.get(del.id)
-    if (host === undefined) {
-      // Already gone (another replica deleted it): keep the existing tombstone.
-      continue
-    }
-    if (host.updatedAt > del.baseUpdatedAt) continue // edited after the client's baseline → the delete loses
-    const newest = Math.max(host.updatedAt, ...commit.tasks.filter(task => task.id === del.id).map(task => task.updatedAt), 0)
-    result.delete(del.id)
-    delete stamps[del.id]
-    tombstones[del.id] = { at: newest + 1, seenAt: now }
-  }
-
-  // 3) prune ancient tombstones (and the host stamps of rows long gone).
-  for (const [id, tomb] of Object.entries(tombstones)) {
-    if (now - tomb.seenAt > TOMBSTONE_TTL_MS && !result.has(id)) delete tombstones[id]
-  }
-  for (const id of Object.keys(stamps)) {
-    if (!result.has(id)) delete stamps[id]
-  }
-
-  const tasks = doc.tasks
-    .filter(task => result.has(task.id))
-    .map(task => result.get(task.id)!)
-  // Host rows keep their order; client rows the host lacked append at the end
-  // (their `order` field carries the real column position).
-  const seen = new Set(doc.tasks.map(task => task.id))
-  for (const task of commit.tasks) {
-    const merged = result.get(task.id)
-    if (merged !== undefined && !seen.has(task.id)) {
-      tasks.push(merged)
-      seen.add(task.id)
-    }
-  }
-
+  const merged = applyRowCommit(
+    { rows: doc.tasks, tombstones: doc.tombstones, stamps: doc.stamps },
+    commit.tasks,
+    new Set(commit.changed ?? []),
+    commit.deleted,
+    TASK_ROW_OPS,
+    now,
+  )
   const next: BoardDoc = {
     revision: doc.revision + 1,
-    tasks,
+    tasks: merged.rows,
     cruise: mergeSection(doc.cruise, commit.cruise, normalizeCruiseValue, 'cruise', now, commit.sectionClaims),
     schedulePresets: mergeSection(doc.schedulePresets, commit.schedulePresets, parsePresetsRaw, 'schedulePresets', now, commit.sectionClaims),
     runPresets: mergeSection(doc.runPresets, commit.runPresets, normalizeRunPresetDocument, 'runPresets', now, commit.sectionClaims),
-    tombstones,
-    stamps,
+    tombstones: merged.tombstones,
+    stamps: merged.stamps,
     bornAt: doc.bornAt,
   }
-  return sameBoardDocs(doc, next) ? doc : { ...next, revision: doc.revision + 1 }
-}
-
-/**
- * Section merge. CLAIM protocol (a commit carrying `sectionClaims`): only a
- * claimed section is taken — unconditionally, re-stamped with the host clock
- * (client clocks never decide a section) — and an unclaimed section is
- * SKIPPED, so the baseline copy every commit rides can never clobber a newer
- * write. LEGACY (no `sectionClaims` field at all — a pre-claim client):
- * plain LWW on the client stamp, exactly as before.
- */
-function mergeSection<T>(
-  stored: BoardSection<T>,
-  incoming: BoardSection<T>,
-  clean: (raw: unknown) => T,
-  key: BoardSectionKey,
-  now: number,
-  sectionClaims: readonly BoardSectionKey[] | undefined,
-): BoardSection<T> {
-  if (sectionClaims !== undefined) {
-    return sectionClaims.includes(key) ? { value: clean(incoming.value), at: now } : stored
-  }
-  const at = typeof incoming.at === 'number' && Number.isFinite(incoming.at) ? incoming.at : 0
-  if (at < stored.at) return stored
-  return { value: clean(incoming.value), at }
+  return sameBoardDocs(doc, next) ? doc : next
 }
 
 /** One incoming task row, normalized through the persisted-ledger grammar

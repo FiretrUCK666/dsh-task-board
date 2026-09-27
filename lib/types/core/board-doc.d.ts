@@ -1,7 +1,9 @@
+import type { MergeDelete, MergeSection, MergeTombstone } from './board-merge-core.ts';
 import type { CruiseWindow } from './cruise.ts';
 import type { RunPresetsDocument } from './run-presets.ts';
 import type { TaskRecord } from './tasks.ts';
 import type { SchedulePreset } from './presets.ts';
+export { TOMBSTONE_TTL_MS } from './board-merge-core.ts';
 /** The cruise section value (structurally the controller's CruiseState). */
 export interface CruiseValue {
     enabled: boolean;
@@ -9,17 +11,12 @@ export interface CruiseValue {
     limit: number;
     schedule: CruiseWindow[];
 }
-/** One synced section: the value plus the client write stamp (LWW key). */
-export interface BoardSection<T> {
-    value: T;
-    at: number;
-}
+/** One synced section: the value plus the client write stamp (LWW key). The
+ *  shape is the kernel's; this document only names it. */
+export type BoardSection<T> = MergeSection<T>;
 /** The deletions a client observed since its baseline, with the stamp each
  *  delete was computed against. */
-export interface BoardDelete {
-    id: string;
-    baseUpdatedAt: number;
-}
+export type BoardDelete = MergeDelete;
 /** One relayed user action: run this task with this trigger (the engine
  *  executes; a non-engine replica forwards the request through the host). */
 export interface BoardCommand {
@@ -65,11 +62,8 @@ export interface LeaseState {
  *  field may be absent on an older deployment). */
 export type LeaseWire = Partial<Omit<LeaseState, 'held'>> & Pick<LeaseState, 'held'>;
 /** One tombstone: the logical stamp a newer edit must beat, plus the host
- *  wall time it was written (pruning key). */
-export interface Tombstone {
-    at: number;
-    seenAt: number;
-}
+ *  wall time it was written (pruning key). The shape is the kernel's. */
+export type Tombstone = MergeTombstone;
 /** The full authoritative document the host owns and persists. */
 export interface BoardDoc {
     /** Host monotonic change counter. */
@@ -111,9 +105,6 @@ export interface BoardCommit {
     schedulePresets: BoardSection<SchedulePreset[]>;
     runPresets: BoardSection<RunPresetsDocument>;
 }
-/** Tombstones older than this are pruned (a delete this old cannot still be
- *  contested by a realistic offline replica). */
-export declare const TOMBSTONE_TTL_MS: number;
 /** The default cruise section value of a never-written board. */
 export declare const DEFAULT_CRUISE_VALUE: CruiseValue;
 /** Concurrency budget bounds — THE one declaration (the controller clamps
@@ -157,11 +148,20 @@ export declare function normalizeBoardDoc(value: unknown, now?: number): BoardDo
  */
 export declare function changedIdsOf(baseline: readonly TaskRecord[], next: readonly TaskRecord[]): string[];
 /** Structural equality of two documents (the "did anything move" test that
- *  keeps a no-op commit from bumping the revision and storming replicas). */
+ *  keeps a no-op commit from bumping the revision and storming replicas).
+ *  Composed from the kernel's part plus this document's own sections — and it
+ *  is deliberately the BOARD's predicate, not a shared one: one predicate
+ *  shared across two documents reads one document's unchanged state as the
+ *  other's change. */
 export declare function sameBoardDocs(a: BoardDoc, b: BoardDoc): boolean;
 /**
  * Apply one client commit to the authoritative document and return the new
- * truth (the input is never mutated). The merge is the whole sync contract:
+ * truth (the input is never mutated). This function is the BOARD's assembly of
+ * the sync contract: the rows go through the merge kernel with the four
+ * answers from {@link TASK_ROW_OPS}, the three sections through the kernel's
+ * section protocol. The laws themselves live in board-merge-core.ts.
+ *
+ * The shape of the whole contract, for anyone reading it here:
  *
  * - put: a record the host lacks is inserted unless a tombstone outranks it
  *   (then the delete stands); a record the host has is replaced when the
@@ -173,8 +173,9 @@ export declare function sameBoardDocs(a: BoardDoc, b: BoardDoc): boolean;
  * - delete: honored only when the host copy is not newer than the baseline
  *   stamp the delete was computed against; the tombstone lands one ms above
  *   the newest `updatedAt` ever seen for the id (skew-proof).
- * - sections: replaced when the incoming write stamp is >= the stored one
- *   (host order decides ties — the later commit wins, deterministically).
+ * - sections: a claimed section is taken unconditionally and re-stamped with
+ *   the host clock; an unclaimed one is skipped; a pre-claim client falls back
+ *   to LWW on its own stamp.
  * - unchanged result → the same document object (no revision bump, no
  *   persist, no broadcast).
  */
