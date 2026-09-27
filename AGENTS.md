@@ -289,7 +289,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 都是看板上的数据，在界面里直接编辑），而「插件开不开」是插件管理页的开关——再加一个 `Config`
 schema 就是给同一件事再加一个控件。
 
-**本插件不向 agent 播报任何东西**：不注入 `systemPrompt`，看板靠自己出现在界面上被看到。
+**本插件向 agent 播报的是行为准则，不是能力清单**：注入 `systemPrompt` 的 `tool:taskboard` 一节，
+**固定文本**（变动会击穿提示缓存）。能力清单一律走 `taskboard_capabilities` 按需查——
+**清单进提示词就是目录的第二份拷贝，过期清单比没有清单更糟**。
 
 ### 启停机制全貌（改任何一处之前先读这段）
 
@@ -338,6 +340,11 @@ schema 就是给同一件事再加一个控件。
 | --- | --- |
 | `main` | 看板舞台（keyed slot，key = `dsh-task-board`） |
 | `sidebar.panellist` | 侧栏面板图标（id = `dsh-task-board`） |
+| `sidebar.right.pane.tab` | 任务清单正文（keyed，key = 包名） |
+| `sidebar.right.pane.tab.title` | 清单标签页标题（keyed，同 key） |
+| `sidebar.right.tab.guide.entry` | 右栏引导页的清单入口（keyed，同 key） |
+| `conversation.session.header.actions` | 会话头部的「打开清单」按钮（list） |
+| `tool.call.toolview` | AI 动作在对话里的呈现（keyed，按工具名） |
 
 ### 插件按名读的宿主成员（必须存在）
 
@@ -355,6 +362,9 @@ schema 就是给同一件事再加一个控件。
 | 半区 | 服务名 | 读取的成员 | 提供包 |
 | --- | --- | --- | --- |
 | host | `webServer` | `register` | `@deepseek-ai/dsh-host-webserver` |
+| host | `tools` | `register` | `@deepseek-ai/dsh-tools` |
+| host | `commands` | `register` | `@deepseek-ai/dsh-commands` |
+| host | `systemPrompt` | `section` | `@deepseek-ai/dsh-system-prompt` |
 | client | `slots` | `inject` | `@deepseek-ai/dsh-client-ui-renderer` |
 | client | `slots` | `register` | `@deepseek-ai/dsh-client-ui-renderer` |
 | client | `sessions` | `list` | `@deepseek-ai/dsh-api-session-controller` |
@@ -364,11 +374,14 @@ schema 就是给同一件事再加一个控件。
 | client | `locale` | `register` | `@deepseek-ai/dsh-client-locale` |
 | client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
+| client | `sidebarRightTabs` | `register` | `@deepseek-ai/dsh-client-ui-sidebar-right` |
+| client | `sidebarRight` | `openTab` / `close` / `focus` | `@deepseek-ai/dsh-client-ui-sidebar-right` |
 
 **每个注入都是负债**：声明了一个实际不用的服务，会在该服务缺席的部署里白等——那个
 半区永远不激活，什么也注册不出来。所以 `inject` 只列真正用到的：本插件**不**注入
-`settings`、`configForms`（没有设置项要读写）、也不注入 `systemPrompt`（不向 agent
-播报任何东西）。
+`settings` / `configForms`（没有设置项要读写）。**右栏那两个服务是表里唯一「按名读、
+不进 inject」的**——它们缺席时只让清单面板整体不出现，**绝不连累看板**；缺席即面板不存在，
+不是半截 UI。
 
 该脚本另带反向检查（源码不得引用宿主已撤的成员），用 `--probe-removed` 自测：它拿一组
 已知不存在的成员去扫源码，**必须报红**——否则说明检查本身失效了，而不是源码干净。
@@ -391,10 +404,17 @@ schema 就是给同一件事再加一个控件。
 
 ### host 半区（DSH 主进程）
 
-- `src/index.ts`：inject 只有 `webServer`；五个 `ctx.effect` 各注册一条路由（权限/看板/
-  会话状态/更新/页面自报）。**没有 `Config` schema、没有 enable 检查**——启停是 profile 行
-  的 `disabled`（见「启停机制全貌」）；**不向 agent 播报任何东西、不注入 `systemPrompt`；
-  无图片路由、无设置路由**。
+- `src/index.ts`：inject 是 `webServer` 加 `tools`/`commands`/`systemPrompt`；六条 `ctx.effect`
+  各注册一条路由或注册那套 agent 面。**没有 `Config` schema、没有 enable 检查**——启停是
+  profile 行的 `disabled`（见「启停机制全貌」）；无图片路由、无设置路由。
+- `src/host/agent/`：三个工具（能力查询 / 查询 / 执行）、两条斜杠命令、系统提示那一节。
+  **动作目录是它们的唯一权威**：`actions` 枚举按构造取自目录，筛选词表取自 `task-search.ts`
+  的注册表，一个字都不抄。写工具走 `core/task-transitions.ts` 的共享纯函数——**界面与 AI
+  调同一套语义实现，同一件事两种结果即破**。批量是顺序执行、第一个失败即停、**不回滚**、
+  逐条报告；`dry_run` 跑同一套文法的克隆，一个字节不落盘。**引擎缺席就明说引擎缺席**。
+- `src/host/session-state.ts`：会话态势推导（在不在跑 / 归档 / 等批准 / 等回答），
+  **看板与 AI 读同一份**。答案三态而非布尔：`unknown` 是「这台机器能看多远」，不是「没人在等」。
+  纯读取模块，测试直接扫源码禁掉它有任何写路径。
 - `src/host/http-json.ts`：全部路由共用的信封与请求体读取（一个有界实现，禁各写一套）。
 - `src/host/*-route.ts`：纯 `create*Handler`（可注入测试），服务一律 `ctx.get`。
 - `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**
@@ -422,6 +442,13 @@ schema 就是给同一件事再加一个控件。
   host 侧注册路径保持绝对；浏览器侧任何 `/api/...` 都必须经它，`tests/route-base.spec.ts` 扫描源码兜住。
 - `TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。`board-transport.ts`：
   fetch + EventSource（缺席降纯轮询）。
+- `src/client/item/`：右栏的任务清单面板。**右栏那两个服务按名读、不进 inject**——它们缺席时
+  面板整体不出现，**看板照常工作**；缺席即面板不存在，不是半截 UI。右栏整条链**没有**
+  `container-type`，所以面板根自己声明并按约 300px 一档设计；宿主不给任何 padding，内距全部自给。
+  面板**一律不用 Dialog**（`boardBox()` 取的是第一个板盒，在右栏用弹层会锚到看板上去），
+  第 1 级就地展开。AI 正在写时显示 pending 态并可取消——取消是「剩余操作不再执行」，
+  **已生效的不回滚**，面板要说明这一点。`hostLostItems()` 为真时说「host 读不到」，
+  不能显示成「你一条都没有」。
 
 ### 设计系统层（成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
 
