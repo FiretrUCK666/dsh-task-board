@@ -6,6 +6,11 @@
  * bodies, the SSE frame format on a live stream, the lease/command relay over
  * the wire, and the KvUnit file format + version stamp + restart restore on
  * disk. It is the runtime contract the multi-device sync rests on.
+ *
+ * The SECOND document (the checklist) is pinned here rather than only against
+ * the fake unit, because what the fakes hide is exactly the thing worth
+ * proving: one unit, one directory, one file per document, and each document
+ * restoring on its own after a restart.
  */
 import { createServer, type Server } from 'node:http'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -20,13 +25,17 @@ import {
   BOARD_UNIT_VERSION,
   BOARD_UNIT_TABLE,
   BOARD_DOCUMENT,
+  ITEMS_DOCUMENT,
   openBoardUnit,
 } from '../src/host/board-service.ts'
 import { createBoardHandler, type BoardRouteDeps } from '../src/host/board-route.ts'
 import { applyCommit, emptyBoardDoc, type BoardCommit, type BoardEvent } from '../src/core/board-doc.ts'
+import { applyItemsCommit, emptyItemsDoc, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
+import type { ItemRecord } from '../src/core/item.ts'
 import { createTask } from '../src/core/tasks.ts'
 
 const BASE = '/api/dsh-task-board/board'
+const T0 = 1_700_000_000_000
 
 let root: string
 let backend: JsonStorageBackend
@@ -60,6 +69,41 @@ function depsFor(service: BoardDataService): BoardRouteDeps {
     submitCommand: command => service.submitCommand(command),
     subscribe: listener => service.subscribe(listener),
   }
+}
+
+/** One checklist row, with only what a test cares about overridden. */
+function row(patch: Partial<ItemRecord> = {}): ItemRecord {
+  return {
+    id: 'i-1',
+    ref: 1,
+    title: 'a thing',
+    body: '',
+    notes: '',
+    steps: [],
+    status: 'open',
+    priority: 'normal',
+    tags: [],
+    startsAfter: undefined,
+    dueAt: undefined,
+    hardDueAt: undefined,
+    taskId: undefined,
+    origin: { source: 'human', at: T0 },
+    createdAt: T0,
+    updatedAt: T0,
+    ...patch,
+  }
+}
+
+/** A checklist commit carrying only what changed. */
+function itemsCommitOf(overrides: Partial<ItemsCommit> = {}): ItemsCommit {
+  return { clientId: 'c-1', items: [], deleted: [], ...overrides }
+}
+
+/** One record document exactly as the platform writes it. */
+function writeRecord(root: string, name: string, record: unknown): void {
+  const dir = join(root, BOARD_UNIT_NAME, BOARD_UNIT_TABLE)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, `${name}.json`), JSON.stringify({ version: BOARD_UNIT_VERSION, record }), 'utf8')
 }
 
 beforeAll(async () => {
@@ -173,6 +217,157 @@ describe('board route over a real HTTP server', () => {
     await reopened.close()
   })
 
+  // The second document, on the real medium. What a fake unit cannot show is
+  // that ONE unit holds TWO files and that each restores on its own — so this
+  // reads the directory, and restarts over a real backend to compare the whole
+  // document, field for field.
+  it('an item write lands in its own file and leaves the board untouched, and BOTH restore after a restart', async () => {
+    const boardFile = join(root, BOARD_UNIT_NAME, BOARD_UNIT_TABLE, `${BOARD_DOCUMENT}.json`)
+    const itemsFile = join(root, BOARD_UNIT_NAME, BOARD_UNIT_TABLE, `${ITEMS_DOCUMENT}.json`)
+    const boardBefore = readFileSync(boardFile, 'utf8')
+    const boardRevisionBefore = service.getDoc().revision
+    const boardBefore_ = service.getDoc()
+
+    const committed: ItemsDoc = await service.commitItems(itemsCommitOf({
+      clientId: 'committer',
+      items: [
+        row({ id: 'i-a', ref: 1, title: '第一条', priority: 'high' }),
+        row({ id: 'i-b', ref: 2, title: '第二条', status: 'blocked', tags: ['x'] }),
+        row({ id: 'i-c', ref: 3, title: '第三条', steps: [{ id: 's-1', text: '做', done: true }] }),
+      ],
+    }))
+    expect(committed.revision).toBe(1)
+    // The stored order is the document's own derivation (status, priority, the
+    // nearest date, age, number), not the order the commit happened to send —
+    // which is why two replicas holding the same rows never have to sync an
+    // order at all, and why a restored document can be compared field for field.
+    expect(committed.items.map(i => i.id)).toEqual(['i-a', 'i-c', 'i-b'])
+    expect(committed.items.map(i => i.ref).sort()).toEqual([1, 2, 3])
+    expect(committed.nextRef).toBe(4)
+
+    // The checklist got its own version-stamped file…
+    const itemsRaw = JSON.parse(readFileSync(itemsFile, 'utf8')) as { version: number; record: ItemsDoc }
+    expect(itemsRaw.version).toBe(BOARD_UNIT_VERSION)
+    expect(itemsRaw.record).toEqual(committed)
+    // …and the board's file, revision and change frame were not touched: a
+    // checklist write must not wake every replica to resync a board that did
+    // not move.
+    expect(readFileSync(boardFile, 'utf8')).toBe(boardBefore)
+    expect(service.getDoc()).toBe(boardBefore_)
+    expect(service.getDoc().revision).toBe(boardRevisionBefore)
+
+    // A restart restores BOTH, each on its own, and equal in every field.
+    const reopened = new JsonStorageBackend(root)
+    const revived = makeService(reopened)
+    await revived.ensureInit()
+    expect(revived.available).toBe(true)
+    expect(revived.getItemsDoc()).toEqual(committed)
+    expect(revived.getDoc()).toEqual(service.getDoc())
+    expect(revived.getDoc().revision).toBe(boardRevisionBefore)
+    await revived.dispose()
+    await reopened.close()
+  })
+
+  it('a restart never re-mints a number that is already in use', async () => {
+    // The counter is document state, and it is only safe because it is written
+    // with the rows: a derived `max(refs)+1` would hand a deleted row's number
+    // to the next one. A replica whose copy predates the restart still arrives
+    // claiming a number the restored document already holds.
+    const reopened = new JsonStorageBackend(root)
+    const revived = makeService(reopened)
+    await revived.ensureInit()
+    const before = revived.getItemsDoc()
+    const inUse = before.items.map(i => i.ref)
+    expect(inUse.length).toBeGreaterThan(0)
+
+    const after = await revived.commitItems(itemsCommitOf({
+      clientId: 'stale-replica',
+      items: [row({ id: 'i-new', ref: inUse[0], title: '撞号的一行', updatedAt: T0 + 5 })],
+      changed: ['i-new'],
+    }))
+    const refs = after.items.map(i => i.ref)
+    expect(new Set(refs).size).toBe(refs.length)
+    expect(refs).toContain(before.nextRef)
+    // The existing rows kept the numbers the person already read out loud.
+    for (const item of before.items) {
+      expect(after.items.find(i => i.id === item.id)?.ref).toBe(item.ref)
+    }
+    await revived.dispose()
+    await reopened.close()
+  })
+
+  // The two ways a document used to vanish, reproduced on a real medium: a tree
+  // whose marker is gone, and a tree holding only the checklist. Asking "is
+  // THIS document there" dropped one in each; asking "has this tree ever been
+  // written" cannot, because the marker is a record like any other.
+  it('restores a tree whose marker is missing — with only the checklist, and with both documents', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'dsh-board-nometa-'))
+    try {
+      const board = applyCommit(emptyBoardDoc(T0), {
+        clientId: 'seed', tasks: [createTask({ title: '没有标记也要在', description: '', prompt: 'p' }, T0, 't-nometa')],
+        deleted: [], cruise: { value: { enabled: false, limit: 3, schedule: [] }, at: T0 },
+        schedulePresets: { value: [], at: T0 }, runPresets: { value: { presets: [] }, at: T0 },
+      }, T0 + 1)
+      const items = applyItemsCommit(emptyItemsDoc(T0), itemsCommitOf({
+        items: [row({ id: 'i-a', ref: 1, title: '清单也在' }), row({ id: 'i-b', ref: 2, title: '第二条' })],
+      }), T0 + 1)
+
+      // Case one: the checklist alone, no board, no marker.
+      const onlyItems = mkdtempSync(join(tmpdir(), 'dsh-board-nometa-items-'))
+      try {
+        writeRecord(onlyItems, ITEMS_DOCUMENT, items)
+        const backend = new JsonStorageBackend(onlyItems)
+        const service = makeService(backend)
+        await service.ensureInit()
+        expect(service.available).toBe(true)
+        expect(service.getItemsDoc()).toEqual(items)
+        expect(service.getDoc().revision).toBe(0)
+        await service.dispose()
+        await backend.close()
+      } finally {
+        rmSync(onlyItems, { recursive: true, force: true })
+      }
+
+      // Case two: both documents, still no marker.
+      writeRecord(home, BOARD_DOCUMENT, board)
+      writeRecord(home, ITEMS_DOCUMENT, items)
+      const backend = new JsonStorageBackend(home)
+      const service = makeService(backend)
+      await service.ensureInit()
+      expect(service.getDoc().tasks.map(t => t.id)).toEqual(['t-nometa'])
+      expect(service.getItemsDoc()).toEqual(items)
+      await service.dispose()
+      await backend.close()
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  // KNOWN DEGRADATION, stated rather than discovered: the platform's per-record
+  // contract reads an unreadable or wrongly-stamped record as an ABSENT one, so
+  // a corrupt `items.json` restores as an empty checklist — exactly what a
+  // corrupt `board.json` does. "Cannot read it" and "it is empty" look the
+  // same here; nothing in this service invents a default in place of data.
+  it('a corrupt record file reads as an absent document (same degradation the board has)', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'dsh-board-corrupt-'))
+    try {
+      const dir = join(home, BOARD_UNIT_NAME, BOARD_UNIT_TABLE)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, `${ITEMS_DOCUMENT}.json`), '{ not json', 'utf8')
+      writeRecord(home, BOARD_DOCUMENT, emptyBoardDoc(T0))
+      const backend = new JsonStorageBackend(home)
+      const service = makeService(backend)
+      await service.ensureInit()
+      expect(service.available).toBe(true)
+      expect(service.getItemsDoc().items).toEqual([])
+      expect(service.getDoc().revision).toBe(0)
+      await service.dispose()
+      await backend.close()
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
   it('arbitrates the engine lease over the wire (and EVERY answer carries proto + bootedAt)', async () => {
     const leasePost = async (body: unknown): Promise<Record<string, unknown>> => {
       const response = await fetch(`${origin}${BASE}/lease`, {
@@ -254,7 +449,7 @@ describe('board route over a real HTTP server', () => {
       )
       expect(opened).toBeDefined()
       // Every field survives, not just the task list.
-      expect(opened?.board).toEqual(seeded)
+      expect(opened?.documents[BOARD_DOCUMENT]).toEqual(seeded)
       expect(existsSync(join(home, 'storages', BOARD_UNIT_NAME, 'documents', 'board.json'))).toBe(true)
       expect(existsSync(join(home, 'storages', BOARD_UNIT_NAME, 'documents', 'meta.json'))).toBe(true)
       // Moved aside, not deleted: the bytes are the migration's own backup.

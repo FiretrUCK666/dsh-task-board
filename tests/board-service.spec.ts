@@ -2,18 +2,25 @@
  * Board data service tests: document load/persist through a fake KV unit,
  * commit serialization + broadcast, lease acquire/renew/disconnect-grace/
  * takeover, and the command relay (live-engine broadcast vs parked replay).
+ *
+ * The checklist (the second document) rides the same service and the same
+ * handle, so what is pinned here about the board is pinned about it too: a
+ * document of its own, its own revision, its own no-op rule.
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { applyCommit, emptyBoardDoc, type BoardCommit, type BoardDoc } from '../src/core/board-doc.ts'
 import { createTask } from '../src/core/tasks.ts'
+import { applyItemsCommit, emptyItemsDoc, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
+import type { ItemRecord } from '../src/core/item.ts'
 import {
   BoardDataService,
   clampLeaseTtl,
   BOARD_DOCUMENT,
   BOARD_UNIT_TABLE,
   BOARD_UNIT_VERSION,
+  ITEMS_DOCUMENT,
   META_DOCUMENT,
   openBoardUnit,
   LEASE_DEFAULT_TTL_MS,
@@ -42,6 +49,9 @@ class FakeUnit implements KvUnitLike {
   }
   loadCount = 0
   putCount = 0
+  /** The record key of every write, in order — the granularity assertion
+   *  ("an item write touches the items file and nothing else") reads this. */
+  writes: string[] = []
   throwOnWrite = false
   closed = false
   /** The board record, or undefined when the tree holds none. */
@@ -50,6 +60,13 @@ class FakeUnit implements KvUnitLike {
   }
   set board(value: unknown) {
     this.record(BOARD_DOCUMENT, value)
+  }
+  /** The checklist record, or undefined when the tree holds none. */
+  get items(): unknown {
+    return this.tables[BOARD_UNIT_TABLE]?.[ITEMS_DOCUMENT]
+  }
+  set items(value: unknown) {
+    this.record(ITEMS_DOCUMENT, value)
   }
   private record(key: string, value: unknown): void {
     const table = this.tables[BOARD_UNIT_TABLE] ?? {}
@@ -63,6 +80,7 @@ class FakeUnit implements KvUnitLike {
   async putRecord(table: string, key: string, value: unknown): Promise<void> {
     if (this.throwOnWrite) throw new Error('disk full')
     this.putCount += 1
+    this.writes.push(key)
     const records = this.tables[table] ?? {}
     records[key] = JSON.parse(JSON.stringify(value))
     this.tables[table] = records
@@ -92,6 +110,34 @@ function commitOf(overrides: Partial<BoardCommit> = {}): BoardCommit {
     runPresets: { value: { presets: [] }, at: 0 },
     ...overrides,
   }
+}
+
+/** One checklist row, with only what a test cares about overridden. */
+function row(patch: Partial<ItemRecord> = {}): ItemRecord {
+  return {
+    id: 'i-1',
+    ref: 1,
+    title: 'a thing',
+    body: '',
+    notes: '',
+    steps: [],
+    status: 'open',
+    priority: 'normal',
+    tags: [],
+    startsAfter: undefined,
+    dueAt: undefined,
+    hardDueAt: undefined,
+    taskId: undefined,
+    origin: { source: 'human', at: T0 },
+    createdAt: T0,
+    updatedAt: T0,
+    ...patch,
+  }
+}
+
+/** A checklist commit carrying only what changed. */
+function itemsCommitOf(overrides: Partial<ItemsCommit> = {}): ItemsCommit {
+  return { clientId: 'c-1', items: [], deleted: [], ...overrides }
 }
 
 describe('BoardDataService init', () => {
@@ -443,7 +489,7 @@ describe('openBoardUnit layout migration', () => {
       retired.push(options)
       return noopRetire(options)
     })
-    expect((opened?.board as BoardDoc).tasks.map(t => t.id)).toEqual(['t-a'])
+    expect((opened?.documents[BOARD_DOCUMENT] as BoardDoc).tasks.map(t => t.id)).toEqual(['t-a'])
     expect(medium.tree[BOARD_UNIT_TABLE]?.[META_DOCUMENT]).toMatchObject({
       schemaVersion: BOARD_UNIT_VERSION,
       legacyImported: true,
@@ -455,26 +501,26 @@ describe('openBoardUnit layout migration', () => {
     expect(medium.openCount).toBe(3)
   })
 
-  it('never probes the legacy file again once the marker exists', async () => {
+  it('never probes the legacy file again once the tree holds any record', async () => {
     const medium = new FakeMedium()
     medium.legacyGlobal = emptyBoardDoc(T0)
     await openBoardUnit(medium.opener, T0, () => undefined, noopRetire)
     expect(medium.openCount).toBe(3)
-    // The old file is gone (it was retired), and the marker means this boot
-    // never looks for it: without the marker every boot would re-read it, and
-    // a user who DELETES the data root to reset would watch the old board
-    // come straight back.
+    // The old file is gone (it was retired), and the tree holding records means
+    // this boot never looks for it: without that, every boot would re-read the
+    // whole-unit file, and a user who DELETED the data root to reset would
+    // watch the old board come straight back.
     medium.restart()
     medium.legacyGlobal = undefined
     const again = await openBoardUnit(medium.opener, T0 + 1, () => undefined, noopRetire)
     expect(medium.openCount).toBe(4)
-    expect(again?.board).toBeDefined()
+    expect(again?.documents[BOARD_DOCUMENT]).toBeDefined()
   })
 
   it('marks a virgin tree as probed even when there is nothing to import', async () => {
     const medium = new FakeMedium()
     const opened = await openBoardUnit(medium.opener, T0, () => undefined, noopRetire)
-    expect(opened?.board).toBeUndefined()
+    expect(opened?.documents[BOARD_DOCUMENT]).toBeUndefined()
     expect(medium.tree[BOARD_UNIT_TABLE]?.[META_DOCUMENT]).toMatchObject({ legacyImported: false })
     expect(medium.writes.map(w => w.key)).toEqual([META_DOCUMENT])
   })
@@ -485,11 +531,131 @@ describe('openBoardUnit layout migration', () => {
     medium.legacyGlobal = emptyBoardDoc(T0)
     const opened = await openBoardUnit(medium.opener, T0, () => undefined, noopRetire)
     expect(medium.openCount).toBe(1)
-    expect(opened?.board).toBeDefined()
+    expect(opened?.documents[BOARD_DOCUMENT]).toBeDefined()
   })
 
   it('reports no unit when the deployment composes no storage hub', async () => {
     const opened = await openBoardUnit(async () => undefined, T0, () => undefined, noopRetire)
     expect(opened).toBeUndefined()
+  })
+
+  // THE TWO WAYS A DOCUMENT USED TO VANISH. Both are the same bug seen from
+  // two directions: the question was asked about one document instead of about
+  // the tree, so a checklist could be dropped while its own file sat on disk.
+  // A marker is a record like any other — losing it changes nothing now.
+  it('hands back EVERY record a marker-less tree holds (board + items, no meta)', async () => {
+    const medium = new FakeMedium()
+    const board = applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] }), T0 + 1)
+    const items = applyItemsCommit(emptyItemsDoc(T0), itemsCommitOf({ items: [row()] }), T0 + 1)
+    medium.tree = { [BOARD_UNIT_TABLE]: { [BOARD_DOCUMENT]: board, [ITEMS_DOCUMENT]: items } }
+    // A legacy file that really is still there must NOT be re-imported over the
+    // newer tree — the tree is the truth the moment it holds anything.
+    medium.legacyGlobal = emptyBoardDoc(T0)
+    const opened = await openBoardUnit(medium.opener, T0, () => undefined, noopRetire)
+    expect(medium.openCount).toBe(1)
+    expect(opened?.documents[BOARD_DOCUMENT]).toBe(board)
+    expect(opened?.documents[ITEMS_DOCUMENT]).toBe(items)
+    expect(medium.writes).toEqual([])
+  })
+
+  it('hands back an items-only tree (no board, no meta) without probing the old file', async () => {
+    const medium = new FakeMedium()
+    const items = applyItemsCommit(emptyItemsDoc(T0), itemsCommitOf({ items: [row()] }), T0 + 1)
+    medium.tree = { [BOARD_UNIT_TABLE]: { [ITEMS_DOCUMENT]: items } }
+    medium.legacyGlobal = emptyBoardDoc(T0)
+    const opened = await openBoardUnit(medium.opener, T0, () => undefined, noopRetire)
+    expect(medium.openCount).toBe(1)
+    expect(opened?.documents[ITEMS_DOCUMENT]).toBe(items)
+    // No board document exists yet — that is the empty board, not a lost one.
+    expect(opened?.documents[BOARD_DOCUMENT]).toBeUndefined()
+  })
+})
+
+describe('BoardDataService checklist (the second document)', () => {
+  it('restores the checklist from the medium on init, beside the board', async () => {
+    const unit = new FakeUnit()
+    unit.items = applyItemsCommit(emptyItemsDoc(T0), itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' }), row({ id: 'i-b', ref: 2, title: 'B' })] }), T0 + 1)
+    unit.board = applyCommit(emptyBoardDoc(T0), commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] }), T0 + 1)
+    const { service } = makeService(unit)
+    await service.init()
+    expect(service.getItemsDoc().items.map(i => i.id)).toEqual(['i-a', 'i-b'])
+    expect(service.getItemsDoc().nextRef).toBe(3)
+    expect(service.getDoc().tasks.map(t => t.id)).toEqual(['t-a'])
+  })
+
+  it('writes ONLY the items record, and never moves the board (revision, file or frame)', async () => {
+    const unit = new FakeUnit()
+    const { service } = makeService(unit)
+    await service.init()
+    await service.commit(commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] }))
+    const boardAfterCommit = service.getDoc()
+    const writesBefore = unit.writes.length
+    const events: BoardEvent[] = []
+    service.subscribe(e => events.push(e))
+
+    const doc = await service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' })] }))
+    expect(doc.revision).toBe(1)
+    expect(doc.items.map(i => i.ref)).toEqual([1])
+    // One record, and it is the checklist's: a checklist write must not rewrite
+    // the board's file, must not bump the board's revision, and must not wake
+    // every replica to resync a board that did not move.
+    expect(unit.writes.slice(writesBefore)).toEqual([ITEMS_DOCUMENT])
+    expect(service.getDoc()).toBe(boardAfterCommit)
+    expect(service.getDoc().revision).toBe(1)
+    expect(events).toEqual([])
+  })
+
+  it('a checklist no-op neither persists nor mints a number', async () => {
+    const unit = new FakeUnit()
+    const { service } = makeService(unit)
+    await service.init()
+    const first = await service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' })] }))
+    const writesBefore = unit.writes.length
+    const again = await service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' })] }))
+    expect(again).toBe(first)
+    expect(unit.writes).toHaveLength(writesBefore)
+    expect(service.getItemsDoc().nextRef).toBe(2)
+  })
+
+  it('both documents share ONE write lane (a board commit cannot overtake an item commit)', async () => {
+    const unit = new FakeUnit()
+    const { service } = makeService(unit)
+    await service.init()
+    // The item write is the slower one: if the lanes were per document, the
+    // board's record would land first and `writes` would show it.
+    const slow = unit.putRecord.bind(unit)
+    unit.putRecord = async (table, key, value) => {
+      if (key === ITEMS_DOCUMENT) await new Promise(resolve => setTimeout(resolve, 5))
+      return slow(table, key, value)
+    }
+    const [, itemsDoc] = await Promise.all([
+      service.commit(commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] })),
+      service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' })] })),
+    ])
+    expect(unit.writes).toEqual([BOARD_DOCUMENT, ITEMS_DOCUMENT])
+    expect(itemsDoc.revision).toBe(1)
+    expect(service.getDoc().revision).toBe(1)
+  })
+
+  it('keeps serving the checklist from memory when its persist throws', async () => {
+    const unit = new FakeUnit()
+    const { service } = makeService(unit)
+    await service.init()
+    unit.throwOnWrite = true
+    const doc = await service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' })] }))
+    expect(doc.items).toHaveLength(1)
+    expect(service.getItemsDoc().items).toHaveLength(1)
+  })
+
+  it('a corrupt checklist record degrades to an empty document, never a failed boot', async () => {
+    const unit = new FakeUnit()
+    unit.items = { revision: 'nonsense', items: 42 }
+    const { service } = makeService(unit)
+    await service.init()
+    expect(service.available).toBe(true)
+    const doc: ItemsDoc = service.getItemsDoc()
+    expect(doc.items).toEqual([])
+    expect(doc.revision).toBe(0)
+    expect(doc.nextRef).toBe(1)
   })
 })

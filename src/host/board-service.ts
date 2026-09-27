@@ -1,15 +1,23 @@
 /**
- * Board data service (host half): the ONE authoritative board document every
- * browser replica syncs against, plus the two arbitrations multi-device
- * correctness needs — the engine lease and the launch-command relay.
+ * Board data service (host half): the authoritative documents every browser
+ * replica syncs against — today the board and the checklist — plus the two
+ * arbitrations multi-device correctness needs: the engine lease and the
+ * launch-command relay.
  *
- * The document persists through the platform storage hub's `json` backend.
+ * The documents persist through the platform storage hub's `json` backend.
  * The unit is opened in the `per-record` layout, so everything this plugin
  * owns lives in ONE directory under the harness home's storage root with one
- * human-readable JSON document per data kind — today the board, and any later
- * data kind beside it without disturbing this one. The hub owns the root, the
- * naming rules and the atomic publish; this plugin only names its unit and its
- * documents. The hub is read structurally (`ctx.get('storage')`) exactly like
+ * human-readable JSON document per data kind — today the board and the
+ * checklist, and any later data kind beside them without disturbing them. The
+ * hub owns the root, the naming rules and the atomic publish; this plugin only
+ * names its unit and its documents.
+ *
+ * ONE unit carries both documents and ONE service holds the single live handle
+ * that name allows — the backend gives a unit exactly one live handle, so
+ * "a service per document" is not a choice the medium permits. That is also
+ * what keeps every mutation to every document on one write lane.
+ *
+ * The hub is read structurally (`ctx.get('storage')`) exactly like
  * every other host route reads its service: when the deployment composes no
  * storage hub, or the medium fails to open, the service reports `available:false`
  * and the browser half falls back to its localStorage mode — a degraded board,
@@ -30,11 +38,14 @@
 import { join } from 'node:path'
 import { applyCommit, emptyBoardDoc, normalizeBoardDoc } from '../core/board-doc.ts'
 import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts'
+import { applyItemsCommit, emptyItemsDoc, normalizeItemsDoc } from '../core/items-doc.ts'
+import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 import { retireLegacyUnitFile, unitDirectoryPath, type RetireOptions, type RetireOutcome } from './data-root.ts'
 
 // The wire types live in the shared core (the client sync layer reads the
 // same shapes); re-exported here so host callers keep one import surface.
 export type { BoardCommand, BoardEvent, LeaseState } from '../core/board-doc.ts'
+export type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 
 /** Structural face of the storage hub's opened KV unit (no SDK import).
  *
@@ -78,6 +89,10 @@ export const LEGACY_UNIT_VERSION = 1
 export const BOARD_UNIT_TABLE = 'documents'
 /** The document name holding the board truth. */
 export const BOARD_DOCUMENT = 'board'
+/** The document name holding the checklist truth — the second synced document,
+ *  a sibling of the board rather than a view over it (its own revision, its own
+ *  short-number counter). */
+export const ITEMS_DOCUMENT = 'items'
 /** The document name holding migration bookkeeping — the marker that lets a
  *  boot know it must never go looking for the legacy file again. */
 export const META_DOCUMENT = 'meta'
@@ -100,12 +115,19 @@ export const LEGACY_UNIT_DESCRIPTOR: BoardUnitDescriptor = {
   layout: 'single',
 }
 
-/** What opening the unit produced. */
+/** What opening the unit produced.
+ *
+ *  `documents` is the WHOLE declared table, by document name — not a list of
+ *  documents this function knows about. Naming a document here is how that
+ *  document used to be dropped: a tree holding `items.json` but no `meta.json`
+ *  used to answer with the board alone, and the checklist was gone. So the
+ *  value is what the medium holds and the caller picks its own document out of
+ *  it; the next document needs a constant, not a change here. */
 export interface OpenedBoard {
   /** The live document-tree handle; every later write goes through it. */
   readonly unit: KvUnitLike
-  /** The board document as read from the medium; absent means an empty board. */
-  readonly board: unknown
+  /** Every record the declared table holds, by document name. */
+  readonly documents: Record<string, unknown>
   /** Present only on the boot that ran the layout migration. */
   readonly retired?: RetireOutcome
 }
@@ -117,23 +139,38 @@ function documentsOf(snapshot: { tables?: Record<string, Record<string, unknown>
 }
 
 /**
- * Open the board unit, migrating the pre-tree whole-unit file exactly once.
+ * Open the unit, migrating the pre-tree whole-unit file exactly once.
  *
  * The migration must SEQUENCE two opens of one unit name, because the backend
- * gives a name exactly one live handle. It runs only when the tree carries no
- * `meta` marker, so every later boot reads the tree and never the old file:
- * without that marker a boot would re-read the whole old document on every
- * start, and a user who DELETES the data directory to reset would find the old
- * data coming back. The board document is written BEFORE the marker, so a crash
- * mid-migration repeats a probe that is idempotent rather than skipping one
- * that is not.
+ * gives a name exactly one live handle.
+ *
+ * THE QUESTION THIS ASKS IS "HAS THIS TREE EVER BEEN WRITTEN", NOT "IS THE
+ * MARKER THERE" and never "is THIS document there". Those are three different
+ * questions, and only the first one is about the unit: a tree holding any
+ * record at all is already in the per-record layout, so the pre-tree file is
+ * stale by definition and importing it over that tree would overwrite newer
+ * data. A question about one document in a table of many is a question the
+ * next document silently loses — which is exactly how a checklist could vanish
+ * on a boot whose tree was missing nothing but the marker, while its own
+ * `items.json` sat right there on disk. So: ANY record ends the probe, and the
+ * marker is a record like any other.
+ *
+ * Deleting the data root is therefore a real reset, and stays one: the tree
+ * comes back empty, and the probe has nothing to import because the migration
+ * that once read the old file moved it aside (see data-root.ts).
+ *
+ * The board document is written BEFORE the marker, so a crash mid-migration
+ * repeats a probe that is idempotent rather than skipping one that is not. The
+ * value handed back is re-read from the medium rather than assembled from what
+ * this function remembers writing, so a record it has no name for still comes
+ * back.
  * @param openUnit - the hub opener.
  * @param now - clock for the migration stamps.
  * @param log - diagnostic sink.
  * @param retire - the legacy-file retirement step; injected so the migration
  *  is testable without a filesystem, and so the production path stays the only
  *  caller of the real one.
- * @returns the open unit and the board it holds, or undefined when no hub.
+ * @returns the open unit and every document it holds, or undefined when no hub.
  */
 export async function openBoardUnit(
   openUnit: KvUnitOpener,
@@ -143,10 +180,8 @@ export async function openBoardUnit(
 ): Promise<OpenedBoard | undefined> {
   let unit = await openUnit(BOARD_UNIT_DESCRIPTOR)
   if (unit === undefined) return undefined
-  const documents = documentsOf(await unit.loadAll())
-  if (documents.board !== undefined || documents.meta !== undefined) {
-    return { unit, board: documents.board }
-  }
+  let documents = documentsOf(await unit.loadAll())
+  if (Object.keys(documents).length > 0) return { unit, documents }
 
   // ── one-time layout migration ───────────────────────────────────────────
   await unit.close()
@@ -169,7 +204,8 @@ export async function openBoardUnit(
     legacyImported: imported,
     legacyProbedAt: now,
   })
-  if (!imported) return { unit, board: undefined }
+  documents = documentsOf(await unit.loadAll())
+  if (!imported) return { unit, documents }
 
   const retired = await retire({
     unitName: BOARD_UNIT_NAME,
@@ -181,7 +217,7 @@ export async function openBoardUnit(
   if (retired.status === 'retired') {
     log(`[dsh-task-board] layout migration: legacy unit document moved to ${retired.retiredPath}`)
   }
-  return { unit, board: legacyBoard, retired }
+  return { unit, documents, retired }
 }
 
 /** Lease tuning: the client renews well inside the TTL; a dropped stream
@@ -217,13 +253,17 @@ export interface BoardServiceDeps {
 }
 
 /**
- * The host-side board truth: document + lease + relay. Every mutation runs
- * on one serialized write lane (the storage domain's single-write-chain
- * discipline), so commits from many replicas interleave in arrival order and
- * the merge grammar resolves them.
+ * The host-side truth: documents + lease + relay. Every mutation to every
+ * document runs on ONE serialized write lane (the storage domain's
+ * single-write-chain discipline — the unit serializes nothing and says so),
+ * so commits from many replicas interleave in arrival order and each
+ * document's merge grammar resolves them. One lane, not one per document: the
+ * two disciplines it buys are "the merge runs against the newest in-memory
+ * document" and "one write in flight at a time", and both are pinned by tests.
  */
 export class BoardDataService {
   private doc: BoardDoc = emptyBoardDoc(0)
+  private items: ItemsDoc = emptyItemsDoc(0)
   private unit: KvUnitLike | undefined
   private lease: { clientId: string; expiresAt: number; ttl: number; active: boolean; lastTouchAt: number } | undefined
   /** Live SSE connections per clientId. An open stream is the holder's
@@ -256,10 +296,10 @@ export class BoardDataService {
   }
 
   /**
-   * Open the persistence unit and load the document, running the one-time
-   * layout migration when the data root has never been written. Failure to
-   * open or read leaves the service unavailable (replicas fall back); a corrupt
-   * medium is normalized, never fatal.
+   * Open the persistence unit and load every document it holds, running the
+   * one-time layout migration when the data root has never been written.
+   * Failure to open or read leaves the service unavailable (replicas fall
+   * back); a corrupt medium is normalized per document, never fatal.
    */
   async init(): Promise<void> {
     if (this.started) return
@@ -275,7 +315,8 @@ export class BoardDataService {
         return
       }
       this.unit = opened.unit
-      this.doc = normalizeBoardDoc(opened.board, this.now())
+      this.doc = normalizeBoardDoc(opened.documents[BOARD_DOCUMENT], this.now())
+      this.items = normalizeItemsDoc(opened.documents[ITEMS_DOCUMENT], this.now())
       this.available = true
     } catch (error) {
       this.unit = undefined
@@ -300,6 +341,13 @@ export class BoardDataService {
     return this.doc
   }
 
+  /** The current authoritative checklist — the second document, with its own
+   *  revision and its own short-number counter (detached reads are the
+   *  caller's job). */
+  getItemsDoc(): ItemsDoc {
+    return this.items
+  }
+
   /**
    * Apply one replica commit through the merge grammar. The write lane
    * serializes commits; persistence completes before the response resolves
@@ -322,6 +370,38 @@ export class BoardDataService {
         }
       }
       this.broadcast({ type: 'commit', revision: next.revision, clientId: commit.clientId })
+      return next
+    })
+  }
+
+  /**
+   * Apply one replica commit to the CHECKLIST through its own merge grammar —
+   * the same lane, the same durability-before-ack order, the same no-op rule,
+   * and its own document file. A checklist change does not touch the board's
+   * revision, the board's record, or the board's change frame: two documents,
+   * two revisions, and one write lane.
+   *
+   * It broadcasts nothing, and that is the document's own fact rather than a
+   * gap: an SSE frame says WHAT changed, and saying which document changed is
+   * part of the frame's own shape (a board frame is about the board). No
+   * replica watches the checklist yet, so there is nothing to wake.
+   * @returns the authoritative checklist after the commit.
+   */
+  commitItems(commit: ItemsCommit): Promise<ItemsDoc> {
+    return this.enqueue(async () => {
+      const next = applyItemsCommit(this.items, commit, this.now())
+      if (next === this.items) return this.items
+      this.items = next
+      if (this.unit !== undefined) {
+        try {
+          await this.unit.putRecord(BOARD_UNIT_TABLE, ITEMS_DOCUMENT, next)
+        } catch (error) {
+          // Same trade as the board: memory moved, the medium lags one commit,
+          // the checklist stays live and the next commit writes the whole
+          // document.
+          this.log('[dsh-task-board] items document persist failed (memory keeps serving)', error)
+        }
+      }
       return next
     })
   }

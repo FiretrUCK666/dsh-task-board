@@ -1,6 +1,8 @@
 import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts';
+import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
 import { type RetireOptions, type RetireOutcome } from './data-root.ts';
 export type { BoardCommand, BoardEvent, LeaseState } from '../core/board-doc.ts';
+export type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
 /** Structural face of the storage hub's opened KV unit (no SDK import).
  *
  *  The real unit is `table + key` plus a DECLARED global slot, not a key-value
@@ -43,6 +45,10 @@ export declare const LEGACY_UNIT_VERSION = 1;
 export declare const BOARD_UNIT_TABLE = "documents";
 /** The document name holding the board truth. */
 export declare const BOARD_DOCUMENT = "board";
+/** The document name holding the checklist truth — the second synced document,
+ *  a sibling of the board rather than a view over it (its own revision, its own
+ *  short-number counter). */
+export declare const ITEMS_DOCUMENT = "items";
 /** The document name holding migration bookkeeping — the marker that lets a
  *  boot know it must never go looking for the legacy file again. */
 export declare const META_DOCUMENT = "meta";
@@ -52,33 +58,55 @@ export declare const META_DOCUMENT = "meta";
 export declare const BOARD_UNIT_DESCRIPTOR: BoardUnitDescriptor;
 /** The pre-tree whole-unit shape, opened only while migrating. */
 export declare const LEGACY_UNIT_DESCRIPTOR: BoardUnitDescriptor;
-/** What opening the unit produced. */
+/** What opening the unit produced.
+ *
+ *  `documents` is the WHOLE declared table, by document name — not a list of
+ *  documents this function knows about. Naming a document here is how that
+ *  document used to be dropped: a tree holding `items.json` but no `meta.json`
+ *  used to answer with the board alone, and the checklist was gone. So the
+ *  value is what the medium holds and the caller picks its own document out of
+ *  it; the next document needs a constant, not a change here. */
 export interface OpenedBoard {
     /** The live document-tree handle; every later write goes through it. */
     readonly unit: KvUnitLike;
-    /** The board document as read from the medium; absent means an empty board. */
-    readonly board: unknown;
+    /** Every record the declared table holds, by document name. */
+    readonly documents: Record<string, unknown>;
     /** Present only on the boot that ran the layout migration. */
     readonly retired?: RetireOutcome;
 }
 /**
- * Open the board unit, migrating the pre-tree whole-unit file exactly once.
+ * Open the unit, migrating the pre-tree whole-unit file exactly once.
  *
  * The migration must SEQUENCE two opens of one unit name, because the backend
- * gives a name exactly one live handle. It runs only when the tree carries no
- * `meta` marker, so every later boot reads the tree and never the old file:
- * without that marker a boot would re-read the whole old document on every
- * start, and a user who DELETES the data directory to reset would find the old
- * data coming back. The board document is written BEFORE the marker, so a crash
- * mid-migration repeats a probe that is idempotent rather than skipping one
- * that is not.
+ * gives a name exactly one live handle.
+ *
+ * THE QUESTION THIS ASKS IS "HAS THIS TREE EVER BEEN WRITTEN", NOT "IS THE
+ * MARKER THERE" and never "is THIS document there". Those are three different
+ * questions, and only the first one is about the unit: a tree holding any
+ * record at all is already in the per-record layout, so the pre-tree file is
+ * stale by definition and importing it over that tree would overwrite newer
+ * data. A question about one document in a table of many is a question the
+ * next document silently loses — which is exactly how a checklist could vanish
+ * on a boot whose tree was missing nothing but the marker, while its own
+ * `items.json` sat right there on disk. So: ANY record ends the probe, and the
+ * marker is a record like any other.
+ *
+ * Deleting the data root is therefore a real reset, and stays one: the tree
+ * comes back empty, and the probe has nothing to import because the migration
+ * that once read the old file moved it aside (see data-root.ts).
+ *
+ * The board document is written BEFORE the marker, so a crash mid-migration
+ * repeats a probe that is idempotent rather than skipping one that is not. The
+ * value handed back is re-read from the medium rather than assembled from what
+ * this function remembers writing, so a record it has no name for still comes
+ * back.
  * @param openUnit - the hub opener.
  * @param now - clock for the migration stamps.
  * @param log - diagnostic sink.
  * @param retire - the legacy-file retirement step; injected so the migration
  *  is testable without a filesystem, and so the production path stays the only
  *  caller of the real one.
- * @returns the open unit and the board it holds, or undefined when no hub.
+ * @returns the open unit and every document it holds, or undefined when no hub.
  */
 export declare function openBoardUnit(openUnit: KvUnitOpener, now: number, log: (message: string, error?: unknown) => void, retire?: (options: RetireOptions) => Promise<RetireOutcome>): Promise<OpenedBoard | undefined>;
 /** Lease tuning: the client renews well inside the TTL; a dropped stream
@@ -110,14 +138,18 @@ export interface BoardServiceDeps {
     log?: (message: string, error?: unknown) => void;
 }
 /**
- * The host-side board truth: document + lease + relay. Every mutation runs
- * on one serialized write lane (the storage domain's single-write-chain
- * discipline), so commits from many replicas interleave in arrival order and
- * the merge grammar resolves them.
+ * The host-side truth: documents + lease + relay. Every mutation to every
+ * document runs on ONE serialized write lane (the storage domain's
+ * single-write-chain discipline — the unit serializes nothing and says so),
+ * so commits from many replicas interleave in arrival order and each
+ * document's merge grammar resolves them. One lane, not one per document: the
+ * two disciplines it buys are "the merge runs against the newest in-memory
+ * document" and "one write in flight at a time", and both are pinned by tests.
  */
 export declare class BoardDataService {
     private readonly deps;
     private doc;
+    private items;
     private unit;
     private lease;
     /** Live SSE connections per clientId. An open stream is the holder's
@@ -142,10 +174,10 @@ export declare class BoardDataService {
     readonly bootedAt: number;
     constructor(deps?: BoardServiceDeps);
     /**
-     * Open the persistence unit and load the document, running the one-time
-     * layout migration when the data root has never been written. Failure to
-     * open or read leaves the service unavailable (replicas fall back); a corrupt
-     * medium is normalized, never fatal.
+     * Open the persistence unit and load every document it holds, running the
+     * one-time layout migration when the data root has never been written.
+     * Failure to open or read leaves the service unavailable (replicas fall
+     * back); a corrupt medium is normalized per document, never fatal.
      */
     init(): Promise<void>;
     /**
@@ -157,6 +189,10 @@ export declare class BoardDataService {
     ensureInit(): Promise<void>;
     /** The current authoritative document (detached reads are the caller's job). */
     getDoc(): BoardDoc;
+    /** The current authoritative checklist — the second document, with its own
+     *  revision and its own short-number counter (detached reads are the
+     *  caller's job). */
+    getItemsDoc(): ItemsDoc;
     /**
      * Apply one replica commit through the merge grammar. The write lane
      * serializes commits; persistence completes before the response resolves
@@ -164,6 +200,20 @@ export declare class BoardDataService {
      * @returns the authoritative document after the commit.
      */
     commit(commit: BoardCommit): Promise<BoardDoc>;
+    /**
+     * Apply one replica commit to the CHECKLIST through its own merge grammar —
+     * the same lane, the same durability-before-ack order, the same no-op rule,
+     * and its own document file. A checklist change does not touch the board's
+     * revision, the board's record, or the board's change frame: two documents,
+     * two revisions, and one write lane.
+     *
+     * It broadcasts nothing, and that is the document's own fact rather than a
+     * gap: an SSE frame says WHAT changed, and saying which document changed is
+     * part of the frame's own shape (a board frame is about the board). No
+     * replica watches the checklist yet, so there is nothing to wake.
+     * @returns the authoritative checklist after the commit.
+     */
+    commitItems(commit: ItemsCommit): Promise<ItemsDoc>;
     /**
      * Acquire or renew the engine lease. Liveness is the leaseState view (an
      * open SSE stream or any board API call keeps the holder alive); a free or
