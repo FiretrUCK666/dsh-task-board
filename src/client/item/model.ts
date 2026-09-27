@@ -128,9 +128,11 @@ export function itemRowViewOf(item: ItemRecord, linkedRunning: boolean, now: num
  *
  * The reader is scanning, not auditing, so the order is: what is happening
  * now, what is waiting, what is stuck, what is finished — and inside a group,
- * the reader's own manual order (`order`) first, then the nearest deadline,
- * then the newest. Nothing here is stored; it is a pure function of the
- * document.
+ * the nearest deadline first, then the most recently touched. Nothing here is
+ * stored; it is a pure function of the document. There is deliberately no
+ * reader-movable order: `ItemRecord` has no `order` field, because a list in
+ * a 300px column cannot offer a drag affordance honestly, and a stored order
+ * nobody can move is a lie about who arranged it.
  * @param items - every item in the document.
  * @param filter - what to keep.
  * @param linkedRunning - per-item running flag, keyed by the board card id.
@@ -263,6 +265,89 @@ export function removeItem(items: readonly ItemRecord[], id: string): readonly I
   const out = items.slice()
   out.splice(at, 1)
   return out
+}
+
+/**
+ * A fresh row, ready to be appended.
+ *
+ * The id is MINTED HERE and the short number is NOT. That split is the whole
+ * point: the merge grammar keys on the id, and a client-minted uuid cannot
+ * collide with another device's. The short number is the document's to hand
+ * out — `assignItemRefs` fills in anything missing or already taken — so this
+ * row arrives as `ref: 0`, meaning "nobody has numbered me yet", and the
+ * number the reader sees is the one the host settled on. Minting a number here
+ * would be two devices picking the same one and the host having to undo it.
+ * @param input - what the reader typed.
+ * @param now - the creation clock.
+ * @param id - the identity, minted by the caller.
+ * @returns a row the document will accept.
+ */
+export function newItem(
+  input: Pick<ItemRecord, 'title' | 'body' | 'notes' | 'status' | 'priority'> & Partial<Pick<ItemRecord, 'steps' | 'tags'>>,
+  now: number,
+  id: string,
+): ItemRecord {
+  return {
+    id,
+    ref: 0,
+    title: input.title.trim(),
+    body: input.body.trim(),
+    notes: input.notes.trim(),
+    steps: input.steps ?? [],
+    status: input.status,
+    priority: input.priority,
+    tags: input.tags ?? [],
+    startsAfter: undefined,
+    dueAt: undefined,
+    hardDueAt: undefined,
+    taskId: undefined,
+    origin: { source: 'human', at: now },
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+/**
+ * Mint a row identity.
+ *
+ * `crypto.randomUUID` is a secure-context API and the harness is served from
+ * a loopback origin, so this is the path that always runs; the composed
+ * fallback exists so a row is never left without an identity rather than
+ * failing a note-taking gesture over a browser quirk.
+ * @returns a fresh identity.
+ */
+export function newItemId(): string {
+  const webCrypto = globalThis.crypto
+  if (typeof webCrypto?.randomUUID === 'function') return webCrypto.randomUUID()
+  const bytes = webCrypto?.getRandomValues?.(new Uint8Array(16)) ?? Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256))
+  bytes[6] = ((bytes[6] as number) & 0x0f) | 0x40
+  bytes[8] = ((bytes[8] as number) & 0x3f) | 0x80
+  const hex = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+/**
+ * Append one fresh row, or refuse an empty one.
+ *
+ * A note with no words in it is not a note, and the empty state promises you
+ * can write down a thought — so the gesture that creates the row is the same
+ * gesture that writes the first words. Returning the SAME array on refusal is
+ * the same no-op discipline every other edit here follows.
+ * @param items - the current list.
+ * @param input - what the reader typed.
+ * @param now - the creation clock.
+ * @returns the next list and the row that was added.
+ */
+export function addItem(
+  items: readonly ItemRecord[],
+  input: Pick<ItemRecord, 'title' | 'body' | 'notes' | 'status' | 'priority'>,
+  now: number,
+): { readonly items: readonly ItemRecord[]; readonly added: ItemRecord | undefined } {
+  // Nothing is written and nothing is cleared: the caller keeps what it typed
+  // so the reader can finish the thought instead of losing it to a refusal.
+  if (input.title.trim() === '' && input.body.trim() === '') return { items, added: undefined }
+  const added = newItem(input, now, newItemId())
+  return { items: [...items, added], added }
 }
 
 /** The storage key for the reader's chosen density. */

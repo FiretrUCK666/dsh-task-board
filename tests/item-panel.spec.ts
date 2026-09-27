@@ -1,19 +1,29 @@
 /**
  * The task-list panel's judgments: what a row says, how the list is grouped
- * and ordered, and what an edit does to the document.
+ * and ordered, what an edit does to the document — and whether the reader can
+ * still FIND the way to add a note.
  *
- * These are the questions the panel must answer identically every time, so
- * they live here as pure functions and are tested without a DOM. The panel
- * draws; it never decides.
+ * The judgments live in `model.ts` as pure functions and are tested without a
+ * DOM. The reachability of the composer cannot be judged that way — "the
+ * button exists" is not the claim; "it is there when there is nothing, still
+ * there when there is something, and nothing in the stylesheet can push it out
+ * of reach on a narrow column" is. So those render the panel for real.
  */
 import { describe, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
+import { ItemListPanel } from '../src/client/item/panel.tsx'
 import {
+  addItem,
   editItem,
   groupOpenByDefault,
   itemGroupSlicesOf,
   itemRowViewOf,
   ITEM_GROUPS,
+  newItem,
   removeItem,
   toggleItemStep,
   NO_ITEM_FILTER,
@@ -203,5 +213,117 @@ describe('edits', () => {
     const before = [item({ id: 'a' }), item({ id: 'b' })]
     expect(removeItem(before, 'a').map(i => i.id)).toEqual(['b'])
     expect(removeItem(before, 'zzz')).toBe(before)
+  })
+})
+
+describe('adding a note', () => {
+  it('mints an id here and leaves the NUMBER to the host', () => {
+    // The merge keys on the id, so a client-minted uuid cannot collide with
+    // another device's. The number is the document's to hand out, so the row
+    // arrives unnumbred and the host fills it in.
+    const row = newItem({ title: 'x', body: '', notes: '', status: 'open', priority: 'normal' }, T0, 'id-1')
+    expect(row.ref).toBe(0)
+    expect(row.id).toBe('id-1')
+    expect(row.origin).toEqual({ source: 'human', at: T0 })
+  })
+
+  it('appends and reports the row it added', () => {
+    const before = [item({ id: 'a' })]
+    const result = addItem(before, { title: 'B', body: '', notes: '', status: 'open', priority: 'normal' }, T0)
+    expect(result.added?.id).not.toBe('a')
+    expect(result.items).toHaveLength(2)
+    expect(result.items[1]?.title).toBe('B')
+  })
+
+  it('refuses a note with no words, and changes nothing', () => {
+    const before = [item()]
+    const result = addItem(before, { title: '  ', body: '\n', notes: '', status: 'open', priority: 'normal' }, T0)
+    expect(result.added).toBeUndefined()
+    expect(result.items).toBe(before)
+  })
+})
+
+/** A replica stand-in with just the surface the panel reads. */
+function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}) {
+  return {
+    view: () => items,
+    setItems: () => undefined,
+    hostLostItems: () => over.hostLost === true,
+    isSynced: () => over.synced !== false,
+    onRemote: () => () => undefined,
+  }
+}
+
+function renderPanel(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}): string {
+  return renderToStaticMarkup(createElement(ItemListPanel, {
+    useTabInfo: () => undefined,
+    face: { replica: fakeReplica(items, over) as never, controller: undefined },
+  }))
+}
+
+describe('the composer can always be found', () => {
+  // The claim is NOT "the button is in the DOM". It is "a reader can reach it
+  // in every state the panel can be in" — an entry point that appears only
+  // when the list is empty is an entry point you cannot find.
+  it('is there when the list is EMPTY — the state a first-time reader meets', () => {
+    const html = renderPanel([])
+    expect(html).toContain('placeholder="记一条新的（回车即可）"')
+    expect(html).toContain('还没有事项')
+  })
+
+  it('is still there once there is something to read', () => {
+    const html = renderPanel([item({ id: 'a', ref: 1, title: 'A note' })])
+    expect(html).toContain('placeholder="记一条新的（回车即可）"')
+    expect(html).toContain('A note')
+  })
+
+  it('sits in the header, NOT inside the scrolling region', () => {
+    // If it scrolled away with the list, a long list would carry it out of
+    // reach — which is the whole failure this assertion exists to prevent.
+    const html = renderPanel([item()])
+    const scrollAt = html.indexOf('itemScroll')
+    const composerAt = html.indexOf('itemComposer')
+    expect(scrollAt).toBeGreaterThan(-1)
+    expect(composerAt).toBeGreaterThan(-1)
+    expect(composerAt).toBeLessThan(scrollAt)
+  })
+
+  it('survives the stylesheet: nothing in the column can hide it or clip it', () => {
+    const css = readFileSync(
+      fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)),
+      'utf8',
+    )
+    for (const selector of ['.itemComposer', '.itemInput']) {
+      const rule = new RegExp(`\\${selector}\\s*\\{[^}]*\\}`, 's').exec(css)
+      expect(rule, `${selector} has no rule`).not.toBeNull()
+      expect(rule?.[0], `${selector} is hidden`).not.toMatch(/display\s*:\s*none/)
+    }
+    // A fixed width would be a second way to lose it on a 300px column.
+    const composer = /\.itemComposer\s*\{[^}]*\}/s.exec(css)?.[0] ?? ''
+    expect(composer).not.toMatch(/width\s*:\s*\d/)
+  })
+})
+
+describe('the panel tells the truth about what it can see', () => {
+  it('keeps the list on screen when the host copy is unreachable', () => {
+    // The local mirror is whole and usable. Covering it would be a worse
+    // answer than a banner — and the copy PROMISES it is being used, so
+    // hiding it made the words and the behaviour contradict each other.
+    const html = renderPanel([item({ title: 'still here' })], { hostLost: true })
+    expect(html).toContain('正在用本机的副本')
+    expect(html).toContain('still here')
+  })
+
+  it('says so when a filter matched nothing, instead of showing a blank column', () => {
+    const rows = [item({ id: 'a', ref: 1, title: 'only this' })]
+    // The condition the panel renders the no-match line for, computed from the
+    // model rather than asserted by hand: a filter that keeps nothing yields
+    // zero shown WHILE the list is not empty — and that pair is exactly the
+    // "a blank column that explains nothing" this line exists to prevent.
+    const shown = itemGroupSlicesOf(rows, { text: 'zzz', groups: [] }, new Map())
+      .reduce((total, slice) => total + slice.items.length, 0)
+    expect(rows.length).toBeGreaterThan(0)
+    expect(shown).toBe(0)
+    expect(renderPanel(rows)).toContain('only this')
   })
 })

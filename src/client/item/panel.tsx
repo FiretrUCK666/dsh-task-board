@@ -23,12 +23,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ItemRecord } from '../../core/item.ts'
 import { ITEM_PRIORITIES, ITEM_STATUSES } from '../../core/item.ts'
-import { t } from '../locales.ts'
+import { t, type TaskBoardKey } from '../locales.ts'
 import { Button, Icon } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
 import {
+  addItem,
   editItem,
   groupOpenByDefault,
+  ITEM_GROUPS,
   itemGroupSlicesOf,
   itemRowViewOf,
   NO_ITEM_FILTER,
@@ -43,6 +45,43 @@ import {
 } from './model.ts'
 import type { ItemListFace } from './register.tsx'
 import css from '../board.module.css'
+
+/**
+ * Closed-union → copy key, one entry each.
+ *
+ * These tables exist so NO key is ever built by a template string. A cast
+ * (`t(\`item.group.${g}\` as TaskBoardKey)`) silences the checker: a typo
+ * compiles, ships, and renders `undefined` at runtime — the same defect the
+ * board had at `TaskDetail.tsx:885`. A `Record<ItemGroup, TaskBoardKey>` is
+ * checked in both directions, so a renamed group or a renamed key is a
+ * compile error instead of a blank word in the panel.
+ */
+const GROUP_KEYS: Readonly<Record<ItemGroup, TaskBoardKey>> = {
+  inProgress: 'item.group.inProgress',
+  open: 'item.group.open',
+  blocked: 'item.group.blocked',
+  done: 'item.group.done',
+}
+const STATUS_KEYS: Readonly<Record<ItemRecord['status'], TaskBoardKey>> = {
+  open: 'item.status.open',
+  blocked: 'item.status.blocked',
+  done: 'item.status.done',
+}
+const PRIORITY_KEYS: Readonly<Record<ItemRecord['priority'], TaskBoardKey>> = {
+  low: 'item.priority.low',
+  normal: 'item.priority.normal',
+  high: 'item.priority.high',
+  urgent: 'item.priority.urgent',
+}
+const ORIGIN_KEYS: Readonly<Record<ItemRecord['origin']['source'], TaskBoardKey>> = {
+  human: 'item.origin.human',
+  ai: 'item.origin.ai',
+  import: 'item.origin.import',
+}
+const DENSITY_KEYS: Readonly<Record<ItemDensity, TaskBoardKey>> = {
+  compact: 'item.density.compact',
+  comfy: 'item.density.comfy',
+}
 
 /** The panel's props: the slot's own tab hook plus the face we inject. */
 export interface ItemListPanelProps {
@@ -73,7 +112,7 @@ function useDensity(): [ItemDensity, (next: ItemDensity) => void] {
 
 /** How a group reads in the reader's language. */
 function groupLabel(group: ItemGroup): string {
-  return t(`item.group.${group}` as Parameters<typeof t>[0])
+  return t(GROUP_KEYS[group])
 }
 
 /** One row of the list. Clicking it opens level 1 in place. */
@@ -106,6 +145,7 @@ function ItemRow(props: {
         aria-controls={regionId}
         onClick={onToggle}
       >
+        <span className={css.itemStateMark} aria-hidden="true" />
         <span className={css.itemRef}>{ref}</span>
         <span className={css.itemTitle}>{title}</span>
         {meta.kind === 'due' && (
@@ -181,7 +221,7 @@ function ItemRow(props: {
                 value={item.status}
                 onChange={e => onEdit({ status: e.target.value as ItemRecord['status'] })}
               >
-                {ITEM_STATUSES.map(status => <option key={status} value={status}>{t(`item.status.${status}` as Parameters<typeof t>[0])}</option>)}
+                {ITEM_STATUSES.map(status => <option key={status} value={status}>{t(STATUS_KEYS[status])}</option>)}
               </select>
             </ItemField>
             <ItemField label={t('item.field.priority')}>
@@ -190,13 +230,13 @@ function ItemRow(props: {
                 value={item.priority}
                 onChange={e => onEdit({ priority: e.target.value as ItemRecord['priority'] })}
               >
-                {ITEM_PRIORITIES.map(priority => <option key={priority} value={priority}>{t(`item.priority.${priority}` as Parameters<typeof t>[0])}</option>)}
+                {ITEM_PRIORITIES.map(priority => <option key={priority} value={priority}>{t(PRIORITY_KEYS[priority])}</option>)}
               </select>
             </ItemField>
           </div>
           <div className={css.itemActions}>
             <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>
-              {t(`item.origin.${item.origin.source}` as Parameters<typeof t>[0])}
+              {t(ORIGIN_KEYS[item.origin.source])}
             </Chip>
             <Button variant="dangerGhost" onClick={onRemove}>{t('item.remove')}</Button>
           </div>
@@ -233,24 +273,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const seen = useRef<Set<string>>(new Set())
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set())
 
-  // The replica is the only source of the list; a rebuild shows up here.
+  // The replica is the only source of the list; a rebuild shows up here. A
+  // replica that is gone empties the view, which is what "there is nothing to
+  // read here" honestly looks like.
   useEffect(() => {
     if (replica === undefined) {
       setItems([])
       return
     }
-    const read = () => {
-      const next = replica.view()
-      setItems(next)
-      const arrived = new Set<string>()
-      for (const item of next) {
-        if (!seen.current.has(item.id)) arrived.add(item.id)
-        seen.current.add(item.id)
-      }
-      if (arrived.size > 0) setFresh(arrived)
-    }
-    read()
-    return replica.onRemote(read)
   }, [replica])
 
   // Deadlines age in front of the reader; nothing else does.
@@ -287,6 +317,80 @@ export function ItemListPanel(props: ItemListPanelProps) {
     replica?.setItems(next)
   }, [items, replica])
 
+  const shown = useMemo(
+    () => slices.reduce((total, slice) => total + slice.items.length, 0),
+    [slices],
+  )
+
+  // The first read establishes what was ALREADY there. Only rows that arrive
+  // after that are new arrivals — otherwise every row flashes on open, and a
+  // flash that always fires stops meaning anything at all.
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (replica === undefined) return
+    const read = () => {
+      const next = replica.view()
+      setItems(next)
+      if (!seeded.current) {
+        for (const item of next) seen.current.add(item.id)
+        seeded.current = true
+        return
+      }
+      const arrived = new Set<string>()
+      for (const item of next) {
+        if (!seen.current.has(item.id)) arrived.add(item.id)
+        seen.current.add(item.id)
+      }
+      if (arrived.size > 0) setFresh(arrived)
+    }
+    read()
+    return replica.onRemote(read)
+  }, [replica])
+
+  const [draft, setDraft] = useState({ title: '', body: '', notes: '' })
+  const commitDraft = useCallback(() => {
+    const result = addItem(items, {
+      title: draft.title,
+      body: draft.body,
+      notes: draft.notes,
+      status: 'open',
+      priority: 'normal',
+    }, Date.now())
+    // A refusal changes nothing AND keeps the words, so the reader can finish
+    // the thought instead of losing it to a disabled button's surprise.
+    if (result.added === undefined) return
+    apply(result.items)
+    setDraft({ title: '', body: '', notes: '' })
+  }, [apply, draft, items])
+
+  // The composer lives in the header so it is reachable with the list on screen
+  // AND with an empty list on screen: an entry point that only appears when
+  // there is nothing to edit is an entry point you cannot find.
+  const composer = (
+    <div className={css.itemComposer}>
+      <input
+        className={css.itemInput}
+        value={draft.title}
+        placeholder={t('item.composeTitle')}
+        aria-label={t('item.composeTitle')}
+        onChange={e => setDraft({ ...draft, title: e.target.value })}
+        onKeyDown={e => {
+          if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+          e.preventDefault()
+          commitDraft()
+        }}
+      />
+      <Button
+        variant="primary"
+        size="sm"
+        onClick={commitDraft}
+        disabled={draft.title.trim() === '' && draft.body.trim() === ''}
+      >
+        {t('item.composeAdd')}
+      </Button>
+    </div>
+  )
+
   if (replica === undefined) {
     return (
       <div className={css.itemRoot} data-dsh-taskboard-view="">
@@ -306,7 +410,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
           onChange={e => setFilter({ ...filter, text: e.target.value })}
         />
         <div className={css.itemFilterRow}>
-          {(['inProgress', 'open', 'blocked', 'done'] as const).map(group => {
+          {ITEM_GROUPS.map(group => {
             const on = filter.groups.includes(group)
             return (
               <Button
@@ -325,19 +429,33 @@ export function ItemListPanel(props: ItemListPanelProps) {
           })}
         </div>
         <div className={css.itemHeaderRow}>
-          <p className={css.itemCount} aria-live="polite">{t('item.count', { n: String(items.length) })}</p>
+          {/* Two numbers, because "showing 2" and "of 40" are different facts
+              and one of them alone is how a filter looks like it did nothing. */}
+          <p className={css.itemCount} aria-live="polite">
+            {filtering
+              ? t('item.countFiltered', { shown: String(shown), total: String(items.length) })
+              : t('item.count', { n: String(items.length) })}
+          </p>
           <SegmentedDensity value={density} onChange={chooseDensity} />
         </div>
+        {composer}
       </header>
 
-      {/* Reading in-flight and unreachable are different facts and say so. */}
+      {/* Reading in-flight and unreachable are different facts, and NEITHER one
+          hides the list: the local mirror is whole and usable, so covering it
+          would be a worse answer than a banner. */}
       {lostHost && <p className={css.itemState} role="status">{t('item.hostLost')}</p>}
       {!lostHost && syncing && <p className={css.itemState} role="status">{t('item.syncing')}</p>}
-      {!lostHost && !syncing && items.length === 0 && (
+
+      {items.length === 0 && (
         <p className={css.itemState}>{t('item.empty')}</p>
       )}
 
-      {!lostHost && items.length > 0 && (
+      {items.length > 0 && shown === 0 && (
+        <p className={css.itemState}>{t('item.noMatch')}</p>
+      )}
+
+      {items.length > 0 && shown > 0 && (
         <div className={css.itemScroll}>
           {slices.map(slice => {
             const isCollapsed = collapsed.has(slice.group)
@@ -402,7 +520,7 @@ function SegmentedDensity(props: { readonly value: ItemDensity; readonly onChang
           pressed={props.value === density}
           onClick={() => props.onChange(density)}
         >
-          {t(`item.density.${density}` as Parameters<typeof t>[0])}
+          {t(DENSITY_KEYS[density])}
         </Button>
       ))}
     </div>

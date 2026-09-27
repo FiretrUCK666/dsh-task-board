@@ -7737,3 +7737,56 @@ textarea.itemInput {
     min-height: 44px;
   }
 }
+
+/* State is legible at rest, in a 300px column, without a click.
+   SHAPE FIRST, COLOUR SECOND. A filled dot says "there is a state" to
+   everyone; the colour says WHICH one, to everyone who can see it. Carrying
+   the state in colour alone would fail for a reader who cannot separate
+   them — and "I cannot tell a done note from a to-do note" is the failure
+   this whole list exists to prevent. The text glyph repeats the state for the
+   same reason: colour is never the only channel. */
+
+.itemStateMark {
+  flex: none;
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: var(--dsh-tb-pill);
+  border: 1px solid var(--dsh-tb-border);
+}
+
+.itemRow[data-status='inProgress'] .itemStateMark {
+  background: var(--dsh-tb-attention);
+  border-color: var(--dsh-tb-attention);
+}
+
+.itemRow[data-status='blocked'] .itemStateMark {
+  background: var(--dsh-tb-danger);
+  border-color: var(--dsh-tb-danger);
+}
+
+.itemRow[data-status='done'] .itemStateMark {
+  background: transparent;
+  border-color: var(--dsh-tb-text-3);
+}
+
+/* A finished row recedes, but it does not vanish and it does not grey its
+   words out of reading: the title keeps the first text tone. */
+.itemRow[data-status='done'] .itemTitle {
+  color: var(--dsh-tb-text-2);
+}
+
+.itemRow[data-status='blocked'] .itemTitle {
+  color: var(--dsh-tb-text-1);
+}
+
+.itemComposer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.itemComposer > .itemInput {
+  flex: 1 1 120px;
+  min-inline-size: 0;
+}
