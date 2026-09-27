@@ -276,7 +276,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | **插件 id**（行 id / 文件夹名 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 两个 slot 的 id） | `dsh-task-board` |
 | **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / bundle 注册 id / `/plugins/<包名>/client.js`） | 以 `package.json` 的 `name` 为准（当前 `@firetruck666/dsh-task-board`，**含作用域**） |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
-| 看板数据路由（前缀） | `/api/dsh-task-board/board`（`/lease` `/command` `/events` SSE 子路径） |
+| 看板数据路由（前缀） | `/api/dsh-task-board/board`（看板本身在根 tail；`/items` 是第二份文档；`/lease` `/command` `/events` SSE 子路径） |
 | 其余 host 路由 | `/api/dsh-task-board/session-state`、`/update`、`/client-report` |
 | host 存储单元名 | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board/` **目录**；`per-record` 布局下单元名就是目录名，而平台只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**——这就是数据根叫 `dsh_task_board` 而不是 `dsh-task-board` 的原因） |
 | 单元内文档名 | `documents/<name>.json`（`board` 是看板真相，`meta` 是迁移标记；加一种新数据 = 加一个文档名，不改既有文件） |
@@ -394,13 +394,15 @@ schema 就是给同一件事再加一个控件。
   不注入 `systemPrompt`；无图片路由、无设置路由**。
 - `src/host/http-json.ts`：全部路由共用的信封与请求体读取（一个有界实现，禁各写一套）。
 - `src/host/*-route.ts`：纯 `create*Handler`（可注入测试），服务一律 `ctx.get`。
-- `src/host/board-service.ts` + `board-route.ts`：**BoardDoc 真相服务**（持有 + storage hub 持久化 + 先落盘后应答 + SSE；路由见命名矩阵；缺 hub 则 localStorage 模式）。合并文法见核心层 `board-doc.ts`。
+- `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**（持有 + storage hub 持久化 + 先落盘后应答 + SSE；路由见命名矩阵；缺 hub 则 localStorage 模式）。两份文档由同一个 service 持有，因为同名单元同时只能有一个活句柄；写车道也只有一条。合并文法见核心层 `board-doc.ts` 与 `items-doc.ts`（同一个合并核）。
   存储单元是 `per-record` 布局的**文档树**，每个文档一个 JSON 文件（见命名矩阵）。**KvUnit
   不是键值对接口**，是 `table + key` + 「声明过的」global 槽：`loadAll` / `putRecord` /
   `deleteRecord` / `backupRecord?` / `setGlobal` / `close`，没有 `get`/`set`/`keys`。
   `openBoardUnit` 是单元打开与一次性布局迁移的唯一入口：同名单元同时只能有一个活句柄，所以
-  旧的整体文件与新文档树**必须顺序开关**；`meta` 文档是「别再找旧文件了」的标记，没有它每次
-  开机都会重读整份旧文档，而删掉数据根想重置的用户会眼看着旧数据自己回来。
+  旧的整体文件与新文档树**必须顺序开关**。迁移只对**完全空树**发生，判据是「这棵树有没有写过」
+  而**不是**「某个文档在不在」——`meta` 只是记录之一：树里有任何一条记录就说明新布局已生效，
+  旧文件一律不再读回，哪怕它真的还在盘上（那也是陈旧的，重导会盖掉更新的数据）。删掉数据根
+  因此仍是一次真正的重置。
 - `src/host/data-root.ts`：**全插件唯一自己碰介质的地方**，只做一件事——把布局迁移前的旧
   整体文件改名让位。三道守卫缺一不可：数据必须已经落在新位置、文件必须确实是本单元那个版本
   的文档（别人的同名文件原样不动）、目标名必须没被占。**改名不是删除**（字节留着，就是这次
