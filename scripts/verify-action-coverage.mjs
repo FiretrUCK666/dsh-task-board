@@ -157,55 +157,65 @@ const DEBT = 'DEBT: '
 const NOT_FOR_MODEL = 'NOT-FOR-THE-MODEL: '
 const INTERNAL = {
   // --- read projections: they change nothing, so they are not actions ---------
-  getSnapshot: '读投影：整份看板快照',
-  linkedOf: '读投影：卡上的会话行',
-  sessionsOf: '读投影：这张卡的会话列表',
-  sessionTitle: '读投影：会话显示名',
-  sessionInfo: '读投影：会话静态信息',
-  sessionConfig: '读投影：会话当前配置（活投影）',
-  sessionLabelsOf: '读投影：工作区归属标签',
-  sessionActiveOf: '读投影：会话是否还在工作（活性层）',
-  liveStateOf: '读投影：这张卡此刻的活性判决（三值，panel 只在明确 `running` 时显示进行中，看不见的 `unknown` 不写成在跑）。任务清单的「在不在跑」只从这里取——同一个问题只许有一个答案。',
-  sessionAvailability: '读投影：会话是否可用（唯一判据）',
-  pendingInteractionOf: '读投影：挂起的交互',
-  questionPendingOf: '读投影：待作答的问题',
-  relatedSessionIdSet: '读投影：相关会话集合',
-  externalKindOf: '读投影：这条 id 是不是从侧栏拖进来的外源',
-  boundSourceTitleOf: '读投影：绑源的显示名',
-  offerableSessionGroups: '读投影：可选会话的分组',
-  goalVerbs: '读投影：目标相关动词（走原生外壳）',
-  listTemplates: '读投影：预设列表',
-  presetStore: '读投影：排期预设库',
-  runPresetStore: '读投影：运行配置预设库',
-  runCatalog: '读投影：斜杠命令目录',
-  referenceSources: '读投影：引用来源表',
-  referenceSessionOf: '读投影：这张卡引用的会话',
-  referenceSessionCatalog: '读投影：引用会话目录',
-  loadTranscript: '读投影：会话尾部',
-  loadTranscriptPage: '读投影：更早一页会话',
-  loadImage: '读投影：图片字节（只读，不落盘）',
-  canRecheckSeat: '读投影：能不能重查更新席位',
+  // The shared test, stated ONCE so the rows below do not repeat it: calling one
+  // of these twice with the same arguments leaves every document and the host
+  // exactly where it was. That is what makes it a read. **A new read goes here;
+  // the moment one of them starts changing a document, it stops being a read and
+  // must become a catalog action** — that is the only way a row leaves this list.
+  getSnapshot: '整份看板快照（含卡片、巡航、待审核数）',
+  linkedOf: '这张卡挂了哪些会话、会话行长什么样',
+  sessionsOf: '这张卡的会话列表（数量与归属）',
+  sessionTitle: '会话的显示名；缺失时返回 undefined，不是空串',
+  sessionInfo: '会话的静态信息（工作区、模型、创建时间）',
+  sessionConfig: '会话**此刻**的配置（活投影：只读会一直拿到最新值，不带任何历史拷贝）',
+  sessionLabelsOf: '会话的工作区归属标签（面板上那些胶囊）',
+  sessionActiveOf: '会话是否还在工作（活性层：会话自己或它召唤的后代有轮次在跑）',
+  liveStateOf: '这张卡此刻的活性判决（三值，panel 只在明确 `running` 时显示进行中，看不见的 `unknown` 不写成在跑）。任务清单的「在不在跑」只从这里取——同一个问题只许有一个答案。',
+  sessionAvailability: '会话是否可用。**这是「不可用」的唯一判据**（归档、已删除都走它），别处不要另写一套',
+  pendingInteractionOf: '会话上挂着的交互（审批 / 计划确认 / 提问）。**读它不是动作，作答才是**——作答是人的动作，在下面「决定不给模型」那一组里',
+  questionPendingOf: '这条会话待作答的问题。读可以，作答与取消同样在下面「决定不给模型」那一组',
+  relatedSessionIdSet: '与这张卡相关的会话集合（绑定 + 有轮次 + 工作区当前成员，减去已删除）',
+  externalKindOf: '这条 id 是不是从侧栏拖进来的外源（外源的标题可以不在卡里）',
+  boundSourceTitleOf: '绑定的来源（会话或工作区）显示成什么标题',
+  offerableSessionGroups: '还能加进这张卡的会话，按工作区分组（已归档的已排除）',
+  goalVerbs: '目标相关的动词，直接取自原生外壳——看板不拥有它们，所以也不可能有对应的动作',
+  listTemplates: '存过的模板有哪些（名字与类别），不返回模板内容',
+  presetStore: '排期预设库（新建任务时的 cron 候选）',
+  runPresetStore: '运行配置预设库（含哪个是默认）',
+  runCatalog: '斜杠命令目录（候选与描述），不发送任何命令',
+  referenceSources: '可用的 `@` 引用来源表（文件、文件夹、会话）',
+  referenceSessionOf: '这张卡在正文里引用的是哪条会话',
+  referenceSessionCatalog: '引用会话的候选目录',
+  loadTranscript: '读会话尾部这一段历史。**读历史不是动作**；往会话里发话才是（在目录里）',
+  loadTranscriptPage: '再往早读一页会话。同上，纯读；翻页按钮在界面上，不构成一个动作',
+  loadImage: '读一张图片的字节。读可以，**上传没有模型通道**（见下面「决定不给模型」那一组）',
+  canRecheckSeat: '现在能不能重查更新席位。它只回答「能不能」，**真的去查那一下是人的动作**（见下面「决定不给模型」那一组）',
   // --- subscriptions and lifecycle: wiring, not verbs -------------------------
-  subscribe: '订阅：快照变化通知',
-  subscribeQuestions: '订阅：问题变化通知',
-  subscribeGoalActivation: '订阅：目标上下膛通知',
-  start: '生命周期：装配时启动',
-  dispose: '生命周期：effect 清理时释放',
+  // Held by an effect, torn down with it. Nothing here is something a person or a
+  // model can ask for; they return an unsubscribe function and that IS the work.
+  subscribe: '订阅快照变化（返回退订函数）',
+  subscribeQuestions: '订阅待答问题变化（返回退订函数）',
+  subscribeGoalActivation: '订阅目标上膛/解甲（返回退订函数）',
+  start: '生命周期：装配时由 `ctx.effect` 调一次',
+  dispose: '生命周期：effect 清理时释放订阅、定时器与 SSE',
   // --- sync and engine plumbing: nobody clicks these --------------------------
-  applyRemote: '同步：并入远端写入（永不回写）',
-  setHostProto: '同步：协商协议代次',
-  setHostBoot: '同步：记录宿主启动时刻',
-  setEngine: '同步：记录本机是否持引擎',
-  applyScheduleNextRun: '调度器回报：给排期盖下一跳的戳',
-  setSchedulerHeartbeat: '调度器回报：心跳时刻',
-  setSchedulerSkips: '调度器回报：跳过档期统计',
-  tickCruise: '定时器驱动：巡航心跳',
-  tickSessionRules: '定时器驱动：会话规则心跳',
-  fireLoopRule: '定时器驱动：on-complete 续跑（界面无对应按钮）',
-  fireOnCompleteRules: '定时器驱动：跑完触发（界面无对应按钮）',
-  sendSessionMessage: '底层投递：评论与规则共用它，界面不直接调用',
-  recordNativeTurn: '观测记账：原生侧跑完一轮（不是人点的动作）',
-  recordActivityWake: '观测记账：原生侧活动唤醒（不是人点的动作）',
+  // Called by the sync engine, the scheduler or a timer — never by a person and
+  // never by the tool. A future one of these that DID become user-reachable
+  // leaves this list the same way a read does: it becomes an action.
+  applyRemote: '并入远端写入。**并进来之后永不回写**——这是多端同步的不变量，别为了「补齐」加回写',
+  setHostProto: '协商 host 协议代次（同步客户端在租约应答里拿到）',
+  setHostBoot: '记录 host 进程的启动时刻（用于「服务端未重启」提示）',
+  setEngine: '记录本机是否持有引擎席位（席位是排他的，写入前先读）',
+  applyScheduleNextRun: '调度器回报：给排期盖上下一跳的时间戳',
+  setSchedulerHeartbeat: '调度器回报心跳时刻',
+  setSchedulerSkips: '调度器回报被跳过的档期统计',
+  tickCruise: '定时器驱动：巡航窗口到点的开关与派发',
+  tickSessionRules: '定时器驱动：会话规则的到点检查',
+  fireLoopRule: '定时器驱动：on-complete 续跑。**界面上没有对应按钮**（自动化自己续自己）',
+  fireOnCompleteRules: '定时器驱动：一轮跑完后的规则触发。界面上同样没有按钮',
+  sendSessionMessage: '底层投递：评论与会话规则共用它。上层动作在目录里，**这一层不是**',
+  recordNativeTurn: '观测记账：原生侧那边跑完一轮。不是人点的动作，所以不在目录里',
+  recordActivityWake: '观测记账：原生侧活动唤醒。触发者是原生侧，不是人',
   // --- deliberately NOT offered to the model: real actions, product decisions -
   // Each one IS a thing a person can do from the board, and none of them is in
   // the catalog. That is a decision, not an oversight, and the reason has to
@@ -262,17 +272,9 @@ const INTERNAL = {
  */
 const NO_EXECUTION = 'NO-EXECUTION: '
 const PENDING_EXECUTION = {
-  'task.duplicate': NO_EXECUTION + '目录已承诺模型能复制一张卡，host 的执行路径还没接上',
   'task.comment': NO_EXECUTION + 'host 侧的执行路径还没接上；这条动作的效果不是一次运行，工具不会把它转发给引擎',
-  'task.cancelComment': NO_EXECUTION + '目录已承诺模型能撤掉排队的评论轮次，host 的执行路径还没接上',
-  'rule.create': NO_EXECUTION + '目录已承诺模型能建会话规则，host 的执行路径还没接上',
-  'rule.update': NO_EXECUTION + '目录已承诺模型能改会话规则，host 的执行路径还没接上',
   'session.create': NO_EXECUTION + 'host 侧的执行路径还没接上；这条动作的效果不是一次运行，工具不会把它转发给引擎',
-  'session.bind': NO_EXECUTION + '目录已承诺模型能挂来源会话/工作区，host 的执行路径还没接上',
   'session.rename': NO_EXECUTION + 'host 侧的执行路径还没接上；这条动作的效果不是一次运行，工具不会把它转发给引擎',
-  'preset.create': NO_EXECUTION + '目录已承诺模型能存预设，host 的执行路径还没接上',
-  'preset.update': NO_EXECUTION + '目录已承诺模型能改预设或设默认，host 的执行路径还没接上',
-  'preset.delete': NO_EXECUTION + '目录已承诺模型能删预设，host 的执行路径还没接上',
 }
 
 /** Scan roots: the UI half plus the controller, because the controller calls

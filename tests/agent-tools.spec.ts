@@ -349,6 +349,120 @@ describe('the four simple document actions, proven through the merge grammar', (
   })
 })
 
+describe('the five new document actions, proven through the merge grammar', () => {
+  it('cancelComment removes a QUEUED comment and refuses an injected one, saying why', async () => {
+    const board = face()
+    const round = (id: string, extra: Record<string, unknown>) => ({ id, sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined, comment: '一句话', ...extra })
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('有评论的卡'), executions: [round('q-queued', {}), round('q-sent', { injectedAt: NOW + 1 })] as never }] })
+    // The three preconditions are three FIELDS: a queued comment has neither
+    // injectedAt nor endedAt, and an injected one has no way back.
+    const queued = await runBatch(deps(board), { ops: [{ op: 'task.cancelComment', payload: { of: '有评论的卡', round: 'q-queued' } }] })
+    expect(queued.ok).toBe(true)
+    expect(board.getDoc().tasks[0]?.executions.map(entry => entry.id)).toEqual(['q-sent'])
+    // The likeliest thing a model tries: withdrawing what has already gone out.
+    const sent = await runBatch(deps(board), { ops: [{ op: 'task.cancelComment', payload: { of: '有评论的卡', round: 'q-sent' } }] })
+    expect(sent.ok).toBe(false)
+    expect(sent.reports[0]?.detail).toContain('撤不回来')
+  })
+
+  it('duplicate copies the text, disarms the schedule, and takes neither rules nor rounds', async () => {
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('源卡'), description: '详情', schedule: { enabled: true, mode: 'cron' as const, cron: '0 9 * * *', nextRunAt: 5, lastTriggeredAt: 6, maxRuns: 3, runCount: 2, primed: true }, rules: [{ id: 'r-1', sessionId: 's-1', instruction: 'x', trigger: 'cron' as const, cron: '0 9 * * *', send: 'queue' as const, enabled: true }], executions: [{ id: 'e-1', sessionId: 's-1', startedAt: NOW, endedAt: NOW, result: 'succeeded' as const, error: undefined }] as never }] })
+    await runBatch(deps(board), { ops: [{ op: 'task.duplicate', payload: { of: '源卡' } }] })
+    const tasks = board.getDoc().tasks
+    const copy = tasks[tasks.length - 1]!
+    expect(copy.id).not.toBe('t-源卡')
+    expect(copy.description).toBe('详情')
+    // The schedule CONFIG comes along; its automation state does not.
+    expect(copy.schedule).toMatchObject({ cron: '0 9 * * *', enabled: false, runCount: 0 })
+    expect(copy.schedule?.nextRunAt).toBeUndefined()
+    // Rules and rounds belong to the sessions THIS card owns — copying them
+    // would silently automate sessions the new card does not have.
+    expect(copy.rules).toBeUndefined()
+    expect(copy.executions).toEqual([])
+  })
+
+  it('session.bind records the source without expanding a workspace', async () => {
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [card('要挂来源的卡')] })
+    await runBatch(deps(board), { ops: [{ op: 'session.bind', payload: { of: '要挂来源的卡', workspace: 'w-1' } }] })
+    expect(board.getDoc().tasks[0]?.binds).toEqual([{ kind: 'workspace', workspaceId: 'w-1' }])
+    const again = await runBatch(deps(board), { ops: [{ op: 'session.bind', payload: { of: '要挂来源的卡', workspace: 'w-1' } }] })
+    expect(again.reports[0]?.detail).toContain('已经挂')
+  })
+
+  it('rule.create arms a rule the grammar will keep, and keeps the dead-arm laws', async () => {
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [card('要建规则的卡')] })
+    const created = await runBatch(deps(board), { ops: [{ op: 'rule.create', payload: { of: '要建规则的卡', session: 's-1', trigger: 'cron', cron: '0 9 * * *', usePrompt: 'true', send: 'queue' } }] })
+    expect(created.ok).toBe(true)
+    // WRITE-THEN-READ-BACK: the rule must come out of the MERGED document. An
+    // armed cron rule with no due slot is dropped by the row grammar, so a tool
+    // that wrote one would report success over a rule that does not exist —
+    // and the one-rule-per-session guard would not see it either.
+    const rules = board.getDoc().tasks[0]?.rules
+    expect(rules).toHaveLength(1)
+    expect(rules?.[0]?.sessionId).toBe('s-1')
+    expect(typeof rules?.[0]?.nextAt).toBe('number')
+    // A second definition for one session is two triggers racing.
+    const second = await runBatch(deps(board), { ops: [{ op: 'rule.create', payload: { of: '要建规则的卡', session: 's-1', cron: '0 9 * * *', usePrompt: 'true', send: 'queue' } }] })
+    expect(second.reports[0]?.detail).toContain('不要叠第二条')
+    // An expression with no computable next slot is refused rather than written
+    // as a rule that can never run.
+    const dead = await runBatch(deps(board), { ops: [{ op: 'rule.create', payload: { of: '要建规则的卡', session: 's-9', trigger: 'cron', cron: '不是 cron', usePrompt: 'true', send: 'queue' } }] })
+    expect(dead.reports[0]?.detail).toContain('永远不会跑')
+    // usePrompt and instruction are mutually exclusive.
+    const both = await runBatch(deps(board), { ops: [{ op: 'rule.create', payload: { of: '要建规则的卡', session: 's-2', cron: '0 9 * * *', usePrompt: 'true', instruction: '多余的话', send: 'queue' } }] })
+    expect(both.reports[0]?.detail).toContain('instruction')
+  })
+
+  it('rule.update changes the content and says where to look when the rule is not there', async () => {
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('有规则的卡'), rules: [{ id: 'r-1', sessionId: 's-1', instruction: '旧的话', trigger: 'cron' as const, cron: '0 9 * * *', send: 'queue' as const, enabled: true }] }] })
+    await runBatch(deps(board), { ops: [{ op: 'rule.update', payload: { of: '有规则的卡', rule: 'r-1', enabled: 'false' } }] })
+    const rule = board.getDoc().tasks[0]?.rules?.[0]
+    expect(rule?.enabled).toBe(false)
+    expect(rule?.cron).toBe('0 9 * * *')
+    const missed = await runBatch(deps(board), { ops: [{ op: 'rule.update', payload: { of: '有规则的卡', rule: 'nope', enabled: 'false' } }] })
+    expect(missed.ok).toBe(false)
+    expect(missed.reports[0]?.detail).toContain('taskboard_query')
+  })
+
+  it('preset.create stores a schedule preset in the schedule section, and a run one in the run section', async () => {
+    const board = face()
+    await runBatch(deps(board), { ops: [{ op: 'preset.create', payload: { kind: 'schedule', label: '每天早上', cron: '0 9 * * *' } }] })
+    await runBatch(deps(board), { ops: [{ op: 'preset.create', payload: { kind: 'run', label: '省token', config: { model: '小模型', reasoningEffort: 'low' } } }] })
+    // WRITE-THEN-READ-BACK on the merged document: two sections, two documents'
+    // worth of state, and an unreadable cron would have been stored and never
+    // fired.
+    const doc = board.getDoc()
+    expect(doc.schedulePresets.value.map(preset => preset.label)).toEqual(['每天早上'])
+    expect(doc.schedulePresets.value[0]?.cron).toBe('0 9 * * *')
+    expect(doc.runPresets.value.presets.map(preset => preset.name)).toEqual(['省token'])
+    expect(doc.runPresets.value.presets[0]?.config).toEqual({ model: '小模型', reasoningEffort: 'low' })
+    // A cron that cannot be computed is refused, not stored.
+    const bad = await runBatch(deps(board), { ops: [{ op: 'preset.create', payload: { kind: 'schedule', label: '坏的', cron: '不是 cron' } }] })
+    expect(bad.reports[0]?.detail).toContain('永远不会触发')
+    expect(board.getDoc().schedulePresets.value).toHaveLength(1)
+  })
+
+  it('preset.update edits the right section and drops a default that points at a deleted row', async () => {
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), schedulePresets: { value: [{ id: 'sp-1', label: '旧名', cron: '0 9 * * *' }], at: NOW }, runPresets: { value: { presets: [{ id: 'rp-1', name: '旧配置', config: { model: 'm' } }], defaultId: 'rp-1' }, at: NOW } })
+    await runBatch(deps(board), { ops: [{ op: 'preset.update', payload: { of: 'sp-1', label: '新名' } }] })
+    expect(board.getDoc().schedulePresets.value[0]?.label).toBe('新名')
+    expect(board.getDoc().schedulePresets.value[0]?.cron).toBe('0 9 * * *')
+    // Deleting the DEFAULT preset must not leave a default pointing at a row
+    // that is gone — the next run would fail with no explanation.
+    await runBatch(deps(board), { ops: [{ op: 'preset.delete', payload: { of: 'rp-1' } }] })
+    const doc = board.getDoc()
+    expect(doc.runPresets.value.presets).toEqual([])
+    expect(doc.runPresets.value.defaultId).toBeUndefined()
+    const missed = await runBatch(deps(board), { ops: [{ op: 'preset.delete', payload: { of: 'nope' } }] })
+    expect(missed.reports[0]?.detail).toContain('没有 id 为 nope 的预设')
+  })
+})
+
 describe('the prompt section', () => {
   it('is one fixed string at a fixed place — the cache depends on both', () => {
     expect(PROMPT_SECTION_NAME).toBe('tool:taskboard')

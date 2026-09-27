@@ -32,6 +32,37 @@ import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 
+// The encoding audit's self-test, dispatched BEFORE any other check runs so it
+// cannot be confused with a real result: a deliberately damaged copy must be
+// reported, by file and line. A gate that cannot be shown to bite is not
+// evidence of anything.
+if (process.argv.includes('--probe-encoding')) {
+  const damaged = [
+    { path: 'probe/replaced.md', bytes: Buffer.from('# ok\nbroken \uFFFD here\n', 'utf8') },
+    { path: 'probe/bom.md', bytes: Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('# ok\n', 'utf8')]) },
+    { path: 'probe/crlf.md', bytes: Buffer.from('# ok\r\nstill ok\n', 'utf8') },
+    { path: 'probe/watcher.cmd', bytes: Buffer.from('@echo off\r\nrem Windows batch keeps CRLF\n', 'utf8') },
+    { path: 'probe/clean.md', bytes: Buffer.from('# clean\n', 'utf8') },
+  ]
+  const found = damaged.flatMap(f => encodingFindings(f.path, f.bytes))
+  const expected = ['probe/replaced.md:2', 'probe/bom.md:1', 'probe/crlf.md:1']
+  const missing = expected.filter(want => !found.some(f => f.startsWith(want)))
+  if (missing.length > 0) {
+    console.error(`verify-standalone PROBE FAILED: the encoding audit did not report ${missing.join(', ')} — it does not bite, so it is not a check`)
+    process.exit(1)
+  }
+  if (found.some(f => f.includes('watcher.cmd'))) {
+    console.error('verify-standalone PROBE FAILED: CRLF in a .cmd was reported — .gitattributes exempts the Windows batch scripts')
+    process.exit(1)
+  }
+  if (found.some(f => f.includes('clean.md'))) {
+    console.error('verify-standalone PROBE FAILED: a clean file was reported')
+    process.exit(1)
+  }
+  console.log(`verify-standalone probe OK: the encoding audit bites on all three damages, names the file and the line, and stays quiet on the exempt .cmd and on a clean file (${found.length} finding(s) from the probe)`)
+  process.exit(0)
+}
+
 const [dirArg, pluginIdArg, packageNameArg] = process.argv.slice(2)
 if (!dirArg) {
   console.error('usage: node verify-standalone.mjs <plugin-dir> [plugin-id] [package-name]')
@@ -268,6 +299,59 @@ for (const file of textFiles) {
     if (match) failures.push(`${rel}: credential-shaped string ${JSON.stringify(`${match[0].slice(0, 20)}...`)}`)
   }
 }
+
+// --- 3c. encoding damage (the silent family) ---------------------------------
+
+/**
+ * Three checks that share one property, and that property is the reason they
+ * need a gate: **none of them changes what the code does.** A replacement
+ * character where a CJK glyph was meant, a UTF-8 BOM in front of the first
+ * line, a CRLF in a file the repo declares as LF — every one of those leaves
+ * the logic identical, so no functional test goes red and no editor shows
+ * anything unusual. They are found only by opening the file, on a platform
+ * where these three are everyday accidents (Windows, an editor that guesses
+ * the encoding, a shell redirect). A check that depends on someone remembering
+ * is a check that eventually does not run, so it lives here beside the emoji
+ * and leak audits — the same family, the same "what this repository ships".
+ *
+ * Pure: it takes bytes and a path, and returns sentences. The self-test drives
+ * it with a deliberately damaged copy, because a check that has only ever seen
+ * clean input cannot be told apart from one that cannot fail.
+ */
+export function encodingFindings(path, bytes) {
+  const out = []
+  const name = path.split(/[\\/]/).pop() ?? path
+  // `.gitattributes` declares the repo LF, with the Windows batch scripts as
+  // the one CRLF exception — so those two are exempt here for the same reason
+  // they are exempt there.
+  const crlfExempt = name.endsWith('.bat') || name.endsWith('.cmd')
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    out.push(`${path}:1: starts with a UTF-8 BOM — it is invisible in an editor and makes the first line unreadable to frontmatter and JSON parsers`)
+  }
+  const text = bytes.toString('utf8')
+  const at = text.indexOf('\uFFFD')
+  if (at !== -1) {
+    out.push(`${path}:${text.slice(0, at).split('\n').length}: contains U+FFFD (the replacement character) — some character in this file was already destroyed before it was written, and the damage is now permanent in the source`)
+  }
+  if (!crlfExempt) {
+    const crlf = text.indexOf('\r\n')
+    if (crlf !== -1) {
+      out.push(`${path}:${text.slice(0, crlf).split('\n').length}: has a CRLF line ending — .gitattributes declares this repository LF, and a stray CRLF ends up verbatim inside lib/client.js.map's embedded sources`)
+    }
+  }
+  return out
+}
+
+// Same skip reasoning as the audits above: this is about what the repository
+// ships. Committed artifacts under lib/ are generated — a CRLF there is caught
+// by the rebuild comparison, and its source is one of the files below.
+for (const file of textFiles) {
+  if (file === VERIFY_SELF) continue
+  if (IGNORED !== null && IGNORED.has(file)) continue
+  if (isArtifact(file)) continue
+  failures.push(...encodingFindings(relative(root, file).split(sep).join('/'), readFileSync(file)))
+}
+notes.push(`encoding audit: ${textFiles.length} text file(s) checked for U+FFFD, a UTF-8 BOM and CRLF`)
 
 // --- 4. runtime dependencies ------------------------------------------------
 

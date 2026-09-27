@@ -66,7 +66,25 @@ import {
 import { QUALIFIER_KEYS, completeBoardQuery } from '../../core/task-search.ts'
 import { clampCruiseLimit, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
 import { applyItemsCommit, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
-import { createTask, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { createTask, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import type { SessionRule } from '../../core/automation.ts'
+import { nextRunAtMs, isValidCron } from '../../core/schedule.ts'
+import type { SchedulePreset } from '../../core/presets.ts'
+import type { RunConfigPresetConfig, RunPresetsDocument } from '../../core/run-presets.ts'
+
+/** Read a run-config patch, keeping only the keys the preset model actually
+ *  has. An unknown key is dropped rather than stored: the section's grammar
+ *  would drop it too, so a silent loss here would be a lie about what landed. */
+function readRunConfig(raw: unknown): RunConfigPresetConfig {
+  if (typeof raw !== 'object' || raw === null) return {}
+  const source = raw as Record<string, unknown>
+  const config: RunConfigPresetConfig = {}
+  for (const key of ['workspaceId', 'provider', 'model', 'reasoningEffort', 'agentPreset', 'permission'] as const) {
+    const value = source[key]
+    if (typeof value === 'string' && value !== '') config[key] = value
+  }
+  return config
+}
 import { armSchedule, moveTaskToStatus, removeSessionFromTask, type TransitionResult } from '../../core/task-transitions.ts'
 import type { ItemRecord, ItemStep } from '../../core/item.ts'
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts'
@@ -317,7 +335,13 @@ function checkParams(id: ActionId, payload: Record<string, unknown>): string | u
       continue
     }
     if (p.optional === true) continue
-    if (p.requiredWhen !== undefined) return `当前情况下 ${name} 必填：${p.requiredWhen}`
+    // `requiredWhen` is a CONDITION in prose ("required unless the trigger is
+    // cron"), and this function cannot evaluate prose. Demanding the field
+    // anyway would refuse every call the condition does not apply to; the
+    // action's own case is the one that knows the condition, and it checks it
+    // with real facts before writing. So a conditional requirement is carried
+    // to the case, not enforced here.
+    if (p.requiredWhen !== undefined) continue
     return `${name} 必填：${p.about}`
   }
   return undefined
@@ -660,6 +684,197 @@ function applyOne(
       last = findTask()
       if (last === undefined) return `卡 ${String(payload.of)} 不存在。`
       return { doc, items, relay: true, task: last }
+    }
+    case 'task.cancelComment': {
+      // The three preconditions are THREE FIELDS, not a "state" value: a
+      // comment round still QUEUED has no `injectedAt` and no `endedAt`. Once
+      // injected the field simply has no way back — so the refusal says that,
+      // because the likeliest thing a model tries is withdrawing a comment
+      // that has already been sent.
+      const found = findTask()
+      if (found === undefined) return `卡 ${String(payload.of ?? '')} 不存在。`
+      const target = String(payload.round ?? '')
+      const round = found.executions.find(entry => entry.id === target)
+      if (round === undefined) return `这张卡上没有 id 为 ${target} 的轮次。`
+      if (round.comment === undefined) return `${target} 不是一条评论轮次，没法撤。`
+      if (round.injectedAt !== undefined) return `${target} 已经注入会话了，撤不回来——字段上没有撤回这条路。`
+      if (round.endedAt !== undefined) return `${target} 已经结束了，撤不回来。`
+      const next: TaskRecord = { ...found, executions: found.executions.filter(entry => entry.id !== target), updatedAt: now }
+      return { doc: { ...doc, tasks: doc.tasks.map(task => (task.id === found.id ? next : task)) }, items, task: next }
+    }
+    case 'task.duplicate': {
+      const found = findTask()
+      if (found === undefined) return `卡 ${String(payload.of)} 不存在。`
+      // A copy inherits the card's TEXT and its schedule CONFIG, never its
+      // automation state: rules and rounds belong to the sessions THIS card
+      // owns, and copying them would silently automate sessions the new card
+      // does not have. The schedule comes along disarmed for the same reason.
+      const schedule = found.schedule === undefined ? undefined : { ...found.schedule, enabled: false, runCount: 0, nextRunAt: undefined, lastTriggeredAt: undefined }
+      const copy: TaskRecord = {
+        ...found,
+        id: deps.uuid(),
+        executions: [],
+        rules: undefined,
+        viewedAt: undefined,
+        removedSessions: undefined,
+        sessionsOrder: undefined,
+        hidden: undefined,
+        schedule,
+        // Attachments deep-copied: sharing the array would let one card's
+        // edit rewrite the other's pictures.
+        promptImages: found.promptImages === undefined ? undefined : found.promptImages.map(image => ({ ...image })),
+        promptFiles: found.promptFiles === undefined ? undefined : found.promptFiles.map(file => ({ ...file })),
+        status: 'todo',
+        createdAt: now,
+        updatedAt: now,
+      }
+      return { doc: { ...doc, tasks: [...doc.tasks, copy] }, items, task: copy }
+    }
+    case 'session.bind': {
+      const found = findTask()
+      if (found === undefined) return `卡 ${String(payload.of)} 不存在。`
+      const session = payload.session === undefined ? undefined : String(payload.session)
+      const workspace = payload.workspace === undefined ? undefined : String(payload.workspace)
+      if (session === undefined && workspace === undefined) return '要给这张卡挂来源，给一个 session 或一个 workspace。'
+      const binds = taskBindsOf(found)
+      const bind: TaskBind = session === undefined
+        ? { kind: 'workspace', workspaceId: workspace as string }
+        : { kind: 'session', sessionId: session }
+      const keyOf = (b: TaskBind): string => (b.kind === 'session' ? `s:${b.sessionId}` : `w:${b.workspaceId}`)
+      if (binds.some(entry => keyOf(entry) === keyOf(bind))) return '这个来源已经挂在这张卡上了。'
+      // A workspace bind is a source/config association, not a subscription:
+      // it never expands to its members and does not follow them as they come
+      // and go. That is the folder case, deliberately.
+      const next: TaskRecord = { ...found, binds: [...binds, bind], bind: undefined, updatedAt: now }
+      return { doc: { ...doc, tasks: doc.tasks.map(task => (task.id === found.id ? next : task)) }, items, task: next }
+    }
+    case 'rule.create': {
+      const found = findTask()
+      if (found === undefined) return `卡 ${String(payload.of)} 不存在。`
+      const sessionId = String(payload.session ?? '')
+      if (sessionId === '') return '要给哪个会话建规则？给一个 session。'
+      const rules = found.rules ?? []
+      // One rule per session, by the law the board already holds: a second
+      // definition for one session is two triggers racing, not a feature.
+      if (rules.some(rule => rule.sessionId === sessionId)) {
+        return `这张卡对 ${sessionId} 已经有一条规则了。要改就改它（rule.update），不要叠第二条。`
+      }
+      const usePrompt = payload.usePrompt === true || payload.usePrompt === 'true'
+      const instruction = String(payload.instruction ?? '')
+      if (!usePrompt && instruction.trim() === '') return 'usePrompt 是 false 时必须给一句 instruction（用 true 就送这张卡自己的执行 Prompt）。'
+      if (usePrompt && instruction.trim() !== '') return 'usePrompt 是 true 时不用给 instruction——送的就是这张卡自己的 Prompt。'
+      const trigger = payload.trigger === 'on-complete' ? 'on-complete' : 'cron'
+      const cron = String(payload.cron ?? '')
+      if (trigger === 'cron' && cron.trim() === '') return 'trigger 是 cron 时必须给一个五段 cron 表达式。'
+      const send = payload.send === 'steer' ? 'steer' : 'queue'
+      // An ARMED cron rule needs a due slot, and the row grammar drops one
+      // without it — correctly: an armed rule that can never run is the dead
+      // arm this law exists to prevent. The slot is the SCHEDULER's number, so
+      // it is computed here with the scheduler's own function, never invented.
+      // An on-complete rule carries no slot at all, and the grammar refuses one
+      // that does.
+      const nextAt = trigger === 'cron' ? nextRunAtMs(cron, now) : undefined
+      if (trigger === 'cron' && nextAt === undefined) return `这个 cron 表达式算不出下次运行时间，建出来的规则永远不会跑，所以没有建。换一个表达式，或改成 on-complete。`
+      const rule: SessionRule = {
+        id: deps.uuid(), sessionId, instruction, usePrompt, trigger,
+        cron: trigger === 'cron' ? cron : '',
+        ...(nextAt === undefined ? {} : { nextAt }),
+        send,
+        enabled: true,
+      }
+      const next: TaskRecord = { ...found, rules: [...rules, rule], updatedAt: now }
+      return { doc: { ...doc, tasks: doc.tasks.map(task => (task.id === found.id ? next : task)) }, items, task: next }
+    }
+    case 'rule.update': {
+      const found = findTask()
+      if (found === undefined) return `卡 ${String(payload.of)} 不存在。`
+      const rules = found.rules ?? []
+      const target = String(payload.rule ?? '')
+      const at = rules.findIndex(rule => rule.id === target)
+      if (at < 0) return `这张卡上没有 id 为 ${target} 的规则。用 taskboard_query 先看这张卡挂了哪些会话。`
+      const rule = rules[at]!
+      const usePrompt = payload.usePrompt === undefined ? rule.usePrompt === true : payload.usePrompt === true || payload.usePrompt === 'true'
+      const instruction = payload.instruction === undefined ? rule.instruction : String(payload.instruction)
+      const trigger = payload.trigger === undefined ? rule.trigger : (payload.trigger === 'on-complete' ? 'on-complete' : 'cron')
+      const cron = payload.cron === undefined ? rule.cron : String(payload.cron)
+      const send = payload.send === undefined ? rule.send : (payload.send === 'steer' ? 'steer' : 'queue')
+      if (!usePrompt && instruction.trim() === '') return 'usePrompt 是 false 时必须留一句 instruction。'
+      if (trigger === 'cron' && cron.trim() === '') return 'trigger 是 cron 时必须有一个五段 cron 表达式。'
+      const next: SessionRule = { ...rule, usePrompt, instruction, trigger, cron: trigger === 'cron' ? cron : '', send, enabled: payload.enabled === undefined ? rule.enabled : payload.enabled === true || payload.enabled === 'true' }
+      const kept = [...rules]
+      kept[at] = next
+      const task: TaskRecord = { ...found, rules: kept, updatedAt: now }
+      return { doc: { ...doc, tasks: doc.tasks.map(row => (row.id === found.id ? task : row)) }, items, task }
+    }
+    case 'preset.create': {
+      const kind = payload.kind === 'run' ? 'run' : 'schedule'
+      const label = String(payload.label ?? '').trim()
+      if (label === '') return '预设要有一个名字（label）。'
+      if (kind === 'schedule') {
+        const cron = String(payload.cron ?? '').trim()
+        if (cron === '') return 'kind 是 schedule 时必须给一个五段 cron 表达式。'
+        if (!isValidCron(cron)) return `「${cron}」不是一个能算出来的五段 cron 表达式，所以没有存——存下来它也永远不会触发。`
+        // A preset is a NAME plus an expression; the ids are the document's to
+        // mint, and the section carries the write stamp.
+        const value: SchedulePreset[] = [...doc.schedulePresets.value, { id: deps.uuid(), label, cron }]
+        return { doc: { ...doc, schedulePresets: { value, at: now } }, items }
+      }
+      const config = readRunConfig(payload.config)
+      if (Object.keys(config).length === 0) return 'kind 是 run 时要给 config（workspaceId / provider / model / reasoningEffort / agentPreset / permission 至少一个）。'
+      const value: RunPresetsDocument = { presets: [...doc.runPresets.value.presets, { id: deps.uuid(), name: label, config }] }
+      return { doc: { ...doc, runPresets: { value, at: now } }, items }
+    }
+    case 'preset.update': {
+      const label = payload.label === undefined ? undefined : String(payload.label).trim()
+      const cron = payload.cron === undefined ? undefined : String(payload.cron).trim()
+      const config = payload.config === undefined ? undefined : readRunConfig(payload.config)
+      if (label === undefined && cron === undefined && config === undefined && payload.makeDefault === undefined) {
+        return '要改哪一样？给 label、cron、config，或 makeDefault。'
+      }
+      if (cron !== undefined && !isValidCron(cron)) return `「${cron}」不是一个能算出来的五段 cron 表达式，所以没有改。`
+      // Which section an edit lands in is a FACT read from the document —
+      // whichever list actually holds that id — not a guess from which fields
+      // the caller happened to send. Guessing here is how a rename lands on the
+      // wrong list and gets refused for a preset that exists.
+      const id = String(payload.of)
+      const inSchedule = doc.schedulePresets.value.some(preset => preset.id === id)
+      const inRun = doc.runPresets.value.presets.some(preset => preset.id === id)
+      if (!inSchedule && !inRun) return `没有 id 为 ${id} 的预设。`
+      if (inSchedule && inRun) return `${id} 同时出现在两类预设里——这不该发生，请报给维护者。`
+      let next = doc
+      if (inSchedule) {
+        const current = doc.schedulePresets.value
+        const at = current.findIndex(preset => preset.id === id)
+        const kept = [...current]
+        kept[at] = { ...kept[at]!, label: label ?? kept[at]!.label, cron: cron ?? kept[at]!.cron }
+        next = { ...next, schedulePresets: { value: kept, at: now } }
+      } else {
+        const current = doc.runPresets.value
+        const at = current.presets.findIndex(preset => preset.id === id)
+        const kept = [...current.presets]
+        kept[at] = { ...kept[at]!, name: label ?? kept[at]!.name, config: config ?? kept[at]!.config }
+        const makeDefault = payload.makeDefault === undefined ? undefined : payload.makeDefault === true || payload.makeDefault === 'true'
+        const value: RunPresetsDocument = { presets: kept, ...(makeDefault === undefined ? (current.defaultId === undefined ? {} : { defaultId: current.defaultId }) : (makeDefault ? { defaultId: kept[at]!.id } : { defaultId: undefined })) }
+        next = { ...next, runPresets: { value, at: now } }
+      }
+      return { doc: next, items }
+    }
+    case 'preset.delete': {
+      const id = String(payload.of)
+      const inSchedule = doc.schedulePresets.value.some(preset => preset.id === id)
+      const inRun = doc.runPresets.value.presets.some(preset => preset.id === id)
+      if (!inSchedule && !inRun) return `没有 id 为 ${id} 的预设。`
+      if (inSchedule && inRun) return `${id} 同时出现在两类预设里——这不该发生，请报给维护者。`
+      // A deleted preset is GONE, not disabled: unlike a card, nothing here
+      // keeps a tombstone, and a default pointing at a row that no longer
+      // exists would fail the next run with no explanation.
+      if (inSchedule) {
+        const value = doc.schedulePresets.value.filter(preset => preset.id !== id)
+        return { doc: { ...doc, schedulePresets: { value, at: now } }, items }
+      }
+      const current = doc.runPresets.value
+      const value: RunPresetsDocument = { presets: current.presets.filter(preset => preset.id !== id), ...(current.defaultId === id ? {} : (current.defaultId === undefined ? {} : { defaultId: current.defaultId })) }
+      return { doc: { ...doc, runPresets: { value, at: now } }, items }
     }
     case 'task.update': {
       const found = findTask()
