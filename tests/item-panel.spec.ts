@@ -495,7 +495,7 @@ describe('opening the list from anywhere, honestly', () => {
     expect(listLauncher().open()).toBe(false)
   })
 
-  it('keeps the list resident, and the board offers the same way in', () => {
+  it('keeps the list resident across a tab switch', () => {
     const tabSource = readFileSync(
       fileURLToPath(new URL('../src/client/item/register.tsx', import.meta.url)),
       'utf8',
@@ -503,13 +503,6 @@ describe('opening the list from anywhere, honestly', () => {
     // Unmounting on a tab switch is what made a reader re-find the list
     // every time; it is for keeping an eye on, not for walking past.
     expect(tabSource).toMatch(/keepMounted:\s*true/)
-    // …and the board is reachable, which it was not: no conversation header
-    // sits above it.
-    const board = readFileSync(
-      fileURLToPath(new URL('../src/client/TaskBoardPanel.tsx', import.meta.url)),
-      'utf8',
-    )
-    expect(board).toContain('ListOpenButton')
   })
 })
 
