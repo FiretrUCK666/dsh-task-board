@@ -10,6 +10,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createBoardTransport } from '../src/client/board-transport.ts'
+import { CHECKLIST_MIRROR_KEY, createChecklistMirror } from '../src/client/platform.ts'
 
 /** Where the GUI is served: at the origin root, and behind a reverse-proxy subpath. */
 const ORIGIN_ROOT = 'http://127.0.0.1:3080/'
@@ -101,5 +102,107 @@ describe('the board transport addresses the board route document-relatively', ()
     for (const url of [...fetches, stream]) {
       expect(new URL(url, SUBPATH_MOUNT).href.startsWith(`${SUBPATH_MOUNT}api/dsh-task-board/board`)).toBe(true)
     }
+  })
+})
+
+// The second document's two calls. A separate capture helper on purpose: the
+// board's own four URLs are pinned above and must stay exactly as they were —
+// adding the checklist to THAT list would silently rewrite an existing contract
+// instead of adding a new one.
+async function captureChecklistUrls(): Promise<{ urls: string[]; methods: string[] }> {
+  const urls: string[] = []
+  const methods: string[] = []
+  vi.stubGlobal('fetch', async (url: unknown, init?: { method?: string }) => {
+    urls.push(String(url))
+    methods.push(init?.method ?? 'GET')
+    return new Response(JSON.stringify({ ok: true, value: { available: true, revision: 3, doc: { revision: 3 } } }), {
+      headers: { 'content-type': 'application/json' },
+    })
+  })
+  const transport = createBoardTransport({ timeoutMs: 1_000 })
+  await transport.itemsFetch?.('c1', undefined)
+  await transport.itemsFetch?.('c1', 2)
+  await transport.itemsCommit?.({} as never)
+  return { urls, methods }
+}
+
+describe('the checklist transport', () => {
+  it('addresses the second document on the SAME route, at its own tail', async () => {
+    const { urls, methods } = await captureChecklistUrls()
+    expect(urls.map(url => new URL(url, ORIGIN_ROOT).href)).toEqual([
+      `${ORIGIN_ROOT}api/dsh-task-board/board/items?clientId=c1`,
+      `${ORIGIN_ROOT}api/dsh-task-board/board/items?clientId=c1&since=2`,
+      `${ORIGIN_ROOT}api/dsh-task-board/board/items`,
+    ])
+    expect(methods).toEqual(['GET', 'GET', 'POST'])
+    for (const url of urls) expect(url.startsWith('/')).toBe(false)
+  })
+
+  it('a hanging checklist call resolves undefined like every other failure', async () => {
+    hangingFetch()
+    const transport = createBoardTransport({ timeoutMs: 30 })
+    expect(await transport.itemsFetch?.('c1', undefined)).toBeUndefined()
+    expect(await transport.itemsCommit?.({} as never)).toBeUndefined()
+  })
+
+  it('a non-2xx checklist answer is not an ack (same as the board)', async () => {
+    vi.stubGlobal('fetch', async () => new Response('nope', { status: 502 }))
+    const transport = createBoardTransport({ timeoutMs: 1_000 })
+    expect(await transport.itemsCommit?.({} as never)).toBeUndefined()
+  })
+})
+
+describe('the checklist offline mirror', () => {
+  /** A localStorage stand-in that records the key it was asked for. */
+  function fakeStorage(initial: Record<string, string> = {}): Storage & { keys: string[] } {
+    const map = new Map(Object.entries(initial))
+    const keys: string[] = []
+    return {
+      keys,
+      get length() { return map.size },
+      clear: () => map.clear(),
+      getItem: (key: string) => { keys.push(key); return map.get(key) ?? null },
+      key: (index: number) => [...map.keys()][index] ?? null,
+      removeItem: (key: string) => { map.delete(key) },
+      setItem: (key: string, value: string) => { keys.push(key); map.set(key, value) },
+    }
+  }
+
+  it('uses the checklist\'s OWN key — a shared key would let one document overwrite the other', () => {
+    const storage = fakeStorage()
+    const mirror = createChecklistMirror(storage)
+    mirror.save([])
+    // And it round-trips through that same key, so the mirror really is the
+    // evidence the replica reads back.
+    expect(storage.keys).toEqual([CHECKLIST_MIRROR_KEY])
+    expect(mirror.load()).toEqual([])
+    // The frozen task-ledger key is a different name and stays untouched.
+    expect(CHECKLIST_MIRROR_KEY).not.toBe('dsh.taskBoard.v1')
+  })
+
+  it('a corrupted mirror starts empty and says why, never throws', () => {
+    const storage = fakeStorage({ [CHECKLIST_MIRROR_KEY]: 'not json' })
+    const mirror = createChecklistMirror(storage)
+    expect(mirror.load()).toEqual([])
+  })
+
+  it('an empty list round-trips as empty, not as corruption', () => {
+    const storage = fakeStorage({ [CHECKLIST_MIRROR_KEY]: '[]' })
+    expect(createChecklistMirror(storage).load()).toEqual([])
+  })
+
+  it('a store that throws degrades to a no-op mirror (a full disk never breaks the panel)', () => {
+    const hostile = {
+      get length(): number { throw new Error('denied') },
+      clear: () => { throw new Error('denied') },
+      getItem: () => { throw new Error('denied') },
+      key: () => { throw new Error('denied') },
+      removeItem: () => { throw new Error('denied') },
+      setItem: () => { throw new Error('denied') },
+    } as unknown as Storage
+    const mirror = createChecklistMirror(hostile)
+    expect(mirror.load()).toEqual([])
+    expect(() => mirror.save([])).not.toThrow()
+    expect(() => mirror.clear()).not.toThrow()
   })
 })

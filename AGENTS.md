@@ -386,29 +386,30 @@ schema 就是给同一件事再加一个控件。
 
 ## 架构（索引：职责与入口，机制细节以代码注释为准，不复述）
 
+这一节是**索引**，只回答「有什么、归谁、去哪读」：**机制只有一份，写在它所属的模块注释里**，
+下面出现的每个文件与函数名就是那个位置。同一律若在别处另有成文表述，以代码为准。
+
 ### host 半区（DSH 主进程）
 
 - `src/index.ts`：inject 只有 `webServer`；五个 `ctx.effect` 各注册一条路由（权限/看板/
   会话状态/更新/页面自报）。**没有 `Config` schema、没有 enable 检查**——启停是 profile 行
-  的 `disabled`，加载器只求值激活的行（见「启停机制全貌」）；**不向 agent 播报任何东西、
-  不注入 `systemPrompt`；无图片路由、无设置路由**。
+  的 `disabled`（见「启停机制全貌」）；**不向 agent 播报任何东西、不注入 `systemPrompt`；
+  无图片路由、无设置路由**。
 - `src/host/http-json.ts`：全部路由共用的信封与请求体读取（一个有界实现，禁各写一套）。
 - `src/host/*-route.ts`：纯 `create*Handler`（可注入测试），服务一律 `ctx.get`。
-- `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**（持有 + storage hub 持久化 + 先落盘后应答 + SSE；路由见命名矩阵；缺 hub 则 localStorage 模式）。两份文档由同一个 service 持有，因为同名单元同时只能有一个活句柄；写车道也只有一条。合并文法见核心层 `board-doc.ts` 与 `items-doc.ts`（同一个合并核）。
-  存储单元是 `per-record` 布局的**文档树**，每个文档一个 JSON 文件（见命名矩阵）。**KvUnit
-  不是键值对接口**，是 `table + key` + 「声明过的」global 槽：`loadAll` / `putRecord` /
-  `deleteRecord` / `backupRecord?` / `setGlobal` / `close`，没有 `get`/`set`/`keys`。
-  `openBoardUnit` 是单元打开与一次性布局迁移的唯一入口：同名单元同时只能有一个活句柄，所以
-  旧的整体文件与新文档树**必须顺序开关**。迁移只对**完全空树**发生，判据是「这棵树有没有写过」
-  而**不是**「某个文档在不在」——`meta` 只是记录之一：树里有任何一条记录就说明新布局已生效，
-  旧文件一律不再读回，哪怕它真的还在盘上（那也是陈旧的，重导会盖掉更新的数据）。删掉数据根
-  因此仍是一次真正的重置。
-- `src/host/data-root.ts`：**全插件唯一自己碰介质的地方**，只做一件事——把布局迁移前的旧
-  整体文件改名让位。三道守卫缺一不可：数据必须已经落在新位置、文件必须确实是本单元那个版本
-  的文档（别人的同名文件原样不动）、目标名必须没被占。**改名不是删除**（字节留着，就是这次
-  迁移的备份），且新名字不以 `.json` 结尾，所以存储层与后续开机都不会再读它。路径全部现场
-  发现（`$DSH_HOME` 或 `os.homedir()`），不写死。新增任何直接读写数据根的代码都要先想清楚
-  为什么不能经 `ctx.storage`。
+- `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**
+  （持有 + storage hub 持久化 + 先落盘后应答 + SSE；缺 hub 则 localStorage 模式）。两份文档由同一
+  个 service 持有，因为同名单元同时只能有一个活句柄、写车道也只有一条；合并文法见核心层。
+  存储单元是 `per-record` 文档树（见命名矩阵）。**KvUnit 不是键值对接口**，是 `table + key` +
+  「声明过的」global 槽：`loadAll` / `putRecord` / `deleteRecord` / `backupRecord?` /
+  `setGlobal` / `close`。`openBoardUnit` 是单元打开与一次性布局迁移的唯一入口，旧整体文件与新
+  文档树**必须顺序开关**；迁移只对**完全空树**发生（判据是「这棵树写没写过」，不是「某个文档在
+  不在」），**所以删掉数据根仍是一次真正的重置**。
+- `src/host/data-root.ts`：**全插件唯一自己碰介质的地方**，只做一件事——把布局迁移前的旧整体
+  文件改名让位。三道守卫缺一不可（数据已在新位置、文件确属本单元那个版本、目标名没被占）；
+  **改名不是删除**（字节留着，就是这次迁移的备份），新名字不以 `.json` 结尾，存储层与后续开机都
+  不再读它。路径全部现场发现，不写死。新增任何直接读写数据根的代码都要先想清楚为什么不能经
+  `ctx.storage`。
 
 ### client 半区（浏览器）
 
@@ -426,29 +427,22 @@ schema 就是给同一件事再加一个控件。
 
 - **令牌**：只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）；表面三层（画布/不透明内层）；
   浮层同一 chrome，尺寸按板盒百分比算（**禁 vw/vh**）；Dialog 默认 portal 到板盒，Escape 只在一处管。
-- **圆角几何在根层一次声明**：`corner-shape` 与 `border-radius` 是不继承的两条轴，环境里的
-  superellipse 家族会把 `50%` 圆点渲染成方加圆弧，改半径修不掉。全板只声明一次
-  （`[data-dsh-taskboard-view]` / `*[class]` / `[data-dsh-taskboard-panel]`，换肤只重映射
-  `--dsh-tb-corner`）。**禁止逐处补 `corner-shape`，也禁止把 `50%` 换成 px 半径去「修圆」**。
-- **光效是「呼吸与否」的唯一判定**：等待/进行中 → 卡片 + 会话行呼吸（attention）；已结束未读 →
-  卡片呼吸，其未读会话的行与卡片会话点**同呼吸**（unread，同一族琥珀）；已读或空闲 → 静默。
-  两口时钟各管各的粒度：卡片光读**任务未读**（打开详情即灭），行/点读**轮次未读**（复核页 /
-  标已读 / 通过 / 通知按会话进入才灭），表面只读自己粒度、不互相重推（`sessionUnviewedOf`
-  是行与点共用的唯一轮次判据）。卡片 `data-status`（黄边）与 `data-light`（光）读同一事实。
+- **圆角几何在根层一次声明**：`corner-shape` 与 `border-radius` 是不继承的两条轴，全板只声明
+  一次（换肤只重映射 `--dsh-tb-corner`）。**禁止逐处补 `corner-shape`，也禁止把 `50%` 换成 px
+  半径去「修圆」**——半径从来不是问题。
+- **光效的判定与形态见 `DESIGN.md`**；这里只记两条各管各的：等待/进行中呼吸（attention）、
+  已结束未读同族琥珀（unread），已读或空闲静默。**两口钟各读各的粒度**——卡片光读**任务未读**
+  （打开详情即灭），行/点读**轮次未读**（`sessionUnviewedOf` 是行与点共用的唯一判据），表面只读
+  自己不互相重推。
 - **响应式与触屏**：参照是**表面自身宽度**（板 `dsh-tb` / 面板 `dsh-tb-panel`），**禁
   `@media(max-width)`**；紧凑档用列滑轨 + 五等分 tab（短名 + `aria-label` 全名）；窄屏锚定
   弹层换 Dialog；JS 侧唯一开关是 `useSurfaceNarrow`。
 - **排版/间距/加载**：表单行用具名 areas 让标签让位；说明必须可点可达（**禁只挂 `title=`**）；
-  间距一律 gap 声明、偏移由令牌派生（禁手写像素）；加载三态（读中安静 / 失败行内重试 + 自动
-  退避 / 空态非错）；共用部件一律复用 `ui.tsx` / `Chip` / `Dialog` / `Markdown` / `AutomationEditor`。
-- **拖拽**：`drop-position` / `drag-autoscroll` / `use-flip` 三件套全结构驱动；跨列先滚入视野；
-  排序只在按住拖拽时发生。**已知能力缺口（触屏）**：卡片换栏走的是浏览器自带的 HTML5 拖放
-  （`draggable` + `dataTransfer`），触屏上不触发；**从工作区把会话拖进看板的接收端也用同一套**
-  ——而且那一半的**发起端在宿主**（`dsh-client-ui-workspace` 的会话行也是 `draggable`），
-  所以手机上传不进来的那一半不是本插件能修的。要给触屏补齐换栏能力，方向是把卡片拖拽换成
-  Pointer Events（桌面手机同一份实现，列内排序一并恢复），并保留现有 HTML5 落点只用于接收
-  宿主的侧栏拖拽；这是一件独立的、有意推迟的事，不要顺手加「第二个拖拽实现」或给窄屏另写
-  一条换栏路径。
+  间距一律 gap 声明、偏移由令牌派生（禁手写像素）；加载三态见 `DESIGN.md`；共用部件一律复用
+  `ui.tsx` / `Chip` / `Dialog` / `Markdown` / `AutomationEditor`。
+- **拖拽**：`drop-position` / `drag-autoscroll` / `use-flip` 三件套与整条投放契约见 `DESIGN.md`。
+  **已知缺口（触屏）**：换栏走浏览器自带的 HTML5 拖放，触屏不触发；**从工作区拖会话进看板的
+  接收端是同一套**，而那一半的**发起端在宿主**，本插件修不了（补齐方向见 `DESIGN.md`）。
 
 ### 核心层（`src/core/` 纯逻辑）
 
@@ -456,55 +450,24 @@ schema 就是给同一件事再加一个控件。
   `automation` ·
   `colors`/`session-list`/`session-display`/`session-groups`/`comment-thread`/`question-rpc`/`store` ·
   `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）· `board-doc`/`host-sync`。
-- **门 = 三个子句，一条推导**（`task-demand.ts`）：一张卡欠人一个决断，当且仅当
-  **在待审核 ∧ 有已结算的成败 ∧ 用户还没看过那个会话**。`gateOf`（整卡）/`sessionGateOf`（单会话）
-  是唯一实现，卡片的「待你决断」芯片、板顶诉求行的待审核计数、通知抽屉的审核行**三处同读**，
-  所以同一个卡片不可能在三处给出三个答案。**通过/打回即消**（移栏）。**看过即消——但「看过」
-  只能由真正打开那段对话的动作给出**：会话面板、复核页、通知行、标已读。**`openTask`（点卡片）
-  绝不允许动轮次戳**——卡片是摘要，摘要不是对话；把它折进轮次层就是「点开卡片通知就没了」那个
-  回归。卡片自己的那口钟（`task.viewedAt` → 环 / 「新 N」）是**另一口钟、另一件事**。
-- **通知抽屉的分类就是这两类，且带尺寸**：等你处理（会话挂起等你作答）+ 待审核（跑完了、那个
-  会话你还没看过）= 全部。三颗筛选芯片各带自己的行数，三个数相加等于铃徽标，也等于板顶诉求行的
-  两半——同一个分类、同一个推导，四处渲染。
-- **轮次集合只有两份，且各有其问**：**会话**（`round.sessionId === id`，全车道）回答
-  「这段对话在这张卡上发生过什么」——状态芯片、活动窗口、未读钟、会话排序键都读它；
-  **执行复核线程**（`executionThreadOf`，执行本身 + 从它那页提交的评论 + 老数据按
-  `parentExecutionId` 归属，排除会话锚定轮）回答「这一页复核页上有什么没看的」。曾经有第五份
-  （按车道过滤的 `sessionRoundsOf`），它让「既跑过又绑定」的会话永远显示较旧的那次结果。
-  **取消的轮次不是工作**：`cancelled` 不进任何门、任何通知行，只留在评论线程与动态流里。
-- **「等你处理」只有一个会话集合**：`waitingSessionsOf` 走 `relatedSessionIdsOf`（绑定 + 轮次 +
-  工作区当前成员 − 已删除），不是「恰好在这张卡上有轮次的会话」——从工作区拖进来的会话从被绑定的
-  那一刻起就归这张卡管，**卡片自己必须出声**，不能只让小铃铛和圆点出声（圆点在触屏上不可见）。
-  「第 N 次执行」只在会话**真有编号运行**时说；没有就说会话名（曾有一支会打印「第 0 次执行」）。
-- **换栏落地**：引擎派生的换栏一律把卡片顶到**目标栏最上方**（按发生时间，最新在上），
-  唯一落点是 `controller.land`/`landMany`，`promoteManyToColumnTop` 是排序层的唯一实现
-  （`promoteToColumnTop` 是它的单张入口）。空转判据读**落位后的「栏位 + 键」赋值**，
-  绝不读卡片自己那条来自上一栏的键——那会让跨栏落地整体空转（顶格失效、键相同时
-  按数组顺序显示）。**留在原栏的结算不重排**；**用户手动拖动的位置永不被覆盖**
-  （人工路径是 `moveTask`/`applyCardOrder`，与提升互不相干）。新卡出生（create/copy/
-  instantiate）直接调 `promoteToColumnTop`，语义不同，不并进漏斗。
-- **会话落地（同一个漏斗的另一半）**：同一落里让某个会话**开始工作或结束工作**的轮次
-  （新生 / 拿到会话 / 被注入 / 结算），把那个会话顶到卡片会话列的**最上方**——判据是
-  `tasks.startedOrSettledSessions` 的台账 diff，实现在 `tasks.promoteSessionsToTop`。
-  它与卡片顶格同律同空转判据（已在首位就一个字段都不碰），手动排列整体让位而不被打乱；
-  `sessionsOrder` 因此从「用户拖过的位置」升级为「当前显示顺序」这一支。
-  **`viewedAt` 不在生命周期指纹里**（标已读不是工作），删除轮次也不触发。
-  **轮次记录只经 `land` 进台账**：绕过它直接写 `this.tasks` 的地方，漏斗看见的落位前后
-  一模一样，顶格与卡片提升双双空转（外部旁听轮次那条路曾经如此）。
-  直发轮出生即结算，所以**它的完成在台账里没有字段可改**——`driveLiveStates` 的降级
-  分支是唯一一处显式点名的会话顶格。
-- **会话列的排序键**是 `session-display.sessionActivityOf`（`max(round.endedAt ?? startedAt)`），
-  与每会话未读时钟的 activity 腿**同一份推导**；链入行再与宿主的 `updatedAt` 取大，
-  所以「在这张卡上干过活」永远比「宿主最后碰过它」新。
-- **同步戳与显示口径必须分离**：`task.updatedAt` 是同步合并的 LWW 键，让位的同门
-  必须盖章（漏盖即两台设备顺序漂移）；但屏上「更新于」读 `cardUpdatedAtOf(task)`
-  （卡片自己的工作推进），否则一次顶格会让整栏同门一起写「刚刚」。
-- **会话活跃度（「还在工作吗」的唯一判定）**：`session-lineage` 卷起子代理后代，`session-activity`
-  给出 `own|descendant|idle|unknown`，`controller.sessionActiveOf` 是唯一对外查询口。`unknown`
-  既不得读作 idle 去写台账，也不得读作 active 去长占。**裸值边界（改动即反向卡死）**：
-  `execution.ts`、`zombieRoundEvent`、active-run 兜底、`cancelSpuriousExternal`、
-  `reconcileBoundTask`、外源轮检测一律继续读 `byId[id].running` **原值**——卷起值只进活性层，
-  否则轮次永不过期并产生幽灵外源轮。
+- **要决的门**（`task-demand.ts`）：三个子句一条推导——**在待审核 ∧ 有已结算的成败 ∧ 用户还没看过
+  那个会话**；`gateOf`/`sessionGateOf` 是唯一实现，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**。
+  **「看过」只能由真正打开对话的动作给出**，`openTask`（点卡片）绝不动轮次戳——卡片是摘要，
+  摘要不是对话；`task.viewedAt` 是另一口钟。抽屉的分类就是「等你处理 + 待审核」两类，同一个推导
+  四处渲染（`notifications.ts`）。
+- **轮次集合只有两份**（`session-display.ts` / `execution.ts`）：**会话**回答「这段对话在这张卡上
+  发生过什么」，**执行复核线程**回答「这一页复核页上有什么没看的」；`cancelled` 不是工作，不进任何
+  门。「等你处理」的唯一集合走 `relatedSessionIdsOf`（绑定 + 轮次 + 工作区当前成员 − 已删除），
+  拖进来的会话从绑定起归这张卡管且**卡片自己必须出声**（圆点在触屏上不可见）；「第 N 次执行」只在
+  真有编号运行时说。
+- **落位**（`tasks.ts`）：引擎派生的换栏与「会话开始或结束工作」都把对象顶到目标列**最上方**，
+  唯一落点是 `controller.land`/`landMany`；**留在原栏的结算不重排，用户手动拖动的位置永不被覆盖**；
+  **轮次记录只经 `land` 进台账**。屏上「更新于」读 `cardUpdatedAtOf(task)`（卡片自己的工作推进）
+  而不是同步戳 `task.updatedAt`，否则一次顶格会让整栏写「刚刚」。
+- **活性**（`session-lineage.ts` / `session-activity.ts`）：「还在工作吗」的唯一判定是
+  `own ∨ descendant`，`unknown` 既不得读作 idle 去写台账、也不得读作 active 去长占。
+  **裸值边界（改动即反向卡死）**：结算与看门狗（`execution.ts`、`zombieRoundEvent`、active-run
+  兜底、`cancelSpuriousExternal`、`reconcileBoundTask`、外源轮检测）一律继续读 `running` **原值**。
 - **唯一推导**：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定；
   归档即时同步）。
 
