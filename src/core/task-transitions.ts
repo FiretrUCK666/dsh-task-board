@@ -299,23 +299,21 @@ export function armSchedule(task: TaskRecord, patch: SchedulePatch, now: number)
   return applied(sameTask(next, task) ? task : next)
 }
 
-/**
- * Deleting a card is not a transition, and this seam exists to say so out loud.
+/*
+ * WHY THERE IS NO DELETE IN THIS MODULE.
  *
- * A board card's deletion is IRREVERSIBLE — the checklist's rows go through a
- * tombstone and can be restored, and this one cannot. What stops a stale
- * replica from bringing the card back afterwards is the merge grammar, not a
- * function here: the tombstone is stamped one millisecond above the newest
- * `updatedAt` the host ever saw for that id, so it outranks every copy another
- * device still holds while a genuinely newer edit (a concurrent revive) still
- * wins. That arithmetic belongs to board-merge-core.ts and is exercised
- * through it in the tests, so there is no second implementation to drift.
+ * Deleting a card is not a transition, and the seam that says so is a note
+ * rather than a function. A board card's deletion is IRREVERSIBLE (a checklist
+ * row goes through a tombstone and can be restored; this one cannot), and what
+ * stops a stale replica from bringing it back is the merge grammar: the
+ * tombstone is stamped one millisecond above the newest `updatedAt` the host
+ * ever saw for that id, so it outranks every copy another device still holds,
+ * while a genuinely newer edit — a concurrent revive — still wins. That
+ * arithmetic belongs to board-merge-core.ts, it is ALREADY shared by every
+ * document, and it is exercised there.
  *
- * @param _now - accepted so a caller's write funnel can pass its instant
- *  uniformly. Deliberately unused: stamping a row on its way OUT would move
- *  the tombstone the host derives from it, and the host is the authority on
- *  that stamp.
+ * A function here would have been the worst of both: nothing would call it, and
+ * it would read as "deletion is unified" — which is the one claim this module
+ * must never make while the real implementation sits in the merge kernel. Any
+ * deletion in this plugin goes through that grammar.
  */
-export function deleteTaskFromDoc(task: TaskRecord, _now: number): TaskRecord {
-  return task
-}

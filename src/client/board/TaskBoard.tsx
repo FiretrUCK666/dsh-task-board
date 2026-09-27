@@ -46,7 +46,7 @@ import { BUNDLED_PACKAGE_NAME, BUNDLED_VERSION, fetchNpmLatest, fetchUpdateSourc
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
-import { applyCompletion, completeBoardQuery, matchTask, removeFilterToken, splitFilterTokens } from './task-search.ts'
+import { applyCompletion, completeBoardQuery, matchTask, removeFilterToken, splitFilterTokens } from '../../core/task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
 import { arrivalOf, noteKeyOf, noteStatusShapeOf, notificationsExOf, stampWaitingArrivals, type NotificationItem } from './notifications.ts'
 import { runnableIds } from './batch-run.ts'

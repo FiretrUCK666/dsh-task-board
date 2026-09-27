@@ -1,10 +1,15 @@
 /**
- * Board-wide task search (client/board/task-search.ts): AND-of-terms across
+ * Board-wide task search (core/task-search.ts): AND-of-terms across
  * title/description/prompt/comments/session-titles, case-insensitive, blank
  * matches all.
+ *
+ * It lives in core, not the client, because BOTH halves read the qualifier
+ * registry: the search box parses it and the agent's query tool renders its
+ * parameters from it. A filter vocabulary in the client folder is a vocabulary
+ * the host has to reach across the boundary to read.
  */
 import { describe, expect, it } from 'vitest'
-import { applyCompletion, completeBoardQuery, matchTask, parseBoardQuery, removeFilterToken, splitFilterTokens, taskHaystack } from '../src/client/board/task-search.ts'
+import { applyCompletion, completeBoardQuery, matchTask, parseBoardQuery, removeFilterToken, splitFilterTokens, taskHaystack } from '../src/core/task-search.ts'
 
 const task = {
   title: '给猫画一幅画',

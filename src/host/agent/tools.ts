@@ -63,7 +63,7 @@ import {
   type ActionSurface,
   type ParamSpec,
 } from '../../core/board-actions.ts'
-import { QUALIFIER_KEYS, completeBoardQuery } from '../../client/board/task-search.ts'
+import { QUALIFIER_KEYS, completeBoardQuery } from '../../core/task-search.ts'
 import { type BoardCommit, type BoardDoc, type BoardView } from '../../core/board-doc.ts'
 import { applyItemsCommit, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
 import { createTask, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'

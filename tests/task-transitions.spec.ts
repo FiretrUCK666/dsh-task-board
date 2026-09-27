@@ -25,7 +25,6 @@ import {
 import {
   armSchedule,
   canMoveTaskManually,
-  deleteTaskFromDoc,
   moveTaskToStatus,
   removeSessionFromTask,
   type TransitionResult,
@@ -314,21 +313,14 @@ describe('removeSessionFromTask', () => {
   })
 })
 
-describe('deleteTaskFromDoc', () => {
-  it('hands the row straight back — the tombstone arithmetic is the merge grammar\'s', () => {
-    // Stamping a row on its way OUT would move the tombstone the host derives
-    // from it, and the host is the authority on that stamp. So this is the
-    // identity ON PURPOSE, and the law it stands for is proven below through
-    // the real kernel rather than through a second implementation here.
-    const task = card()
-    expect(deleteTaskFromDoc(task, T0 + 10)).toBe(task)
-  })
-
-  it('and the law it names holds end to end: the tombstone outranks every stale copy', () => {
-    // This is the "tombstone half" — driven through board-merge-core, because
-    // that is where it lives. A delete at the row's own stamp takes the row out
-    // and lands a tombstone one millisecond above the newest stamp the host
-    // ever saw; a replica still holding the old copy cannot bring it back.
+describe('the deletion this module deliberately does not own', () => {
+  it('the tombstone outranks every stale copy — proven through the grammar that owns it', () => {
+    // Deletion is not a transition, so this module has no delete function and
+    // this test names none. What it pins is WHERE the law lives and that the
+    // law holds: a delete at the row's own stamp takes the row out and lands a
+    // tombstone one millisecond above the newest stamp the host ever saw, a
+    // replica still holding the old copy cannot bring it back, and a genuinely
+    // newer edit still can.
     const task = card({ updatedAt: 5_000 })
     const commit = (patch: Partial<BoardCommit> = {}): BoardCommit => ({
       clientId: 'c-1',

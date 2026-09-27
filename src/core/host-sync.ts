@@ -466,10 +466,6 @@ export class BoardSyncClient {
     }
   }
 
-  baselineRevision(): number {
-    return this.baseline.revision
-  }
-
   // --- replica writes (the store seams call these) ------------------------------
 
   setTasks(tasks: readonly TaskRecord[]): void {
@@ -1029,10 +1025,6 @@ export class ChecklistReplica {
       ...this.dirty.filter(item => !deletedIds.has(item.id)),
       ...base.filter(item => !dirtyIds.has(item.id) && !deletedIds.has(item.id)),
     ]
-  }
-
-  baselineRevision(): number {
-    return this.doc.revision
   }
 
   /** Mark the checklist dirty and queue a commit. */

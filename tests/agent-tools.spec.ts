@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest'
 import { ACTIONS, TOOL_ACTION_IDS } from '../src/core/board-actions.ts'
 import { emptyBoardDoc, type BoardDoc } from '../src/core/board-doc.ts'
 import { emptyItemsDoc, type ItemsDoc } from '../src/core/items-doc.ts'
-import { QUALIFIER_KEYS } from '../src/client/board/task-search.ts'
+import { QUALIFIER_KEYS } from '../src/core/task-search.ts'
 import {
   capabilityView,
   createTaskboardTools,
