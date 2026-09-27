@@ -185,6 +185,23 @@ export interface ActionShape {
   readonly summary: string
   readonly params: Readonly<Record<string, ParamSpec>>
   readonly surface: ActionSurface
+  /**
+   * The CARRIER this action's effect travels on when the engine has to perform
+   * it, and what that carrier MEANS. `run` = "run the card named by `of`, once".
+   *
+   * WHOSE FACT THIS IS: the engine owns the carrier, and the catalog owns which
+   * actions ride which one. A relay that decides by reading action NAMES is a
+   * relay that will one day forward an action whose effect is not a run — and
+   * that day is silent: the write lands where nobody looks. So "may this be
+   * relayed as a run" is a field in this table, not a string comparison in the
+   * host.
+   *
+   * OPTIONAL ON PURPOSE, and its absence is a statement rather than a gap:
+   * `lane: 'engine'` WITHOUT a `relay` means "the engine performs this, and its
+   * effect is NOT a run" — a comment, a session rename, creating a session. That
+   * is a decision, and it is what the name-based relay used to wave through.
+   */
+  readonly relay?: 'run'
   /** Set when the action has meaning beyond its field writes, so the UI and the
    *  tool must share one implementation. Then `semanticOf` is required. */
   readonly semantic?: true
@@ -365,6 +382,11 @@ export const ACTIONS = {
     lane: 'engine',
     danger: 'guarded',
     surface: 'ui+ai',
+    // The one action whose effect IS a run, and the only one that says so. The
+    // other engine actions (comment, session rename, session create) perform
+    // engine work whose effect is not a run, and they say nothing — which is a
+    // decision, not an omission.
+    relay: 'run',
     summary: '立刻跑一次这张卡。会真开会话、真花 token；没有浏览器持席位时只能排队，引擎上线才补发。',
     params: {
       of: { about: '要跑的卡' },
@@ -407,7 +429,15 @@ export const ACTIONS = {
       of: { about: '要标已读的卡', requiredWhen: 'scope 不是 all' },
       // 'all' was missing from the range while the reason on `of` named it —
       // a table that cites a value its own range excludes reads as broken.
-      scope: { about: '标到哪一层', optional: true, oneOf: ['task', 'session', 'round', 'all'] },
+      // `default` is a field, not a sentence inside the condition: a condition
+      // that names an optional parameter is unreadable unless the omitted case
+      // is stated where a reader (and a gate) can find it.
+      scope: {
+        about: '标到哪一层',
+        optional: true,
+        oneOf: ['task', 'session', 'round', 'all'],
+        default: '不传 = 整张卡（等价于 markAllViewed 那一路）',
+      },
       session: { about: '会话轮', requiredWhen: 'scope 是 session' },
       round: { about: '轮次', requiredWhen: 'scope 是 round' },
     },
@@ -458,15 +488,15 @@ export const ACTIONS = {
     params: {
       of: { about: '目标卡' },
       session: { about: '要被自动化的会话' },
-      trigger: { about: 'cron 定时 / on-complete 每次跑完', optional: true, oneOf: ['cron', 'on-complete'] },
-      cron: { about: '五段 cron 表达式', requiredWhen: 'trigger 是 cron（trigger 不传时有效值就是 cron）' },
+      trigger: { about: 'cron 定时 / on-complete 每次跑完', optional: true, oneOf: ['cron', 'on-complete'], default: '不传 = cron' },
+      cron: { about: '五段 cron 表达式', requiredWhen: 'trigger 是 cron（trigger 不传时有效值就是 cron，所以照样要给）' },
       usePrompt: {
         about: '送这张卡当前的执行 Prompt，而不是自定义文本',
         optional: true,
         boolean: true,
         default: '不传 = 送自定义文本（也就是要一起给 instruction）',
       },
-      instruction: { about: '要定时送出去的话', requiredWhen: 'usePrompt 是 false（usePrompt 不传时有效值就是 false）' },
+      instruction: { about: '要定时送出去的话', requiredWhen: 'usePrompt 是 false（usePrompt 不传时有效值就是 false，所以照样要给）' },
       send: { about: '排队还是插话', oneOf: ['queue', 'steer'] },
     },
   },
