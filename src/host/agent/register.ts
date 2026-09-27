@@ -14,7 +14,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { DocumentService, storageHubOpener } from '../board-service.ts'
 import { attachQuestionWaitRecorder, createQuestionWaitRecorder, sessionPostureOf, type SessionPostureSources } from '../session-state.ts'
 import { createTaskboardTools, type ToolDeps } from './tools.ts'
-import { registerTaskboardCommands, type CommandRegistry } from './commands.ts'
+import { registerTaskboardCommands, type CommandRegistrar } from './commands.ts'
 import { registerTaskboardPromptSection, type PromptSectionTarget } from './prompt.ts'
 
 /** Read the host's live services at call time, never at registration time. */
@@ -33,8 +33,13 @@ function postureSources(ctx: Context): SessionPostureSources {
  * @returns the disposer removing all registrations.
  */
 export function registerTaskboardAgentSurface(ctx: Context): () => void {
+  // `commands` and `systemPrompt` carry the host's OWN payload types, so a
+  // wiring mistake here is a compile error rather than the runtime refusal a
+  // hand-drawn shape earned. `tools` keeps a narrow face for now: its real
+  // `ToolDefinition` is the next knife, and widening this one without the
+  // payload would only move the lie.
   const tools = ctx.get('tools') as { register(definition: unknown): () => void } | undefined
-  const commands = ctx.get('commands') as CommandRegistry | undefined
+  const commands = ctx.get('commands') as CommandRegistrar | undefined
   const systemPrompt = ctx.get('systemPrompt') as PromptSectionTarget | undefined
   if (tools === undefined && commands === undefined && systemPrompt === undefined) {
     // Every injection is a liability: a deployment without these host services

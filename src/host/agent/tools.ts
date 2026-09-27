@@ -121,26 +121,36 @@ export interface ToolDeps {
 
 /* ── ONE tool schema ─────────────────────────────────────────────────────── */
 
-interface ToolParameterSchema { readonly [key: string]: unknown }
+/**
+ * The tools below are the HOST's `ToolDefinition`, imported — a hand-written
+ * copy of it compiles against itself and then fails on the first real
+ * registration, which is what happened: `output` was simply absent, and
+ * nothing in the tree could say so.
+ *
+ * Types only: `dependencies` stays empty, and the runtime the plugin loads
+ * against is the host's own.
+ */
+export type { ToolDefinition, ToolOutputDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 
-/** The tool registration shape (structural — no SDK import). */
-export interface ToolDefinitionLike {
-  readonly name: string
-  readonly description: string
-  readonly parameters: ToolParameterSchema
-  readonly output: {
-    readonly schema: ToolParameterSchema
-    render(args: unknown, value: unknown): { type: 'text'; text: string }[]
-    /** The tool's own vocabulary, persisted verbatim for the card to narrow —
-     *  the host's contract, and the same words the model reads. */
-    presentationMeta?(args: unknown, value: unknown): Record<string, unknown>
-  }
-  execute(args: unknown, exec?: { signal?: AbortSignal }): Promise<unknown>
-}
-
-/** One canonical-JSON result, rendered as the text the model reads. */
-function jsonResult(value: unknown): { type: 'text'; text: string }[] {
-  return [{ type: 'text', text: JSON.stringify(value, null, 2) }]
+/**
+ * RENDER AND PRESENTATION ARE NOT THE SAME FUNCTION, and collapsing them is
+ * the mistake this split exists to prevent:
+ *
+ *  - `render` is what the MODEL reads. It is prose: the sentence, then the
+ *    short numbers. A model reading a receipt should not have to find `#12`
+ *    inside indented JSON — the plugin's own system prompt tells it to use
+ *    short numbers, and this is where that instruction is carried out.
+ *  - `presentationMeta` is what the CARD reads, computed for top-level calls
+ *    only. Same values, different consumer.
+ *
+ * BOTH READ `value` AND NOTHING ELSE. Neither may recompute a field: a renderer
+ * that derives its own answer hands the model something the declared schema
+ * does not describe, and the model cannot tell which of the two is true.
+ */
+function text(parts: readonly string[]): ContentBlock[] {
+  return [{ type: 'text', text: parts.filter(part => part !== '').join('\n') }]
 }
 
 /* ── the capability view, rendered from the catalog ──────────────────────── */
@@ -269,10 +279,18 @@ function kindOf(id: string, ok: boolean, unchanged: boolean): OpReport['kind'] {
   return 'updated'
 }
 
+/** The host's own JSON value type, DERIVED from the projection's own
+ *  signature rather than imported from wherever it happens to live: one
+ *  derivation, so a host change moves both at once. */
+type HostJson = Parameters<NonNullable<ToolDefinition['output']['presentationMeta']>>[1]
+
 /** The batch in the tool's OWN vocabulary, for the tool card to narrow. Not an
  *  envelope: it is the same words the model reads, so the person and the model
  *  cannot be told two different stories about the same batch. */
-function presentationOf(result: ExecuteResult): Record<string, unknown> {
+function presentationOf(result: ExecuteResult): HostJson {
+  // The projection is persisted VERBATIM as JSON, so it is built as plain
+  // JSON: the internal rows are `readonly` and the host's `JsonValue` is not,
+  // and that difference is the honest one — this value gets serialized.
   return {
     dryRun: result.dryRun,
     // The single most important word here: a rehearsal that renders as "added
@@ -285,8 +303,8 @@ function presentationOf(result: ExecuteResult): Record<string, unknown> {
     tasks: result.changed?.tasks ?? [],
     // Accepted, not executed — a card that renders these as "已执行" lies.
     enginePending: result.enginePending,
-    reports: result.reports,
-  }
+    reports: result.reports.map(report => ({ ...report })),
+  } as unknown as HostJson
 }
 
 export interface OpReport {
@@ -444,10 +462,26 @@ function buildRelay(
   }
 }
 
-export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise<ExecuteResult> {
+export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: ToolRunContext): Promise<ExecuteResult> {
   const now = deps.now()
   const board = deps.board()
   const reports: OpReport[] = []
+  // The caller's cancellation, observed between ops. The registry fuses the
+  // caller's signal back before the body, so this IS the user's abort — and a
+  // batch that ignored it would keep writing after the person walked away.
+  const signal: AbortSignal | undefined = exec?.signal
+  if (signal !== undefined && signal.aborted) {
+    return {
+      dryRun: request.dry_run === true,
+      ok: false,
+      reports: [{ op: '(batch)', kind: 'failed', ok: false, detail: '这次调用已经被取消，一个字节都没有落盘。' }],
+      summary: '没有执行：调用已取消。',
+      boardRevision: 0,
+      itemsRevision: 0,
+      counts: { created: 0, updated: 0, moved: 0, deleted: 0, unchanged: 0, failed: 1, skipped: 0 },
+      enginePending: [],
+    }
+  }
   if (board === undefined || !board.available) {
     const refused: OpReport = { op: '(batch)', kind: 'failed', ok: false, detail: '看板存储不可用，这次写操作一个字节都没落。换一次连接或重启宿主再试。' }
     reports.push(refused)
@@ -474,6 +508,10 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest): Promise
   let failed = false
 
   for (const step of request.ops) {
+    if (signal !== undefined && signal.aborted) {
+      raw.push({ op: step.op, ok: false, detail: '未执行：这次调用已经被取消。' })
+      continue
+    }
     if (failed) {
       raw.push({ op: step.op, ok: false, detail: '未执行：上一条失败后本批停止。' })
       continue
@@ -1095,24 +1133,52 @@ const EXECUTE_DESCRIPTION =
 
 /** Build the three tool definitions. Registration is the caller's job, so this
  *  stays a pure function of the catalog and the host faces. */
-export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinitionLike[] {
+export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] {
   const opEnum = [...TOOL_ACTION_IDS]
   const envelope = Object.fromEntries(
     Object.entries(EXECUTE_ENVELOPE_PARAMS).map(([name, spec]) => [name, { type: 'boolean', description: spec.about }]),
   )
 
-  const capabilities: ToolDefinitionLike = {
+  const capabilities: ToolDefinition = {
     name: 'taskboard_capabilities',
     description: CAPABILITIES_DESCRIPTION,
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     output: {
-      schema: { type: 'object' },
-      render: (_args, value) => jsonResult(value),
+      schema: {
+        type: 'object',
+        properties: {
+          verbs: { type: 'array', items: { type: 'string' } },
+          reachable: { type: 'array', items: { type: 'string' } },
+          humanOnly: { type: 'array', items: { type: 'string' } },
+          actions: { type: 'array', items: { type: 'object' } },
+        },
+        required: ['verbs', 'reachable', 'humanOnly', 'actions'],
+        additionalProperties: false,
+      },
+      // One line per action: its id, then what it DOES. The model is deciding
+      // what to try next, and that needs the sentence, not the JSON path to
+      // it. Parameters follow, because the conditions are what make a batch
+      // half-succeed.
+      render: (_args, value) => {
+        const view = value as unknown as ReturnType<typeof capabilityView>
+        const lines = view.actions.map(action => {
+          const params = Object.entries(action.params)
+            .map(([name, spec]) => `    ${name}${spec.required ? '（必填）' : ''}${spec.requiredWhen === undefined ? '' : `（${spec.requiredWhen} 时必填）`}：${spec.about}`)
+            .join('\n')
+          return `${action.id} —— ${action.summary}\n  危险级 ${action.danger}；经 ${action.lane} 写入\n${params}`
+        })
+        return text([
+          `你能用 ${view.reachable.length} 个动作，动词只有这些：${view.verbs.join(' / ')}`,
+          `只有人能做（别试）：${view.humanOnly.join('、') || '（无）'}`,
+          '',
+          ...lines,
+        ])
+      },
     },
     execute: async () => capabilityView(),
   }
 
-  const query: ToolDefinitionLike = {
+  const query: ToolDefinition = {
     name: 'taskboard_query',
     description: QUERY_DESCRIPTION,
     parameters: {
@@ -1125,11 +1191,38 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinitionLik
       },
       additionalProperties: false,
     },
-    output: { schema: { type: 'object' }, render: (_args, value) => jsonResult(value) },
-    execute: async (args) => runQuery(deps, args),
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          ok: { type: 'boolean' },
+          filter: { type: 'string' },
+          tasks: { type: 'array', items: { type: 'object' } },
+          items: { type: 'array', items: { type: 'object' } },
+          detail: { type: 'string' },
+        },
+        required: ['ok', 'filter', 'tasks', 'items'],
+        additionalProperties: true,
+      },
+      // The count first, because "how much is there" is the question behind
+      // every further turn; then the rows with the short number the model must
+      // quote back.
+      render: (_args, value) => {
+        const result = value as { ok?: boolean; detail?: string; filter?: string; tasks?: { title: string; status: string }[]; items?: { ref: string; title: string; status: string }[] }
+        if (result.ok === false) return text([result.detail ?? '这次查询没有读到数据。'])
+        const tasks = result.tasks ?? []
+        const items = result.items ?? []
+        return text([
+          `卡片 ${tasks.length} 条，清单条目 ${items.length} 条${result.filter === undefined || result.filter === '' ? '' : `（筛选：${result.filter}）`}。`,
+          ...tasks.map(row => `卡片：${row.title}（${row.status}）`),
+          ...items.map(row => `${row.ref} ${row.title}（${row.status}）`),
+        ])
+      },
+    },
+    execute: async (args, exec) => runQuery(deps, args, exec),
   }
 
-  const execute: ToolDefinitionLike = {
+  const execute: ToolDefinition = {
     name: 'taskboard_execute',
     description: EXECUTE_DESCRIPTION,
     parameters: {
@@ -1154,11 +1247,43 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinitionLik
       additionalProperties: false,
     },
     output: {
-      schema: { type: 'object' },
-      render: (_args, value) => jsonResult(value),
-      presentationMeta: (_args, value) => presentationOf(value as ExecuteResult),
+      schema: {
+        type: 'object',
+        properties: {
+          dryRun: { type: 'boolean' },
+          ok: { type: 'boolean' },
+          summary: { type: 'string' },
+          boardRevision: { type: 'number' },
+          itemsRevision: { type: 'number' },
+          reports: { type: 'array', items: { type: 'object' } },
+          changed: { type: 'object' },
+        },
+        required: ['dryRun', 'ok', 'summary', 'boardRevision', 'itemsRevision', 'reports'],
+        additionalProperties: true,
+      },
+      // THE RECEIPT, IN THE ORDER THE MODEL NEEDS IT: whether anything was
+      // written first, then the sentence, then the short numbers, then what
+      // each op actually said. The dry-run distinction LEADS, because a
+      // rehearsal rendered as "added 3 items" is the one line that must never
+      // be wrong.
+      render: (_args, value) => {
+        const result = value as unknown as ExecuteResult
+        const head = result.dryRun ? '演练：一个字节都没有落盘。' : '已落盘。'
+        const touched = [
+          ...(result.changed?.items ?? []).map(row => `${row.ref} ${row.title}`),
+          ...(result.changed?.tasks ?? []).map(row => `卡片「${row.title}」`),
+        ]
+        return text([
+          head,
+          result.summary,
+          ...(touched.length > 0 ? [`受影响的：${touched.join('、')}`] : []),
+          ...(result.enginePending.length > 0 ? [`已受理但引擎不在线：${result.enginePending.join('、')}`] : []),
+          ...result.reports.filter(report => !report.ok).map(report => `未生效：${report.op} —— ${report.detail}`),
+        ])
+      },
+      presentationMeta: (_args, value) => presentationOf(value as unknown as ExecuteResult),
     },
-    execute: async (args) => runBatch(deps, (args ?? {}) as ExecuteRequest),
+    execute: async (args, exec) => runBatch(deps, (args ?? {}) as ExecuteRequest, exec),
   }
 
   return [capabilities, query, execute]
@@ -1166,7 +1291,8 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinitionLik
 
 /** The read tool's body: rows carry their short number, the truncation happens
  *  here so the model never receives a whole board in one context. */
-async function runQuery(deps: ToolDeps, args: unknown): Promise<unknown> {
+async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): Promise<unknown> {
+  if (exec?.signal.aborted === true) return { ok: false, detail: '这次调用已经被取消，没有读到数据。' }
   const board = deps.board()
   if (board === undefined || !board.available) {
     return { ok: false, detail: '看板存储不可用，这次查询没有读到任何数据。' }

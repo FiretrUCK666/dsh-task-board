@@ -24,20 +24,21 @@
  * start, because "continue" without knowing what is outstanding is a guess.
  */
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { CommandDefinition, CommandResult } from '@deepseek-ai/dsh-commands'
 
-/** The structural face of one agent (no SDK import beyond the message factory). */
+/** The structural face of one agent. The COMMAND types below are the host's
+ *  own, imported — a hand-written copy of them compiles just as happily and
+ *  fails on the first real invocation, which is exactly what happened. */
 export interface CommandAgent {
   followup(message: unknown): void
 }
 
-/** The structural face of the command registry. */
-export interface CommandRegistry {
-  register(definition: {
-    name: string
-    description: string
-    recordInput?: boolean
-    handler(invocation: { agent: CommandAgent; rawInput: string }): { ok: true } | { ok: false; error: { message: string } }
-  }): () => void
+/** What this module needs from the command registry: one method, taking the
+ *  host's own {@link CommandDefinition}. Narrow to a single method so tests
+ *  can supply a face — but the DEFINITION it accepts is the real type, so a
+ *  face cannot invent a handler contract the host will not honour. */
+export interface CommandRegistrar {
+  register(definition: CommandDefinition): () => void
 }
 
 /** `/task` with no argument has nothing to hand over, and a blank door is a
@@ -48,20 +49,29 @@ const TASK_HINT = '用法：/task 后面直接写你要记的事，例如「/tas
  *  about what is outstanding, and an argument would only narrow it wrongly. */
 const CONTINUE_PROMPT = '读一下任务清单里还没完成的事项，把它们列出来，然后问我要从哪一条开始。不要替我挑。'
 
-/** Hand one sentence to the session's model, and report whether it went. */
-function handOver(agent: CommandAgent, text: string): { ok: true } | { ok: false; error: { message: string } } {
+/**
+ * Hand one sentence to the session's model, in the host's own result shape.
+ *
+ * SUCCESS CARRIES NO `text` ON PURPOSE. The model answers in the conversation
+ * right after this, with its own words and its own tool cards; a text here
+ * would put a second, weaker rendering of the same turn in front of the
+ * person, and `sourceEventSeq` is the only thing that should outrank that
+ * answer — and a command that merely hands over a sentence owns no richer
+ * domain event to point at.
+ */
+function handOver(agent: CommandAgent, text: string): CommandResult {
   try {
     agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
-    return { ok: true }
+    return { kind: 'success' }
   } catch (error) {
     // The registry shows this to the person who typed the command, so it says
     // what went wrong in words rather than swallowing it.
-    return { ok: false, error: { message: `这句话没能送进会话：${error instanceof Error ? error.message : String(error)}` } }
+    return { kind: 'error', text: `这句话没能送进会话：${error instanceof Error ? error.message : String(error)}` }
   }
 }
 
 /** The two command definitions, ready to register. */
-export function createTaskboardCommands(): readonly Parameters<CommandRegistry['register']>[0][] {
+export function createTaskboardCommands(): readonly CommandDefinition[] {
   return [
     {
       name: 'task',
@@ -69,7 +79,7 @@ export function createTaskboardCommands(): readonly Parameters<CommandRegistry['
       recordInput: false,
       handler: ({ agent, rawInput }) => {
         const text = rawInput.trim()
-        if (text === '') return { ok: false, error: { message: TASK_HINT } }
+        if (text === '') return { kind: 'error', text: TASK_HINT } satisfies CommandResult
         return handOver(agent, text)
       },
     },
@@ -83,7 +93,7 @@ export function createTaskboardCommands(): readonly Parameters<CommandRegistry['
 }
 
 /** Register both, and return one disposer that takes them both off. */
-export function registerTaskboardCommands(registry: CommandRegistry): () => void {
+export function registerTaskboardCommands(registry: CommandRegistrar): () => void {
   const disposers = createTaskboardCommands().map(definition => registry.register(definition))
   return () => { for (const dispose of disposers) dispose() }
 }

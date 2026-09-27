@@ -23,7 +23,7 @@ import {
   runBatch,
   type ToolCommitFace,
   type ToolDeps,
-  type ToolDefinitionLike,
+  type ToolDefinition,
 } from '../src/host/agent/tools.ts'
 import {
   PROMPT_SECTION_NAME,
@@ -31,6 +31,9 @@ import {
   PROMPT_SECTION_TEXT,
   registerTaskboardPromptSection,
 } from '../src/host/agent/prompt.ts'
+// The section face is the HOST's shape, so a test cannot assert against a
+// contract the plugin drew for itself.
+import type { PromptSection } from '@deepseek-ai/dsh-system-prompt'
 
 const NOW = 1_700_000_000_000
 
@@ -100,7 +103,7 @@ function deps(board: ToolCommitFace | undefined = face()): ToolDeps {
   }
 }
 
-function toolNamed(name: string): ToolDefinitionLike {
+function toolNamed(name: string): ToolDefinition {
   const tool = createTaskboardTools(deps()).find(candidate => candidate.name === name)
   if (tool === undefined) throw new Error(`no tool named ${name}`)
   return tool
@@ -244,7 +247,7 @@ describe('the receipt a card renders', () => {
 
   it('a dry run says NOTHING WAS WRITTEN, in the words a card can render', async () => {
     const result = await runBatch(deps(face()), { ops: [{ op: 'item.create', payload: { body: '演练' } }], dry_run: true })
-    const meta = toolNamed('taskboard_execute').output.presentationMeta!({}, result)
+    const meta = toolNamed('taskboard_execute').output.presentationMeta!({}, result as never) as Record<string, unknown>
     expect(meta.dryRun).toBe(true)
     // The one word that must never be wrong: a rehearsal that renders as
     // "added" tells the person something was written that was not.
@@ -257,7 +260,7 @@ describe('the receipt a card renders', () => {
     board.seed({ ...emptyBoardDoc(NOW), tasks: [{ id: 't-1', title: '跑一下', description: '', prompt: 'p', status: 'todo', order: 0, createdAt: NOW, updatedAt: NOW, executions: [] }] })
     const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: '跑一下' } }] })
     expect(result.enginePending).toEqual(['跑一下'])
-    const meta = toolNamed('taskboard_execute').output.presentationMeta!({}, result)
+    const meta = toolNamed('taskboard_execute').output.presentationMeta!({}, result as never) as Record<string, unknown>
     expect(meta.enginePending).toEqual(['跑一下'])
     expect(String(meta.summary)).toContain('引擎')
   })
@@ -494,7 +497,7 @@ describe('the prompt section', () => {
   })
 
   it('registers and hands back its disposer', () => {
-    const seen: { name: string; order: number; text: string }[] = []
+    const seen: PromptSection[] = []
     const dispose = registerTaskboardPromptSection({ section: (section) => { seen.push(section); return () => {} } })
     expect(seen).toHaveLength(1)
     expect(seen[0]?.text).toBe(PROMPT_SECTION_TEXT)
