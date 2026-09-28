@@ -285,12 +285,12 @@ DeepSeek Harness 的内部接口会随版本变化，本插件需要跟着改。
 | 插件 id | `dsh-task-board` |
 | npm 包名 | `@firetruck666/dsh-task-board` |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
-| 看板数据路由 | `/api/dsh-task-board/board`（含 `/items`、`/lease`、`/command`、`/events`） |
+| 看板数据路由 | `/api/dsh-task-board/board`（含 `/items`、`/surfaces`、`/ask`、`/lease`、`/command`、`/events`） |
 | 其余 host 路由 | `/api/dsh-task-board/session-state`、`/update`、`/client-report` |
 | host 存储单元 | `dsh_task_board`（`documents/` 下每种数据一个文件） |
 | 看板舞台 slot | `main`（`key: dsh-task-board`） |
-| 侧栏入口 slot | `sidebar.panellist`（`id: dsh-task-board`） |
-| 任务清单 slot | `sidebar.right.pane.tab`、会话头部按钮 `conversation.session.header.actions` |
+| 任务清单舞台 slot | `main`（`key: dsh-task-board-items`，与看板同一个座位、不同键） |
+| 侧栏入口 slot | `sidebar.panellist`（`id` 与各自的 `main` 键一致） |
 | localStorage 键 | `dsh.taskBoard.v1` 等 |
 
 插件 id 和包名是两件事：id 决定加载器行、浏览器资源路径、路由、存储单元和上面那几个扩展点；包名只是 pnpm 安装时的标识。包名带作用域不会改变 id。

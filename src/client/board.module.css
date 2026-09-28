@@ -7386,6 +7386,9 @@ span.interactionOptions {
   padding: var(--dsh-tb-rail-inset);
   gap: 8px;
   color: var(--dsh-tb-text-1);
+  /* The panel paints its own opaque surface, so the shell wallpaper never
+     shows through behind search text, filter chips or empty states. */
+  background: var(--dsh-tb-bg);
 }
 
 .itemHeader {
@@ -7393,11 +7396,34 @@ span.interactionOptions {
   flex-direction: column;
   flex: none;
   gap: 8px;
+  min-width: 0;
+}
+
+.itemHeadRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.itemHeadTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dsh-tb-text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemSearchRow {
+  display: flex;
+  min-width: 0;
 }
 
 .itemSearch {
   box-sizing: border-box;
   width: 100%;
+  min-width: 0;
   min-height: 28px;
   padding: 4px 8px;
   border: 1px solid var(--dsh-tb-border-soft);
@@ -7638,8 +7664,62 @@ span.interactionOptions {
 .itemDetail {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   padding: 8px 6px 10px;
+}
+
+.itemSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding-block-start: 8px;
+  border-block-start: 1px solid var(--dsh-tb-border-soft);
+}
+
+.itemSection:first-child {
+  padding-block-start: 0;
+  border-block-start: 0;
+}
+
+.itemSectionTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsh-tb-text-2);
+}
+
+.itemOriginRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.itemDangerZone {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+  background: var(--dsh-tb-surface-sunken);
+}
+
+.itemDangerHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsh-tb-text-3);
+}
+
+.itemEmptyGroup {
+  margin: 0;
+  padding: 8px 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsh-tb-text-3);
 }
 
 .itemProgressText {
@@ -7740,20 +7820,18 @@ textarea.itemInput {
   min-height: 24px;
 }
 
-.itemActions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 /* The tight case is the normal case here: about 300px. When the reader docks
    the sidebar to a second pane the column can fall to roughly half that, and
-   the meta value gives way rather than the title losing its only words. */
+   the row keeps every control on screen by wrapping instead of hiding: the
+   meta value shortens to its count and the title keeps its only words. No
+   control is hidden to save space and no type is set smaller. */
 @container dsh-tb-item (max-width: 320px) {
+  .itemRowMain {
+    flex-wrap: wrap;
+  }
+  .itemDue,
   .itemSteps {
-    display: none;
+    flex-basis: 100%;
   }
 }
 

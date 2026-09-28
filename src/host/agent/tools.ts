@@ -86,7 +86,7 @@ function readRunConfig(raw: unknown): RunConfigPresetConfig {
   return config
 }
 import { armSchedule, moveTaskToStatus, removeSessionFromTask, type TransitionResult } from '../../core/task-transitions.ts'
-import type { ItemRecord, ItemStep } from '../../core/item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUSES, type ItemRecord, type ItemStep } from '../../core/item.ts'
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts'
 import { sessionRunningOf } from '../session-state.ts'
 import { relatedSessionIdsOf, type TaskLiveState } from '../../core/task-live.ts'
@@ -1011,16 +1011,61 @@ function applyOne(
     case 'item.update': {
       const found = findItem()
       if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
-      const patch = payload as Partial<ItemRecord>
+      // 文本三件只认字符串：非字符串不是“空”，是“没说清”，直接拒而不是落盘一个数字。
+      for (const field of ['title', 'body', 'notes'] as const) {
+        if (payload[field] !== undefined && typeof payload[field] !== 'string') {
+          return `${field} 要写就写一段文字，现在这个不是文字。`
+        }
+      }
+      if (payload.status !== undefined && !ITEM_STATUSES.includes(payload.status as ItemRecord['status'])) {
+        return `status 只能是 ${ITEM_STATUSES.join(' / ')}，收到的是「${String(payload.status)}」（「进行中」是派生的，不可写）。`
+      }
+      if (payload.priority !== undefined && !ITEM_PRIORITIES.includes(payload.priority as ItemRecord['priority'])) {
+        return `priority 只能是 ${ITEM_PRIORITIES.join(' / ')}，收到的是「${String(payload.priority)}」。`
+      }
+      // 三时间互不覆盖：没传的沿用，传了空（null 或空串）的是删承诺，传了数字的是新承诺，
+      // 传了别的形状的是没说清，沿用旧的不动它。
+      const nextInstant = (field: 'startsAfter' | 'dueAt' | 'hardDueAt'): number | undefined => {
+        const raw = payload[field]
+        if (raw === undefined) return found[field]
+        if (raw === null || raw === '') return undefined
+        if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+        return found[field]
+      }
+      // 挂卡同理：没传沿用，空是摘掉，非空字符串是换链。
+      const nextTaskId = payload.taskId === undefined
+        ? found.taskId
+        : (payload.taskId === null || payload.taskId === '' ? undefined : (typeof payload.taskId === 'string' ? payload.taskId : found.taskId))
       const steps = payload.steps === undefined ? undefined : readSteps(payload.steps, deps)
       const next: ItemRecord = {
         ...found,
-        title: patch.title ?? found.title,
-        body: patch.body ?? found.body,
-        notes: patch.notes ?? found.notes,
+        title: payload.title === undefined ? found.title : payload.title as string,
+        body: payload.body === undefined ? found.body : payload.body as string,
+        notes: payload.notes === undefined ? found.notes : payload.notes as string,
+        status: payload.status === undefined ? found.status : payload.status as ItemRecord['status'],
+        priority: payload.priority === undefined ? found.priority : payload.priority as ItemRecord['priority'],
+        tags: payload.tags === undefined ? found.tags : readTags(payload.tags),
+        startsAfter: nextInstant('startsAfter'),
+        dueAt: nextInstant('dueAt'),
+        hardDueAt: nextInstant('hardDueAt'),
+        taskId: nextTaskId,
         ...(steps === undefined ? {} : { steps: steps.steps }),
         updatedAt: now,
       }
+      // 无变化不烧 revision：内容逐字段比对，步骤按值比对，全等即“已经是这样了”。
+      const sameSteps = steps === undefined || JSON.stringify(steps.steps) === JSON.stringify(found.steps)
+      const unchanged = next.title === found.title
+        && next.body === found.body
+        && next.notes === found.notes
+        && next.status === found.status
+        && next.priority === found.priority
+        && JSON.stringify(next.tags) === JSON.stringify(found.tags)
+        && next.startsAfter === found.startsAfter
+        && next.dueAt === found.dueAt
+        && next.hardDueAt === found.hardDueAt
+        && next.taskId === found.taskId
+        && sameSteps
+      if (unchanged) return { doc, items, item: found, unchanged: true }
       const note = steps === undefined ? undefined : mintedNote(steps.minted)
       return note === undefined
         ? { doc, items: { ...items, items: items.items.map(item => (item.id === found.id ? next : item)) }, item: next }
@@ -1095,24 +1140,61 @@ function mintedNote(minted: number): string | undefined {
   return minted === 0 ? undefined : `（${minted} 个步骤没有 id，已按顺序铸号，没有丢）`
 }
 
+/**
+ * 清单三时间的读法：只认有限数字，其余一律当没有。
+ * 新建时“没有”就是不带承诺；更新时“没有”另有清空语义，由调用方区分
+ * “没传”（沿用）与“传了空”（删承诺），这里只回答“这个值能不能算一个时刻”。
+ */
+function readInstant(raw: unknown): number | undefined {
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined
+}
+
+/**
+ * 标签的读法，与行内文法同一条律：只收字符串，裁边，去空，去重，保序。
+ * 模型传进来的非字符串与空串在这里掉队，而不是跟着落盘。
+ */
+function readTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const tags: string[] = []
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue
+    const tag = entry.trim()
+    if (tag === '' || tags.includes(tag)) continue
+    tags.push(tag)
+  }
+  return tags
+}
+
+/**
+ * 挂卡链接的读法：零张或一张，只存链接。
+ * 空串与 null 读作“没有挂”，非字符串读作“没有挂”而不是一条断链。
+ */
+function readTaskLink(raw: unknown): string | undefined {
+  return typeof raw === 'string' && raw !== '' ? raw : undefined
+}
+
 function createItemFrom(payload: Record<string, unknown>, deps: ToolDeps, now: number): { item: ItemRecord; mintedSteps: number } {
   const { steps, minted } = readSteps(payload.steps, deps)
+  // 状态与优先级走目录的 oneOf 校验（checkParams 先拦），这里只做兜底：
+  // 未知值回中性档，与入库文法的修法一致，行本身不丢。
+  const status = ITEM_STATUSES.includes(payload.status as ItemRecord['status']) ? payload.status as ItemRecord['status'] : 'open'
+  const priority = ITEM_PRIORITIES.includes(payload.priority as ItemRecord['priority']) ? payload.priority as ItemRecord['priority'] : 'normal'
   return {
     mintedSteps: minted,
     item: {
     id: deps.uuid(),
     ref: 0,
-    title: String(payload.title ?? ''),
-    body: String(payload.body ?? ''),
-    notes: String(payload.notes ?? ''),
+    title: typeof payload.title === 'string' ? payload.title : '',
+    body: typeof payload.body === 'string' ? payload.body : '',
+    notes: typeof payload.notes === 'string' ? payload.notes : '',
     steps,
-    status: (payload.status as ItemRecord['status']) ?? 'open',
-    priority: (payload.priority as ItemRecord['priority']) ?? 'normal',
-    tags: [],
-    startsAfter: undefined,
-    dueAt: undefined,
-    hardDueAt: undefined,
-    taskId: undefined,
+    status,
+    priority,
+    tags: readTags(payload.tags),
+    startsAfter: readInstant(payload.startsAfter),
+    dueAt: readInstant(payload.dueAt),
+    hardDueAt: readInstant(payload.hardDueAt),
+    taskId: readTaskLink(payload.taskId),
     origin: { source: 'ai', at: now },
     createdAt: now,
     updatedAt: now,
@@ -1305,6 +1387,13 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   const needle = filter.toLowerCase()
   const tasks = doc.tasks.filter(task => needle === '' || task.title.toLowerCase().includes(needle)).slice(0, limit)
   const rows = tasks.map(taskRow)
+  // 清单与看板共用同一套字面搜索：标题、正文、备注、标签都在干草堆里，
+  // 标签可搜即是这一行的直接推论。未知 key 当普通文字，不报错。
+  const matchedItems = items.items.filter(item => {
+    if (needle === '') return true
+    const haystack = `${item.title}\n${item.body}\n${item.notes}\n${item.tags.join('\n')}`.toLowerCase()
+    return needle.split(/\s+/).filter(part => part !== '').every(part => haystack.includes(part))
+  }).slice(0, limit)
   if (request.posture !== undefined && request.posture !== '') {
     // Posture is a fact about a SESSION, and a card is not a session — so the
     // caller names the session, rather than this tool guessing which of a
@@ -1313,9 +1402,9 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
       ok: true,
       filter,
       tasks: rows,
-      items: items.items.slice(0, limit).map(itemRow),
+      items: matchedItems.map(itemRow),
       posture: await deps.posture(request.posture),
     }
   }
-  return { ok: true, filter, tasks: rows, items: items.items.slice(0, limit).map(itemRow), truncated: tasks.length >= limit }
+  return { ok: true, filter, tasks: rows, items: matchedItems.map(itemRow), truncated: tasks.length >= limit }
 }

@@ -190,11 +190,12 @@ export function ItemRow(props: {
       </button>
 
       {/* The hand-off lives OUTSIDE the toggle, so it is one click without
-          expanding anything. It only exists for an item that hangs off a card,
-          because the card is what names the session to talk to — an item with
-          no card has no target, and a button that cannot say so is a button
-          that lies. */}
-      {onAsk !== undefined && linkedCardTitle !== undefined && (
+          expanding anything. It appears on exactly the rows that hang off a
+          card, because the card is what names the session to talk to — the
+          caller passes onAsk only when item.taskId is present, so an item
+          with no card shows no button at all rather than one that explains
+          itself on press. */}
+      {onAsk !== undefined && (
         <Button
           variant="ghost"
           size="sm"
@@ -215,139 +216,157 @@ export function ItemRow(props: {
 
       {expanded && (
         <div className={css.itemDetail} id={regionId}>
-          {progress !== undefined && (
-            <p className={css.itemProgressText}>
-              {t('item.steps', { done: String(progress.done), total: String(progress.total) })}
-            </p>
-          )}
-          {item.steps.length > 0 && (
-            <ul className={css.itemStepList}>
-              {item.steps.map(step => (
-                <li key={step.id}>
-                  <label className={css.itemStep}>
-                    <input
-                      type="checkbox"
-                      checked={step.done}
-                      onChange={() => onToggleStep(step.id)}
-                    />
-                    <span data-done={step.done ? '' : undefined}>{step.text}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-          <ItemField label={t('item.field.title')}>
-            <input
-              className={css.itemInput}
-              value={item.title}
-              onChange={e => onEdit({ title: e.target.value })}
-            />
-          </ItemField>
-          <ItemField label={t('item.field.body')}>
-            <textarea
-              className={css.itemInput}
-              rows={3}
-              value={item.body}
-              onChange={e => onEdit({ body: e.target.value })}
-            />
-          </ItemField>
-          <ItemField label={t('item.field.notes')}>
-            <textarea
-              className={css.itemInput}
-              rows={2}
-              value={item.notes}
-              onChange={e => onEdit({ notes: e.target.value })}
-            />
-          </ItemField>
-          <div className={css.itemFieldRow}>
-            <ItemField label={t('item.field.status')}>
-              {/* The select shows the DERIVED state, not the stored one. The row
-                  header groups by "in progress" while the stored value says
-                  "to do", and two panels disagreeing inside one card reads as
-                  a bug. So the control says what the reader sees, and the line
-                  under it says why the two can differ. */}
+          <section className={css.itemSection} aria-label={t('item.section.content')}>
+            <h3 className={css.itemSectionTitle}>{t('item.section.content')}</h3>
+            {progress !== undefined && (
+              <p className={css.itemProgressText}>
+                {t('item.steps', { done: String(progress.done), total: String(progress.total) })}
+              </p>
+            )}
+            {item.steps.length > 0 && (
+              <ul className={css.itemStepList}>
+                {item.steps.map(step => (
+                  <li key={step.id}>
+                    <label className={css.itemStep}>
+                      <input
+                        type="checkbox"
+                        checked={step.done}
+                        onChange={() => onToggleStep(step.id)}
+                      />
+                      <span data-done={step.done ? '' : undefined}>{step.text}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <ItemField label={t('item.field.title')}>
+              <input
+                className={css.itemInput}
+                value={item.title}
+                onChange={e => onEdit({ title: e.target.value })}
+              />
+            </ItemField>
+            <ItemField label={t('item.field.body')}>
+              <textarea
+                className={css.itemInput}
+                rows={3}
+                value={item.body}
+                onChange={e => onEdit({ body: e.target.value })}
+              />
+            </ItemField>
+          </section>
+          <section className={css.itemSection} aria-label={t('item.section.notes')}>
+            <h3 className={css.itemSectionTitle}>{t('item.section.notes')}</h3>
+            <ItemField label={t('item.field.notes')}>
+              <textarea
+                className={css.itemInput}
+                rows={2}
+                value={item.notes}
+                onChange={e => onEdit({ notes: e.target.value })}
+              />
+            </ItemField>
+          </section>
+          <section className={css.itemSection} aria-label={t('item.section.plan')}>
+            <h3 className={css.itemSectionTitle}>{t('item.section.plan')}</h3>
+            <div className={css.itemFieldRow}>
+              <ItemField label={t('item.field.status')}>
+                {/* The select shows the DERIVED state, not the stored one. The row
+                    header groups by "in progress" while the stored value says
+                    "to do", and two panels disagreeing inside one card reads as
+                    a bug. So the control says what the reader sees, and the line
+                    under it says why the two can differ. */}
+                <select
+                  className={css.itemInput}
+                  value={status}
+                  onChange={e => onEdit({ status: storedStatusFor(e.target.value) })}
+                >
+                  {(['inProgress', ...ITEM_STATUSES] as const).map(option => (
+                    <option key={option} value={option}>{t(GROUP_KEYS[option])}</option>
+                  ))}
+                </select>
+              </ItemField>
+              <ItemField label={t('item.field.priority')}>
+                <select
+                  className={css.itemInput}
+                  value={item.priority}
+                  onChange={e => onEdit({ priority: e.target.value as ItemRecord['priority'] })}
+                >
+                  {ITEM_PRIORITIES.map(priority => <option key={priority} value={priority}>{t(PRIORITY_KEYS[priority])}</option>)}
+                </select>
+              </ItemField>
+            </div>
+            {status === 'inProgress' && (
+              <p className={css.itemHint}>{t('item.status.derived')}</p>
+            )}
+            <div className={css.itemFieldRow}>
+              <ItemField label={t('item.field.startsAfter')}>
+                <input
+                  type="date"
+                  className={css.itemInput}
+                  value={toItemDateField(item.startsAfter)}
+                  onChange={e => onEdit({ startsAfter: parseItemDate(e.target.value) })}
+                />
+              </ItemField>
+              <ItemField label={t('item.field.dueAt')}>
+                <input
+                  type="date"
+                  className={css.itemInput}
+                  value={toItemDateField(item.dueAt)}
+                  onChange={e => onEdit({ dueAt: parseItemDate(e.target.value) })}
+                />
+              </ItemField>
+              <ItemField label={t('item.field.hardDueAt')}>
+                <input
+                  type="date"
+                  className={css.itemInput}
+                  value={toItemDateField(item.hardDueAt)}
+                  onChange={e => onEdit({ hardDueAt: parseItemDate(e.target.value) })}
+                />
+              </ItemField>
+            </div>
+          </section>
+          <section className={css.itemSection} aria-label={t('item.section.link')}>
+            <h3 className={css.itemSectionTitle}>{t('item.section.link')}</h3>
+            <ItemField label={t('item.field.tags')}>
+              <input
+                className={css.itemInput}
+                value={item.tags.join('、')}
+                placeholder={t('item.field.tagsHint')}
+                onChange={e => onEdit({ tags: e.target.value.split(/[、,]/).map(tag => tag.trim()).filter(tag => tag !== '') })}
+              />
+            </ItemField>
+            <ItemField label={t('item.field.taskId')}>
               <select
                 className={css.itemInput}
-                value={status}
-                onChange={e => onEdit({ status: storedStatusFor(e.target.value) })}
+                value={item.taskId ?? ''}
+                onChange={e => onEdit({ taskId: e.target.value === '' ? undefined : e.target.value })}
               >
-                {(['inProgress', ...ITEM_STATUSES] as const).map(option => (
-                  <option key={option} value={option}>{t(GROUP_KEYS[option])}</option>
+                <option value="">{t('item.field.noCard')}</option>
+                {cards.map(card => (
+                  <option key={card.id} value={card.id}>{card.title}</option>
                 ))}
               </select>
             </ItemField>
-            <ItemField label={t('item.field.priority')}>
-              <select
-                className={css.itemInput}
-                value={item.priority}
-                onChange={e => onEdit({ priority: e.target.value as ItemRecord['priority'] })}
-              >
-                {ITEM_PRIORITIES.map(priority => <option key={priority} value={priority}>{t(PRIORITY_KEYS[priority])}</option>)}
-              </select>
-            </ItemField>
-          </div>
-          {status === 'inProgress' && (
-            <p className={css.itemHint}>{t('item.status.derived')}</p>
-          )}
-          <div className={css.itemFieldRow}>
-            <ItemField label={t('item.field.startsAfter')}>
-              <input
-                type="date"
-                className={css.itemInput}
-                value={toItemDateField(item.startsAfter)}
-                onChange={e => onEdit({ startsAfter: parseItemDate(e.target.value) })}
-              />
-            </ItemField>
-            <ItemField label={t('item.field.dueAt')}>
-              <input
-                type="date"
-                className={css.itemInput}
-                value={toItemDateField(item.dueAt)}
-                onChange={e => onEdit({ dueAt: parseItemDate(e.target.value) })}
-              />
-            </ItemField>
-            <ItemField label={t('item.field.hardDueAt')}>
-              <input
-                type="date"
-                className={css.itemInput}
-                value={toItemDateField(item.hardDueAt)}
-                onChange={e => onEdit({ hardDueAt: parseItemDate(e.target.value) })}
-              />
-            </ItemField>
-          </div>
-          <ItemField label={t('item.field.tags')}>
-            <input
-              className={css.itemInput}
-              value={item.tags.join('、')}
-              placeholder={t('item.field.tagsHint')}
-              onChange={e => onEdit({ tags: e.target.value.split(/[、,]/).map(tag => tag.trim()).filter(tag => tag !== '') })}
-            />
-          </ItemField>
-          <ItemField label={t('item.field.taskId')}>
-            <select
-              className={css.itemInput}
-              value={item.taskId ?? ''}
-              onChange={e => onEdit({ taskId: e.target.value === '' ? undefined : e.target.value })}
-            >
-              <option value="">{t('item.field.noCard')}</option>
-              {cards.map(card => (
-                <option key={card.id} value={card.id}>{card.title}</option>
-              ))}
-            </select>
-          </ItemField>
-          {item.taskId !== undefined && (
-            <p className={css.itemHint}>
-              {linkedCardTitle === undefined
-                ? t('item.field.cardGone')
-                : t('item.field.linked', { title: linkedCardTitle })}
-            </p>
-          )}
-          <div className={css.itemActions}>
-            <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>
-              {t(ORIGIN_KEYS[item.origin.source])}
-            </Chip>
-            <Button variant="dangerGhost" onClick={onRemove}>{t('item.remove')}</Button>
-          </div>
+            {item.taskId !== undefined && (
+              <p className={css.itemHint}>
+                {linkedCardTitle === undefined
+                  ? t('item.field.cardGone')
+                  : t('item.field.linked', { title: linkedCardTitle })}
+              </p>
+            )}
+          </section>
+          <section className={css.itemSection} aria-label={t('item.section.danger')}>
+            <h3 className={css.itemSectionTitle}>{t('item.section.danger')}</h3>
+            <div className={css.itemOriginRow}>
+              <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>
+                {t(ORIGIN_KEYS[item.origin.source])}
+              </Chip>
+            </div>
+            <div className={css.itemDangerZone}>
+              <p className={css.itemDangerHint}>{t('item.danger.hint')}</p>
+              <Button variant="dangerGhost" onClick={onRemove}>{t('item.remove')}</Button>
+            </div>
+          </section>
         </div>
       )}
     </li>
@@ -567,13 +586,18 @@ export function ItemListPanel(props: ItemListPanelProps) {
   return (
     <div className={css.itemRoot} data-dsh-taskboard-view="">
       <header className={css.itemHeader}>
-        <input
-          className={css.itemSearch}
-          value={filter.text}
-          placeholder={t('item.search')}
-          aria-label={t('item.search')}
-          onChange={e => setFilter({ ...filter, text: e.target.value })}
-        />
+        <div className={css.itemHeadRow}>
+          <h1 className={css.itemHeadTitle}>{t('itemTab.title')}</h1>
+        </div>
+        <div className={css.itemSearchRow}>
+          <input
+            className={css.itemSearch}
+            value={filter.text}
+            placeholder={t('item.search')}
+            aria-label={t('item.search')}
+            onChange={e => setFilter({ ...filter, text: e.target.value })}
+          />
+        </div>
         <div className={css.itemFilterRow}>
           {ITEM_GROUPS.map(group => {
             const on = filter.groups.includes(group)
@@ -673,7 +697,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
                   </p>
                 </h2>
                 <div className={css.itemGroupList}>
-                  {!isCollapsed && (
+                  {!isCollapsed && slice.items.length === 0 && (
+                    <p className={css.itemEmptyGroup}>{t('item.group.empty')}</p>
+                  )}
+                  {!isCollapsed && slice.items.length > 0 && (
                     <ul className={css.itemList} id={`${slice.group}-body`}>
                       {slice.items.map(item => (
                         <ItemRow

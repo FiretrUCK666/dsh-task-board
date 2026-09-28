@@ -117,10 +117,18 @@ describe('itemGroupSlicesOf', () => {
   ]
   const running = new Map([['t-1', true]])
 
-  it('groups by derived status, in reading order, dropping empty groups', () => {
+  it('groups by derived status, in reading order, keeping empty groups', () => {
     const slices = itemGroupSlicesOf(three, NO_ITEM_FILTER, running)
     expect(slices.map(s => s.group)).toEqual(['inProgress', 'open', 'blocked', 'done'])
     expect(slices[0]?.items.map(i => i.id)).toEqual(['a'])
+  })
+
+  it('keeps an empty group header instead of dropping it', () => {
+    const onlyOpen = [item({ id: 'a', ref: 1, title: 'only this', status: 'open' })]
+    const slices = itemGroupSlicesOf(onlyOpen, NO_ITEM_FILTER, new Map())
+    expect(slices.map(s => s.group)).toEqual(['inProgress', 'open', 'blocked', 'done'])
+    expect(slices.find(s => s.group === 'open')?.items.map(i => i.id)).toEqual(['a'])
+    expect(slices.find(s => s.group === 'blocked')?.items).toEqual([])
   })
 
   it('is order-independent, so two devices holding the same rows agree', () => {
@@ -135,7 +143,8 @@ describe('itemGroupSlicesOf', () => {
       item({ id: 'soon', ref: 2, dueAt: T0 + 1000 }),
       item({ id: 'none', ref: 3, updatedAt: T0 + 500 }),
     ]
-    const slice = itemGroupSlicesOf(rows, NO_ITEM_FILTER, new Map())[0]
+    const slices = itemGroupSlicesOf(rows, NO_ITEM_FILTER, new Map())
+    const slice = slices.find(s => s.group === 'open')
     expect(slice?.items.map(i => i.id)).toEqual(['soon', 'late', 'none'])
   })
 
@@ -147,8 +156,11 @@ describe('itemGroupSlicesOf', () => {
       item({ id: 'd', ref: 4, tags: ['login'] }),
       item({ id: 'e', ref: 5, title: 'unrelated' }),
     ]
-    const slice = itemGroupSlicesOf(rows, { text: 'LoGiN', groups: [] }, new Map())[0]
-    expect(slice?.items.map(i => i.id)).toEqual(['a', 'b', 'c', 'd'])
+    const slices = itemGroupSlicesOf(rows, { text: 'LoGiN', groups: [] }, new Map())
+    const shown = slices.reduce((total, s) => total + s.items.length, 0)
+    expect(shown).toBe(4)
+    const open = slices.find(s => s.group === 'open')
+    expect(open?.items.map(i => i.id)).toEqual(['a', 'b', 'c', 'd'])
   })
 
   it('filters by group and keeps the reading order of what survives', () => {
@@ -156,8 +168,11 @@ describe('itemGroupSlicesOf', () => {
     expect(slices.map(s => s.group)).toEqual(['blocked', 'done'])
   })
 
-  it('returns nothing rather than everything when the filter matches nothing', () => {
-    expect(itemGroupSlicesOf(three, { text: 'zzz', groups: [] }, running)).toEqual([])
+  it('keeps empty group headers when the filter matches nothing, so the count says zero', () => {
+    const slices = itemGroupSlicesOf(three, { text: 'zzz', groups: [] }, running)
+    expect(slices.map(s => s.group)).toEqual(['inProgress', 'open', 'blocked', 'done'])
+    const shown = slices.reduce((total, s) => total + s.items.length, 0)
+    expect(shown).toBe(0)
   })
 })
 
@@ -537,5 +552,101 @@ describe('what the tool card does with them', () => {
     expect(rows.length).toBeGreaterThan(0)
     expect(shown).toBe(0)
     expect(renderPanel(rows)).toContain('only this')
+  })
+})
+
+describe('the workbench keeps its six partitions', () => {
+  it('lays search and filter in separate row containers, so they cannot overlap', () => {
+    const html = renderPanel([item()])
+    expect(html).toContain('itemSearchRow')
+    expect(html).toContain('itemFilterRow')
+    const searchAt = html.indexOf('itemSearchRow')
+    const filterAt = html.indexOf('itemFilterRow')
+    expect(searchAt).toBeGreaterThan(-1)
+    expect(filterAt).toBeGreaterThan(searchAt)
+  })
+
+  it('keeps every group header on screen, even when the group is empty', () => {
+    const html = renderPanel([item({ id: 'a', ref: 1, title: 'only open', status: 'open' })])
+    for (const name of ['进行中', '待办', '受阻', '已完成']) {
+      expect(html, `missing group ${name}`).toContain(name)
+    }
+    expect(html).toContain('这一组还没有事项')
+  })
+
+  it('shows the hand-off only on rows that hang off a card', () => {
+    const card = { id: 't-9', title: '画廊第二版' }
+    const withCard = renderToStaticMarkup(createElement(ItemRow, {
+      view: itemRowViewOf(item({ id: 'i-1', ref: 1, taskId: 't-9' }), false, T0),
+      density: 'compact',
+      english: false,
+      expanded: false,
+      fresh: false,
+      panelId: 'item',
+      onToggle: () => undefined,
+      onEdit: () => undefined,
+      onToggleStep: () => undefined,
+      onRemove: () => undefined,
+      onAsk: () => undefined,
+      cards: [card],
+      linkedCardTitle: '画廊第二版',
+    }))
+    const withoutCard = renderToStaticMarkup(createElement(ItemRow, {
+      view: itemRowViewOf(item({ id: 'i-2', ref: 2 }), false, T0),
+      density: 'compact',
+      english: false,
+      expanded: false,
+      fresh: false,
+      panelId: 'item',
+      onToggle: () => undefined,
+      onEdit: () => undefined,
+      onToggleStep: () => undefined,
+      onRemove: () => undefined,
+      cards: [card],
+      linkedCardTitle: undefined,
+    }))
+    expect(withCard).toContain('问 AI')
+    expect(withoutCard).not.toContain('问 AI')
+  })
+
+  it('lays an open row in five fixed sections with the delete alone in its danger zone', () => {
+    const html = renderToStaticMarkup(createElement(ItemRow, {
+      view: itemRowViewOf(item({ id: 'i-1', ref: 1 }), false, T0),
+      density: 'compact',
+      english: false,
+      expanded: true,
+      fresh: false,
+      panelId: 'item',
+      onToggle: () => undefined,
+      onEdit: () => undefined,
+      onToggleStep: () => undefined,
+      onRemove: () => undefined,
+      cards: [],
+      linkedCardTitle: undefined,
+    }))
+    for (const section of ['标题与正文', '上下文备注', '计划与期限', '关联', '来源与危险区']) {
+      expect(html, `missing section ${section}`).toContain(section)
+    }
+    expect(html).toContain('itemDangerZone')
+    // The row itself carries no delete: the only delete lives in the detail.
+    const head = html.slice(0, html.indexOf('itemDetail'))
+    expect(head).not.toContain('删除这条')
+    expect(html).toContain('删除这条')
+  })
+
+  it('paints its own opaque surface and hides nothing to save space', () => {
+    const css = readFileSync(
+      fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)),
+      'utf8',
+    )
+    const root = /\.itemRoot\s*\{[^}]*\}/s.exec(css)?.[0] ?? ''
+    expect(root).toMatch(/background\s*:/)
+    const narrow = /@container dsh-tb-item \(max-width: 320px\)\s*\{[\s\S]*?\n\}/.exec(css)?.[0] ?? ''
+    expect(narrow).not.toMatch(/display\s*:\s*none/)
+    const itemRules = [...css.matchAll(/\.item[A-Za-z]+\s*\{[^}]*\}/gs)].map(m => m[0]).join('\n')
+    expect(itemRules).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+    expect(itemRules).not.toMatch(/\brgb\s*\(/)
+    expect(itemRules).not.toMatch(/\bvw\b/)
+    expect(itemRules).not.toMatch(/\bvh\b/)
   })
 })

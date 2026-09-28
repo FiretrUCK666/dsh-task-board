@@ -260,12 +260,12 @@ row in the sidebar to go back to it, or "back to conversation" to leave either p
 | Plugin id | `dsh-task-board` |
 | npm package | `@firetruck666/dsh-task-board` |
 | Permission preset route | `/api/dsh-task-board/permissions` |
-| Board data route | `/api/dsh-task-board/board` (`/items`, `/lease`, `/command`, `/events`) |
+| Board data route | `/api/dsh-task-board/board` (`/items`, `/surfaces`, `/ask`, `/lease`, `/command`, `/events`) |
 | Other host routes | `/api/dsh-task-board/session-state`, `/update`, `/client-report` |
 | Host storage unit | `dsh_task_board` (one file per data kind under `documents/`) |
 | Board stage slot | `main` (`key: dsh-task-board`) |
-| Sidebar entry slot | `sidebar.panellist` (`id: dsh-task-board`) |
-| Task list slots | `sidebar.right.pane.tab`, `conversation.session.header.actions` |
+| Task list stage slot | `main` (`key: dsh-task-board-items`; same seat as the board, different key) |
+| Sidebar entry slot | `sidebar.panellist` (`id` matches each panel's `main` key) |
 | `localStorage` keys | `dsh.taskBoard.v1` and friends |
 
 The plugin id and the package name are different things. The id names the loader row, the served browser asset, the routes, the storage unit and the extension points above; the package name is only what pnpm installed. A scoped package name never moves the id.

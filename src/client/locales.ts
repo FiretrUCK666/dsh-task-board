@@ -701,6 +701,13 @@ export const zh = {
   'item.field.notes': '上下文备注（给 AI 看）',
   'item.field.status': '状态',
   'item.field.priority': '优先级',
+  'item.section.content': '标题与正文',
+  'item.section.notes': '上下文备注',
+  'item.section.plan': '计划与期限',
+  'item.section.link': '关联',
+  'item.section.danger': '来源与危险区',
+  'item.group.empty': '这一组还没有事项',
+  'item.danger.hint': '删除后这一条仍可恢复。',
 } satisfies Record<string, string>
 
 /** en dictionary, complete against the zh key set. */
@@ -1373,6 +1380,13 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.notes': 'Context notes (for the model)',
   'item.field.status': 'Status',
   'item.field.priority': 'Priority',
+  'item.section.content': 'Title and body',
+  'item.section.notes': 'Context notes',
+  'item.section.plan': 'Plan and dates',
+  'item.section.link': 'Links',
+  'item.section.danger': 'Origin and danger zone',
+  'item.group.empty': 'Nothing in this group yet',
+  'item.danger.hint': 'Removed items stay recoverable.',
 }
 
 /** The dictionary key union. */

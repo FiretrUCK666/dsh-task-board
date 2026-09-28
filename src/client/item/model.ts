@@ -137,13 +137,20 @@ export function itemRowViewOf(item: ItemRecord, linkedRunning: boolean, now: num
  * now, what is waiting, what is stuck, what is finished — and inside a group,
  * the nearest deadline first, then the most recently touched. Nothing here is
  * stored; it is a pure function of the document. There is deliberately no
- * reader-movable order: `ItemRecord` has no `order` field, because a list in
- * a 300px column cannot offer a drag affordance honestly, and a stored order
- * nobody can move is a lie about who arranged it.
+ * reader-movable order: `ItemRecord` has no `order` field, because the columns
+ * cannot offer a drag affordance honestly, and a stored order nobody can move
+ * is a lie about who arranged it.
+ *
+ * Empty groups are KEPT, not dropped: the group header is the reader's map of
+ * the whole list, and a group that vanishes when it hits zero reads as "the
+ * filter broke" rather than "there is nothing here". A caller that needs the
+ * filtered count sums the slices; a caller that needs "did anything match"
+ * checks that sum, not the slice count.
  * @param items - every item in the document.
  * @param filter - what to keep.
  * @param linkedRunning - per-item running flag, keyed by the board card id.
- * @returns one slice per non-empty group, in reading order.
+ * @returns one slice per group in reading order, empty slices included. When
+ *   the filter names groups, only those groups are returned.
  */
 export function itemGroupSlicesOf(
   items: readonly ItemRecord[],
@@ -160,9 +167,11 @@ export function itemGroupSlicesOf(
     buckets.get(group)?.push(item)
   }
   const slices: ItemGroupSlice[] = []
-  for (const group of ITEM_GROUPS) {
+  const ordered: readonly ItemGroup[] = wanted.size > 0
+    ? ITEM_GROUPS.filter(group => wanted.has(group))
+    : ITEM_GROUPS
+  for (const group of ordered) {
     const slice = buckets.get(group) ?? []
-    if (slice.length === 0) continue
     slice.sort((a, b) => {
       const byDue = (a.hardDueAt ?? a.dueAt ?? Infinity) - (b.hardDueAt ?? b.dueAt ?? Infinity)
       if (byDue !== 0) return byDue

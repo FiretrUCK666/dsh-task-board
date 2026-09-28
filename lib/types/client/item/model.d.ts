@@ -101,9 +101,9 @@ export declare function itemRowViewOf(item: ItemRecord, linkedRunning: boolean, 
  * now, what is waiting, what is stuck, what is finished — and inside a group,
  * the nearest deadline first, then the most recently touched. Nothing here is
  * stored; it is a pure function of the document. There is deliberately no
- * reader-movable order: `ItemRecord` has no `order` field, because a list in
- * a 300px column cannot offer a drag affordance honestly, and a stored order
- * nobody can move is a lie about who arranged it.
+ * reader-movable order: `ItemRecord` has no `order` field, because the columns
+ * cannot offer a drag affordance honestly, and a stored order nobody can move
+ * is a lie about who arranged it.
  *
  * Empty groups are KEPT, not dropped: the group header is the reader's map of
  * the whole list, and a group that vanishes when it hits zero reads as "the
