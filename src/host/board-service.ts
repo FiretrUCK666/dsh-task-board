@@ -632,6 +632,79 @@ export function clampLeaseTtl(ttlMs: number | undefined): number {
 }
 
 /**
+ * Process-wide acquisition of the board's truth.
+ *
+ * THE PLATFORM GIVES A UNIT EXACTLY ONE LIVE HANDLE, and this plugin now
+ * occupies more than one loader row: the package row serves the browser routes
+ * while the agent row serves the model tools, and both need the SAME
+ * DocumentService. Two `new DocumentService` calls open the unit twice; the
+ * second open throws "already open", and whichever row lost the race serves
+ * fallback mode — the board looks alive while the host truth sits in the other
+ * row. So no row constructs the service any more: each ACQUIRES it here and
+ * RELEASES it on unload, and the last release closes the unit.
+ *
+ * WHY THE REGISTRY LIVES ON globalThis RATHER THAN IN MODULE STATE. The rows
+ * build as separate bundles, and separate bundles may each carry their own
+ * copy of this module — a module-level `Map` would then be two maps, and the
+ * sharing would be a fiction no test could catch (tests run one copy).
+ * globalThis is one per process, and the platform's constraint is per process,
+ * so the registry mirrors the platform truth instead of the bundler's
+ * accident.
+ */
+interface BoardServiceHandle {
+  service: DocumentService
+  owners: number
+}
+
+const BOARD_SERVICE_REGISTRY_KEY = '__dshTaskBoardUnits'
+
+function boardServiceRegistry(): Map<string, BoardServiceHandle> {
+  const scope = globalThis as unknown as Record<string, unknown>
+  const existing = scope[BOARD_SERVICE_REGISTRY_KEY]
+  if (existing instanceof Map) return existing as Map<string, BoardServiceHandle>
+  const fresh = new Map<string, BoardServiceHandle>()
+  scope[BOARD_SERVICE_REGISTRY_KEY] = fresh
+  return fresh
+}
+
+function releaseOf(registry: Map<string, BoardServiceHandle>, handle: BoardServiceHandle): () => void {
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    handle.owners -= 1
+    if (handle.owners > 0) return
+    if (registry.get(BOARD_UNIT_NAME) === handle) registry.delete(BOARD_UNIT_NAME)
+    void handle.service.dispose()
+  }
+}
+
+/**
+ * Borrow the process's one DocumentService for the board unit.
+ *
+ * The first acquirer creates it and kicks off init; later acquirers share it,
+ * so the routes and the model tools always read and write through the same
+ * handle, the same lease and the same write lane. Each `release` gives up one
+ * ownership; the last one closes the unit — unloading the agent row never
+ * starves the board row, and unloading the board row never strands the tools.
+ * @param openUnit - the hub opener, used only by the acquisition that creates.
+ * @returns the shared service plus the one ownership this caller must release.
+ */
+export function acquireBoardService(openUnit: KvUnitOpener): { service: DocumentService; release: () => void } {
+  const registry = boardServiceRegistry()
+  const held = registry.get(BOARD_UNIT_NAME)
+  if (held !== undefined) {
+    held.owners += 1
+    return { service: held.service, release: releaseOf(registry, held) }
+  }
+  const service = new DocumentService({ openUnit })
+  void service.ensureInit()
+  const handle: BoardServiceHandle = { service, owners: 1 }
+  registry.set(BOARD_UNIT_NAME, handle)
+  return { service, release: releaseOf(registry, handle) }
+}
+
+/**
  * Wire the service onto the platform storage hub: resolve `ctx.storage` at
  * open time (boot settlement has passed by the first browser request), take
  * the `json` backend's KV facet, and open the unit the descriptor names. A

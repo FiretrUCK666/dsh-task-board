@@ -346,12 +346,9 @@ schema 就是给同一件事再加一个控件。
 | `tool.call.toolview` | AI 动作在对话里的呈现（keyed，按工具名） |
 
 **清单与看板是同一形状的两个主舞台面板**：两个 `main` 键、面板列表里的两行、共用同一个
-`selectPanel(null)` 出口（点开看清单，再点一下回会话）——出口只有一条，「离开一个面板」在两个
-面板上就不可能是两种意思。
+`selectPanel(null)` 出口——出口只有一条，「离开一个面板」就不可能是两种意思。
 
-**这张表只列现在真有人用的座位**（列一个不存在的使用者，等于让它对真正缺的那几条失去分辨力），
-且与 `cordis.patch.yml` 的行、`exports`、`tsdown` 的 entry 必须一致——那道门禁查的就是这三个。
-**一个包只有一份浏览器产物**，所以面板的开关只能由宿主侧那一行先宣告。
+**这张表只列真有人用的座位**，且与 patch 行、`exports`、`tsdown` entry 一致——门禁查的就是这三个。
 
 ### 插件按名读的宿主成员（必须存在）
 
@@ -444,15 +441,14 @@ schema 就是给同一件事再加一个控件。
   浏览器侧任何 `/api/...` 都必须经它。`TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方
   seat 组件。`board-transport.ts`：fetch + EventSource（缺席降纯轮询）。
 - `src/client/item/`：**清单面板**，与看板同一形状的第二个主舞台面板（`main` key =
-  `dsh-task-board-items`，面板列表 `order` 120 紧跟看板，共用同一个 `selectPanel(null)` 出口）。
-  两个图标组件同构（壳画整行，我们只补「开着时再点这一行就离开」）。`item/model.ts` 纯推导，
-  `panel.tsx` 渲染，**四列并排、各列独立滚动**，窄屏一列加横向轨。面板**一律不用 Dialog**
-  （`boardBox()` 会锚到看板上去），第 1 级就地展开。挂上卡的事项才给「问 AI」，交给那张卡的会话
-  （`board-ask.ts` → `/board/ask` → 与 `/task` 同一个 `handOver`），**回执说是哪一个会话**，
-  失败也是一句话。`hostLostItems()` 为真时说「host 读不到」，**不能显示成「你一条都没有」**。
-  副本只存在**一个** holder（`itemListStage`）上——曾经有两个，绑一个读另一个，面板永远停在
-  「正在准备清单」。`src/client/surfaces.ts` 开机读一次 `/board/surfaces` 决定注册哪些面板，
-  **读不到就什么都不收窄**（开关只会让面板变少，不会让它凭空多出来）。
+  `dsh-task-board-items`，面板列表 `order` 120 紧跟看板，共用同一个 `selectPanel(null)` 出口，
+  两图标同构）。`item/model.ts` 纯推导，`panel.tsx` 渲染，**四列并排、各列独立滚动**，窄屏一列
+  加横向轨。头区四行文档流，空组保留组头计数 0，详情五节分区、删除独占危险区，面板自带不透明
+  表面层。**一律不用 Dialog**（`boardBox()` 会锚到看板上去），第 1 级就地展开。挂上卡的事项才给
+  「问 AI」（`board-ask.ts` → `/board/ask` → 与 `/task` 同一个 `handOver`），**回执说是哪一个
+  会话**，失败也是一句话。`hostLostItems()` 为真时说「host 读不到」，**不能显示成「你一条都
+  没有」**。副本只存在**一个** holder（`itemListStage`）上。`src/client/surfaces.ts` 开机读一次
+  `/board/surfaces` 决定注册哪些面板，**读不到就什么都不收窄**。
 
 ### 设计系统层（成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
 

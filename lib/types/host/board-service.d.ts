@@ -267,6 +267,21 @@ export declare class DocumentService {
 /** Clamp the requested TTL into the safe band. */
 export declare function clampLeaseTtl(ttlMs: number | undefined): number;
 /**
+ * Borrow the process's one DocumentService for the board unit.
+ *
+ * The first acquirer creates it and kicks off init; later acquirers share it,
+ * so the routes and the model tools always read and write through the same
+ * handle, the same lease and the same write lane. Each `release` gives up one
+ * ownership; the last one closes the unit — unloading the agent row never
+ * starves the board row, and unloading the board row never strands the tools.
+ * @param openUnit - the hub opener, used only by the acquisition that creates.
+ * @returns the shared service plus the one ownership this caller must release.
+ */
+export declare function acquireBoardService(openUnit: KvUnitOpener): {
+    service: DocumentService;
+    release: () => void;
+};
+/**
  * Wire the service onto the platform storage hub: resolve `ctx.storage` at
  * open time (boot settlement has passed by the first browser request), take
  * the `json` backend's KV facet, and open the unit the descriptor names. A

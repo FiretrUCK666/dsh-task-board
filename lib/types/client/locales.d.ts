@@ -667,6 +667,13 @@ export declare const zh: {
     'item.field.notes': string;
     'item.field.status': string;
     'item.field.priority': string;
+    'item.section.content': string;
+    'item.section.notes': string;
+    'item.section.plan': string;
+    'item.section.link': string;
+    'item.section.danger': string;
+    'item.group.empty': string;
+    'item.danger.hint': string;
 };
 /** en dictionary, complete against the zh key set. */
 export declare const en: Record<keyof typeof zh, string>;

@@ -6,12 +6,13 @@
  * shape and so the whole surface can be torn down with ONE disposer. Three
  * separate effects would mean three ways for half a surface to exist.
  *
- * The board document the tools write is reached through the SAME service the
- * routes use — one unit, one live handle, one write lane — so an action the
- * model takes converges on every device by the same path a click does.
+ * The board document the tools write is the SAME service object the routes
+ * serve — acquired from the process hub, never constructed here (one unit,
+ * one live handle, one write lane) — so an action the model takes converges
+ * on every device by the same path a click does.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { DocumentService, storageHubOpener } from '../board-service.ts'
+import { acquireBoardService, storageHubOpener } from '../board-service.ts'
 import { attachQuestionWaitRecorder, createQuestionWaitRecorder, sessionPostureOf, type SessionPostureSources } from '../session-state.ts'
 import { createTaskboardTools, type ToolDeps } from './tools.ts'
 import { registerTaskboardCommands, type CommandRegistrar } from './commands.ts'
@@ -47,9 +48,11 @@ export function registerTaskboardAgentSurface(ctx: Context): () => void {
     return () => undefined
   }
 
-  // ONE service, so the model and the browser write through the same handle.
-  const documentService = new DocumentService({ openUnit: storageHubOpener(() => ctx.get('storage')) })
-  void documentService.ensureInit()
+  // The SAME handle the browser routes serve — acquired, never constructed
+  // (see acquireBoardService): the platform gives this unit exactly one live
+  // handle, so an agent row that opened its own would steal the truth out from
+  // under the board row, or lose the race and serve fallback mode itself.
+  const { service: documentService, release: releaseBoardService } = acquireBoardService(storageHubOpener(() => ctx.get('storage')))
   const sources = postureSources(ctx)
   const deps: ToolDeps = {
     board: () => documentService,
@@ -66,7 +69,7 @@ export function registerTaskboardAgentSurface(ctx: Context): () => void {
   const questionWaits = createQuestionWaitRecorder()
   const detachQuestions = tools === undefined ? () => undefined : attachQuestionWaitRecorder(ctx as never, questionWaits)
 
-  const disposers: (() => void)[] = [detachQuestions, () => void documentService.dispose()]
+  const disposers: (() => void)[] = [detachQuestions, releaseBoardService]
   if (tools !== undefined) {
     for (const tool of createTaskboardTools(deps)) disposers.push(tools.register(tool))
   }

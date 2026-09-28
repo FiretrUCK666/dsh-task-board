@@ -36,7 +36,7 @@ import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
 import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
 import { relatedSessionIdsOf } from '../core/task-live.ts'
-import { DocumentService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
+import { acquireBoardService, DocumentService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
 import { handOver } from './agent/commands.ts'
 import { sessionRunningOf, type SessionPostureSources } from './session-state.ts'
 import { readJsonBody } from './http-json.ts'
@@ -561,8 +561,7 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
   // ctx.get('storage') after boot settlement), never via inject: a
   // composition without the hub degrades to fallback mode, it must not
   // wedge the whole plugin.
-  const service = new DocumentService({ openUnit: storageHubOpener(() => ctx.get('storage')) })
-  void service.ensureInit()
+  const { service, release } = acquireBoardService(storageHubOpener(() => ctx.get('storage')))
   const deps: BoardRouteDeps = {
     ready: () => service.ensureInit(),
     available: () => service.available,
@@ -584,6 +583,6 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
   const disposeRoute = webServer.register({ kind: 'prefix', path, handler })
   return () => {
     disposeRoute()
-    void service.dispose()
+    release()
   }
 }

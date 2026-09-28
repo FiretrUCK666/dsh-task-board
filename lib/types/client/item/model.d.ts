@@ -104,10 +104,17 @@ export declare function itemRowViewOf(item: ItemRecord, linkedRunning: boolean, 
  * reader-movable order: `ItemRecord` has no `order` field, because a list in
  * a 300px column cannot offer a drag affordance honestly, and a stored order
  * nobody can move is a lie about who arranged it.
+ *
+ * Empty groups are KEPT, not dropped: the group header is the reader's map of
+ * the whole list, and a group that vanishes when it hits zero reads as "the
+ * filter broke" rather than "there is nothing here". A caller that needs the
+ * filtered count sums the slices; a caller that needs "did anything match"
+ * checks that sum, not the slice count.
  * @param items - every item in the document.
  * @param filter - what to keep.
  * @param linkedRunning - per-item running flag, keyed by the board card id.
- * @returns one slice per non-empty group, in reading order.
+ * @returns one slice per group in reading order, empty slices included. When
+ *   the filter names groups, only those groups are returned.
  */
 export declare function itemGroupSlicesOf(items: readonly ItemRecord[], filter: ItemFilter, linkedRunning: ReadonlyMap<string, boolean>): ItemGroupSlice[];
 /** Whether a group opens by default. */

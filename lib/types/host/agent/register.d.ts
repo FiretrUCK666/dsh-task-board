@@ -6,9 +6,10 @@
  * shape and so the whole surface can be torn down with ONE disposer. Three
  * separate effects would mean three ways for half a surface to exist.
  *
- * The board document the tools write is reached through the SAME service the
- * routes use — one unit, one live handle, one write lane — so an action the
- * model takes converges on every device by the same path a click does.
+ * The board document the tools write is the SAME service object the routes
+ * serve — acquired from the process hub, never constructed here (one unit,
+ * one live handle, one write lane) — so an action the model takes converges
+ * on every device by the same path a click does.
  */
 import type { Context } from '@deepseek-ai/cordis';
 /**

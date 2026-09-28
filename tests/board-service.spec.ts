@@ -16,6 +16,7 @@ import { applyItemsCommit, emptyItemsDoc, type ItemsCommit, type ItemsDoc } from
 import type { ItemRecord } from '../src/core/item.ts'
 import {
   DocumentService,
+  acquireBoardService,
   clampLeaseTtl,
   BOARD_DOCUMENT,
   BOARD_UNIT_TABLE,
@@ -678,5 +679,68 @@ describe('DocumentService checklist (the second document)', () => {
     expect(doc.items).toEqual([])
     expect(doc.revision).toBe(0)
     expect(doc.nextRef).toBe(1)
+  })
+})
+
+/**
+ * Process-wide sharing of the one live handle.
+ *
+ * THE CLAIM. Two loader rows (browser routes, model tools) each need the
+ * truth, and the backend gives this unit exactly one live handle — so the
+ * second `new DocumentService` does not get a service, it gets an "already
+ * open" throw, and whichever row lost the race serves fallback mode while
+ * looking alive. Acquire-twice must therefore return ONE object, and the unit
+ * must close exactly when the LAST owner lets go — not when the first one
+ * does (that would starve the row still serving), and never twice.
+ */
+describe('acquireBoardService', () => {
+  const tick = () => new Promise<void>(resolve => setTimeout(resolve, 0))
+
+  it('hands two rows the same service and closes the unit on the last release', async () => {
+    const firstUnit = new FakeUnit()
+    const secondUnit = new FakeUnit()
+    const first = acquireBoardService(async () => firstUnit)
+    const second = acquireBoardService(async () => secondUnit)
+    try {
+      // Same object, and the second opener never ran: one handle, not two.
+      expect(second.service).toBe(first.service)
+      expect(secondUnit.loadCount).toBe(0)
+      await first.service.ensureInit()
+      expect(first.service.available).toBe(true)
+      first.release()
+      await tick()
+      // One owner left: the unit stays open for the row still serving.
+      expect(firstUnit.closed).toBe(false)
+      second.release()
+      await tick()
+      expect(firstUnit.closed).toBe(true)
+      expect(secondUnit.closed).toBe(false)
+    } finally {
+      first.release()
+      second.release()
+      await tick()
+    }
+  })
+
+  it('a release is idempotent, and a fully released unit opens fresh', async () => {
+    const unit = new FakeUnit()
+    const first = acquireBoardService(async () => unit)
+    try {
+      await first.service.ensureInit()
+      first.release()
+      first.release()
+      await tick()
+      expect(unit.closed).toBe(true)
+      const reopened = acquireBoardService(async () => new FakeUnit())
+      try {
+        expect(reopened.service).not.toBe(first.service)
+      } finally {
+        reopened.release()
+        await tick()
+      }
+    } finally {
+      first.release()
+      await tick()
+    }
   })
 })
