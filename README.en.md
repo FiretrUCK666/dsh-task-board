@@ -238,9 +238,18 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 
 **Moving to another machine.** Copy the `~/.dsh/storages/dsh_task_board/` directory. The browser `localStorage` is only a mirror.
 
-**No entry for the task list.** Look for the thin strip on the **right edge of the window** — that is the entry, not a tab in the official sidebar. If the edge is not there, the page is probably still serving an older bundle: refresh. Neither affects the board, the list is an optional surface.
+**No entry for the task list.** It is the **second row in the sidebar panel list, right under
+"Task Board"** — widen the sidebar and you will see two icons; click the second one to open the list,
+click it again to return to the conversation. With the sidebar collapsed to an icon rail the two sit
+side by side.
 
-**The list disappeared when I opened the board panel.** That is not a fault; the edge is behind the panel. Use the board panel's back-to-chat control, and the edge comes back. The list is a resident surface of its own and is **not** subject to the rule that unmounts a section when the main panel changes.
+If the row is **not there at all**: the page is probably still serving an older bundle, so refresh;
+if that does not help, check whether the plugin page's "Task List" switch is off (see the four
+switches above). Turning the list off does not affect the board.
+
+**The list disappeared when I opened the board panel.** That is not a fault; the main stage shows
+**one panel at a time** by design — they were never two things that fit on one screen. Click the list
+row in the sidebar to go back to it, or "back to conversation" to leave either panel.
 
 **`dsh plugin` cannot find pnpm.** Install pnpm (`npm install -g pnpm`) and re-run.
 
