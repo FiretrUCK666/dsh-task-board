@@ -9,7 +9,24 @@
  * the host has to reach across the boundary to read.
  */
 import { describe, expect, it } from 'vitest'
-import { applyCompletion, completeBoardQuery, matchTask, parseBoardQuery, removeFilterToken, splitFilterTokens, taskHaystack } from '../src/core/task-search.ts'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  applyCompletion,
+  completeBoardQuery,
+  matchItemQuery,
+  matchTask,
+  parseBoardQuery,
+  parseItemSearch,
+  itemSearchContext,
+  removeFilterToken,
+  splitFilterTokens,
+  taskHaystack,
+  QUALIFIER_KEYS,
+} from '../src/core/task-search.ts'
+import { itemMatches, parseItemQuery } from '../src/core/item-view.ts'
+import { ITEM_STATUSES, type ItemRecord } from '../src/core/item.ts'
 
 const task = {
   title: '给猫画一幅画',
@@ -229,5 +246,222 @@ describe('splitFilterTokens / removeFilterToken (overview chips)', () => {
     expect(removeFilterToken('猫 has:color', 1)).toBe('猫')
     expect(removeFilterToken('猫 ws:"深 夜" has:auto', 1)).toBe('猫 has:auto')
     expect(removeFilterToken('猫', 5)).toBe('猫')
+  })
+})
+
+// ── the checklist's grammar lives elsewhere, and this file only points at it ──
+
+const T0 = 1_700_000_000_000
+const DAY = 86_400_000
+
+/** One checklist row, with only what a test cares about overridden. */
+function item(patch: Partial<ItemRecord> = {}): ItemRecord {
+  return {
+    id: 'i-1',
+    ref: 3,
+    title: '给猫换一张壁纸',
+    body: '水彩风格，暖色',
+    notes: '等猫不在家的时候换',
+    steps: [],
+    status: 'open',
+    priority: 'high',
+    tags: ['画廊'],
+    startsAfter: undefined,
+    dueAt: undefined,
+    hardDueAt: undefined,
+    taskId: undefined,
+    origin: { source: 'human', at: T0 },
+    createdAt: T0,
+    updatedAt: T0,
+    ...patch,
+  }
+}
+
+describe('the checklist grammar is delegated, never restated', () => {
+  const now = T0 + 30 * DAY
+  const ctx = itemSearchContext(now)
+
+  it('gives the same answer as the grammar it points at, for every shape of query', () => {
+    // THE drift gate. Two consumers read this grammar — the panel's search box
+    // and the agent's query tool — and the failure nobody reports is a filter
+    // that quietly does nothing on one of them. There is no honest way to test
+    // "they agree" against a second implementation, because a second
+    // implementation is the defect. So this asserts the delegation is an
+    // IDENTITY over a table of queries: if anyone re-implements matching inside
+    // this file, the two columns part company here.
+    const queries = [
+      '',
+      '猫',
+      '水彩',
+      '不存在的东西',
+      '猫 暖色',
+      '猫 不存在的东西',
+      '#画廊',
+      '#别处',
+      'status:open',
+      'status:blocked',
+      'status:done',
+      'status:inprogress',
+      'p1',
+      'p4',
+      '!2',
+      'has:undated',
+      'has:linked',
+      'has:hardOverdue',
+      'status:open #画廊',
+      'status:open 猫 不存在的东西',
+      'notes:xyz',
+      '猫 status:blocked',
+    ]
+    const rows = [
+      item(),
+      item({ id: 'i-2', priority: 'urgent', tags: [], dueAt: now - DAY, updatedAt: now - 20 * DAY }),
+      item({ id: 'i-3', status: 'blocked', startsAfter: now + DAY }),
+      item({ id: 'i-4', status: 'done', hardDueAt: now - 2 * DAY, taskId: 't-1' }),
+    ]
+    for (const query of queries) {
+      const parsed = parseItemQuery(query)
+      expect(parseItemSearch(query)).toEqual(parsed)
+      for (const row of rows) {
+        expect(matchItemQuery(row, query, ctx), `delegation diverged on ${JSON.stringify(query)} / ${row.id}`)
+          .toBe(itemMatches(row, parsed, ctx))
+      }
+    }
+  })
+
+  it('parses and matches through ONE grammar when called in either order', () => {
+    // Order independence: composing by hand and composing through the door must
+    // not differ, or "the panel" and "the model" stop being the same question.
+    const row = item({ dueAt: now - DAY })
+    expect(matchItemQuery(row, 'has:behind', ctx)).toBe(true)
+    expect(itemMatches(row, parseItemSearch('has:behind'), ctx)).toBe(true)
+    expect(matchItemQuery(row, 'has:undated', ctx)).toBe(false)
+  })
+})
+
+describe('a qualifier is answered by the model\'s own keys, never by its words', () => {
+  const now = T0 + 30 * DAY
+  const ctx = itemSearchContext(now)
+
+  it('accepts every status the model stores, and the derived one', () => {
+    for (const status of ITEM_STATUSES) {
+      expect(parseItemQuery(`status:${status}`).status, status).toEqual([status])
+    }
+    expect(parseItemQuery('status:inprogress').status).toEqual(['inProgress'])
+    // And a status the model does not store is not a status, in either
+    // direction: 进行中 is derived from a running card, so it is accepted as a
+    // word, while a state nobody defined is refused.
+    expect(parseItemQuery('status:running').status).toEqual([])
+    expect(parseItemQuery('status:running').words).toEqual(['status:running'])
+  })
+
+  it('accepts every priority the model stores', () => {
+    // Spelled out rather than derived from the array's order, on purpose.
+    // `ITEM_PRIORITIES` runs lowest-first (it is the sort order) while `p1` is
+    // the MOST urgent, so the two are deliberately not the same sequence —
+    // reading the mapping off the array would have pinned the wrong meaning.
+    for (const [token, priority] of [['p1', 'urgent'], ['p2', 'high'], ['p3', 'normal'], ['p4', 'low']] as const) {
+      expect(parseItemQuery(token).priority, token).toEqual([priority])
+      expect(parseItemQuery(`!${token.slice(1)}`).priority, `!${token.slice(1)}`).toEqual([priority])
+    }
+    // A priority outside the four is not a priority: it is text to search for.
+    expect(parseItemQuery('p5').priority).toEqual([])
+    expect(parseItemQuery('p5').words).toEqual(['p5'])
+  })
+
+  it('refuses a DISPLAY word, and falls back to searching for it literally', () => {
+    // The load-bearing rule, and the reason for it: a filter saved against a
+    // label stops matching the moment the label is reworded, and nobody finds
+    // out — the search box just quietly returns less. So the grammar parses
+    // `status:open` and NEVER `status:待办`; a display word is not a key, so it
+    // falls through to a literal term and matches nothing, which is the honest
+    // answer rather than a silent reinterpretation of the reader's words.
+    const parsed = parseItemQuery('status:待办')
+    expect(parsed.status).toEqual([])
+    expect(parsed.words).toEqual(['status:待办'])
+    expect(matchItemQuery(item(), 'status:待办', ctx)).toBe(false)
+    expect(matchItemQuery(item(), 'status:open', ctx)).toBe(true)
+  })
+
+  it('keeps the two vocabularies disjoint, so neither can answer for the other', () => {
+    // A card filter and a note filter are different questions about different
+    // rows. If the board's registry ever learned the checklist's keys, or the
+    // checklist's grammar learned the board's, a query would mean two different
+    // things depending on which surface ran it — and the tool that describes
+    // them would be describing something that does not exist.
+    expect(QUALIFIER_KEYS).not.toContain('status:')
+    expect(QUALIFIER_KEYS).not.toContain('p1')
+    // `has:` exists on both sides with DIFFERENT values, which is exactly why
+    // they cannot share a table: `has:auto` is a card's automation rule and
+    // means nothing to a note.
+    expect(QUALIFIER_KEYS).toContain('has:')
+    expect(parseItemQuery('has:auto').flags.size).toBe(0)
+    expect(matchItemQuery(item(), 'has:auto', ctx)).toBe(false)
+  })
+})
+
+describe('the checklist haystack is built in exactly one place', () => {
+  const srcRoot = fileURLToPath(new URL('../src', import.meta.url))
+  const coreRoot = join(srcRoot, 'core')
+
+  /** Every source file under a root, as paths relative to src. */
+  function sources(root: string): string[] {
+    const out: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir)) {
+        const path = join(dir, entry)
+        if (statSync(path).isDirectory()) walk(path)
+        else if (/\.(ts|tsx)$/.test(entry)) out.push(path)
+      }
+    }
+    walk(root)
+    return out
+  }
+
+  /** The files that join a row's text fields together, repo-relative. */
+  function haystackBuilders(root: string): string[] {
+    return sources(root)
+      .filter(path => readFileSync(path, 'utf8').split('\n')
+        // A line is a copy when it joins two of the row's text fields at once.
+        // There is no other reason to read `body` and `notes` together, so this
+        // finds a copied haystack and nothing else.
+        .some(line => /\.(?:body|notes)\b[^\n]*\.(?:body|notes)\b[^\n]*join/.test(line)))
+      .map(path => path.slice(srcRoot.length + 1).replaceAll('\\', '/'))
+  }
+
+  it('exists once across ALL of core, in the file the grammar lives in', () => {
+    // The second copy is the failure, and it is a quiet one: the search box
+    // starts matching a field the model does not, or stops matching one it
+    // does, and the report is "筛选好像没反应". A scan is the only thing that
+    // catches it, because a second CORRECT implementation passes every
+    // behavioural test in this file.
+    //
+    // Scanned over all of `src/core`, not just the file the grammar is expected
+    // to be in: `item.ts` and `item-view.ts` are where a copy would actually
+    // land — they are the two files that already hold the row's fields and the
+    // row's derivations, so they are the two places a re-implementation feels
+    // like it belongs.
+    expect(haystackBuilders(coreRoot)).toEqual(['core/item-view.ts'])
+  })
+
+  it('exists once across ALL of src, host included', () => {
+    // Wider than core on purpose. The host's query tool is the third consumer
+    // of this grammar, it is the one that answers a model rather than a person,
+    // and it is the one most likely to be "just this once, inline" — which is
+    // exactly how the copy that drifts in silently arrives.
+    expect(haystackBuilders(srcRoot)).toEqual(['core/item-view.ts'])
+  })
+
+  it('the door names the module, so the dependency is visible in the import list', () => {
+    expect(readFileSync(join(coreRoot, 'task-search.ts'), 'utf8')).toMatch(/from '\.\/item-view\.ts'/)
+  })
+
+  it('the board keeps its own haystack and never reaches into a row it does not own', () => {
+    // The mirror of the rule above. The board's table is the board's; a card has
+    // no `body`, so a search that started reading one would be a search that had
+    // stopped knowing what document it was searching.
+    const source = readFileSync(join(srcRoot, 'core', 'task-search.ts'), 'utf8')
+    const table = source.slice(source.indexOf('const QUALIFIER_DEFS'), source.indexOf('export const QUALIFIER_KEYS'))
+    expect(table).not.toMatch(/startsAfter|hardDueAt|priority|origin/)
   })
 })

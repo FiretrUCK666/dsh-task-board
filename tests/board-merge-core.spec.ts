@@ -223,6 +223,42 @@ describe('applyRowCommit: deletes and tombstones', () => {
     expect(later.tombstones['a']).toBeUndefined()
   })
 
+  it('keeps nothing a document did not ask it to keep', () => {
+    // A document that does not supply `retainDeleted` gets a bare stamp, byte
+    // for byte the tombstone it got before the payload existed. This is the
+    // board's actual answer: its rows carry prompts and attachments, and
+    // keeping those for a tombstone's whole life is a storage bill no document
+    // should inherit from a rule written for a note list.
+    const next = commit(seeded(), [], T0 + 10, [], [{ id: 'a', baseUpdatedAt: 1000 }])
+    expect(next.tombstones['a']).toEqual({ at: 1001, seenAt: T0 + 10 })
+    expect('row' in next.tombstones['a']!).toBe(false)
+  })
+
+  it('keeps the row when the document does ask, and takes it from the host copy', () => {
+    const kept = { ...NOTE_OPS, retainDeleted: (row: NoteRow) => row }
+    const withKeeper = (state: MergeState<NoteRow>, incoming: NoteRow[], now: number, deleted: MergeDelete[] = []) =>
+      applyRowCommit(state, incoming, new Set(), deleted, kept, now)
+    const held = withKeeper(host(), [note('a', 1000, { title: 'the host held this' })], T0 + 1)
+    // The delete rides with a copy that lost the put, exactly as a real replica
+    // commit does — the payload must be the host's row, never the sent one.
+    const deleted = withKeeper(
+      held,
+      [note('a', 1000, { title: 'a copy that lost' })],
+      T0 + 10,
+      [{ id: 'a', baseUpdatedAt: 1000 }],
+    )
+    expect(deleted.tombstones['a']!.row).toEqual({ id: 'a', title: 'the host held this', body: '', done: false, updatedAt: 1000, steps: [] })
+  })
+
+  it('takes whatever text with the tombstone when the TTL prunes it', () => {
+    const kept = { ...NOTE_OPS, retainDeleted: (row: NoteRow) => row }
+    const withKeeper = (state: MergeState<NoteRow>, now: number) => applyRowCommit(state, [], new Set(), [], kept, now)
+    const deleted = applyRowCommit(host(), [note('a', 1000)], new Set(), [{ id: 'a', baseUpdatedAt: 1000 }], kept, T0 + 10)
+    expect(deleted.tombstones['a']!.row).toBeDefined()
+    const later = withKeeper(deleted, T0 + 10 + TOMBSTONE_TTL_MS + 1)
+    expect(later.tombstones['a']).toBeUndefined()
+  })
+
   it('judges the two freshness streams separately — the stamp reads what was SENT, the suppression reads what was STORED', () => {
     // The whole point of this document's inbound grammar: it floors fractional
     // stamps, so the stored freshness and the sent freshness differ on purpose.
@@ -295,7 +331,23 @@ describe('the kernel (source scan)', () => {
     expect(offenders, 'the kernel does not know a task ledger exists — a row is id + updatedAt and whatever the document injects').toEqual([])
   })
 
-  it('asks a document for exactly the four row answers, and nothing more', () => {
+  it('asks a document for four required row answers, and offers one optional fifth', () => {
+    // Four are required because the kernel cannot merge without them. The fifth
+    // is optional and this document declines it — which is the assertion worth
+    // making, because a document that never answers it must not be forced to,
+    // and a kernel that quietly required it would be a fifth question asked of
+    // every document that ever gets written.
     expect(Object.keys(NOTE_OPS).sort()).toEqual(['authorshipKey', 'mergeReadState', 'normalize', 'sortRows'])
+    expect(NOTE_OPS.retainDeleted).toBeUndefined()
+  })
+
+  it('does not read a field the kernel was not given', () => {
+    // The kernel's whole discipline: it may only reach a row through the seam.
+    // If a future edit made it touch `row.title` directly, a second document
+    // with a different shape would break at merge time rather than at compile.
+    const body = source.slice(source.indexOf('export function applyRowCommit'))
+    const rowReads = [...body.matchAll(/\b(?:row|host|winner|kept)\.([A-Za-z_]\w*)/g)].map(m => m[1])
+    const allowed = new Set(['id', 'updatedAt'])
+    expect(rowReads.filter(field => !allowed.has(field))).toEqual([])
   })
 })

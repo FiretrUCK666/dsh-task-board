@@ -8,7 +8,46 @@
  * Pure and framework-free so the matcher unit-tests in isolation; TaskBoard
  * supplies the linked titles from its existing resolvers (no new data
  * plumbing — the haystack is assembled at the call site).
+ *
+ * THE CHECKLIST HAS ITS OWN GRAMMAR AND IT IS NOT HERE. The board's table
+ * below is the board's: its rows are cards, and what a card can be asked about
+ * is a card's business. A checklist row is a note with its own fields, its own
+ * enumerations and its own ideas of time, and its grammar lives in
+ * `item-view.ts` beside the derivations that share those same answers. This
+ * file does not restate it, does not translate into it, and does not hold a
+ * second copy of the words it searches — a second copy is a second thing to
+ * update, and a search box whose two halves disagree is the kind of defect
+ * nobody finds until a reader reports that a filter "does nothing".
+ *
+ * {@link matchItemQuery} is the whole of the surface: the one door into that
+ * grammar for callers that already have an `ItemRecord`.
  */
+import type { ItemRecord } from './item.ts';
+import { type ItemMatchContext, type ItemQuery } from './item-view.ts';
+/** The parsed checklist query, for a surface that needs the clauses themselves
+ *  (a filter bar rendering what is active, a completion list). */
+export declare function parseItemSearch(query: string): ItemQuery;
+/** The reading clock a checklist filter is judged against. */
+export declare function itemSearchContext(now: number, staleDays?: number): ItemMatchContext;
+/**
+ * Whether a checklist row satisfies a raw query string (blank matches all).
+ *
+ * The delegation is the point. Parsing and matching both happen in
+ * `item-view.ts`, so the search box a person types into, the pages that filter
+ * by the same text, and the query the model sends are three views of ONE
+ * grammar rather than three implementations that happen to agree today.
+ *
+ * The qualifiers are the model's own ENUM VALUES, never its display words, and
+ * that is structural rather than cosmetic: a filter saved against a label
+ * silently stops matching the moment the label is reworded, so the grammar
+ * parses `status:open` and never `status:待办`.
+ *
+ * @param item - the row.
+ * @param query - what is in the search box.
+ * @param ctx - the clock and the staleness threshold.
+ * @returns whether it passes.
+ */
+export declare function matchItemQuery(item: ItemRecord, query: string, ctx: ItemMatchContext): boolean;
 /** All searchable text of one task (the caller appends session titles). */
 export declare function taskHaystack(task: {
     title: string;

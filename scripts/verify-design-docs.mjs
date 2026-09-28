@@ -27,6 +27,35 @@ const root = resolve(process.argv[2] ?? '.')
 const failures = []
 const notes = []
 
+/**
+ * Every stylesheet the client half owns, discovered rather than listed.
+ *
+ * These checks used to name their sheets (`board.module.css`, and later
+ * `settings-card.module.css`), and a list of files is a list that goes stale
+ * the moment a surface gets its own stylesheet: the new sheet is then checked by
+ * nothing at all, and it is exactly the new sheet whose class names nobody has
+ * reviewed against the design system. Walking the tree means the next one is
+ * covered the day it is created, which is the only version of "keep this list
+ * current" that survives contact with a deadline.
+ *
+ * `*.module.css` is the build's own convention (one hashed class scope per
+ * sheet), so the walk keys on it rather than on a filename.
+ */
+const CLIENT_STYLESHEETS = (() => {
+  const clientDir = join(root, 'src', 'client')
+  if (!existsSync(clientDir)) return []
+  const found = []
+  const walk = dir => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) walk(p)
+      else if (entry.name.endsWith('.module.css')) found.push(p)
+    }
+  }
+  walk(clientDir)
+  return found.sort()
+})()
+
 // --- locate the DSH install ---------------------------------------------------
 // The plugin's own node_modules is a pnpm virtual store: it holds the SDK
 // packages this plugin depends on, NOT the DSH application, and not the theme
@@ -268,8 +297,10 @@ for (const [label, text] of DOC_FILES) {
 // paint, so it is a defect by construction.
 {
   const localAliases = new Set()
-  for (const file of ['src/client/board.module.css']) {
-    const p = join(root, file)
+  /** Alias name → one site that uses it, for a message that can be acted on. */
+  const aliasRefs = new Map()
+  for (const p of CLIENT_STYLESHEETS) {
+    const file = relative(root, p).split(sep).join('/')
     if (!existsSync(p)) continue
     const css = readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
     for (const m of css.matchAll(/(--[a-z0-9-]+)\s*:/g)) localAliases.add(m[1])
@@ -286,23 +317,56 @@ for (const [label, text] of DOC_FILES) {
         `${file}:${line}: var(${name}) has no fallback and the DSH shell never declares it — every declaration using this custom property is invalid at computed-value time and paints nothing`,
       )
     }
-    // The board's own alias namespace is declared on `[data-dsh-taskboard-view]`,
-    // so it exists ONLY inside that scope. A stylesheet that never mentions the
-    // attribute cannot see those aliases, and referencing one there resolves to
-    // nothing — the failure mode is invisible in review (the declaration simply
-    // does not paint) and it is easy to introduce by copying a token name between
-    // files. Host tokens are global; aliases are not.
-    if (!/data-dsh-taskboard-view/.test(css)) {
-      for (const m of css.matchAll(/var\(\s*(--dsh-tb-[a-z0-9-]+)/g)) {
-        const at = css.indexOf(m[1])
-        const line = css.slice(0, at).split('\n').length
-        failures.push(
-          `${file}:${line}: var(${m[1]}) is a BOARD alias, and this stylesheet is not inside the [data-dsh-taskboard-view] scope where it is declared — it resolves to nothing here. Use the host token the alias maps to instead.`,
-        )
-      }
+    // THE ALIAS LAYER IS INHERITED BY ELEMENTS, NOT BY STYLESHEETS.
+    //
+    // This used to read "a sheet that never mentions
+    // [data-dsh-taskboard-view] cannot see the board's aliases", and report
+    // every alias in it. That inference was true while there was one
+    // stylesheet, because that sheet both declared the layer and used it — and
+    // it is false the moment a surface gets a sheet of its own. A sheet defines
+    // RULES; those rules apply to whatever elements carry their classes, and
+    // the elements are what carry the scope attribute. `item.module.css` never
+    // names `data-dsh-taskboard-view` and does not need to: its root element
+    // carries it, the layer is declared above it, and custom properties
+    // inherit down the tree. Making that sheet repeat the attribute to satisfy
+    // the checker would be changing correct code to suit a reader that had lost
+    // its context (hard rule 14).
+    //
+    // What IS answerable statically, and is the failure worth catching, is the
+    // other direction: an alias nobody declares. That is collected here and
+    // judged after the loop, because the answer spans every sheet — a name
+    // declared in one and used in another is the normal case, not a defect.
+    //
+    // A reference that CARRIES A FALLBACK is exempt, by the same rule the
+    // host-token check above already states: it is a deliberate soft dependency
+    // that degrades instead of dying. That exemption is also what lets a
+    // property the CLIENT writes at runtime be referenced from CSS at all —
+    // `--dsh-tb-kb` is set by `keyboard-inset.ts` when the soft keyboard
+    // moves, which no stylesheet could declare, and every use of it ships a
+    // `0px` fallback for exactly that reason.
+    for (const m of css.matchAll(/var\(\s*(--dsh-tb-[a-z0-9-]+)\s*(,)?/g)) {
+      const name = m[1]
+      if (m[2] === ',' || aliasRefs.has(name)) continue
+      const at = css.indexOf(name)
+      aliasRefs.set(name, `${file}:${css.slice(0, at).split('\n').length}`)
     }
-    notes.push(`${file}: ${localAliases.size} local custom properties, ${[...css.matchAll(/var\(\s*--dsw-/g)].length} host-token references audited`)
   }
+  // An alias with no declaration paints nothing, in every sheet that names it,
+  // and the declaration is the one thing a rename breaks silently — so this is
+  // checked as a set rather than per sheet, which is the only place the answer
+  // exists.
+  for (const [name, at] of aliasRefs) {
+    if (localAliases.has(name)) continue
+    failures.push(
+      `${at}: var(${name}) is used but no stylesheet declares it — the declaration is invalid at computed-value time and every rule naming it paints nothing`,
+    )
+  }
+  if (aliasRefs.size > 0 && localAliases.size === 0) {
+    failures.push(
+      `the client half references ${aliasRefs.size} --dsh-tb-* aliases and NO stylesheet declares the layer any more — the whole alias namespace is dead. Check the [data-dsh-taskboard-view] block.`,
+    )
+  }
+  notes.push(`${CLIENT_STYLESHEETS.length} stylesheet(s) audited: ${localAliases.size} custom properties declared, ${aliasRefs.size} alias references resolved against them`)
 }
 
 // --- check 2: the values the docs record are the values the tokens resolve to --
@@ -381,9 +445,7 @@ if (sidecar !== null) {
   const stripCssComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '')
   const defined = new Set()
   let classesDefined = 0
-  for (const sheet of ['board.module.css', 'settings-card.module.css']) {
-    const p = join(clientDir, sheet)
-    if (!existsSync(p)) continue
+  for (const p of CLIENT_STYLESHEETS) {
     const css = stripCssComments(readFileSync(p, 'utf8'))
     for (const m of css.matchAll(/\.([a-zA-Z][\w-]*)/g)) { defined.add(m[1]); classesDefined++ }
   }
@@ -391,10 +453,28 @@ if (sidecar !== null) {
   const referenced = new Map()
   for (const f of tsxFiles) {
     const text = readFileSync(f, 'utf8')
-    for (const m of text.matchAll(/\bcss\.([a-zA-Z][\w-]*)/g)) {
-      if (!referenced.has(m[1])) {
+    // Every LOCAL NAME this file binds to a stylesheet module, whatever it is
+    // called. The scan used to look for the literal `css.` and nothing else,
+    // which quietly assumed every module in the client half is imported under
+    // one name. A surface with its OWN stylesheet cannot also be `css`, so it
+    // imports the shared one under a second name — and every one of its uses
+    // became invisible here, reported as "defined but unreferenced" for a rule
+    // that is very much in use. The names are resolved from the imports rather
+    // than assumed, so a second (or fifth) stylesheet is read correctly instead
+    // of needing the checker rewritten again.
+    const bound = new Set()
+    for (const m of text.matchAll(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"][^'"]+\.module\.css['"]/g)) {
+      bound.add(m[1])
+    }
+    // `css` is kept as a name even without a matching import, so a file that
+    // reaches its stylesheet through a re-export is still read.
+    bound.add('css')
+    for (const m of text.matchAll(/\b([A-Za-z_$][\w$]*)\.([a-zA-Z][\w-]*)/g)) {
+      if (!bound.has(m[1])) continue
+      const name = m[2]
+      if (!referenced.has(name)) {
         const line = text.slice(0, m.index).split('\n').length
-        referenced.set(m[1], `${relative(root, f).split(sep).join('/')}:${line}`)
+        referenced.set(name, `${relative(root, f).split(sep).join('/')}:${line}`)
       }
     }
   }

@@ -33,7 +33,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
-import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
+import { deletedItemsOf, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
 import { relatedSessionIdsOf } from '../core/task-live.ts'
 import { acquireBoardService, DocumentService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
@@ -76,6 +76,17 @@ export interface ItemsRouteView {
   doc?: ItemsDoc
   /** True when `since` already covers the current revision. */
   unchanged?: boolean
+  /**
+   * The rows a tombstone is still holding, and ONLY when the caller asked:
+   * `GET /board/items?includeDeleted=1`.
+   *
+   * It is opt-in because the common reader has no use for it and pays for it
+   * on every poll — and because a list that answers "here is everything you
+   * deleted" unasked is a list that invites a surface built for a question
+   * nobody asked. A delete bumps the checklist's revision like any other
+   * write, so `since` already covers when this list changed.
+   */
+  deleted?: ItemRecord[]
 }
 
 /** Success envelope carrying a route's value. */
@@ -137,6 +148,16 @@ export interface BoardRouteDeps {
    * conversation, so the session has to come from the card the item hangs off.
    */
   ask(request: AskRequest): Promise<AskRouteView>
+  /**
+   * Bring one deleted checklist row back, by its short number.
+   *
+   * A SERVICE operation and not a client commit: a tombstone is stamped one
+   * millisecond above the row it removed, so re-submitting that row untouched
+   * is exactly the stale copy the tombstone exists to swallow — the commit
+   * would be accepted, nothing would change, and the caller would be told it
+   * worked. `undefined` means no tombstone holds that number.
+   */
+  restoreItem(ref: number, clientId: string): Promise<ItemRecord | undefined>
   subscribe(listener: (event: BoardEvent) => void): () => void
 }
 
@@ -152,6 +173,41 @@ export interface AskRequest {
 export type AskRouteView =
   | { readonly ok: true; readonly sessionId: string; readonly said: string }
   | { readonly ok: false; readonly why: string }
+
+/** What a restore asks for: which number, and who is asking. */
+export interface RestoreRequest {
+  readonly ref: number
+  readonly clientId: string
+}
+
+/**
+ * The restore's answer.
+ *
+ * `restored` is `undefined` for "no tombstone holds that number" AND for "the
+ * host is not serving documents" — and the two are told apart by `available`,
+ * because they are different facts with different remedies. It is NOT a
+ * success with a missing row: the caller is told the row did not come back.
+ */
+export interface RestoreRouteView {
+  readonly available: boolean
+  readonly revision: number
+  readonly restored?: ItemRecord
+}
+
+/** Parse the restore body: a number that is a number, and a caller id. */
+function parseRestoreBody(body: unknown): RestoreRequest | undefined {
+  if (typeof body !== 'object' || body === null) return undefined
+  const record = body as Record<string, unknown>
+  // A `#` is how the number is SPOKEN, not how it is sent — the same rule the
+  // model's `item.restore` follows, and one reader for both callers.
+  const ref = typeof record.ref === 'string'
+    ? Number(record.ref.replace('#', '').trim())
+    : record.ref
+  if (typeof ref !== 'number' || !Number.isInteger(ref) || ref <= 0) return undefined
+  const clientId = clientIdOf(record)
+  if (clientId === undefined) return undefined
+  return { ref, clientId }
+}
 
 /** Parse the ask body: both fields are required and both are plain scalars. */
 function parseAskBody(body: unknown): AskRequest | undefined {
@@ -290,10 +346,20 @@ function sinceOf(url: URL): number {
  *  ONE builder, both documents. A second copy of "is this probe already
  *  covered?" would be a second answer to the same question, and the copy that
  *  drifts is the one a replica trusts — so the probe that must not short-
- *  circuit is the one that has to be right. */
-function documentGetView<T extends { revision: number }>(deps: BoardRouteDeps, url: URL, doc: T):
-    | { available: boolean; revision: number; unchanged: true }
-    | { available: boolean; revision: number; doc: T } {
+ *  circuit is the one that has to be right.
+ *
+ *  ONE FLAT SHAPE, not a union of "short-circuited" and "not". A caller that
+ *  wants to add something to the answer (the checklist's archive, say) then
+ *  has to narrow a union it does not own, and the natural way to narrow it is
+ *  the one that silently drops the addition. The wire form is unchanged either
+ *  way: an absent field and an `undefined` field serialise identically, so this
+ *  is a shape the TYPE has, not a shape the wire gained. */
+function documentGetView<T extends { revision: number }>(deps: BoardRouteDeps, url: URL, doc: T): {
+  available: boolean
+  revision: number
+  doc?: T
+  unchanged?: true
+} {
   const available = deps.available()
   const since = sinceOf(url)
   if (Number.isFinite(since) && since >= doc.revision) {
@@ -341,10 +407,28 @@ export function createBoardHandler(
       // The seat is UNIT-level, so a checklist read renews it exactly like a
       // board read does: one engine, one lease, any document's traffic.
       deps.noteActivity(url.searchParams.get('clientId') ?? undefined)
-      json(res, {
-        ok: true as const,
-        value: tail === '' ? documentGetView(deps, url, deps.doc()) : documentGetView(deps, url, deps.itemsDoc()),
-      })
+      if (tail === '') {
+        json(res, { ok: true as const, value: documentGetView(deps, url, deps.doc()) })
+        return
+      }
+      const view = documentGetView(deps, url, deps.itemsDoc())
+      // The deleted rows ride ALONG with the same `since` verdict, never
+      // instead of it: a replica that already knows the revision has the
+      // answer, and one that does not gets the document and the tombstones
+      // together, so the two can never be half-current.
+      //
+      // THE SHORTCUT IS SAFE BECAUSE EVERY DELETE BUMPS THE REVISION. A delete
+      // is a commit like any other, so `since` already covers when the deleted
+      // list changed. That dependency is the thing to remember: any future path
+      // that removes a row WITHOUT going through a commit would make this
+      // short-circuit quietly serve a stale archive, and the symptom would be
+      // an archive that fills in late or not at all — with no error anywhere.
+      const includeDeleted = url.searchParams.get('includeDeleted') === '1'
+      if (view.unchanged !== true && includeDeleted) {
+        json(res, { ok: true as const, value: { ...view, deleted: deletedItemsOf(deps.itemsDoc()) } })
+        return
+      }
+      json(res, { ok: true as const, value: view })
       return
     }
 
@@ -394,6 +478,28 @@ export function createBoardHandler(
       deps.noteActivity(commit.clientId)
       const doc = await deps.commitItems(commit)
       json(res, { ok: true as const, value: { available: true, revision: doc.revision, doc } satisfies ItemsRouteView })
+      return
+    }
+
+    if (tail === '/items/restore') {
+      // Restoring is a SERVICE operation, not a client commit: the tombstone
+      // outranks the very row it removed, so only the host can write the stamp
+      // that beats it. See `DocumentService.restoreItem`.
+      const ask2 = parseRestoreBody(payload)
+      if (ask2 === undefined) {
+        json(res, MALFORMED)
+        return
+      }
+      if (!deps.available()) {
+        json(res, { ok: true as const, value: { available: false, revision: 0, restored: undefined } satisfies RestoreRouteView })
+        return
+      }
+      deps.noteActivity(ask2.clientId)
+      const restored = await deps.restoreItem(ask2.ref, ask2.clientId)
+      json(res, {
+        ok: true as const,
+        value: { available: true, revision: deps.itemsDoc().revision, restored } satisfies RestoreRouteView,
+      })
       return
     }
 
@@ -569,6 +675,7 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
     commit: commit => service.commit(commit),
     itemsDoc: () => service.getItemsDoc(),
     commitItems: commit => service.commitItems(commit),
+    restoreItem: (ref, clientId) => service.restoreItem(ref, clientId),
     acquireLease: (clientId, ttlMs, active) => service.acquireLease(clientId, ttlMs, active),
     releaseLease: clientId => service.releaseLease(clientId),
     noteActivity: clientId => service.noteActivity(clientId),

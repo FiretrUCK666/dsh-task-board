@@ -15,17 +15,20 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyItemsCommit,
+  deletedItemsOf,
   emptyItemsDoc,
   ITEM_ROW_OPS,
   normalizeItemsDoc,
+  restoredItemOf,
   sameItemsDocs,
   sortItems,
   type ItemsCommit,
   type ItemsDoc,
 } from '../src/core/items-doc.ts'
 import { applyCommit, emptyBoardDoc, type BoardCommit } from '../src/core/board-doc.ts'
+import { TOMBSTONE_TTL_MS } from '../src/core/board-merge-core.ts'
 import { createTask } from '../src/core/tasks.ts'
-import type { ItemRecord } from '../src/core/item.ts'
+import { itemDateConflict, type ItemRecord } from '../src/core/item.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -327,6 +330,210 @@ describe('the order is a pure function of the document', () => {
   })
 })
 
+describe('a row with impossible dates is kept verbatim, not repaired', () => {
+  // The judgment itself — which pair of the three dates contradicts, and by how
+  // much — belongs to `itemDateConflict` in `item.ts`, beside the other pure
+  // reads of a row, and is specified there. What this file owns is the
+  // DOCUMENT's behaviour when such a row arrives, which is a different question
+  // and the one that would otherwise go unanswered: the grammar is the last
+  // place that could quietly tidy the data, and it does not.
+  const dated = (over: Partial<ItemRecord>) => row({ id: 'i-d', startsAfter: T0 + 10, dueAt: T0 + 20, hardDueAt: T0 + 30, ...over })
+
+  it('keeps the broken row and the reader\'s words, rather than repairing or dropping it', () => {
+    // The tempting repairs are both worse than the disease: reordering the three
+    // changes what the person wrote and reports success, dropping the row loses
+    // their words over a mistake in a date field. So the grammar lets an
+    // impossible row through untouched and hands the read side the question.
+    const broken = dated({ startsAfter: T0 + 25, dueAt: T0 + 20 })
+    const doc = applyItemsCommit(emptyItemsDoc(T0), commitOf({ items: [broken] }), T0 + 1)
+    const kept = doc.items.find(item => item.id === 'i-d')!
+    expect(kept.title).toBe(broken.title)
+    expect(kept.startsAfter).toBe(T0 + 25)
+    expect(kept.dueAt).toBe(T0 + 20)
+    // Still reported as broken on the way out: nothing "healed" it in transit,
+    // which is what makes the conflict reproducible instead of a warning the
+    // reader saw once and can never see again.
+    expect(itemDateConflict(kept)).toEqual({ field: 'startsAfter', value: T0 + 25, limit: T0 + 20 })
+  })
+
+  it('keeps a row that is merely sparse, and never invents a conflict out of an absent date', () => {
+    // The other half of "does not repair": a row with one date is not a broken
+    // row, and a grammar that treated a missing field as a value would either
+    // reject those rows or start filling them in.
+    for (const over of [
+      { startsAfter: undefined },
+      { dueAt: undefined },
+      { hardDueAt: undefined },
+      { startsAfter: undefined, dueAt: undefined },
+    ]) {
+      const doc = applyItemsCommit(emptyItemsDoc(T0), commitOf({ items: [dated(over)] }), T0 + 1)
+      const kept = doc.items.find(item => item.id === 'i-d')!
+      expect(kept, JSON.stringify(over)).toBeDefined()
+      expect(itemDateConflict(kept), JSON.stringify(over)).toBeUndefined()
+    }
+  })
+
+  it('holds a payload in a tombstone to the same law, so the archive is not a way around it', () => {
+    // Otherwise the row is contradictory right up until it is deleted, and the
+    // archive hands back a row that is suddenly "fine" — at exactly the moment
+    // the reader is looking at it to decide whether it was ever real.
+    const broken = dated({ dueAt: T0 + 35, hardDueAt: T0 + 30 })
+    const seeded = applyItemsCommit(emptyItemsDoc(T0), commitOf({ items: [broken] }), T0 + 1)
+    const deleted = applyItemsCommit(seeded, commitOf({ deleted: [{ id: 'i-d', baseUpdatedAt: T0 }] }), T0 + 2)
+    expect(itemDateConflict(deletedItemsOf(deleted)[0]!)).toEqual({ field: 'dueAt', value: T0 + 35, limit: T0 + 30 })
+  })
+})
+
+describe('a delete keeps the row, and the promise is only as wide as the window', () => {
+  /** One seeded row, one delete, and whatever the document answers. */
+  const removed = (over: Partial<ItemRecord> = {}, at = T0 + 10) => {
+    const seeded = applyItemsCommit(
+      emptyItemsDoc(T0),
+      commitOf({ items: [row({ id: 'i-a', ref: 5, title: 'a thought worth keeping', ...over })] }),
+      T0 + 1,
+    )
+    const deleted = applyItemsCommit(seeded, commitOf({ deleted: [{ id: 'i-a', baseUpdatedAt: T0 }] }), at)
+    return { seeded, deleted }
+  }
+
+  it('keeps the text the delete removed, so "still recoverable" is true', () => {
+    // The panel prints 删除后这一条仍可恢复 in front of the reader. Before this,
+    // the tombstone held two timestamps and the words were gone the instant the
+    // row was — so that sentence described a system that did not exist.
+    const { deleted } = removed({ body: 'the body that matters', notes: 'why' })
+    const archive = deletedItemsOf(deleted)
+    expect(archive.map(item => item.id)).toEqual(['i-a'])
+    expect(archive[0]!.title).toBe('a thought worth keeping')
+    expect(archive[0]!.body).toBe('the body that matters')
+    expect(archive[0]!.notes).toBe('why')
+  })
+
+  it('keeps what the HOST held, not what the deleting replica happened to be carrying', () => {
+    // Every commit carries the replica's whole view, so a delete always rides
+    // along with a copy of the row it removes. The payload is read from the
+    // host's row, so a copy that lost the put cannot decide what comes back —
+    // otherwise "restore" would hand back words from a device that lost the
+    // argument, and the other device would disagree about what the row was.
+    const seeded = applyItemsCommit(emptyItemsDoc(T0), commitOf({ items: [row({ id: 'i-a', title: 'host copy' })] }), T0 + 1)
+    const deleted = applyItemsCommit(seeded, commitOf({
+      items: [row({ id: 'i-a', title: 'a copy this device lost', updatedAt: T0 })],
+      deleted: [{ id: 'i-a', baseUpdatedAt: T0 }],
+    }), T0 + 10)
+    expect(deleted.items).toEqual([])
+    expect(deletedItemsOf(deleted)[0]!.title).toBe('host copy')
+  })
+
+  it('suppresses a stale replica exactly as before, payload or not', () => {
+    // The suppression law is unchanged: the archive is an addition to what a
+    // tombstone carries, never a change to what it outranks.
+    const { deleted } = removed()
+    const stale = applyItemsCommit(deleted, commitOf({ items: [row({ id: 'i-a' })] }), T0 + 11)
+    expect(stale.items).toEqual([])
+    expect(stale).toBe(deleted)
+  })
+
+  it('an OLD tombstone with no row still suppresses, and reports nothing to restore', () => {
+    // Documents written before this rule have no payload, and they are not
+    // broken: the delete still holds, and the archive is simply empty. What it
+    // may NOT do is invent a row to give back.
+    const old: ItemsDoc = {
+      ...emptyItemsDoc(T0),
+      tombstones: { 'i-old': { at: 999, seenAt: T0 } },
+    }
+    const after = applyItemsCommit(old, commitOf({ items: [row({ id: 'i-old', ref: 2, updatedAt: 998 })] }), T0 + 1)
+    expect(after.items).toEqual([])
+    expect(deletedItemsOf(old)).toEqual([])
+    expect(restoredItemOf(old, 'i-old', T0 + 5)).toBeUndefined()
+  })
+
+  it('prunes the text with the tombstone, so the window has an end', () => {
+    const { deleted } = removed({}, T0 + 10)
+    const later = applyItemsCommit(deleted, commitOf(), T0 + 10 + TOMBSTONE_TTL_MS + 1)
+    expect(later.tombstones['i-a']).toBeUndefined()
+    expect(deletedItemsOf(later)).toEqual([])
+    expect(restoredItemOf(later, 'i-a', later.items.length)).toBeUndefined()
+  })
+
+  it('survives a restart, or the promise breaks at the one moment nobody watches', () => {
+    // The host reloads the file on boot. If normalization dropped the payload,
+    // every deletion would silently become final on the next launch — and the
+    // loss would only show up as an empty archive, with no error anywhere.
+    const { deleted } = removed()
+    const reloaded = normalizeItemsDoc(JSON.parse(JSON.stringify(deleted)))
+    expect(deletedItemsOf(reloaded).map(item => item.title)).toEqual(['a thought worth keeping'])
+    // And a payload the document could never have produced is refused, exactly
+    // as a malformed row arriving from a replica is.
+    const forged = normalizeItemsDoc({
+      tombstones: { 'i-x': { at: 1, seenAt: T0, row: { ...row({ id: 'i-x' }), steps: 'not a list' } } },
+    })
+    expect(deletedItemsOf(forged)).toEqual([])
+  })
+})
+
+describe('restoring is an ordinary put', () => {
+  /** A document holding one deleted row, plus one live row beside it. */
+  const withDelete = () => {
+    const seeded = applyItemsCommit(emptyItemsDoc(T0), commitOf({
+      items: [row({ id: 'i-a', ref: 5, title: 'gone' }), row({ id: 'i-b', ref: 6, title: 'stayed' })],
+    }), T0 + 1)
+    return applyItemsCommit(seeded, commitOf({ deleted: [{ id: 'i-a', baseUpdatedAt: T0 }] }), T0 + 10)
+  }
+
+  it('re-stamps the payload above the tombstone, because the tombstone outranks it', () => {
+    // THE step that makes restore work. A tombstone is stamped one millisecond
+    // above the row it removed, so handing the payload back un-stamped is
+    // indistinguishable from the stale copy the tombstone exists to suppress —
+    // the row would come back, be eaten, and the restore would look like a no-op.
+    const doc = withDelete()
+    const restored = restoredItemOf(doc, 'i-a', T0 + 20)!
+    expect(restored.updatedAt).toBeGreaterThan(doc.tombstones['i-a']!.at)
+    expect(restored.title).toBe('gone')
+    // …and the stamp is never moved backwards, even if the caller's clock is.
+    expect(restoredItemOf(doc, 'i-a', 0)!.updatedAt).toBeGreaterThan(doc.tombstones['i-a']!.at)
+  })
+
+  it('a restore goes in as a claimed put and the row is back, number and all', () => {
+    const doc = withDelete()
+    const rowBack = restoredItemOf(doc, 'i-a', T0 + 20)!
+    const after = applyItemsCommit(doc, commitOf({ items: [rowBack], changed: ['i-a'] }), T0 + 20)
+    expect(after.items.map(item => item.id).sort()).toEqual(['i-a', 'i-b'])
+    expect(after.items.find(item => item.id === 'i-a')!.ref).toBe(5)
+    expect(after.tombstones['i-a']).toBeUndefined()
+    // It is back in the document, so it is no longer in the archive — one fact,
+    // two views, which is why the archive is a read over tombstones and not a
+    // second list that could fall out of step.
+    expect(deletedItemsOf(after)).toEqual([])
+  })
+
+  it('re-numbers a restored row whose number the document has since handed out', () => {
+    // The chokepoint still owns the numbers, restore included. This document
+    // reached a state where two rows once shared #5 and the second was
+    // corrected upward; the deleted one keeps #5 in its payload, and putting it
+    // back must not put two #5s on the list.
+    const raced = applyItemsCommit(
+      applyItemsCommit(emptyItemsDoc(T0), commitOf({ items: [row({ id: 'i-a', ref: 13, title: 'first' })] }), T0 + 1),
+      commitOf({ items: [row({ id: 'i-b', ref: 13, title: 'second' })] }),
+      T0 + 2,
+    )
+    const deleted = applyItemsCommit(raced, commitOf({ deleted: [{ id: 'i-a', baseUpdatedAt: T0 + 1 }] }), T0 + 3)
+    const after = applyItemsCommit(deleted, commitOf({
+      items: [restoredItemOf(deleted, 'i-a', T0 + 4)!],
+      changed: ['i-a'],
+    }), T0 + 4)
+    expect(numbersAreUnique(after)).toBe(true)
+    expect(after.items.find(item => item.id === 'i-a')!.title).toBe('first')
+  })
+
+  it('reports the archive newest delete first, and ties on the id', () => {
+    const one = applyItemsCommit(emptyItemsDoc(T0), commitOf({
+      items: [row({ id: 'i-b' }), row({ id: 'i-a' })],
+    }), T0 + 1)
+    const two = applyItemsCommit(one, commitOf({ deleted: [{ id: 'i-a', baseUpdatedAt: T0 }] }), T0 + 2)
+    const three = applyItemsCommit(two, commitOf({ deleted: [{ id: 'i-b', baseUpdatedAt: T0 }] }), T0 + 5)
+    expect(deletedItemsOf(three).map(item => item.id)).toEqual(['i-b', 'i-a'])
+  })
+})
+
 describe('this document owns its own no-op predicate', () => {
   it('hands back the SAME document when nothing moved', () => {
     const seeded = applyItemsCommit(emptyItemsDoc(T0), commitOf({ items: [row({ id: 'i-a' })] }), T0 + 1)
@@ -369,6 +576,22 @@ describe('this document owns its own no-op predicate', () => {
     const after = applyItemsCommit(before, commitOf({ items: [row({ id: 'i-a' })] }), T0 + 1)
     expect(sameItemsDocs(before, after)).toBe(false)
     expect(after.revision).toBe(1)
+  })
+
+  it('does NOT count the text a tombstone keeps as a change', () => {
+    // The load-bearing exclusion, and it is about convergence rather than
+    // tidiness. A payload is something the host may hold and a replica may not,
+    // so a predicate that compared it would have two devices that agree on every
+    // fact each seeing a change in the other — and they would trade the same
+    // commit back and forth for as long as both stayed online, never settling.
+    const withRow = { 'i-a': { at: 1001, seenAt: T0, row: { id: 'i-a', updatedAt: 1000, title: 'kept' } } }
+    const withoutRow = { 'i-a': { at: 1001, seenAt: T0 } }
+    const a: ItemsDoc = { ...emptyItemsDoc(T0), tombstones: withRow }
+    const b: ItemsDoc = { ...emptyItemsDoc(T0), tombstones: withoutRow }
+    expect(sameItemsDocs(a, b)).toBe(true)
+    // The stamp is still truth: a different delete time IS a different fact.
+    const later: ItemsDoc = { ...emptyItemsDoc(T0), tombstones: { 'i-a': { at: 1002, seenAt: T0 } } }
+    expect(sameItemsDocs(b, later)).toBe(false)
   })
 })
 

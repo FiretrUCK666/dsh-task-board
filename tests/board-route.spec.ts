@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
 import { emptyBoardDoc, type BoardCommit, type BoardDoc } from '../src/core/board-doc.ts'
 import { createTask } from '../src/core/tasks.ts'
 import { applyCommit } from '../src/core/board-doc.ts'
-import { applyItemsCommit, emptyItemsDoc, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
+import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, restoredItemOf, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
 import type { ItemRecord } from '../src/core/item.ts'
 import { createBoardHandler, parseBoardCommit, parseItemsCommit, type BoardRouteDeps } from '../src/host/board-route.ts'
 import type { BoardCommand, BoardEvent, LeaseState } from '../src/host/board-service.ts'
@@ -120,6 +120,19 @@ function fakeDeps() {
     commitItems: async commit => {
       items = applyItemsCommit(items, commit, T0 + 1)
       return items
+    },
+    // Deliberately NOT a stand-in that hands the row back. A restore only works
+    // because the stamp clears the tombstone, so a fake would pass while the
+    // production path — the one that is actually the interesting part — went
+    // untested. Both halves below are the REAL implementations; only the
+    // storage and the broadcast belong to the service.
+    restoreItem: async (ref, clientId) => {
+      const carried = deletedItemsOf(items).find(row => row.ref === ref)
+      if (carried === undefined) return undefined
+      const restored = restoredItemOf(items, carried.id, T0 + 1)
+      if (restored === undefined) return undefined
+      items = applyItemsCommit(items, { clientId, items: [restored], changed: [restored.id], deleted: [] }, T0 + 1)
+      return restored
     },
     acquireLease: clientId => {
       lease = leaseOf(true, clientId)
@@ -305,6 +318,191 @@ describe('GET /board/items', () => {
     const res = fakeRes()
     await handler(fakeReq('GET', `${BASE}/items`), res)
     expect(JSON.parse(res.state.body).value.available).toBe(false)
+  })
+
+  it('withholds the deleted rows unless the caller asked for them', async () => {
+    // Opt-in, and the default really is silent: a replica polling every few
+    // seconds must not be handed a list it has no use for, on every poll.
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    // A tombstone only carries text if the row was REALLY there to be removed,
+    // so the archive is built by deleting rather than by asserting a shape: a
+    // hand-written tombstone would be a second description of the merge
+    // grammar, and it would drift the first time that grammar moved.
+    const seeded = row({ id: 'i-gone', ref: 1, title: 'G' })
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [seeded, row({ id: 'i-a', ref: 2, title: 'A' })], deleted: [] }), fakeRes())
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [], deleted: [{ id: 'i-gone', baseUpdatedAt: seeded.updatedAt }] }), fakeRes())
+
+    const plain = fakeRes()
+    await handler(fakeReq('GET', `${BASE}/items`), plain)
+    expect(JSON.parse(plain.state.body).value).not.toHaveProperty('deleted')
+
+    const asked = fakeRes()
+    await handler(fakeReq('GET', `${BASE}/items?includeDeleted=1`), asked)
+    const envelope = JSON.parse(asked.state.body).value
+    expect(envelope.deleted.map((i: { id: string }) => i.id)).toEqual(['i-gone'])
+    // The live rows and the deleted ones are the two halves of one answer, so
+    // they arrive together: an archive that filled in without the list moving
+    // would be two documents read at two moments.
+    expect(envelope.doc.items.map((i: { id: string }) => i.id)).toEqual(['i-a'])
+  })
+
+  it('a `since` probe short-circuits the archive too, and that is safe because a delete bumps the revision', async () => {
+    // The dependency, stated as a test: `includeDeleted` rides the SAME verdict
+    // as the document, so a replica that already knows the revision is told
+    // "unchanged" and gets no archive. That is only right while every delete
+    // goes through a commit. A path that removed a row without bumping the
+    // revision would make this serve a stale archive forever, silently.
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const seeded = row({ id: 'i-gone', ref: 1, title: 'G' })
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [seeded], deleted: [] }), fakeRes())
+    const revisionBeforeDelete = h.deps.itemsDoc().revision
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [], deleted: [{ id: 'i-gone', baseUpdatedAt: seeded.updatedAt }] }), fakeRes())
+    // THE PREMISE. If a delete ever stops moving the counter, the short-circuit
+    // below starts serving a stale archive and nothing reports it.
+    expect(h.deps.itemsDoc().revision).toBeGreaterThan(revisionBeforeDelete)
+    const res = fakeRes()
+    await handler(fakeReq('GET', `${BASE}/items?since=${h.deps.itemsDoc().revision}&includeDeleted=1`), res)
+    const envelope = JSON.parse(res.state.body).value
+    expect(envelope.unchanged).toBe(true)
+    expect(envelope).not.toHaveProperty('deleted')
+  })
+})
+
+describe('restoring a deleted row over the route', () => {
+  // THE BUG THIS EXISTS FOR. A tombstone outranks the row it removed by one
+  // millisecond, and the kernel's put branch drops any row whose stamp is not
+  // above it — which is exactly what the tombstone is FOR. So handing the
+  // payload straight back is not a restore that works "because the row was
+  // there"; it is a restore that the suppression branch eats, silently. The
+  // route answers 200 either way, so "the endpoint succeeded" and "the row came
+  // back" look identical from outside. Hence the assertion is on the DOCUMENT,
+  // at the end of the whole chain, and never on the status.
+  it('comes back, because the stamp is pushed above the tombstone first', async () => {
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const original = row({ id: 'i-a', ref: 1, title: 'A' })
+
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [original], deleted: [] }), fakeRes())
+    const gone = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items`, {
+      clientId: 'c',
+      items: [],
+      deleted: [{ id: 'i-a', baseUpdatedAt: original.updatedAt }],
+    }), gone)
+    expect(gone.state.status).toBe(200)
+    expect(h.deps.itemsDoc().items).toEqual([])
+    expect(h.deps.itemsDoc().tombstones['i-a']).toBeDefined()
+
+    // The wrong version: the payload exactly as it was. It is refused by the
+    // same branch that refuses a stale replica, and nothing anywhere complains.
+    const naive = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [original], deleted: [] }), naive)
+    expect(naive.state.status).toBe(200)
+    expect(h.deps.itemsDoc().items, 'the naive put is what the tombstone is for; it must NOT revive').toEqual([])
+
+    // The right version: re-stamped above the tombstone, then sent as an
+    // ordinary claimed put. No new route and no new mechanism.
+    const restored = restoredItemOf(h.deps.itemsDoc(), 'i-a', h.deps.itemsDoc().tombstones['i-a']!.at + 1)
+    expect(restored).toBeDefined()
+    const back = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items`, {
+      clientId: 'c',
+      items: [restored],
+      changed: ['i-a'],
+      deleted: [],
+    }), back)
+    expect(back.state.status).toBe(200)
+    expect(h.deps.itemsDoc().items.map(i => i.id)).toEqual(['i-a'])
+    expect(h.deps.itemsDoc().items[0]?.title).toBe('A')
+    // The tombstone's job is done and it leaves, so a later delete of the same
+    // id is not suppressed by a marker for a row that is back.
+    expect(h.deps.itemsDoc().tombstones['i-a']).toBeUndefined()
+  })
+})
+
+describe('POST /board/items/restore', () => {
+  /** A document holding one deleted row behind its tombstone. */
+  async function withADeletedRow() {
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const original = row({ id: 'i-a', ref: 4, title: '找回我' })
+    await handler(fakeReq('POST', `${BASE}/items`, {
+      clientId: 'c', items: [original], deleted: [],
+    }), fakeRes())
+    await handler(fakeReq('POST', `${BASE}/items`, {
+      clientId: 'c', items: [], deleted: [{ id: 'i-a', baseUpdatedAt: original.updatedAt }],
+    }), fakeRes())
+    return { h, handler }
+  }
+
+  /** The `value` the route answered with, read off the raw body. */
+  function valueOf(res: ReturnType<typeof fakeRes>): { available?: boolean; restored?: { title?: string } } {
+    return (JSON.parse(res.state.body) as { value?: { available?: boolean; restored?: { title?: string } } }).value ?? {}
+  }
+
+  it('brings the row back by its short number, and clears the tombstone', async () => {
+    const { h, handler } = await withADeletedRow()
+    expect(h.deps.itemsDoc().items).toEqual([])
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/restore`, { clientId: 'c', ref: 4 }), res)
+    expect(res.state.status).toBe(200)
+    expect(valueOf(res).available).toBe(true)
+    expect(valueOf(res).restored?.title).toBe('找回我')
+    // The document really changed — the assertion that catches a restore which
+    // answers 200 and changes nothing, which is the failure this route exists
+    // to make impossible.
+    expect(h.deps.itemsDoc().items.map(i => i.id)).toEqual(['i-a'])
+    expect(h.deps.itemsDoc().tombstones['i-a']).toBeUndefined()
+  })
+
+  it('accepts the number the way it is SPOKEN, with its #', async () => {
+    const { h, handler } = await withADeletedRow()
+    await handler(fakeReq('POST', `${BASE}/items/restore`, { clientId: 'c', ref: '#4' }), fakeRes())
+    expect(h.deps.itemsDoc().items.map(i => i.id)).toEqual(['i-a'])
+  })
+
+  it('says the row did not come back, rather than reporting a success with nothing in it', async () => {
+    const { handler } = await withADeletedRow()
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/restore`, { clientId: 'c', ref: 99 }), res)
+    expect(res.state.status).toBe(200)
+    // A missing `restored` alongside `available: true` is the fact "no tombstone
+    // holds that number" — the reader is told the row is not back.
+    expect(valueOf(res).available).toBe(true)
+    expect(valueOf(res).restored).toBeUndefined()
+  })
+
+  it('refuses a body with no caller id, because every write carries one', async () => {
+    const { handler } = await withADeletedRow()
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/restore`, { ref: 4 }), res)
+    // A malformed body is this prefix's convention: HTTP 200 carrying
+    // `{ok:false}` in the envelope, NOT a 4xx. Every other tail here answers
+    // the same way, and a tail that answered differently would be the one a
+    // client could not handle with one code path.
+    expect(res.state.status).toBe(200)
+    expect(JSON.parse(res.state.body).ok).toBe(false)
+    // And nothing moved: a refused restore must not half-apply.
+    expect(handler).toBeDefined()
+  })
+
+  it('refuses a number that is not a positive whole one', async () => {
+    const { h, handler } = await withADeletedRow()
+    for (const ref of [0, -1, 1.5, 'four', null]) {
+      const res = fakeRes()
+      await handler(fakeReq('POST', `${BASE}/items/restore`, { clientId: 'c', ref }), res)
+      expect(JSON.parse(res.state.body).ok, JSON.stringify(ref)).toBe(false)
+    }
+    expect(h.deps.itemsDoc().items).toEqual([])
+  })
+
+  it('keeps the CSRF discipline every POST on this prefix shares', async () => {
+    const { handler } = await withADeletedRow()
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/restore`, 'not json', 'text/plain'), res)
+    expect(res.state.status).toBe(415)
   })
 })
 

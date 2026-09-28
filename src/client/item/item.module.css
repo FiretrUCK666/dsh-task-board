@@ -1,0 +1,2020 @@
+/**
+ * 任务清单工作台 (item workspace) — the list panel's own stylesheet.
+ *
+ * WHY A SEPARATE SHEET. The list used to be a tail of board.module.css written
+ * for a 300px sidebar column. It is now a main-stage workspace measured in the
+ * thousands of pixels, and its whole answer is geometry: a page rail, a
+ * workbench that is one column on a phone and two on a desk, a group head that
+ * sticks, and a detail that is a sidebar on one end and an in-place expansion on
+ * the other. That is a different surface with a different shape language, so it
+ * gets its own file instead of growing a hundred more rules into the board's.
+ *
+ * FOUR GEOMETRY LAWS (everything below is one of these four):
+ *
+ *   1. ONE SCROLL BODY PER REGION. The workbench is a GRID, never a scroller.
+ *      In the single-column bands the list scroller (`.itemScroll`) is the one
+ *      scroll body; at >= 1080px it stops scrolling and becomes the list track,
+ *      and the two scroll bodies of that band are its two direct children
+ *      (`.itemScroll` and `.itemDetailBody`). A parent that scrolls while a
+ *      child scrolls is how two lists end up eating each other's content.
+ *   2. THE ROW NEVER OVERLAPS. A row's main control is a NAMED GRID whose
+ *      identity cells (state mark, ref) span both text rows, so the title and
+ *      the fact line share one derived left edge by construction. The defect
+ *      this replaces was two absolutely-placed lines landing on top of each
+ *      other and painting the group's count through the page title.
+ *   3. THE DETAIL IS ONE COMPONENT IN TWO PLACES. `.itemDetail` (in place,
+ *      inside the row) and `.itemDetailPane` (the wide-band sidebar) are the
+ *      same five sections with the same spacing; only the box differs. Neither
+ *      writes its own width — the pane takes its track, the in-place detail
+ *      takes the row's.
+ *   4. WIDTH IS NEVER THE VIEWPORT. The root declares the named container
+ *      `dsh-tb-item`; every band below is a `@container` query against this
+ *      box. There is no `@media (max-width)` in this file, and there never may
+ *      be one: the shell's sidebar, a split view and a phone all change this
+ *      box's width without changing the window's.
+ *
+ * TOKENS. Colors, radii, motion, text levels, the pill and the shadows are all
+ * consumed from the board's `--dsh-tb-*` alias layer, which is declared on the
+ * `[data-dsh-taskboard-view]` box — the same element that carries `.itemRoot`.
+ * Nothing here writes hex, rgb, a font size outside 11/12/13/14/16px, or a new
+ * color. The corner SHAPE is not declared here either: the board's one root
+ * rule already applies `corner-shape` to every classed descendant, and a local
+ * re-declaration would be the 「圆变方」 family's second cousin.
+ *
+ * The custom properties on this root are the GEOMETRY KNOBS, and they live
+ * here for one reason: every row is its own grid and every list is its own
+ * track, so a measurement taken per element is a measurement that differs
+ * between two rows of the same list. A track width declared once on the root
+ * is the only kind that can be right everywhere. They are the inset, the two
+ * density paddings, the two identity tracks, the list's own measure, the fact
+ * line's date track, the action track, and the row's two scales.
+ *
+ * None of them is a value a rule below is free to invent. The bands move
+ * `--item-inset` and the density tiers move the two paddings, and both do it on
+ * the boxes that READ those properties — a container cannot query itself, so an
+ * inset declared for the root would answer against the wrong box. What lives on
+ * the root is the default; what the bands move is the value, downstream.
+ */
+
+/* ── 高度链：舞台 → 根 ─────────────────────────────────────────────────────
+   Two rules, no more. The shell's `main` slot hands this stage a real height;
+   everything below it inherits. `min-height: 0` is load-bearing at every link
+   of the chain — without it a flex child refuses to shrink below its content
+   and the scroll body silently stops being one. */
+
+.itemPanelStage {
+  block-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+.itemRoot {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+  /* The one responsive reference for this surface (law 4). */
+  container-type: inline-size;
+  container-name: dsh-tb-item;
+  /* The panel paints its OWN OPAQUE inner layer. `--dsh-tb-bg` is the canvas
+     token — under a glass skin it is a translucency, and the wallpaper comes
+     straight through behind the search text, the group counts and the empty
+     states. `--dsh-tb-surface-sunken` is the opaque inner token; text is never
+     painted on the host's wallpaper. */
+  background: var(--dsh-tb-surface-sunken);
+  color: var(--dsh-tb-text-1);
+  font-family: var(--dsw-font-family);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* `--item-inset` is declared here as the PHONE value: the bands step it UP
+     on the two descendants that read it, because a container cannot query
+     itself (see the container-query section). The inset halves rather than the
+     type — a phone gets the same words at the same size with less air around
+     them. Shrinking a label or a font size to "save space" is banned, and so is
+     letting a row compress instead of wrapping. */
+  --item-inset: 12px;
+  --item-row-pad: 10px;
+  --item-row-gap: 8px;
+  /* THE IDENTITY TRACKS. Every row is its own grid, so an `auto` track is
+     measured per row and the title's left edge lands one character further
+     right on `#12` than on `#4` — which reads, before a word is read, as a
+     page nobody set. Fixed tracks are the fix, and they are fixed ONCE here
+     rather than per row, so the alignment cannot drift between rows.
+     `ch` and not `px` for the numbers because the gutter is already
+     `tabular-nums`: one `ch` is exactly one digit, so `#1` and `#128` line up
+     on the figures and not merely on the `#`. */
+  --item-mark-col: 8px;
+  --item-ref-col: 5ch;
+  /* The list's measure. Named once and read by BOTH the workbench grid and the
+     capture line, so the field you type a new row into starts and ends on the
+     same two lines as the rows it creates. A number written in two places is a
+     number that will be correct in one of them. */
+  --item-list-col: 720px;
+  /* THE FACT LINE, in two numbers, and they answer two different questions.
+     `--item-meta-col` is the whole line's share of the row, and it is FIXED
+     because a fact line sized to its own content is a fact line at a different
+     x on every row — which is the one thing that stops 「which of these is
+     late」 from being a question the eye can answer down a column. It is sized
+     for the widest thing the line can hold: 「最早 2026年10月5日」 beside a step
+     ratio. `--item-meta-date-col` is the date's own track inside that line, and
+     it is keyed BY CLASS rather than by the order the markup emitted: a date is
+     always in track 1 and a count always in track 2, so a row with no deadline
+     leaves track 1 empty instead of sliding its count left into the date's
+     place. The count's track is `auto` rather than a width — the two facts that
+     land there are a step ratio and a staleness count, they are different
+     sentences, and a shared fixed width would leave the shorter one trailing
+     air. */
+  --item-meta-col: 26ch;
+  --item-meta-date-col: 11ch;
+  /* Enough for 「问 AI」 plus the ⋯ hit area plus the gutter, so a row that
+     grows a second action does not shove the first one sideways. */
+  --item-actions-col: 68px;
+}
+
+/* Paragraphs carry no inherited spacing inside this surface; rhythm is always a
+   declared gap. Same reset as the board — without it a `<p>` used as a layout
+   row keeps the UA's 1em margins and reads as 「这块间距和别处不一样」. */
+.itemRoot p {
+  margin: 0;
+}
+
+/* ── 页头：标题 / 搜索 / 页面轨 / 快记框 ─────────────────────────────────────
+   The 收件 and 清单 pages show exactly four things on the surface: the title,
+   the search box, the page rail and the quick-capture box. The 清单 page's real
+   power is inside the page, not on it — every control that would normally sit
+   in a toolbar (grouping, filtering, sorting, batch) lives in the filter card
+   with the list, where the thing it acts on is already on screen. */
+
+/* THE MEASURE, and it belongs to the WHOLE page.
+   The header and the workbench share ONE width and ONE centring rule, so a wide
+   screen reads as a single column with margin beside it. Capping only the
+   workbench — which is what this did first — leaves a full-bleed search box
+   above a narrow table, and a page with two different measures in it reads as
+   two pages that were never meant to meet. The width is one custom property
+   rather than a number written twice, so the two cannot drift apart. */
+.itemRoot {
+  --item-measure: min(100%, 1600px);
+}
+
+.itemHeader,
+.itemWorkbench,
+.itemState {
+  box-sizing: border-box;
+  inline-size: var(--item-measure);
+  margin-inline: auto;
+  /* The inset is applied on BOTH axes, and that is a fix rather than a
+     preference. The horizontal half used to be zero, which is invisible on a
+     wide screen (the measure is centred, so the gap reads as page margin) and
+     on a phone means the title, the search field and the rows all touch the
+     glass. Compactness is not the same thing as no margin.
+     `border-box` travels with it: a fixed measure plus padding under
+     content-box is 48px wider than the measure it claims to be, which is the
+     same overflow family the board's own root rule is written about. */
+  padding-inline: var(--item-inset);
+}
+
+/* A GRID, not a column, and the reason is the number of things on this surface
+   at once. Four controls stacked with one gap between each of them reads as
+   four rows of equal importance, and four rows of equal importance is the same
+   as none. As a grid the DOM order does the placing with no named areas at
+   all: on one column every child takes its own line (the phone case, and the
+   order is exactly the order they are read in), and the two-column step pairs
+   the heading with the search and the rail with the filters. Nothing is
+   repositioned by hand, so a component that gains or loses a child cannot
+   quietly drop one into the wrong cell. */
+.itemHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 10px;
+  flex: none;
+  min-inline-size: 0;
+  /* Block axis only: the inline half is shared with the workbench above, and a
+     `padding` shorthand here would silently undo that fix on this one box. */
+  padding-block: var(--item-inset) 14px;
+}
+
+/* The capture line is the one child of the header grid that owns the whole
+   measure: it is a sentence you type into, and a sentence that stops at 420px
+   is a sentence with a word missing. The declaration lives with the rest of
+   the composer's own rule, further down — a second `.itemComposer` block here
+   would mean the first one a reader finds is not the one that decides its
+   geometry. */
+
+.itemHeaderRow,
+.itemSearchRow,
+.itemPageRail {
+  align-self: center;
+  min-inline-size: 0;
+}
+
+/* The heading and the filter clusters share this row, so the row is told two
+   things at once: it wraps (a control row that breaks in half is louder than
+   the rows it is meant to be quieter than) and it centres, because the two
+   clusters inside it are built at different heights by the shared component
+   library and a baseline alignment between them reads as a mistake.
+   The two clusters being different SIZES is a fact about `ui.tsx`, not about
+   this file, so it is not papered over here — see the note to the lead. */
+.itemHeaderRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-inline-size: 0;
+}
+
+/* The page's own heading. It is the ONE 16px title on this surface (the four
+   size levels plus the title step); everything inside the page is 14px or
+   below, which is what makes the heading read as the page rather than as a
+   row that happens to be at the top. */
+.itemHeadTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: -0.02em;
+  color: var(--dsh-tb-text-1);
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Two numbers, not one: 「showing 2」 and 「of 40」 are different facts, and
+   either alone is how a filter looks like it did nothing. Third-ink, because
+   it is a stamp and not an instruction. */
+.itemCount {
+  flex: none;
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+}
+
+/* The search field is capped and pushed to the trailing edge.
+   A field stretched across the whole 1600px measure is not a field, it is a
+   grey bar with a magnifier's worth of meaning in it — and it is exactly as
+   loud as the rows underneath it, which is the wrong order for a control that
+   is used occasionally over content that is read constantly. */
+.itemSearchRow {
+  display: flex;
+  /* On the stacked band the field takes the measure it is given, up to the cap
+     below. It is pushed to the trailing edge only once the header has a second
+     column to push it against — a capped field hugging the right edge of a
+     one-column layout reads as a stray object, not as a search box. */
+  justify-self: stretch;
+  inline-size: 100%;
+  max-inline-size: 22rem;
+  min-inline-size: 0;
+}
+
+.itemSearch {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 28px;
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-input-bg);
+  border: var(--dsh-tb-border-soft);
+  /* A field is not a button, so it stays on the radius ladder (md) — a search
+     box written as a pill reads as a chip, and the two are different
+     affordances. */
+  border-radius: var(--dsh-tb-radius-md);
+  outline: none;
+  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
+}
+
+.itemSearch::placeholder {
+  color: var(--dsh-tb-text-3);
+}
+
+.itemSearch:focus {
+  border-color: var(--dsh-tb-accent);
+  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
+}
+
+/* ── 页面轨 ──────────────────────────────────────────────────────────────
+   Exactly three tabs: 收件 / 清单 / 日程. Derived pages (a tag, a stalled
+   group, the archive, a filter result) do NOT get a tab — they are not places
+   you navigate TO in the rail, they are the answer to a question you asked
+   inside a page, and they open as a whole page with a back control. A rail that
+   grows a tab per query stops being a map of the surface and becomes a log.
+
+   Shape is the column navigator's own (pill, quiet fill, accent outline when
+   selected) so the two navigators on this surface read as one family. */
+
+.itemPageRail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-inline-size: 0;
+  /* Free sliding, never snap: snap re-anchors by pixels on every container
+     resize, which is how a whole rail 「每次都挪一点」. */
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 1px 2px;
+}
+
+.itemPageRail::-webkit-scrollbar {
+  display: none;
+}
+
+.itemPageTab {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  block-size: var(--dsh-tb-button-h);
+  padding: 0 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--dsh-tb-text-3);
+  /* UNSELECTED HAS NO FILL AND NO BORDER. Three filled or outlined pills in a
+     row is a toolbar that introduces itself; three bare words are a set of
+     places you can be. Everything comes back on the selected tab, where it is
+     the only accent on the surface and therefore reads as 「you are here」. */
+  background: none;
+  border: 1px solid transparent;
+  /* Every clickable button-shaped thing is a FULL pill (999px). A fixed px
+     radius only covers one height and reads as a rounded square beside one
+     that is actually round. */
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+  transition: color var(--dsh-tb-motion), border-color var(--dsh-tb-motion), background var(--dsh-tb-motion);
+}
+
+.itemPageTab:hover {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-hover);
+}
+
+.itemPageTab:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+/* Selection is a gentle press (accent hairline + 10% wash), never the primary
+   fill: switching pages is navigation, not an announcement. The 2px outline is
+   keyboard focus ONLY and never means selected. */
+.itemPageTabActive,
+.itemPageTab[aria-selected='true'] {
+  color: var(--dsh-tb-text-1);
+  font-weight: 600;
+  border-color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+}
+
+/* ── 工作台：宽屏双栏 / 窄屏单栏 ──────────────────────────────────────────
+   The level that did not exist before, and whose absence is the whole reason a
+   detail panel used to float over the search box: there was nowhere for the two
+   columns to BE, so the detail was positioned against the page instead of
+   against a track. This grid is that somewhere.
+
+   It is a GRID in every band and a scroller in none (law 1). */
+
+.itemWorkbench {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);  /* BOTH areas are named in every band, and that is load-bearing rather than
+     tidy: an area name that is not declared resolves as the integer 1, so
+     `grid-area: detail` would silently fall into row 1 and land ON TOP of the
+     list track. Naming both areas everywhere makes "where does this go"
+     structural — the narrow band stacks them, the wide band puts them side by
+     side, and neither band can overlap. */
+  grid-template-areas:
+    'list'
+    'detail';
+  /* The list track owns the height (1fr, with a 0 minimum so the scroller
+     inside it can actually be smaller than its content); the detail track is
+     content-sized, because on a phone the detail is not a second column. */
+  grid-template-rows: minmax(0, 1fr) auto;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  min-inline-size: 0;
+  /* The measure already carries the side inset (it is `min(100%, 1600px)` of
+     the padded root), so the workbench adds NONE of its own horizontally —
+     otherwise the header and the table end up inset by different amounts. */
+  padding-block: 0 var(--item-inset);
+}
+
+/* The list TRACK, and a scroll body in every band.
+   The markup picks which of `.itemScroll` / `.itemListPane` goes on the element
+   (a JS `narrow` switch), so BOTH are scrollers unconditionally. Making the
+   scroller conditional on the container query would leave the surface with two
+   independent sources of truth for one decision — and the failure is silent:
+   a disagreement does not look wrong, it looks like a list that simply cannot
+   be scrolled. One job, one mechanism: whichever class landed, it scrolls. */
+.itemListPane {
+  grid-area: list;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-block-size: 0;
+  min-inline-size: 0;
+  overflow-y: auto;
+}
+
+/* The detail COLUMN, not a card. It was a bordered, rounded, filled box the
+   full height of the workbench, which turned a column of text into one very
+   large empty rectangle and put a second competing frame on the page. A column
+   is separated from the list by a RULE and by the gap; the wide band adds both
+   (see the 1080 step), and the narrow band — where this sits UNDER the list
+   rather than beside it — needs neither. */
+.itemDetailPane {
+  grid-area: detail;
+  display: flex;
+  flex-direction: column;
+  /* The column is as tall as what is IN it, up to the track. It used to stretch
+     to the full height of the workbench, which put a 730px box around five
+     lines of text — and an empty box with a border is the single strongest
+     「this was not finished」 signal on the page, far louder than any amount of
+     quiet space below a short list. */
+  align-self: start;
+  max-block-size: 100%;
+  min-block-size: 0;
+  min-inline-size: 0;
+  /* Its OWN measure, under its own name — shared with the in-place detail so the
+     field grid inside both answers to the box that actually contains it (see
+     `.itemFieldGrid`). The surface container is `dsh-tb-item`; this one is the
+     detail's, and the innermost container wins for anything inside it. */
+  container-type: inline-size;
+  container-name: dsh-tb-item-detail;
+  /* The sidebar has its own single scroll body (`.itemDetailBody`); it never
+     inherits a scroller from the workbench. */
+  background: none;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+
+/* ── 滚动体：单栏档下这一页只有它 ───────────────────────────────────────── */
+
+.itemScroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  min-inline-size: 0;
+  overflow-y: auto;
+  /* The one scroll body of the single-column bands. Its scrollbar is painted by
+     the board's single-scrollbar grammar (board.module.css) — that list is the
+     design system's copy, and it is edited there, not duplicated here. */
+}
+
+/* ── 分组：吸顶组头 + 发丝线进度 ───────────────────────────────────────────
+   The group head is the only thing in this surface that sticks, and it sticks
+   because the reader scrolls a long list and needs to know which bucket they
+   are in without scrolling back. It is OPAQUE for the same reason: a translucent
+   head over opaque rows reads as a rendering bug.
+
+   The hairline under it is the group's own arithmetic (steps done / total) at
+   the size a progress indicator can be read at a glance without being read as
+   a second heading. */
+
+.itemGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-block: 8px 10px;
+  /* Groups separate by SPACE, not by a rule — the hairline belongs to the head
+     that carries meaning, and a second rule between groups would say the same
+     thing twice. Sixteen is the one gap on this page that is larger than the
+     gaps inside it, because a boundary that is only as big as its contents'
+     internal spacing is not read as a boundary. */
+  margin-block-end: 16px;
+}
+
+.itemGroup:last-child {
+  margin-block-end: 0;
+}
+
+/* The head is ONE line: name and count on the left, the group's own
+   arithmetic on the right. It was a column, which put 「1/3 步」 and its hairline
+   on a line of their own under the name — and a 64px bar alone under a word
+   reads as a stray mark, not as a measurement. Sharing one line makes the bar
+   the last thing the eye lands on and gives the head a single scannable
+   baseline. The toggle takes the slack (not an auto margin, which is banned and
+   which also only right-aligns the first item of a wrapped line). */
+.itemGroupHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding: 0 0 7px;
+  background: var(--dsh-tb-surface-sunken);
+  /* The rule belongs under the head because the head is the thing that has to
+     stay put while the rows move under it. A rule is also the honest divider
+     between 「what bucket am I in」 and 「what is in it」 — space alone leaves the
+     two at the same weight. */
+  border-block-end: var(--dsh-tb-border-soft);
+}
+
+.itemGroupToggle {
+  box-sizing: border-box;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: var(--dsh-tb-row-line);
+  /* The group head is drawn as a FIELD LABEL, not as a heading. It was 13px
+     against a 14px row title — one pixel of difference, which is why the whole
+     page read as one tone. Going DOWN to 12px with a hair of tracking and the
+     second ink separates the buckets from the things in them at a cost of
+     three pixels, where bolding the row title to 600 would have cost the
+     difference between this page and the board's own cards — and this system's
+     whole register is quiet. */
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: 0;
+  /* The head is clickable, so it is a pill — but a pill that spans the full
+     measure would draw a long empty stadium; the radius travels with the
+     button token and the geometry stays the head's own. */
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+  text-align: start;
+}
+
+.itemGroupToggle:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 2px;
+}
+
+.itemGroupChevron {
+  flex: none;
+  color: var(--dsh-tb-text-3);
+  transition: transform var(--dsh-tb-motion);
+}
+
+.itemGroupToggle[aria-expanded='false'] .itemGroupChevron {
+  transform: rotate(-90deg);
+}
+
+.itemGroupCount {
+  flex: none;
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The group's own arithmetic. 「8 items」 alone does not tell a reader whether
+   to start here or leave it for later; 「3/11 步」 does. Steps only, and only
+   when there ARE steps — a group with none would otherwise print a bare zero. */
+.itemGroupStats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemGroupProgress {
+  box-sizing: border-box;
+  block-size: 2px;
+  /* A BAR BESIDE ITS NUMBER, not a rule under the head. At the full group
+     measure a 2px bar directly under the text reads as an underline of that
+     text — and an underline that appears on some groups and not others looks
+     like a selection. Sixty-odd pixels sits next to 「1/3 步」 and is still
+     scannable at a glance, which is the whole job of drawing it at all. */
+  inline-size: 64px;
+  flex: none;
+  background: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+  overflow: hidden;
+}
+
+.itemGroupProgressFill {
+  display: block;
+  block-size: 100%;
+  background: var(--dsh-tb-accent);
+  border-radius: var(--dsh-tb-pill);
+}
+
+.itemGroupList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-inline-size: 0;
+}
+
+/* An empty group KEEPS its head and its count 0 rather than disappearing: a
+   group that vanishes under a filter reads as a broken filter, and the reader
+   cannot tell 「this bucket is empty」 from 「this bucket is gone」.
+   The line itself is said as quietly as a line can be while still being true.
+   It used to sit in third ink, which is LIGHTER than the group head above it,
+   and a line lighter than its own heading reads as data rather than as an
+   absence — so it drops to the meta size and takes the head's second ink. */
+.itemEmptyGroup {
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+  padding: 2px 0 0;
+}
+
+/* ── 行 ─────────────────────────────────────────────────────────────────
+   Two reading positions, one per line, never overlapping (law 2). The identity
+   cells (the state mark and the ref) are placed in areas that span BOTH text
+   rows, so the title and the fact line inherit one left edge from the same
+   grid instead of from two hand-tuned offsets. */
+
+.itemRow {
+  position: relative;
+  display: flex;
+  /* Wrapping, not stacking: the row's own line is [mark?] [main] [actions], and
+     the in-place detail is a SIBLING of the toggle, so `flex-basis: 100%` is
+     what drops it onto its own full-width line underneath. Stacking the row as
+     a column instead would put the actions below the title and the progress
+     bar on a line of its own. */
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
+  gap: 6px;
+  min-inline-size: 0;
+  padding: var(--item-row-pad) 0;
+  border-bottom: var(--dsh-tb-border-soft);
+  /* Selected rows carry the same light the board uses, so a selection on this
+     surface and a selection on the board are the same signal. */
+  border-radius: var(--dsh-tb-radius-sm);
+}
+
+.itemRow:hover {
+  background: var(--dsh-tb-hover);
+}
+
+.itemRow[data-selected] {
+  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+}
+
+.itemRow[data-open] {
+  background: var(--dsh-tb-hover);
+}
+
+.itemRowMain {
+  box-sizing: border-box;
+  display: grid;
+  /* A ZERO basis, and this is the row's 让位 rule. With `auto` the toggle's
+     min-content is its title, so a long title pushes the action cluster onto
+     a line of its own — and then the SAME control sits on its own line on the
+     rows whose titles are short and shares a line with 「问 AI」 on the rows
+     that have a card. The same ⋯ in two different places on adjacent rows
+     reads as a fault in those rows, which is worse than either answer on its
+     own. A zero basis says the TITLE gives way: the cluster keeps its line
+     every time, and a title that does not fit truncates in its own text slot,
+     which is the one place on this row that is allowed to lose characters. */
+  flex: 1 1 0;
+  min-inline-size: 0;
+  /* Fixed identity tracks, so the title's left edge is the same on every row on
+     this page. They used to be `auto`, which is measured per grid — and every
+     row is its own grid — so `#12` pushed the title one character right of
+     where `#4` put it. The numbers are tabular, so `ch` is exactly one digit
+     and the figures themselves line up, not only the `#`. */
+  grid-template-columns: var(--item-mark-col) var(--item-ref-col) minmax(0, 1fr);
+  grid-template-areas:
+    'mark ref  title'
+    'mark ref  meta';
+  align-items: center;
+  column-gap: var(--item-row-gap);
+  row-gap: 4px;
+  padding: 0;
+  font-family: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: var(--dsh-tb-radius-sm);
+  cursor: pointer;
+  text-align: start;
+}
+
+.itemRowMain:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 2px;
+}
+
+/* THE MARK IS DRAWN ONLY WHEN IT SAYS SOMETHING.
+   待办 is the state of most rows on any given day, and a 6px coloured dot at
+   the far left of every row puts the least interesting fact on the page in the
+   position the eye lands in first. Three readings survive: running (amber),
+   blocked (red), done (a hollow ring — completed is 「no longer happening」,
+   and an empty ring says that more truthfully than a filled one). 待办 gets
+   nothing, and the track keeps its width so every title still starts at the
+   same x. */
+.itemStateMark {
+  grid-area: mark;
+  inline-size: var(--dsh-tb-dot);
+  block-size: var(--dsh-tb-dot);
+  /* A circle's optical centre sits a hair left of its geometric centre, so
+     inside a track of its own width it needs a nudge to look centred. */
+  margin-inline-start: 1px;
+  background: none;
+  border-radius: 50%;
+}
+
+.itemRow[data-status='inProgress'] .itemStateMark {
+  background: var(--dsh-tb-attention);
+}
+
+.itemRow[data-status='blocked'] .itemStateMark {
+  background: var(--dsh-tb-danger);
+}
+
+.itemRow[data-status='done'] .itemStateMark {
+  /* A hollow ring, not a filled dot: finishing is 「this is no longer
+     happening」, and an empty circle says that where a solid one would say
+     「this is now a thing」. */
+  background: none;
+  border: 1px solid var(--dsh-tb-text-3);
+}
+
+/* The number gutter. `#1`, `#12` and `#128` are different widths, and letting
+   them set the track is how a list ends up with a ragged left edge that the eye
+   reads as 「this was set by hand」 before it has read a single word. A floor of
+   four characters plus END alignment puts the digits on one line and lets the
+   `#` breathe, which is the whole job of a gutter. */
+.itemRef {
+  grid-area: ref;
+  min-inline-size: 0;
+  text-align: end;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: var(--dsh-tb-row-line);
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The row's title SLOT — the direct grid child that owns `grid-area: title`,
+   so the two text rows share one left edge computed by the grid rather than by
+   two hand-tuned offsets. It is a SLOT and deliberately carries no type of its
+   own: the type and the truncation live one level down, in the text slot, so
+   「truncation happens in the text slot and nowhere else」 is a property of the
+   markup rather than a rule that has to be remembered. */
+.itemTitle {
+  grid-area: title;
+  min-inline-size: 0;
+}
+
+.itemTitleText {
+  display: block;
+  min-inline-size: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: var(--dsh-tb-row-line);
+  color: var(--dsh-tb-text-1);
+  /* Truncation happens in the TEXT SLOT and nowhere else (hard rule 11): the
+     title is the one long word on the row, and it is the only thing allowed to
+     lose characters. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemRow[data-status='done'] .itemTitleText {
+  color: var(--dsh-tb-text-2);
+}
+
+/* The schedule page's day header reuses the group-head grammar but is NOT a
+   disclosure: the markup renders it as a plain span with no `aria-expanded`,
+   so the pointer and the focus ring would both be claiming an affordance the
+   day header does not have. Keying on the missing attribute makes the two
+   honest without giving the day header a second class. */
+.itemGroupToggle:not([aria-expanded]) {
+  cursor: default;
+}
+
+/* The fact line is a GRID keyed by class, not a wrapping flex row keyed by
+   arrival order. A row with no date used to pull its step count left into the
+   slot the date would have taken, so the counts on a page lined up with
+   nothing. Here a date always lands in track 1 and a count always in track 2,
+   and a row that has neither leaves track 1 simply empty.
+   THREE tracks and not two: a row can carry a step ratio AND a staleness
+   count, and both use the same class. Pinning that class to one column would
+   put the two in one cell, so the second takes the next column — which is to
+   say it wraps onto its own line, and that is the right answer for a row that
+   has been neglected for three weeks and also has a checklist. */
+.itemRowMeta {
+  grid-area: meta;
+  display: grid;
+  grid-template-columns: var(--item-meta-date-col) auto minmax(0, 1fr);
+  column-gap: var(--item-row-gap);
+  align-items: center;
+  min-inline-size: 0;
+}
+
+/* The gate and the wanted-by date share track 1 because they are both dates.
+   Which one speaks is already decided upstream by `datePostureOf` — this only
+   puts that decision in the right column, and never re-ranks it. */
+.itemStartsAfter,
+.itemDue {
+  grid-column: 1;
+}
+
+.itemSteps {
+  grid-column: 2;
+}
+
+/* ── 三个日期，三种视觉 ───────────────────────────────────────────────────
+   One attribute, four readings, and the judgment happens in the model — not in
+   four scattered class names that can be applied in any combination.
+
+     soft-late  截止已过（软期限）: NEUTRAL ink + 「落后 N 天」. A soft date that
+                slipped is a fact about a plan, not an emergency; painting it red
+                is how a soft deadline turns into a hard one without anybody
+                deciding that.
+     over       硬期限已过: danger ink + 「超期 N 天」. The only red on this row.
+     soon       七天内到硬期限: attention ink. The one attention color, used the
+                way the whole system uses it.
+     set        有日期且未到: third ink, no adjective.
+
+   The exact day count is PRINTED on the row. A `title=` would carry the same
+   words to nobody on a touch screen, and a fact that only exists on hover is a
+   fact the phone does not have. */
+
+.itemDue {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+  white-space: nowrap;
+}
+
+.itemDue[data-tone='soft-late'] {
+  color: var(--dsh-tb-text-2);
+  font-weight: 500;
+}
+
+.itemDue[data-tone='soon'] {
+  color: var(--dsh-tb-attention);
+  font-weight: 500;
+}
+
+.itemDue[data-tone='over'] {
+  color: var(--dsh-tb-danger);
+  font-weight: 500;
+}
+
+/* 最早开始 is a gate, not a deadline: an item whose earliest start has not
+   arrived is not late, and putting it in the agenda would be a lie about what
+   the reader can act on today. */
+.itemStartsAfter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+  white-space: nowrap;
+}
+
+.itemSteps {
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The steps ratio is stated ONCE per row, as text. There is deliberately no
+   28px bar beside it any more: the row already prints 「3/11 步」 (that IS the
+   ratio) and the GROUP HEAD already carries the ratio as a hairline. Two
+   displays of the same number on one screen is decoration pretending to be
+   information — and a 28px bar is too small to read a fraction off anyway. */
+
+/* ── 标签行 ───────────────────────────────────────────────────────────────
+   Tags wrap rather than truncate (让位, not 压扁): a tag row that scrolls
+   sideways hides half of every tag, and a tag is a QUESTION the reader asks. */
+
+.itemTagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.itemTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  min-inline-size: 0;
+  padding: 1px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-chip-fill);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.itemTag:hover {
+  color: var(--dsh-tb-text-1);
+  border-color: var(--dsw-alias-border-l3);
+}
+
+.itemTag:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+/* The × that removes a chip. It is the one deliberate exception to the pill
+   law and it is the board's own exception: a delete × inside a pill is a
+   14px-tall target, and drawing a 999px stadium around it produces a lozenge
+   wider than the chip it sits in. */
+.itemChipReset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  inline-size: 14px;
+  block-size: 14px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--dsh-tb-text-3);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.itemChipReset:hover {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-hover);
+}
+
+.itemChipReset:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+/* ── 行内动作 ─────────────────────────────────────────────────────────────
+   Actions sit in a flex sibling that never carries `margin-left: auto` (that
+   only right-aligns the first item of a wrapped line, and the cluster falls
+   apart on the first wrap). The main control takes the space instead. */
+
+.itemRowActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: none;
+  /* A fixed action track, so the right edge of every row is the right edge of
+     the page whether the row offers one action or two. Sized by what it has to
+     hold (「问 AI」 plus the ⋯ hit area plus a gutter) rather than by whatever
+     happened to be rendered on that particular row. */
+  inline-size: var(--item-actions-col);
+  min-inline-size: 0;
+}
+
+.itemAsk {
+  flex: none;
+}
+
+/* 「问 AI」 is offered only on rows that hang off a board card: the card is what
+   names the session to talk to, and a button that can only explain itself on
+   press is lying about what it does. It lives OUTSIDE the row toggle, so it is
+   one click without expanding anything. */
+.itemRowMenuButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  inline-size: var(--dsh-tb-button-h-sm);
+  block-size: var(--dsh-tb-button-h-sm);
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+  /* No outline at rest, but a quiet FILL: an unbordered transparent 24px box on
+     every row is invisible, and an invisible control on a touch screen is a
+     control nobody finds. The fill is the host's own chip surface, so it reads
+     as a target without drawing the ring of small rectangles that outlining
+     every row produced. */
+  background: var(--dsh-tb-chip-fill);
+  border: 0;
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+  transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion);
+}
+
+.itemRowMenuButton:hover {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-hover);
+}
+
+.itemRowMenuButton:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+/* The row menu is a MENU on this surface, never a Dialog: `boardBox()` resolves
+   to the first board box, so a dialog opened from here floats over the wrong
+   panel. One component, one placement attribute — the caller picks `above` for
+   rows near the bottom instead of this sheet growing a second menu. */
+.itemRowMenu {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 100%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  min-inline-size: 160px;
+  max-inline-size: min(280px, 100%);
+  margin-block-start: 4px;
+  padding: 4px;
+  background: var(--dsh-tb-surface-menu);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-md);
+  box-shadow: var(--dsh-tb-shadow-3);
+}
+
+.itemRowMenu[data-placement='above'] {
+  top: auto;
+  bottom: 100%;
+  margin-block: 0 4px;
+}
+
+/* ── 筛选芯片 ───────────────────────────────────────────────────────────
+   A facet chip is a TOGGLE with a state, not a quiet button: the pressed
+   reading is what tells the reader that a filter is on, and the count on it is
+   what tells them how much it is hiding. */
+
+/* ── 筛选卡 ─────────────────────────────────────────────────────────────── */
+
+.itemFilterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-inline-size: 0;
+}
+
+.itemClearFilter {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  block-size: var(--dsh-tb-button-h-sm);
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+}
+
+.itemClearFilter:hover {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-hover);
+}
+
+.itemClearFilter:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+/* ── 快记框 ───────────────────────────────────────────────────────────────
+   It is the entry point of the whole surface, so it is on every page that
+   accepts a thought — including the page where the list is empty. An entry
+   point that only appears when there is nothing to edit is an entry point you
+   cannot find. */
+
+/* A COLUMN, not a row, and the reason is the save control.
+   As a column with `align-items: stretch` the primary button took the full
+   measure — a 530px black bar for a low-frequency action, which is the loudest
+   thing on a page whose whole premise is quiet. As a grid the capture input and
+   the button share one line (the button at its own natural width, pushed to
+   the end by the track rather than by an auto margin, which is banned), and the
+   teaching line sits under both.
+   The whole composer also stops at the LIST's measure, and reads the same
+   property the list track does: a field running the full 1600px would tell you
+   the page has no idea where its content begins or ends, and two copies of the
+   number 720 is one copy too many. */
+.itemComposer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  /* The one child of the header grid that owns the whole measure: it is a
+     sentence you type into, and a sentence that stops at 420px is a sentence
+     with a word missing. */
+  grid-column: 1 / -1;
+  column-gap: 8px;
+  row-gap: 6px;
+  align-items: center;
+  flex: none;
+  min-inline-size: 0;
+  max-inline-size: var(--item-list-col);
+}
+
+/* The input and the parsed chips share the first track; the button owns the
+   second and is sized by its own label. */
+.itemComposerChips {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.itemComposerSave {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  flex: 0 0 auto;
+  inline-size: auto;
+}
+
+.itemComposer > .itemHint {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+}
+
+.itemInput {
+  box-sizing: border-box;
+  /* The one place this class is a flex item is the capture line, and there it
+     takes the width the composer grid hands it. Everywhere else it is a block
+     in a column and this is inert. */
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  min-block-size: var(--dsh-tb-button-h);
+  padding: 5px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-input-bg);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  outline: none;
+  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
+}
+
+.itemInput::placeholder {
+  color: var(--dsh-tb-text-3);
+}
+
+.itemInput:focus {
+  border-color: var(--dsh-tb-accent);
+  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
+}
+
+textarea.itemInput {
+  min-block-size: 64px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* The capture input takes the width the grid gives it, and the rule lives on
+   `.itemInput` itself rather than on a descendant of the chips row: the only
+   place that rule mattered was a `flex-basis` sized for a composer that was
+   itself a flex column, and that layout is gone. One declaration, on the class
+   that owns the behaviour. */
+.itemChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  min-inline-size: 0;
+  padding: 1px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-chip-fill);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+  white-space: nowrap;
+}
+
+/* ── 详情：同一个组件，两处摆放 ───────────────────────────────────────────
+   The five sections and every spacing inside them live here once. The only
+   thing that differs between the sidebar and the in-place expansion is the
+   BOX, and both boxes are declared without a width of their own so neither can
+   disagree with the track it was given. */
+
+.itemDetailHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-inline-size: 0;
+  padding: 10px 12px;
+  border-bottom: var(--dsh-tb-border-soft);
+}
+
+.itemDetailBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  min-inline-size: 0;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.itemDetail {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* In place, the detail is the row's own child: it takes the row's measure and
+     adds no scroll of its own, so opening one row never starts a second
+     scroller inside the list. `flex-basis: 100%` is what puts it on its own
+     line under the row — it is a sibling of the toggle, not a child of it.
+
+     Border-box is load-bearing on that basis, not cosmetic: a content-box
+     100% plus the padding below is 100% + its own indent, and the row's scroll
+     body — which declares `overflow-y: auto`, so per spec its other axis
+     becomes `auto` too — grows a horizontal scrollbar for a detail that
+     happens to be indented. */
+  flex: 0 0 100%;
+  min-inline-size: 0;
+  /* Same measure contract as the sidebar, so the field grid inside answers to
+     the box it is really in. */
+  container-type: inline-size;
+  container-name: dsh-tb-item-detail;
+  padding: 10px 0 4px calc(var(--dsh-tb-lead-x) + var(--item-row-gap));
+  border-top: var(--dsh-tb-border-soft);
+}
+
+.itemSection {
+  display: flex;
+  flex-direction: column;
+  /* A section's own gap is SMALLER than the gap between sections: sections
+     read as a sequence of peers only if each one is visibly a unit. */
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+.itemSectionTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: var(--dsh-tb-hint-line);
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-3);
+}
+
+.itemField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.itemFieldLabel {
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-2);
+}
+
+/* Two fields per line where the measure allows it, one where it does not — and
+   the measure is the DETAIL'S OWN box, not the surface. That is the whole
+   reason the two detail boxes declare `dsh-tb-item-detail`: the same field grid
+   sits in a 296px sidebar at the 1080px threshold (two columns there is 131px
+   of input, which clips a date field and squeezes its picker) and in an 816px
+   sidebar at 2380px (two columns is right). Keying this off the SURFACE would
+   give one answer to two boxes whose widths differ by 520px. */
+.itemFieldGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+@container dsh-tb-item-detail (min-width: 360px) {
+  .itemFieldGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.itemFieldGrid > .itemField {
+  min-inline-size: 0;
+}
+
+.itemStepList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-inline-size: 0;
+}
+
+.itemStep {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-inline-size: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-1);
+  cursor: pointer;
+}
+
+.itemStep input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--dsh-tb-accent);
+}
+
+.itemStep span {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.itemStep span[data-done] {
+  color: var(--dsh-tb-text-3);
+  text-decoration: line-through;
+}
+
+.itemHint {
+  font-size: 12px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-2);
+}
+
+.itemOriginRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-inline-size: 0;
+}
+
+/* The danger zone is a zone, not a button: the explanation and the destroyer
+   share one box so the reader cannot take the button without the sentence that
+   says what deleting actually does (this delete is recoverable, and that fact
+   is the only reason the button is safe to press). */
+.itemDangerZone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px;
+  background: var(--dsh-tb-surface-sunken);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  min-inline-size: 0;
+}
+
+.itemDangerHint {
+  font-size: 12px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-2);
+}
+
+/* The confirm is INLINE, not a Dialog (same reason as the row menu), and it
+   replaces the destroyer rather than opening a layer — one level, no third. */
+.itemDeleteConfirm {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  block-size: var(--dsh-tb-button-h);
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--dsh-tb-danger);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) 45%, transparent);
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.itemDeleteConfirm:hover {
+  background: color-mix(in srgb, var(--dsh-tb-danger) 10%, transparent);
+  border-color: var(--dsh-tb-danger);
+}
+
+.itemDeleteConfirm:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+/* ── 收件页 ─────────────────────────────────────────────────────────────
+   The inbox deliberately has NO secondary chrome: no grouping, no filter card,
+   no density switch. A thought caught before it becomes a card is read once,
+   top to bottom, and everything that would help you organize it is one step too
+   early for that. */
+
+.itemInboxList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.itemInboxNote {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-inline-size: 0;
+  padding: 6px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-2);
+  overflow-wrap: anywhere;
+}
+
+/* ── 分诊条：收件页顶部那一小块「现在该看哪一条」 ───────────────────────── */
+
+/* TRIAGE IS NOT A BOX. It was a filled, bordered, rounded panel with a 2px
+   colour bar down the left of every row — a frame inside a frame, wrapped
+   around two lines of text, competing with the rows it exists to outrank. That
+   is the single loudest tell on the page.
+   Hierarchy here is TYPE and a hairline: a small-caps-ish section title, then
+   the sentences at 13px where the rows below them are at 14px but the meta
+   under them is at 12px, so the triage block is read before the list without
+   anything having to be enclosed. */
+.itemTriage {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: none;
+  min-inline-size: 0;
+  padding: 0;
+  /* The one boundary on this page that is not a group's own: a reader has just
+     read two sentences that are about the list rather than part of it, and the
+     list starts below. Twelve pixels of air says that without drawing a second
+     rule next to the group head's, which would say the same thing twice. */
+  margin-block-end: 12px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+/* Triage says one thing: 「these need you first, and this is how many」。Its
+   severity is the model's own word, not a class anyone picks by hand. `warn` is
+   the one attention colour (something slipped or is blocked); `muted` is the
+   quiet case (a row with no date at all is not an emergency, it is just
+   unscheduled). Two readings, never a third — and both land on the WORDS, not
+   on a bar beside them, so the severity is never carried by colour alone. */
+.itemTriageRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-inline-size: 0;
+  padding: 7px 2px;
+  border-block-start: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+}
+
+.itemTriageRow:first-of-type {
+  border-block-start: 0;
+}
+
+.itemTriageRow:hover {
+  background: var(--dsh-tb-hover);
+}
+
+.itemTriageText {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 12px;
+  line-height: var(--dsh-tb-row-line);
+  /* Second ink, not first: this is a reminder about the list, not part of the
+     list, and at 14px it would outrank the rows it is pointing at. */
+  color: var(--dsh-tb-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemTriageRow[data-severity='warn'] .itemTriageText {
+  /* The one attention colour on the surface, spent on the words themselves
+     rather than on a bar beside them — so the severity is carried by the
+     sentence a reader is already reading, and never by colour alone.
+     NOTE for whoever owns the copy: the number is interpolated INTO this one
+     text node (`{n} 项过了想要的日子`), so 「colour the digit, not the
+     sentence」 is not reachable from CSS without splitting the string. The
+     sentence is coloured instead, and the words still carry the meaning. */
+  color: var(--dsh-tb-attention);
+}
+
+.itemTriageRow[data-severity='muted'] .itemTriageText {
+  color: var(--dsh-tb-text-3);
+}
+
+.itemTriageAction {
+  flex: none;
+}
+
+/* ── 日程：议程列表为主形态 ───────────────────────────────────────────────
+   A schedule is a SEQUENCE, so the day is the structure and the list is
+   flat inside it — four columns of a board would answer 「which bucket」 while
+   the question here is 「what is next, and when」. */
+
+.itemAgenda {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+/* On a DAY the label, the count and the date are one reading. The group head
+   stretches its toggle so that a progress bar can sit at the far end of a wide
+   list; on the agenda there is no bar, so the same stretch leaves the date
+   floating half a page away from the word it belongs to. The toggle takes only
+   what it needs here. */
+.itemAgenda .itemGroupToggle {
+  flex: 0 1 auto;
+}
+
+.itemAgendaDay {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Days are the agenda's PRIMARY axis, and an axis is drawn with the space
+     between its divisions plus a rule under the label — not with a larger
+     label. Making the day 13px while the list page's group is 12px would give
+     the same structural role two different treatments, and the reader who
+     moves between the two pages would feel the change without being able to
+     name it. */
+  padding-block: 8px;
+  margin-block-end: 12px;
+  min-inline-size: 0;
+}
+
+/* AN EMPTY DAY IS ONE LINE, not a heading and a paragraph saying the same
+   thing twice. It stays listed — a week with three empty days in it is
+   information, and hiding them would make the gaps invisible — but a day with
+   nothing in it must not cost the same vertical space as a day with work in
+   it, or the agenda opens with three headings above the first real thing.
+   `:has()` is what makes this structural rather than a second copy of the
+   markup: the day that CONTAINS the 「nothing scheduled」 line is by
+   definition an empty day, and there is no class anyone has to remember to
+   put on it. */
+.itemAgendaDay:has(.itemEmptyGroup) {
+  gap: 0;
+  padding-block: 4px;
+  margin-block-end: 4px;
+}
+
+/* An empty day steps all the way down: third ink, regular weight, no tracking,
+   and NO RULE. A day with nothing in it is not a heading you act on, and three
+   hairlines under three empty days is three more sections on a page whose only
+   content is two rows. The label and its date already say which day it is;
+   the rule is for a boundary you might act across, and this is not one. */
+.itemAgendaDay:has(.itemEmptyGroup) .itemAgendaDayLabel,
+.itemAgendaDay:has(.itemEmptyGroup) .itemGroupHead {
+  color: var(--dsh-tb-text-3);
+  font-weight: 400;
+  letter-spacing: 0;
+  border-block-end: 0;
+  padding-block-end: 2px;
+}
+
+.itemAgendaDay:last-child {
+  margin-block-end: 0;
+}
+
+/* The 「nothing scheduled」 line under an empty day is the same fact as the
+   day's own count of zero, so it adds no information and takes a line. Inside
+   an empty day it becomes a quiet continuation of the label rather than a
+   paragraph. */
+.itemAgendaDay:has(.itemEmptyGroup) .itemEmptyGroup {
+  padding-block: 0;
+  color: var(--dsh-tb-text-3);
+}
+
+.itemAgendaDayLabel {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding-block-end: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: var(--dsh-tb-row-line);
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-sunken);
+  border-block-end: var(--dsh-tb-border-soft);
+}
+
+.itemAgendaList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+/* Two things that are NOT on the agenda, each saying why, in the reader's
+   words. An item whose earliest start has not arrived is a gate, not a
+   schedule; an item with no date at all is a tray, not a row. Showing them in
+   the sequence would be claiming they are due today. */
+/* NOT A BOX, for the same reason the triage strip is not one. These two
+   containers exist to keep rows that are NOT in today's sequence from being
+   read as being in it, and a filled rounded panel says that by being a panel —
+   which puts a second frame on a page whose rows are already framed by
+   hairlines. What they need is a label in the same voice as a group head, a
+   rule, and a little air. */
+.itemGatedFold {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-inline-size: 0;
+  margin-block: 12px 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.itemGatedFoldHead {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Border-box beside a 100% basis, same reason as `.itemDetail`: a
+     content-box 100% plus horizontal padding is wider than its parent. */
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: 0 0 7px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: var(--dsh-tb-row-line);
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: 0;
+  border-block-end: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+  text-align: start;
+}
+
+.itemGatedFoldHead:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+.itemGatedFoldList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-block-start: 4px;
+  min-inline-size: 0;
+}
+
+.itemNoDateTray {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  min-inline-size: 0;
+  margin-block-start: 12px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+/* The tray's label is a container label, and it speaks in the same voice as
+   every other container label on this surface — the group head, the day's
+   label, the fold head. Three names for three kinds of thing would be honest;
+   three sizes for one role would not be. */
+.itemNoDateTrayLabel {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-block-end: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: var(--dsh-tb-row-line);
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-2);
+  border-block-end: var(--dsh-tb-border-soft);
+}
+
+/* ── 四种读法 ───────────────────────────────────────────────────────────
+   Four judgments, four different faces — not one error bit with four moods.
+   Each says which one it is, because 「the host is unreachable」 and 「you have
+   nothing」 look identical unless one of them is written down.
+
+     reading   读中: third ink, no remedy action, `role="status"`. In flight is
+               not broken, and an error colour here is a lie about the system.
+     failed    失败: one plain sentence + one inline retry. Nothing else.
+     empty     空: second ink and NOTHING to click. An empty state with a remedy
+               in it makes readers ask whether the thing is broken.
+     absent    能力缺失: names the missing capability, and there is no retry
+               button at all — retrying an endpoint that does not exist is an
+               infinite loop with a spinner. */
+
+.itemState {
+  margin: 0;
+  padding: 8px 0;
+  font-size: 12px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-2);
+}
+
+.itemState[data-kind='reading'] {
+  color: var(--dsh-tb-text-3);
+}
+
+.itemState[data-kind='failed'],
+.itemState[data-kind='absent'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--dsh-tb-text-2);
+}
+
+/* ── 「还没选中任何一条」 ────────────────────────────────────────────────
+   A designed state, not a blank one. When nothing is selected the sidebar has
+   a job, and the job is to answer the question the reader actually has
+   («what is in here»): the four group counts, the five most recently touched
+   rows, and one sentence. Whitespace where an answer was owed reads as a
+   failure to load. */
+
+.itemDetailEmpty {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* It is the pane's ONLY child when nothing is selected, so it takes the body
+     slot and is the sidebar's one scroll body in that state — not a block that
+     overflows the pane and not a second scroller stacked on the detail body's. */
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  min-inline-size: 0;
+  padding: 20px 16px;
+}
+
+.itemEmptyCounts {
+  display: grid;
+  /* Packed to the left at their own width, with one generous gutter. They were
+     `auto-fit … 1fr`, which stretches three two-word counts across 800px and
+     spaces them so far apart that they stop being read as one set. A set of
+     counts is a phrase; a phrase is as wide as it needs to be. */
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  justify-content: start;
+  column-gap: 40px;
+}
+
+/* A count is a NUMBER and a word under it. It was a filled, bordered, rounded
+   cell, and three of them side by side is a dashboard — the exact shape this
+   surface is not. The number is already the loudest thing in the cell at 16px
+   semibold, so the cell needs nothing around it but air. */
+.itemEmptyCount {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+.itemEmptyCountValue {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  color: var(--dsh-tb-text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemEmptyCountLabel {
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemEmptyRecent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.itemEmptyRecentHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-3);
+}
+
+.itemEmptyHint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-2);
+}
+
+/* ── 密度 ───────────────────────────────────────────────────────────────
+   Density is a user setting, so the row's height is a token and not a number
+   typed into six rules. Only the two padding knobs move; nothing else about a
+   row changes, so 「紧凑」 is the same row with less air — not a second row.
+
+   The attribute rides the ROW (`itemRow`), not the button: the vertical
+   padding belongs to the row box, and a density declared one level deeper
+   cannot move a padding its own parent owns. The button is listed as a second
+   selector purely so the same two values are defined once rather than
+   duplicated if the attribute ever travels. */
+
+.itemRow[data-density='comfy'],
+.itemRowMain[data-density='comfy'] {
+  --item-row-pad: 12px;
+  --item-row-gap: 10px;
+}
+
+.itemRow[data-density='compact'],
+.itemRowMain[data-density='compact'] {
+  --item-row-pad: 6px;
+  --item-row-gap: 6px;
+}
+
+/* ── 容器查询：两个台阶 ──────────────────────────────────────────────────
+   Base = the phone band: 12px inset, every grid one column, the quick-capture
+   on its own line. Two `min-width` steps bring it up to the mid band (720px)
+   and to the two-column workbench (1080px).
+
+   WRITTEN BASE-FIRST AND STEPPING UP, so there is no `max-width` query in this
+   file at all. With the bands expressed as "base + two steps", which band a
+   rule lands in is decided by the block it is written in, and no pair of rules
+   can both match. The base-plus-`max-width` spelling is the version where "did
+   the narrow rule lose?" becomes a question to answer by reading specificity.
+
+   **A CONTAINER CANNOT QUERY ITSELF.** `.itemRoot` is the `dsh-tb-item`
+   container, so `@container dsh-tb-item { .itemRoot { … } }` never matches:
+   the query resolves against the element's nearest ANCESTOR container, and the
+   container is not its own ancestor. Every band override of `--item-inset`
+   therefore lives on the two DESCENDANTS that read it (`.itemHeader` and
+   `.itemWorkbench`), not on the root. The token still has one name and one
+   owner (`.itemRoot` declares its default); what the bands move is the value,
+   on the two boxes that consume it. This is exactly the silent-no-op family —
+   the declaration looks right, parses, and paints nothing. */
+
+@container dsh-tb-item (min-width: 720px) {
+  .itemHeader,
+  .itemWorkbench {
+    --item-inset: 20px;
+  }
+
+  /* The mid band pairs the controls instead of stacking them. Auto-placement
+     does the work: the heading and the search share row 1, the rail and the
+     filter row share row 2, and the capture line spans both columns because it
+     says so. Four controls on two lines is a header; the same four on four
+     lines is a toolbar. */
+  .itemHeader {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 20px;
+    row-gap: 12px;
+  }
+
+  /* With a column to sit against, the field goes to the trailing edge. */
+  .itemSearchRow {
+    justify-self: end;
+  }
+
+  /* ONE THING PER LINE, from 720px up.
+     Under the base the row is two lines — the title, then the facts beneath it
+     — which is the honest shape when the measure cannot hold both. From here
+     the measure can, and a fact sitting directly under its own title at the
+     same left edge reads as a wrapped sentence rather than as a title with
+     something known about it. On one line the title is the row and the facts
+     are a column you can scan DOWN, which is the only way 「which of these is
+     late」 becomes a question the eye can answer.
+     The facts keep their own tracks either way, so the date column still lines
+     up between rows; only the row they sit in changes. */
+  .itemRowMain {
+    grid-template-columns: var(--item-mark-col) var(--item-ref-col) minmax(0, 1fr) var(--item-meta-col);
+    grid-template-areas: 'mark ref title meta';
+    row-gap: 0;
+  }
+
+  /* No `justify-self: end` here, and the reason is the one above: an `auto`
+     column is measured per row, so right-aligning it would put every row's
+     facts at its own right edge. The column is a fixed width instead, the
+     facts sit at its left, and the dates stack. */
+  .itemRowMeta {
+    justify-self: stretch;
+  }
+}
+
+@container dsh-tb-item (min-width: 1080px) {
+  .itemHeader,
+  .itemWorkbench {
+    --item-inset: 24px;
+  }
+
+  .itemWorkbench {
+    /* Two tracks, and the list track is CAPPED: past 720px a list line stops
+       getting more readable, it only gets further from the sidebar that
+       explains it. The workbench itself is capped and centred so a 2380px
+       window does not hand the detail pane 1600px of one-line fields — the
+       cap is on the BORDER box (see `box-sizing` above), so a 2380px window
+       gets a 1600px stage holding 720 + 16 + 816. */
+    grid-template-columns: minmax(0, var(--item-list-col)) minmax(0, 1fr);
+    grid-template-areas: 'list detail';
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+    max-inline-size: 1600px;
+    margin-inline: auto;
+    inline-size: 100%;
+  }
+
+  /* The two tracks are separated by a RULE and by air, and the rule is the
+     only vertical line on the page. A bordered card on each side would have
+     said the same thing four times over — two boxes, two backgrounds, two
+     rounded corners — and the page would have read as two widgets instead of
+     one surface with a column in it. */
+  .itemDetailPane {
+    padding-inline-start: 24px;
+    border-inline-start: var(--dsh-tb-border-soft);
+  }
+
+  /* The in-place expansion is a PHONE affordance. On a desk the detail has a
+     track of its own, so the row is free to stay a row. */
+  .itemRow[data-open] .itemDetail {
+    display: none;
+  }
+
+  .itemDetailEmpty {
+    padding: 24px 20px;
+  }
+}
+
+/* ── 触屏：只加不可见的热区，不改任何视觉几何 ─────────────────────────────
+   Nothing here moves a control, changes a size or hides a label: a phone sees
+   the same interface as a desk, only easier to hit. */
+
+@media (hover: none) and (pointer: coarse) {
+  .itemRoot {
+    /* 16px is the platform's minimum for text that has to be read without a
+       pinch; a form control below it is the one place the board does allow a
+       size change, and only upward. */
+    --item-row-pad: 12px;
+  }
+
+  .itemRowActions,
+  .itemComposer {
+    gap: 8px;
+  }
+}

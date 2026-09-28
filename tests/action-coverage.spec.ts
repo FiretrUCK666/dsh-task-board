@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest'
 import { actionCoverageFindings, readRepo } from '../scripts/verify-action-coverage.mjs'
 import type { CoverageInput } from '../scripts/verify-action-coverage.mjs'
 
-const TWELVE = `'create', 'update', 'move', 'delete', 'run', 'speak', 'bind', 'automate', 'cruise', 'ack', 'navigate', 'query',`
+const VERB_LIST = `'create', 'update', 'move', 'delete', 'run', 'speak', 'bind', 'automate', 'cruise', 'ack', 'navigate', 'restore', 'query',`
 
 /** A two-action catalog: enough structure to be parsed, small enough to poison.
  *  `params` replaces the whole params block, so a test can declare exactly the
@@ -70,7 +70,7 @@ export const ACTIONS = {
   },
 } as const satisfies Record<string, ActionShape>
 
-export const BOARD_VERBS: readonly BoardVerb[] = [${TWELVE}]
+export const BOARD_VERBS: readonly BoardVerb[] = [${VERB_LIST}]
 `
 }
 
@@ -523,8 +523,8 @@ describe('2 — semantic honesty, including the direction that must stay quiet',
 })
 
 describe('3 — catalog coherence', () => {
-  it('catches a verb outside the twelve', () => {
-    expect(findings({ catalogText: catalog({ verb: 'archive' }) })).toContain('is not one of the twelve')
+  it('catches a verb outside the declared set', () => {
+    expect(findings({ catalogText: catalog({ verb: 'archive' }) })).toContain('is not one of the declared verbs')
   })
 
   it('catches a surface outside the three states', () => {
@@ -538,7 +538,7 @@ describe('3 — catalog coherence', () => {
 
   it('catches a verb list that drifted from the contract', () => {
     const drifted = catalog().replace("'query',", "'query', 'archive',")
-    expect(findings({ catalogText: drifted })).toContain('outside the twelve')
+    expect(findings({ catalogText: drifted })).toContain('outside the declared verbs')
   })
 })
 

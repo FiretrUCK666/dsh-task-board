@@ -341,6 +341,14 @@ export declare class ChecklistReplica {
      *  accrued deletions excluded on both sides (same law as the board's rows —
      *  the dirty array keeps its order, baseline-only rows append read-only). */
     view(): readonly ItemRecord[];
+    /**
+     * This tab's caller id — the one every write on this prefix carries.
+     *
+     * Exposed because a write the panel makes DIRECTLY (restoring a deleted row)
+     * has to be attributed to the same tab that syncs it, and minting a second id
+     * here would put the activity note under a name the reader has never seen.
+     */
+    clientId(): string;
     /** Mark the checklist dirty and queue a commit. */
     setItems(items: readonly ItemRecord[]): void;
     onRemote(listener: (items: readonly ItemRecord[], revision: number) => void): void;

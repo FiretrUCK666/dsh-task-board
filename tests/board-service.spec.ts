@@ -605,7 +605,7 @@ describe('DocumentService checklist (the second document)', () => {
     expect(service.getDoc().tasks.map(t => t.id)).toEqual(['t-a'])
   })
 
-  it('writes ONLY the items record, and never moves the board (revision, file or frame)', async () => {
+  it('writes ONLY the items record, and the frame it sends names the ITEMS document', async () => {
     const unit = new FakeUnit()
     const { service } = makeService(unit)
     await service.init()
@@ -619,12 +619,47 @@ describe('DocumentService checklist (the second document)', () => {
     expect(doc.revision).toBe(1)
     expect(doc.items.map(i => i.ref)).toEqual([1])
     // One record, and it is the checklist's: a checklist write must not rewrite
-    // the board's file, must not bump the board's revision, and must not wake
-    // every replica to resync a board that did not move.
+    // the board's file and must not bump the board's revision.
     expect(unit.writes.slice(writesBefore)).toEqual([ITEMS_DOCUMENT])
     expect(service.getDoc()).toBe(boardAfterCommit)
     expect(service.getDoc().revision).toBe(1)
-    expect(events).toEqual([])
+    // The frame IS sent, and the document name is the whole point of it. The
+    // consumer routes on that name (an `items` frame wakes the checklist
+    // replica and leaves the board asleep), so a checklist edit cannot resync
+    // the board on every device — and, equally, an unannounced one left the
+    // other devices' checklists stale until something else happened to resync.
+    // A frame that named the board, or named nothing, would be the defect in
+    // the other direction, so the assertion is on the name and not on count.
+    expect(events).toEqual([{ type: 'commit', document: ITEMS_DOCUMENT, revision: 1, clientId: expect.any(String) }])
+  })
+
+  it('a checklist write reaches another device, and a no-op one does not', async () => {
+    // THE POINT OF THE FRAME. A note written on one device used to be durable
+    // and durable-before-ack and still invisible everywhere else, so the write
+    // was real and its consequences were not. The contract is two-sided: a
+    // real change announces exactly once, naming its own document, and a
+    // commit that changed nothing announces nothing at all — an announcement
+    // with no change behind it would wake every device to re-fetch a document
+    // that did not move.
+    const { service } = makeService(new FakeUnit())
+    await service.init()
+    const frames: BoardEvent[] = []
+    service.subscribe(e => frames.push(e))
+
+    await service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' })] }))
+    expect(frames.filter(f => f.type === 'commit')).toHaveLength(1)
+
+    // The identical commit is a no-op through the merge grammar, so it must be
+    // invisible on the wire as well as on the medium.
+    await service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' })] }))
+    expect(frames.filter(f => f.type === 'commit')).toHaveLength(1)
+
+    await service.commitItems(itemsCommitOf({ items: [row({ id: 'i-b', ref: 2, title: 'B' })] }))
+    const commits = frames.filter(f => f.type === 'commit')
+    expect(commits).toHaveLength(2)
+    for (const frame of commits) {
+      expect(frame).toMatchObject({ type: 'commit', document: ITEMS_DOCUMENT })
+    }
   })
 
   it('a checklist no-op neither persists nor mints a number', async () => {

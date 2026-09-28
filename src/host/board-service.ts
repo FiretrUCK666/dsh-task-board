@@ -38,8 +38,9 @@
 import { join } from 'node:path'
 import { applyCommit, emptyBoardDoc, normalizeBoardDoc } from '../core/board-doc.ts'
 import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts'
-import { applyItemsCommit, emptyItemsDoc, normalizeItemsDoc } from '../core/items-doc.ts'
+import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, normalizeItemsDoc, restoredItemOf } from '../core/items-doc.ts'
 import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
+import type { ItemRecord } from '../core/item.ts'
 import { retireLegacyUnitFile, unitDirectoryPath, type RetireOptions, type RetireOutcome } from './data-root.ts'
 
 // The wire types live in the shared core (the client sync layer reads the
@@ -408,15 +409,14 @@ export class DocumentService {
    * revision or the board's record: two documents, two revisions, and one
    * write lane.
    *
-   * IT BROADCASTS NOTHING, and the reason is the CONSUMER, not the frame: a
-   * `commit` frame now names its document, so announcing a checklist write is
-   * a well-formed frame — but every stream consumer still reads a commit as
-   * "the board moved" and schedules a board resync (see
-   * `BoardSyncClient.onStreamEvent`). Announcing item writes before the
-   * consumers sort the two documents apart would make one checklist edit
-   * resync the board on every device, which is the exact thing the second
-   * document's own revision exists to prevent. The write is durable and
-   * durable-before-ack either way; only the announcement waits.
+   * IT BROADCASTS, under the document's own name. A `commit` frame carries the
+   * document it moved and the consumer routes on that (`host-sync.ts` sends an
+   * `items` frame to the checklist replica and leaves the board asleep), so
+   * announcing a checklist write wakes exactly the replica that needs it and
+   * nobody else. Without the frame, a note written on one device is invisible
+   * everywhere else until some unrelated change happens to resync — which is
+   * the same fact stated the other way round: the write was durable and
+   * durable-before-ack, only the announcement was missing.
    * @returns the authoritative checklist after the commit.
    */
   commitItems(commit: ItemsCommit): Promise<ItemsDoc> {
@@ -434,8 +434,38 @@ export class DocumentService {
           this.log('[dsh-task-board] items document persist failed (memory keeps serving)', error)
         }
       }
+      this.broadcast({ type: 'commit', document: ITEMS_DOCUMENT, revision: next.revision, clientId: commit.clientId })
       return next
     })
+  }
+
+  /**
+   * Bring one deleted checklist row back.
+   *
+   * WHY THIS IS A SERVICE OPERATION AND NOT A CLIENT COMMIT. A tombstone is
+   * stamped one millisecond ABOVE the row it removed, so re-submitting that row
+   * untouched is exactly the stale copy the tombstone exists to swallow: the
+   * commit would be accepted, nothing would change, and the caller would be
+   * told it worked. Only the host knows the stamp, so only the host can write
+   * the one value that has to be greater — {@link restoredItemOf} does that and
+   * nothing else, and the row then rides the ordinary commit path, so restore
+   * is a put like any other and needs no second merge rule.
+   *
+   * The row is found by its SHORT NUMBER, because that is the name a person
+   * says out loud. A number with no tombstone behind it is not a restore: the
+   * row is either present (nothing to do) or it was never numbered, and either
+   * way "restoring" it would be a second row with a second number.
+   * @param ref - the short number, without its `#`.
+   * @param clientId - who asked, for the broadcast and the activity note.
+   * @returns the restored row, or `undefined` when no tombstone holds that number.
+   */
+  async restoreItem(ref: number, clientId: string): Promise<ItemRecord | undefined> {
+    const carried = deletedItemsOf(this.items).find(item => item.ref === ref)
+    if (carried === undefined) return undefined
+    const restored = restoredItemOf(this.items, carried.id, this.now())
+    if (restored === undefined) return undefined
+    await this.commitItems({ clientId, items: [restored], changed: [restored.id], deleted: [] })
+    return restored
   }
 
   /**

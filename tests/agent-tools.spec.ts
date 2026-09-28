@@ -17,6 +17,7 @@ import { emptyItemsDoc, applyItemsCommit, type ItemsDoc } from '../src/core/item
 import { QUALIFIER_KEYS } from '../src/core/task-search.ts'
 import {
   capabilityView,
+  clearIdempotentReplies,
   createTaskboardTools,
   enumeratedFilters,
   refuseOp,
@@ -225,6 +226,159 @@ describe('the batch laws', () => {
     expect(result.ok).toBe(false)
     expect(result.summary).toContain('存储不可用')
     expect(board.writes).toEqual([])
+  })
+})
+
+describe('the checklist verbs a person can reach and a model now shares', () => {
+  /** A checklist holding one row, already numbered, through the real grammar. */
+  function withItem(patch: Record<string, unknown> = {}) {
+    const board = face()
+    const base = {
+      id: 'i-1', ref: 1, title: '一条', body: '正文', notes: '', steps: [],
+      status: 'open', priority: 'normal', tags: [], startsAfter: undefined,
+      dueAt: undefined, hardDueAt: undefined, taskId: undefined,
+      origin: { source: 'human', at: NOW }, createdAt: NOW, updatedAt: NOW,
+      ...patch,
+    }
+    board.seedItems(applyItemsCommit(emptyItemsDoc(NOW), { clientId: 'c', items: [base as never], deleted: [] }, NOW))
+    return board
+  }
+
+  it('item.step ticks one step and leaves the rest exactly as they were', async () => {
+    const board = withItem({
+      steps: [
+        { id: 's-1', text: '第一步', done: false },
+        { id: 's-2', text: '第二步', done: true },
+        { id: 's-3', text: '第三步', done: false },
+      ],
+    })
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.step', payload: { of: '#1', step: 's-1', done: true } }] })
+    expect(result.ok).toBe(true)
+    // The WHOLE list is not rebuilt: this is why the verb exists, because an
+    // `item.update` replaces it wholesale and a model retyping steps from
+    // memory is how a list quietly loses one.
+    const steps = board.getItemsDoc().items[0]?.steps ?? []
+    expect(steps.map(step => [step.id, step.done])).toEqual([['s-1', true], ['s-2', true], ['s-3', false]])
+  })
+
+  it('item.step names the steps that DO exist, rather than failing at "no such step"', async () => {
+    const board = withItem({ steps: [{ id: 's-1', text: '第一步', done: false }] })
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.step', payload: { of: '#1', step: 's-9', done: true } }] })
+    expect(result.reports[0]?.ok).toBe(false)
+    // The step list is something only the document knows, so a miss has to
+    // come back with the list in it — the caller cannot invent the id.
+    expect(result.reports[0]?.detail).toContain('s-1')
+  })
+
+  it('item.step on a step already in that state changes nothing and says so', async () => {
+    const board = withItem({ steps: [{ id: 's-1', text: '第一步', done: true }] })
+    const writes = board.writes.length
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.step', payload: { of: '#1', step: 's-1', done: true } }] })
+    expect(result.reports[0]?.detail).toContain('已经是这样了')
+    expect(board.writes).toHaveLength(writes)
+  })
+
+  it('item.promote makes a card AND links the two, in one op', async () => {
+    const board = withItem({ body: '要做的事' })
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.promote', payload: { of: '#1' } }] })
+    expect(result.ok).toBe(true)
+    const tasks = board.getDoc().tasks
+    const items = board.getItemsDoc().items
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]?.title).toBe('一条')
+    expect(tasks[0]?.prompt).toBe('要做的事')
+    // Two documents, one op, and the link is the point: a card nobody can get
+    // back to from the note, and a note nobody can get back to from the card.
+    expect(items[0]?.taskId).toBe(tasks[0]?.id)
+  })
+
+  it('item.promote refuses to build a second card for a note that already has one', async () => {
+    const board = withItem({ taskId: 't-elsewhere' })
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.promote', payload: { of: '#1' } }] })
+    expect(result.reports[0]?.ok).toBe(false)
+    expect(result.reports[0]?.detail).toContain('已经挂在卡片上了')
+    expect(board.getDoc().tasks).toHaveLength(0)
+  })
+
+  it('item.restore brings a deleted note back, and says so when it cannot', async () => {
+    const board = withItem()
+    // Delete it through the real grammar, so the tombstone is a real one.
+    await runBatch(deps(board), { ops: [{ op: 'item.delete', payload: { of: '#1' } }] })
+    expect(board.getItemsDoc().items).toHaveLength(0)
+    expect(board.getItemsDoc().tombstones['i-1']).toBeDefined()
+
+    const back = await runBatch(deps(board), { ops: [{ op: 'item.restore', payload: { of: '#1' } }] })
+    expect(back.ok).toBe(true)
+    expect(board.getItemsDoc().items.map(item => item.id)).toEqual(['i-1'])
+    expect(board.getItemsDoc().tombstones['i-1']).toBeUndefined()
+
+    // A number nothing was ever deleted under is not a restore, it is a guess.
+    const miss = await runBatch(deps(face()), { ops: [{ op: 'item.restore', payload: { of: '#99' } }] })
+    expect(miss.reports[0]?.ok).toBe(false)
+    expect(miss.reports[0]?.detail).toContain('#99')
+  })
+
+  it('item.promote rehearses cleanly and writes nothing', async () => {
+    const board = withItem()
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.promote', payload: { of: '#1' } }], dry_run: true })
+    expect(result.dryRun).toBe(true)
+    expect(board.writes).toEqual([])
+    expect(board.getDoc().tasks).toHaveLength(0)
+  })
+})
+
+describe('the idempotency key is a promise the tool keeps', () => {
+  // The field was declared in the envelope and read by nobody, which is worse
+  // than not offering it: the caller is told a retry is safe and it is not.
+  it('a retried batch returns the first answer and runs nothing again', async () => {
+    clearIdempotentReplies()
+    const board = face()
+    const first = await runBatch(deps(board), {
+      ops: [{ op: 'item.create', payload: { body: '只应存在一条' } }],
+      idempotencyKey: 'k-1',
+    })
+    expect(first.ok).toBe(true)
+    expect(board.getItemsDoc().items).toHaveLength(1)
+
+    const second = await runBatch(deps(board), {
+      ops: [{ op: 'item.create', payload: { body: '只应存在一条' } }],
+      idempotencyKey: 'k-1',
+    })
+    // The row is the proof; the status code is not, because it is 200 either way.
+    expect(board.getItemsDoc().items).toHaveLength(1)
+    expect(second.replayed).toBe(true)
+    // And the sentence has to say so, because "no new row" and "no second
+    // attempt" are different facts and only the second one is what was promised.
+    expect(second.summary).toContain('没有重复执行')
+  })
+
+  it('a different key is a different batch', async () => {
+    clearIdempotentReplies()
+    const board = face()
+    await runBatch(deps(board), { ops: [{ op: 'item.create', payload: { body: 'a' } }], idempotencyKey: 'k-a' })
+    await runBatch(deps(board), { ops: [{ op: 'item.create', payload: { body: 'b' } }], idempotencyKey: 'k-b' })
+    expect(board.getItemsDoc().items).toHaveLength(2)
+  })
+
+  it('a rehearsal is not remembered, and a refusal is not either', async () => {
+    clearIdempotentReplies()
+    const rehearsed = face()
+    await runBatch(deps(rehearsed), { ops: [{ op: 'item.create', payload: { body: 'x' } }], dry_run: true, idempotencyKey: 'k-dry' })
+    // A caller may rehearse the same batch twice on purpose; the second one
+    // should reflect the document as it is NOW, not as it was when the key
+    // was first used.
+    const again = await runBatch(deps(rehearsed), { ops: [{ op: 'item.create', payload: { body: 'x' } }], dry_run: true, idempotencyKey: 'k-dry' })
+    expect(again.replayed).toBeUndefined()
+
+    clearIdempotentReplies()
+    const down = face({ available: false })
+    await runBatch(deps(down), { ops: [{ op: 'item.create', payload: { body: 'x' } }], idempotencyKey: 'k-down' })
+    // Storage being down wrote nothing, so there is nothing to promise about
+    // it: remembering the refusal would hand it to a retry that should work.
+    const up = face()
+    const retried = await runBatch(deps(up), { ops: [{ op: 'item.create', payload: { body: 'x' } }], idempotencyKey: 'k-down' })
+    expect(retried.replayed).toBeUndefined()
+    expect(up.getItemsDoc().items).toHaveLength(1)
   })
 })
 

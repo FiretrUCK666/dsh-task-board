@@ -149,9 +149,34 @@ Restart `dsh web` afterwards.
   re-deriving it. It is a **second document, not a view over the board**: an item does not
   have to become a card, and when it hangs off one it reads that card's live state. Each
   item has a short number (`#12`) minted by a counter and never writable, one-level steps,
-  four priority tiers, tags, and three INDEPENDENT times (earliest start, due, hard
-  deadline). Deleting goes through a tombstone, so items are recoverable — unlike cards.
-  Creating, editing and deleting all work by hand.
+  four priority tiers, tags, and three INDEPENDENT times.
+
+  It has **pages**, and a page is a different question about your items — not a different
+  way of drawing the same ones:
+
+  | Page | Answers |
+  | --- | --- |
+  | **Inbox** | Just written down, given no structure yet. Give one a priority, a date, a tag or a card and it leaves this page by itself. |
+  | **List** | Everything unfinished, grouped by state; each group header carries that group's own count and step total. |
+  | **Schedule** | The part that has a time, laid out by day. Anything whose earliest-start has not arrived is **not scheduled in** — it sits in a "not startable yet" fold that says why. |
+
+  Three pages sit on the page rail, and **an empty page does not appear on it**; tag, stale,
+  archive and filtered views are not destinations — you click into them and they open.
+  **Missing a due date is only "behind schedule", and only the hard deadline turns a row
+  red.** English has one word for "dead" and Chinese has three, so the distinction is made
+  in the grammar instead: the three times read **from** (earliest start), **by** (due) and
+  **hard by** (hard deadline). The hard deadline is the only one that may ever be called a
+  deadline; a missed due date is behind schedule.
+
+  Deleting goes through a tombstone, and a tombstone **carries the row**, so a deleted item is
+  **recoverable for 30 days** — unlike cards. The list page says the window in a line of its own
+  and a button opens the archive, where one click brings the original text back. The capture box
+  takes inline
+  syntax: `#tag`, `!1`–`!4` for priority, `@today` / `@hard 9/30` for dates, and a leading
+  `- [ ]` for a step. The parsed result shows as chips **as you type**, and a word that was
+  recognised wrongly turns back into plain text when you click it. What the agent does and
+  what you do are the same implementation — including ticking one step, turning an item
+  into a board card, and restoring a deleted one.
 - **Driving it from a conversation** — Two slash commands (`/task`, `/task-continue`) and
   three tools. The command hands **your own sentence** to the current session's model, which
   can already see the whole conversation, so "write down the three things we just

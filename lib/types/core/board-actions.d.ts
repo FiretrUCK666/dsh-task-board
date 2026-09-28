@@ -1,9 +1,9 @@
 import type { TaskUpdatePatch } from './controller.ts';
 import { type FieldSpec } from './item.ts';
 export type { FieldSpec };
-/** The twelve verbs. The table is a CONTRACT: a thirteenth verb is a decision,
+/** The thirteen verbs. The table is a CONTRACT: a fourteenth verb is a decision,
  *  not a convenience, and the catalog is written to fit inside these. */
-export type BoardVerb = 'create' | 'update' | 'move' | 'delete' | 'run' | 'speak' | 'bind' | 'automate' | 'cruise' | 'ack' | 'navigate' | 'query';
+export type BoardVerb = 'create' | 'update' | 'move' | 'delete' | 'run' | 'speak' | 'bind' | 'automate' | 'cruise' | 'ack' | 'navigate' | 'restore' | 'query';
 /** Which document a section of the surface speaks about. */
 export type ActionDomain = 'board' | 'item' | 'preset' | 'session';
 /**
@@ -103,7 +103,7 @@ export type ActionParams<K extends ActionId> = K extends keyof ActionParamTypes 
  * silently degrades the table to `any` instead of failing where you meant).
  */
 export interface ActionShape {
-    /** One of the twelve. */
+    /** One of the declared verbs ({@link BOARD_VERBS}). */
     readonly verb: BoardVerb;
     readonly domain: ActionDomain;
     readonly lane: ActionLane;
@@ -155,9 +155,9 @@ export declare const TASK_FIELDS: Record<keyof TaskUpdatePatch, FieldSpec>;
  *
  * Ids read `<subject>.<verb>`. The subject is the thing acted on (`task`,
  * `item`, `board`, `cruise`, `rule`, `session`, `preset`); the verb is one of
- * the twelve. `domain` says which document the action speaks about, which is
- * not always the subject: a rule belongs to the session domain, a cruise
- * switch to the board's.
+ * the declared ones. `domain` says which document the action speaks about,
+ * which is not always the subject: a rule belongs to the session domain, a
+ * cruise switch to the board's.
  */
 export declare const ACTIONS: {
     readonly 'task.create': {
@@ -969,6 +969,80 @@ export declare const ACTIONS: {
         readonly params: {
             readonly of: {
                 readonly about: "要删的条目编号：填那个数字本身（12），不要带 # 号";
+            };
+        };
+    };
+    readonly 'item.step': {
+        readonly verb: "update";
+        readonly domain: "item";
+        readonly lane: "document";
+        readonly danger: "reversible";
+        readonly surface: "ui+ai";
+        readonly summary: "勾掉或取消勾选某一条里的某一步。只动那一步，别的步骤和别的字段都不碰。";
+        readonly params: {
+            readonly of: {
+                readonly about: "条目编号：填那个数字本身（12），不要带 # 号";
+            };
+            readonly step: {
+                readonly about: "那一步的 id。它是清单里那一行勾选框的身份，先查一次拿到它";
+            };
+            readonly done: {
+                readonly about: "true 勾上，false 取消勾上";
+                readonly boolean: true;
+            };
+        };
+    };
+    readonly 'item.promote': {
+        readonly verb: "create";
+        readonly domain: "item";
+        readonly lane: "document";
+        readonly danger: "reversible";
+        readonly surface: "ui+ai";
+        readonly summary: "把一条清单条目变成一张看板卡片，并把两边互相链接。清单这一条不消失——它已经是那张卡的来处，链接上了以后它会带着卡一起显示。";
+        readonly params: {
+            readonly of: {
+                readonly about: "要提升的条目编号：填那个数字本身（12），不要带 # 号";
+            };
+            readonly cardTitle: {
+                readonly about: "给新卡换个标题；不填就用清单这一条的标题";
+                readonly optional: true;
+            };
+            readonly cardPrompt: {
+                readonly about: "给新卡的执行 Prompt（卡真正跑起来送出去的那段）；不填就用清单这一条的正文";
+                readonly optional: true;
+            };
+        };
+    };
+    readonly 'item.restore': {
+        readonly verb: "restore";
+        readonly domain: "item";
+        readonly lane: "document";
+        readonly danger: "reversible";
+        readonly surface: "ui+ai";
+        readonly summary: "把一条删掉的清单条目找回来。删除走的是墓碑，条目本身还在，所以是原样回来，不是重建一条新的。";
+        readonly params: {
+            readonly of: {
+                readonly about: "要恢复的条目编号：填那个数字本身（12），不要带 # 号";
+            };
+        };
+    };
+    readonly 'item.navigate': {
+        readonly verb: "navigate";
+        readonly domain: "item";
+        readonly lane: "document";
+        readonly danger: "reversible";
+        readonly surface: "ui";
+        readonly summary: "把清单面板切到某个页面，或者聚焦到某一条。只有界面能调：模型不替人翻界面。";
+        readonly params: {
+            readonly page: {
+                readonly about: "要去哪个页面";
+                readonly optional: true;
+                readonly oneOf: readonly ["inbox", "list", "schedule"];
+                readonly default: "不传 = 留在当前页，只聚焦某一条";
+            };
+            readonly of: {
+                readonly about: "要聚焦的条目编号：填那个数字本身（12），不要带 # 号";
+                readonly optional: true;
             };
         };
     };

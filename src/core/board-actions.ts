@@ -47,13 +47,14 @@ import { MANUAL_STATUSES } from './tasks.ts'
 import type { TaskUpdatePatch } from './controller.ts'
 import * as taskTransitions from './task-transitions.ts'
 import { ITEM_FIELDS, ITEM_PRIORITIES, ITEM_STATUSES, type FieldSpec } from './item.ts'
+import { ITEM_PAGES } from './item-view.ts'
 
 // The field-verdict vocabulary belongs to the models (item.ts), not here: this
 // catalog only rules on the task patch. Re-exported so both verdicts read from
 // one import site.
 export type { FieldSpec }
 
-/** The twelve verbs. The table is a CONTRACT: a thirteenth verb is a decision,
+/** The thirteen verbs. The table is a CONTRACT: a fourteenth verb is a decision,
  *  not a convenience, and the catalog is written to fit inside these. */
 export type BoardVerb =
   | 'create'    // 建
@@ -67,6 +68,7 @@ export type BoardVerb =
   | 'cruise'    // 巡航
   | 'ack'       // 已读钟
   | 'navigate'  // 导航（开哪张卡、哪个会话、回看板）
+  | 'restore'   // 找回（删掉的条目；删除走墓碑，所以找得回）
   | 'query'     // 查
 
 /** Which document a section of the surface speaks about. */
@@ -176,7 +178,7 @@ export type ActionParams<K extends ActionId> =
  * silently degrades the table to `any` instead of failing where you meant).
  */
 export interface ActionShape {
-  /** One of the twelve. */
+  /** One of the declared verbs ({@link BOARD_VERBS}). */
   readonly verb: BoardVerb
   readonly domain: ActionDomain
   readonly lane: ActionLane
@@ -258,9 +260,9 @@ const ITEM_PRIORITY_VALUES: readonly string[] = ITEM_PRIORITIES
  *
  * Ids read `<subject>.<verb>`. The subject is the thing acted on (`task`,
  * `item`, `board`, `cruise`, `rule`, `session`, `preset`); the verb is one of
- * the twelve. `domain` says which document the action speaks about, which is
- * not always the subject: a rule belongs to the session domain, a cruise
- * switch to the board's.
+ * the declared ones. `domain` says which document the action speaks about,
+ * which is not always the subject: a rule belongs to the session domain, a
+ * cruise switch to the board's.
  */
 export const ACTIONS = {
   // --- board: cards -------------------------------------------------------------
@@ -769,6 +771,83 @@ export const ACTIONS = {
       of: { about: '要删的条目编号：填那个数字本身（12），不要带 # 号' },
     },
   },
+
+  'item.step': {
+    // Its own action rather than a wider `item.update`, and the reason is that
+    // `update` replaces the WHOLE step list: a model ticking one box would have
+    // to resend every step, and a list it resends from memory is a list it can
+    // shorten. One verb per shape the model reasons about, rather than one verb
+    // with a mode switch.
+    verb: 'update',
+    domain: 'item',
+    lane: 'document',
+    danger: 'reversible',
+    surface: 'ui+ai',
+    summary: '勾掉或取消勾选某一条里的某一步。只动那一步，别的步骤和别的字段都不碰。',
+    params: {
+      of: { about: '条目编号：填那个数字本身（12），不要带 # 号' },
+      step: { about: '那一步的 id。它是清单里那一行勾选框的身份，先查一次拿到它' },
+      done: { about: 'true 勾上，false 取消勾上', boolean: true },
+    },
+  },
+
+  'item.promote': {
+    // THE ONE ACTION THAT WRITES TWO DOCUMENTS, so the receipt is not a
+    // single "已生效". See `applyOne` for the order and the partial sentence;
+    // the model has to be able to read the same shape the interface reads.
+    verb: 'create',
+    domain: 'item',
+    lane: 'document',
+    danger: 'reversible',
+    surface: 'ui+ai',
+    summary: '把一条清单条目变成一张看板卡片，并把两边互相链接。清单这一条不消失——它已经是那张卡的来处，链接上了以后它会带着卡一起显示。',
+    params: {
+      of: { about: '要提升的条目编号：填那个数字本身（12），不要带 # 号' },
+      cardTitle: { about: '给新卡换个标题；不填就用清单这一条的标题', optional: true },
+      cardPrompt: { about: '给新卡的执行 Prompt（卡真正跑起来送出去的那段）；不填就用清单这一条的正文', optional: true },
+    },
+  },
+
+  'item.restore': {
+    // Its own verb, not `create`: the row already exists in the document, held
+    // behind a tombstone. Re-creating it would be a second row with a second
+    // number, and the number is the thing a person says out loud.
+    verb: 'restore',
+    domain: 'item',
+    lane: 'document',
+    danger: 'reversible',
+    surface: 'ui+ai',
+    summary: '把一条删掉的清单条目找回来。删除走的是墓碑，条目本身还在，所以是原样回来，不是重建一条新的。',
+    params: {
+      of: { about: '要恢复的条目编号：填那个数字本身（12），不要带 # 号' },
+    },
+  },
+
+  'item.navigate': {
+    // `ui`, like every other navigation: "open this" means nothing in another
+    // context, and a model that could retarget a person's screen would be a
+    // bug with a good PR. Listed rather than omitted so the coverage check can
+    // see that the interface grew it and the tool deliberately cannot reach it.
+    verb: 'navigate',
+    domain: 'item',
+    lane: 'document',
+    danger: 'reversible',
+    surface: 'ui',
+    summary: '把清单面板切到某个页面，或者聚焦到某一条。只有界面能调：模型不替人翻界面。',
+    params: {
+      page: {
+        about: '要去哪个页面',
+        optional: true,
+        // The page set is the interface's, and this reads it from there rather
+        // than keeping a copy: a second list of page ids is a list that starts
+        // lying the first time a page is added, and a model offered a page
+        // that does not exist gets a failure it cannot explain.
+        oneOf: ITEM_PAGES,
+        default: '不传 = 留在当前页，只聚焦某一条',
+      },
+      of: { about: '要聚焦的条目编号：填那个数字本身（12），不要带 # 号', optional: true },
+    },
+  },
 } as const satisfies Record<string, ActionShape>
 
 /** Every action the catalog declares. The closed union every other type keys on. */
@@ -779,7 +858,7 @@ export type ActionId = keyof typeof ACTIONS
  *  here on purpose: a query is not a change, and its shape comes from the
  *  qualifier registry, not from a row in this table. */
 export const BOARD_VERBS: readonly BoardVerb[] = [
-  'create', 'update', 'move', 'delete', 'run', 'speak', 'bind', 'automate', 'cruise', 'ack', 'navigate', 'query',
+  'create', 'update', 'move', 'delete', 'run', 'speak', 'bind', 'automate', 'cruise', 'ack', 'navigate', 'restore', 'query',
 ]
 
 /**
@@ -849,7 +928,7 @@ export function actionCatalogFindings(checks: CatalogChecks = {}): string[] {
   }
   const findings: string[] = []
   for (const [id, spec] of Object.entries(table)) {
-    if (!BOARD_VERBS.includes(spec.verb)) findings.push(`${id}: verb "${spec.verb}" is not one of the twelve`)
+    if (!BOARD_VERBS.includes(spec.verb)) findings.push(`${id}: verb "${spec.verb}" is not one of the declared verbs`)
     if (spec.summary.trim() === '') findings.push(`${id}: has no summary — a schema renderer would print a nameless op`)
     if (spec.semantic === true) {
       if (spec.semanticOf === undefined || spec.semanticOf === '') {

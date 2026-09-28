@@ -73,6 +73,7 @@
 import {
   applyRowCommit,
   sameMergeState,
+  TOMBSTONE_TTL_MS,
   type MergeDelete,
   type MergeRowOps,
   type MergeTombstone,
@@ -260,6 +261,22 @@ export const ITEM_ROW_OPS: MergeRowOps<ItemRecord> = {
    */
   mergeReadState: winner => winner,
   sortRows: (_hostRows, _incoming, resolved) => sortItems([...resolved.values()]),
+  /**
+   * This document's deletions are reversible, so a tombstone keeps the row.
+   *
+   * The checklist is a page of things a person wrote down; a delete that takes
+   * the words with it makes the promise "删除后这一条仍可恢复" — which the panel
+   * prints in front of the reader — untrue, and untrue in the one place where
+   * being wrong costs somebody a thought. The board does not keep its own
+   * deleted cards, for the opposite and equally good reason: a card can be
+   * rebuilt from its own prompt, and keeping every card's attachments for the
+   * tombstone's whole life is a bill neither document should pay for the other.
+   *
+   * The row is kept AS IT STOOD, taken from the host copy, so what comes back
+   * is what the document actually held rather than whatever the deleting
+   * replica happened to be carrying.
+   */
+  retainDeleted: item => item,
 }
 
 /** Structural equality of two checklists — the "did anything move" test that
@@ -311,6 +328,61 @@ export function applyItemsCommit(doc: ItemsDoc, commit: ItemsCommit, now: number
   return sameItemsDocs(doc, next) ? doc : next
 }
 
+/**
+ * The rows a delete left behind, newest delete first.
+ *
+ * This is the ARCHIVE, and it is a read over tombstones rather than a second
+ * store: the text a removed row keeps lives in the tombstone that removed it,
+ * so the archive cannot fall out of step with the deletions the way a
+ * separate list would. A tombstone that carries no row contributes nothing —
+ * which is the honest answer for a delete that predates this rule or that the
+ * TTL has already pruned, and is why "可恢复" is a window with an end rather
+ * than a promise without one.
+ *
+ * Recoverable until {@link TOMBSTONE_TTL_MS} after the delete; past that the
+ * tombstone is pruned whole and the row is gone for good.
+ *
+ * @param doc - the authoritative checklist.
+ * @returns one row per tombstone that still holds one, newest delete first.
+ */
+export function deletedItemsOf(doc: ItemsDoc): ItemRecord[] {
+  const kept: Array<{ item: ItemRecord; seenAt: number }> = []
+  for (const tomb of Object.values(doc.tombstones)) {
+    if (tomb.row === undefined) continue
+    const item = tomb.row as ItemRecord
+    kept.push({ item, seenAt: tomb.seenAt })
+  }
+  return kept
+    .sort((a, b) => b.seenAt - a.seenAt || a.item.id.localeCompare(b.item.id))
+    .map(entry => entry.item)
+}
+
+/**
+ * The row to put back for a restore, or `undefined` when there is nothing to
+ * put back.
+ *
+ * RESTORING IS AN ORDINARY PUT, and the only thing this function has to do is
+ * re-stamp. A tombstone outranks the row it removed (its `at` is one
+ * millisecond above the row's own freshness), so handing the payload back
+ * un-stamped would be read as the stale copy it exists to suppress and the
+ * row would silently not come back. Pushing the stamp above the tombstone is
+ * the same shape as a concurrent revive, which the kernel already takes, so
+ * there is no restore path to get wrong: the caller sends this row as a claimed
+ * put and the ordinary chokepoint re-numbers it if the document has handed its
+ * number to somebody else in the meantime.
+ *
+ * @param doc - the authoritative checklist.
+ * @param id - the id to bring back.
+ * @param now - the clock the restored row is stamped with. It must be the
+ *   HOST's, since the tombstone it has to outrank is the host's.
+ * @returns the row to commit, or `undefined` when the id is not recoverable.
+ */
+export function restoredItemOf(doc: ItemsDoc, id: string, now: number): ItemRecord | undefined {
+  const tomb = doc.tombstones[id]
+  if (tomb?.row === undefined) return undefined
+  return { ...(tomb.row as ItemRecord), updatedAt: Math.max(now, tomb.at + 1) }
+}
+
 /** Normalize an unknown persisted document: the medium's word is data, not
  *  truth. Junk degrades to the empty shape, rows go through the checklist's own
  *  grammar, and the short-number law runs here too — a file that was already
@@ -330,9 +402,18 @@ export function normalizeItemsDoc(value: unknown, now: number = Date.now()): Ite
       if (typeof entry !== 'object' || entry === null) continue
       const tomb = entry as Record<string, unknown>
       if (typeof tomb.at !== 'number' || !Number.isFinite(tomb.at)) continue
+      // A kept row goes back through the SAME inbound grammar as a row arriving
+      // from a replica. Skipping that would let a hand-edited file put text into
+      // a tombstone that the document could never have produced — and it would
+      // make deletions unrecoverable the moment the host restarted, which is the
+      // one moment nobody is watching for it.
+      const kept = tomb.row === undefined
+        ? undefined
+        : normalizeIncomingItem(tomb.row as ItemRecord)
       tombstones[id] = {
         at: tomb.at,
         seenAt: typeof tomb.seenAt === 'number' && Number.isFinite(tomb.seenAt) ? tomb.seenAt : bornAt,
+        ...kept !== undefined ? { row: kept } : {},
       }
     }
   }

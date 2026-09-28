@@ -63,6 +63,10 @@ function depsFor(service: DocumentService): BoardRouteDeps {
     commit: commit => service.commit(commit),
     itemsDoc: () => service.getItemsDoc(),
     commitItems: commit => service.commitItems(commit),
+    // The real service method: the stamp is the whole point, and a stand-in
+    // would pass while the production path — the one that has to clear the
+    // tombstone — went untested.
+    restoreItem: (ref, clientId) => service.restoreItem(ref, clientId),
     acquireLease: (clientId, ttlMs) => service.acquireLease(clientId, ttlMs),
     releaseLease: clientId => service.releaseLease(clientId),
     noteActivity: clientId => service.noteActivity(clientId),
@@ -535,10 +539,16 @@ describe('board route over a real HTTP server', () => {
     expect(envelope.value.doc.items.find(i => i.id === 'i-wire')?.ref).toBe(nextRef)
     expect(envelope.value.doc.nextRef).toBe(nextRef + 1)
 
-    // The board did not move: not its revision, not its file, not its frames.
+    // The board did not move: not its revision, not its file. And the frame the
+    // write DID send names the checklist, so a replica watching the stream can
+    // tell the two documents apart instead of waking on a board commit to
+    // discover nothing about cards changed.
     expect(service.getDoc().revision).toBe(boardRevisionBefore)
     expect(readFileSync(boardFile, 'utf8')).toBe(boardBytesBefore)
-    expect(await readFrames(stream.body as ReadableStream<Uint8Array>, 1, 600)).toHaveLength(0)
+    const frames = await readFrames(stream.body as ReadableStream<Uint8Array>, 1, 600)
+    expect(frames).toHaveLength(1)
+    expect(frames[0]).toMatchObject({ type: 'commit', document: ITEMS_DOCUMENT, revision: itemsBefore.revision + 1 })
+    expect(frames[0]).not.toMatchObject({ document: BOARD_DOCUMENT })
 
     // A no-op commit answers the same revision and rewrites nothing.
     const itemsBytes = readFileSync(join(root, BOARD_UNIT_NAME, BOARD_UNIT_TABLE, `${ITEMS_DOCUMENT}.json`), 'utf8')
@@ -551,6 +561,9 @@ describe('board route over a real HTTP server', () => {
     expect(againEnvelope.value.revision).toBe(itemsBefore.revision + 1)
     expect(readFileSync(join(root, BOARD_UNIT_NAME, BOARD_UNIT_TABLE, `${ITEMS_DOCUMENT}.json`), 'utf8')).toBe(itemsBytes)
     expect(readFileSync(boardFile, 'utf8')).toBe(boardBytesBefore)
+    // A no-op commit answers the same revision AND says nothing on the stream:
+    // a commit that changes no fact must not wake every other device.
+    expect(await readFrames(stream.body as ReadableStream<Uint8Array>, 1, 400)).toHaveLength(0)
 
     // The shared `since` rule, on the checklist's OWN counter.
     const probe = await fetch(`${ITEMS}?since=${againEnvelope.value.revision}`)

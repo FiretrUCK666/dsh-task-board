@@ -909,7 +909,7 @@
    panel — they differ by design (cruise = float/lg/shadow-3, menus =
    menu/md) — so only the truly shared position + border live here. The
    slashMenu literal border is the same computed value as --dsh-tb-border. */
-:is(.cruisePopover, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList) {
+:is(.cruisePopover, .slashMenu, .sessionContextPanel) {
   position: absolute;
   border: var(--dsh-tb-border);
 }
@@ -2285,29 +2285,49 @@
    never STYLING (thin + color) declarations of scrollbar-width outside this
    gate; the hide-lists elsewhere (`scrollbar-width: none`) are fine because
    both implementations agree on the outcome: hidden. */
+/* THE SHARED SCROLL MOUNT. One class, applied by every scroll region on the
+   surface, so the list panel's own stylesheet never has to restate the
+   scrollbar grammar below — a second copy of those twenty lines is a second
+   implementation path, and the two drift on the first Chromium change.
+
+   It lives here rather than beside the surfaces that use it because the RULE it
+   mounts is the one mechanism those surfaces have in common; a mount that
+   travelled to whichever stylesheet happened to be edited first would move the
+   mechanism again, and this list has already moved twice for no reason. */
+.dshTbScroll {
+  /* Nothing of its own to declare: the whole point of the class is to be the
+     selector the shared rules below are written against. The one declaration
+     here is the reason the class is safe to hand to any element — a scroll
+     container that cannot shrink below its content is not a scroll container,
+     and the min-height that makes it one belongs with the mount rather than in
+     six separate surfaces. */
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
 @supports not selector(::-webkit-scrollbar) {
-  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList) {
+  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll) {
     scrollbar-width: thin;
     scrollbar-color: var(--dsw-alias-border-l3) transparent;
   }
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList)::-webkit-scrollbar {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll)::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList)::-webkit-scrollbar-thumb {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll)::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList)::-webkit-scrollbar-track {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll)::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList)::-webkit-scrollbar-button {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll)::-webkit-scrollbar-button {
   display: none;
 }
 
@@ -7357,566 +7377,6 @@ span.interactionOptions {
   }
 }
 
-
-
-/* ── 任务清单（右栏页面）──────────────────────────────────────────────────
-   THE LIST IS A SCANNING SURFACE, NOT A SECOND BOARD.
-   A 300px column cannot show what a five-column board shows, and trying is
-   how a panel becomes furniture. So the row carries three things and no more:
-   what it is called, what state it is in, and the single fact that matters
-   most (a missed date beats a step count, because a missed date is a fact and
-   a step count is progress someone chose to report). Everything else is one
-   click away in place — never a dialog, because `boardBox()` resolves to the
-   BOARD panel and a dialog opened from here would float over the wrong thing.
-
-   The root declares its own container. The right-Sidebar chain declares
-   none — verified by exhaustive scan — so every width decision below is made
-   against THIS box (about 300px) and never against the viewport. */
-
-.itemRoot {
-  container-type: inline-size;
-  container-name: dsh-tb-item;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  /* The host gives this box no padding at all, so every inset is declared
-     here. The token is the same one-rail-inset the board uses. */
-  padding: var(--dsh-tb-rail-inset);
-  gap: 8px;
-  color: var(--dsh-tb-text-1);
-  /* The panel paints its own opaque surface, so the shell wallpaper never
-     shows through behind search text, filter chips or empty states. */
-  background: var(--dsh-tb-bg);
-}
-
-.itemHeader {
-  display: flex;
-  flex-direction: column;
-  flex: none;
-  gap: 8px;
-  min-width: 0;
-}
-
-.itemHeadRow {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.itemHeadTitle {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--dsh-tb-text-1);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.itemSearchRow {
-  display: flex;
-  min-width: 0;
-}
-
-.itemSearch {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  min-height: 28px;
-  padding: 4px 8px;
-  border: 1px solid var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-sm);
-  background: var(--dsh-tb-input-bg);
-  color: var(--dsh-tb-text-1);
-  font-size: 13px;
-}
-
-.itemFilterRow,
-.itemHeaderRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.itemHeaderRow {
-  justify-content: space-between;
-}
-
-.itemCount,
-.itemState {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsh-tb-text-2);
-  margin: 0;
-}
-
-.itemState {
-  color: var(--dsh-tb-text-3);
-}
-
-.itemDensity {
-  display: flex;
-  gap: 2px;
-}
-
-/* The columns, side by side. FOUR equal tracks on a wide panel, one track and a
-   horizontal rail on a narrow one — the list is "one glance at everything", so
-   the narrow case gives up the side-by-side and keeps the glance.
-
-   Each column scrolls on its own and the row does not: a shared scroller means
-   collapsing one group scrolls the other three, which is the one behaviour that
-   makes four columns read worse than a single list. It is in the scrollbar
-   whitelist with the rest of the panel family — without that entry Chromium
-   draws its own arrows and the panel stops looking like part of this product. */
-.itemScroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  align-items: stretch;
-}
-
-.itemGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  min-height: 0;
-  /* A column needs no rule between its own rows — its edge against the next
-     column is what groups things, so the separation lives here once instead of
-     on every row. */
-  padding-inline-end: 12px;
-  border-inline-end: 1px solid var(--dsh-tb-border-soft);
-}
-
-.itemGroup:last-child {
-  padding-inline-end: 0;
-  border-inline-end: 0;
-}
-
-.itemGroupList {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-/* The head carries the column's own arithmetic — how many, and how far through
-   its steps — because "8 items" alone does not tell a reader whether to start
-   there or leave it for later. */
-.itemGroupStats {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding-inline-start: 16px;
-  color: var(--dsh-tb-text-3);
-  font-size: 11px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.itemGroupHead {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.itemGroupToggle {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  min-height: 24px;
-  padding: 2px 0;
-  border: 0;
-  background: none;
-  color: var(--dsh-tb-text-2);
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-}
-
-.itemGroupChevron {
-  flex: none;
-  transition: transform var(--dsh-tb-motion);
-}
-
-.itemGroupToggle[aria-expanded='false'] .itemGroupChevron {
-  /* The chevron points at what the click opens: down while open, aside while
-     closed. A chevron that never turns reads as a broken button. */
-  transform: rotate(-90deg);
-}
-
-.itemGroupCount {
-  color: var(--dsh-tb-text-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.itemList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.itemRow {
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--dsh-tb-radius-sm);
-}
-
-.itemRow[data-open] {
-  background: var(--dsh-tb-surface-float);
-  border: 1px solid var(--dsh-tb-border-soft);
-}
-
-.itemRow[data-fresh] {
-  animation: dshTbFadeIn var(--dsh-tb-motion);
-}
-
-.itemRowMain {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 24px;
-  padding: 2px 6px;
-  border: 0;
-  border-radius: var(--dsh-tb-radius-sm);
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-}
-
-.itemRowMain[data-density='comfy'] {
-  min-height: 40px;
-}
-
-.itemRowMain[data-density='compact'] {
-  min-height: 32px;
-}
-
-.itemRef {
-  flex: none;
-  font-size: 12px;
-  color: var(--dsh-tb-text-3);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The text slot is the only place truncation is allowed to happen; the ref and
-   the meta beside it keep their own width so a long title never eats them. */
-.itemTitle {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  color: var(--dsh-tb-text-1);
-}
-
-.itemDue,
-.itemSteps {
-  flex: none;
-  font-size: 12px;
-  color: var(--dsh-tb-text-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.itemDue[data-overdue] {
-  color: var(--dsh-tb-danger);
-}
-
-.itemDue[data-hard]:not([data-overdue]) {
-  color: var(--dsh-tb-attention);
-}
-
-/* Progress is a bar and a count, never a number inside a bar. Four pixels is
-   the side-panel thickness; it is not stretched to fill the column, because a
-   full-width bar stops being readable as a ratio. An item with no steps has
-   no element here at all — see model.ts. */
-.itemProgress {
-  display: block;
-  height: 4px;
-  margin: 0 6px 4px;
-  max-inline-size: 160px;
-  border-radius: var(--dsh-tb-pill);
-  background: var(--dsh-tb-border-soft);
-  overflow: hidden;
-}
-
-.itemProgressFill {
-  display: block;
-  block-size: 100%;
-  border-radius: var(--dsh-tb-pill);
-  background: var(--dsh-tb-accent);
-}
-
-.itemDetail {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 8px 6px 10px;
-}
-
-.itemSection {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  padding-block-start: 8px;
-  border-block-start: 1px solid var(--dsh-tb-border-soft);
-}
-
-.itemSection:first-child {
-  padding-block-start: 0;
-  border-block-start: 0;
-}
-
-.itemSectionTitle {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--dsh-tb-text-2);
-}
-
-.itemOriginRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.itemDangerZone {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-sm);
-  background: var(--dsh-tb-surface-sunken);
-}
-
-.itemDangerHint {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsh-tb-text-3);
-}
-
-.itemEmptyGroup {
-  margin: 0;
-  padding: 8px 6px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsh-tb-text-3);
-}
-
-.itemProgressText {
-  margin: 0;
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.itemStepList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.itemStep {
-  display: flex;
-  align-items: start;
-  gap: 6px;
-  /* The checkbox is 13px; the ROW it sits in is what has to be reachable, so
-     the hit area is grown here rather than the control made bigger. */
-  min-height: 24px;
-  padding: 2px 0;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.itemStep input {
-  margin: 0;
-  inline-size: 13px;
-  block-size: 13px;
-  flex: none;
-}
-
-.itemStep span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.itemStep span[data-done] {
-  color: var(--dsh-tb-text-3);
-}
-
-.itemField {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.itemFieldRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.itemFieldRow > .itemField {
-  flex: 1 1 120px;
-  min-inline-size: 0;
-}
-
-.itemFieldLabel {
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-}
-
-.itemInput {
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 28px;
-  padding: 4px 6px;
-  border: 1px solid var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-sm);
-  background: var(--dsh-tb-input-bg);
-  color: var(--dsh-tb-text-1);
-  font: inherit;
-  font-size: 13px;
-}
-
-textarea.itemInput {
-  resize: vertical;
-  line-height: 18px;
-}
-
-[data-ask-receipt] {
-  color: var(--dsh-tb-text-2);
-}
-
-/* The hand-off is one click and never expands anything, so it sits beside
-   the row's own line rather than inside the details. Its own floor is the
-   accessibility minimum, and on touch the whole row row already grows. */
-.itemAsk {
-  flex: none;
-  align-self: center;
-  min-height: 24px;
-}
-
-/* The tight case is the normal case here: about 300px. When the reader docks
-   the sidebar to a second pane the column can fall to roughly half that, and
-   the row keeps every control on screen by wrapping instead of hiding: the
-   meta value shortens to its count and the title keeps its only words. No
-   control is hidden to save space and no type is set smaller. */
-@container dsh-tb-item (max-width: 320px) {
-  .itemRowMain {
-    flex-wrap: wrap;
-  }
-  .itemDue,
-  .itemSteps {
-    flex-basis: 100%;
-  }
-}
-
-@media (hover: none) and (pointer: coarse) {
-  /* Touch has no hover, so the things a pointer would reveal are revealed
-     instead of being absent. */
-  .itemGroupToggle {
-    min-height: 44px;
-  }
-
-  .itemRowMain[data-density='compact'] {
-    min-height: 44px;
-  }
-}
-
-/* State is legible at rest, in a 300px column, without a click.
-   SHAPE FIRST, COLOUR SECOND. A filled dot says "there is a state" to
-   everyone; the colour says WHICH one, to everyone who can see it. Carrying
-   the state in colour alone would fail for a reader who cannot separate
-   them — and "I cannot tell a done note from a to-do note" is the failure
-   this whole list exists to prevent. The text glyph repeats the state for the
-   same reason: colour is never the only channel. */
-
-.itemStateMark {
-  flex: none;
-  inline-size: 8px;
-  block-size: 8px;
-  border-radius: var(--dsh-tb-pill);
-  border: 1px solid var(--dsh-tb-border);
-}
-
-.itemRow[data-status='inProgress'] .itemStateMark {
-  background: var(--dsh-tb-attention);
-  border-color: var(--dsh-tb-attention);
-}
-
-.itemRow[data-status='blocked'] .itemStateMark {
-  background: var(--dsh-tb-danger);
-  border-color: var(--dsh-tb-danger);
-}
-
-.itemRow[data-status='done'] .itemStateMark {
-  background: transparent;
-  border-color: var(--dsh-tb-text-3);
-}
-
-/* A finished row recedes, but it does not vanish and it does not grey its
-   words out of reading: the title keeps the first text tone. */
-.itemRow[data-status='done'] .itemTitle {
-  color: var(--dsh-tb-text-2);
-}
-
-/* Four columns need room; below that the side-by-side stops being a glance and
-   starts being four thin ribbons. The narrow case keeps ONE column and gives the
-   other three a horizontal rail — the reader still sees every group, and the
-   columns stay columns instead of collapsing into a single long list. */
-@container dsh-tb-item (max-width: 720px) {
-  .itemScroll {
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(220px, 1fr);
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-
-  .itemGroup {
-    overflow-y: auto;
-  }
-}
-
-.itemRow[data-status='blocked'] .itemTitle {
-  color: var(--dsh-tb-text-1);
-}
-
-.itemComposer {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.itemComposer > .itemInput {
-  flex: 1 1 120px;
-  min-inline-size: 0;
-}
 /* ── the model's work, in the reader's language ────────────────────────────
    A card exists so the person can read what the machine just did. Three
    things it must never do: call a rehearsal a change, call an accepted
@@ -8026,11 +7486,4 @@ textarea.itemInput {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-}
-
-.itemHint {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsh-tb-text-3);
 }

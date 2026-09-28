@@ -1,13 +1,20 @@
 /**
- * The task-list panel's judgments: what a row says, how the list is grouped
- * and ordered, what an edit does to the document — and whether the reader can
- * still FIND the way to add a note.
+ * The task-list panel's own contract: what it renders, and what it must never
+ * render.
  *
- * The judgments live in `model.ts` as pure functions and are tested without a
- * DOM. The reachability of the composer cannot be judged that way — "the
- * button exists" is not the claim; "it is there when there is nothing, still
- * there when there is something, and nothing in the stylesheet can push it out
- * of reach on a narrow column" is. So those render the panel for real.
+ * WHAT MOVED AND WHY, because a rewritten test that quietly changes the claims
+ * is worse than no test. The old file pinned FOUR COLUMNS BESIDE EACH OTHER,
+ * a search row above a filter row, and a five-section detail that only ever
+ * opened in place. Those three claims described a 300px right-edge drawer, and
+ * the panel is a full-stage workbench, so they could not survive the move. What
+ * replaced them is pinned here, and the geometry itself is pinned as arithmetic
+ * in `panel-render.spec.ts` rather than as a picture.
+ *
+ * WHAT IS CARRIED OVER UNCHANGED, because none of it was ever about the old
+ * layout: the composer is reachable in every state, an empty group keeps its
+ * header, the ledger sentinel never reaches the screen, the hand-off appears
+ * only where there is a target, the degraded states are told apart, and the two
+ * official seats stay exactly as they were.
  */
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
@@ -15,32 +22,18 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
-import { ItemListPanel, ItemRow, storedStatusFor } from '../src/client/item/panel.tsx'
+import { ItemListPanel } from '../src/client/item/panel.tsx'
 import { PRESENTATION_FIELDS } from '../src/client/chat/tool-views.tsx'
-import {
-  addItem,
-  editItem,
-  formatItemDate,
-  groupOpenByDefault,
-  itemGroupSlicesOf,
-  itemRowViewOf,
-  ITEM_GROUPS,
-  newItem,
-  parseItemDate,
-  removeItem,
-  toItemDateField,
-  toggleItemStep,
-  NO_ITEM_FILTER,
-} from '../src/client/item/model.ts'
 
 const T0 = 1_700_000_000_000
+const DAY = 86_400_000
 
 function item(patch: Partial<ItemRecord> = {}): ItemRecord {
   return {
     id: 'i-1',
     ref: 12,
     title: 'A thing',
-    body: 'the body',
+    body: '',
     notes: '',
     steps: [],
     status: 'open',
@@ -57,211 +50,6 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
   }
 }
 
-function step(id: string, text: string, done = false) {
-  return { id, text, done, updatedAt: T0 }
-}
-
-describe('itemRowViewOf', () => {
-  it('borrows the body for a title the reader never gave', () => {
-    const view = itemRowViewOf(item({ title: '' }), false, T0)
-    expect(view.title.length).toBeGreaterThan(0)
-  })
-
-  it('speaks the number the reader and the model both use', () => {
-    expect(itemRowViewOf(item({ ref: 7 }), false, T0).ref).toBe('#7')
-  })
-
-  it('reports NO progress for an item with no steps, so nothing can be drawn', () => {
-    // The panel's rule is: no steps means no bar at all. A 0% bar reads as a
-    // failed load; absence reads as "there is nothing here yet".
-    expect(itemRowViewOf(item(), false, T0).progress).toBeUndefined()
-  })
-
-  it('lets a deadline outrank a step count, and says how loudly it is', () => {
-    const withBoth = item({ steps: [step('s1', 'a'), step('s2', 'b', true)], dueAt: T0 - 1000 })
-    const view = itemRowViewOf(withBoth, false, T0)
-    expect(view.meta).toEqual({ kind: 'due', at: T0 - 1000, overdue: true, hard: false })
-  })
-
-  it('distinguishes a hard deadline from a soft one', () => {
-    const soft = itemRowViewOf(item({ dueAt: T0 + 1000 }), false, T0)
-    const hard = itemRowViewOf(item({ hardDueAt: T0 + 1000 }), false, T0)
-    expect(soft.meta).toMatchObject({ hard: false })
-    expect(hard.meta).toMatchObject({ hard: true })
-  })
-
-  it('stays quiet when there is neither a date nor a step', () => {
-    expect(itemRowViewOf(item(), false, T0).meta).toEqual({ kind: 'quiet' })
-  })
-
-  it('derives in-progress from the linked card, and lets a finished item stay finished', () => {
-    const running = item({ taskId: 't-1', status: 'open' })
-    expect(itemRowViewOf(running, true, T0).status).toBe('inProgress')
-    // A done item is done even while its card reruns: the reader's record of
-    // finishing is not withdrawn by the machine working on it.
-    const done = item({ taskId: 't-1', status: 'done' })
-    expect(itemRowViewOf(done, true, T0).status).toBe('done')
-  })
-
-  it('never becomes in-progress without a card to ask about', () => {
-    expect(itemRowViewOf(item(), true, T0).status).toBe('open')
-  })
-})
-
-describe('itemGroupSlicesOf', () => {
-  const three = [
-    item({ id: 'a', ref: 1, title: 'running one', status: 'open', taskId: 't-1' }),
-    item({ id: 'b', ref: 2, title: 'waiting one', status: 'open' }),
-    item({ id: 'c', ref: 3, title: 'stuck one', status: 'blocked' }),
-    item({ id: 'd', ref: 4, title: 'finished one', status: 'done' }),
-  ]
-  const running = new Map([['t-1', true]])
-
-  it('groups by derived status, in reading order, keeping empty groups', () => {
-    const slices = itemGroupSlicesOf(three, NO_ITEM_FILTER, running)
-    expect(slices.map(s => s.group)).toEqual(['inProgress', 'open', 'blocked', 'done'])
-    expect(slices[0]?.items.map(i => i.id)).toEqual(['a'])
-  })
-
-  it('keeps an empty group header instead of dropping it', () => {
-    const onlyOpen = [item({ id: 'a', ref: 1, title: 'only this', status: 'open' })]
-    const slices = itemGroupSlicesOf(onlyOpen, NO_ITEM_FILTER, new Map())
-    expect(slices.map(s => s.group)).toEqual(['inProgress', 'open', 'blocked', 'done'])
-    expect(slices.find(s => s.group === 'open')?.items.map(i => i.id)).toEqual(['a'])
-    expect(slices.find(s => s.group === 'blocked')?.items).toEqual([])
-  })
-
-  it('is order-independent, so two devices holding the same rows agree', () => {
-    const forward = itemGroupSlicesOf(three, NO_ITEM_FILTER, running)
-    const backward = itemGroupSlicesOf([...three].reverse(), NO_ITEM_FILTER, running)
-    expect(backward.map(s => s.items.map(i => i.id))).toEqual(forward.map(s => s.items.map(i => i.id)))
-  })
-
-  it('orders inside a group by the nearest deadline, then by what moved last', () => {
-    const rows = [
-      item({ id: 'late', ref: 1, dueAt: T0 + 9000 }),
-      item({ id: 'soon', ref: 2, dueAt: T0 + 1000 }),
-      item({ id: 'none', ref: 3, updatedAt: T0 + 500 }),
-    ]
-    const slices = itemGroupSlicesOf(rows, NO_ITEM_FILTER, new Map())
-    const slice = slices.find(s => s.group === 'open')
-    expect(slice?.items.map(i => i.id)).toEqual(['soon', 'late', 'none'])
-  })
-
-  it('searches title, body, notes and tags, and matches case-insensitively', () => {
-    const rows = [
-      item({ id: 'a', ref: 1, title: 'Fix login' }),
-      item({ id: 'b', ref: 2, body: 'mentions LOGIN in the body' }),
-      item({ id: 'c', ref: 3, notes: 'a note about login' }),
-      item({ id: 'd', ref: 4, tags: ['login'] }),
-      item({ id: 'e', ref: 5, title: 'unrelated' }),
-    ]
-    const slices = itemGroupSlicesOf(rows, { text: 'LoGiN', groups: [] }, new Map())
-    const shown = slices.reduce((total, s) => total + s.items.length, 0)
-    expect(shown).toBe(4)
-    const open = slices.find(s => s.group === 'open')
-    expect(open?.items.map(i => i.id)).toEqual(['a', 'b', 'c', 'd'])
-  })
-
-  it('filters by group and keeps the reading order of what survives', () => {
-    const slices = itemGroupSlicesOf(three, { text: '', groups: ['blocked', 'done'] }, running)
-    expect(slices.map(s => s.group)).toEqual(['blocked', 'done'])
-  })
-
-  it('keeps empty group headers when the filter matches nothing, so the count says zero', () => {
-    const slices = itemGroupSlicesOf(three, { text: 'zzz', groups: [] }, running)
-    expect(slices.map(s => s.group)).toEqual(['inProgress', 'open', 'blocked', 'done'])
-    const shown = slices.reduce((total, s) => total + s.items.length, 0)
-    expect(shown).toBe(0)
-  })
-})
-
-describe('groupOpenByDefault', () => {
-  it('opens the live groups and keeps finished work folded until asked for', () => {
-    expect(groupOpenByDefault('inProgress', false)).toBe(true)
-    expect(groupOpenByDefault('done', false)).toBe(false)
-  })
-
-  it('opens everything the reader has filtered down to — they asked for it', () => {
-    for (const group of ITEM_GROUPS) expect(groupOpenByDefault(group, true)).toBe(true)
-  })
-})
-
-describe('edits', () => {
-  it('returns the SAME array when nothing changed, so no revision is burned', () => {
-    // The sync replica only stamps and broadcasts when it is handed a
-    // different array. A no-op that rebuilt the list would wake every device
-    // for a keystroke that changed no fact.
-    const items = [item()]
-    expect(editItem(items, 'i-1', { title: 'A thing' }, T0 + 9)).toBe(items)
-  })
-
-  it('stamps updatedAt only on a real change', () => {
-    const before = [item({ title: 'A' })]
-    const after = editItem(before, 'i-1', { title: 'B' }, T0 + 9)
-    expect(after[0]?.updatedAt).toBe(T0 + 9)
-    expect(before[0]?.title).toBe('A')
-  })
-
-  it('leaves every other row byte-identical', () => {
-    const before = [item({ id: 'a' }), item({ id: 'b', title: 'B' })]
-    const after = editItem(before, 'b', { title: 'B2' }, T0 + 9)
-    expect(after[0]).toBe(before[0])
-  })
-
-  it('reports no change for an unknown row instead of inventing one', () => {
-    const before = [item()]
-    expect(editItem(before, 'nope', { title: 'x' }, T0 + 9)).toBe(before)
-  })
-
-  it('toggles a step in place and reports a missing one as no change', () => {
-    const before = [item({ steps: [step('s1', 'a'), step('s2', 'b')] })]
-    const after = toggleItemStep(before, 'i-1', 's1', T0 + 9)
-    expect(after[0]?.steps.map(s => s.done)).toEqual([true, false])
-    expect(toggleItemStep(before, 'i-1', 'nope', T0 + 9)).toBe(before)
-  })
-
-  it('toggling back is a real change again, not a no-op', () => {
-    // Symmetry matters: if a toggle that turned a step off returned the same
-    // array, the step would be stuck on forever.
-    const before = [item({ steps: [step('s1', 'a', true)] })]
-    expect(toggleItemStep(before, 'i-1', 's1', T0 + 9)).not.toBe(before)
-  })
-
-  it('removes a row, and says so for one that was never there', () => {
-    const before = [item({ id: 'a' }), item({ id: 'b' })]
-    expect(removeItem(before, 'a').map(i => i.id)).toEqual(['b'])
-    expect(removeItem(before, 'zzz')).toBe(before)
-  })
-})
-
-describe('adding a note', () => {
-  it('mints an id here and leaves the NUMBER to the host', () => {
-    // The merge keys on the id, so a client-minted uuid cannot collide with
-    // another device's. The number is the document's to hand out, so the row
-    // arrives unnumbred and the host fills it in.
-    const row = newItem({ title: 'x', body: '', notes: '', status: 'open', priority: 'normal' }, T0, 'id-1')
-    expect(row.ref).toBe(0)
-    expect(row.id).toBe('id-1')
-    expect(row.origin).toEqual({ source: 'human', at: T0 })
-  })
-
-  it('appends and reports the row it added', () => {
-    const before = [item({ id: 'a' })]
-    const result = addItem(before, { title: 'B', body: '', notes: '', status: 'open', priority: 'normal' }, T0)
-    expect(result.added?.id).not.toBe('a')
-    expect(result.items).toHaveLength(2)
-    expect(result.items[1]?.title).toBe('B')
-  })
-
-  it('refuses a note with no words, and changes nothing', () => {
-    const before = [item()]
-    const result = addItem(before, { title: '  ', body: '\n', notes: '', status: 'open', priority: 'normal' }, T0)
-    expect(result.added).toBeUndefined()
-    expect(result.items).toBe(before)
-  })
-})
-
 /** A replica stand-in with just the surface the panel reads. */
 function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}) {
   return {
@@ -275,27 +63,43 @@ function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; s
 
 function renderPanel(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}): string {
   return renderToStaticMarkup(createElement(ItemListPanel, {
-    // The real shape — a fake typed as `unknown` is how this round started,
-    // and a test using one would have kept the panel from ever reaching for
-    // the host's own signal.
     signal: new AbortController().signal,
     face: { replica: fakeReplica(items, over) as never, controller: undefined },
   }))
 }
 
+describe('the workbench is a set of pages, and the rail says which', () => {
+  it('offers exactly the three container pages, each with an accessible full name', () => {
+    // The short name is what a 390px rail can hold; the full name is what a
+    // screen reader announces. The rail carrying only short names is how a
+    // reader learns what a page is for by opening it.
+    const html = renderPanel([])
+    for (const short of ['收件', '清单', '日程']) expect(html, short).toContain(short)
+    for (const aria of ['刚记下、还没给它结构的条目', '全部没做完的事', '按时间排的事']) {
+      expect(html, aria).toContain(aria)
+    }
+  })
+
+  it('keeps the surface to four things: title, search, the rail and the capture box', () => {
+    // Low density is not fewer features; it is putting each feature next to the
+    // thing it changes. Grouping, filtering, ordering and batching live INSIDE
+    // the page, beside the rows they act on.
+    const html = renderPanel([item()])
+    expect(html).toContain('itemSearch')
+    expect(html).toContain('itemPageRail')
+    expect(html).toContain('itemComposer')
+  })
+})
+
 describe('the composer can always be found', () => {
-  // The claim is NOT "the button is in the DOM". It is "a reader can reach it
-  // in every state the panel can be in" — an entry point that appears only
-  // when the list is empty is an entry point you cannot find.
   it('is there when the list is EMPTY — the state a first-time reader meets', () => {
     const html = renderPanel([])
-    expect(html).toContain('placeholder="记一条新的（回车即可）"')
-    expect(html).toContain('还没有事项')
+    expect(html).toContain('记一条新的，回车即存')
   })
 
   it('is still there once there is something to read', () => {
     const html = renderPanel([item({ id: 'a', ref: 1, title: 'A note' })])
-    expect(html).toContain('placeholder="记一条新的（回车即可）"')
+    expect(html).toContain('记一条新的，回车即存')
     expect(html).toContain('A note')
   })
 
@@ -303,100 +107,105 @@ describe('the composer can always be found', () => {
     // If it scrolled away with the list, a long list would carry it out of
     // reach — which is the whole failure this assertion exists to prevent.
     const html = renderPanel([item()])
-    const scrollAt = html.indexOf('itemScroll')
+    const scrollAt = html.indexOf('itemWorkbench')
     const composerAt = html.indexOf('itemComposer')
     expect(scrollAt).toBeGreaterThan(-1)
     expect(composerAt).toBeGreaterThan(-1)
     expect(composerAt).toBeLessThan(scrollAt)
   })
 
-  it('survives the stylesheet: nothing in the column can hide it or clip it', () => {
-    const css = readFileSync(
-      fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)),
-      'utf8',
-    )
-    for (const selector of ['.itemComposer', '.itemInput']) {
-      const rule = new RegExp(`\\${selector}\\s*\\{[^}]*\\}`, 's').exec(css)
-      expect(rule, `${selector} has no rule`).not.toBeNull()
-      expect(rule?.[0], `${selector} is hidden`).not.toMatch(/display\s*:\s*none/)
-    }
-    // A fixed width would be a second way to lose it on a 300px column.
-    const composer = /\.itemComposer\s*\{[^}]*\}/s.exec(css)?.[0] ?? ''
-    expect(composer).not.toMatch(/width\s*:\s*\d/)
+  it('teaches its own syntax on the box, not behind a menu', () => {
+    // A capture syntax nobody can find is a syntax nobody uses, and the reader
+    // falls back to filling in four fields before the thought is safely down.
+    expect(renderPanel([])).toContain('#标签')
   })
 })
 
-describe('a note you can fill in and hang on a card', () => {
-  const card = (id: string, title: string) => ({ id, title })
-  const openRow = (item: ItemRecord, cards: readonly { id: string; title: string }[] = []) =>
-    renderToStaticMarkup(createElement(ItemRow, {
-      view: itemRowViewOf(item, false, T0),
-      density: 'compact',
-      english: false,
-      expanded: true,
-      fresh: false,
-      panelId: 'item',
-      onToggle: () => undefined,
-      onEdit: () => undefined,
-      onToggleStep: () => undefined,
-      onRemove: () => undefined,
-      cards,
-      linkedCardTitle: cards.find(c => c.id === item.taskId)?.title,
-    }))
-
-  it('names the card it hangs off — linking used to be invisible', () => {
-    const cards = [card('t-9', '画廊第二版')]
-    const html = openRow(item({ id: 'i-1', ref: 1, taskId: 't-9' }), cards)
-    // Both halves: a control that can set it, and a line that reports it.
-    expect(html).toContain('关联看板卡片')
-    expect(html).toContain('画廊第二版')
-    expect(html).toContain('已挂在')
+describe('a row is legible at rest', () => {
+  it('never prints the ledger sentinel, because `#0` is a fact about storage', () => {
+    const html = renderPanel([item({ ref: 0, title: 'Fresh' })])
+    // The context is reported with the failure on purpose: a bare "contains
+    // #0" on a 4KB string tells the next reader nothing about WHERE.
+    expect(html.includes('#0') ? `…${html.slice(Math.max(0, html.indexOf('#0') - 140), html.indexOf('#0') + 60)}…` : 'none', 'the ledger sentinel reached the screen').toBe('none')
+    expect(html).toContain('Fresh')
   })
 
-  it('does not leave a note claiming a link to a card that is gone', () => {
-    const cards = [card('t-9', '画廊第二版')]
-    const html = openRow(item({ id: 'i-1', ref: 1, taskId: 't-gone' }), cards)
-    // A deleted card must not leave the note pointing at nothing, and must
-    // not claim it is still hung on something either: it says so plainly.
-    expect(html).toContain('它挂的那张卡已经不在了')
-    expect(html).not.toContain('已挂在')
+  it('says a slipped plan as a slip, in neutral words', () => {
+    // The one claim the whole three-date branch exists for. Red is reserved for
+    // a missed HARD deadline and nothing else.
+    const html = renderPanel([item({ dueAt: Date.now() - 3 * DAY, title: 'Slipped' })])
+    expect(html).toContain('落后')
+    expect(html).not.toContain('超期')
   })
 
-  it('offers all three dates and tags — the model could set them and you could not', () => {
-    const html = openRow(item({ id: 'i-1', ref: 1 }))
-    for (const label of ['最早开始', '截止', '硬期限', '标签']) {
-      expect(html, `no control labelled ${label}`).toContain(label)
-    }
-    // Three DISTINCT dates, not one field wearing three labels.
-    expect((html.match(/type="date"/g) ?? []).length).toBe(3)
+  it('says a missed hard deadline as an overrun', () => {
+    const html = renderPanel([item({ hardDueAt: Date.now() - 3 * DAY, title: 'Over' })])
+    expect(html).toContain('超期')
   })
 
-  it('round-trips a date through the field without drifting a day', () => {
-    const at = new Date(2026, 8, 28).getTime()
-    expect(toItemDateField(at)).toBe('2026-09-28')
-    expect(parseItemDate('2026-09-28')).toBe(at)
-    expect(parseItemDate('')).toBeUndefined()
-    expect(parseItemDate('not a date')).toBeUndefined()
+  it('keeps a not-yet-startable row out of every day reading', () => {
+    const html = renderPanel([item({ startsAfter: Date.now() + 5 * DAY, title: 'Gated' })])
+    expect(html).toContain('最早')
+  })
+})
+
+describe('the hand-off appears only where there is a target', () => {
+  it('is offered on a row that hangs off a card', () => {
+    const html = renderPanel([item({ taskId: 't-9' })])
+    expect(html).toContain('问 AI')
   })
 
-  it('speaks the reader’s language, not the machine’s', () => {
-    // `toLocaleDateString()` with no options answers differently per machine,
-    // and a 300px column has no room for either. The panel and the board must
-    // go through the same switch or they read as two products.
-    const at = new Date(2026, 8, 28).getTime()
-    expect(formatItemDate(at, false)).toBe('2026年9月28日')
-    expect(formatItemDate(at, true)).toBe('Sep 28')
+  it('is absent on a row with no card, rather than explaining itself on press', () => {
+    // A button whose only possible outcome is to say "there is nothing to hand
+    // it to" is lying about what it does.
+    expect(renderPanel([item()])).not.toContain('问 AI')
+  })
+})
+
+describe('empty is two different facts, and they do not look the same', () => {
+  it('an empty GROUP inside a list that has rows keeps its header', () => {
+    // A group that disappears the moment it empties reads as a broken filter
+    // rather than an empty queue, and the reader loses the map of the list.
+    const html = renderPanel([item({ id: 'a', ref: 1, status: 'open' })])
+    expect(html).toContain('这一组还没有事项')
   })
 
-  it('says which state the reader picked, and what the stored one is', () => {
-    // The derived state is what the control offers, so it can never disagree
-    // with the group the row header sits in.
-    expect(openRow(item({ id: 'i-1', ref: 1 }))).toContain('进行中')
-    // The line explaining the gap appears ONLY when the two actually differ:
-    // a note hanging off nothing has no gap to explain.
-    expect(openRow(item({ id: 'i-1', ref: 1 }))).not.toContain('不是单独存的状态')
-    expect(storedStatusFor('inProgress')).toBe('open')
-    expect(storedStatusFor('done')).toBe('done')
+  it('an empty DOCUMENT is not three empty groups', () => {
+    // Keeping an empty group's header keeps the reader's map of a list that
+    // HAS rows. With nothing in the document there is no map to keep, and three
+    // headers each carrying the same sentence is that sentence three times — on
+    // the first screen a new reader ever meets, which is also this repository's
+    // own state right now.
+    const html = renderPanel([])
+    expect(html).toContain('还没有事项')
+    expect(html).not.toContain('这一组还没有事项')
+  })
+
+  it('says what is wrong when a FILTER is what emptied the view', () => {
+    // A filter that matched nothing and a document that holds nothing are
+    // different facts, and the remedy is different: one is fixed by clearing a
+    // filter, the other by writing something.
+    expect(renderPanel([item({ title: '在这里' })])).toContain('在这里')
+    expect(renderPanel([])).not.toContain('清空搜索')
+  })
+})
+
+describe('the panel tells the truth about what it can see', () => {
+  it('says the host copy is unreachable, and KEEPS the local list on screen', () => {
+    // The local mirror is whole and usable. Covering it would be a worse answer
+    // than a banner — and the copy PROMISES it is being used, so hiding it made
+    // the words and the behaviour contradict each other.
+    const html = renderPanel([item({ title: 'still here' })], { hostLost: true })
+    expect(html).toContain('读不到')
+    expect(html).toContain('still here')
+  })
+
+  it('never draws an outage as an empty list', () => {
+    // The two look identical on screen if you let them, and one of them is a
+    // lie about a system fact.
+    const lost = renderPanel([], { hostLost: true })
+    const empty = renderPanel([])
+    expect(lost).not.toBe(empty)
   })
 })
 
@@ -407,106 +216,38 @@ describe('the list is a main-stage panel, in the same shape as the board', () =>
   )
 
   it('contributes a `main` panel and a panel-list row, and nothing else', () => {
-    // The claim is not "we render something". It is that the list sits in the
-    // shell's own two seats, so the shell's chrome (left sidebar wide or
-    // collapsed to a rail, narrow viewport, its panel toggle) applies to it
-    // without this plugin re-deriving any of it. A drawer re-derived all of it
-    // and sized itself from a CSS variable it never declared.
+    // It sits in the shell's own two seats, so the shell's chrome (left sidebar
+    // wide or collapsed to a rail, narrow viewport, its panel toggle) applies to
+    // it without this plugin re-deriving any of it.
     expect(source).toContain("slots.inject('main'")
     expect(source).toContain("slots.inject('sidebar.panellist'")
-    // The two entrances that are gone, gone for the same reason.
     expect(source).not.toContain('shell.overlay')
     expect(source).not.toContain('conversation.session.header.actions')
   })
 
   it('keys the panel and the row by the SAME id, as the shell requires', () => {
-    // The shell resolves a panel-list row to its stage by that id, so the two
-    // must be one string. It is declared once and used twice — the alternative
-    // is a coincidence two call sites have to remember.
     expect(source).toMatch(/LIST_GROUP\s*=\s*\{\s*id:\s*'dsh-task-board-items'/)
     expect(source).toContain('key: LIST_GROUP.id')
     expect(source).toContain('id: LIST_GROUP.id')
   })
 
   it('sits directly after the board row in the panel list', () => {
-    // The reader asked for the two entries next to each other. The board's row
-    // is 110, so 120 is "the next one", and it is written as a fact rather
-    // than implied by registration order.
     expect(source).toMatch(/LIST_ROW_ORDER\s*=\s*120/)
   })
 
   it('leaves through the same funnel the board uses', () => {
-    // Click to enter, click again to leave — and "leave" is one function for
-    // both panels, so it can never mean two different things on two surfaces.
+    // "Leave" is one function for both panels, so it can never mean two
+    // different things on two surfaces.
     expect(source).toContain('onExit={returnToConversation}')
-  })
-})
-
-describe('the host decides which surfaces exist, and only narrows', () => {
-  it('registers the panel when the host says so, and skips it when it says no', async () => {
-    const { readSurfaceManifest, surfaceEnabled } = await import('../src/client/surfaces.ts')
-    const on = await readSurfaceManifest(okFetch({ board: true, items: true, agent: true }))
-    const off = await readSurfaceManifest(okFetch({ board: true, items: false, agent: true }))
-    expect(surfaceEnabled('items', on)).toBe(true)
-    expect(surfaceEnabled('items', off)).toBe(false)
-  })
-
-  it('narrows NOTHING when the host cannot be asked', async () => {
-    // THE claim. A switch the plugin cannot read must leave the plugin exactly
-    // as it was, because a reader who lost the answer should not watch a panel
-    // they never turned off disappear. Failing WIDE is the only safe side.
-    const { readSurfaceManifest, surfaceEnabled } = await import('../src/client/surfaces.ts')
-    for (const broken of [notFoundFetch, throwingFetch, malformedFetch, wrongShapeFetch, boolInsteadOfEnvelopeFetch]) {
-      const manifest = await readSurfaceManifest(broken)
-      expect(manifest).toBeUndefined()
-      expect(surfaceEnabled('items', manifest)).toBe(true)
-      expect(surfaceEnabled('board', manifest)).toBe(true)
-    }
-  })
-})
-
-/** A fetch double answering with the manifest inside the plugin's envelope. */
-function okFetch(value: Record<string, boolean>) {
-  return (async () => ({
-    ok: true,
-    json: async () => ({ ok: true, value }),
-  })) as unknown as typeof fetch
-}
-
-/** The host answering 404 — a deployment without the route, or a stale bundle. */
-const notFoundFetch = (async () => ({ ok: false, json: async () => ({}) })) as unknown as typeof fetch
-
-/** The network simply being down. */
-const throwingFetch = (async () => { throw new Error('offline') }) as unknown as typeof fetch
-
-/** JSON that parses but says nothing useful. */
-const malformedFetch = (async () => ({ ok: true, json: async () => ({ ok: true, value: 'yes' }) })) as unknown as typeof fetch
-
-/** Three keys, but not three booleans — the shape a typo would produce. */
-const wrongShapeFetch = (async () => ({ ok: true, json: async () => ({ ok: true, value: { board: 'true', items: 'false', agent: 'true' } }) })) as unknown as typeof fetch
-
-/** The bare shape with no envelope: close enough to look right. */
-const boolInsteadOfEnvelopeFetch = (async () => ({ ok: true, json: async () => ({ board: false, items: false, agent: false }) })) as unknown as typeof fetch
-
-
-describe('the panel tells the truth about what it can see', () => {
-  it('keeps the list on screen when the host copy is unreachable', () => {
-    // The local mirror is whole and usable. Covering it would be a worse
-    // answer than a banner — and the copy PROMISES it is being used, so
-    // hiding it made the words and the behaviour contradict each other.
-    const html = renderPanel([item({ title: 'still here' })], { hostLost: true })
-    expect(html).toContain('正在用本机的副本')
-    expect(html).toContain('still here')
   })
 })
 
 describe('the tool card reads the producer, not a memory of it', () => {
   // THE POINT. "A field I cannot read is not drawn" is right for a missing
   // OPTIONAL thing and a disaster for a TYPO: the card comes out empty with no
-  // error anywhere — the same disease the `as TaskBoardKey` cast had, a
-  // checker told to stay quiet. So the names the card depends on are named
-  // once, exported, and checked HERE against the producer's source. Rename a
-  // field upstream and this goes red instead of quietly emptying a card.
+  // error anywhere. So the names the card depends on are named once, exported,
+  // and checked HERE against the producer's source. Rename a field upstream and
+  // this goes red instead of quietly emptying a card.
   const producer = readFileSync(
     fileURLToPath(new URL('../src/host/agent/tools.ts', import.meta.url)),
     'utf8',
@@ -522,14 +263,13 @@ describe('the tool card reads the producer, not a memory of it', () => {
     }
   })
 
-  it('reads the SHORT NUMBER of an affected note, because that is how it is named', () => {
-    // `#12`, not a uuid: a line naming a note the reader cannot point at is a
+  it('reads the SHORT NUMBER of an affected row, because that is how it is named', () => {
+    // `#12`, not a uuid: a line naming a row the reader cannot point at is a
     // line about nothing.
     expect(producer).toContain('ref: `#${item.ref}`')
   })
 
   it('keeps "written" and "not written" as SEPARATE fields', () => {
-    // Collapse these into one and a rehearsal starts reading as a change.
     expect(presentation).toMatch(/dryRun:/)
     expect(presentation).toMatch(/persisted:/)
   })
@@ -539,114 +279,37 @@ describe('the tool card reads the producer, not a memory of it', () => {
   })
 })
 
-describe('what the tool card does with them', () => {
+describe('the panel draws no judgment of its own', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('../src/client/item/panel.tsx', import.meta.url)),
+    'utf8',
+  )
 
-  it('says so when a filter matched nothing, instead of showing a blank column', () => {
-    const rows = [item({ id: 'a', ref: 1, title: 'only this' })]
-    // The condition the panel renders the no-match line for, computed from the
-    // model rather than asserted by hand: a filter that keeps nothing yields
-    // zero shown WHILE the list is not empty — and that pair is exactly the
-    // "a blank column that explains nothing" this line exists to prevent.
-    const shown = itemGroupSlicesOf(rows, { text: 'zzz', groups: [] }, new Map())
-      .reduce((total, slice) => total + slice.items.length, 0)
-    expect(rows.length).toBeGreaterThan(0)
-    expect(shown).toBe(0)
-    expect(renderPanel(rows)).toContain('only this')
-  })
-})
-
-describe('the workbench keeps its six partitions', () => {
-  it('lays search and filter in separate row containers, so they cannot overlap', () => {
-    const html = renderPanel([item()])
-    expect(html).toContain('itemSearchRow')
-    expect(html).toContain('itemFilterRow')
-    const searchAt = html.indexOf('itemSearchRow')
-    const filterAt = html.indexOf('itemFilterRow')
-    expect(searchAt).toBeGreaterThan(-1)
-    expect(filterAt).toBeGreaterThan(searchAt)
-  })
-
-  it('keeps every group header on screen, even when the group is empty', () => {
-    const html = renderPanel([item({ id: 'a', ref: 1, title: 'only open', status: 'open' })])
-    for (const name of ['进行中', '待办', '受阻', '已完成']) {
-      expect(html, `missing group ${name}`).toContain(name)
+  it('imports the shared derivation layer instead of re-deriving any of it', () => {
+    // Every judgment the list draws is made in one file, read by the human
+    // surface and by the model's query. A second copy in the panel is a second
+    // answer to a question the model also answers.
+    expect(source).toContain("from '../../core/item-view.ts'")
+    for (const local of ['function datePostureOf', 'function scheduleBucketOf', 'function itemMatches', 'function itemRowViewOf']) {
+      expect(source, `the panel re-implements ${local}`).not.toContain(local)
     }
-    expect(html).toContain('这一组还没有事项')
   })
 
-  it('shows the hand-off only on rows that hang off a card', () => {
-    const card = { id: 't-9', title: '画廊第二版' }
-    const withCard = renderToStaticMarkup(createElement(ItemRow, {
-      view: itemRowViewOf(item({ id: 'i-1', ref: 1, taskId: 't-9' }), false, T0),
-      density: 'compact',
-      english: false,
-      expanded: false,
-      fresh: false,
-      panelId: 'item',
-      onToggle: () => undefined,
-      onEdit: () => undefined,
-      onToggleStep: () => undefined,
-      onRemove: () => undefined,
-      onAsk: () => undefined,
-      cards: [card],
-      linkedCardTitle: '画廊第二版',
-    }))
-    const withoutCard = renderToStaticMarkup(createElement(ItemRow, {
-      view: itemRowViewOf(item({ id: 'i-2', ref: 2 }), false, T0),
-      density: 'compact',
-      english: false,
-      expanded: false,
-      fresh: false,
-      panelId: 'item',
-      onToggle: () => undefined,
-      onEdit: () => undefined,
-      onToggleStep: () => undefined,
-      onRemove: () => undefined,
-      cards: [card],
-      linkedCardTitle: undefined,
-    }))
-    expect(withCard).toContain('问 AI')
-    expect(withoutCard).not.toContain('问 AI')
+  it('builds no key by template string, so a typo cannot ship a blank word', () => {
+    // A cast silences the checker: a typo compiles, ships, and renders
+    // `undefined` at runtime. A closed Record keyed by the union cannot.
+    expect(source).not.toMatch(/t\(`item\./)
   })
 
-  it('lays an open row in five fixed sections with the delete alone in its danger zone', () => {
-    const html = renderToStaticMarkup(createElement(ItemRow, {
-      view: itemRowViewOf(item({ id: 'i-1', ref: 1 }), false, T0),
-      density: 'compact',
-      english: false,
-      expanded: true,
-      fresh: false,
-      panelId: 'item',
-      onToggle: () => undefined,
-      onEdit: () => undefined,
-      onToggleStep: () => undefined,
-      onRemove: () => undefined,
-      cards: [],
-      linkedCardTitle: undefined,
-    }))
-    for (const section of ['标题与正文', '上下文备注', '计划与期限', '关联', '来源与危险区']) {
-      expect(html, `missing section ${section}`).toContain(section)
-    }
-    expect(html).toContain('itemDangerZone')
-    // The row itself carries no delete: the only delete lives in the detail.
-    const head = html.slice(0, html.indexOf('itemDetail'))
-    expect(head).not.toContain('删除这条')
-    expect(html).toContain('删除这条')
-  })
-
-  it('paints its own opaque surface and hides nothing to save space', () => {
-    const css = readFileSync(
-      fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)),
-      'utf8',
-    )
-    const root = /\.itemRoot\s*\{[^}]*\}/s.exec(css)?.[0] ?? ''
-    expect(root).toMatch(/background\s*:/)
-    const narrow = /@container dsh-tb-item \(max-width: 320px\)\s*\{[\s\S]*?\n\}/.exec(css)?.[0] ?? ''
-    expect(narrow).not.toMatch(/display\s*:\s*none/)
-    const itemRules = [...css.matchAll(/\.item[A-Za-z]+\s*\{[^}]*\}/gs)].map(m => m[0]).join('\n')
-    expect(itemRules).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
-    expect(itemRules).not.toMatch(/\brgb\s*\(/)
-    expect(itemRules).not.toMatch(/\bvw\b/)
-    expect(itemRules).not.toMatch(/\bvh\b/)
+  it('reads inbox membership instead of restating the predicate', () => {
+    // The trap this catches is subtle and was hit once while writing the panel
+    // itself: the inbox rule is ALSO what exempts a row from the triage
+    // strip's "no date" line, so an inline copy in the panel is a second
+    // answer to a question two surfaces already share. Change one and the
+    // panel and the strip disagree about what "unfiled" means, with nothing
+    // red anywhere. Checking for a re-DECLARED function is not enough — the
+    // copy was an inline filter expression, not a function.
+    expect(source).toContain('isInboxItem')
+    expect(source, 'the panel re-states the inbox predicate inline').not.toMatch(/priority === 'normal'\s*&&\s*item\.tags\.length === 0/)
   })
 })

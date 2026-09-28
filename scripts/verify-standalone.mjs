@@ -347,8 +347,18 @@ function stripComments(text) {
  * time, so the property simply computes to nothing — a panel loses its width,
  * every test stays green, and the bug is only visible as a thin strip. Same
  * family as the encoding checks: the code is valid and the behaviour is wrong.
+ *
+ * `declaredElsewhere` is the SET OF ALIASES DECLARED BY THE OTHER STYLESHEETS,
+ * and it has to be passed in. The aliases live on one layer, above every panel
+ * surface, and custom properties inherit DOWN THE DOM — a stylesheet defines
+ * rules, and those rules apply to elements carrying its classes, which sit
+ * under that layer. So "declared in the same file" was a question with the
+ * wrong subject: it made a second stylesheet look like it referenced 28
+ * undeclared tokens when every one of them is declared once, above both, and
+ * perfectly reachable. The honest question is "declared anywhere in the client
+ * half", and the answer spans files, so the answer is computed across files.
  */
-function undeclaredTokenFindings(path, text) {
+function undeclaredTokenFindings(path, text, declaredElsewhere = new Set()) {
   const code = stripComments(text)
   const used = new Map()
   // ONLY A BARE var() IS A DEFECT. `var(--x, fallback)` is the correct way to
@@ -361,8 +371,8 @@ function undeclaredTokenFindings(path, text) {
     if (!used.has(m[1])) used.set(m[1], code.slice(0, m.index).split('\n').length)
   }
   const declared = new Set([...code.matchAll(/(--dsh-tb-[A-Za-z0-9_-]+)\s*:/g)].map(m => m[1]))
-  return [...used].filter(([name]) => !declared.has(name))
-    .map(([name, line]) => `${path}:${line}: \`var(${name})\` is used with no fallback and never declared in this file — CSS drops the whole declaration at computed-value time, so the element silently loses that property`)
+  return [...used].filter(([name]) => !declared.has(name) && !declaredElsewhere.has(name))
+    .map(([name, line]) => `${path}:${line}: \`var(${name})\` is used with no fallback and no stylesheet declares it — CSS drops the whole declaration at computed-value time, so the element silently loses that property`)
 }
 
 /**
@@ -407,6 +417,20 @@ if (existsSync(pkgPath)) {
   failures.push(...patchRowFindings(root, JSON.parse(readFileSync(pkgPath, 'utf8'))))
 }
 
+/**
+ * The alias layer is declared once, above every surface, so "is this token
+ * declared" is a question about the whole client half and not about one file.
+ * Computed over every stylesheet before any of them is judged, which is what
+ * makes the answer the same no matter which sheet a name is read in.
+ */
+const STYLESHEETS = textFiles.filter(file =>
+  /\.(css|scss|less)$/.test(file)
+  && file !== VERIFY_SELF
+  && (IGNORED === null || !IGNORED.has(file))
+  && !isArtifact(file))
+const ALIASES_DECLARED_ANYWHERE = new Set(STYLESHEETS.flatMap(file =>
+  [...stripComments(readFileSync(file, 'utf8')).matchAll(/(--dsh-tb-[A-Za-z0-9_-]+)\s*:/g)].map(m => m[1])))
+
 for (const file of textFiles) {
   if (file === VERIFY_SELF) continue
   if (IGNORED !== null && IGNORED.has(file)) continue
@@ -419,10 +443,10 @@ for (const file of textFiles) {
     }
   })
   if (/\.(css|scss|less)$/.test(file)) {
-    for (const finding of undeclaredTokenFindings(rel, raw)) failures.push(finding)
+    for (const finding of undeclaredTokenFindings(rel, raw, ALIASES_DECLARED_ANYWHERE)) failures.push(finding)
   }
 }
-notes.push('declaration audit: every --dsh-tb-* var() read in a stylesheet is declared in the same file; every cordis.patch.yml row names a real export and a matching build entry')
+notes.push(`declaration audit: every bare --dsh-tb-* var() read in a stylesheet is declared somewhere in the client half (${ALIASES_DECLARED_ANYWHERE.size} aliases across ${STYLESHEETS.length} stylesheet(s)); every cordis.patch.yml row names a real export and a matching build entry`)
 
 for (const file of textFiles) {
   if (file === VERIFY_SELF) continue // the patterns themselves live here

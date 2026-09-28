@@ -1027,6 +1027,17 @@ export class ChecklistReplica {
     ]
   }
 
+  /**
+   * This tab's caller id — the one every write on this prefix carries.
+   *
+   * Exposed because a write the panel makes DIRECTLY (restoring a deleted row)
+   * has to be attributed to the same tab that syncs it, and minting a second id
+   * here would put the activity note under a name the reader has never seen.
+   */
+  clientId(): string {
+    return this.deps.clientId
+  }
+
   /** Mark the checklist dirty and queue a commit. */
   setItems(items: readonly ItemRecord[]): void {
     if (this.dirty === items) return

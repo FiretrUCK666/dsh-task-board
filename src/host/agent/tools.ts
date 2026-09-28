@@ -63,9 +63,9 @@ import {
   type ActionSurface,
   type ParamSpec,
 } from '../../core/board-actions.ts'
-import { QUALIFIER_KEYS, completeBoardQuery } from '../../core/task-search.ts'
+import { QUALIFIER_KEYS, completeBoardQuery, itemSearchContext, matchItemQuery } from '../../core/task-search.ts'
 import { clampCruiseLimit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
-import { applyItemsCommit, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
+import { applyItemsCommit, deletedItemsOf, restoredItemOf, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
 import { createTask, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import type { SessionRule } from '../../core/automation.ts'
 import { nextRunAtMs, isValidCron } from '../../core/schedule.ts'
@@ -86,7 +86,7 @@ function readRunConfig(raw: unknown): RunConfigPresetConfig {
   return config
 }
 import { armSchedule, moveTaskToStatus, removeSessionFromTask, type TransitionResult } from '../../core/task-transitions.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES, type ItemRecord, type ItemStep } from '../../core/item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUSES, itemTitleOf, type ItemRecord, type ItemStep } from '../../core/item.ts'
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts'
 import { sessionRunningOf } from '../session-state.ts'
 import { relatedSessionIdsOf, type TaskLiveState } from '../../core/task-live.ts'
@@ -372,6 +372,16 @@ function checkParams(id: ActionId, payload: Record<string, unknown>): string | u
 export interface ExecuteRequest {
   readonly ops: readonly { op: string; payload?: unknown }[]
   readonly dry_run?: boolean
+  /**
+   * The caller's promise that a retried batch is the SAME batch.
+   *
+   * A model that retries after a timeout cannot tell "my write did not land"
+   * from "my write landed and the answer was lost", so it retries — and without
+   * a key the retry is a second write. This is what makes the retry safe, and
+   * it is why the field exists at all: it was declared, never read, and a
+   * promise nobody keeps is worse than no promise, because the caller is told
+   * it is protected.
+   */
   readonly idempotencyKey?: string
 }
 
@@ -393,6 +403,62 @@ export interface ExecuteResult {
   /** Rows this op handed to the engine while no replica held the seat. They
    *  are ACCEPTED, not done — a card that renders them as "已执行" is lying. */
   readonly enginePending: readonly string[]
+  /**
+   * Set when this answer is an earlier one's, replayed because the caller
+   * retried with the same key. Nothing ran this time — and saying so is the
+   * whole point, because a retry that silently re-executed looks exactly like
+   * one that did not.
+   */
+  readonly replayed?: true
+}
+
+/**
+ * How long a key's answer is replayable, and how many are remembered.
+ *
+ * Both are deliberately short. The thing being protected is a retry that
+ * follows a timeout, which is seconds; a key remembered for a day is a key
+ * that silently swallows a legitimate second attempt hours later, and a caller
+ * re-issuing the same batch on purpose would get the old answer with no
+ * indication that the new one was ignored. The window covers the failure it
+ * exists for and closes soon after.
+ */
+const IDEMPOTENCY_TTL_MS = 10 * 60_000
+const IDEMPOTENCY_MAX_ENTRIES = 64
+
+/** Key → the answer that key already earned. Insertion-ordered, pruned lazily. */
+const idempotencyReplies = new Map<string, { readonly at: number; readonly result: ExecuteResult }>()
+
+/**
+ * The earlier answer for this key, if one is still inside its window.
+ *
+ * Expiry is checked on READ rather than by a timer, so there is no clock to
+ * own and nothing to dispose — a background sweeper would outlive the calls it
+ * serves and would be a second thing to leak.
+ */
+function readIdempotentReply(key: string, now: number): ExecuteResult | undefined {
+  const hit = idempotencyReplies.get(key)
+  if (hit === undefined) return undefined
+  if (now - hit.at > IDEMPOTENCY_TTL_MS) {
+    idempotencyReplies.delete(key)
+    return undefined
+  }
+  return hit.result
+}
+
+/** Remember this key's answer, evicting the oldest keys when the map is full. */
+function rememberIdempotentReply(key: string, result: ExecuteResult, now: number): void {
+  idempotencyReplies.delete(key)
+  idempotencyReplies.set(key, { at: now, result })
+  while (idempotencyReplies.size > IDEMPOTENCY_MAX_ENTRIES) {
+    const oldest = idempotencyReplies.keys().next()
+    if (oldest.done === true) break
+    idempotencyReplies.delete(oldest.value)
+  }
+}
+
+/** Forget every remembered key. For tests, and for nothing else. */
+export function clearIdempotentReplies(): void {
+  idempotencyReplies.clear()
 }
 
 /**
@@ -494,6 +560,20 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       itemsRevision: 0,
       counts: { created: 0, updated: 0, moved: 0, deleted: 0, unchanged: 0, failed: 1, skipped: 0 },
       enginePending: [],
+    }
+  }
+
+  // A retry carrying the same key gets the answer that key already earned, and
+  // nothing runs. It is read AFTER the two guards below, not before them: a
+  // batch refused for cancellation or for missing storage never wrote anything,
+  // so remembering it would hand back a refusal to a retry that should succeed
+  // — the cache is a promise about WRITES, and a batch that wrote none has
+  // nothing to promise.
+  const idempotencyKey = typeof request.idempotencyKey === 'string' ? request.idempotencyKey.trim() : ''
+  if (idempotencyKey !== '' && request.dry_run !== true) {
+    const earlier = readIdempotentReply(idempotencyKey, now)
+    if (earlier !== undefined) {
+      return { ...earlier, replayed: true, summary: `同一个幂等键的第一次结果，没有重复执行。${earlier.summary}` }
     }
   }
 
@@ -624,7 +704,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       // row that is only queued is the one sentence this tool must never say.
       ? `${done.length - enginePending.length} 条已生效${enginePending.length > 0 ? `，${enginePending.length} 条已受理（${enginePending.join('、')}）但引擎当前不在线，将在引擎上线后执行` : ''}。`
       : `前 ${done.length} 条已生效，第 ${reports.indexOf(firstFailure!) + 1} 条失败：${firstFailure!.detail}。已生效的不回滚。`
-  return {
+  const result: ExecuteResult = {
     dryRun: request.dry_run === true,
     ok,
     reports,
@@ -635,6 +715,14 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
     enginePending,
     ...(request.dry_run === true ? {} : { changed: { tasks: changedTasks.map(taskRow), items: changedItems.map(itemRow) } }),
   }
+  // The key is remembered only now, after the writes, and only for a real run:
+  // a batch that half-failed still burned revisions, and a retry carrying the
+  // same key must get THAT answer rather than running the ops again. A rehearsal
+  // is not remembered, because a caller is free to rehearse the same batch
+  // twice on purpose and the second rehearsal should reflect the document as it
+  // is now.
+  if (idempotencyKey !== '' && request.dry_run !== true) rememberIdempotentReply(idempotencyKey, result, now)
+  return result
 }
 
 /** The commit that carries one op: the whole view plus the ids this op claims
@@ -1076,6 +1164,82 @@ function applyOne(
       if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
       return { doc, items: { ...items, items: items.items.filter(item => item.id !== found.id) }, item: found }
     }
+    case 'item.step': {
+      const found = findItem()
+      if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
+      if (typeof payload.done !== 'boolean') return 'done 要么是 true（勾上）要么是 false（取消勾上），没给就不知道你想干什么。'
+      const stepId = String(payload.step ?? '')
+      const at = found.steps.findIndex(step => step.id === stepId)
+      // A step id that names nothing is a question, not an error to swallow:
+      // the step list is something only the document knows, so the answer has
+      // to be read, not guessed at.
+      if (at < 0) {
+        const names = found.steps.length === 0
+          ? '这一条还没有步骤。'
+          : `这一条的步骤是：${found.steps.map(step => `${step.id}${step.done ? '（已勾）' : ''}`).join('、')}。`
+        return `这一条里没有 id 为 ${stepId} 的步骤。${names}`
+      }
+      const current = found.steps[at]!
+      if (current.done === payload.done) {
+        return { doc, items, item: found, unchanged: true }
+      }
+      // Only that one entry moves. The whole list is NOT rebuilt, so a step the
+      // caller never mentioned cannot be lost to a list it reconstructed from
+      // memory — which is the reason this is its own action.
+      const steps = found.steps.slice()
+      steps[at] = { ...current, done: payload.done }
+      const next: ItemRecord = { ...found, steps, updatedAt: now }
+      return { doc, items: { ...items, items: items.items.map(item => (item.id === found.id ? next : item)) }, item: next }
+    }
+    case 'item.promote': {
+      const found = findItem()
+      if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
+      if (found.taskId !== undefined) {
+        // Already promoted. Re-promoting would make a second card and leave
+        // the item pointing at whichever one was written last, so this is
+        // reported as the state it is rather than performed again.
+        return `这一条已经挂在卡片上了（${found.taskId}），没有再建一张。`
+      }
+      const title = (payload.cardTitle === undefined ? itemTitleOf(found) : String(payload.cardTitle)).trim()
+      if (title === '') return '这条没有标题，正文也是空的——建出来的卡会是一个没有名字的东西。先给它写一句话。'
+      const prompt = (payload.cardPrompt === undefined ? found.body : String(payload.cardPrompt)).trim()
+      // The card is created BEFORE the link, and the order is not arbitrary: a
+      // half-finished promote that leaves the card without its link shows up as
+      // an untouched note, which is indistinguishable from "not promoted yet".
+      // The other order would leave the note pointing at a card that does not
+      // exist — a state the interface would have to render as a defect.
+      const task = createTask({ title, description: found.notes, prompt, status: 'todo' }, now, deps.uuid())
+      // `itemTitleOf` already borrowed the body's first line for an untitled
+      // row, so the card's title is never blank on this path.
+      const linked: ItemRecord = { ...found, taskId: task.id, updatedAt: now }
+      return {
+        doc: { ...doc, tasks: [...doc.tasks, task] },
+        items: { ...items, items: [...items.items, linked] },
+        task,
+        item: linked,
+      }
+    }
+    case 'item.restore': {
+      const wanted = String(payload.of).replace('#', '').trim()
+      // The row to bring back is the one the TOMBSTONE holds, not one rebuilt
+      // from what the caller remembers — and it is re-stamped above the
+      // tombstone, because a tombstone outranks the row it removed and would
+      // otherwise eat the put that carries it back. See `restoredItemOf`.
+      //
+      // It is FOUND BY ITS SHORT NUMBER, because that is the name a person and
+      // a model both say out loud; the uuid is never spoken. A row that is
+      // merely deleted is not a candidate: it is not behind a tombstone, it is
+      // still in the document, and "restoring" it would be a second row.
+      const carried = deletedItemsOf(items).find(item => String(item.ref) === wanted)
+      if (carried === undefined) {
+        return `清单里没有 #${wanted}，也没有一条删掉之后还留着的。删掉超过 30 天的找不回来了。`
+      }
+      const restored = restoredItemOf(items, carried.id, now)
+      if (restored === undefined) {
+        return `#${wanted} 的删除记录里没有正文（是更早的版本删的），所以找不回内容，只能重新记一条。`
+      }
+      return { doc, items: { ...items, items: [...items.items, restored] }, item: restored }
+    }
     default:
       // Every remaining document-lane action is real, but this knife ships the
       // board/item core of the vocabulary; naming the gap is better than
@@ -1387,13 +1551,17 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   const needle = filter.toLowerCase()
   const tasks = doc.tasks.filter(task => needle === '' || task.title.toLowerCase().includes(needle)).slice(0, limit)
   const rows = tasks.map(taskRow)
-  // 清单与看板共用同一套字面搜索：标题、正文、备注、标签都在干草堆里，
-  // 标签可搜即是这一行的直接推论。未知 key 当普通文字，不报错。
-  const matchedItems = items.items.filter(item => {
-    if (needle === '') return true
-    const haystack = `${item.title}\n${item.body}\n${item.notes}\n${item.tags.join('\n')}`.toLowerCase()
-    return needle.split(/\s+/).filter(part => part !== '').every(part => haystack.includes(part))
-  }).slice(0, limit)
+  // The checklist is matched by the SAME grammar the search box a person types
+  // into uses, reached through the one door that leads to it. This used to be a
+  // second haystack assembled here, and two search boxes that agree today and
+  // disagree after the next change is exactly the defect nobody reports until
+  // someone says a filter "does nothing". The context is built ONCE and the
+  // same clock is handed to every row, so one answer cannot disagree with
+  // itself about what "stale" or "overdue" means.
+  const itemCtx = itemSearchContext(deps.now())
+  const matchedItems = items.items
+    .filter(item => matchItemQuery(item, filter, itemCtx))
+    .slice(0, limit)
   if (request.posture !== undefined && request.posture !== '') {
     // Posture is a fact about a SESSION, and a card is not a session — so the
     // caller names the session, rather than this tool guessing which of a

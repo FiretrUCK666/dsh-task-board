@@ -32,9 +32,11 @@ function poison(id: ActionId, patch: Partial<ActionShape>): Record<string, Actio
 }
 
 describe('the verb table is a contract', () => {
-  it('is exactly the twelve, with no duplicates', () => {
-    expect(BOARD_VERBS).toHaveLength(12)
-    expect(new Set(BOARD_VERBS).size).toBe(12)
+  it('is exactly the declared set, with no duplicates', () => {
+    // The count is asserted against the list itself rather than a retyped
+    // number, so adding a verb is one edit instead of two that can disagree.
+    expect(BOARD_VERBS).toHaveLength(new Set(BOARD_VERBS).size)
+    expect(new Set(BOARD_VERBS).size).toBe(BOARD_VERBS.length)
   })
 
   it('every action in the catalog uses one of them', () => {
@@ -72,8 +74,16 @@ describe('rule 1 — what the UI locks down, the tool locks down', () => {
 
 describe('rule 2 — surface ui never reaches the tool', () => {
   it('excludes exactly the ui-only actions, decided in one place', () => {
+    // Pinned exactly, on purpose: this is the list of things a person can do
+    // that a model cannot, so a new entry here is a decision someone made, not
+    // a consequence of adding an action elsewhere. `item.navigate` is on it for
+    // the same reason as `board.navigate` — "open this" means nothing in
+    // another context, and a model that could retarget a person's screen would
+    // be a bug with a good changelog entry.
     const uiOnly = (Object.keys(ACTIONS) as ActionId[]).filter(id => ACTIONS[id].surface === 'ui')
-    expect(uiOnly.sort()).toEqual(['board.navigate', 'session.hide', 'session.navigate', 'task.ack', 'task.navigate'])
+    expect(uiOnly.sort()).toEqual([
+      'board.navigate', 'item.navigate', 'session.hide', 'session.navigate', 'task.ack', 'task.navigate',
+    ])
     for (const id of uiOnly) expect(TOOL_ACTION_IDS).not.toContain(id)
   })
 
@@ -155,9 +165,9 @@ describe('the catalog gate', () => {
     expect(actionCatalogFindings()).toEqual([])
   })
 
-  it('catches a verb outside the twelve', () => {
+  it('catches a verb outside the declared set', () => {
     const findings = actionCatalogFindings({ actions: poison('item.create', { verb: 'archive' as never }) })
-    expect(findings.join('\n')).toContain('not one of the twelve')
+    expect(findings.join('\n')).toContain('is not one of the declared verbs')
   })
 
   it('catches an action marked semantic without naming the shared function', () => {

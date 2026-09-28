@@ -22,7 +22,9 @@
  * - A tombstone is stamped one millisecond above the newest `updatedAt` the
  *   host ever saw for that id: a delete outranks every stale copy other
  *   replicas still hold, while a genuinely newer edit (a concurrent revive)
- *   still wins and takes the row back.
+ *   still wins and takes the row back. What the tombstone CARRIES besides those
+ *   two stamps is the document's call, and the kernel never compares it (see
+ *   {@link MergeTombstone}).
  * - Read state is a MONOTONE JOIN, never a register. Whichever row wins the
  *   content, "has the human seen it" only ever moves forward — and it joins
  *   even when NO content won, so a replica that merely opened a row can
@@ -46,10 +48,30 @@ export interface MergeRow {
     readonly updatedAt: number;
 }
 /** One tombstone: the logical stamp a newer edit must beat, plus the host
- *  wall time it was written (pruning key). */
+ *  wall time it was written (pruning key).
+ *
+ *  `row` is the DELETED ROW'S OWN TEXT, present only for documents that asked
+ *  for it through {@link MergeRowOps.retainDeleted}. It exists so a deletion
+ *  can be undone, and it is OPTIONAL in the strict sense: a tombstone without
+ *  one suppresses exactly as before and simply has nothing to give back. Old
+ *  files therefore need no migration, and a document that never opts in never
+ *  pays for the storage — which is the whole reason this is an opt-in rather
+ *  than the kernel's standing behaviour (a board card carries a prompt and
+ *  attachments; keeping those for 30 days is a cost the board should never
+ *  have inherited from a feature built for a note list).
+ *
+ *  THE PAYLOAD IS NOT PART OF THE TRUTH. {@link sameMergeState} compares
+ *  tombstones by `{at, seenAt}` and never by `row`, because the payload is a
+ *  convenience the host happens to have, not a claim any replica made. Two
+ *  devices that disagree about whether a tombstone carries text have not
+ *  diverged on any fact, and a predicate that said otherwise would have them
+ *  trading the same commit back and forth forever: each side's commit changes
+ *  the other's answer, so neither ever reaches a no-op. */
 export interface MergeTombstone {
     at: number;
     seenAt: number;
+    /** The row as it stood when the delete was honored, when kept. */
+    row?: MergeRow;
 }
 /** One synced section: the value plus the client write stamp (LWW key). */
 export interface MergeSection<T> {
@@ -76,7 +98,16 @@ export interface MergeTruth<Row extends MergeRow> {
     rows: readonly Row[];
     tombstones: Record<string, MergeTombstone>;
 }
-/** Structural equality of a no-op predicate's inputs. */
+/** Structural equality of a no-op predicate's inputs.
+ *
+ *  TOMBSTONES COMPARE BY STAMP ONLY. `row` is excluded on purpose, and the
+ *  reason is about convergence rather than tidiness: a payload is something
+ *  the host may hold and a replica may not, so including it would make two
+ *  documents that agree on every fact compare unequal, and each one's commit
+ *  would then look like a change to the other. Two devices would ping-pong the
+ *  same commit for as long as both stayed online. The row leaving `rows` is
+ *  already the change the predicate reports; the copy inside the tombstone
+ *  adds no fact to it. */
 export declare function sameMergeState<Row extends MergeRow>(a: MergeTruth<Row>, b: MergeTruth<Row>): boolean;
 /** The rows a merge produces, plus the two bookkeeping maps it maintains. */
 export interface MergeState<Row extends MergeRow> {
@@ -104,6 +135,22 @@ export interface MergeRowOps<Row extends MergeRow> {
      *  survived `normalize` — an id this document's inbound grammar refused is
      *  simply absent, so skip it instead of asserting it exists. */
     sortRows: (hostRows: readonly Row[], incoming: readonly Row[], resolved: ReadonlyMap<string, Row>) => Row[];
+    /**
+     * OPTIONAL: what to keep of a row this delete removes, or nothing to keep.
+     *
+     * Absent means the tombstone is a bare stamp and the deletion is final.
+     * Present, it is how a document says "my rows are things a person wrote, and
+     * losing one loses their words"; the kernel copies the answer onto the
+     * tombstone. Returning `undefined` for a particular row keeps that one
+     * deletion final while the rest of the document stays recoverable.
+     *
+     * WHY OPTIONAL RATHER THAN A FIFTH REQUIRED ANSWER: whether a delete is worth
+     * reversing is a property of the document, not of merging, and a document that
+     * has no answer to give is not broken. Requiring it would force every future
+     * document to answer a question that may not apply to it, and would make the
+     * storage cost a decision every document pays whether it wants it or not.
+     */
+    retainDeleted?: (row: Row) => Row | undefined;
 }
 /**
  * Apply one replica's row commit to the host's rows and return the merged
@@ -119,8 +166,12 @@ export interface MergeRowOps<Row extends MergeRow> {
  * - read state joins onto whichever row won, including when none did.
  * - delete: honored only when the host copy is not newer than the baseline the
  *   delete was computed against; deleting an id the host never had is a no-op
- *   and leaves any existing tombstone alone.
+ *   and leaves any existing tombstone alone. What the tombstone KEEPS is the
+ *   document's call (see {@link MergeRowOps.retainDeleted}); a document that
+ *   does not opt in gets a bare stamp, exactly as before.
  * - pruning: tombstones past their TTL (and the stamps of rows long gone).
+ *   Anything a tombstone carried goes with it, so a document that keeps deleted
+ *   text keeps it for exactly as long as the tombstone survives and no longer.
  */
 export declare function applyRowCommit<Row extends MergeRow>(state: MergeState<Row>, incoming: readonly Row[], claimed: ReadonlySet<string>, deleted: readonly MergeDelete[], ops: MergeRowOps<Row>, now: number): MergeState<Row>;
 /**

@@ -32,7 +32,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts';
-import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
+import { type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts';
+import type { ItemRecord } from '../core/item.ts';
 import { type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts';
 /** The commit body size cap: the whole ledger travels per commit. */
 export declare const BOARD_BODY_LIMIT_BYTES: number;
@@ -67,6 +68,17 @@ export interface ItemsRouteView {
     doc?: ItemsDoc;
     /** True when `since` already covers the current revision. */
     unchanged?: boolean;
+    /**
+     * The rows a tombstone is still holding, and ONLY when the caller asked:
+     * `GET /board/items?includeDeleted=1`.
+     *
+     * It is opt-in because the common reader has no use for it and pays for it
+     * on every poll — and because a list that answers "here is everything you
+     * deleted" unasked is a list that invites a surface built for a question
+     * nobody asked. A delete bumps the checklist's revision like any other
+     * write, so `since` already covers when this list changed.
+     */
+    deleted?: ItemRecord[];
 }
 /** Success envelope carrying a route's value. */
 export interface RouteOk<T> {
@@ -116,6 +128,16 @@ export interface BoardRouteDeps {
      * conversation, so the session has to come from the card the item hangs off.
      */
     ask(request: AskRequest): Promise<AskRouteView>;
+    /**
+     * Bring one deleted checklist row back, by its short number.
+     *
+     * A SERVICE operation and not a client commit: a tombstone is stamped one
+     * millisecond above the row it removed, so re-submitting that row untouched
+     * is exactly the stale copy the tombstone exists to swallow — the commit
+     * would be accepted, nothing would change, and the caller would be told it
+     * worked. `undefined` means no tombstone holds that number.
+     */
+    restoreItem(ref: number, clientId: string): Promise<ItemRecord | undefined>;
     subscribe(listener: (event: BoardEvent) => void): () => void;
 }
 /** What the panel sends: which card's session, and which item in it. */
@@ -134,6 +156,24 @@ export type AskRouteView = {
     readonly ok: false;
     readonly why: string;
 };
+/** What a restore asks for: which number, and who is asking. */
+export interface RestoreRequest {
+    readonly ref: number;
+    readonly clientId: string;
+}
+/**
+ * The restore's answer.
+ *
+ * `restored` is `undefined` for "no tombstone holds that number" AND for "the
+ * host is not serving documents" — and the two are told apart by `available`,
+ * because they are different facts with different remedies. It is NOT a
+ * success with a missing row: the caller is told the row did not come back.
+ */
+export interface RestoreRouteView {
+    readonly available: boolean;
+    readonly revision: number;
+    readonly restored?: ItemRecord;
+}
 /** Extract a commit from an untrusted body; undefined when unusable. The
  *  merge grammar normalizes every row/section, so this only checks the
  *  envelope shape (arrays/strings), never the data. */

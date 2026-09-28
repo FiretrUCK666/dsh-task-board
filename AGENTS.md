@@ -442,13 +442,19 @@ schema 就是给同一件事再加一个控件。
   seat 组件。`board-transport.ts`：fetch + EventSource（缺席降纯轮询）。
 - `src/client/item/`：**清单面板**，与看板同一形状的第二个主舞台面板（`main` key =
   `dsh-task-board-items`，面板列表 `order` 120 紧跟看板，共用同一个 `selectPanel(null)` 出口，
-  两图标同构）。`item/model.ts` 纯推导，`panel.tsx` 渲染，**四列并排、各列独立滚动**，窄屏一列
-  加横向轨。头区四行文档流，空组保留组头计数 0，详情五节分区、删除独占危险区，面板自带不透明
-  表面层。**一律不用 Dialog**（`boardBox()` 会锚到看板上去），第 1 级就地展开。挂上卡的事项才给
-  「问 AI」（`board-ask.ts` → `/board/ask` → 与 `/task` 同一个 `handOver`），**回执说是哪一个
-  会话**，失败也是一句话。`hostLostItems()` 为真时说「host 读不到」，**不能显示成「你一条都
-  没有」**。副本只存在**一个** holder（`itemListStage`）上。`src/client/surfaces.ts` 开机读一次
-  `/board/surfaces` 决定注册哪些面板，**读不到就什么都不收窄**。
+  两图标同构）。**它是一个有内部分页的工作台，不是单页**：页面身份是**写死的产品常量**
+  （`item-view.ts` 的 `ITEM_PAGES`），页面之间换的是「按什么维度看这些条目」，**不是同一批数据的
+  另一种排法**；排法最多是页内一个两态开关，且开关两端共享同一套排序。**空的页不上页面轨**，
+  派生页（标签、停滞、归档、筛选结果）**不进轨**，只给入口。分页、几何与每页的行文法成文在
+  `DESIGN.md` 的清单节，本文不复述。挂上卡的事项才给「问 AI」（`board-ask.ts` → `/board/ask`
+  → 与 `/task` 同一个 `handOver`），**回执说是哪一个会话**，失败也是一句话。
+  **一律不用 Dialog**（`boardBox()` 会锚到看板上去）。`hostLostItems()` 为真时说「host 读不到」，
+  **不能显示成「你一条都没有」**。副本只存在**一个** holder（`itemListStage`）上。
+  **归档是派生页**（`items-archive.ts` → `GET /board/items?includeDeleted=1` 与
+  `POST /board/items/restore`）：**恢复是 host 操作而不是客户端提交**——墓碑的戳压在它删掉的那
+  一行之上，原样重提会被墓碑吃掉，接口回 200 而文档没变，所以只有 host 能写那个戳。
+  面板的义务是**恢复没回来就说没回来**，且**「读不到」不得画成「空」**。
+  `src/client/surfaces.ts` 开机读一次 `/board/surfaces` 决定注册哪些面板，**读不到就什么都不收窄**。
 
 ### 设计系统层（成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
 
@@ -474,8 +480,11 @@ schema 就是给同一件事再加一个控件。
 - 模块：`tasks` · `task-demand` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` ·
   `automation` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）·
   `board-doc`/`host-sync` · `board-merge-core`（合并文法核，**两份文档共用一份**）· `items-doc`
-  （清单文档）· `item`（清单一行的模型）· `board-actions`（动作目录，界面与 AI 的唯一同步面，见
-  硬性规范 12）· `task-transitions`（语义层，界面与 AI 调同一套纯函数）· `colors`/`session-list`/
+  （清单文档，墓碑带载荷所以删掉的条目找得回）· `item`（清单一行的模型）· **`item-view`**
+  （**清单的全部推导：查询文法 / 分组 / 排序 / 行投影 / 三个日期的读法 / 停滞与豁免 / 要处理句子，
+  以及页面集 `ITEM_PAGES`**——**界面与模型读的是同一份**，`task-search.ts` 的 `matchItemQuery`
+  只是通向它的一道门）· `board-actions`（动作目录，界面与 AI 的唯一同步面，见硬性规范 12）·
+  `task-transitions`（语义层，界面与 AI 调同一套纯函数）· `colors`/`session-list`/
   `session-display`/`session-groups`/`comment-thread`/`question-rpc`/`store`。
 - **要决的门**在 `task-demand.ts`：三个子句一条推导，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**，
   抽屉的分类就是那两类（`notifications.ts`）。两处不要写错的地方在代码注释里：`openTask`
@@ -553,15 +562,26 @@ schema 就是给同一件事再加一个控件。
 
 ```sh
 pnpm install     # 依赖变化后
-pnpm build       # tsc -p tsconfig.build.json && tsdown → lib/index.js + lib/client.js
+pnpm build       # clean-lib + tsc -p tsconfig.build.json + tsdown → lib/index.js + lib/client.js
 pnpm typecheck   # tsc --noEmit
 pnpm test        # vitest run
 pnpm verify      # 静态门禁 + 客户端 bundle 冒烟（注册 id 与 factory 启动）
 pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执行一遍 handshake
 ```
 
+`lib/` 是**既跟踪又生成**的产物目录，而打包器写的是**带内容哈希**的 chunk 名：内容一变就多一个
+新文件、旧的从不删，于是每次构建都往 npm 里多塞一个没人加载的孤儿。`build` 因此先经
+`scripts/clean-lib.mjs` **清空 `lib/`**（该目录下每个文件都由 `pnpm build` 产生，没有手写文件）。
+
 生效规则：改 host 半区（src/index.ts、src/host/）需重启 `dsh web`；改 client 半区
 刷新页面即可。
+
+**看渲染结果**用 `node scripts/shot-panel.mjs`（开发工具，**不在 `files` 里、不进包**；用法见该
+文件头的 usage 段）。本机没跑 `pnpm run dev:web`，所以闭环是「改 → `pnpm build` → 刷新 → 截图」。
+零依赖：Node 内置 `WebSocket` 直连机器上已有的 Chromium，不碰 `dependencies`。`--eval` 在截图前
+跑一次 JS 并打印返回值，所以「点进某个面板」不用改脚本。`dsh web` 有认证：**先把启动时打印的那个
+带 token 的完整 URL 放进 `DSH_SHOT_URL`**（令牌不进 shell 历史，脚本也从不打印它）；没有就退回去
+读不带 token 的地址，脚本会**明确说被拒了**，不会假装成功、也不会写出一张看起来像排版坏了的图。
 
 ## 硬性规范
 

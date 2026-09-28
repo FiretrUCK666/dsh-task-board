@@ -146,6 +146,45 @@ export declare function sameItemsDocs(a: ItemsDoc, b: ItemsDoc): boolean;
  * read state joined — which for this document means the identity above.
  */
 export declare function applyItemsCommit(doc: ItemsDoc, commit: ItemsCommit, now: number): ItemsDoc;
+/**
+ * The rows a delete left behind, newest delete first.
+ *
+ * This is the ARCHIVE, and it is a read over tombstones rather than a second
+ * store: the text a removed row keeps lives in the tombstone that removed it,
+ * so the archive cannot fall out of step with the deletions the way a
+ * separate list would. A tombstone that carries no row contributes nothing —
+ * which is the honest answer for a delete that predates this rule or that the
+ * TTL has already pruned, and is why "可恢复" is a window with an end rather
+ * than a promise without one.
+ *
+ * Recoverable until {@link TOMBSTONE_TTL_MS} after the delete; past that the
+ * tombstone is pruned whole and the row is gone for good.
+ *
+ * @param doc - the authoritative checklist.
+ * @returns one row per tombstone that still holds one, newest delete first.
+ */
+export declare function deletedItemsOf(doc: ItemsDoc): ItemRecord[];
+/**
+ * The row to put back for a restore, or `undefined` when there is nothing to
+ * put back.
+ *
+ * RESTORING IS AN ORDINARY PUT, and the only thing this function has to do is
+ * re-stamp. A tombstone outranks the row it removed (its `at` is one
+ * millisecond above the row's own freshness), so handing the payload back
+ * un-stamped would be read as the stale copy it exists to suppress and the
+ * row would silently not come back. Pushing the stamp above the tombstone is
+ * the same shape as a concurrent revive, which the kernel already takes, so
+ * there is no restore path to get wrong: the caller sends this row as a claimed
+ * put and the ordinary chokepoint re-numbers it if the document has handed its
+ * number to somebody else in the meantime.
+ *
+ * @param doc - the authoritative checklist.
+ * @param id - the id to bring back.
+ * @param now - the clock the restored row is stamped with. It must be the
+ *   HOST's, since the tombstone it has to outrank is the host's.
+ * @returns the row to commit, or `undefined` when the id is not recoverable.
+ */
+export declare function restoredItemOf(doc: ItemsDoc, id: string, now: number): ItemRecord | undefined;
 /** Normalize an unknown persisted document: the medium's word is data, not
  *  truth. Junk degrades to the empty shape, rows go through the checklist's own
  *  grammar, and the short-number law runs here too — a file that was already

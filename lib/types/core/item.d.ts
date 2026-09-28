@@ -135,6 +135,65 @@ export declare function itemProgressOf(item: ItemRecord): ItemProgress | undefin
 export declare function itemStatusOf(item: ItemRecord, linkedRunning: boolean): ItemStatusView;
 /** The title a surface shows: the row's own, else the body's first line. */
 export declare function itemTitleOf(item: ItemRecord): string;
+/** Which pair of the three dates is out of order, and by how much. */
+export interface ItemDateConflict {
+    /** The field that must not be later than its neighbour. */
+    readonly field: 'startsAfter' | 'dueAt' | 'hardDueAt';
+    readonly value: number;
+    /** The date it may not exceed. */
+    readonly limit: number;
+}
+/**
+ * The three dates, checked against each other.
+ *
+ * The order is not a convention: `startsAfter` is when the work may begin, so a
+ * start date after the wanted-by date is a promise the row cannot keep, and
+ * `hardDueAt` is the one date that does not move, so a softer date past it is a
+ * promise the reader has already broken. A row holding an impossible pair
+ * renders as a schedule that cannot be believed, and nothing about it looks
+ * wrong on screen.
+ *
+ * The conflict is REPORTED, never repaired. Silently swapping or clamping the
+ * two would leave the reader's words changed with no note that they were, and a
+ * quietly edited date is worse than an obviously broken one — so the write path
+ * refuses and the surface says why.
+ * @param item - the row.
+ * @returns the first violated pair, or `undefined` when the three agree.
+ */
+export declare function itemDateConflict(item: ItemRecord): ItemDateConflict | undefined;
+/** What a caller supplies to mint a row: everything the caller decided. */
+export interface NewItemInput {
+    readonly title: string;
+    readonly body: string;
+    readonly notes: string;
+    readonly status: ItemStatus;
+    readonly priority: ItemPriority;
+    readonly steps?: readonly ItemStep[];
+    readonly tags?: readonly string[];
+    readonly startsAfter?: number;
+    readonly dueAt?: number;
+    readonly hardDueAt?: number;
+    readonly taskId?: string;
+}
+/**
+ * Mint a row, ready for the document to accept.
+ *
+ * ONE CONSTRUCTOR FOR BOTH WRITERS. A row used to be built twice — once by the
+ * interface, once by the model — and that is how two halves of one document
+ * drift into disagreeing about what a freshly written row looks like. Both go
+ * through this, so the fields that must always agree always do.
+ *
+ * The id and the ORIGIN are parameters, and neither is defaulted. The number is
+ * the document's to hand out, and the origin is the audit trail's handle which
+ * {@link ITEM_FIELDS} forbids anyone from rewriting — so both are facts the
+ * writer supplies rather than guesses this function would make on its behalf.
+ * @param input - what the writer decided.
+ * @param origin - who wrote it, and when.
+ * @param id - the identity the document will key on.
+ * @param now - the writing clock, stamped on both ends of the row.
+ * @returns a row carrying `ref: 0`, which means "not numbered yet".
+ */
+export declare function newItem(input: NewItemInput, origin: ItemOrigin, id: string, now: number): ItemRecord;
 /** Mint a fresh short number for a row the medium never carried one. */
 export type RefMinter = () => number;
 /**

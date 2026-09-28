@@ -9,7 +9,6 @@
 export const zh = {
   'entry.label': '任务看板',
   'entry.itemLabel': '任务清单',
-  'entry.opening': '正在打开任务看板…',
   'board.title': '任务看板',
   'board.close': '返回对话',
   'board.new': '新建任务',
@@ -499,8 +498,6 @@ export const zh = {
   'review.planAwaiting': '计划待确认',
   'review.planConfirm': '确认执行',
   'review.planDecline': '拒绝',
-  'review.interactionAmendPlaceholder': '写修改意见（可选）…',
-  'review.interactionAmendHint': '填了修改意见点「拒绝」= 以修订反馈提交（不选拒绝标签）；留空点「拒绝」= 直接拒绝',
   'review.questionIndex': '问题 {n} / {total}',
   'review.interactionTypePlaceholder': '输入答案…',
   'review.interactionNext': '下一题',
@@ -528,7 +525,6 @@ export const zh = {
   'review.todosPending': '待办 {n}',
   'review.goalActiveWith': '目标进行中',
   'review.goalActive': '目标进行中',
-  'review.goal': '目标',
   'review.goalPhaseActive': '进行中',
   'review.goalPhaseDisarmed': '未运行',
   'review.goalPhasePaused': '已暂停',
@@ -564,7 +560,6 @@ export const zh = {
   'card.newContent': '新',
   'card.newContentTitle': '有未查看的内容（新执行结果或新评论），点开查看',
   'card.commentQueueTitle': '已保存 {n} 条评论，等待注入（自动巡航开启且有空闲槽位时按顺序执行）',
-  'card.commentQueueDone': '已保存 {n} 条评论：任务已完成不会运行它们，移回「待办」后才会按顺序注入',
   'card.nextWaiting': '需你处理 · 点开前往会话',
   'card.nextWaitingMany': '{n} 个会话在等你 · 点开逐个处理',
   'card.nextRunning': 'Agent 工作中 · 无需操作',
@@ -626,11 +621,8 @@ export const zh = {
   'board.update.gitDirty': '工作区有未提交改动，更新前请先存档或提交。',
   'board.update.gitUpToDate': '本地已与远端同步。',
 
-  // ── 任务清单（右栏）────────────────────────────────────────────────────
+  // ── 任务清单（主舞台面板）──────────────────────────────────────────────
   'itemTab.title': '任务清单',
-  'itemTab.guideTitle': '打开任务清单',
-  'itemTab.guideDescription': '随手记下要做的，并在需要时交给看板执行。',
-  'itemTab.open': '任务清单',
   'item.loading': '正在准备清单…',
   'item.hostLost': '暂时读不到 host 上的清单，正在用本机的副本。',
   'item.syncing': '正在与 host 同步…',
@@ -643,13 +635,8 @@ export const zh = {
   'item.ask.said': '已经交给 {sessionId} 这个会话的模型，它会接着处理。',
   'item.ask.refused': '没能交给模型：{why}。这条还在清单里，没有丢。',
   'item.noMatch': '没有匹配的结果。清空搜索或换个筛选看看。',
-  'item.composeTitle': '记一条新的（回车即可）',
-  'item.composeAdd': '记下',
   'item.search': '搜索标题、正文、备注与标签',
   'item.steps': '{done}/{total}',
-  'item.due.overdue': '已过 {when}',
-  'item.due.upcoming': '{when} 前',
-  'item.remove': '删除这条',
   'item.density': '每行高度',
   'item.density.compact': '紧凑',
   'item.density.comfy': '宽松',
@@ -657,9 +644,14 @@ export const zh = {
   'item.group.open': '待办',
   'item.group.blocked': '受阻',
   'item.group.done': '已完成',
-  'item.status.open': '待办',
-  'item.status.blocked': '受阻',
-  'item.status.done': '已完成',
+  // The STORED status, as the row menu writes it. Two vocabularies on purpose:
+  // `item.group.*` names the column a row sits in, `item.status.*` names the
+  // value written to the document. They read as the same word because they are
+  // — but they are not the same key, and a filter written against one of them
+  // must not silently start matching the other.
+  'item.status.open': '标为待办',
+  'item.status.blocked': '标为受阻',
+  'item.status.done': '标为已完成',
   'item.status.derived': '「进行中」不是单独存的状态：它表示这条挂在一张正在跑的卡片上。存的值仍是「待办」。',
   'item.field.startsAfter': '最早开始',
   'item.field.dueAt': '截止',
@@ -670,8 +662,6 @@ export const zh = {
   'item.field.noCard': '不关联卡片',
   'item.field.linked': '已挂在「{title}」这张卡上',
   'item.field.cardGone': '它挂的那张卡已经不在了。',
-  'itemDrawer.close': '收起任务清单',
-  'itemDrawer.closeGlyph': '收起',
 
   // ── AI 动作在对话里的呈现 ───────────────────────────────────────────────
   'toolCard.rehearsed': '演练：{what}（未写入）',
@@ -708,13 +698,104 @@ export const zh = {
   'item.section.danger': '来源与危险区',
   'item.group.empty': '这一组还没有事项',
   'item.danger.hint': '删除后这一条仍可恢复。',
+
+  // 页面轨：轨上只有这三片，派生页不占轨。
+  'item.page.rail': '页面',
+  'item.page.inbox': '收件',
+  'item.page.list': '清单',
+  'item.page.schedule': '日程',
+  'item.page.inbox.aria': '收件：刚记下、还没给它结构的条目',
+  'item.page.list.aria': '清单：全部没做完的事',
+  'item.page.schedule.aria': '日程：按时间排的事',
+
+  // 要处理：每条一句话加一个按钮。没有按钮的数字不上面板。
+  'item.triage.title': '要处理',
+  'item.triage.nothing': '没有等你动手的事。',
+  'item.triage.behind': '{n} 项过了想要的日子',
+  'item.triage.stale': '{n} 项放着 {days} 天没动',
+  'item.triage.blocked': '{n} 项卡住了',
+  'item.triage.undated': '{n} 项没定日期',
+  'item.triage.open': '去看',
+
+  // 三个日期三种视觉。软期限逾期不是红；红只属于硬期限。
+  'item.due.behind': '落后 {days} 天',
+  'item.due.overdue': '超期 {days} 天',
+  'item.due.soon': '还剩 {days} 天',
+  'item.due.today': '就是今天',
+  'item.due.set': '{when}',
+  'item.startsAfter': '最早 {when}',
+  'item.dates.contradict': '{a} 晚于它该守的 {b}，这一条自己矛盾',
+  'item.ref.pending': '编号待定',
+  'item.stale': '放着 {days} 天',
+
+  // 行尾菜单。
+  'item.menu.more': '这一条能做的事',
+  'item.menu.expand': '展开详情',
+  'item.menu.collapse': '收起详情',
+  'item.menu.promote': '变成看板卡片',
+  'item.menu.delete': '删除这条',
+
+  // 快记：边打边把解析结果显示成 chip，误识别的词可点回普通文字。
+  'item.compose.title': '记一条新的，回车即存',
+  'item.compose.hint': '一行写完。#标签、!1 到 !4、@今天、@硬 9/30 会在记下的那一刻变成字段。',
+  'item.compose.add': '记下',
+  'item.token.tag': '标签',
+  'item.token.priority': '优先级',
+  'item.token.due': '截止',
+  'item.token.hard': '硬期限',
+  'item.token.earliest': '最早开始',
+  'item.token.step': '步骤',
+  'item.token.undo': '还原成普通文字',
+
+  // 议程的桶。
+  'item.bucket.hardOverdue': '超期',
+  'item.bucket.behind': '落后计划',
+  'item.bucket.today': '今天',
+  'item.bucket.tomorrow': '明天',
+  'item.bucket.week': '本周稍后',
+  'item.bucket.later': '以后',
+  'item.bucket.undated': '没有日期',
+  'item.bucket.gated': '还没到开始时间',
+  'item.agenda.emptyDay': '这一天没有排事。',
+  'item.gated.hint': '这些是门，不是到期日。到了该开始的那天它们自己会进来。',
+  'item.noDate.hint': '没定日期不等于今天。拖到某一天，或者就让它待着。',
+
+  // 详情侧栏在「还没选中任何一条」时的内容。
+  'item.detail.emptyTitle': '还没选中任何一条',
+  'item.detail.emptyHint': '点左边任意一行，它的全部字段都在这里。',
+  'item.detail.emptyCounts': '一共这些',
+  'item.detail.emptyRecent': '最近动过',
+  'item.detail.emptyNone': '还没有最近动过的。',
+
+  'item.inbox.note': '收件只放还没分流的想法。给它一个优先级、一个日期、一个标签或一张卡，它就自己离开了。',
+
+  'item.filter.label': '筛选',
+  'item.filter.clear': '清空筛选',
+  'item.sort.label': '排序',
+  'item.sort.due': '按日期',
+  'item.sort.priority': '按优先级',
+  'item.sort.recent': '按最近改动',
+  'item.sort.ref': '按编号',
+  'item.state.clearFilter': '清空筛选',
+
+  // 归档：不是页面轨上的一格，是点进去才出现的一整个页面。删除留 30 天，
+  // 找不回来的时候读者必须知道期限，而不是发现「恢复」按钮不见了。
+  'item.archive.window': '删除后 30 天内可以找回来。',
+  'item.archive.title': '已删除',
+  'item.archive.empty': '没有删掉过任何一条。',
+  'item.archive.open': '看看',
+  'item.archive.close': '回到清单',
+  'item.archive.restore': '找回这一条',
+  'item.archive.restoring': '正在找回…',
+  'item.archive.restored': '#{ref} 找回来了。',
+  'item.archive.refused': '没能找回 #${ref}：{why}。',
+  'item.archive.unreadable': '读不到主机上的删除记录。',
 } satisfies Record<string, string>
 
 /** en dictionary, complete against the zh key set. */
 export const en: Record<keyof typeof zh, string> = {
   'entry.label': 'Task Board',
   'entry.itemLabel': 'Task List',
-  'entry.opening': 'Opening the task board…',
   'board.title': 'Task Board',
   'board.close': 'Back to chat',
   'board.new': 'New Task',
@@ -1190,8 +1271,6 @@ export const en: Record<keyof typeof zh, string> = {
   'review.planAwaiting': 'Plan awaiting confirmation',
   'review.planConfirm': 'Approve',
   'review.planDecline': 'Decline',
-  'review.interactionAmendPlaceholder': 'Amendment (optional)…',
-  'review.interactionAmendHint': 'Decline with an amendment = submit it as revision feedback (no decline option); decline empty = refuse outright',
   'review.questionIndex': 'Question {n} / {total}',
   'review.interactionTypePlaceholder': 'Type an answer…',
   'review.interactionNext': 'Next',
@@ -1219,7 +1298,6 @@ export const en: Record<keyof typeof zh, string> = {
   'review.todosPending': '{n} pending',
   'review.goalActiveWith': 'Goal running',
   'review.goalActive': 'Goal running',
-  'review.goal': 'Goal',
   'review.goalPhaseActive': 'Ongoing',
   'review.goalPhaseDisarmed': 'Inactive',
   'review.goalPhasePaused': 'Paused',
@@ -1255,7 +1333,6 @@ export const en: Record<keyof typeof zh, string> = {
   'card.newContent': 'New',
   'card.newContentTitle': 'Unviewed content (new run result or new comments) — open to review',
   'card.commentQueueTitle': '{n} saved comments waiting to be injected (they run in order once auto cruise is on and a slot is free)',
-  'card.commentQueueDone': '{n} saved comments: the task is done so they will not run — move the task back to To Do to inject them in order',
   'card.nextWaiting': 'Needs you · open to handle',
   'card.nextWaitingMany': '{n} sessions need you · open to handle them one by one',
   'card.nextRunning': 'Agent working · nothing to do',
@@ -1307,9 +1384,6 @@ export const en: Record<keyof typeof zh, string> = {
 
   // ── Task list (right sidebar) ─────────────────────────────────────────
   'itemTab.title': 'Task list',
-  'itemTab.guideTitle': 'Open the task list',
-  'itemTab.guideDescription': 'Jot down what needs doing, and hand it to the board when it is time.',
-  'itemTab.open': 'Task list',
   'item.loading': 'Preparing the list…',
   'item.hostLost': 'Cannot reach the host copy of the list right now; showing this device’s copy.',
   'item.syncing': 'Syncing with the host…',
@@ -1322,13 +1396,8 @@ export const en: Record<keyof typeof zh, string> = {
   'item.ask.said': 'Handed to the model in {sessionId}; it takes it from here.',
   'item.ask.refused': 'Could not reach a model: {why}. The item is still here; nothing was lost.',
   'item.noMatch': 'Nothing matches. Clear the search or pick another filter.',
-  'item.composeTitle': 'Note something new (Enter to save)',
-  'item.composeAdd': 'Add',
   'item.search': 'Search titles, bodies, notes and tags',
   'item.steps': '{done}/{total}',
-  'item.due.overdue': 'overdue {when}',
-  'item.due.upcoming': 'by {when}',
-  'item.remove': 'Remove this',
   'item.density': 'Row height',
   'item.density.compact': 'Compact',
   'item.density.comfy': 'Roomy',
@@ -1336,9 +1405,10 @@ export const en: Record<keyof typeof zh, string> = {
   'item.group.open': 'To do',
   'item.group.blocked': 'Blocked',
   'item.group.done': 'Done',
-  'item.status.open': 'To do',
-  'item.status.blocked': 'Blocked',
-  'item.status.done': 'Done',
+  // The stored status, as the row menu writes it — see the zh note.
+  'item.status.open': 'Mark to do',
+  'item.status.blocked': 'Mark blocked',
+  'item.status.done': 'Mark done',
   'item.status.derived': '“In progress” is not a stored state: it means this note hangs off a card that is running. What is stored is still “To do”.',
   'item.field.startsAfter': 'Not before',
   'item.field.dueAt': 'Wanted by',
@@ -1349,8 +1419,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.noCard': 'Not linked',
   'item.field.linked': 'Linked to “{title}”',
   'item.field.cardGone': 'The card it hung off is gone.',
-  'itemDrawer.close': 'Close the task list',
-  'itemDrawer.closeGlyph': 'Close',
 
   // ── How the model's work reads in the conversation ─────────────────────
   'toolCard.rehearsed': 'Rehearsal: {what} (not written)',
@@ -1387,6 +1455,103 @@ export const en: Record<keyof typeof zh, string> = {
   'item.section.danger': 'Origin and danger zone',
   'item.group.empty': 'Nothing in this group yet',
   'item.danger.hint': 'Removed items stay recoverable.',
+
+  // The page rail. Only these three are destinations; a derived view is a page
+  // you arrive at, not a tab the rail grows.
+  'item.page.rail': 'Page',
+  'item.page.inbox': 'Inbox',
+  'item.page.list': 'List',
+  'item.page.schedule': 'Agenda',
+  'item.page.inbox.aria': 'Inbox: notes you just wrote, not yet given any structure',
+  'item.page.list.aria': 'List: everything not finished',
+  'item.page.schedule.aria': 'Agenda: the same work, by date',
+
+  // What needs a decision. One sentence and one button each — a number with no
+  // button is a scoreboard, not a to-do.
+  'item.triage.title': 'Needs you',
+  'item.triage.nothing': 'Nothing is waiting on you.',
+  'item.triage.behind': '{n} past the day you wanted them by',
+  'item.triage.stale': '{n} untouched for {days} days',
+  'item.triage.blocked': '{n} blocked',
+  'item.triage.undated': '{n} with no date',
+  'item.triage.open': 'Look',
+
+  // Three dates, three readings. A missed wanted-by date is NOT an alarm: red
+  // belongs to the hard deadline alone, and saying so is the whole point.
+  'item.due.behind': '{days}d behind plan',
+  'item.due.overdue': '{days}d past the hard date',
+  'item.due.soon': '{days}d left',
+  'item.due.today': 'today',
+  'item.due.set': '{when}',
+  'item.startsAfter': 'from {when}',
+  'item.dates.contradict': '{a} is later than the {b} it has to keep, so this row contradicts itself',
+  'item.ref.pending': 'number pending',
+  'item.stale': 'untouched {days}d',
+
+  // The row-end menu.
+  'item.menu.more': 'What this row can do',
+  'item.menu.expand': 'Expand',
+  'item.menu.collapse': 'Collapse',
+  'item.menu.promote': 'Make it a board card',
+  'item.menu.delete': 'Remove',
+
+  // Quick capture. The parsed result is shown as it is typed, and any word it
+  // swallowed can be clicked back into plain text.
+  'item.compose.title': 'Note something new — Enter saves',
+  'item.compose.hint': 'One line. #tag, !1 to !4, @today and @hard 9/30 turn into fields the moment you save.',
+  'item.compose.add': 'Save',
+  'item.token.tag': 'tag',
+  'item.token.priority': 'priority',
+  'item.token.due': 'wanted by',
+  'item.token.hard': 'hard deadline',
+  'item.token.earliest': 'not before',
+  'item.token.step': 'step',
+  'item.token.undo': 'turn back into plain text',
+
+  // The agenda's buckets.
+  'item.bucket.hardOverdue': 'Past the hard date',
+  'item.bucket.behind': 'Behind plan',
+  'item.bucket.today': 'Today',
+  'item.bucket.tomorrow': 'Tomorrow',
+  'item.bucket.week': 'Later this week',
+  'item.bucket.later': 'Further out',
+  'item.bucket.undated': 'No date',
+  'item.bucket.gated': 'Not startable yet',
+  'item.agenda.emptyDay': 'Nothing scheduled for this day.',
+  'item.gated.hint': 'These are gates, not due dates. Each one comes in on the day it opens.',
+  'item.noDate.hint': 'No date does not mean today. Move one onto a day, or leave it where it is.',
+
+  // What the detail pane holds before any row is picked.
+  'item.detail.emptyTitle': 'Nothing picked yet',
+  'item.detail.emptyHint': 'Pick any row and all of its fields are here.',
+  'item.detail.emptyCounts': 'All of it',
+  'item.detail.emptyRecent': 'Recently touched',
+  'item.detail.emptyNone': 'Nothing has been touched yet.',
+
+  'item.inbox.note': 'The inbox holds thoughts that have not been filed yet. Give one a priority, a date, a tag or a card and it leaves on its own.',
+
+  'item.filter.label': 'Filter',
+  'item.filter.clear': 'Clear the filter',
+  'item.sort.label': 'Order',
+  'item.sort.due': 'By date',
+  'item.sort.priority': 'By priority',
+  'item.sort.recent': 'By last change',
+  'item.sort.ref': 'By number',
+  'item.state.clearFilter': 'Clear the filter',
+
+  // The archive. Not a tab on the rail: a page the reader arrives at. The
+  // thirty-day window is stated rather than implied, because a restore button
+  // that has quietly stopped working is worse than one that never appeared.
+  'item.archive.window': 'You can bring one back for 30 days after removing it.',
+  'item.archive.title': 'Removed',
+  'item.archive.empty': 'You have not removed anything.',
+  'item.archive.open': 'Look',
+  'item.archive.close': 'Back to the list',
+  'item.archive.restore': 'Bring this one back',
+  'item.archive.restoring': 'Bringing it back…',
+  'item.archive.restored': '#{ref} is back.',
+  'item.archive.refused': 'Could not bring #{ref} back: {why}.',
+  'item.archive.unreadable': 'Cannot reach the host record of what you removed.',
 }
 
 /** The dictionary key union. */

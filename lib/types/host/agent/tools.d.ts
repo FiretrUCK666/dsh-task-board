@@ -164,6 +164,16 @@ export interface ExecuteRequest {
         payload?: unknown;
     }[];
     readonly dry_run?: boolean;
+    /**
+     * The caller's promise that a retried batch is the SAME batch.
+     *
+     * A model that retries after a timeout cannot tell "my write did not land"
+     * from "my write landed and the answer was lost", so it retries — and without
+     * a key the retry is a second write. This is what makes the retry safe, and
+     * it is why the field exists at all: it was declared, never read, and a
+     * promise nobody keeps is worse than no promise, because the caller is told
+     * it is protected.
+     */
     readonly idempotencyKey?: string;
 }
 export interface ExecuteResult {
@@ -187,7 +197,16 @@ export interface ExecuteResult {
     /** Rows this op handed to the engine while no replica held the seat. They
      *  are ACCEPTED, not done — a card that renders them as "已执行" is lying. */
     readonly enginePending: readonly string[];
+    /**
+     * Set when this answer is an earlier one's, replayed because the caller
+     * retried with the same key. Nothing ran this time — and saying so is the
+     * whole point, because a retry that silently re-executed looks exactly like
+     * one that did not.
+     */
+    readonly replayed?: true;
 }
+/** Forget every remembered key. For tests, and for nothing else. */
+export declare function clearIdempotentReplies(): void;
 export declare function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: ToolRunContext): Promise<ExecuteResult>;
 /** Build the three tool definitions. Registration is the caller's job, so this
  *  stays a pure function of the catalog and the host faces. */

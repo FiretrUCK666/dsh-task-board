@@ -21,8 +21,8 @@
  *     core function that is really exported, and a function that really exists
  *     must NOT be reported — otherwise the cheapest fix for a finding is to
  *     delete the rule, which is how a gate dies.
- *  3. CATALOG COHERENCE: verbs inside the twelve, surfaces inside the three,
- *     no id written twice, no parameter claiming both `optional` and
+ *  3. CATALOG COHERENCE: verbs inside the declared set, surfaces inside the
+ *     three, no id written twice, no parameter claiming both `optional` and
  *     `requiredWhen`.
  *  4. DOC/CODE AGREEMENT: if AGENTS.md tells an AI to put new actions in the
  *     catalog and the catalog is gone, that is a red build — the rule outlived
@@ -49,13 +49,13 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-/** The twelve verbs, restated as DATA so this gate does not import the TS
+/** The declared verbs, restated as DATA so this gate does not import the TS
  *  module (node cannot load TypeScript) — and so a mismatch is a finding rather
  *  than a crash. The script also compares the catalog's own BOARD_VERBS against
  *  this list, so the two copies cannot quietly disagree. */
 const CONTRACT_VERBS = [
   'create', 'update', 'move', 'delete', 'run', 'speak', 'bind',
-  'automate', 'cruise', 'ack', 'navigate', 'query',
+  'automate', 'cruise', 'ack', 'navigate', 'restore', 'query',
 ]
 
 /** Who can reach an action. Three states, exhaustively (board-actions.ts). */
@@ -626,7 +626,7 @@ export function actionCoverageFindings(input) {
 
   // 3. catalog coherence
   for (const verb of catalog.verbs) {
-    if (!CONTRACT_VERBS.includes(verb)) fail(`BOARD_VERBS lists "${verb}", which is outside the twelve the contract declares`)
+    if (!CONTRACT_VERBS.includes(verb)) fail(`BOARD_VERBS lists "${verb}", which is outside the declared verbs`)
   }
   if (catalog.verbs.length !== CONTRACT_VERBS.length) {
     fail(`BOARD_VERBS has ${catalog.verbs.length} entries; the contract has ${CONTRACT_VERBS.length} — the two lists must be the same list`)
@@ -636,7 +636,7 @@ export function actionCoverageFindings(input) {
     if (seen.has(action.id)) fail(`action id "${action.id}" is written more than once in ACTIONS — an object literal silently keeps the last one, so a duplicated id is invisible to the compiler`)
     seen.add(action.id)
     if (action.verb === undefined) fail(`${action.id}: no verb could be read — the catalog's shape moved under this parser`)
-    else if (!CONTRACT_VERBS.includes(action.verb)) fail(`${action.id}: verb "${action.verb}" is not one of the twelve`)
+    else if (!CONTRACT_VERBS.includes(action.verb)) fail(`${action.id}: verb "${action.verb}" is not one of the declared verbs`)
     if (action.surface === undefined) fail(`${action.id}: no surface could be read — the catalog's shape moved under this parser`)
     else if (!CONTRACT_SURFACES.includes(action.surface)) fail(`${action.id}: surface "${action.surface}" is not one of ${CONTRACT_SURFACES.join(' / ')}`)
     // 2. semantic honesty, and the reverse direction is the point of the pair

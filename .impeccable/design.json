@@ -512,6 +512,16 @@
         "note": "板的最紧一档，用于板头最后一层让位；同时是面板内缩后的 600px 地板对应的板宽。"
       },
       {
+        "name": "item-narrow",
+        "value": "@container dsh-tb-item (max-width: 719px)",
+        "note": "清单工作台的窄档（手机）：单列到底、详情就地展开在行里、字段网格与日网格各折成一列、内衬收到 12px。字不缩、标签不藏、控件不减——省地方靠内衬与换行换列。"
+      },
+      {
+        "name": "item-wide",
+        "value": "@container dsh-tb-item (min-width: 720px) 与 (min-width: 1080px)",
+        "note": "清单工作台的另两档：720px 起内衬放宽；1080px 起双栏（列表轨封顶 720px、工作台封顶 1600px 居中、详情侧栏吃剩余宽度）。中间 720-1079 那一档**故意仍是单栏**——720 的列表轨加一条读得动的侧栏至少要 1080，凑不够时两条半栏比一条好列更难读。"
+      },
+      {
         "name": "hover-capable",
         "value": "@media (hover: hover)",
         "note": "区分能否悬停（触屏没有 hover），不用于布局。"
@@ -805,6 +815,62 @@
       "description": "系统中两个常驻动画之一（另一个是运行转圈），且它本身就是消息（在跑 / 未读）。reduced-motion 下减速收幅，绝不置零——置零会把「活着」读成「卡住」。",
       "html": "<article class=\"ds-card ds-card--live\"><span class=\"ds-card-dot\"></span><h3 class=\"ds-card-title\">正在执行</h3></article>",
       "css": "@keyframes ds-breath-ring{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--dsw-alias-state-warn-primary) 22%,transparent)}}.ds-card--live{animation:ds-breath-ring 2.6s ease-in-out infinite}@media (prefers-reduced-motion:reduce){@keyframes ds-breath-ring{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-state-warn-primary) 22%,transparent)}}.ds-card--live{animation-duration:5s}}"
+    },
+    {
+      "name": "页面轨 Page Rail（清单工作台的导航签名件）",
+      "kind": "nav",
+      "refersTo": "column-tab",
+      "description": "恰好三个页签：收件 / 清单 / 日程。派生页（标签、停滞、归档、筛选结果）**不占轨**——它们是某一页里问了一个问题得到的答案，点进去之后是一整个页面（带回退控件）。形状照抄列导航标签：药丸、安静填充、选中用强调色 10% 洗 + 描边，outline 只在键盘焦点。自由横向滑动，**刻意无 scroll-snap**。对应类名 itemPageRail / itemPageTab / itemPageTabActive。",
+      "html": "<div class=\"ds-item-rail\" role=\"tablist\" aria-label=\"任务清单\"><button class=\"ds-item-tab\" role=\"tab\" aria-selected=\"true\">收件</button><button class=\"ds-item-tab\" role=\"tab\" aria-selected=\"false\">清单</button><button class=\"ds-item-tab\" role=\"tab\" aria-selected=\"false\">日程</button></div>",
+      "css": ".ds-item-rail{display:flex;align-items:center;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none}.ds-item-tab{display:inline-flex;align-items:center;gap:6px;flex:none;box-sizing:border-box;height:28px;padding:0 12px;font-family:inherit;font-size:12px;font-weight:500;line-height:1;white-space:nowrap;color:var(--dsw-alias-label-secondary);background:var(--dsw-specific-input-major);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;cursor:pointer;transition:color 160ms ease,border-color 160ms ease,background 160ms ease}.ds-item-tab[aria-selected=true]{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent)}.ds-item-tab:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:1px}"
+    },
+    {
+      "name": "工作台 Workbench（两栏具名轨道）",
+      "kind": "custom",
+      "refersTo": "column",
+      "description": "清单工作台的**根几何**：网格，永远不是滚动体。两条轨都具名（list / detail），**两个档都把两个名字写全**——具名区没声明时 grid-area 会退化成第 1 行，两栏就叠在一起。这层存在的唯一理由是给详情一个该待的地方：没有它时详情被定位到页面上，正好压住搜索框。位置是结构决定的，不是定位决定的。单列档 itemScroll 是整页唯一滚动体；宽屏档它停止滚动变成列表轨，两个滚动体变成工作台的两个**直接子级**（兄弟，不是父子）。对应类名 itemWorkbench / itemListPane / itemScroll。",
+      "html": "<div class=\"ds-item-workbench\"><div class=\"ds-item-list\">…</div><aside class=\"ds-item-detail-pane\">…</aside></div>",
+      "css": ".ds-item-workbench{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:'list' 'detail';grid-template-rows:minmax(0,1fr) auto;flex:1 1 auto;min-height:0;min-width:0;padding:0 24px 24px}.ds-item-list{grid-area:list;display:flex;flex-direction:column;min-height:0;min-width:0}.ds-item-list>.ds-item-scroll{flex:1 1 auto;min-height:0;overflow-y:auto}@container dsh-tb-item (min-width:1080px){.ds-item-workbench{grid-template-columns:minmax(0,720px) minmax(0,1fr);grid-template-areas:'list detail';grid-template-rows:minmax(0,1fr);gap:16px;max-width:1600px;margin-inline:auto;width:100%}.ds-item-list{overflow-y:auto}.ds-item-list>.ds-item-scroll{overflow-y:visible}}"
+    },
+    {
+      "name": "清单行 Item Row（两行阅读位）",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "具名网格：状态点与编号落在**跨两行**的区域上，于是标题行与事实行共用同一条由网格算出来的左沿。此前标题与组头计数互相压字、组头叠在页面标题上，正是两行各自定位的结果——把对齐交给网格，这类重叠在机制上不可能再发生。标题单行省略（截断只发生在文字子槽），事实行可换行、可包标签。行在静止时就要读得懂：状态、编号、标题、到期、步数都不藏在悬停或第二次点击后面。密度是令牌（--item-row-pad / --item-row-gap）且挂在**行盒**上。动作簇是按钮的 flex 兄弟，**不用 margin-left:auto**。对应类名 itemRow / itemRowMain / itemStateMark / itemRef / itemTitleText / itemRowMeta。",
+      "html": "<li class=\"ds-item-row\" data-status=\"inProgress\" data-density=\"comfy\"><button class=\"ds-item-row-main\" aria-expanded=\"false\"><span class=\"ds-item-mark\"></span><span class=\"ds-item-ref\">#12</span><span class=\"ds-item-title\">接入新的模型供应商</span><span class=\"ds-item-meta\"><span class=\"ds-item-due\" data-tone=\"soon\">还剩 3 天</span><span class=\"ds-item-steps\">3/11 步</span></span></button></li>",
+      "css": ".ds-item-row{position:relative;display:flex;align-items:flex-start;gap:6px;min-width:0;padding:10px 0;border-bottom:1px solid var(--dsw-alias-border-l1)}.ds-item-row-main{box-sizing:border-box;display:grid;flex:1 1 auto;min-width:0;grid-template-columns:auto auto minmax(0,1fr);grid-template-areas:'mark ref title' 'mark ref meta';align-items:center;column-gap:8px;row-gap:4px;padding:0;font-family:inherit;color:inherit;background:none;border:0;border-radius:14px;cursor:pointer;text-align:start}.ds-item-mark{grid-area:mark;width:6px;height:6px;background:var(--dsw-alias-label-tertiary);border-radius:50%}.ds-item-row[data-status=inProgress] .ds-item-mark{background:var(--dsw-alias-state-warn-primary)}.ds-item-ref{grid-area:ref;font-size:11px;line-height:20px;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;white-space:nowrap}.ds-item-title{grid-area:title;min-width:0;font-size:14px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-item-meta{grid-area:meta;display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}.ds-item-row-main:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}"
+    },
+    {
+      "name": "三态到期 Due Tone（三个日期三种视觉）",
+      "kind": "custom",
+      "refersTo": "chip-filled",
+      "description": "判定在模型里，样式里只有一个 data-tone。软期限逾期是**中性色 +「落后 N 天」**，不是红——那是关于一个计划的实话，不是紧急事件，画成红就是软期限悄悄变成硬期限而没有人做过那个决定；红只属于硬期限（「超期 N 天」），琥珀只属于「七天内到硬期限」。最早开始是**门不是期限**，永远第三档墨。精确天数**直接印在行上**，不许只挂 title=——触屏没有悬停，只挂在 title= 上的事实，手机是没有的。对应类名 itemDue / itemStartsAfter。",
+      "html": "<span class=\"ds-item-due\" data-tone=\"soft-late\">落后 2 天</span><span class=\"ds-item-due\" data-tone=\"over\">超期 5 天</span><span class=\"ds-item-due\" data-tone=\"soon\">还剩 3 天</span>",
+      "css": ".ds-item-due{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}.ds-item-due[data-tone=soft-late]{color:var(--dsw-alias-label-secondary);font-weight:500}.ds-item-due[data-tone=soon]{color:var(--dsw-alias-state-warn-primary);font-weight:500}.ds-item-due[data-tone=over]{color:var(--dsw-alias-state-error-primary);font-weight:500}"
+    },
+    {
+      "name": "详情侧栏 Detail Pane（同一个组件两处摆放）",
+      "kind": "custom",
+      "refersTo": "dialog",
+      "description": "五节（标题正文、上下文备注、计划期限、关联、来源与危险区）在就地展开与侧栏里是**同一份分区与同一套间距**，只有盒子不同，而且两边**都不自己写宽度**：就地那份吃行的宽度，侧栏那份吃轨道给的宽度。宽屏时行内的就地展开不再渲染——那不是为窄屏藏控件，是同一份内容不画两遍。**一律不用 Dialog**（boardBox() 取的是第一个板盒，弹层会锚到看板上去）：行菜单是菜单（一个 data-placement 决定向上还是向下，不长第二套菜单），删除确认就地替换按钮。对应类名 itemDetail / itemDetailPane / itemDetailHead / itemDetailBody / itemRowMenu / itemDeleteConfirm。",
+      "html": "<aside class=\"ds-item-pane\"><header class=\"ds-item-pane-head\"><h2>接入新的模型供应商</h2><button class=\"ds-btn-ghost\">返回</button></header><div class=\"ds-item-pane-body\"><section class=\"ds-item-section\"><h3>标题与正文</h3>…</section></div></aside>",
+      "css": ".ds-item-pane{grid-area:detail;display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:20px;overflow:hidden}.ds-item-pane-head{display:flex;align-items:center;gap:8px;flex:none;min-width:0;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l1)}.ds-item-pane-body{display:flex;flex-direction:column;gap:12px;flex:1 1 auto;min-height:0;min-width:0;padding:12px;overflow-y:auto}.ds-item-section{display:flex;flex-direction:column;gap:8px;min-width:0}.ds-item-section h3{margin:0;font-size:12px;font-weight:500;line-height:18px;letter-spacing:.02em;color:var(--dsw-alias-label-tertiary)}"
+    },
+    {
+      "name": "议程日 Agenda Day（议程优先）",
+      "kind": "custom",
+      "refersTo": "column",
+      "description": "日程是**序列**不是分桶，形态是「日 → 该日的行」，行是平的，日标签吸顶。**最早开始未到的不进日程**：它是一道门不是一个到期日，混进序列等于声称今天该动它——这类行收在页尾的折叠区并写清为什么没排进来；完全没有日期的进另一个托盘，同样写清「不是今天」。三/七天网格是**同一批行的另一种分组**，不是第二套组件：桌面七天七列，手机一天一块。对应类名 itemAgenda / itemAgendaDay / itemAgendaDayLabel / itemAgendaList / itemGatedFold / itemNoDateTray / itemDayGrid。",
+      "html": "<section class=\"ds-item-agenda-day\"><h3 class=\"ds-item-agenda-label\">今天 · 3 条</h3><ul class=\"ds-item-agenda-list\"><li class=\"ds-item-row\">…</li></ul></section><div class=\"ds-item-tray\"><span class=\"ds-item-tray-label\">没有日期 · 2 条</span></div>",
+      "css": ".ds-item-agenda-day{display:flex;flex-direction:column;gap:4px;padding-block:8px;min-width:0}.ds-item-agenda-label{position:sticky;top:0;z-index:1;display:flex;align-items:baseline;gap:8px;margin:0;padding:0 0 6px;font-size:13px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}.ds-item-agenda-list{display:flex;flex-direction:column;gap:2px;min-width:0}.ds-item-tray{display:flex;flex-direction:column;gap:2px;min-width:0;margin-block-start:6px;padding:8px 10px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:14px}.ds-item-tray-label{font-size:11px;line-height:18px;letter-spacing:.02em;color:var(--dsw-alias-label-tertiary)}"
+    },
+    {
+      "name": "未选中 Nothing Selected（一个被设计过的空态）",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "「还没选中任何一条」不是留白，是**一个被设计过的状态**：分组条数 2×2 + 最近动过的 5 条 + 一句提示。2×2 在任何宽度上都是 2×2——390px 装得下，而且 2×2 读作一张**对照表**，响应式的 1×4 会读作一串列表，正好把这张表存在的意义丢掉。侧栏空着而读者在等一个答案，留白读起来就是「没加载出来」。四种读法（读中 / 失败 / 空 / 能力缺失）是四段不同分支而不是一个错误位加一句文案。对应类名 itemDetailEmpty / itemEmptyCounts / itemEmptyRecent / itemState。",
+      "html": "<div class=\"ds-item-empty\"><div class=\"ds-item-empty-counts\"><div class=\"ds-item-empty-count\"><span class=\"ds-item-empty-value\">8</span><span class=\"ds-item-empty-label\">待办</span></div><div class=\"ds-item-empty-count\"><span class=\"ds-item-empty-value\">3</span><span class=\"ds-item-empty-label\">进行中</span></div></div><p class=\"ds-item-empty-hint\">点左边任意一条，这边就是它的全部。</p></div>",
+      "css": ".ds-item-empty{display:flex;flex-direction:column;gap:16px;min-width:0;padding:20px 16px}.ds-item-empty-counts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ds-item-empty-count{display:flex;flex-direction:column;gap:2px;min-width:0;padding:10px 12px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:14px}.ds-item-empty-value{font-size:16px;font-weight:600;line-height:24px;color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}.ds-item-empty-label{font-size:11px;line-height:18px;color:var(--dsw-alias-label-tertiary);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-item-empty-hint{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary)}"
     }
   ],
   "narrative": {
@@ -816,7 +882,10 @@
       "全药丸形状语言：按钮、标签页、chip 一律 999px；只有卡片与面板走圆角阶梯",
       "常驻动效只有状态呼吸与运行转圈，两者都是消息而非装饰",
       "响应式参照的是板自身宽度（容器查询），不是窗口宽度",
-      "深度靠不透明分层而非模糊：画布可透，内层一律不透明"
+      "深度靠不透明分层而非模糊：画布可透，内层一律不透明",
+      "清单工作台是页面不是列：三个页面各有一个主形态，页面轨只放这三个，派生页不占轨",
+      "对齐与位置交给具名网格与轨道，不交给定位——两栏具名区在两个档里都写全，具名区没声明时会退化成第 1 行",
+      "三个日期是三种视觉：软期限逾期是中性色不是红，红只属于硬期限，精确天数直接印在行上"
     ],
     "rules": [
       {
@@ -878,7 +947,8 @@
       "Do 用派生偏移对齐（`calc(var(--a) + var(--b))`），让「上面有空隙下面紧贴」这类不一致在机制上不可能发生。",
       "Do 给每个控件可 Tab 到的焦点态；Dialog 只留一个 Escape 出口。",
       "Do 在 `prefers-reduced-motion` 下**削弱**状态呼吸（降速 2.6s 到 5s，收幅 3px 到 2px），绝不归零——它是消息，不是装饰。",
-      "Do 让文字永远留在盒内：裁剪只发生在「文字子槽」里，`overflow: hidden` 是底线。"
+      "Do 让文字永远留在盒内：裁剪只发生在「文字子槽」里，`overflow: hidden` 是底线。",
+      "Do 让清单工作台在宽屏进侧栏、窄屏就地展开（同一个组件两处摆放），让每一行在静止时就读得懂，并让每一种读法说清是哪一种。位置交给具名网格与轨道，不交给定位。"
     ],
     "donts": [
       "Don't 写颜色字面量。没有 hex、没有 `rgb()`、没有新造近似色；`pnpm verify` 会拦。",
@@ -892,7 +962,9 @@
       "Don't 把状态指示器（呼吸光环、运行转圈）当作可省略的装饰去掉——它们是界面在说话，去掉等于让界面沉默。",
       "Don't 为挂载另起一套动效名。入场只有 `dshTbBoardIn`（板头/列轨/新卡同语法）、`dshTbDialogIn`（浮层景深）、`dshTbFadeIn`（纯淡入）三套；交错延迟一律不用——新卡的到达感来自结构印记（`data-fresh`），不来自排队。",
       "Don't 在同一个区里放第二个滚动体。每区至多一个，父子各自滚动会造成互相遮盖。",
-      "Don't 让卡片或面板的内容溢出圆角盒。`overflow: hidden` 是这个系统唯一的通用防穿模底线。"
+      "Don't 让卡片或面板的内容溢出圆角盒。`overflow: hidden` 是这个系统唯一的通用防穿模底线。",
+      "Don't 在清单工作台里用 Dialog，也不要用浮动层去盖住页头的搜索框——详情的位置由工作台的具名轨道决定，不由定位决定。也不要把「读不到 host」画成空清单，也不要把软期限逾期画成红。",
+      "Don't 给派生页（标签、停滞、归档、筛选结果）在页面轨上加页签。它们点进去之后是一整个页面；一条每问一次问题就长出一页的轨，从地图变成了日志。"
     ]
   }
 }
