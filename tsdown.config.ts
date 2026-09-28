@@ -24,7 +24,22 @@ import { clientBundle } from './shared/tsdown.client.ts'
 /** Package name; must equal package.json `name` and the cordis.patch.yml row `name`. */
 const PACKAGE_NAME = '@firetruck666/dsh-task-board'
 
-export default clientBundle(PACKAGE_NAME, ['src/index.ts', 'src/invariant.ts'], {
+/**
+ * The four host-side entries, one per plugin-page switch.
+ *
+ * `src/index.ts` is the package row (it carries the browser artifact too);
+ * the other three are the modules whose only job is to announce that their
+ * surface is switched on. A switch that is not a module of its own cannot be
+ * turned off by the plugin page at all, so this list and `cordis.patch.yml`'s
+ * rows are the same list written twice — the gate checks they agree.
+ */
+export default clientBundle(PACKAGE_NAME, [
+  'src/index.ts',
+  'src/invariant.ts',
+  'src/host-board.ts',
+  'src/host-items.ts',
+  'src/host-agent.ts',
+], {
   // `dsh-llm` is external, not inlined: the slash command builds a real
   // UserMessage, and a second inlined copy of that model would be a DIFFERENT
   // type from the host's — the harness's own `instanceof` checks would never

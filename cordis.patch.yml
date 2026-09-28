@@ -1,7 +1,21 @@
-# 本插件在 profile 里注册的那一行。安装命令把它登记进 profile 的
+# 本插件在 profile 里注册的四行。安装命令把它们登记进 profile 的
 # `dsh.profile.bundles`，dsh 装配时读这个文件把下面的行插进去——所以安装者
 # 不需要手写任何东西。`id` 是插件 id（路由、浏览器资源、存储单元都由它派生），
-# `name` 是 pnpm 安装的包名（带 npm 作用域，可以跟 id 不同）。
+# `name` 是 pnpm 安装的包名或它的子路径。
+#
+# 四行对应插件详情页上的四个开关。关掉一行，装载器就完全不求值那个模块——
+# 所以关掉「AI 接口」之后，工具、斜杠命令与系统提示那一节都从未注册过，
+# 没有任何 session 的 AI 会知道它们存在；这不是运行时的判断，所以不可能漏判。
+#
+# 第一行是包本身，它带着浏览器那一份产物（模块表按包名注册，一个包只有一份）
+# 以及宿主侧的真相服务与路由。后三行是宿主侧的小模块，它们唯一的工作就是
+# 宣告「我这个界面开着」——浏览器在注册任何面板之前先读一次这张表。
 - insert:
     - id: dsh-task-board
       name: '@firetruck666/dsh-task-board'
+    - id: dsh-task-board-board
+      name: '@firetruck666/dsh-task-board/host-board'
+    - id: dsh-task-board-items
+      name: '@firetruck666/dsh-task-board/host-items'
+    - id: dsh-task-board-agent
+      name: '@firetruck666/dsh-task-board/host-agent'

@@ -13,7 +13,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import * as host from '../src/index.ts'
+import * as agent from '../src/host-agent.ts'
 import { apply } from '../src/index.ts'
+import { apply as applyAgent } from '../src/host-agent.ts'
 import { PROMPT_SECTION_NAME, PROMPT_SECTION_TEXT } from '../src/host/agent/prompt.ts'
 
 /** A context double recording what the entry registers and what it reaches for. */
@@ -37,9 +39,18 @@ describe('host entry apply', () => {
   it('registers one effect per host surface and nothing else', () => {
     const fake = fakeCtx()
     expect(() => apply(fake.ctx as never)).not.toThrow()
-    // permissions, session state, board, update, page self-report, agent
-    // surface (tools + commands + the one prompt section, as ONE effect).
-    expect(fake.registrations.filter(r => r === 'effect')).toHaveLength(6)
+    // The package row carries five routes: permissions, session state, board,
+    // update, page self-report. The model's surface is NOT here any more — it
+    // is its own row, so the plugin page can switch it off by never loading
+    // this file's sibling rather than by a check that could be forgotten.
+    expect(fake.registrations.filter(r => r === 'effect')).toHaveLength(5)
+    expect(host.inject).toEqual(['webServer'])
+  })
+
+  it('keeps the model surface in a row of its own, declared with its three services', () => {
+    // The whole surface travels together: half a surface is worse than none, and
+    // a deployment that composes none of the three must wait on none of them.
+    expect(agent.inject).toEqual(['tools', 'commands', 'systemPrompt'])
   })
 
   it('carries no config schema', () => {
@@ -51,11 +62,10 @@ describe('host entry apply', () => {
   })
 
   it('contributes exactly ONE fixed system-prompt section, and only if the host has one', () => {
-    expect(host.inject).toEqual(['webServer', 'tools', 'commands', 'systemPrompt'])
     // The host composes none of the three services in this double, so the whole
     // surface stays off: a half-registered agent surface is worse than none.
     const without = fakeCtx()
-    apply(without.ctx as never)
+    applyAgent(without.ctx as never)
     expect(without.reached).not.toContain('systemPrompt.section')
 
     // With the service present: one section, fixed text, and not a `complete`
@@ -63,7 +73,7 @@ describe('host entry apply', () => {
     const withPrompt = fakeCtx()
     const sections: { name: string; text: string; complete?: boolean }[] = []
     const ctx = { ...withPrompt.ctx, get: (name: string) => (name === 'systemPrompt' ? { section: (s: never) => { sections.push(s); return () => undefined } } : undefined) }
-    apply(ctx as never)
+    applyAgent(ctx as never)
     expect(sections).toHaveLength(1)
     expect(sections[0]?.name).toBe(PROMPT_SECTION_NAME)
     expect(sections[0]?.text).toBe(PROMPT_SECTION_TEXT)

@@ -10,13 +10,17 @@
  * There is deliberately no `Config` schema here. Settings exist so a user can
  * change plugin behavior, and every behavior this plugin has is already the
  * user's own choice: tasks, schedules, cruise and rules are all board data they
- * edit in the UI, and turning the plugin itself on or off is the plugin
- * manager's switch — which writes the profile, not a schema. A schema would
- * only add a second control for something that already has one.
+ * edit in the UI, and the surfaces themselves are switched by the plugin page's
+ * per-row switches — which write the profile, not a schema. A schema would only
+ * add a second control for something that already has one.
  *
- * That switch works by unloading this entry, and the loader only evaluates a
- * unit whose row is active: an off plugin loads nothing at all, including the
- * browser half, so no half needs to check whether it is enabled.
+ * The plugin contributes FOUR rows, and the plugin page lists a switch per row:
+ * this one (the package, which carries the browser half and the host truth),
+ * plus `host-board`, `host-items` and `host-agent` — three host-side modules
+ * whose whole job is to announce that their surface is on. The loader only
+ * evaluates a row whose switch is on, so a switched-off surface is never
+ * registered at all rather than present and inert, and no half has to check at
+ * runtime — which is the only way a switch stays honest.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { registerPermissionRoute } from './host/permission-route.ts'
@@ -24,9 +28,14 @@ import { registerSessionStateRoute } from './host/session-state-route.ts'
 import { registerBoardRoute } from './host/board-route.ts'
 import { registerUpdateRoute } from './host/update-route.ts'
 import { registerClientReportRoute } from './host/client-report-route.ts'
-import { registerTaskboardAgentSurface } from './host/agent/register.ts'
 
-export const inject = ['webServer', 'tools', 'commands', 'systemPrompt']
+/**
+ * Only `webServer`. The model's whole surface (three tools, two slash commands,
+ * one prompt section) moved to its own row — `host-agent.ts` — so the plugin
+ * page can switch it off in one click, and switching it off means the loader
+ * never evaluates it rather than a runtime check that could be forgotten.
+ */
+export const inject = ['webServer']
 
 /** Declared entry point: the board's host routes, one effect per route. */
 export function apply(ctx: Context): void {
@@ -73,15 +82,6 @@ export function apply(ctx: Context): void {
   ctx.effect(
     () => registerClientReportRoute(ctx, 'dsh-task-board'),
     'dsh-task-board: client report route',
-  )
-
-  // The model's whole surface on this plugin: three tools, two slash commands
-  // and one prompt section. Registered as ONE effect on purpose — each injected
-  // service is a liability (a deployment that composes none of them must wait
-  // on none of them), and half a surface is worse than none.
-  ctx.effect(
-    () => registerTaskboardAgentSurface(ctx),
-    'dsh-task-board: agent surface',
   )
 }
 

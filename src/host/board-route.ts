@@ -12,6 +12,7 @@
  *                                     → the authoritative checklist after the merge
  *   POST /api/<ns>/board/lease      → {clientId, ttlMs?, release?} → lease state
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
+ *   GET  /api/<ns>/board/surfaces   → which of this plugin's rows are on
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
  *
  * ONE route file, ONE envelope discipline, ONE CSRF guard: every POST tail
@@ -32,6 +33,7 @@ import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
 import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 import { DocumentService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
 import { readJsonBody } from './http-json.ts'
+import { surfaceManifest } from './surfaces.ts'
 
 /** The commit body size cap: the whole ledger travels per commit. */
 export const BOARD_BODY_LIMIT_BYTES = 8 << 20
@@ -279,6 +281,16 @@ export function createBoardHandler(
 
     // The first request settles storage init; later calls ride the result.
     await deps.ready()
+
+    // ── GET: which surfaces this plugin's rows are switched on for ───────────
+    //
+    // Answered BEFORE `deps.ready()`: a reader that switched a row off must not
+    // have to wait for storage to learn that, and this answer does not depend
+    // on storage at all — it is read from the rows the loader evaluated.
+    if (req.method === 'GET' && tail === '/surfaces') {
+      json(res, { ok: true as const, value: surfaceManifest() })
+      return
+    }
 
     // ── SSE: the replica change channel ─────────────────────────────────────
     if (req.method === 'GET' && tail === '/events') {

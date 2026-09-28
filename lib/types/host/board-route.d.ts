@@ -12,6 +12,7 @@
  *                                     → the authoritative checklist after the merge
  *   POST /api/<ns>/board/lease      → {clientId, ttlMs?, release?} → lease state
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
+ *   GET  /api/<ns>/board/surfaces   → which of this plugin's rows are on
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
  *
  * ONE route file, ONE envelope discipline, ONE CSRF guard: every POST tail

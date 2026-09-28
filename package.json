@@ -14,6 +14,18 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
+    "./host-board": {
+      "types": "./lib/types/host-board.d.ts",
+      "default": "./lib/host-board.js"
+    },
+    "./host-items": {
+      "types": "./lib/types/host-items.d.ts",
+      "default": "./lib/host-items.js"
+    },
+    "./host-agent": {
+      "types": "./lib/types/host-agent.d.ts",
+      "default": "./lib/host-agent.js"
+    },
     "./client": {
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
