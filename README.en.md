@@ -18,9 +18,9 @@ The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 
 - [Requirements](#requirements)
 - [Install](#install)
+- [Updating](#updating)
 - [What it does](#what-it-does)
 - [Data locations](#data-locations)
-- [Updating](#updating)
 - [Building from source](#building-from-source)
 - [Contributing](#contributing)
 - [Troubleshooting](#troubleshooting)
@@ -116,44 +116,6 @@ dsh plugin --profile web remove @firetruck666/dsh-task-board
 
 A restart is required here too. Your task data is not deleted.
 
-## What it does
-
-- **Five columns** — To plan, To do, In progress, Needs review, Done. Cards carry a summary only; the execution window and the comment timeline live in the detail view. Every session that finishes lands in Needs review. A card floats to the top of the column it lands in, newest arrival first, so the one that just finished is obvious at a glance; a position you dragged by hand is never pushed aside, and only re-sorts when that card changes column again.
-- **Card from sessions** — The header's "Card from Sessions" button takes a pick of existing sessions (any number, across workspaces) and creates one new task card carrying them, in the To plan column, with title, description, prompt and run configuration all left blank for you to fill. The task detail's "Add Session" and this button share ONE picker: grouped by workspace, collapsed by default, listing only sessions that are unarchived and addable right now.
-- **Session order** — A card's session list follows the same law as its columns: a conversation that starts working, or that just finished, floats to the top of the list while the others keep their relative order and step down. An order you dragged by hand is never shuffled apart, only displaced.
-- **One set of status words** — Many places on the board say "what state is this card in". They all read one derivation, so the same card gives the same answer everywhere:
-  - **Awaiting your decision** (reads *Failed · awaiting your decision* when the work failed) — the card is in Needs review, has finished work, and you have not opened **that session** yet. It clears when you open that session, or approve / send it back.
-  - **N need you** (the header line) — N conversations are suspended on your answer (approval, plan review, question). It clears as you answer them.
-  - **M in review** (the header line) — M cards are in Needs review with that session still unopened. Same clearing as the chip.
-  - **New N / New comment** — this card has content you have not read. It clears on opening the card.
-  - **N runs** — how many times the card has run. That is history, not a request, so it never clears on its own.
-  - **The board reads in two layers, on purpose: a card is a summary, a session is the content.** So opening the *card* retires its New badge and its pulse (you have seen the summary) but leaves Awaiting your decision and the notification alone — you still have not read the conversation. Opening *that session* clears both. Or just approve / send it back.
-  - The notification centre holds exactly two kinds, and the three filter chips each carry their own count: **Need you** (a conversation suspended on your answer) + **In review** (finished, session unopened) = **All**. The bell badge, the header's two halves and the drawer's three chips are one classification rendered four times, so they always agree.
-  - A **cancelled** run is not a decision, so it never asks for one; it only appears in the comment thread and the activity feed.
-- **Real execution** — Pressing Run starts a real DSH session, visible in the native session list. An execution prompt that begins with `/` runs as a native command, so `/plan ...` enters plan mode for real.
-- **Multi-device sync** — The board's source of truth is the host, stored under `~/.dsh/storages/dsh_task_board/`. The browser is an optimistic copy: the board opens instantly, works while offline, and catches up afterwards. Concurrent edits merge per record and do not depend on device clocks.
-- **One engine at a time** — Scheduled runs, cruise and follow-ups are arbitrated by a host lease, so only one open GUI executes them. The device in the foreground holds the engine seat and takes over when it becomes visible.
-- **Comments and conversation** — Each session row opens a panel with the live transcript on one side and usage, run configuration, the comment thread and the composer on the other. Messages queue by default or can be steered immediately. `@` mentions and `/` commands use the same mechanisms as the main composer. Images are compressed in the browser; other files upload byte for byte.
-- **Attachments are content** — Send an image or a file with no words at all; the message is not required to carry text. Images are compressed in the browser, other files upload as their exact bytes. If a send is ever refused, the composer says so and keeps your draft instead of quietly handing the content back.
-- **Answer the agent right there** — When a session is waiting on you (a plan to confirm, an `ask_user_question`), the interaction card appears in the comment thread with the SAME parts and behaviour as the native question card: options, a custom answer, previous/next, skip, submit or approve/decline/discuss. Answering settles the request on the spot and the model continues; "Answer in session" and "View session" still take you to the full conversation. The to-do, goal and subagent readout in the same area comes from the native panel.
-- **Automation** — Task-level cron schedules and follow-on-completion chains; session-level rules that inject either a custom instruction or the task's execution prompt, on a timetable or after every completion.
-- **Auto-cruise** — Batch-execute every ready task from the board header, with a global concurrency cap and time windows.
-- **Parallelism counted per session** — The header's parallelism number is the single gate: it caps how many sessions run at once. Sessions on one card do not block each other; within one session, work stays ordered.
-- **Mobile and narrow screens** — The layout responds to the board's own width, not the viewport, and shares one code path with the desktop. Columns scroll horizontally with an evenly divided tab strip; the header keeps every control labelled and reflows deterministically.
-- **Drag and drop** — Reorder within a column, move between columns, auto-scroll at the edges, and drag sessions or workspaces in from the sidebar. Dragging is mouse/trackpad only: it uses the browser's built-in drag-and-drop, which touch screens do not raise. Dragging a session in from the sidebar is likewise host-driven and not available on a phone; on a touch screen, move a card with the `[` and `]` keys on a keyboard, or from the card detail's Status section.
-- **Templates and run presets** — Save a task as a template; store run configurations (agent, workspace, model, reasoning effort, permissions) as presets and set one as the default, with a fallback to the deployment default.
-- **Notifications and activity** — An inbox aggregating sessions waiting on you plus unread tasks with review pending, and a board-wide activity feed grouped by day.
-- **A task list on a resident edge** — A second document, not a view over the board. It is a thin strip parked on the right edge of the window; click it and the list slides out to the left. There is also an icon in a session header, which is a second outlet for the same switch. The edge is there because the list is for the thought that arrives while you are already talking to the model, and it should not require you to leave that conversation first. **Open it once and it stays.** Switching sessions or opening the board panel does not move it: the plugin remembers whether you had it open. **It never coexists with the official sidebar.** Opening the list collapses the official one; the reverse cannot be done, because that sidebar emits no event saying it expanded — so if you open ours and then the official one, ours stays on the edge and closing ours resolves it. That recovery is yours to make, and it is a button. The list and the board coexist — an item does not have to become a card, and when it hangs off one it reads that card's live state rather than judging it for itself. Each item carries a title, Markdown body, notes, one-level steps, a status, four priority tiers, tags, and three INDEPENDENT times: earliest start, due, and hard deadline. Progress is derived, so an item with no steps shows no progress bar at all. Every item has a short number (`#12`) that both people and models say out loud; it is minted by a counter on the document and is never writable, so a replica cannot renumber the list under you. Creating, editing and deleting all work by hand in the panel, and deleting goes through a tombstone — items are recoverable, unlike cards. The panel's read state is three-valued, not a boolean: quiet while loading, syncing with the host, and "cannot reach the host copy right now, showing this device's copy" — that last one must never be rendered as "you have nothing", because turning "cannot read" into "there is none" is a lie about the system's state.
-- **Two slash commands** — Both act in the session you are already talking in. `/task <what you want written down>` hands that one sentence to the current session's model, which can already see this conversation's whole context, so "write down the three things we just discussed" needs nothing relayed. `/task-continue` asks the model to read the outstanding items, list them, and then ask which one to start with rather than picking for you. `/task` works whenever you like in a conversation, early or late, and the model reads the context as it stands at that moment. How many items to write, whether to amend an old one, whether to open a board card — that is the model's own judgement; this plugin fixes no workflow, because a fixed workflow here would be a second set of rules to keep in step with the board. The command is a door: it takes your words, hands them over, and says nothing else.
-- **What the agent can do** — It looks the capability list up on demand instead of carrying it in its prompt, so the list can never go stale; the fixed text in the system prompt is behaviour, not inventory, because a capability list copied into a prompt is a second copy of the catalog and a stale one is worse than none. What the agent does and what you do in the interface are the SAME implementation, so the same thing cannot produce two results. A batch runs in order, stops at the first failure, rolls back nothing, and reports item by item. Actions the interface locks down are locked down for the agent too, and it will say why rather than refusing vaguely — marking a card read is the clearest case, because it clears the very gate that is waiting on you, so an agent doing it would close your own gate on your behalf. Attachments are the other boundary: there is no upload channel on the model side, and an invented reference to a file is content that cannot be drawn.
-
-## Data locations
-
-- Board source of truth: the `~/.dsh/storages/dsh_task_board/` directory. Under `documents/` there is one file per data kind: `board.json` holds the task ledger, cruise, schedule presets, run presets and deletion tombstones, and `items.json` holds the task list. Human-readable, written atomically; back the directory up directly, or delete it to clear both board and list.
-- Browser `localStorage` holds the offline mirror: `dsh.taskBoard.v1`, `dsh.taskBoard.cruise.v1`, `dsh.taskBoard.presets.v1`, `dsh.taskBoard.runPresets.v1`. Drafts in `dsh.taskBoard.drafts.v1` are device-local and deliberately not synchronised.
-- On the first connection, diverging local data is backed up to `dsh.taskBoard.preSync.v1` and the host wins.
-- Without a storage backend on the host, the board falls back to a pure `localStorage` mode.
-
 ## Updating
 
 Easiest: the board header's right toolbar has a permanent Check for updates button. One click compares the running version against the latest; when an update exists it shows the matching update command for your install method — copy it and run it in your own terminal.
@@ -171,6 +133,62 @@ dsh plugin --profile web add github:FiretrUCK666/dsh-task-board
 ```
 
 Restart `dsh web` afterwards.
+
+## What it does
+
+- **Board** — Five columns: To plan, To do, In progress, Needs review, Done. A card is a
+  summary and a session is the content: opening the card retires its "New" badge, while
+  "Awaiting your decision" only retires when you open *that session* or approve/send it
+  back. Tasks run for real through DSH sessions and land in Needs review when they finish. A
+  card floats to the top of the column it lands in, and a position you dragged by hand is
+  never pushed aside.
+- **Task list** — The second entry in the same sidebar panel list, right under the board:
+  click it and the list takes the whole stage, click it again and you are back in the
+  conversation. It fills the page, follows the sidebar collapsing to an icon rail, and adapts
+  to a phone — the board's own seats, so it behaves like the board rather than
+  re-deriving it. It is a **second document, not a view over the board**: an item does not
+  have to become a card, and when it hangs off one it reads that card's live state. Each
+  item has a short number (`#12`) minted by a counter and never writable, one-level steps,
+  four priority tiers, tags, and three INDEPENDENT times (earliest start, due, hard
+  deadline). Deleting goes through a tombstone, so items are recoverable — unlike cards.
+  Creating, editing and deleting all work by hand.
+- **Driving it from a conversation** — Two slash commands (`/task`, `/task-continue`) and
+  three tools. The command hands **your own sentence** to the current session's model, which
+  can already see the whole conversation, so "write down the three things we just
+  discussed" needs nothing relayed. How many items to write, whether to amend one, whether
+  to open a card — the model's own judgement; this plugin fixes no workflow. It looks the
+  capability list up on demand instead of carrying it in its prompt, because a stale
+  capability list is worse than none. What the agent does and what you do in the interface
+  are the SAME implementation, so one thing cannot produce two results. A batch runs in
+  order, stops at the first failure, rolls back nothing, reports item by item. Actions the
+  interface locks down are locked down for the agent too, and it says why — marking a card
+  read is the clearest case, because it clears the very gate waiting on you. There is no
+  upload channel for attachments on the model side.
+- **One-click hand-off** — An item that hangs off a card has a button that gives it to the
+  model of the session that card runs in, and tells you which session that was. An item
+  with no card has no button, because it has no target.
+- **Multi-device sync** — The truth lives on the host under `~/.dsh/storages/dsh_task_board/`.
+  The browser is an optimistic copy: it opens instantly, works offline, catches up after.
+  Concurrent edits merge per record and do not depend on device clocks. Scheduled runs,
+  cruise and follow-ups are arbitrated by a host lease, so **only one open GUI executes
+  them**; the foreground device holds the engine seat and takes over when it becomes visible.
+- **Automation** — Task-level cron schedules and follow-on-completion chains; session-level
+  rules that inject either a custom instruction or the task's execution prompt, on a
+  timetable or after every completion. Plus batch auto-cruise with a concurrency cap and
+  time windows, and a parallelism number that caps how many sessions run at once.
+- **Interface** — The layout responds to the board's own width, not the viewport, and shares
+  one code path with the desktop. Drag and reorder within and between columns; drag sessions
+  or workspaces in from the sidebar. Templates for tasks, run configurations saved as
+  presets with a default. A notification centre aggregating what is waiting on you plus
+  unread tasks, and a board-wide activity feed grouped by day. A cancelled run never asks
+  for a decision — cancellation is an abort, and it only shows in the thread and the feed.
+
+## Data locations
+
+- Board source of truth: the `~/.dsh/storages/dsh_task_board/` directory. Under `documents/` there is one file per data kind: `board.json` holds the task ledger, cruise, schedule presets, run presets and deletion tombstones, and `items.json` holds the task list. Human-readable, written atomically; back the directory up directly, or delete it to clear both board and list.
+- Browser `localStorage` holds the offline mirror: `dsh.taskBoard.v1`, `dsh.taskBoard.cruise.v1`, `dsh.taskBoard.presets.v1`, `dsh.taskBoard.runPresets.v1`. Drafts in `dsh.taskBoard.drafts.v1` are device-local and deliberately not synchronised.
+- On the first connection, diverging local data is backed up to `dsh.taskBoard.preSync.v1` and the host wins.
+- Without a storage backend on the host, the board falls back to a pure `localStorage` mode.
 
 ## Building from source
 
