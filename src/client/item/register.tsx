@@ -1,20 +1,44 @@
 /**
- * Contribute the task list as a drawer of our own, plus the pill that opens it.
+ * Contribute the task list as a MAIN-STAGE panel, in the same shape as the
+ * board: one `main` seat keyed by the list's own id, one row in the shell's
+ * panel list under that same id, and one way out shared with the board.
  *
- * The list is NOT a tab in the host's right sidebar. A sidebar tab is
- * remembered per session, and "open once, stay put, still be there in the next
- * session" is not a thing a per-session layout can promise. The drawer is ours,
- * so it does not care which session is on screen — see drawer.tsx for the
- * surface, and for the one coexistence gap that is named rather than papered
- * over.
+ * WHY IT IS A MAIN-STAGE PANEL AND NOT A RIGHT-EDGE DRAWER. The list is a full
+ * page of work — grouped columns, a filter row, a composer — and the shell's
+ * main stage is the one surface that already handles every way the page can be
+ * sized: the left sidebar wide or collapsed to an icon rail, a narrow viewport,
+ * the shell's own panel toggle. A drawer had to re-derive all of that, and it
+ * did: it sized itself from a CSS variable it never declared, so the whole
+ * width declaration was dropped at computed-value time and the panel
+ * collapsed to a strip.
+ *
+ * So: the same two official seats the board uses, the same id in both (the
+ * shell resolves a panel-list row to its stage by that id), and the same exit
+ * funnel. What is NOT shared is the identity — the board's id is
+ * `dsh-task-board`, the list's is `dsh-task-board-items`, and the two rows sit
+ * next to each other in the panel list by `order`.
  */
 import type { ComponentType } from 'react'
 import type { ChecklistReplica } from '../../core/host-sync.ts'
 import type { BoardController } from '../../core/controller.ts'
-import { TaskDrawer, restoreDrawer, resetDrawer } from './drawer.tsx'
-import { ListOpenPill, bindSidebar } from './launcher.tsx'
+import { t } from '../locales.ts'
+import { readSurfaceManifest, surfaceEnabled } from '../surfaces.ts'
+import { ItemListPanel } from './panel.tsx'
+import { TaskListIcon } from './TaskListIcon.tsx'
 
+/** The namespace this plugin already registers its strings under. */
 const NS = 'dsh-task-board'
+
+/**
+ * The list's stage identity — ONE value for both official registrations, the
+ * `main` key and the panel-list entry id, exactly as the board keeps its own
+ * in one place so "they agree" is structural rather than a coincidence two call
+ * sites have to remember.
+ */
+export const LIST_GROUP = { id: 'dsh-task-board-items' } as const
+
+/** Sits directly after the board's row (which is 110). */
+const LIST_ROW_ORDER = 120
 
 /** The cordis client context, narrowed to the two calls this contribution makes. */
 interface Context {
@@ -37,15 +61,23 @@ export interface ItemListFace {
 /**
  * The holder the background settle publishes into, and the panel reads from.
  *
- * One holder, not two: the drawer's own mount IS the lifetime, so the signal it
- * hands the panel aborts when the drawer goes away — which is what makes every
- * timer and subscription inside provably short-lived (lifecycle discipline: a
- * resource outliving its owner is the bug the signal exists to catch).
+ * ONE holder, and the module-level instance below is the only one: the earlier
+ * code also had a second `new ItemListStage()` in the client entry, which bound
+ * the live replica while this file's panel read the module singleton — so the
+ * panel sat on "preparing" forever while every test stayed green. **A binding
+ * side and a reading side that name the same thing are only the same thing if
+ * they are the same object**, and that is a fact a type can check and a habit
+ * cannot.
+ *
+ * The holder owns its own lifetime signal rather than borrowing a mount's: a
+ * main-stage panel unmounts every time the reader looks at the conversation, so
+ * a lifetime tied to its mount would tear down the replica subscription on
+ * every panel switch. It aborts when the plugin does, and only then.
  */
 export class ItemListStage {
   private itemReplica: ChecklistReplica | undefined
   private board: BoardController | undefined
-  private lifetime = new AbortController()
+  private readonly lifetime = new AbortController()
 
   /** Publish the two live faces; the signal already exists and is unchanged. */
   bind(replica: ChecklistReplica | undefined, controller: BoardController | undefined): void {
@@ -53,11 +85,7 @@ export class ItemListStage {
     this.board = controller
   }
 
-  /** Mirror an external lifetime onto the one the panel holds. */
-  bindSignal(signal: AbortSignal): void {
-    signal.addEventListener('abort', () => { this.lifetime.abort() }, { once: true })
-  }
-
+  /** The plugin's own lifetime, for every timer and subscription inside. */
   signal(): AbortSignal {
     return this.lifetime.signal
   }
@@ -70,7 +98,7 @@ export class ItemListStage {
     return this.board
   }
 
-  /** Drop every face; the panel then has nothing to read and says so. */
+  /** Drop every face and end the lifetime; the panel then has nothing to read and says so. */
   unbind(): void {
     this.lifetime.abort()
     this.itemReplica = undefined
@@ -78,57 +106,67 @@ export class ItemListStage {
   }
 }
 
-/** The single stage every outlet reads through. */
-export const stage = new ItemListStage()
+/** THE single stage, exported so the client entry binds THIS one. */
+export const itemListStage = new ItemListStage()
+
+/** Build the face the panel registration injects, read fresh on every render. */
+function readFace(): ItemListFace {
+  return { replica: itemListStage.replica(), controller: itemListStage.controller() }
+}
+
+/** The panel body, reading the holder fresh on every render. */
+function ListPanel(props: Record<string, unknown>) {
+  return (
+    <ItemListPanel
+      {...props}
+      face={readFace()}
+      signal={itemListStage.signal()}
+    />
+  )
+}
 
 /**
- * Contribute the drawer and the pill.
+ * Contribute the list: its main-stage panel and the panel-list row that
+ * selects it.
+ *
+ * Registration waits for the host's surface answer, because the answer decides
+ * whether to register at all. A failed read registers anyway — see
+ * `surfaces.ts` for why the failure direction is the whole design.
+ *
  * @param ctx - the client context.
- * @param itemStage - the holder the background settle publishes into; every
- *   outlet reads the panel's faces through it, so there is one holder and not
- *   one per surface.
+ * @param returnToConversation - the one way out, shared with the board's row.
  * @returns a disposer removing everything this contributed.
  */
-export function registerItemList(ctx: Context, itemStage: ItemListStage = stage): () => void {
-  void itemStage
+export function registerItemList(ctx: Context, returnToConversation: () => void): () => void {
   const disposers: (() => void)[] = []
   const slots = ctx.get('slots') as SlotsFace | undefined
   if (slots === undefined) return () => undefined
 
-  // ① the drawer, on the shell's own frame-wide overlay. That seat exists
-  // precisely for "a surface of your own, above every column, click-through
-  // until an entry opts back in" — so the resident edge never blocks the app
-  // underneath, and the open panel floats above the sidebar column without a
-  // hand-rolled portal into the shell's DOM.
-  disposers.push(ctx.effect(() => slots.inject('shell.overlay', () => {
-    disposers.push(slots.register({
-      name: 'shell.overlay',
-      id: 'dsh-task-board.item-drawer',
-      order: 20,
-      locale: NS,
-    }, (() => <TaskDrawer />) as unknown as ComponentType<never>))
-  }), 'dsh-task-board: task list drawer'))
+  void readSurfaceManifest().then(manifest => {
+    if (!surfaceEnabled('items', manifest)) return
 
-  // ② the pill in the conversation header: the second outlet, sharing the very
-  // same state as the edge, and taking the edge's rule about the sidebar.
-  disposers.push(ctx.effect(() => slots.inject('conversation.session.header.actions', () => {
-    disposers.push(slots.register({
-      name: 'conversation.session.header.actions',
-      id: 'dsh-task-board.item-list',
-      order: 40,
-      locale: NS,
-    }, (() => <ListOpenPill />) as unknown as ComponentType<never>))
-  }), 'dsh-task-board: task list pill'))
+    disposers.push(ctx.effect(() => slots.inject('main', () => {
+      disposers.push(slots.register({
+        name: 'main',
+        key: LIST_GROUP.id,
+        locale: NS,
+        inject: () => readFace(),
+      }, ListPanel as unknown as ComponentType<never>))
+    }), 'dsh-task-board: task list main panel'))
 
-  // ③ the sidebar face, read by name. Its absence costs the collapse rule and
-  // nothing else — the drawer is ours and does not depend on the sidebar.
-  const sidebar = ctx.get('sidebarRight')
-  bindSidebar(sidebar as never)
-  disposers.push(() => { bindSidebar(undefined) })
-
-  // ④ what the reader last had open, restored before anything renders it.
-  restoreDrawer()
-  disposers.push(resetDrawer)
+    disposers.push(ctx.effect(() => slots.inject('sidebar.panellist', () => {
+      disposers.push(slots.register({
+        name: 'sidebar.panellist',
+        // LIST-kind slot: id/order/label are the mandatory list shape.
+        id: LIST_GROUP.id,
+        order: LIST_ROW_ORDER,
+        label: () => t('entry.itemLabel'),
+        locale: NS,
+      }, ((props: { size: number; active: boolean }) => (
+        <TaskListIcon {...props} onExit={returnToConversation} />
+      )) as unknown as ComponentType<never>))
+    }), 'dsh-task-board: task list panel entry'))
+  })
 
   return () => {
     for (let i = disposers.length - 1; i >= 0; i -= 1) disposers[i]?.()

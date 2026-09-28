@@ -7,6 +7,7 @@
 /** zh dictionary (key-set source of truth). */
 export declare const zh: {
     'entry.label': string;
+    'entry.itemLabel': string;
     'entry.opening': string;
     'board.title': string;
     'board.close': string;

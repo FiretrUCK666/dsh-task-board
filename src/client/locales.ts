@@ -8,6 +8,7 @@
 /** zh dictionary (key-set source of truth). */
 export const zh = {
   'entry.label': '任务看板',
+  'entry.itemLabel': '任务清单',
   'entry.opening': '正在打开任务看板…',
   'board.title': '任务看板',
   'board.close': '返回对话',
@@ -700,6 +701,7 @@ export const zh = {
 /** en dictionary, complete against the zh key set. */
 export const en: Record<keyof typeof zh, string> = {
   'entry.label': 'Task Board',
+  'entry.itemLabel': 'Task List',
   'entry.opening': 'Opening the task board…',
   'board.title': 'Task Board',
   'board.close': 'Back to chat',

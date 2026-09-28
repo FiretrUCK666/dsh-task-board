@@ -29,7 +29,7 @@ import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
 import { routeUrl } from './route-base.ts'
 import { TaskBoardPanel } from './TaskBoardPanel.tsx'
-import { ItemListStage, registerItemList } from './item/register.tsx'
+import { itemListStage, registerItemList } from './item/register.tsx'
 import { registerToolViews } from './chat/tool-views.tsx'
 import { TaskBoardIcon } from './TaskBoardIcon.tsx'
 import { BundleFreshnessState, reloadForFreshBundle } from './bundle-freshness.ts'
@@ -274,12 +274,11 @@ export function apply(ctx: ClientContext): void {
     layout.selectPanel(null)
   }
   const stage = new TaskBoardStage()
-  // The task list lives in the SHELL's right sidebar, which is a page type we
-  // contribute rather than a seat of ours. It is contributed at apply time so
-  // the shell can resolve the type before anything renders, and it carries its
-  // own holder because it is mounted by a different surface than the board.
-  const itemStage = new ItemListStage()
-  ctx.effect(() => registerItemList(ctx as never, itemStage), 'dsh-task-board: item list registration')
+  // The task list is a second MAIN-STAGE panel, in the same shape as the board
+  // above: its own `main` key, its own row in the panel list, and the SAME exit
+  // funnel. One way out for both, so leaving a panel can never mean two
+  // different things on two panels.
+  ctx.effect(() => registerItemList(ctx as never, returnToConversation), 'dsh-task-board: task list registration')
   // How the model's work reads in the transcript. Keyed by the WIRE tool name,
   // so a name that never travels simply never renders.
   ctx.effect(() => ctx.slots.inject('tool.call.toolview', () => registerToolViews(
@@ -1230,14 +1229,14 @@ export function apply(ctx: ClientContext): void {
     const disposers: Array<() => void> = []
     stage.bind(controller, freshness)
     disposers.push(() => { stage.unbind() })
-    // The task list is a page of the SHELL's right sidebar, not another seat
-    // of ours, so it gets its own holder. It needs the same two faces plus
-    // the sync replica the checklist rides on, published together for the
-    // same reason: a list without a replica has nothing to read, and a replica
-    // without a board cannot answer "is the card this hangs off running".
-    if (itemStage !== undefined && sync !== undefined) {
-      itemStage.bind(sync.checklistReplica(), controller)
-      disposers.push(() => { itemStage.unbind() })
+    // The list reads the module's single holder — the SAME object, not a
+    // second one. It needs the board (a list cannot answer "is the card this
+    // hangs off running") plus the sync replica the checklist rides on, and
+    // they are published together because a list without a replica has nothing
+    // to read.
+    if (sync !== undefined) {
+      itemListStage.bind(sync.checklistReplica(), controller)
+      disposers.push(() => { itemListStage.unbind() })
     }
     // Host-truth convergence runs in the BACKGROUND: the entry above is
     // already live on the local mirror. When the line allows, the host doc

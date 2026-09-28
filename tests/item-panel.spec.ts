@@ -17,7 +17,6 @@ import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
 import { ItemListPanel, ItemRow, storedStatusFor } from '../src/client/item/panel.tsx'
 import { PRESENTATION_FIELDS } from '../src/client/chat/tool-views.tsx'
-import { bindSidebar, yieldToSidebar, ListOpenPill } from '../src/client/item/launcher.tsx'
 import {
   addItem,
   editItem,
@@ -386,149 +385,94 @@ describe('a note you can fill in and hang on a card', () => {
   })
 })
 
-describe('the pill takes its shape from the host, not from a guess', () => {
-  it('takes its shape from the host, not from a guess', () => {
-    // The claim is NOT "we render something called Pill". It is that the
-    // contract is the host's: rename or drop a prop upstream and 	sc says
-    // so, instead of our copy quietly accepting a call the host would reject.
-    // A hand-written interface would keep compiling, which is the failure
-    // this whole arrangement exists to prevent.
-    const ours = renderToStaticMarkup(createElement(ListOpenPill))
-    expect(ours).toContain('任务清单')
-    // And the class is ours, which PLACES it; the shell's token is what
-    // colours it. Those are different jobs and the row needs both.
-    expect(ours).toContain('itemListPill')
-  })
-})
-
-describe('the chip reads the shell’s tokens, not ours', () => {
-  const css = readFileSync(
-    fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)),
-    'utf8',
-  )
-  /** Every rule of one selector, hover and focus included, COMMENTS STRIPPED. */
-  function rulesOf(selector: string): string {
-    // A comment is prose, not a token use. These rules explain WHY this chip
-    // avoids the board aliases, and scanning prose would flag the very
-    // sentence that documents the rule.
-    const code = css.replace(/\/\*[\s\S]*?\*\//g, '')
-    const out: string[] = []
-    const pattern = new RegExp(`\\${selector}(?![a-zA-Z0-9_-])[^{}]*\\{[^{}]*\\}`, 'g')
-    for (const hit of code.matchAll(pattern)) out.push(hit[0])
-    return out.join('\n')
-  }
-
-  it('consumes --dsw-* and NOT ONE --dsh-tb-*', () => {
-    // THE assertion for this round. A skin is expected to reach the shell's
-    // own surface; it is not expected to reach our board. If a board alias
-    // ever creeps in here, "换皮肤" silently becomes "换我们的设计" — and
-    // then the fact lives only in someone's judgement, which is exactly what
-    // a test is for.
-    const rules = rulesOf('.itemListPill')
-    expect(rules.length).toBeGreaterThan(0)
-    expect(rules).toMatch(/--dsw-/)
-    expect(rules, 'a skin cannot reach a board alias').not.toMatch(/--dsh-tb-/)
-  })
-
-  it('writes no colour literal, so our styling can never override a skin', () => {
-    expect(rulesOf('.itemListPill')).not.toMatch(/#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\(/)
-  })
-
-  it('covers hover AND focus, because touch has neither', () => {
-    const rules = rulesOf('.itemListPill')
-    expect(rules).toMatch(/:hover/)
-    expect(rules).toMatch(/:focus-visible/)
-  })
-
-  it('keeps a reachable floor and a visible focus ring', () => {
-    const rules = rulesOf('.itemListPill')
-    expect(rules).toMatch(/min-height:\s*24px/)
-    expect(rules).toMatch(/outline:/)
-  })
-})
-
-describe('taking the right edge from the official sidebar', () => {
-  /** A sidebar whose seat presence AND expansion the test decides. */
-  function fakeSidebar(state: { mounted?: string; expanded?: boolean }) {
-    const toggles: number[] = []
-    return {
-      toggles,
-      face: {
-        mounted: { getSnapshot: () => state.mounted, subscribe: () => () => undefined },
-        isExpanded: () => state.expanded === true,
-        toggleExpanded: () => { toggles.push(1) },
-      },
-    }
-  }
-
-  it('collapses the official column when we are opened', () => {
-    // The half of "never coexist" that IS available, and it is guaranteed.
-    const { face, toggles } = fakeSidebar({ mounted: 's-1', expanded: true })
-    bindSidebar(face)
-    try {
-      expect(yieldToSidebar()).toBe(true)
-      expect(toggles).toHaveLength(1)
-    } finally {
-      bindSidebar(undefined)
-    }
-  })
-
-  it('does not touch it when it is already collapsed', () => {
-    const { face, toggles } = fakeSidebar({ mounted: 's-1', expanded: false })
-    bindSidebar(face)
-    try {
-      expect(yieldToSidebar()).toBe(false)
-      expect(toggles).toHaveLength(0)
-    } finally {
-      bindSidebar(undefined)
-    }
-  })
-
-  it('does not touch it when there is no seat', () => {
-    // No seat, no column, nothing to take. Asking anyway is how a click ends
-    // up doing nothing and saying nothing.
-    const { face, toggles } = fakeSidebar({ expanded: true })
-    bindSidebar(face)
-    try {
-      expect(yieldToSidebar()).toBe(false)
-      expect(toggles).toHaveLength(0)
-    } finally {
-      bindSidebar(undefined)
-    }
-  })
-
-  it('does not touch it when the sidebar is not composed at all', () => {
-    bindSidebar(undefined)
-    expect(yieldToSidebar()).toBe(false)
-  })
-})
-
-describe('the list is a drawer, not a sidebar tab', () => {
+describe('the list is a main-stage panel, in the same shape as the board', () => {
   const source = readFileSync(
     fileURLToPath(new URL('../src/client/item/register.tsx', import.meta.url)),
     'utf8',
   )
 
-  it('contributes the surface to the shell overlay, not as a tab', () => {
-    // A per-session tab can never promise "open once, stay put, still here in
-    // the next session", which is the whole reason this changed.
-    expect(source).toContain("slots.inject('shell.overlay'")
-    expect(source).not.toContain('sidebarRightTabs')
-    expect(source).not.toContain('sidebar.right.pane.tab')
+  it('contributes a `main` panel and a panel-list row, and nothing else', () => {
+    // The claim is not "we render something". It is that the list sits in the
+    // shell's own two seats, so the shell's chrome (left sidebar wide or
+    // collapsed to a rail, narrow viewport, its panel toggle) applies to it
+    // without this plugin re-deriving any of it. A drawer re-derived all of it
+    // and sized itself from a CSS variable it never declared.
+    expect(source).toContain("slots.inject('main'")
+    expect(source).toContain("slots.inject('sidebar.panellist'")
+    // The two entrances that are gone, gone for the same reason.
+    expect(source).not.toContain('shell.overlay')
+    expect(source).not.toContain('conversation.session.header.actions')
   })
 
-  it('offers the pill as the second outlet of the SAME state', () => {
-    expect(source).toContain("slots.inject('conversation.session.header.actions'")
+  it('keys the panel and the row by the SAME id, as the shell requires', () => {
+    // The shell resolves a panel-list row to its stage by that id, so the two
+    // must be one string. It is declared once and used twice — the alternative
+    // is a coincidence two call sites have to remember.
+    expect(source).toMatch(/LIST_GROUP\s*=\s*\{\s*id:\s*'dsh-task-board-items'/)
+    expect(source).toContain('key: LIST_GROUP.id')
+    expect(source).toContain('id: LIST_GROUP.id')
   })
 
-  it('remembers what the reader last had open, in our own key', () => {
-    const drawer = readFileSync(
-      fileURLToPath(new URL('../src/client/item/drawer.tsx', import.meta.url)),
-      'utf8',
-    )
-    expect(drawer).toContain('dsh.taskBoard.drawer.v1')
+  it('sits directly after the board row in the panel list', () => {
+    // The reader asked for the two entries next to each other. The board's row
+    // is 110, so 120 is "the next one", and it is written as a fact rather
+    // than implied by registration order.
+    expect(source).toMatch(/LIST_ROW_ORDER\s*=\s*120/)
+  })
+
+  it('leaves through the same funnel the board uses', () => {
+    // Click to enter, click again to leave — and "leave" is one function for
+    // both panels, so it can never mean two different things on two surfaces.
+    expect(source).toContain('onExit={returnToConversation}')
   })
 })
+
+describe('the host decides which surfaces exist, and only narrows', () => {
+  it('registers the panel when the host says so, and skips it when it says no', async () => {
+    const { readSurfaceManifest, surfaceEnabled } = await import('../src/client/surfaces.ts')
+    const on = await readSurfaceManifest(okFetch({ board: true, items: true, agent: true }))
+    const off = await readSurfaceManifest(okFetch({ board: true, items: false, agent: true }))
+    expect(surfaceEnabled('items', on)).toBe(true)
+    expect(surfaceEnabled('items', off)).toBe(false)
+  })
+
+  it('narrows NOTHING when the host cannot be asked', async () => {
+    // THE claim. A switch the plugin cannot read must leave the plugin exactly
+    // as it was, because a reader who lost the answer should not watch a panel
+    // they never turned off disappear. Failing WIDE is the only safe side.
+    const { readSurfaceManifest, surfaceEnabled } = await import('../src/client/surfaces.ts')
+    for (const broken of [notFoundFetch, throwingFetch, malformedFetch, wrongShapeFetch, boolInsteadOfEnvelopeFetch]) {
+      const manifest = await readSurfaceManifest(broken)
+      expect(manifest).toBeUndefined()
+      expect(surfaceEnabled('items', manifest)).toBe(true)
+      expect(surfaceEnabled('board', manifest)).toBe(true)
+    }
+  })
+})
+
+/** A fetch double answering with the manifest inside the plugin's envelope. */
+function okFetch(value: Record<string, boolean>) {
+  return (async () => ({
+    ok: true,
+    json: async () => ({ ok: true, value }),
+  })) as unknown as typeof fetch
+}
+
+/** The host answering 404 — a deployment without the route, or a stale bundle. */
+const notFoundFetch = (async () => ({ ok: false, json: async () => ({}) })) as unknown as typeof fetch
+
+/** The network simply being down. */
+const throwingFetch = (async () => { throw new Error('offline') }) as unknown as typeof fetch
+
+/** JSON that parses but says nothing useful. */
+const malformedFetch = (async () => ({ ok: true, json: async () => ({ ok: true, value: 'yes' }) })) as unknown as typeof fetch
+
+/** Three keys, but not three booleans — the shape a typo would produce. */
+const wrongShapeFetch = (async () => ({ ok: true, json: async () => ({ ok: true, value: { board: 'true', items: 'false', agent: 'true' } }) })) as unknown as typeof fetch
+
+/** The bare shape with no envelope: close enough to look right. */
+const boolInsteadOfEnvelopeFetch = (async () => ({ ok: true, json: async () => ({ board: false, items: false, agent: false }) })) as unknown as typeof fetch
+
 
 describe('the panel tells the truth about what it can see', () => {
   it('keeps the list on screen when the host copy is unreachable', () => {
