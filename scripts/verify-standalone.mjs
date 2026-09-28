@@ -314,6 +314,116 @@ const REAL_HOME_SPELLINGS = [...new Set([
   REAL_HOME.split(sep).join('\\\\'),
 ])].filter((spelling) => spelling.length > 3)
 
+// --- 3d. GBK-misread artifacts, undeclared CSS tokens, and the switch list --
+
+/**
+ * Characters that are LEGAL Unicode but only ever appear when a UTF-8 byte
+ * sequence is decoded as GBK. They are listed one by one on purpose: a RANGE
+ * would be wrong, because U+9000-U+9FFF is full of ordinary Chinese
+ * (面 键 队 错 首 集 退 量 — all of them live there), and a range would either
+ * miss the artifacts or bury the reader in false alarms. U+FFFD is checked
+ * above; this is for damage that happened EARLIER — a file written by a
+ * mis-decoding editor, where every character is valid and only the sentence is
+ * nonsense. Nothing else in this gate can see it, which is why it needs one.
+ */
+const GBK_MISREADS = new Map([
+  ['鈥', 'E2 80 9x — an em/en dash read as GBK'],
+  ['銆', 'E3 80 82 — the ideographic full stop read as GBK'],
+  ['锟', 'EF BF BD — a replacement character read as GBK'],
+  ['馃', 'F0 9F xx — an emoji lead byte read as GBK'],
+  ['鎰', 'E3 80 81 — the ideographic comma read as GBK'],
+  ['麟', 'EF BF BD variant, the same corruption one decode later'],
+])
+
+/** Comments are where a token may be NAMED without being used; the scans below
+ *  all read code, never prose about the code. */
+function stripComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+}
+
+/**
+ * A `var(--dsh-tb-x)` that nothing declares is a silent, invisible failure.
+ * CSS does not complain: the declaration using it is invalid at computed-value
+ * time, so the property simply computes to nothing — a panel loses its width,
+ * every test stays green, and the bug is only visible as a thin strip. Same
+ * family as the encoding checks: the code is valid and the behaviour is wrong.
+ */
+function undeclaredTokenFindings(path, text) {
+  const code = stripComments(text)
+  const used = new Map()
+  // ONLY A BARE var() IS A DEFECT. `var(--x, fallback)` is the correct way to
+  // reference a token that may legitimately be absent, and flagging those would
+  // be two false alarms on the first run — a gate that cries wolf gets switched
+  // off, which is worse than not having it. So the name is a finding only when
+  // the call closes right after it.
+  for (const m of code.matchAll(/var\(\s*(--dsh-tb-[A-Za-z0-9_-]+)\s*([,)])/g)) {
+    if (m[2] !== ')') continue
+    if (!used.has(m[1])) used.set(m[1], code.slice(0, m.index).split('\n').length)
+  }
+  const declared = new Set([...code.matchAll(/(--dsh-tb-[A-Za-z0-9_-]+)\s*:/g)].map(m => m[1]))
+  return [...used].filter(([name]) => !declared.has(name))
+    .map(([name, line]) => `${path}:${line}: \`var(${name})\` is used with no fallback and never declared in this file — CSS drops the whole declaration at computed-value time, so the element silently loses that property`)
+}
+
+/**
+ * `cordis.patch.yml` rows are the switches on the plugin's page; each names a
+ * package entry that must exist in `exports`, or the loader cannot find the
+ * module — and that mistake only surfaces as a failure to start. The build
+ * entry list says the same thing again, so the two are compared here instead
+ * of trusted.
+ */
+function patchRowFindings(root, pkg) {
+  const out = []
+  const patchPath = join(root, 'cordis.patch.yml')
+  if (!existsSync(patchPath)) return ['cordis.patch.yml is missing — the loader reads it to register the plugin, and without it nothing installs']
+  const rows = [...readFileSync(patchPath, 'utf8').matchAll(/^\s*-\s*id:\s*(\S+)\s*\n\s*name:\s*'([^']+)'/gm)]
+  if (rows.length === 0) out.push('cordis.patch.yml declares no rows — every plugin-page switch needs one')
+  const pkgName = pkg.name ?? ''
+  const exportKeys = new Set(Object.keys(pkg.exports ?? {}).map(k => (k === '.' ? pkgName : `${pkgName}${k.slice(1)}`)))
+  const tsdownPath = join(root, 'tsdown.config.ts')
+  const entryBlock = existsSync(tsdownPath) ? /clientBundle\([^,]+,\s*\[([\s\S]*?)\]/.exec(readFileSync(tsdownPath, 'utf8')) : null
+  const entries = entryBlock === null ? [] : [...entryBlock[1].matchAll(/'([^']+)'/g)].map(m => m[1])
+  if (entryBlock === null) out.push('tsdown.config.ts: could not read the clientBundle entry list — the switch list and the build list are compared, so both have to be readable')
+  for (const [, id, name] of rows) {
+    if (!exportKeys.has(name)) {
+      out.push(`cordis.patch.yml: row "${id}" names \`${name}\`, which package.json \`exports\` does not provide — the loader would not find the module, and that only shows up as a failure to start`)
+    }
+    const sub = name === pkgName ? 'src/index.ts' : `src/${name.slice(pkgName.length + 1)}.ts`
+    if (entryBlock !== null && !entries.includes(sub)) {
+      out.push(`cordis.patch.yml: row "${id}" is a switch, but tsdown.config.ts has no entry \`${sub}\` — a switch that is not a module of its own cannot be turned off at all, and the two lists are written by hand`)
+    }
+  }
+  for (const entry of entries) {
+    if (entry === 'src/index.ts' || entry === 'src/invariant.ts') continue
+    const sub = entry.replace(/^src\//, '').replace(/\.ts$/, '')
+    if (!rows.some(([, , name]) => name === `${pkgName}/${sub}`)) {
+      out.push(`tsdown.config.ts: entry \`${entry}\` is a module of its own but no cordis.patch.yml row names it — it will have no switch on the plugin page`)
+    }
+  }
+  return out
+}
+
+if (existsSync(pkgPath)) {
+  failures.push(...patchRowFindings(root, JSON.parse(readFileSync(pkgPath, 'utf8'))))
+}
+
+for (const file of textFiles) {
+  if (file === VERIFY_SELF) continue
+  if (IGNORED !== null && IGNORED.has(file)) continue
+  if (isArtifact(file)) continue
+  const rel = relative(root, file).split(sep).join('/')
+  const raw = readFileSync(file, 'utf8')
+  raw.split('\n').forEach((line, i) => {
+    for (const [ch, why] of GBK_MISREADS) {
+      if (line.includes(ch)) failures.push(`${rel}:${i + 1}: contains ${JSON.stringify(ch)} (U+${ch.codePointAt(0).toString(16).toUpperCase()}) — ${why}; it is a valid character, so nothing else in this gate can see it`)
+    }
+  })
+  if (/\.(css|scss|less)$/.test(file)) {
+    for (const finding of undeclaredTokenFindings(rel, raw)) failures.push(finding)
+  }
+}
+notes.push('declaration audit: every --dsh-tb-* var() read in a stylesheet is declared in the same file; every cordis.patch.yml row names a real export and a matching build entry')
+
 for (const file of textFiles) {
   if (file === VERIFY_SELF) continue // the patterns themselves live here
   if (IGNORED !== null && IGNORED.has(file)) continue // cannot escape this machine

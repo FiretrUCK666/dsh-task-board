@@ -282,7 +282,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 单元内文档名 | `documents/<name>.json`（`board` 是看板真相，`meta` 是迁移标记；加一种新数据 = 加一个文档名，不改既有文件） |
 | 启停开关 | profile 里本条目的 `disabled`（不写 = 默认启用，见「启停机制全貌」） |
 | **看板舞台 slot** | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
-| **侧栏入口 slot** | `sidebar.panellist`，`id: dsh-task-board`（**必须等于 `main` 的 key**，shell 靠它把行解析到舞台） |
+| **清单舞台 slot** | `main`，`key: dsh-task-board-items`（与看板同一个座位、不同键） |
+| **侧栏入口 slot** | `sidebar.panellist`，`id` 与各自的 `main` 键**一致**（shell 靠它把行解析到舞台） |
+| **插件行的开关** | `cordis.patch.yml` 的四行 = 详情页的四个开关；关掉 `dsh-task-board-agent` 之后**所有会话的 AI 都看不到本插件的工具、命令与提示词** |
 | localStorage 键（同步模式下是离线镜像/草稿/备份） | `dsh.taskBoard.v1` 等（**不得改名**，见硬性规范 5） |
 
 **本插件没有设置项，这是有意的**：每个行为都已经是使用者自己的选择（任务、定时、巡航、规则
@@ -339,17 +341,17 @@ schema 就是给同一件事再加一个控件。
 | slot | 用途 |
 | --- | --- |
 | `main` | 看板舞台（keyed slot，key = `dsh-task-board`） |
-| `sidebar.panellist` | 侧栏面板图标（id = `dsh-task-board`） |
-| `shell.overlay` | 任务清单抽屉的承载位（官方的「盖过每一列的整屏表面」） |
-| `conversation.session.header.actions` | 会话头部的清单开关按钮（list）——抽屉的第二个出口 |
+| `main` | 任务清单舞台（keyed slot，**key = `dsh-task-board-items`**——一个面板一个键） |
+| `sidebar.panellist` | 侧栏面板列表里的两行：看板（id = `dsh-task-board`）与清单（id = `dsh-task-board-items`） |
 | `tool.call.toolview` | AI 动作在对话里的呈现（keyed，按工具名） |
 
-**清单不是官方右栏的一个标签页。** 它曾经是（`sidebar.right.pane.tab` 与它的标题、
-`sidebar.right.tab.guide.entry` 三行），而那套注册**已经删掉**：官方右栏按**会话**记住整张
-表面（「一个会话的初始表面是：收起的、单窗格、无标签页」），所以标签页永远给不了真正要的那件事
-——**打开一次、就地留下、下个会话还在**。清单现在是我们自己的抽屉，不在乎你在哪个会话。
-**列出已经不再用的座位是最坏的一种过时**：这张表是机械门禁的输入（表 → 宿主），它列着一个
-不存在的使用者，等于让这张表对真正缺的那几条失去分辨力。
+**清单与看板是同一形状的两个主舞台面板**：两个 `main` 键、面板列表里的两行、共用同一个
+`selectPanel(null)` 出口（点开看清单，再点一下回会话）——出口只有一条，「离开一个面板」在两个
+面板上就不可能是两种意思。
+
+**这张表只列现在真有人用的座位**（列一个不存在的使用者，等于让它对真正缺的那几条失去分辨力），
+且与 `cordis.patch.yml` 的行、`exports`、`tsdown` 的 entry 必须一致——那道门禁查的就是这三个。
+**一个包只有一份浏览器产物**，所以面板的开关只能由宿主侧那一行先宣告。
 
 ### 插件按名读的宿主成员（必须存在）
 
@@ -379,17 +381,12 @@ schema 就是给同一件事再加一个控件。
 | client | `locale` | `register` | `@deepseek-ai/dsh-client-locale` |
 | client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
-| client | `sidebarRight` | `isExpanded`（只读）/ `close` | `@deepseek-ai/dsh-client-ui-sidebar-right` |
 
 **每个注入都是负债**：声明了一个实际不用的服务，会在该服务缺席的部署里白等——那个
 半区永远不激活，什么也注册不出来。所以 `inject` 只列真正用到的：本插件**不**注入
-`settings` / `configForms`（没有设置项要读写），**也不注入右栏那个服务**。
-
-**右栏那个服务我们只读不注册。** 抽屉是我们自己的表面，官方右栏是要避开的按会话地盘；
-读它只为一件事——**我们打开时把它收起来**。所以表里只列 `isExpanded` 与 `close`，
-一个 `register` / `openTab` 都不列。**它缺席时只少掉「顺手收起官方右栏」这一件，
-清单照常工作，绝不连累看板。** 曾经用过的 `sidebarRightTabs`（标签页注册）随那套注册一起
-删掉了，**表里也不留**：留一行没有使用者的服务，和留一个没有使用者的座位是同一种过时。
+`settings` / `configForms`（没有设置项要读写），**也不注入右栏那个服务**（清单曾在打开时顺手收起
+右栏，主舞台面板并不和它争地方，那条连同 `dsh-client-ui-sidebar-right` 一起删了）。
+**留一行没有使用者的服务，和留一个没有使用者的座位是同一种过时。**
 
 该脚本另带反向检查（源码不得引用宿主已撤的成员），用 `--probe-removed` 自测：它拿一组
 已知不存在的成员去扫源码，**必须报红**——否则说明检查本身失效了，而不是源码干净。
@@ -413,9 +410,11 @@ schema 就是给同一件事再加一个控件。
 
 ### host 半区（DSH 主进程）
 
-- `src/index.ts`：inject 是 `webServer` 加 `tools`/`commands`/`systemPrompt`；`ctx.effect` 各注册
-  一条路由或注册那套 agent 面。**没有 `Config` schema、没有 enable 检查**——启停是 profile 行
-  的 `disabled`（见「启停机制全貌」）；无图片路由、无设置路由。
+- `src/index.ts`：inject 只有 `webServer`；`ctx.effect` 各注册一条路由。**模型的整个面搬去了
+  它自己的一行**（`src/host-agent.ts`），所以关掉「AI 接口」是装配层的事，不是一次会被忘掉的
+  运行时判断。**没有 `Config` schema、没有 enable 检查**——启停是 profile 行的 `disabled`。
+- `src/host/surfaces.ts` 与 `cordis.patch.yml` 的四行：**一行 = 详情页上的一个开关**；面板的开关
+  只能由宿主侧那一行先宣告（`host-board.ts` / `host-items.ts` 只有几行，宣告本身就是开关的实现）。
 - `src/host/agent/`：三个工具（能力查询 / 查询 / 执行）、两条斜杠命令、系统提示那一节。
   **动作目录是它们的唯一权威**（`actions` 枚举按构造取自目录，筛选词表取自 `task-search.ts` 的
   注册表，一个字都不抄）；写工具走 `core/task-transitions.ts` 的共享纯函数——**界面与 AI 调同一套
@@ -444,12 +443,16 @@ schema 就是给同一件事再加一个控件。
 - `route-base.ts`：**浏览器侧路由的唯一出口**（交给 `document.baseURI`）；host 侧注册路径保持绝对，
   浏览器侧任何 `/api/...` 都必须经它。`TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方
   seat 组件。`board-transport.ts`：fetch + EventSource（缺席降纯轮询）。
-- `src/client/item/`：**清单抽屉**（`shell.overlay`）+ 会话头部的开关按钮
-  （`conversation.session.header.actions`）+ 右栏服务（按名读、只用于「打开时把它收起来」）。
-  **它是常驻边缘上自己的表面，不按会话记住展开状态**——这正是它不再做成官方右栏标签页的原因；
-  宽度是 `min(width, 100%)` 一条声明，没有断点、没有 `@media`。面板**一律不用 Dialog**
-  （`boardBox()` 取第一个板盒，会锚到看板上去），第 1 级就地展开。取消是「剩余操作不再执行」，
-  **已生效的不回滚**。`hostLostItems()` 为真时说「host 读不到」，**不能显示成「你一条都没有」**。
+- `src/client/item/`：**清单面板**，与看板同一形状的第二个主舞台面板（`main` key =
+  `dsh-task-board-items`，面板列表 `order` 120 紧跟看板，共用同一个 `selectPanel(null)` 出口）。
+  两个图标组件同构（壳画整行，我们只补「开着时再点这一行就离开」）。`item/model.ts` 纯推导，
+  `panel.tsx` 渲染，**四列并排、各列独立滚动**，窄屏一列加横向轨。面板**一律不用 Dialog**
+  （`boardBox()` 会锚到看板上去），第 1 级就地展开。挂上卡的事项才给「问 AI」，交给那张卡的会话
+  （`board-ask.ts` → `/board/ask` → 与 `/task` 同一个 `handOver`），**回执说是哪一个会话**，
+  失败也是一句话。`hostLostItems()` 为真时说「host 读不到」，**不能显示成「你一条都没有」**。
+  副本只存在**一个** holder（`itemListStage`）上——曾经有两个，绑一个读另一个，面板永远停在
+  「正在准备清单」。`src/client/surfaces.ts` 开机读一次 `/board/surfaces` 决定注册哪些面板，
+  **读不到就什么都不收窄**（开关只会让面板变少，不会让它凭空多出来）。
 
 ### 设计系统层（成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
 
@@ -515,17 +518,17 @@ schema 就是给同一件事再加一个控件。
   （组件不再另排一次序，也不再自己算运行数/末次结果/接续/暂停失败）。「下一句话」行读同一个
   `primary`，所以一张卡不可能在相邻两行说两件事。`executing` 与 `hasOpenRun` 曾是两个名字
   同一个谓词（注释却宣称它们是「显示/门禁」之分）——现在只留 `hasOpenRun`。
-- **当前值与历史值必须分开读**（这是权限那一类 bug 的根）：**历史页捎带的 projections 是
-  「这个会话当时做过什么」**（待办、token、上下文压力），**描述会话「现在是什么设置」的
-  一律走活投影读**（`SessionConfigFace.readPermission` → `remote.session.projections`）。
-  `/permission` 不开新一轮对话，所以历史页里那份拷贝永远不会刷新——面板曾一直显示改动前的
-  预设。**宿主把两件事分开存**（照着 `dsh-api-session-controller` 的 typert 契约抄，不要凭印象）：
-  `permissions` 投影的线上形状**只有 `{ currentValue: string }`**，候选项来自**另一个**
-  `permissionPresets` 目录（`catalog.listPermissions()`）——向投影索要一个 `options` 数组，
-  就会把一个好好的值判成「读不到」。**活值读不到就说读不到**（`review.permissionUnreadable`），
-  绝不拿「默认」顶替：「默认」本身就是一个关于会话状态的说法。**实时选择器里不得有「取消设置」项**
-  （`/permission` 没有这个动作，选了等于没选）；运行配置表单里的「默认」含义不同（本次运行不写
-  预设），留在那里。目录里没有的当前值**照原样显示**，不许悄悄改写成列表里第一项。
+- **当前值与历史值必须分开读**（权限那类 bug 的根）：**历史页捎带的 projections 是「这个会话当时
+  做过什么」**（待办、token、上下文压力），**描述会话「现在是什么设置」的一律走活投影读**
+  （`SessionConfigFace.readPermission` → `remote.session.projections`）。`/permission` 不开新一轮
+  对话，历史页里那份拷贝永远不刷新——面板曾一直显示改动前的预设。**宿主把两件事分开存**（照
+  `dsh-api-session-controller` 的 typert 契约抄）：`permissions` 投影线上**只有
+  `{ currentValue: string }`**，候选项来自**另一个** `permissionPresets` 目录
+  （`catalog.listPermissions()`）——索要一个 `options` 数组，就把好好的值判成「读不到」。
+  **活值读不到就说读不到**（`review.permissionUnreadable`），绝不拿「默认」顶替：「默认」本身
+  就是一句关于会话状态的话。**实时选择器里不得有「取消设置」项**（`/permission` 没这个动作，选了
+  等于没选）；运行配置表单里的「默认」含义不同（本次运行不写预设），留在那里。目录里没有的当前值
+  **照原样显示**，不许悄悄改写成列表里第一项。
 - **借用必持有**：宿主只在**有人持有**某个会话代次时才借出驱动（`sessions.binding` 文档原文：
   "or undefined without a retained generation"；`create()` 的文档原文：先 retain 再借）。所以
   凡是**拥有**一段工作的一次运行、一次续跑、一次新建会话配置，一律经
@@ -588,22 +591,15 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 9. **从机制上解决问题**：遇到新情况先按「行事总纲」的意图与边界推理，而不是等待
    规则增补或把特殊处理写死进代码；当真实的新场景反复出现时，按「本文件的定位与
    编辑规则」更新本文，而不是增加一次性补丁条款。
-10. **非 ASCII 内容一律不经 shell 传递**：中文（及任何非 ASCII）写进文件、拼进命令行、
-   或由 shell 拼进请求体，都可能被**静默改写**——这类损坏的共性是**不报错**（命令成功、
-   API 返回 2xx、文件看着正常），只有打开内容才看得出。已确认的三种形态：Windows 的
-   `-Encoding utf8` 会加 UTF-8 BOM（令 frontmatter / JSON 解析器读不到首行）、引号与
-   转义规则各平台不同（内容被吃掉或转义被改写）、行尾被平台改写。
-   **做法**：用文件工具（`write` / `edit`）写内容，而不是 shell；确需脚本时让脚本按
-   字节处理，并在写入后**回读比对**，不一致即报错。理由与平台无关——一个做法在某个
-   系统上跑通，不代表它在另一个系统上是同一个做法。发版说明就按此规则走——起草脚本
-   写 UTF-8 文件、工作流用 `--notes-file` 按文件发送（见发版段），本规范把它提升为
-   全项目通则。**这三样编码损坏现在有门禁**（`scripts/verify-standalone.mjs` 的 encoding
-    审计，随 `pnpm verify` 跑）：**U+FFFD**（字符在写入之前就已被损坏，而损坏永久留在
-    源码里）、**UTF-8 BOM**（编辑器里看不见，首行对 frontmatter 与 JSON 解析器不可读）、
-    **CRLF**（本仓库声明 LF，残留的 CRLF 会原样进 `lib/client.js.map` 的内嵌源码）。
-    三者都**不改任何逻辑，所以没有一条功能测试会红**——这正是它们必须由门禁抓、而不是
-    靠人记得回读的原因。`.bat` / `.cmd` 按 `.gitattributes` 豁免 CRLF。审计自己的自测：
-    `node scripts/verify-standalone.mjs . --probe-encoding`。
+10. **非 ASCII 内容一律不经 shell 传递**：中文写进文件、拼进命令行、或由 shell 拼进请求体，
+    都可能被**静默改写**——共性是**不报错**（命令成功、API 2xx、文件看着正常）。已确认的三种：
+    `-Encoding utf8` 加 BOM（首行对 frontmatter 与 JSON 解析器不可读）、引号与转义规则各平台不同、
+    行尾被平台改写。**做法**：用文件工具写内容，确需脚本时让它按字节处理并**回读比对**。理由与平台
+    无关——一个做法在某系统跑通不代表在另一系统是同一个做法。**这三样现在有门禁**
+    （`verify-standalone.mjs` 的 encoding 审计，随 `pnpm verify` 跑）：**U+FFFD**、**UTF-8 BOM**、
+    **CRLF**（残留的会原样进 `lib/client.js.map` 的内嵌源码）。三者都**不改任何逻辑，所以没有一条
+    功能测试会红**——这正是它们必须由门禁抓、而不是靠人记得回读的原因。`.bat` / `.cmd` 按
+    `.gitattributes` 豁免。审计的自测：`--probe-encoding`。
 11. **双端同治（移动端不是一等公民之外的二等公民，而是同一等）**：任何 UI、交互、
     文案、动效改动，**必须同时给出桌面与窄屏（手机）两档的结论**，且只能用
     「换行 / 换列 / 让位 / 短名 / 折叠 / 提高地板」表达——**禁止靠藏掉标签、藏掉
