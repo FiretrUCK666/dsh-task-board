@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ItemRecord } from '../../core/item.ts'
 import { ITEM_PRIORITIES, ITEM_STATUSES } from '../../core/item.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
+import { itemsAsk } from '../board-ask.ts'
 import { Button, Icon } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
 import {
@@ -140,12 +141,22 @@ export function ItemRow(props: {
   readonly onEdit: (edit: ItemEdit) => void
   readonly onToggleStep: (stepId: string) => void
   readonly onRemove: () => void
+  /**
+   * Hand this item to the model of the session its card runs in.
+   *
+   * Absent = no button, and the caller decides when: an item that hangs off no
+   * card has no session to talk to, so the button must not appear at all rather
+   * than appear and explain itself on press.
+   */
+  readonly onAsk?: () => void
+  /** While the hand-off is in flight, so the same item is not asked twice. */
+  readonly asking?: boolean
   /** The board cards this item may hang off, already titled. */
   readonly cards: readonly { readonly id: string; readonly title: string }[]
   /** The title of the card it currently hangs off, or undefined if it has none. */
   readonly linkedCardTitle: string | undefined
 }) {
-  const { view, density, english, expanded, fresh, panelId, onToggle, onEdit, onToggleStep, onRemove, cards, linkedCardTitle } = props
+  const { view, density, english, expanded, fresh, panelId, onToggle, onEdit, onToggleStep, onRemove, onAsk, asking, cards, linkedCardTitle } = props
   const { item, ref, title, status, progress, meta } = view
   const regionId = `${panelId}-${item.id}`
   return (
@@ -178,6 +189,22 @@ export function ItemRow(props: {
         )}
       </button>
 
+      {/* The hand-off lives OUTSIDE the toggle, so it is one click without
+          expanding anything. It only exists for an item that hangs off a card,
+          because the card is what names the session to talk to — an item with
+          no card has no target, and a button that cannot say so is a button
+          that lies. */}
+      {onAsk !== undefined && linkedCardTitle !== undefined && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className={css.itemAsk}
+          onClick={onAsk}
+          disabled={asking}
+        >
+          {t(asking ? 'item.ask.busy' : 'item.ask')}
+        </Button>
+      )}
       {/* The bar is the ratio and nothing else; the count sits beside it, never
           inside it, and with no steps there is no bar at all. */}
       {progress !== undefined && (
@@ -474,6 +501,33 @@ export function ItemListPanel(props: ItemListPanelProps) {
     setDraft({ title: '', body: '', notes: '' })
   }, [apply, draft, items])
 
+  // The hand-off goes to the HOST, which is what knows the card's sessions —
+  // the browser cannot see them. A refusal comes back as words and is shown as
+  // words: "which session" is a question the host answers, not one the panel
+  // should have asked.
+  const [asking, setAsking] = useState<string | undefined>(undefined)
+  const [asked, setAsked] = useState<string | undefined>(undefined)
+  const askOne = useCallback((item: ItemRecord) => {
+    // Read once: the closure below outlives this line, and a property that
+    // needs re-proving inside an async callback is a narrowing that will not
+    // hold when the reader renames the item mid-flight.
+    const taskId = item.taskId
+    if (taskId === undefined) return
+    setAsking(item.id)
+    void (async () => {
+      try {
+        const body = await itemsAsk({ taskId, ref: item.ref })
+        setAsked(body.ok
+          ? t('item.ask.said', { sessionId: body.sessionId })
+          : t('item.ask.refused', { why: body.why }))
+      } catch (error) {
+        setAsked(t('item.ask.refused', { why: error instanceof Error ? error.message : String(error) }))
+      } finally {
+        setAsking(undefined)
+      }
+    })()
+  }, [])
+
   // The composer lives in the header so it is reachable with the list on screen
   // AND with an empty list on screen: an entry point that only appears when
   // there is nothing to edit is an entry point you cannot find.
@@ -557,6 +611,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
           would be a worse answer than a banner. */}
       {lostHost && <p className={css.itemState} role="status">{t('item.hostLost')}</p>}
       {!lostHost && syncing && <p className={css.itemState} role="status">{t('item.syncing')}</p>}
+      {/* What the last hand-off actually did, said in words. A one-click
+          action with no visible outcome is indistinguishable from a dead
+          button — and the reader is left deciding whether it worked. */}
+      {asked !== undefined && (
+        <p className={css.itemState} role="status" data-ask-receipt="">{asked}</p>
+      )}
 
       {items.length === 0 && (
         <p className={css.itemState}>{t('item.empty')}</p>
@@ -628,6 +688,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
                           onEdit={edit => apply(editItem(items, item.id, edit, Date.now()))}
                           onToggleStep={stepId => apply(toggleItemStep(items, item.id, stepId, Date.now()))}
                           onRemove={() => apply(removeItem(items, item.id))}
+                          onAsk={item.taskId === undefined ? undefined : () => askOne(item)}
+                          asking={asking === item.id}
                           cards={cards}
                           linkedCardTitle={item.taskId === undefined ? undefined : cards.find(c => c.id === item.taskId)?.title}
                         />

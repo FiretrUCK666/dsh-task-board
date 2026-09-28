@@ -50,16 +50,21 @@ const TASK_HINT = '用法：/task 后面直接写你要记的事，例如「/tas
 const CONTINUE_PROMPT = '读一下任务清单里还没完成的事项，把它们列出来，然后问我要从哪一条开始。不要替我挑。'
 
 /**
- * Hand one sentence to the session's model, in the host's own result shape.
+ * Hand one sentence to a session's model.
  *
- * SUCCESS CARRIES NO `text` ON PURPOSE. The model answers in the conversation
- * right after this, with its own words and its own tool cards; a text here
- * would put a second, weaker rendering of the same turn in front of the
- * person, and `sourceEventSeq` is the only thing that should outrank that
- * answer — and a command that merely hands over a sentence owns no richer
- * domain event to point at.
+ * THE ONE PATH from this plugin into a model. Both slash commands call it, and
+ * so does the panel's one-click hand-off (`/board/ask`), because the reader is
+ * asking for the same thing in two places: one `followup`, one message shape,
+ * one failure story. A second copy of these four lines is a second thing to keep
+ * in step, and the day they drift is the day one of the two paths quietly
+ * stops saying what it says.
+ *
+ * Success carries no `text` on purpose: the model answers in the conversation
+ * right after this, in its own words and with its own tool cards, and a text
+ * here would put a second, weaker rendering of the same turn in front of the
+ * person.
  */
-function handOver(agent: CommandAgent, text: string): CommandResult {
+export function handOver(agent: CommandAgent, text: string): CommandResult {
   try {
     agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
     return { kind: 'success' }

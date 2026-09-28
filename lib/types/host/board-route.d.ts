@@ -13,6 +13,9 @@
  *   POST /api/<ns>/board/lease      → {clientId, ttlMs?, release?} → lease state
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
  *   GET  /api/<ns>/board/surfaces   → which of this plugin's rows are on
+ *   POST /api/<ns>/board/ask        → {taskId, ref} → hand one item to that
+ *                                     card's session model (the same funnel
+ *                                     `/task` uses)
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
  *
  * ONE route file, ONE envelope discipline, ONE CSRF guard: every POST tail
@@ -104,8 +107,33 @@ export interface BoardRouteDeps {
     submitCommand(command: BoardCommand): {
         queued: boolean;
     };
+    /**
+     * Hand one checklist item to the model of the session that card runs in.
+     *
+     * NOT a new path to the model: it is the same `agent.followup` the `/task`
+     * command uses, so "hand this sentence to a model" stays one fact with one
+     * implementation. What is new here is only the TARGET — the panel shows no
+     * conversation, so the session has to come from the card the item hangs off.
+     */
+    ask(request: AskRequest): Promise<AskRouteView>;
     subscribe(listener: (event: BoardEvent) => void): () => void;
 }
+/** What the panel sends: which card's session, and which item in it. */
+export interface AskRequest {
+    /** The card the item hangs off — it decides WHICH session is talked to. */
+    readonly taskId: string;
+    /** The item's short id, as the panel already shows it. */
+    readonly ref: number;
+}
+/** The hand-off's outcome, said in words the panel can render as-is. */
+export type AskRouteView = {
+    readonly ok: true;
+    readonly sessionId: string;
+    readonly said: string;
+} | {
+    readonly ok: false;
+    readonly why: string;
+};
 /** Extract a commit from an untrusted body; undefined when unusable. The
  *  merge grammar normalizes every row/section, so this only checks the
  *  envelope shape (arrays/strings), never the data. */

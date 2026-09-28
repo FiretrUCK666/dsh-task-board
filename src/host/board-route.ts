@@ -13,6 +13,9 @@
  *   POST /api/<ns>/board/lease      → {clientId, ttlMs?, release?} → lease state
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
  *   GET  /api/<ns>/board/surfaces   → which of this plugin's rows are on
+ *   POST /api/<ns>/board/ask        → {taskId, ref} → hand one item to that
+ *                                     card's session model (the same funnel
+ *                                     `/task` uses)
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
  *
  * ONE route file, ONE envelope discipline, ONE CSRF guard: every POST tail
@@ -31,7 +34,11 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
 import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
+import type { ItemRecord } from '../core/item.ts'
+import { relatedSessionIdsOf } from '../core/task-live.ts'
 import { DocumentService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
+import { handOver } from './agent/commands.ts'
+import { sessionRunningOf, type SessionPostureSources } from './session-state.ts'
 import { readJsonBody } from './http-json.ts'
 import { surfaceManifest } from './surfaces.ts'
 
@@ -121,7 +128,38 @@ export interface BoardRouteDeps {
   noteStreamOpen(clientId: string | undefined): void
   noteDisconnect(clientId: string | undefined): void
   submitCommand(command: BoardCommand): { queued: boolean }
+  /**
+   * Hand one checklist item to the model of the session that card runs in.
+   *
+   * NOT a new path to the model: it is the same `agent.followup` the `/task`
+   * command uses, so "hand this sentence to a model" stays one fact with one
+   * implementation. What is new here is only the TARGET — the panel shows no
+   * conversation, so the session has to come from the card the item hangs off.
+   */
+  ask(request: AskRequest): Promise<AskRouteView>
   subscribe(listener: (event: BoardEvent) => void): () => void
+}
+
+/** What the panel sends: which card's session, and which item in it. */
+export interface AskRequest {
+  /** The card the item hangs off — it decides WHICH session is talked to. */
+  readonly taskId: string
+  /** The item's short id, as the panel already shows it. */
+  readonly ref: number
+}
+
+/** The hand-off's outcome, said in words the panel can render as-is. */
+export type AskRouteView =
+  | { readonly ok: true; readonly sessionId: string; readonly said: string }
+  | { readonly ok: false; readonly why: string }
+
+/** Parse the ask body: both fields are required and both are plain scalars. */
+function parseAskBody(body: unknown): AskRequest | undefined {
+  if (typeof body !== 'object' || body === null) return undefined
+  const record = body as Record<string, unknown>
+  if (typeof record.taskId !== 'string' || record.taskId === '') return undefined
+  if (typeof record.ref !== 'number' || !Number.isFinite(record.ref)) return undefined
+  return { taskId: record.taskId, ref: record.ref }
 }
 
 /** The caller id every commit body must carry. One rule, both documents. */
@@ -359,6 +397,21 @@ export function createBoardHandler(
       return
     }
 
+    if (tail === '/ask') {
+      // The panel's one-click hand-off. It goes through the SAME funnel the
+      // `/task` command uses — `agent.followup` on a real UserMessage — because
+      // "hand this sentence to a model" must be one fact with one path: a
+      // second way to say it is a second thing to keep in step, and the first
+      // time they drifted nobody would have found out.
+      const ask = parseAskBody(payload)
+      if (ask === undefined) {
+        json(res, MALFORMED)
+        return
+      }
+      json(res, { ok: true as const, value: await deps.ask(ask) satisfies AskRouteView })
+      return
+    }
+
     if (tail === '/lease') {
       const parsed = parseLeaseBody(payload)
       if (parsed === undefined) {
@@ -429,6 +482,64 @@ function serveEvents(deps: BoardRouteDeps, url: URL, res: ServerResponse): void 
 }
 
 /**
+ * Hand one checklist item to the model of the session its card runs in.
+ *
+ * WHY THE CARD DECIDES THE TARGET. The panel is a main-stage page, so no
+ * conversation is on screen while it is open — there is no "current session" to
+ * send anything to. The card is what the item hangs off, and the card already
+ * knows its sessions, so the target is a fact the document already holds rather
+ * than a picker the reader has to answer.
+ *
+ * WHICH SESSION WHEN THERE ARE SEVERAL: one that is actually running. A card can
+ * hold several sessions, and "the one doing work right now" is the only choice
+ * that matches what the reader means by "ask the AI about this". When none is
+ * running the FIRST bound session is used, and the receipt names it either way —
+ * a hand-off that cannot be told apart afterwards is not a receipt.
+ *
+ * THE HAND-OFF ITSELF is `handOver` from the agent surface: one path into a
+ * model, shared with the two slash commands.
+ */
+async function handOneItemToItsCardSession(
+  ctx: Context,
+  service: DocumentService,
+  request: AskRequest,
+): Promise<AskRouteView> {
+  if (!service.available) return { ok: false, why: 'hostStorageMissing' }
+  const card = service.getDoc().tasks.find(task => task.id === request.taskId)
+  if (card === undefined) return { ok: false, why: 'noSuchTask' }
+  const item = service.getItemsDoc().items.find(entry => entry.ref === request.ref)
+  if (item === undefined) return { ok: false, why: 'noSuchItem' }
+
+  const sources: SessionPostureSources = { agents: () => ctx.get('agents') as never }
+  const linked = relatedSessionIdsOf(card).map(fact => fact.sessionId)
+  if (linked.length === 0) return { ok: false, why: 'taskHasNoSession' }
+
+  let chosen = linked[0] as string
+  for (const sessionId of linked) {
+    if (sessionRunningOf(sources, sessionId).value === true) { chosen = sessionId; break }
+  }
+
+  const agents = ctx.get('agents') as { get(id: string): { followup(message: unknown): void } | undefined } | undefined
+  const agent = agents?.get(chosen)
+  if (agents === undefined || agent === undefined) return { ok: false, why: 'noLiveAgent' }
+
+  const said = itemPrompt(item)
+  const result = handOver(agent as never, said)
+  return result.kind === 'success'
+    ? { ok: true, sessionId: chosen, said }
+    : { ok: false, why: result.text }
+}
+
+/** The one sentence the panel hands over, said in the reader's terms. */
+function itemPrompt(item: ItemRecord): string {
+  const where = item.taskId === undefined ? '（它还没有挂到任何看板卡片上）' : ''
+  const steps = item.steps.length === 0
+    ? ''
+    : `\n它的步骤：${item.steps.map(step => `- [${step.done ? 'x' : ' '}] ${step.text}`).join('\n')}`
+  return `任务清单里有一条「#${item.ref} ${item.title || '（无标题）'}」${where}。请处理它，并告诉我你打算怎么做。${steps}`
+}
+
+/**
  * Register the board route (prefix) and own the service lifecycle: open the
  * persistence unit through the platform storage hub, serve once initialized,
  * dispose the unit on unload.
@@ -465,6 +576,7 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
     noteStreamOpen: clientId => service.noteStreamOpen(clientId),
     noteDisconnect: clientId => service.noteDisconnect(clientId),
     submitCommand: command => service.submitCommand(command),
+    ask: request => handOneItemToItsCardSession(ctx, service, request),
     subscribe: listener => service.subscribe(listener),
   }
   const path = `/api/${ns}/board`

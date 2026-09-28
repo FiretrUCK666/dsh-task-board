@@ -33,6 +33,16 @@ export declare function ItemRow(props: {
     readonly onEdit: (edit: ItemEdit) => void;
     readonly onToggleStep: (stepId: string) => void;
     readonly onRemove: () => void;
+    /**
+     * Hand this item to the model of the session its card runs in.
+     *
+     * Absent = no button, and the caller decides when: an item that hangs off no
+     * card has no session to talk to, so the button must not appear at all rather
+     * than appear and explain itself on press.
+     */
+    readonly onAsk?: () => void;
+    /** While the hand-off is in flight, so the same item is not asked twice. */
+    readonly asking?: boolean;
     /** The board cards this item may hang off, already titled. */
     readonly cards: readonly {
         readonly id: string;

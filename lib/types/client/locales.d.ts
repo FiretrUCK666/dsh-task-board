@@ -606,6 +606,10 @@ export declare const zh: {
     'item.count': string;
     'item.countFiltered': string;
     'item.groupSteps': string;
+    'item.ask': string;
+    'item.ask.busy': string;
+    'item.ask.said': string;
+    'item.ask.refused': string;
     'item.noMatch': string;
     'item.composeTitle': string;
     'item.composeAdd': string;

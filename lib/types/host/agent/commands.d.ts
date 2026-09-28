@@ -1,4 +1,4 @@
-import type { CommandDefinition } from '@deepseek-ai/dsh-commands';
+import type { CommandDefinition, CommandResult } from '@deepseek-ai/dsh-commands';
 /** The structural face of one agent. The COMMAND types below are the host's
  *  own, imported — a hand-written copy of them compiles just as happily and
  *  fails on the first real invocation, which is exactly what happened. */
@@ -12,6 +12,22 @@ export interface CommandAgent {
 export interface CommandRegistrar {
     register(definition: CommandDefinition): () => void;
 }
+/**
+ * Hand one sentence to a session's model.
+ *
+ * THE ONE PATH from this plugin into a model. Both slash commands call it, and
+ * so does the panel's one-click hand-off (`/board/ask`), because the reader is
+ * asking for the same thing in two places: one `followup`, one message shape,
+ * one failure story. A second copy of these four lines is a second thing to keep
+ * in step, and the day they drift is the day one of the two paths quietly
+ * stops saying what it says.
+ *
+ * Success carries no `text` on purpose: the model answers in the conversation
+ * right after this, in its own words and with its own tool cards, and a text
+ * here would put a second, weaker rendering of the same turn in front of the
+ * person.
+ */
+export declare function handOver(agent: CommandAgent, text: string): CommandResult;
 /** The two command definitions, ready to register. */
 export declare function createTaskboardCommands(): readonly CommandDefinition[];
 /** Register both, and return one disposer that takes them both off. */

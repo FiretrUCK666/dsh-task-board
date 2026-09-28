@@ -7727,6 +7727,19 @@ textarea.itemInput {
   line-height: 18px;
 }
 
+[data-ask-receipt] {
+  color: var(--dsh-tb-text-2);
+}
+
+/* The hand-off is one click and never expands anything, so it sits beside
+   the row's own line rather than inside the details. Its own floor is the
+   accessibility minimum, and on touch the whole row row already grows. */
+.itemAsk {
+  flex: none;
+  align-self: center;
+  min-height: 24px;
+}
+
 .itemActions {
   display: flex;
   align-items: center;

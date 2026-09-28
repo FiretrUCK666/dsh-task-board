@@ -68,6 +68,9 @@ function depsFor(service: DocumentService): BoardRouteDeps {
     noteActivity: clientId => service.noteActivity(clientId),
     noteStreamOpen: clientId => service.noteStreamOpen(clientId),
     noteDisconnect: clientId => service.noteDisconnect(clientId),
+    // The hand-off needs a live agent, which this storage-shaped double has no
+    // way to provide; it answers honestly instead of inventing a model.
+    ask: async () => ({ ok: false as const, why: 'notWiredInThisDouble' }),
     submitCommand: command => service.submitCommand(command),
     subscribe: listener => service.subscribe(listener),
   }
