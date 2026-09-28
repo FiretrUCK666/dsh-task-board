@@ -572,6 +572,17 @@ export function ItemListPanel(props: ItemListPanelProps) {
             const isCollapsed = collapsed.has(slice.group)
               ? true
               : !groupOpenByDefault(slice.group, filtering)
+            // The column's own step arithmetic, summed here rather than in the
+            // row: a reader deciding whether to start in a column needs the
+            // column's total, and eight rows' worth of fractions is not it.
+            let stepsDone = 0
+            let stepsTotal = 0
+            for (const item of slice.items) {
+              for (const step of item.steps) {
+                stepsTotal += 1
+                if (step.done) stepsDone += 1
+              }
+            }
             return (
               <section key={slice.group} className={css.itemGroup}>
                 <h2 className={css.itemGroupHead}>
@@ -591,28 +602,39 @@ export function ItemListPanel(props: ItemListPanelProps) {
                     {groupLabel(slice.group)}
                     <span className={css.itemGroupCount}>{slice.items.length}</span>
                   </button>
+                  {/* The column's own arithmetic, because "8 items" alone does
+                      not tell a reader whether to start there or leave it for
+                      later. Steps only, and only when there ARE steps: a
+                      column with none would otherwise show a bare zero. */}
+                  <p className={css.itemGroupStats}>
+                    {stepsDone > 0 || stepsTotal > 0
+                      ? t('item.groupSteps', { done: String(stepsDone), total: String(stepsTotal) })
+                      : ' '}
+                  </p>
                 </h2>
-                {!isCollapsed && (
-                  <ul className={css.itemList} id={`${slice.group}-body`}>
-                    {slice.items.map(item => (
-                      <ItemRow
-                        key={item.id}
-                        view={itemRowViewOf(item, running.get(item.taskId ?? '') === true, now)}
-                        density={density}
-                        english={english}
-                        expanded={openRow === item.id}
-                        fresh={fresh.has(item.id)}
-                        panelId="item"
-                        onToggle={() => setOpenRow(openRow === item.id ? undefined : item.id)}
-                        onEdit={edit => apply(editItem(items, item.id, edit, Date.now()))}
-                        onToggleStep={stepId => apply(toggleItemStep(items, item.id, stepId, Date.now()))}
-                        onRemove={() => apply(removeItem(items, item.id))}
-                        cards={cards}
-                        linkedCardTitle={item.taskId === undefined ? undefined : cards.find(c => c.id === item.taskId)?.title}
-                      />
-                    ))}
-                  </ul>
-                )}
+                <div className={css.itemGroupList}>
+                  {!isCollapsed && (
+                    <ul className={css.itemList} id={`${slice.group}-body`}>
+                      {slice.items.map(item => (
+                        <ItemRow
+                          key={item.id}
+                          view={itemRowViewOf(item, running.get(item.taskId ?? '') === true, now)}
+                          density={density}
+                          english={english}
+                          expanded={openRow === item.id}
+                          fresh={fresh.has(item.id)}
+                          panelId="item"
+                          onToggle={() => setOpenRow(openRow === item.id ? undefined : item.id)}
+                          onEdit={edit => apply(editItem(items, item.id, edit, Date.now()))}
+                          onToggleStep={stepId => apply(toggleItemStep(items, item.id, stepId, Date.now()))}
+                          onRemove={() => apply(removeItem(items, item.id))}
+                          cards={cards}
+                          linkedCardTitle={item.taskId === undefined ? undefined : cards.find(c => c.id === item.taskId)?.title}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </section>
             )
           })}

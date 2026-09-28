@@ -605,6 +605,7 @@ export declare const zh: {
     'item.empty': string;
     'item.count': string;
     'item.countFiltered': string;
+    'item.groupSteps': string;
     'item.noMatch': string;
     'item.composeTitle': string;
     'item.composeAdd': string;

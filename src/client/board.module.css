@@ -909,7 +909,7 @@
    panel — they differ by design (cruise = float/lg/shadow-3, menus =
    menu/md) — so only the truly shared position + border live here. The
    slashMenu literal border is the same computed value as --dsh-tb-border. */
-:is(.cruisePopover, .slashMenu, .sessionContextPanel, .itemScroll) {
+:is(.cruisePopover, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList) {
   position: absolute;
   border: var(--dsh-tb-border);
 }
@@ -2286,28 +2286,28 @@
    gate; the hide-lists elsewhere (`scrollbar-width: none`) are fine because
    both implementations agree on the outcome: hidden. */
 @supports not selector(::-webkit-scrollbar) {
-  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll) {
+  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList) {
     scrollbar-width: thin;
     scrollbar-color: var(--dsw-alias-border-l3) transparent;
   }
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll)::-webkit-scrollbar {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList)::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll)::-webkit-scrollbar-thumb {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList)::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll)::-webkit-scrollbar-track {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList)::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll)::-webkit-scrollbar-button {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .itemScroll, .itemGroupList)::-webkit-scrollbar-button {
   display: none;
 }
 
@@ -7436,24 +7436,60 @@ span.interactionOptions {
   gap: 2px;
 }
 
-/* One scroll container, and it is in the scrollbar whitelist with the rest of
-   the panel family. Without that entry Chromium draws its own arrows and the
-   panel stops looking like part of this product. */
+/* The columns, side by side. FOUR equal tracks on a wide panel, one track and a
+   horizontal rail on a narrow one — the list is "one glance at everything", so
+   the narrow case gives up the side-by-side and keeps the glance.
+
+   Each column scrolls on its own and the row does not: a shared scroller means
+   collapsing one group scrolls the other three, which is the one behaviour that
+   makes four columns read worse than a single list. It is in the scrollbar
+   whitelist with the rest of the panel family — without that entry Chromium
+   draws its own arrows and the panel stops looking like part of this product. */
 .itemScroll {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  /* Sections are separated by SPACE, not by rules: a rule in a 300px column
-     reads as a table, and a list is not a table. */
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  align-items: stretch;
 }
 
 .itemGroup {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  /* A column needs no rule between its own rows — its edge against the next
+     column is what groups things, so the separation lives here once instead of
+     on every row. */
+  padding-inline-end: 12px;
+  border-inline-end: 1px solid var(--dsh-tb-border-soft);
+}
+
+.itemGroup:last-child {
+  padding-inline-end: 0;
+  border-inline-end: 0;
+}
+
+.itemGroupList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* The head carries the column's own arithmetic — how many, and how far through
+   its steps — because "8 items" alone does not tell a reader whether to start
+   there or leave it for later. */
+.itemGroupStats {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-inline-start: 16px;
+  color: var(--dsh-tb-text-3);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .itemGroupHead {
@@ -7755,6 +7791,24 @@ textarea.itemInput {
    words out of reading: the title keeps the first text tone. */
 .itemRow[data-status='done'] .itemTitle {
   color: var(--dsh-tb-text-2);
+}
+
+/* Four columns need room; below that the side-by-side stops being a glance and
+   starts being four thin ribbons. The narrow case keeps ONE column and gives the
+   other three a horizontal rail — the reader still sees every group, and the
+   columns stay columns instead of collapsing into a single long list. */
+@container dsh-tb-item (max-width: 720px) {
+  .itemScroll {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(220px, 1fr);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .itemGroup {
+    overflow-y: auto;
+  }
 }
 
 .itemRow[data-status='blocked'] .itemTitle {
