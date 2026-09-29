@@ -392,17 +392,35 @@ export class DocumentService {
     return this.enqueue(async () => {
       const next = applyCommit(this.doc, commit, this.now())
       if (next === this.doc) return this.doc
-      this.doc = next
+      /* PERSIST FIRST, PUBLISH SECOND, AND DO NOT SWALLOW THE FAILURE.
+       *
+       * The order was the opposite of what the comment above this method claimed,
+       * and that claim is the whole defect. `this.doc = next` ran BEFORE
+       * `putRecord`, so the in-memory revision advanced on every write; the put
+       * was then wrapped in a catch that logged and continued. A full disk
+       * therefore produced: a resolved promise, a revision that had moved, a
+       * `200 {ok:true}` from the route, and — because every later `?since=N`
+       * short-circuits on that revision — no replica ever asked for the write
+       * again. Restart, and it was gone, with the ledger claiming a revision that
+       * had never existed on the medium.
+       *
+       * The trade the old comment named ("the next commit persists both") only
+       * holds if a later commit arrives. If none does, the gap is permanent, and
+       * 「serving a revision the medium has never seen」 is a lost write wearing the
+       * costume of a latency trade. So the put now happens before anything
+       * observable moves, and a failure REJECTS: memory keeps the last good
+       * document, the revision does not advance, the caller is not told it
+       * landed, and the next commit — or the next restart — still sees a
+       * consistent truth.
+       *
+       * The caller is the route, which turns a rejection into this prefix's own
+       * `BoardRouteFail` — a 200 carrying `{ok:false,error:{code:'persist_failed'}}`,
+       * which is what `/items/restore` already answers for the same class of
+       * problem. */
       if (this.unit !== undefined) {
-        try {
-          await this.unit.putRecord(BOARD_UNIT_TABLE, BOARD_DOCUMENT, next)
-        } catch (error) {
-          // Memory moved; the medium lags one commit. The board stays live
-          // (the next commit persists both), and a restart replays from the
-          // medium — the same durability trade the localStorage mode made.
-          this.log('[dsh-task-board] board document persist failed (memory keeps serving)', error)
-        }
+        await this.unit.putRecord(BOARD_UNIT_TABLE, BOARD_DOCUMENT, next)
       }
+      this.doc = next
       this.broadcast({ type: 'commit', document: BOARD_DOCUMENT, revision: next.revision, clientId: commit.clientId })
       return next
     })
@@ -429,17 +447,16 @@ export class DocumentService {
     return this.enqueue(async () => {
       const next = applyItemsCommit(this.items, commit, this.now())
       if (next === this.items) return this.items
-      this.items = next
+      /* The same order, and for the same reason, as `commit`: nothing observable
+       * moves until the medium has taken it. A note the reader is told is saved,
+       * that exists only in this process's heap, is the one loss on this surface
+       * that is both silent and permanent — a checklist row is often the only
+       * record of an idea, and the window where it can vanish is exactly the
+       * window where the disk is full. */
       if (this.unit !== undefined) {
-        try {
-          await this.unit.putRecord(BOARD_UNIT_TABLE, ITEMS_DOCUMENT, next)
-        } catch (error) {
-          // Same trade as the board: memory moved, the medium lags one commit,
-          // the checklist stays live and the next commit writes the whole
-          // document.
-          this.log('[dsh-task-board] items document persist failed (memory keeps serving)', error)
-        }
+        await this.unit.putRecord(BOARD_UNIT_TABLE, ITEMS_DOCUMENT, next)
       }
+      this.items = next
       this.broadcast({ type: 'commit', document: ITEMS_DOCUMENT, revision: next.revision, clientId: commit.clientId })
       return next
     })

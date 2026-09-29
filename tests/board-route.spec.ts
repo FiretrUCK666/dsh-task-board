@@ -174,6 +174,11 @@ function fakeDeps() {
     setAvailable: (value: boolean) => { available = value },
     seedCommit: (commit: BoardCommit) => { doc = applyCommit(doc, commit, T0) },
     seedItems: (commit: ItemsCommit) => { items = applyItemsCommit(items, commit, T0) },
+    /** Make the medium refuse the next write, the way a full disk does. */
+    failPersists: (why: string) => {
+      deps.commit = async () => { throw new Error(why) }
+      deps.commitItems = async () => { throw new Error(why) }
+    },
     commands,
     disconnects,
     activities,
@@ -181,6 +186,54 @@ function fakeDeps() {
     listenerCount: () => listeners.size,
   }
 }
+
+describe('a write the medium refuses is a REFUSAL, not a hang', () => {
+  /**
+   * THE CONTRACT THAT HAD ZERO COVERAGE.
+   *
+   * The service used to swallow a persist failure, so the route never saw one —
+   * and when the service was fixed to reject, this handler had no catch beyond
+   * `new URL()`, so the rejection left the request with NO response at all: no
+   * status, no envelope, a socket that closed. The client then reported a
+   * transport failure for what is a server-side refusal, and a reader's note
+   * looked like a network problem rather than a full disk.
+   *
+   * Both tails now answer this prefix's own convention — a 200 carrying
+   * `{ok:false,error:{code:'persist_failed'}}` — and this is the only thing that
+   * makes those branches live rather than decorative.
+   */
+  const commit = {
+    clientId: 'c',
+    tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')],
+    deleted: [],
+    cruise: { value: { enabled: false, limit: 5, schedule: [] }, at: 0 },
+    schedulePresets: { value: [], at: 0 },
+    runPresets: { value: { presets: [] }, at: 0 },
+  }
+
+  it('the board tail answers persist_failed rather than leaving the request open', async () => {
+    const h = fakeDeps()
+    h.failPersists('disk full')
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('POST', BASE, commit), res)
+    const envelope = JSON.parse(res.state.body)
+    expect(envelope.ok, 'a write that was never written was answered as a success').toBe(false)
+    expect(envelope.error?.code, 'the refusal does not say what went wrong').toBe('persist_failed')
+    expect(res.state.status, 'the refusal left the request with no status at all').toBe(200)
+  })
+
+  it('and so does the checklist tail, where the lost row is an idea', async () => {
+    const h = fakeDeps()
+    h.failPersists('disk full')
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [] }), res)
+    const envelope = JSON.parse(res.state.body)
+    expect(envelope.ok, 'a checklist write that was never written was answered as a success').toBe(false)
+    expect(envelope.error?.code).toBe('persist_failed')
+  })
+})
 
 describe('GET /board', () => {
   it('serves the authoritative document', async () => {

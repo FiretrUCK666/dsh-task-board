@@ -40,6 +40,7 @@ import {
   itemRowViewOf,
   itemSlicesOf,
   isInboxItem,
+  ITEM_FLAGS,
   parseItemQuery,
   scheduleBucketsOf,
   triageLinesOf,
@@ -300,7 +301,7 @@ describe('what the reader can click and what the reader can type are one grammar
     // separate defects and only checking one of them misses half of them: a
     // button that writes an unparseable string still "works", and a grammar
     // that accepts a spelling no control produces still "works".
-    for (const flag of ['hardOverdue', 'behind', 'stale', 'undated', 'gated', 'blocked', 'linked', 'done'] as ItemFlag[]) {
+    for (const flag of ITEM_FLAGS) {
       const typed = parseItemQuery(`has:${flag}`)
       const spelled = parseItemQuery(`has:${flag.toLowerCase()}`)
       expect([...spelled.flags], `the grammar is case-sensitive for has:${flag}`).toEqual([...typed.flags])
@@ -342,12 +343,30 @@ describe('what the reader can click and what the reader can type are one grammar
     // the grammar cannot parse is a button that filters nothing. Both are
     // caught by comparing the two sets, and neither is caught by reading one.
     const labelled = new Set([...code(panelSource).matchAll(/'item\.triage\.(\w+)'/g)].map(m => m[1] as string))
-    const flags = new Set<ItemFlag>(['hardOverdue', 'behind', 'stale', 'undated', 'gated', 'blocked', 'linked', 'done'])
-    // The panel maps flags to labels through one table, so the table is the
-    // vocabulary; every flag must be in it under a name the grammar accepts.
+    // THE MODEL'S OWN LIST, not a copy of it. This gate used to spell the flags
+    // out by hand and cast the array, which is the one move that makes an
+    // incomplete list compile: `overdue` was added to the grammar and this gate
+    // kept passing, because the cast agreed with the shorter copy. A gate that
+    // polices a vocabulary must READ the vocabulary, or it is a second, stale
+    // answer to 「有哪些旗标」 — the exact failure its own name claims to catch.
+    //
+    // AND THE CLAIM IS NOW THE TRUE ONE. It used to demand a TRIAGE SENTENCE for
+    // every flag, which was never true: `ITEM_FLAGS` is the FILTER vocabulary, and
+    // only the flags the triage derivation can actually emit need a line. `overdue`
+    // is the overview tile's filter and has no sentence, so demanding one would
+    // have put a fiction in the table to satisfy a check. What is checked is the
+    // real shape: every flag IS a flag the grammar parses, and every flag the
+    // derivation can emit HAS a line.
+    const flags = new Set<ItemFlag>(ITEM_FLAGS)
+    const unparseable = [...flags].filter(flag => parseItemQuery(`has:${flag}`).flags.size !== 1)
+    expect(unparseable,
+      `these are in the grammar's own flag list but the parser does not read them back: ${unparseable.join(', ')}`).toEqual([])
+    // The panel maps flags to lines through one table, so the table is the
+    // vocabulary of the TRIAGE block specifically.
     const mapped = new Set([...code(panelSource).matchAll(/^\s*(\w+):\s*'item\.triage\.\w+',?$/gm)].map(m => m[1] as string))
-    expect([...flags].filter(flag => !mapped.has(flag)),
-      `these flags have no label in the interface, so no sentence can offer them: ${[...flags].filter(f => !mapped.has(f)).join(', ')}`).toEqual([])
+    const invented = [...mapped].filter(name => !flags.has(name as ItemFlag))
+    expect(invented,
+      `the panel offers lines for flags the grammar does not have, so those sentences can never appear: ${invented.join(', ')}`).toEqual([])
     expect(labelled.size, 'no triage labels at all — the vocabulary is being read from nothing').toBeGreaterThan(0)
   })
 })

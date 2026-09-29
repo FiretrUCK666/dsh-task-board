@@ -351,7 +351,7 @@ export function isItemQualifierToken(token: string): boolean {
   return lower.startsWith('#') && lower.length > 1
 }
 /** The qualifier keys the grammar accepts, as the STABLE values behind them. */
-const ITEM_FLAGS: readonly ItemFlag[] = ['hardOverdue', 'behind', 'overdue', 'stale', 'undated', 'gated', 'blocked', 'linked', 'done']
+export const ITEM_FLAGS: readonly ItemFlag[] = ['hardOverdue', 'behind', 'overdue', 'stale', 'undated', 'gated', 'blocked', 'linked', 'done']
 
 /**
  * Lowercased token to flag, so the grammar is case-insensitive WITHOUT

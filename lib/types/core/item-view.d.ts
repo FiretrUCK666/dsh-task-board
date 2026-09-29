@@ -265,6 +265,8 @@ export type ItemFlag =
  * @returns whether the grammar would read it as a qualifier.
  */
 export declare function isItemQualifierToken(token: string): boolean;
+/** The qualifier keys the grammar accepts, as the STABLE values behind them. */
+export declare const ITEM_FLAGS: readonly ItemFlag[];
 /** A parsed query: free words plus recognised qualifiers. */
 export interface ItemQuery {
     readonly words: readonly string[];

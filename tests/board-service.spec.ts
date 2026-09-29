@@ -220,14 +220,54 @@ describe('DocumentService commit', () => {
     expect(service.getDoc().tasks.map(t => t.id).sort()).toEqual(['t-a', 't-b'])
   })
 
-  it('keeps serving from memory when the persist throws', async () => {
+  it('REFUSES the write when the medium will not take it, and does not move the revision', async () => {
+    // THIS TEST USED TO ASSERT THE OPPOSITE, and that is why the defect survived.
+    //
+    // It was named 「keeps serving from memory when the persist throws」 and it
+    // asserted that the row was there afterwards — which pinned the bug as the
+    // contract. The service published `this.doc = next` and advanced the revision
+    // BEFORE `putRecord`, then caught the failure and continued. So a full disk
+    // produced a resolved promise, a revision that had moved, and a `200 ok:true`
+    // from the route; because every later `?since=N` short-circuits on that
+    // revision, no replica ever asked for the write again, and after a restart it
+    // was gone with the ledger claiming a revision the medium had never seen.
+    //
+    // The trade the old comment named — 「the next commit persists both」 — only
+    // holds if a later commit arrives. If none does, the gap is permanent, and
+    // 「serve a revision the medium has never seen」 is a lost write wearing the
+    // costume of a latency trade.
     const unit = new FakeUnit()
-    const { service } = makeService(unit)
+    const { service, events } = makeService(unit)
     await service.init()
+    const good = service.getDoc()
+    events.length = 0
     unit.throwOnWrite = true
-    const doc = await service.commit(commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] }))
-    expect(doc.tasks).toHaveLength(1)
-    expect(service.getDoc().tasks).toHaveLength(1)
+    await expect(service.commit(commitOf({ tasks: [createTask({ title: 'A', description: '', prompt: '' }, T0, 't-a')] })))
+      .rejects.toThrow()
+    // The document is the same OBJECT, so the revision did not move, no replica
+    // can be told to skip asking again, and nothing was announced.
+    expect(service.getDoc(), 'memory changed for a write the medium refused').toBe(good)
+    expect(service.getDoc().revision).toBe(0)
+    expect(service.getDoc().tasks).toHaveLength(0)
+    expect(events, 'a commit frame announced a write the medium refused').toHaveLength(0)
+  })
+
+  it('and the checklist tail refuses the same way, because a note is the one loss that is permanent', async () => {
+    const unit = new FakeUnit()
+    const { service, events } = makeService(unit)
+    await service.init()
+    const before = service.getItemsDoc()
+    events.length = 0
+    unit.throwOnWrite = true
+    await expect(service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'n' })] })))
+      .rejects.toThrow()
+    // Nothing observable moved: the document is the same OBJECT, so no revision
+    // advanced and no frame announced a write that never landed. A checklist row
+    // is often the only record of an idea, and the window where it can vanish is
+    // exactly the window where the disk is full.
+    expect(service.getItemsDoc(), 'the checklist moved for a write the medium refused').toBe(before)
+    expect(service.getItemsDoc().items).toHaveLength(0)
+    expect(events, 'a commit frame announced a write the medium refused').toHaveLength(0)
   })
 })
 
@@ -694,14 +734,23 @@ describe('DocumentService checklist (the second document)', () => {
     expect(service.getDoc().revision).toBe(1)
   })
 
-  it('keeps serving the checklist from memory when its persist throws', async () => {
+  it('the checklist tail refuses a write the medium will not take, and moves nothing', async () => {
+    // THE TWIN OF THE BOARD CASE ABOVE, and it pinned the same defect: it asserted
+    // the row was there after a throw, which made a lost note into a contract. A
+    // checklist row is frequently the only record of an idea, so the two documents
+    // fail the same way and one of them is much more expensive.
     const unit = new FakeUnit()
-    const { service } = makeService(unit)
+    const { service, events } = makeService(unit)
     await service.init()
+    const good = service.getItemsDoc()
+    events.length = 0
     unit.throwOnWrite = true
-    const doc = await service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' })] }))
-    expect(doc.items).toHaveLength(1)
-    expect(service.getItemsDoc().items).toHaveLength(1)
+    await expect(service.commitItems(itemsCommitOf({ items: [row({ id: 'i-a', ref: 1, title: 'A' })] })))
+      .rejects.toThrow()
+    expect(service.getItemsDoc(), 'the checklist moved for a write the medium refused').toBe(good)
+    expect(service.getItemsDoc().revision, 'the checklist revision advanced for a write the medium refused').toBe(0)
+    expect(service.getItemsDoc().items).toHaveLength(0)
+    expect(events, 'a commit frame announced a checklist write the medium refused').toHaveLength(0)
   })
 
   it('a corrupt checklist record degrades to an empty document, never a failed boot', async () => {

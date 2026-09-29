@@ -509,9 +509,22 @@ export function createBoardHandler(
         return
       }
       deps.noteActivity(commit.clientId)
-      const doc = await deps.commit(commit)
-      const view: BoardRouteView = { available: true, revision: doc.revision, doc }
-      json(res, { ok: true as const, value: view })
+      /* A PERSIST FAILURE IS A REFUSAL, not a hang. The service now rejects when
+         the medium will not take the write, which is the only honest answer — but
+         this handler had no catch beyond `new URL()`, so the rejection left the
+         request with NO response at all: no status, no envelope, a socket that
+         simply closed. The client then reported a transport failure for what is a
+         server-side refusal, and a reader's note looked like a network problem
+         rather than a full disk. Answered in this prefix's own convention, which
+         is a 200 carrying `{ok:false,error}` — the same shape `/items/restore`
+         already uses for the same class of failure. */
+      try {
+        const doc = await deps.commit(commit)
+        const view: BoardRouteView = { available: true, revision: doc.revision, doc }
+        json(res, { ok: true as const, value: view })
+      } catch (error) {
+        json(res, { ok: false as const, error: { code: 'persist_failed', message: error instanceof Error ? error.message : String(error) } })
+      }
       return
     }
 
@@ -526,8 +539,15 @@ export function createBoardHandler(
         return
       }
       deps.noteActivity(commit.clientId)
-      const doc = await deps.commitItems(commit)
-      json(res, { ok: true as const, value: { available: true, revision: doc.revision, doc } satisfies ItemsRouteView })
+      // Same reason as the board's tail: a checklist write that the medium will
+      // not take is the one loss on this surface that is both silent and
+      // permanent, so it is refused in words rather than left to time out.
+      try {
+        const doc = await deps.commitItems(commit)
+        json(res, { ok: true as const, value: { available: true, revision: doc.revision, doc } satisfies ItemsRouteView })
+      } catch (error) {
+        json(res, { ok: false as const, error: { code: 'persist_failed', message: error instanceof Error ? error.message : String(error) } })
+      }
       return
     }
 
