@@ -170,8 +170,8 @@ Restart `dsh web` afterwards.
   deadline; a missed due date is behind schedule.
 
   **The list page is the only workbench**, because sorting, picking and batching only become
-  questions past a few dozen rows. It opens with a one-line **overview** (open, overdue, today,
-  this week), then a **filter bar** — state, priority, tag, date — where each choice writes
+  questions past a few dozen rows. It opens with a one-line **overview** (**In progress /
+  To do / Blocked / Done / Past due** — tapping one filters the list to that class), then a **filter bar** — state, priority, tag, date — where each choice writes
   itself into the search box, so what you typed and what you clicked are one thing you can edit
   either way; then the rows, grouped by state. **Seven orderings** (sequence / earliest start /
   due / hard deadline / priority / created / title), **two row heights** and **multi-select  batching** (state, priority, date, ask AI, delete) all live on this page — tick a few rows and
