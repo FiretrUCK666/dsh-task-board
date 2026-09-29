@@ -1210,20 +1210,30 @@
      Three numbers, and every place on this surface that needs one reads one of
      them, so the four places below cannot be edited apart from each other.
 
-     `--card-mark-col` is the whole answer to 「the mark's spacing」: 8px of air,
-     the 8px mark, 8px of air. It used to be an implicit arrangement — a 12px
-     side padding with the dot hung at `inset-inline-start: 4px` — and that packs
-     an 8px dot into 12px, which leaves **4px on one side and 0 on the other**. The
-     dot is touching the title, and it is touching the card's edge, and neither of
-     those is visible as a number: they read as 「间距不太对」and there is nothing to
-     measure. Marking the mark out of flow is what made it possible (a mark in the
-     flow pushes a card's title right and the column grows a second text edge); it
-     is not a reason to leave the padding short.
+     `--card-mark-col` is the whole answer to 「the mark's spacing」: 12px of air,
+     the 8px mark, 12px of air. It is 12 and not 8 because a mark's own width is
+     the width at which it stops reading as a MARK and starts reading as a
+     BULLET — a bullet at 8px of air is a bullet jammed against the card's border,
+     which is a different complaint from the one this token was written for and
+     is fixed by exactly the same number. 12 is 1.5× the mark: the smallest
+     multiple that reads as space rather than as clearance. It is also past the
+     card's own 14px corner radius, so the title is no longer inside the curve.
 
-     So the rail is stated, and it is symmetric because an asymmetric gutter reads
-     as two mistakes rather than as one. 24 is not a taste: it is the mark's own
-     width with the same width of air on each side. */
-  --card-mark-col: 24px;
+     The four candidates were rendered side by side at the real width before this
+     was chosen, and the answer was not a matter of taste: at 24 the dot hugs the
+     border; at 36 the card's content is visibly squeezed against the right edge
+     and the title reads as escaping the card. 32 is the one where the dot is
+     surrounded and the card still has a measure.
+
+     This token used to be an implicit arrangement — a 12px side padding with the
+     dot hung at `inset-inline-start: 4px` — and that packs an 8px dot into 12px,
+     which leaves 4px on one side and 0 on the other. The dot is touching the
+     title, and it is touching the card's edge, and neither of those is visible as
+     a number: they read as 「间距不太对」and there is nothing to measure. Marking
+     the mark out of flow is what made it possible (a mark in the flow pushes a
+     card's title right and the column grows a second text edge); it is not a
+     reason to leave the padding short. */
+  --card-mark-col: 32px;
   /* The two numbers the rail is measured FROM, because they are the column's own
      geometry and restating them in the header is how the header and the cards
      drift apart: the column's hairline, and how far the cards stand off it. */
@@ -1293,7 +1303,7 @@
      the rail's own leading air. A column's dot and a card's dot are the same kind
      of thing in the same rail, and when they are at different x the column reads
      as two columns — so this is not a nudge, it is the same expression the card
-     writes from. Measured 1 + 8 + 8 = 17, and the name then starts 8px after the
+     writes from. Measured 1 + 8 + 12 = 21, and the name then starts 12px after the
      dot's right edge: the same gap a card's title has after its own mark. */
   inset-inline-start: calc(var(--column-frame) + var(--card-gutter) + (var(--card-mark-col) - 8px) / 2);
   inset-block-start: 50%;
@@ -1656,7 +1666,7 @@
      about the LINE, not the box. */
   position: absolute;
   /* CENTRED IN THE RAIL, which is what the rail is for: the air before the mark
-     and the gap after it are the same 8px, so the dot is a thing sitting between
+     and the gap after it are the same 12px, so the dot is a thing sitting between
      the card's edge and its words rather than something hung off one of them. */
   inset-inline-start: calc((var(--card-mark-col) - 8px) / 2);
   width: 8px;
