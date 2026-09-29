@@ -116,8 +116,10 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
       .toMatch(/if \(ok\) return[\s\S]{0,160}restore\(\)\s*\n\s*setSendError\(t\('review\.sendNotSent'\)\)/)
     expect(code, 'the send failure is masked by an older attachment error, so the reason shown is the wrong one')
       .not.toMatch(/attachments\.error \?\? sendError/)
+    // The retry must clear the PREVIOUS refusal before it starts, or a refusal
+    // that has been fixed stays on screen after a later send succeeds.
     expect(code, 'a previous refusal is never cleared, so it stays on screen after a later send succeeds')
-      .not.toMatch(/void sent\.then/)
+      .toMatch(/setSendError\(undefined\)[\s\S]{0,200}void sent\.then/)
   })
 
   it('the session-rule switch refuses VISIBLY, and stays dis-armable', () => {

@@ -221,7 +221,15 @@ describe('the panel renders against the host it will actually run in', () => {
     // 74 rules were appended there under a heading that still read "right-hand
     // page". A separate sheet is the structural half of that fix: after it,
     // nothing about the list can be edited from the board's file by accident.
-    expect(/\.item[A-Z]/.test(css) && css.includes('src/client/board.module.css')).toBe(true)
+    //
+    // The harness has to have read SOMETHING for the sweep below to mean
+    // anything — and the reading used to be proved by
+    // `css.includes('src/client/board.module.css')`, which is true because
+    // `panelCss()` writes that path into the string as a BANNER COMMENT whether
+    // or not the file exists. It is a decoration answering an assertion about the
+    // source, so it is gone; what is left is the part that can actually fail: the
+    // list's own rules are in the concatenation at all.
+    expect(/\.item[A-Z]/.test(css), 'the harness read no list rules at all, so the sweep of board.module.css below is over an empty claim').toBe(true)
     const boardOnly = readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8')
     const leftover = [...boardOnly.matchAll(/^\.item[A-Z][A-Za-z]*\s*\{/gm)].map(m => m[0])
     expect(leftover, `these list rules are still in board.module.css: ${leftover.join(', ')}`).toEqual([])
@@ -574,12 +582,41 @@ describe('the panel fills the stage it is given', () => {
     // `@media (hover: none) and (pointer: coarse)` may grow hit areas and
     // nothing more. If it ever grows a visual size, the phone stops being the
     // same product at a smaller width, which is the one thing rule 11 forbids.
+    //
+    // THE WHOLE VALUE, NOT ITS FIRST FEW CHARACTERS. The old pattern was
+    // `…\s*:\s*(?!24px|44px|16px)[\d.]+px`, and the `\s*` between the colon and
+    // the lookahead can match ZERO characters — so on `padding: 0 24px` the
+    // engine backtracks onto the space before the `24px`, the lookahead sees
+    // that space rather than the sanctioned value, the value is not `24px`, the
+    // lookahead passes, and a 24px visual change on touch went unreported. A
+    // lookahead that can be satisfied by the whitespace in front of the thing it
+    // is guarding is not a lookahead.
+    //
+    // So the declaration is captured WHOLE and every length in its value is
+    // judged, and the sanction is per PROPERTY rather than per number: the
+    // sheet is allowed `font-size: 16px` (the anti-zoom rule) and a 24px swatch,
+    // and nothing else. A 24px that arrives as padding is not the swatch.
     const live = stripCssComments(css)
+    const SANCTIONED: Readonly<Record<string, ReadonlySet<string>>> = {
+      // 「16px input text stops iOS/Android auto-zoom on focus」 — the one visual
+      // change this query is allowed, because without it the phone zooms.
+      'font-size': new Set(['16px']),
+      // The 16px colour dots heated to a finger's 24px. Nothing else.
+      width: new Set(['24px']),
+      height: new Set(['24px']),
+    }
+    const sizes = (value: string): string[] => [...value.matchAll(/[\d.]+px/g)].map(call => call[0])
     for (const block of live.matchAll(/@media \(hover: none\) and \(pointer: coarse\) \{([\s\S]*?)\n\}/g)) {
-      const body = block[1] ?? ''
-      expect(body, 'the touch query changes a visual size, not just a hit area').not.toMatch(
-        /(?:font-size|inline-size|block-size|width|height|padding|border-width)\s*:\s*(?!24px|44px|16px)[\d.]+px/,
-      )
+      for (const declared of (block[1] ?? '').matchAll(
+        /(?:^|[;{\s])(font-size|(?:min-)?(?:inline|block)-size|(?:min-)?(?:width|height)|padding[\w-]*|margin[\w-]*|gap|border-width[\w-]*)\s*:\s*([^;}]*)/g)) {
+        const property = declared[1] as string
+        const value = (declared[2] ?? '').trim()
+        const unsanctioned = sizes(value).filter(size => !(SANCTIONED[property]?.has(size) ?? false))
+        expect(
+          unsanctioned,
+          `the touch query changes a visual size (${property}: ${value}) — it may grow a hit area and nothing else`,
+        ).toEqual([])
+      }
     }
   })
 
@@ -1134,9 +1171,26 @@ describe('the group arithmetic is stated once, and the counts do not follow a hi
     // question the code can answer is whether the head draws a rule, and it
     // does — the same declaration for every bucket, which is the point of
     // declaring it once on the head rather than per bucket.
-    const heads = declarationRules(css).filter(rule => /(?:itemGroupHead|itemAgendaDay|itemNoDateTray|itemGatedFold)/.test(rule.selector))
-      .filter(rule => /(?:^|[;{\s])(border-block-end|border-bottom)\s*:\s*([^;]+)/.test(rule.body))
-    expect(heads.length, 'no bucket head draws a rule under itself').toBeGreaterThan(0)
+    //
+    // ALL FOUR, NOT ONE. The scan named four bucket families and then asserted
+    // `length > 0`, which cannot tell four from one: drop the rule under three of
+    // the heads and the gate is still green, because the fourth is still there.
+    // So the question is asked PER FAMILY, and the family list is the gate's
+    // whole content — a family with no line under any of its heads is reported
+    // by name rather than counted away.
+    const BUCKETS = ['itemGroupHead', 'itemAgendaDay', 'itemNoDateTray', 'itemGatedFold'] as const
+    const rules = declarationRules(css)
+    // A line is a VALUE, so `border-block-end: 0` — the rule that takes a day
+    // label's line away when the day has no list — is not one.
+    const drawsLine = (family: string): boolean => rules
+      .filter(rule => rule.selector.includes(family))
+      .some(rule => [...rule.body.matchAll(/(?:^|[;{\s])(?:border-block-end|border-bottom)\s*:\s*([^;]+)/g)]
+        .some(call => !/^\s*(?:0|none)\s*$/.test(call[1] ?? '')))
+    const airOnly = BUCKETS.filter(family => !drawsLine(family))
+    expect(
+      airOnly,
+      `these buckets draw no rule under their head: ${airOnly.join(', ')} — ${BUCKETS.length - airOnly.length} of ${BUCKETS.length} do, and a head is a caption floating over rows, which air alone does not separate`,
+    ).toEqual([])
   })
 
   it('the head keeps its arithmetic beside its name, not pushed to the end of the track', () => {
@@ -1235,7 +1289,12 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // the wrong width** — so the check has to be about the DECLARATION, and the
     // probe has to plant exactly the pair of declarations that caused it.
     const CONTENT_SIZED_IN_INLINE_AXIS = /align-self\s*:\s*(?:start|flex-start)/
-    for (const body of rulesOf(css, 'itemDetailInner')) {
+    // The same guard the triage loop below carries: an absent subject iterates
+    // zero times, and the box that computes to zero width is exactly the one a
+    // renamed selector would hide.
+    const inner = rulesOf(css, 'itemDetailInner')
+    expect(inner, 'there is no .itemDetailInner rule — the detail box below is checking nothing').not.toEqual([])
+    for (const body of inner) {
       const isInlineContainer = /container-type\s*:\s*inline-size/.test(body)
       if (!isInlineContainer) continue
       expect(
@@ -1263,10 +1322,19 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // pill, which makes a sentence's own action louder than the sentence. The
     // action is a TEXT action — no fill, no border, the quietest ink on the row
     // — and the sentence gives way instead of truncating.
-    for (const body of rulesOf(css, 'itemTriageText')) {
+    // THE SUBJECT HAS TO EXIST BEFORE IT IS ITERATED. `rulesOf` answers `[]` for
+    // a name the sheet has not got — by rename, or by a delete — and a loop over
+    // an empty list checks nothing while still reading like a check. That is the
+    // shape of failure this file's own gates keep documenting, and the guard is
+    // one line: the same one at the fact-line gate above.
+    const sentences = rulesOf(css, 'itemTriageText')
+    expect(sentences, 'there is no .itemTriageText rule — the sentence below is checking nothing').not.toEqual([])
+    for (const body of sentences) {
       expect(body, '.itemTriageText refuses to wrap, so the longest sentence on the page is the one that gets cut').not.toMatch(/white-space\s*:\s*nowrap/)
     }
-    for (const body of rulesOf(css, 'itemTriageAction')) {
+    const actions = rulesOf(css, 'itemTriageAction')
+    expect(actions, 'there is no .itemTriageAction rule — the action beside the sentence is checking nothing').not.toEqual([])
+    for (const body of actions) {
       // THE SPACE BELONGS INSIDE THE LOOKAHEAD, and that is not a detail.
       // Written as `border…\s*:\s*(?!0|none)`, the `\s*` after the colon can
       // match ZERO characters, so the lookahead is left looking at the space
@@ -1345,17 +1413,25 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // which is precisely the half `rulesOf` throws away and
     // `declarationRules` keeps.
     const TONE = /\[data-tone[^\]]*\]/
-    const tones = declarationRules(stripCssComments(css)).filter(rule => TONE.test(rule.selector))
-    expect(
-      tones,
-      'no rule in either sheet selects a tone attribute, so this gate is about nothing — the readings are told apart by that attribute and nothing else is',
-    ).not.toEqual([])
-    const allowed = new Set(['color', 'background', 'background-color', 'border-color', 'fill', 'stroke', 'opacity'])
-    const shouting = (text: string): { selector: string; property: string }[] => declarationRules(text)
+    // COMMENTS OFF, and the reason is this sheet's own prose: the note above the
+    // ink rules says in words that `[data-tone]` selects the reading, and a
+    // selector is everything between the previous `}` and this `{` — so a reader
+    // that keeps the comments hands the tone attribute to the rule AFTER the
+    // comment, which has nothing to do with a tone. That is the whole of rule 14
+    // turned round: a checker that reads the decoration reports the explanation
+    // as the thing it forbids, and the cheapest way to quiet it is to delete a
+    // correct note.
+    const live = stripCssComments(css)
+    const shouting = (text: string): { selector: string; property: string }[] => declarationRules(stripCssComments(text))
       .filter(rule => TONE.test(rule.selector))
       .flatMap(rule => [...rule.body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:/g)]
         .map(match => ({ selector: rule.selector, property: match[1] as string }))
         .filter(found => !allowed.has(found.property)))
+    const tones = declarationRules(live).filter(rule => TONE.test(rule.selector))
+    expect(
+      tones,
+      'no rule in either sheet selects a tone attribute, so this gate is about nothing — the readings are told apart by that attribute and nothing else is',
+    ).not.toEqual([])
     const offenders = shouting(css)
     expect(
       offenders,
