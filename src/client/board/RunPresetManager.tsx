@@ -17,6 +17,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Button } from './ui.tsx'
 import { Dialog } from './Dialog.tsx'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { RunConfigEditor } from './RunConfigEditor.tsx'
 
 function presetId(): string {
@@ -53,6 +54,19 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
     if (id === doc.defaultId) return
     persist({ ...doc, defaultId: id })
   }
+  /**
+   * The run-config preset being asked about, or `undefined` when nobody is.
+   *
+   * Held here rather than in the row because the row is presentational and
+   * receives `onDelete` as a prop. The dialog has to say two things a reader
+   * cannot see from the button: how many settings die with it (the row shows
+   * 「N 项已配置」 as a neutral hint, never as a warning), and — when this is
+   * the DEFAULT — that the default moves to 部署默认, which is a second change
+   * riding along silently on the first. `remove` folds both into one write, so
+   * the question has to carry both or it is asking about half the act.
+   */
+  const [pendingDelete, setPendingDelete] = useState<RunConfigPreset | undefined>(undefined)
+
   const remove = (preset: RunConfigPreset): void => {
     // The built-in preset is never deletable (it is the fallback default).
     if (preset.id === DEPLOY_DEFAULT_PRESET_ID) return
@@ -141,7 +155,7 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
                 <Button size="sm" title={t('runPreset.editTitle')} onClick={() => { startForm(preset.id) }}>
                   {t('runPreset.edit')}
                 </Button>
-                <Button size="sm" variant="dangerGhost" title={t('runPreset.deleteTitle')} onClick={() => { remove(preset) }}>
+                <Button size="sm" variant="dangerGhost" title={t('runPreset.deleteTitle')} onClick={() => { setPendingDelete(preset) }}>
                   {t('runPreset.delete')}
                 </Button>
               </span>
@@ -191,6 +205,29 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
             {t('runPreset.save')}
           </Button>
         </footer>
+      )}
+
+      {/* The one irreversible act in this dialog, asked about once. Nested and
+          centred, which is what `ConfirmDialog`'s `portal` is for — this manager
+          is itself a dialog, and a dialog inside a dialog has to escape the one
+          it is in. Cancel is the first control in `ConfirmDialog`, so Enter can
+          never land on the destructive answer. */}
+      {pendingDelete !== undefined && (
+        <ConfirmDialog
+          title={t('runPreset.deleteTitle')}
+          // The two facts, because `remove` does both in one write: how many
+          // settings go, and that the default moves when this WAS the default.
+          message={doc.defaultId === pendingDelete.id
+            ? t('runPreset.deleteConfirmDefault', { name: pendingDelete.name, n: String(configCount(pendingDelete.config)) })
+            : t('runPreset.deleteConfirm', { name: pendingDelete.name, n: String(configCount(pendingDelete.config)) })}
+          confirmLabel={t('delete.ok')}
+          danger
+          onCancel={() => { setPendingDelete(undefined) }}
+          onConfirm={() => {
+            remove(pendingDelete)
+            setPendingDelete(undefined)
+          }}
+        />
       )}
     </Dialog>
   )

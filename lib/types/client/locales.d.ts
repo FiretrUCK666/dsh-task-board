@@ -125,6 +125,8 @@ export declare const zh: {
     'runPreset.editTitle': string;
     'runPreset.delete': string;
     'runPreset.deleteTitle': string;
+    'runPreset.deleteConfirm': string;
+    'runPreset.deleteConfirmDefault': string;
     'runPreset.add': string;
     'runPreset.name': string;
     'runPreset.namePlaceholder': string;

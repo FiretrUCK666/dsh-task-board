@@ -176,6 +176,26 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
             aria-label={t('review.goalClear')}
             title={t('review.goalClear')}
             disabled={pending}
+            /* NO CONFIRMATION HERE, AND THAT IS THE POINT — it was checked, not
+               assumed. Clearing a goal really is unrecoverable: it goes out as a
+               host RPC, the plugin keeps no copy, and the only way back is to type
+               the objective again. Every other irrecoverable delete in this
+               surface asks first.
+
+               The native bar does not. `@deepseek-ai/dsh-client-ui-goal`'s
+               `GoalBar` takes `onClear` and calls straight through: its bundle
+               contains no `confirm`, no `Dialog` and no `Modal` at all. This
+               strip exists to be that bar — same verbs, same affordances, same
+               rhythm — so adding a question HERE would produce two clear buttons
+               in one interface that behave differently, and a control whose
+               behaviour depends on which panel you are looking at is worse than
+               one that is consistently unguarded.
+
+               So the answer is parity, and the cost is named rather than
+               hidden: the reader loses the objective with one press in both
+               places, and nobody is pretending otherwise. If the native bar ever
+               grows a confirm, this grows one in the same change — and that is
+               the moment to change this comment. */
             onClick={() => { void handleClear(verbs.clear, goalId) }}
           >
             <Icon name="close" />
