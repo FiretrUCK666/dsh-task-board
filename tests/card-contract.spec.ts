@@ -137,6 +137,34 @@ describe('the column header and the cards under it share ONE text edge', () => {
     expect(rule, 'the chip has a border but no bearing, so the edge touches the text').toMatch(/padding:\s*0\s+6px/)
   })
 
+  it('every LEADING MARK on a card hangs in the padding, so one column has one text edge', () => {
+    // MEASURED across the whole board: a single column's left rail held FOUR
+    // distinct text x — card title 38, workspace name 49, column name 51 (before
+    // the header fix), coloured card title 53. Seven ragged left edges on one
+    // screen, before reading a word.
+    //
+    // The column name is fixed by the header padding. The other two are INSIDE
+    // the card, and they have the same cause as each other and as the header's
+    // status dot: a leading MARK placed inside the content box spends the very
+    // position the text is supposed to start at. 38 + 6 + 5 = 49 for the
+    // workspace dot; 38 + 8 + 7 = 53 for the colour mark.
+    //
+    // So the invariant is one sentence: a mark is not content, and content that
+    // leads text must not be what decides where the text starts. All three are
+    // checked here rather than in three places, because it is ONE rule and the
+    // failure repeats.
+    for (const [name, selector] of [['the colour mark', '.cardColorMark'], ['the workspace dot', '.cardWorkspaceDot']] as const) {
+      const mark = ruleFor(selector)
+      expect(mark, `${name} is back in the content box, so it pushes the text off the card's text line`)
+        .toMatch(/position:\s*absolute/)
+    }
+    // The containing block, or the mark escapes to the column and every card
+    // grows one in the same place. This is the specific way all three fixes can
+    // be absent while every declaration is still present.
+    expect(ruleOf('card') ?? '', 'the card is not positioned, so its hanging marks escape the card')
+      .toMatch(/position:\s*relative/)
+  })
+
   it('the compact band tells a group boundary from the gap inside a group', () => {
     // MEASURED: on a 390px phone every gap in the header was 10px — demand row
     // to nav row 10, nav to tools 10, tools to the column track 10. The two gaps

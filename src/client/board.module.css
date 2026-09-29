@@ -1595,7 +1595,21 @@
 }
 
 .cardColorMark {
-  flex: none;
+  /* HUNG IN THE CARD'S OWN PADDING, not in its content box. Measured: with the
+     mark in flow, a coloured card's title started at 53 while every other card's
+     started at 38 — the mark is 8px wide and the title row's gap is 7px, and 38
+     + 8 + 7 = 53. So one column showed a THIRD text line for cards that happen
+     to be coloured, which is the same defect the column header's status dot
+     caused and for the same reason: a leading MARK placed inside the content box
+     spends the space the text is supposed to start at.
+
+     The card already establishes a containing block (`position: relative`), so
+     the mark leaves the flow entirely and the title starts where every other
+     title starts. 4px centres the 8px mark inside the card's 12px side padding,
+     and `margin-top` is kept because optical centring against a 14px line is
+     about the LINE, not the box. */
+  position: absolute;
+  inset-inline-start: 4px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -1663,17 +1677,23 @@
 .cardWorkspace {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  /* No gap: the dot hangs in the card's padding (below), so the NAME is the only
+     thing in the content box and starts on the card's text line. Measured, a
+     workspace name started at 49 against a card title's 38 — the 6px dot plus a
+     5px gap was spending the text's own starting position. Same defect, same
+     fix, as the column header's status dot and the card's colour mark. */
+  gap: 0;
   flex: 1;
   min-width: 0;
   color: var(--dsw-alias-label-secondary);
 }
 
 .cardWorkspaceDot {
+  position: absolute;
+  inset-inline-start: 4px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  flex: none;
   background: var(--dsw-alias-label-tertiary);
 }
 
