@@ -194,7 +194,14 @@ function PickerGroup({ group, open, onToggle, picked, onToggleSession }: {
                 onClick={() => { onToggleSession(session.sessionId) }}
               >
                 <Icon name={on ? 'check' : 'link'} className={css.sessionRowIcon} />
-                <span className={css.addSessionLabel} title={session.sessionId}>{session.title}</span>
+                {/* The tooltip carries the TITLE, not the id. It used to be
+    `title={session.sessionId}` on a label that is already truncated with an
+    ellipsis — so the one thing a reader could reach to see the full name was
+    the opaque identifier it came from, which is strictly less use than no
+    tooltip. An id helps nobody choose a session, and a tooltip that appears to
+    answer the ellipsis while answering something else is worse than one that
+    admits it cannot. */}
+                <span className={css.addSessionLabel} title={session.title}>{session.title}</span>
                 {/* The folder label only earns its place in the UNGROUPED
                     group: inside a workspace group every row would repeat the
                     heading the group already says. */}
