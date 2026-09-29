@@ -29,7 +29,7 @@ export function InboxPage(props: ItemPageProps) {
       <div className={css.itemInboxList}>
         {rows.length === 0
           ? <p className={css.itemState}>{t('item.empty')}</p>
-          : <ul className={css.itemList}>{props.renderRows(rows)}</ul>}
+          : <ul className={css.itemList}>{props.renderRows(rows, false)}</ul>}
       </div>
     </>
   )

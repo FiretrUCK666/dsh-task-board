@@ -150,7 +150,7 @@ export function ListPage(props: ItemListPageProps) {
               an empty queue. It does NOT get a second sentence: the count `0` has
               already said it, and saying it again in lighter ink turns one fact
               into something that looks like data. */}
-          {folded || slice.items.length === 0 ? null : <ul className={css.itemList}>{props.renderRows(slice.items)}</ul>}
+          {folded || slice.items.length === 0 ? null : <ul className={css.itemList}>{props.renderRows(slice.items, props.picking)}</ul>}
         </div>
       </section>
     )

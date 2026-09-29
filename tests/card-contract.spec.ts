@@ -192,6 +192,35 @@ describe('the column header and the cards under it share ONE text edge', () => {
       .not.toMatch(/data-tone=\{due\.tone\}\{soft\.text\}/)
   })
 
+  it('a page with NO batch bar can never draw a pickbox', () => {
+    // PRODUCT.md says the inbox and the agenda have no multi-select at all, and
+    // per AGENTS.md PRODUCT wins: the code is what changes. It did not.
+    //
+    // The panel's comment claimed the omission was "enforced by not handing them
+    // the slot". **The slot was not the only channel**: the shared `renderRows`
+    // read the holding itself, so arm on the list, switch to the agenda, and the
+    // agenda's rows carried checkboxes that tick into a holding with no bar on the
+    // page and no way to disarm.
+    //
+    // The gate is on the CHANNEL, not on each page's good behaviour: `renderRows`
+    // must take the picking state as an argument, so a page cannot inherit it by
+    // being handed the same factory. A per-page assertion ("inbox passes false")
+    // would be three assertions that each need remembering; this is one.
+    const props = readFileSync(fileURLToPath(new URL('../src/client/item/pages/page-props.ts', import.meta.url)), 'utf8')
+    expect(props, 'renderRows takes no picking argument, so every page inherits the shared holding')
+      .toMatch(/renderRows: \(list: readonly ItemRecord\[\], picking: boolean\)/)
+    for (const [name, call] of [['inbox', /renderRows\(rows,\s*false\)/], ['schedule', /renderRows\(bucket\.items,\s*false\)/]] as const) {
+      const page = readFileSync(fileURLToPath(new URL(`../src/client/item/pages/${name}.tsx`, import.meta.url)), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+      expect(call.test(page), `${name}.tsx draws pickboxes although PRODUCT.md gives it no multi-select`)
+        .toBe(true)
+    }
+    // And the one page that DOES batch takes the real state, not a constant.
+    const list = readFileSync(fileURLToPath(new URL('../src/client/item/pages/list.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(list, 'the list page has a batch bar but no longer draws pickboxes').toMatch(/renderRows\(slice\.items,\s*props\.picking\)/)
+  })
+
   it('a holding is reconciled against the FILTER, not against what the page happens to draw', () => {
     // The comment above this effect claimed two things the code did not do:
     // narrowing the filter drops the rows it hides (nothing here asked

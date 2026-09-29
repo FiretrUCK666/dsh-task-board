@@ -505,14 +505,29 @@ export function ItemListPanel(props: ItemListPanelProps) {
     />
   )
 
-  const rows = (list: readonly ItemRecord[]) => list.map(item => (
+  /* ROWS, AS A FACTORY, and the picking state is a PARAMETER — because the
+     pickbox must not follow the rows to pages that have no batch surface.
+
+     The batch BAR is only handed to the list page, and the panel's comment here
+     claimed the omission of multi-select on the other two pages was "enforced by
+     not handing them the slot". It was not: `picking` was read from the shared
+     holding inside this factory, so the factory handed every page a picking
+     state. Arm on 清单, switch to 日程, and the agenda's rows carried pickboxes
+     that ticked rows into a holding with **no bar on the page and no way to
+     disarm**. PRODUCT.md says the inbox and the agenda have no multi-select at
+     all, and per AGENTS.md PRODUCT wins: **the code is what changes.**
+
+     So the state arrives as an argument and each page says what it accepts.
+     The list page passes the real one; the other two pass `false`, which is the
+     same thing the list page passed before anyone could select anything. */
+  const rows = (list: readonly ItemRecord[], picking: boolean) => list.map(item => (
     <ItemRowLine
       key={item.id}
       view={itemRowViewOf(item, { now, running })}
       density={prefs.density}
       expanded={openRow === item.id}
       selected={selected === item.id}
-      picking={selection.armed}
+      picking={picking}
       picked={selection.ids.has(item.id)}
       onPick={() => setSelection(current => togglePicked(current, item.id))}
       inPlace={narrow}
@@ -547,6 +562,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     choose,
     narrow,
     filtering,
+    picking: selection.armed,
     renderRows: rows,
   }
   /**
@@ -555,6 +571,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * The inbox and the agenda are never given one, which is how 「only the list
    * page batches」 is enforced — by not handing them the slot, rather than by
    * each of them deciding to ignore one it was given.
+   *
+   * AND THE SLOT WAS NOT THE ONLY CHANNEL. `renderRows` used to read the shared
+   * holding itself, so the pickbox followed the rows onto the other two pages
+   * while the bar did not: arm on the list, switch to the agenda, and there were
+   * checkboxes ticking into a holding with no bar and no way to disarm. So the
+   * picking state now arrives as an ARGUMENT — `picking` on the page props — and
+   * the two pages that have no batch surface pass `false`. **Not handing the slot
+   * enforces the bar; passing the state enforces the pickbox. Both, or neither.**
    */
   /** The rows the reader can see, which is what select-all may reach. */
   const visibleIds = shown.filter(item => itemMatches(item, query, matchCtx)).map(item => item.id)

@@ -48,7 +48,7 @@ export function SchedulePage(props: ItemPageProps) {
               </h2>
               <p className={css.itemHint}>{t('item.gated.hint')}</p>
               <div className={css.itemGatedFoldList}>
-                <ul className={css.itemList}>{props.renderRows(bucket.items)}</ul>
+                <ul className={css.itemList}>{props.renderRows(bucket.items, false)}</ul>
               </div>
             </section>
           )
@@ -63,7 +63,7 @@ export function SchedulePage(props: ItemPageProps) {
               {bucket.items.length > 0 && <p className={css.itemHint}>{t('item.noDate.hint')}</p>}
               {bucket.items.length > 0 && (
                 <div className={css.itemAgendaList}>
-                  <ul className={css.itemList}>{props.renderRows(bucket.items)}</ul>
+                  <ul className={css.itemList}>{props.renderRows(bucket.items, false)}</ul>
                 </div>
               )}
             </section>
@@ -82,7 +82,7 @@ export function SchedulePage(props: ItemPageProps) {
             </h2>
             {bucket.items.length > 0 && (
               <div className={css.itemAgendaList}>
-                <ul className={css.itemList}>{props.renderRows(bucket.items)}</ul>
+                <ul className={css.itemList}>{props.renderRows(bucket.items, false)}</ul>
               </div>
             )}
           </section>

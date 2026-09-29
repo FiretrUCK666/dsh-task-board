@@ -106,7 +106,11 @@ export interface ItemPageProps {
   /** Whether the detail lives in the row (narrow) or in the rail (wide). */
   readonly narrow: boolean
   /** The one row renderer, shared by all three pages. */
-  readonly renderRows: (list: readonly ItemRecord[]) => ReactNode
+  readonly renderRows: (list: readonly ItemRecord[], picking: boolean) => ReactNode
+  /** Whether this page has a batch surface. The ONLY page that does is the list.
+   *  A page that has no batch bar must not draw pickboxes: the reader would be
+   *  ticking into a holding with no bar and no way to disarm. */
+  readonly picking: boolean
   /**
    * The batch bar, or nothing.
    *
