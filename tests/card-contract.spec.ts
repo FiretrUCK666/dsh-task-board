@@ -114,6 +114,26 @@ describe('the column header and the cards under it share ONE text edge', () => {
     'the header content box no longer matches the cards inset (8) plus card padding (12)')
     .toBe('20px')
   })
+
+  it('the compact band tells a group boundary from the gap inside a group', () => {
+    // MEASURED: on a 390px phone every gap in the header was 10px — demand row
+    // to nav row 10, nav to tools 10, tools to the column track 10. The two gaps
+    // that BOUND a band were the same size as the gaps WITHIN a band, so
+    // 「诉求行 / 导航行 / 工具行」 had no visible grouping: it read as one flat
+    // stack of three rows.
+    //
+    // The invariant is the RELATIONSHIP, not a set of numbers: the gap across a
+    // group boundary must be LARGER than the gap inside a group. Asserting the
+    // relationship is what makes this hold for a fourth row added later —
+    // three tuned numbers would agree today and say nothing about tomorrow.
+    const compact = source.slice(source.indexOf('@container dsh-tb (max-width: 680px) {'))
+    const between = Number(compact.match(/\.board \{[\s\S]*?gap:\s*(\d+)px/)?.[1])
+    const within = Number(compact.match(/\.boardHeader \{[\s\S]*?gap:\s*(\d+)px/)?.[1])
+    expect(Number.isFinite(between) && Number.isFinite(within),
+      'the compact band no longer states both gaps, so the relationship cannot be checked').toBe(true)
+    expect(between, 'the gap between groups is not larger than the gap inside one, so a phone has no visible grouping')
+      .toBeGreaterThan(within)
+  })
 })
 
 /** Extract the rule block whose opening line is exactly the given SELECTOR. */
