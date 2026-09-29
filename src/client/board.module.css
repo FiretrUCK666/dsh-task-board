@@ -1231,12 +1231,35 @@
 .columnHeader {
   display: flex;
   align-items: center;
-  gap: 6px;
-  /* The card text column (cards 8px inset + card 12px padding): the header
-     title/count share the SAME 20px content box, so the column reads with
-     one left/right edge instead of an 8px drift against the cards. */
+  /* NO GAP, and the status dot is TAKEN OUT OF FLOW — that is what puts the
+     column's NAME on the same left edge as the cards' text.
+
+     The header's content box IS the cards' (cards 8px inset + card 12px padding
+     = 20px), so a dot sitting in that box as a flex child starts at 20 and is
+     8 wide, and the title then begins at 20 + 8 + 6 = 34. Measured, that is the
+     dot at 37 and the title at 51 against card text at 38 — ONE COLUMN SHOWING
+     TEXT AT FOUR EDGES (38 card, 49 workspace, 51 title, 53 coloured card), and a
+     column whose name is visibly notched right of the cards under it.
+
+     The dot is redundant here: every card already carries its own state mark, in
+     this same column, at this same moment. So it hangs in the 8px inset the cards
+     leave for it — absolutely positioned, so it occupies no inline space — and the
+     title takes the content box alone. One text edge, and the two marks still say
+     the same thing in the same place. */
+  gap: 0;
+  position: relative;
   padding: 10px 20px;
   flex: none;
+}
+
+.columnHeader > .statusDot {
+  position: absolute;
+  inset-inline-start: 10px;
+  inset-block-start: 50%;
+  /* The existing optical nudge on `.statusDot` is a `transform`, and this rule
+     needs `transform` for the centring — so the nudge is applied here instead of
+     being inherited, rather than the two fighting over one property. */
+  transform: translateY(-50%);
 }
 
 .columnTitle {
@@ -2166,6 +2189,19 @@
 .boardModes .notifyBell {
   background: var(--dsh-tb-chip-fill);
   border: var(--dsh-tb-border);
+  /* THE SIZE, RESTATED WHERE IT ACTUALLY WINS. `.notifyBell` declared 28×28
+     near the top of this sheet, and the element also carries `.iconButton` —
+     which declares 30×30 about 1700 lines LATER at the same specificity, so the
+     later one won and the 28 was a dead declaration. Measured: the bell rendered
+     30×30, standing one pixel proud above and one below five 28px siblings in
+     the same row, which reads as a control that was dropped in rather than one
+     that was placed.
+
+     So the size is stated HERE, in the rule that already exists to beat
+     `.iconButton`. Putting it anywhere earlier is putting it in a losing
+     position again, which is why it needs this comment and not a tidy-up. */
+  inline-size: var(--dsh-tb-button-h);
+  block-size: var(--dsh-tb-button-h);
 }
 
 /* --- iOS-style switch (Switch component) -------------------------------------- */
@@ -2230,7 +2266,14 @@
 }
 
 .switchLabel {
+  /* 500, because the thing it labels is a control and this surface's rule pairs
+     13px with 500. It inherited 400, so the cruise toggle read as a 13/400 WORD
+     sitting 30px from a 13/500 BUTTON — two controls of the same size in the same
+     row, one of them shouting for no reason. The label names the control, so it
+     wears the control's weight; the difference between a setting and its name is
+     ink, not a louder size. */
   font-size: 13px;
+  font-weight: 500;
   color: var(--dsh-tb-text-1);
 }
 
