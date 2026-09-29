@@ -109,6 +109,30 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     }
     expect(card).toContain("t('review.interactionAbandon')")
     expect(card).toMatch(/t\(minimized \? 'review\.interactionExpand' : 'review\.interactionCollapse'\)/)
+    // The dismiss-all press ASKS FIRST, and the reason it is worth a gate is
+    // that this spec used to PIN THE OPPOSITE. It asserted the head's grammar
+    // with `toContain`, which a confirmation does not disturb — so the un-guarded
+    // button was the contract, and adding the question read as a regression.
+    //
+    // Abandoning is not 「hide a card」: it settles the host call as CANCELLED and
+    // the agent proceeds WITHOUT the answers, and the answers already given are
+    // stranded under an rpcId that is minted once and never re-published. A press
+    // with no question spends the reader's chance to answer for it.
+    // Every check below runs on the MARKUP, never on the prose. This gate got
+    // that wrong first and matched its own comment — the note explaining the
+    // abandon press contains the very `onClick` it was asserting was absent. A
+    // checker that reads a comment as code is not checking anything, and the
+    // cheapest way to make it green is to reword the comment, which is the exact
+    // failure hard rule 14 is about.
+    const code = card.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(code, 'the dismiss-all press fires the cancel with no question').not.toMatch(/onClick=\{dismissAll\}/)
+    expect(code, 'the abandon press does not open a question').toMatch(/onClick=\{\(\) => \{ setConfirmAbandon\(true\) \}\}/)
+    expect(code, 'the abandon confirmation is missing').toContain('<ConfirmDialog')
+    expect(code, 'the confirmation does not say how many questions are being dropped')
+      .toMatch(/t\('review\.interactionAbandonConfirm',\s*\{\s*n:/)
+    expect(code, 'the confirmation is shown by state nobody ever sets').toMatch(/confirmAbandon &&/)
+    expect(code, 'dismissing does not close the question')
+      .toMatch(/setConfirmAbandon\(false\)[\s\S]{0,80}setBusy\('cancel'\)/)
     // Options: numbered radios, or checkboxes for a multi-select, plus the
     // custom-answer row appended to the list.
     expect(card).toContain("role={item?.multiSelect === true ? 'checkbox' : 'radio'}")

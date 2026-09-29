@@ -498,6 +498,8 @@ export declare const zh: {
     'review.interactionSubmit': string;
     'review.interactionSkip': string;
     'review.interactionAbandon': string;
+    'review.interactionAbandonTitle': string;
+    'review.interactionAbandonConfirm': string;
     'review.interactionDiscuss': string;
     'review.interactionGoAnswer': string;
     'review.interactionBodyMissing': string;

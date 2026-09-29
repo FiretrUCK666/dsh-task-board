@@ -47,6 +47,7 @@ import { Markdown } from './Markdown.tsx'
 import { Button } from './ui.tsx'
 import { Chip } from './Chip.tsx'
 import { Icon } from './ui.tsx'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
 
 /** The 推荐 suffix the native surface splits off an option label. */
 const RECOMMENDED_SUFFIX = /\s*(?:\((?:recommended|推荐)\)|（(?:recommended|推荐)）)\s*$/i
@@ -270,7 +271,24 @@ function QuestionFlow({ question, sessionId, controller }: {
     submit(nextDrafts)
   }
 
+  /**
+   * Abandoning the batch, and the two things it does that a reader cannot see.
+   *
+   * It does NOT erase anything the reader wrote — the agent still holds its own
+   * question text. It settles the host call as CANCELLED and the agent moves on
+   * WITHOUT the answers, which is the part that reads like a decision made for
+   * them. And the answers already given are STRANDED: they are written to the
+   * draft store under this `rpcId`, which is minted once and never re-published,
+   * and the drafts are only cleared on an ACCEPTED submit — so after an abandon
+   * they sit under a dead id where nothing can reach them.
+   *
+   * Which is why the button asks first rather than firing: the reader is about to
+   * answer for the agent, and the thing they are losing is the chance to.
+   */
+  const [confirmAbandon, setConfirmAbandon] = useState(false)
+
   const dismissAll = (): void => {
+    setConfirmAbandon(false)
     setBusy('cancel')
     setError(undefined)
     void controller.cancelQuestion(question.rpcId).then(accepted => {
@@ -358,12 +376,25 @@ function QuestionFlow({ question, sessionId, controller }: {
             aria-label={t('review.interactionAbandon')}
             title={t('review.interactionAbandon')}
             disabled={disabled}
-            onClick={dismissAll}
+            onClick={() => { setConfirmAbandon(true) }}
           >
             <Icon name="close" />
           </button>
         </div>
       </header>
+
+      {confirmAbandon && (
+        <ConfirmDialog
+          title={t('review.interactionAbandonTitle')}
+          // The count is the fact the reader cannot see: the header shows a
+          // question and a close glyph, never how many are stacked behind it.
+          message={t('review.interactionAbandonConfirm', { n: String(drafts.length) })}
+          confirmLabel={t('review.interactionAbandon')}
+          danger
+          onCancel={() => { setConfirmAbandon(false) }}
+          onConfirm={dismissAll}
+        />
+      )}
 
       {!minimized && (
         <>
