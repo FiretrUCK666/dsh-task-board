@@ -115,6 +115,24 @@ describe('the column header and the cards under it share ONE text edge', () => {
     .toBe('20px')
   })
 
+  it('a chip on a card is an object, not a run-on word in a sentence', () => {
+    // MEASURED: a card carrying four chips rendered as one sentence — 「3会话 验收通过
+    // 硬期限9/30」 — because every card chip is `fill={false}` (plain 12/500 text,
+    // deliberately, so the primary line does not have to shout over a row of
+    // pills) AND `.cardBadges` uses the same 8px as the meta row above it. Plain
+    // text with no edge, at one rhythm with everything else, is a paragraph.
+    //
+    // The check is that the chip OWNS a boundary. A filled pill is not required —
+    // that would undo the quiet-card decision — so the assertion is on a
+    // hairline, which is the quietest edge the design system has.
+    const rule = ruleFor('.cardBadges .chip')
+    expect(rule, 'card chips have no edge again, so a multi-chip card reads as one sentence').not.toBe('')
+    expect(rule).toMatch(/border:\s*var\(--dsh-tb-border-soft\)/)
+    // Padding is what makes it read as an edge the chip owns rather than a rule
+    // floating between two words.
+    expect(rule, 'the chip has a border but no bearing, so the edge touches the text').toMatch(/padding:\s*0\s+6px/)
+  })
+
   it('the compact band tells a group boundary from the gap inside a group', () => {
     // MEASURED: on a 390px phone every gap in the header was 10px — demand row
     // to nav row 10, nav to tools 10, tools to the column track 10. The two gaps

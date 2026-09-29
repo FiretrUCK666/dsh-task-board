@@ -1706,6 +1706,28 @@
   min-width: 0;
 }
 
+/* A CHIP IS AN OBJECT, AND AN OBJECT HAS AN EDGE. Every chip on a card is
+   `fill={false}` — plain 12/500 text, deliberately, so the card stays quiet and
+   the primary line does not have to shout over a row of pills. But plain text
+   has no boundary, and this row is laid out at the SAME 8px as `.cardMetaRow`
+   above it, so a card carrying four chips measured as one run-on sentence:
+   「3会话 验收通过 硬期限9/30」 with the same spacing between its own words as
+   between two different facts.
+
+   The fix is the QUIETEST boundary the system has — a hairline, not the filled
+   pill — and it is scoped to this row rather than to `.chip`, because plain
+   chips appear elsewhere on surfaces that are already bounded and would only
+   gain noise. The padding is what makes the boundary read as an edge the chip
+   owns rather than a rule floating between two words.
+
+   The gap still does the separating; this is what gives the gap something to
+   separate. */
+.cardBadges .chip {
+  padding: 0 6px;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+}
+
 /* Sessions strip: up to 3 live dots + overflow count. Dots reuse the
    status-dot token family (no new color semantics); the strip wraps, never
    overflows (card overflow hidden is the floor, min-width 0 the chain). */
