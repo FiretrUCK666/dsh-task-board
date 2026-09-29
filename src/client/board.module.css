@@ -3208,9 +3208,17 @@ textarea.input {
   min-width: 0;
   font-size: 13px;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* WRAPS, and the reason is what sits 30px below it. This label names the
+     row, and the row's other button is 删除 — so the name IS what tells a reader
+     which one they are about to delete. It was truncated to one line with the
+     rest in a `title`, and hard rule 11③ is that a finger has no hover: on a
+     phone the reader could press 删除 on a row whose name they could not read.
+
+     换行 is one of the four mechanisms rule 11 allows; 省略号 is not one of
+     them. The name is allowed to make the row taller — that is the floor
+     rising, not a control being squeezed. */
+  overflow-wrap: anywhere;
+  min-block-size: 1lh;
 }
 
 .runPresetDefaultBadge {
@@ -4057,9 +4065,13 @@ textarea.input {
 .autoTaskSummary {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* WRAPS for the same reason `.runPresetName` does. This one line is the ONLY
+     statement of whether the rule is armed and when it next fires — the chips
+     beside it say which card, not what the rule does. Truncated with the rest
+     in a `title`, a phone reader had a rule chip and a next-run time they could
+     not confirm. 换行 is allowed by rule 11; the ellipsis is not. */
+  overflow-wrap: anywhere;
+  min-block-size: 1lh;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
 }

@@ -165,6 +165,30 @@ describe('the column header and the cards under it share ONE text edge', () => {
       .toMatch(/position:\s*relative/)
   })
 
+  it('no label that names a destructive button is reachable only by hover', () => {
+    // Hard rule 11③: 触屏没有 hover —— a reason that lives only in a `title` is
+    // a reason a phone reader never gets. Two of them were exactly that, and both
+    // are the NAME of a row whose other button is 删除.
+    //
+    // The preset name and the automation summary were each truncated to one line
+    // with the remainder in a `title`. On a phone: a row of preset names where the
+    // reader could not tell which one they were about to delete, and a rule chip
+    // whose only statement of whether it is armed and when it next fires they
+    // could not read. 换行 is one of the four mechanisms rule 11 allows; the
+    // ellipsis is not one of them.
+    const sheet = readFileSync(fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(sheet, 'the board sheet is empty, so every ruleFor below reads nothing').not.toBe('')
+    for (const name of ['.runPresetName', '.autoTaskSummary']) {
+      const rule = ruleFor(name)
+      expect(rule, `${name} is gone, so this gate is checking fewer than two rows`).not.toBe('')
+      expect(rule, `${name} truncates with an ellipsis, so on a phone the row cannot be read before 删除 is pressed`)
+        .not.toMatch(/text-overflow:\s*ellipsis/)
+      expect(rule, `${name} refuses to wrap, so the text it hides is unreachable without a hover`)
+        .not.toMatch(/white-space:\s*nowrap/)
+    }
+  })
+
   it('a long list is ONE tab stop, not one per row', () => {
     // The session picker made every row a plain tabbable button, so reaching
     // 取消/添加 meant one Tab for EVERY session — and the 未分组 group routinely
