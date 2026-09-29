@@ -118,6 +118,16 @@ export function PresetManager({ store, onClose }: {
 
   const newHint = presetCronHint(newCron)
 
+  /**
+   * A custom preset is the reader's own writing, and `persist` OVERWRITES the
+   * whole list — so deleting one is not 「hide a row」, it is the end of that text
+   * and that cron, and there is no tombstone anywhere to bring it back. The
+   * 恢复默认 button in this same dialog asks first (it destroys strictly more);
+   * the per-row delete did not, which is the asymmetry that made this worth
+   * changing: **the same irreversible act, two doors, one guarded.**
+   */
+  const [pendingDelete, setPendingDelete] = useState<SchedulePreset | undefined>(undefined)
+
   return (
     <Dialog
       label={t('detail.schedule.presets.title')}
@@ -136,7 +146,7 @@ export function PresetManager({ store, onClose }: {
               key={preset.id}
               preset={preset}
               onSave={next => { persist(custom.map(candidate => candidate.id === next.id ? next : candidate)) }}
-              onDelete={() => { persist(custom.filter(candidate => candidate.id !== preset.id)) }}
+              onDelete={() => { setPendingDelete(preset) }}
             />
           ))}
         </ul>
@@ -182,11 +192,27 @@ export function PresetManager({ store, onClose }: {
       {confirmRestore && (
         <ConfirmDialog
           title={t('detail.schedule.presets.restore')}
-          message={t('detail.schedule.presets.restoreConfirm')}
+          // The count, because the doomed rows are on screen above this dialog and
+          // a sentence that does not say how many of them are about to go is a
+          // sentence about none of them.
+          message={t('detail.schedule.presets.restoreConfirm', { n: String(custom.length) })}
           confirmLabel={t('detail.schedule.presets.restore')}
           danger
           onCancel={() => { setConfirmRestore(false) }}
           onConfirm={restoreDefaults}
+        />
+      )}
+      {pendingDelete !== undefined && (
+        <ConfirmDialog
+          title={t('detail.schedule.presets.delete')}
+          message={t('detail.schedule.presets.deleteConfirm', { name: pendingDelete.label })}
+          confirmLabel={t('delete.ok')}
+          danger
+          onCancel={() => { setPendingDelete(undefined) }}
+          onConfirm={() => {
+            persist(custom.filter(candidate => candidate.id !== pendingDelete.id))
+            setPendingDelete(undefined)
+          }}
         />
       )}
     </Dialog>

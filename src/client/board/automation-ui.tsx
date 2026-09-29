@@ -194,7 +194,12 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
 }) {
   const readiness = sessionRuleReadiness(task, sessionRuleOf(row))
   const title = ruleSessionTitle(controller, task, row.sessionId)
+  // The rule being asked about, or `undefined` when nobody is asking. Held HERE,
+  // beside the row that owns it, so the dialog is about this rule and cannot be
+  // left describing another one.
+  const [pendingDelete, setPendingDelete] = useState(false)
   return (
+    <>
     <li className={css.autoRuleRow}>
       <span className={css.autoRuleTop}>
         <span className={css.autoRuleSession}>
@@ -261,18 +266,50 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           </Button>
           {/* A destructive row action uses the row-level danger grammar (ghost
               outline + danger tone) — same geometry as the edit beside it,
-              never the quiet hide-text style. */}
+              never the quiet hide-text style.
+
+              AND IT ASKS FIRST, because this rule may be ARMED: a session rule
+              that is enabled fires on its own schedule into a real conversation.
+              Deleting it is not 「removing a line of text」 — it is stopping
+              something that was about to speak for the reader, and there is no
+              tombstone on the board document to bring it back. One press with no
+              question is how a rule the reader spent ten minutes writing
+              disappears.
+
+              The dialog names the rule and says whether it was running, because
+              「this one was armed」 is the difference between tidying up and
+              stopping something. This is the same shape `TaskDetail` uses for
+              deleting a card and removing a session: one `ConfirmDialog`, the
+              state held next to the rows that own it. */}
           <Button
             size="sm"
             variant="dangerGhost"
             title={t('auto.rule.deleteTitle')}
-            onClick={() => { controller.deleteSessionRule(task.id, row.ruleId) }}
+            onClick={() => { setPendingDelete(true) }}
           >
             {t('auto.rule.delete')}
           </Button>
         </span>
       </span>
     </li>
+    {pendingDelete && (
+      <ConfirmDialog
+        title={t('auto.rule.deleteTitle')}
+        // The two facts a reader cannot know before pressing: WHICH rule, and
+        // whether it was ARMED — because an armed rule is about to speak into a
+        // real conversation, and 「it was on」 is the difference between tidying
+        // up and stopping something.
+        message={t(row.enabled === true ? 'auto.rule.deleteArmed' : 'auto.rule.deleteConfirm', { name: title })}
+        confirmLabel={t('delete.ok')}
+        danger
+        onCancel={() => { setPendingDelete(false) }}
+        onConfirm={() => {
+          setPendingDelete(false)
+          controller.deleteSessionRule(task.id, row.ruleId)
+        }}
+      />
+    )}
+    </>
   )
 }
 

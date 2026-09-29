@@ -257,6 +257,7 @@ export declare const zh: {
     'detail.schedule.presets.newCron': string;
     'detail.schedule.presets.restore': string;
     'detail.schedule.presets.restoreConfirm': string;
+    'detail.schedule.presets.deleteConfirm': string;
     'detail.schedule.presets.empty': string;
     'detail.schedule.presets.custom': string;
     'schedule.desc.everyMinute': string;
@@ -334,6 +335,8 @@ export declare const zh: {
     'auto.rule.next': string;
     'auto.rule.delete': string;
     'auto.rule.deleteTitle': string;
+    'auto.rule.deleteConfirm': string;
+    'auto.rule.deleteArmed': string;
     'auto.form.new': string;
     'auto.form.session': string;
     'auto.form.instruction': string;

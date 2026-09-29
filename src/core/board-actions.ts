@@ -532,7 +532,20 @@ export const ACTIONS = {
     verb: 'delete',
     domain: 'session',
     lane: 'document',
-    danger: 'reversible',
+    /** `guarded`, NOT `reversible`, and the definition this file carries above is
+     *  what makes it so: reversible means undoing it is an ORDINARY action, and
+     *  here undoing it means retyping the instruction, the trigger and the cron
+     *  by hand. A card delete is `irreversible` for the sharper reason that a
+     *  checklist row has a tombstone and a card does not; a rule is the softer
+     *  half of the same honesty problem — the text is the reader's, it is simply
+     *  not gone forever, only gone unless they feel like typing it again.
+     *
+     *  And it has to be corrected HERE rather than only in the interface. Hard
+     *  rule 12 makes this catalogue the only synchronisation surface between the
+     *  panel and the model, so a UI that asks 「are you sure」 while this file
+     *  says `reversible` is the panel and the model disagreeing about the same
+     *  action — and the model is the one that cannot see the dialog. */
+    danger: 'guarded',
     surface: 'ui+ai',
     summary: '删掉一条会话自动化规则。',
     params: {
@@ -698,7 +711,13 @@ export const ACTIONS = {
     verb: 'delete',
     domain: 'preset',
     lane: 'document',
-    danger: 'reversible',
+    /** `guarded` for the same reason as `rule.delete`, and with more behind it:
+     *  `persist` OVERWRITES the whole section, so this is the end of a name and
+     *  up to six configuration fields the reader typed, on every device at once.
+     *  「恢复默认」 next to it in the same dialog is `reversible` in the strict
+     *  sense — it re-adds the built-ins that were never deleted — and that is
+     *  exactly the sort of difference this field exists to say out loud. */
+    danger: 'guarded',
     surface: 'ui+ai',
     summary: '删掉一条自己的预设（内置的那批删不掉，也不用删）。',
     params: {
