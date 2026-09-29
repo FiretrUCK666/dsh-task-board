@@ -276,7 +276,7 @@ DeepSeek Harness 的内部接口会随版本变化，本插件需要跟着改。
    dsh plugin --profile web add @firetruck666/dsh-task-board@latest
    ```
 
-2. 仍然失败，说明本插件还没跟上你用的那个 DSH 版本。请到 [Issues](https://github.com/FiretrUCK666/dsh-task-board/issues) 提交，附上三个信息：你的 DeepSeek Harness 版本、本插件版本（在设置的已安装插件列表里看）、页面上那段报错原文。有这三样就能直接定位。
+2. 仍然失败，说明本插件还没跟上你用的那个 DSH 版本。请到 [Issues](https://github.com/FiretrUCK666/dsh-task-board/issues) 提交，附上三个信息：你的 DeepSeek Harness 版本、本插件版本（**在插件页的「已安装」列表里看——不是设置页，本插件没有设置项**）、页面上那段报错原文。有这三样就能直接定位。
 
 **看板能打开，但多设备不同步、任务清单也一直是空的。**
 这是 host 半区没加载成功的表现，也是升级 DSH 之后最容易被忽略的一种：看板本身仍在页面上正常工作，但数据只留在这一个浏览器里，另一台设备看到的不是同一块板，定时与巡航也不会真正触发。任务清单在这种情况下会明说「暂时读不到 host 上的清单，正在用本机的副本」，不会假装自己一条都没有。处理方式与上一条相同——更新插件、重启 `dsh web`。
