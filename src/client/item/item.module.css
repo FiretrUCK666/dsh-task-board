@@ -1395,7 +1395,6 @@
 
 .itemRowMeta [data-tone='over'] {
   color: var(--dsh-tb-danger);
-  font-weight: 600;
 }
 
 /* The count slot, the date slot's twin: same reason, same clipping. A step
@@ -2689,9 +2688,6 @@ textarea.itemInput {
    every other container label on this surface — the group head, the day's
    label, the fold head. Three names for three kinds of thing would be honest;
    three sizes for one role would not be. */
-.itemNoDateTrayLabel_PLANTED {
-  border-block-end: 0;
-}
 .itemNoDateTrayLabel {
   display: flex;
   align-items: baseline;
@@ -3243,10 +3239,6 @@ textarea.itemInput {
   .itemTriageAction,
   .itemPageTab {
     position: relative;
-  }
-
-  .itemRowMenuButton {
-    padding: 0 24px;
   }
 
   .itemRowMenuButton::after,

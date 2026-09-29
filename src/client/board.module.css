@@ -1332,7 +1332,6 @@
 }
 
 .columnEmpty {
-  transition: opacity 200ms ease;
   /* Tier 2 rather than 3: the third tier's documented meaning is "faint,
      disposable", but an empty column is the only thing on screen — there is
      nothing for it to be subordinate TO. Measured 3.71:1 at tier 3 in the light
@@ -7550,7 +7549,7 @@ span.interactionOptions {
     /* THE WHOLE POLICY, IN ONE NUMBER. Every transition on both sheets reads
        this, so this is what 「尊重系统的减弱动效设置」 actually means here — not
        a list that has to be updated when someone adds a hover. */
-    --dsh-tb-motion: 1ms;
+    --dsh-tb-motion: 0s;
   }
 
   /* The ones that spell a duration instead of reading the token, and the ones
