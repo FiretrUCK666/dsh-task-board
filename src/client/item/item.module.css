@@ -191,9 +191,19 @@
      fact column measured 252px against a title track of 244px, so on a page whose
      own rule is 「一行的主角是它的标题」 the row gave the facts more room than the
      thing they annotate and every long title truncated against them. */
-  --item-meta-col: 19em;
+  --item-meta-col: 16em;
+  /* 10em, and it is NOT negotiable: the longest reading this slot has to hold is
+     a full date, and a date is the one string on this surface that cannot be
+     abbreviated without lying about which of the three dates it is. */
   --item-meta-date-col: 10em;
-  --item-meta-count-col: 8em;
+  /* 5em, because this slot holds a RATIO — `3/11`, `12/34` — and 8em was 96px of
+     declared width for about 24px of text. The surplus here is what the date track
+     and the card's inset were funded from, and taking it back out of the DATE is
+     what would have been wrong: 7em renders `超期 9 天` perfectly and clips
+     `2026年10月1日`, and a clip on the date is a reader unable to tell 截止 from
+     硬期限. The count can shrink further on its own (`minmax(0, …)`), which is
+     the correct order for two facts with different shapes. */
+  --item-meta-count-col: 5em;
   /* Enough for 「问 AI」 plus the ⋯ hit area plus the gutter, so a row that
      grows a second action does not shove the first one sideways. 44 + 8 + 24:
      the 68px it used to be was three short of its own contents, so every row
@@ -835,22 +845,23 @@
    slack would be a band that stretched to fill the column — which is exactly how
    「没有等你动手的事。」 once opened a hole in the middle of this page. The gap
    above needs a column to live in; this is what keeps that column honest. */
-/* NO INSET ON THE SCROLLER, and the reason is a measurement rather than a
-   preference.
+/* TWELVE PIXELES OF AIR INSIDE THE CARD, and this is the inset the design record
+   has always called for. It was removed once because the fact line could not pay
+   for it — `3/11` printed as `1…` — and the fix was made in the wrong place then:
+   the slack was taken out of the DATE track, which was holding 36px more than any
+   date needs, rather than out of the inset. Corrected, the two costs cancel and
+   the rows sit inside the frame instead of against it, which is what 「黏在那些边上」
+   describes.
 
-   The card has a 1px border and its content started 1px inside it, so the five
-   tiles read as a continuation of the frame rather than as content inside a box.
-   The obvious fix is `padding-inline: var(--item-inset)` here, and it is wrong on
-   a 390px screen: 13px of inset on each side is 26px out of a 342px measure, and
-   the row's fact line is what pays for it. With the inset in, `3/11` printed as
-   `1…` — **a clipped number in exchange for a nicer frame**, and a clipped number
-   is a fact the reader cannot read while a tight frame is a taste they can still
-   work around.
+   It is on the SCROLLER rather than on the card, because the card is the frame and
+   the scroller is what holds the rows; and it is `var(--item-inset)` rather than a
+   number, so the two bands step together and a change to the page's inset moves
+   both at once. The sticky group head inherits it, which is correct: a head that
+   stops short of the rows it labels is a head that belongs to something else. */
+.itemScroll {
+  padding-inline: var(--item-inset);
+}
 
-   So the air is bought where it is free instead of where it is expensive: the
-   cards on this surface are the row, the group and the tile, and each of those
-   carries its own padding against its own frame. The page-level inset belongs to
-   the HEADER, which is where it already is. */
 .itemScroll > * {
   flex: none;
 }
@@ -1799,20 +1810,32 @@
   min-inline-size: 0;
 }
 
-/* …AND IT IS GIVEN THE ABILITY TO GIVE WAY, FROM HERE.
+/* …AND IT IS GIVEN THE ABILITY TO GIVE WAY, FROM HERE — including losing the
+   track. */
 
-   "This control must be able to yield on this surface" is a property of THIS
-   surface, not of the shared component, so it is declared here and scoped to this
-   wrapper: the board's own compact tier carries its own contracts and must not be
-   reshaped by what the checklist happens to need. The shared row is `inline-flex`
-   with `nowrap`, so without these two declarations the seven options are silently
-   cut off the moment one label grows by a character — and "it fits today" is not
-   a contract, it is a coincidence with today's wording. Wrapping turns that
-   failure from 「an option quietly disappeared」 into 「the bar got taller」, which
-   is a failure a reader can see and therefore survive. */
 .itemFilterWide > * {
   flex-wrap: wrap;
   max-inline-size: 100%;
+}
+
+/* THE ORDERING ROW IS FLAT ON THIS SURFACE, and the board's filled track is the
+   thing being declined rather than copied.
+
+   The shared `.segmentedRow` is a quiet filled track with an elevated active
+   segment, which is right for a two-or-three-way mode switch sitting in a tool
+   row. Here it carries SEVEN orders across a 342px line, and a filled track that
+   long stops being a control and becomes a grey slab sitting between the overview
+   and the rows — the page's widest, quietest, least informative object, which is
+   the opposite of what a control should be. Seven choices read better as seven
+   choices: the segments keep their own pills, the track's fill and its padding go,
+   and the row sits on the surface like the facet pills beside it.
+
+   Scoped to this wrapper, so the board's own switches keep the grammar they were
+   designed with. */
+.itemFilterWide > [class*='segmented'] {
+  padding: 0;
+  gap: 6px;
+  background: none;
 }
 
 /* A face, folded. It is a `<details>` so the open/closed state belongs to the
@@ -2982,8 +3005,14 @@ textarea.itemInput {
    tightens to it; the count beside the name is what carries the zero, so nothing
    is lost by not reserving room for rows that are not there. */
 .itemGroup[data-empty] {
-  padding-block: 2px 2px;
-  margin-block-end: 6px;
+  /* A GROUP WITH NOTHING IN IT IS A HEADING, NOT A BOX. The full group's padding
+     and its 16px trailing margin are both spent on rows that are not there, and
+     with three empty groups in a row that reserved air is what turned the page
+     into a column of holes. So the head keeps its own line and the block gives up
+     the padding and the margin; the count beside the name still says 0, so nothing
+     is lost by not reserving room for rows that do not exist. */
+  padding-block: 0;
+  margin-block-end: 0;
 }
 
 /* ── 密度 ───────────────────────────────────────────────────────────────
