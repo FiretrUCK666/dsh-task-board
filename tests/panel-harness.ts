@@ -726,7 +726,54 @@ export function mountPanel(
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   })
-  g.fetch = (async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
+  /**
+   * The one fake, and the rule it follows: **it answers what the real host
+   * answers, or it is a narrower thing than reality.**
+   *
+   * It used to answer `{}` to everything, which is not a neutral stub — it is a
+   * host that refuses. `itemsRestore` reads `available` and the row, and a body
+   * with neither is a refusal, so a perfectly correct undo came back as
+   * `ok: false, why: 'malformedAnswer'` and the gate reported 「the undo does
+   * nothing」 about code that was fine. That is the narrow-fake hazard pointed at
+   * the implementation rather than away from it: the suite reports a defect that
+   * is not in the code, and the reader of the report cannot tell the difference.
+   *
+   * So the restore route is answered, from a tombstone this fake keeps itself —
+   * the rows a delete removed are exactly the rows a restore may bring back, and
+   * answering from that set is the same relationship the real document has.
+   */
+  const tombstones = new Map<string, ItemRecord>()
+  g.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    // The REAL host answers in an ENVELOPE: `{ ok, value }`, and the client
+    // reads `value` out of it. A fake that answers the bare object is not a
+    // simpler host, it is a host speaking a different protocol — and the client
+    // reports 「malformed」 about a row that is sitting right there.
+    const json = (value: unknown): Response => new Response(JSON.stringify({ ok: true, value }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+    if (url.includes('/board/items/restore')) {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { id?: unknown; ref?: unknown }
+      const row = typeof body.id === 'string'
+        ? tombstones.get(body.id)
+        : [...tombstones.values()].find(one => one.ref === body.ref)
+      if (row === undefined) return json({ available: true, restored: null })
+      tombstones.delete(row.id)
+      return json({ available: true, restored: row })
+    }
+    return json({})
+  }) as typeof fetch
+  // The fake host is also where a deletion goes, so a restore has something to
+  // answer with. It is wired by wrapping `setItems`, which is the ONE write
+  // every removal on this surface goes through.
+  const baseSetItems = replica.setItems
+  replica.setItems = (next: readonly ItemRecord[]) => {
+    for (const gone of replica.view()) {
+      if (!next.some(row => row.id === gone.id)) tombstones.set(gone.id, gone)
+    }
+    baseSetItems(next)
+  }
 
   const settle = (): void => { act(() => { root.render(createElement(ItemListPanel, { signal, face: faceOf(replica, controller) } as never)) }) }
   try {

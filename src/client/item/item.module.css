@@ -557,10 +557,24 @@
   box-sizing: border-box;
   min-block-size: 0;
   min-inline-size: 0;
-  /* Layer 1, and the head that sticks inside it takes the same layer — see
-     `.itemGroupHead`. A card is an INNER surface, so it is opaque by the
-     surface's one rule. */
-  background: var(--dsh-tb-surface-float);
+  /* THE CANVAS TOKEN, NOT A LAYER — and this is the single line that decides
+     whether the skin is visible at all.
+
+     The root already paints the canvas, so a card painted with an opaque LAYER
+     token covers the wallpaper again one level down: the page reads as a flat
+     plate with a glass border round it, which is the one thing a glass skin
+     cannot recover from. The board answers this already — `.column` is
+     `var(--dsh-tb-bg)` with the note 「the board never layers a second tint on
+     top of the app's base」, and that is why the board looks right under a
+     translucent skin while a list that paints its content plates opaque does not.
+
+     So the rule is: **the plates that hold the CONTENT take the canvas token**,
+     because they are the same surface as the app's base and translucency has to
+     compose through them. Only a thing that genuinely FLOATS — a menu, a field,
+     the danger zone — takes an opaque layer, because there text must survive
+     whatever is behind it. The head that sticks inside this card takes the same
+     token as the card, or a row passing under it would read as a fault. */
+  background: var(--dsh-tb-bg);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-lg);
   overflow: hidden;
@@ -622,6 +636,22 @@
   display: flex;
   flex-direction: column;
   align-self: start;
+  /**
+   * AN OPAQUE LAYER, and it is the other half of the rule `.itemListCard` gives.
+   *
+   * The list card, the tiles and the group heads take the CANVAS, because they
+   * are plates that hold content and translucency has to compose through them.
+   * This box is not that: it holds a FORM — 11px field labels, selects, date
+   * pickers — and 11px ink on a wallpaper is not a style, it is unreadable. So
+   * the split is not 「canvas or layer」, it is **「content plate or floating
+   * surface」**, and a form is the second kind. The pane it lives in draws
+   * nothing (`background: none`) and lets this box be the surface, which is also
+   * what keeps the empty state reading as one block instead of a field list.
+   */
+  background: var(--dsh-tb-surface-float);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  padding: 12px;
   /* `inline-size: 100%`, and it is load-bearing rather than belt-and-braces.
      `align-self: start` is what makes this box CONTENT-SIZED (the decision: the
      content should not be stretched to the height of a tall empty pane), but
@@ -651,9 +681,37 @@
   min-block-size: 0;
   min-inline-size: 0;
   overflow-y: auto;
-  /* The one scroll body of the single-column bands. Its scrollbar is painted by
-     the board's single-scrollbar grammar (board.module.css) — that list is the
-     design system's copy, and it is edited there, not duplicated here. */
+  /**
+   * THE PAGE'S VERTICAL RHYTHM, DECLARED ONCE, HERE.
+   *
+   * It used to declare no `display` at all, so it was a plain block and every band
+   * on the page — the overview, the filter bar, the triage lines, the archive
+   * line, each group — stacked against the next with NO gap at all. That is the
+   * 「everything is stuck together」 report, and it was not a matter of taste
+   * about how tight a gap should be: there was no gap.
+   *
+   * Declaring the column here is the fix rather than padding each band, because a
+   * per-band margin is a number written in four places, and four places disagree
+   * the first time one of them is edited. One `gap` is one number, it cannot be
+   * half-applied, and the eye can rely on it because it is structural.
+   *
+   * Twelve is smaller than the sixteen that separates two GROUPS, and that
+   * ordering is the whole point: the reader has to be able to tell 「this is
+   * another thing about the list」 from 「this is a different bucket of rows」 by
+   * air alone, and equal gaps would make the two the same kind of boundary.
+   */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* The one scrollbar is the board's single-scrollbar grammar, painted there. */
+}
+
+/* NOTHING IN THE SCROLLER MAY GROW ALONG THE BLOCK AXIS. A band that took the
+   slack would be a band that stretched to fill the column — which is exactly how
+   「没有等你动手的事。」 once opened a hole in the middle of this page. The gap
+   above needs a column to live in; this is what keeps that column honest. */
+.itemScroll > * {
+  flex: none;
 }
 
 /* ── 分组：吸顶组头 + 发丝线进度 ───────────────────────────────────────────
@@ -699,12 +757,12 @@
   gap: 10px;
   margin: 0;
   padding: 0 0 7px;
-  /* The head LIVES INSIDE the list card, so it takes the card's own layer. A
-     head painted with a different layer than the rows it sticks over is a
-     translucent band over an opaque list, which reads as a rendering fault the
-     moment a row scrolls under it. Same layer, same skin, one continuous
-     surface. */
-  background: var(--dsh-tb-surface-float);
+  /* The head LIVES INSIDE the list card, so it takes the card's own token — the
+     canvas, for the reason `.itemListCard` gives. A head painted with a
+     different layer than the rows it sticks over is a band of a different colour
+     lying across the list, which reads as a rendering fault the moment a row
+     scrolls under it. */
+  background: var(--dsh-tb-bg);
   /* The rule under the head is a STRUCTURAL line, not an internal one: it is
      the boundary of the group, the thing the reader acts across. The sheet's
      other rule — `border-soft` — is for lines INSIDE a thing. The l1/l2 split
@@ -1468,7 +1526,11 @@
   padding: 8px 8px 6px;
   font-family: inherit;
   text-align: start;
-  background: var(--dsh-tb-surface-float);
+  /* The canvas token, for the reason `.itemListCard` gives: a tile is a plate
+     that holds content, not something floating over it. Five opaque tiles across
+     the top of the page are the single largest thing standing between the skin and
+     the reader on this surface. */
+  background: var(--dsh-tb-bg);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-md);
   cursor: pointer;
@@ -1614,18 +1676,6 @@
    click that set it), and the pill is its `<summary>` — drawn as a pill because
    it is a control, with the face's name as a CONTAINER label inside it, the same
    treatment a group head gets. */
-.itemFacetGroup {
-  flex: none;
-  min-inline-size: 0;
-}
-
-/* An OPEN face takes a line of its own, so opening one never re-positions the
-   pills beside it — the bar's other controls must not dance because a reader
-   decided to look at the dates. Closed, the face is exactly its own pill and
-   nothing else, which is what keeps the bar one line. */
-.itemFacetGroup[open] {
-  flex-basis: 100%;
-}
 
 .itemFacetName {
   font-size: 11px;
@@ -1931,6 +1981,14 @@ textarea.itemInput {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* The same surface as the rail's detail, for the same reason: it is a form
+     either way, and a form is a floating surface rather than a content plate.
+     Inside a row this is what separates 「a row with a form open under it」 from
+     「more of the list」 — without it, the fields are just inputs floating on the
+     wallpaper with no box saying they belong together. */
+  background: var(--dsh-tb-surface-float);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
   /* In place, the detail is the row's own child: it takes the row's measure and
      adds no scroll of its own, so opening one row never starts a second
      scroller inside the list. `flex-basis: 100%` is what puts it on its own
@@ -2328,10 +2386,10 @@ textarea.itemInput {
   line-height: var(--dsh-tb-row-line);
   letter-spacing: 0.02em;
   color: var(--dsh-tb-text-2);
-  /* Same layer as the card it lives in, same reason as the group head: a
-     sticky label painted in a different layer reads as a rendering fault the
-     first time a row passes under it. */
-  background: var(--dsh-tb-surface-float);
+  /* The canvas, same as the card it lives in and for the same reason as the
+     group head: a sticky label painted in a different layer reads as a
+     rendering fault the first time a row passes under it. */
+  background: var(--dsh-tb-bg);
   border-block-end: var(--dsh-tb-border);
 }
 
@@ -2606,6 +2664,162 @@ textarea.itemInput {
   color: var(--dsh-tb-text-3);
 }
 
+/* ── 批量：勾选轨与批量条 ──────────────────────────────────────────────
+   The pickbox and the state dot SHARE track 1, so the list's left edge moves
+   once for the whole list rather than once per row, and a row is either being
+   selected or being read and never both. */
+.itemPick {
+  grid-area: mark;
+  inline-size: 16px;
+  block-size: 16px;
+  margin-inline-start: 1px;
+  box-sizing: border-box;
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-sm);
+  background: var(--dsh-tb-input-bg);
+  cursor: pointer;
+}
+
+/* A HELD ROW IS INK, NOT ACCENT, and this is the same argument the tiles make.
+   The accent has five jobs on this surface and they are named: the focus ring,
+   the selected row, the current page tab, the group's hairline, the tiles' meters.
+   A sixth would be spent on the one control that was not there a week ago, and
+   the day a seventh arrives the colour stops meaning 「this thing is live」 and
+   starts meaning 「this box」. The check is the strongest ink on the neutral
+   input surface — a filled square against an outlined one reads as held at a
+   glance, from the same place in the eye as the state dot it replaced. */
+.itemPick[data-picked] {
+  border-color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-text-2);
+}
+
+.itemBatch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  /* The one surface on the page that floats above the list rather than sitting
+     in it, so it is the one that may be an opaque layer: the count and the
+     actions are text a reader has to be able to read whatever passes behind. */
+  background: var(--dsh-tb-surface-float);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-md);
+  min-inline-size: 0;
+}
+
+.itemBatchCount {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: var(--dsh-tb-row-line);
+  color: var(--dsh-tb-text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemBatchActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+.itemBatchField {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-inline-size: 0;
+}
+
+.itemBatchNote {
+  margin: 0;
+  font-size: 11px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+}
+
+/* ONE PANEL FOR THE WHOLE FILTER SET, and the four rows inside it share ONE
+   label column. That fixed column is the whole alignment: 状态 / 优先级 / 日期 /
+   标签 are four words of different lengths, and without a column they each start
+   where they happen to end, so the values stagger and the panel reads as four
+   unrelated strips instead of one list of faces. With the column, every value in
+   the panel starts at the same x, and the eye can compare 「what can I filter by」
+   down one edge. */
+.itemFacetPanel {
+  flex: none;
+  min-inline-size: 0;
+}
+
+.itemFacetPanelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-block-start: 8px;
+  padding: 12px;
+  /* The one surface here that genuinely floats above the list: the filter values
+     are a set of small targets and the rows behind them must not read through
+     them, so this one takes an opaque layer while the list card does not. */
+  background: var(--dsh-tb-surface-float);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-md);
+}
+
+.itemFacetRow {
+  display: grid;
+  grid-template-columns: 4.5em minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  min-inline-size: 0;
+}
+
+.itemFacetToggle {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  block-size: var(--dsh-tb-button-h-sm);
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+  list-style: none;
+  transition: color var(--dsh-tb-motion), border-color var(--dsh-tb-motion), background var(--dsh-tb-motion);
+}
+
+.itemFacetToggle::-webkit-details-marker {
+  display: none;
+}
+
+.itemFacetToggle:hover {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-hover);
+}
+
+.itemFacetToggle:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+.itemFacetToggle[data-active] {
+  color: var(--dsh-tb-text-1);
+  border-color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+}
+
+.itemFacetActive {
+  color: var(--dsh-tb-text-1);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-inline-size: 0;
+}
+
 /* ── 密度 ───────────────────────────────────────────────────────────────
    Density is a user setting, so the row's height is a token and not a number
    typed into six rules. Only the two padding knobs move; nothing else about a
@@ -2717,11 +2931,6 @@ textarea.itemInput {
     display: flex;
   }
 
-  .itemFacetGroup {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-  }
 }
 
 @container dsh-tb-item (min-width: 1080px) {

@@ -53,6 +53,26 @@ export interface ItemFilterBarProps {
   /** Whether a filter is in force, which is what the clear affordance is for. */
   readonly filtering: boolean
   readonly onClear: () => void
+  /**
+   * THE BATCH'S DOOR, and it lives here rather than on a row.
+   *
+   * A resident pickbox would make every row on every page pay 28px for a control
+   * most readers never want, and a pickbox that appears with nothing to announce
+   * it is worse. So the reader asks for the batch ONCE, here, and every row then
+   * shows a pickbox INSTEAD of its state dot — one track, two states, and the
+   * list's left edge moves once for the whole list.
+   *
+   * Select-all sits in the same reach, because a reader who wanted everything
+   * should not have to find a second control for it — and it counts only the rows
+   * on screen, so a narrowed filter can never produce a bar that says 「选了
+   * 40 条」 over a list of eight.
+   */
+  readonly armed: boolean
+  readonly onArm: (on: boolean) => void
+  readonly allPicked: boolean
+  readonly onPickAll: (on: boolean) => void
+  /** Whether there is anything on screen to select at all. */
+  readonly selectable: boolean
 }
 
 /** One chip: a toggle that says it is on, and the token it stands for. */
@@ -99,24 +119,15 @@ function FacetChip(props: {
  * itself. The native element owns the state, the summary carries the state, and
  * nothing has to be kept in step.
  */
-function FacetGroup(props: {
+function FacetRow(props: {
   readonly label: string
   readonly children: React.ReactNode
-  /** The words for the values currently on, or none. */
-  readonly active: readonly string[]
 }) {
   return (
-    <details className={css.itemFacetGroup}>
-      <summary className={css.itemFacetToggle} data-active={props.active.length > 0 ? '' : undefined}>
-        <span className={css.itemFacetName}>{props.label}</span>
-        {props.active.length > 0 && (
-          <span className={css.itemFacetActive}>{props.active.join(' · ')}</span>
-        )}
-      </summary>
-      <div className={css.itemFacetValues}>
-        {props.children}
-      </div>
-    </details>
+    <div className={css.itemFacetRow}>
+      <span className={css.itemFacetName}>{props.label}</span>
+      <div className={css.itemFacetValues}>{props.children}</div>
+    </div>
   )
 }
 
@@ -138,8 +149,41 @@ export function ItemFilterBar(props: ItemFilterBarProps) {
   const activeWords = (facet: ItemFacetId, values: readonly FacetValue[]): string[] =>
     values.filter(value => isFacetOn(props.query, facet, value.key)).map(value => t(value.label))
 
+  /** Every face that has something on it, named once, in reading order. */
+  const activeFaces = [
+    ...ITEM_FACETS.flatMap(facet => activeWords(facet.id, facet.values)),
+    ...tagValues.filter(value => isFacetOn(props.query, 'tag', value.key)).map(value => value.text),
+  ]
+
   return (
     <div className={css.itemFilterRow} role="group" aria-label={t('item.filter.label')}>
+      {/* The batch door, FIRST — the row that leads the bar is the one that
+          changes what every row below it is, and it is the only control here that
+          is about the list rather than about the reading. */}
+      {props.selectable && (
+        <>
+          <button
+            type="button"
+            className={css.itemFacetToggle}
+            aria-pressed={props.armed}
+            onClick={() => props.onArm(!props.armed)}
+          >
+            {t(props.armed ? 'item.batch.armed' : 'item.batch.arm')}
+          </button>
+          {/* Only while the batch is on: a select-all over rows that have no
+              pickbox is a control for something the reader cannot see. */}
+          {props.armed && (
+            <span
+              className={css.itemPick}
+              data-picked={props.allPicked ? '' : undefined}
+              role="checkbox"
+              aria-checked={props.allPicked}
+              aria-label={t(props.allPicked ? 'item.batch.allDone' : 'item.batch.all')}
+              onClick={() => props.onPickAll(!props.allPicked)}
+            />
+          )}
+        </>
+      )}
       <div className={css.itemFilterSelect}>
         <span className={css.itemFacetName}>{t('item.sort.label')}</span>
         <select
@@ -165,31 +209,48 @@ export function ItemFilterBar(props: ItemFilterBarProps) {
         />
       </div>
 
-      {ITEM_FACETS.map(facet => (
-        <FacetGroup key={facet.id} label={t(facet.label)} active={activeWords(facet.id, facet.values)}>
-          {chips(facet.id, facet.values)}
-        </FacetGroup>
-      ))}
-
-      {/* The tag facet only exists when the document has tags. An empty row of
-          nothing is a row that says 「there are no tags」, which is a claim about
-          the document that the row itself cannot make. */}
-      {tagValues.length > 0 && (
-        <FacetGroup
-          label={t('item.facet.tag')}
-          active={tagValues.filter(value => isFacetOn(props.query, 'tag', value.key)).map(value => value.text)}
-        >
-          {tagValues.map((value: TagFacetValue) => (
-            <FacetChip
-              key={value.token}
-              token={value.token}
-              text={value.text}
-              on={isFacetOn(props.query, 'tag', value.key)}
-              onToggle={() => toggle(value.token, !isFacetOn(props.query, 'tag', value.key))}
-            />
+      {/* ONE DISCLOSURE FOR THE WHOLE FILTER SET, and the reason is not tidiness.
+          One disclosure per face was the first shape, and it is a trap: opening the
+          third face changed where the other three sat, so the bar you had just
+          learned to read rearranged itself under your hand — on a phone, faces
+          appeared to vanish and then to reappear. Four independent open/closed
+          states is four pieces of state describing ONE thing the reader thinks of
+          as 「the filters」. So the set is one control and one panel, and inside
+          the panel every face is a ROW with a fixed label column: the labels
+          line up with each other, which is the only way four rows of different
+          lengths can be read as one list. */}
+      <details className={css.itemFacetPanel}>
+        <summary className={css.itemFacetToggle} data-active={activeFaces.length > 0 ? '' : undefined}>
+          <span className={css.itemFacetName}>{t('item.filter.label')}</span>
+          {activeFaces.length > 0 && (
+            <span className={css.itemFacetActive}>{activeFaces.join(' · ')}</span>
+          )}
+        </summary>
+        <div className={css.itemFacetPanelBody}>
+          {ITEM_FACETS.map(facet => (
+            <FacetRow key={facet.id} label={t(facet.label)}>
+              {chips(facet.id, facet.values)}
+            </FacetRow>
           ))}
-        </FacetGroup>
-      )}
+
+          {/* The tag face only exists when the document has tags. An empty row of
+              nothing is a row that says 「there are no tags」, which is a claim
+              about the document that the row itself cannot make. */}
+          {tagValues.length > 0 && (
+            <FacetRow label={t('item.facet.tag')}>
+              {tagValues.map((value: TagFacetValue) => (
+                <FacetChip
+                  key={value.token}
+                  token={value.token}
+                  text={value.text}
+                  on={isFacetOn(props.query, 'tag', value.key)}
+                  onToggle={() => toggle(value.token, !isFacetOn(props.query, 'tag', value.key))}
+                />
+              ))}
+            </FacetRow>
+          )}
+        </div>
+      </details>
 
       {props.filtering && (
         <Button onClick={props.onClear} variant="ghost" size="sm" className={css.itemClearFilter}>

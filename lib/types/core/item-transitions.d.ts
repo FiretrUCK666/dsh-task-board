@@ -159,6 +159,33 @@ export declare function applyItemStep(items: readonly ItemRecord[], id: string, 
  */
 export declare function removeItemRecord(items: readonly ItemRecord[], id: string): readonly ItemRecord[];
 /**
+ * Put a row the host has just restored back into the list, where it was.
+ *
+ * WHY THIS EXISTS, and the failure it ends. Undo is the one gesture on this
+ * surface that a reader presses AFTER the thing they want has already left the
+ * screen. Every other write is followed by an optimistic local update, so the row
+ * is already there when the host agrees; an undo had no local update, because
+ * there was nothing to optimistically write — the host had to go and fetch the
+ * row back out from behind a tombstone first. So the code waited for the host's
+ * broadcast to bring it home, and if that broadcast was late, coalesced, or lost
+ * the reader had pressed 撤销 and watched nothing happen at all. **A button whose
+ * only effect is a message about a change you cannot see is the definition of a
+ * dead control**, and it is the control that is most expensive to be dead on,
+ * because the reader has just destroyed something and is relying on this.
+ *
+ * So the restore is written locally the moment the host confirms it — by
+ * IDENTITY and not by append, because the row keeps its own place in the
+ * document's order and re-appending it would move it to the end of the list,
+ * which is a second, subtler way of telling the reader their notes were
+ * reorganised.
+ *
+ * @param items - the current list.
+ * @param restored - the row the host handed back.
+ * @returns a new list with that row in its own place, or the very same list when
+ *   the document already has it.
+ */
+export declare function restoreItemRecord(items: readonly ItemRecord[], restored: ItemRecord): readonly ItemRecord[];
+/**
  * The card a promotion would create, said as words.
  *
  * Nothing else. The card's identity is minted by whoever writes the ledger, the

@@ -37,6 +37,7 @@ import {
   ITEM_STATUS_ORDER,
   itemGroupCountsOf,
   itemMatchContextOf,
+  itemMatches,
   itemPageCountsOf,
   itemRefOf,
   itemRowViewOf,
@@ -48,7 +49,7 @@ import {
    the agent's tool calls, so a field the model ruled derived cannot be written
    here either. `model.ts` keeps only what a browser can do and a document cannot
    — minting an id, and formatting a date. */
-import { applyItemPatch, applyItemStep, captureItemRecord, isBlankCapture, planItemPromotion, removeItemRecord, type ItemPatch } from '../../core/item-transitions.ts'
+import { applyItemPatch, applyItemStep, captureItemRecord, isBlankCapture, planItemPromotion, removeItemRecord, restoreItemRecord, type ItemPatch } from '../../core/item-transitions.ts'
 import { itemTitleOf } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { itemsAsk } from '../board-ask.ts'
@@ -58,6 +59,18 @@ import { useSurfaceNarrow } from '../board/use-narrow.ts'
 import { ItemComposer } from './composer.tsx'
 import { ItemDetail } from './detail-pane.tsx'
 import { ItemRowLine } from './row-line.tsx'
+import {
+  NO_SELECTION,
+  allPicked,
+  reconcile,
+  selectionActive,
+  selectedCount,
+  setAllPicked,
+  setArmed,
+  togglePicked,
+  type ItemSelection,
+} from './selection.ts'
+import { ItemBatchBar } from './batch-bar.tsx'
 import { InboxPage } from './pages/inbox.tsx'
 import { ListPage } from './pages/list.tsx'
 import { SchedulePage } from './pages/schedule.tsx'
@@ -158,6 +171,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const [restoring, setRestoring] = useState<number | undefined>(undefined)
   const [asking, setAsking] = useState<string | undefined>(undefined)
   const [asked, setAsked] = useState<string | undefined>(undefined)
+  /**
+   * The reader's holding, for the batch. It is its own state and NOT a field on
+   * `selected`, because `selected` is one row being READ in the detail rail and
+   * this is many rows being ACTED ON — a batch that moved the detail selection
+   * would end the row the reader was looking at, and a detail that moved the
+   * batch would hide rows that are still held.
+   */
+  const [selection, setSelection] = useState<ItemSelection>(NO_SELECTION)
   const seeded = useRef(false)
 
   // The detail lives beside the list only when there is room for both. The
@@ -281,7 +302,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
 
   /** Take it back. One call per row, because the archive is addressed one at a
    *  time —and every outcome is reported, so a batch that only half came back
-   *  says so rather than reporting a single 「one」. */
+   *  says so rather than reporting a single 「one」.
+   *
+   *  AND THE ROW GOES BACK THE MOMENT THE HOST CONFIRMS IT, rather than waiting
+   *  for a broadcast to bring it. Undo is the one gesture here that a reader
+   *  presses AFTER the thing they want has already left the screen, so waiting
+   *  for a message is waiting while they watch — and if that message is late,
+   *  coalesced or lost, they pressed 撤销 and saw nothing happen, having just
+   *  destroyed something and been relying on this. A control whose only visible
+   *  effect is a sentence about a change you cannot see is a dead control. */
   const runUndo = useCallback(() => {
     const pending = undo
     setUndo(undefined)
@@ -291,16 +320,21 @@ export function ItemListPanel(props: ItemListPanelProps) {
     setRestoring(pending.ids.length)
     void (async () => {
       let back = 0
+      let next = items
       for (const id of pending.ids) {
         const reply = await itemsRestore({ id }, clientId)
-        if (reply.ok && reply.restored !== undefined) back += 1
+        if (reply.ok && reply.restored !== undefined) {
+          back += 1
+          next = restoreItemRecord(next, reply.restored)
+        }
       }
+      if (back > 0) apply(next)
       setRestoring(undefined)
       setAsked(back === pending.ids.length
         ? t('item.undo.done', { n: String(back) })
         : t('item.undo.partial', { back: String(back), total: String(pending.ids.length) }))
     })()
-  }, [replica, undo])
+  }, [apply, items, replica])
 
   const promoteOne = useCallback((item: ItemRecord) => {
     setMenuRow(undefined)
@@ -320,6 +354,50 @@ export function ItemListPanel(props: ItemListPanelProps) {
     setAsked(t('item.promote.said', { title: task.title.trim() === '' ? plan.task.title : task.title.trim() }))
   }, [apply, cards, face.controller, items])
 
+  /**
+   * Apply one patch to every held row, through the SAME writer the row menu uses.
+   *
+   * It reports how many rows actually CHANGED rather than how many it touched,
+   * because `applyItemPatch` returns the very same array for a row that was
+   * already in that state — and a bar that said 「改了 7 条」 after a reader
+   * pressed 「标为待办」 on seven rows that already were 待办 would be the batch
+   * version of a button that legally does nothing.
+   */
+  const applyToHeld = useCallback((patch: ItemPatch) => {
+    const at = Date.now()
+    let moved = 0
+    let next = items
+    for (const id of selection.ids) {
+      const after = applyItemPatch(next, id, patch, at)
+      if (after !== next) { moved += 1; next = after }
+    }
+    if (moved > 0) apply(next)
+    setAsked(moved > 0
+      ? t('item.batch.said', { n: String(moved) })
+      : t('item.batch.saidNone', { n: String(selection.ids.size) }))
+  }, [apply, items, selection.ids])
+
+  /** Delete every held row as ONE act, so one undo puts the whole batch back. */
+  const removeHeld = useCallback(() => {
+    const ids = [...selection.ids]
+    if (ids.length === 0) return
+    setUndo({ ids, at: Date.now() })
+    let next = items
+    for (const id of ids) next = removeItemRecord(next, id)
+    apply(next)
+  }, [apply, items, selection.ids])
+
+  /** Hand the held rows that HAVE a card to their sessions, and say if some did not. */
+  const askHeld = useCallback(() => {
+    let asked = 0
+    for (const item of items) {
+      if (!selection.ids.has(item.id) || item.taskId === undefined) continue
+      asked += 1
+      askOne(item)
+    }
+    if (asked === 0) setAsked(t('item.batch.askOne', { n: String(selection.ids.size) }))
+  }, [items, selection.ids])
+
   if (replica === undefined) {
     return (
       <div className={css.itemPanelStage} data-dsh-taskboard-view="">
@@ -332,6 +410,21 @@ export function ItemListPanel(props: ItemListPanelProps) {
 
   const showDetailPane = !narrow
   const shown = selected !== undefined ? items.filter(item => item.id === selected) : items
+
+  /**
+   * A holding may only name rows the reader can point at.
+   *
+   * Narrow the filter and the rows it hides leave the holding; delete a held row
+   * and it leaves too, because writing to a tombstone is a write to nothing. Both
+   * would otherwise leave the bar saying 「已选 4 条」 over a list showing one, and
+   * a bar that writes to rows the reader cannot see is the worst thing a batch
+   * surface can do — so the rule that makes the holding honest lives in one
+   * place instead of at every place the document can change.
+   */
+  useEffect(() => {
+    const visible = shown.map(item => item.id)
+    setSelection(current => reconcile(current, visible))
+  }, [query.text, prefs.page, items, shown.length])
 
   /* THREE NUMBERS AND ONE DECOMPOSITION, and no fourth anywhere.
      The rail's three and the header's total are read from the map of the
@@ -388,6 +481,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
       density={prefs.density}
       expanded={openRow === item.id}
       selected={selected === item.id}
+      picking={selection.armed}
+      picked={selection.ids.has(item.id)}
+      onPick={() => setSelection(current => togglePicked(current, item.id))}
       inPlace={narrow}
       panelId="item"
       menuOpen={menuRow === item.id}
@@ -422,10 +518,48 @@ export function ItemListPanel(props: ItemListPanelProps) {
     filtering,
     renderRows: rows,
   }
+  /**
+   * The batch bar, handed ONLY to the list page.
+   *
+   * The inbox and the agenda are never given one, which is how 「only the list
+   * page batches」 is enforced — by not handing them the slot, rather than by
+   * each of them deciding to ignore one it was given.
+   */
+  /** The rows the reader can see, which is what select-all may reach. */
+  const visibleIds = shown.filter(item => itemMatches(item, query, matchCtx)).map(item => item.id)
+  const batch = selectionActive(selection) ? (
+    <ItemBatchBar
+      count={selectedCount(selection)}
+      onMark={status => applyToHeld({ status })}
+      onPriority={priority => applyToHeld({ priority })}
+      onDueToday={() => {
+        // 「设截止」 means TODAY, stated as a day: a bare timestamp in a field
+        // nobody opened is a number they cannot check, and the one gesture the
+        // name promises is the one they can undo by reading it back.
+        const midnight = new Date(now)
+        midnight.setHours(0, 0, 0, 0)
+        applyToHeld({ dueAt: midnight.getTime() })
+      }}
+      askable={[...selection.ids].filter(id => items.some(item => item.id === id && item.taskId !== undefined)).length}
+      onAsk={askHeld}
+      onRemove={removeHeld}
+      onDone={() => setSelection(current => setArmed(current, false))}
+    />
+  ) : undefined
   const body = prefs.page === 'inbox'
     ? <InboxPage {...pageProps} />
     : prefs.page === 'list'
-      ? <ListPage {...pageProps} counts={groupCounts} clientId={replica?.clientId()} />
+      ? <ListPage
+        {...pageProps}
+        counts={groupCounts}
+        clientId={replica?.clientId()}
+        batch={batch}
+        armed={selection.armed}
+        onArm={on => setSelection(current => setArmed(current, on))}
+        allPicked={allPicked(selection, visibleIds)}
+        onPickAll={on => setSelection(current => setAllPicked(current, visibleIds, on))}
+        selectable={visibleIds.length > 0}
+      />
       : <SchedulePage {...pageProps} />
 
   return (

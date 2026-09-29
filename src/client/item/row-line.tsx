@@ -100,6 +100,20 @@ export interface ItemRowLineProps {
   readonly selected: boolean
   /** Whether the detail lives in the row (narrow) or in the pane (wide). */
   readonly inPlace: boolean
+  /**
+   * Whether the reader is holding several rows, which puts a pickbox in this
+   * row's first track INSTEAD OF the state mark.
+   *
+   * Instead of, not as well as: the two are the same slot, so a row is either
+   * being selected or being read and never both, and the list's left edge moves
+   * once for the whole list rather than once per row. A pickbox that was
+   * resident would make every row on every page pay 28px for a control most
+   * readers never use.
+   */
+  readonly picking: boolean
+  /** Whether THIS row is held. */
+  readonly picked: boolean
+  readonly onPick: () => void
   readonly panelId: string
   readonly onToggle: () => void
   readonly onSelect: () => void
@@ -158,11 +172,28 @@ export function ItemRowLine(props: ItemRowLineProps) {
         aria-expanded={inPlace ? expanded : undefined}
         aria-controls={inPlace ? regionId : undefined}
         onClick={() => {
+          // While the reader is holding rows, a tap on the row IS the pick. It
+          // cannot be both: the row's own toggle would open five details at once,
+          // and a reader who has said 「多选」 and then taps rows is picking rows.
+          if (props.picking) { props.onPick(); return }
           props.onSelect()
           props.onToggle()
         }}
       >
-        <span className={css.itemStateMark} aria-hidden="true" />
+        {/* Track 1, shared and mutually exclusive: the state dot while the row is
+            being read, the pickbox while it is being selected. */}
+        {props.picking
+          ? (
+            <span
+              className={css.itemPick}
+              data-picked={props.picked ? '' : undefined}
+              role="checkbox"
+              aria-checked={props.picked}
+              aria-label={props.picked ? t('item.batch.picked') : t('item.batch.pick')}
+              onClick={event => { event.stopPropagation(); props.onPick() }}
+            />
+          )
+          : <span className={css.itemStateMark} aria-hidden="true" />}
         <span className={css.itemRef} title={ref.numbered ? undefined : t('item.ref.pending')}>
           {ref.text ?? '—'}
         </span>

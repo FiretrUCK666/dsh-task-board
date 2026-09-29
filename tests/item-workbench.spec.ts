@@ -26,6 +26,7 @@
  */
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
+import { act } from 'react'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ItemRecord } from '../src/core/item.ts'
@@ -572,21 +573,50 @@ describe('a press is a change to the document, not a change to the menu', () => 
     }
   })
 
-  it('deleting offers the undo right there, with no second gate in front of it', () => {
-    // TWO STEPS FOR A REVERSIBLE ACTION. The row is recoverable for thirty
-    // days, and a modal asking to confirm a reversible action is friction with
-    // no decision behind it — the reader is asked to be sure about something
-    // they can take back. So the delete is one press and the undo appears where
-    // the row was.
-    const panel = mountPanel(oneRow({ id: 'd-1', title: '删掉我' }), 'list', 'wide')
+  it('deleting offers the undo right there, on the NARROW band too', () => {
+    // The same promise, on the band a phone is actually on.
+    //
+    // Every other delete gate in this file mounts the WIDE band, and the wide band
+    // is the one where the detail lives in a rail beside the list. On a phone the
+    // detail is in place, the rail is gone, and the receipt is the ONLY place the
+    // undo can be — so a receipt that is wired to the wide band's arrangement is a
+    // receipt that does not exist where it is needed. This is the band difference
+    // that a wide-only suite cannot see, and it is the difference between 「undo
+    // does nothing」 and 「undo is right there».
+    for (const band of ['wide', 'narrow'] as const) {
+      const panel = mountPanel(oneRow({ id: 'd-1', title: '删掉我' }), 'list', band)
+      try {
+        openRowMenu(panel.surface)
+        click(findMenuEntry(panel.surface, '删除'))
+        const undo = [...panel.surface.querySelectorAll('button')]
+          .find(b => (b.textContent ?? '').includes('撤销'))
+        expect(undo, `deleting on the ${band} band left the row gone with no way back on the page`).toBeDefined()
+      } finally {
+        panel.dispose()
+      }
+    }
+  })
+
+  it('the undo actually puts the row back, and says so', async () => {
+    // The gate above only proves the BUTTON is there. This one presses it, because
+    // 「a button that is present and does nothing」 is the exact failure a presence
+    // check cannot see, and it is the failure a reader reports as 「撤销没有任何
+    // 反应」.
+    //
+    // ASYNC ON PURPOSE: undo is a round trip (the host has to fetch the row back
+    // out from behind its tombstone), so the row returns on a later turn. A gate
+    // that presses and reads the DOM in the same breath is measuring the network,
+    // not the behaviour — and 「it did not come back YET」 is indistinguishable
+    // from 「it did not come back」 in a red.
+    const panel = mountPanel(oneRow({ id: 'd-2', title: '带我回来' }), 'list', 'wide')
     try {
       openRowMenu(panel.surface)
       click(findMenuEntry(panel.surface, '删除'))
-      const surface = panel.surface.textContent ?? ''
-      expect(surface, 'the delete asks for a confirmation before it does anything — the action is reversible, so the second gate is pure friction').not.toMatch(/确认删除|确定要删|清空搜索/)
-      // And the way back is ON the page, not in a menu nobody opens.
+      expect(panel.surface.textContent ?? '', 'the row did not go away, so there is nothing to undo').not.toContain('带我回来')
       const undo = [...panel.surface.querySelectorAll('button')].find(b => (b.textContent ?? '').includes('撤销'))
-      expect(undo, 'the row is gone and the page says nothing about bringing it back').toBeDefined()
+      expect(undo, 'there is no undo control to press').toBeDefined()
+      await act(async () => { click(undo) })
+      expect(panel.surface.textContent ?? '', 'the undo was pressed and the row did not come back').toContain('带我回来')
     } finally {
       panel.dispose()
     }

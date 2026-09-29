@@ -38,5 +38,25 @@ export interface ItemFilterBarProps {
     /** Whether a filter is in force, which is what the clear affordance is for. */
     readonly filtering: boolean;
     readonly onClear: () => void;
+    /**
+     * THE BATCH'S DOOR, and it lives here rather than on a row.
+     *
+     * A resident pickbox would make every row on every page pay 28px for a control
+     * most readers never want, and a pickbox that appears with nothing to announce
+     * it is worse. So the reader asks for the batch ONCE, here, and every row then
+     * shows a pickbox INSTEAD of its state dot — one track, two states, and the
+     * list's left edge moves once for the whole list.
+     *
+     * Select-all sits in the same reach, because a reader who wanted everything
+     * should not have to find a second control for it — and it counts only the rows
+     * on screen, so a narrowed filter can never produce a bar that says 「选了
+     * 40 条」 over a list of eight.
+     */
+    readonly armed: boolean;
+    readonly onArm: (on: boolean) => void;
+    readonly allPicked: boolean;
+    readonly onPickAll: (on: boolean) => void;
+    /** Whether there is anything on screen to select at all. */
+    readonly selectable: boolean;
 }
 export declare function ItemFilterBar(props: ItemFilterBarProps): import("react").JSX.Element;

@@ -148,7 +148,13 @@ export function ListPage(props: ItemListPageProps) {
         tags={items.map(item => item.tags)}
         filtering={props.filtering}
         onClear={() => choose({ search: '' })}
+        armed={props.armed === true}
+        onArm={props.onArm ?? (() => undefined)}
+        allPicked={props.allPicked === true}
+        onPickAll={props.onPickAll ?? (() => undefined)}
+        selectable={props.selectable === true}
       />
+      {props.batch}
       {triage.length === 0
         ? <p className={css.itemTriageText}>{t('item.triage.nothing')}</p>
         : (

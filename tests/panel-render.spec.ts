@@ -61,26 +61,22 @@ import {
 } from './panel-harness.ts'
 
 /**
- * THE CANVAS / INNER SPLIT, as two token lists and nothing else.
+ * THE CANVAS / INNER SPLIT, restated for the two cases the old rule merged.
  *
- * The rule is already written in the alias layer that defines these names
- * (board.module.css, `[data-dsh-taskboard-view]`): the wallpaper wash belongs
- * to the CANVAS layer only, and every inner surface consumes the opaque layer
- * tokens — the same "inner surfaces stay opaque" convention a glass skin uses
- * natively. So the panel root is a canvas, exactly like the board root beside
- * it, and everything drawn ON the panel is a layer.
+ * The board already answers this, and it is the authority: `.board` AND
+ * `.column` are both `var(--dsh-tb-bg)`, because a column is a plate that HOLDS
+ * CONTENT and translucency has to compose through it. Only a thing that FLOATS —
+ * a menu, a field, the danger zone — takes an opaque layer, because text has to
+ * survive whatever is behind it.
  *
- * IT USED TO BE THE OTHER WAY ROUND, and the reason it was is worth keeping:
- * the old test asserted the root was NOT the canvas token, on the grounds that
- * "only the opaque inner tokens keep the wallpaper out". That reasoning is not
- * wrong about the INNER layer and wrong about the ROOT: a root painted with an
- * opaque layer token is a second opaque surface stacked on the canvas, which is
- * what makes a list read as a box rather than as a page. The reversal below
- * therefore STRENGTHENS the contract — it asserts BOTH sides, where the old one
- * asserted one and forbade the other.
+ * This list used to be a single rule with the opposite sense: the root took the
+ * canvas and NOTHING inside it was allowed to. That read fine in the file and
+ * rendered as a flat plate with a translucent border, because the list card and
+ * the five overview tiles were painted with opaque layer tokens and covered the
+ * glass one level down — while the board beside it kept working. **The lesson is
+ * the split itself**: 「canvas or inner」 is not a property of a token, it is a
+ * property of whether the box holds the content or floats over it.
  */
-const CANVAS_TOKENS: readonly string[] = ['--dsh-tb-bg', '--dsh-tb-glass']
-const OPAQUE_LAYER_TOKENS: readonly string[] = ['--dsh-tb-surface-sunken', '--dsh-tb-surface-menu', '--dsh-tb-surface-float']
 
 /** One declaration-only rule, with the selector that introduced it. */
 interface Rule {
@@ -117,26 +113,7 @@ function declarationRules(css: string): Rule[] {
   return out
 }
 
-/**
- * Every rule that paints with a CANVAS token, named with its selector.
- *
- * This is the direction that catches a regression nobody would notice by
- * reading: a chip, a sticky group head or a row that quietly starts naming the
- * canvas token looks fine in the file and renders as the wallpaper coming
- * through a surface the reader was told was solid.
- * @param css - the sheet.
- * @returns one entry per offending rule.
- */
-function canvasPainters(css: string): { selector: string; value: string }[] {
-  const out: { selector: string; value: string }[] = []
-  for (const rule of declarationRules(css)) {
-    for (const match of rule.body.matchAll(/background(?:-color)?\s*:\s*([^;]+)/g)) {
-      const value = (match[1] ?? '').trim()
-      if (CANVAS_TOKENS.some(token => value.includes(`var(${token})`))) out.push({ selector: rule.selector, value })
-    }
-  }
-  return out
-}
+
 
 /** Whether a rule's block says a class may give way rather than overflow. */
 function givesWay(body: string): boolean {
@@ -270,17 +247,31 @@ describe('the panel fills the stage it is given', () => {
       .toMatch(/min-(?:block-size|height)\s*:\s*0/)
   })
 
-  it('paints the CANVAS on the root and OPAQUE LAYERS on everything inside it', () => {
-    // BOTH SIDES, and the second side is what the old version of this test
-    // forgot. It asserted the root was not the canvas token and said nothing
-    // about what the inner surfaces then used, so swapping the root for another
-    // layer token passed — which is how the root ended up a second opaque box
-    // stacked on the canvas, and the list read as a widget rather than a page.
+  it('paints the CANVAS on the root AND on the plates that hold the content', () => {
+    // THIS TEST USED TO SAY THE OPPOSITE, and that is worth recording because the
+    // reversal is the finding.
+    //
+    // It asserted that the root took the canvas token and that NOTHING INSIDE it
+    // did. That is a coherent-looking rule, and it was wrong in the way that
+    // only the reader could see: the root was glass, and then the list card, the
+    // five overview tiles and both sticky heads were painted with an OPAQUE layer
+    // token, which covered the glass again one level down. The result reads as a
+    // flat plate with a translucent border around it — the one thing a glass skin
+    // cannot recover from — while the board, whose columns take the SAME canvas
+    // token, kept working the whole time.
+    //
+    // The corrected rule is the board's own, and it splits the two cases the old
+    // rule had merged:
+    //   - a plate that HOLDS CONTENT takes the canvas, because it is the same
+    //     surface as the app's base and translucency has to compose through it;
+    //   - a thing that FLOATS (a menu, a field, the danger zone) takes an opaque
+    //     layer, because text has to survive whatever is behind it.
     const root = /\.itemRoot\s*\{[^}]*\}/s.exec(css)?.[0] ?? ''
     const background = /background\s*:\s*([^;]+)/.exec(root)?.[1] ?? ''
     expect(background, 'the panel root does not paint at all').not.toBe('')
-    expect(background, 'the panel root must eat the canvas token, exactly as the board root does — a root painted with a layer token is a second box on the page')
+    expect(background, 'the panel root must eat the canvas token, exactly as the board root does')
       .toMatch(/var\(--dsh-tb-bg\)/)
+
     // The same declaration as `.board`, to the character. The two roots are
     // siblings on the stage; a difference between them is a difference nobody
     // chose and nobody can see in a diff of the list's own sheet.
@@ -288,30 +279,22 @@ describe('the panel fills the stage it is given', () => {
     const boardBackground = /background\s*:\s*([^;]+)/.exec(boardRoot)?.[1]?.trim() ?? ''
     expect(background.trim(), 'the two stage roots have drifted apart').toBe(boardBackground)
 
-    // The inner side: NO other rule on this surface may reach for the canvas.
-    // Scoped to the LIST's own sheet, for the same reason the token-coverage
-    // check is: the board is a different surface, and a check that spans both
-    // is a check nobody can act on. `.board` and `.column` are canvas layers of
-    // the board and are supposed to say so.
-    const others = canvasPainters(itemSheet()).filter(finding => !/^\.itemRoot\b/.test(finding.selector))
-    expect(others, `an inner surface is painting with the canvas token: ${others.map(o => `${o.selector} → ${o.value}`).join(' | ')}`).toEqual([])
+    // The plates, NAMED. These are the ones the reader actually sees, and each
+    // one is named rather than pattern-matched so a rename cannot quietly turn
+    // this into a check about nothing.
+    for (const plate of ['itemListCard', 'itemTile', 'itemGroupHead', 'itemAgendaDayLabel']) {
+      const layers = backgroundOf(css, plate).filter(value => value.includes('var(--dsh-tb-bg)'))
+      expect(layers, `.${plate} does not take the canvas token, so it covers the skin: ${JSON.stringify(backgroundOf(css, plate))}`).not.toEqual([])
+    }
 
-    // And positively: the danger zone, the row menu and the card layer each
-    // name an opaque LAYER token. Two of the three are named because the design
-    // committed to which token each one takes; the card layer is checked as a
-    // TOKEN rather than as a class, because a card is the unit the whole page
-    // is made of and a rule that forgot to paint it would leave the wallpaper
-    // showing through the surface the reader was told was solid.
+    // AND THE OTHER HALF, which the old rule had no room for: the things that
+    // float still have to be opaque. Without this the first half passes by
+    // painting everything the canvas, and a menu over the wallpaper becomes
+    // unreadable — the rule would have been satisfied by a surface nobody can read.
     for (const [name, token] of [['itemDangerZone', '--dsh-tb-surface-sunken'], ['itemRowMenu', '--dsh-tb-surface-menu']] as const) {
       const layers = backgroundOf(css, name).filter(value => value.includes(`var(${token})`))
       expect(layers, `.${name} does not paint with ${token}: ${JSON.stringify(backgroundOf(css, name))}`).not.toEqual([])
     }
-    const cardLayer = declarationRules(css)
-      .filter(rule => /background(?:-color)?\s*:/.test(rule.body))
-      .filter(rule => OPAQUE_LAYER_TOKENS.some(token => rule.body.includes(`var(${token})`)))
-    expect(cardLayer.map(rule => rule.selector), 'nothing on this surface paints an opaque layer, so the tiles and the list cards are canvas').not.toEqual([])
-    expect(cardLayer.some(rule => rule.body.includes('var(--dsh-tb-surface-float)')),
-      'no card on this surface paints the card layer — the tiles and the list cards have no surface of their own').toBe(true)
   })
 
   it('wraps the root in the stage that hands it a definite height', () => {
