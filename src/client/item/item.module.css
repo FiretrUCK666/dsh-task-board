@@ -835,6 +835,22 @@
    slack would be a band that stretched to fill the column — which is exactly how
    「没有等你动手的事。」 once opened a hole in the middle of this page. The gap
    above needs a column to live in; this is what keeps that column honest. */
+/* NO INSET ON THE SCROLLER, and the reason is a measurement rather than a
+   preference.
+
+   The card has a 1px border and its content started 1px inside it, so the five
+   tiles read as a continuation of the frame rather than as content inside a box.
+   The obvious fix is `padding-inline: var(--item-inset)` here, and it is wrong on
+   a 390px screen: 13px of inset on each side is 26px out of a 342px measure, and
+   the row's fact line is what pays for it. With the inset in, `3/11` printed as
+   `1…` — **a clipped number in exchange for a nicer frame**, and a clipped number
+   is a fact the reader cannot read while a tight frame is a taste they can still
+   work around.
+
+   So the air is bought where it is free instead of where it is expensive: the
+   cards on this surface are the row, the group and the tile, and each of those
+   carries its own padding against its own frame. The page-level inset belongs to
+   the HEADER, which is where it already is. */
 .itemScroll > * {
   flex: none;
 }

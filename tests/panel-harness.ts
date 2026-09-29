@@ -42,6 +42,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
+import { createTask } from '../src/core/tasks.ts'
 import { ItemListPanel } from '../src/client/item/panel.tsx'
 import { DEFAULT_VIEW_PREFS, VIEW_PREFS_KEY } from '../src/client/item/view-prefs.ts'
 import type { ItemListFace } from '../src/client/item/register.tsx'
@@ -672,13 +673,40 @@ export function fakeController(calls: string[], tasks: { id: string; title: stri
  * the board. A promote that only moved local state would pass the first test
  * and fail the second, which is exactly the defect this file is here to catch.
  */
+/**
+ * A board face that RECORDS what it was asked to do, and answers with the shapes
+ * the real controller answers with.
+ *
+ * The return value used to be `true` for every method, which is a fake NARROWER
+ * than reality in the worst direction: the real `createTask` hands back a whole
+ * `TaskRecord`, and the panel reads `task.title` off the answer. A `true` made
+ * that read `undefined`, `.trim()` threw, and the throw escaped as an UNHANDLED
+ * ERROR — which does not fail a test, it fails the RUN. The suite printed
+ * `2265 passed` and still exited 1, and a green-looking line is exactly what let
+ * that sit unfixed through several rounds. The same rule the project states for
+ * the execution fake applies here: **a fake that is narrower than reality turns
+ * correct code into a reported defect.**
+ *
+ * So the two constructors mint a real record with the real core constructor, and
+ * only the genuinely boolean methods answer `true`.
+ */
 function boundRecorder(calls: string[]): Record<string, (...args: unknown[]) => unknown> {
-  const names = [
-    'createTask', 'createBoundTask', 'updateTask', 'deleteTask', 'moveTask', 'runTask',
+  const mutators = [
+    'updateTask', 'deleteTask', 'moveTask', 'runTask',
     'openTask', 'closeTask', 'addComment', 'setSchedule', 'ackTask', 'duplicateTask',
   ]
   const out: Record<string, (...args: unknown[]) => unknown> = {}
-  for (const name of names) out[name] = (...args: unknown[]) => { calls.push(`${name}(${args.length})`); return true }
+  for (const name of mutators) out[name] = (...args: unknown[]) => { calls.push(`${name}(${args.length})`); return true }
+  // The same entry point the real controller uses, with a fixed clock and id, so
+  // the record this hands back is the record the product would have written —
+  // including the fields the caller is entitled to read.
+  for (const name of ['createTask', 'createBoundTask']) {
+    out[name] = (...args: unknown[]) => {
+      calls.push(`${name}(${args.length})`)
+      const input = (args[0] ?? {}) as Parameters<typeof createTask>[0]
+      return createTask(input, 1_700_000_000_000, 'task-minted')
+    }
+  }
   return out
 }
 

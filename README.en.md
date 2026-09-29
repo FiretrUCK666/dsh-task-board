@@ -185,7 +185,7 @@ Restart `dsh web` afterwards.
   page says the window in a line of its own and a button opens the archive, where one click
   brings the original text back. The capture box
   takes inline
-  syntax: `#tag`, `!1`–`!4` for priority, `@today` / `@hard 9/30` for dates, and a leading
+  syntax: `#tag`, `!1`–`!4` for priority, `@2026-09-30` / `@2026-10-30` for dates, and a leading
   `- [ ]` for a step. The parsed result shows as chips **as you type**, and a word that was
   recognised wrongly turns back into plain text when you click it. What the agent does and
   what you do are the same implementation — including ticking one step, turning an item

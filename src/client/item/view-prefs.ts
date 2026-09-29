@@ -65,7 +65,19 @@ export const DEFAULT_VIEW_PREFS: ItemViewPrefs = {
   // preference file is a default that starts lying the day the derivation moves.
   sort: DEFAULT_ITEM_SORT,
   density: 'compact',
-  showDone: false,
+  /**
+   * ON, and this is the one default that was wrong by measurement rather than by
+   * taste.
+   *
+   * With it off, the 已完成 GROUP does not exist on the page at all — a reader who
+   * had finished things found three groups where the surface has four, and had no
+   * way to tell whether the fourth was empty, filtered away, or forgotten. The
+   * switch still exists and the tile still drives it; what changed is that the
+   * page's SHAPE no longer changes under the reader. A control that hides a whole
+   * section of a list by default is a control whose absence looks like a bug, and
+   * 「我明明做过的事去哪了」 is the single most expensive thing a task list can say.
+   */
+  showDone: true,
   collapsed: [],
   search: '',
 }
@@ -115,7 +127,15 @@ export function readViewPrefs(): ItemViewPrefs {
     page: isPage(record.page) ? record.page : DEFAULT_VIEW_PREFS.page,
     sort: isSort(record.sort) ? record.sort : DEFAULT_VIEW_PREFS.sort,
     density: isDensity(record.density) ? record.density : DEFAULT_VIEW_PREFS.density,
-    showDone: record.showDone === true,
+    // A BOOLEAN FALLS BACK TO THE DEFAULT, and `=== true` was the bug. Coercing
+    // "absent" to `false` only happens to agree with the default while the default
+    // IS false — so the day a boolean's default became `true`, every record written
+    // before it, and every damaged record, silently switched that preference OFF.
+    // For `showDone` that meant a reader who had finished things found the group
+    // gone with no way to tell whether it was empty or filtered. The question this
+    // line asks is 「did the reader say so」, and a record that never said so must
+    // get the DEFAULT, not the other boolean.
+    showDone: typeof record.showDone === 'boolean' ? record.showDone : DEFAULT_VIEW_PREFS.showDone,
     collapsed: [...new Set(collapsed)],
     // Never restored: see the module header.
     search: '',

@@ -113,6 +113,22 @@ describe('a damaged record repairs instead of throwing', () => {
     })
   }
 
+  it('a boolean the record never mentions gets the DEFAULT, not the other boolean', () => {
+    // `showDone` used to be read as `record.showDone === true`, which agrees with
+    // the default only while the default IS false. So a record written before a
+    // boolean's default flipped — and every damaged record — switched it OFF
+    // behind the reader's back, and the 已完成 group disappeared with no way to
+    // tell whether it was empty or filtered. The gate is written against the
+    // DEFAULT rather than against a literal so it survives the next flip.
+    useWindow({ raw: JSON.stringify({ page: 'list', density: 'compact' }) })
+    expect(readViewPrefs().showDone, 'a boolean the record never mentioned was decided by guessing').toBe(DEFAULT_VIEW_PREFS.showDone)
+    // And a record that DOES say so is obeyed either way round.
+    for (const said of [true, false]) {
+      useWindow({ raw: JSON.stringify({ showDone: said }) })
+      expect(readViewPrefs().showDone, `the reader said ${String(said)} and got the other answer`).toBe(said)
+    }
+  })
+
   it('replaces a page id this version no longer has', () => {
     // A key written by a build that had a fourth page must not put the reader
     // on a page that does not exist — the rail would show three and the panel
@@ -138,9 +154,15 @@ describe('a damaged record repairs instead of throwing', () => {
     expect(readViewPrefs().collapsed).toEqual([])
   })
 
-  it('reads showDone only when it is literally true', () => {
+  it('does not obey a showDone that is not a boolean', () => {
+    // The claim is 「a corrupt value is not obeyed」, and it used to be written as
+    // `toBe(false)` — which silently made the DEFAULT the wrong answer the day it
+    // became `true`, and would have failed here for fixing a real defect. Note what
+    // is NOT asserted: that a corrupt value lands on `false`. It lands on the
+    // page's own default, which is the same thing the other three fields do, and
+    // when that default is `true` then `true` is the correct answer to give.
     useWindow({ raw: JSON.stringify({ showDone: 'yes' }) })
-    expect(readViewPrefs().showDone).toBe(false)
+    expect(readViewPrefs().showDone, 'a corrupt value did not fall back to the default').toBe(DEFAULT_VIEW_PREFS.showDone)
   })
 })
 
