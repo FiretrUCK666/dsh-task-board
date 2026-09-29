@@ -224,6 +224,7 @@ export declare const zh: {
     'detail.sessionDrivePlaceholder': string;
     'detail.sessionDriveHint': string;
     'detail.promptEmpty': string;
+    'detail.moveBlockedBusy': string;
     'detail.schedule.blocked': string;
     'detail.schedule.blockedSession': string;
     'detail.schedule.blockedAction': string;

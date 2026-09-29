@@ -896,6 +896,20 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                 </Button>
               ))}
             </div>
+            {/* WHY THE FOUR ARE DEAD, said on the page.
+                While a run is open all four are disabled, and they said nothing —
+                four dead buttons in a row with no explanation, 30px from a run
+                button that DOES carry a hint. A `title` is not the answer here:
+                hard rule 11③ says a finger has no hover, so a reason that only
+                lives in a tooltip is a reason the reader on a phone never gets.
+                This is the same one-line-beside-the-control grammar the schedule
+                switch and the session-rule switch now use, for the same reason:
+                an unusable control that does not say why is worse than no
+                control. Only the busy case needs a line — a button disabled
+                because it is ALREADY that status is self-explaining. */}
+            {busy && (
+              <p className={css.scheduleMeta}>{t('detail.moveBlockedBusy')}</p>
+            )}
           </Section>
         </div>
 
