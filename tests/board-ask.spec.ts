@@ -23,12 +23,12 @@ function answering(value: unknown, status = 200) {
 describe('handing one item to its card session', () => {
   it('posts the card and the short id, and nothing else', async () => {
     const { impl, calls } = answering({ ok: true, sessionId: 's-1', said: 'x' })
-    const reply = await itemsAsk({ taskId: 'card-9', ref: 12 }, impl)
+    const reply = await itemsAsk({ taskId: 'card-9', id: 'row-1', ref: 12 }, impl)
     // The route base hands the path to `document.baseURI`, which is why it goes
     // out WITHOUT its leading slash — asserting the slash would pin a detail
     // the browser is meant to own.
     expect(calls[0]?.url).toBe(ASK_URL.replace(/^\/+/, ''))
-    expect(calls[0]?.body).toEqual({ taskId: 'card-9', ref: 12 })
+    expect(calls[0]?.body).toEqual({ taskId: 'card-9', id: 'row-1', ref: 12 })
     expect(reply).toEqual({ ok: true, sessionId: 's-1', said: 'x' })
   })
 
@@ -44,14 +44,14 @@ describe('handing one item to its card session', () => {
       null,
     ]) {
       const { impl } = answering(value)
-      const reply = await itemsAsk({ taskId: 'c', ref: 1 }, impl)
+      const reply = await itemsAsk({ taskId: 'c', id: 'row-1', ref: 1 }, impl)
       expect(reply.ok).toBe(false)
     }
   })
 
   it('names the transport when the host is unreachable', async () => {
     const offline = (async () => { throw new Error('offline') }) as unknown as typeof fetch
-    const reply: AskReply = await itemsAsk({ taskId: 'c', ref: 1 }, offline)
+    const reply: AskReply = await itemsAsk({ taskId: 'c', id: 'row-1', ref: 1 }, offline)
     expect(reply.ok).toBe(false)
     if (reply.ok === false) expect(reply.why).toBe('offline')
   })
@@ -60,13 +60,13 @@ describe('handing one item to its card session', () => {
     // `ok: true` without one is a shape we do not recognise, and reading it as
     // a success would name "undefined" as the session in the receipt.
     const { impl } = answering({ ok: true, said: 'x' })
-    const reply = await itemsAsk({ taskId: 'c', ref: 1 }, impl)
+    const reply = await itemsAsk({ taskId: 'c', id: 'row-1', ref: 1 }, impl)
     expect(reply.ok).toBe(false)
   })
 
   it('reports a non-200 as the host refusing, not as a malformed answer', async () => {
     const { impl, calls } = answering({ ok: true, sessionId: 's', said: '' }, 403)
-    const reply = await itemsAsk({ taskId: 'c', ref: 1 }, impl)
+    const reply = await itemsAsk({ taskId: 'c', id: 'row-1', ref: 1 }, impl)
     expect(reply.ok).toBe(false)
     if (reply.ok === false) expect(reply.why).toContain('403')
     expect(calls).toHaveLength(1)

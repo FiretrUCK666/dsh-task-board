@@ -145,7 +145,17 @@ export interface BoardRouteDeps {
 export interface AskRequest {
     /** The card the item hangs off — it decides WHICH session is talked to. */
     readonly taskId: string;
-    /** The item's short id, as the panel already shows it. */
+    /**
+     * The item's identity, which is how it is ADDRESSED.
+     *
+     * The panel always sends it. The model cannot — it holds a number — so `ref`
+     * below is still accepted, and `id` is optional rather than required: the one
+     * thing that must never happen is a request naming several rows resolving to one
+     * of them by accident, and an absent id falls through to a number that has to be
+     * a REAL number for the same reason.
+     */
+    readonly id?: string;
+    /** The item's short number, as the panel already shows it. `0` is 「not numbered yet」. */
     readonly ref: number;
 }
 /** The hand-off's outcome, said in words the panel can render as-is. */

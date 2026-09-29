@@ -602,6 +602,14 @@ export declare const zh: {
     'item.ask.busy': string;
     'item.ask.said': string;
     'item.ask.refused': string;
+    'item.why.noSuchItem': string;
+    'item.why.gone': string;
+    'item.why.taskHasNoSession': string;
+    'item.why.noLiveAgent': string;
+    'item.why.noSuchTask': string;
+    'item.why.hostUnavailable': string;
+    'item.why.malformedAnswer': string;
+    'item.why.unknown': string;
     'item.search.label': string;
     'item.search.remove': string;
     'item.search.removeFacet': string;

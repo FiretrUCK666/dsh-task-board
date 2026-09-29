@@ -1,6 +1,23 @@
-/** What the panel sends. Both are plain scalars, and both are the host's to check. */
+/**
+ * What the panel sends.
+ *
+ * `id` is how a row is ADDRESSED and `ref` is how it is NAMED, and they are not
+ * the same name. A row the document has not numbered yet carries `ref === 0`, so
+ * asking by number asks for 「the first row whose number is zero」 — and
+ * `.find()` answers that with the FIRST unnumbered row in the document, which is
+ * not necessarily the reader's. That hands a stranger's note to a model while the
+ * reader watches their own row go into the box, which is the worst shape this
+ * surface can fail in.
+ *
+ * So the panel sends the identity it is holding, exactly as `itemsRestore`
+ * already does, and the host prefers it. `ref` stays because the MODEL only
+ * ever holds a number — it reads a receipt — and a request that arrives with a
+ * number of zero is refused rather than resolved, so the ambiguous case can
+ * never be silently answered with the wrong row.
+ */
 export interface AskRequestBody {
     readonly taskId: string;
+    readonly id: string;
     readonly ref: number;
 }
 /**

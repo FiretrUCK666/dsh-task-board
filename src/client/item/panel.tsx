@@ -73,6 +73,7 @@ import {
 import { ItemBatchBar } from './batch-bar.tsx'
 import { ItemQueryChips } from './query-chips.tsx'
 import { freeTextOf, withFacetToken } from './facets.ts'
+import { whyLabelOf } from './why-label.ts'
 import { InboxPage } from './pages/inbox.tsx'
 import { ListPage } from './pages/list.tsx'
 import { SchedulePage } from './pages/schedule.tsx'
@@ -250,12 +251,25 @@ export function ItemListPanel(props: ItemListPanelProps) {
     setAsking(item.id)
     void (async () => {
       try {
-        const body = await itemsAsk({ taskId, ref: item.ref })
+        // The row's IDENTITY, not its number. A row the document has not numbered
+        // yet carries `ref === 0`, and the host resolving a request by number
+        // would answer with the first unnumbered row in the document — handing a
+        // different note to the model while this reader watches their own row go
+        // into the box. The number travels too, because it is what the receipt
+        // shows, but the id is what addresses.
+        const body = await itemsAsk({ taskId, id: item.id, ref: item.ref })
         setAsked(body.ok
           ? t('item.ask.said', { sessionId: body.sessionId })
-          : t('item.ask.refused', { why: body.why }))
+          // A SENTENCE, not the host's vocabulary. `board-ask.ts` answers with a
+          // code on purpose — the host decides the fact, the panel owns the words,
+          // and the words have to be translated — and the panel was then printing
+          // the code into a Chinese sentence, so the most common failure a reader
+          // meets (the host being briefly unreachable) read 「没能交给模型：
+          // noLiveAgent」. A thrown network error was worse: an English
+          // `AbortError: The operation was aborted.` after the 8s timeout.
+          : t('item.ask.refused', { why: whyLabelOf(body.why).words }))
       } catch (error) {
-        setAsked(t('item.ask.refused', { why: error instanceof Error ? error.message : String(error) }))
+        setAsked(t('item.ask.refused', { why: whyLabelOf(error instanceof Error ? error.message : String(error)).words }))
       } finally {
         setAsking(undefined)
       }
@@ -529,6 +543,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
    */
   /** The rows the reader can see, which is what select-all may reach. */
   const visibleIds = shown.filter(item => itemMatches(item, query, matchCtx)).map(item => item.id)
+  /**
+   * How many rows the CURRENT FILTER leaves, counted the way the list counts.
+   *
+   * The header's 「显示 X 条，共 M 条」 is a sentence about the filter, so it is
+   * answered with the filter's own predicate over the whole document. The select-all
+   * list below already had this number — it is the same filter over the same rows —
+   * and the header was reading a different one, which is how a page ends up with
+   * two answers to 「筛选留下了几条」 on one screen.
+   */
+  const matchedCount = items.filter(item => itemMatches(item, query, matchCtx)).length
   const batch = selectionActive(selection) ? (
     <ItemBatchBar
       count={selectedCount(selection)}
@@ -572,7 +596,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
             <h1 className={css.itemHeadTitle}>{t('itemTab.title')}</h1>
             <p className={css.itemCount}>
               {filtering
-                ? t('item.countFiltered', { shown: String(shown.length), total: String(items.length) })
+                /* THE MATCH SET, not the detail selection. `shown` is 「which
+                   rows the detail rail is about」, so using its length here printed
+                   「显示 42 / 共 42 条」 over a list of three rows the filter left,
+                   and 「显示 1 / 共 42 条」 the moment a row was picked. The
+                   sentence claims to be about the FILTER, so it has to be counted
+                   the way the filter counts — one predicate, the same one the list
+                   is drawing from, not a second count of something nearby. */
+                ? t('item.countFiltered', { shown: String(matchedCount), total: String(items.length) })
                 : t('item.count', { n: String(items.length) })}
             </p>
           </div>

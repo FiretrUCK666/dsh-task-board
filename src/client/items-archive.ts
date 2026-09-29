@@ -141,7 +141,20 @@ export async function itemsRestore(
     })
     if (!response.ok) return { ok: false, why: `hostRefused ${response.status}` }
     const payload: unknown = await response.json()
-    const value = (payload as { value?: unknown } | null)?.value
+    const envelope = (payload as { ok?: unknown; value?: unknown; error?: { code?: unknown } } | null)
+    // A REFUSAL IS AN ENVELOPE WITH NO `value`, and reading `value` first turned
+    // every one of them into 「malformedAnswer」 — a code that names a broken
+    // answer rather than the host's actual reason, printed into a Chinese
+    // sentence as 「没能找回 #9: malformedAnswer」. The reader was told the host
+    // spoke nonsense when the host had in fact answered 「这个编号不对」.
+    //
+    // So the refusal is read FIRST, from the shape it actually arrives in, and the
+    // success envelope is what is left over. Order matters here: the two shapes
+    // are distinguishable only by which key is present, and the wrong order picks
+    // the wrong one.
+    const refused = envelope?.error?.code
+    if (typeof refused === 'string' && refused !== '') return { ok: false, why: refused }
+    const value = envelope?.value
     if (typeof value !== 'object' || value === null) return { ok: false, why: 'malformedAnswer' }
     const record = value as { available?: unknown; restored?: unknown; error?: { code?: unknown } }
     // The host's own refusal code, when it gave one. A wrong address and a host

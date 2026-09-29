@@ -29,6 +29,7 @@ import { itemRefOf } from '../../../core/item-view.ts'
 import { itemTitleOf } from '../../../core/item.ts'
 import { t } from '../../locales.ts'
 import { itemsArchive, itemsRestore, type ArchiveReply } from '../../items-archive.ts'
+import { whyLabelOf } from '../why-label.ts'
 import { Button } from '../../board/ui.tsx'
 import { ItemFilterBar } from '../filter-bar.tsx'
 import { ItemInsightStrip } from '../insight-strip.tsx'
@@ -53,7 +54,11 @@ export function ListPage(props: ItemListPageProps) {
   const { items, now, query, prefs, choose } = props
   const [archive, setArchive] = useState<ArchiveState>(undefined)
   const [restoring, setRestoring] = useState<number | undefined>(undefined)
-  const [archiveNote, setArchiveNote] = useState<string | undefined>(undefined)
+  const [archiveNote, setNote] = useState<{ readonly words: string; readonly raw: string } | undefined>(undefined)
+  /** One way to write the note, so 「clear it」 and 「say a code」 cannot disagree. */
+  const setArchiveNote = useCallback((note: string | undefined, raw = note ?? '') => {
+    setNote(note === undefined ? undefined : { words: note, raw })
+  }, [])
 
   const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, includeDone: prefs.showDone })
   const triage = triageLinesOf(items, now)
@@ -80,18 +85,26 @@ export function ListPage(props: ItemListPageProps) {
    * the archive has the row in front of them and its identity with it.
    */
   const restoreOne = useCallback(async (item: ItemRecord) => {
+    // The label carries its own `#`, which is why the sentence does not add one:
+    // it used to, and a row numbered 9 read 「没能找回 ##9」. One place decides
+    // how a row is written, and that place is `itemRefOf`.
     const label = itemRefOf(item).text ?? '—'
     if (props.clientId === undefined) {
-      setArchiveNote(t('item.archive.refused', { ref: label, why: 'hostUnavailable' }))
+      const why = whyLabelOf('hostUnavailable')
+      setArchiveNote(t('item.archive.refused', { ref: label, why: why.words }), why.raw)
       return
     }
     setArchiveNote(undefined)
     setRestoring(item.ref)
     const reply = await itemsRestore({ id: item.id }, props.clientId)
     setRestoring(undefined)
+    // A CODE, said as a sentence. The raw one is what the host and the transport
+    // speak; the reader gets a reason they can act on, and the code itself goes
+    // into the note's title for whoever has to diagnose it.
+    const why = whyLabelOf(reply.ok ? 'gone' : reply.why)
     setArchiveNote(reply.ok && reply.restored !== undefined
       ? t('item.archive.restored', { ref: label })
-      : t('item.archive.refused', { ref: label, why: reply.ok ? 'gone' : reply.why }))
+      : t('item.archive.refused', { ref: label, why: why.words }), why.raw)
     if (reply.ok) await openArchive()
   }, [openArchive, props.clientId])
 
@@ -244,7 +257,10 @@ export function ListPage(props: ItemListPageProps) {
               </button>
             </h2>
             <div className={css.itemGroupList}>
-              {archiveNote !== undefined && <p className={css.itemState} role="status">{archiveNote}</p>}
+              {/* The SENTENCE is what the reader reads; the raw code is the
+                  `title`, so the host's own vocabulary is one hover away for
+                  whoever has to diagnose it and invisible to everyone else. */}
+              {archiveNote !== undefined && <p className={css.itemState} role="status" title={archiveNote.raw}>{archiveNote.words}</p>}
               {archive.kind === 'loading' && <p className={css.itemState} role="status">{t('item.loading')}</p>}
               {/* NOT REACHABLE IS NOT EMPTY. Saying 「你没有删过任何一条」 when the
                   host was simply never reached would tell the reader their

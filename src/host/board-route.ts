@@ -166,7 +166,17 @@ export interface BoardRouteDeps {
 export interface AskRequest {
   /** The card the item hangs off — it decides WHICH session is talked to. */
   readonly taskId: string
-  /** The item's short id, as the panel already shows it. */
+  /**
+   * The item's identity, which is how it is ADDRESSED.
+   *
+   * The panel always sends it. The model cannot — it holds a number — so `ref`
+   * below is still accepted, and `id` is optional rather than required: the one
+   * thing that must never happen is a request naming several rows resolving to one
+   * of them by accident, and an absent id falls through to a number that has to be
+   * a REAL number for the same reason.
+   */
+  readonly id?: string
+  /** The item's short number, as the panel already shows it. `0` is 「not numbered yet」. */
   readonly ref: number
 }
 
@@ -250,7 +260,12 @@ function parseAskBody(body: unknown): AskRequest | undefined {
   const record = body as Record<string, unknown>
   if (typeof record.taskId !== 'string' || record.taskId === '') return undefined
   if (typeof record.ref !== 'number' || !Number.isFinite(record.ref)) return undefined
-  return { taskId: record.taskId, ref: record.ref }
+  // An absent or empty id is not an error here — the model never has one — but an
+  // id of the wrong TYPE is a malformed request rather than an absent one, and
+  // quietly treating it as absent would let a broken caller through the one path
+  // that can resolve to the wrong row.
+  if (record.id !== undefined && typeof record.id !== 'string') return undefined
+  return { taskId: record.taskId, ref: record.ref, ...(typeof record.id === 'string' && record.id !== '' ? { id: record.id } : {}) }
 }
 
 /** The caller id every commit body must carry. One rule, both documents. */
@@ -656,7 +671,22 @@ async function handOneItemToItsCardSession(
   if (!service.available) return { ok: false, why: 'hostStorageMissing' }
   const card = service.getDoc().tasks.find(task => task.id === request.taskId)
   if (card === undefined) return { ok: false, why: 'noSuchTask' }
-  const item = service.getItemsDoc().items.find(entry => entry.ref === request.ref)
+  // BY IDENTITY, or not at all. Addressing by short number here meant that a row
+  // the document had not numbered yet — `ref === 0` — matched the FIRST
+  // unnumbered row in the document, and that row's text went to the model while
+  // the reader watched their own row go into the box. A name that can be shared
+  // by several rows cannot be used to pick one of them.
+  //
+  // The number is still accepted, because the model only ever holds a number. It
+  // is accepted only when it is a real one: zero is the document's 「not numbered
+  // yet」 sentinel, so a request carrying it is refused instead of being resolved
+  // to whichever row happens to sit first. The panel always sends the id.
+  const byId = request.id !== undefined && request.id !== ''
+    ? service.getItemsDoc().items.find(entry => entry.id === request.id)
+    : undefined
+  const item = byId ?? (request.ref > 0
+    ? service.getItemsDoc().items.find(entry => entry.ref === request.ref)
+    : undefined)
   if (item === undefined) return { ok: false, why: 'noSuchItem' }
 
   const sources: SessionPostureSources = { agents: () => ctx.get('agents') as never }
