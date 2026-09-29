@@ -220,6 +220,25 @@ Restart `dsh web` afterwards.
   unread tasks, and a board-wide activity feed grouped by day. A cancelled run never asks
   for a decision — cancellation is an abort, and it only shows in the thread and the feed.
 
+**What the words on a card mean.**
+The five columns are **Backlog / To Do / In Progress / In Review / Done**. They all read
+from **one derivation**, so the same card gives the same answer wherever you see it:
+
+| The word you see | What it is saying | When it goes away |
+| --- | --- | --- |
+| **Waiting for you** (on failure: also *paused*) | The card is in **In Review** and there is a result from that **conversation** you have not looked at | Open that conversation's thread, or press Pass / Send back |
+| **N waiting** | N conversations have a question parked for you (approval / plan confirm / a question) | You answer in that conversation |
+| **M in review** | M cards sit in **In Review** with a conversation you have not seen | Same as the first row |
+| **New** / **New comment** | This card has **new content** you have not opened | Opening the card clears it |
+| **N to handle** | N conversations are waiting on you (shown when N > 1) | Answering them one by one |
+| **N runs** | How many times this card has run — history, not a nudge | It never clears on its own |
+| **Failed · paused** | An automation stopped after its last failure | Re-enable it in the detail |
+
+**「Waiting for you」 and 「New」 are two different things.** *New* is 「this card you have not
+opened」; *waiting for you* is 「that conversation you have neither opened nor decided on」.
+**Cancelling is not 「waiting for you」** — cancellation is an abort, and it only ever shows in the
+thread and the activity feed.
+
 ## Data locations
 
 - Board source of truth: the `~/.dsh/storages/dsh_task_board/` directory. Under `documents/` there is one file per data kind: `board.json` holds the task ledger, cruise, schedule presets, run presets and deletion tombstones, and `items.json` holds the task list. Human-readable, written atomically; back the directory up directly, or delete it to clear both board and list.
