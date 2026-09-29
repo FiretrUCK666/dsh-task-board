@@ -228,6 +228,16 @@ export type ItemFlag =
 'hardOverdue'
 /** A wanted-by date has passed and nothing was done about it. */
  | 'behind'
+/**
+ * EITHER kind of lateness.
+ *
+ * It exists because 「逾期」 is a word a reader reaches for and the grammar had
+ * no way to say: `hardOverdue` and `behind` are two different promises that
+ * were once missed, and a surface that counts 「逾期」 as both while offering
+ * only one of them is a number that does not match the list under it. One
+ * flag, one predicate, shared by the count and the filter.
+ */
+ | 'overdue'
 /** Untouched past the threshold, past the exemptions and under the ceiling. */
  | 'stale'
 /** No date of any kind: not scheduled, not gated. */
@@ -238,6 +248,23 @@ export type ItemFlag =
  | 'blocked'
 /** Hangs off a board card. */
  | 'linked' | 'done';
+/**
+ * Is this token one the GRAMMAR speaks — a filter, rather than the reader's word?
+ *
+ * Exported so the search box can ask the SAME question the parser answers,
+ * instead of keeping its own list of the qualifiers. It used to: the box built a
+ * set from the three fixed facets, so a flag the grammar knew and the facets did
+ * not (there have been several) was classified as a free word — the raw
+ * `has:stale` appeared inside the field the reader was typing in, and NO CHIP WAS
+ * DRAWN, which is a filter applied with nothing on screen saying what applied it.
+ *
+ * One predicate, asked in both places, is the only arrangement in which 「the box
+ * shows a word」 and 「the word is a filter」 cannot come apart.
+ *
+ * @param token - one whitespace-separated word from the query text.
+ * @returns whether the grammar would read it as a qualifier.
+ */
+export declare function isItemQualifierToken(token: string): boolean;
 /** A parsed query: free words plus recognised qualifiers. */
 export interface ItemQuery {
     readonly words: readonly string[];

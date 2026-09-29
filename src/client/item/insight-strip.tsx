@@ -172,8 +172,8 @@ export function ItemInsightStrip(props: ItemInsightStripProps) {
           value={overdueCount}
           share={share(overdueCount)}
           tone="over"
-          pressed={isFacetOn(props.query, 'date', 'hardOverdue')}
-          onClick={() => toggle('date', 'hardOverdue', 'has:hardOverdue')}
+          pressed={isFacetOn(props.query, 'date', 'overdue')}
+          onClick={() => toggle('date', 'overdue', 'has:overdue')}
         />
       </div>
       {/* THE DENOMINATOR, SAID OUT LOUD. Every bar above is a share of the rows

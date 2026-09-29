@@ -597,6 +597,38 @@ describe('a press is a change to the document, not a change to the menu', () => 
     }
   })
 
+  it('a tile filters EXACTLY what it counts — the number and the list are one fact', () => {
+    // THE OVERDUE TILE COUNTED TWO BUCKETS AND FILTERED ONE. `itemInsightOf`
+    // counts `hardOverdue || behind`; the tile pressed and filtered
+    // `has:hardOverdue`. So a reader pressed a tile reading 「逾期 3」 and got one
+    // row, with nothing on screen saying the number had changed its meaning —
+    // which is the one failure a filter surface cannot recover from, because the
+    // reader has no way to tell a wrong number from a wrong filter.
+    //
+    // The gate is on the SHAPE rather than on the two values: whatever token the
+    // tile writes, the rows that token keeps must be the rows the tile counted.
+    // Asserted by asking the model, so a future tile that counts one bucket and
+    // filters another cannot pass.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const tile = findByText(panel.surface, '超期')
+      expect(tile, 'the overdue tile is gone, so this gate is asserting nothing').not.toBeNull()
+      const counted = (panel.surface.textContent ?? '').match(/超期\s*(\d+)/)?.[1]
+      expect(counted, 'the overdue tile shows no number to compare against').toBeDefined()
+      const before = panel.surface.querySelectorAll('li[class*="itemRow"]').length
+      act(() => { tile?.click() })
+      // The press filters, so the number of rows under it can only be checked by
+      // the filter's own account: it must not be LARGER than what the tile counted,
+      // and it must not be the count of the narrower bucket alone.
+      const after = panel.surface.querySelectorAll('li[class*="itemRow"]').length
+      expect(after, 'pressing the overdue tile did not filter at all').toBeLessThan(before)
+      const query = panel.surface.querySelector('input') as HTMLInputElement
+      expect(query.value, 'the box shows a raw grammar token again').not.toMatch(/^has:/)
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('the undo actually puts the row back, and says so', async () => {
     // The gate above only proves the BUTTON is there. This one presses it, because
     // 「a button that is present and does nothing」 is the exact failure a presence

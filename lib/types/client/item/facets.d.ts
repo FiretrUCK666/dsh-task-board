@@ -32,7 +32,7 @@
  * file is a text editor with a vocabulary, and the vocabulary is the grammar
  * core already speaks.
  */
-import type { ItemQuery } from '../../core/item-view.ts';
+import { type ItemQuery } from '../../core/item-view.ts';
 import type { TaskBoardKey } from '../locales.ts';
 /** The four faces a filter row offers. */
 export type ItemFacetId = 'status' | 'priority' | 'tag' | 'date';

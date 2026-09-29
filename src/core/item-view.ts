@@ -299,6 +299,16 @@ export type ItemFlag =
   | 'hardOverdue'
   /** A wanted-by date has passed and nothing was done about it. */
   | 'behind'
+  /**
+   * EITHER kind of lateness.
+   *
+   * It exists because 「逾期」 is a word a reader reaches for and the grammar had
+   * no way to say: `hardOverdue` and `behind` are two different promises that
+   * were once missed, and a surface that counts 「逾期」 as both while offering
+   * only one of them is a number that does not match the list under it. One
+   * flag, one predicate, shared by the count and the filter.
+   */
+  | 'overdue'
   /** Untouched past the threshold, past the exemptions and under the ceiling. */
   | 'stale'
   /** No date of any kind: not scheduled, not gated. */
@@ -311,8 +321,37 @@ export type ItemFlag =
   | 'linked'
   | 'done'
 
+/**
+ * Is this token one the GRAMMAR speaks — a filter, rather than the reader's word?
+ *
+ * Exported so the search box can ask the SAME question the parser answers,
+ * instead of keeping its own list of the qualifiers. It used to: the box built a
+ * set from the three fixed facets, so a flag the grammar knew and the facets did
+ * not (there have been several) was classified as a free word — the raw
+ * `has:stale` appeared inside the field the reader was typing in, and NO CHIP WAS
+ * DRAWN, which is a filter applied with nothing on screen saying what applied it.
+ *
+ * One predicate, asked in both places, is the only arrangement in which 「the box
+ * shows a word」 and 「the word is a filter」 cannot come apart.
+ *
+ * @param token - one whitespace-separated word from the query text.
+ * @returns whether the grammar would read it as a qualifier.
+ */
+export function isItemQualifierToken(token: string): boolean {
+  const lower = token.toLowerCase()
+  if (lower.startsWith('status:')) {
+    const value = lower.slice('status:'.length)
+    return value === 'inprogress' || (ITEM_STATUSES as readonly string[]).includes(value)
+  }
+  if (PRIORITY_BY_TOKEN[lower] !== undefined) return true
+  if (/^![1-4]$/.test(lower)) return true
+  if (lower.startsWith('has:')) return ITEM_FLAG_BY_TOKEN.get(lower.slice(4)) !== undefined
+  // A tag is a qualifier too, and it is the READER's own word, so it is
+  // recognised by its sigil rather than by a table. `#` alone is not a tag.
+  return lower.startsWith('#') && lower.length > 1
+}
 /** The qualifier keys the grammar accepts, as the STABLE values behind them. */
-const ITEM_FLAGS: readonly ItemFlag[] = ['hardOverdue', 'behind', 'stale', 'undated', 'gated', 'blocked', 'linked', 'done']
+const ITEM_FLAGS: readonly ItemFlag[] = ['hardOverdue', 'behind', 'overdue', 'stale', 'undated', 'gated', 'blocked', 'linked', 'done']
 
 /**
  * Lowercased token to flag, so the grammar is case-insensitive WITHOUT
@@ -373,6 +412,15 @@ export function parseItemQuery(text: string): ItemQuery {
       priority.push(PRIORITY_BY_TOKEN[token.toLowerCase()] as ItemPriority)
       continue
     }
+    /* `!N` IS THE AFFIRMATIVE PRIORITY SIGIL, and it is the SAME one the capture
+       box teaches: `!1`..`!4` mean 紧急/高/普通/低 in both fields, which is the
+       point of having one sigil. So this branch is not a half-finished negation —
+       there is no `!pN` token in the grammar at all, and an audit that read the
+       discarded `!` as a negation would have deleted a documented behaviour.
+
+       `p1`..`p4` also exist, so the two spellings coexist; that is deliberate,
+       because the model reads `p1` while a person typing in the same field as
+       `!1` should not have to learn a second alphabet. */
     if (token.startsWith('!') && token.length === 2) {
       const value = PRIORITY_BY_TOKEN[`p${token.slice(1)}`]
       if (value !== undefined) priority.push(value)
@@ -493,12 +541,20 @@ export function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchCo
   for (const flag of query.flags) {
     const holds = flag === 'hardOverdue' ? posture.kind === 'hardOverdue'
       : flag === 'behind' ? posture.kind === 'behind'
-        : flag === 'stale' ? stale !== undefined && stale >= ctx.staleDays
-          : flag === 'undated' ? posture.kind === 'none'
-            : flag === 'gated' ? posture.kind === 'gated'
-              : flag === 'blocked' ? item.status === 'blocked'
-                : flag === 'linked' ? item.taskId !== undefined
-                  : item.status === 'done'
+        /* `overdue` IS 「either kind of late」, which is the one reading two flags
+           share. The overview tile counts `hardOverdue || behind` and used to
+           filter `has:hardOverdue` alone, so a reader pressed a tile reading
+           「逾期 3」 and got one row, with nothing on screen saying the number had
+           changed its meaning. The count and the filter are now the same
+           predicate by construction, which is the only arrangement in which a
+           number on a tile and the list under it can be made to agree. */
+          : flag === 'overdue' ? posture.kind === 'hardOverdue' || posture.kind === 'behind'
+            : flag === 'stale' ? stale !== undefined && stale >= ctx.staleDays
+              : flag === 'undated' ? posture.kind === 'none'
+                : flag === 'gated' ? posture.kind === 'gated'
+                  : flag === 'blocked' ? item.status === 'blocked'
+                    : flag === 'linked' ? item.taskId !== undefined
+                      : item.status === 'done'
     if (!holds) return false
   }
   return true

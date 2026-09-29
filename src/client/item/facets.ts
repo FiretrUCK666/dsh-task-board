@@ -32,7 +32,7 @@
  * file is a text editor with a vocabulary, and the vocabulary is the grammar
  * core already speaks.
  */
-import type { ItemFlag, ItemQuery, ItemStatusView } from '../../core/item-view.ts'
+import { isItemQualifierToken, type ItemFlag, type ItemQuery, type ItemStatusView } from '../../core/item-view.ts'
 import type { ItemPriority } from '../../core/item.ts'
 import type { TaskBoardKey } from '../locales.ts'
 
@@ -97,12 +97,13 @@ export const ITEM_FACETS: readonly { readonly id: ItemFacetId; readonly label: T
 ]
 
 /**
- * Every token the FACET EDITS speak, lower-cased.
- *
- * This is the one list that decides 「is this word a control or is it the
- * reader's」, and it is built from the tables above rather than written out, so a
- * new value cannot be added without this knowing about it. A hand-written list of
- * prefixes would be one more place for the two to disagree.
+ * Every token the FACET EDITS speak, lower-cased — kept only so a reader's own
+ * free text is never mistaken for a control. The QUESTION it answers is now
+ * asked of the model itself (`isItemQualifierToken`), so a qualifier the grammar
+ * knows and this file does not is still recognised as one: the hand-built set
+ * this replaced had drifted from the grammar twice, and each time the cost was
+ * the same — the filter applied, the raw token appeared in the field the reader
+ * was typing in, and no chip was drawn to say what had filtered the list.
  */
 function qualifierTokensOf(): ReadonlySet<string> {
   const out = new Set<string>()
@@ -116,11 +117,7 @@ const QUALIFIER_TOKENS = qualifierTokensOf()
 
 /** Is this token one the facets write — a control the reader set, not a word? */
 function isQualifierToken(token: string): boolean {
-  const lower = token.toLowerCase()
-  if (QUALIFIER_TOKENS.has(lower)) return true
-  // A tag is a qualifier too, and it is the READER's own word, so it is
-  // recognised by its sigil rather than by a table. `#` on its own is not a tag.
-  return lower.startsWith('#') && lower.length > 1
+  return isItemQualifierToken(token) || QUALIFIER_TOKENS.has(token.toLowerCase())
 }
 
 /**
