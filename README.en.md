@@ -174,9 +174,15 @@ Restart `dsh web` afterwards.
   To do / Blocked / Done / Past due** — tapping one filters the list to that class), then a **filter bar** — state, priority, tag, date — where each choice writes
   itself into the search box, so what you typed and what you clicked are one thing you can edit
   either way; then the rows, grouped by state. **Seven orderings** (sequence / earliest start /
-  due / hard deadline / priority / created / title), **two row heights** and **multi-select  batching** (state, priority, date, ask AI, delete) all live on this page — tick a few rows and
-  the batch bar appears. **The inbox deliberately has none of them**: someone who just typed a
-  line is still looking at the input, and filtering answers a different question.
+  due / hard deadline / priority / created / title) and **multi-select  batching** (state, priority,
+  date, ask AI, delete) live on this page — tick a few rows and the batch bar appears. **The inbox
+  deliberately has no batching**: someone who just typed a line is still looking at the input, and
+  batching answers a different question.
+
+  **Row height is not on this page — and the inbox is not the page that lacks it.** That switch is
+  in the **header**, outside the page switch, so **all three pages have it**. A user setting that
+  is missing from one page excludes that page's devices, and row height is 「how this page is read」,
+  which every page has an opinion about.
 
   Deleting is one press and one undo, with no confirmation dialog: the receipt appears in
   place and says both "you can take this back now" and "after that, 30 days", and a tombstone
