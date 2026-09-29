@@ -2508,7 +2508,7 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .fieldLabel {
@@ -4210,7 +4210,7 @@ textarea.input {
 .autoField {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -5174,12 +5174,23 @@ button.interactionOption:focus-visible,
 .reviewConfigRow {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
 .reviewConfigLabel {
-  font-size: 11px;
+  /* 12px, and it was 11. Four surfaces draw the SAME thing - a label over a
+     control in the run-config block - and they disagreed: label sizes 12, 12, 12
+     and 11, and label-to-control gaps 5, 6, 4 and 4. Nothing about the review
+     rail is denser than the rest; it is the same rail seen from another surface,
+     so a reader moving between them read one control at 12px and the next at 11px.
+     **11px is also below the floor this type ladder uses everywhere else.**
+
+     The gap above is 6px like the other three. The INK stays quieter than a field
+     label that names an editable value, because it names a SELECTION - so the size
+     is shared and the weight is not, which is what the same-thing-one-place rule means
+     when the difference is deliberate rather than accidental. */
+  font-size: 12px;
   color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
   overflow: hidden;

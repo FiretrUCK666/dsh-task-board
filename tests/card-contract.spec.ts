@@ -165,6 +165,43 @@ describe('the column header and the cards under it share ONE text edge', () => {
       .toMatch(/position:\s*relative/)
   })
 
+  it('every field pair on every surface is ONE grammar, not four', () => {
+    // MEASURED: the same concept — a label over a control in the run-config
+    // block — was written four times, and the four disagreed on BOTH axes.
+    // Label-to-control gaps 5, 6, 4, 4. Label sizes 12, 12, 12, 11.
+    //
+    // That is the owner's 「没有间隙的感觉」 as arithmetic: a reader moving
+    // between the create form, the automation editor and the review rail read
+    // one control at 12px and the next at 11px, with the label sitting a
+    // different distance above each. Nothing about the review rail is denser
+    // than the rest; it is the same rail seen from another surface, which is
+    // exactly what makes the drift invisible to anyone testing one at a time.
+    //
+    // The list is the FOUR places the concept appears today and the assertion is
+    // that they AGREE — so a fifth surface has to pick one, and picking a new one
+    // goes red here instead of quietly becoming a fifth grammar.
+    const PAIRS: ReadonlyArray<readonly [string, string]> = [
+      ['.field', '.fieldLabel'],
+      ['.scheduleGrid', '.scheduleLabel'],
+      ['.autoField', '.autoFieldLabel'],
+      ['.reviewConfigRow', '.reviewConfigLabel'],
+    ]
+    for (const [row, label] of PAIRS) {
+      expect(ruleFor(row), `${row} is gone, so the gap it owns is unchecked and this gate is counting fewer than four`).not.toBe('')
+      expect(ruleFor(label), `${label} is gone, so the size it owns is unchecked`).not.toBe('')
+    }
+    // The three STACKED pairs share one vertical gap. The grid pair is excluded
+    // on purpose: a shared left label column is a different SHAPE, not a
+    // different value, and its row gap was already 6px.
+    const stacked = ['.field', '.autoField', '.reviewConfigRow']
+    const gaps = stacked.map(name => ruleFor(name).match(/gap:\s*([\d.]+)px/)?.[1])
+    expect(new Set(gaps).size, `the label-to-control gap is not one value: ${stacked.map((n, i) => `${n}=${gaps[i]}`).join(', ')}`).toBe(1)
+    // One label size on every pair. 11px was below this ladder's floor, and it
+    // was the only surface where a reader could see a label change size.
+    const sizes = PAIRS.map(([, label]) => ruleFor(label).match(/font-size:\s*([\d.]+)px/)?.[1])
+    expect(new Set(sizes).size, `the label size is not one value: ${PAIRS.map(([, l], i) => `${l}=${sizes[i]}`).join(', ')}`).toBe(1)
+  })
+
   it('the compact band tells a group boundary from the gap inside a group', () => {
     // MEASURED: on a 390px phone every gap in the header was 10px — demand row
     // to nav row 10, nav to tools 10, tools to the column track 10. The two gaps
