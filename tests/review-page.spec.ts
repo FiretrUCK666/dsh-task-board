@@ -98,6 +98,28 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(ruleOf('interactionFeedback')).toMatch(/min-height:\s*16px/)
   })
 
+  it('a refused send SAYS SO, and its reason is not masked by an older one', () => {
+    // FOURTH INSTANCE of the same shape, and the sharpest one: the comment that
+    // states the rule — 「a refusal must speak; restoring the draft silently is
+    // how 点了没反应 happens」 — sat six lines BELOW the branch that violated it.
+    // The codebase already knew. The steer branch restored the draft and returned,
+    // so a reader whose words reappeared in the box saw nothing at all.
+    const code = readFileSync(fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    // The old shape specifically: a one-line `then` that restores and stops.
+    expect(code, 'the steer refusal still restores the draft silently, so the reader sees nothing happen')
+      .not.toMatch(/void sent\.then\([^)]*=>\s*\{[^}]*if \(!ok\) restore\(\)/)
+    // And the new one, asserted positively — a `not.toMatch` alone would also be
+    // satisfied by the branch simply not existing, which is a passing test that
+    // has stopped checking anything.
+    expect(code, 'the steer refusal restores the draft but never says why')
+      .toMatch(/if \(ok\) return[\s\S]{0,160}restore\(\)\s*\n\s*setSendError\(t\('review\.sendNotSent'\)\)/)
+    expect(code, 'the send failure is masked by an older attachment error, so the reason shown is the wrong one')
+      .not.toMatch(/attachments\.error \?\? sendError/)
+    expect(code, 'a previous refusal is never cleared, so it stays on screen after a later send succeeds')
+      .not.toMatch(/void sent\.then/)
+  })
+
   it('the session-rule switch refuses VISIBLY, and stays dis-armable', () => {
     // 「按了没反应」 IS the owner's standing complaint, and this switch was a live
     // instance of it. `toggleSessionRule` returns void and declines in two real

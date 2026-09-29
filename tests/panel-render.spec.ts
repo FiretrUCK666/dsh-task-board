@@ -115,6 +115,81 @@ function declarationRules(css: string): Rule[] {
 
 
 
+/**
+ * Every `@media (prefers-reduced-motion: reduce)` block in a sheet, brace-matched.
+ *
+ * A sheet is allowed to have SEVERAL of these — the board has three today — so
+ * anything that reaches for "the block" by `lastIndexOf` or by `indexOf` is
+ * reading ONE of them and calling it the one, and the next component that
+ * adds a block of its own silently moves what every reduced-motion gate is
+ * looking at. So the blocks are COLLECTED here, and a claim about the policy
+ * asks about all of them instead of about a position.
+ *
+ * Comments must already be off before this runs: a CSS comment that quotes a
+ * block would otherwise be brace-matched exactly like a real one.
+ * @param sheet - the sheet, comments already stripped.
+ * @returns each block's own text, braces included, in source order.
+ */
+function reducedMotionBlocks(sheet: string): string[] {
+  const out: string[] = []
+  for (const match of sheet.matchAll(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{/g)) {
+    const start = (match.index ?? 0) + match[0].length - 1
+    let depth = 0
+    let end = start
+    for (; end < sheet.length; end++) {
+      if (sheet[end] === '{') depth++
+      else if (sheet[end] === '}') { depth--; if (depth === 0) break }
+    }
+    out.push(sheet.slice(start, end + 1))
+  }
+  return out
+}
+
+/**
+ * Board transitions that spell their own duration and no reduced-motion block
+ * silences the rule they belong to.
+ *
+ * THE OWNING SELECTOR IS THE WHOLE QUESTION. A transition found by scanning
+ * text is a fragment (`{ transition: <value>`), and a fragment cannot say which
+ * rule spends the literal — so asking such a fragment "does the block name
+ * you?" can only ever answer no, and pairing it with a second condition that
+ * does not depend on the answer turns the assertion into a constant. This
+ * reads the rule with its selector attached, collects every selector a
+ * reduced-motion block silences, and reports the literal whose OWN selector is
+ * not among them.
+ *
+ * "Silenced" means the block declares `transition: none` or a zero duration
+ * for that selector — naming a selector is not silencing it, and a selector
+ * list that leaves this rule out silences nothing, which is how a third
+ * literal gets in. The match is EXACT or a STATE of the named selector: a bare
+ * `.x` in the block cannot silence `.x:hover`, because the state carries the
+ * higher specificity and wins whatever the order.
+ * @param sheet - the board sheet, comments intact or not.
+ * @returns the literals, each with the selector that owns it.
+ */
+function unownedBoardTransitions(sheet: string): { selector: string; value: string }[] {
+  const live = stripCssComments(sheet)
+  const blocks = reducedMotionBlocks(live)
+  const silenced = new Set<string>()
+  for (const block of blocks) {
+    for (const rule of declarationRules(block)) {
+      const stops = /(?:^|[;{\s])transition\s*:\s*none/.test(rule.body)
+        || /(?:^|[;{\s])transition-duration\s*:\s*0s/.test(rule.body)
+      if (!stops) continue
+      for (const part of rule.selector.split(',')) silenced.add(part.trim().replace(/\s+/g, ' '))
+    }
+  }
+  // The policy's own `transition: none` IS the naming, so the policy is not
+  // scanned for literals of its own.
+  const outside = blocks.reduce((rest, block) => rest.split(block).join('\n'), live)
+  return declarationRules(outside)
+    .filter(rule => !/var\(--dsh-tb-motion\)/.test(rule.body))
+    .flatMap(rule => [...rule.body.matchAll(/(?:^|[;{\s])transition\s*:\s*([^;}]+)/g)]
+      .map(call => ({ selector: rule.selector, value: (call[1] ?? '').trim() })))
+    .filter(found => ![...silenced].some(named =>
+      named === found.selector || /^[:[]/.test(named.slice(found.selector.length))))
+}
+
 /** Whether a rule's block says a class may give way rather than overflow. */
 function givesWay(body: string): boolean {
   return /(?:flex-wrap\s*:\s*wrap|white-space\s*:\s*normal|overflow-x?\s*:\s*(?:auto|scroll))/.test(body)
@@ -315,21 +390,35 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
       .toBe('')
   })
 
-  it('the token IS zeroed under reduced motion, on the view scope', () => {
-    const block = (sheet: string): string => {
-      const start = sheet.indexOf('@media (prefers-reduced-motion: reduce)')
-      return start < 0 ? '' : sheet.slice(start, start + 1400)
-    }
-    for (const [name, sheet] of [['board', boardSheet], ['item', itemSheet]] as const) {
-      const rm = block(sheet)
-      // The item sheet has no block of its own and never needs one: it consumes
-      // the same token, and the board sheet's block is scoped to the whole view.
-      // What must exist is the zeroing, and it must be on the VIEW, not on a
-      // selector list — so a new component is covered without being named.
-      const zeroes = (name === 'board' ? rm : block(boardSheet)).includes('--dsh-tb-motion: 0s')
-        || boardSheet.includes('--dsh-tb-motion: 0s')
-      expect(zeroes, 'the motion token is never zeroed, so every transition that reads it keeps moving').toBe(true)
-    }
+  it('the token IS zeroed under reduced motion, on the scope that reaches both sheets', () => {
+    // INSIDE THE BLOCK, AND THE BLOCK'S OWN SCOPE — the two things the old
+    // reading threw away. It asked `boardSheet.includes('--dsh-tb-motion: 0s')`,
+    // which is the WHOLE FILE: the token named anywhere satisfied it, a comment
+    // naming it satisfied it, and a block that had stopped zeroing it was
+    // invisible. And the loop ran that same check twice — the second iteration
+    // was handed the board sheet under the name of the item sheet, so
+    // 「both sheets」 was one sheet counted twice.
+    const blocks = reducedMotionBlocks(bare(boardSheet))
+    expect(blocks, 'the board sheet has no reduced-motion block at all — motion preference is honoured nowhere').not.toEqual([])
+    // All of them, not the last one: the policy is not the only thing that
+    // belongs under this query, and a component that later adds a block of its
+    // own must not be able to move what this gate reads.
+    const zeroing = blocks.filter(block => /--dsh-tb-motion\s*:\s*0s/.test(block))
+    expect(zeroing, 'the motion token is never zeroed INSIDE a reduced-motion block, so every transition that reads it keeps moving').not.toEqual([])
+    // And it has to be zeroed ON THE VIEW, not on a selector list — so a panel
+    // mounted beside the board on the same stage is covered without being named.
+    expect(
+      zeroing.some(block => block.includes('[data-dsh-taskboard-view]')),
+      'the zeroing is not on the view scope, so a panel beside the board is never reached by it',
+    ).toBe(true)
+    // The list panel has no block of its own and does not need one: it reads the
+    // same token (the next gate proves every one of its transitions does) and it
+    // renders INSIDE the scope above. Proved from the MARKUP, so 「it inherits
+    // the policy」 is a fact about what ships rather than a hope about it.
+    expect(
+      renderPanel(fixtures()),
+      'the list panel does not render inside the scope the block zeroes, so the policy never reaches it',
+    ).toContain('data-dsh-taskboard-view')
   })
 
   it('every transition on the list panel reads the token, so the token reaches it', () => {
@@ -346,23 +435,42 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
     ).toEqual([])
   })
 
-  it('and no transition on the board spells one either, except the ones it names', () => {
-    // The board had two — both 120ms, both on a hover tint — and they are named in
-    // the block rather than tokenised, because they were written before the token
-    // existed. This pins that list so it cannot grow: a NEW literal has to be
-    // either tokenised or named here, and both are decisions someone makes on
-    // purpose.
-    const named = /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.reviewCommentCancel[\s\S]*?transition:\s*none/
-    const literals = [...bare(boardSheet).matchAll(/(^|[;{])\s*transition\s*:\s*([^;}]+)/g)]
-      .filter(match => !/var\(--dsh-tb-motion\)/.test(match[2] ?? ''))
-    for (const match of literals) {
-      const value = (match[2] ?? '').trim()
-      const isNamed = match[0].includes('reviewMessageText') || match[0].includes('reviewCommentCancel')
-      expect(
-        isNamed || named.test(boardSheet),
-        `a board transition spells its own duration (${value}) and is not named in the reduced-motion block, so it survives`,
-      ).toBe(true)
-    }
+  it('and no transition on the board spells one either, except the ones the block silences', () => {
+    // The board had two — both 120ms, both on a hover tint — and they are silenced
+    // in the block rather than tokenised, because they were written before the
+    // token existed. This pins that list so it cannot grow: a NEW literal has to
+    // be either tokenised or silenced for its OWN selector, and both are
+    // decisions someone makes on purpose.
+    //
+    // It used to ask `match[0].includes('reviewMessageText')`, and `match[0]` is
+    // the matched FRAGMENT — `{ transition: <value>` — which is the DECLARATION
+    // and never the selector. So `isNamed` was false for every literal, the
+    // second half of the condition (`named.test(boardSheet)`, true as long as the
+    // block names ONE selector at all) carried the assertion by itself, and the
+    // loop was three identical `expect(true)` — a boolean agreeing with itself.
+    const unowned = unownedBoardTransitions(boardSheet)
+    expect(
+      unowned,
+      `these board transitions spell their own duration and the reduced-motion block does not silence the selector they belong to, so they survive: ${unowned.map(found => `${found.selector} { transition: ${found.value} }`).join(' | ')}`,
+    ).toEqual([])
+    // The reader, on the two shapes it has to tell apart, so a green here means
+    // the DETECTOR works rather than that the sheet happens to be tidy.
+    const BLOCK = `@media (prefers-reduced-motion: reduce) {\n  .reviewCommentCancel { transition: none; }\n}\n`
+    expect(
+      unownedBoardTransitions(`.rowPeek { transition: opacity 240ms ease; }\n${BLOCK}`).map(found => found.selector),
+      'a literal the block does NOT silence was not reported — the gate cannot see the owning selector',
+    ).toEqual(['.rowPeek'])
+    expect(
+      unownedBoardTransitions(`.reviewCommentCancel { transition: color 120ms ease; }\n${BLOCK}`),
+      'a literal the block DOES silence was reported — the gate would push the next author to tokenise a correct rule',
+    ).toEqual([])
+    // A block that names a DIFFERENT selector silences nothing, which is the
+    // case a sheet-level test of the block could never see.
+    expect(
+      unownedBoardTransitions(`.reviewCommentCancel { transition: color 120ms ease; }\n${BLOCK.replace('.reviewCommentCancel', '.cruisePill')}`)
+        .map(found => found.selector),
+      'naming a different selector was accepted as silencing this one',
+    ).toEqual(['.reviewCommentCancel'])
   })
 })
 
@@ -1228,12 +1336,38 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // thing on a row would be whichever row is latest rather than whichever row
     // is late — and the page would carry two competing signals, one of them
     // about scheduling.
-    for (const body of rulesOf(css, 'itemDue').filter(text => /\[data-tone/.test(text))) {
-      const allowed = new Set(['color', 'background', 'background-color', 'border-color', 'fill', 'stroke', 'opacity'])
-      const declared = [...body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:/g)].map(match => match[1] as string)
-      const extra = declared.filter(property => !allowed.has(property) && property !== 'data-tone')
-      expect(extra, `a date tone changes ${extra.join(', ')} as well as the ink — a tone is one signal, and a second one competes with it`).toEqual([])
-    }
+    //
+    // THE SELECTOR HALF, OR NOTHING. It used to read `rulesOf(css, 'itemDue')`
+    // and filter the BODIES for `[data-tone`, and a body never contains its own
+    // selector — so the filter matched nothing, the loop never ran, and the
+    // gate asserted that an empty array has no extra properties in it. The tone
+    // rules are named by their selector (`.itemRowMeta [data-tone='over']`),
+    // which is precisely the half `rulesOf` throws away and
+    // `declarationRules` keeps.
+    const TONE = /\[data-tone[^\]]*\]/
+    const tones = declarationRules(stripCssComments(css)).filter(rule => TONE.test(rule.selector))
+    expect(
+      tones,
+      'no rule in either sheet selects a tone attribute, so this gate is about nothing — the readings are told apart by that attribute and nothing else is',
+    ).not.toEqual([])
+    const allowed = new Set(['color', 'background', 'background-color', 'border-color', 'fill', 'stroke', 'opacity'])
+    const shouting = (text: string): { selector: string; property: string }[] => declarationRules(text)
+      .filter(rule => TONE.test(rule.selector))
+      .flatMap(rule => [...rule.body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:/g)]
+        .map(match => ({ selector: rule.selector, property: match[1] as string }))
+        .filter(found => !allowed.has(found.property)))
+    const offenders = shouting(css)
+    expect(
+      offenders,
+      `a tone changes ${offenders.map(found => `${found.property} (${found.selector})`).join(', ')} as well as the ink — a tone is one signal, and a second one competes with it`,
+    ).toEqual([])
+    // The reader, on the two shapes it has to tell apart, so a green here means
+    // the DETECTOR works and not that the sheet happens to be tidy.
+    expect(shouting(`.itemRowMeta [data-tone='over'] { color: var(--dsh-tb-danger); }`), 'an ink-only tone was reported').toEqual([])
+    expect(
+      shouting(`.itemRowMeta [data-tone='over'] { color: var(--dsh-tb-danger); font-weight: 600; }`),
+      'a tone that also shouts was not reported — the gate has stopped biting',
+    ).toEqual([{ selector: ".itemRowMeta [data-tone='over']", property: 'font-weight' }])
   })
 
   it('the two detectors bite on shapes they cannot have been tuned against', () => {

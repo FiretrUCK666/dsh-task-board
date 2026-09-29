@@ -1056,7 +1056,17 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
       const sent = attachedFiles.length > 0 && onSteerFiles !== undefined
         ? onSteerFiles(text, attachedImages, attachedFiles)
         : attachedImages.length > 0 ? onSteerImages(text, attachedImages) : onSteer(text)
-      void sent.then(ok => { if (!ok) restore() })
+      // A REFUSAL MUST SPEAK, and this branch is why that sentence exists six
+      // lines below: the draft used to come back silently, and a reader whose
+      // words reappear in the box sees NOTHING AT ALL — which is the whole
+      // 「按了没反应」 this comment was written to prevent, six lines further
+      // down and one branch away.
+      setSendError(undefined)
+      void sent.then(ok => {
+        if (ok) return
+        restore()
+        setSendError(t('review.sendNotSent'))
+      })
       return
     }
     // 排队: the dispatcher injects this round (text + attachments) when the
@@ -1107,7 +1117,13 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
         onRemoveFile={id => { setFiles(attachedFiles.filter(file => file.id !== id)) }}
         busy={attachments.busy}
         busyLabel={busyLabel}
-        error={attachments.error ?? sendError ?? draftNotice}
+        // SEND FAILURE FIRST. It used to sit behind `attachments.error`, so an
+        // upload error left over from a moment ago would mask the reason a send
+        // was refused — and the two answer different questions: one is 「the file
+        // did not go up」, the other is 「your words did not go out」. The newest
+        // thing that went wrong is the one the reader is looking at, so the
+        // refusal leads and the older upload problem waits its turn.
+        error={sendError ?? attachments.error ?? draftNotice}
       />
       <div className={css.reviewComposerRow}>
         <SendModeToggle steer={steer} onChange={setSteer} />
