@@ -9,7 +9,7 @@
  * plugin must not take the GUI down.
  */
 import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
-import { buildApi, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } from './platform.ts'
+import { buildApi, createChecklistMirror, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
 import { BoardController, type PromptFile, type PromptImage, type ReferenceRemoteFace, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptPage } from '../core/controller.ts'
@@ -332,6 +332,26 @@ export function apply(ctx: ClientContext): void {
     // board stays on the mirror when the host serves no synced board).
     const sync = new BoardSyncClient({
       transport: createBoardTransport(),
+      /* THE CHECKLIST'S OFFLINE MIRROR, and this one argument was missing, which
+         cost a reader their notes. `deps.checklistMirror` was `undefined` in the
+         product, so `ChecklistReplica` had no mirror: a note written with the host
+         unreachable rendered on screen and was stored NOWHERE — the mirror key was
+         not merely unread, it was tree-shaken out of the shipped bundle, so the
+         string was not in `lib/client.js` at all. Reload and it was gone, with no
+         warning and no receipt that said otherwise.
+
+         Two things were broken by the same omission. This one is the loss. The
+         other is the project's own rule against drawing 「读不到」 as 「真的没有」:
+         the banner that says so asks whether the MIRROR holds rows, and with no
+         mirror that clause is `0 > 0` — structurally always false. So the guard
+         existed, was unit-tested against a mirror the product never built, and
+         could never switch on.
+
+         The mirror is passed HERE rather than built inside the replica on purpose:
+         the replica is core logic and has no business reaching for `localStorage`,
+         and a default that silently constructs one is a default nobody can find
+         at the call site — which is exactly how this went missing. */
+      checklistMirror: createChecklistMirror(),
       defer: (fn, ms) => {
         const timer = setTimeout(fn, ms)
         return () => clearTimeout(timer)

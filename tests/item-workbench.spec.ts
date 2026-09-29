@@ -629,6 +629,31 @@ describe('a press is a change to the document, not a change to the menu', () => 
     }
   })
 
+  it('the checklist HAS an offline mirror, wired where the client is built', () => {
+    // A WHOLE CLASS OF DEFECT LIVES HERE, and every existing test was blind to it.
+    // The sync client is constructed in exactly one production place, and nothing
+    // in `tests/` imports that place — so an option omitted there is invisible to
+    // every spec, because the specs build their OWN client with the option they
+    // happen to pass. That is how the checklist shipped with NO mirror: a note
+    // written with the host down rendered on screen, was stored nowhere, and was
+    // gone on reload with no warning. The mirror key was not even present in the
+    // shipped bundle.
+    //
+    // So the gate is on the CONSTRUCTION SITE, and it asks for the argument by
+    // name. The mirror is deliberately not defaulted inside the replica: a default
+    // that quietly builds one is a default nobody can find at the call site.
+    const root = read('src/client/index.ts')
+    const site = /new BoardSyncClient\(\{([\s\S]*?)\n {4}\}\)/.exec(root)?.[1] ?? ''
+    expect(site, 'the sync client is no longer constructed where this gate looks for it — the markup moved and this is now checking nothing')
+      .not.toBe('')
+    expect(site, 'the checklist is still built with NO offline mirror, so a note written while the host is down is lost on reload')
+      .toMatch(/checklistMirror:\s*createChecklistMirror\(\)/)
+    // And the mirror must be a real one: the key the reader's notes live under.
+    const platform = read('src/client/platform.ts')
+    expect(platform, 'the mirror exists but writes somewhere that is not the documented key')
+      .toMatch(/dsh\.taskBoard\.items\.v1/)
+  })
+
   it('the undo actually puts the row back, and says so', async () => {
     // The gate above only proves the BUTTON is there. This one presses it, because
     // 「a button that is present and does nothing」 is the exact failure a presence
