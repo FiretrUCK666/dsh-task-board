@@ -33,3 +33,20 @@ export declare function focusablesOf(root: Element): HTMLElement[];
 export declare function useDialogFocus(ref: RefObject<HTMLElement | null>, focusKey?: unknown): {
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
 };
+/**
+ * Move focus into a region whenever `key` changes.
+ *
+ * A form that OPENS BY REPLACING ITS OWN TRIGGER unmounts that trigger, so focus
+ * falls to `document.body`. That is not a cosmetic loss: in a dialog it also
+ * disarms the Tab trap (the trap is a keydown handler ON the panel, and
+ * `document.body` is not the panel), and in a plain section it simply means the
+ * reader has to hunt for the form they just opened.
+ *
+ * This is the same re-aim `useDialogFocus`'s second argument performs, lifted
+ * out so a section can use it too — **one mechanism, two surfaces**, rather than
+ * a second way of doing the same thing that only one of them remembers.
+ *
+ * @param ref - the region to focus into.
+ * @param key - anything identifying the new contents; changing it re-aims.
+ */
+export declare function useFocusOnChange(ref: RefObject<HTMLElement | null>, key: unknown): void;

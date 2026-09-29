@@ -98,6 +98,32 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(ruleOf('interactionFeedback')).toMatch(/min-height:\s*16px/)
   })
 
+  it('a form that replaces its own trigger moves focus into itself', () => {
+    // THREE SURFACES HAVE THIS SHAPE, and the first two were found by an audit
+    // rather than by a test — which is how a class of defect stays invisible.
+    //
+    // A form that opens by REPLACING its trigger unmounts that trigger, so focus
+    // falls to `document.body`. In a dialog that is worse than cosmetic: the Tab
+    // trap is a keydown handler ON the panel, `document.body` is not the panel,
+    // so the trap disarms and Tab walks out into the board behind. In a section
+    // it means the reader opens a form and the caret is nowhere near it.
+    //
+    // The re-aim is ONE mechanism (`useFocusOnChange`, and `useDialogFocus`'s
+    // `focusKey` for dialogs) — so the gate is on the mechanism, not on each call
+    // site, because three call sites checked three times is the arrangement that
+    // let the third one ship in the first place.
+    const focus = readFileSync(fileURLToPath(new URL('../src/client/board/dialog-focus.ts', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(focus, 'the shared re-aim is gone, so a replacing form drops focus to the body again')
+      .toContain('useFocusOnChange')
+    // `Dialog` must actually pass it through, or the mechanism exists and nothing
+    // can reach it — which is exactly how the first two call sites failed.
+    const dialog = readFileSync(fileURLToPath(new URL('../src/client/board/Dialog.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(dialog, 'Dialog declares a focusKey but does not hand it to the hook')
+      .toMatch(/useDialogFocus\(panelRef, focusKey\)/)
+  })
+
   it('the interaction card carries the native question grammar, item by item', () => {
     // 与原生的提问卡逐条对齐是契约：同一批部件、同一套行为。这条 spec 把
     // 部件清单钉死，任何一处被删/改名都会红，避免再次退回「只有一个按钮」。

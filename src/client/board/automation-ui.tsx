@@ -19,7 +19,7 @@
  *   (cron / after-completion chain) + the session-rules section, rendered by
  *   the detail's disclosure AND the board overview's task card verbatim.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { type SchedulePreset } from '../../core/presets.ts'
 import {
@@ -41,6 +41,7 @@ import { Button, Icon, Section, Segmented, SendModeToggle, Switch } from './ui.t
 import { Chip } from './Chip.tsx'
 import { sessionUnavailableReasonOf } from './session-chip.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { useFocusOnChange } from './dialog-focus.ts'
 
 /**
  * The one cron grammar: text input + preset dropdown (+ optional preset
@@ -551,6 +552,13 @@ export function SessionRulesSection({ controller, task }: {
 }) {
   // undefined = form closed; 'new' = add; a rule id = edit.
   const [formKey, setFormKey] = useState<string | undefined>(undefined)
+  // The form REPLACES the 新增 button in the section's action slot, so that button
+  // unmounts and focus would fall to `document.body` — the reader opens a form and
+  // the caret is nowhere near it. `formKey` identifies the new contents, and the
+  // hook moves focus to the form's first field; the field itself is marked
+  // `data-autofocus` so the INTENT is declared where the field is.
+  const formRef = useRef<HTMLDivElement | null>(null)
+  useFocusOnChange(formRef, formKey)
   const rows = automationRowsOf(task)
     .filter((row): row is Extract<AutomationRow, { kind: 'session-rule' }> => row.kind === 'session-rule')
   const editable = controller.sessionLabelsOf(task.id).length > 0
@@ -580,12 +588,14 @@ export function SessionRulesSection({ controller, task }: {
         </ul>
       )}
       {formKey !== undefined && (
-        <SessionRuleForm
-          task={task}
-          controller={controller}
-          ruleId={formKey === 'new' ? undefined : formKey}
-          onClose={() => { setFormKey(undefined) }}
-        />
+        <div ref={formRef}>
+          <SessionRuleForm
+            task={task}
+            controller={controller}
+            ruleId={formKey === 'new' ? undefined : formKey}
+            onClose={() => { setFormKey(undefined) }}
+          />
+        </div>
       )}
     </Section>
   )
