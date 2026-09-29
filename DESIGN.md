@@ -875,8 +875,9 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 而**计量与可交互同色不同职**：它量的不是「你点了会怎样」，是「这一桶走到哪了」。
 
 **计量条一律 `accent`，只有「逾期」那一块用 `danger`**——一块磁贴上两种颜色会让人以为那块的量纲
-不一样。**磁贴的数用 `text-1`（逾期那块 `danger`），微条用 `accent`（全部五块）**，所以「严重」
-与「份额」是两条独立的信息，各由一种颜色承担。
+不一样。**磁贴的数用 `text-1`（逾期那块 `danger`），微条用 `accent`（有微条的那四块）**，所以
+「严重」与「份额」是两条独立的信息，各由一种颜色承担；**「已完成」那块没有微条，所以它只用到
+`text-1` 一种墨色**。
 
 **三处必须用色，不许退化成灰**：① 硬期限超期的到期 chip（`data-tone='over'`）；② 受阻行的状态点；
 ③ 概览磁贴「逾期」的数。要处理里那个数用琥珀。**这四处褪成灰，「逾期」和「到期」就在屏上无法
@@ -944,40 +945,31 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 **2 概览条**（`.itemOverview`，仅清单页）：五块磁贴，**永远五块 × 一行**。
 
 ```css
-.itemOverview {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
-  inline-size: var(--item-measure);
-  margin-inline: auto;
-  padding: 0 var(--item-inset) 12px;
-  min-inline-size: 0;
-}
-.itemTile {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas: 'value label' 'bar bar';
-  align-content: space-between;
-  row-gap: 6px;
-  min-inline-size: 0;
-  padding: 8px 10px;
-  background: var(--dsh-tb-surface-float);
-  border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-md);
-  text-align: start;
-  cursor: pointer;
-}
-.itemTileValue { grid-area: value; font-size: 14px; font-weight: 600; line-height: var(--dsh-tb-row-line);
+.itemOverview { display: flex; flex-direction: column; gap: 4px; min-inline-size: 0; }
+.itemOverviewTiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px;
+  min-inline-size: 0; }
+.itemOverviewBase { font-size: 11px; line-height: var(--dsh-tb-hint-line); color: var(--dsh-tb-text-3); }
+.itemTile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  box-sizing: border-box; min-inline-size: 0; padding: 8px 8px 6px; font-family: inherit;
+  text-align: start; background: var(--dsh-tb-surface-float); border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-md); cursor: pointer; transition: border-color var(--dsh-tb-motion); }
+.itemTileValue { font-size: 14px; font-weight: 600; line-height: var(--dsh-tb-row-line);
   color: var(--dsh-tb-text-1); font-variant-numeric: tabular-nums; }
-.itemTile[data-tone='over'] .itemTileValue { color: var(--dsh-tb-danger); }
-.itemTileLabel { grid-area: label; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; font-size: 11px; line-height: var(--dsh-tb-hint-line); color: var(--dsh-tb-text-3); }
-.itemTileBar { grid-area: bar; block-size: 2px; inline-size: 100%; background: var(--dsh-tb-border-soft);
+.itemTileValue[data-tone='over'] { color: var(--dsh-tb-danger); }
+.itemTileLabel { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; line-height: var(--dsh-tb-hint-line); color: var(--dsh-tb-text-3); }
+.itemTileBar { block-size: 2px; inline-size: 100%; background: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill); overflow: hidden; }
-.itemTileBarFill { display: block; block-size: 100%; inline-size: var(--item-tile-share, 0%);
-  background: var(--dsh-tb-accent); border-radius: var(--dsh-tb-pill); }
+.itemTileBarFill { display: block; block-size: 100%; background: var(--dsh-tb-accent);
+  border-radius: var(--dsh-tb-pill); }
 .itemTile[aria-pressed='true'] { border-color: var(--dsh-tb-accent); }
 ```
+
+**磁贴内部是「一列」不是「一格」**：数与标签上下同左沿，微条在最后一行。**`data-tone` 落在数自己身上
+（`.itemTileValue[data-tone]`）而不是磁贴上**——要变色的只有那个数，把它写在磁贴上等于宣布整块
+变调。**微条的宽度由调用方内联给 `.itemTileBarFill` 的 `inline-size`，不走自定义属性**：一个
+`--item-tile-share` 在这份表里会是**一个没有任何代码写它的声明**（本表的规矩：机制只写在它所属的
+地方，而没有读者的声明就是过时）。
 
 **五块 = 四档普查 + 一块逾期**（逾期 / 进行中 / 待办 / 受阻 / 已完成）。**四块恒读
 `itemGroupCountsOf`（永远四档），不读 `showDone`**；**「已完成」那一块就是 `showDone` 的入口**——
@@ -986,18 +978,28 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 那一块，这是唯一一处两处数字允许不等，而它不等的方向是写明的）。
 
 **五块在 390px 上排成一行，不折行。** 算式：内衬 12 × 2 → 366，减去四条 6px 沟 = 342，五等分 =
-**68px 一块**；块内左右内衬 10 × 2 → 48px 可用，最长的标签「已完成」在 11px 上约 33px，**装得下**。
+**68px 一块**；块内左右内衬 8 × 2 → 52px 可用，最长的标签「已完成」在 11px 上约 33px，**装得下**。
 **折行会把「五个数」读成「三加二」两个集合**，而这一页需要的正是一眼看过去的五个数。
 
 **磁贴是入口，所以它是按钮**：命中区就是整块（≥ 48px 高，触屏不额外加热区）；悬停吃
 `--dsh-tb-hover`；`:focus-visible` 是 2px 强调色 outline。**它不是主填充**——五个主按钮并排在
-一页顶上，那一页就没有任何一句话是重要的了。
+一页顶上，那一页就没有任何一句话是重要的了。**按中与悬停都不花强调色**：强调色在这一页有五处
+已名的活（焦点环、选中行、当前页签、组头发丝条、磁贴的微条），磁贴自己的状态是「这个控件活着」，
+而那正是其余表面早已用墨色给出的同一个信号；把它花在磁贴上就是**一份预算从五变成八**，而一个
+到处都用的颜色就不再意味着「可交互」，只意味着「这个盒子」。
 
-**微条量的是「这一块在四档普查里的份额」**（逾期那块是逾期数 / 普查总数），写成
-`--item-tile-share: 0–100%`，由调用方像 `.itemGroupProgressFill` 那样内联给。**份额为 0 时画空轨、
-不画一根 0% 的条**——`item-view.ts` 的规矩在这里同样成立：**没有的东西不画成 0**，一根 0% 的条
-读作「加载失败」。逾期与四档有重叠（逾期是横切的一刀，不是第五个桶），所以五块不构成一次划分，
-这一点写在代码注释里，不让下一个人去把它「修正」成互斥的五桶。
+**微条量的是「这一块在「还没做完的 n 条」里的份额」**，分母是 `itemInsightOf` 的 `total`
+（**未完成**的行数），**由磁贴下面那行字原样说出来**（`item.insight.base`）。分母取未完成而不是
+文档全长，是因为**条量的是「你还欠着多少」**：拿文档全长当分母，一根 30% 的条里很大一块是已经做完
+的、读者再也不用动的行，于是条在给积压粉饰。**逾期那一块是横切的一刀**（一行可以逾期，同时属于
+另外四档里的任何一档），所以**五块不构成一次划分**，这一点写在代码注释里，不让下一个人去把它
+「修正」成互斥的五桶。
+
+**「已完成」那一块没有微条，四个有。** 那块是这一页唯一**不属于「还没做完的 n 条」**的数——
+一个已经做完的行不是读者还欠着的工作，所以它没有那个分母下的份额，把它的数除进那个分母得到的是
+**一个不存在的分数**。于是这一条磁贴带一个空格，**而那一行字仍然只有一个分母可讲**：四条条回答同一
+个问题，第五条回答另一个问题，而**五个数字里塞进两个分母，就等于没有一个**。磁贴是 grid 行，
+四条有条的定下高度，第五条只是少了那一条该在的位置。
 
 **3 筛选带**（`.itemFilterRow`，仅清单页）：**它是卡片的第一个子元素**，不是页头上的一行。
 控件与它作用的行同屏、同面（参考图里筛选工具条就在列头之上、在卡内）——把筛选挂到页头只会让工具
