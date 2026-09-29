@@ -50,7 +50,7 @@ import {
   declaredOf,
   dswNamesReferenced,
   fixtures,
-  hostTokenCss,
+  hostTokens,
   itemSheet,
   itemSheetPath,
   panelCss,
@@ -218,12 +218,60 @@ function drawsRule(css: string): boolean {
   return [...css.matchAll(/(?:^|[;{\s])border-inline-start\s*:\s*([^;]+)/g)].some(match => (match[1] ?? '').includes('var(--dsh-tb-border'))
 }
 
+/**
+ * Whether these two checks CAN run here, and if not, why.
+ *
+ * Both read the INSTALLED host: what tokens it declares, and whether the sheets
+ * name any it does not. That host is found by resolution and is deliberately not
+ * a dependency, so on CI it is simply not there — and a test that cannot read
+ * its subject must not report a verdict about it. It did: every `--dsw-*` the
+ * sheets name came back 「undeclared」, and CI has been red on this file for a
+ * dozen commits, which is a long time for a red that says nothing.
+ *
+ * So the two are separated:
+ *
+ *   - the host is installed → both checks RUN, exactly as before;
+ *   - no host AND this is CI → both SKIP, visibly, because CI does not install
+ *     the host and that is a property of the environment, not of this code;
+ *   - no host and this is NOT CI → they FAIL, with the existing 「the installed
+ *     DSH theme bundle was not found」. A developer who has not installed the
+ *     host still gets told, because on that machine it is a real setup gap.
+ */
+const hostFound = hostTokens().found
+const onCi = process.env.CI !== undefined && process.env.CI !== '' && process.env.CI !== 'false'
+const hostAbsentByDesign = !hostFound && onCi
+// The CONDITION and the REASON are two values, and the first draft made the
+// reason the condition — a string compared with `=== true`, which is never true,
+// so the skip it announced never happened. Vitest 3's `skipIf` takes the
+// condition only, so the reason is stated by the test below, which always runs.
+const SKIP_WITHOUT_HOST = hostAbsentByDesign
+
 describe('the panel renders against the host it will actually run in', () => {
-  const tokens = hostTokenCss()
+  const { css: tokens } = hostTokens()
   const css = panelCss()
   const itemSheetText = itemSheet()
 
-  it('finds the host token stylesheets, so nothing is measured against a snapshot', () => {
+  // THE SKIP IS NEVER SILENT. Vitest 3's `skipIf` takes no reason, so a skipped
+  // check looks exactly like a passing one in the summary — and a token contract
+  // that quietly stops running is worse than one that was never written, because
+  // the count still says 2300. This test always runs, in all three environments,
+  // and names which of them it is in.
+  it('says whether the host-backed checks ran, were skipped, or must be installed', () => {
+    if (hostFound) {
+      expect(tokens, 'the harness found the host but read no tokens out of it').not.toBe('')
+      return
+    }
+    // No host. That is legitimate on CI — the host is discovered by resolution,
+    // not declared as a dependency, so CI does not have one and the two checks
+    // below skip instead of reporting a verdict they cannot reach. It is NOT
+    // legitimate on a machine where the host is expected to be installed, and the
+    // one thing this can still catch there is the developer who does not have it.
+    expect(onCi,
+      'the installed DSH theme bundle was not found, so the two host-backed checks below cannot read their subject and were skipped. On this machine they were expected to run — install the DSH, or set DSH_ROOT, or run on CI where their absence is by design.')
+      .toBe(true)
+  })
+
+  it.skipIf(SKIP_WITHOUT_HOST)('finds the host token stylesheets, so nothing is measured against a snapshot', () => {
     // Without this the rest of the file would pass by asserting nothing: a
     // harness that silently renders colourless geometry is not a harness.
     expect(tokens, 'the installed DSH theme bundle was not found').not.toBe('')
@@ -263,7 +311,7 @@ describe('the panel renders against the host it will actually run in', () => {
     ).toBe(false)
   })
 
-  it('names only tokens the host declares, in the list\'s own sheet and in the shared alias layer', () => {
+  it.skipIf(SKIP_WITHOUT_HOST)('names only tokens the host declares, in the list\'s own sheet and in the shared alias layer', () => {
     // A token the host dropped resolves to nothing, which paints as transparent
     // — and a transparent surface is exactly the class of bug that reads as a
     // layout bug. Scoped to this surface: the board's own sheet is a different

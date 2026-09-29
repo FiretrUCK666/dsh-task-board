@@ -493,8 +493,33 @@ export function alignClassNames(html: string, css: string): { html: string; css:
  * and the alpha values that matter most here.
  */
 export function hostTokenCss(): string {
+  return hostTokens().css
+}
+
+/**
+ * Whether the host was FOUND, stated separately from what it declares.
+ *
+ * `hostTokenCss()` returns `''` in two quite different situations, and a caller
+ * that cannot tell them apart reads the wrong one as a finding:
+ *
+ *   - the host declares no tokens (it is installed, and it really has none); and
+ *   - **the host is not installed at all.**
+ *
+ * The second is neither rare nor this repository's fault. The host is discovered
+ * by RESOLUTION and is deliberately not a dependency: `dependencies` is empty
+ * (hard rule 8) and the plugin is developed against a separately installed DSH.
+ * On CI the host is therefore absent, and every `--dsw-*` the sheets name reads
+ * as 「the host does not declare this」 — a defect that does not exist, reported by
+ * a test that cannot run. That is this project's own hazard from the other side:
+ * 「假面比现实窄」turns correct code into a reported defect, and a suite that has
+ * been red for a dozen commits stops being read as evidence about anything.
+ *
+ * So the two facts are separate properties, and a caller that NEEDS the host
+ * checks this one rather than inferring it from an empty string.
+ */
+export function hostTokens(): { readonly found: boolean; readonly css: string } {
   const bundle = dshHome()
-  if (bundle === undefined) return ''
+  if (bundle === undefined) return { found: false, css: '' }
   const source = readFileSync(bundle, 'utf8')
   const sheets: string[] = []
   for (const match of source.matchAll(/(\w+)_css_default\s*=\s*"/g)) {
@@ -515,7 +540,7 @@ export function hostTokenCss(): string {
       // report every token in it as missing.
     }
   }
-  return sheets.join('\n')
+  return { found: true, css: sheets.join('\n') }
 }
 
 /** The panel's own stylesheet, if it has been created yet. */
