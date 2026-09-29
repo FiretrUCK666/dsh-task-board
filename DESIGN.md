@@ -1013,13 +1013,12 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 
 ```css
 .itemFilterRow {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  padding: 8px 12px;
-  border-block-end: 1px solid var(--dsh-tb-border);   /* 结构线用 l2 */
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
   min-inline-size: 0;
-  flex: none;
 }
 ```
+
+**这一行是「窄屏也同一个排序控件」的落点。** 它是绕行 flex（`wrap` + `min-inline-size: 0`），不是网格，也**没有**底部横线 —— 横线是筛选带自己的事，**不是这一行画的**。写在这里是因为它是清单里唯一一处「不靠隐藏控件、不靠缩字号、而是让位」的窄屏处理：同一组控件，窄了就换行，宽了就一行。
 
 四个面（状态 / 优先级 / 标签 / 日期）是**搜索框的另一种敲法**，不是四个独立下拉：点一下往搜索框里
 落词，**搜索框里那一段字始终是当前筛选的全部状态**，没有藏在控件里的第二份状态。同一面多选是
@@ -1041,7 +1040,7 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
   grid-area: list;
   display: flex; flex-direction: column;
   min-block-size: 0; min-inline-size: 0;
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-bg);           /* 画布，不是内层：不透明层会把玻璃皮肤挡在外面 */
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-lg);
   overflow: hidden;                      /* 通用防穿模底线 */
