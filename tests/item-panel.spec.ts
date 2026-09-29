@@ -127,12 +127,21 @@ describe('the composer can always be found', () => {
   it('sits in the header, NOT inside the scrolling region', () => {
     // If it scrolled away with the list, a long list would carry it out of
     // reach — which is the whole failure this assertion exists to prevent.
+    //
+    // It is asserted against `itemScroll` — the SCROLLER — and not against
+    // `itemWorkbench`. The old form used the workbench as a stand-in, which read
+    // 「the composer sorts before this one sibling」 rather than 「the composer is
+    // outside the scrolling region」; the header then moved INSIDE the workbench
+    // (it acts on the list, so it belongs to the list column) and the proxy broke
+    // while the claim still held. The two are not the same question, and only one
+    // of them is the one this test is for.
     const html = renderPanel([item()])
-    const scrollAt = html.indexOf('itemWorkbench')
+    const scrollAt = html.indexOf('itemScroll')
     const composerAt = html.indexOf('itemComposer')
-    expect(scrollAt).toBeGreaterThan(-1)
-    expect(composerAt).toBeGreaterThan(-1)
-    expect(composerAt).toBeLessThan(scrollAt)
+    expect(scrollAt, 'the list has no scrolling region, so this gate is checking nothing').toBeGreaterThan(-1)
+    expect(composerAt, 'the composer is not in the render at all').toBeGreaterThan(-1)
+    expect(composerAt, 'the composer scrolled away with the list, so a long list carries it out of reach')
+      .toBeLessThan(scrollAt)
   })
 
   it('teaches its own syntax on the box, not behind a menu', () => {

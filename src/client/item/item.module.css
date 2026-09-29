@@ -669,7 +669,6 @@
    rectangles of slightly different heights and a page that looks assembled out of
    parts. The reference workbenches use one card, and so does this. */
 .itemListCard {
-  grid-area: list;
   display: flex;
   flex-direction: column;
   gap: 8px;
