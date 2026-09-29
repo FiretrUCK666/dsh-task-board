@@ -91,10 +91,32 @@ function dueLine(view: ItemRowView, english: boolean): { tone: DueTone; text: st
   }
 }
 
+/**
+ * The SOFT date's own reading, when the combined reading is a HARD one.
+ *
+ * `posture` answers 「which of the three dates is the one being broken」, and the
+ * hard deadline outranks the plan — correctly, because missing a hard deadline
+ * is worse. But that ranking is a choice about which fact to lead with, and it
+ * used to also be a choice about which facts to SAY. So a row that had slipped
+ * both said one.
+ *
+ * Only the slip is reported, never the soft date standing: 「计划超期 N 天」
+ * is the fact the combined reading swallowed, and the soft date's own
+ * upcoming state is already covered by the plan's own slot. When the combined
+ * reading is NOT a hard one, this is `undefined` — the soft date is then already
+ * the one being spoken, and saying it twice would be noise.
+ */
+function softLine(view: ItemRowView): { text: string } | undefined {
+  const { posture, soft } = view
+  const hardSpoke = posture.kind === 'hardOverdue' || posture.kind === 'hardSoon' || posture.kind === 'contradiction'
+  if (!hardSpoke || soft.days === undefined || (!soft.overdue && !soft.today)) return undefined
+  if (soft.overdue) return { text: t('item.due.planBehind', { days: String(soft.days) }) }
+  return { text: t('item.due.planToday') }
+}
+
 export interface ItemRowLineProps {
   readonly view: ItemRowView
-  readonly density: ItemDensity
-  /** Whether this row's detail is open in place. */
+  readonly density: ItemDensity  /** Whether this row's detail is open in place. */
   readonly expanded: boolean
   /** Whether this row is the one the detail pane is showing. */
   readonly selected: boolean
@@ -140,6 +162,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
   const { item, ref, title, status, progress, posture } = view
   const english = isEnglish()
   const due = dueLine(view, english)
+  const soft = softLine(view)
   const regionId = `${panelId}-${item.id}`
   /* The two boxes the menu is placed against: its own trigger, and THIS PANEL's
      root. The panel is found by asking this row for its NEAREST ancestor
@@ -231,6 +254,22 @@ export function ItemRowLine(props: ItemRowLineProps) {
             </span>
           )}
           {due !== undefined && <span className={css.itemDue} data-tone={due.tone}>{due.text}</span>}
+          {/* THE SOFT DATE SPEAKS EVEN WHEN THE HARD ONE ALREADY SPOKE.
+              `posture` is the COMBINED reading and the hard deadline outranks the
+              plan — correctly, because missing a hard deadline is worse. But that
+              ranking is a choice about which fact to LEAD with, and it was also a
+              choice about which facts to SAY: a row that had slipped both said
+              only 「超期 N 天」, and the plan's slip was invisible.
+
+              That is what `view.soft` was derived for — its own doc comment reads
+              「so a row with both dates says both」, and nothing read it. This is
+              not a new fact invented here; it is one the model has always had.
+
+              The tone stays `soft-late`, never the hard one: painting a slipped
+              PLAN red is how a soft deadline becomes a hard one without anybody
+              deciding that. And it lands in the SAME grid track as the other
+              readings, so a row with three dates wraps — 换行, not 压扁. */}
+          {soft !== undefined && <span className={css.itemDue} data-tone="soft-late">{soft.text}</span>}
           {progress !== undefined && (
             <span className={css.itemSteps}>{t('item.steps', { done: String(progress.done), total: String(progress.total) })}</span>
           )}

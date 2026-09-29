@@ -2,8 +2,7 @@ import type { ItemRowView } from '../../core/item-view.ts';
 import type { ItemDensity } from './model.ts';
 export interface ItemRowLineProps {
     readonly view: ItemRowView;
-    readonly density: ItemDensity;
-    /** Whether this row's detail is open in place. */
+    readonly density: ItemDensity; /** Whether this row's detail is open in place. */
     readonly expanded: boolean;
     /** Whether this row is the one the detail pane is showing. */
     readonly selected: boolean;

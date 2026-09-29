@@ -709,6 +709,8 @@ export declare const zh: {
     'item.triage.undated': string;
     'item.triage.open': string;
     'item.due.behind': string;
+    'item.due.planBehind': string;
+    'item.due.planToday': string;
     'item.due.overdue': string;
     'item.due.soon': string;
     'item.due.today': string;

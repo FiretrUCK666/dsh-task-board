@@ -754,6 +754,8 @@ export const zh = {
 
   // 三个日期三种视觉。软期限逾期不是红；红只属于硬期限。
   'item.due.behind': '落后 {days} 天',
+  'item.due.planBehind': '计划超期 {days} 天',
+  'item.due.planToday': '计划今天到期',
   'item.due.overdue': '超期 {days} 天',
   'item.due.soon': '还剩 {days} 天',
   'item.due.today': '就是今天',
@@ -1578,6 +1580,8 @@ export const en: Record<keyof typeof zh, string> = {
   // Three dates, three readings. A missed wanted-by date is NOT an alarm: red
   // belongs to the hard deadline alone, and saying so is the whole point.
   'item.due.behind': '{days}d behind plan',
+  'item.due.planBehind': 'plan {days}d behind',
+  'item.due.planToday': 'plan due today',
   'item.due.overdue': '{days}d past the hard date',
   'item.due.soon': '{days}d left',
   'item.due.today': 'today',
