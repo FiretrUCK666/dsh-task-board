@@ -70,7 +70,7 @@ import { createTask, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatu
 import type { SessionRule } from '../../core/automation.ts'
 import { nextRunAtMs, isValidCron } from '../../core/schedule.ts'
 import type { SchedulePreset } from '../../core/presets.ts'
-import type { RunConfigPresetConfig, RunPresetsDocument } from '../../core/run-presets.ts'
+import { RUN_CONFIG_KEYS, type RunConfigPresetConfig, type RunPresetsDocument } from '../../core/run-presets.ts'
 
 /** Read a run-config patch, keeping only the keys the preset model actually
  *  has. An unknown key is dropped rather than stored: the section's grammar
@@ -79,7 +79,7 @@ function readRunConfig(raw: unknown): RunConfigPresetConfig {
   if (typeof raw !== 'object' || raw === null) return {}
   const source = raw as Record<string, unknown>
   const config: RunConfigPresetConfig = {}
-  for (const key of ['workspaceId', 'provider', 'model', 'reasoningEffort', 'agentPreset', 'permission'] as const) {
+  for (const key of RUN_CONFIG_KEYS) {
     const value = source[key]
     if (typeof value === 'string' && value !== '') config[key] = value
   }
@@ -1089,7 +1089,42 @@ function applyOne(
       const found = findTask()
       if (found === undefined) return `卡 ${String(payload.of)} 不存在。`
       const patch = payload as Partial<TaskRecord>
-      const next = edited({ ...found, title: patch.title ?? found.title, description: patch.description ?? found.description, prompt: patch.prompt ?? found.prompt })
+      // EVERY FIELD THE CATALOGUE PROMISES, not the three that were here.
+      //
+      // The catalogue lists eleven parameters and this case body wrote three, so a
+      // model that set `color` or `model` was answered 「已生效」 about a field that
+      // had not moved — and it cost a revision and woke every device while
+      // achieving nothing. **A write that reports success it did not perform is
+      // the worst thing this tool can do**, because the model's next turn is
+      // built on believing it happened.
+      //
+      // The run-config loop reads the SAME list the detail pane and the preset
+      // reader read, and the clear-a-field rule is the same one: a present key
+      // with '' or undefined clears it, because a cleared run config is a real
+      // intent (execution falls back to the defaults) and silently keeping the old
+      // value would be the opposite of what was asked for.
+      const applied: Partial<TaskRecord> = {}
+      for (const key of ['title', 'description', 'prompt'] as const) {
+        if (key in patch) applied[key] = patch[key]
+      }
+      for (const key of RUN_CONFIG_KEYS) {
+        if (key in patch) {
+          const value = patch[key]
+          applied[key] = value === undefined || value === '' ? undefined : value
+        }
+      }
+      // The accent colour is a run-ADJACENT field, not a preset one, so it keeps
+      // its own rule — and its own reason for not being in the loop above.
+      if ('color' in patch) {
+        applied.color = patch.color !== undefined && patch.color !== '' ? patch.color : undefined
+      }
+      // AN UPDATE THAT CHANGES NOTHING IS NOT AN UPDATE. The `semantic` actions
+      // already report `unchanged` rather than burning a revision; this one did
+      // not, so 「改成了它本来的样子」 came back as a success that cost a write.
+      if (Object.entries(applied).every(([key, value]) => found[key as keyof TaskRecord] === value)) {
+        return { doc, items, task: found, unchanged: true }
+      }
+      const next = edited({ ...found, ...applied })
       return { doc: { ...doc, tasks: doc.tasks.map(task => (task.id === found.id ? next : task)) }, items, task: next }
     }
     case 'task.create': {

@@ -27,7 +27,7 @@ import { withTaskColor } from './colors.ts'
 import { LocalStoragePresetStore } from './presets.ts'
 import { appliedPresetOf, LocalStorageSessionAgentStore } from './session-agents.ts'
 import { LocalStorageTemplateStore, templateFromTask, templateToNewInput } from './task-templates.ts'
-import { LocalStorageRunPresetStore } from './run-presets.ts'
+import { LocalStorageRunPresetStore, RUN_CONFIG_KEYS } from './run-presets.ts'
 import { hiddenSessionIdsOf, taskSessionsOf, type TaskSessionRow } from './session-list.ts'
 import { offerableSessionGroups } from './session-groups.ts'
 import type { PendingInteractionKind, QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts'
@@ -2134,7 +2134,7 @@ export class BoardController {
     }
     // Run-config fields: a present key with '' or undefined clears the field
     // (execution falls back to defaults); a value sets it.
-    for (const key of ['workspaceId', 'provider', 'model', 'reasoningEffort', 'agentPreset', 'permission'] as const) {
+    for (const key of RUN_CONFIG_KEYS) {
       if (key in patch) {
         const value = patch[key]
         applied[key] = value === undefined || value === '' ? undefined : value

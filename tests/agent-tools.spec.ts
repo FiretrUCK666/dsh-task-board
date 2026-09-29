@@ -11,6 +11,9 @@
  * dry run that writes nothing at all.
  */
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { RUN_CONFIG_KEYS } from '../src/core/run-presets.ts'
 import { ACTIONS, TOOL_ACTION_IDS } from '../src/core/board-actions.ts'
 import { emptyBoardDoc, applyCommit, type BoardDoc } from '../src/core/board-doc.ts'
 import { emptyItemsDoc, applyItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
@@ -109,6 +112,91 @@ function toolNamed(name: string): ToolDefinition {
   if (tool === undefined) throw new Error(`no tool named ${name}`)
   return tool
 }
+
+describe('the run-config field list exists once', () => {
+  /**
+   * SEVEN COPIES, TWO OF THEM `as const` LOOPS, AND NOT ONE GATE.
+   *
+   * The run-config field names were written out in seven places. Two of those were
+   * loops of the shape `for (const key of ['workspaceId', …] as const)`, which is
+   * the one construct in TypeScript that stays valid forever. So when a run field
+   * was added to the card and to the interface, both loops went on ignoring it and
+   * the build stayed green — and the failure that produced was the model being
+   * answered 「已生效」 about a field that had not moved, having burnt a revision and
+   * woken every device to achieve nothing. Each copy was a complete, correct list
+   * of the keys that copy knew about, so nothing anywhere could be incomplete.
+   *
+   * So the list is exported once and the interface is derived from it, and THIS is
+   * the gate for the class: a second literal list of those names is the defect, and
+   * it is invisible to every other check because each such list is well-formed on
+   * its own.
+   */
+  // A WRITE PATH, and the distinction from a declaration is the whole point: the
+  // catalogue and the interface are SUPPOSED to name each field, and that is what
+  // declaring a shape is. A place that APPLIES a patch is not declaring anything,
+  // it is answering 「which fields are these」 a second time — and that second
+  // answer is what went stale.
+  const WRITE_PATHS = [
+    'src/core/controller.ts',
+    'src/host/agent/tools.ts',
+    'src/client/board/automation-ui.tsx',
+  ]
+
+  it('no write path spells the list out again', () => {
+    for (const rel of WRITE_PATHS) {
+      const source = readFileSync(join(process.cwd(), ...rel.split('/')), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '')
+      for (const key of RUN_CONFIG_KEYS) {
+        expect(
+          new RegExp(`\\[\\s*(?:'${key}'|"${key}"\\s*,?)`).test(source),
+          `${rel} spells a run-config field list out literally again (starting at ${key}). `
+          + 'Import RUN_CONFIG_KEYS from core/run-presets.ts and loop over it: a literal list is a valid, complete, '
+          + 'and permanently stale second answer to 「which fields are these」.',
+        ).toBe(false)
+      }
+    }
+  })
+
+  it('the catalogue offers EXACTLY those fields, so declaring a new one is not a silent no-op', () => {
+    // The other drift direction, and it is the one that reaches the model. The
+    // catalogue is the contract the model reads; a field it offers and nothing
+    // applies is a promise the tool breaks, and a field it omits is a capability
+    // the model cannot find. So the set is checked, not the spelling.
+    const offered = Object.keys(ACTIONS['task.update'].params).sort()
+    const expected = ['agentPreset', 'color', 'description', 'model', 'of', 'permission', 'prompt', 'provider', 'reasoningEffort', 'title', 'workspaceId']
+    expect(offered, 'the catalogue\'s task.update parameters have drifted from the fields the card actually has').toEqual(expected)
+  })
+
+  it('and the model can actually SET them — the promise the catalogue makes', async () => {
+    // The other half, because deriving the list does not by itself make a tool
+    // apply it. `task.update` listed eleven parameters in the catalogue and wrote
+    // three; the loop it now uses is the shared one, so this asserts the BEHAVIOUR
+    // rather than the shape: a colour the model sets is a colour the card has.
+    const board = face()
+    const created = await runBatch(deps(board), { ops: [{ op: 'task.create', payload: { title: '配色试验', prompt: '试一次' } }] })
+    expect(created.ok, `could not create the card to colour: ${JSON.stringify(created)}`).toBe(true)
+    // The colour goes in through the same op. This gate is about the FIELD being
+    // applied, so the card is addressed the way the writer addresses it; whether
+    // the create receipt hands the model an address is a separate question and is
+    // not what fails here.
+    const made = board.getDoc().tasks.find(task => task.title === '配色试验')
+    expect(made, 'the card was not created, so there is nothing to colour').toBeDefined()
+    const paint = await runBatch(deps(board), { ops: [{ op: 'task.update', payload: { of: String(made?.ref ?? made?.id), color: '#aabbcc' } }] })
+    expect(paint.ok, `the colour was refused entirely: ${paint.summary}`).toBe(true)
+    const painted = board.getDoc().tasks.find(task => task.title === '配色试验')
+    expect(painted?.color, 'the model set a colour the catalogue offers and the card does not have it').toBe('#aabbcc')
+    // And an update that changes nothing says so instead of costing a write. The
+    // report of 「nothing moved」 is an EMPTY change list, not a missing field —
+    // the summary still has to read as a completion, so the assertion is on what
+    // changed and on the revision, not on a flag.
+    const commitsBefore = board.commits
+    const again = await runBatch(deps(board), { ops: [{ op: 'task.update', payload: { of: String(made?.ref ?? made?.id), color: '#aabbcc' } }] })
+    expect(again.changed?.tasks, 'setting a field to the value it already had was reported as a change').toEqual([])
+    expect(again.counts.unchanged, 'the receipt calls a no-op an update').toBe(1)
+    expect(board.commits, 'an update that changed nothing still cost a revision and woke every device').toBe(commitsBefore)
+  })
+})
 
 describe('the capability answer is the catalog, rendered', () => {
   it('names every action the catalog declares, and says who may do what', () => {
