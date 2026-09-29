@@ -184,6 +184,33 @@ describe('the column header and the cards under it share ONE text edge', () => {
     .toMatch(/inset-inline-start:\s*calc\(var\(--column-frame\)\s*\+\s*var\(--card-gutter\)\s*\+\s*var\(--card-mark-air\)\)/)
   })
 
+  it('a mark is dropped onto the x-height band, and there is ONE number for it', () => {
+    // A LINE BOX IS NOT THE TYPE. It reserves room for descenders whether or not
+    // the string has any, so its centre sits above the band where the glyphs
+    // actually are, and a dot centred on it reads high. Measured on this surface:
+    // at 11px the name's x-height band ran y=186..192 (mid 189) and the dot's
+    // centre measured 189 after the correction and 188 before it — one pixel,
+    // which is exactly what 「那个点还是比它高了一点点」 is, and exactly what a
+    // horizontal measurement can never have found.
+    //
+    // The check is that the correction is a NAMED token rather than a literal,
+    // and that it is a `transform` rather than a margin. The margin form is the
+    // trap: on an `align-items: center` flex item the free space is halved around
+    // the margins, so a 1px `margin-top` moves the box by HALF a pixel and the
+    // correction silently under-delivers — which is indistinguishable, in a
+    // screenshot, from not having fixed it at all.
+    const root = /\[data-dsh-taskboard-view\][^{]*\{([^}]*)\}/s.exec(source)?.[1] ?? ''
+    expect(root, '--dsh-tb-mark-drop is not declared, so every mark will re-guess its own optical centring')
+      .toMatch(/--dsh-tb-mark-drop:\s*[\d.]+px/)
+    for (const selector of ['.cardWorkspaceDot'] as const) {
+      const body = ruleFor(selector)
+      expect(body, `${selector} does not read the shared optical-centring number`)
+        .toMatch(/transform:\s*translateY\(var\(--dsh-tb-mark-drop\)\)/)
+      expect(body, `${selector} corrects its height with a margin, which on a centred flex item moves the box by half of it`)
+        .not.toMatch(/margin-top:\s*[\d.]+px/)
+    }
+  })
+
   it('a chip on a card is an object, not a run-on word in a sentence', () => {
     // MEASURED: a card carrying four chips rendered as one sentence — 「3会话 验收通过
     // 硬期限9/30」 — because every card chip is `fill={false}` (plain 12/500 text,

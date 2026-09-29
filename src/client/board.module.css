@@ -41,6 +41,26 @@
   --dsh-tb-mask: color-mix(in srgb, var(--dsw-alias-bg-mask-1) 60%, var(--dsw-alias-bg-mask-3));
   --dsh-tb-border: 1px solid var(--dsw-alias-border-l2);
   --dsh-tb-border-soft: 1px solid var(--dsw-alias-border-l1);
+  /* ── A MARK'S VERTICAL PLACE, AS ONE NUMBER ────────────────────────────────
+     A line box reserves room for descenders whether or not the string has any,
+     so **the line box's centre is NOT the type's optical centre** — it sits
+     above the x-height band, and a dot centred on it reads high. That is a
+     measured fact about this surface, not a preference: at 11px the name's
+     x-height band measured y=182..188 (mid 185) and the dot's centre measured
+     184 — one pixel, which is exactly what 「那个点还是比它高了一点点」 is.
+
+     It is a TOKEN and not a stray `1px` because this surface has four marks and
+     each of them had been corrected separately, in its own row, by looking at
+     that row: the card's title mark, the workspace dot, the column header's dot
+     and the compact tab's dot. Four rows, four numbers, and nothing saying they
+     are the same question. A number that is only correct in one place is a
+     number that will be wrong in the next place.
+
+     `translateY` and NOT `margin-top`: on a `align-items: center` flex item the
+     free space is halved around the margins, so a 1px `margin-top` moves the
+     box by HALF a pixel and the correction silently under-delivers. A transform
+     is 1px because it says 1px. */
+  --dsh-tb-mark-drop: 1px;
   /* Deliberately nothing. This was `1px solid var(--dsw-alias-separator-primary)`,
      and the shell declares no such token (0 declarations across the whole DSH
      install — only references), so the alias was invalid and every consumer
@@ -1779,6 +1799,11 @@
      an 8px dot's centre ((8 - 6) / 2). Two marks of the same kind in the same
      rail, at two centres, read as two cards' worth of left edge. */
   margin-inline-start: calc(var(--card-mark-air) + 1px - var(--card-mark-col));
+  /* THE ONE VERTICAL CORRECTION, and it is the token's whole job: the line box's
+     centre is above the x-height band, so a dot centred on it reads high. See
+     `--dsh-tb-mark-drop`. This is the row where it was measured, because this is
+     the row a person pointed at. */
+  transform: translateY(var(--dsh-tb-mark-drop));
   border-radius: 50%;
   background: var(--dsw-alias-label-tertiary);
 }
