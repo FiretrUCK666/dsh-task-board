@@ -39,6 +39,14 @@
  * questions, and the reader has to decide which set they care about before they
  * have read either. The yield when a track is too tight is a shorter track and a
  * clipped LABEL — never a smaller font, never a hidden tile, never a second line.
+ *
+ * FOUR METERS AND ONE PLAIN NUMBER, and the fifth is the finished group. The
+ * meters answer one question — how much of the work still open does this account
+ * for — and a finished row is not part of the work still open, so it has no share
+ * of the denominator the caption names. It therefore carries no track at all,
+ * which is why the caption can promise a single 「out of what」 and be believed.
+ * The tiles are a grid row, so the four metered ones set the height and the fifth
+ * simply has the space where its bar would have been.
  */
 import { type ItemQuery, type ItemStatusView } from '../../core/item-view.ts';
 import type { ItemRecord } from '../../core/item.ts';

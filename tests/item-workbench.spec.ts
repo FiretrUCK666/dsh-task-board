@@ -1041,3 +1041,94 @@ function openRowMenu(root: HTMLElement): void {
   expect(trigger, 'the row has no menu control at all').not.toBeNull()
   click(trigger)
 }
+
+describe('a meter states a fraction, so its denominator has to be the one it names', () => {
+  /**
+   * THE FOURTH TILE DREW A FRACTION OF NOTHING, and every other gate was green.
+   *
+   * The strip states its denominator in a caption under the tiles — 「每根条都是
+   * 『还没做完的 n 条』里的份额」— and four of the five meters honoured it. The
+   * fifth was the finished group, whose count was divided by the UNFINISHED total:
+   * a row the reader has already finished is not part of the work still open, so
+   * the bar claimed a share of a set it is not in. The number was plausible, the
+   * caption above it was true about the other four, and nothing anywhere
+   * contradicted it — which is exactly the shape of defect that only a test
+   * written from the sentence in the caption can catch.
+   */
+  /**
+   * The strip's meters, counted.
+   *
+   * `:not([class*="itemTileBarFill"])` is load-bearing rather than fussy: a
+   * track is `itemTileBar` and its fill is `itemTileBarFill`, so a plain
+   * `[class*="itemTileBar"]` matches BOTH and every meter counts twice. That is
+   * not a smaller number, it is a different one — four meters read as eight, and
+   * the gate below would have been quietly wrong rather than red.
+   */
+  const meters = (root: ParentNode): number =>
+    root.querySelectorAll('[class*="itemTileBar"]:not([class*="itemTileBarFill"])').length
+
+  it('the finished group draws no meter, because it is no share of what is owed', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const finished = findByText(panel.surface, '已完成')
+      expect(finished, 'no tile names the finished group, so this gate is asserting nothing').not.toBeNull()
+      expect(
+        finished?.querySelector('[class*="itemTileBar"]'),
+        'the finished group draws a meter over the unfinished denominator — a fraction of a set this row is not in',
+      ).toBeNull()
+      // Four, because the strip has five tiles and the finished one is the odd
+      // one out; anything else means a tile appeared or vanished, and the number
+      // four stops being a statement about this strip.
+      expect(
+        meters(panel.surface),
+        'the strip does not carry exactly four meters, so 「the finished one is the odd one out」 is no longer a statement about it',
+      ).toBe(4)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the probe bites: this counter can see a fifth meter, and is not fooled by a fill', () => {
+    // Two synthetic strips through the SAME counter the gate uses, so four is
+    // information rather than a number that would come out four on anything.
+    const strip = (tracks: number, fills: number): HTMLElement => {
+      const box = document.createElement('div')
+      box.innerHTML = '<p><span class="_itemTileBar_x"></span></p>'.repeat(tracks)
+        + '<p><span class="_itemTileBarFill_x"></span></p>'.repeat(fills)
+      return box
+    }
+    expect(meters(strip(5, 5)), 'the probe did not bite — a fifth track is invisible to the counter').toBe(5)
+    expect(meters(strip(4, 4)), 'the counter is counting fills as tracks, so every meter reads twice').toBe(4)
+  })
+})
+
+describe('a surface finds its OWN box, not the first one in the document', () => {
+  /**
+   * THE BOARD AND THE LIST SHARE ONE ATTRIBUTE, so "the first in the document"
+   * is the wrong question. Both `TaskBoardPanel.tsx` and `item/panel.tsx` mark
+   * their root `[data-dsh-taskboard-view]`, and the row was resolving it with
+   * `document.querySelector`, which answers "whichever came first". While only
+   * one surface is mounted that is the right box by luck; the moment both are in
+   * the tree the menu is clamped to the board's rectangle and placed against a
+   * surface that is not its own — the precise failure its own doc comment exists
+   * to prevent. `useSurfaceNarrow` already resolves the same box with `closest`.
+   */
+  it('the row asks for its nearest ancestor rather than the document', () => {
+    const source = code(read('src/client/item/row-line.tsx'))
+    expect(
+      source,
+      'the row resolves this surface\'s own box from the document, and the board panel carries the same attribute',
+    ).not.toMatch(/document\s*\.\s*querySelector[^\n]*data-dsh-taskboard-view/)
+    expect(
+      source,
+      'the row no longer walks up to its own panel, so the menu has no box to be clamped inside',
+    ).toMatch(/closest[^\n]*data-dsh-taskboard-view/)
+  })
+
+  it('the probe bites: a document-wide query is reported', () => {
+    const detector = (source: string): boolean => /document\s*\.\s*querySelector[^\n]*data-dsh-taskboard-view/.test(source)
+    expect(detector("panel.current = document.querySelector('[data-dsh-taskboard-view]')"), 'the probe did not bite').toBe(true)
+    expect(detector("panel.current = rowRef.current?.closest('[data-dsh-taskboard-view]') ?? null"), 'a correct row is reported as broken').toBe(false)
+  })
+})
+

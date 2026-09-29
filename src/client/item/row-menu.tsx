@@ -63,27 +63,38 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
   /**
    * Measure, place, and move focus in — all before the browser paints.
    *
-   * The spot is computed TWICE on purpose. The first pass uses an assumed size,
-   * so the menu is in the right neighbourhood before anyone sees it; the second
-   * uses the menu's own measured box, so the edge that has to be flush — the one
-   * beside the trigger — is flush to the pixel. Doing only the first would leave
-   * the menu's width guessed, and doing only the second would show it for one
-   * frame in the wrong place, which on a fast list is a visible jump.
+   * The spot is computed TWICE, and the second pass is the one that matters. The
+   * first runs on an element with no `style` yet, so it measures the menu at its
+   * natural size. The second runs after that spot has been applied, and it exists
+   * because applying the spot can CHANGE the menu: `maxBlockSize` is a ceiling
+   * derived from the box we just measured, so a menu taller than the room below
+   * its trigger is given a scroller — and a scrolled menu is shorter than the one
+   * the first pass measured against. Left at the first pass's numbers, the edge
+   * that has to be flush beside the trigger is flush to the wrong pixel.
+   *
+   * So the first pass is the neighbourhood and the second is the truth, and the
+   * effect that owns the second re-runs whenever the spot changes. It only
+   * `setSpot` when a NUMBER actually moved, because the alternative — an effect
+   * that always sets state — re-renders forever.
    */
   useLayoutEffect(() => {
-    const measure = (): void => {
-      const trigger = rectOf(props.trigger)
-      const panel = rectOf(props.panel)
-      if (trigger === undefined || panel === undefined) return
-      const box = menu.current?.getBoundingClientRect()
-      setSpot(placeRowMenu(trigger, panel, {
-        width: box?.width ?? ASSUMED.width,
-        height: box?.height ?? ASSUMED.height,
-      }))
-    }
-    measure()
+    const trigger = rectOf(props.trigger)
+    const panel = rectOf(props.panel)
+    if (trigger === undefined || panel === undefined) return
+    const box = menu.current?.getBoundingClientRect()
+    const next = placeRowMenu(trigger, panel, {
+      width: box?.width ?? ASSUMED.width,
+      height: box?.height ?? ASSUMED.height,
+    })
+    setSpot(current => (current !== undefined
+      && current.placement === next.placement
+      && current.top === next.top
+      && current.left === next.left
+      && current.maxBlockSize === next.maxBlockSize
+      ? current
+      : next))
     menu.current?.focus()
-  }, [props.trigger, props.panel])
+  }, [props.trigger, props.panel, spot])
 
   // A menu that stays put while the list scrolls is a menu pointing at nothing.
   useEffect(() => {

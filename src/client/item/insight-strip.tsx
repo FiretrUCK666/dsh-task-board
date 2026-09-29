@@ -39,6 +39,14 @@
  * questions, and the reader has to decide which set they care about before they
  * have read either. The yield when a track is too tight is a shorter track and a
  * clipped LABEL — never a smaller font, never a hidden tile, never a second line.
+ *
+ * FOUR METERS AND ONE PLAIN NUMBER, and the fifth is the finished group. The
+ * meters answer one question — how much of the work still open does this account
+ * for — and a finished row is not part of the work still open, so it has no share
+ * of the denominator the caption names. It therefore carries no track at all,
+ * which is why the caption can promise a single 「out of what」 and be believed.
+ * The tiles are a grid row, so the four metered ones set the height and the fifth
+ * simply has the space where its bar would have been.
  */
 import { itemInsightOf, type ItemQuery, type ItemStatusView } from '../../core/item-view.ts'
 import type { ItemRecord } from '../../core/item.ts'
@@ -82,11 +90,23 @@ export interface ItemInsightStripProps {
 function Tile(props: {
   readonly label: string
   readonly value: number
-  /** This tile's share of the list, 0..1. Drives the 2px meter. */
+  /** This tile's share of what the reader still owes, 0..1. Drives the 2px meter. */
   readonly share: number
   readonly tone?: 'over'
   readonly pressed: boolean
   readonly onClick: () => void
+  /**
+   * Whether this tile's number is a share of WHAT IS OWED at all.
+   *
+   * The finished group is the one tile that is not, and it is worth being explicit
+   * about why: the four meters answer a single question — how much of the work
+   * still open does this account for — and a row the reader has already finished
+   * is not part of that work. Its count over the owed total is a fraction of
+   * nothing. A strip where the rule is applied uniformly to all five prints a
+   * number the caption under it contradicts in the same breath, and the caption is
+   * the only thing making the other four checkable.
+   */
+  readonly metered?: boolean
 }) {
   return (
     <button
@@ -98,10 +118,15 @@ function Tile(props: {
       <span className={css.itemTileValue} data-tone={props.tone ?? 'plain'}>{props.value}</span>
       <span className={css.itemTileLabel}>{props.label}</span>
       {/* A share of zero draws an EMPTY track, never a hairline at 0%: a meter
-          that looks filled by a hair is a meter claiming more than it has. */}
-      <span className={css.itemTileBar} aria-hidden="true">
-        <span className={css.itemTileBarFill} style={{ inlineSize: `${Math.round(Math.min(1, Math.max(0, props.share)) * 100)}%` }} />
-      </span>
+          that looks filled by a hair is a meter claiming more than it has. And a
+          tile with no share of the owed draws no track at all — the row is a grid,
+          so the four metered tiles set the height and this one simply has the
+          space where its bar would have been. */}
+      {props.metered !== false && (
+        <span className={css.itemTileBar} aria-hidden="true">
+          <span className={css.itemTileBarFill} style={{ inlineSize: `${Math.round(Math.min(1, Math.max(0, props.share)) * 100)}%` }} />
+        </span>
+      )}
     </button>
   )
 }
@@ -139,6 +164,7 @@ export function ItemInsightStrip(props: ItemInsightStripProps) {
             share={share(props.counts[status])}
             pressed={isFacetOn(props.query, 'status', status)}
             onClick={() => toggle('status', status, GROUP_TOKEN[status], status === 'done')}
+            metered={status !== 'done'}
           />
         ))}
         <Tile

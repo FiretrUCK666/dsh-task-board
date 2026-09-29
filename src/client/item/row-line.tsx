@@ -19,7 +19,7 @@
  * has no hover, so a fact that only exists on one is a fact the phone does not
  * have.
  */
-import { useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { DEFAULT_STALE_DAYS } from '../../core/item-view.ts'
 import type { ItemPriority } from '../../core/item.ts'
@@ -128,17 +128,24 @@ export function ItemRowLine(props: ItemRowLineProps) {
   const due = dueLine(view, english)
   const regionId = `${panelId}-${item.id}`
   /* The two boxes the menu is placed against: its own trigger, and THIS PANEL's
-     root. The panel root is found by walking up to the surface the panel marked
-     with its own data attribute — never by a host class name, because a host
-     class is the one thing on this surface that is allowed to change without
-     telling us. */
+     root. The panel is found by asking this row for its NEAREST ancestor
+     carrying the attribute — never by `document.querySelector`, which answers
+     "the first one in the document", and the board's own panel carries the SAME
+     attribute (`TaskBoardPanel.tsx`). The first match is therefore the board's box
+     whenever both surfaces are in the tree at once, and a menu clamped to another
+     surface's box is the exact failure this geometry exists to prevent: a layer
+     that floats over the wrong panel is not this panel's layer.
+     `useSurfaceNarrow` resolves the same surface with `closest` for the same
+     reason; this is that idiom, applied to the box rather than to a breakpoint. */
+  const rowRef = useRef<HTMLLIElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLElement | null>(null)
-  if (panelRef.current === null && typeof document !== 'undefined') {
-    panelRef.current = document.querySelector<HTMLElement>('[data-dsh-taskboard-view]')
-  }
+  useLayoutEffect(() => {
+    panelRef.current = rowRef.current?.closest<HTMLElement>('[data-dsh-taskboard-view]') ?? null
+  }, [])
   return (
     <li
+      ref={rowRef}
       className={css.itemRow}
       data-status={status}
       data-density={density}
