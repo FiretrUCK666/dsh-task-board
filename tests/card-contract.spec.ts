@@ -111,58 +111,77 @@ describe('the column header and the cards under it share ONE text edge', () => {
   expect(dot, 'the dot must be centred against the header height, not the top edge').toMatch(/inset-block-start:\s*50%/)
   // ── THE RAIL, AND WHAT IS ACTUALLY BEING CLAIMED ABOUT IT ────────────────
   //
-  // The claim is not a number. It is: **a mark has the same air on both sides,
-  // and the column's own mark sits on the cards' mark line.** Both are relations,
-  // and they are asserted as relations on purpose — the first version of these
-  // assertions pinned a literal (21px, then 28px) and every fix to the rail had to
-  // go and restate it, which is precisely how a number stops meaning anything.
+  // The claim is not a number. It is: **a mark hangs in the card's rail — air in
+  // front of it, a gap behind it — and it hangs there by being IN FLOW, so it
+  // sits on the line of the words beside it.** All four are relations, and they
+  // are asserted as relations on purpose: earlier versions of these assertions
+  // pinned a literal (21px, then 28px, then 32px) and every fix to the rail had
+  // to go and restate it, which is how a number stops meaning anything.
   //
-  // What broke twice, and both times silently, was the SHAPE, not the number:
+  // What broke three times, and every time silently, was the SHAPE:
   //
   //   1. marks in the flow, so a coloured card's title sat 13px right of a plain
-  //      one's — four text edges in one column (fixed by hanging them in the pad);
+  //      one's — four text edges in one column;
   //   2. marks hung at a literal offset inside a padding too small to hold them,
   //      so an 8px mark ended exactly where the title began: 0px of gap on one
-  //      side and 4px on the other. The dot touched the title AND the card's edge,
-  //      and neither of those reads as a number — it reads as 「间距不太对」and
-  //      there is nothing to measure.
-  //
-  // So every one of these is written as "reads the token", and the token itself is
-  // checked for the one property that makes it a rail rather than a guess.
+  //      side and 4px on the other. The dot touched the title AND the card's
+  //      edge, and neither reads as a number — it reads as 「间距不太对」;
+  //   3. marks back out of flow, which fixed 2 and cost the VERTICAL: an
+  //      absolutely positioned mark takes its top from the static position rather
+  //      than from the line of the text beside it, so the 6px dot in front of a
+  //      session name floated half a pixel high and the row read as two things at
+  //      two heights. **This is the one the horizontal numbers could never have
+  //      shown**, which is why the assertion below is about the mark being in
+  //      flow and not about any offset.
   const columnRule = ruleOf('column') ?? ''
-  const railToken = /--card-mark-col:\s*([\d.]+)px/.exec(columnRule)?.[1]
-  expect(railToken, '--card-mark-col is gone from `.column`, so nothing states how wide the mark\'s rail is').toBeDefined()
-  // The substantive claim: the rail holds the 8px mark AND at least 4px of air on
-  // EACH side. The leading air is what the centring expression below computes and
-  // the trailing air is the rail minus the mark minus the leading air, so this one
-  // number is the whole budget.
-  expect(Number(railToken) - 8, `a ${railToken}px rail leaves the mark no air on one side; it must be the mark plus twice at least 4px`).toBeGreaterThanOrEqual(8)
+  const air = /--card-mark-air:\s*([\d.]+)px/.exec(columnRule)?.[1]
+  const markGap = /--card-mark-gap:\s*([\d.]+)px/.exec(columnRule)?.[1]
+  expect(air, '--card-mark-air is gone from `.column`, so nothing states the room in front of a mark').toBeDefined()
+  expect(markGap, '--card-mark-gap is gone from `.column`, so nothing states the room behind it').toBeDefined()
+  // The substantive number: the air must be at least the mark's own width, which
+  // is the width at which a dot stops reading as a mark and starts reading as a
+  // bullet jammed against the card's border. 24 / 28 / 32 / 36 and 6 / 8 / 10 were
+  // all rendered side by side at the real width before these were chosen.
+  expect(Number(air), `a ${air}px air around an 8px mark reads as a bullet, not as a mark`).toBeGreaterThanOrEqual(8)
+  // The rail is the SUM, declared as a sum — a rail written as one number is a
+  // number that has to be re-guessed every time either half moves.
+  expect(columnRule, 'the rail is a literal again, so the air and the gap can drift apart')
+    .toMatch(/--card-mark-col:\s*calc\(var\(--card-mark-air\)\s*\+\s*8px\s*\+\s*var\(--card-mark-gap\)\)/)
 
-  // The card's left padding IS the rail, spelled by name. A literal there is the
-  // regression in waiting: it is how the rail and the mark's offset stop being one
-  // decision and become two.
+  // The card's left padding IS the rail, spelled by name.
   const cardPadding = (ruleOf('card') ?? '').match(/padding:\s*([^;]+)/)?.[1] ?? ''
   expect(cardPadding.trim().split(/\s+/)[3],
-    'the card\'s left padding is a literal again, so the rail and the mark\'s offset can drift apart')
+    'the card\'s left padding is a literal again, so the rail and the marks\' offsets can drift apart')
     .toBe('var(--card-mark-col)')
 
-  // Both marks CENTRE in the rail, which is what makes the air equal: an offset of
-  // (rail - mark) / 2 leaves exactly the same on the far side.
-  for (const [selector, markWidth] of [['.cardColorMark', 8], ['.cardWorkspaceDot', 6]] as const) {
-    expect(ruleFor(selector),
-      `${selector} is not centred in the rail, so the air on its two sides is not the same`)
-      .toMatch(new RegExp(`inset-inline-start:\\s*calc\\(\\(var\\(--card-mark-col\\)\\s*-\\s*${markWidth}px\\)\\s*/\\s*2\\)`))
+  // BOTH MARKS, IN FLOW, HUNG BY A NEGATIVE MARGIN. The `position: absolute`
+  // check is the load-bearing half: a mark that is out of flow is out of flow
+  // vertically too, and the symptom is a dot sitting half a pixel above the name
+  // it belongs to.
+  for (const [selector, centreNudge] of [['.cardColorMark', ''], ['.cardWorkspaceDot', '\\s*\\+\\s*1px']] as const) {
+    const body = ruleFor(selector)
+    expect(body, `${selector} is positioned out of flow, so its top comes from the static position and it floats above the line of the words beside it`)
+      .not.toMatch(/position:\s*absolute/)
+    expect(body, `${selector} is not hung in the card's rail by a negative margin, so it either pushes the text right or lands on it`)
+      .toMatch(new RegExp(`margin-inline-start:\\s*calc\\(var\\(--card-mark-air\\)${centreNudge}\\s*-\\s*var\\(--card-mark-col\\)\\)`))
   }
 
-  // The column's two numbers read the same three tokens, so the header cannot
-  // drift from the cards: the name sits where the cards' titles sit, and its dot
-  // where the cards' marks sit.
+  // And the room BEHIND the mark is the same number on both rows. They were 7 and
+  // 0 at one point, which is the same complaint about two different rows.
+  for (const row of ['.cardTitleRow', '.cardWorkspace'] as const) {
+    expect(ruleFor(row), `${row} does not read the rail's gap, so 「the words are too far from the dot」 is true of one row and not the other`)
+      .toMatch(/gap:\s*var\(--card-mark-gap\)/)
+  }
+
+  // The column's two numbers read the same tokens, so the header cannot drift
+  // from the cards: the name sits where the cards' titles sit, and its dot where
+  // the cards' marks sit.
   expect(header,
     'the column name no longer reads the cards\' rail, so the header and the cards under it can drift')
     .toMatch(/padding:[^;]*var\(--column-frame\)\s*\+\s*var\(--card-gutter\)\s*\+\s*var\(--card-mark-col\)/)
   expect(dot,
     'the header dot no longer reads the cards\' mark line, so the column shows two marks at two x')
-    .toMatch(/inset-inline-start:\s*calc\(var\(--column-frame\)\s*\+\s*var\(--card-gutter\)\s*\+\s*\(var\(--card-mark-col\)\s*-\s*8px\)\s*\/\s*2\)/)
+    .toMatch(/inset-inline-start:\s*calc\(var\(--column-frame\)\s*\+\s*var\(--card-gutter\)\s*\+\s*var\(--card-mark-air\)\)/)
   })
 
   it('a chip on a card is an object, not a run-on word in a sentence', () => {
@@ -199,16 +218,25 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // leads text must not be what decides where the text starts. All three are
     // checked here rather than in three places, because it is ONE rule and the
     // failure repeats.
+    // THE INVARIANT IS NOT THE MECHANISM. This used to read
+    // `expect(mark).toMatch(/position:\s*absolute/)`, which pinned the spell rather
+    // than the claim — and the spell is what cost the vertical alignment: a mark
+    // out of flow takes its top from the static position rather than from the line
+    // of the words beside it, so the workspace dot floated half a pixel above the
+    // session name and the row read as two things at two heights.
+    //
+    // The claim is one sentence and it survives every mechanism tried so far: **a
+    // mark is not content, and a mark that leads text must not be what decides
+    // where the text starts.** So this asserts the only thing that actually
+    // decides it — the mark's own inline bearing, which has to be NEGATIVE, i.e.
+    // it must give its width back — and the mechanism is left to be chosen again.
     for (const [name, selector] of [['the colour mark', '.cardColorMark'], ['the workspace dot', '.cardWorkspaceDot']] as const) {
       const mark = ruleFor(selector)
-      expect(mark, `${name} is back in the content box, so it pushes the text off the card's text line`)
-        .toMatch(/position:\s*absolute/)
+      const bearing = /margin-inline-start:\s*([^;]+)/.exec(mark)?.[1] ?? ''
+      expect(bearing, `${name} has no inline bearing of its own, so it pushes the text off the card's text line`).not.toBe('')
+      expect(bearing, `${name} occupies width in the text's own column — the rail exists so a mark can hang in the padding instead`)
+        .toMatch(/^calc\(.*-\s*var\(--card-mark-col\)\)$/)
     }
-    // The containing block, or the mark escapes to the column and every card
-    // grows one in the same place. This is the specific way all three fixes can
-    // be absent while every declaration is still present.
-    expect(ruleOf('card') ?? '', 'the card is not positioned, so its hanging marks escape the card')
-      .toMatch(/position:\s*relative/)
   })
 
   it('a row that slipped BOTH dates says both, and the plan never wears the hard tone', () => {

@@ -1206,34 +1206,41 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-lg);
   overflow: hidden;
-  /* ── THE RAIL, AND IT HAS EQUAL AIR ON BOTH SIDES OF THE DOT ──────────────
-     Three numbers, and every place on this surface that needs one reads one of
-     them, so the four places below cannot be edited apart from each other.
+  /* ── THE RAIL, AND WHAT IS IN IT ─────────────────────────────────────────
+     Four numbers, and every place on this surface that needs one reads one of
+     them, so the places below cannot be edited apart from each other.
 
-     `--card-mark-col` is the whole answer to 「the mark's spacing」: 12px of air,
-     the 8px mark, 12px of air. It is 12 and not 8 because a mark's own width is
-     the width at which it stops reading as a MARK and starts reading as a
-     BULLET — a bullet at 8px of air is a bullet jammed against the card's border,
-     which is a different complaint from the one this token was written for and
-     is fixed by exactly the same number. 12 is 1.5× the mark: the smallest
-     multiple that reads as space rather than as clearance. It is also past the
-     card's own 14px corner radius, so the title is no longer inside the curve.
+     `--card-mark-air` is the room in FRONT of a mark and `--card-mark-gap` the
+     room behind it, and they are deliberately NOT the same number. They were, at
+     8 and 8, and the symmetry was the claim: equal air on both sides of a dot
+     reads as one arrangement rather than as two mistakes. Two rounds of
+     screenshots then said the same thing about that symmetric rail — **the dot is
+     in the right place, and the words are too far from it** — so the air stays and
+     the gap gives. Equal was a way of making the decision once; it was not the
+     decision.
 
-     The four candidates were rendered side by side at the real width before this
-     was chosen, and the answer was not a matter of taste: at 24 the dot hugs the
-     border; at 36 the card's content is visibly squeezed against the right edge
-     and the title reads as escaping the card. 32 is the one where the dot is
-     surrounded and the card still has a measure.
+     `--card-mark-col` is the sum, and the card's left padding IS it. A mark hangs
+     in that rail by a NEGATIVE margin rather than by `position: absolute`, and
+     that is not a preference between two spellings of the same thing:
 
-     This token used to be an implicit arrangement — a 12px side padding with the
-     dot hung at `inset-inline-start: 4px` — and that packs an 8px dot into 12px,
-     which leaves 4px on one side and 0 on the other. The dot is touching the
-     title, and it is touching the card's edge, and neither of those is visible as
-     a number: they read as 「间距不太对」and there is nothing to measure. Marking
-     the mark out of flow is what made it possible (a mark in the flow pushes a
-     card's title right and the column grows a second text edge); it is not a
-     reason to leave the padding short. */
-  --card-mark-col: 32px;
+       - absolutely positioned, the mark's VERTICAL position is its static
+         position, which the browser resolves against the flex alignment rather
+         than against the text's line — so a 6px dot beside an 11px name floated
+         half a pixel high and the row read as two things at two heights;
+       - in flow, it is a flex item, so `align-items` centres it on the name's own
+         line for free, and the space behind it is an honest `gap` rather than a
+         gap that happens to fall out of two numbers cancelling.
+
+     A negative margin is a legitimate way to hang something in the padding, and
+     the alternative here was a containing block per axis.
+
+     12 for the air because 8 — a mark's own width — is where a dot stops
+     reading as a mark and starts reading as a bullet jammed against the card's
+     border. 24 / 28 / 32 / 36 were rendered side by side at the real width before
+     32 was chosen; this round's comparison was over the gap. */
+  --card-mark-air: 12px;
+  --card-mark-gap: 8px;
+  --card-mark-col: calc(var(--card-mark-air) + 8px + var(--card-mark-gap));
   /* The two numbers the rail is measured FROM, because they are the column's own
      geometry and restating them in the header is how the header and the cards
      drift apart: the column's hairline, and how far the cards stand off it. */
@@ -1296,16 +1303,22 @@
   padding: 10px 20px 10px calc(var(--column-frame) + var(--card-gutter) + var(--card-mark-col));
   flex: none;
 }
-
 .columnHeader > .statusDot {
   position: absolute;
-  /* THE CARDS' MARK LINE, computed: the column's hairline, the cards' gutter, and
-     the rail's own leading air. A column's dot and a card's dot are the same kind
-     of thing in the same rail, and when they are at different x the column reads
-     as two columns — so this is not a nudge, it is the same expression the card
-     writes from. Measured 1 + 8 + 12 = 21, and the name then starts 12px after the
-     dot's right edge: the same gap a card's title has after its own mark. */
-  inset-inline-start: calc(var(--column-frame) + var(--card-gutter) + (var(--card-mark-col) - 8px) / 2);
+  /* THE CARDS' MARK LINE, computed from the same three numbers the card reads:
+     the column's hairline, the cards' gutter, and the rail's air. A column's dot
+     and a card's dot are the same kind of thing in the same rail, and when they
+     are at different x the column reads as two columns — so this is not a nudge,
+     it is the card's own expression with the two leading terms added.
+     Measured 1 + 8 + 12 = 21, and the name then starts `--card-mark-gap` after
+     the dot's right edge: the same gap a card's title has after its own mark.
+
+     It IS positioned (the header is not a rail — the name's left edge must not
+     depend on whether the column has anything in it), so it carries its own
+     vertical centring rather than inheriting one. The card's marks do not need
+     that sentence, which is the difference between the two placements and the
+     reason the card's are in flow. */
+  inset-inline-start: calc(var(--column-frame) + var(--card-gutter) + var(--card-mark-air));
   inset-block-start: 50%;
   /* The existing optical nudge on `.statusDot` is a `transform`, and this rule
      needs `transform` for the centring — so the nudge is applied here instead of
@@ -1646,35 +1659,41 @@
 .cardTitleRow {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
+  /* The room BEHIND the mark, and it is the rail's own number rather than a
+     literal — the air in front and the gap behind were once one value, and
+     splitting them is what let the air stay where it was while the words moved
+     closer. */
+  gap: var(--card-mark-gap);
   min-width: 0;
 }
 
 .cardColorMark {
-  /* HUNG IN THE CARD'S OWN PADDING, not in its content box. Measured: with the
-     mark in flow, a coloured card's title started at 53 while every other card's
-     started at 38 — the mark is 8px wide and the title row's gap is 7px, and 38
-     + 8 + 7 = 53. So one column showed a THIRD text line for cards that happen
-     to be coloured, which is the same defect the column header's status dot
-     caused and for the same reason: a leading MARK placed inside the content box
-     spends the space the text is supposed to start at.
+  /* IN FLOW, HUNG IN THE CARD'S RAIL BY A NEGATIVE MARGIN.
+     Measured: with the mark as a plain in-flow item, a coloured card's title
+     started at 53 while every other card's started at 38 — the mark is 8px wide
+     and the title row's gap is 7px, and 38 + 8 + 7 = 53 — so one column showed a
+     THIRD text line for the cards that happen to be coloured.
 
-     The card already establishes a containing block (`position: relative`), so
-     the mark leaves the flow entirely and the title starts where every other
-     title starts. 4px centres the 8px mark inside the card's 12px side padding,
-     and `margin-top` is kept because optical centring against a 14px line is
-     about the LINE, not the box. */
-  position: absolute;
-  /* CENTRED IN THE RAIL, which is what the rail is for: the air before the mark
-     and the gap after it are the same 12px, so the dot is a thing sitting between
-     the card's edge and its words rather than something hung off one of them. */
-  inset-inline-start: calc((var(--card-mark-col) - 8px) / 2);
+     The margin is what fixes it WITHOUT taking the mark out of the flow: a
+     negative inline-start pulls the mark back into the padding by exactly the
+     difference between the rail and the air, and the title — which follows the
+     mark — lands back on the card's text line. The mark therefore occupies no
+     width of its own, which is the whole point, and it stays a FLEX ITEM, so
+     `align-items` centres it against the title's line rather than against a
+     static position the browser resolves on its own.
+
+     That last clause is the fix for a defect the absolute version caused: a dot
+     positioned out of flow takes its vertical place from the static position,
+     which is not the text's line, and a 6px dot beside an 11px name sat half a
+     pixel high so the row read as two things at two heights. */
+  flex: none;
   width: 8px;
   height: 8px;
+  margin-inline-start: calc(var(--card-mark-air) - var(--card-mark-col));
   border-radius: 50%;
   /* Optical centering against the first title line (14px / 1.35 ≈ 18.9px):
      the dot's center must sit on the line's visual center, NOT on the
-     flex-start edge — the 4px offset read "high" next to the title. */
+     flex-start edge — the offset read "high" next to the title. */
   margin-top: 5px;
   /* The mark's hairline ring is a soft transparency of the SAME data color:
      the visible dot is exactly the picked color — no blend, no偏色. */
@@ -1736,26 +1755,30 @@
 .cardWorkspace {
   display: inline-flex;
   align-items: center;
-  /* No gap: the dot hangs in the card's padding (below), so the NAME is the only
-     thing in the content box and starts on the card's text line. Measured, a
-     workspace name started at 49 against a card title's 38 — the 6px dot plus a
-     5px gap was spending the text's own starting position. Same defect, same
-     fix, as the column header's status dot and the card's colour mark. */
-  gap: 0;
+  /* The rail's own gap, like the title row's — and this is the SECOND of the two
+     places that had to change together. They were 0 and 7 while the mark was
+     positioned, so 「the words are too far from the dot」 was true of one row and
+     not the other. */
+  gap: var(--card-mark-gap);
   flex: 1;
   min-width: 0;
   color: var(--dsw-alias-label-secondary);
 }
 
 .cardWorkspaceDot {
-  position: absolute;
-  /* The same rail, centred for a 6px mark instead of an 8px one: the two dots
-     then share ONE centre line (12px from the card's padding edge) and both have
-     the same 9px of air on either side, so a card carrying both never shows two
-     dots that are not quite lined up. */
-  inset-inline-start: calc((var(--card-mark-col) - 6px) / 2);
+  /* IN FLOW, on the same terms as the colour mark: a flex item here, so
+     `align-items: center` puts it on the NAME'S OWN LINE. Positioned out of flow
+     it took its vertical place from the static position instead, and a 6px dot
+     beside an 11px name read half a pixel high — a row that looks like two
+     things at two heights, which is the one thing a line of metadata must not be.
+  */
+  flex: none;
   width: 6px;
   height: 6px;
+  /* The same air as the colour mark, plus the 1px that puts a 6px dot's CENTRE on
+     an 8px dot's centre ((8 - 6) / 2). Two marks of the same kind in the same
+     rail, at two centres, read as two cards' worth of left edge. */
+  margin-inline-start: calc(var(--card-mark-air) + 1px - var(--card-mark-col));
   border-radius: 50%;
   background: var(--dsw-alias-label-tertiary);
 }
