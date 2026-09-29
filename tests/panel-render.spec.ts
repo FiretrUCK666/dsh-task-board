@@ -1422,17 +1422,38 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // as the thing it forbids, and the cheapest way to quiet it is to delete a
     // correct note.
     const live = stripCssComments(css)
+    /* WHAT A TONE MAY TOUCH, and it is two lists rather than one.
+     *
+     * The claim is that a tone is ONE signal. Ink is that signal: colour, its
+     * background, its border, its fill. Everything that adds a SECOND way of
+     * being loud is therefore forbidden — a heavier weight, italics, an
+     * underline, a scale, a lift. That list is short and it is the point of the
+     * gate.
+     *
+     * The second list is the SLOT. `display`, `min-inline-size`, `overflow`,
+     * `text-overflow`, `white-space`, `font-size` and `line-height` are how a
+     * reading EXISTS at all, and the sheet states that as its design: the tone
+     * rule is where placement and truncation are defined, together, precisely so
+     * the two halves cannot drift. Reading those as "a tone shouting" flags the
+     * slot's own definition and asks for it to be deleted — which is rule 14 from
+     * the other end: a checker whose reading makes the correct sheet look wrong.
+     */
+    const INK = new Set(['color', 'background', 'background-color', 'border-color', 'fill', 'stroke', 'opacity'])
+    const SLOT = new Set([
+      'display', 'min-inline-size', 'inline-size', 'overflow', 'text-overflow',
+      'white-space', 'font-size', 'line-height', 'flex', 'flex-shrink', 'min-width',
+    ])
     const shouting = (text: string): { selector: string; property: string }[] => declarationRules(stripCssComments(text))
       .filter(rule => TONE.test(rule.selector))
       .flatMap(rule => [...rule.body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:/g)]
         .map(match => ({ selector: rule.selector, property: match[1] as string }))
-        .filter(found => !allowed.has(found.property)))
+        .filter(found => !INK.has(found.property) && !SLOT.has(found.property)))
     const tones = declarationRules(live).filter(rule => TONE.test(rule.selector))
     expect(
       tones,
       'no rule in either sheet selects a tone attribute, so this gate is about nothing — the readings are told apart by that attribute and nothing else is',
     ).not.toEqual([])
-    const offenders = shouting(css)
+    const offenders = shouting(live)
     expect(
       offenders,
       `a tone changes ${offenders.map(found => `${found.property} (${found.selector})`).join(', ')} as well as the ink — a tone is one signal, and a second one competes with it`,
