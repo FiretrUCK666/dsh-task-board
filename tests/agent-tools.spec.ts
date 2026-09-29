@@ -278,6 +278,29 @@ describe('the batch laws', () => {
     expect(result.summary).toContain('不回滚')
   })
 
+  it('a write the host DECLINED is not reported as 已生效', async () => {
+    // The receipt used to be decided from the tool's own DRAFT, never from what
+    // `board.commit()` returned — and the merge discards a write whose stamp
+    // another device already passed. So the op reported 「已生效」 about a write
+    // that had not happened, listed the row under 受影响的, and the model's next
+    // turn was built on it. The fake here is the ONLY one that can produce it:
+    // every other case has a single document, so a draft and a host answer are
+    // trivially the same and the discard is unreachable.
+    const board = face()
+    // The host keeps ITS copy: the commit is received and thrown away, which is
+    // exactly what a stale stamp does inside the merge.
+    const realCommit = board.commit.bind(board)
+    board.commit = async () => board.getDoc()
+    void realCommit
+    const result = await runBatch(deps(board), { ops: [{ op: 'task.create', payload: { title: '被丢掉的一条', prompt: '试一次' } }] })
+    const report = result.reports[0]
+    expect(report?.detail, 'a write the host threw away was reported as a success').not.toContain('已生效')
+    expect(report?.detail, 'the model was not told the write did not land').toContain('没写进去')
+    expect(result.changed?.tasks ?? [], 'a declined write was still listed as changed').toEqual([])
+    // And the host really is unchanged — the claim is about the document, not a wording.
+    expect(board.getDoc().tasks.map(t => t.title)).not.toContain('被丢掉的一条')
+  })
+
   it('a dry run writes nothing at all and says so', async () => {
     const board = face()
     const result = await runBatch(deps(board), { ops: [{ op: 'item.create', payload: { body: '演练' } }], dry_run: true })

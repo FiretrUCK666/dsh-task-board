@@ -679,22 +679,57 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
     // Everything that is not a relay arrives here as a document change, and it
     // travels the same merge grammar every device writes through.
     const { doc: nextDoc, items: nextItems, task, item } = next
+    // DID THE HOST ACTUALLY TAKE IT? `applyCommit` returns the SAME OBJECT when
+    // nothing moved — that is the signal the service itself uses — so identity is
+    // the whole question, and the draft was never entitled to answer it.
+    //
+    // The merge discards a write whose stamp another device already passed: a
+    // delete carrying a `baseUpdatedAt` that is now older than the host row, a
+    // section stamp older than a section written in the meantime. The op used to
+    // report 「已生效」 about the discarded write, list the row under 受影响的, and
+    // the model's next turn was built on a fact that had not happened. Deciding
+    // the receipt from the returned document is the only arrangement in which
+    // 「已生效」 means the medium holds it.
+    // THREE OUTCOMES, NOT TWO, and collapsing two of them is how this lied.
+    // `noop` is 「there was nothing to change」 — a real answer about a real
+    // situation. `declined` is 「the host was asked and did not take it」 — which
+    // happened because another device's stamp outranked ours, and which the model
+    // must hear as ITS OWN failure to land rather than as success.
+    // DID THE DOCUMENT MOVE? Not 「is the returned object the one I built」 — that
+    // question only the real writer can answer, and a test double that re-applies
+    // the commit legitimately produces an equal-but-different object, so asking it
+    // would make every write look declined. The question that is answerable
+    // everywhere is 「is the document the same one it was before I asked」: the
+    // service returns the SAME object when the merge kept its copy, so a write that
+    // another device outranked reads here as `unchanged` — which is the fact.
+    let noop = next.unchanged === true
+    let declined = false
     if (request.dry_run !== true) {
-      if (nextDoc !== doc) doc = await board.commit(boardCommitOf(doc, nextDoc))
-      if (nextItems !== items) items = await board.commitItems(itemsCommitOf(items, nextItems))
+      if (nextDoc !== doc) {
+        const before = doc
+        doc = await board.commit(boardCommitOf(before, nextDoc))
+        if (doc === before) declined = true
+      }
+      if (nextItems !== items) {
+        const before = items
+        items = await board.commitItems(itemsCommitOf(before, nextItems))
+        if (items === before) declined = true
+      }
     } else {
       doc = nextDoc
       items = nextItems
     }
-    if (task !== undefined && next.unchanged !== true) changedTasks.push(task)
-    if (item !== undefined) changedItems.push(item)
+    const landed = !noop && !declined
+    if (task !== undefined && landed) changedTasks.push(task)
+    if (item !== undefined && landed) changedItems.push(item)
     raw.push({
       op: step.op,
       ok: true,
       ...(task === undefined ? {} : { title: task.title }),
       ...(item === undefined ? {} : { ref: `#${item.ref}`, title: item.title }),
-      // A transition that moved nothing is a real answer, not a silent one.
-      detail: `${next.unchanged === true ? '这一条已经是这样了，没有改动。' : '已生效。'}${next.note ?? ''}`,
+      detail: `${declined
+        ? '这一条没有改成——另一台设备刚改过它，这次没写进去。'
+        : noop ? '这一条已经是这样了，没有改动。' : '已生效。'}${next.note ?? ''}`,
     })
   }
 

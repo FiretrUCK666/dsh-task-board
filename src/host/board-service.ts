@@ -619,14 +619,33 @@ export class DocumentService {
   }
 
   /**
-   * Relay one user-initiated launch to the engine. With a live engine the
+   * Relay one user-initiated launch to the engine. With a LIVE engine the
    * command broadcasts immediately; otherwise it parks (newest per task) and
    * replays when the next lease is granted.
+   *
+   * `held` ALONE IS NOT ENOUGH, and the two states it conflates are the whole
+   * defect. `held` is true for any unexpired lease object, and a replica that
+   * took the seat and went away — a closed tab, a hibernated machine with a
+   * half-open socket — still holds one. So the command was broadcast to nobody who
+   * can act on it: `host-sync` drops a `command` frame unless THAT replica
+   * believes it is the engine, and every live replica reads the seat as
+   * unheld. Nothing was parked, so `drainPendingCommands` had nothing to replay
+   * and the launch was gone for good — while the caller was told
+   * `queued: false`, which the agent's tool renders as 「已交给引擎执行一次」.
+   *
+   * So the question is not 「is the seat claimed」 but 「can the holder act」, and
+   * that is `streams.get(holder) > 0`. The trade is stated rather than hidden: an
+   * engine whose stream is momentarily down now parks instead of broadcasting, and
+   * the receipt becomes the honest `queued: true` — 「已受理，引擎当前不在线」.
+   * Parking is the recoverable branch, and these two states are
+   * indistinguishable from here, so the recoverable one is the right default.
    */
   submitCommand(command: BoardCommand): { queued: boolean } {
     const now = this.now()
     const state = this.leaseState(now)
-    if (!state.held) {
+    const holder = state.held ? this.lease?.clientId : undefined
+    const holderIsListening = holder !== undefined && (this.streams.get(holder) ?? 0) > 0
+    if (!state.held || !holderIsListening) {
       this.parkCommand(command)
       return { queued: true }
     }

@@ -423,14 +423,57 @@ describe('DocumentService lease', () => {
 
 describe('DocumentService command relay', () => {
   it('broadcasts to a live engine immediately', async () => {
+    // 「A LIVE ENGINE」 HAS TO MEAN A LIVE ENGINE. This case used to acquire the
+    // lease and nothing else, so the holder had ZERO streams — which is the GHOST
+    // state — and it asserted that the command broadcast anyway. That assertion
+    // pinned the defect: a seat is not a listener, and a replica that took the
+    // seat and went away (a closed tab, a hibernated machine) kept every launch
+    // from being delivered to anyone while the caller was told it had been sent.
     const { service } = makeService(new FakeUnit())
     await service.init()
     service.acquireLease('a')
+    service.noteStreamOpen('a')
     const events: BoardEvent[] = []
     service.subscribe(e => events.push(e))
     const { queued } = service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
-    expect(queued).toBe(false)
+    expect(queued, 'a genuinely live engine was told its command was queued').toBe(false)
     expect(events).toEqual([{ type: 'command', command: { type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' } }])
+  })
+
+  it('PARKS for a holder that has gone away, and replays it to the next real engine', async () => {
+    // THE CASE THAT WAS MISSING, and it is the one that lost a launch.
+    //
+    // The seat is granted, then the replica vanishes without closing anything: the
+    // lease object is still unexpired, so `held` is true. Broadcasting here puts
+    // the frame on every open socket, and every one of them drops it — a replica
+    // only acts on a `command` when it believes it is the engine, and they all read
+    // the seat as unheld. So nothing was delivered, nothing was parked, nothing
+    // could be replayed, and the receipt said `queued: false`, which the agent's
+    // tool turns into 「已交给引擎执行一次」. The launch was gone and the model was
+    // told the engine had it.
+    const { service } = makeService(new FakeUnit())
+    await service.init()
+    service.acquireLease('ghost')
+    // …and no stream was ever opened for `ghost`.
+    const ghost: BoardEvent[] = []
+    service.subscribe(e => ghost.push(e))
+    const first = service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
+    expect(first.queued, 'a vanished engine was told the launch was delivered').toBe(true)
+    expect(ghost.filter(e => e.type === 'command'), 'the frame went to nobody who can act on it').toEqual([])
+
+    // A real engine takes the seat — the ghost is gone, either because it let go
+    // or because its lease lapsed, and both are the same fact from here — and the
+    // parked launch replays. That is the whole point of parking being the
+    // recoverable branch. The listener attaches BEFORE the grant because the drain
+    // happens inside it: a subscriber arriving afterwards has missed the replay,
+    // which is a fact about WHEN the frame goes out, not about whether it did.
+    const seen: BoardEvent[] = []
+    service.subscribe(e => seen.push(e))
+    service.releaseLease('ghost')
+    service.acquireLease('real')
+    service.noteStreamOpen('real')
+    expect(seen.filter(e => e.type === 'command'),
+      'the parked launch was never delivered to the engine that actually appeared').toHaveLength(1)
   })
 
   it('the lease and command frames name NO document — a seat belongs to the unit', async () => {
@@ -443,6 +486,7 @@ describe('DocumentService command relay', () => {
     const seen: BoardEvent[] = []
     service.subscribe(e => seen.push(e))
     service.acquireLease('a', 20_000)
+    service.noteStreamOpen('a')
     service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
     service.releaseLease('a')
     expect(seen.map(frame => frame.type)).toEqual(['lease', 'command', 'lease'])
