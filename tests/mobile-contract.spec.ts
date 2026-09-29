@@ -870,7 +870,7 @@ describe('button geometry (one base for every variant)', () => {
     // churn behind conflicting reports. One declaration survives.
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(compact.match(/\.columnHeader\s*\{/g) ?? []).toHaveLength(1)
-    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 20px/)
+    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 21px/)
   })
 
   it('the button radius token IS the pill (true round at every height)', () => {
@@ -1233,13 +1233,26 @@ describe('template library wiring', () => {
     expect(ruleIn(compact, '.boardRowTools .boardModes')).toMatch(/justify-self:\s*start/)
     // The board meets the shell edge-to-edge: separation is a hairline, not
     // air (padding alone never reads as separation against the shell head).
-    // Padding rides the dock-bleed tokens (same values, single source).
-    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*14px var\(--dsh-tb-dock-x\)/)
+    // Padding rides the dock-bleed tokens for the SIDES, and the top is a
+    // literal so it can equal them. The two bands used to disagree about which
+    // was larger: wide was 14 top against 16 sides, compact 14 top against 12
+    // sides — so the SAME relationship had the OPPOSITE sign in the two bands,
+    // and nothing in the suite compared them. The compact top is now 12, which
+    // makes the narrow board square (12/12) and leaves the wide band's 14/16
+    // exactly as it was; a phone and a desktop no longer disagree about what
+    // 「the edge is wider than the top」 means.
+    //
+    // The top literal changed, NOT `--dsh-tb-dock-x`: the thumb bar spends that
+    // same token on its negative margins, so moving the token would have moved
+    // the dock too. The gate below pins the relationship, not the numbers.
+    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*12px var\(--dsh-tb-dock-x\)/)
     expect(ruleIn(compact, '.board')).toMatch(/border-top:\s*var\(--dsh-tb-separator\)/)
     // Column heads own their separation explicitly (12px vertical on narrow
     // glass; the cards' 6px top pad belongs to the drop indicator, never to
-    // rhythm). Sides stay 20px (the cards' content line).
-    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 20px/)
+    // rhythm). The sides are 21px, which is the cards' content line: 8 inset +
+    // 1 hairline + 12 padding. The 20 that used to be here dropped the hairline,
+    // so the column name measured 1px left of every card title under it.
+    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 21px/)
   })
 
   it('the narrow rail keeps ONE rhythm (a single gap owns between)', () => {

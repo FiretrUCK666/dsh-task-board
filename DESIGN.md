@@ -635,11 +635,15 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 #### 容器档位：基准 + 两级台阶，全表零个 `max-width`
 
 参照是**它自己的盒子**（`itemRoot` 声明 `container-type: inline-size; container-name: dsh-tb-item`）。
-**基准就是手机档**，720 与 1080 各一级 `min-width` 台阶。于是「这条规则落在哪一档」由**它写在哪个
+**基准就是手机档**，720 与 1081 各一级 `min-width` 台阶。于是「这条规则落在哪一档」由**它写在哪个
 块里**决定，两条规则不可能同时命中；「基准 + max-width」那种写法会把「窄的那条输了吗」变成一道要
 读特异性才能答的题。**本表没有一个 `@media(max-width)`，也不许加。**
 
-| | 基准（`itemRoot`，无查询） | `@container dsh-tb-item (min-width: 720px)` | `@container dsh-tb-item (min-width: 1080px)` |
+**为什么是 1081 而不是 1080**：JS 侧的档读 `width <= 1080` 为窄，所以 CSS 的宽档必须是
+`min-width: 1081` —— 差一像素，两边就会在同一条界线上给出**两个答案**（CSS 说宽、JS 说窄），
+而**档位是由两处一起定义的**。这两处每改一处，另一处必须跟着改，这就是同一个数写在两处的代价。
+
+| | 基准（`itemRoot`，无查询） | `@container dsh-tb-item (min-width: 720px)` | `@container dsh-tb-item (min-width: 1081px)` |
 | --- | --- | --- | --- |
 | `--item-inset` | **12px** | **20px** | **24px** |
 | 页头网格 | `'title actions' / 'search' / 'rail' / 'capture'` | `'title search actions' / 'rail' / 'capture'` | 同 720 |
@@ -652,14 +656,15 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 | 详情 | 就地展开在行里 | 就地展开在行里 | 侧栏 |
 
 **`.itemRoot` 永远没有自己的横向内距、边框或外边距。** 它的横向盒子与 `[data-dsh-taskboard-view]`
-逐像素相等——这就是 JS 侧的档（`useSurfaceNarrow('[data-dsh-taskboard-view]', 1080)`）与 CSS 侧的档
-能共用同一条 1080 线的原因。一旦根层长出内距，两个盒子就在同一条界线上给出两个答案，而**档位是
-结构决定的，不是「量的是哪个盒子」决定的**。
+逐像素相等——这就是 JS 侧的档（`useSurfaceNarrow('[data-dsh-taskboard-view]', 1080)`，即
+`width <= 1080` 为窄）与 CSS 侧的档（`min-width: 1081` 为宽）**能共用一条界线**的原因：两边量的
+是同一个盒子。一旦根层长出内距，两个盒子就在同一条界线上给出两个答案，而**档位是结构决定的，
+不是「量的是哪个盒子」决定的**。
 
 **容器不能查询自己。** `itemRoot` 就是 `dsh-tb-item` 容器，而容器查询解析的是元素**最近的那个祖先**
 容器——容器不是自己的祖先。所以 `@container dsh-tb-item { .itemRoot { … } }` **永远不命中**：声明
 看着对、解析得过、**什么都不画**。**真实的受害者有四个**：`--item-inset`（写在根上则两档永不生效，
-于是 720 与 1080 都停在 12px）、`--item-meta-date-col` 与 `--item-meta-count-col`（写在根上则窄屏
+于是 720 与 1081 都停在 12px）、`--item-meta-date-col` 与 `--item-meta-count-col`（写在根上则窄屏
 永远是宽屏的轨宽，事实行在 390px 上溢出）、`--item-head-actions-col`（写在根上则页头第三轨的宽度
 不受档位控制）。**因此所有档位覆盖都写在读它的那个后代上**（`.itemHeader` / `.itemWorkbench` /
 `.itemRowMeta` / `.itemRowMain`），令牌本身仍只有 `itemRoot` 一个声明处。板上自己的紧凑档也只写
@@ -682,9 +687,10 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 | `--item-mark-col` | **8px** | 行网格第 1 轨 | 6px 的点加 2px 呼吸 |
 | `--item-ref-col` | **5ch** | 行网格第 2 轨 | 编号已是等宽数字，`ch` 在 12px 上正好一个数字；覆盖 `#` 加四位 |
 | `--item-pick-col` | **28px** | 批量打开时行网格第 1 轨 | 与状态点**共用一格**，互斥出现，所以它不常驻 |
+| `--item-priority-col` | **56px** | 行网格第 3 轨（两档都有） | `!1`–`!4` 的四枚优先级药丸 |
 | `--item-meta-date-col` | **10em** | 事实行第 1 轨 | 装得下最长串（见下） |
-| `--item-meta-count-col` | 8em（基准）/ **9em**（≥720） | 事实行第 2 轨 | 装得下「3/11 步」与「停滞 21 天」两种句子 |
-| `--item-meta-col` | **21em** | ≥720 那一档的行网格第 4 轨 | 事实行整条轨的封顶 = 10em + 9em + 两条 8px 沟 = 244px，向上取整到 252px |
+| `--item-meta-count-col` | **5em**（两档同值，≥720 不改） | 事实行第 2 轨 | 装得下「3/11 步」与「停滞 21 天」两种句子；这一轨放的是**比例**，8em 曾为约 24px 的字声明 96px |
+| `--item-meta-col` | **16em** | ≥720 那一档的行网格第 4 轨 | 事实行整条轨的封顶 = 日期 10em + 计数 5em + 沟 |
 | `--item-actions-col` | **76px** | 行尾动作 | 问 AI 44px + 沟 8px + ⋯ 24px = 76px（68px 装不下，⋯ 被顶出行外） |
 | `--item-row-pad` / `--item-row-gap` | 12/10（宽松）· 6/6（紧凑） | 行的上下内距 / 行内沟 | 密度是用户设置，所以是令牌不是写死的数 |
 
@@ -744,7 +750,7 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 | 轨上的数 | `.itemPageTabCount` | 11 | 400 | **跟页签同色** | tabular |
 | **组头（按字段标签画）** | `.itemGroupToggle` | 12 | 600 | `text-2` | `+0.02em` |
 | 议程日标签 / 托盘标签 | `.itemAgendaDayLabel` / `.itemNoDateTrayLabel` / `.itemGatedFoldHead` | 12 | 600 | `text-2` | `+0.02em` |
-| 小节标题 | `.itemSectionTitle` | 12 | 600 | `text-3` | `+0.02em` |
+| 小节标题 | `.itemSectionTitle` | 11 | 400 | `text-3` | `+0.02em` |
 | **行标题（主角）** | `.itemTitleText` | 14 | 500 | `text-1` | — |
 | **概览磁贴的数** | `.itemTileValue` | 14 | 600 | `text-1`（逾期那块 `danger`） | tabular |
 | 事实行 | `.itemDue` / `.itemStartsAfter` | 12 | 400 | `text-3` | — |
@@ -1046,7 +1052,7 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
   overflow-y: auto;
   padding-inline: 12px;                  /* 行离卡的边 12px；组头的发丝线也随之内缩 */
 }
-@container dsh-tb-item (min-width: 1080px) {
+@container dsh-tb-item (min-width: 1081px) {
   .itemWorkbench {
     grid-template-columns: minmax(0, var(--item-list-col)) minmax(0, 1fr);
     grid-template-areas: 'list detail';
@@ -1078,7 +1084,7 @@ stretch`），内容盒 `.itemDetailInner` 接 `align-self: start` + `max-block-
 ```css
 .itemDetailPane { grid-area: detail; display: flex; flex-direction: column;
   align-self: start; min-block-size: 0; min-inline-size: 0; background: none; }
-@container dsh-tb-item (min-width: 1080px) {
+@container dsh-tb-item (min-width: 1081px) {
   .itemDetailPane { align-self: stretch;
     padding-inline-start: var(--item-track-gutter);
     border-inline-start: 1px solid var(--dsh-tb-border); }   /* 全页唯一的竖线，长度 = 轨道高 */
@@ -1096,7 +1102,7 @@ stretch`），内容盒 `.itemDetailInner` 接 `align-self: start` + `max-block-
 它说的不是分隔，是「这里少了什么」**——所以空态也给一句话，而不是留一条线。
 
 **详情的容器名从 `.itemDetailPane` 移到 `.itemDetailInner`**：字段网格该问的是**装着它的那一层**，
-而轨道的左半是 24px 的沟与 1px 的线。1080 那一档详情轨 426px，内容盒 402px，字段网格再减去
+而轨道的左半是 24px 的沟与 1px 的线。1081 那一档详情轨 426px，内容盒 402px，字段网格再减去
 12px 内衬是 390px（两列 = 191px，放得下日期字段与它的日历钮）；1600 的台面上内容盒 808px，两列
 正好。**同一个网格在两个相差 418px 的盒子里，不能只从表面拿一个答案**——这就是两处都声明同一个
 容器名的理由。阈值 `@container dsh-tb-item-detail (min-width: 360px)` 不动。
@@ -1298,7 +1304,7 @@ of the app's base」，而 `.board` 与 `.column` 都吃 `--dsh-tb-bg`。清单�
 **两档只能靠换行 / 换列 / 让位 / 短名 / 折叠 / 提高地板表达，禁止藏掉标签、藏掉控件、缩小字号。**
 下面逐个控件给结论，**没有一条答案是「窄屏藏掉」**。
 
-| 控件 / 处 | 基准档（手机） | ≥720 / ≥1080 | 表达的机制 |
+| 控件 / 处 | 基准档（手机） | ≥720 / ≥1081 | 表达的机制 |
 | --- | --- | --- | --- |
 | 标题 + 计数 | 一行，`column-gap: 12px` | 同一行 | 无变化 |
 | 搜索框 | **整行 `inline-size: 100%`，无封顶** | 定值轨 `minmax(18rem, 22rem)`，三页逐像素同宽同位 | 换列 |
@@ -1517,7 +1523,7 @@ of the app's base」，而 `.board` 与 `.column` 都吃 `--dsh-tb-bg`。清单�
 - **Do** 把形状语言交给那**一条**根规则（`corner-shape` 声明处）：新增圆点或胶囊时只写
   半径，形状会自动覆盖到——不需要、也不允许逐处补 `corner-shape`。
 - **Do** 用**表面自身宽度**做响应式参照：`@container dsh-tb`（680px）、`@container dsh-tb-panel`
-  （600px）、`@container dsh-tb-item`（清单工作台：`< 720` 单列就地、`>= 1080` 双栏）。它在侧栏
+  （600px）、`@container dsh-tb-item`（清单工作台：`< 720` 单列就地、`>= 1081` 双栏）。它在侧栏
   开合、分屏、手机上都是对的。
 - **Do** 让容器装不下时**让位**：换行、换列、具名区域改排、短名 + `aria-label`、折叠、
   提高地板。窄屏与桌面是同一等公民。

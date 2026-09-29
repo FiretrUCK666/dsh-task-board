@@ -109,10 +109,14 @@ describe('the column header and the cards under it share ONE text edge', () => {
   expect(header, 'the dot is absolute but the header is not positioned, so it escapes to the board')
     .toMatch(/position:\s*relative/)
   expect(dot, 'the dot must be centred against the header height, not the top edge').toMatch(/inset-block-start:\s*50%/)
-  // And the box the title starts in must still be the cards' box.
+  // And the box the title starts in must still be the cards' box. The cards are
+  // 8px inset + a 1px HAIRLINE + 12px card padding = 21, and the hairline is the
+  // part that is easy to leave out — at 20 the column name measured 37 against the
+  // card title's 38, so the 13px notch became a 1px one and the column still
+  // showed two edges where it should show one.
   expect(header.match(/padding:\s*([\d.]+px\s+[\d.]+px)/)?.[1]?.trim().split(/\s+/)[1],
-    'the header content box no longer matches the cards inset (8) plus card padding (12)')
-    .toBe('20px')
+    'the header content box no longer matches the cards inset (8) plus hairline (1) plus card padding (12)')
+    .toBe('21px')
   })
 
   it('a chip on a card is an object, not a run-on word in a sentence', () => {

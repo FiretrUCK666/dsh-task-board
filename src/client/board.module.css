@@ -1248,7 +1248,7 @@
      the same thing in the same place. */
   gap: 0;
   position: relative;
-  padding: 10px 20px;
+  padding: 10px 21px;
   flex: none;
 }
 
@@ -6790,7 +6790,7 @@ span.interactionOptions {
        live here once, never re-typed beside the bar. */
     --dsh-tb-dock-x: 12px;
     --dsh-tb-dock-b: 12px;
-    padding: 14px var(--dsh-tb-dock-x) calc(var(--dsh-tb-dock-b) + env(safe-area-inset-bottom));
+    padding: 12px var(--dsh-tb-dock-x) calc(var(--dsh-tb-dock-b) + env(safe-area-inset-bottom));
     /* 10, and it STAYS 10 — this is the BETWEEN-group gap, and it is the number
        the within-group gap has to be smaller than. See `.boardHeader` below:
        a phone used to have 10 between every pair of rows, including the two
@@ -6964,7 +6964,7 @@ span.interactionOptions {
      the head/content separation: the cards' 6px top pad belongs to the drop
      indicator, never spend it as rhythm. */
   .columnHeader {
-    padding: 12px 20px;
+    padding: 12px 21px;
   }
 
   /* The compact column navigator: FIVE EQUAL cells, one tap jumps that status
