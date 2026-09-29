@@ -165,6 +165,52 @@ describe('the column header and the cards under it share ONE text edge', () => {
       .toMatch(/position:\s*relative/)
   })
 
+  it('both READMEs name the surface the way the surface names itself', () => {
+    // CAUGHT BY A REAL BUG: the Chinese README described the overview strip as
+    // 「待办、逾期、今天、本周」 and the English one mirrored it. Neither `今天`
+    // nor `本周` is a tile — `item-view` computes both and RENDERS NEITHER — and
+    // three tiles that are actually there (进行中 / 受阻 / 已完成) were not
+    // mentioned at all. A reader looks for two numbers that cannot appear and
+    // concludes they misremembered, which costs more than a missing feature.
+    //
+    // The READMEs ship, so this is the one document layer a reader meets first.
+    // A wrong claim there is worse than a missing one, because it is acted on.
+    //
+    // The rule is deliberately NARROW: the surface's OWN vocabulary, taken from
+    // the locale table, must appear in both. Not "the README mentions the
+    // feature" — it already did, wrongly. **The words the interface uses are the
+    // words the documentation uses**, and a term the locale table does not
+    // define cannot be a thing a reader can go looking for.
+    const locales = readFileSync(fileURLToPath(new URL('../src/client/locales.ts', import.meta.url)), 'utf8')
+    const readmes = {
+      'README.md': readFileSync(fileURLToPath(new URL('../README.md', import.meta.url)), 'utf8'),
+      'README.en.md': readFileSync(fileURLToPath(new URL('../README.en.md', import.meta.url)), 'utf8'),
+    }
+    // One entry per UI noun a reader is told to go and find. Each is the string
+    // the interface actually prints, taken from the locale table.
+    const CLAIMED: ReadonlyArray<{ key: string; zh: string; en: string }> = [
+      { key: 'item.group.inProgress', zh: '进行中', en: 'In progress' },
+      { key: 'item.group.open', zh: '待办', en: 'To do' },
+      { key: 'item.group.blocked', zh: '受阻', en: 'Blocked' },
+      { key: 'item.group.done', zh: '已完成', en: 'Done' },
+      { key: 'item.due.overdueShort', zh: '超期', en: 'Past due' },
+    ]
+    for (const entry of CLAIMED) {
+      expect(locales, `${entry.key} is gone from the locale table, so this list must be re-read`).toContain(`'${entry.key}'`)
+    }
+    // The two READMEs must be able to name the SAME five things. Checking both
+    // sides is the point: a one-sided fix leaves the other reader misled, and
+    // the two files drifted together precisely because nobody compared them.
+    for (const zh of CLAIMED.map(entry => entry.zh)) {
+      expect(readmes['README.md'], `README.md does not name 「${zh}」, so a reader cannot find that part of the interface`)
+        .toContain(zh)
+    }
+    for (const en of CLAIMED.map(entry => entry.en)) {
+      expect(readmes['README.en.md'], `README.en.md does not name "${en}", so an English reader cannot find that part of the interface`)
+        .toContain(en)
+    }
+  })
+
   it('no label that names a destructive button is reachable only by hover', () => {
     // Hard rule 11③: 触屏没有 hover —— a reason that lives only in a `title` is
     // a reason a phone reader never gets. Two of them were exactly that, and both
