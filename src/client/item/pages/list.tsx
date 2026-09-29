@@ -23,6 +23,7 @@
  * would tell a reader their deletions are gone when they may be sitting on disk.
  */
 import { useCallback, useState } from 'react'
+import { Disclosure } from '../../board/ui.tsx'
 import { itemSlicesOf, triageLinesOf, type ItemFlag, type ItemSlice, type ItemStatusView } from '../../../core/item-view.ts'
 import type { ItemRecord } from '../../../core/item.ts'
 import { itemRefOf } from '../../../core/item-view.ts'
@@ -62,6 +63,7 @@ export function ListPage(props: ItemListPageProps) {
 
   const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, includeDone: prefs.showDone })
   const triage = triageLinesOf(items, now)
+  const [triageOpen, setTriageOpen] = useState(false)
 
   const openArchive = useCallback(async () => {
     setArchive({ kind: 'loading' })
@@ -186,7 +188,56 @@ export function ListPage(props: ItemListPageProps) {
       {props.batch}
       {triage.length === 0
         ? <p className={css.itemTriageText}>{t('item.triage.nothing')}</p>
-        : (
+        : props.narrow
+          ? (
+            /* THE NARROW FOLD, and it is the ONLY place this surface collapses anything.
+               Measured on a 390×844 phone: the first group head sat at y=668, so 79%
+               of the screen was spent before a single row — and this block was 173px
+               of that, four lines of summary standing above the rows they summarise.
+
+               折叠 is one of the four moves hard rule 11 allows (换行 / 换列 / 让位 /
+               折叠); hiding the CONTENT would not be, and is not what this does. The
+               header carries the COUNTS, so a folded block still says 「1 项过了想要
+               的日子 · 1 项卡住了」 — a reader is not deprived of the summary, only
+               of the per-line 「去看」 buttons, and one tap brings both back. Nothing
+               is removed, nothing is shrunk, and no control disappears: the fold
+               IS the control.
+
+               The WIDE band keeps every line open. There is room for it there, and a
+               summary that stays folded on a screen with space to show it is a
+               control the reader has to pay for with no reason. */
+            <div aria-label={t('item.triage.title')}>
+            <Disclosure
+              title={t('item.triage.title')}
+              summary={triage.map(line => t(TRIAGE_LABEL[line.id as ItemFlag] ?? 'item.triage.undated', {
+                n: String(line.count),
+                days: String(line.worstDays ?? 0),
+              })).join(' · ')}
+              open={triageOpen}
+              onToggle={() => { setTriageOpen(current => !current) }}
+            >
+              {triage.map(line => (
+                <div key={line.id} className={css.itemTriageRow} data-severity={line.severity}>
+                  <span className={css.itemTriageText}>
+                    {t(TRIAGE_LABEL[line.id as ItemFlag] ?? 'item.triage.undated', {
+                      n: String(line.count),
+                      days: String(line.worstDays ?? 0),
+                    })}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={css.itemTriageAction}
+                    onClick={() => choose({ search: `has:${line.id}` })}
+                  >
+                    {t('item.triage.open')}
+                  </Button>
+                </div>
+              ))}
+            </Disclosure>
+            </div>
+          )
+          : (
           <div className={css.itemTriage} aria-label={t('item.triage.title')}>
             <h3 className={css.itemSectionTitle}>{t('item.triage.title')}</h3>
             {triage.map(line => (
