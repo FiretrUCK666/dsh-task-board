@@ -353,7 +353,7 @@ describe('a row with impossible dates is kept verbatim, not repaired', () => {
     // Still reported as broken on the way out: nothing "healed" it in transit,
     // which is what makes the conflict reproducible instead of a warning the
     // reader saw once and can never see again.
-    expect(itemDateConflict(kept)).toEqual({ field: 'startsAfter', value: T0 + 25, limit: T0 + 20 })
+    expect(itemDateConflict(kept)).toEqual({ field: 'startsAfter', value: T0 + 25, limit: T0 + 20, limitField: 'dueAt' })
   })
 
   it('keeps a row that is merely sparse, and never invents a conflict out of an absent date', () => {
@@ -380,7 +380,7 @@ describe('a row with impossible dates is kept verbatim, not repaired', () => {
     const broken = dated({ dueAt: T0 + 35, hardDueAt: T0 + 30 })
     const seeded = applyItemsCommit(emptyItemsDoc(T0), commitOf({ items: [broken] }), T0 + 1)
     const deleted = applyItemsCommit(seeded, commitOf({ deleted: [{ id: 'i-d', baseUpdatedAt: T0 }] }), T0 + 2)
-    expect(itemDateConflict(deletedItemsOf(deleted)[0]!)).toEqual({ field: 'dueAt', value: T0 + 35, limit: T0 + 30 })
+    expect(itemDateConflict(deletedItemsOf(deleted)[0]!)).toEqual({ field: 'dueAt', value: T0 + 35, limit: T0 + 30, limitField: 'hardDueAt' })
   })
 })
 

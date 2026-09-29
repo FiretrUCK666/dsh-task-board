@@ -192,6 +192,37 @@ describe('the column header and the cards under it share ONE text edge', () => {
       .not.toMatch(/data-tone=\{due\.tone\}\{soft\.text\}/)
   })
 
+  it('a contradiction names the two fields that DISAGREE, not a fixed pair', () => {
+    // MEASURED: `itemDateConflict` reports three possible pairs, and the row's
+    // contradiction sentence named 「最早开始 / 截止」 for all of them. So a row
+    // whose 截止 sat past its 硬期限 read
+    // 「最早开始晚于它该守的截止」 — it named a field that was never in conflict
+    // and pointed at the one that was as though it were the bound.
+    //
+    // `DESIGN.md` requires the sentence to name the two that actually disagree,
+    // and that is only possible if BOTH travel with the conflict. So the gate is
+    // on the conflict carrying both, not on the row: a row-level assertion would
+    // pass as soon as one pair reads right, which is the state this was in.
+    const item = readFileSync(fileURLToPath(new URL('../src/core/item.ts', import.meta.url)), 'utf8')
+    expect(item, 'the conflict reports the offending field but not the one it is bounded by')
+      .toMatch(/readonly limitField: 'startsAfter' \| 'dueAt' \| 'hardDueAt'/)
+    // All THREE pairs must carry it — a `limitField` on only one of them is the
+    // same defect one row narrower.
+    for (const [of, by] of [['startsAfter', 'dueAt'], ['dueAt', 'hardDueAt'], ['startsAfter', 'hardDueAt']] as const) {
+      const conflict = new RegExp(`field: '${of}'[^}]*limitField: '${by}'`).test(item)
+      expect(conflict, `the ${of} > ${by} conflict does not say which field the bound belongs to`)
+        .toBe(true)
+    }
+    // And the row must read both names OFF the conflict, never restate a pair.
+    const row = readFileSync(fileURLToPath(new URL('../src/client/item/row-line.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(row, 'the contradiction sentence still names a fixed pair')
+      .not.toMatch(/a: t\('item\.field\.startsAfter'\)/)
+    expect(row, 'the contradiction sentence does not read its two names off the conflict')
+      .toMatch(/a: t\(DATE_FIELD_KEY\[posture\.conflict\.field\]\)/)
+    expect(row).toMatch(/b: t\(DATE_FIELD_KEY\[posture\.conflict\.limitField\]\)/)
+  })
+
   it('a page with NO batch bar can never draw a pickbox', () => {
     // PRODUCT.md says the inbox and the agenda have no multi-select at all, and
     // per AGENTS.md PRODUCT wins: the code is what changes. It did not.

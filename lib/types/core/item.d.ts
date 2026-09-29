@@ -236,6 +236,16 @@ export interface ItemDateConflict {
     readonly value: number;
     /** The date it may not exceed. */
     readonly limit: number;
+    /**
+     * WHICH FIELD the limit is. A conflict is a PAIR, and a sentence that names one
+     * of the two fields cannot be assembled from half of it: the surface used to
+     * hard-code 「最早开始 … 截止」 for all three possible pairs, so a row whose
+     * 截止 sat past its 硬期限 read 「最早开始晚于它该守的截止」 — naming a field
+     * that was never in conflict and pointing at the one that was as if it were the
+     * bound. `DESIGN.md` requires the sentence to name the two fields that actually
+     * disagree, and that is only possible if both are carried.
+     */
+    readonly limitField: 'startsAfter' | 'dueAt' | 'hardDueAt';
 }
 /**
  * The three dates, checked against each other.

@@ -78,11 +78,19 @@ function dueLine(view: ItemRowView, english: boolean): { tone: DueTone; text: st
       // Said, never repaired and never hidden: a row whose three dates disagree
       // is the one row the reader most needs to see, and a schedule that
       // swallowed it would be the quietest possible way to lose their words.
+      //
+      // AND THE TWO NAMES ARE THE ONES THAT DISAGREE. They used to be
+      // hard-coded 「最早开始 / 截止」 for all three possible pairs, so a row whose
+      // 截止 sat past its 硬期限 read 「最早开始晚于它该守的截止」: it named a
+      // field that was never in conflict and pointed at the one that was as
+      // though it were the bound. `DESIGN.md` requires the sentence to name the
+      // two that actually disagree, which is only possible if both travel with
+      // the conflict — so they are read off the conflict, not off this file.
       return {
         tone: 'over',
         text: t('item.dates.contradict', {
-          a: t('item.field.startsAfter'),
-          b: t('item.field.dueAt'),
+          a: t(DATE_FIELD_KEY[posture.conflict.field]),
+          b: t(DATE_FIELD_KEY[posture.conflict.limitField]),
         }),
       }
     case 'gated':
@@ -90,6 +98,19 @@ function dueLine(view: ItemRowView, english: boolean): { tone: DueTone; text: st
       return undefined
   }
 }
+
+/**
+ * The three date FIELDS, and the one sentence each is named by.
+ *
+ * A map, because the three cases must not each restate a name: a `switch` over
+ * the field would be a second list of the same three, and a fourth date field
+ * would have to be added in two places. Naming a field is one lookup.
+ */
+const DATE_FIELD_KEY = {
+  startsAfter: 'item.field.startsAfter',
+  dueAt: 'item.field.dueAt',
+  hardDueAt: 'item.field.hardDueAt',
+} as const satisfies Record<'startsAfter' | 'dueAt' | 'hardDueAt', string>
 
 /**
  * The SOFT date's own reading, when the combined reading is a HARD one.
