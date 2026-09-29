@@ -142,6 +142,32 @@ function PickerGroup({ group, open, onToggle, picked, onToggleSession }: {
   picked: ReadonlySet<string>
   onToggleSession: (sessionId: string) => void
 }) {
+  // ONE TAB STOP PER GROUP, not per session. Every row was a plain tabbable
+  // button, so reaching 取消/添加 meant one Tab for EVERY session — and the
+  // 未分组 group routinely holds hundreds. A keyboard reader could not get out of
+  // the list, and the arrow keys did nothing because no row handled them.
+  //
+  // The roving tabindex is the board's OWN pattern — `InteractionCard`'s option
+  // group already ships it (a radiogroup is a group with one stop) — so this is a
+  // second surface adopting the first, not a new mechanism. And the arrows MOVE
+  // without toggling, for the reason that one already states: a cursor that
+  // commits is a cursor that edits, and picking sessions is a multi-select where
+  // an accidental toggle is a change the reader then has to notice and undo.
+  const rows = group.sessions
+  const firstPicked = rows.findIndex(row => picked.has(row.sessionId))
+  const stopIndex = firstPicked >= 0 ? firstPicked : 0
+  const onKeyDown = (event: React.KeyboardEvent<HTMLUListElement>): void => {
+    if (rows.length === 0) return
+    const current = Number((event.target as HTMLElement).dataset.index ?? '0')
+    let next: number | undefined
+    if (event.key === 'ArrowDown') next = (current + 1) % rows.length
+    else if (event.key === 'ArrowUp') next = (current - 1 + rows.length) % rows.length
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = rows.length - 1
+    if (next === undefined) return
+    event.preventDefault()
+    event.currentTarget.querySelector<HTMLButtonElement>(`[data-index="${next}"]`)?.focus()
+  }
   return (
     <Disclosure
       title={group.label}
@@ -149,8 +175,8 @@ function PickerGroup({ group, open, onToggle, picked, onToggleSession }: {
       open={open}
       onToggle={onToggle}
     >
-      <ul className={css.addSessionList}>
-        {group.sessions.map(session => {
+      <ul className={css.addSessionList} onKeyDown={onKeyDown}>
+        {group.sessions.map((session, index) => {
           const on = picked.has(session.sessionId)
           return (
             <li key={session.sessionId}>
@@ -158,6 +184,12 @@ function PickerGroup({ group, open, onToggle, picked, onToggleSession }: {
                 type="button"
                 className={css.addSessionRow}
                 data-selected={on ? '' : undefined}
+                data-index={index}
+                // Roving: the group's ONE stop sits on the first picked row when
+                // there is one, else on the first row. Everything else is reached
+                // with the arrows, which is what makes the group navigable rather
+                // than merely reachable.
+                tabIndex={index === stopIndex ? 0 : -1}
                 aria-pressed={on}
                 onClick={() => { onToggleSession(session.sessionId) }}
               >

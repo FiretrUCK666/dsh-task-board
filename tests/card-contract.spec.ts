@@ -165,6 +165,29 @@ describe('the column header and the cards under it share ONE text edge', () => {
       .toMatch(/position:\s*relative/)
   })
 
+  it('a long list is ONE tab stop, not one per row', () => {
+    // The session picker made every row a plain tabbable button, so reaching
+    // 取消/添加 meant one Tab for EVERY session — and the 未分组 group routinely
+    // holds hundreds. A keyboard reader could not get out of the list.
+    //
+    // The roving tabindex is the board's OWN pattern (InteractionCard's option
+    // group already ships it), so this asserts the second surface adopting the
+    // first. The gate is on the SHAPE — exactly one row carrying tabIndex 0 — not
+    // on a count, because 「one stop」 is the property and a count would go stale
+    // the moment a row renders conditionally.
+    const src = readFileSync(fileURLToPath(new URL('../src/client/board/SessionPickerDialog.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(src, 'the rows carry no roving tabindex, so every session is its own tab stop').toMatch(/tabIndex=\{index === stopIndex \? 0 : -1\}/)
+    // The stop must land on something: the first PICKED row, else the first row.
+    // Landing on row 0 always would throw away the reader's place on reopen.
+    expect(src, 'the group has no picked-aware stop, so reopening always lands on the first session').toMatch(/stopIndex = firstPicked >= 0 \? firstPicked : 0/)
+    // And the arrows must MOVE without toggling — a cursor that commits is a
+    // cursor that edits, and this is a multi-select.
+    const handler = src.slice(src.indexOf('onKeyDown'), src.indexOf('onKeyDown') + 900)
+    expect(handler, 'the arrow handler toggles as it moves, so browsing changes the answer')
+      .not.toMatch(/onToggleSession\(/)
+  })
+
   it('every field pair on every surface is ONE grammar, not four', () => {
     // MEASURED: the same concept — a label over a control in the run-config
     // block — was written four times, and the four disagreed on BOTH axes.
