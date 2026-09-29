@@ -54,7 +54,7 @@ import { itemTitleOf } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { itemsAsk } from '../board-ask.ts'
 import { itemsRestore } from '../items-archive.ts'
-import { Button } from '../board/ui.tsx'
+import { Button, Icon } from '../board/ui.tsx'
 import { useSurfaceNarrow } from '../board/use-narrow.ts'
 import { ItemComposer } from './composer.tsx'
 import { ItemDetail } from './detail-pane.tsx'
@@ -630,7 +630,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
       <div className={css.itemRoot}>
-        <header className={css.itemHeader}>
+        <div className={css.itemWorkbench} ref={surfaceRef}>
+          {/* THE LIST COLUMN: the header, the status lines and the list card are
+              ONE column, because the header acts on the list. Measured on a 1440
+              board: the header ran x=0..1440 while the card ran x=24..744, so the
+              search box — which filters the ROWS — sat at x≈1010..1360, on top of
+              the DETAIL pane. The header's own rule already says it: 「每个功能都要
+              挨着它改变的东西」. A control 700px from the thing it changes is a
+              control the reader has to reason about rather than use. */}
+          <div className={css.itemListColumn}>
+<header className={css.itemHeader}>
           <div className={css.itemHeaderRow}>
             <h1 className={css.itemHeadTitle}>{t('itemTab.title')}</h1>
             <p className={css.itemCount}>
@@ -751,8 +760,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
           : replica.isSynced() === false && <p className={css.itemState} role="status">{t('item.syncing')}</p>}
         {asked !== undefined && <p className={css.itemState} role="status" data-ask-receipt="">{asked}</p>}
 
-        <div className={css.itemWorkbench} ref={surfaceRef}>
-          {/* THE LIST CARD, and the scroll body inside it. Two boxes, because
+                  {/* THE LIST CARD, and the scroll body inside it. Two boxes, because
               one box cannot be the page's frame and its scroller at the same
               time: as the scroller it had no frame, and as the frame it could
               not scroll. The card is the grid item that draws; the scroller is
@@ -787,6 +795,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
               {body}
             </div>
           </div>
+          </div>
           {showDetailPane && (
             <div className={css.itemDetailPane}>
               {/* The pane is titled by the ROW ON SHOW, never by one of the five
@@ -807,6 +816,28 @@ export function ItemListPanel(props: ItemListPanelProps) {
                     <span className={css.itemRef}>{itemRefOf(picked).text ?? '—'}</span>
                     {' '}
                     {itemTitleOf(picked)}
+                    {/* THE WAY OUT, ON THE BAND THAT HAS NO OTHER ONE.
+                        The narrow band opens the row in place and the row toggles
+                        itself closed, so it never needed a control. The wide band
+                        opens a SEPARATE pane, and it had none at all: `setSelected
+                        (undefined)` existed at exactly one place in this file — the
+                        delete path — so above 1080px a reader could open a row and
+                        not leave it except by deleting the row they were reading.
+
+                        A pane you cannot close is not a pane, it is a trap, and the
+                        reader's way out has to be a control rather than a fact
+                        about the layout. It is the LAST thing in a flex row, so it
+                        takes the head's free space instead of pushing the title
+                        anywhere. */}
+                    <button
+                      type="button"
+                      className={`${css.iconButton} ${css.itemDetailClose}`}
+                      aria-label={t('item.detail.close')}
+                      title={t('item.detail.close')}
+                      onClick={() => { setSelected(undefined) }}
+                    >
+                      <Icon name="close" />
+                    </button>
                   </h2>
                 )}
               <div className={css.itemDetailInner}>

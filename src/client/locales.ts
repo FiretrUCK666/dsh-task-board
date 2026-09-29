@@ -798,6 +798,7 @@ export const zh = {
 
   // 详情侧栏在「还没选中任何一条」时的内容。
   'item.detail.emptyTitle': '还没选中任何一条',
+  'item.detail.close': '关掉这一栏',
   'item.detail.emptyHint': '点左边任意一行，它的全部字段都在这里。',
   'item.detail.emptyCounts': '一共这些',
   'item.detail.emptyRecent': '最近动过',
@@ -1625,6 +1626,7 @@ export const en: Record<keyof typeof zh, string> = {
 
   // What the detail pane holds before any row is picked.
   'item.detail.emptyTitle': 'Nothing picked yet',
+  'item.detail.close': 'Close this pane',
   'item.detail.emptyHint': 'Pick any row and all of its fields are here.',
   'item.detail.emptyCounts': 'All of it',
   'item.detail.emptyRecent': 'Recently touched',

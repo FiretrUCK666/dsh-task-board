@@ -3254,3 +3254,34 @@ textarea.itemInput {
     inset-inline: -3px;
   }
 }
+
+/* The pane's way out. It is the LAST flex child of a head that already carries
+   trailing free space, so it takes that space and never pushes the title. `margin-
+   inline-start: auto` is what makes it sit at the END regardless of how long the
+   title is — the same reason the run button uses it. */
+.itemDetailClose {
+  margin-inline-start: auto;
+  flex: none;
+}
+/* THE LIST COLUMN, and the reason it exists.
+   The header, the status lines and the list card are ONE grid item, because the
+   header acts on the list. They were three siblings of the workbench instead, so
+   the header was laid out across the WHOLE panel while the card was laid out
+   across the list half — measured on a 1440 board: header x=0..1440, card
+   x=24..744, and the search box at x≈1010..1360, sitting on top of the detail
+   pane it does not filter.
+
+   The surface's own rule already said the answer: 「每个功能都要挨着它改变的东西」.
+   A filter 700px from the rows it filters is a filter the reader has to reason
+   about rather than use.
+
+   On the narrow band there is no second column, so this is the full width and
+   nothing moves — which is why the fix is a wrapper rather than a width. */
+.itemListColumn {
+  grid-area: list;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
