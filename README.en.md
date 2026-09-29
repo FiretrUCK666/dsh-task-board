@@ -12,7 +12,7 @@ The plugin does not modify DSH source, and removing it restores the interface. B
 
 The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 
-## 目录
+## Contents
 
 <!-- toc:start -->
 
@@ -158,7 +158,7 @@ Restart `dsh web` afterwards.
   | --- | --- | --- |
   | **Inbox** | Just written down, given no structure yet. Give one a priority, a date, a tag or a card and it leaves this page by itself. | how many |
   | **List** | Everything unfinished, grouped by state; each group header carries that group's own count and step total. | how many |
-  | **Schedule** | The part that has a time, laid out by day. Anything whose earliest-start has not arrived is **not scheduled in** — it sits in a "not startable yet" fold that says why. | how many |
+  | **Agenda** | The part that has a time, laid out by day. Anything whose earliest-start has not arrived is **not scheduled in** — it sits in a "not startable yet" fold that says why. | how many |
 
   **All three pages stay on the rail, and an empty one shows 0** — "asked, and the answer is
   zero" and "this question does not exist" are two different things. Tag, stale, archive and
@@ -282,8 +282,8 @@ click it again to return to the conversation. With the sidebar collapsed to an i
 side by side.
 
 If the row is **not there at all**: the page is probably still serving an older bundle, so refresh;
-if that does not help, check whether the plugin page's "Task List" switch is off (see the four
-switches above). Turning the list off does not affect the board.
+if that does not help, check whether **Task List** is off on the plugin's own page — the plugin page
+lists this plugin's rows, and turning that one off does not affect the board.
 
 **The list disappeared when I opened the board panel.** That is not a fault; the main stage shows
 **one panel at a time** by design — they were never two things that fit on one screen. Click the list
@@ -309,8 +309,6 @@ row in the sidebar to go back to it, or "back to conversation" to leave either p
 The plugin id and the package name are different things. The id names the loader row, the served browser asset, the routes, the storage unit and the extension points above; the package name is only what pnpm installed. A scoped package name never moves the id.
 
 The plugin has no settings of its own, so there is no settings route and no settings page: the switch in the plugin marketplace writes `disabled` on the profile row, and the plugin declares no setting fields.
-
-This plugin has no settings, so it has no settings panel either: the switch in the plugin manager writes the profile row's `disabled` (and only when you turn it off), and the plugin itself declares no setting fields.
 
 ## License
 
