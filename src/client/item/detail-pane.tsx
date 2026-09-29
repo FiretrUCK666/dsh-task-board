@@ -57,9 +57,7 @@ export interface ItemDetailProps {
   readonly item: ItemRecord | undefined
   /** The board cards a row may hang off, already titled. */
   readonly cards: readonly { readonly id: string; readonly title: string }[]
-  /** The per-group counts, for the pane's "before you pick" state. */
-  readonly counts: readonly { readonly label: string; readonly value: number }[]
-  /** The most recently touched rows, for the same state. `id` travels WITH the
+  /** The most recently touched rows, for the "before you pick" state. `id` travels WITH the
    *  row: the short number is a name to read, never an address, and picking a
    *  row by its label is how a list ends up selecting the wrong one. */
   readonly recent: readonly { readonly id: string; readonly ref: string; readonly title: string }[]
@@ -91,24 +89,19 @@ export function ItemDetail(props: ItemDetailProps) {
             `0` does not get a second sentence under it. What the body adds is
             the one thing the head cannot say: what to DO about it. */}
         <p className={css.itemHint}>{t('item.detail.emptyHint')}</p>
-        <h4 className={css.itemEmptyRecentHead}>{t('item.detail.emptyCounts')}</h4>
-        {/* EVERY BUCKET, NAMED, ALWAYS FOUR — including the finished one, and
-            whatever the finished switch is doing. These are four words and four
-            numbers with nothing around them: the old version framed each one in
-            its own filled cell, and four framed cells in a column that has no
-            other job is a second, smaller dashboard competing with the overview
-            strip for the same answer. Plain rows say the same thing and cost
-            nothing. The set does not move with the switch — a tally that answered
-            to a control the reader cannot see is a tally that changes on its
-            own. */}
-        <dl className={css.itemEmptyTally}>
-          {props.counts.map(count => (
-            <div key={count.label} className={css.itemEmptyTallyRow}>
-              <dt className={css.itemEmptyTallyLabel}>{count.label}</dt>
-              <dd className={css.itemEmptyTallyValue}>{count.value}</dd>
-            </div>
-          ))}
-        </dl>
+        {/* THE COUNTS ARE NOT HERE, and their absence is the design rather than a
+            gap. The pane stands beside the list on the wide band, so the four
+            figures this used to print here were on screen at the same moment as
+            the four the overview strip prints at the top of that list — the same
+            words, the same numbers, a hand's width apart. The design record settled
+            it long ago: 「同一个数不许在两处各算一次」and 「四个数不在这里」.
+
+            What the pane is for is the fields of ONE row. With nothing selected it
+            has no fields, so its job is to be ready and to point at something: one
+            sentence saying what to do, and the rows that were touched last, which
+            are the shortest possible route back to work. A column answering a
+            second question with a second copy of the first question's numbers is
+            how a workbench turns into a dashboard. */}
         <h3 className={css.itemEmptyRecentHead}>{t('item.detail.emptyRecent')}</h3>
         <div className={css.itemEmptyRecent}>
           {props.recent.length === 0

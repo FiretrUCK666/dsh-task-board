@@ -25,12 +25,7 @@ export interface ItemDetailProps {
         readonly id: string;
         readonly title: string;
     }[];
-    /** The per-group counts, for the pane's "before you pick" state. */
-    readonly counts: readonly {
-        readonly label: string;
-        readonly value: number;
-    }[];
-    /** The most recently touched rows, for the same state. `id` travels WITH the
+    /** The most recently touched rows, for the "before you pick" state. `id` travels WITH the
      *  row: the short number is a name to read, never an address, and picking a
      *  row by its label is how a list ends up selecting the wrong one. */
     readonly recent: readonly {

@@ -563,10 +563,41 @@ describe('the panel fills the stage it is given', () => {
     // The plates, NAMED. These are the ones the reader actually sees, and each
     // one is named rather than pattern-matched so a rename cannot quietly turn
     // this into a check about nothing.
-    for (const plate of ['itemListCard', 'itemTile', 'itemGroupHead', 'itemAgendaDayLabel']) {
+    //
+    // `itemTile` is NOT on this list any more, and its removal is the point
+    // rather than an omission. It used to be one of five identical bordered and
+    // filled boxes across the top of the page — a plate by every measure — and a
+    // plate has to take the canvas token or it covers the skin. It is now a
+    // figure and a name on one line with no background and no border at all, so
+    // there is nothing to take a token; what it has to satisfy instead is the
+    // OPPOSITE half of this same rule, asserted right below.
+    for (const plate of ['itemListCard', 'itemGroupHead', 'itemAgendaDayLabel']) {
       const layers = backgroundOf(css, plate).filter(value => value.includes('var(--dsh-tb-bg)'))
       expect(layers, `.${plate} does not take the canvas token, so it covers the skin: ${JSON.stringify(backgroundOf(css, plate))}`).not.toEqual([])
     }
+
+    // A readout is not a plate, and the assertion is on the ABSENCE of one. A tile
+    // that grew a background back would put the skin behind five surfaces on the
+    // page's first line — the exact cost the strip was rebuilt to pay down — and a
+    // gate that only ever checked for a token would call that a pass.
+    //
+    // The RESTING rule only, and the selector is checked rather than assumed:
+    // `rulesOf` hands back every rule that targets the class, so `.itemTile:hover`
+    // and `.itemTile[aria-pressed='true']` arrive with it. Those two paint a wash
+    // and they must — a filter that is on has to say so, and with the frame gone a
+    // wash is all that is left. What this forbids is a surface the reader sees when
+    // nothing is happening, which is the one that covers the skin.
+    const restingTile = /(\.itemTile)\s*\{([\s\S]*?)\}/.exec(css)?.[2] ?? ''
+    expect(restingTile, '.itemTile has no resting rule any more, so the strip has no readout shape to check').not.toBe('')
+    const paintedAtRest = (restingTile.match(/background(?:-color)?\s*:\s*([^;]+)/g) ?? [])
+      .filter(declaration => !/:\s*none\s*$/.test(declaration))
+    expect(paintedAtRest, `.itemTile paints a surface at rest, so the strip is five boxes on a line: ${JSON.stringify(paintedAtRest)}`).toEqual([])
+    // `border` but NOT `border-radius`: a radius on a box that has no frame is
+    // how the readout keeps the hover wash from meeting its neighbours at a
+    // corner, and it says nothing about whether there is an edge.
+    const frameAtRest = (restingTile.match(/border(?!-radius)[\w-]*\s*:\s*([^;]+)/g) ?? [])
+      .filter(declaration => !/:\s*(none|0)\b/.test(declaration))
+    expect(frameAtRest, `.itemTile has a frame at rest, so the strip is five boxes on a line: ${JSON.stringify(frameAtRest)}`).toEqual([])
 
     // AND THE OTHER HALF, which the old rule had no room for: the things that
     // float still have to be opaque. Without this the first half passes by
@@ -1684,6 +1715,71 @@ function paintsToken(body: string, token: string): boolean {
   if (!use.test(body)) return false
   return /(?:^|[;{\s])(?:color|background(?:-color)?|border[\w-]*color|outline|accent-color|fill|stroke)\s*:/.test(body)
 }
+
+/**
+ * THE SHEET IS WELL-FORMED, and this is the one check in the file that is not
+ * about a claim the panel makes.
+ *
+ * It exists because of a real edit, made here, that deleted a single comment
+ * terminator from the middle of a comment. CSS has no nested comments, so the
+ * comment that opened 25 lines earlier swallowed everything up to the next
+ * terminator — which took `.itemWorkbench { display: grid }` with it, and with
+ * it the entire two-column workbench. The page still rendered: one column, full
+ * width, every row readable, nothing broken-looking. **A diff does not show it**
+ * (the deleted characters are inside a comment, so the hunk reads as a rewrite of
+ * prose), and the geometry assertions in this file did not catch it either,
+ * because the workbench they measure is the one that stopped being a grid.
+ *
+ * (This paragraph is itself the lesson: the first draft of it spelled the
+ * terminator out as two characters, which closed this comment and took the rest
+ * of the file with it. The check below is not a formality.)
+ *
+ * So the check is on the file, not on the claim: every `/*` in a sheet is closed,
+ * and every `{` is closed. Both are one-line invariants of a text file, both are
+ * silent when broken, and both cost nothing to hold.
+ */
+describe('the stylesheets this panel renders from are well-formed', () => {
+  /**
+   * Walk a sheet the way the PARSER walks it, not by counting.
+   *
+   * Counting openers against terminators is the reading that looks obvious and
+   * is wrong: both sheets legitimately mention a comment opener inside prose
+   * (there are rules on this file that talk about what a comment does), and a
+   * count sees those as an extra opener. That is hard rule 14 from the other
+   * side — a check whose reading is wrong sends the next author to "fix" a
+   * correct sheet — so the scan keeps the open/closed state and only reports a
+   * terminator that never arrives.
+   *
+   * (And the same trap caught the author of this paragraph twice: spelling the
+   * two-character terminator inside this comment closed it, and took the rest of
+   * the file with it. Hence the check is not a formality.)
+   */
+  function commentWalk(source: string): { live: string; unclosedAt: number } {
+    let live = ''
+    let inComment = false
+    let openedAt = -1
+    for (let i = 0; i < source.length; i += 1) {
+      if (!inComment) {
+        if (source.startsWith('/*', i)) { inComment = true; openedAt = i; i += 1; continue }
+        live += source[i]
+      } else if (source.startsWith('*/', i)) { inComment = false; i += 1 }
+    }
+    return { live, unclosedAt: inComment ? openedAt : -1 }
+  }
+
+  for (const sheet of ['src/client/board.module.css', 'src/client/item/item.module.css'] as const) {
+    it(`${sheet} closes every comment and every block`, () => {
+      const source = readFileSync(join(repoRoot, sheet), 'utf8')
+      const { live, unclosedAt } = commentWalk(source)
+      expect(unclosedAt,
+        `${sheet} has an unclosed comment at line ${unclosedAt < 0 ? 0 : source.slice(0, unclosedAt).split('\n').length}: CSS has no nested comments, so the parser is reading the rest of the file as prose and every rule after it is silently gone — the page still renders, just not the page that was written`
+      ).toBe(-1)
+      // Braces are counted in the text the parser actually sees, so a brace
+      // inside prose cannot be mistaken for a block.
+      expect((live.match(/\{/g) ?? []).length, `${sheet} does not balance its blocks`).toBe((live.match(/\}/g) ?? []).length)
+    })
+  }
+})
 
 /**
  * THE RENDER ARTIFACT.

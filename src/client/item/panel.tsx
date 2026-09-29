@@ -34,7 +34,6 @@ import type { ItemRecord } from '../../core/item.ts'
 import {
   EMPTY_ITEM_QUERY,
   ITEM_PAGES,
-  ITEM_STATUS_ORDER,
   itemGroupCountsOf,
   itemMatchContextOf,
   itemMatches,
@@ -43,7 +42,6 @@ import {
   itemRowViewOf,
   parseItemQuery,
   type ItemPageId,
-  type ItemStatusView,
 } from '../../core/item-view.ts'
 /* The write semantics are the model's, not this panel's: the same pure functions
    the agent's tool calls, so a field the model ruled derived cannot be written
@@ -94,21 +92,6 @@ const PAGE_ARIA: Readonly<Record<ItemPageId, 'item.page.inbox.aria' | 'item.page
   inbox: 'item.page.inbox.aria',
   list: 'item.page.list.aria',
   schedule: 'item.page.schedule.aria',
-}
-/**
- * The name of each group, read off the GROUP vocabulary.
- *
- * A row's group is what the reader sees it filed under; the value the row menu
- * writes is a different vocabulary (`item.status.*`) because it is a different
- * act. They read as the same word, and they are —but a header that silently
- * renders nothing because it reached for the wrong one is a header with no
- * name at all, which is exactly what happened once.
- */
-const STATUS_LABEL: Readonly<Record<ItemStatusView, 'item.group.inProgress' | 'item.group.open' | 'item.group.blocked' | 'item.group.done'>> = {
-  inProgress: 'item.group.inProgress',
-  open: 'item.group.open',
-  blocked: 'item.group.blocked',
-  done: 'item.group.done',
 }
 /* The seven orderings' table moved to `filter-bar.tsx` with the control that
    reads it. It is deliberately NOT kept here as a second copy: a closed
@@ -476,7 +459,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
     <ItemDetail
       item={item}
       cards={cards}
-      counts={ITEM_STATUS_ORDER.map(status => ({ label: t(STATUS_LABEL[status]), value: groupCounts[status] }))}
       recent={[...items]
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, 5)

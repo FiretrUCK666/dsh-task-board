@@ -108,6 +108,15 @@
      them. Shrinking a label or a font size to "save space" is banned, and so is
      letting a row compress instead of wrapping. */
   --item-inset: 12px;
+  /* THE FRAME'S OWN WIDTH, and it is named because the page has to line up
+     ACROSS it. The list card draws a hairline and the header beside it does
+     not, so a header inset of `--item-inset` lands the search field exactly
+     ONE pixel left of the rows it filters. A one-pixel disagreement is not
+     visible as a gap, which is why it survived so long: it reads as
+     「好像哪里没对齐」and nothing about it can be measured. The number lives
+     here once, the header spends it, and moving the frame's width moves both
+     sides of the line together. */
+  --item-frame: 1px;
   /* The COMPACT values, because compact IS the default density
      (`DEFAULT_VIEW_PREFS.density`), so a row that somehow arrives without its
      attribute draws the default rather than a third thing nobody chose. The two
@@ -154,8 +163,23 @@
   /* The list's measure. Named once and read by BOTH the workbench grid and the
      capture line, so the field you type a new row into starts and ends on the
      same two lines as the rows it creates. A number written in two places is a
-     number that will be correct in one of them. */
-  --item-list-col: 720px;
+     number that will be correct in one of them.
+
+     960, and the number is the ROW rather than a taste. Every row's fixed
+     tracks add up to 312px — the 8px state dot, the 5ch number, the 56px
+     priority slot, the 192px fact line, and the four 6px gutters between them —
+     and the action cluster takes 82 more. What is left is the title, and a title
+     is the protagonist of its row: at the old 720px cap it was handed 276px,
+     which is nineteen Chinese characters, so nearly every real title truncated
+     and the eye read a column of ellipses. A list whose measure cannot hold its
+     own rows is a list that has to apologise on every line, and the apology is
+     paid by the one element the reader came for.
+
+     The detail track takes what is left, and that is the point of the change
+     rather than a side effect: on a 1440 board the two-column shape gave the
+     list 720px and the detail 672px, so half the screen held a form for one row
+     that was — most of the time — showing nothing at all. */
+  --item-list-col: 960px;
   /* THE FACT LINE, in three numbers, and they answer three different questions.
 
      `--item-meta-col` is the whole line's share of the ROW (>=720 only), and
@@ -259,6 +283,31 @@
      `border-box` travels with it: a fixed measure plus padding under
      content-box is 48px wider than the measure it claims to be, which is the
      same overflow family the board's own root rule is written about. */
+  padding-inline: var(--item-inset);
+}
+
+/* THE HEADER CARRIES A TRANSPARENT FRAME, and that is what makes one left edge
+   out of four.
+
+   Everything the reader can be looking at on this surface — the title, the
+   search field, the page rail, the capture box, the numbers, the filter row, the
+   triage sentences, the group heads, and every row's number and title — is
+   supposed to start at ONE x. Measured before this, that x was four different
+   values: 48 for the header, 49 for the card's content, 51 for a triage
+   sentence carrying two pixels of its own, and 63 for a row's number. None of
+   them was wrong on its own and no screenshot could name the culprit, so the
+   page read as 「stuff is roughly lined up」, which is worse than being
+   obviously broken — a reader stops believing the alignment at all.
+
+   The card's inset is measured from inside its own 1px frame, so a header that
+   is not framed has to add that pixel back by arithmetic, and arithmetic against
+   another rule's border width is exactly the kind of number that drifts the
+   next time somebody thickens the frame. A transparent border is the same pixel
+   declared in the same idiom, INSIDE this box: nothing paints, and both boxes
+   now measure their contents from the same kind of edge. The rule is one
+   declaration with no number in it that is not already a token. */
+.itemHeader {
+  border-inline: var(--item-frame) solid transparent;
   padding-inline: var(--item-inset);
 }
 
@@ -675,6 +724,15 @@
   box-sizing: border-box;
   min-block-size: 0;
   min-inline-size: 0;
+  /* THE CARD OWNS THE AIR INSIDE IT. The inset used to live on `.itemScroll`,
+     one level down, which put the rows 24px inside a box they are supposed to
+     belong to: the frame's left edge and the content's left edge were 25px
+     apart, so a row read as floating in the frame rather than as sitting on the
+     page. A box that draws a frame is the one place the distance between that
+     frame and its contents is a decision rather than an accident, so the decision
+     is made here — and the scroller below, whose whole job is to move content
+     vertically, no longer carries a horizontal number it has no opinion about. */
+  padding-inline: var(--item-inset);
   /* THE CANVAS TOKEN, NOT A LAYER — and this is the single line that decides
      whether the skin is visible at all.
 
@@ -786,6 +844,26 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   padding: 12px;
+}
+
+/* NO PLATE WHEN NOTHING IS PICKED, and the signal is structural rather than a
+   state class somebody has to remember to set: the empty state IS this box's
+   content, so `:has()` reads it off the markup that is already there. The
+   reasoning is the same reason the pane itself draws no background — a column is
+   separated from the list by a rule, and a bordered box beside a bordered box
+   says the same thing twice.
+
+   It is specifically the EMPTY state that loses the plate, because that is the
+   one holding no fields. With a row on show this box holds 11px labels, selects
+   and date fields, and 11px ink has to survive whatever is behind it — that is
+   the opaque-layer half of the rule above, and it stays. A box drawn round a
+   sentence and a short list is a frame around nothing, and it was the
+   second-largest object on a 1440 board after the list itself. */
+.itemDetailInner:has(.itemDetailEmpty) {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   /* `inline-size: 100%`, and it is load-bearing rather than belt-and-braces.
      `align-self: start` is what makes this box CONTENT-SIZED (the decision: the
      content should not be stretched to the height of a tall empty pane), but
@@ -858,7 +936,39 @@
    both at once. The sticky group head inherits it, which is correct: a head that
    stops short of the rows it labels is a head that belongs to something else. */
 .itemScroll {
-  padding-inline: var(--item-inset);
+  /* NO INSET OF ITS OWN. It used to carry `var(--item-inset)` here, one level
+     below the card that draws the frame, so the rows sat 25px inside a box they
+     belong to and the page's left edge was the sum of three numbers nobody could
+     see. The card owns that air now (see `.itemListCard`), and a scroller whose
+     whole job is to move content vertically has no business holding a horizontal
+     one. The sticky group head inherits the card's padding, which is what it
+     should do either way: a head that stops short of the rows it labels belongs
+     to something else. */
+  padding-inline: 0;
+}
+
+/* THE FOLDED SUMMARY WRAPS HERE, and only here.
+
+   On a 390px phone this surface folds the triage block, and the fold's entire
+   argument is that the reader is not deprived of the summary: 「a folded block
+   still says how many, one tap brings the rest back」. Measured, the shared
+   disclosure summary is `nowrap` with an ellipsis, and the four counts came to
+   368px of text in a 280px slot — so the exact thing the fold claims to preserve
+   is the part that disappeared, and what was left read as 「1 项卡…」, which is
+   a sentence about a problem rather than a count of them.
+
+   A fold is allowed to cost height. It is not allowed to cost the fact it exists
+   to keep, and the height it saves here is the height the fold was saving. The
+   shared component's one-line summary is right everywhere else — the run-config
+   and automation folds genuinely have a name and a state, not a list — so this is
+   scoped to this surface, and matched by attribute rather than by the other
+   module's class name for the same reason the ordering rule above does: a rename
+   over there must not be able to silently change what this one says. */
+.itemScroll [class*='detailDisclosureSummary'] {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
 }
 
 .itemScroll > * {
@@ -1662,10 +1772,44 @@
   min-inline-size: 0;
 }
 
+/* THE STRIP IS A LINE OF READOUTS, not a row of five boxes.
+
+   It was a five-column grid of bordered, filled, 129x62 tiles — a big number
+   with a small label under it, five times, in identical frames. That shape is
+   the dashboard default, and it is the loudest thing on a page whose whole
+   premise is that the work is already accounted for: the reader lands on five
+   identical frames instead of on the five numbers, and 84px of the first screen
+   — a fifth of a phone viewport — is spent saying 「here are five things」.
+
+   What is left is what the strip was for: the five figures, on one line, read
+   left to right, at ONE weight. The number stays the page's only 14/600 (see
+   `.itemTileValue`) and the label moves UP to 12px, because an 11px label under
+   a 14px number is not a smaller label, it is a caption stuck to a heading — and
+   five captions stuck to five headings is most of what 「一眼看上去很 AI」 is made
+   of. Same two sizes, same contrast, one step apart, and the pair reads as one
+   thing.
+
+   The five are the page's first filter as well as its first glance, so the
+   affordance has to survive losing its frame: the pressed reading is a wash plus
+   ink, the same idiom the facet chips use one row below, so a tile and its chip
+   are visibly the same control. */
 .itemOverviewTiles {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  /* 12, and it is a gap rather than a rule between them: five hairline-separated
+     cells is a table, and this is a line of figures read in one pass. The
+     grouping is carried by the numbers lining up, which is the only grouping
+     signal that costs no ink.
+
+     The gap is 12 because the row has to hold FIVE of them on a 390px phone.
+     Measured there, the five readouts are 237px of text; with the padding the
+     wash needs on each side they came to 317px against 340px of measure, and at
+     an 18px gap the fifth fell to a second line — which is the failure this strip
+     must not have: 「三和二」 reads as two sets of two questions, and a reader has
+     to decide which set they care about before they have read either. Wrapping is
+     the yield when a TRACK is too tight, never a shorter label and never a
+     smaller figure, so the gap gives first. */
+  gap: 6px 12px;
   min-inline-size: 0;
 }
 
@@ -1679,25 +1823,54 @@
   color: var(--dsh-tb-text-3);
 }
 
+/* A READOUT: the figure and its name on ONE baseline, the 2px share of what is
+   still owed under both of them. One line instead of two is what makes the
+   strip a line — and it is also the honest shape, because 「9 待办」 is a single
+   reading and 「9」 over 「待办」 is a heading with a caption.
+
+   The two areas are named because the meter has to span the PAIR: left to the
+   browser it would size to the widest of the two, so the four metered readouts
+   would draw bars of four different lengths under a row whose numbers are meant
+   to be compared. */
 .itemTile {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas:
+    'value label'
+    'meter meter';
+  align-items: baseline;
+  column-gap: 5px;
+  row-gap: 5px;
   box-sizing: border-box;
   min-inline-size: 0;
-  padding: 8px 8px 6px;
+  /* THE PADDING IS THE WASH'S, AND THE MARGIN GIVES IT BACK. The hover and
+     pressed states paint a rectangle, and a rectangle flush against the text on
+     both sides reads as a highlight somebody drew badly. Six pixels of bearing
+     fixes that — and six pixels of bearing on each of five readouts is 60px of a
+     340px phone line spent on air, which is what pushed the fifth readout onto a
+     second row. So the padding is there for the wash and the negative margin
+     takes the space back out of the flow: the readout's advance is its text, and
+     the wash still extends past it on both sides.
+
+     The two numbers are the same number written twice on purpose, because the
+     alternative — a wash with no bearing — is the thing a reader notices, and a
+     number that has to be kept in step with another number is a number that will
+     drift. */
+  padding: 3px 6px;
+  margin-inline: -6px;
   font-family: inherit;
   text-align: start;
-  /* The canvas token, for the reason `.itemListCard` gives: a tile is a plate
-     that holds content, not something floating over it. Five opaque tiles across
-     the top of the page are the single largest thing standing between the skin and
-     the reader on this surface. */
-  background: var(--dsh-tb-bg);
-  border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-md);
+  /* NO FRAME, and that is the whole change: no background, no border, no radius.
+     The five frames were five surfaces sitting between the reader and the skin,
+     and a page that has one plate (the list card) does not need four more beside
+     it. The press still has to be legible without a box to fill, so it is a wash
+     plus ink — the same reading the facet chips give, which is what makes a tile
+     and its chip look like one control in two places. */
+  background: none;
+  border: 0;
+  border-radius: var(--dsh-tb-radius-sm);
   cursor: pointer;
-  transition: border-color var(--dsh-tb-motion);
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
 }
 
 /* PRESSED AND HOVERED WITHOUT SPENDING THE ACCENT.
@@ -1709,7 +1882,8 @@
    gives with ink, and spending the one interactive colour on them is how a
    budget of five becomes a budget of eight: a colour that is used for everything
    stops meaning "interactive" and starts meaning "this box". So pressed is a
-   stronger ink over the neutral hover, and the border does the rest. */
+   stronger ink over the neutral wash, and with the frame gone the wash and the
+   ink are all that is left to spend. */
 .itemTile:hover {
   background: var(--dsh-tb-hover);
 }
@@ -1719,16 +1893,23 @@
   outline-offset: 1px;
 }
 
+/* Pressed also moves the LABEL up an ink step, which is the part that survives:
+   with the border gone, a wash alone on a 43px readout is a highlight a reader
+   has to notice rather than one they read. The number was always ink-1, so this
+   is the only thing in the pressed state that can say 「on」. */
 .itemTile[aria-pressed='true'] {
-  color: var(--dsh-tb-text-1);
-  border-color: var(--dsh-tb-text-3);
   background: var(--dsh-tb-hover);
+}
+
+.itemTile[aria-pressed='true'] .itemTileLabel {
+  color: var(--dsh-tb-text-1);
 }
 
 /* The page's ONE 14px semibold number. Everything else on this surface is
    12px or below, which is what makes this the first thing the eye lands on
    rather than one of five equally loud things. */
 .itemTileValue {
+  grid-area: value;
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
@@ -1736,19 +1917,27 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The overdue tile is the one number that is allowed to be red, and it is
+/* The overdue figure is the one number that is allowed to be red, and it is
    allowed for one reason: it is the only figure on the page that reports a
    promise already broken. A second red number would turn the colour into
-   decoration. */
+   decoration. It is a FIGURE that can be zero, so the tone that says 「something
+   is already late」 is spent on the value, never on the label and never on a
+   zero — see `insight-strip.tsx`, which is where 「there is one」 becomes
+   「there is one to report」. */
 .itemTileValue[data-tone='over'] {
   color: var(--dsh-tb-danger);
 }
 
 .itemTileLabel {
+  grid-area: label;
   min-inline-size: 0;
-  font-size: 11px;
-  line-height: var(--dsh-tb-hint-line);
-  color: var(--dsh-tb-text-3);
+  /* 12, not 11. The strip was rebuilt as a line of figure-and-name pairs, and at
+     11px the name is a third of the size of the figure beside it, which reads as
+     a caption hung under a heading — the exact shape the strip used to have in
+     five boxes. One step below the figure is a label; two steps is a caption. */
+  font-size: 12px;
+  line-height: var(--dsh-tb-row-line);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1757,11 +1946,12 @@
 /* The 2px meter, always accent — the fill is a measurement, not a state, and a
    meter in the colour of what it measures would read as a verdict. */
 .itemTileBar {
+  grid-area: meter;
+  align-self: start;
   box-sizing: border-box;
   display: block;
   inline-size: 100%;
   block-size: 2px;
-  margin-block-start: 2px;
   background: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
   overflow: hidden;
@@ -1862,6 +2052,29 @@
   background: none;
 }
 
+/* THE CURRENT ORDER IS A STATE, AND A STATE HAS TO LOOK LIKE ONE.
+
+   Taking the track's fill away was right — a filled slab carrying seven choices
+   across a 342px line is the widest, quietest, least informative object on the
+   page. But the seven segments were left with nothing but a weight difference, and
+   a row of seven words in which one is slightly bolder reads as a SENTENCE with
+   one emphasised word in it, not as a control with a position. The reader has to
+   already know that this is a setting to parse it as one.
+
+   So the current segment takes a chip fill and first ink, which is the same
+   reading the facet chips one row above give their pressed state — the two are
+   the same kind of control and they now say so the same way. Scoped to this
+   wrapper, so the board's own mode switches keep the grammar they were designed
+   with. */
+.itemFilterWide > [class*='segmented'] [aria-checked='true'] {
+  background: var(--dsh-tb-hover);
+  color: var(--dsh-tb-text-1);
+}
+
+.itemFilterWide > [class*='segmented'] [aria-checked='false'] {
+  color: var(--dsh-tb-text-3);
+}
+
 /* A face, folded. It is a `<details>` so the open/closed state belongs to the
    READER (see the component's note on why a controlled `open` would fight the
    click that set it), and the pill is its `<summary>` — drawn as a pill because
@@ -1878,7 +2091,17 @@
 
 /* The summary IS the pill: the same shape as a quiet button, and a real one
    rather than a div with a click handler, so it is reachable by keyboard and
-   announced as a disclosure without a single ARIA attribute. */
+   announced as a disclosure without a single ARIA attribute.
+
+   THE EDGE IS THE STRUCTURAL HAIRLINE, not the soft one, and this is the l1/l2
+   split being used for what it is for. `--dsh-tb-border-soft` is #0000000a — the
+   sheet's own word for it is "lines INSIDE a thing" — and this is not a line
+   inside a thing, it is the boundary OF one: something the reader can press. At
+   4% black on white it was not an edge at all, and the two controls that wear it
+   (多选 and 筛选, the batch door and the filter face) read on screen as two words
+   of grey type floating above the rows. Resting state still has NO fill — the
+   pill is quiet, it is not invisible — and the same token is one step up, so the
+   change is legible without the bar getting louder. */
 .itemFacetToggle {
   box-sizing: border-box;
   display: inline-flex;
@@ -1892,7 +2115,7 @@
   white-space: nowrap;
   color: var(--dsh-tb-text-2);
   background: none;
-  border: var(--dsh-tb-border-soft);
+  border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   list-style: none;
@@ -2421,6 +2644,19 @@ textarea.itemInput {
   flex: none;
   min-inline-size: 0;
   padding: 0;
+  /* A MEASURE, NOT THE PAGE'S. The sentences here are prose — 「1 项放置 30 天没
+     动」 — and prose wants a reading measure, which at 12px is about 500px. The
+     list column is 960px, and letting this block run the whole of it put 「去看」
+     600px from the sentence it acts on: the control and its sentence are then
+     two unrelated objects that happen to be on the same line, and the eye has to
+     travel to pair them up before it can act. Capping the measure is also what
+     makes the four rules under the rows stop at a length that can be read as
+     four rows rather than as four dividers across a screen.
+
+     The four actions still share ONE vertical line, which is the property the
+     flex arrangement buys and the reason this is a cap rather than a reflow: a
+     cap moves all four together, and so does nothing else. */
+  max-inline-size: 34rem;
   /* The one boundary on this page that is not a group's own: a reader has just
      read two sentences that are about the list rather than part of it, and the
      list starts below. Twelve pixels of air says that without drawing a second
@@ -2781,65 +3017,24 @@ textarea.itemInput {
   padding: 20px 16px;
 }
 
-/* The four counts and the five recent rows left the detail pane's empty state
-   and became the overview strip plus a plain recent list. What they were here
-   was a set of framed number cells sitting in a column that had no other job —
-   and a pane whose empty state answers 「what is in here」 with a second, smaller
-   version of the dashboard is a pane that has two answers to one question. */
+/* THERE IS NO TALLY HERE, and its absence is a rule rather than a leftover.
 
-/* THE FOUR BUCKETS, as plain rows: a name and a number, nothing around them.
-   They were four filled, bordered cells, and four cells in a column that has no
-   other job is a second dashboard competing with the overview strip for the same
-   answer. The point of this list is that it NAMES every bucket — including the
-   finished one, and whether or not the finished switch is on — so a reader can
-   see where their work is without opening anything. */
-.itemEmptyTally {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  min-inline-size: 0;
-}
+   This pane used to print the four group counts when nothing was selected, as
+   plain rows under a 「一共这些」 heading — after an earlier version had framed
+   each one in its own filled cell. The framing went because four cells in a
+   column with no other job is a second, smaller dashboard. The plain rows went
+   for the reason the framing should have: on the wide band this pane stands BESIDE
+   the list, so those four numbers were on screen at the same moment as the four
+   the overview strip prints at the top of that list. The same words, the same
+   figures, a hand's width apart, and the reader had no way to know which one was
+   the answer.
 
-.itemEmptyTallyRow {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 3px 0;
-  min-inline-size: 0;
-  border-block-end: var(--dsh-tb-border-soft);
-  /* A NAME AND ITS NUMBER, and they are one reading — so they sit in one place
-     rather than at opposite ends of a measure. `flex: 1 1 auto` on the label
-     pushed the number to the far right of an 800px pane, and a number 700px from
-     the word that names it is not a tally: the reader has to travel to pair them
-     up, which is the opposite of a tally. The row takes the width it needs and
-     the rule under it stops there too, so the four rows read as one block
-     instead of as four full-width lines with something adrift at the end of
-     each. */
-  max-inline-size: 20rem;
-}
-
-.itemEmptyTallyRow:last-child {
-  border-block-end: 0;
-}
-
-.itemEmptyTallyLabel {
-  flex: 0 1 auto;
-  min-inline-size: 0;
-  margin: 0;
-  font-size: 12px;
-  line-height: var(--dsh-tb-hint-line);
-  color: var(--dsh-tb-text-2);
-}
-
-.itemEmptyTallyValue {
-  flex: none;
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: var(--dsh-tb-hint-line);
-  color: var(--dsh-tb-text-1);
-  font-variant-numeric: tabular-nums;
-}
+   「同一个数不许在两处各算一次」 is a rule about CALCULATION; this was the same rule
+   about PRINTING. A figure derived once and shown twice is still two answers to
+   one question the moment they can disagree — and these two can, because the
+   strip's numbers are filtered by the search box and these were not. So the pane
+   keeps the job it actually has: the fields of one row, and when there is no row,
+   one sentence and the rows touched last. */
 
 /* A recent row is NOT a list row. Reusing `.itemRow` drew a rounded box with a
    bottom border and no fill inside the rail — a U hanging in a column, which is

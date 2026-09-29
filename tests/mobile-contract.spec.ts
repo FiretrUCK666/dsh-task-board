@@ -967,7 +967,7 @@ describe('button geometry (one base for every variant)', () => {
     // churn behind conflicting reports. One declaration survives.
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(compact.match(/\.columnHeader\s*\{/g) ?? []).toHaveLength(1)
-    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 21px/)
+    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 28px/)
   })
 
   it('the button radius token IS the pill (true round at every height)', () => {
@@ -1386,9 +1386,9 @@ describe('template library wiring', () => {
     // Column heads own their separation explicitly (12px vertical on narrow
     // glass; the cards' 6px top pad belongs to the drop indicator, never to
     // rhythm). The sides are 21px, which is the cards' content line: 8 inset +
-    // 1 hairline + 12 padding. The 20 that used to be here dropped the hairline,
+    // 1 hairline + 19 rail. The 20 that used to be here dropped the hairline,
     // so the column name measured 1px left of every card title under it.
-    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 21px/)
+    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 28px/)
   })
 
   it('the narrow rail keeps ONE rhythm (a single gap owns between)', () => {

@@ -92,7 +92,16 @@ function Tile(props: {
   readonly value: number
   /** This tile's share of what the reader still owes, 0..1. Drives the 2px meter. */
   readonly share: number
-  readonly tone?: 'over'
+  /**
+   * Which ink the FIGURE wears.
+   *
+   * `plain` is the absence of a tone, and it is written out rather than left to a
+   * default so that 「nothing is late」 is a decision at the call site: the only
+   * caller that can report an overdue count is also the only one that knows
+   * whether there is one, and a default would quietly put a red zero back on the
+   * page for every reader whose list happens to be in good order.
+   */
+  readonly tone?: 'plain' | 'over'
   readonly pressed: boolean
   readonly onClick: () => void
   /**
@@ -171,7 +180,13 @@ export function ItemInsightStrip(props: ItemInsightStripProps) {
           label={t('item.due.overdueShort')}
           value={overdueCount}
           share={share(overdueCount)}
-          tone="over"
+          // THE TONE IS A FACT ABOUT THE READER'S WORK, NOT ABOUT THE FIELD.
+          // It used to be `tone="over"` unconditionally, which is the one thing
+          // the colour cannot mean: with nothing overdue the strip still drew a
+          // red `0`, so an empty list — the first thing a reader with a fresh
+          // install sees — opened on a red number. A broken promise is red; the
+          // absence of one is not, and a count of zero is the good news.
+          tone={overdueCount > 0 ? 'over' : 'plain'}
           pressed={isFacetOn(props.query, 'date', 'overdue')}
           onClick={() => toggle('date', 'overdue', 'has:overdue')}
         />

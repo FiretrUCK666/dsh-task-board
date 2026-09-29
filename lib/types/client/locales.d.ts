@@ -747,7 +747,6 @@ export declare const zh: {
     'item.detail.emptyTitle': string;
     'item.detail.close': string;
     'item.detail.emptyHint': string;
-    'item.detail.emptyCounts': string;
     'item.detail.emptyRecent': string;
     'item.detail.emptyNone': string;
     'item.inbox.note': string;
