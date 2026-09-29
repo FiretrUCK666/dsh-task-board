@@ -138,6 +138,37 @@ const notes = []
 const AGENTS_CEILING_BYTES = 55_000
 
 /**
+ * The repository root holds EXACTLY the files it declares, and nothing else.
+ *
+ * A 315KB rendered measurement page (`board.html`) sat tracked at the root for a
+ * few commits: an agent's scratch output, written into the working tree and swept
+ * up by `git add -A`. Nothing about it is a defect in the code — every gate was
+ * green the whole time — and that is the point. A stray artifact is invisible to
+ * every check that looks at behaviour, and it ships: `files` in the manifest
+ * decides what npm packs, but the REPOSITORY is what people clone, so a 315KB
+ * dead page is a permanent tax on anyone who pulls it.
+ *
+ * So the root is enumerated and compared. The allow-list is the project's own
+ * declaration files, not a pattern: a pattern would have let this through, which
+ * is how it got here.
+ */
+const ROOT_ALLOWED = new Set([
+  '.editorconfig', '.gitattributes', '.github', '.gitignore',
+  'AGENTS.md', 'CONTRIBUTING.md', 'DESIGN.md', 'LICENSE', 'PRODUCT.md',
+  'README.en.md', 'README.md',
+  'cordis.patch.yml', 'icon.svg', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml',
+  'tsconfig.build.json', 'tsconfig.json', 'tsdown.config.ts', 'vitest.config.ts',
+])
+{
+  const stray = readdirSync(root, { withFileTypes: true })
+    .filter(entry => entry.isFile() && !ROOT_ALLOWED.has(entry.name))
+    .map(entry => entry.name)
+  if (stray.length > 0) {
+    failures.push(`the repository root carries files it does not declare: ${stray.join(', ')}`)
+  }
+}
+
+/**
  * Regression blacklist: legacy identifiers that must never reappear in this
  * project (package scopes, old plugin names, old route prefixes, old bundle
  * names). Part of the protection tooling, not project content.

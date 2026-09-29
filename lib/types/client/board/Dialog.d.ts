@@ -31,7 +31,7 @@ import { type ReactNode } from 'react';
  *  for overlay shells that portal directly (SessionFrame). */
 export declare function boardBox(): Element;
 /** One centered modal panel (see module doc). */
-export declare function Dialog({ title, label, onClose, className, children, portal }: {
+export declare function Dialog({ title, label, onClose, className, children, portal, focusKey }: {
     /** Optional header title; when absent the header (and its close button) are omitted. */
     title?: string;
     /** aria-label for the dialog role. */
@@ -41,5 +41,22 @@ export declare function Dialog({ title, label, onClose, className, children, por
     className?: string;
     /** Render into the board box (the default; see module doc). */
     portal?: boolean;
+    /**
+     * Change this to RE-AIM focus inside a dialog that stays open and swaps its
+     * own contents.
+     *
+     * A dialog that opens a form usually does it by REPLACING the button that opened
+     * it, so that button unmounts and focus falls to `document.body`. The trap in
+     * `dialog-focus` is a keydown handler ON THE PANEL, and `document.body` is not
+     * the panel — so the trap never fires again and Tab walks straight out of the
+     * overlay into the board behind it. The form is right there and the keyboard
+     * has left the room.
+     *
+     * So the caller passes whatever identifies the new contents (a form key), and
+     * the hook moves focus to the first thing inside it. `TaskDetail` has always
+     * done this by calling the hook itself with an `editing` flag; this is the same
+     * mechanism for the two dialogs that could not reach it.
+     */
+    focusKey?: unknown;
     children: ReactNode;
 }): import("react").JSX.Element;

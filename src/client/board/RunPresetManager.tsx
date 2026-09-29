@@ -119,6 +119,12 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
       title={t('runPreset.manageTitle')}
       className={css.autoModal}
       portal
+      // The add/edit form REPLACES the button that opened it, so that button
+      // unmounts and focus would fall to `document.body` — outside the panel, so
+      // the Tab trap (a keydown handler ON the panel) stops firing and Tab walks
+      // straight out into the board behind. `formKey` is what identifies the new
+      // contents, and passing it re-aims focus into the form's first field.
+      focusKey={formKey}
     >
       {/* The ONE scroll region: the preset list and the add/edit form scroll
           together; the hint footer stays pinned (see .modal / .modalScroll)
