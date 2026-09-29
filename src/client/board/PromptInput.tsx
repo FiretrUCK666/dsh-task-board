@@ -290,7 +290,16 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
       return
     }
     if (event.key === 'Escape') {
+      // ONE KEY, ONE OWNER — and this branch was the owner that did not claim it.
+      // `preventDefault` stops the field's own behaviour but the key still reaches
+      // `document`, where the one shared listener in `escape-stack` closes whatever
+      // overlay is on top. So dismissing the autocomplete ALSO cancelled the task
+      // edit in progress, or closed the new-task dialog. Two sibling files get
+      // this right with the same sentence in the same repository (`goal-strip`,
+      // `SessionRow`), which is what makes the omission here a slip rather than a
+      // decision: a menu that has focus owns the key until it has consumed it.
       event.preventDefault()
+      event.stopPropagation()
       setMenu(undefined)
     }
   }

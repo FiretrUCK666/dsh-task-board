@@ -306,9 +306,17 @@ function QuestionFlow({ question, sessionId, controller }: {
     else if (event.key === 'End') next = count - 1
     if (next === undefined) return
     event.preventDefault()
-    const target = options[next]
-    if (target === undefined) return
-    if (item?.multiSelect !== true) choose(target.label)
+    // ARROWS MOVE THE CURSOR. THEY DO NOT ANSWER.
+    //
+    // This used to call `choose(target.label)` on a single-select, so ArrowDown on
+    // a five-option question both selected the option under the cursor AND
+    // auto-advanced to question 2 — and the focus call then reached for a button
+    // that was no longer mounted. On the one surface where the reader is
+    // committing an answer on the agent's behalf, browsing the options destroyed
+    // the answer being read, and nothing on screen said a choice had been made.
+    //
+    // Selection stays where a selection belongs: click, Enter, Space. The arrows
+    // are a cursor, and a cursor that commits is a cursor that edits.
     optionRefs.current[next]?.focus()
   }
   // Roving tabindex: the group is ONE stop, and the checked option (or the first when

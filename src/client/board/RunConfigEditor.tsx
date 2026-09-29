@@ -29,26 +29,90 @@ export function RunConfigEditor({ value, onChange, controller }: {
   // undefined while loading or when the deployment exposes no permission
   // service — the selector is hidden then, mirroring the native capability.
   const [permissionRows, setPermissionRows] = useState<readonly PermissionRow[] | undefined>(undefined)
-
+  /**
+   * THREE STATES PER CATALOG, not one empty list.
+   *
+   * `presets` and `groups` started as `[]` and stayed `[]` whether the catalog was
+   * still loading, had failed, or genuinely held nothing — so the form drew the
+   * model select with a single 「默认」 and the reader had no way to tell 「there is
+   * one model and it is the default」 from 「I could not read the catalog」. On the
+   * surface where a task is committed to a model, a workspace and a permission,
+   * that is the wrong thing to be unable to distinguish.
+   *
+   * A REJECTION WAS SWALLOWED, which is worse: the `Promise.all` result was
+   * `void`ed with no `catch` and no log, so a failure left the form in the same
+   * "empty" state as success — permanently, and silently.
+   *
+   * So: `pending` while in flight, `failed` when the read settles badly, and only
+   * then is an empty list an answer about the deployment.
+   */
+  const [catalogState, setCatalogState] = useState<'pending' | 'ready' | 'failed'>('pending')
   const catalog = controller.runCatalog()
   const workspaceRows = useMemo(() => catalog?.listWorkspaces() ?? [], [catalog])
   useEffect(() => {
     let alive = true
+    if (catalog === undefined) {
+      // The service is ABSENT, which is a fact about the deployment and not a
+      // failure to read one — the native capability is genuinely not there.
+      if (alive) setCatalogState('ready')
+      return () => { alive = false }
+    }
+    setCatalogState('pending')
     void (async () => {
-      if (catalog === undefined) return
-      const [loadedPresets, loadedGroups, loadedPermissions] = await Promise.all([
-        catalog.listAgentPresets(),
-        catalog.listModelGroups(),
-        catalog.listPermissions(),
-      ])
-      if (alive) {
+      try {
+        const [loadedPresets, loadedGroups, loadedPermissions] = await Promise.all([
+          catalog.listAgentPresets(),
+          catalog.listModelGroups(),
+          catalog.listPermissions(),
+        ])
+        if (!alive) return
         setPresets(loadedPresets)
         setGroups(loadedGroups)
         setPermissionRows(loadedPermissions)
+        setCatalogState('ready')
+      } catch {
+        // Said, not swallowed: 「读不到」 and 「没有」 are different answers, and
+        // the difference is the whole point of the row existing.
+        if (alive) setCatalogState('failed')
       }
     })()
     return () => { alive = false }
   }, [catalog])
+  const catalogUnreadable = catalogState === 'failed'
+
+  /**
+   * A STORED VALUE THE CATALOG DOES NOT LIST, rendered as itself.
+   *
+   * A `<select>` whose `value` matches no `<option>` displays the FIRST option
+   * while holding the stored one. So a task whose model, workspace, preset or
+   * permission this deployment no longer advertises opened a form that said
+   * 「默认」 about a setting that was not the default — and the reader's next save
+   * wrote that lie back. Every one of the five selectors here had it.
+   *
+   * The project's own rule already covers this shape and names the forbidden
+   * behaviour: a current value the catalogue does not have is shown AS IT IS and
+   * never quietly rewritten to the first row. So the orphan is prepended here, and
+   * one helper does it for all five rather than five chances to forget.
+   *
+   * @param options - the values the catalog advertised.
+   * @param current - what is actually stored on the task.
+   * @returns the same list, plus the stored value when it is not in it.
+   */
+  const withCurrent = <T extends { readonly id: string }>(
+    options: readonly T[],
+    current: string | undefined,
+    label: (id: string) => string,
+  ): readonly T[] => (
+    current !== undefined && current !== '' && !options.some(option => option.id === current)
+      // The orphan is a real option carrying a real name, so the select has
+      // something to SHOW rather than falling back to its first row. `label` is
+      // passed in because each select spells its own row text (a preset's
+      // description, a workspace's title, a permission's i18n name) and the
+      // orphan has none of those — it is an id the catalog stopped offering.
+      ? [{ id: current, ...({ label: label(current) } as object) } as T, ...options]
+      : options
+  )
+  const stored = (id: string): string => t('new.valueNotOffered', { id })
 
   /** Efforts of the selected model (empty when none advertised). */
   const effortOptions = useMemo(() => {
@@ -75,6 +139,9 @@ export function RunConfigEditor({ value, onChange, controller }: {
 
   return (
     <>
+      {catalogUnreadable && (
+        <p className={css.formError} role="status">{t('new.catalogUnreadable')}</p>
+      )}
       <label className={css.field}>
         <span className={css.fieldLabel}>{t('new.agentPreset')}</span>
         <span className={css.selectWrap}>
@@ -84,7 +151,7 @@ export function RunConfigEditor({ value, onChange, controller }: {
             onChange={event => { set({ agentPreset: event.target.value === '' ? undefined : event.target.value }) }}
           >
             <option value="">{t('new.agentPresetDefault')}</option>
-            {presets.map(preset => (
+            {withCurrent(presets, value.agentPreset, stored).map(preset => (
               <option
                 key={preset.id}
                 value={preset.id}
@@ -107,7 +174,7 @@ export function RunConfigEditor({ value, onChange, controller }: {
             onChange={event => { set({ workspaceId: event.target.value === '' ? undefined : event.target.value }) }}
           >
             <option value="">{t('new.workspaceDefault')}</option>
-            {workspaceRows.map(row => (
+            {withCurrent(workspaceRows, value.workspaceId, stored).map(row => (
               <option key={row.id} value={row.id}>{row.title}</option>
             ))}
           </select>
@@ -146,7 +213,7 @@ export function RunConfigEditor({ value, onChange, controller }: {
               onChange={event => { set({ reasoningEffort: event.target.value === '' ? undefined : event.target.value }) }}
             >
               <option value="">{t('new.effortDefault')}</option>
-              {effortOptions.map(option => (
+              {withCurrent(effortOptions, value.reasoningEffort, stored).map(option => (
                 <option key={option.id} value={option.id}>{option.name ?? option.id}</option>
               ))}
             </select>
@@ -167,7 +234,7 @@ export function RunConfigEditor({ value, onChange, controller }: {
               onChange={event => { set({ permission: event.target.value === '' ? undefined : event.target.value }) }}
             >
               <option value="">{t('new.permissionDefault')}</option>
-              {permissionRows.map(row => (
+              {withCurrent(permissionRows, value.permission, stored).map(row => (
                 <option
                   key={row.id}
                   value={row.id}

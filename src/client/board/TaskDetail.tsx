@@ -566,7 +566,17 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
    *  it) — updateTask only rejects an unknown task. */
   const saveEdit = (): void => {
     if (draft === undefined) return
-    if (!controller.updateTask(current.id, draftToUpdatePatch(draft))) return
+    // A REFUSAL IS AN ANSWER, and the state that would have carried it existed
+    // and was never given a value: `setEditError` was called with `undefined` at
+    // four places and with a message at none, so the error line below it was
+    // unreachable. Which means a rejected 保存 returned in silence, the editor
+    // kept the draft, the reader pressed 保存 again — and if the task had been
+    // deleted on another device in the meantime, the edit they had just typed
+    // could never be saved and nothing would ever have said so.
+    if (!controller.updateTask(current.id, draftToUpdatePatch(draft))) {
+      setEditError(t('detail.editSaveFailed'))
+      return
+    }
     setDraft(undefined)
     setEditError(undefined)
     setDraftRestored(false)

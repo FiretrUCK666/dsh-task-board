@@ -161,6 +161,9 @@ export declare const zh: {
     'detail.copyPrompt': string;
     'detail.copied': string;
     'detail.copyFailed': string;
+    'new.valueNotOffered': string;
+    'new.catalogUnreadable': string;
+    'detail.editSaveFailed': string;
     'detail.editDraftRestored': string;
     'color.custom': string;
     'detail.delete': string;
