@@ -84,7 +84,21 @@ export function createTaskboardCommands(): readonly CommandDefinition[] {
       recordInput: false,
       handler: ({ agent, rawInput }) => {
         const text = rawInput.trim()
-        if (text === '') return { kind: 'error', text: TASK_HINT } satisfies CommandResult
+        /* AN EMPTY ARGUMENT IS A HINT, NOT A FAILURE — and the host's own
+           contract says why the difference is not cosmetic:
+           「a thrown/aborted handler settles as `kind: 'error'`」, i.e. `error` is
+           what the client paints as a FAILED command.
+
+           So typing `/task` on its own and pressing enter — which is exactly what
+           someone does in a brand-new session to see what the command does — put a
+           RED card on the screen carrying a perfectly good sentence of help. A
+           reader who has done nothing wrong was shown the colour for having done
+           something wrong.
+
+           The command did its job: it told the reader how to use it. That is a
+           success with words in it. Only a genuine failure to hand the sentence
+           over is an error, and that one keeps `handOver`'s catch. */
+        if (text === '') return { kind: 'success', text: TASK_HINT } satisfies CommandResult
         return handOver(agent, text)
       },
     },

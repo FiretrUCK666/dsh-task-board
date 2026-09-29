@@ -28,10 +28,22 @@ function registry(): CommandRegistrar & { registered: Map<string, CommandDefinit
   }
 }
 
-/** An agent that records what it was handed. */
-function agent(): CommandAgent & { handed: { content: readonly { type: string; text?: string }[] }[] } {
+/** An agent that records what it was handed, and can REFUSE to take it.
+ *  A hard-coded `return` cannot refuse, so every claim about a failed hand-over
+ *  was untestable while this face could not say no. */
+function agent(): CommandAgent & {
+  handed: { content: readonly { type: string; text?: string }[] }[]
+  throwOnFollowup: boolean
+} {
   const handed: { content: readonly { type: string; text?: string }[] }[] = []
-  return { handed, followup(message) { handed.push(message as { content: readonly { type: string; text?: string }[] }) } }
+  return {
+    handed,
+    throwOnFollowup: false,
+    followup(message) {
+      if (this.throwOnFollowup) throw new Error('这个会话还没有可以回答的模型')
+      handed.push(message as { content: readonly { type: string; text?: string }[] })
+    },
+  }
 }
 
 describe('the two commands', () => {
@@ -82,12 +94,36 @@ describe('the two commands', () => {
     expect(message.id.length).toBeGreaterThan(0)
   })
 
-  it('a blank /task refuses with the usage line instead of guessing', async () => {
+  it('a blank /task ANSWERS with the usage line — and does not paint a failure', async () => {
+    // This test used to PIN `kind: 'error'`, which is what the client paints
+    // RED. So the most likely first move in a brand-new session — type `/task`
+    // and press enter to see what it does — put a red card on the screen carrying
+    // a perfectly good sentence of help. Nothing had failed; the colour said it
+    // had, and a reader is told the command is broken.
+    //
+    // The host's own contract is what makes this more than a shade: 「a
+    // thrown/aborted handler settles as `kind: 'error'`」. So `error` means the
+    // command FAILED, and a usage hint is not a failure — it is the command doing
+    // the one thing it can do with no argument.
+    //
+    // The words are unchanged, so nothing that reads the sentence is affected; only
+    // the kind, and that is the whole point.
     const box = agent()
     const result = await invoke(0, box, '   ')
-    expect(result).toMatchObject({ kind: 'error' })
-    expect(box.handed).toHaveLength(0)
-    if (result.kind === 'error') expect(result.text).toContain('/task')
+    expect(result.kind, 'a blank /task is answered, not failed — the reader is not shown red for asking').toBe('success')
+    expect(box.handed, 'a blank /task must not guess and hand something over').toHaveLength(0)
+    expect('text' in result && result.text).toContain('/task')
+  })
+
+  it('a REAL failure still paints as a failure', async () => {
+    // The other half, and the reason the first one is not "make everything
+    // success": a sentence that genuinely cannot be handed over must keep
+    // saying so in the failure colour. A hint and a failure are different facts
+    // and the gate has to tell them apart or it has stopped reading.
+    const box = agent()
+    box.throwOnFollowup = true
+    const result = await invoke(0, box, '记一下')
+    expect(result.kind, 'a hand-over that failed is still a failure').toBe('error')
   })
 
   it('/task-continue asks the model to list what is outstanding and ask, not to pick', async () => {
