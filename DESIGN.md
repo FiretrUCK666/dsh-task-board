@@ -1373,22 +1373,19 @@ of the app's base」，而 `.board` 与 `.column` 都吃 `--dsh-tb-bg`。清单�
 **选项数超过三档的枚举控件**（排序七档），判据是**装不下**而不是「某一个控件」：分段的全部价值是
 「一眼看到当前在哪一档」，而七档在 390px 上放不下时它既不换行也不滚动（`.segmentedRow` 是
 `inline-flex` + `white-space: nowrap`，没有 `min-inline-size: 0`），于是四档里丢掉两档、七档之后
-更糟——**那不是紧凑，那是把控件藏起来**。本表面已经有单选这个控件（详情里的状态与优先级就是
-`<select className={css.itemInput}>`），所以窄屏换成它而不是发明新控件：
+更糟——**那不是紧凑，那是把控件藏起来**。所以**窄档不换控件**：`Segmented` 七个档位在窄屏
+**换行**（`.itemFilterRow` 是 `flex-wrap: wrap`），而不是换成 `<select>`。**两档是同一个控件。**
+短号那一条走的是 §窄屏里 `12px` 那一档的**让位**机制，不是另发明一个下拉框——所以
+**这一节里没有 `.itemFilterSelect` 这个类，表里也没有**：它曾经存在过，被删掉之后
+**这段连同它一起删干净了**，不留一段描述不存在控件的 CSS。
 
-```css
-.itemFilterSelect {          /* 短名 + 控件，一列 */
-  display: grid; grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 8px; align-items: center; min-inline-size: 0;
-}
-```
-
-短名是 11px 第三档墨的「排序」，控件里显示**当前档位名**——所以「排序」与「顺序」不在同一个槽，
+短号是 11px 第三档墨的「排序」，控件里显示**当前档位名**——所以「排序」与「顺序」不在同一个槽，
 不重名。**行高不在这一排**：它是页头第三轨那枚 `aria-pressed` 的文字动作（行高说「这一页怎么读」，
 排序与四个面说「这些行怎么被挑出来」）。**两档的选择器写在哪个块里决定它属于哪一档**：基准的写在
-`.itemFilterRow` 自己的声明里（`display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px 8px`，
-`.itemFilterSelect { grid-column: 1 / -1 }`），`Segmented` 写在
-`@container dsh-tb-item (min-width: 720px)` 里（`.itemFilterRow { display: flex; flex-wrap: wrap; … }`）。
+`.itemFilterRow` 自己的声明里（`display: flex; flex-wrap: wrap; gap: 6px 8px; min-inline-size: 0`），
+`Segmented` 写进同一个块里的窄档覆盖（`@container dsh-tb-item (min-width: 720px)` 那一档里
+`.itemFilterRow` 的写法），**两处都是同一个 `.itemFilterRow`**，所以窄档是「同一条轨换写法」，
+不是「换了个控件」。
 
 **底部的收口**：台面下缘由**最后一个组的下沿 + 16px** 收口，不画线、不加阴影、不加一段渐变——
 渐变是「这里本来该有东西」的告示，也不靠加内容填屏。**空着的下半屏不是缺陷，空着一个 730px 高的
@@ -1433,7 +1430,8 @@ of the app's base」，而 `.board` 与 `.column` 都吃 `--dsh-tb-bg`。清单�
 5. 活规则里 **0** 个 `@media(max-width)` 与 **0** 个 `vw` / `vh`
 6. `itemRowMain` 的前两条轨是**定值**（`px` / `ch` / `em`），**没有** `auto` / `min-content` / `max-content`
 7. `itemRowMeta` 的两条轨是定值，且第 1 轨解析值 ≥ 最长读法的宽度（**不是 11ch**）
-8. `itemActionsCol` ≥ 「问 AI + ⋯ + 沟」的实际宽度，且**每一行的动作列右沿相等**
+8. `--item-actions-col` ≥ 「问 AI + ⋯ + 沟」的实际宽度，且**每一行的动作列右沿相等**
+   （这是**令牌** `--item-actions-col`，不是一个叫 `itemActionsCol` 的类 —— 那一节写的是令牌）
 9. `itemTriage` 的 `border-width` 为 **0**，且 `background` 与 `itemRoot` 相同
 10. `.itemListCard > *` 全部 `flex: none`——**列表轨里没有纵向生长的孩子**（今天 660px 空洞那一族）
 11. 详情轨的竖线**贯穿全高**：`.itemDetailPane` 是 `stretch`，`.itemDetailInner` 是 `start`
