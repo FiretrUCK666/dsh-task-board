@@ -116,6 +116,14 @@ export function offerableSessionGroups(
     const row = sources.byId[sessionId]
     if (row === undefined) continue
     // 闸门 1：官方可见文法（子代理 / 空白槽 / 归档）。
+    //
+    // `origin === 'subagent'` 也出现在 `session-lineage.ts`，**那不是同一行规则被抄了两遍**，
+    // 所以不要抽成共享谓词：这里问的是「这一行**能不能当顶层候选**」（挑选名单），
+    // 那里问的是「这一行**算不算链上的后代**」（归属汇总）。两个不同的问题，答案
+    // 本来就可能不一样——一个被抄走当子会话的行，仍然可以是别人的后代。
+    //
+    // **「两处」是对的，不是债。** 把它写在这里，是为了让下一个来数重复的人
+    // 得出结论然后走开 —— 过去几轮它已经被当成「该合并的重复」报过两次。
     if (row.origin === 'subagent') continue
     if (row.blank === true) continue
     if (archived.has(sessionId)) continue
