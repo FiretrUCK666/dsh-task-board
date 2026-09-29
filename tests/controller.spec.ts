@@ -3,7 +3,7 @@
  * awareness, and the full run loop (running → started(sessionId) → settled).
  */
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { BoardController, type ControllerDeps } from '../src/core/controller.ts'
 import { ExecutionService, type ExecutionEvent } from '../src/core/execution.ts'
@@ -22,6 +22,51 @@ const uuid = (): string => { nextId += 1; return `id-${nextId}` }
 
 /** Flush pending microtasks (async controller paths). */
 const flush = (): Promise<void> => new Promise(resolve => { setTimeout(resolve, 0) })
+
+/**
+ * A src file's CODE — comments off first (hard rule 14).
+ *
+ * The modules this file polices DOCUMENT what they removed, so a substring
+ * search over the raw text would answer "this file talks about the law" for
+ * "this file has the law". Stripping the decoration is what makes a scan mean
+ * what it says.
+ */
+function stripComments(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+}
+
+/** One src file's code, by its path relative to `src/` (or `tests/`). */
+function sourceOf(relative: string): string {
+  return stripComments(readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8'))
+}
+
+/**
+ * A local DEFINITION of `name`: a function, a class, or a const/let/var
+ * binding (plain or destructured).
+ *
+ * This is the shape a re-implemented law takes, and the one an `import`
+ * regex can never see — a copied body carries no import token at all. Every
+ * "one implementation" gate below needs this half as well as the import half.
+ */
+function localDefinitionOf(name: string): RegExp {
+  return new RegExp(
+    String.raw`\b(?:function|class)\s+${name}\b`
+    + String.raw`|\b(?:const|let|var)\s+${name}\b`
+    + String.raw`|\b(?:const|let|var)\s*\{[^}]*\b${name}\b`,
+  )
+}
+
+/** An `import` statement naming `name` — whatever module it comes from. */
+function importedFromSomewhere(name: string): RegExp {
+  return new RegExp(String.raw`import[^;]*\b${name}\b[^;]*from`)
+}
+
+/** The function names a module exports (its own code only). */
+function exportedFunctionsOf(code: string): string[] {
+  return [...code.matchAll(/^export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm)].map(match => match[1]!)
+}
 
 /**
  * Controllable question face: BOTH halves of the official session-status
@@ -132,10 +177,18 @@ class FakeSessions {
   exists(id: string): boolean {
     return this.knownIds === undefined || this.knownIds.has(id)
   }
+  /**
+   * What `open` answers. The real navigation face is PRESENT and answers per
+   * call — a workspace UI that cannot focus that session says false — so a
+   * fake hard-wired to `true` would let a controller that hard-codes the same
+   * answer pass every test. A refusal also does not move the selection, so the
+   * fake refuses the way the host does rather than the way that is convenient.
+   */
+  openResult = true
   open(id: string): boolean {
     this.openCalls.push(id)
-    this.setCurrent(id)
-    return true
+    if (this.openResult) this.setCurrent(id)
+    return this.openResult
   }
   setCurrent(id: string | undefined): void {
     this.current = id
@@ -436,15 +489,43 @@ describe('task mutations', () => {
     // The row comparison above proves the interface's ANSWER is the shared
     // function's. It cannot prove the interface CALLS it — a faithful copy of
     // the same logic would answer identically. So this checks the wiring from
-    // the other side: the helpers that used to inline these laws are no longer
-    // imported, and the shared module is. Re-inlining a law means re-importing
-    // one of them, and this goes red.
-    const source = readFileSync(fileURLToPath(new URL('../src/core/controller.ts', import.meta.url)), 'utf8')
-    expect(source).toContain("from './task-transitions.ts'")
-    for (const inlined of ['disarmSchedule', 'disarmSessionRules', 'isValidCron']) {
-      expect(source, `${inlined} is one of the laws that moved into task-transitions`).not.toMatch(
-        new RegExp(`import[^;]*\\b${inlined}\\b[^;]*from`),
+    // the other side, in BOTH shapes a second implementation can take:
+    //
+    //  - an IMPORT of a helper the shared module now owns, and
+    //  - a local DEFINITION — a law inlined under its own name, which carries
+    //    no `import` token whatsoever and used to sail straight through.
+    //
+    // The law list is DERIVED from task-transitions.ts rather than typed here,
+    // so it is completable: a new law joins the gate the day it is written,
+    // and the rule applied to each is "reached THROUGH the shared module,
+    // never copied". That is why the controller's own `armSchedule` import is
+    // correct code — adding it to an import-denylist reds a healthy module.
+    const shared = sourceOf('../src/core/task-transitions.ts')
+    const controller = sourceOf('../src/core/controller.ts')
+    const laws = exportedFunctionsOf(shared)
+    expect(laws.length, 'task-transitions must export at least one transition law').toBeGreaterThan(0)
+
+    for (const law of laws) {
+      expect(controller, `${law} must be reached through task-transitions.ts`).toMatch(
+        new RegExp(String.raw`import\s*\{[^}]*\b${law}\b[^}]*\}\s*from\s*'\./task-transitions\.ts'`),
       )
+      expect(
+        controller,
+        `${law} is implemented in task-transitions.ts — the controller must not carry a second copy`,
+      ).not.toMatch(localDefinitionOf(law))
+    }
+
+    // The low-level helpers the shared module composes are ITS half now:
+    // reaching past it for one is how a law gets re-inlined in the first
+    // place. Each is checked for BOTH shapes too, so inlining one here is a
+    // finding just as much as importing one is.
+    for (const owned of ['disarmSchedule', 'disarmSessionRules', 'isValidCron']) {
+      expect(controller, `${owned} is one of the laws that moved into task-transitions — reach it through the transition, not around it`)
+        .not.toMatch(importedFromSomewhere(owned))
+      expect(
+        controller,
+        `${owned} is owned by task-transitions; a local copy here is a second implementation`,
+      ).not.toMatch(localDefinitionOf(owned))
     }
   })
 
@@ -686,9 +767,16 @@ describe('view state', () => {
 
   it('openSession delegates to the navigation capability and reports refusal honestly', () => {
     // Navigation is the view owner's now, so the controller's job is the
-    // existence check plus an honest answer: a missing session, and a
-    // composition with no navigation capability, must both read as refused (the
-    // caller then shows "cannot open") instead of a dead button.
+    // existence check plus an honest answer: a missing session, a composition
+    // with no navigation capability, and a PRESENT face that REFUSES must all
+    // read as refused (the caller then shows "cannot open" instead of a dead
+    // button).
+    //
+    // The third case is the one a fake hard-wired to `true` cannot see: the
+    // controller's last line is a bare pass-through, so a rewrite that dropped
+    // the face's answer and returned `true` would keep every other assertion
+    // here green. The fake is configurable for exactly that, and this branch
+    // asks the question the other branches cannot.
     const sessions = new FakeSessions()
     sessions.knownIds = new Set(['s-1'])
     const { controller } = makeController(new StubExec(), { sessions })
@@ -698,6 +786,16 @@ describe('view state', () => {
 
     expect(controller.openSession('s-1')).toBe(true)
     expect(sessions.openCalls).toEqual(['s-1'])
+
+    // A present face that refuses: the controller's answer IS the face's
+    // answer, passed through untouched.
+    const refusing = new FakeSessions()
+    refusing.knownIds = new Set(['s-1'])
+    refusing.openResult = false
+    const closed = makeController(new StubExec(), { sessions: refusing })
+    expect(closed.controller.openSession('s-1'), 'a present face that refuses must stay a refusal').toBe(false)
+    expect(refusing.openCalls, 'the face WAS asked — this is its answer, not a short-circuit').toEqual(['s-1'])
+    expect(refusing.current, 'a refused open must not move the selection').toBeUndefined()
 
     // A composition without the navigation capability: no throw, honest false.
     const withoutNav = new FakeSessions()
@@ -2146,22 +2244,58 @@ describe('auto-cruise', () => {
   })
 
   it('mirrors scheduler skip telemetry read-only (zero stays hidden, never an edit)', () => {
+    // The law is a DEDUPE, and a dedupe is a statement about NOTIFYING: the
+    // scheduler re-sends the same cumulative ledger on every tick, and echoing
+    // it back would re-render every card once a minute for nothing. So the
+    // instrument is the notification count. A value comparison cannot see it —
+    // asserting the same input equals the same expected value is satisfied by a
+    // write that re-stamps the field, which is the opposite of the law.
     const { controller } = makeController()
+    let notified = 0
+    controller.subscribe(() => { notified += 1 })
     expect(controller.getSnapshot().skips).toEqual({ overlap: 0, missed: 0 })
     controller.setSchedulerSkips({ overlap: 2, missed: 1 })
     expect(controller.getSnapshot().skips).toEqual({ overlap: 2, missed: 1 })
-    // Same ledger re-set is a no-op (dedupes per-tick echo).
+    expect(notified, 'a changed ledger is exactly one notification').toBe(1)
+    // Same ledger re-sent (the per-tick echo): no notify, because nothing moved.
     controller.setSchedulerSkips({ overlap: 2, missed: 1 })
     expect(controller.getSnapshot().skips).toEqual({ overlap: 2, missed: 1 })
+    expect(notified, 'the per-tick echo must not notify — the ledger did not move').toBe(1)
+    // …and the dedup is not "ignore everything after the first write": a
+    // ledger that really moved still gets through.
+    controller.setSchedulerSkips({ overlap: 2, missed: 2 })
+    expect(controller.getSnapshot().skips).toEqual({ overlap: 2, missed: 2 })
+    expect(notified, 'a changed ledger is exactly one notification').toBe(2)
   })
 
   it('mirrors the scheduler heartbeat stamp volatile-only (undefined until the first tick)', () => {
+    // Two laws, two instruments.
+    //  - the dedup, by NOTIFYING (same as the skip ledger above);
+    //  - VOLATILE, by the synced path: the stamp is this device's own liveness,
+    //    so a board arriving from another device must not carry it, replace it,
+    //    or clear it. `applyRemote` is the only door a remote document comes
+    //    through, so that is where "never persisted, never synced" is checkable
+    //    — a value comparison against the same number reads true either way.
     const { controller } = makeController()
+    let notified = 0
+    controller.subscribe(() => { notified += 1 })
     expect(controller.getSnapshot().heartbeat).toEqual({ lastOkAt: undefined })
     controller.setSchedulerHeartbeat(1_000_000)
     expect(controller.getSnapshot().heartbeat).toEqual({ lastOkAt: 1_000_000 })
+    expect(notified, 'a moved stamp is exactly one notification').toBe(1)
     controller.setSchedulerHeartbeat(1_000_000)
-    expect(controller.getSnapshot().heartbeat).toEqual({ lastOkAt: 1_000_000 })
+    expect(notified, 'the same stamp is not a change (a per-minute echo must not re-render)').toBe(1)
+    // A remote board: the local volatile stamp is none of its business.
+    controller.applyRemote({
+      tasks: [],
+      cruise: { enabled: false, limit: 5, schedule: [] },
+      schedulePresets: [],
+      runPresets: { presets: [] },
+    })
+    expect(
+      controller.getSnapshot().heartbeat,
+      'a remote board must not carry, replace or clear this device\'s volatile heartbeat',
+    ).toEqual({ lastOkAt: 1_000_000 })
   })
 
   it('restores a persisted enabled cruise on start and pumps the queue', async () => {
@@ -3068,13 +3202,25 @@ describe('linked sessions & bind', () => {
     expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
     let current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).toEqual(['s-2'])
+    // A SECOND removal, so the restore below has something it must NOT take
+    // with it. With only one entry the removed set is legitimately deleted
+    // when it empties, and `expect(removedSessions ?? []).not.toContain('s-1')`
+    // then degrades to `expect([])` — green even if the field were wiped.
+    // Two entries make the set an observable thing with contents.
+    controller.hideTaskSession(task.id, 's-2')
+    expect(controller.removeTaskSession(task.id, 's-2')).toBe(true)
+    current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(current.removedSessions, 'both deletions are in the removed set').toEqual(['s-1', 's-2'])
     // Removal stays passive-immune (no workspace re-add resurrects it), but
     // the USER dragging the session back is the restore gesture: it shows
-    // again and leaves the removed set.
+    // again and leaves the removed set — s-1 only, s-2 stays removed.
     expect(controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-1' }])).toBe(true)
     current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).toContain('s-1')
-    expect(current.removedSessions ?? []).not.toContain('s-1')
+    expect(
+      current.removedSessions,
+      'the restore takes s-1 out of the removed set and leaves every other removal alone',
+    ).toEqual(['s-2'])
   })
 
   it('re-adding a workspace bind restores nothing (a folder is not a session subscription)', () => {
@@ -4484,16 +4630,33 @@ describe('session automation rules (给会话定时发指令)', () => {
   it('a session gets AT MOST ONE rule: a second rule is rejected outright — one definition, edited, never a stack', () => {
     const { controller } = ruleHarness(['s-a', 's-b'], {})
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    // The claim is "the ORIGINAL snapshot was never mutated", and it used to be
+    // read as `expect(task.rules ?? []).toHaveLength(0)` — which is
+    // `expect([])`: `createTask` writes no `rules` at all, so the assertion
+    // stayed green even if the field were written, wiped, or anything else.
+    // The claim is about the OBJECT the caller still holds, so it is checked
+    // against the object: a copy frozen at birth must still equal it, and the
+    // ledger must hold a DIFFERENT object afterwards (replace, never edit).
+    const atBirth = structuredClone(task)
+    const untouched = (when: string): void => {
+      expect(task, `the row the caller still holds was mutated in place (${when})`).toEqual(atBirth)
+      expect(
+        controller.getSnapshot().tasks.find(candidate => candidate.id === task.id) === task,
+        `the ledger row was edited in place instead of replaced (${when})`,
+      ).toBe(false)
+    }
     const first = controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'one', cron: '* * * * *', send: 'queue' })
     expect(first).toBeDefined()
+    untouched('after the accepted write')
     // The same session again — any trigger/content — is rejected.
     expect(controller.createSessionRule(task.id, { sessionId: 's-a', instruction: 'two', cron: '0 0 * * *', send: 'steer' })).toBeUndefined()
     expect(controller.createSessionRule(task.id, { sessionId: 's-a', instruction: '', cron: '', trigger: 'on-complete', usePrompt: true, send: 'steer' })).toBeUndefined()
-    expect(task.rules ?? []).toHaveLength(0) // the ORIGINAL snapshot was never mutated
+    untouched('after the rejected writes')
     const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(row.rules).toHaveLength(1)
     // A DIFFERENT session is free to automate its own.
     expect(controller.createSessionRule(task.id, { sessionId: 's-b', instruction: 'beside', cron: '* * * * *', send: 'queue' })).toBeDefined()
+    untouched('after the second accepted write')
     expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules).toHaveLength(2)
   })
 
@@ -5304,11 +5467,23 @@ describe('session activity: subagent descendants keep the card live', () => {
     expect(controller.sessionActiveOf('P'), 'the parent is working through its descendant').toBe(true)
     expect(task.status, 'the card keeps its column').toBe('running')
     expect(controller.liveStateOf(task.id)).toBe('running')
-    // The light reads the same fact as the border (`data-status`), so a card in
-    // the running column MUST pulse — this is the reported 有黄边、没呼吸 bug.
+    // 有黄边、没呼吸 is the PAIR disagreeing, and the pair is the whole claim:
+    // the yellow border is `data-status={task.status}` and the breath is
+    // `data-light={cardLightOf(view.active, view.unviewed)}`. Two separate
+    // expectations cannot see it — asserting `active` true and then feeding
+    // `cardLightOf` a literal `false` only re-confirms the light TABLE (which
+    // answers 'halo' for ANY active) and says nothing about this card. So the
+    // pair is read in ONE expression, from the view model the controller
+    // actually produced, with BOTH light inputs taken from it.
+    // The breath itself — that the halo rule carries an animation at all — is
+    // the stylesheet half, and it is pinned where the CSS contracts live
+    // (card-contract.spec.ts); from a core spec it is not reachable, and saying
+    // so is part of the claim.
     const view = cardViewModelOf(task)
-    expect(view.active).toBe(true)
-    expect(cardLightOf(view.active, false)).toBe('halo')
+    expect(
+      { column: task.status, light: cardLightOf(view.active, view.unviewed) },
+      '有黄边、没呼吸: a card in the running column must wear the halo (column and light are one pair)',
+    ).toEqual({ column: 'running', light: 'halo' })
   })
 
   it('AC1b: settling the parent\'s round while the child runs keeps the column; the end of the chain lands it once', async () => {
@@ -5621,20 +5796,43 @@ describe('session activity: subagent descendants keep the card live', () => {
 
   it('AC5: the settle/watchdog paths still read the RAW flag (a descendant cannot extend a round)', () => {
     // Mechanical proof at the source level: the two files whose reads decide a
-    // round's life never reach the activity derivation.
-    const read = (relative: string): string => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8')
-    const execution = read('../src/core/execution.ts')
+    // round's life never reach the activity derivation. Comments come off
+    // first (hard rule 14) so the scan reads CODE, not the prose explaining
+    // what was deliberately not done.
+    const execution = sourceOf('../src/core/execution.ts')
     expect(execution).not.toContain('session-activity')
     expect(execution).not.toContain('session-lineage')
     expect(execution).not.toContain('sessionActiveOf')
     expect(execution).not.toContain('liveStateOf')
-    // The lineage rule itself lives in exactly one place (plus the structural
-    // type declarations and the tests that pin it).
-    const sources = ['controller.ts', 'task-live.ts', 'tasks.ts', 'session-activity.ts', 'session-display.ts', 'session-list.ts', 'linked-sessions.ts']
-      .map(name => read(`../src/core/${name}`))
-      .join('\n')
-    expect(sources).not.toContain("origin === 'subagent'")
-    expect(sources).not.toContain('origin !== \'subagent\'')
+    // The lineage rule lives in exactly TWO places — the rollup's first gate
+    // (session-lineage.ts) and the pick-list's first gate (session-groups.ts):
+    // both are `origin === 'subagent'`, both mirror the official sidebar's
+    // grammar, and both must read the same way. A hand-typed list of files
+    // that must NOT have it goes stale the moment a core module is added, and
+    // a fifth copy lands silently. So the DIRECTORY is walked and the owners
+    // are allow-listed: anything else in src/core carrying the comparison is a
+    // finding, with its own file name in the message.
+    const coreDir = fileURLToPath(new URL('../src/core/', import.meta.url))
+    const owners = ['session-lineage.ts', 'session-groups.ts']
+    const coreFiles = readdirSync(coreDir).filter(name => name.endsWith('.ts'))
+    for (const owner of owners) {
+      expect(coreFiles, `${owner} is gone — the lineage rule's owner list must be re-read`).toContain(owner)
+    }
+    for (const name of coreFiles) {
+      if (owners.includes(name)) continue
+      expect(
+        sourceOf(`../src/core/${name}`),
+        `${name} re-implements the lineage rule; the origin gate lives in ${owners.join(' and ')}`,
+      ).not.toMatch(/\borigin\s*(?:!==|===|!=|==)\s*'subagent'/)
+    }
+    // …and the two owners really do hold it, so the allow-list cannot quietly
+    // become a hole that silences the check.
+    for (const owner of owners) {
+      expect(
+        sourceOf(`../src/core/${owner}`),
+        `${owner} must carry the lineage gate it owns`,
+      ).toMatch(/\borigin\s*(?:!==|===)\s*'subagent'/)
+    }
   })
 })
 

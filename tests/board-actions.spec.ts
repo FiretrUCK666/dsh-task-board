@@ -24,6 +24,7 @@ import {
   type ActionShape,
 } from '../src/core/board-actions.ts'
 import { ITEM_FIELDS } from '../src/core/item.ts'
+import { MANUAL_STATUSES } from '../src/core/tasks.ts'
 
 /** One action out of the table, with a patch applied — the poisoner's tool. */
 function poison(id: ActionId, patch: Partial<ActionShape>): Record<string, ActionShape> {
@@ -65,10 +66,20 @@ describe('rule 1 — what the UI locks down, the tool locks down', () => {
   })
 
   it('a card may only be moved to a column a person may drag it to', () => {
-    // MANUAL_STATUSES is the board's own list; 进行中 and 待审核 belong to the
-    // runner, so a model must not be able to declare them.
-    expect(ACTIONS['task.move'].params.status!.oneOf).toEqual(['backlog', 'todo', 'done'])
-    expect(ACTIONS['task.create'].params.status!.oneOf).toEqual(['backlog', 'todo', 'done'])
+    // The list is READ from the board's own constant, never retyped here. A
+    // hand-copied `['backlog','todo','done']` is a second copy: it agrees with
+    // MANUAL_STATUSES today and drifts the day a column is added, with both
+    // copies still looking right. The catalog already derives from that
+    // constant, so this assertion now has a single source of truth.
+    for (const id of ['task.move', 'task.create'] as const) {
+      expect(
+        ACTIONS[id].params.status!.oneOf,
+        `${id}.status must be exactly the columns a person may drag a card to`,
+      ).toEqual([...MANUAL_STATUSES])
+    }
+    // …and the two execution columns really are the runner's, not the board's.
+    expect([...MANUAL_STATUSES], '进行中 is owned by the runner').not.toContain('running')
+    expect([...MANUAL_STATUSES], '待审核 is owned by the runner').not.toContain('review')
   })
 })
 

@@ -7,13 +7,12 @@
  * 条都有明确的出处（shell 的 `sessionVisible` / registry 的归属账本），不是
  * 某个会话的特例。
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   countSessions, offerableSessionGroups, UNGROUPED_KEY,
   type GroupSessionRow, type GroupWorkspaceRow,
 } from '../src/core/session-groups.ts'
 
-const NOW = 1_700_000_000_000
 const UNTITLED = '未命名'
 const UNGROUPED = '未分组会话'
 
@@ -176,12 +175,41 @@ describe('offerableSessionGroups', () => {
   })
 
   it('derives nothing from a clock: the same snapshots always give the same list', () => {
+    // The claim is about the CLOCK, so the instrument has to be one. It used to
+    // read `expect(NOW).toBeGreaterThan(0)` on a literal declared in THIS file
+    // — which proved the literal is positive and observed nothing at all.
+    //
+    // Two readings make it falsifiable:
+    //  1. run the derivation against a clock that has MOVED, and require the
+    //     same list — a clock that reaches the output is a finding;
+    //  2. pin the derived rows WHOLE, so a stamp that leaks in as a new key is
+    //     a decision somebody has to make rather than an unexamined extra.
     const build = () => offerableSessionGroups(sources({
       rows: { s1: { title: 'A' }, s2: { title: 'B' } },
       ids: ['s1', 's2'],
       workspaces: [{ id: 'w1', title: 'Work', sessionIds: ['s1', 's2'] }],
     }), { untitledLabel: UNTITLED, ungroupedLabel: UNGROUPED })
-    expect(JSON.stringify(build())).toBe(JSON.stringify(build()))
-    expect(NOW).toBeGreaterThan(0) // the derivation takes no clock at all
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(0)
+      const atEpoch = build()
+      vi.setSystemTime(2_553_708_800_000) // 2050-01-01Z: the epoch is not special
+      const halfACenturyLater = build()
+      expect(
+        JSON.stringify(halfACenturyLater),
+        'the derived list changed with the clock — the derivation took an instant',
+      ).toBe(JSON.stringify(atEpoch))
+      // The whole shape, so a time-shaped key cannot appear unnoticed.
+      expect(atEpoch).toEqual([{
+        key: 'w1',
+        label: 'Work',
+        sessions: [
+          { sessionId: 's1', title: 'A' },
+          { sessionId: 's2', title: 'B' },
+        ],
+      }])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

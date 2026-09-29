@@ -38,6 +38,19 @@ import type { RetireOptions, RetireOutcome } from '../src/host/data-root.ts'
 
 const T0 = 1_700_000_000_000
 
+/**
+ * A src file's CODE — comments off first (hard rule 14).
+ *
+ * This file scans the service for construction sites, and the service is
+ * heavily commented ABOUT those sites. A scan that read the decoration would
+ * count the explanation as the thing it forbids.
+ */
+function stripComments(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+}
+
 /** A fake KV unit over the real document tree: in-memory records per table, a
  *  load counter, a write counter, and a throwing mode.
  *
@@ -319,13 +332,27 @@ describe('DocumentService lease', () => {
   it('leaseState is the ONLY place a LeaseState literal is built (one construction site)', () => {
     // A second construction site is how the bug was born; the ban is mechanical
     // so nobody can re-introduce a partial seat answer "just this once".
-    const source = readFileSync(fileURLToPath(new URL('../src/host/board-service.ts', import.meta.url)), 'utf8')
+    // Comments come off first (hard rule 14): a sentence ABOUT a literal must
+    // never answer for the literal itself.
+    const source = stripComments(readFileSync(fileURLToPath(new URL('../src/host/board-service.ts', import.meta.url)), 'utf8'))
     const bodies = source.match(/\{\s*held:/g) ?? []
-    const spreads = source.match(/\{\s*\.\.\.current/g) ?? []
     expect(bodies).toHaveLength(4)
-    // The one rejection branch is a spread of the authoritative view, never a
-    // re-typed literal.
-    expect(spreads.length).toBeGreaterThan(0)
+    // The ONE rejection branch, pinned by its exact shape rather than by a
+    // count of "at least one": any spread of the authoritative view IS that
+    // branch, and it must be the authoritative view with only the caller-
+    // relative `held` flipped. `toBeGreaterThan(0)` accepted a second spread
+    // anywhere in the file, and an unrelated `{ ...current` would have
+    // satisfied it forever.
+    const rejections = source.match(/\{\s*\.\.\.current\s*,\s*held:\s*false\s*\}/g) ?? []
+    expect(
+      rejections,
+      'the rejection branch is a spread of the authoritative view with only `held` flipped — exactly one, named',
+    ).toHaveLength(1)
+    const spreads = source.match(/\{\s*\.\.\.current\b/g) ?? []
+    expect(
+      spreads.length,
+      'every spread of the lease view must BE that one rejection branch; an extra one is a second construction site',
+    ).toBe(rejections.length)
     expect(source).not.toMatch(/\{\s*held:\s*false,\s*holder:\s*current\.holder/)
   })
 
