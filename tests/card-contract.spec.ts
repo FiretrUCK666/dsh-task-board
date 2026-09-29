@@ -81,6 +81,63 @@ function expectRule(name: string): string {
   return block
 }
 
+describe('the column header and the cards under it share ONE text edge', () => {  // MEASURED, NOT ASSUMED. Before this contract, one board column showed body
+  // text at four left edges: status dot 37, column title 51, card title 38,
+  // coloured-card title 53, workspace name 49. The column's own NAME was 13px
+  // right of the cards sitting under it, which is what 「没对齐」 looks like
+  // when you cannot name the number.
+  //
+  // The cause was not the padding — `.columnHeader`'s box already EQUALS the
+  // cards' content box (cards 8px inset + card 12px padding). It was the 8px
+  // status dot sitting INSIDE that box as a flex child, pushing the title out
+  // by 8 + the gap. So the invariant is not 「the paddings match」, which was
+  // already true and so gated nothing; it is that NOTHING IN FLOW may precede
+  // the title, which is the thing that was actually wrong.
+  it('keeps the column name on the same left edge as the cards under it', () => {
+  const header = ruleOf('columnHeader') ?? ''
+  expect(header, '.columnHeader is gone — the column name has no row of its own').not.toBe('')
+  expect(header.match(/gap:\s*(\d+)/)?.[1],
+    'the header has a gap again, so anything in flow is offset from the title').toBe('0')
+  // The dot must be out of flow, and it must hang in the inset the cards leave.
+  // `ruleOf` matches one bare class, so the compound selector is read directly.
+  const dot = ruleFor('.columnHeader > .statusDot')
+  expect(dot, 'the header status dot is back in flow, so it pushes the title off the card edge').not.toBe('')
+  expect(dot).toMatch(/position:\s*absolute/)
+  // A containing block, or the dot resolves against the BOARD and lands in the
+  // same place in every column. This is the specific way the fix can be absent
+  // and every declaration can still be present.
+  expect(header, 'the dot is absolute but the header is not positioned, so it escapes to the board')
+    .toMatch(/position:\s*relative/)
+  expect(dot, 'the dot must be centred against the header height, not the top edge').toMatch(/inset-block-start:\s*50%/)
+  // And the box the title starts in must still be the cards' box.
+  expect(header.match(/padding:\s*([\d.]+px\s+[\d.]+px)/)?.[1]?.trim().split(/\s+/)[1],
+    'the header content box no longer matches the cards inset (8) plus card padding (12)')
+    .toBe('20px')
+  })
+})
+
+/** Extract the rule block whose opening line is exactly the given SELECTOR. */
+function ruleFor(selector: string): string {
+  const lines = source.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() !== `${selector} {`) continue
+    let depth = 0
+    const chunks: string[] = []
+    for (let j = i; j < lines.length; j++) {
+      const line = lines[j]
+      chunks.push(line)
+      for (const ch of line) {
+        if (ch === '{') depth++
+        else if (ch === '}') {
+          depth--
+          if (depth === 0) return chunks.join('\n')
+        }
+      }
+    }
+  }
+  return ''
+}
+
 describe('card no-breakout CSS contract', () => {
   it('layer 1: the card box is a hard clip boundary', () => {
     const card = expectRule('card')
