@@ -339,7 +339,11 @@ export interface OpReport {
 export function refuseOp(id: string): { ok: false; detail: string } {
   const spec = ACTIONS[id as ActionId]
   if (spec === undefined) {
-    return { ok: false, detail: `没有 ${id} 这个动作。可用动作见 taskboard_capabilities，动词只有这十二个：${BOARD_VERBS.join(' / ')}` }
+    // The COUNT is read from the table, never typed. It used to say 「十二个」while
+    // `BOARD_VERBS` had thirteen, so every refusal told the model a number the
+    // list under it contradicted — and a model that trusts a count it can check
+    // will check it, find the mismatch, and stop trusting the rest of the line.
+    return { ok: false, detail: `没有 ${id} 这个动作。可用动作见 taskboard_capabilities，动词只有这 ${BOARD_VERBS.length} 个：${BOARD_VERBS.join(' / ')}` }
   }
   if (spec.surface === 'ui') {
     return { ok: false, detail: `「${id}」只有人能做：${spec.summary}` }

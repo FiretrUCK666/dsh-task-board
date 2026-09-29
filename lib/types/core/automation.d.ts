@@ -62,9 +62,11 @@ export declare function sessionRuleOf(row: Extract<AutomationRow, {
  * drivable column (todo/running); backlog/review/done pause it (the reason
  * is the task's own status); a toggled-off rule is disabled; an EMPTY
  * execution prompt blocks it (nothing to drive — a reason, not a pause).
- * The ticker skips paused/blocked rules (keeping their due slot — the pause
- * is a hold, not a drop), exactly like the task scheduler treats a paused
- * schedule.
+  * The ticker skips paused/blocked rules and ROLLS their due slot forward to the
+  * next match, exactly like the task scheduler treats a paused schedule: a
+  * resumed rule continues from its next match instead of firing the moment it
+  * un-pauses, and neither path stamps `lastAt` — that stamp records something
+  * that was actually sent.
  *
  * NOTE — the column pause governs the CRON heartbeat only: an on-complete
  * rule fires AT the settle instant (the task was drivable when the run

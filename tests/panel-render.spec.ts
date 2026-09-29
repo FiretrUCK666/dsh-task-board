@@ -229,6 +229,36 @@ function cssPanelRoot(): string {
  * because a picture has to be believed. Each one states the failure it exists
  * to catch, in the same shape: the rule, then the reason it was ever broken.
  */
+/**
+ * Could this selector match the standalone triage sentence?
+ *
+ * That sentence is a `<p>` that is a DIRECT CHILD of the page's column
+ * scroller. So a rule reaches it when its selector is the bare class, or a
+ * compound scoped to that scroller. A rule under an ancestor the element does
+ * not have — the triage row, a severity variant, a density step — cannot reach
+ * it no matter what it declares, and its `flex` is none of the column's business.
+ *
+ * The list of ancestors that DO exist around the standalone sentence, kept
+ * explicit rather than "anything not containing a dot", because a negated
+ * pattern is a guess: it would classify `.itemScroll > .itemTriageText` as
+ * inapplicable and quietly re-open the very hole this exists to close.
+ * @param selector - the selector the sheet wrote.
+ * @returns whether the standalone element can be subject to it.
+ */
+function canMatchStandalone(selector: string): boolean {
+  const compound = selector.split(',').map(part => part.trim()).filter(part => part.includes('itemTriageText'))
+  const ANCESTORS_THAT_CANNOT_BE_THERE = [
+    'itemTriageRow',
+    'itemDetail',
+    'itemHeader',
+    'itemComposer',
+    'itemListCard',
+    'itemRow',
+    'itemFacetRow',
+  ]
+  return compound.some(part => !ANCESTORS_THAT_CANNOT_BE_THERE.some(boss => part.includes(`.${boss}`)))
+}
+
 describe('the panel fills the stage it is given', () => {
   const css = panelCss()
 
@@ -662,6 +692,18 @@ describe('the triage sentence is a sentence, not filler', () => {
     //
     // The class is read off the MARKUP (the `<p>` that carries the standalone
     // sentence) rather than named here, so renaming the class cannot make this
+    // quiet and cannot make it red for a rename.
+    // The class is legitimately `flex: 1 1 auto` where it sits BESIDE a button in
+    // a row — that is what lines the triage actions up — so what this gate asks is
+    // about the STANDALONE use, and the markup plus the selector's ancestors are
+    // what tell the two apart.
+    // page body, which is a COLUMN flex container. `flex: 1 1 auto` on a direct
+    // child of a column container is `flex-grow: 1` along the block axis, so a
+    // one-line sentence is stretched to fill 660px of a list column and the
+    // reader sees a void with a caption at the top of it.
+    //
+    // The class is read off the MARKUP (the `<p>` that carries the standalone
+    // sentence) rather than named here, so renaming the class cannot make this
     // quiet and cannot make it red for a rename. The same class is legitimately
     // `flex: 1 1 auto` where it sits BESIDE a button in a row — so the gate is
     // about the standalone use, and the markup is what distinguishes them.
@@ -669,21 +711,38 @@ describe('the triage sentence is a sentence, not filler', () => {
     expect(standalone, 'the standalone triage sentence is gone from the panel — the reader is told nothing on a list that needs nothing').not.toBeNull()
     const className = members.get(standalone?.[1] ?? '')
     expect(className, `cannot resolve the css member ${standalone?.[1] ?? '?'}`).toBeDefined()
-    const bodies = rulesOf(css, className ?? '')
-    expect(bodies.length, `there is no .${className} rule`).toBeGreaterThan(0)
-    for (const body of bodies) {
-      const grow = /(?:^|[;{\s])flex(?:-grow)?\s*:\s*([^;]+)/.exec(body)?.[1] ?? ''
+    // ONLY THE RULES THAT CAN MATCH THE STANDALONE `<p>`, and the distinction is
+    // the selector's ANCESTORS rather than the class name. That element is a
+    // direct child of the page's column scroller, so a selector that requires an
+    // `.itemTriageRow` ancestor cannot reach it — and the same class IS
+    // legitimately `1 1 auto` inside such a row, which is what makes the three
+    // actions on a triage block line up. A gate that collected every rule with
+    // this class and called any growth a hole was therefore reporting the row's
+    // correct behaviour as the column's defect: it could not see WHICH box the
+    // sentence was in, and a check that cannot see the box it is checking is
+    // checking the wrong thing. This one can, and it is strictly more specific.
+    const applicable = declarationRules(css)
+      .filter(rule => new RegExp(`\\.${className}(?![\\w-])`).test(rule.selector))
+      .filter(rule => canMatchStandalone(rule.selector))
+    expect(applicable.length, `there is no .${className} rule that the standalone sentence is actually subject to`).toBeGreaterThan(0)
+    for (const rule of applicable) {
+      const grow = /(?:^|[;{\s])flex(?:-grow)?\s*:\s*([^;]+)/.exec(rule.body)?.[1] ?? ''
       const grows = /(?:^|\s)1(?:\s|$)/.test(grow.split(/\s+/)[0] ?? '') && !/^0/.test(grow.trim())
-      expect(grows, `.${className} grows along the block axis (flex: ${grow.trim()}) — a one-line sentence then becomes the height of the column`).toBe(false)
+      expect(grows, `${rule.selector} grows along the block axis (flex: ${grow.trim()}) — a one-line sentence then becomes the height of the column`).toBe(false)
     }
   })
 
-  it('the probe bites: a planted grow is reported, and the real sheet is not', () => {
+  it('the probe bites: a planted grow is reported, and the ROW rule is not mistaken for it', () => {
+    // Plant the exact defect the gate exists for, on the exact selector the
+    // standalone sentence is subject to, and prove it is reported.
     const planted = css.replace(/(\.itemTriageText\s*\{)/, '$1\n  flex: 1 1 auto;')
-    const grows = (className: string): boolean => rulesOf(planted, className)
-      .some(body => /flex\s*:\s*1\s+1\s+auto/.test(body))
-    expect(grows('itemTriageText'), 'the plant did not bite').toBe(true)
-    expect(grows('itemNothingHere'), 'the plant leaked into a class that does not exist — the probe is not testing the detector').toBe(false)
+    const growsWhere = (sheet: string, className: string): boolean => declarationRules(sheet)
+      .filter(rule => new RegExp(`\\.${className}(?![\\w-])`).test(rule.selector))
+      .filter(rule => canMatchStandalone(rule.selector))
+      .some(rule => /flex\s*:\s*1\s+1\s+auto/.test(rule.body))
+    expect(growsWhere(planted, 'itemTriageText'), 'the plant did not bite — the gate is not testing the defect').toBe(true)
+    expect(growsWhere(css, 'itemTriageText'), 'the real sheet is reported as growing, so this gate can only be red').toBe(false)
+    expect(growsWhere(planted, 'itemNothingHere'), 'the plant leaked into a class that does not exist — the probe is not testing the detector').toBe(false)
   })
 })
 

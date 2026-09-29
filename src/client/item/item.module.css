@@ -124,20 +124,33 @@
      on the figures and not merely on the `#`. */
   --item-mark-col: 8px;
   --item-ref-col: 5ch;
-  /* The priority pill's track, sized for the widest word (「紧急」) plus its own
-     padding. It is FIXED rather than content-sized for the same reason the
-     number's track is: a pill that appears on some rows and not others must not
-     move the title's left edge, or the rows that deserve attention are the ones
-     whose text starts furthest right. The track is paid for on every row and
-     used on a few — that is the price of a column that lines up. */
-  --item-priority-col: 34px;
-  /* The batch PICKBOX track, which SHARES track 1 with the state mark and is
-     mutually exclusive with it: a row is either being selected or being read,
-     never both, so widening this one track is how the list's left edge moves
-     once for the whole list instead of once per row. `var(--item-mark-col,
-     …)` is read as the fallback everywhere, which is what lets the two states
-     share one grid instead of growing a second one. */
-  --item-pick-col: 28px;
+  /* The priority pill's track. It is FIXED rather than content-sized for the same
+     reason the number's track is: a pill that appears on some rows and not others
+     must not move the title's left edge, or the rows that deserve attention are the
+     ones whose text starts furthest right. The track is paid for on every row and
+     used on a few — that is the price of a column that lines up.
+     IT IS SIZED FOR THE LONGEST WORD IN EITHER LANGUAGE, not for the Chinese one.
+     It was 34px, measured from 「紧急」, and English `Urgent` is a wider string than
+     that — so on an English desktop the pill read `Urge…` and `Norm…`, and the word
+     is the pill's ONLY content. A track sized from one sample of a table is a track
+     sized wrong for every other sample.
+     56px is the longest of them (`Urgent`, `Normal`, 紧急, 高, 普通, 低) plus the
+     pill's own `0 6px` padding, with a little room for a heavier weight. On the
+     wide band it is a wider column; on the 390px band it costs 22px of the title's
+     slack, which the title gives up by truncating in its own text slot — the
+     sanctioned yield, and the one this row is already built around. */
+  --item-priority-col: 56px;
+  /* The batch PICKBOX track. It is NOT declared here, and that is the point: a
+     track every row pays for a control most rows do not show is a price the batch
+     must not charge the rest of the page for. Track 1 reads
+     `var(--item-pick-col, var(--item-mark-col))`, so the fallback is the state
+     dot's own 8px gutter and the 28px is in force ONLY on a row that is actually
+     holding rows — the row declares it on itself, in that state
+     (`.itemRow[data-picking]`). Declared unconditionally here, it was 22px of
+     dead gutter on the left of every row of every page: the state dot floated
+     22px away from the number beside it, and on a 390px screen that 22px was 15%
+     of the title's own width, so every title truncated about two characters
+     early for a control the reader had not asked for. */
   /* The list's measure. Named once and read by BOTH the workbench grid and the
      capture line, so the field you type a new row into starts and ends on the
      same two lines as the rows it creates. A number written in two places is a
@@ -171,7 +184,14 @@
      binds the track to the type it has to hold, so changing the type moves the
      track with it; the clipping on the text slots below is the belt to that
      braces, not the fix. */
-  --item-meta-col: 21em;
+  /* THE FACT LINE'S SHARE OF THE ROW ON THE WIDE BAND, and it is 19em because
+     the priority column it sits next to got wider. The arithmetic is
+     10em (the date) + 8em (the count) + one 6px gutter, and the number above
+     leaves the remaining 22px to the TITLE rather than to the facts: at 21em the
+     fact column measured 252px against a title track of 244px, so on a page whose
+     own rule is 「一行的主角是它的标题」 the row gave the facts more room than the
+     thing they annotate and every long title truncated against them. */
+  --item-meta-col: 19em;
   --item-meta-date-col: 10em;
   --item-meta-count-col: 8em;
   /* Enough for 「问 AI」 plus the ⋯ hit area plus the gutter, so a row that
@@ -632,7 +652,23 @@
    rule and the gutter, and a field grid sized against those would be sized
    against 24px of someone else's padding. The in-place detail declares the same
    name, which is what lets one `.itemFieldGrid` read correctly in both places. */
+/* THE PICKBOX TRACK, IN FORCE ONLY WHERE A PICKBOX IS DRAWN. The row's track 1
+   reads `var(--item-pick-col, var(--item-mark-col))`, so a row that is being read
+   gets the 6px dot's 8px gutter and a row that is being selected gets 28px. The
+   two states share one grid, the list's left edge moves once for the whole list
+   when the batch opens, and no row pays for the batch in the other two states. */
+.itemRow[data-picking] {
+  --item-pick-col: 28px;
+}
+
+/* THE DETAIL CARD, and it is the one plate on this page that was content-box.
+   Every other plate declares `box-sizing: border-box`, so `inline-size: 100%`
+   meant the BORDER box. This one meant the CONTENT box, so the card ran 26px past
+   the workbench's right edge and 2px past a 1600px viewport while the list column
+   kept its 24px left margin: a page whose right side was clipped and whose left
+   side was not, which is asymmetry a reader sees before reading a word. */
 .itemDetailInner {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-self: start;
@@ -1143,7 +1179,19 @@
      backwards — the space was there and nothing took it. A second count of the
      same kind wraps onto the next grid row instead, which is what a grid row is
      for. */
-  grid-template-columns: var(--item-meta-date-col) var(--item-meta-count-col);
+  /* THE SECOND TRACK HAS A ZERO FLOOR, and that is the whole fix. Both tracks are
+   fixed sizes — the date's 10em and the count's 8em plus a 6px gutter is 222px —
+   while the box this line lives in is 148px at the base band. With two fixed
+   tracks and no floor, the grid does not squeeze: it LAYS OUT at 222px inside a
+   148px box and paints the count 74px outside it, which is the action gutter, so
+   a step ratio rendered on top of the row's own buttons. The reader saw a count
+   sitting in another control's space, and no amount of looking at the stylesheet
+   explains why.
+   `minmax(0, …)` says the count track MAY give way, so the two tracks are the
+   row's floor and its yield in that order. The date keeps its width because a
+   date is a fact with a fixed shape; the count is a ratio and can lose its
+   digits, and it is the one slot in this family with a declared ellipsis. */
+  grid-template-columns: var(--item-meta-date-col) minmax(0, var(--item-meta-count-col));
   column-gap: var(--item-row-gap);
   align-items: center;
   min-inline-size: 0;
@@ -1638,13 +1686,19 @@
    sharing the line. The name is 11px third ink so the FIELD is what the eye
    lands on, and the two are never confused with each other because the name
    says 「排序」 and the field says 「顺序」. */
+/* `flex: 0 1 auto` — sized by its CONTENT, with a 16rem basis as its starting
+   point and nothing forcing it wider. At `1 1 16rem` it took 258px of a 364px bar
+   to hold a two-character value (「顺序」), which put the chevron 205px from its
+   own label and pushed 筛选 flush against the card's border with 0px of air. A
+   control nine times the width of its content is not a control, it is a gap with a
+   dropdown in it, and the row beside it is the one the reader is reaching for. */
 .itemFilterSelect {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-inline-size: 0;
-  flex: 1 1 16rem;
+  flex: 0 1 16rem;
 }
 
 /* The pills. Hidden at the base band and shown from 720 — a seven-option
@@ -2230,22 +2284,10 @@ textarea.itemInput {
   background: var(--dsh-tb-hover);
 }
 
+/* The sentence, in both of the places it appears, with ONE set of type rules.
+   Only `flex` is context-scoped, because `flex` is the only declaration that
+   means something different in a row and in a column. */
 .itemTriageText {
-  /* `flex: 0 1 auto`, NOT `1 1 auto` — and the distinction is a 660px hole.
-
-     This class is right in a ROW (the triage line is a flex row, and there
-     `flex: 1 1 auto` is exactly what makes the sentence take the slack and push
-     its action to the end). The same class was also used for a sentence that
-     is a DIRECT CHILD of the page's column-direction scroller, and there
-     `flex-grow: 1` means GROW DOWNWARDS. So 「没有等你动手的事。」 stretched
-     itself over half a screen, and the page it was on had a hole in it that
-     read as a layout fault.
-
-     The rule is the general one: A CLASS THAT IS RIGHT IN A ROW IS NOT RIGHT
-     IN A COLUMN, so a sentence standing alone gets its own declaration rather
-     than borrowing the row's. This one no longer grows, and it no longer
-     truncates either — a reminder that says 「…8 天…」 instead of
-     「8 项过了想要的日子」 has stopped being a reminder. It WRAPS. */
   flex: 0 1 auto;
   min-inline-size: 0;
   font-size: 12px;
@@ -2253,7 +2295,30 @@ textarea.itemInput {
   /* Second ink, not first: this is a reminder about the list, not part of the
      list, and at 14px it would outrank the rows it is pointing at. */
   color: var(--dsh-tb-text-2);
+  /* It WRAPS rather than truncates: a reminder that says 「…8 天…」 instead of
+     「8 项过了想要的日子」 has stopped being a reminder. */
   overflow-wrap: anywhere;
+}
+
+.itemTriageRow .itemTriageText {
+  /* IN A ROW THIS IS `1 1 auto`, and the sentence is what takes the slack. That
+     is what pushes the 看去 to the row's end, so three actions on three lines
+     sit on ONE vertical line. Measured with the old `0 1 auto` on the bare class:
+     the same link landing at x=131, 126 and 83 — an identical control stepping
+     diagonally by however long each sentence happened to be, which is the
+     clearest 「this does not line up」 on the page. */
+  flex: 1 1 auto;
+}
+
+.itemScroll > .itemTriageText {
+  /* A SENTENCE STANDING ALONE GETS ITS OWN DECLARATION, and it needs the
+     SCOPED selector to hold. The same class is a direct child of the page's
+     column-direction scroller, and there `flex-grow: 1` means GROW DOWNWARDS:
+     「没有等你动手的事。」 stretched itself over half a screen and opened a 660px
+     hole in the page that read as a layout fault. A bare class rule would lose
+     to the row rule above on specificity anyway; naming the parent is what makes
+     the two positions independent of source order. */
+  flex: 0 1 auto;
 }
 
 .itemTriageRow[data-severity='warn'] .itemTriageText {
@@ -2772,54 +2837,6 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
-.itemFacetToggle {
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  block-size: var(--dsh-tb-button-h-sm);
-  padding: 0 10px;
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--dsh-tb-text-2);
-  background: none;
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-pill);
-  cursor: pointer;
-  list-style: none;
-  transition: color var(--dsh-tb-motion), border-color var(--dsh-tb-motion), background var(--dsh-tb-motion);
-}
-
-.itemFacetToggle::-webkit-details-marker {
-  display: none;
-}
-
-.itemFacetToggle:hover {
-  color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-hover);
-}
-
-.itemFacetToggle:focus-visible {
-  outline: 2px solid var(--dsh-tb-accent);
-  outline-offset: 1px;
-}
-
-.itemFacetToggle[data-active] {
-  color: var(--dsh-tb-text-1);
-  border-color: var(--dsh-tb-accent);
-  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
-}
-
-.itemFacetActive {
-  color: var(--dsh-tb-text-1);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-inline-size: 0;
-}
-
 /* THE ARCHIVE FOOTNOTE — one sentence and one link, and neither of them is a
    triage line. It keeps the triage row's tap target for its LINK (a touch has no
    hover and 「看看」 is 32px of Chinese) while the row itself stays the height a
@@ -2992,7 +3009,22 @@ textarea.itemInput {
 
 }
 
-@container dsh-tb-item (min-width: 1080px) {
+/* The two-column shape starts at 1081px, not 1080.
+
+   `useSurfaceNarrow('[data-dsh-taskboard-view]', 1080)` reads `width <= 1080`, so
+   AT EXACTLY 1080 the hook has already decided there is no detail pane and
+   rendered none — while this query, at `min-width: 1080px`, still laid the grid
+   out in two columns. The reader got a 312px empty column with a border down it,
+   at one width, on a desk. Two sources of truth for one decision is a seam, and a
+   seam is only ever a width where the page is briefly wrong.
+
+   The two now read the same way: JS is narrow when `width <= 1080`, so the
+   two-column shape begins one pixel above that, and every width falls in exactly
+   one of the two. There is no width at which the pane is laid out but not
+   rendered. The number is still written in two places — a CSS query cannot read
+   a JavaScript constant — so it is stated in both and the gap between them is
+   the comment you are reading. */
+@container dsh-tb-item (min-width: 1081px) {
   .itemHeader,
   .itemWorkbench {
     --item-inset: 24px;
@@ -3037,19 +3069,43 @@ textarea.itemInput {
 }
 
 /* ── 触屏：只加不可见的热区，不改任何视觉几何 ─────────────────────────────
-   Nothing here moves a control, changes a size or hides a label: a phone sees
-   the same interface as a desk, only easier to hit. */
+   Every declaration below extends a HIT AREA and paints nothing: a transparent
+   pseudo-element laid over and around the control's own box, so a finger gets 40px
+   while the page keeps the control at 24px and nothing on it moves. That is the
+   whole technique, and it is why this block can be true to its own header.
+
+   It used to do the opposite of what it says: it added `gap: 8px` to the action
+   cluster, which is VISIBLE GEOMETRY keyed on input modality, and declared a
+   `--item-row-pad` the row already floored at 12px so it could never change
+   anything. So the block spent its budget on something a desk should also have
+   and the phone's real problem was untouched: the row's `⋯` is 24px, and it is
+   the control every delete, mark, promote and expand on this surface goes
+   through. Heating that is the point of being here. */
 
 @media (hover: none) and (pointer: coarse) {
-  .itemRoot {
-    /* 16px is the platform's minimum for text that has to be read without a
-       pinch; a form control below it is the one place the board does allow a
-       size change, and only upward. */
-    --item-row-pad: 12px;
+  /* Only ISOLATED controls get the pseudo-element. Stacked neighbours share the
+     extension and would steal each other's taps — a menu whose second item eats
+     the first one's hit area is a menu that opens the wrong thing, which is worse
+     than a small target. Stacked rows are given their room in the row's own
+     padding instead, which moves no control relative to another. */
+  .itemRowMenuButton,
+  .itemFacetChip,
+  .itemClearFilter,
+  .itemTriageAction,
+  .itemPageTab {
+    position: relative;
   }
 
-  .itemRowActions,
-  .itemComposer {
-    gap: 8px;
+  .itemRowMenuButton::after,
+  .itemFacetChip::after,
+  .itemClearFilter::after,
+  .itemTriageAction::after,
+  .itemPageTab::after {
+    content: '';
+    position: absolute;
+    inset-block: -8px;
+    /* 3px, not 6: the chips sit 6px apart, so 3px of extension on each side meets
+       in the gap and neither reaches into the other. */
+    inset-inline: -3px;
   }
 }

@@ -120,6 +120,24 @@ const failures = []
 const notes = []
 
 /**
+ * The ceiling on `AGENTS.md`, and why it is a MECHANICAL check.
+ *
+ * The file is injected into every session of this project, so it is not a
+ * document that can rot quietly in a folder — it is the instruction set an agent
+ * reads before touching anything. A ceiling on it is therefore a real promise
+ * about the working context, and a promise nothing measures is not a promise; it
+ * is a number in a sentence. Every other hard limit in this project has a gate
+ * that bites on its own (class drift, locale pairs, the encoding audit), and this
+ * one was the exception, which is the same shape of failure the encoding audit
+ * exists for: a condition that changes nothing, so no test ever goes red.
+ *
+ * The check is deliberately the ONLY thing here that measures a size. A contract
+ * that is a ceiling has to have a number, and a number has to be enforced in one
+ * place or it is a number somebody remembers.
+ */
+const AGENTS_CEILING_BYTES = 55_000
+
+/**
  * Regression blacklist: legacy identifiers that must never reappear in this
  * project (package scopes, old plugin names, old route prefixes, old bundle
  * names). Part of the protection tooling, not project content.
@@ -201,6 +219,21 @@ else {
   const patch = readFileSync(patchPath, 'utf8')
   if (!patch.includes(`- id: ${pluginId}`)) failures.push(`cordis.patch.yml lacks row id "${pluginId}" (the plugin id)`)
   if (!patch.includes(`name: '${packageName}'`)) failures.push(`cordis.patch.yml lacks row name '${packageName}' (the package name)`)
+}
+
+// --- 1b. the contract's own ceiling ----------------------------------------
+
+const agentsPath = join(root, 'AGENTS.md')
+if (existsSync(agentsPath)) {
+  const size = statSync(agentsPath).size
+  if (size > AGENTS_CEILING_BYTES) {
+    failures.push(
+      `AGENTS.md is ${size} bytes, over its ${AGENTS_CEILING_BYTES}-byte ceiling by ${size - AGENTS_CEILING_BYTES}. `
+      + 'It is injected into every session of this project, so its length is part of the working context, not a formatting preference. '
+      + 'Cut something before adding something: a section that restates a rule another file already owns is the usual surplus.',
+    )
+  }
+  notes.push(`AGENTS.md ${size} bytes of a ${AGENTS_CEILING_BYTES}-byte ceiling`)
 }
 
 // --- 2. forbidden tokens ----------------------------------------------------

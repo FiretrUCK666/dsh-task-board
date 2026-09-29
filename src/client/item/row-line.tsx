@@ -161,6 +161,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
     <li
       ref={rowRef}
       className={css.itemRow}
+      data-picking={props.picking ? '' : undefined}
       data-status={status}
       data-density={density}
       data-open={inPlace && expanded ? '' : undefined}

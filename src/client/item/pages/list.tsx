@@ -64,18 +64,34 @@ export function ListPage(props: ItemListPageProps) {
     setArchive(reply.ok ? { kind: 'ready', rows: reply.deleted } : { kind: 'unreadable' })
   }, [])
 
+  /**
+   * Restore one archived row, ADDRESSED BY ITS IDENTITY.
+   *
+   * It used to address by short number, and that made a row deleted before the
+   * document numbered it impossible to get back: the archive holds whole rows, a
+   * row written seconds ago carries no number yet, the host refuses a number of
+   * zero as a name, and the button was permanently dead on exactly the rows a
+   * reader is most likely to want back. The receipt also printed `#0` — the
+   * sentinel `itemRefOf` exists to keep off the screen.
+   *
+   * So the archive uses the name it is HOLDING. The short number stays the model's
+   * name, because a number is the thing a person and a model say out loud and the
+   * model only ever reads rows the document has already numbered; a reader reading
+   * the archive has the row in front of them and its identity with it.
+   */
   const restoreOne = useCallback(async (item: ItemRecord) => {
+    const label = itemRefOf(item).text ?? '—'
     if (props.clientId === undefined) {
-      setArchiveNote(t('item.archive.refused', { ref: `#${item.ref}`, why: 'hostUnavailable' }))
+      setArchiveNote(t('item.archive.refused', { ref: label, why: 'hostUnavailable' }))
       return
     }
     setArchiveNote(undefined)
     setRestoring(item.ref)
-    const reply = await itemsRestore({ ref: item.ref }, props.clientId)
+    const reply = await itemsRestore({ id: item.id }, props.clientId)
     setRestoring(undefined)
     setArchiveNote(reply.ok && reply.restored !== undefined
-      ? t('item.archive.restored', { ref: `#${item.ref}` })
-      : t('item.archive.refused', { ref: `#${item.ref}`, why: reply.ok ? 'gone' : reply.why }))
+      ? t('item.archive.restored', { ref: label })
+      : t('item.archive.refused', { ref: label, why: reply.ok ? 'gone' : reply.why }))
     if (reply.ok) await openArchive()
   }, [openArchive, props.clientId])
 
