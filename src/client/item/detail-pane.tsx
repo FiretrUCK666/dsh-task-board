@@ -43,9 +43,9 @@ const ORIGIN_LABEL: Readonly<Record<ItemRecord['origin']['source'], 'item.origin
 }
 
 /** One labelled field. The label is the control's name, not decoration. */
-function Field(props: { readonly label: string; readonly children: React.ReactNode }) {
+function Field(props: { readonly label: string; readonly children: React.ReactNode; readonly wide?: boolean }) {
   return (
-    <label className={css.itemField}>
+    <label className={css.itemField} data-wide={props.wide === true ? '' : undefined}>
       <span className={css.itemFieldLabel}>{props.label}</span>
       {props.children}
     </label>
@@ -219,7 +219,15 @@ export function ItemDetail(props: ItemDetailProps) {
               onChange={event => props.onEdit({ dueAt: parseItemDate(event.target.value) })}
             />
           </Field>
-          <Field label={t('item.field.hardDueAt')}>
+          {/* Wide, and the reason is the row it terminates. Five fields in a
+              two-column grid is rows of 2 / 2 / 1, and the odd one left a
+              382 × 53px hole at the end of the section a reader scans FOR
+              DATES. The hard deadline is the one date that turns a row red, so
+              giving it the full width says so with the geometry instead of with
+              a sentence — and it fills the row rather than stretching anything
+              else. Named with `data-wide` rather than `:last-child`, because
+              「the last child of the grid」 is a position and this is a field. */}
+          <Field label={t('item.field.hardDueAt')} wide>
             <input
               type="date"
               className={css.itemInput}

@@ -683,6 +683,63 @@ describe('the triage sentence is a sentence, not filler', () => {
   const panelSource = itemSurfaceSource()
   const members = cssMembersOf(panelSource)
 
+  it('a section caption does not outrank the fields it introduces', () => {
+    // MEASURED, THEN FIXED, THEN PINNED. The caption was 12px/**600** in `text-3`
+    // — the only 600 in the whole form, on its faintest ink, while every value it
+    // introduces was 400. So the eye landed on 「标题与正文」 before the title
+    // field that caption names, and it competed with the one control allowed to
+    // be alarming. A container label that outranks its own contents is not a label.
+    //
+    // The gate is the ORDER, not three numbers: whatever the sizes are, the ladder
+    // has to run value → label → caption, in ink as well as in size. Asserted as
+    // a comparison so the next person to retune one of them cannot quietly
+    // promote the caption again.
+    const size = (name: string): number => {
+      const body = declarationRules(css)
+        .filter(rule => new RegExp(`\\.${name}(?![\\w-])`).test(rule.selector))
+        .map(rule => /font-size\s*:\s*([\d.]+)px/.exec(rule.body)?.[1])
+        .find(v => v !== undefined)
+      return body === undefined ? NaN : Number(body)
+    }
+    const ink = (name: string): number => {
+      const order = ['--dsh-tb-text-1', '--dsh-tb-text-2', '--dsh-tb-text-3']
+      const body = declarationRules(css)
+        .filter(rule => new RegExp(`\\.${name}(?![\\w-])`).test(rule.selector))
+        .map(rule => /color\s*:\s*([^;]+)/.exec(rule.body)?.[1] ?? '')
+        .find(v => order.some(token => v.includes(token)))
+      const at = order.findIndex(token => (body ?? '').includes(token))
+      return at
+    }
+    const value = size('itemInput')
+    const label = size('itemFieldLabel')
+    const caption = size('itemSectionTitle')
+    expect(caption, 'the section caption is the same size as a field label, so nothing separates them but ink')
+      .toBeLessThan(label)
+    expect(label, 'a field label is not smaller than the value it names')
+      .toBeLessThanOrEqual(value)
+    expect(ink('itemSectionTitle'), 'the caption is not the quietest of the three')
+      .toBeGreaterThan(ink('itemFieldLabel'))
+    expect(ink('itemFieldLabel'), 'a field label is not quieter than the value it names')
+      .toBeGreaterThanOrEqual(ink('itemInput'))
+  })
+
+  it('an odd field in a two-column grid is named, so the last row is not half empty', () => {
+    // 计划与期限 seats 状态|优先级 / 最早开始|截止 / 硬期限 — five into two, which
+    // measured as a 382 × 53px hole at the end of the section a reader scans FOR
+    // DATES. The fix names the field (`data-wide`) rather than reaching for
+    // `:last-child`, because 「the last child of the grid」 is a position and the
+    // hard deadline is a field; a reordering would silently move the span.
+    const detail = readFileSync(new URL('../src/client/item/detail-pane.tsx', import.meta.url), 'utf8')
+    expect(detail.replace(/\/\*[\s\S]*?\*\//g, ''), 'the odd field out of the two-column grid is no longer named, so the hole can come back')
+      .toMatch(/<Field label=\{t\('item\.field\.hardDueAt'\)\} wide>/)
+    const field = /^\.itemFieldGrid > \.itemField\[data-wide\]/m.exec(css)
+    expect(field, 'nothing in the sheet acts on data-wide, so naming the field achieves nothing')
+      .toBeDefined()
+    expect(css, 'the named field does not actually span the row').toMatch(/grid-column\s*:\s*1\s*\/\s*-1/)
+    expect(detail.replace(/\/\*[\s\S]*?\*\//g, ''), 'the field is positioned by an nth-child rule instead of by name')
+      .not.toMatch(/itemField:\s*nth-child/)
+  })
+
   it('the STANDALONE sentence does not grow vertically, so it cannot open a hole in the column', () => {
     // The panel prints 「没有等你动手的事」 as a paragraph of its own inside the
     // page body, which is a COLUMN flex container. `flex: 1 1 auto` on a direct

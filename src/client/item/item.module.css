@@ -2187,12 +2187,21 @@ textarea.itemInput {
 
 .itemSectionTitle {
   margin: 0;
-  font-size: 12px;
-  /* 600, not 500: 12px is allowed exactly TWO weights on this surface, and the
-     other one is 400 (the fact line). A third value at this size is what the
-     self-check counts, and a 500 here was that third value wearing a name
-     nobody was tracking. The container voice is the group head's voice. */
-  font-weight: 600;
+  /* THE QUIETEST THING IN THE FORM, and it used to be the loudest.
+     Measured before this change: the caption was 12px/**600** in `text-3` — the
+     only 600 anywhere in the form, sitting on the faintest ink, while every value
+     it introduces was 400. So the eye landed on 「标题与正文」 before the title
+     field that caption names, and the caption competed with the one control in
+     the form that is allowed to be alarming (the delete button, 500 in red).
+     A container label that outranks its own contents is not a label.
+
+     The form's ladder is now three unmistakable steps, in ink as well as size:
+     **value 13/400 in `text-1` → label 12/400 in `text-2` → caption 11/400 in
+     `text-3`.** The caption drops to the meta tier because that is what a band
+     label is — the same tier as a timestamp — and the 600 goes back to the two
+     places that are actually titles: the page title and the row's own. */
+  font-size: 11px;
+  font-weight: 400;
   line-height: var(--dsh-tb-hint-line);
   letter-spacing: 0.02em;
   color: var(--dsh-tb-text-3);
@@ -2206,8 +2215,12 @@ textarea.itemInput {
 }
 
 .itemFieldLabel {
-  font-size: 11px;
-  line-height: var(--dsh-tb-hint-line);
+  /* One step ABOVE the caption and one below the value, which is what a label is:
+     it has to be findable by scanning the column of labels, and it must never be
+     the thing the eye stops on. The step down in size from the old 11px is what
+     gives the form three tiers instead of two. */
+  font-size: 12px;
+  line-height: var(--dsh-tb-row-line);
   letter-spacing: 0.02em;
   color: var(--dsh-tb-text-2);
 }
@@ -2234,6 +2247,15 @@ textarea.itemInput {
 
 .itemFieldGrid > .itemField {
   min-inline-size: 0;
+}
+
+/* THE FIELD THAT SPANS THE ROW, named rather than positional. A two-column grid
+   holding an odd number of fields ends its last row half empty, and here that hole
+   landed at the end of 计划与期限 — the section a reader scans precisely to find
+   the dates. Letting the hard deadline take the full row fills it and gives the
+   one date that turns a row red the width to say so. */
+.itemFieldGrid > .itemField[data-wide] {
+  grid-column: 1 / -1;
 }
 
 .itemStepList {
