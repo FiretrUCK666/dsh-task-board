@@ -793,10 +793,11 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
   grid-template-columns:
     var(--item-pick-col, var(--item-mark-col))       /* 基准：状态点 8px；批量打开时勾选 28px */
     var(--item-ref-col)                              /* 5ch */
+    var(--item-priority-col)                         /* 56px：`!1`–`!4` 四枚优先级药丸 */
     minmax(0, 1fr);                                  /* 标题 */
   grid-template-areas:
-    'pick ref title'
-    'pick ref meta';
+    'pick ref priority title'
+    'pick ref priority meta';
   column-gap: var(--item-row-gap);
   row-gap: 4px;
 }
@@ -806,13 +807,18 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
     grid-template-columns:
       var(--item-pick-col, var(--item-mark-col))
       var(--item-ref-col)
+      var(--item-priority-col)
       minmax(0, 1fr)
       var(--item-meta-col);
-    grid-template-areas: 'pick ref title meta';
+    grid-template-areas: 'pick ref priority title meta';
     row-gap: 0;
   }
 }
 ```
+
+**优先级那一轨两档都在，不是只有宽档才有。** 基准是**四条轨**（选点 / 编号 / 优先级 / 标题），
+720 起是**五条**（末尾多一条封顶的事实行）—— 优先级在标题左边，所以它从基准起就得有位置，
+否则窄档的 `!1` 会挤到标题里，而**它挤进去的代价是标题少 56px**。
 
 - **前两条轨必须是定值。** 每一行是各自一个网格，`auto` 轨按**本行**的内容算宽，于是 `#1` 那一行与
   `#12` 那一行的编号轨不一样宽，**标题的左沿就跟着差了一个字符**——在一页还没被读之前先读成
@@ -829,15 +835,16 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
   grid-area: meta;
   display: grid;
   /* 基准：两条轨。没有第三条——装得下却留一条恒空的轨，是「让位」做反了方向：
-     让位是换行或压缩，不是留一整条空轨道。 */
-  grid-template-columns: var(--item-meta-date-col) var(--item-meta-count-col);
+     让位是换行或压缩，不是留一整条空轨道。计数轨包在 minmax(0, …) 里，所以它能
+     缩到自己的内容宽；不包的话定值轨会画在内容外面（这就是那条 74px 溢出）。 */
+  grid-template-columns: var(--item-meta-date-col) minmax(0, var(--item-meta-count-col));
   column-gap: var(--item-row-gap);
   align-items: center;
   min-inline-size: 0;
 }
 @container dsh-tb-item (min-width: 720px) {
   .itemRowMeta {
-    grid-template-columns: var(--item-meta-date-col) var(--item-meta-count-col) minmax(0, 1fr);
+    grid-template-columns: var(--item-meta-date-col) minmax(0, var(--item-meta-count-col)) minmax(0, 1fr);
   }
 }
 .itemStartsAfter, .itemDue { grid-column: 1; }
@@ -1075,16 +1082,17 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 而「没有等你动手的事。」把**同一个类**直接放在列向的 `.itemScroll` 里，那条 `flex-grow` 就会变成
 纵向生长。所以它有一条按父级限定的声明，见「要处理是一段话」那节的 CSS。
 
-**分隔线归工作台，内容盒归内容。** 详情轨拉满高**只负责画那条贯穿全高的竖线**（`align-self:
-stretch`），内容盒 `.itemDetailInner` 接 `align-self: start` + `max-block-size: 100%`。**竖线的
-长度必须等于轨道的高度而不是内容的高度**——一条中途断掉的线读作「这里没画完」，而它是这一页
-唯一的一条竖线。
+**分隔线归工作台，内容盒归内容。** `align-self: stretch` 在**基准**那一档，不在 1081 那一档：
+**竖线的长度必须等于轨道的高度而不是内容的高度**，而轨道的高度两档都是满的，所以**基准就
+要 stretch** —— 写成「窄档 start、宽档 stretch」会得到一条只在大屏才到底的线，**而它两档都
+是竖线，缺的那一截没有理由只缺在窄屏**。内容盒 `.itemDetailInner` 接 `align-self: start` +
+`max-block-size: 100%`。一条中途断掉的线读作「这里没画完」，而它是这一页唯一的一条竖线。
 
 ```css
 .itemDetailPane { grid-area: detail; display: flex; flex-direction: column;
-  align-self: start; min-block-size: 0; min-inline-size: 0; background: none; }
+  align-self: stretch; min-block-size: 0; min-inline-size: 0; background: none; }
 @container dsh-tb-item (min-width: 1081px) {
-  .itemDetailPane { align-self: stretch;
+  .itemDetailPane {
     padding-inline-start: var(--item-track-gutter);
     border-inline-start: 1px solid var(--dsh-tb-border); }   /* 全页唯一的竖线，长度 = 轨道高 */
 }
