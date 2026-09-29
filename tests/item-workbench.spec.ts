@@ -763,6 +763,51 @@ describe('the search box does not print the grammar', () => {
   })
 })
 
+describe('the ordering is ONE control, and the narrow band only wraps it', () => {
+  /**
+   * IT WAS TWO COMPONENTS, AND THE CONTAINER QUERY DECIDED WHICH ONE YOU GOT.
+   *
+   * A `<select>` at the base band, a segmented row from 720, one hidden and one
+   * shown. That is the move rule 11 bans outright — a second component for the
+   * narrow band — and it bought nothing: the shared segmented row already WRAPS,
+   * so seven named orders on a 342px line is two lines, and a second line is one
+   * of the six answers the rule allows. What it actually cost is that the same
+   * setting had two different names and two different affordances depending on
+   * the width of the window, and that a reader who learned one had to learn the
+   * other.
+   *
+   * The gate is on the RENDER, not on the stylesheet, because the defect was never
+   * a declaration — both controls were perfectly well declared. It was that only
+   * one of them was ever on screen.
+   */
+  const bar = code(read('src/client/item/filter-bar.tsx'))
+
+  it('the bar renders one ordering control, and no band decides otherwise', () => {
+    const selects = /<select[\s\S]*?item\.sort\.label[\s\S]*?<\/select>/.test(bar)
+    expect(selects, 'the phone band has its own ordering control again — the same setting with a different component and a different name')
+      .toBe(false)
+    const segmented = (bar.match(/<Segmented/g) ?? []).length
+    expect(segmented, `the ordering control is rendered ${segmented} times; it must be one control in both bands`).toBe(1)
+  })
+
+  it('and no stylesheet hides it at a width', () => {
+    const sheet = code(read('src/client/item/item.module.css'))
+    const hidden = [...sheet.matchAll(/\.itemFilterWide\s*\{([^}]*)\}/g)]
+      .map(match => match[1] ?? '')
+      .filter(body => /display\s*:\s*none/.test(body))
+    expect(hidden, 'a width is told to hide the ordering control, which is how the phone lost it').toEqual([])
+    expect(sheet, 'the second ordering control still has a class of its own').not.toMatch(/\.itemFilterSelect\b/)
+  })
+
+  it('the probe bites: a hidden control is reported', () => {
+    const detector = (css: string): number => [...css.matchAll(/\.itemFilterWide\s*\{([^}]*)\}/g)]
+      .map(match => match[1] ?? '')
+      .filter(body => /display\s*:\s*none/.test(body)).length
+    expect(detector('.itemFilterWide { display: none; }'), 'the probe did not bite — a hidden control passes').toBe(1)
+    expect(detector('.itemFilterWide { display: flex; }'), 'a visible control is reported as hidden').toBe(0)
+  })
+})
+
 describe('the row menu is placed by arithmetic, not by hope', () => {
   /**
    * The pure kernel, imported so a missing module is ONE finding rather than a

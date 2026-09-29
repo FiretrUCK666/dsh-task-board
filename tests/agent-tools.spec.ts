@@ -182,7 +182,7 @@ describe('the run-config field list exists once', () => {
     // not what fails here.
     const made = board.getDoc().tasks.find(task => task.title === '配色试验')
     expect(made, 'the card was not created, so there is nothing to colour').toBeDefined()
-    const paint = await runBatch(deps(board), { ops: [{ op: 'task.update', payload: { of: String(made?.ref ?? made?.id), color: '#aabbcc' } }] })
+    const paint = await runBatch(deps(board), { ops: [{ op: 'task.update', payload: { of: String(made?.id), color: '#aabbcc' } }] })
     expect(paint.ok, `the colour was refused entirely: ${paint.summary}`).toBe(true)
     const painted = board.getDoc().tasks.find(task => task.title === '配色试验')
     expect(painted?.color, 'the model set a colour the catalogue offers and the card does not have it').toBe('#aabbcc')
@@ -191,7 +191,7 @@ describe('the run-config field list exists once', () => {
     // the summary still has to read as a completion, so the assertion is on what
     // changed and on the revision, not on a flag.
     const commitsBefore = board.commits
-    const again = await runBatch(deps(board), { ops: [{ op: 'task.update', payload: { of: String(made?.ref ?? made?.id), color: '#aabbcc' } }] })
+    const again = await runBatch(deps(board), { ops: [{ op: 'task.update', payload: { of: String(made?.id), color: '#aabbcc' } }] })
     expect(again.changed?.tasks, 'setting a field to the value it already had was reported as a change').toEqual([])
     expect(again.counts.unchanged, 'the receipt calls a no-op an update').toBe(1)
     expect(board.commits, 'an update that changed nothing still cost a revision and woke every device').toBe(commitsBefore)

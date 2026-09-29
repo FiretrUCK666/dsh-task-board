@@ -184,22 +184,18 @@ export function ItemFilterBar(props: ItemFilterBarProps) {
           )}
         </>
       )}
-      <div className={css.itemFilterSelect}>
-        <span className={css.itemFacetName}>{t('item.sort.label')}</span>
-        <select
-          className={css.itemInput}
-          value={props.sort}
-          aria-label={t('item.sort.label')}
-          onChange={event => { props.onSort(event.target.value as ItemSort) }}
-        >
-          {ITEM_SORTS.map(sort => <option key={sort} value={sort}>{t(SORT_LABEL[sort])}</option>)}
-        </select>
-      </div>
+      {/* ONE ORDERING CONTROL, IN BOTH BANDS. It used to be two: a `<select>` at
+          the base band and this segmented row from 720, with the container query
+          hiding one and showing the other. That is the move rule 11 bans outright
+          — a second component for the narrow band — and it was not necessary,
+          because the shared segmented row already WRAPS. Seven named orders on a
+          342px line is two lines, and a second line is one of the six answers the
+          rule allows, while 「the phone gets a different control with a different
+          name for the same setting」 is not on the list at all.
 
-      {/* The same control, seven times over, for the band with room for it. It
-          STAYS OPEN: the ordering is the frame the rows are read in, and hiding
-          it behind a disclosure would make the reader open a control to find out
-          what they are already looking at. */}
+          It also STAYS OPEN at every width: the ordering is the frame the rows are
+          read in, and hiding it behind a disclosure would make the reader open a
+          control to find out what they are already looking at. */}
       <div className={css.itemFilterWide}>
         <Segmented
           ariaLabel={t('item.sort.label')}

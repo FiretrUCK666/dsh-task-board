@@ -1771,31 +1771,16 @@
   min-inline-size: 0;
 }
 
-/* The phone band's ordering control: a short name and the field, side by side,
-   sharing the line. The name is 11px third ink so the FIELD is what the eye
-   lands on, and the two are never confused with each other because the name
-   says 「排序」 and the field says 「顺序」. */
-/* `flex: 0 1 auto` — sized by its CONTENT, with a 16rem basis as its starting
-   point and nothing forcing it wider. At `1 1 16rem` it took 258px of a 364px bar
-   to hold a two-character value (「顺序」), which put the chevron 205px from its
-   own label and pushed 筛选 flush against the card's border with 0px of air. A
-   control nine times the width of its content is not a control, it is a gap with a
-   dropdown in it, and the row beside it is the one the reader is reaching for. */
-.itemFilterSelect {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  min-inline-size: 0;
-  flex: 0 1 16rem;
-}
-
-/* The pills. Hidden at the base band and shown from 720 — a seven-option
-   segmented control on a 390px line cannot wrap (the shared `.segmentedRow` is
-   `inline-flex` with `nowrap`), so it would simply lose the options past its
-   right edge without saying so. */
+/* The ordering control, and it is the ONLY one on this surface at every width.
+   There used to be a second `<select>` for the base band with the container query
+   hiding one and showing the other — which is a second component for the narrow
+   band, the move rule 11 bans outright, and one that was never necessary: the
+   shared segmented row WRAPS, so seven named orders on a 342px line is two lines.
+   A second line is on the list of answers the rule allows; 「the phone gets a
+   different control for the same setting」 is not. */
 .itemFilterWide {
-  display: none;
+  display: flex;
+  min-inline-size: 0;
 }
 
 /* …AND IT IS GIVEN THE ABILITY TO GIVE WAY, FROM HERE.
@@ -3086,14 +3071,6 @@ textarea.itemInput {
     flex-wrap: wrap;
     align-items: center;
     gap: 6px 10px;
-  }
-
-  .itemFilterSelect {
-    display: none;
-  }
-
-  .itemFilterWide {
-    display: flex;
   }
 
 }
