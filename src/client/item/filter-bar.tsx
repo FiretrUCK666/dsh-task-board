@@ -188,14 +188,20 @@ export function ItemFilterBar(props: ItemFilterBarProps) {
           the base band and this segmented row from 720, with the container query
           hiding one and showing the other. That is the move rule 11 bans outright
           — a second component for the narrow band — and it was not necessary,
-          because the shared segmented row already WRAPS. Seven named orders on a
-          342px line is two lines, and a second line is one of the six answers the
-          rule allows, while 「the phone gets a different control with a different
-          name for the same setting」 is not on the list at all.
+          because the shared segmented row already WRAPS.
 
-          It also STAYS OPEN at every width: the ordering is the frame the rows are
-          read in, and hiding it behind a disclosure would make the reader open a
-          control to find out what they are already looking at. */}
+          MEASURED, and the note that used to sit here was WRONG: it claimed 「seven
+          named orders on a 342px line is two lines」. On a 390px phone the row
+          measures THREE lines and 111px. Shortening the three long labels (最早开始,
+          优先级, 出生时刻 → 最早, 优先, 出生) was tried and changed the height by
+          ZERO, so the labels were put back — **a change that buys nothing
+          measurable is not a change.**
+
+          The height is not the LABELS. This bar has three children — the batch-arm
+          toggle, the ordering block, and the filter facet — and the arm toggle, one
+          short word, is taking a LINE TO ITSELF on a phone. That is the whole of
+          the waste, and the fix is to let it share the line it is already on the
+          edge of. */}
       <div className={css.itemFilterWide}>
         <Segmented
           ariaLabel={t('item.sort.label')}
