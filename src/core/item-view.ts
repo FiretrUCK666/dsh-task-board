@@ -539,8 +539,22 @@ export function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchCo
   const posture = datePostureOf(item, ctx.now)
   const stale = staleDaysOf(item, ctx.now)
   for (const flag of query.flags) {
+    // A FLAG IS A JUMP, AND A JUMP MUST LAND EXACTLY WHERE ITS NUMBER SAYS.
+    // `behind` and `undated` are produced by the triage lines, and both of those
+    // count only UNFINISHED work (and `undated` only rows that are not bare
+    // captures). The flag tests below had NO such test, so pressing 「去看」 on
+    // 「落后 3」 listed every FINISHED row that once sat behind a date, and
+    // pressing it on 「没日期」 listed every new capture plus every finished
+    // undated row: a jump that lands on more than the number promised, with
+    // nothing on screen saying the number had changed its meaning.
+    //
+    // This is the same defect the `overdue` comment below already describes for
+    // the overview tile, and the fix is the same: **the count and the jump are
+    // one predicate, by construction.** The scope lives in the flag test so it
+    // cannot drift away from the line that produced the number.
+    const live = isLiveItem(item)
     const holds = flag === 'hardOverdue' ? posture.kind === 'hardOverdue'
-      : flag === 'behind' ? posture.kind === 'behind'
+      : flag === 'behind' ? live && posture.kind === 'behind'
         /* `overdue` IS 「either kind of late」, which is the one reading two flags
            share. The overview tile counts `hardOverdue || behind` and used to
            filter `has:hardOverdue` alone, so a reader pressed a tile reading
@@ -550,7 +564,7 @@ export function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchCo
            number on a tile and the list under it can be made to agree. */
           : flag === 'overdue' ? posture.kind === 'hardOverdue' || posture.kind === 'behind'
             : flag === 'stale' ? stale !== undefined && stale >= ctx.staleDays
-              : flag === 'undated' ? posture.kind === 'none'
+              : flag === 'undated' ? live && !isInboxItem(item) && posture.kind === 'none'
                 : flag === 'gated' ? posture.kind === 'gated'
                   : flag === 'blocked' ? item.status === 'blocked'
                     : flag === 'linked' ? item.taskId !== undefined

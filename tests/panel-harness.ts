@@ -142,6 +142,56 @@ export function fixtures(): ItemRecord[] {
   }
   return [
     {
+      // A FINISHED row that once sat behind its plan, and a bare CAPTURE that
+      // has no date at all.
+      //
+      // Both are here because the triage lines count only UNFINISHED work, and
+      // `undated` additionally exempts a capture — so a jump written as
+      // `has:behind` / `has:undated` without that scope passes every existing
+      // gate on a fixture that has neither row, and then lists them the first
+      // time a reader's own document contains them. The gate was right; the
+      // fixture was too kind. A fixture that cannot reach the defect is not a
+      // fixture, it is a decoration.
+      ...base,
+      id: 'fx-done-behind',
+      ref: 90,
+      title: '这一条做完了，但它当初也落后过计划——它不该再出现在「要处理」里',
+      status: 'done',
+      dueAt: NOW - 20 * DAY,
+      origin: { source: 'human' as const, at: NOW - 60 * DAY },
+      createdAt: NOW - 60 * DAY,
+      updatedAt: NOW - 20 * DAY,
+    },
+    {
+      ...base,
+      id: 'fx-capture-undated',
+      ref: 91,
+      title: '刚记下的一句，没有日期，也不该被说成「没安排」',
+      origin: { source: 'human' as const, at: NOW - 60_000 },
+      createdAt: NOW - 60_000,
+      updatedAt: NOW - 60_000,
+    },
+    {
+      // A LIVE row with no date at all: this is what 「没日期」 is actually
+      // about, and the fixture had none — its only date-less rows were captures,
+      // which the line deliberately exempts.
+      //
+      // It carries a TAG on purpose. `isInboxItem` is 「open, normal priority, no
+      // tag, no card, no date」, so a date-less row with nothing else on it IS a
+      // bare capture and is exempt — which is correct. The way to be undated and
+      // NOT a capture is to be FILED some other way, and a tag is the cheapest:
+      // 给它日期、标签或一张卡，它就已经被归档了.
+      ...base,
+      id: 'fx-live-undated',
+      ref: 92,
+      title: '这一条还在做，但一个日期都没有——它才是「没日期」要说的事',
+      status: 'open',
+      tags: ['待排期'],
+      origin: { source: 'human' as const, at: NOW - 5 * DAY },
+      createdAt: NOW - 5 * DAY,
+      updatedAt: NOW - 4 * DAY,
+    },
+    {
       ...base,
       id: 'fx-hard-overdue',
       ref: 1,
