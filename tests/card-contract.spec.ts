@@ -109,43 +109,60 @@ describe('the column header and the cards under it share ONE text edge', () => {
   expect(header, 'the dot is absolute but the header is not positioned, so it escapes to the board')
     .toMatch(/position:\s*relative/)
   expect(dot, 'the dot must be centred against the header height, not the top edge').toMatch(/inset-block-start:\s*50%/)
-  // And the box the title starts in must still be the cards' box. The cards are
-  // 8px inset + a 1px HAIRLINE + the card's 19px LEFT RAIL = 28, and both the
-  // hairline and the rail are the parts that are easy to leave out — at 20 the
-  // column name measured 37 against the card title's 38, so the 13px notch
-  // became a 1px one and the column still showed two edges where it should
-  // show one. The rail grew from 12 to 19 to give the hanging marks a gutter
-  // (see `.card`), so this number tracks it rather than restating an old one.
-  expect(header.match(/padding:\s*([\d.]+px\s+[\d.]+px)/)?.[1]?.trim().split(/\s+/)[1],
-    'the header content box no longer matches the cards inset (8) plus hairline (1) plus the card rail (19)')
-    .toBe('28px')
+  // ── THE RAIL, AND WHAT IS ACTUALLY BEING CLAIMED ABOUT IT ────────────────
+  //
+  // The claim is not a number. It is: **a mark has the same air on both sides,
+  // and the column's own mark sits on the cards' mark line.** Both are relations,
+  // and they are asserted as relations on purpose — the first version of these
+  // assertions pinned a literal (21px, then 28px) and every fix to the rail had to
+  // go and restate it, which is precisely how a number stops meaning anything.
+  //
+  // What broke twice, and both times silently, was the SHAPE, not the number:
+  //
+  //   1. marks in the flow, so a coloured card's title sat 13px right of a plain
+  //      one's — four text edges in one column (fixed by hanging them in the pad);
+  //   2. marks hung at a literal offset inside a padding too small to hold them,
+  //      so an 8px mark ended exactly where the title began: 0px of gap on one
+  //      side and 4px on the other. The dot touched the title AND the card's edge,
+  //      and neither of those reads as a number — it reads as 「间距不太对」and
+  //      there is nothing to measure.
+  //
+  // So every one of these is written as "reads the token", and the token itself is
+  // checked for the one property that makes it a rail rather than a guess.
+  const columnRule = ruleOf('column') ?? ''
+  const railToken = /--card-mark-col:\s*([\d.]+)px/.exec(columnRule)?.[1]
+  expect(railToken, '--card-mark-col is gone from `.column`, so nothing states how wide the mark\'s rail is').toBeDefined()
+  // The substantive claim: the rail holds the 8px mark AND at least 4px of air on
+  // EACH side. The leading air is what the centring expression below computes and
+  // the trailing air is the rail minus the mark minus the leading air, so this one
+  // number is the whole budget.
+  expect(Number(railToken) - 8, `a ${railToken}px rail leaves the mark no air on one side; it must be the mark plus twice at least 4px`).toBeGreaterThanOrEqual(8)
 
-  // THE RAIL IS NOT OPTIONAL AIR. Hanging the marks out of flow is what keeps one
-  // text edge per column, and it is also what let an 8px mark end exactly on the
-  // 12px it used to be measured from — the mark stopped shoving the title and
-  // started touching it. The rail is 4 + 8 + 7, so the card's inline padding has
-  // to be the 19 that holds the mark AND a gutter; at 12 the dot's right edge IS
-  // the title's first pixel, and the reader sees 「点和字粘在一起」.
-  const rail = (ruleOf('card') ?? '').match(/padding:\s*([\d.]+px\s+[\d.]+px\s+[\d.]+px\s+[\d.]+px)/)?.[1]?.trim().split(/\s+/)[3]
-  expect(rail,
-    'the card rail is back to 12px, so a hanging 8px mark ends flush on the title')
-    .toBe('19px')
+  // The card's left padding IS the rail, spelled by name. A literal there is the
+  // regression in waiting: it is how the rail and the mark's offset stop being one
+  // decision and become two.
+  const cardPadding = (ruleOf('card') ?? '').match(/padding:\s*([^;]+)/)?.[1] ?? ''
+  expect(cardPadding.trim().split(/\s+/)[3],
+    'the card\'s left padding is a literal again, so the rail and the mark\'s offset can drift apart')
+    .toBe('var(--card-mark-col)')
 
-  // And the header's dot has to share the cards' mark line rather than sit on its
-  // own: two marks of the same kind, in the same rail, at different x, read as
-  // two columns. 13 is derived — both centres land 17px from the column's edge.
-  const headerDot = ruleFor('.columnHeader > .statusDot')
-  const dotStart = Number(headerDot.match(/inset-inline-start:\s*(\d+)px/)?.[1])
-  // A TWO-value `padding` shorthand is block then inline, so the header's text
-  // line is the second number — reading the first measures the head's own
-  // vertical padding and every assertion below it comes out nonsense.
-  const titleStart = Number((header.match(/padding:\s*([\d.]+px\s+[\d.]+px)/)?.[1] ?? '').trim().split(/\s+/)[1]?.replace('px', ''))
-  expect(dotStart + 4,
-    'the header dot and a card mark are no longer centred on the same line')
-    .toBe(8 + 1 + 8)
-  expect(titleStart - (dotStart + 8),
-    'the header dot is touching the column name, or floating in a gulf away from it')
-    .toBe(7)
+  // Both marks CENTRE in the rail, which is what makes the air equal: an offset of
+  // (rail - mark) / 2 leaves exactly the same on the far side.
+  for (const [selector, markWidth] of [['.cardColorMark', 8], ['.cardWorkspaceDot', 6]] as const) {
+    expect(ruleFor(selector),
+      `${selector} is not centred in the rail, so the air on its two sides is not the same`)
+      .toMatch(new RegExp(`inset-inline-start:\\s*calc\\(\\(var\\(--card-mark-col\\)\\s*-\\s*${markWidth}px\\)\\s*/\\s*2\\)`))
+  }
+
+  // The column's two numbers read the same three tokens, so the header cannot
+  // drift from the cards: the name sits where the cards' titles sit, and its dot
+  // where the cards' marks sit.
+  expect(header,
+    'the column name no longer reads the cards\' rail, so the header and the cards under it can drift')
+    .toMatch(/padding:[^;]*var\(--column-frame\)\s*\+\s*var\(--card-gutter\)\s*\+\s*var\(--card-mark-col\)/)
+  expect(dot,
+    'the header dot no longer reads the cards\' mark line, so the column shows two marks at two x')
+    .toMatch(/inset-inline-start:\s*calc\(var\(--column-frame\)\s*\+\s*var\(--card-gutter\)\s*\+\s*\(var\(--card-mark-col\)\s*-\s*8px\)\s*\/\s*2\)/)
   })
 
   it('a chip on a card is an object, not a run-on word in a sentence', () => {

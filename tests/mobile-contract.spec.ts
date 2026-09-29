@@ -967,7 +967,10 @@ describe('button geometry (one base for every variant)', () => {
     // churn behind conflicting reports. One declaration survives.
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(compact.match(/\.columnHeader\s*\{/g) ?? []).toHaveLength(1)
-    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 28px/)
+    // The compact head shares the BASE rule's inline sides — the header and the
+    // cards under it are one alignment — so this is the same calc spelled with
+    // the compact block's own vertical padding, not a second number to drift.
+    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 20px 12px calc\(var\(--column-frame\)/)
   })
 
   it('the button radius token IS the pill (true round at every height)', () => {
@@ -1385,10 +1388,13 @@ describe('template library wiring', () => {
     expect(ruleIn(compact, '.board')).toMatch(/border-top:\s*var\(--dsh-tb-separator\)/)
     // Column heads own their separation explicitly (12px vertical on narrow
     // glass; the cards' 6px top pad belongs to the drop indicator, never to
-    // rhythm). The sides are 21px, which is the cards' content line: 8 inset +
-    // 1 hairline + 19 rail. The 20 that used to be here dropped the hairline,
-    // so the column name measured 1px left of every card title under it.
-    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 28px/)
+    // rhythm). The inline start is COMPUTED from the column's own three numbers
+    // — hairline + the cards' gutter + the card's mark rail — so the column name
+    // cannot be notched right of every card title under it. The two numbers that
+    // used to be written here (20, then 28) each dropped one of those three and
+    // put the name 1px, then 8px, off the cards' line; writing it as the sum is
+    // the only spelling that cannot.
+    expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 20px 12px calc\(var\(--column-frame\)/)
   })
 
   it('the narrow rail keeps ONE rhythm (a single gap owns between)', () => {

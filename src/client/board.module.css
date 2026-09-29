@@ -1206,6 +1206,29 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-lg);
   overflow: hidden;
+  /* ── THE RAIL, AND IT HAS EQUAL AIR ON BOTH SIDES OF THE DOT ──────────────
+     Three numbers, and every place on this surface that needs one reads one of
+     them, so the four places below cannot be edited apart from each other.
+
+     `--card-mark-col` is the whole answer to 「the mark's spacing」: 8px of air,
+     the 8px mark, 8px of air. It used to be an implicit arrangement — a 12px
+     side padding with the dot hung at `inset-inline-start: 4px` — and that packs
+     an 8px dot into 12px, which leaves **4px on one side and 0 on the other**. The
+     dot is touching the title, and it is touching the card's edge, and neither of
+     those is visible as a number: they read as 「间距不太对」and there is nothing to
+     measure. Marking the mark out of flow is what made it possible (a mark in the
+     flow pushes a card's title right and the column grows a second text edge); it
+     is not a reason to leave the padding short.
+
+     So the rail is stated, and it is symmetric because an asymmetric gutter reads
+     as two mistakes rather than as one. 24 is not a taste: it is the mark's own
+     width with the same width of air on each side. */
+  --card-mark-col: 24px;
+  /* The two numbers the rail is measured FROM, because they are the column's own
+     geometry and restating them in the header is how the header and the cards
+     drift apart: the column's hairline, and how far the cards stand off it. */
+  --column-frame: 1px;
+  --card-gutter: 8px;
 }
 
 /* Reading rhythm: the board owns ONE entrance grammar (`dshTbBoardIn` —
@@ -1248,34 +1271,31 @@
      the same thing in the same place. */
   gap: 0;
   position: relative;
-  /* 28, and it is the card's rail read from the other end: the cards' text is
-     the list's 8px inset + the card's 1px hairline + the card's 19px rail, and
-     the header's content box has to be that same x or the column's name is
-     notched right of the cards under it. It was 21 because the card padding was
-     12; the rail moved the text, so the number that mirrors it moves with it.
-
-     The dot is out here because it is out of flow — see below — and out of flow
-     is what makes this box's own padding the ONLY thing that decides where the
-     column's name starts. Everything the reader can be looking at in this column
-     — its name, a card's title, a card's workspace name — starts on this one
-     line, and a leading mark is never what moves it. */
-  padding: 10px 28px;
+  /* THE COLUMN'S NAME SITS ON THE CARDS' TEXT LINE, and it is computed from the
+     column's own three numbers rather than written out: the hairline, the gutter
+     the cards stand off it, and the card's rail. Measured 9 + 24 = 33, and a
+     column whose name is notched right of the cards sitting under it is the one
+     alignment defect on this page that has a number. Everything the reader can be
+     looking at in this column — its name, a card's title, a card's workspace
+     name — starts on this one line, and a leading mark is never what moves it. */
+  /* FOUR VALUES, because the rail is the LEFT one and the right side is not: the
+     shorthand's third value is the bottom and its FOURTH is the inline start, so
+     a two-value `10px X` would put the rail on both sides and the column's name
+     would sit 12px in from its own right edge. The gutter on the trailing side
+     stays 20, which is what the count pill has always had. */
+  padding: 10px 20px 10px calc(var(--column-frame) + var(--card-gutter) + var(--card-mark-col));
   flex: none;
 }
 
 .columnHeader > .statusDot {
   position: absolute;
-  /* 13, and it is a DERIVATION rather than a nudge: the cards' colour marks are
-     centred 17px from the column's border box (the 8px list inset, the card's
-     1px hairline, then 4 + 4 to the middle of an 8px mark), so a header dot
-     centred on the same 17 starts at 13. At 10 — the number that was here — the
-     dot hugged the column's edge, and since the title is now at 28 it was also
-     the only mark on the board with air on one side only.
-
-     Centring the two on one line is the point: a column's own dot and a card's
-     dot are the same kind of thing in the same rail, and when they are at
-     different x the column reads as two columns. */
-  inset-inline-start: 13px;
+  /* THE CARDS' MARK LINE, computed: the column's hairline, the cards' gutter, and
+     the rail's own leading air. A column's dot and a card's dot are the same kind
+     of thing in the same rail, and when they are at different x the column reads
+     as two columns — so this is not a nudge, it is the same expression the card
+     writes from. Measured 1 + 8 + 8 = 17, and the name then starts 8px after the
+     dot's right edge: the same gap a card's title has after its own mark. */
+  inset-inline-start: calc(var(--column-frame) + var(--card-gutter) + (var(--card-mark-col) - 8px) / 2);
   inset-block-start: 50%;
   /* The existing optical nudge on `.statusDot` is a `transform`, and this rule
      needs `transform` for the centring — so the nudge is applied here instead of
@@ -1381,28 +1401,12 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* THE LEFT RAIL, and it is 19px because 12px was exactly the two marks wide.
-
-     The rule that keeps one text edge on this column is 「a mark is not content,
-     and content that leads text must not be what decides where the text starts」.
-     It is solved the right way — the colour mark and the workspace dot are
-     absolutely positioned, so a card's title starts at the same x whether or not
-     it is coloured. What was never checked is the other side of that trade: both
-     marks hang at `inset-inline-start: 4px` INSIDE a 12px padding, so an 8px
-     colour mark ended at 12 — precisely where the title begins — and the 6px
-     workspace dot left 2px. The mark stopped shoving the title and started
-     touching it, which reads as 「点和字粘在一起」and, like the four-edges
-     defect before it, names no number a reader could check.
-
-     So the rail is 4px of air, the 8px mark, and a 7px gutter — the same 7px
-     the flow layout used to put between the mark and the title, which is the
-     point: taking the mark out of the flow was supposed to remove the shove, not
-     the air. The title now starts at 19 for every card, which is 7px further
-     right than before and costs the card 7px of measure; that is the honest price
-     of a mark that is not welded to the words beside it. The right-hand padding
-     stays 12 — the rail is a LEFT rail, and saying so in the shorthand is what
-     stops a later reader from "tidying" the asymmetry away. */
-  padding: 9px 12px 9px 19px;
+  /* THE RAIL, read from the column: 8 of air, the mark, 8 of air. It replaced a
+     12px side padding, which is the width an 8px mark needs plus NOTHING — and
+     a mark with 0px between it and the title is the defect this rail exists to
+     stop. The right-hand padding stays 12: this is a LEFT rail, and saying so in
+     the shorthand is what stops a later reader from tidying the asymmetry away. */
+  padding: 9px 12px 9px var(--card-mark-col);
   min-width: 0;
   /* Cards never flex-shrink inside the scrolling column: a full column
      scrolls its overflow instead of compressing card heights (the shipping
@@ -1651,14 +1655,13 @@
      and `margin-top` is kept because optical centring against a 14px line is
      about the LINE, not the box. */
   position: absolute;
-  inset-inline-start: 4px;
+  /* CENTRED IN THE RAIL, which is what the rail is for: the air before the mark
+     and the gap after it are the same 8px, so the dot is a thing sitting between
+     the card's edge and its words rather than something hung off one of them. */
+  inset-inline-start: calc((var(--card-mark-col) - 8px) / 2);
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  /* 4px is measured from the card's own padding box, and the rail is 19px wide,
-     so the mark spans 4..12 and the title starts at 19: a 7px gutter, the same
-     one the in-flow layout had. The mark is optically centred in the RAIL
-     rather than in the padding, which is why it is not centred in its 12px. */
   /* Optical centering against the first title line (14px / 1.35 ≈ 18.9px):
      the dot's center must sit on the line's visual center, NOT on the
      flex-start edge — the 4px offset read "high" next to the title. */
@@ -1736,12 +1739,11 @@
 
 .cardWorkspaceDot {
   position: absolute;
-  /* 5, not 4: the dot is 6px against the colour mark's 8px, so 4 would put the
-     two marks' CENTRES 1px apart and a card carrying both would show two dots
-     that are not quite lined up. 5 centres the small one on the big one — both
-     centres land on the card's 8px — and both then sit in the same rail with the
-     same 7px gutter behind them. */
-  inset-inline-start: 5px;
+  /* The same rail, centred for a 6px mark instead of an 8px one: the two dots
+     then share ONE centre line (12px from the card's padding edge) and both have
+     the same 9px of air on either side, so a card carrying both never shows two
+     dots that are not quite lined up. */
+  inset-inline-start: calc((var(--card-mark-col) - 6px) / 2);
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -7054,12 +7056,12 @@ span.interactionOptions {
   /* Compact column heads breathe vertically (12px): on a 200px glass the
      same 10px that reads fine on desktop presses the dot/title/count
      against the top edge and the content below. The sides are the base rule's
-     28px — the header shares the cards' content line, and that line is the
-     card's 19px rail (see the base rule). This 12px IS the head/content
-     separation: the cards' 6px top pad belongs to the drop indicator, never
-     spend it as rhythm. */
+     — the header shares the cards' content line, and that line is the column's
+     own three numbers (see the base rule), so it is computed the same way here
+     rather than restated. This 12px IS the head/content separation: the cards'
+     6px top pad belongs to the drop indicator, never spend it as rhythm. */
   .columnHeader {
-    padding: 12px 28px;
+    padding: 12px 20px 12px calc(var(--column-frame) + var(--card-gutter) + var(--card-mark-col));
   }
 
   /* The compact column navigator: FIVE EQUAL cells, one tap jumps that status
