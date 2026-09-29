@@ -67,6 +67,18 @@ function PresetRow({ preset, onSave, onDelete }: {
         <Button
           className={css.presetRowAction}
           disabled={!dirty || !valid}
+          // WHY IT IS DISABLED, said where the button is. `presetCronHint` answers
+          // '' for an unparseable cron, so an invalid row showed a RED BORDER and a
+          // dead button and nothing else — while the add-row form sixty lines below
+          // reports the identical fault properly through `setNewError`. One control,
+          // two behaviours, for the same mistake.
+          //
+          // `dirty` needs no line: a save button that is off because you changed
+          // nothing is self-explaining. An unparseable cron is not — it is a red
+          // border with no sentence, which is the owner's 「按了没反应」 in a form
+          // field rather than on a button. A `title` would not be enough: rule
+          // 11③, touch has no hover.
+          title={!valid ? t('detail.schedule.invalid') : undefined}
           onClick={() => { onSave({ ...preset, label: label.trim(), cron: cron.trim() }) }}
         >
           {t('detail.schedule.presets.save')}
@@ -75,7 +87,8 @@ function PresetRow({ preset, onSave, onDelete }: {
           {t('detail.schedule.presets.delete')}
         </Button>
       </span>
-      {hint !== '' && <span className={css.presetHint}>{hint}</span>}
+      {!valid && <span className={css.presetHint}>{t('detail.schedule.invalid')}</span>}
+      {valid && hint !== '' && <span className={css.presetHint}>{hint}</span>}
     </li>
   )
 }
