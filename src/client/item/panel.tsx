@@ -438,8 +438,23 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * place instead of at every place the document can change.
    */
   useEffect(() => {
-    const visible = shown.map(item => item.id)
-    setSelection(current => reconcile(current, visible))
+    // THE PREDICATE, not the row list. This used to reconcile against
+    // `shown.map(item => item.id)`, which is the set of rows on the PAGE — and
+    // that contradicts the comment above it twice over:
+    //
+    //  - Narrowing the filter did NOT drop the rows it hides, because nothing
+    //    here ever asked `itemMatches`. The comment said it did.
+    //  - Worse, `shown` COLLAPSES to the one row in the detail pane, so with a row
+    //    open the holding was reconciled against a single id: arm, tick three
+    //    OTHER rows, then type one character in the search box, and `reconcile`
+    //    dropped all three. **A holding died from a keystroke that had nothing
+    //    to do with selecting.**
+    //
+    // So the answer is the same one the comment gives, asked of the same place
+    // `visibleIds` asks it of: a row the reader can point at is a row that PASSES
+    // THE FILTER, independent of which page is drawn and of what the pane holds.
+    const pointable = items.filter(item => itemMatches(item, query, matchCtx)).map(item => item.id)
+    setSelection(current => reconcile(current, pointable))
   }, [query.text, prefs.page, items, shown.length])
 
   /* THREE NUMBERS AND ONE DECOMPOSITION, and no fourth anywhere.

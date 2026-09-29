@@ -192,6 +192,34 @@ describe('the column header and the cards under it share ONE text edge', () => {
       .not.toMatch(/data-tone=\{due\.tone\}\{soft\.text\}/)
   })
 
+  it('a holding is reconciled against the FILTER, not against what the page happens to draw', () => {
+    // The comment above this effect claimed two things the code did not do:
+    // narrowing the filter drops the rows it hides (nothing here asked
+    // `itemMatches`), and the rule is implemented "in one place". It was stated
+    // confidently and specifically, which is what made it read as true.
+    //
+    // The live bug: `shown` COLLAPSES to the single row in the detail pane, so
+    // with a row open the holding was reconciled against one id — arm, tick three
+    // OTHER rows, type one character, and all three were dropped. **A holding died
+    // from a keystroke that had nothing to do with selecting.**
+    //
+    // The gate is on the PREDICATE, because that is what makes the comment true.
+    // Asserting the effect "mentions itemMatches" would pass on a call in a
+    // comment, which is the failure mode this very file has produced twice.
+    const src = readFileSync(fileURLToPath(new URL('../src/client/item/panel.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    const reconcileCall = /reconcile\(current, (\w+)\)/.exec(src)?.[1]
+    expect(reconcileCall, 'the holding is reconciled against something the gate cannot name').toBeDefined()
+    // The set it reconciles against must be the FILTERED document, not `shown`
+    // (the page's rows) and not `items` (the whole document, filter ignored).
+    expect(reconcileCall, 'the holding is reconciled against the page or the whole document, so the filter is not what bounds it')
+      .not.toMatch(/^(shown|items)$/)
+    // And the set must actually be built by asking the matcher.
+    const built = new RegExp(`const ${reconcileCall} = items\\.filter\\(item => itemMatches\\(`).test(src)
+    expect(built, 'the reconciled set is not built by the filter, so hidden rows stay held')
+      .toBe(true)
+  })
+
   it('both READMEs name the surface the way the surface names itself', () => {
     // CAUGHT BY A REAL BUG: the Chinese README described the overview strip as
     // 「待办、逾期、今天、本周」 and the English one mirrored it. Neither `今天`
