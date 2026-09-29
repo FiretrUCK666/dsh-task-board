@@ -2684,8 +2684,12 @@ export class BoardController {
     // No navigation capability wired (a composition without the workspace UI):
     // report refusal so the caller shows "cannot open" instead of silently
     // doing nothing — the failure mode that reads as a dead button.
-    if (this.deps.sessions.open === undefined) return false
-    return this.deps.sessions.open(sessionId)
+    // ONE LINE, and the asymmetry is the point: the capability being ABSENT and
+    // the capability ANSWERING `false` are the same answer to the caller, so
+    // they are written the same way. Spelling the missing case out separately is
+    // correct, and it reads like an oversight — a reader counts the two branches,
+    // finds one covered and one delegated, and cannot tell that both were meant.
+    return this.deps.sessions.open?.(sessionId) ?? false
   }
 
   // --- execution ---------------------------------------------------------------
