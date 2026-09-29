@@ -705,15 +705,40 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
     let noop = next.unchanged === true
     let declined = false
     if (request.dry_run !== true) {
-      if (nextDoc !== doc) {
-        const before = doc
-        doc = await board.commit(boardCommitOf(before, nextDoc))
-        if (doc === before) declined = true
-      }
-      if (nextItems !== items) {
-        const before = items
-        items = await board.commitItems(itemsCommitOf(before, nextItems))
-        if (items === before) declined = true
+      /* A COMMIT THAT REFUSES IS A REPORT, NOT A THROWN TOOL CALL.
+         `DocumentService.commit` rejects when the medium will not take the write —
+         which is correct, and it is what stopped a full disk from being reported
+         as saved. But this loop had no catch, so that rejection escaped as an
+         exception: the tool call failed rather than answering, and the reader saw
+         a red tool card instead of 「这一条没写进去」.
+
+         The batch contract already says what happens on failure — 「首个失败即停」 and
+         every attempted op is reported in order — so a commit that cannot land is
+         reported as the failure it is, and the ops after it are not attempted. That
+         keeps the promise the envelope already makes instead of breaking it with an
+         exception the reader cannot act on. */
+      try {
+        if (nextDoc !== doc) {
+          const before = doc
+          doc = await board.commit(boardCommitOf(before, nextDoc))
+          if (doc === before) declined = true
+        }
+        if (nextItems !== items) {
+          const before = items
+          items = await board.commitItems(itemsCommitOf(before, nextItems))
+          if (items === before) declined = true
+        }
+      } catch (error) {
+        // `failed` is the loop's OWN stop signal, so the ops after this one are
+        // reported by the same branch that reports them after any other failure —
+        // one place decides what 「未执行」 means, not two.
+        raw.push({
+          op: step.op,
+          ok: false,
+          detail: `没写进去：${error instanceof Error ? error.message : String(error)}`,
+        })
+        failed = true
+        continue
       }
     } else {
       doc = nextDoc
