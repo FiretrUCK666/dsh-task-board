@@ -85,7 +85,7 @@ export function ListPage(props: ItemListPageProps) {
       ? 0
       : slice.progress.done / slice.progress.total
     return (
-      <section key={slice.status} className={css.itemGroup}>
+      <section key={slice.status} className={css.itemGroup} data-empty={slice.items.length === 0 ? '' : undefined}>
         <h2 className={css.itemGroupHead}>
           <button
             type="button"
@@ -194,17 +194,26 @@ export function ListPage(props: ItemListPageProps) {
           into a log. */}
       {archive === undefined
         ? (
-          <div className={css.itemTriageRow}>
-            <span className={css.itemTriageText}>{t('item.archive.window')}</span>
+          /* ITS OWN CLASS, and the reason is spacing rather than naming. This is a
+             footnote about the archive — it is not one more thing needing your
+             attention — and it was wearing `.itemTriageRow`, which is a row in the
+             triage list: that class carries a hairline above itself, the padding of
+             a tappable row, and its own hover. So the page drew a divider under the
+             triage block, gave a sentence 40px of height, and opened the space
+             between two bands to 51px where the rhythm says 12. One class holding
+             two unrelated meanings is how a rhythm stops being a rhythm: the number
+             that is supposed to describe the page was being spent on a footnote. */
+          <p className={css.itemArchiveRow}>
+            <span className={css.itemArchiveNote}>{t('item.archive.window')}</span>
             <Button
               variant="ghost"
               size="sm"
-              className={css.itemTriageAction}
+              className={css.itemArchiveAction}
               onClick={() => { setArchiveNote(undefined); void openArchive() }}
             >
               {t('item.archive.open')}
             </Button>
-          </div>
+          </p>
         )
         : (
           <section className={css.itemGroup}>

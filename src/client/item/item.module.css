@@ -2820,6 +2820,65 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
+/* THE ARCHIVE FOOTNOTE — one sentence and one link, and neither of them is a
+   triage line. It keeps the triage row's tap target for its LINK (a touch has no
+   hover and 「看看」 is 32px of Chinese) while the row itself stays the height a
+   sentence occupies. The padding is the floor, not the ceiling: the link is what
+   has to be reachable, and the sentence is what has to stop being a band. */
+.itemArchiveRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-inline-size: 0;
+  margin: 0;
+}
+
+.itemArchiveNote {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 12px;
+  line-height: var(--dsh-tb-hint-line);
+  color: var(--dsh-tb-text-3);
+}
+
+.itemArchiveAction {
+  flex: none;
+  color: var(--dsh-tb-text-3);
+  /* HEAT, DON'T RESIZE. The link's own box is a word; a finger needs 40px. The
+     way to have both is a pseudo-element that extends the hit area outward while
+     the element that is PAINTED stays exactly the size of the word — padding the
+     real box instead turns a two-character link into a lozenge the width of a
+     button, and `min-block-size` on a pill-radius control turns it into a disc.
+     Touch gets a bigger target and the page keeps the same geometry. */
+  position: relative;
+}
+
+.itemArchiveAction::after {
+  content: '';
+  position: absolute;
+  inset-block: -11px;
+  inset-inline: -6px;
+}
+
+.itemArchiveAction:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.itemArchiveAction:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+/* A GROUP WITH NOTHING IN IT IS A HEADING, NOT A BOX. With the full group's
+   padding it reserved 52px of mostly air, and three of those in a row is what
+   turns a list into a page of holes. The head keeps its own line and the block
+   tightens to it; the count beside the name is what carries the zero, so nothing
+   is lost by not reserving room for rows that are not there. */
+.itemGroup[data-empty] {
+  padding-block: 2px 2px;
+  margin-block-end: 6px;
+}
+
 /* ── 密度 ───────────────────────────────────────────────────────────────
    Density is a user setting, so the row's height is a token and not a number
    typed into six rules. Only the two padding knobs move; nothing else about a
