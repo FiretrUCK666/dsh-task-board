@@ -690,8 +690,8 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 
 **`--item-ref-col` 与 `--item-meta-date-col` 必须在同一个已声明的字号上解析，而 `ch` 与 `em` 都不会
 从子元素继承字号。** 所以 `.itemRowMain` **显式声明 `font-size: 12px`**——它自己不显示文字，这一条
-声明只为让本行网格上所有的 `ch` / `em` 轨有一个确定的解析字号。（今天它没有声明，继承来的字号一变，
-两条轨就跟着变；而 `ch` 是「本字号下 0 的宽度」，不是「本轨道里那个字的宽度」。）
+声明只为让本行网格上所有的 `ch` / `em` 轨有一个确定的解析字号；`ch` 是「本字号下 0 的宽度」，
+不是「本轨道里那个字的宽度」，所以它随字号走，字号因此必须先声明。
 
 **事实行第 1 轨的定值来自实测**（台架 1600px 截图，12px 字号）：`超期 8 天` ≈ 48px、
 `还剩 3 天` ≈ 48px、`2026年10月1日` ≈ 77px、**`最早 2026年10月5日` ≈ 110px**。原声明 `11ch`（≈74px）
@@ -1063,18 +1063,17 @@ auto` 撑位把动作推到右侧，**不用 `margin-left:auto`**（auto margin 
 滚动体（组头与日标签 `position: sticky` 吸在它里面），双栏档里它停止滚动、变成列表轨，而双栏的两个
 滚动体是工作台的**两个直接子级**（`.itemScroll` 与 `.itemDetailBody`）——它们是兄弟，不是父子。
 
-**列向 flex 的孩子一律 `flex: none`（`.itemListCard > *`）。** 「让内容按自己的内容定高」是列的
-定义。**今天这一族已经咬过一次**：`.itemTriageText` 在 `.itemTriageRow`（行向 flex）里带
-`flex: 1 1 auto` 是对的，而「没有等你动手的事。」那一行把**同一个类**直接放在列向的
-`.itemListPane` / `.itemScroll` 里，于是那条 `flex-grow` 变成纵向生长，在清单页吃掉约 660px 的
-空洞，把下面的组头与归档入口一路推到屏幕下沿（收件页没有这一行，所以两页看起来像两个 bug，
-其实是一处）。**一个类在一个容器里对、在另一个容器里错，这件事只有「容器是什么形状」能解释，
-所以修法是给容器的孩子一条声明，而不是给那句话换一个类名。**
+**列向 flex 的孩子一律 `flex: none`（`.itemListCard > *` 与 `.itemScroll > *`）。** 「让内容按自己的
+内容定高」是列的定义，而**一个类在一个容器里对、在另一个容器里错，这件事只有「容器是什么形状」
+能解释**——所以修法是给容器的孩子一条声明，而不是给那句话换一个类名。`.itemTriageText` 就是这样：
+它在 `.itemTriageRow`（行向 flex）里带 `flex: 1 1 auto` 是对的（动作因此落在同一条右沿上），
+而「没有等你动手的事。」把**同一个类**直接放在列向的 `.itemScroll` 里，那条 `flex-grow` 就会变成
+纵向生长。所以它有一条按父级限定的声明，见「要处理是一段话」那节的 CSS。
 
 **分隔线归工作台，内容盒归内容。** 详情轨拉满高**只负责画那条贯穿全高的竖线**（`align-self:
-stretch`），内容盒 `.itemDetailInner` 接 `align-self: start` + `max-block-size: 100%`。今天
-`align-self: start` 挂在 `.itemDetailPane` 上，于是竖线只有内容那么高（约 510px），而左边的列表
-还在往下走 1000px——**一条中途断掉的线读作「这里没画完」，而它是这一页唯一的一条竖线。**
+stretch`），内容盒 `.itemDetailInner` 接 `align-self: start` + `max-block-size: 100%`。**竖线的
+长度必须等于轨道的高度而不是内容的高度**——一条中途断掉的线读作「这里没画完」，而它是这一页
+唯一的一条竖线。
 
 ```css
 .itemDetailPane { grid-area: detail; display: flex; flex-direction: column;
@@ -1093,9 +1092,8 @@ stretch`），内容盒 `.itemDetailInner` 接 `align-self: start` + `max-block-
 
 **详情头永远有内容——这一行的要求是「那条横线上不许是空的」，不是「上面必须写哪几个字」。**
 未选中时它渲染一句给读者看的话（「还没选中任何一条」，容器标签的语气：12/600/`+0.02em`/`text-2`，
-与组头、日标签、托盘标签同一套），选中时渲染那一行的身份（编号 + 标题）。**今天它在未选中时
-渲染一个空盒子加一条 `border-block-end`，那就是凭空冒出来的那条横线**——一条规则的下面没有内容，
-它说的不是分隔，是「这里少了什么」。
+与组头、日标签、托盘标签同一套），选中时渲染那一行的身份（编号 + 标题）。**一条规则的下面如果是空的，
+它说的不是分隔，是「这里少了什么」**——所以空态也给一句话，而不是留一条线。
 
 **详情的容器名从 `.itemDetailPane` 移到 `.itemDetailInner`**：字段网格该问的是**装着它的那一层**，
 而轨道的左半是 24px 的沟与 1px 的线。1080 那一档详情轨 426px，内容盒 402px，字段网格再减去
@@ -1237,23 +1235,26 @@ of the app's base」，而 `.board` 与 `.column` 都吃 `--dsh-tb-bg`。清单�
 
 #### 要处理是一段话，不是一个容器
 
-它现在的形状已经对了（框住它等于说它和那些行是两种东西，而它不是），**拆完之后还差两处几何**：
+它是一段话：没有框、没有底、没有圆角，因为框住它等于说它和那些行是两种东西，而它不是。
 
 ```css
-.itemTriageRow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-inline-size: 0; }
-.itemTriageText { flex: 0 1 auto; min-inline-size: 0; overflow-wrap: anywhere; }   /* 不许 nowrap */
-.itemTriageAction { /* 文字动作：无填充、无描边、12px/第三档墨、padding: 0 4px */
-  background: none; border: 0; border-radius: var(--dsh-tb-pill); padding: 0 4px;
-  font-size: 12px; line-height: 1; color: var(--dsh-tb-text-3); }
+/* 行内：句子吃掉余量，动作因此落在同一条右沿上——三个「去看」在一条竖线上。
+   独立成段（列向的 .itemScroll 里）：同一个类不许纵向生长，所以另有一条按
+   父级限定的声明。**同一个类在行里对、在列里错，只有「容器是什么形状」
+   能解释，所以修法是给容器的孩子一条声明，而不是给那句话换一个类名。**
+   .itemTriageRow 里的 .itemTriageText { flex: 1 1 auto; }
+   .itemScroll >  .itemTriageText { flex: 0 1 auto; }
+.itemTriageText { min-inline-size: 0; overflow-wrap: anywhere; }   /* 不许 nowrap */
+.itemTriageAction { /* 文字动作：无填充、无描边、无圆角、12px/第三档墨 */
+  background: none; border: 0; border-radius: 0; padding: 0 4px;
+  font-size: 12px; line-height: var(--dsh-tb-hint-line); color: var(--dsh-tb-text-3); }
 ```
 
-- **动作与句子之间恒为一条沟（10px），除非整行装不下，那时动作换到第二行。** 今天是 665px：
-  `.itemTriageText { flex: 1 1 auto }` 把动作推到轨道的尽头，而**「去看」是药丸按钮**——药丸有它
-  自己的固有宽度，改 flex 改不掉它，**得改控件本身**。`DESIGN.md` 早就写了 `.itemTriageAction` 是
-  **文字动作**（一屏里已经有页轨与行尾菜单两排药丸，第三排只会让三排一起失效），代码没照做。
-  文字动作的固有宽度是它的两个字，于是「1 项过了想要的日子」后面 10px 就是「去看」。
-- **句子不许 `nowrap` + 省略号**（那是把「读不到」当成省地方的机制）。`flex-basis: auto` +
-  `flex-wrap: wrap` 让整行装不下时**换行**，而不是把句子裁成一个词。
+- **动作与句子之间恒为一条沟（10px），除非整行装不下，那时动作换到第二行。** 「去看」是**文字
+  动作**而不是药丸按钮——一屏里已经有页轨与行尾菜单两排药丸，第三排只会让三排一起失效，而药丸
+  有它自己的固有宽度，改 flex 改不掉它，**得改控件本身**。文字动作的固有宽度是它的两个字。
+- **句子不许 `nowrap` + 省略号**（那是把「读不到」当成省地方的机制）。`min-inline-size: 0` +
+  `overflow-wrap: anywhere` 让整行装不下时**换行**，而不是把句子裁成一个词。
 - **严重度改由那个数字自己说**：色条去掉之后颜色还在干活，而且干的是它本该干的活（标出那个数），
   不是给一个盒子描边。「要处理」块与列表之间只留 12px 空气；块内的每一条之间是一根 `--dsh-tb-border-soft`
   的发丝线（`border-block-start`，第一条没有）。**它在卡外，所以它自己带台面与内衬**：
@@ -1344,34 +1345,35 @@ of the app's base」，而 `.board` 与 `.column` 都吃 `--dsh-tb-bg`。清单�
 渐变是「这里本来该有东西」的告示，也不靠加内容填屏。**空着的下半屏不是缺陷，空着一个 730px 高的
 边框盒子才是。**
 
-#### 类名清单（`item.module.css`，供实现与断言对照）
+#### 类名清单（`item.module.css`）
 
-**新增**：`itemOverview`、`itemTile`、`itemTileValue`、`itemTileLabel`、`itemTileBar`、
-`itemTileBarFill`、`itemListCard`、`itemDetailInner`、`itemHeadActions`、`itemPageTabCount`、
-`itemRecentRow`、`itemPick`、`itemFilterSelect`（短名 + 控件的具名 grid，窄屏的排序用）。
+**这张表是本文件里最容易变成谎话的一张，所以它不列清单。** 类名的清单有一份权威：
+`src/client/item/item.module.css` 自己。**它有多少条，就是多少条**；把同一份清单抄进文档，
+下一次加类名时两份必然有一份是旧的，而旧的那份没有人会去读。
 
-**删除**：`itemListPane`（滚动体收成 `.itemScroll` 一个，两个类一个决定的别扭一起消掉）、
-`itemEmptyCounts`、`itemEmptyCount`、`itemEmptyCountValue`、`itemEmptyCountLabel`（四个数搬去概览条）、
-`itemDeleteConfirm`（删除改可就近撤销）、`itemDayGrid` / `itemDayColumn` / `itemDayColumnHead`
-（**三/七天网格已定不做，理由在 `PRODUCT.md` 的「不进清单面板的东西」**——它回答「这周是不是排超了」，
-要有答案就得先有「一天能做几件事」这个容量，而阈值是人定的；顺带，七天七列与一天一块本身就是两套
-形态，不是同一套交互的窄屏让位）、以及 `.itemAgenda .itemGroupToggle` 那条例外（规则折进全局的
-`flex: 0 1 auto`）。
+所以这里只记**不能从样式表本身看出来的那几条**——即那些「约定」而非「声明」：
 
-**改**（选择器不变、值变）：`itemRoot`（背景换画布令牌）、`itemHeader`（三段具名轨）、
-`itemGroupHead`（不透明层 1、结构线 l2、组头算术左对齐）、`itemGroupToggle`（`flex: 0 1 auto`）、
-`itemGroupChevron`（见下）、`itemRowMain`（`font-size: 12px`、定值轨）、`itemRowMeta`（按种类分轨）、
-`itemDue`（`font-weight` 恒 400 + 文字子槽）、`itemActionsCol`（76px）、`itemTriageText`（不生长、
-不 nowrap）、`itemTriageAction`（文字动作）、`itemRow`（`max(var(--item-row-pad), 12px)`）、
-`itemDetailHead`（满宽规则、永远有内容）、`itemAgendaDay`（`data-kind`）、`itemDensity`（任何一档都不
-许缺控件）。
+- **轨道与分层令牌单归属**：`--item-inset`（页内衬）· `--item-list-col`（列表卡封顶）·
+  `--item-track-gutter`（卡与详情轨之间）· `--item-head-actions-col`（页头第三轨）·
+  `--item-mark-col` / `--item-ref-col` / `--item-priority-col` / `--item-pick-col`（行首四轨）·
+  `--item-meta-date-col` / `--item-meta-count-col` / `--item-meta-col`（事实行）·
+  `--item-actions-col`（行尾）· `--item-row-pad` / `--item-row-gap`（密度）· `--item-measure`（页封顶）。
+  **同一件事不许在两个地方各写一个数**，包括「换一个数时顺手在另一处同步」。
+- **`--item-pick-col` 只在多选态存在**，由 `.itemRow[data-picking]` 声明。行首第 1 轨读
+  `var(--item-pick-col, var(--item-mark-col))`——**回退就是状态点那 8px**，所以不在多选里的行
+  一分不少付，而多选打开时整列的左沿**一次**移动（不是每行各移一次）。
+- **`corner-shape` 与半径阶梯都在根层**，`item.module.css` 一处都不补。
+- **画布 / 内层的分法**：装内容的五块（`itemRoot`、`itemListCard`、`itemTile`、
+  `itemGroupHead`、`itemAgendaDayLabel`）吃 `--dsh-tb-bg`；浮起来的（`itemRowMenu`、
+  `itemDangerZone`、`itemInput`、`itemFacetPanelBody`、`itemBatch`、`itemQueryChip`、
+  `itemDetailInner`、`itemDetail`）吃不透明层令牌。**判据是「装内容」还是「浮在上面」，
+  不是令牌本身**——理由见「画布与内层」那节。
 
-**组头的折叠指示器必须画出来，且与看板同一套约定：折叠指向右、展开指向下。** 复用
-`board.module.css` 的 `.detailChevron` 那个朝下的 `chevronDown` 图标（不新画、不用文字字符），
-`.itemGroupChevron { transform: rotate(-90deg) }` 写在**折叠**这一态（`aria-expanded='false'`），
-展开态不旋转。**旋转挂在「折叠」这一态，是因为基础字形朝下**——这条理由必须写在规则旁边：
-今天这里的内容是文字字符 `›`（朝右）却照搬了朝下字形的 `rotate(-90deg)`，于是**展开读作右、折叠
-读作上**，与看板的 house 规则整体翻转。**根因是抄了声明没抄原因：字形换了、旋转没换。**
+**组头的折叠指示器必须画出来，且与看板同一套约定：折叠指向右、展开指向下。** 它是 7×7px 的
+方框加两条 1.5px 的边，**不是**复用看板的图标字形——所以它自己转：`aria-expanded='false'`
+时 `rotate(45deg)`，展开时 `rotate(-45deg)`。**旋转挂在哪一态取决于基础字形朝哪边**，这条理由
+必须写在规则旁边：字形换了而旋转没换，展开与折叠就会整体翻转，而翻转后的箭头仍然「像」一个
+折叠指示器，所以看截图是发现不了的。
 
 #### 反 AI 味自查（每条可机械核对，跑 `pnpm verify` 之前自己过一遍）
 
@@ -1403,14 +1405,15 @@ of the app's base」，而 `.board` 与 `.column` 都吃 `--dsh-tb-bg`。清单�
 
 | 结论 | 凭据 |
 | --- | --- |
-| 现状的毛病（660px 空洞、搜索框随页变宽、竖线只有内容高、凭空横线、空态 1×3、组头箭头两个状态反了、动作轨 68px 装不下、事实行恒空的第三条轨、要处理的动作离句子 665px） | **已核对**。七张现状图 + 五张台架基线逐张 `read_image` 打开，数字由台架截图实量 |
-| 事实行第 1 轨的最长读法宽度（约 110px） | **引用队友的实测量**，我自己没有在台架上复量一次**——所以断言写关系（「轨一装得下最长读法」），不写像素等式 |
-| 本节给的新几何（概览条、磁贴、卡、分栏线、页头三段轨、窄屏单选） | **只有构造性保证，没有渲染证据**——本节写的正是**将要落地**的契约，落地后由台架重新截一组三页 × 两档核对 |
-| 窄档是**真 390px** | 台架的渲染页带 viewport meta，`<600` 时另传 `screenWidth`。**这条曾经错过一次**：没有 meta 时移动仿真退回 Chrome 的 980px 布局宽度再缩放，于是每一张「手机截图」其实是一张 980px 桌面，结论全错 |
-| 三个页面的参数真的生效 | 台架有两条自测断言「三页渲染出三个不同的文档」「宽窄两档不同」。**接上了参数却悄悄丢掉**的台架比拒绝参数的更坏，这类失败已经犯过三次 |
+| **这一节的十九条，每一条现在都由一道机械断言钉着**，而不是靠人记得 | 清单轨道的四条轨、事实行两轨的零下限、字阶与颜色预算、窄档的「容器装不下就换行」分别由 `tests/panel-render.spec.ts` 断言；**断言写的是关系（「轨一装得下最长读法」）而不是像素等式**，因为等式会随字体与语言一起过期 |
+| 事实行第 1 轨装得下最长读法 | 断言写在 `panel-render.spec.ts` 的日期轨那条上，比较的是**读法与轨的关系**。像素等式不写：写下来就等于把今天的字体与今天的语言刻进契约，而两者都会变 |
+| 本节给的几何（概览条、磁贴、卡、分栏线、页头三段轨、窄档同一个排序控件） | **已落地，并由台架的 `3 页 × 2 档` 六张渲染核对过**。落地后的证据是截图，不是承诺 |
+| 窄档是**真 390px** | 台架的渲染页带 viewport meta，`<600` 时另传 `screenWidth`，并且台架有断言把「宽窄两档渲染出不同结果」钉住。**接上了参数却悄悄丢掉**的台架比拒绝参数的更坏，所以这条断言存在的原因就是那次丢掉 |
+| 三个页面的参数真的生效 | 台架有两条自测断言「三页渲染出三个不同的文档」「宽窄两档不同」 |
 | **截图闭环走的是渲染台架，不是活体 App** | `127.0.0.1:3080` 返回 401，而 `dsh web` 的令牌只在启动时打印一次、本次**不重启 DSH**（用户明令）。所以这一轮的全部渲染证据来自台架（真组件 + 真 CSS + 真宿主令牌 + 真实 fixture），**3 页 × 2 档六张** |
 | **颜色：未在运行中验证** | 台架的强调色来自**宿主静态 bundle**（蓝），活体是 theme service 按用户设置**运行时叠上去**的一层（粉）——同一份 CSS、同一个 `--dsh-tb-accent`。**所以台架只证结构与几何，不证颜色**；本节的「视觉位置 ≤ N」是**按令牌层数出结构位置**，不是数截图里的色块 |
 | **深色主题** | **只有构造性保证，没有渲染证据。** 这张表零颜色字面量，全走 `--dsh-tb-*` → `--dsw-*`，换主题按构造会跟上。但**宿主的深色根本不在 CSS 里**——它是 theme service 运行时按用户设置叠上去的一层令牌，所以静态渲染页**没有任何办法**进入深色。把注册表读出来自己拼一层去截图，**但那截出来的是重建的深色，不是宿主输出的深色**，拿它宣布验收通过等于对着自己画的图签字。真看一眼只能在跑着的那个 App 里把外观切成深色 |
+| **这一节没有任何数字式门禁** | `verify-design-docs.mjs` 只校验**令牌名**存在，**不校验任何像素、字号、次数或计数**——所以本表里任何一格数字漂了都不会红。数字要有人读，读到就要改；**这是这份文件的已知缺口，不是它的保证** |
 
 ### 加载三态（读中 / 失败 / 空）
 
