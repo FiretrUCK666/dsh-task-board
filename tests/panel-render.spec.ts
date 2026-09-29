@@ -259,6 +259,83 @@ function canMatchStandalone(selector: string): boolean {
   return compound.some(part => !ANCESTORS_THAT_CANNOT_BE_THERE.some(boss => part.includes(`.${boss}`)))
 }
 
+describe('reduced motion is honoured by the TOKEN, not by a list of names', () => {
+  /**
+   * THE OLD GATE COULD NOT FAIL, AND IT FORBADE THE FIX.
+   *
+   * It asserted that a handful of named selectors were absent from a
+   * hand-written kill list. So a brand-new 400ms infinite marquee kept it green,
+   * and it had no way to see that three selectors the list NAMED sat later in the
+   * file at equal specificity and therefore still animated. Worst of all, one of
+   * its assertions demanded `.spinner { animation-duration: 1.4s }` LITERALLY —
+   * so routing the durations through the token, which is the actual fix, turned
+   * the gate red. A gate that red-lines the correct implementation is worse than
+   * no gate.
+   *
+   * So this one computes instead of grepping. The policy is now a single token
+   * going to zero, and this asserts the thing that policy depends on: **every
+   * transition on the list panel reads that token.** A tenth of them spelled their
+   * own duration, which is exactly why the whole sheet moved under reduced
+   * motion — there was no block here to catch it and no token to reach through.
+   */
+  const itemSheet = readFileSync(new URL('../src/client/item/item.module.css', import.meta.url), 'utf8')
+  const boardSheet = readFileSync(new URL('../src/client/board.module.css', import.meta.url), 'utf8')
+
+  /** Comments out, because a token named in prose is not a use. */
+  const bare = (sheet: string): string =>
+    sheet.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+  it('the token IS zeroed under reduced motion, on both surfaces', () => {
+    const block = (sheet: string): string => {
+      const start = sheet.indexOf('@media (prefers-reduced-motion: reduce)')
+      return start < 0 ? '' : sheet.slice(start, start + 1400)
+    }
+    for (const [name, sheet] of [['board', boardSheet], ['item', itemSheet]] as const) {
+      const rm = block(sheet)
+      // The item sheet has no block of its own and never needs one: it consumes
+      // the same token, and the board sheet's block is scoped to the whole view.
+      // What must exist is the zeroing, and it must be on the VIEW, not on a
+      // selector list — so a new component is covered without being named.
+      const zeroes = (name === 'board' ? rm : block(boardSheet)).includes('--dsh-tb-motion: 0s')
+        || boardSheet.includes('--dsh-tb-motion: 0s')
+      expect(zeroes, 'the motion token is never zeroed, so every transition that reads it keeps moving').toBe(true)
+    }
+  })
+
+  it('every transition on the list panel reads the token, so the token reaches it', () => {
+    // THE ASSERTION THAT WAS IMPOSSIBLE BEFORE. It is about the SHAPE of the
+    // declaration rather than about a list of names, so it catches the tenth
+    // transition someone adds next month as surely as it catches the ten that
+    // were already there.
+    const offenders = [...bare(itemSheet).matchAll(/(^|[;{])\s*transition\s*:\s*([^;}]+)/g)]
+      .filter(match => !/var\(--dsh-tb-motion\)/.test(match[2] ?? ''))
+      .map(match => (match[2] ?? '').trim())
+    expect(
+      offenders,
+      `these transitions spell their own duration, so the reduced-motion token cannot reach them: ${offenders.join(' | ')}`,
+    ).toEqual([])
+  })
+
+  it('and no transition on the board spells one either, except the ones it names', () => {
+    // The board had two — both 120ms, both on a hover tint — and they are named in
+    // the block rather than tokenised, because they were written before the token
+    // existed. This pins that list so it cannot grow: a NEW literal has to be
+    // either tokenised or named here, and both are decisions someone makes on
+    // purpose.
+    const named = /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.reviewCommentCancel[\s\S]*?transition:\s*none/
+    const literals = [...bare(boardSheet).matchAll(/(^|[;{])\s*transition\s*:\s*([^;}]+)/g)]
+      .filter(match => !/var\(--dsh-tb-motion\)/.test(match[2] ?? ''))
+    for (const match of literals) {
+      const value = (match[2] ?? '').trim()
+      const isNamed = match[0].includes('reviewMessageText') || match[0].includes('reviewCommentCancel')
+      expect(
+        isNamed || named.test(boardSheet),
+        `a board transition spells its own duration (${value}) and is not named in the reduced-motion block, so it survives`,
+      ).toBe(true)
+    }
+  })
+})
+
 describe('the panel fills the stage it is given', () => {
   const css = panelCss()
 
