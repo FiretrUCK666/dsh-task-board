@@ -195,6 +195,12 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
 }) {
   const readiness = sessionRuleReadiness(task, sessionRuleOf(row))
   const title = ruleSessionTitle(controller, task, row.sessionId)
+  // The switch is refused when ARMING would be refused, and only then: turning a
+  // dead arm off is never refused, so it must stay operable or the rule could
+  // never be disarmed. Same condition the controller uses, so the switch and the
+  // write cannot disagree.
+  const armingBlocked = !row.enabled && readiness.kind === 'blocked'
+  const blockReasonId = `dsh-tb-rule-block-${row.ruleId}`
   // The rule being asked about, or `undefined` when nobody is asking. Held HERE,
   // beside the row that owns it, so the dialog is about this rule and cannot be
   // left describing another one.
@@ -258,7 +264,29 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           checked={row.enabled}
           onChange={next => { controller.toggleSessionRule(task.id, row.ruleId, next) }}
           label={t('auto.rule.enable')}
+          /* DISABLED WITH A REASON, not a switch that springs back.
+             `toggleSessionRule` refuses two real cases — the dead-arm law (the
+             card cannot run this rule at all) and an unparseable cron — and it
+             returns void, so both used to be a switch the reader could press and
+             that did nothing, with nothing said. A control that visibly refuses
+             is an answer; one that springs back silently is the 「按了没反应」 the
+             owner keeps reporting.
+
+             The reason is not invented here: `sessionRuleReadiness` is exactly
+             what the controller refuses on, and the task-level schedule switch
+             below reports the same fact the same way (`disabled` + `describedBy`
+             + one line). So one rule, two switches, the same words — and the
+             controller's signature stays untouched, since changing a shared
+             signature to carry a reason the model can already derive would be the
+             more expensive way to say less. */
+          disabled={armingBlocked}
+          describedBy={armingBlocked ? blockReasonId : undefined}
         />
+        {armingBlocked && (
+          <p className={css.scheduleMeta} id={blockReasonId}>
+            {t('detail.schedule.blockedAction')}
+          </p>
+        )}
         {/* Grammar: the row switch leads; the two text actions group on the
             right (编辑 beside 删除 — never stranded in the middle). */}
         <span className={css.autoRuleButtons}>

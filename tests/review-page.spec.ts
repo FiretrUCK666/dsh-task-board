@@ -98,6 +98,33 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(ruleOf('interactionFeedback')).toMatch(/min-height:\s*16px/)
   })
 
+  it('the session-rule switch refuses VISIBLY, and stays dis-armable', () => {
+    // 「按了没反应」 IS the owner's standing complaint, and this switch was a live
+    // instance of it. `toggleSessionRule` returns void and declines in two real
+    // cases — the dead-arm law and an unparseable cron — so the switch used to
+    // accept the press and spring back with nothing said. The task-level schedule
+    // switch, in the same file, reports the identical fact as `disabled` plus one
+    // line: two switches, one fact, one honest and one silent.
+    //
+    // So the row is DISABLED WITH A STATED REASON rather than left live. The
+    // condition is the controller's own: arming is blocked, but turning a dead arm
+    // OFF never is — so the gate must be absent while the rule is on, or a rule
+    // could never be disarmed and the fix would have introduced a worse dead
+    // control than the one it removed.
+    const code = readFileSync(fileURLToPath(new URL('../src/client/board/automation-ui.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(code, 'the rule switch disables with no reason attached, so the reader is not told why')
+      .toMatch(/disabled=\{armingBlocked\}/)
+    expect(code, 'the disabled switch is not linked to its reason, so a screen reader never reads it')
+      .toMatch(/describedBy=\{armingBlocked \? blockReasonId : undefined\}/)
+    // The gate must be ARMING-only. Without `!row.enabled` a dead arm could never
+    // be switched off.
+    expect(code, 'the gate does not exempt the dis-arm direction, so a dead arm could never be turned off')
+      .toMatch(/armingBlocked\s*=\s*!row\.enabled\s*&&\s*readiness\.kind\s*===\s*'blocked'/)
+    expect(code, 'the switch is not driven by the readiness the controller refuses on')
+      .toMatch(/sessionRuleReadiness\(task, sessionRuleOf\(row\)\)/)
+  })
+
   it('a form that replaces its own trigger moves focus into itself', () => {
     // THREE SURFACES HAVE THIS SHAPE, and the first two were found by an audit
     // rather than by a test — which is how a class of defect stays invisible.
