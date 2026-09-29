@@ -192,7 +192,11 @@ dsh plugin --profile web add github:FiretrUCK666/dsh-task-board
 ## 数据保存在哪里
 
 - 看板真相：`~/.dsh/storages/dsh_task_board/` 目录。`documents/` 下**每种数据一个文件**：`board.json` 是任务台账、巡航、定时预设、运行配置预设与删除墓碑；`items.json` 是任务清单。人可读、原子写入，可以直接整目录备份；删除这个目录等于清空看板与清单。
-- 浏览器 localStorage 保存离线镜像和本地状态：`dsh.taskBoard.v1`、`dsh.taskBoard.cruise.v1`、`dsh.taskBoard.presets.v1`、`dsh.taskBoard.runPresets.v1`；草稿 `dsh.taskBoard.drafts.v1` 是设备本地的未发送输入，刻意不跨设备同步。
+- 浏览器 localStorage 保存离线镜像和本地状态。两份**承载数据**的镜像是 `dsh.taskBoard.v1`（看板）与
+  `dsh.taskBoard.items.v1`（任务清单）—— **两份都要备，只备一份等于清单那份丢了**。其余的键
+  （`cruise` / `presets` / `runPresets` / `templates` / `drafts` / `preSync`）是这个浏览器自己的状态或
+  一次性备份，不是另一份真相。**键名以 `src/client/` 里实际写下的为准**；这里列的是**哪些值得你
+  操心**，不是全部键的清单。
 - 第一次连接时如果本地数据与 host 有分歧，本地副本备份到 `dsh.taskBoard.preSync.v1`，host 为准。
 - host 没有挂载存储后端时，看板自动退回纯 localStorage 模式。
 

@@ -242,7 +242,7 @@ thread and the activity feed.
 ## Data locations
 
 - Board source of truth: the `~/.dsh/storages/dsh_task_board/` directory. Under `documents/` there is one file per data kind: `board.json` holds the task ledger, cruise, schedule presets, run presets and deletion tombstones, and `items.json` holds the task list. Human-readable, written atomically; back the directory up directly, or delete it to clear both board and list.
-- Browser `localStorage` holds the offline mirror: `dsh.taskBoard.v1`, `dsh.taskBoard.cruise.v1`, `dsh.taskBoard.presets.v1`, `dsh.taskBoard.runPresets.v1`. Drafts in `dsh.taskBoard.drafts.v1` are device-local and deliberately not synchronised.
+- Browser `localStorage` holds the offline mirror. Two of them CARRY DATA and both need backing up: `dsh.taskBoard.v1` (the board) and `dsh.taskBoard.items.v1` (the task list) — **backing up one and losing the other is the same as losing the list**. The rest (`cruise` / `presets` / `runPresets` / `templates` / `drafts` / `preSync`) is this browser's own state or a one-time backup, not a second truth. **The key names are whatever `src/client/` actually writes**; this lists what is worth your worry, not every key.
 - On the first connection, diverging local data is backed up to `dsh.taskBoard.preSync.v1` and the host wins.
 - Without a storage backend on the host, the board falls back to a pure `localStorage` mode.
 
