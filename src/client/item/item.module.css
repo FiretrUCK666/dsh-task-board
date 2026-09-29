@@ -1797,6 +1797,31 @@
   min-inline-size: 0;
 }
 
+/* THE TWO SHORT GATES SHARE A LINE, AND THE ORDERING TAKES THE WIDTH.
+   Measured on a 390px phone, and every number here is a measurement rather than
+   a reading of the CSS: the row is 340 wide and 111 tall, and its three children
+   sat at x=25 on three separate lines — the batch door 46 wide, the ordering
+   block 340 wide and two lines tall, the filter facet 44 wide.
+
+   46 + 8 + 44 is 98px of a 340px line, so the two short toggles were each
+   taking a LINE TO ITSELF for two characters of text. Reordering them together
+   and giving the ordering block the full width is worth 30px of height
+   (111 → 81), and it is a pure layout move: **nothing is hidden, nothing is
+   folded, and the ordering is still one always-visible row that wraps.**
+
+   The order is the whole trick: the ordering block is the only child that needs
+   the full width, so it goes LAST with `flex-basis: 100%`, and taking it out of
+   the middle is what lets the two gates meet.
+
+   THIS IS THE BASE BAND, which is the one a phone is in — the 720 query above it
+   does not match a 390px surface, and putting the rule there was tried first
+   and changed nothing, which is the same class of mistake as shortening the
+   labels: a rule that does not apply is not a rule. It is scoped to the base
+   rather than the 720 block so the mid band, where all three children already
+   fit on one line, is not given a forced break it does not need. */
+.itemFilterRow > .itemFilterWide { order: 2; flex-basis: 100%; }
+.itemFilterRow > .itemFacetPanel { order: 1; }
+
 /* The ordering control, and it is the ONLY one on this surface at every width.
    There used to be a second `<select>` for the base band with the container query
    hiding one and showing the other — which is a second component for the narrow
@@ -3150,6 +3175,7 @@ textarea.itemInput {
     align-items: center;
     gap: 6px 10px;
   }
+
 
 }
 
